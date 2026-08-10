@@ -10,29 +10,22 @@
  * The waitFocused gates ARE the assertions (they throw on timeout). Run:
  *   npx vitest run --config vitest.rta.config.js -t 'focus'
  */
-import { beforeAll, afterAll, it, expect } from 'vitest';
+import { beforeAll, it, expect } from 'vitest';
 import { RTA_CONFIG } from '../config.js';
 import { authenticate, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
-import { seedHome, snapshotSession, restoreSession, assertSeedTookEffect } from '../lib/seed.js';
+import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch, ecp, odc } from '../lib/driver.js';
 import { navLibraryByType } from '../lib/nav.js';
 import { press, waitFor, waitFocused, waitHome } from '../lib/steps.js';
 
 const LOCALE = RTA_CONFIG.languages[0]; // en_US
 
-let saved;
 let session;
 let libraries;
 
 beforeAll(async () => {
-  saved = await snapshotSession();
   session = await authenticate(RTA_CONFIG.server);
   libraries = await getLibraries(session); // lets the nav below target a library BY ID
-});
-
-afterAll(async () => {
-  await restoreSession(saved);
-  await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false }).catch(() => {});
 });
 
 it('focus restoration: Home -> Library -> Detail -> back -> back', async () => {

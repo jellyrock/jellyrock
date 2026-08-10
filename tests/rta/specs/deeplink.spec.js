@@ -11,10 +11,10 @@
  *
  * Requires a reachable device + .env (ROKU_IP / ROKU_PASSWORD), same as screens.spec.
  */
-import { beforeAll, afterAll, it, expect } from 'vitest';
+import { beforeAll, it, expect } from 'vitest';
 import { RTA_CONFIG } from '../config.js';
 import { authenticate, getHero, getLibraries, libraryIdFor, firstItemId } from '../lib/jellyfin.js';
-import { seedHome, snapshotSession, restoreSession, assertSeedTookEffect } from '../lib/seed.js';
+import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch, ecp } from '../lib/driver.js';
 import { press, waitFor, getActiveVal, waitHome, sleep, hasChildren } from '../lib/steps.js';
 
@@ -26,14 +26,12 @@ const PLAYING_STATES = ['startup', 'buffer', 'play', 'pause']; // Roku media-pla
 // timeout constant, prefer deriving this from it.
 const VALIDATION_FETCH_BUDGET_MS = 6000;
 
-let saved;
 let session;
 let heroId; // a Movie (open / play targets)
 let moviesLibraryId; // a CollectionFolder (library-divert target)
 let audioId; // an Audio item (instantmix target — demo InstantMix returns a real mix)
 
 beforeAll(async () => {
-  saved = await snapshotSession(); // restore the device's prior session afterward
   session = await authenticate(RTA_CONFIG.server);
   heroId = (await getHero(session)).id;
   moviesLibraryId = libraryIdFor(await getLibraries(session), 'movies');
@@ -41,11 +39,6 @@ beforeAll(async () => {
   for (const [k, v] of Object.entries({ heroId, moviesLibraryId, audioId })) {
     if (!v) throw new Error(`deep-link spec setup: could not resolve ${k} on the demo server`);
   }
-});
-
-afterAll(async () => {
-  await restoreSession(saved);
-  await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false }).catch(() => {});
 });
 
 /** Land logged-in on Home, then fire a runtime cast (ECP /input?contentId=...). */

@@ -10,7 +10,7 @@
  * Requires a reachable device + .env (ROKU_IP / ROKU_PASSWORD), same as the
  * Rooibos device tests.
  */
-import { beforeAll, afterAll, it } from 'vitest';
+import { beforeAll, it } from 'vitest';
 import { RTA_CONFIG } from '../config.js';
 import { authenticate, getHero, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
 import {
@@ -18,24 +18,20 @@ import {
   seedUserSelect,
   seedServerSelect,
   seedLibraryLanding,
-  snapshotSession,
-  restoreSession,
   assertSeedTookEffect,
 } from '../lib/seed.js';
-import { hardRelaunch, ecp } from '../lib/driver.js';
+import { hardRelaunch } from '../lib/driver.js';
 import { SCREENS } from '../screens.js';
 import { captureRawUI } from '../capture.js';
 
 const CAPTURE = process.env.RTA_CAPTURE === '1';
 const LOCALE = RTA_CONFIG.languages[0]; // en_US
 
-let saved;
 let session;
 let ctx;
 let libraries;
 
 beforeAll(async () => {
-  saved = await snapshotSession(); // restore the device's prior session afterward
   session = await authenticate(RTA_CONFIG.server);
   const hero = await getHero(session);
   libraries = await getLibraries(session); // runtime collectionType -> id (no hardcoded GUIDs)
@@ -50,11 +46,6 @@ beforeAll(async () => {
     session,
     libraries,
   };
-});
-
-afterAll(async () => {
-  await restoreSession(saved);
-  await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false }).catch(() => {});
 });
 
 // A plain loop rather than `it.each` — `it.each` passes ONLY the case object, no

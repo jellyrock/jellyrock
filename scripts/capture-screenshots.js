@@ -61,11 +61,13 @@ import {
   seedUserSelect,
   seedServerSelect,
   seedLibraryLanding,
-  snapshotSession,
-  restoreSession,
   assertSeedTookEffect,
-  armSessionRestoreOnInterrupt,
 } from '../tests/rta/lib/seed.js';
+import {
+  snapshotRegistry,
+  restoreRegistry,
+  armRestoreOnInterrupt,
+} from '../tests/rta/lib/registry.js';
 import { SCREENS } from '../tests/rta/screens.js';
 import { generateIndex } from './screenshots-index.js';
 
@@ -264,10 +266,10 @@ async function main() {
 
   // Good citizen: snapshot the device's current session so we can restore it after
   // (capturing logs the device into the demo server; we put it back the way we found it).
-  const savedSession = await snapshotSession();
+  const savedRegistry = await snapshotRegistry();
   // A ~15-minute matrix run is the most likely thing anyone Ctrl-Cs, and the
   // `finally` below is not reached when the process is killed.
-  armSessionRestoreOnInterrupt(savedSession);
+  armRestoreOnInterrupt(savedRegistry);
 
   console.log(`Authenticating ${CONFIG.server.username}@${CONFIG.server.url} ...`);
   const session = await authenticate(CONFIG.server);
@@ -394,7 +396,7 @@ async function main() {
     }
   } finally {
     console.log('\nRestoring original device session ...');
-    await restoreSession(savedSession);
+    await restoreRegistry(savedRegistry);
     await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false }).catch(() => {});
   }
 

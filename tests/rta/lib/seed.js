@@ -1,16 +1,14 @@
 /**
- * Registry seeding to land the app deterministically on a screen, plus
- * snapshot/restore of the device's prior session.
+ * Registry seeding to land the app deterministically on a screen.
  *
  * NOTE: these write the REAL `JellyRock` registry (not a `test-*` section)
  * because the app reads the real keys to decide which screen to show — inherent
  * to driving the real app from outside (unlike in-process Rooibos tests, which
- * the `test-*` isolation rule governs). `snapshotSession`/`restoreSession` are
- * the safety net: callers snapshot before seeding and restore in a finally /
- * afterAll so the device is left as found.
+ * the `test-*` isolation rule governs). Putting the device back afterwards is
+ * [`registry.js`](registry.js)'s job — it snapshots the WHOLE registry before
+ * any of this runs, so nothing here needs a matching "and undo it" list.
  */
 import { odc } from 'roku-test-automation';
-import { hardRelaunch } from './driver.js';
 
 export const GLOBAL = 'JellyRock';
 
@@ -206,150 +204,4 @@ export async function seedLibraryLanding(session, libraryId, view) {
   await odc.writeRegistry({
     values: { [session.userId]: { [`display.${libraryId}.landing`]: view } },
   });
-}
-
-/**
- * Snapshot the device's current top-level session so it can be restored after.
- *
- * Every key any seed in this file writes to `GLOBAL` must be listed here, or the
- * seeded value survives the restore. `globalRememberMe` is the one that bit:
- * `seedHome` forces it to `'true'`, so without snapshotting it a device that had
- * remember-me OFF silently came back with it ON.
- */
-export async function snapshotSession() {
-  const before = (await odc.readRegistry())?.values?.[GLOBAL] || {};
-  return {
-    server: before.server ?? null,
-    active_user: before.active_user ?? null,
-    globalTranslationLocale: before.globalTranslationLocale ?? null,
-    globalRememberMe: before.globalRememberMe ?? null,
-    // seedServerSelect writes saved_servers, so it must be snapshotted+restored too,
-    // else the seeded one-server list leaks onto the device (null restore deletes it).
-    saved_servers: before.saved_servers ?? null,
-  };
-}
-
-/**
- * Restore a snapshot taken by `snapshotSession`, and PROVE it took.
- *
- * A best-effort write is not enough here, for two reasons:
- *
- *  1. The app is still RUNNING with the seeded session live in memory, and it
- *     re-persists that session. A write that lands can therefore be clobbered
- *     the moment the channel next exits — and an ECP `/launch/dev` against a
- *     running channel only foregrounds it, so a plain `relaunch()` does not
- *     clear the stale session either. Hence `hardRelaunch`.
- *  2. The previous implementation swallowed every error (`.catch(() => {})`),
- *     which made a failed restore completely invisible.
- *
- * Together those left devices signed into `demo.jellyfin.org` twice, each time
- * silently invalidating a later on-device measurement — the row count was the
- * only tell (3 libraries instead of the real server's) and it was noticed late
- * both times. See the followup in docs/progress.md.
- *
- * So: write → cold restart → read back → compare. On failure this THROWS.
- * A loud failure in an `afterAll` is much cheaper than a device that quietly
- * lies to whatever runs next.
- */
-export async function restoreSession(saved, { attempts = 3 } = {}) {
-  const keys = Object.keys(saved);
-  let observed = {};
-
-  for (let attempt = 1; attempt <= attempts; attempt++) {
-    await odc.writeRegistry({ values: { [GLOBAL]: saved } });
-    await hardRelaunch();
-    observed = (await odc.readRegistry().catch(() => null))?.values?.[GLOBAL] || {};
-
-    // `null` in the snapshot means "the key was absent"; a deleted key reads back
-    // as undefined, so normalise both sides before comparing.
-    const wrong = keys.filter((k) => (observed[k] ?? null) !== (saved[k] ?? null));
-    if (wrong.length === 0) {
-      armed = null; // nothing left for the interrupt handler to do
-      return;
-    }
-
-    if (attempt === attempts) {
-      throw new Error(
-        `restoreSession failed after ${attempts} attempts — this device is NOT as we found it.\n` +
-          `  mismatched keys: ${wrong.join(', ')}\n` +
-          `  expected server: ${saved.server}\n` +
-          `  actual server:   ${observed.server}\n` +
-          `Do not trust any on-device measurement from this device until it is fixed.`,
-      );
-    }
-  }
-}
-
-// ── Interrupt-safe restore ──────────────────────────────────────────────────
-//
-// `restoreSession` normally runs from a `finally` / `afterAll`. Neither is
-// reached when the process is KILLED — a Ctrl-C during a ~15-minute capture or
-// suite run terminates before the handler, and the device is left signed into
-// the seeded (demo) server. That is not hypothetical: it is how this repo has
-// stranded devices three times, most recently an interrupted screenshot matrix
-// that left `.177` on demo.jellyfin.org with no snapshot left in memory to
-// restore from.
-//
-// Arming registers signal handlers that run the SAME verified restore before
-// exiting. Idempotent, and self-disarming once a normal restore succeeds.
-let armed = null;
-let restoring = false;
-let handlersInstalled = false;
-
-/**
- * Restore `saved` if this process is interrupted. Call right after
- * `snapshotSession()`; a successful `restoreSession()` disarms it automatically.
- *
- * A second interrupt abandons the restore and exits immediately — so a wedged
- * device can never trap someone in an un-killable process. If the restore
- * fails, the snapshot is printed so it can be reapplied by hand (reconstructing
- * it from a console log is what the incident that prompted this actually cost).
- *
- * ⚠️ MAIN-PROCESS SCRIPTS ONLY — do NOT arm this from a Vitest spec. Measured
- * 2026-08-07: Vitest runs specs in forked children that DO share the parent's
- * process group (so a terminal Ctrl-C does reach them), but Vitest tears the
- * child down before a ~30s restore can finish. A real interrupted run produced
- * no restore output and left the device on demo.jellyfin.org. Arming there is
- * not merely useless, it reads as protection that does not exist.
- *
- * Making the specs safe needs the session lifecycle moved out of the three
- * per-spec snapshot/restore pairs and into `globalSetup`, which runs in
- * Vitest's MAIN process. Deliberately NOT done: the exposure is a Ctrl-C during
- * an otherwise unattended 13-minute suite, and recovery is a two-minute
- * registry rewrite (the snapshot print above covers it). Revisit only if
- * someone is actually stranded that way.
- */
-export function armSessionRestoreOnInterrupt(saved) {
-  armed = saved;
-  if (handlersInstalled) return;
-  handlersInstalled = true;
-
-  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
-    process.on(signal, () => {
-      if (!armed) process.exit(130);
-      if (restoring) {
-        console.log(`\n[restore] second ${signal} — abandoning restore, exiting now.`);
-        console.log(`[restore] restore by hand from: ${JSON.stringify(armed)}`);
-        process.exit(130);
-      }
-      restoring = true;
-      const saving = armed;
-      console.log(
-        `\n[restore] ${signal} received — restoring the device session before exit.` +
-          ' This takes ~30s (cold restart + verify). Ctrl-C again to abandon.',
-      );
-      restoreSession(saving, { attempts: 2 })
-        .then(() => console.log('[restore] VERIFIED CLEAN — device left as found.'))
-        .catch((e) => {
-          console.error(`[restore] FAILED: ${e.message}`);
-          console.error(`[restore] restore by hand from: ${JSON.stringify(saving)}`);
-        })
-        .finally(() => process.exit(130));
-    });
-  }
-}
-
-/** Drop the interrupt-restore arming (e.g. after restoring by another path). */
-export function disarmSessionRestoreOnInterrupt() {
-  armed = null;
 }

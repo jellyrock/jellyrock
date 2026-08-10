@@ -1,0 +1,115 @@
+/**
+ * Hardware-free gate on the RTA registry restore's two pure functions.
+ *
+ * These carry the whole correctness of "leave the device as you found it", and
+ * the bug they replace was invisible precisely because it was only ever checked
+ * by eye — the old 5-key restore reported `VERIFIED CLEAN` while leaving a demo
+ * auth token and a whole registry section on the device. Every case below is a
+ * shape that was actually observed on `.178` on 2026-08-10, not an invented one.
+ *
+ * `.test.js` (Vitest, `npm run test:scripts`, no device) — distinct from the
+ * `.spec.js` files under `specs/`, which drive real hardware.
+ */
+import { describe, it, expect } from 'vitest';
+import { planRestore, compareRegistries } from './registry.js';
+
+/** A separate object graph with equal contents — these compare values, not identity. */
+const clone = (o) => JSON.parse(JSON.stringify(o));
+
+describe('planRestore', () => {
+  it('deletes a whole section the run created', () => {
+    // The demo user's section: seeded by seedHome, never in the snapshot, and
+    // holding a live authToken. The old allow-list restore could not express this.
+    const saved = { JellyRock: { server: 'http://home:8098' } };
+    const live = {
+      JellyRock: { server: 'http://home:8098' },
+      demoUserId: { authToken: 'abc', username: 'demo' },
+    };
+    const { sectionsToDelete, writes } = planRestore(saved, live);
+    expect(sectionsToDelete).toEqual(['demoUserId']);
+    expect(writes).toEqual({});
+  });
+
+  it('nulls a key the run added to a section that already existed', () => {
+    // seedLibraryLanding writes display.<libraryId>.landing into a user section.
+    const saved = { user1: { authToken: 'abc' } };
+    const live = { user1: { authToken: 'abc', 'display.lib1.landing': 'Shows' } };
+    const { writes } = planRestore(saved, live);
+    expect(writes).toEqual({ user1: { 'display.lib1.landing': null } });
+  });
+
+  it('restores a changed value and a key the run deleted', () => {
+    const saved = { JellyRock: { server: 'http://home:8098', globalRememberMe: 'false' } };
+    const live = { JellyRock: { server: 'https://demo.jellyfin.org/stable' } };
+    const { writes } = planRestore(saved, live);
+    expect(writes).toEqual({
+      JellyRock: { server: 'http://home:8098', globalRememberMe: 'false' },
+    });
+  });
+
+  it('recreates a section the run removed entirely', () => {
+    const saved = { user1: { authToken: 'abc', username: 'charlie' } };
+    const { sectionsToDelete, writes } = planRestore(saved, {});
+    expect(sectionsToDelete).toEqual([]);
+    expect(writes).toEqual({ user1: { authToken: 'abc', username: 'charlie' } });
+  });
+
+  it('writes nothing when the device already matches', () => {
+    const state = { JellyRock: { server: 'http://home:8098' }, user1: { authToken: 'abc' } };
+    const { sectionsToDelete, writes } = planRestore(state, clone(state));
+    expect(sectionsToDelete).toEqual([]);
+    expect(writes).toEqual({});
+  });
+});
+
+describe('compareRegistries', () => {
+  it('is empty for an exact match', () => {
+    const state = { JellyRock: { server: 'http://home:8098' } };
+    expect(compareRegistries(state, clone(state))).toEqual([]);
+  });
+
+  it('catches a leftover section — the failure the old restore reported as clean', () => {
+    const saved = { JellyRock: { server: 'http://home:8098' } };
+    const live = { ...saved, demoUserId: { authToken: 'abc' } };
+    expect(compareRegistries(saved, live)).toEqual([
+      { section: 'demoUserId', key: 'authToken', want: null, got: 'abc' },
+    ]);
+  });
+
+  it('catches a value that did not come back', () => {
+    const saved = { JellyRock: { server: 'http://home:8098' } };
+    const live = { JellyRock: { server: 'https://demo.jellyfin.org/stable' } };
+    expect(compareRegistries(saved, live)).toEqual([
+      {
+        section: 'JellyRock',
+        key: 'server',
+        want: 'http://home:8098',
+        got: 'https://demo.jellyfin.org/stable',
+      },
+    ]);
+  });
+
+  it('catches a key that vanished', () => {
+    const saved = { user1: { authToken: 'abc', username: 'charlie' } };
+    const live = { user1: { authToken: 'abc' } };
+    expect(compareRegistries(saved, live)).toEqual([
+      { section: 'user1', key: 'username', want: 'charlie', got: null },
+    ]);
+  });
+
+  it('ignores LastRunVersion, which the app rewrites on boot by design', () => {
+    // Case-insensitively, and in user sections as well as the global one:
+    // migrations.bs back-fills it into any user section that lacks it.
+    const saved = { JellyRock: { LastRunVersion: '2.24.2' }, user1: { authToken: 'abc' } };
+    const live = { JellyRock: { LastRunVersion: '2.25.0' }, user1: { authToken: 'abc' } };
+    expect(compareRegistries(saved, live)).toEqual([]);
+  });
+
+  it('does NOT ignore anything else the app writes', () => {
+    // available_users is app-written too, but it is user state — a demo entry
+    // appended during a run is a leak, not bookkeeping, so it must be caught.
+    const saved = { JellyRock: { available_users: '[{"username":"charlie"}]' } };
+    const live = { JellyRock: { available_users: '[{"username":"charlie"},{"username":"demo"}]' } };
+    expect(compareRegistries(saved, live)).toHaveLength(1);
+  });
+});

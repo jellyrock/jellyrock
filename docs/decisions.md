@@ -252,7 +252,8 @@ It was implemented, measured and reverted. Across six independent comparisons on
 ## decision-id: rta-interrupt-restore-scripts-only
 
 **date**: 2026-08-07
-**status**: accepted
+**status**: superseded
+**superseded-by**: `rta-registry-lifecycle-outside-vitest`
 **related-files**: `tests/rta/lib/seed.js`, `scripts/capture-screenshots.js`, `tests/rta/demos/run.mjs`
 
 `armSessionRestoreOnInterrupt` is armed only from MAIN-PROCESS scripts — `scripts/capture-screenshots.js` and `tests/rta/demos/run.mjs` — and deliberately NOT from the Vitest specs, even though all five call `snapshotSession` and all five are interruptible. Without this note the omission looks like one someone should "finish".
@@ -281,7 +282,20 @@ The Genres view paints its rows early by publishing genre ids and titles in ONE 
 
 Per-row delivery was built and measured before being rejected, so this is a closed question rather than an untried idea. Same data, same nodes, 9 thread crossings instead of 1: task-thread `emit` went 220 → 734 ms and the whole run 520 → 1403 ms on a Streaming Stick 4K. Rendezvous cost is paid per crossing well before it is paid per byte, and the grid's per-genre transform (~26 ms) is far too small to hide a ~64 ms handoff — which is exactly why Home can afford the same shape and this screen cannot: Home's per-row transform is ~120 ms. Shipping built `ContentNode`s for the skeletons instead of `{ id, title }` AAs cost a further ~136 ms on that one crossing, hence the render thread building its own row nodes (`HomeRows.createSkeletonRows` does the same). The general cost model lives in [`async.md`](architecture/async.md); this note records the choice for this screen.
 
-Accepted trade-off: total load grows ~280 ms (520 → 844 ms at 8 genres, 802 → 1081 ms at 23) to buy first paint at ~210 ms regardless of genre count. That holds because first paint tracks the single genre-list query while the blank time it replaces scales with genre count and round-trip latency — measured flat at 206 ms / 221 ms across 8 and 23 genres, with the blank time removed nearly doubling. **Tripwire:** re-open if a measurement shows the added total time growing with genre count (it did not between 8 and 23), or if per-row fill becomes worth its crossings on a high-latency server, where the wait between samples is long enough to hide the handoff.
+Accepted trade-off: total load grows ~280 ms (520 → 844 ms at 8 genres, 802 → 1081 ms at 23) to buy first paint at ~210 ms regardless of genre count. That holds because first paint tracks the single genre-list query while the blank time it replaces scales with genre count and round-trip latency — measured flat at 206 ms / 221 ms across 8 and 23 genres, with the blank time removed nearly doubling. **Tripwire:** re-open if a measurement shows the added total time growing with genre count (it did not between 8 and 23), or if per-row fill becomes worth its crossings on a high-latency server, where the wait between samples is long enough to hide the handoff cost.
+
+## decision-id: rta-registry-lifecycle-outside-vitest
+
+**date**: 2026-08-10
+**status**: accepted
+**supersedes**: `rta-interrupt-restore-scripts-only`
+**related-files**: `scripts/rta-run.js`, `scripts/rta-restore.js`, `tests/rta/lib/registry.js`, `tests/rta/setup/global-setup.js`, `tests/rta/lib/seed.js`, `vitest.config.js`
+
+An RTA run owns the device's registry for its duration, so that ownership lives in `scripts/rta-run.js` — a parent process that deploys, snapshots, runs Vitest as a CHILD, and restores — rather than anywhere inside Vitest. The snapshot is the WHOLE registry, every section and key, written to `out/rta/registry-<host>.json` before any seeding. The restore is a verified diff: delete sections the run created, null keys it added, put changed values back, cold-restart, compare everything, retry, then throw naming the differing keys. `LastRunVersion` is the single documented exception, because the app rewrites it on boot by design. Specs no longer touch the lifecycle at all.
+
+Both of the designs this replaces were measured, not reasoned about. The five-key allow-list snapshot could not express "delete a section", so months of runs left `.178` carrying a demo-user registry section with a live `authToken` and a seeded `display.<libraryId>.landing`, plus a `demo` entry appended into `available_users` — and reported `VERIFIED CLEAN` every time, because it only ever verified its own five keys. An allow-list of "keys the seeds write" is structurally blind to everything the APP writes under a seeded session, which is why the replacement snapshots everything rather than a longer list. Separately, a SIGINT ~15 s into `npm run test:rta` left the device signed into `demo.jellyfin.org` with no restore output at all: `afterAll` does not run on a terminated process. That was the superseded note's own stated tripwire — "re-open if a device is actually stranded by an interrupted spec run" — and it fired in normal use, not in a contrived test.
+
+The superseded note named `globalSetup` as the fix that WOULD work. It is not, and that is the load-bearing correction here: Vitest's reporter installs its own SIGINT handler that calls `process.exit()` on a 1 ms timer (`addCleanupListeners`, `vitest/dist/chunks/cli-api.*.js`), so a ~30 s restore armed anywhere inside the Vitest process is racing an exit it cannot win. Only a parent owning Vitest as a child escapes it; `globalSetup` now just refuses a bare `vitest` invocation, which would otherwise drive a device with no snapshot and no restore. Persisting the snapshot before seeding is what makes this recoverable rather than merely careful — a leftover file means the last run did not restore, so `npm run rta:restore` reapplies it and the next run repairs the device BEFORE taking its own snapshot, closing the compounding failure where a stranded run's dirty state silently becomes the next run's baseline. Verified on `.178` 2026-08-10: a mid-suite SIGINT restored the full registry to 0 differences, as did two full suites; dropping four redundant per-spec restores also took the suite 800 s → 728 s. **Tripwire:** re-open if Vitest ever exposes a teardown that survives its own interrupt handler, which would let the parent process go away.
 
 ## Migrated to ADRs
 
