@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Add standard `JRDialog` dialog system with per-instance results ([#757](https://github.com/jellyrock/jellyrock/pull/757))
 - (ci) Run the RTA suite in CI on the release-prep branch ([#772](https://github.com/jellyrock/jellyrock/pull/772))
 - Bound Task threads behind an accounted `launchTask()` chokepoint ([#768](https://github.com/jellyrock/jellyrock/pull/768))
 - Collapse `HomeRows` latest-media fan-out onto a bounded `apiPipeline` ([#762](https://github.com/jellyrock/jellyrock/pull/762))
