@@ -55,6 +55,33 @@ describe('parseJellyfinIndex', () => {
     expect(parseJellyfinIndex(html).stable).toBe('10.11.0');
   });
 
+  it('sees the patchless RC labels the 12.0 line publishes', () => {
+    const html =
+      '<a href="jellyfin-openapi-10.11.8.json">stable</a>\n' +
+      '<a href="jellyfin-openapi-12.0-rc1.json">rc</a>\n' +
+      '<a href="jellyfin-openapi-12.0-rc3.json">rc</a>\n' +
+      '<a href="jellyfin-openapi-12.0-rc4.json">rc</a>\n';
+    // Three-segment matching made the whole 12.0 line invisible: rc came back null
+    // and the tracker never learned the next major had release candidates.
+    expect(parseJellyfinIndex(html)).toEqual({ stable: '10.11.8', rc: '12.0-rc4' });
+  });
+
+  it('ranks a patchless stable above a three-segment one', () => {
+    const html =
+      '<a href="jellyfin-openapi-10.11.8.json">x</a>\n' +
+      '<a href="jellyfin-openapi-12.0.json">x</a>\n';
+    expect(parseJellyfinIndex(html)).toEqual({ stable: '12.0', rc: null });
+  });
+
+  it('ignores a legacy unstable datestamp that strays into the stable listing', () => {
+    const html =
+      '<a href="jellyfin-openapi-10.11.8.json">x</a>\n' +
+      // Also MAJOR.MINOR-shaped. Ranked as a version its 8-digit major would beat
+      // every real release and pin latestStable to garbage.
+      '<a href="jellyfin-openapi-20240207.2.json">x</a>\n';
+    expect(parseJellyfinIndex(html)).toEqual({ stable: '10.11.8', rc: null });
+  });
+
   it('throws when no jellyfin-openapi-*.json filenames are present', () => {
     expect(() => parseJellyfinIndex('<html>nothing here</html>')).toThrow(/no jellyfin-openapi/);
   });

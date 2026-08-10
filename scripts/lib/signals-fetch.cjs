@@ -67,6 +67,11 @@ function compareSemverBase(a, b) {
 // `jellyfin-openapi-X.Y.Z.json` (stable) or `jellyfin-openapi-X.Y.Z-rcN.json`
 // (release candidate). Pre-release also covers `-betaN` / `-alphaN` defensively.
 //
+// PATCH is optional: the 10.x line published three segments (10.12.0-rc1) but the
+// 12.0 line publishes two (12.0-rc4). Matching only three segments made the whole
+// 12.0 line invisible here — the discovery half of the same gap spec-fetch.cjs's
+// isStableVersion had. compareSemverBase already treats a missing PATCH as 0.
+//
 // "RC in flight" rule (per user spec): only count an RC when its base version
 // is GREATER than the latest stable. Otherwise the RCs are historical (already
 // shipped to stable) and we report null.
@@ -74,10 +79,16 @@ function compareSemverBase(a, b) {
 // Exported separately so unit tests can exercise the parser without network
 // mocking. The `fetchJellyfinVersions` wrapper just composes httpGet + this.
 function parseJellyfinIndex(html) {
-  const re = /jellyfin-openapi-(\d+\.\d+\.\d+)(?:-(rc\d+|beta\d+|alpha\d+))?\.json/g;
+  const re = /jellyfin-openapi-(\d+\.\d+(?:\.\d+)?)(?:-(rc\d+|beta\d+|alpha\d+))?\.json/g;
   const seen = new Set();
   const versions = [];
   for (let m; (m = re.exec(html));) {
+    // A two-segment base also matches the legacy unstable datestamp form
+    // (20240207.2). Those belong to unstable/ and must never be ranked as a
+    // stable version — an 8-digit MAJOR would out-sort every real release.
+    // Mirrors spec-fetch.cjs's isUnstableVersion, re-implemented rather than
+    // imported because spec-fetch already requires this module (cycle).
+    if (/^\d{8}(?:\.\d+)?$/.test(m[1])) continue;
     const key = m[1] + (m[2] ? '-' + m[2] : '');
     if (seen.has(key)) continue;
     seen.add(key);
