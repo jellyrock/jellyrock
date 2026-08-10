@@ -18,10 +18,13 @@
 # `scripts/lib/lint-excludes.cjs`, mirrored into package.json's `lint:spelling` globs. A third
 # copy in YAML would make that worse, not better.
 
-# ⚠️ Resolved relative to the CWD of whatever spawns the tool, NOT to this file. Every surface
-# except journal-sync.js runs from the repo root, so a bare filename is right for them.
-# journal-sync.js can run with a different CWD and therefore passes its own absolute `-d`,
-# which overrides this. Do not "simplify" that away — it fails with ENOENT.
+# ⚠️ Resolved relative to the CWD of whatever spawns the tool, NOT to this file — and the same
+# is true of THIS FILE's own discovery, which spellchecker-cli does by walking up from the CWD
+# with `pkg-dir`. So a bare filename is correct here, and the requirement it places on callers
+# is that they spawn from the repo root. Three do so naturally; journal-sync.js takes a
+# `--repo-root` that can differ from its CWD, so it passes `cwd: repoRoot` explicitly. Do not
+# "simplify" that away — without it neither the dictionary NOR this file is found, and the tool
+# silently reverts to its own defaults (no `frontmatter` plugin, no ignore rules).
 dictionaries:
   - dictionary.txt
 

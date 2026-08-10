@@ -363,13 +363,18 @@ export function pruneRecentlyShipped(content, today, maxAgeDays) {
 // runs `check`, and `ship` runs the same check as a safety net before write.
 // ──────────────────────────────────────────────────────────────────────────
 
-// Plugins and ignore rules come from `.spellcheckerrc.yaml` at the package root.
-// Inheriting them rather than restating them is load-bearing — if a bullet passes
-// here, it must pass the lint on the next PR that touches a .md file.
+// Dictionary, plugins and ignore rules come from `.spellcheckerrc.yaml`. Inheriting
+// them rather than restating them is load-bearing — if a bullet passes here, it must
+// pass the lint on the next PR that touches a .md file.
 //
-// The dictionary path is the ONE flag this caller still passes, because config
-// `dictionaries` entries resolve against the CWD rather than against the config
-// file, and this runner can be spawned from outside `repoRoot`.
+// ⚠️ That inheritance is why the spawn below sets `cwd: repoRoot`, and it is not
+// cosmetic. spellchecker-cli discovers the config with `pkg-dir` walking up from
+// `process.cwd()` — NOT from the dictionary path, and NOT from the file being checked.
+// This runner takes `--repo-root`, so its CWD and its repo root are routinely different
+// (CI checkouts, the test fixtures below); left unset, the config is simply not found
+// and the tool falls back to its own defaults, silently dropping the `frontmatter`
+// plugin and every ignore rule. Verified by spawning it from outside the repo: the
+// mis-tokenized `handoff.` the config exists to ignore came back as a failure.
 
 // Resolve spellchecker-cli's binary from THIS script's own node_modules so
 // runs against a fixture repo (test or CI checkout of a different working
@@ -404,11 +409,10 @@ export function defaultSpellRunner(content, repoRoot) {
   const tmpFile = join(tmpDir, 'candidate.md');
   try {
     writeFileSync(tmpFile, content);
-    const res = spawnSync(
-      SPELLCHECKER_BIN,
-      ['-d', join(repoRoot, 'dictionary.txt'), '--files', tmpFile],
-      { encoding: 'utf8' },
-    );
+    const res = spawnSync(SPELLCHECKER_BIN, ['--files', tmpFile], {
+      encoding: 'utf8',
+      cwd: repoRoot,
+    });
     return { ok: res.status === 0, output: (res.stdout || '') + (res.stderr || '') };
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });

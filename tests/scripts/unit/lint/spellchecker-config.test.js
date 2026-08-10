@@ -41,9 +41,11 @@ const SURFACES = [
   { file: 'package.json', json: true, allowedFlags: ['--files'] },
   { file: '.lintstagedrc.cjs', allowedFlags: ['--files'] },
   { file: 'scripts/lint/check-touched-lint.cjs', allowedFlags: ['--files'] },
-  // journal-sync keeps `-d`: config `dictionaries` entries resolve against the CWD rather
-  // than against the config file, and this runner can be spawned from outside the repo root.
-  { file: 'scripts/journal-sync.js', allowedFlags: ['--files', '-d'] },
+  // No exception for journal-sync. It used to pass an absolute `-d` because its CWD can
+  // differ from its repo root — but that only rescued the dictionary, while the CONFIG was
+  // still being looked for from the wrong CWD and silently not found. Spawning with
+  // `cwd: repoRoot` fixes both, so this surface inherits like every other one.
+  { file: 'scripts/journal-sync.js', allowedFlags: ['--files'] },
 ];
 
 // Flags the shared config owns. Long forms included so `--ignore` can't sneak past `-i`.
