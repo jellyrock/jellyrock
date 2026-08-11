@@ -12,6 +12,7 @@ export default {
 
   async run(ctx) {
     const hero = await ctx.getHero();
+    // eslint-disable-next-line no-restricted-syntax -- fail-fast on a REST result, before the device is driven
     if (!hero.id) throw new Error('cast-play: could not resolve the hero movie on the demo server');
 
     await ctx.land('home'); // the opening screen the operator sees when they hit record

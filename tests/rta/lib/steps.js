@@ -9,6 +9,7 @@
  * Node lookups use RTA's `#id` keyPath (a recursive findNode from the scene root).
  */
 import { ecp, odc } from 'roku-test-automation';
+import { diagnosedError, FAILURE_KINDS } from './diagnostics.js';
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export const press = (key) => ecp.sendKeypress(key);
@@ -47,6 +48,10 @@ export async function getActiveVal(keyPath) {
  * it must not vanish: an action that never lands and a screen that never renders
  * produce the same "timed out waiting for X" otherwise, and telling those apart
  * after the fact costs hours.
+ *
+ * On timeout the throw carries a dump of what the device actually looked like
+ * (see [`diagnostics.js`](diagnostics.js)) — the poll loop itself is untouched,
+ * so this costs nothing on the success path.
  */
 export async function waitFor(
   keyPath,
@@ -62,9 +67,15 @@ export async function waitFor(
     if (predicate(last)) return last;
     await sleep(interval);
   }
-  throw new Error(
+  throw await diagnosedError(
     `nav timed out waiting for ${label || keyPath} (last=${JSON.stringify(last)})` +
       (actionErrors ? ` — ${actionErrors} action(s) threw; input may not have been delivered` : ''),
+    {
+      kind: FAILURE_KINDS.WAIT_FOR_TIMEOUT,
+      label: label || keyPath,
+      waitedMs: Date.now() - start,
+      observed: { keyPath, last, actionErrors },
+    },
   );
 }
 
@@ -88,9 +99,15 @@ export async function waitFocused(
     if (f && predicate(f)) return f;
     await sleep(interval);
   }
-  throw new Error(
+  throw await diagnosedError(
     `nav timed out waiting for focus (${label || 'predicate'}); last=${last}` +
       (actionErrors ? ` — ${actionErrors} action(s) threw; input may not have been delivered` : ''),
+    {
+      kind: FAILURE_KINDS.WAIT_FOCUSED_TIMEOUT,
+      label: label || 'predicate',
+      waitedMs: Date.now() - start,
+      observed: { last, actionErrors },
+    },
   );
 }
 
@@ -120,4 +137,61 @@ export async function waitHome() {
     label: 'home rows',
     timeout: 20000,
   });
+}
+
+/** Roku media-player states that mean playback is live. Frozen — it is a shared registry now. */
+export const PLAYING_STATES = Object.freeze(['startup', 'buffer', 'play', 'pause']);
+
+/**
+ * Poll the device media-player until it reaches an active playback state.
+ *
+ * Shared rather than copied per caller. The deep-link spec and the demo runner
+ * drive the same player through the same states and each carried a byte-identical
+ * copy of this — but only the spec's reported what it SAW on timeout, so a demo
+ * take that failed at playback left no record at all. That is the failure worth
+ * recording: it silently ruins footage that looks fine until playback.
+ *
+ * `label` prefixes the message and the record, because the two callers are labelled
+ * differently by the harness — Vitest names the spec's test, and nothing names a
+ * demo take (see `setFailureContext` in `diagnostics.js`).
+ */
+export async function waitMediaPlaying(label, timeout = 30000) {
+  const start = Date.now();
+  let last;
+  while (Date.now() - start < timeout) {
+    const mp = await ecp.getMediaPlayer().catch(() => null);
+    last = mp?.state;
+    if (mp && !mp.error && PLAYING_STATES.includes(mp.state)) return;
+    await sleep(1000);
+  }
+  // A timeout, so it reports what it SAW — same rule as the waits above. "Never
+  // started" alone cannot distinguish a stream that failed to open from a cast the
+  // app never routed, and the shell fields answer that: `input=BLOCKED` or a live
+  // spinner means the app was busy, not that playback died.
+  throw await diagnosedError(`${label}: media player never started (last state=${last})`, {
+    kind: FAILURE_KINDS.MEDIA_PLAYER_NOT_STARTED,
+    label: `media player (${label})`,
+    waitedMs: Date.now() - start,
+    observed: { lastPlayerState: last, expected: PLAYING_STATES },
+  });
+}
+
+/**
+ * Stop playback so it cannot leak into whatever runs next. Back on the player stops
+ * it (AudioPlayerView/PlayerHostView onKeyEvent "back" → control "stop") — necessary
+ * because AUDIO keeps playing while you navigate away (correct music-app UX), so a
+ * relaunch-to-Home alone won't silence it. Verify via media-player; retry Back.
+ *
+ * Deliberately does NOT throw when it gives up: this is cleanup, and both callers
+ * run it on their way out of a step that already succeeded or already failed. A
+ * throw here would replace a real failure with a teardown one.
+ */
+export async function stopPlayback() {
+  const start = Date.now();
+  while (Date.now() - start < 10000) {
+    const mp = await ecp.getMediaPlayer().catch(() => null);
+    if (!mp || !PLAYING_STATES.includes(mp.state)) return;
+    await press(ecp.Key.Back);
+    await sleep(1200);
+  }
 }

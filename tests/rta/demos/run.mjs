@@ -20,7 +20,9 @@ import { authenticate, getHero, firstMovie } from '../lib/jellyfin.js';
 import { seedHome, seedHomeWithSavedServers } from '../lib/seed.js';
 import { snapshotRegistry, restoreRegistry, armRestoreOnInterrupt } from '../lib/registry.js';
 import { setupRtaEnv, relaunch, hardRelaunch, ecp, odc } from '../lib/driver.js';
-import { acquireDeviceLock, writeRunMeta } from '../../../scripts/device-lock.js';
+import { acquireDeviceLock } from '../../../scripts/device-lock.js';
+import { beginRun } from '../../../scripts/run-record.js';
+import { setFailureContext } from '../lib/diagnostics.js';
 import {
   press,
   waitHome,
@@ -29,6 +31,8 @@ import {
   getVal,
   getActiveVal,
   sleep,
+  waitMediaPlaying,
+  stopPlayback,
 } from '../lib/steps.js';
 import { TAKES } from './takes/index.js';
 
@@ -36,7 +40,6 @@ import { TAKES } from './takes/index.js';
 let activeLock = null;
 
 const LOCALE = RTA_CONFIG.languages[0];
-const PLAYING_STATES = ['startup', 'buffer', 'play', 'pause']; // Roku media-player active states
 
 // Privacy guard, made STRUCTURAL: a take declares which demo server it targets; the runner
 // resolves it and REFUSES to run against anything that isn't a public demo host. The "never
@@ -66,11 +69,13 @@ const DEMO_SERVERS = {
 function resolveServer(name) {
   const server = DEMO_SERVERS[name];
   if (!server) {
+    // eslint-disable-next-line no-restricted-syntax -- fail-fast on a take's own declaration, before any device call
     throw new Error(
       `take declares unknown demo server "${name}" (known: ${Object.keys(DEMO_SERVERS).join(', ')})`,
     );
   }
   if (new URL(server.url).host !== DEMO_HOST) {
+    // eslint-disable-next-line no-restricted-syntax -- privacy guard, cause fully named; nothing to observe on-device
     throw new Error(
       `refusing to run: "${name}" (${server.url}) is not the public demo host (${DEMO_HOST}). ` +
         `Demos must never touch a real server.`,
@@ -93,30 +98,6 @@ function waitForEnter(prompt) {
       resolve();
     });
   });
-}
-
-/** Poll the device media-player until it reaches an active playback state. */
-async function waitMediaPlaying(timeout = 30000) {
-  const start = Date.now();
-  let last;
-  while (Date.now() - start < timeout) {
-    const mp = await ecp.getMediaPlayer().catch(() => null);
-    last = mp?.state;
-    if (mp && !mp.error && PLAYING_STATES.includes(mp.state)) return;
-    await sleep(1000);
-  }
-  throw new Error(`demo: media player never started (last state=${last})`);
-}
-
-/** Back on the player stops it; retry until the media-player reports stopped. */
-async function stopPlayback() {
-  const start = Date.now();
-  while (Date.now() - start < 10000) {
-    const mp = await ecp.getMediaPlayer().catch(() => null);
-    if (!mp || !PLAYING_STATES.includes(mp.state)) return;
-    await press(ecp.Key.Back);
-    await sleep(1200);
-  }
 }
 
 /**
@@ -146,6 +127,7 @@ function makeContext(sessions, serversByName, primaryName) {
     /** Seed + relaunch + wait for the named opening screen (the frame the operator records first). */
     async land(screen) {
       if (screen !== 'home')
+        // eslint-disable-next-line no-restricted-syntax -- fail-fast on a take asking for a seed that does not exist
         throw new Error(`land(): unsupported screen "${screen}" (add a seed for it)`);
       await seedHome(session, LOCALE); // demo server only — the home server is never written
       await hardRelaunch(); // soft relaunch lets the running app re-persist over the seed
@@ -181,7 +163,9 @@ function makeContext(sessions, serversByName, primaryName) {
       await ecp.sendInput({ params: { contentId, ...extraParams } });
     },
 
-    waitPlaying: (timeout) => waitMediaPlaying(timeout),
+    // Labelled `demo` because nothing else names this runner: Vitest supplies a test
+    // name for the spec that shares this helper, and a take has none.
+    waitPlaying: (timeout) => waitMediaPlaying('demo', timeout),
   };
 }
 
@@ -214,20 +198,38 @@ async function main() {
   // party driving the device mid-take does not just fail, it silently ruins
   // footage that looks fine until playback.
   activeLock = await acquireDeviceLock({ what: `demo:${take.name}` });
-  writeRunMeta(activeLock.meta, { run: 'demo', take: take.name });
+  // Records to `out/demo/`. Takes drive the same navs as the suite, so a nav that
+  // times out mid-recording now leaves the device state behind instead of just a
+  // ruined take.
+  const run = beginRun({ lock: activeLock, run: 'demo' });
+  setFailureContext({ take: take.name });
   // Registered BEFORE armRestoreOnInterrupt() below, because that installs its
   // own signal handlers which end in process.exit(). Node runs listeners in
   // registration order, so this gets to start the release first. It is
   // fire-and-forget by necessity — on the abandon path the process leaves
   // before the DELETE lands, and the lock's TTL is what covers that.
+  //
+  // Exiting is conditional for the same reason it is in capture-screenshots: once
+  // the restore is armed that handler owns the exit, but BEFORE it is armed nothing
+  // else would exit, so a bare fire-and-forget swallows the signal and hangs the
+  // run through the relaunch + snapshot below.
+  let restoreArmed = false;
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
-    process.on(signal, () => void activeLock?.release());
+    process.on(signal, async () => {
+      if (restoreArmed) {
+        void activeLock?.release();
+        return;
+      }
+      await activeLock?.release();
+      process.exit(130);
+    });
   }
   // Wake the device + bring the RTA channel (and its ODC component) up BEFORE the first registry
   // call — snapshotRegistry is an ODC call and would fail on a suspended/relaunched device.
   await relaunch();
   const saved = await snapshotRegistry(); // restore the real session afterward, no matter what
   armRestoreOnInterrupt(saved); // ...including when the operator Ctrl-Cs a recording
+  restoreArmed = true; // from here the restore handler owns the exit — see above
   let cleanlyRestored = false;
   try {
     const sessions = {};
@@ -259,6 +261,14 @@ async function main() {
     // state rather than a torn one (registry restored but the running app still on the demo token).
     await waitForEnter('\n⏹ Stop your capture card, then press ENTER to restore your session... ');
     await stopPlayback().catch(() => {});
+    // Folded HERE rather than left to the exit net, for the same reason `rta-run`
+    // does it before its restore: order. The net's `console.log` runs inside a
+    // `process.on('exit')` handler, where a write to a PIPE is asynchronous on
+    // macOS — so `npm run demo | tee` can lose the summary entirely
+    // (`exit-net-summary-lost-on-macos-pipe` in tech-debt.md). This is the path
+    // that can afford an explicit close, so it takes it; the net still covers the
+    // interrupt and early-exit paths, where nothing here could run.
+    run.close();
     await restoreRegistry(saved);
     await relaunch();
     cleanlyRestored = true;
@@ -274,6 +284,10 @@ async function main() {
   }
 }
 
+// Neither of these folds the run: the clean path already closed it above, and on
+// every other path `beginRun`'s process-exit net does. That net is what covers the
+// interrupt, where armRestoreOnInterrupt owns the exit and a hand-rolled call could
+// never run at all. See `armCloseOnExit` in scripts/run-record.js.
 main()
   .then(async () => {
     await activeLock?.release();

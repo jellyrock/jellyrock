@@ -4,6 +4,9 @@
 dist/apps
 out/
 build/
+# Device-run ledger: accumulates across runs, so it must NOT live under out/
+# (every `npm run build*` starts with `rimraf out/`). See scripts/run-record.js.
+.device-runs/
 build-analysis/
 roku_modules
 # Rooibos

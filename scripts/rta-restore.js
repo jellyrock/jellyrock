@@ -4,7 +4,7 @@
  *   npm run rta:restore
  *
  * Every RTA entry point (`test:rta`, `screenshots:capture`, `demo`) writes the
- * device's full registry to `out/rta/registry-<host>.json` BEFORE it seeds
+ * device's full registry to `.device-runs/registry-<host>.json` BEFORE it seeds
  * anything, and deletes that file once its own verified restore succeeds. So a
  * file still sitting there means exactly one thing: the run did not put the
  * device back — it was killed, it crashed, or its restore failed.

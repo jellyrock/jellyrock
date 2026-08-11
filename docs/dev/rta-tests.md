@@ -4,6 +4,10 @@ related-files:
   - tests/rta/config.js
   - tests/rta/screens.js
   - tests/rta/lib/nav.js
+  - tests/rta/lib/steps.js
+  - tests/rta/lib/diagnostics.js
+  - scripts/run-record.js
+  - scripts/run-roku-tests.js
   - tests/rta/specs/screens.spec.js
   - vitest.rta.config.js
   - scripts/capture-screenshots.js
@@ -15,7 +19,7 @@ related-files:
   - scripts/rta-restore.js
   - scripts/device-lock.js
   - .github/workflows/rta-functional-tests.yml
-last-reviewed: 2026-08-10
+last-reviewed: 2026-08-11
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -111,6 +115,258 @@ branch to find it.
   getActiveVal })`), which scopes to `m.global.activeRoutedView` (the app's own "view the
   user is on"). Focus-based assertions (`waitFocused`) are inherently unambiguous — there
   is only one focused node — so prefer them when "did this open/land?" is the question.
+
+## When a wait times out, it reports what it SAW
+
+The waits are the assertions, so their messages are the only account of a failure
+anyone gets. Left to themselves they describe the **ask** — "nav timed out waiting
+for X" — which cannot be attributed to a cause afterwards. So every timeout in the
+harness throws through `diagnosedError`
+([`lib/diagnostics.js`](../../tests/rta/lib/diagnostics.js)), which attaches the
+state the device was actually in.
+
+Both samples below are **real captured output** from forced failures on `.177`, not
+illustrations. A detail screen first:
+
+```text
+nav timed out waiting for a detail row count that can never happen (last=3)
+        ↳ view=ItemDetails#91e3d867… loadState=— · focus=ResumeButton@#routerOutlet.#viewTarget.#91e3d867-….#buttons.#resumeButton
+        ↳ home=5 · detail=3 · keyPath="#extrasGrid.content.getChildCount()" · last=3 · actionErrors=0
+        ↳ server=https://demo.jellyfin.org/stable (id f0b33816…) user=4ed1b8b4…
+```
+
+…and the same wait against a library grid:
+
+```text
+nav timed out waiting for a grid item count that can never happen (last=11)
+        ↳ view=BaseGridView#649e2164… loadState=loaded · focus=JRMarkupGrid@#routerOutlet.#viewTarget.#649e2164-….#itemGrid
+        ↳ home=5 · keyPath="#itemGrid.content.getChildCount()" · last=11 · actionErrors=0
+        ↳ server=https://demo.jellyfin.org/stable (id f0b33816…) user=4ed1b8b4…
+```
+
+### `loadState=—` on a detail screen is correct, not a broken capture
+
+The difference between those two lines is the thing worth knowing before you read a
+failure record. **`loadState` is grid-only**: it is declared on `BaseGridView`
+([`BaseGridView.xml`](../../components/ItemGrid/BaseGridView.xml)) alone, where it
+carries a real four-value vocabulary (`loading` / `skeleton` / `loaded` / `empty`).
+`ItemDetails` extends `JRScreen`, a *sibling* of `BaseGridView`, so it has no such
+field and the dump shows `—`. On a detail screen the load signal is `detail=<n>`
+and the shell fields below.
+
+The universal signal — the one that answers on **every** screen — is the app
+shell's, read from the scene root:
+
+| Printed when | Field | What it tells you |
+|---|---|---|
+| `spinner=on("…")` | `isLoading` / `loadingText` | the app was still blocked on a fetch, and which one |
+| `input=BLOCKED` | `isRemoteDisabled` | **the app was swallowing our key presses** |
+
+`input=BLOCKED` is the highest-value field in the dump.
+[`JRScene.onKeyEvent`](../../components/JRScene.bs) does `if m.top.isRemoteDisabled
+then return true`, so a timeout carrying it means every key we sent was consumed and
+reported handled — the *"we acted before it could respond"* failure mode that
+[`tests/rta/CLAUDE.md`](../../tests/rta/CLAUDE.md) opens with, which until now could
+only be inferred. Both print **only when set**, so an ordinary failure stays as
+short as the samples above and the flag keeps its signal value.
+
+- **It costs nothing on the success path.** The capture runs *after* a poll loop
+  has given up, at the throw site, never inside a tick — deliberately, because
+  [#785](https://github.com/jellyrock/jellyrock/issues/785) may replace those loops
+  with `onFieldChangeOnce` and diagnostics must not entrench a shape it might
+  delete. At the boundary it is two round-trips issued in parallel (`getFocusedNode`
+  has no batch form; everything else rides one `getValues` of 11 key paths) —
+  **median 21 ms, 18–30 ms typical** on `.177` (n=20 on `ItemDetails`), with occasional
+  spikes to ~70 ms when the render thread is busy. Adding the three shell fields did
+  not move that: it is still one round trip, and
+  [the platform cost model](../architecture/async.md#crossing-the-thread-boundary-costs-a-rendezvous--budget-crossings-not-bytes)
+  says the count of crossings dominates the size of each.
+- **The `observed` fields come free.** `rowTypes` / `rows` are retained from reads
+  the loop was already making, so "2 row(s) present" becomes "the two that landed
+  were Chapter and Person" — which is the difference between *Season is late* and
+  *Season is absent*, indistinguishable until now.
+- **Identity is read by named field**, never by dumping the node: `JellyfinUser`
+  carries `authToken`, and a whole-node read would put a live demo credential in an
+  artifact.
+- **A new TIMEOUT throws via `diagnosedError`**, not a bare `new Error` — otherwise
+  that failure mode is the one nobody can attribute. This is **gated**, not just
+  documented: an ESLint `no-restricted-syntax` rule in
+  [`eslint.config.js`](../../eslint.config.js) fails `lint:js` (pre-push *and* CI,
+  and it underlines live in your editor) on a bare `throw new …` in `lib/nav.js`,
+  `lib/steps.js` or anywhere under `demos/`. A fail-fast that is *not* a timeout and
+  already names its cause can stay a plain throw — disable the rule on that line
+  **with a reason**, as the ambiguous-library refusal in `nav.js` does.
+  - It matches any `new` in a `throw`, not just `Error`: `throw new TypeError(…)` in
+    a wait has the same problem, and a gate that reads as covering throws generally
+    should not have a hole in it. It is still only a **tripwire** — `const e = new
+    Error(…); throw e` slips it — so a green `lint:js` means "nobody wrote the
+    obvious shape", not "no unattributable timeout exists".
+  - The gate covers `lib/nav.js`, `lib/steps.js` and **all of `demos/`**. The other
+    lib modules throw fail-fasts that already name their cause (a snapshot from the
+    wrong device, a seed that did not take), so gating them would buy four disable
+    comments and no signal. **A new lib file that grows a wait belongs in that
+    glob** — adding it is one reviewable line.
+  - `demos/` is in the glob on evidence, not symmetry: while it was outside, it
+    accumulated two unconverted waits — the runner's own playback timeout and a
+    take's 15 s dialog poll. It is also the directory that grows by adding
+    choreography, which is where new waits come from. Its handful of genuine
+    fail-fasts (an unknown server name, the non-demo-host refusal, a REST lookup
+    that came back empty) carry one-line disables with reasons.
+  - **In a take, prefer `ctx.waitFor` to a hand-rolled poll.** It already throws
+    through `diagnosedError`, so a take inherits the dump rather than re-deriving
+    it — and a take that rolls its own loop is exactly how both of the misses above
+    happened.
+  - Specs are outside the glob, because most spec-level throws are assertions rather
+    than timeouts. A spec that genuinely *polls until it gives up* should still use
+    `diagnosedError` — or better, one of the shared waits, which already do:
+    `waitMediaPlaying` lives in `lib/steps.js` and is shared by `deeplink.spec.js`
+    and the demo runner, because "media player never started" cannot otherwise
+    distinguish a stream that failed to open from a cast the app never routed.
+- **Register the `kind` first.** It is the key a flake baseline aggregates by, so it
+  comes from the frozen `FAILURE_KINDS` set in `diagnostics.js`, never an inline
+  string. An unregistered slug is recorded as-is and called out in the run summary
+  (`⚠ N unregistered failure kind(s)`) rather than silently forking a bucket.
+
+Each failure also lands as a JSON line in the run's `failures.jsonl`, which
+[`endRun`](../../scripts/run-record.js) folds into `run-meta.json` after the suite
+exits, then summarizes:
+
+```text
+[rta] 2 failure(s) captured with device state in this run → out/rta/failures.jsonl
+[rta]   00:55 probe B: forced timeout on ItemDetails — wait-for-timeout; view=ItemDetails focus=ResumeButton
+[rta]   00:56 probe C: forced timeout on a library grid — wait-for-timeout; view=BaseGridView loadState=loaded focus=JRMarkupGrid
+```
+
+That fold is what finally gives `run-meta.json` a **reader** — it was written by
+four entry points and read by nothing, so lock provenance only ever lived in a
+terminal line that scrolls past. The parent stays the file's sole writer; the child appends to the
+JSONL and never touches run-meta.json.
+
+### One record directory per run kind
+
+`writeRunMeta` is a full overwrite, and every entry point used to share
+`out/rta/run-meta.json`. Harmless while the file held only lock provenance —
+destructive once it carries folded failure records, because a `npm run test:unit`
+between two RTA runs silently ate the first one's. So the record directory is keyed
+on the run kind ([`runDir`](../../scripts/run-record.js)):
+
+| Run | Records to | Summary tag |
+|---|---|---|
+| `npm run test:rta` (+ `:tdd`, `:fast`, `:capture`) | `out/rta/` | `[rta]` |
+| `npm run screenshots:capture` | `out/screenshots/` | `[screenshots]` |
+| `npm run demo` | `out/demo/` | `[demo]` |
+| `npm run test:unit` / `test:integration` / `test:all` (Rooibos) | `out/device/` | `[device]` |
+
+The tag on each summary line names the **run kind**, derived from that same
+directory so there is no second mapping to drift. A Rooibos run prints `[device]`,
+not `[rta]` — this record is shared with that runner, and a line claiming the wrong
+harness is the same dishonesty the directory split removed.
+
+Three files per run kind. They overlap deliberately — pick by the question you are
+asking, not by which one you found first:
+
+| File | Where | Lifetime | Read it when you want… |
+|---|---|---|---|
+| `run-meta.json` | `out/<kind>/` | this run, **overwritten** | the whole of ONE run in one place — lock provenance, window, and the folded failures |
+| `failures.jsonl` | `out/<kind>/` | this run, **truncated at start** | to stream failures as they land, mid-run, before the fold |
+| `runs.jsonl` | **`.device-runs/<kind>/`** | **the ledger — never reset** | to aggregate ACROSS runs (this is the one a flake baseline reads) |
+
+**The ledger is the Phase-3 surface.** Aggregating N back-to-back suites is a read
+of `.device-runs/rta/runs.jsonl`, not "remember to copy a file aside after each
+run" — each line is a complete `summarizeRun` including that run's failure records.
+
+**Scope a baseline by FILTERING, not by deleting.** Every line carries three keys
+for exactly that, and all three are always present (`null` when unknown) so a
+filter can never silently drop a row:
+
+| Key | Is | Why a baseline needs it |
+|---|---|---|
+| `variant` | the npm script that ran (`test:rta`, `test:rta:fast`, `test:unit`, …) | run kinds are SHARED — `:fast` skips the deploy, `:capture` adds per-screen PNG work, and `test:unit`/`test:all` are different suites. Pooling their durations compares incomparable runs |
+| `commit` | short SHA at the start of the run | "are these N runs even the same code?" |
+| `dirty` | working tree not clean at that SHA (untracked files included — they get compiled in) | during RTA work the tree is usually dirty, and a bare SHA would over-claim reproducibility |
+
+So a clean N-run baseline is `runs.filter(r => r.commit === X && r.variant === 'test:rta')`,
+not a `rm` you have to remember before the series. The file is still append-only and
+nothing prunes it — `rm .device-runs/<kind>/runs.jsonl` throws the history away if you
+want that, but it is no longer the way you get a trustworthy number. (Size is a
+non-issue: a clean line is ~200 bytes, and one carrying 30 failure records with full
+device state is ~25 KB.)
+
+**Why the ledger is not under `out/` with the others.** `out/` is the build output
+directory, and all eight `build*` npm scripts begin with `npx rimraf build/ out/`.
+`npm run test:rta` builds first — so a ledger under `out/` was deleted immediately
+before each run that was meant to append to it, and an N-run baseline would have
+ended with exactly one line, silently. The per-run files are safe there because
+`beginRun` truncates them anyway; a file whose contract is *never reset* is not.
+[`run-record.test.js`](../../tests/scripts/unit/run-record.test.js) gates both
+halves — that the ledger is outside `out/`, and that the build scripts really do
+wipe it — so this cannot quietly come back.
+
+The two entry points that are not Vitest get a label Vitest would otherwise supply:
+`capture-screenshots` tags each record with its screen, locale and **retry attempt**,
+so a screen that recovered on attempt 2 is not mistaken for a failure; `demos` tags
+each with its take name.
+
+#### A run always closes, including when you Ctrl-C it
+
+`beginRun` returns a handle whose `close()` folds the run — it carries the lock, the
+run kind, the origin and the watch-mode flag, so no entry point restates them and
+none can restate them wrongly. `beginRun` also arms a `process.on('exit')` net that
+closes any run whose entry point never got to.
+
+That net is not belt-and-braces. Three of the four entry points hand their exit to a
+signal handler ending in `process.exit()` — `armRestoreOnInterrupt`'s among them —
+so a hand-rolled fold in the happy path alone would skip exactly the interrupt a
+~15-minute matrix run is most likely to end with. It is legal because `endRun` is
+all-synchronous. `close()` stays explicit where output ORDER matters: `rta-run`
+folds before the registry restore, so the summary survives a restore that throws.
+The net is gated by a subprocess test in
+[`run-record.test.js`](../../tests/scripts/unit/run-record.test.js) — in-process it
+cannot be exercised at all, since emitting `exit` by hand proves only that the
+listener is attached.
+
+**Know where the record STOPS.** That same ordering is a boundary: `rta-run` folds
+before it restores, so **a failed registry restore is not in the run record or the
+ledger**. A run that left the device dirty appears in `runs.jsonl` as an ordinary
+run — clean, zero failures — and the signal that it stranded the device is the
+snapshot file it left behind (which `npm run device:status` reports), not the
+record. That matters for a Phase-3 baseline specifically: the
+`restoreRegistry`/`authToken` failure in [`docs/progress.md`](../progress.md) wedges
+every *subsequent* run, so the runs whose numbers it corrupts are the ones that look
+most normal in the ledger. Check `device:status` between runs of a series; do not
+infer a clean device from a clean ledger line.
+
+One bounded caveat: writes to stdout from an `exit` handler are synchronous on Linux
+for TTYs, files and pipes, but **asynchronous for pipes on macOS** — so a macOS
+contributor piping an interrupted run's output can lose the printed summary. Every
+durable record is an `fs` write and is unaffected; re-read `run-meta.json`.
+
+### The run's wall-clock window is part of the evidence
+
+The summary also reports the window, and flags a run that **crossed the top of the
+hour**. The demo server resets on the hour, which changes both its own content
+(playlists have come and gone) and anything a run marked watched through the app —
+so a ~13-minute suite (measured at 13.6 min on `.177`) starting after roughly `:46`
+can have that change land *mid-run* and fail as an unrelated-looking nav timeout.
+Individual failures carry `afterHourBoundary`, so a record says whether it landed on
+the far side of a reset. A green run that straddled `:00` is flagged too: its result
+was taken against a fixture that changed underneath it.
+
+The flag is **suppressed in watch mode** (`npm run test:rta:tdd`), where the record
+opens once at session start and folds once at exit: that window spans every
+iteration, so any session over an hour would trip it and a flag that always fires is
+one nobody reads. The summary says "this watch session" there.
+
+**The per-failure stamp is suppressed there too**, for the same reason and not only
+at the run level. The origin a failure is measured against is the *session's*, so
+past the first hour of a watch session every failure would carry
+`afterHourBoundary` — the identical always-fires noise. In a cumulative window the
+field is therefore **absent, not `false`**: the reset may well have happened, so
+`false` would be a claim the record cannot support, exactly as it is when no origin
+was stamped at all. The origin itself is still recorded either way. `beginRun`
+stamps `cumulative` into the record at *open* time so the Vitest child can see it
+mid-run — the closed summary's copy arrives too late to be of use to the process
+actually writing the failures.
 
 ## Driving intermediate load stages (`rtaSkeletonHoldMs`)
 
@@ -290,12 +546,44 @@ runs Vitest **as a child process**, and restores. `npm run test:rta` (and `:fast
   is cold-restarted and the entire registry is compared against the snapshot. A
   mismatch retries, then **throws** and names the differing keys. The one exception is
   `LastRunVersion`, which the app rewrites on boot by design.
-- **The snapshot is written to `out/rta/registry-<host>.json` before any seeding**, and
-  deleted only on a verified restore. So a file still sitting there means the last run
-  did not put the device back.
+- **The snapshot is written to `.device-runs/registry-<host>.json` before any seeding**,
+  and deleted only on a verified restore. So a file still sitting there means the last
+  run did not put the device back.
   - `npm run rta:restore` reapplies it on demand.
   - The next run repairs the device automatically — it restores from the leftover file
     *before* taking its own snapshot, so a stranded run can't become the new baseline.
+  - **It is outside `out/` for the same reason the run ledger is**, and this one was a
+    live bug rather than a precaution: while it lived in `out/rta/`, the sequence
+    "abandon a run → re-run `npm run test:rta`" deleted the snapshot *before* the
+    repair above could use it, because `test:rta` builds first and every `build*`
+    opens with `npx rimraf build/ out/`. The run then captured the demo-server state
+    as the user's session and restored that from then on — exactly the compounding
+    failure the repair exists to prevent. `demo`, `test:rta:fast`, `test:rta:tdd` and
+    `rta:restore` never build, which is why it stayed invisible.
+  - Unlike the run-record directory, the snapshot path is deliberately **shared**
+    across entry points: a device stranded by `npm run demo` has to be repairable by
+    the next `npm run test:rta`, and `rta:restore` finds it with no arguments. The
+    record wants per-run isolation; the snapshot wants cross-run reach.
+  - **It is your real registry, so treat it as a secret at rest.** The file is the
+    *whole* registry of the device it was taken from — including `authToken` for
+    whatever server you were signed into. It is gitignored, and nothing here ever
+    prints its contents (only its path). But note the consequence of the move: it
+    used to be wiped incidentally by the next `npm run build`, and now **nothing
+    removes it but a verified restore or `npm run rta:restore`**. That matters
+    because the case that strands it is a restore that never converged — see the
+    `restoreRegistry`/`authToken` entry in [`docs/progress.md`](../progress.md) —
+    so a token-bearing file can sit there indefinitely. If a restore has failed and
+    you are done with the device, run `rta:restore`; if it cannot converge, delete
+    `.device-runs/registry-<host>.json` by hand once the device is back as you want
+    it.
+  - **`npm run device:status` tells you one is sitting there.** It reports every
+    stranded snapshot with the host it belongs to and when it was taken, alongside
+    the lock line — "free" and "left dirty" are both true at once, and the second is
+    the one that costs you the next run. It globs the directory rather than checking
+    the host `ROKU_IP` names, because the case that bites is a snapshot for a device
+    you are *not* currently pointed at (stranded by `npm run demo` on one Roku, then
+    a run against another). Before this the file had no operator-facing surface at
+    all, which is how one got destroyed by an `rm -rf` aimed at the ledger beside it.
 - **Ctrl-C is safe.** The interrupt stops the child, and the parent restores before
   exiting (~30 s; press Ctrl-C again to abandon and recover later with
   `npm run rta:restore`). This is why the lifecycle cannot live in Vitest: `afterAll`
@@ -359,7 +647,7 @@ identity rather than on a role, it also covers a local run pointed at CI's `.200
 
 When GitHub is unreachable or you're not logged in, a run **warns and proceeds
 unlocked** rather than blocking your device work — but it records `locked: false`
-in `out/rta/run-meta.json`, because a warning line scrolls past and an exit code
+in the run's `run-meta.json`, because a warning line scrolls past and an exit code
 of 0 can't tell you the run was unverified. Set `RTA_REQUIRE_LOCK=1` to make that
 a hard failure instead, or `RTA_SKIP_LOCK=1` to deliberately bypass. CI does not
 set `RTA_REQUIRE_LOCK`: it is alone on `.200`, so there is no contention for the

@@ -11,7 +11,9 @@
 // exists" on a conflicting create, 204 on delete.
 
 import { createHash } from 'node:crypto';
+import fs from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
@@ -424,5 +426,70 @@ describe('device-lock: helpers', () => {
     expect(JSON.stringify(lock.meta)).not.toContain(os.hostname());
     // The tag message is the copy that actually reaches GitHub.
     expect([...gh.tags.values()].map((t) => t.message).join('')).not.toContain(os.hostname());
+  });
+});
+
+// A snapshot under `.device-runs/` means a run did not put that device back. It is
+// both the only recovery path and a file holding a live authToken, and it had no
+// operator surface at all until `device:status` grew one — which is how one got
+// deleted by an `rm -rf` aimed at the ledger beside it. The lines it prints are
+// therefore load-bearing, and the recovery command in them has to actually RUN.
+describe('device-lock: stranded-snapshot report', () => {
+  let dir;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stranded-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const lines = () => mod._internals.strandedSnapshotLines(dir);
+  const write = (name, body) => fs.writeFileSync(path.join(dir, name), body);
+
+  it('says nothing when no device was left dirty', () => {
+    expect(lines()).toEqual([]);
+  });
+
+  it('says nothing when the directory does not exist at all', () => {
+    expect(mod._internals.strandedSnapshotLines(path.join(dir, 'nope'))).toEqual([]);
+  });
+
+  it('names the host and the recovery command', () => {
+    write(
+      `registry-${DEVICE}.json`,
+      JSON.stringify({ host: DEVICE, takenAt: '2026-08-11T20:00:00Z' }),
+    );
+    const [line] = lines();
+    expect(line).toContain(DEVICE);
+    expect(line).toContain('2026-08-11T20:00:00Z');
+    expect(line).toContain(`ROKU_IP=${DEVICE} npm run rta:restore`);
+  });
+
+  it('recovers the host from the FILENAME when the snapshot is truncated', () => {
+    // What a killed write leaves — and precisely when an operator needs the
+    // command most. Reading the host only from the contents produced
+    // `ROKU_IP=an unknown device npm run rta:restore`, which the shell parses as
+    // `ROKU_IP=an` and then tries to execute `unknown`. The host is in the name.
+    write(`registry-${DEVICE}.json`, '{"host":"192.168.1.177","values":{"trunc');
+    const [line] = lines();
+    expect(line).toContain(`ROKU_IP=${DEVICE} npm run rta:restore`);
+    expect(line).not.toContain('unknown device');
+    // No timestamp is available from the name alone, so it must not be invented.
+    expect(line).not.toContain('snapshot taken');
+  });
+
+  it('reports a device other than the one ROKU_IP points at', () => {
+    // The case a host-specific check reports as clean: stranded by `npm run demo`
+    // on one Roku, then a run against another. Each file names its own host.
+    write('registry-192.168.1.178.json', '{');
+    expect(lines()[0]).toContain('ROKU_IP=192.168.1.178 npm run rta:restore');
+  });
+
+  it('ignores files that are not registry snapshots', () => {
+    // `.device-runs/` also holds the per-run-kind ledger directories.
+    fs.mkdirSync(path.join(dir, 'rta'));
+    write('runs.jsonl', '{}');
+    expect(lines()).toEqual([]);
   });
 });

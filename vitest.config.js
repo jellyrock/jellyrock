@@ -2,7 +2,8 @@
 //
 // Scope: tests/scripts/**/*.test.js (mirrors tests/source/unit/ layout) plus
 // tests/rta/**/*.test.js, the pure-JS parts of the RTA harness (the registry
-// diff/restore planner). The `.test.js` / `.spec.js` split is load-bearing:
+// diff/restore planner; the failure-kind registry). The `.test.js` / `.spec.js`
+// split is load-bearing:
 // `.spec.js` under tests/rta/specs/ drives a real device and runs under
 // vitest.rta.config.js, so it must never be picked up here.
 //

@@ -18,13 +18,16 @@
  * flag clears once it's answered, and on "Switch" (not "Cancel") the stashed cast survives to replay.
  */
 async function confirmServerSwitch(ctx) {
-  const dialogUp = async () => {
-    const d = await ctx.odc.getValue({ base: 'scene', keyPath: 'dialog' }).catch(() => null);
-    return d?.found && d?.value?.subtype === 'StandardMessageDialog';
-  };
-  const start = Date.now();
-  while (Date.now() - start < 15000 && !(await dialogUp())) await ctx.sleep(500);
-  if (!(await dialogUp())) throw new Error('server-switch: change-server dialog never appeared');
+  // A wait, so it goes through the shared `waitFor` rather than a hand-rolled poll:
+  // that is what makes a dialog-never-appeared failure report the state the device was
+  // actually in (see the diagnosedError rule in tests/rta/CLAUDE.md). `getVal` yields
+  // the `dialog` node's value when the keyPath resolves, so the predicate reads its
+  // subtype directly.
+  await ctx.waitFor('dialog', (d) => d?.subtype === 'StandardMessageDialog', {
+    timeout: 15000,
+    interval: 500,
+    label: 'server-switch: change-server dialog',
+  });
 
   // Hold on the dialog so a viewer can actually READ it ("Change Server? Switch to play '…'?")
   // before the take answers — without this the prompt flashes by faster than a human can follow.
@@ -52,6 +55,7 @@ async function confirmServerSwitch(ctx) {
     .getValue({ base: 'global', keyPath: 'AuthManager.stashedDeepLink' })
     .catch(() => null);
   if (!stash?.value?.itemid) {
+    // eslint-disable-next-line no-restricted-syntax -- outcome check, not a timeout: the stash state IS the diagnosis
     throw new Error(
       'server-switch: dialog dismissed but the cast was canceled (selected Cancel?) — stash cleared',
     );
@@ -83,6 +87,7 @@ export default {
     // because the two demo servers are clones that share one real GUID); the cast targets it below.
     const target = ctx.sessionFor('unstable');
     const movie = await ctx.firstMovieOn('unstable');
+    // eslint-disable-next-line no-restricted-syntax -- fail-fast on a REST result, before the device is driven
     if (!movie.id) throw new Error('server-switch: no movie found on the unstable demo server');
 
     await ctx.landWithSavedServers(); // logged into stable, both demo servers saved

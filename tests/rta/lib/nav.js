@@ -17,6 +17,7 @@
 import { ecp, odc } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
 import { libraryIdFor } from './jellyfin.js';
+import { diagnosedError, FAILURE_KINDS } from './diagnostics.js';
 import {
   press,
   getVal,
@@ -140,36 +141,49 @@ const DETAIL_ROW_POLL_MS = 300;
  * One pass over Home's library row. Returns `{ tile }` on an id hit, otherwise the
  * `collectionType` matches collected so far. Never throws — the caller decides when
  * an empty result is "not there yet" versus "not there".
+ *
+ * `rows` retains the shape this pass actually saw (section ids and tile counts).
+ * It is read from values the scan already fetched, so it adds no device calls —
+ * and it is what turns a `tile not found` into "Home held 4 rows, the library row
+ * had 1 tile", which is the difference between a skeleton-window race and a Home
+ * that never populated.
  */
 async function scanHomeLibraryTiles(collectionType, libraryId) {
   const rowCount = (await getVal('#homeRows.content.getChildCount()')) || 0;
   // Collected rather than returned on first hit, so the no-id path can tell
   // "one match" from "several" — see the ambiguity guard below.
   const matches = [];
+  const rows = [];
   for (let r = 0; r < rowCount; r++) {
     const sectionId = await getVal(`#homeRows.content.${r}.sectionId`);
-    if (sectionId !== 'library') continue;
+    if (sectionId !== 'library') {
+      rows.push(`${r}:${sectionId ?? '?'}`);
+      continue;
+    }
     const tiles = (await getVal(`#homeRows.content.${r}.getChildCount()`)) || 0;
+    rows.push(`${r}:library(${tiles})`);
     for (let c = 0; c < tiles; c++) {
       if (libraryId) {
         if ((await getVal(`#homeRows.content.${r}.${c}.id`)) === libraryId)
-          return { tile: { row: r, col: c }, matches };
+          return { tile: { row: r, col: c }, matches, rows };
         continue;
       }
       const ct = await getVal(`#homeRows.content.${r}.${c}.collectionType`);
       if (ct === collectionType) matches.push({ row: r, col: c });
     }
   }
-  return { tile: null, matches };
+  return { tile: null, matches, rows };
 }
 
 async function findHomeLibraryTile(collectionType, libraryId = null) {
   const start = Date.now();
   let matches;
+  let rows;
   for (;;) {
     const scan = await scanHomeLibraryTiles(collectionType, libraryId);
     if (scan.tile) return scan.tile;
     matches = scan.matches;
+    rows = scan.rows;
     // One match is the answer; several is a real ambiguity that more waiting cannot
     // resolve (placeholders carry no collectionType, so a match means a real tile).
     if (matches.length === 1) return matches[0];
@@ -179,13 +193,25 @@ async function findHomeLibraryTile(collectionType, libraryId = null) {
   }
 
   const waited = `after ${Math.round((Date.now() - start) / 1000)}s`;
+  // `rows` is the LAST pass's view of Home, so the dump says what the scan gave up
+  // against rather than only what it wanted.
+  const diag = {
+    kind: FAILURE_KINDS.HOME_LIBRARY_TILE_NOT_FOUND,
+    label: `home library tile (${collectionType})`,
+    waitedMs: Date.now() - start,
+    observed: { collectionType, libraryId, rows },
+  };
   if (libraryId) {
-    throw new Error(
+    throw await diagnosedError(
       `home library tile id="${libraryId}" (collectionType="${collectionType}") not found ${waited}`,
+      diag,
     );
   }
   if (matches.length === 0) {
-    throw new Error(`home library tile collectionType="${collectionType}" not found ${waited}`);
+    throw await diagnosedError(
+      `home library tile collectionType="${collectionType}" not found ${waited}`,
+      diag,
+    );
   }
 
   // AMBIGUOUS — refuse rather than silently pick the first tile. The seeding side
@@ -201,6 +227,10 @@ async function findHomeLibraryTile(collectionType, libraryId = null) {
     const title = await getVal(`#homeRows.content.${m.row}.${m.col}.title`);
     named.push(`${title} (${id})`);
   }
+  // Not a timeout: a fail-fast that already names its own cause and lists the
+  // ambiguous libraries. More waiting cannot resolve it, and a device-state dump
+  // would add nothing to the diagnosis.
+  // eslint-disable-next-line no-restricted-syntax -- fail-fast, cause already named
   throw new Error(
     `home library tile collectionType="${collectionType}" is AMBIGUOUS — ` +
       `${matches.length} libraries match: ${named.join(', ')}. ` +
@@ -299,7 +329,15 @@ async function waitGridLoaded(label, timeout = 20000) {
     if (last === 'loaded' || last === 'empty') return;
     await sleep(500);
   }
-  throw new Error(`nav timed out waiting for ${label} (last loadState=${JSON.stringify(last)})`);
+  throw await diagnosedError(
+    `nav timed out waiting for ${label} (last loadState=${JSON.stringify(last)})`,
+    {
+      kind: FAILURE_KINDS.GRID_LOAD_TIMEOUT,
+      label,
+      waitedMs: Date.now() - start,
+      observed: { lastLoadState: last },
+    },
+  );
 }
 
 /** home -> Movies library grid (hardened against Home-layout changes). */
@@ -418,10 +456,18 @@ async function openChildDetailByRowType(tileType) {
   const rowsStart = Date.now();
   let targetRow = -1;
   let rowCount;
+  // The types the LAST pass saw, retained from reads the loop already makes. This
+  // is the #789 data point made structural: "2 row(s) present" said the rows had
+  // not all landed but never which ones had, so "Season is late" and "Season is
+  // absent" were indistinguishable after the fact.
+  let seenTypes;
   for (;;) {
     rowCount = (await getActiveVal('#extrasGrid.content.getChildCount()')) || 0;
+    seenTypes = [];
     for (let r = 0; r < rowCount; r++) {
-      if ((await getActiveVal(`#extrasGrid.content.${r}.0.type`)) === tileType) {
+      const type = await getActiveVal(`#extrasGrid.content.${r}.0.type`);
+      seenTypes.push(type ?? '?');
+      if (type === tileType) {
         targetRow = r;
         break;
       }
@@ -431,9 +477,15 @@ async function openChildDetailByRowType(tileType) {
     await sleep(DETAIL_ROW_POLL_MS);
   }
   if (targetRow < 0) {
-    throw new Error(
+    throw await diagnosedError(
       `detail row with tile type "${tileType}" not found after ` +
         `${Math.round((Date.now() - rowsStart) / 1000)}s (${rowCount} row(s) present)`,
+      {
+        kind: FAILURE_KINDS.DETAIL_ROW_NOT_FOUND,
+        label: `detail row "${tileType}"`,
+        waitedMs: Date.now() - rowsStart,
+        observed: { wanted: tileType, rowTypes: seenTypes },
+      },
     );
   }
   // Same precondition as the Home walk: `rowItemFocused` retains its last value when

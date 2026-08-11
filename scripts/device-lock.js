@@ -103,8 +103,13 @@
  * unlocked rather than blocking device work. A warning line alone is useless to
  * an agent: it is read when the command returns, minutes after the decision, and
  * the exit code stays 0, so a degraded green is indistinguishable from a real
- * one. The lock state is therefore stamped into `out/rta/run-meta.json` as
+ * one. The lock state is therefore stamped into the run record
+ * (`<runDir>/run-meta.json` — `out/rta/`, `out/device/`, … per run kind) as
  * provenance on the RESULT.
+ *
+ * That record is LOCAL-ONLY today: `out/` is gitignored and neither device
+ * workflow uploads it as an artifact, so in CI the provenance still dies with the
+ * runner. Locally it has a reader (the RTA failure fold + printed summary).
  *
  * `RTA_REQUIRE_LOCK=1` turns degraded into a hard failure. CI does NOT set it:
  * CI is alone on .200, so there is no contention for the flag to protect
@@ -133,7 +138,6 @@ import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 
 const API = 'https://api.github.com';
-const RUN_META_PATH = path.join('out', 'rta', 'run-meta.json');
 
 /** Heartbeat interval. Every publisher refreshes; see `startRefresh`. */
 const REFRESH_MS = 5 * 60 * 1000;
@@ -658,12 +662,27 @@ function startRefresh(repo, token, ref, deviceHost, holder) {
  * — from CI, from an agent, from a later triage — instead of living only in a
  * scrollback line nobody reads. Phase 4's measurement provenance extends this
  * same record rather than inventing a second one.
+ *
+ * `dir` is REQUIRED, and that is load-bearing rather than a tidiness knob: this is
+ * a full OVERWRITE, so while every entry point shared one path, any device run
+ * destroyed the previous one's record. Harmless while the file held only lock
+ * provenance; not once it carries folded failure records. A default here would be
+ * an alias onto one known run kind — exactly the clobber the per-kind split
+ * removes, reintroduced silently for whichever caller forgot. The run-kind mapping
+ * lives with those records in `scripts/run-record.js` (`runDir`); this module knows
+ * about locks, not about run kinds.
+ *
+ * A missing `dir` is a programming error, not a runtime condition, so it throws
+ * rather than joining the "never fail a run over bookkeeping" contract below —
+ * a silent no-op would lose the record it exists to write.
  */
-export function writeRunMeta(meta, extra = {}) {
+export function writeRunMeta(meta, extra = {}, dir) {
+  if (!dir) throw new TypeError('writeRunMeta: an explicit run-record directory is required');
   try {
-    fs.mkdirSync(path.dirname(RUN_META_PATH), { recursive: true });
+    const file = path.join(dir, 'run-meta.json');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(
-      RUN_META_PATH,
+      file,
       `${JSON.stringify({ ...meta, ...extra, writtenAt: new Date().toISOString() }, null, 2)}\n`,
     );
   } catch {
@@ -685,7 +704,68 @@ export const _internals = {
   setTransport: (fn) => {
     transport = fn ?? httpsTransport;
   },
+  /** Test seam — takes the directory so a test never reads the real `.device-runs/`. */
+  strandedSnapshotLines,
 };
+
+/**
+ * Report any device left mid-restore, as part of `status`.
+ *
+ * A registry snapshot under `.device-runs/` means exactly one thing: a run did not
+ * put that device back. The file is the recovery path AND the device's whole
+ * registry including a live `authToken`, so it is both the most valuable and the
+ * most sensitive thing on disk here — and since it moved out of `out/` nothing
+ * deletes it but a verified restore or `npm run rta:restore`.
+ *
+ * It had no operator-facing surface at all, which is how it got destroyed: during
+ * review of this branch a stranded snapshot for `.177` was wiped by an `rm -rf`
+ * aimed at the ledger beside it, and recovery meant hand-writing registry keys back
+ * over ODC. Nothing would have told you it was there. This line does.
+ *
+ * Read by GLOB rather than by composing the path from `ROKU_IP`, deliberately, and
+ * it is not a shortcut: the case that bites is a snapshot for a device you are NOT
+ * currently pointed at (stranded by `npm run demo` on `.177`, then `ROKU_IP=.178`),
+ * which a host-specific check would report as clean. Each file names its own host,
+ * so the glob answers for every device with no second copy of the naming convention
+ * — `tests/rta/lib/registry.js` owns that, and importing it here would drag the
+ * whole `roku-test-automation` client into a module that only knows about locks.
+ */
+function strandedSnapshotLines(dir = '.device-runs') {
+  const out = [];
+  let entries;
+  try {
+    entries = fs
+      .readdirSync(dir)
+      .map((f) => ({ file: f, host: /^registry-(.+)\.json$/.exec(f)?.[1] }))
+      .filter((e) => e.host);
+  } catch {
+    return out; // no `.device-runs/` yet — no device run has ever been taken here
+  }
+  for (const { file, host: hostFromName } of entries) {
+    // The FILENAME is the fallback, not a placeholder. A truncated snapshot — what
+    // a killed write leaves — is exactly when an operator needs the recovery
+    // command, and a placeholder there produced `ROKU_IP=an unknown device npm run
+    // rta:restore`, which the shell parses as `ROKU_IP=an` and then tries to run
+    // `unknown`. The host is in the name either way, so the contents only ever add
+    // the timestamp.
+    let host = hostFromName;
+    let takenAt = null;
+    try {
+      const parsed = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
+      host = parsed.host || host;
+      takenAt = parsed.takenAt || null;
+    } catch {
+      // A truncated or unreadable snapshot is still a stranded one — say so with
+      // what we have rather than staying silent about the file that is sitting there.
+    }
+    out.push(
+      `⚠️  ${host} was left mid-restore${takenAt ? ` (snapshot taken ${takenAt})` : ''} — ` +
+        'its registry is NOT as you found it, and the snapshot holds an auth token.\n' +
+        `    Recover: ROKU_IP=${host} npm run rta:restore`,
+    );
+  }
+  return out;
+}
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
 if (process.argv[1] && import.meta.url === `file://${path.resolve(process.argv[1])}`) {
@@ -694,6 +774,9 @@ if (process.argv[1] && import.meta.url === `file://${path.resolve(process.argv[1
   if (cmd === 'status') {
     const cur = await readDeviceLock({ deviceHost: host });
     console.log(cur ? `held by ${describeHolder(cur.holder)}` : 'free');
+    // After the lock line, not instead of it: "free" and "left dirty" are both true
+    // at once, and the second is the one that costs you the next run.
+    for (const line of strandedSnapshotLines()) console.log(line);
   } else if (cmd === 'release') {
     const token = await getToken();
     const repo = await getRepo();

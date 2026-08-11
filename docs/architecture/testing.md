@@ -7,7 +7,7 @@ related-files:
   - bsconfig-tests.json
   - bsconfig-tests-unit.json
   - bsconfig-tests-integration.json
-last-reviewed: 2026-08-10
+last-reviewed: 2026-08-11
 ---
 
 # Testing
@@ -100,6 +100,18 @@ collide unless someone points `ROKU_IP` at CI's box, which the lock does cover
 because it keys on device identity. A contended run refuses immediately and names
 the holder. Full protocol — and why the lock lives on a git ref rather than on
 the device — in [`rta-tests.md`](../dev/rta-tests.md#the-device-lock).
+
+**Each Rooibos run also leaves a record.** `run-roku-tests.js` opens a run via
+[`scripts/run-record.js`](../../scripts/run-record.js), which writes `out/device/`
+(this run: lock provenance plus the wall-clock window) and appends one line per run
+to `.device-runs/device/runs.jsonl` (the ledger, never reset). It is the same record
+the RTA harness uses, deliberately: [#800](https://github.com/jellyrock/jellyrock/issues/800)
+went red on a *Rooibos* test hitting the shared demo server, so this path needs the
+run window too — a suite that straddled the top of the hour ran against a fixture
+that reset underneath it, and the summary says so. The directory is `out/device/`,
+not `out/rta/`; the record module knows nothing about devices, so nothing drags the
+RTA client into a runner that drives the device over telnet. Shape and lifecycle in
+[`rta-tests.md`](../dev/rta-tests.md#one-record-directory-per-run-kind).
 
 ### How agents run tests
 
