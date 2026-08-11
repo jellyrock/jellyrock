@@ -36,7 +36,7 @@ afterEach(() => {
 
 describe('crossesHourBoundary', () => {
   it('flags a run that straddles the top of the hour', () => {
-    // The shape that motivates this: a ~12-minute suite starting after ~:48
+    // The shape that motivates this: a ~13-minute suite starting after ~:46
     // loses its seeded state mid-run when the demo server resets.
     expect(crossesHourBoundary('2026-08-10T14:52:00Z', '2026-08-10T15:04:00Z')).toBe(true);
   });

@@ -165,7 +165,7 @@ JSONL and never touches run-meta.json.
 
 The summary also reports the window, and flags a run that **crossed the top of the
 hour** — the demo server resets its seeded state then (watched data, playlists), so
-a ~12-minute suite starting after roughly `:48` can have that state wiped *mid-run*
+a ~13-minute suite (measured at 13.6 min on `.177`) starting after roughly `:46` can have that state wiped *mid-run*
 and fail as an unrelated-looking nav timeout. Individual failures carry
 `afterHourBoundary`, so a record says whether it landed on the far side of a reset.
 A green run that straddled `:00` is flagged too: its result was taken against a

@@ -58,8 +58,8 @@ setupRtaEnv(); // throws if ROKU_IP / ROKU_PASSWORD are missing — fail before 
 // which is the difference between an agent being able to react and not.
 const lock = await acquireDeviceLock({ what: runName });
 // `startedAt` is the run's wall-clock origin, and it is load-bearing rather than
-// decorative: the demo server resets its seeded state on the hour, so a ~12-minute
-// suite starting after roughly `:48` loses that state MID-RUN and fails as an
+// decorative: the demo server resets its seeded state on the hour, so a ~13-minute
+// suite (measured at 13.6 min) starting after roughly `:46` loses that state MID-RUN and fails as an
 // unrelated-looking nav timeout. The child reads this back to stamp each failure;
 // the summary below reports the window. Written BEFORE the suite so it survives a
 // run that never reaches the fold.

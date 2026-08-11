@@ -205,8 +205,8 @@ function runStartedAt() {
 /**
  * True when the top of an hour falls between two instants.
  *
- * The demo server resets hourly (watched data, playlists), so a ~12-minute suite
- * starting after roughly `:48` can have its seeded state wiped MID-RUN — which
+ * The demo server resets hourly (watched data, playlists), so a ~13-minute suite
+ * (measured at 13.6 min) starting after roughly `:46` can have its seeded state wiped MID-RUN — which
  * surfaces as an unrelated-looking nav timeout, never as an obvious seeding
  * error. Epoch-hour flooring is UTC, which is what the reset tracks.
  */
