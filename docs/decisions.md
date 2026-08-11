@@ -405,7 +405,7 @@ safe only because the device lock serializes writers.
 
 **date**: 2026-08-11
 **status**: accepted
-**related-files**: tests/rta/lib/registry.js, tests/rta/lib/registry.test.js, scripts/rta-restore.js
+**related-files**: tests/rta/lib/registry.js, tests/rta/lib/registry.test.js, scripts/rta-restore.js, scripts/device-lock.js
 
 The verified restore compares the two registry keys the app re-mints for ITSELF —
 `authToken` and `primaryImageTag` — on **presence**, not on value. Everything else
@@ -447,6 +447,19 @@ add it here rather than widening to a category. `npm run rta:restore -- --accept
 exists for the residual case this cannot anticipate: without it, any diff that
 will never converge blocks every later run and the only way out is `rm` on the
 device's sole backup.
+
+`--accept` clears the snapshot, and that clearing is the half that needed a
+counterweight: it also removes the only durable signal that the device is dirty, so
+the next `snapshotRegistry()` captures the accepted state as if it were the user's —
+the compounding damage the module header describes (run N leaks, run N+1 adopts the
+leak), reached from the other direction. So accepting writes
+`.device-runs/accepted-<host>.json` — redacted, because it is evidence rather than a
+backup, and appended to rather than overwritten, because an earlier accept is still
+live damage when a later one lands — and `npm run device:status` reports it until a
+human deletes it. Nothing
+clears it automatically: a later verified restore proves the device matches the last
+snapshot, which after an accept IS the accepted state, so it cannot prove the
+original value came back. It is gone, and only a person can close that.
 
 ## Migrated to ADRs
 

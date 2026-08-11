@@ -147,6 +147,20 @@ function legacySnapshotPath() {
   return path.join(LEGACY_SNAPSHOT_DIR, `registry-${deviceHost()}.json`);
 }
 
+/**
+ * Where `--accept` records what it could NOT restore. See `writeAcceptedRecord`.
+ *
+ * A distinct PREFIX rather than a `registry-<host>.accepted.json` suffix, and that
+ * is not cosmetic: the stranded-snapshot glob in `scripts/device-lock.js` matches
+ * `registry-(.+)\.json` greedily, so a suffixed name would be reported as a stranded
+ * snapshot for a device called `<host>.accepted` — and offer a recovery command with
+ * that as its `ROKU_IP`. Two different prefixes cannot collide however either glob
+ * is later edited.
+ */
+function acceptedPath() {
+  return path.join(SNAPSHOT_DIR, `accepted-${deviceHost()}.json`);
+}
+
 /** Both places a stranded snapshot could be, newest location first. */
 const snapshotCandidates = () => [snapshotPath(), legacySnapshotPath()];
 
@@ -232,6 +246,81 @@ export function planRestore(saved, live) {
     if (Object.keys(patch).length) writes[section] = patch;
   }
   return { sectionsToDelete, writes };
+}
+
+/**
+ * The record `--accept` leaves behind, as a plain object. Pure, so the redaction
+ * below is unit-testable without a device.
+ *
+ * REDACTED on purpose, and this is the one place the two files differ in kind: the
+ * snapshot has to hold real values because it exists to write them back, which is
+ * why it is treated as a secret at rest. This record only has to say WHAT was left
+ * wrong, so it stores the same `<n chars>` elision the console shows — making it
+ * safe to read, paste into an issue, or delete. It is evidence, never a backup.
+ */
+export function buildAcceptedRecord({ host, acceptedAt, label, diffs, previous = null }) {
+  const event = {
+    acceptedAt,
+    label,
+    differences: diffs.map((d) => ({
+      section: d.section,
+      key: d.key,
+      want: redact(d.key, d.want),
+      got: redact(d.key, d.got),
+    })),
+  };
+  // APPENDS, because a second accept must not erase the first. Nothing repairs an
+  // accepted difference — the original value is gone — so an earlier event is still
+  // live damage when a later one lands, and overwriting would quietly drop it while
+  // leaving the device exactly as wrong. The file grows only when a human accepts
+  // something and never clears it, which is the point.
+  const events = Array.isArray(previous?.events) ? previous.events : [];
+  return { host, events: [...events, event] };
+}
+
+/**
+ * Persist that record, and return the path so the caller can name it.
+ *
+ * Why it has to outlive the terminal: `--accept` CLEARS the snapshot, which is the
+ * whole point — an unconvergeable residual otherwise wedges every later run. But
+ * clearing it also removes the only durable signal that anything is wrong, and the
+ * next `snapshotRegistry()` then captures the accepted-dirty state as if it were the
+ * user's own. That is precisely the compounding damage described at the top of this
+ * file (run N leaks, run N+1 adopts the leak as the baseline), arrived at from the
+ * other direction. A `console.warn` dies with the scrollback; this file is what
+ * `npm run device:status` reads, so "I accepted something on this device" survives.
+ *
+ * Nothing here clears it on a later successful restore, deliberately. A verified
+ * restore proves the device matches the LAST snapshot — and after an accept, that
+ * snapshot is the accepted state. It cannot prove the original value came back,
+ * because that value is gone. Only a human can close this, by deleting the file.
+ */
+function writeAcceptedRecord(diffs, label) {
+  const file = acceptedPath();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  // An unreadable existing record cannot be preserved, but it must not stop this
+  // one being written: the alternative to a partial history is no history.
+  let previous = null;
+  try {
+    previous = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    /* no prior record, or a corrupt one — start the history here */
+  }
+  fs.writeFileSync(
+    file,
+    JSON.stringify(
+      buildAcceptedRecord({
+        host: deviceHost(),
+        acceptedAt: new Date().toISOString(),
+        label,
+        diffs,
+        previous,
+      }),
+      null,
+      2,
+    ),
+  );
+  return file;
 }
 
 function writeSnapshotFile(values) {
@@ -356,12 +445,19 @@ async function applyRestore(saved, { attempts, label, accept = false }) {
       // documented recovery re-runs the same loop, so the only way out was `rm`
       // on a file that is also the device's only backup. That is a worse failure
       // than an accepted diff, which is why this exists.
+      //
+      // The record is written BEFORE the caller clears the snapshot, so there is no
+      // window in which the device is dirty and nothing on disk says so.
       if (accept) {
+        const record = writeAcceptedRecord(diffs, label);
         console.warn(
           `[registry] ${label}: ACCEPTING ${diffs.length} unrestored difference(s) ` +
             `on operator override.\n${detail}\n` +
             '[registry] The device is NOT as it was found. Treat any measurement ' +
-            'taken from it as unverified until you have checked these by hand.',
+            'taken from it as unverified until you have checked these by hand.\n' +
+            `[registry] Recorded to ${record} — \`npm run device:status\` will keep ` +
+            'reporting it until you delete that file. (Safe to delete: it is redacted ' +
+            'evidence, not a backup.)',
         );
         return;
       }

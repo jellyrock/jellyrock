@@ -15,7 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
-import { planRestore, compareRegistries, snapshotDir } from './registry.js';
+import { planRestore, compareRegistries, snapshotDir, buildAcceptedRecord } from './registry.js';
 import { runsLedgerPath } from '../../../scripts/run-record.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -125,6 +125,94 @@ describe('session credentials the app re-mints for itself', () => {
   it('restores a credential the device lost entirely', () => {
     const live = { user1: { username: 'demo', serverId: 'srv' } };
     expect(planRestore(SNAP, live).writes).toEqual({ user1: { authToken: 'token-A' } });
+  });
+
+  it('exempts primaryImageTag on the same terms as the token', () => {
+    // The second member of the set, and the one added on a code-path argument
+    // rather than an observed failure — it rides the same `if saveCredentials`
+    // block in `session.bs` (both branches), written from the same login response.
+    // That reasoning is exactly what a test has to pin, because nothing else will
+    // catch it if the set and the app's write block ever drift apart.
+    const saved = { user1: { primaryImageTag: 'tag-A', username: 'demo' } };
+    expect(
+      compareRegistries(saved, { user1: { primaryImageTag: 'tag-B', username: 'demo' } }),
+    ).toEqual([]);
+    // ...and only on the same terms: losing it is still a difference.
+    expect(compareRegistries(saved, { user1: { username: 'demo' } }).map((d) => d.key)).toEqual([
+      'primaryImageTag',
+    ]);
+  });
+});
+
+// `--accept` clears the snapshot, so this record is the ONLY durable trace that a
+// device was left not-as-found. What it must not become is a second copy of the
+// secret the snapshot already is.
+describe('the accepted-difference record', () => {
+  const record = (diffs, previous = null) =>
+    buildAcceptedRecord({
+      host: '192.168.1.177',
+      acceptedAt: '2026-08-11T20:00:00Z',
+      label: 'restoreRegistry',
+      diffs,
+      previous,
+    });
+  const onlyEvent = (r) => {
+    expect(r.events).toHaveLength(1);
+    return r.events[0];
+  };
+
+  it('redacts secret values, so the record is safe to read and paste', () => {
+    const [diff] = onlyEvent(
+      record([{ section: 'u1', key: 'authToken', want: 'a'.repeat(32), got: 'b'.repeat(32) }]),
+    ).differences;
+    expect(diff).toEqual({
+      section: 'u1',
+      key: 'authToken',
+      want: '<32 chars>',
+      got: '<32 chars>',
+    });
+    expect(JSON.stringify(diff)).not.toContain('aaaa');
+  });
+
+  it('keeps non-secret values legible — the point is knowing WHAT was left wrong', () => {
+    const [diff] = onlyEvent(
+      record([{ section: 'u1', key: 'username', want: 'charlie', got: 'demo' }]),
+    ).differences;
+    expect(diff.want).toBe('charlie');
+    expect(diff.got).toBe('demo');
+  });
+
+  it('says which device, when, and how many — what device:status reports from', () => {
+    const r = record([
+      { section: 'u1', key: 'authToken', want: 'x', got: null },
+      { section: 'u1', key: 'username', want: 'charlie', got: null },
+    ]);
+    expect(r.host).toBe('192.168.1.177');
+    const event = onlyEvent(r);
+    expect(event.acceptedAt).toBe('2026-08-11T20:00:00Z');
+    expect(event.differences).toHaveLength(2);
+    // An absent value has to read as absent, not as an empty string — "the key is
+    // gone" and "the key is blank" are different damage.
+    expect(event.differences[0].got).toBe('<absent>');
+  });
+
+  it('APPENDS to an existing record instead of overwriting it', () => {
+    // Nothing repairs an accepted difference — the original value is gone — so an
+    // earlier accept is still live damage when a later one lands. Overwriting would
+    // drop it silently while leaving the device exactly as wrong, which is the same
+    // shape of loss this record exists to prevent.
+    const first = record([{ section: 'u1', key: 'authToken', want: 'x', got: 'y' }]);
+    const second = record([{ section: 'u2', key: 'username', want: 'a', got: 'b' }], first);
+    expect(second.events).toHaveLength(2);
+    expect(second.events[0].differences[0].key).toBe('authToken');
+    expect(second.events[1].differences[0].key).toBe('username');
+  });
+
+  it('starts a fresh history rather than throwing on an unusable prior record', () => {
+    // A partial history beats no record at all — the write must not be what fails.
+    const diffs = [{ section: 'u1', key: 'k', want: 'x', got: 'y' }];
+    expect(record(diffs, {}).events).toHaveLength(1);
+    expect(record(diffs, null).events).toHaveLength(1);
   });
 });
 

@@ -706,6 +706,7 @@ export const _internals = {
   },
   /** Test seam — takes the directory so a test never reads the real `.device-runs/`. */
   strandedSnapshotLines,
+  acceptedResidueLines,
 };
 
 /**
@@ -767,6 +768,70 @@ function strandedSnapshotLines(dir = '.device-runs') {
   return out;
 }
 
+/**
+ * Report any device carrying differences an operator ACCEPTED, as part of `status`.
+ *
+ * `npm run rta:restore -- --accept` exists because a residual the restore loop cannot
+ * converge would otherwise wedge every later run — it clears the snapshot so the next
+ * run is not blocked. The cost of clearing it is that the device is left not-as-found
+ * with nothing on disk saying so, and the next run's snapshot then adopts that state
+ * as the user's own baseline. `tests/rta/lib/registry.js` writes `accepted-<host>.json`
+ * to close that, and this is the line that surfaces it.
+ *
+ * Unlike a stranded snapshot this file is SAFE to delete — it is redacted evidence,
+ * not the recovery path — and deleting it is how an operator acknowledges the device.
+ * Nothing clears it automatically, because no later restore can prove the original
+ * value came back; it is gone.
+ *
+ * Globbed on a distinct prefix rather than a `registry-*.accepted.json` suffix, which
+ * `strandedSnapshotLines`' greedy `registry-(.+)\.json` would otherwise claim as a
+ * stranded snapshot for a device named `<host>.accepted`.
+ */
+function acceptedResidueLines(dir = '.device-runs') {
+  const out = [];
+  let entries;
+  try {
+    entries = fs
+      .readdirSync(dir)
+      .map((f) => ({ file: f, host: /^accepted-(.+)\.json$/.exec(f)?.[1] }))
+      .filter((e) => e.host);
+  } catch {
+    return out; // no `.device-runs/` yet — no device run has ever been taken here
+  }
+  for (const { file, host: hostFromName } of entries) {
+    // Same fallback rule as the snapshot report: the filename carries the host, so a
+    // truncated record still names the device it belongs to rather than going silent.
+    let host = hostFromName;
+    let acceptedAt = null;
+    let count = null;
+    let events = null;
+    try {
+      const parsed = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
+      host = parsed.host || host;
+      if (Array.isArray(parsed.events) && parsed.events.length) {
+        // The record APPENDS — every accept on this device is still live damage,
+        // because nothing repairs one. Report the total and the most recent.
+        events = parsed.events.length;
+        count = parsed.events.reduce(
+          (n, e) => n + (Array.isArray(e.differences) ? e.differences.length : 0),
+          0,
+        );
+        acceptedAt = parsed.events[parsed.events.length - 1].acceptedAt || null;
+      }
+    } catch {
+      // Unreadable is still accepted-and-unresolved — say so with what we have.
+    }
+    out.push(
+      `⚠️  ${host} has ${count ?? 'some'} accepted difference(s)` +
+        `${events > 1 ? ` across ${events} accepts` : ''}` +
+        `${acceptedAt ? ` (latest ${acceptedAt})` : ''} — its registry is NOT as it was ` +
+        'found, and no run will report this again on its own.\n' +
+        `    Review: ${path.join(dir, file)}   Acknowledge: rm ${path.join(dir, file)}`,
+    );
+  }
+  return out;
+}
+
 // ── CLI ──────────────────────────────────────────────────────────────────────
 if (process.argv[1] && import.meta.url === `file://${path.resolve(process.argv[1])}`) {
   const [cmd] = process.argv.slice(2);
@@ -777,6 +842,9 @@ if (process.argv[1] && import.meta.url === `file://${path.resolve(process.argv[1
     // After the lock line, not instead of it: "free" and "left dirty" are both true
     // at once, and the second is the one that costs you the next run.
     for (const line of strandedSnapshotLines()) console.log(line);
+    // And after THAT: an accepted residue is the one state no run will ever
+    // re-report, because accepting is what cleared the file a run would have found.
+    for (const line of acceptedResidueLines()) console.log(line);
   } else if (cmd === 'release') {
     const token = await getToken();
     const repo = await getRepo();

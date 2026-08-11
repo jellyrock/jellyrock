@@ -492,4 +492,101 @@ describe('device-lock: stranded-snapshot report', () => {
     write('runs.jsonl', '{}');
     expect(lines()).toEqual([]);
   });
+
+  it('does not claim an accepted-residue record as a stranded snapshot', () => {
+    // The two reports share a directory, and the snapshot glob is greedy. Naming the
+    // record `registry-<host>.accepted.json` would have matched it here as a device
+    // called `192.168.1.177.accepted` — and printed a recovery command with that as
+    // its ROKU_IP. The distinct prefix is what prevents it; this pins that.
+    write(`accepted-${DEVICE}.json`, JSON.stringify({ host: DEVICE, differences: [] }));
+    expect(lines()).toEqual([]);
+  });
+});
+
+// `--accept` clears the snapshot so an unconvergeable residual stops wedging every
+// later run. That trade removes the only durable signal that the device is dirty,
+// and no run re-reports it: the file a run would have found is exactly what was
+// cleared. This report is the replacement, so it has to name the device and the file.
+describe('device-lock: accepted-residue report', () => {
+  let dir;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'accepted-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const lines = () => mod._internals.acceptedResidueLines(dir);
+  const write = (name, body) => fs.writeFileSync(path.join(dir, name), body);
+
+  it('says nothing when nothing was accepted', () => {
+    expect(lines()).toEqual([]);
+  });
+
+  it('says nothing when the directory does not exist at all', () => {
+    expect(mod._internals.acceptedResidueLines(path.join(dir, 'nope'))).toEqual([]);
+  });
+
+  const accepted = (events) => JSON.stringify({ host: DEVICE, events });
+
+  it('names the host, the count, when, and both the review and acknowledge paths', () => {
+    write(
+      `accepted-${DEVICE}.json`,
+      accepted([
+        {
+          acceptedAt: '2026-08-11T20:00:00Z',
+          differences: [
+            { section: 'u1', key: 'authToken' },
+            { section: 'u1', key: 'username' },
+          ],
+        },
+      ]),
+    );
+    const [line] = lines();
+    expect(line).toContain(DEVICE);
+    expect(line).toContain('2 accepted difference(s)');
+    expect(line).toContain('2026-08-11T20:00:00Z');
+    expect(line).toContain(path.join(dir, `accepted-${DEVICE}.json`));
+    // Unlike a snapshot, this file is safe to delete — that IS the acknowledgement.
+    expect(line).toContain(`rm ${path.join(dir, `accepted-${DEVICE}.json`)}`);
+    // One accept reads as one thing, not as "across 1 accepts".
+    expect(line).not.toContain('across');
+  });
+
+  it('totals every accept and reports the most recent, because none of them were repaired', () => {
+    write(
+      `accepted-${DEVICE}.json`,
+      accepted([
+        { acceptedAt: '2026-08-10T09:00:00Z', differences: [{ section: 'u1', key: 'authToken' }] },
+        {
+          acceptedAt: '2026-08-11T20:00:00Z',
+          differences: [
+            { section: 'u2', key: 'username' },
+            { section: 'u2', key: 'serverId' },
+          ],
+        },
+      ]),
+    );
+    const [line] = lines();
+    expect(line).toContain('3 accepted difference(s)');
+    expect(line).toContain('across 2 accepts');
+    // The LATEST, not the first — an operator wants to know how recent the damage is.
+    expect(line).toContain('latest 2026-08-11T20:00:00Z');
+    expect(line).not.toContain('latest 2026-08-10');
+  });
+
+  it('still names the device when the record is truncated', () => {
+    write(`accepted-${DEVICE}.json`, '{"host":"192.168.1.177","even');
+    const [line] = lines();
+    expect(line).toContain(DEVICE);
+    expect(line).toContain('some accepted difference(s)');
+    // No timestamp is available, so it must not be invented.
+    expect(line).not.toContain('latest');
+  });
+
+  it('does not claim a stranded snapshot as an accepted residue', () => {
+    write(`registry-${DEVICE}.json`, JSON.stringify({ host: DEVICE, takenAt: 'x' }));
+    expect(lines()).toEqual([]);
+  });
 });
