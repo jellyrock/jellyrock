@@ -88,6 +88,49 @@ const LEGACY_SNAPSHOT_DIR = path.join('out', 'rta');
  */
 const APP_OWNED_KEYS = new Set(['lastrunversion']);
 
+/**
+ * Credentials the app RE-MINTS for the same user on the same server, so their
+ * VALUE cannot be held to the snapshot — only their presence.
+ *
+ * Without this the restore could not converge, and the failure was not rare:
+ * `resolveUser()` validates the stored token over REST on every cold boot, and on
+ * rejection falls back to `getToken(username, "")`, whose response `user.Login`
+ * persists (`source/loginRouter.bs` -> `source/utils/session.bs`). The restore's
+ * verify IS a cold boot. So it wrote the snapshot's token, the app replaced it,
+ * and the compare failed — every attempt, forever. Worse, the snapshot is
+ * deliberately KEPT on failure and `snapshotRegistry()` restores from it first, so
+ * one occurrence wedged every LATER run, and `npm run rta:restore` re-ran the same
+ * loop. Reproduced deliberately on `.177` (plant a bad token, cold boot, read
+ * back); the app's own console says `Auth token is no longer valid - attempting
+ * no-password login` / `login success!`.
+ *
+ * PRESENCE still counts, in both directions, and that is what keeps this an
+ * exemption rather than a hole:
+ *
+ *   - snapshot had one, device now has none  -> DIFF. The session was destroyed;
+ *     that is exactly the "signed my device out" damage this module exists to stop.
+ *   - snapshot had none, device now has one  -> DIFF. We left a credential behind.
+ *   - both present, values differ            -> fine. The app re-minted its own.
+ *
+ * `primaryImageTag` rides the same `if saveCredentials` block in `session.bs`,
+ * written from the same login response — so it is the same class by construction.
+ * Included on that shared code path rather than on an observed failure, because
+ * the failure it would produce is the wedging one above, and finding out the
+ * expensive way costs more than exempting an avatar tag.
+ *
+ * The other members of the app's own `sessionKeys` list (`settings.bs`) stay
+ * byte-asserted: `username` and `serverId` are re-written by the same login but
+ * with STABLE values, so they compare equal and losing that assertion would buy
+ * nothing.
+ *
+ * This is the same split the measurement guard settled on independently — assert
+ * IDENTITY, record everything else. `serverId` / `userId` / every setting stay
+ * exact; only what the app mints for itself is exempt.
+ */
+const SESSION_CREDENTIAL_KEYS = new Set(['authtoken', 'primaryimagetag']);
+
+const isPresent = (v) => v !== null && v !== undefined && v !== '';
+
 /** Values are secrets when the key says so — used to redact diff output. */
 const SECRET_KEY = /token|password|secret/i;
 
@@ -102,6 +145,20 @@ function snapshotPath() {
 /** The pre-move location — read as a fallback, never written. See `LEGACY_SNAPSHOT_DIR`. */
 function legacySnapshotPath() {
   return path.join(LEGACY_SNAPSHOT_DIR, `registry-${deviceHost()}.json`);
+}
+
+/**
+ * Where `--accept` records what it could NOT restore. See `writeAcceptedRecord`.
+ *
+ * A distinct PREFIX rather than a `registry-<host>.accepted.json` suffix, and that
+ * is not cosmetic: the stranded-snapshot glob in `scripts/device-lock.js` matches
+ * `registry-(.+)\.json` greedily, so a suffixed name would be reported as a stranded
+ * snapshot for a device called `<host>.accepted` — and offer a recovery command with
+ * that as its `ROKU_IP`. Two different prefixes cannot collide however either glob
+ * is later edited.
+ */
+function acceptedPath() {
+  return path.join(SNAPSHOT_DIR, `accepted-${deviceHost()}.json`);
 }
 
 /** Both places a stranded snapshot could be, newest location first. */
@@ -119,21 +176,36 @@ function redact(key, value) {
 
 /**
  * Every difference between a snapshot and a live read, as `{section, key, want, got}`.
- * App-owned keys (above) are excluded — everything else counts, in both directions:
- * a key that changed, a key that vanished, and a key or whole section that appeared.
+ *
+ * Three tiers, narrowest exemption first:
+ *   - `APP_OWNED_KEYS` — ignored outright; the app rewrites them about itself.
+ *   - `SESSION_CREDENTIAL_KEYS` — compared on PRESENCE, because the app re-mints
+ *     the value for the same user. See that constant for why, and for the two
+ *     directions that still fail.
+ *   - everything else — byte-equal, in both directions: a key that changed, a key
+ *     that vanished, and a key or whole section that appeared.
  */
 export function compareRegistries(saved, live) {
   const diffs = [];
+  const sameEnough = (key, want, got) =>
+    SESSION_CREDENTIAL_KEYS.has(key.toLowerCase())
+      ? isPresent(want) === isPresent(got)
+      : want === got;
+
   for (const [section, keys] of Object.entries(saved)) {
     for (const [key, want] of Object.entries(keys)) {
       if (APP_OWNED_KEYS.has(key.toLowerCase())) continue;
       const got = live[section]?.[key] ?? null;
-      if (got !== want) diffs.push({ section, key, want, got });
+      if (!sameEnough(key, want, got)) diffs.push({ section, key, want, got });
     }
   }
   for (const [section, keys] of Object.entries(live)) {
     for (const key of Object.keys(keys)) {
       if (APP_OWNED_KEYS.has(key.toLowerCase())) continue;
+      // A key the snapshot never had is a leak whatever its name — a session
+      // credential appearing in a section that had none is precisely the "left
+      // signed into the demo server" damage, so presence-comparison does not
+      // soften this direction.
       if (saved[section]?.[key] === undefined) {
         diffs.push({ section, key, want: null, got: keys[key] });
       }
@@ -154,6 +226,15 @@ export function planRestore(saved, live) {
     const current = live[section] || {};
     const patch = {};
     for (const [key, value] of Object.entries(keys)) {
+      // Session credentials are written back like everything else, deliberately.
+      // An earlier cut of the presence fix skipped the write whenever the device
+      // already had one, reasoning that the live token is the app's own and works
+      // — but that is not "as we found it", it is "whatever the run left", and the
+      // hardware repro proved the difference: it left the device holding a
+      // deliberately-invalid planted token and called that converged. The value
+      // restored here is the USER's. If it has since expired the app re-logins on
+      // the next boot, which is what it would do anyway; the COMPARE is what stops
+      // that re-mint from failing the verify (see `SESSION_CREDENTIAL_KEYS`).
       if (current[key] !== value) patch[key] = value;
     }
     // `null` deletes the key (see RTA_OnDeviceComponentTask.brs) — this is what
@@ -165,6 +246,81 @@ export function planRestore(saved, live) {
     if (Object.keys(patch).length) writes[section] = patch;
   }
   return { sectionsToDelete, writes };
+}
+
+/**
+ * The record `--accept` leaves behind, as a plain object. Pure, so the redaction
+ * below is unit-testable without a device.
+ *
+ * REDACTED on purpose, and this is the one place the two files differ in kind: the
+ * snapshot has to hold real values because it exists to write them back, which is
+ * why it is treated as a secret at rest. This record only has to say WHAT was left
+ * wrong, so it stores the same `<n chars>` elision the console shows — making it
+ * safe to read, paste into an issue, or delete. It is evidence, never a backup.
+ */
+export function buildAcceptedRecord({ host, acceptedAt, label, diffs, previous = null }) {
+  const event = {
+    acceptedAt,
+    label,
+    differences: diffs.map((d) => ({
+      section: d.section,
+      key: d.key,
+      want: redact(d.key, d.want),
+      got: redact(d.key, d.got),
+    })),
+  };
+  // APPENDS, because a second accept must not erase the first. Nothing repairs an
+  // accepted difference — the original value is gone — so an earlier event is still
+  // live damage when a later one lands, and overwriting would quietly drop it while
+  // leaving the device exactly as wrong. The file grows only when a human accepts
+  // something and never clears it, which is the point.
+  const events = Array.isArray(previous?.events) ? previous.events : [];
+  return { host, events: [...events, event] };
+}
+
+/**
+ * Persist that record, and return the path so the caller can name it.
+ *
+ * Why it has to outlive the terminal: `--accept` CLEARS the snapshot, which is the
+ * whole point — an unconvergeable residual otherwise wedges every later run. But
+ * clearing it also removes the only durable signal that anything is wrong, and the
+ * next `snapshotRegistry()` then captures the accepted-dirty state as if it were the
+ * user's own. That is precisely the compounding damage described at the top of this
+ * file (run N leaks, run N+1 adopts the leak as the baseline), arrived at from the
+ * other direction. A `console.warn` dies with the scrollback; this file is what
+ * `npm run device:status` reads, so "I accepted something on this device" survives.
+ *
+ * Nothing here clears it on a later successful restore, deliberately. A verified
+ * restore proves the device matches the LAST snapshot — and after an accept, that
+ * snapshot is the accepted state. It cannot prove the original value came back,
+ * because that value is gone. Only a human can close this, by deleting the file.
+ */
+function writeAcceptedRecord(diffs, label) {
+  const file = acceptedPath();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  // An unreadable existing record cannot be preserved, but it must not stop this
+  // one being written: the alternative to a partial history is no history.
+  let previous = null;
+  try {
+    previous = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    /* no prior record, or a corrupt one — start the history here */
+  }
+  fs.writeFileSync(
+    file,
+    JSON.stringify(
+      buildAcceptedRecord({
+        host: deviceHost(),
+        acceptedAt: new Date().toISOString(),
+        label,
+        diffs,
+        previous,
+      }),
+      null,
+      2,
+    ),
+  );
+  return file;
 }
 
 function writeSnapshotFile(values) {
@@ -252,13 +408,13 @@ export async function snapshotRegistry() {
  * On success the snapshot file is removed. On failure it is deliberately kept —
  * that file is the recovery path, for the next run and for `npm run rta:restore`.
  */
-export async function restoreRegistry(saved, { attempts = 3 } = {}) {
-  await applyRestore(saved, { attempts, label: 'restoreRegistry' });
+export async function restoreRegistry(saved, { attempts = 3, accept = false } = {}) {
+  await applyRestore(saved, { attempts, label: 'restoreRegistry', accept });
   clearSnapshotFile();
   armed = null; // nothing left for the interrupt handler to do
 }
 
-async function applyRestore(saved, { attempts, label }) {
+async function applyRestore(saved, { attempts, label, accept = false }) {
   for (let attempt = 1; attempt <= attempts; attempt++) {
     const { values: live } = await odc.readRegistry();
     const { sectionsToDelete, writes } = planRestore(saved, live);
@@ -281,10 +437,36 @@ async function applyRestore(saved, { attempts, label }) {
             `    ${d.section}.${d.key}: want ${redact(d.key, d.want)} / got ${redact(d.key, d.got)}`,
         )
         .join('\n');
+      // The operator override. Deliberately loud and deliberately not a retry: it
+      // does NOT claim the device is clean, it says these differences were seen
+      // and accepted so the snapshot can be cleared. Without it, a residual this
+      // loop cannot converge wedges every LATER run — `snapshotRegistry()`
+      // restores from the kept file first and hits the same wall — and the
+      // documented recovery re-runs the same loop, so the only way out was `rm`
+      // on a file that is also the device's only backup. That is a worse failure
+      // than an accepted diff, which is why this exists.
+      //
+      // The record is written BEFORE the caller clears the snapshot, so there is no
+      // window in which the device is dirty and nothing on disk says so.
+      if (accept) {
+        const record = writeAcceptedRecord(diffs, label);
+        console.warn(
+          `[registry] ${label}: ACCEPTING ${diffs.length} unrestored difference(s) ` +
+            `on operator override.\n${detail}\n` +
+            '[registry] The device is NOT as it was found. Treat any measurement ' +
+            'taken from it as unverified until you have checked these by hand.\n' +
+            `[registry] Recorded to ${record} — \`npm run device:status\` will keep ` +
+            'reporting it until you delete that file. (Safe to delete: it is redacted ' +
+            'evidence, not a backup.)',
+        );
+        return;
+      }
       throw new Error(
         `${label} failed after ${attempts} attempts — this device is NOT as we found it.\n` +
           `  ${diffs.length} difference(s):\n${detail}\n` +
           `  Recover with: npm run rta:restore  (snapshot kept at ${snapshotPath()})\n` +
+          '  If it keeps failing on the same keys, `npm run rta:restore -- --accept`\n' +
+          '  records them and clears the snapshot, so the next run is not blocked too.\n' +
           '  Do not trust any on-device measurement from this device until it is fixed.',
       );
     }

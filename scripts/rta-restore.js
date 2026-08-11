@@ -13,6 +13,15 @@
  * script is for when you want it back NOW, without starting a run. It targets
  * `ROKU_IP` from `.env` and refuses a snapshot taken from a different host.
  *
+ *   npm run rta:restore -- --accept
+ *
+ * ...records the differences it could not restore and clears the snapshot anyway.
+ * The escape hatch for a residual that will never converge: the snapshot is KEPT
+ * on failure by design, and `snapshotRegistry()` restores from it before its own,
+ * so an unconvergeable one blocks every later run and this very command re-runs
+ * the same loop. `--accept` is the way out that is not `rm` on the device's only
+ * backup. It does not claim the device is clean — it prints what it accepted.
+ *
  * Requires the RTA-enabled build sideloaded — the on-device component is the
  * only way to reach the registry from outside — so it launches the dev channel
  * first if it is not already running.
@@ -39,6 +48,11 @@ console.log(`Restoring ${host} from a snapshot taken ${snapshot.takenAt} ...`);
 await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false }).catch(() => {});
 await sleep(RTA_CONFIG.bootMs);
 
-await restoreRegistry(snapshot.values);
-console.log('VERIFIED CLEAN — device left as found.');
+const accept = process.argv.includes('--accept');
+await restoreRegistry(snapshot.values, { accept });
+console.log(
+  accept
+    ? 'Snapshot cleared. Any differences accepted above were NOT restored.'
+    : 'VERIFIED CLEAN — device left as found.',
+);
 process.exit(0); // RTA keeps the port-9000 socket open

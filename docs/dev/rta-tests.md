@@ -330,10 +330,12 @@ before it restores, so **a failed registry restore is not in the run record or t
 ledger**. A run that left the device dirty appears in `runs.jsonl` as an ordinary
 run — clean, zero failures — and the signal that it stranded the device is the
 snapshot file it left behind (which `npm run device:status` reports), not the
-record. That matters for a Phase-3 baseline specifically: the
-`restoreRegistry`/`authToken` failure in [`docs/progress.md`](../progress.md) wedges
-every *subsequent* run, so the runs whose numbers it corrupts are the ones that look
-most normal in the ledger. Check `device:status` between runs of a series; do not
+record. That matters for a Phase-3 baseline specifically: a restore that does not
+converge wedges every *subsequent* run — `snapshotRegistry()` restores from the kept
+file before taking its own — so the runs whose numbers it corrupts are the ones that
+look most normal in the ledger. The `authToken` re-mint that used to cause this is
+fixed ([`restore-compares-credentials-by-presence`](../decisions.md)), but any
+residual the loop cannot converge has the same shape. Check `device:status` between runs of a series; do not
 infer a clean device from a clean ledger line.
 
 One bounded caveat: writes to stdout from an `exit` handler are synchronous on Linux
@@ -544,8 +546,24 @@ runs Vitest **as a child process**, and restores. `npm run test:rta` (and `:fast
 - **The restore is a diff, and it is verified.** Keys the run added are deleted,
   sections the run created are dropped, changed values are put back — then the channel
   is cold-restarted and the entire registry is compared against the snapshot. A
-  mismatch retries, then **throws** and names the differing keys. The one exception is
-  `LastRunVersion`, which the app rewrites on boot by design.
+  mismatch retries, then **throws** and names the differing keys.
+- **Two keys are compared on PRESENCE, not value** — `authToken` and
+  `primaryImageTag`, the credentials the app mints for itself. (`LastRunVersion` is
+  ignored outright; the app rewrites it about itself.) This is not a softening for
+  convenience: the verify step is a cold boot, `resolveUser()` re-authenticates when
+  the stored token has been rejected, and the app then persists a NEW one — so
+  byte-comparing them meant the restore could never converge, and the snapshot it
+  kept on failure wedged every later run. Presence still fails in both directions:
+
+  | Snapshot | Device after restore | Verdict |
+  |---|---|---|
+  | has a token | has a *different* token | ✅ the app re-minted its own |
+  | has a token | has none | ❌ the session was destroyed |
+  | has none | has one | ❌ a credential was left behind |
+
+  The restore still WRITES the user's own value back — the exemption is on the
+  compare only. Full rationale and the ruled-out alternatives:
+  [`restore-compares-credentials-by-presence`](../decisions.md).
 - **The snapshot is written to `.device-runs/registry-<host>.json` before any seeding**,
   and deleted only on a verified restore. So a file still sitting there means the last
   run did not put the device back.
@@ -570,12 +588,18 @@ runs Vitest **as a child process**, and restores. `npm run test:rta` (and `:fast
     prints its contents (only its path). But note the consequence of the move: it
     used to be wiped incidentally by the next `npm run build`, and now **nothing
     removes it but a verified restore or `npm run rta:restore`**. That matters
-    because the case that strands it is a restore that never converged — see the
-    `restoreRegistry`/`authToken` entry in [`docs/progress.md`](../progress.md) —
-    so a token-bearing file can sit there indefinitely. If a restore has failed and
-    you are done with the device, run `rta:restore`; if it cannot converge, delete
-    `.device-runs/registry-<host>.json` by hand once the device is back as you want
-    it.
+    because the case that strands it is a restore that never converged
+    ([`restore-compares-credentials-by-presence`](../decisions.md) is the one that
+    used to), so a token-bearing file can sit there indefinitely. If a restore has
+    failed and you are done with the device, run `rta:restore`. If it *still* cannot
+    converge, `npm run rta:restore -- --accept` prints the differences it could not
+    restore and clears the snapshot anyway — use it rather than `rm`, which deletes
+    the device's only backup and tells you nothing about what was left wrong.
+    `--accept` does not claim the device is clean: it writes what you accepted to
+    `.device-runs/accepted-<host>.json` (redacted) and `npm run device:status` keeps
+    reporting it until you delete that file. Clearing the snapshot is what stops the
+    residual wedging later runs; the record is what stops the device going quietly
+    back to looking clean.
   - **`npm run device:status` tells you one is sitting there.** It reports every
     stranded snapshot with the host it belongs to and when it was taken, alongside
     the lock line — "free" and "left dirty" are both true at once, and the second is
@@ -584,6 +608,11 @@ runs Vitest **as a child process**, and restores. `npm run test:rta` (and `:fast
     you are *not* currently pointed at (stranded by `npm run demo` on one Roku, then
     a run against another). Before this the file had no operator-facing surface at
     all, which is how one got destroyed by an `rm -rf` aimed at the ledger beside it.
+    It reports accepted differences on the same terms, and that line matters more,
+    not less: accepting is what *cleared* the snapshot, so it is the one dirty state
+    no later run can rediscover on its own. Deleting `accepted-<host>.json` is how you
+    acknowledge it — safe, unlike deleting a snapshot, because the record is redacted
+    evidence rather than the recovery path.
 - **Ctrl-C is safe.** The interrupt stops the child, and the parent restores before
   exiting (~30 s; press Ctrl-C again to abandon and recover later with
   `npm run rta:restore`). This is why the lifecycle cannot live in Vitest: `afterAll`
