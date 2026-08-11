@@ -69,6 +69,65 @@ describe('planRestore', () => {
   });
 });
 
+// The bug that motivated this: `resolveUser()` validates the stored token over
+// REST on every cold boot and re-logins on rejection, and the restore's verify IS
+// a cold boot — so writing the snapshot's token back could never converge, and the
+// kept snapshot then wedged every LATER run. Reproduced on `.177` before the fix.
+describe('session credentials the app re-mints for itself', () => {
+  const SNAP = { user1: { authToken: 'token-A', username: 'demo', serverId: 'srv' } };
+
+  it('accepts a token the app re-minted for the same user', () => {
+    // THE regression gate. Byte-comparing this is what made the restore
+    // unconvergeable; presence is what the guarantee actually rests on.
+    const live = { user1: { authToken: 'token-B', username: 'demo', serverId: 'srv' } };
+    expect(compareRegistries(SNAP, live)).toEqual([]);
+  });
+
+  it('still fails when the session was DESTROYED', () => {
+    // The direction that matters: a device signed out is precisely the damage
+    // this module exists to prevent, so the exemption must not cover it.
+    const live = { user1: { username: 'demo', serverId: 'srv' } };
+    expect(compareRegistries(SNAP, live).map((d) => d.key)).toEqual(['authToken']);
+  });
+
+  it('treats an empty-string token as destroyed, not as present', () => {
+    const live = { user1: { authToken: '', username: 'demo', serverId: 'srv' } };
+    expect(compareRegistries(SNAP, live).map((d) => d.key)).toEqual(['authToken']);
+  });
+
+  it('still fails when a credential was LEFT BEHIND in a section that had none', () => {
+    // The leak direction — a token we added to a real user's section. Reported by
+    // the appeared-key pass, which presence-comparison deliberately does not soften.
+    const saved = { user1: { username: 'demo' } };
+    const live = { user1: { username: 'demo', authToken: 'leaked' } };
+    expect(compareRegistries(saved, live).map((d) => d.key)).toEqual(['authToken']);
+  });
+
+  it('does not soften anything outside the two re-minted keys', () => {
+    // `username` and `serverId` are re-written by the same login with STABLE
+    // values, so they stay byte-asserted. Widening the exemption to the app's whole
+    // `sessionKeys` list would buy nothing and cost the assertion.
+    const live = { user1: { authToken: 'token-B', username: 'someone-else', serverId: 'srv' } };
+    expect(compareRegistries(SNAP, live).map((d) => d.key)).toEqual(['username']);
+  });
+
+  it('still WRITES the user s own credential back, rather than keeping the run s', () => {
+    // The exemption is on the COMPARE, never on the restore. An earlier cut of
+    // this fix also skipped the write when the device already had a credential —
+    // "the live one is the app's own and it works" — and the hardware repro
+    // refuted it: with a deliberately-invalid token planted, the restore left that
+    // token in place and reported converged. "As we found it" means the USER's
+    // value. If it has expired the app re-logins on next boot, as it would anyway.
+    const live = { user1: { authToken: 'token-B', username: 'demo', serverId: 'srv' } };
+    expect(planRestore(SNAP, live).writes).toEqual({ user1: { authToken: 'token-A' } });
+  });
+
+  it('restores a credential the device lost entirely', () => {
+    const live = { user1: { username: 'demo', serverId: 'srv' } };
+    expect(planRestore(SNAP, live).writes).toEqual({ user1: { authToken: 'token-A' } });
+  });
+});
+
 describe('compareRegistries', () => {
   it('is empty for an exact match', () => {
     const state = { JellyRock: { server: 'http://home:8098' } };

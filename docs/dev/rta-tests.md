@@ -544,8 +544,24 @@ runs Vitest **as a child process**, and restores. `npm run test:rta` (and `:fast
 - **The restore is a diff, and it is verified.** Keys the run added are deleted,
   sections the run created are dropped, changed values are put back — then the channel
   is cold-restarted and the entire registry is compared against the snapshot. A
-  mismatch retries, then **throws** and names the differing keys. The one exception is
-  `LastRunVersion`, which the app rewrites on boot by design.
+  mismatch retries, then **throws** and names the differing keys.
+- **Two keys are compared on PRESENCE, not value** — `authToken` and
+  `primaryImageTag`, the credentials the app mints for itself. (`LastRunVersion` is
+  ignored outright; the app rewrites it about itself.) This is not a softening for
+  convenience: the verify step is a cold boot, `resolveUser()` re-authenticates when
+  the stored token has been rejected, and the app then persists a NEW one — so
+  byte-comparing them meant the restore could never converge, and the snapshot it
+  kept on failure wedged every later run. Presence still fails in both directions:
+
+  | Snapshot | Device after restore | Verdict |
+  |---|---|---|
+  | has a token | has a *different* token | ✅ the app re-minted its own |
+  | has a token | has none | ❌ the session was destroyed |
+  | has none | has one | ❌ a credential was left behind |
+
+  The restore still WRITES the user's own value back — the exemption is on the
+  compare only. Full rationale and the ruled-out alternatives:
+  [`restore-compares-credentials-by-presence`](../decisions.md).
 - **The snapshot is written to `.device-runs/registry-<host>.json` before any seeding**,
   and deleted only on a verified restore. So a file still sitting there means the last
   run did not put the device back.
@@ -573,9 +589,11 @@ runs Vitest **as a child process**, and restores. `npm run test:rta` (and `:fast
     because the case that strands it is a restore that never converged — see the
     `restoreRegistry`/`authToken` entry in [`docs/progress.md`](../progress.md) —
     so a token-bearing file can sit there indefinitely. If a restore has failed and
-    you are done with the device, run `rta:restore`; if it cannot converge, delete
-    `.device-runs/registry-<host>.json` by hand once the device is back as you want
-    it.
+    you are done with the device, run `rta:restore`. If it *still* cannot converge,
+    `npm run rta:restore -- --accept` prints the differences it could not restore and
+    clears the snapshot anyway — use it rather than `rm`, which deletes the device's
+    only backup and tells you nothing about what was left wrong. `--accept` does not
+    claim the device is clean; it records what you accepted.
   - **`npm run device:status` tells you one is sitting there.** It reports every
     stranded snapshot with the host it belongs to and when it was taken, alongside
     the lock line — "free" and "left dirty" are both true at once, and the second is

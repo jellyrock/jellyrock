@@ -401,6 +401,53 @@ of a device that is stranded right now; the fallback is removable once none can 
 or if concurrent device runs against one host ever become possible — the shared path is
 safe only because the device lock serializes writers.
 
+## decision-id: restore-compares-credentials-by-presence
+
+**date**: 2026-08-11
+**status**: accepted
+**related-files**: tests/rta/lib/registry.js, tests/rta/lib/registry.test.js, scripts/rta-restore.js
+
+The verified restore compares the two registry keys the app re-mints for ITSELF —
+`authToken` and `primaryImageTag` — on **presence**, not on value. Everything else
+stays byte-equal.
+
+It has to. `resolveUser()` validates the stored token over REST on every cold boot
+and falls back to `getToken(username, "")` on rejection, and the restore's verify
+step IS a cold boot — so the restore wrote the snapshot's token, the app replaced
+it, and the compare failed on every attempt. The snapshot is deliberately KEPT on
+failure and `snapshotRegistry()` restores from it first, so one occurrence wedged
+every later run, and `npm run rta:restore` re-ran the same non-converging loop.
+Reproduced deliberately on `.177`, before and after.
+
+What keeps this an exemption rather than a hole is that presence still fails in
+both directions: a session DESTROYED (snapshot had one, device has none) is the
+"signed my device out" damage the module exists to prevent, and a credential LEFT
+BEHIND (device has one the snapshot never did) is the leak. Only "both present,
+values differ" is accepted, which is the app doing its own job for the same user on
+the same server.
+
+Ruled out: **ignoring them outright** the way `LastRunVersion` is — that would drop
+both failing directions, and losing a session is exactly what must stay red.
+**Widening to the app's whole `sessionKeys` list** (`settings.bs`) — `username` and
+`serverId` are re-written by the same login with STABLE values, so they compare
+equal already and the assertion is free to keep. **Skipping the write in
+`planRestore`** when the device already has a credential — this shipped in an
+interim cut and the hardware reproduction refuted it: with an invalid token planted, the
+restore left that token in place and reported converged. "As we found it" means the
+user's value, so the exemption is on the COMPARE only.
+
+`primaryImageTag` is included on the shared code path rather than an observed
+failure — it rides the same `if saveCredentials` block in `session.bs` — because the
+failure it would produce is the wedging one, and finding out the expensive way costs
+more than exempting an avatar tag.
+
+**Tripwire:** re-evaluate if the app ever stops re-authenticating on boot (the
+exemption would then be unnecessary), or if a third key joins that write block —
+add it here rather than widening to a category. `npm run rta:restore -- --accept`
+exists for the residual case this cannot anticipate: without it, any diff that
+will never converge blocks every later run and the only way out is `rm` on the
+device's sole backup.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
