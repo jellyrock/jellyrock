@@ -1,5 +1,6 @@
 /**
- * Hardware-free gate on the RTA registry restore's two pure functions.
+ * Hardware-free gate on the RTA registry restore's two pure functions, plus the
+ * one property of its snapshot file that decides whether recovery works at all.
  *
  * These carry the whole correctness of "leave the device as you found it", and
  * the bug they replace was invisible precisely because it was only ever checked
@@ -10,8 +11,13 @@
  * `.test.js` (Vitest, `npm run test:scripts`, no device) — distinct from the
  * `.spec.js` files under `specs/`, which drive real hardware.
  */
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
-import { planRestore, compareRegistries } from './registry.js';
+import { planRestore, compareRegistries, snapshotDir } from './registry.js';
+
+const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 /** A separate object graph with equal contents — these compare values, not identity. */
 const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -111,5 +117,39 @@ describe('compareRegistries', () => {
     const saved = { JellyRock: { available_users: '[{"username":"charlie"}]' } };
     const live = { JellyRock: { available_users: '[{"username":"charlie"},{"username":"demo"}]' } };
     expect(compareRegistries(saved, live)).toHaveLength(1);
+  });
+});
+
+describe('the snapshot survives a build', () => {
+  // THE regression gate for a bug that disabled recovery on the likeliest path to
+  // need it. The snapshot lived in `out/rta/`, every `build*` script opens with
+  // `npx rimraf build/ out/`, and `npm run test:rta` is `npm run build && node
+  // scripts/rta-run.js`. So: abandon a run (device left dirty, snapshot
+  // deliberately KEPT) → re-run `npm run test:rta` → the build deleted the
+  // snapshot before `snapshotRegistry()` could restore from it → the run captured
+  // the demo-server state as the user's session and restored THAT forever after.
+  //
+  // Asserted as a property rather than a path string, so moving the file again is
+  // fine and moving it back under `out/` is not.
+  const wipesOut = (body) => /rimraf[^&|]*\bout\//.test(body);
+  const pkg = () => JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
+
+  it('does not live under out/, which every build script deletes', () => {
+    expect(snapshotDir().startsWith('out')).toBe(false);
+  });
+
+  it('pins the reason: build scripts really do rimraf out/', () => {
+    // Read from package.json rather than restated in prose, so the day a build
+    // stops wiping `out/` this says so instead of silently over-protecting.
+    const builds = Object.entries(pkg().scripts).filter(([name]) => name.startsWith('build'));
+    expect(builds.length).toBeGreaterThan(0);
+    expect(builds.filter(([, body]) => wipesOut(body)).map(([name]) => name)).toContain('build');
+  });
+
+  it('pins the other half: the RTA entry point builds before it runs', () => {
+    // Both halves are needed for the bug — a wiping build is harmless unless a
+    // device entry point runs one first. If `test:rta` ever stops building, this
+    // fails and the gate above can be reconsidered rather than cargo-culted.
+    expect(pkg().scripts['test:rta']).toMatch(/npm run build\b/);
   });
 });

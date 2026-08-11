@@ -35,14 +35,50 @@
  * turns both cases into recoveries: `snapshotRegistry()` finds the leftover
  * file, restores from it FIRST, and only then takes its own snapshot.
  *
- * The file is `out/rta/registry-<host>.json` (gitignored) and it holds auth
- * tokens, so nothing here ever prints its contents — only its path.
+ * The file is `.device-runs/registry-<host>.json` (gitignored) and it holds auth
+ * tokens, so nothing here ever prints its contents — only its path. It lives
+ * outside `out/` for a load-bearing reason — see `SNAPSHOT_DIR` below.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { odc, device, hardRelaunch } from './driver.js';
 
-const SNAPSHOT_DIR = path.join('out', 'rta');
+/**
+ * Where the snapshot lives — deliberately NOT under `out/`.
+ *
+ * It used to be `out/rta/`, and that quietly disabled the recovery below on the
+ * likeliest path to need it. Every `build*` script opens with `npx rimraf build/
+ * out/`, and `npm run test:rta` is `npm run build && node scripts/rta-run.js` —
+ * so the sequence "abandon a run (device left dirty, snapshot deliberately KEPT)
+ * → re-run `npm run test:rta`" deleted the snapshot before `snapshotRegistry()`
+ * could read it, and the run then captured the demo-server state as if it were
+ * the user's session. That is verbatim the compounding failure the recovery
+ * exists to prevent (see `snapshotRegistry`). Reproduced without a device:
+ * plant the file, `npm run build`, it is gone.
+ *
+ * `screenshots:capture` had it too (`build:prod` rimrafs the same paths).
+ * `demo`, `test:rta:fast`, `test:rta:tdd` and `rta:restore` never built, so the
+ * recovery happened to survive there — which is why this stayed invisible.
+ *
+ * Same root cause and same fix as the run ledger in `scripts/run-record.js`: a
+ * file whose contract is "survives across runs" cannot live in the build output
+ * directory. `.device-runs/` is that root, and it is gitignored.
+ *
+ * Kept SHARED across entry points, unlike the per-run-kind record directory —
+ * that difference is load-bearing. The record is per-run evidence, so sharing it
+ * clobbers; the snapshot is cross-run recovery state, so a device stranded by
+ * `npm run demo` MUST be repairable by the next `npm run test:rta`, and
+ * `rta:restore` has to find it with no arguments.
+ */
+const SNAPSHOT_DIR = '.device-runs';
+
+/**
+ * Where snapshots lived before the move above. Read-only, and only as a
+ * fallback: without it, upgrading across this change orphans a snapshot for a
+ * device that is stranded RIGHT NOW — the one moment the file matters most.
+ * Harmless to keep, harmless to delete once no such snapshot can exist.
+ */
+const LEGACY_SNAPSHOT_DIR = path.join('out', 'rta');
 
 /**
  * Keys the app itself rewrites as a normal consequence of booting, so they
@@ -70,6 +106,17 @@ function deviceHost() {
 function snapshotPath() {
   return path.join(SNAPSHOT_DIR, `registry-${deviceHost()}.json`);
 }
+
+/** The pre-move location — read as a fallback, never written. See `LEGACY_SNAPSHOT_DIR`. */
+function legacySnapshotPath() {
+  return path.join(LEGACY_SNAPSHOT_DIR, `registry-${deviceHost()}.json`);
+}
+
+/** Both places a stranded snapshot could be, newest location first. */
+const snapshotCandidates = () => [snapshotPath(), legacySnapshotPath()];
+
+/** The snapshot directory, exported so a test can assert it is outside the build output. */
+export const snapshotDir = () => SNAPSHOT_DIR;
 
 function redact(key, value) {
   if (value === null || value === undefined) return '<absent>';
@@ -138,25 +185,37 @@ function writeSnapshotFile(values) {
   return file;
 }
 
+/**
+ * Clears BOTH locations. A restore driven from the legacy fallback has to remove
+ * the file it actually read, or every later run would re-detect it as stranded
+ * and restore from it again — turning a one-off recovery into a permanent one.
+ */
 function clearSnapshotFile() {
-  fs.rmSync(snapshotPath(), { force: true });
+  for (const file of snapshotCandidates()) fs.rmSync(file, { force: true });
 }
 
 /**
  * Read a snapshot file written by a previous process, or `null` if there is none.
  * Refuses a file belonging to another device — restoring device A's registry onto
  * device B would be worse than doing nothing.
+ *
+ * Checks the current location then the legacy one, so a device stranded before
+ * the move is still recoverable. The returned object carries the `file` it came
+ * from: a caller reporting "the previous run never restored this device" has to
+ * name the path it actually found, not the one it would write.
  */
-export function readSnapshotFile(file = snapshotPath()) {
-  if (!fs.existsSync(file)) return null;
-  const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+export function readSnapshotFile(file) {
+  const found = (file ? [file] : snapshotCandidates()).find((f) => fs.existsSync(f));
+  if (!found) return null;
+  const parsed = JSON.parse(fs.readFileSync(found, 'utf8'));
   const host = deviceHost();
   if (parsed.host !== host) {
     throw new Error(
-      `${file} was taken from ${parsed.host}, but this run targets ${host}. ` +
+      `${found} was taken from ${parsed.host}, but this run targets ${host}. ` +
         "Refusing to restore one device's registry onto another — delete the file if it is stale.",
     );
   }
+  parsed.file = found;
   return parsed;
 }
 
@@ -173,7 +232,7 @@ export async function snapshotRegistry() {
   const stranded = readSnapshotFile();
   if (stranded) {
     console.warn(
-      `\n[registry] ${snapshotPath()} exists — the previous run never restored this device.` +
+      `\n[registry] ${stranded.file} exists — the previous run never restored this device.` +
         `\n[registry] Restoring from it first so this run does not snapshot its leftovers.`,
     );
     await applyRestore(stranded.values, { attempts: 3, label: 'stranded snapshot' });

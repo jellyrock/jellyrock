@@ -511,12 +511,24 @@ runs Vitest **as a child process**, and restores. `npm run test:rta` (and `:fast
   is cold-restarted and the entire registry is compared against the snapshot. A
   mismatch retries, then **throws** and names the differing keys. The one exception is
   `LastRunVersion`, which the app rewrites on boot by design.
-- **The snapshot is written to `out/rta/registry-<host>.json` before any seeding**, and
-  deleted only on a verified restore. So a file still sitting there means the last run
-  did not put the device back.
+- **The snapshot is written to `.device-runs/registry-<host>.json` before any seeding**,
+  and deleted only on a verified restore. So a file still sitting there means the last
+  run did not put the device back.
   - `npm run rta:restore` reapplies it on demand.
   - The next run repairs the device automatically — it restores from the leftover file
     *before* taking its own snapshot, so a stranded run can't become the new baseline.
+  - **It is outside `out/` for the same reason the run ledger is**, and this one was a
+    live bug rather than a precaution: while it lived in `out/rta/`, the sequence
+    "abandon a run → re-run `npm run test:rta`" deleted the snapshot *before* the
+    repair above could use it, because `test:rta` builds first and every `build*`
+    opens with `npx rimraf build/ out/`. The run then captured the demo-server state
+    as the user's session and restored that from then on — exactly the compounding
+    failure the repair exists to prevent. `demo`, `test:rta:fast`, `test:rta:tdd` and
+    `rta:restore` never build, which is why it stayed invisible.
+  - Unlike the run-record directory, the snapshot path is deliberately **shared**
+    across entry points: a device stranded by `npm run demo` has to be repairable by
+    the next `npm run test:rta`, and `rta:restore` finds it with no arguments. The
+    record wants per-run isolation; the snapshot wants cross-run reach.
 - **Ctrl-C is safe.** The interrupt stops the child, and the parent restores before
   exiting (~30 s; press Ctrl-C again to abandon and recover later with
   `npm run rta:restore`). This is why the lifecycle cannot live in Vitest: `afterAll`
