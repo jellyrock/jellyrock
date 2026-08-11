@@ -31,6 +31,8 @@ import {
   getVal,
   getActiveVal,
   sleep,
+  waitMediaPlaying,
+  stopPlayback,
 } from '../lib/steps.js';
 import { TAKES } from './takes/index.js';
 
@@ -38,7 +40,6 @@ import { TAKES } from './takes/index.js';
 let activeLock = null;
 
 const LOCALE = RTA_CONFIG.languages[0];
-const PLAYING_STATES = ['startup', 'buffer', 'play', 'pause']; // Roku media-player active states
 
 // Privacy guard, made STRUCTURAL: a take declares which demo server it targets; the runner
 // resolves it and REFUSES to run against anything that isn't a public demo host. The "never
@@ -68,11 +69,13 @@ const DEMO_SERVERS = {
 function resolveServer(name) {
   const server = DEMO_SERVERS[name];
   if (!server) {
+    // eslint-disable-next-line no-restricted-syntax -- fail-fast on a take's own declaration, before any device call
     throw new Error(
       `take declares unknown demo server "${name}" (known: ${Object.keys(DEMO_SERVERS).join(', ')})`,
     );
   }
   if (new URL(server.url).host !== DEMO_HOST) {
+    // eslint-disable-next-line no-restricted-syntax -- privacy guard, cause fully named; nothing to observe on-device
     throw new Error(
       `refusing to run: "${name}" (${server.url}) is not the public demo host (${DEMO_HOST}). ` +
         `Demos must never touch a real server.`,
@@ -95,30 +98,6 @@ function waitForEnter(prompt) {
       resolve();
     });
   });
-}
-
-/** Poll the device media-player until it reaches an active playback state. */
-async function waitMediaPlaying(timeout = 30000) {
-  const start = Date.now();
-  let last;
-  while (Date.now() - start < timeout) {
-    const mp = await ecp.getMediaPlayer().catch(() => null);
-    last = mp?.state;
-    if (mp && !mp.error && PLAYING_STATES.includes(mp.state)) return;
-    await sleep(1000);
-  }
-  throw new Error(`demo: media player never started (last state=${last})`);
-}
-
-/** Back on the player stops it; retry until the media-player reports stopped. */
-async function stopPlayback() {
-  const start = Date.now();
-  while (Date.now() - start < 10000) {
-    const mp = await ecp.getMediaPlayer().catch(() => null);
-    if (!mp || !PLAYING_STATES.includes(mp.state)) return;
-    await press(ecp.Key.Back);
-    await sleep(1200);
-  }
 }
 
 /**
@@ -148,6 +127,7 @@ function makeContext(sessions, serversByName, primaryName) {
     /** Seed + relaunch + wait for the named opening screen (the frame the operator records first). */
     async land(screen) {
       if (screen !== 'home')
+        // eslint-disable-next-line no-restricted-syntax -- fail-fast on a take asking for a seed that does not exist
         throw new Error(`land(): unsupported screen "${screen}" (add a seed for it)`);
       await seedHome(session, LOCALE); // demo server only — the home server is never written
       await hardRelaunch(); // soft relaunch lets the running app re-persist over the seed
@@ -183,7 +163,9 @@ function makeContext(sessions, serversByName, primaryName) {
       await ecp.sendInput({ params: { contentId, ...extraParams } });
     },
 
-    waitPlaying: (timeout) => waitMediaPlaying(timeout),
+    // Labelled `demo` because nothing else names this runner: Vitest supplies a test
+    // name for the spec that shares this helper, and a take has none.
+    waitPlaying: (timeout) => waitMediaPlaying('demo', timeout),
   };
 }
 

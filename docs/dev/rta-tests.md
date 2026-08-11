@@ -196,16 +196,27 @@ short as the samples above and the flag keeps its signal value.
   `steps.js`. A fail-fast that is *not* a timeout and already names its cause can
   stay a plain throw — disable the rule on that line **with a reason**, as the
   ambiguous-library refusal in `nav.js` does.
-  - The gate is scoped to the two files that own the waits. The other lib modules
-    throw fail-fasts that already name their cause (a snapshot from the wrong
-    device, a seed that did not take), so gating them would buy four disable
+  - The gate covers `lib/nav.js`, `lib/steps.js` and **all of `demos/`**. The other
+    lib modules throw fail-fasts that already name their cause (a snapshot from the
+    wrong device, a seed that did not take), so gating them would buy four disable
     comments and no signal. **A new lib file that grows a wait belongs in that
     glob** — adding it is one reviewable line.
+  - `demos/` is in the glob on evidence, not symmetry: while it was outside, it
+    accumulated two unconverted waits — the runner's own playback timeout and a
+    take's 15 s dialog poll. It is also the directory that grows by adding
+    choreography, which is where new waits come from. Its handful of genuine
+    fail-fasts (an unknown server name, the non-demo-host refusal, a REST lookup
+    that came back empty) carry one-line disables with reasons.
+  - **In a take, prefer `ctx.waitFor` to a hand-rolled poll.** It already throws
+    through `diagnosedError`, so a take inherits the dump rather than re-deriving
+    it — and a take that rolls its own loop is exactly how both of the misses above
+    happened.
   - Specs are outside the glob, because most spec-level throws are assertions rather
     than timeouts. A spec that genuinely *polls until it gives up* should still use
-    `diagnosedError`: `waitMediaPlaying` in `deeplink.spec.js` is the example, and
-    "media player never started" cannot otherwise distinguish a stream that failed
-    to open from a cast the app never routed.
+    `diagnosedError` — or better, one of the shared waits, which already do:
+    `waitMediaPlaying` lives in `lib/steps.js` and is shared by `deeplink.spec.js`
+    and the demo runner, because "media player never started" cannot otherwise
+    distinguish a stream that failed to open from a cast the app never routed.
 - **Register the `kind` first.** It is the key a flake baseline aggregates by, so it
   comes from the frozen `FAILURE_KINDS` set in `diagnostics.js`, never an inline
   string. An unregistered slug is recorded as-is and called out in the run summary

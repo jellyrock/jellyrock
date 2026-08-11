@@ -77,13 +77,22 @@ export default [
   // producing if its failures can be. The rule was prose-only in
   // tests/rta/CLAUDE.md until a spec-level timeout shipped without it.
   //
-  // Scoped to the two files that own the waits, deliberately: the other lib
-  // modules throw fail-fasts that already name their own cause (a snapshot from
-  // the wrong device, a seed that did not take), and gating those would buy four
-  // disable comments and no signal. A new file that grows a wait belongs here —
-  // adding it is a one-line, reviewable act.
+  // Scoped to the files that own the waits. The other lib modules throw fail-fasts
+  // that already name their own cause (a snapshot from the wrong device, a seed that
+  // did not take), and gating those would buy four disable comments and no signal.
+  //
+  // `demos/` IS in scope, on evidence rather than symmetry: while it was outside the
+  // glob it accumulated two unconverted waits — the runner's own playback timeout and
+  // a take's 15s dialog poll — both shipped in the same PR that wrote the rule down.
+  // It is also the directory that GROWS by adding choreography, which is where new
+  // waits come from. The cost is the handful of disables below it on genuine
+  // fail-fasts; the benefit is that the next take cannot repeat the miss.
+  //
+  // `specs/` stays out: most spec-level throws are assertions, not timeouts. A spec
+  // that genuinely polls until it gives up should still use `diagnosedError` — or
+  // better, one of the shared waits, which already do.
   {
-    files: ['tests/rta/lib/nav.js', 'tests/rta/lib/steps.js'],
+    files: ['tests/rta/lib/nav.js', 'tests/rta/lib/steps.js', 'tests/rta/demos/**/*.{js,mjs}'],
     rules: {
       'no-restricted-syntax': [
         'error',

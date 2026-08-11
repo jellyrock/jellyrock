@@ -138,3 +138,60 @@ export async function waitHome() {
     timeout: 20000,
   });
 }
+
+/** Roku media-player states that mean playback is live. Frozen — it is a shared registry now. */
+export const PLAYING_STATES = Object.freeze(['startup', 'buffer', 'play', 'pause']);
+
+/**
+ * Poll the device media-player until it reaches an active playback state.
+ *
+ * Shared rather than copied per caller. The deep-link spec and the demo runner
+ * drive the same player through the same states and each carried a byte-identical
+ * copy of this — but only the spec's reported what it SAW on timeout, so a demo
+ * take that failed at playback left no record at all. That is the failure worth
+ * recording: it silently ruins footage that looks fine until playback.
+ *
+ * `label` prefixes the message and the record, because the two callers are labelled
+ * differently by the harness — Vitest names the spec's test, and nothing names a
+ * demo take (see `setFailureContext` in `diagnostics.js`).
+ */
+export async function waitMediaPlaying(label, timeout = 30000) {
+  const start = Date.now();
+  let last;
+  while (Date.now() - start < timeout) {
+    const mp = await ecp.getMediaPlayer().catch(() => null);
+    last = mp?.state;
+    if (mp && !mp.error && PLAYING_STATES.includes(mp.state)) return;
+    await sleep(1000);
+  }
+  // A timeout, so it reports what it SAW — same rule as the waits above. "Never
+  // started" alone cannot distinguish a stream that failed to open from a cast the
+  // app never routed, and the shell fields answer that: `input=BLOCKED` or a live
+  // spinner means the app was busy, not that playback died.
+  throw await diagnosedError(`${label}: media player never started (last state=${last})`, {
+    kind: FAILURE_KINDS.MEDIA_PLAYER_NOT_STARTED,
+    label: `media player (${label})`,
+    waitedMs: Date.now() - start,
+    observed: { lastPlayerState: last, expected: PLAYING_STATES },
+  });
+}
+
+/**
+ * Stop playback so it cannot leak into whatever runs next. Back on the player stops
+ * it (AudioPlayerView/PlayerHostView onKeyEvent "back" → control "stop") — necessary
+ * because AUDIO keeps playing while you navigate away (correct music-app UX), so a
+ * relaunch-to-Home alone won't silence it. Verify via media-player; retry Back.
+ *
+ * Deliberately does NOT throw when it gives up: this is cleanup, and both callers
+ * run it on their way out of a step that already succeeded or already failed. A
+ * throw here would replace a real failure with a teardown one.
+ */
+export async function stopPlayback() {
+  const start = Date.now();
+  while (Date.now() - start < 10000) {
+    const mp = await ecp.getMediaPlayer().catch(() => null);
+    if (!mp || !PLAYING_STATES.includes(mp.state)) return;
+    await press(ecp.Key.Back);
+    await sleep(1200);
+  }
+}
