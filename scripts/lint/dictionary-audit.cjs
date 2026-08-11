@@ -49,6 +49,7 @@ const ALLOWLIST = new Set([
   'MariaDB',
   'MySQL',
   'PowerShell',
+  'macOS',
   'MacOS',
   'iOS',
   // Tools / methodologies

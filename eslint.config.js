@@ -70,6 +70,32 @@ export default [
     },
   },
 
+  // RTA waits — a timeout must report what it SAW, so it throws through
+  // `diagnosedError` (tests/rta/lib/diagnostics.js), which attaches the device
+  // state at the throw site. A bare `new Error` produces "not found", which cannot
+  // be attributed to a cause after the fact — and the flake baseline is only worth
+  // producing if its failures can be. The rule was prose-only in
+  // tests/rta/CLAUDE.md until a spec-level timeout shipped without it.
+  //
+  // Scoped to the two files that own the waits, deliberately: the other lib
+  // modules throw fail-fasts that already name their own cause (a snapshot from
+  // the wrong device, a seed that did not take), and gating those would buy four
+  // disable comments and no signal. A new file that grows a wait belongs here —
+  // adding it is a one-line, reviewable act.
+  {
+    files: ['tests/rta/lib/nav.js', 'tests/rta/lib/steps.js'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "ThrowStatement > NewExpression[callee.name='Error']",
+          message:
+            'RTA waits: throw via `diagnosedError` so the failure reports the device state it saw. A fail-fast that already names its cause may disable this with a reason.',
+        },
+      ],
+    },
+  },
+
   // Test files — Vitest globals are imported explicitly (see vitest.config.js
   // `globals: false`), but allow looser assertions where useful.
   {

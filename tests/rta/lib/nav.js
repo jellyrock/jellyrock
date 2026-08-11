@@ -227,6 +227,10 @@ async function findHomeLibraryTile(collectionType, libraryId = null) {
     const title = await getVal(`#homeRows.content.${m.row}.${m.col}.title`);
     named.push(`${title} (${id})`);
   }
+  // Not a timeout: a fail-fast that already names its own cause and lists the
+  // ambiguous libraries. More waiting cannot resolve it, and a device-state dump
+  // would add nothing to the diagnosis.
+  // eslint-disable-next-line no-restricted-syntax -- fail-fast, cause already named
   throw new Error(
     `home library tile collectionType="${collectionType}" is AMBIGUOUS — ` +
       `${matches.length} libraries match: ${named.join(', ')}. ` +

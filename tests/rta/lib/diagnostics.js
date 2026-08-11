@@ -187,6 +187,7 @@ export const FAILURE_KINDS = Object.freeze({
   HOME_LIBRARY_TILE_NOT_FOUND: 'home-library-tile-not-found',
   GRID_LOAD_TIMEOUT: 'grid-load-timeout',
   DETAIL_ROW_NOT_FOUND: 'detail-row-not-found',
+  MEDIA_PLAYER_NOT_STARTED: 'media-player-not-started',
 });
 
 const KNOWN_KINDS = new Set(Object.values(FAILURE_KINDS));
@@ -313,7 +314,7 @@ export async function diagnosedError(message, { kind, label, waitedMs, observed 
     afterHourBoundary,
   });
   const reset = afterHourBoundary
-    ? '\n        ↳ this run has crossed the top of the hour — the demo server resets its seeded state then'
+    ? '\n        ↳ this run has crossed the top of the hour — the demo server resets then, changing its own content and any state this run created through the app'
     : '';
   return new Error(`${message}\n${formatState(state, observed)}${reset}`);
 }

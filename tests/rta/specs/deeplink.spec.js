@@ -17,6 +17,7 @@ import { authenticate, getHero, getLibraries, libraryIdFor, firstItemId } from '
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch, ecp } from '../lib/driver.js';
 import { press, waitFor, getActiveVal, waitHome, sleep, hasChildren } from '../lib/steps.js';
+import { diagnosedError, FAILURE_KINDS } from '../lib/diagnostics.js';
 
 const LOCALE = RTA_CONFIG.languages[0];
 const PLAYING_STATES = ['startup', 'buffer', 'play', 'pause']; // Roku media-player active states
@@ -60,7 +61,19 @@ async function waitMediaPlaying(label, timeout = 30000) {
     if (mp && !mp.error && PLAYING_STATES.includes(mp.state)) return;
     await sleep(1000);
   }
-  throw new Error(`deep-link ${label}: media player never started (last state=${last})`);
+  // A timeout, so it reports what it SAW — same rule as the lib waits. "Never
+  // started" alone cannot distinguish a stream that failed to open from a cast the
+  // app never routed, and the shell fields answer that: `input=BLOCKED` or a live
+  // spinner means the app was busy, not that playback died.
+  throw await diagnosedError(
+    `deep-link ${label}: media player never started (last state=${last})`,
+    {
+      kind: FAILURE_KINDS.MEDIA_PLAYER_NOT_STARTED,
+      label: `media player (${label})`,
+      waitedMs: Date.now() - start,
+      observed: { lastPlayerState: last, expected: PLAYING_STATES },
+    },
+  );
 }
 
 /**

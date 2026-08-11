@@ -138,8 +138,6 @@ import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 
 const API = 'https://api.github.com';
-/** Fallback only — callers with a run lifecycle pass their own. See `writeRunMeta`. */
-const DEFAULT_RUN_DIR = path.join('out', 'rta');
 
 /** Heartbeat interval. Every publisher refreshes; see `startRefresh`. */
 const REFRESH_MS = 5 * 60 * 1000;
@@ -665,14 +663,21 @@ function startRefresh(repo, token, ref, deviceHost, holder) {
  * scrollback line nobody reads. Phase 4's measurement provenance extends this
  * same record rather than inventing a second one.
  *
- * `dir` is the caller's run-record directory, and it is load-bearing rather than
- * a tidiness knob: this is a full OVERWRITE, so while every entry point shared one
- * path, any device run destroyed the previous one's record. Harmless while the
- * file held only lock provenance; not once it carries folded failure records. The
- * run-kind mapping lives with those records in `tests/rta/lib/diagnostics.js`
- * (`runDir`) — this module knows about locks, not about run kinds.
+ * `dir` is REQUIRED, and that is load-bearing rather than a tidiness knob: this is
+ * a full OVERWRITE, so while every entry point shared one path, any device run
+ * destroyed the previous one's record. Harmless while the file held only lock
+ * provenance; not once it carries folded failure records. A default here would be
+ * an alias onto one known run kind — exactly the clobber the per-kind split
+ * removes, reintroduced silently for whichever caller forgot. The run-kind mapping
+ * lives with those records in `scripts/run-record.js` (`runDir`); this module knows
+ * about locks, not about run kinds.
+ *
+ * A missing `dir` is a programming error, not a runtime condition, so it throws
+ * rather than joining the "never fail a run over bookkeeping" contract below —
+ * a silent no-op would lose the record it exists to write.
  */
-export function writeRunMeta(meta, extra = {}, dir = DEFAULT_RUN_DIR) {
+export function writeRunMeta(meta, extra = {}, dir) {
+  if (!dir) throw new TypeError('writeRunMeta: an explicit run-record directory is required');
   try {
     const file = path.join(dir, 'run-meta.json');
     fs.mkdirSync(path.dirname(file), { recursive: true });

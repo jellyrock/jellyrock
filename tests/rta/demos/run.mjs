@@ -21,7 +21,7 @@ import { seedHome, seedHomeWithSavedServers } from '../lib/seed.js';
 import { snapshotRegistry, restoreRegistry, armRestoreOnInterrupt } from '../lib/registry.js';
 import { setupRtaEnv, relaunch, hardRelaunch, ecp, odc } from '../lib/driver.js';
 import { acquireDeviceLock } from '../../../scripts/device-lock.js';
-import { beginRun, endRun } from '../../../scripts/run-record.js';
+import { beginRun } from '../../../scripts/run-record.js';
 import { setFailureContext } from '../lib/diagnostics.js';
 import {
   press,
@@ -36,7 +36,6 @@ import { TAKES } from './takes/index.js';
 
 /** Module-scoped so every exit path can release a lock main() took. */
 let activeLock = null;
-let activeRun = null;
 
 const LOCALE = RTA_CONFIG.languages[0];
 const PLAYING_STATES = ['startup', 'buffer', 'play', 'pause']; // Roku media-player active states
@@ -220,21 +219,35 @@ async function main() {
   // Records to `out/demo/`. Takes drive the same navs as the suite, so a nav that
   // times out mid-recording now leaves the device state behind instead of just a
   // ruined take.
-  activeRun = beginRun({ lock: activeLock, run: 'demo' });
+  beginRun({ lock: activeLock, run: 'demo' });
   setFailureContext({ take: take.name });
   // Registered BEFORE armRestoreOnInterrupt() below, because that installs its
   // own signal handlers which end in process.exit(). Node runs listeners in
   // registration order, so this gets to start the release first. It is
   // fire-and-forget by necessity — on the abandon path the process leaves
   // before the DELETE lands, and the lock's TTL is what covers that.
+  //
+  // Exiting is conditional for the same reason it is in capture-screenshots: once
+  // the restore is armed that handler owns the exit, but BEFORE it is armed nothing
+  // else would exit, so a bare fire-and-forget swallows the signal and hangs the
+  // run through the relaunch + snapshot below.
+  let restoreArmed = false;
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
-    process.on(signal, () => void activeLock?.release());
+    process.on(signal, async () => {
+      if (restoreArmed) {
+        void activeLock?.release();
+        return;
+      }
+      await activeLock?.release();
+      process.exit(130);
+    });
   }
   // Wake the device + bring the RTA channel (and its ODC component) up BEFORE the first registry
   // call — snapshotRegistry is an ODC call and would fail on a suspended/relaunched device.
   await relaunch();
   const saved = await snapshotRegistry(); // restore the real session afterward, no matter what
   armRestoreOnInterrupt(saved); // ...including when the operator Ctrl-Cs a recording
+  restoreArmed = true; // from here the restore handler owns the exit — see above
   let cleanlyRestored = false;
   try {
     const sessions = {};
@@ -281,20 +294,17 @@ async function main() {
   }
 }
 
-const closeRun = () => {
-  if (activeLock && activeRun)
-    endRun({ lock: activeLock, run: 'demo', startedAt: activeRun.startedAt });
-};
-
+// No explicit endRun on either path: `beginRun` arms a process-exit net that folds
+// any run an entry point did not close. That is what covers the interrupt path
+// here, where armRestoreOnInterrupt owns the exit and a hand-rolled call could
+// never run. See `armCloseOnExit` in scripts/run-record.js.
 main()
   .then(async () => {
-    closeRun();
     await activeLock?.release();
     process.exit(0);
   })
   .catch(async (err) => {
     console.error(err);
-    closeRun();
     await activeLock?.release();
     process.exit(1);
   });

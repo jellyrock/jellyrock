@@ -38,7 +38,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setupRtaEnv, deployRtaBuild, relaunch, ecp } from '../tests/rta/lib/driver.js';
 import { snapshotRegistry, restoreRegistry } from '../tests/rta/lib/registry.js';
-import { beginRun, endRun } from './run-record.js';
+import { beginRun } from './run-record.js';
 import { acquireDeviceLock } from './device-lock.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -58,8 +58,13 @@ const lock = await acquireDeviceLock({ what: runName });
 // that reset land MID-RUN and fail as an unrelated-looking nav timeout. (A full
 // pass measured 13.6 min and 13.7 min on `.177`, which puts the threshold at
 // `:60 - 13.7`.) The Vitest child reads the origin back to stamp each failure;
-// `endRun` reports the window.
-const run = beginRun({ lock, run: runName });
+// the close reports the window.
+//
+// `cumulative` is declared HERE rather than at the fold, because the fold is not
+// always ours to make: the process-exit net in `run-record.js` closes a run the
+// entry point never got to close (the abandon path below), and it can only know a
+// watch session spans many iterations if the OPEN said so.
+const run = beginRun({ lock, run: runName, cumulative: watch });
 
 if (process.env.RTA_NO_DEPLOY === '1') {
   console.log('[rta] RTA_NO_DEPLOY=1 — skipping deploy, using the already-sideloaded build');
@@ -122,13 +127,14 @@ const exitCode = await new Promise((resolve) => {
 // Fold the child's failure records into the run record, and say what they show.
 // This is what `run-meta.json` has been missing: it was written by four entry
 // points and read by nothing, so a degraded run's provenance — and now a
-// failure's device state — only ever lived in a scrollback line. Done before the
-// restore, so the summary survives a restore that throws.
+// failure's device state — only ever lived in a scrollback line. Explicit here,
+// rather than left to the exit net, because ORDER matters on this path: folding
+// before the restore is what makes the summary survive a restore that throws.
 //
-// `cumulative` in watch mode: the reset happened once at session start and this
-// fold happens once at exit, so the window spans every iteration rather than one
-// run. The hour flag is meaningless across a window that long.
-endRun({ lock, run: runName, startedAt: run.startedAt, cumulative: watch });
+// In watch mode the record opened once at session start and folds once here, so
+// the window spans every iteration rather than one run — which is why the open
+// declared `cumulative` and the formatter drops the hour flag for it.
+run.close();
 
 try {
   await restoreRegistry(saved);

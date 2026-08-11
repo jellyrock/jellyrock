@@ -188,10 +188,24 @@ short as the samples above and the flag keeps its signal value.
 - **Identity is read by named field**, never by dumping the node: `JellyfinUser`
   carries `authToken`, and a whole-node read would put a live demo credential in an
   artifact.
-- **A new TIMEOUT in `steps.js` / `nav.js` should throw via `diagnosedError`**, not a
-  bare `new Error` — otherwise that failure mode is the one nobody can attribute. A
-  fail-fast that is *not* a timeout and already names its cause can stay a plain
-  throw; the ambiguous-library refusal in `nav.js` is the standing example.
+- **A new TIMEOUT throws via `diagnosedError`**, not a bare `new Error` — otherwise
+  that failure mode is the one nobody can attribute. This is **gated**, not just
+  documented: an ESLint `no-restricted-syntax` rule in
+  [`eslint.config.js`](../../eslint.config.js) fails `lint:js` (pre-push *and* CI,
+  and it underlines live in your editor) on a bare `throw new Error` in `nav.js` or
+  `steps.js`. A fail-fast that is *not* a timeout and already names its cause can
+  stay a plain throw — disable the rule on that line **with a reason**, as the
+  ambiguous-library refusal in `nav.js` does.
+  - The gate is scoped to the two files that own the waits. The other lib modules
+    throw fail-fasts that already name their cause (a snapshot from the wrong
+    device, a seed that did not take), so gating them would buy four disable
+    comments and no signal. **A new lib file that grows a wait belongs in that
+    glob** — adding it is one reviewable line.
+  - Specs are outside the glob, because most spec-level throws are assertions rather
+    than timeouts. A spec that genuinely *polls until it gives up* should still use
+    `diagnosedError`: `waitMediaPlaying` in `deeplink.spec.js` is the example, and
+    "media player never started" cannot otherwise distinguish a stream that failed
+    to open from a cast the app never routed.
 - **Register the `kind` first.** It is the key a flake baseline aggregates by, so it
   comes from the frozen `FAILURE_KINDS` set in `diagnostics.js`, never an inline
   string. An unregistered slug is recorded as-is and called out in the run summary
@@ -227,14 +241,55 @@ on the run kind ([`runDir`](../../scripts/run-record.js)):
 | `npm run demo` | `out/demo/` |
 | `npm run test:unit` / `test:integration` / `test:all` (Rooibos) | `out/device/` |
 
-Each holds `run-meta.json` (this run, overwritten) plus `failures.jsonl` (this run,
-truncated at start) and `runs.jsonl` — the **ledger**, one line per completed run,
-never reset. Aggregating N back-to-back suites is a read of the ledger rather than
-"remember to copy a file aside after each run".
+Three files per run kind. They overlap deliberately — pick by the question you are
+asking, not by which one you found first:
+
+| File | Where | Lifetime | Read it when you want… |
+|---|---|---|---|
+| `run-meta.json` | `out/<kind>/` | this run, **overwritten** | the whole of ONE run in one place — lock provenance, window, and the folded failures |
+| `failures.jsonl` | `out/<kind>/` | this run, **truncated at start** | to stream failures as they land, mid-run, before the fold |
+| `runs.jsonl` | **`.device-runs/<kind>/`** | **the ledger — never reset** | to aggregate ACROSS runs (this is the one a flake baseline reads) |
+
+**The ledger is the Phase-3 surface.** Aggregating N back-to-back suites is a read
+of `.device-runs/rta/runs.jsonl`, not "remember to copy a file aside after each
+run" — each line is a complete `summarizeRun` including that run's failure records.
+It is append-only and nothing prunes it; `rm .device-runs/<kind>/runs.jsonl` starts
+a fresh baseline, and doing that deliberately before an N-run series is what keeps
+the number clean.
+
+**Why the ledger is not under `out/` with the others.** `out/` is the build output
+directory, and all eight `build*` npm scripts begin with `npx rimraf build/ out/`.
+`npm run test:rta` builds first — so a ledger under `out/` was deleted immediately
+before each run that was meant to append to it, and an N-run baseline would have
+ended with exactly one line, silently. The per-run files are safe there because
+`beginRun` truncates them anyway; a file whose contract is *never reset* is not.
+[`run-record.test.js`](../../tests/scripts/unit/run-record.test.js) gates both
+halves — that the ledger is outside `out/`, and that the build scripts really do
+wipe it — so this cannot quietly come back.
 
 The two entry points that are not Vitest get a label Vitest would otherwise supply:
 `capture-screenshots` tags each record with its screen, locale and **retry attempt**,
-so a screen that recovered on attempt 2 is not mistaken for a failure.
+so a screen that recovered on attempt 2 is not mistaken for a failure; `demos` tags
+each with its take name.
+
+#### A run always closes, including when you Ctrl-C it
+
+`beginRun` returns a handle whose `close()` folds the run — it carries the lock, the
+run kind, the origin and the watch-mode flag, so no entry point restates them and
+none can restate them wrongly. `beginRun` also arms a `process.on('exit')` net that
+closes any run whose entry point never got to.
+
+That net is not belt-and-braces. Three of the four entry points hand their exit to a
+signal handler ending in `process.exit()` — `armRestoreOnInterrupt`'s among them —
+so a hand-rolled fold in the happy path alone would skip exactly the interrupt a
+~15-minute matrix run is most likely to end with. It is legal because `endRun` is
+all-synchronous. `close()` stays explicit where output ORDER matters: `rta-run`
+folds before the registry restore, so the summary survives a restore that throws.
+
+One bounded caveat: writes to stdout from an `exit` handler are synchronous on Linux
+for TTYs, files and pipes, but **asynchronous for pipes on macOS** — so a macOS
+contributor piping an interrupted run's output can lose the printed summary. Every
+durable record is an `fs` write and is unaffected; re-read `run-meta.json`.
 
 ### The run's wall-clock window is part of the evidence
 

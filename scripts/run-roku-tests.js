@@ -10,7 +10,7 @@ import net from 'node:net';
 import dotenv from 'dotenv';
 import * as rokuDeploy from 'roku-deploy';
 import { acquireDeviceLock } from './device-lock.js';
-import { beginRun, endRun } from './run-record.js';
+import { beginRun } from './run-record.js';
 
 dotenv.config();
 
@@ -186,8 +186,14 @@ async function main() {
   // flake) are both fixture-side. A run that straddled the hourly reset is now
   // visible after the fact instead of needing to be reconstructed.
   const run = beginRun({ lock, run: 'run-roku-tests' });
+  // Guarded because `done` is both the normal exit AND the signal handler: a
+  // Ctrl-C arriving while the release is in flight would otherwise re-enter and
+  // release twice. The fold itself is idempotent, so the guard is about the lock.
+  let exiting = false;
   const done = async (code) => {
-    endRun({ lock, run: 'run-roku-tests', startedAt: run.startedAt });
+    if (exiting) return;
+    exiting = true;
+    run.close();
     await lock.release();
     process.exit(code);
   };

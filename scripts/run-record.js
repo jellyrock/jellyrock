@@ -2,9 +2,15 @@
  * The run record — what a device run leaves behind about itself.
  *
  * Every entry point that claims the device (`rta-run`, `capture-screenshots`,
- * `demo`, `run-roku-tests`) opens with `beginRun` and closes with `endRun`. In
- * between it may append failure records; the close folds them in, appends the run
- * to a ledger, and prints a summary.
+ * `demo`, `run-roku-tests`) opens with `beginRun` and closes with the `close()` on
+ * the handle it returns. In between it may append failure records; the close folds
+ * them in, appends the run to a ledger, and prints a summary.
+ *
+ * `close()` carries the lock, run kind, origin and watch-mode flag from the open,
+ * so no caller restates them. `beginRun` also arms a `process.on('exit')` net that
+ * closes a run whose entry point never got to — three of the four hand their exit
+ * to a signal handler ending in `process.exit()`, so the interrupt path cannot
+ * fold itself. See `armCloseOnExit`.
  *
  * ## Why this is not in `tests/rta/lib/diagnostics.js`
  *
@@ -35,6 +41,9 @@
  * reset. The baseline aggregates N back-to-back suites, and without the ledger
  * that means "copy a file aside after each run, and lose the run if you forget
  * once" — deterministic bookkeeping done by a human N times over.
+ *
+ * It lives under `.device-runs/`, NOT `out/`, because every `build*` script starts
+ * with `rimraf out/` — see `LEDGER_ROOT`.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -70,8 +79,15 @@ let activeRunDir;
  *
  * Three sources, in order. `beginRun` sets it for an entry point that owns its own
  * run. A spawned child gets it through `RTA_RUN_DIR` — a separate process cannot
- * inherit module state from the parent. The `out/rta` default keeps a bare read
+ * inherit module state from the parent. The `out/rta` default keeps a bare READ
  * honest for anything driving the harness without a run lifecycle at all.
+ *
+ * That default is deliberately asymmetric with `writeRunMeta`, which refuses one:
+ * the only consumer that can reach here without a lifecycle is `diagnostics.js`,
+ * which is RTA-only, so `out/rta` is that consumer's own directory rather than an
+ * alias onto someone else's. `writeRunMeta` has four callers and no such guarantee,
+ * and it OVERWRITES — a wrong guess there destroys a record instead of misfiling a
+ * read. Precedence is pinned by tests; do not add a default to the write side.
  */
 export function getRunDir() {
   return activeRunDir || process.env.RTA_RUN_DIR || path.join('out', 'rta');
@@ -80,8 +96,28 @@ export function getRunDir() {
 /** This run's failure records — one JSON line each, appended by the process that hit them. */
 export const failuresPath = () => path.join(getRunDir(), 'failures.jsonl');
 const runMetaPath = () => path.join(getRunDir(), 'run-meta.json');
-/** The ACCUMULATOR: one line per completed run, never reset. */
-export const runsLedgerPath = () => path.join(getRunDir(), 'runs.jsonl');
+
+/**
+ * Root for the ACCUMULATING record — deliberately NOT under `out/`.
+ *
+ * `out/` is the build output directory, and every one of the eight `build*` npm
+ * scripts opens with `npx rimraf build/ out/`. Since `npm run test:rta` (and
+ * `screenshots:capture`, and `test:unit`) build first, a ledger under `out/` was
+ * deleted immediately before each run that was supposed to append to it — so the
+ * documented N-run baseline would have ended with exactly ONE line. The per-run
+ * files can live there safely: they are truncated at open anyway, so a preceding
+ * wipe costs nothing. A file whose contract is "never reset" cannot.
+ */
+const LEDGER_ROOT = '.device-runs';
+
+/**
+ * The ACCUMULATOR: one line per completed run, never reset.
+ *
+ * Keyed off the run directory's own name, so it stays per-run-kind without
+ * introducing a second mapping to keep in sync: `out/rta` -> `.device-runs/rta`.
+ */
+export const runsLedgerPath = () =>
+  path.join(LEDGER_ROOT, path.basename(getRunDir()), 'runs.jsonl');
 
 /**
  * Append one JSON line. Never throws — bookkeeping must not mask the thing it is
@@ -170,10 +206,14 @@ export function runStartedAt() {
 /**
  * True when the top of an hour falls between two instants.
  *
- * The demo server resets hourly (playlists, and anything a run marked watched), so
- * a ~13-minute suite (measured at 13.6 min) starting after roughly `:46` can have
- * that state change underneath it MID-RUN — which surfaces as an unrelated-looking
- * nav timeout, never as an obvious fixture error. Epoch-hour flooring is UTC.
+ * The demo server resets at the top of every hour, changing its own content
+ * (playlists have come and gone) and any state a run created through the app (a
+ * watched toggle, a resume point). A ~13-minute suite (measured at 13.6 min)
+ * starting after roughly `:46` therefore has that change land MID-RUN — which
+ * surfaces as an unrelated-looking nav timeout, never as an obvious fixture error.
+ *
+ * Epoch-hour flooring is UTC, which is correct for a top-of-hour reset regardless
+ * of the server's own timezone: `:00` is the same instant in every whole-hour zone.
  */
 export function crossesHourBoundary(fromIso, toIso) {
   const a = Date.parse(fromIso);
@@ -192,9 +232,14 @@ export function crossesHourBoundary(fromIso, toIso) {
  * The hour flag is meaningless there (any session over an hour trips it), and a
  * flag that always fires is one nobody reads, so the formatter drops it.
  */
-export function summarizeRun({ startedAt, endedAt, failures = [], run, cumulative = false }) {
+export function summarizeRun({ startedAt, endedAt, failures = [], run, what, cumulative = false }) {
   return {
     run,
+    // What the lock holder called itself, when it says more than the run kind
+    // does. `demo` is the run kind for every take, so without this the LEDGER —
+    // the only record that survives the next run — cannot say which take a line
+    // came from. Omitted when it would just repeat `run`.
+    what: what && what !== run ? what : undefined,
     startedAt,
     endedAt,
     cumulative: cumulative || undefined,
@@ -218,8 +263,9 @@ export function formatRunSummary(summary, file = failuresPath()) {
   const lines = [];
   if (flagHour) {
     lines.push(
-      `[rta] this run crossed the top of the hour (${window}) — the demo server resets its ` +
-        'seeded state then, so a mid-run failure here may be the fixture, not the app.',
+      `[rta] this run crossed the top of the hour (${window}) — the demo server resets then, ` +
+        'changing its own content and any state this run created through the app, so a ' +
+        'mid-run failure here may be the fixture, not the app.',
     );
   }
   if (failures.length) {
@@ -228,7 +274,11 @@ export function formatRunSummary(summary, file = failuresPath()) {
       `[rta] ${failures.length} failure(s) captured with device state in ${scope} → ${file}`,
     );
     for (const f of failures) {
-      const where = f.test || f.context?.screen || f.label || f.kind || 'unknown';
+      // `context` covers the two entry points Vitest cannot label: a screenshot
+      // screen and a demo take. Without the take name a demo failure reads as a
+      // bare kind, which does not say which choreography was running.
+      const where =
+        f.test || f.context?.screen || f.context?.take || f.label || f.kind || 'unknown';
       const attempt = f.context?.attempt ? ` (attempt ${f.context.attempt})` : '';
       const view = f.state?.view;
       const focus = f.state?.focus;
@@ -248,8 +298,9 @@ export function formatRunSummary(summary, file = failuresPath()) {
   if (unknownKinds.length) {
     lines.push(
       `[rta] ⚠ ${unknownKinds.length} unregistered failure kind(s): ${unknownKinds.join(', ')} — ` +
-        'add them to FAILURE_KINDS in tests/rta/lib/diagnostics.js, or the flake ' +
-        'baseline will aggregate these as separate buckets.',
+        "register them in the throwing harness's FAILURE_KINDS set (RTA's is " +
+        'tests/rta/lib/diagnostics.js), or the flake baseline will aggregate these ' +
+        'as separate buckets.',
     );
   }
   return lines;
@@ -263,28 +314,80 @@ export function formatRunSummary(summary, file = failuresPath()) {
  * directory hold: the run kind is named ONCE, at the top, and both the parent and
  * any child it spawns resolve their paths from it.
  *
- * Returns `{ startedAt, dir, env }` — pass `env` into a spawned child so it writes
- * its records where this run's fold will look for them.
+ * Returns `{ startedAt, dir, env, close }`. Pass `env` into a spawned child so it
+ * writes its records where this run's fold will look for them, and call `close()`
+ * to fold — it carries the lock, kind, origin and `cumulative` this call already
+ * named, so no caller has to restate them and none can restate them wrongly.
  */
-export function beginRun({ lock, run }) {
+export function beginRun({ lock, run, cumulative = false }) {
   activeRunDir = runDir(run);
   runStartCache = undefined; // a new run means a new origin to read back
+  closedSummary = undefined; // ...and a close that has not happened yet
   // Written BEFORE the work so it survives a run that never reaches `endRun`.
   const startedAt = new Date().toISOString();
   writeRunMeta(lock.meta, { run, startedAt }, activeRunDir);
   resetFailures();
-  return { startedAt, dir: activeRunDir, env: { RTA_RUN_DIR: activeRunDir } };
+  // Closed over, not read from module state, so a second run in one process cannot
+  // make an earlier run's handle close the later one.
+  const args = { lock, run, startedAt, cumulative };
+  closeArgs = args;
+  armCloseOnExit();
+  return {
+    startedAt,
+    dir: activeRunDir,
+    env: { RTA_RUN_DIR: activeRunDir },
+    close: () => endRun(args),
+  };
 }
 
-/** Close a run: fold the failure records in, append the run to the ledger, print. */
+let closeArgs;
+let closedSummary;
+let netArmed = false;
+
+/**
+ * The safety net that closes a run nobody closed.
+ *
+ * Three of the four entry points hand their exit to a signal handler ending in
+ * `process.exit()` — `armRestoreOnInterrupt`'s among them — so an explicit
+ * `endRun` on the happy path alone skips the fold on exactly the interrupt a
+ * ~15-minute matrix run is most likely to end with. Registering here rather than
+ * in each entry point is what keeps that true for a FIFTH entry point added later.
+ *
+ * Legal because `endRun` is all-synchronous (`readFileSync` / `writeFileSync` /
+ * `appendFileSync` / `console.log`); an `exit` handler cannot await. `process.exit()`
+ * always emits `exit`, and every entry point installs signal listeners, so the
+ * default terminate-without-exit path never applies.
+ *
+ * The explicit `endRun` calls stay where OUTPUT ORDER matters — `rta-run` folds
+ * before the registry restore so the summary survives a restore that throws. This
+ * net only fires when one did not run.
+ */
+function armCloseOnExit() {
+  if (netArmed) return;
+  netArmed = true;
+  process.on('exit', () => {
+    if (closeArgs && !closedSummary) endRun(closeArgs);
+  });
+}
+
+/**
+ * Close a run: fold the failure records in, append the run to the ledger, print.
+ *
+ * IDEMPOTENT. The exit net above may call this after an entry point already has,
+ * and a second fold would append a second ledger line for one run — which is
+ * precisely the miscount an N-run baseline cannot absorb.
+ */
 export function endRun({ lock, run, startedAt, cumulative = false }) {
+  if (closedSummary) return closedSummary;
   const summary = summarizeRun({
     run,
+    what: lock?.meta?.holder?.what,
     startedAt,
     endedAt: new Date().toISOString(),
     failures: readFailures(),
     cumulative,
   });
+  closedSummary = summary;
   writeRunMeta(lock.meta, { run, startedAt, ...summary }, getRunDir());
   appendJsonLine(runsLedgerPath(), summary);
   for (const line of formatRunSummary(summary)) console.log(line);

@@ -40,7 +40,7 @@ import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 
 import { acquireDeviceLock } from './device-lock.js';
-import { beginRun, endRun } from './run-record.js';
+import { beginRun } from './run-record.js';
 import { setFailureContext } from '../tests/rta/lib/diagnostics.js';
 import { RTA_CONFIG } from '../tests/rta/config.js';
 import {
@@ -250,8 +250,6 @@ function writeManifest() {
 
 /** Module-scoped so the top-level catch can release a lock main() took. */
 let activeLock = null;
-/** Module-scoped for the same reason as `activeLock` — the top-level catch closes the run. */
-let activeRun = null;
 
 async function main() {
   const { languages, screens, deploy, regen } = parseArgs();
@@ -274,9 +272,29 @@ async function main() {
   // suite, so it produces the same failure records — and used to write them into
   // the suite's own directory, where the next `test:rta` silently cleared them.
   const run = beginRun({ lock, run: 'capture-screenshots' });
-  activeRun = run;
+  // Registered BEFORE armRestoreOnInterrupt() below, which installs its own signal
+  // handlers ending in process.exit(). Node runs listeners in registration order,
+  // so this gets to start the release first.
+  //
+  // The two windows need OPPOSITE handling, and getting either wrong is a real
+  // failure — both measured on `.177`:
+  //
+  //  - ARMED: do not await, and do not exit. `await lock.release(); process.exit(130)`
+  //    used to win the race against armRestore's ~30s registry restore (the release
+  //    is one GitHub DELETE, ~0.4s, or a no-op when degraded), killing the restore
+  //    and leaving the device signed into the demo server — the #800 bug, live on
+  //    this path until now. That handler owns the exit here.
+  //  - NOT ARMED: there is nothing to restore and nothing else will exit, so this
+  //    handler must. But it must AWAIT the release first — a fire-and-forget DELETE
+  //    that never lands strands the lock for the full 15-minute lease, which then
+  //    refuses the next run outright.
+  let restoreArmed = false;
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
     process.on(signal, async () => {
+      if (restoreArmed) {
+        void lock.release(); // the ~30s restore gives the DELETE time to land
+        return;
+      }
       await lock.release();
       process.exit(130);
     });
@@ -293,6 +311,7 @@ async function main() {
   // A ~15-minute matrix run is the most likely thing anyone Ctrl-Cs, and the
   // `finally` below is not reached when the process is killed.
   armRestoreOnInterrupt(savedRegistry);
+  restoreArmed = true; // from here the restore handler owns the exit — see above
 
   console.log(`Authenticating ${CONFIG.server.username}@${CONFIG.server.url} ...`);
   const session = await authenticate(CONFIG.server);
@@ -433,18 +452,17 @@ async function main() {
   writeManifest();
   generateIndex(); // regenerate docs/screenshots/README.md (the by-language index)
   console.log('Done.');
-  endRun({ lock, run: 'capture-screenshots', startedAt: run.startedAt });
+  run.close();
   await lock.release();
   process.exit(0); // RTA keeps the port-9000 socket open; exit explicitly
 }
 
 main().catch(async (e) => {
   console.error('capture failed:', e?.stack || e?.message || e);
-  // A matrix run that died mid-way is exactly when the captured device state is
-  // worth reading, so the fold happens on this path too — not only on success.
-  if (activeLock && activeRun) {
-    endRun({ lock: activeLock, run: 'capture-screenshots', startedAt: activeRun.startedAt });
-  }
+  // No endRun here: `beginRun` arms a process-exit net that folds any run an entry
+  // point did not close, which covers this path AND the interrupt above — where a
+  // hand-rolled call could not run at all, because armRestoreOnInterrupt owns the
+  // exit. See `armCloseOnExit` in scripts/run-record.js.
   await activeLock?.release();
   process.exit(1);
 });

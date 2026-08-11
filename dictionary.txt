@@ -715,3 +715,5 @@ unquantified
 viewport-lazy
 rta-reliability
 unmapped
+stdout
+macOS
