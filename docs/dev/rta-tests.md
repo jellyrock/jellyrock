@@ -19,7 +19,7 @@ related-files:
   - scripts/rta-restore.js
   - scripts/device-lock.js
   - .github/workflows/rta-functional-tests.yml
-last-reviewed: 2026-08-10
+last-reviewed: 2026-08-11
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -264,9 +264,23 @@ asking, not by which one you found first:
 **The ledger is the Phase-3 surface.** Aggregating N back-to-back suites is a read
 of `.device-runs/rta/runs.jsonl`, not "remember to copy a file aside after each
 run" — each line is a complete `summarizeRun` including that run's failure records.
-It is append-only and nothing prunes it; `rm .device-runs/<kind>/runs.jsonl` starts
-a fresh baseline, and doing that deliberately before an N-run series is what keeps
-the number clean.
+
+**Scope a baseline by FILTERING, not by deleting.** Every line carries three keys
+for exactly that, and all three are always present (`null` when unknown) so a
+filter can never silently drop a row:
+
+| Key | Is | Why a baseline needs it |
+|---|---|---|
+| `variant` | the npm script that ran (`test:rta`, `test:rta:fast`, `test:unit`, …) | run kinds are SHARED — `:fast` skips the deploy, `:capture` adds per-screen PNG work, and `test:unit`/`test:all` are different suites. Pooling their durations compares incomparable runs |
+| `commit` | short SHA at the start of the run | "are these N runs even the same code?" |
+| `dirty` | working tree not clean at that SHA (untracked files included — they get compiled in) | during RTA work the tree is usually dirty, and a bare SHA would over-claim reproducibility |
+
+So a clean N-run baseline is `runs.filter(r => r.commit === X && r.variant === 'test:rta')`,
+not a `rm` you have to remember before the series. The file is still append-only and
+nothing prunes it — `rm .device-runs/<kind>/runs.jsonl` throws the history away if you
+want that, but it is no longer the way you get a trustworthy number. (Size is a
+non-issue: a clean line is ~200 bytes, and one carrying 30 failure records with full
+device state is ~25 KB.)
 
 **Why the ledger is not under `out/` with the others.** `out/` is the build output
 directory, and all eight `build*` npm scripts begin with `npx rimraf build/ out/`.

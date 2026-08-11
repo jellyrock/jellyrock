@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import {
   crossesHourBoundary,
   appendJsonLine,
@@ -186,11 +186,25 @@ describe('the run lifecycle — where a run s records actually land', () => {
   // (active directory, start-time cache, close guard) cannot leak between them.
   const LOCK = { meta: { locked: true, mode: 'test', degraded: false } };
   let cwd;
+  let maxListeners;
 
   const fresh = () => {
     vi.resetModules();
     return import('../../../scripts/run-record.js');
   };
+
+  // Each `fresh()` mints a NEW module instance whose `netArmed` starts false, so
+  // every one arms its own `process.on('exit')` net on the single real process —
+  // and past ten of them Node warns about a listener leak. That warning is an
+  // artifact of the harness, not of the module: production loads `run-record.js`
+  // once per process and `netArmed` holds it to exactly one listener. Raised (and
+  // restored) here rather than worked around in the module, so a genuine leak
+  // warning elsewhere still means something.
+  beforeAll(() => {
+    maxListeners = process.getMaxListeners();
+    process.setMaxListeners(maxListeners + 40);
+  });
+  afterAll(() => process.setMaxListeners(maxListeners));
 
   beforeEach(() => {
     cwd = process.cwd();
@@ -317,6 +331,116 @@ describe('the run lifecycle — where a run s records actually land', () => {
     });
   });
 
+  describe('invocation provenance — what lets a baseline SELECT its runs', () => {
+    // Without these a ledger of N runs cannot tell a full `test:rta` from a
+    // `test:rta:fast` (no deploy) or a `test:rta:capture` (extra per-screen PNG
+    // work), nor `test:unit` from `test:all` — they share a run kind. The
+    // documented alternative was "remember to `rm` the ledger first", which is
+    // exactly the kind of human bookkeeping this file exists to remove.
+    it('records the npm script that produced the run, not just the run kind', async () => {
+      const { beginRun, readRuns: ledger, runsLedgerPath } = await fresh();
+      process.env.npm_lifecycle_event = 'test:rta:fast';
+      try {
+        beginRun({ lock: LOCK, run: 'test:rta' }).close();
+        const [line] = ledger(runsLedgerPath());
+        expect(line.run).toBe('test:rta'); // the shared record directory
+        expect(line.variant).toBe('test:rta:fast'); // ...and what actually ran
+      } finally {
+        delete process.env.npm_lifecycle_event;
+      }
+    });
+
+    it('falls back to the run kind when the script was invoked by hand', async () => {
+      const { beginRun, readRuns: ledger, runsLedgerPath } = await fresh();
+      delete process.env.npm_lifecycle_event;
+      beginRun({ lock: LOCK, run: 'test:rta' }).close();
+      expect(ledger(runsLedgerPath())[0].variant).toBe('test:rta');
+    });
+
+    it('reports nulls rather than failing the run when git cannot answer', async () => {
+      // These cases chdir into a temp dir that is not a git checkout, so this is
+      // the real unavailable path — not a mock. Bookkeeping must never fail a
+      // device run, and an export/tarball checkout is a fine place to run one.
+      const { beginRun, readRuns: ledger, runsLedgerPath } = await fresh();
+      expect(() => beginRun({ lock: LOCK, run: 'test:rta' }).close()).not.toThrow();
+      const [line] = ledger(runsLedgerPath());
+      expect(line.commit).toBeNull();
+      expect(line.dirty).toBeNull();
+    });
+
+    /**
+     * Run one `beginRun`/`close()` with `git status --porcelain` answering
+     * `statusOut`, and return the ledger line.
+     *
+     * PARTIALLY mocked: `device-lock.js` (which `run-record.js` imports) promisifies
+     * `execFile` at module load, so replacing the whole of `node:child_process`
+     * breaks the import chain rather than the function under test.
+     */
+    const withGit = async (statusOut) => {
+      vi.resetModules();
+      vi.doMock('node:child_process', async (importOriginal) => ({
+        ...(await importOriginal()),
+        execFileSync: (_cmd, args) => (args[0] === 'rev-parse' ? 'deadbee\n' : statusOut),
+      }));
+      try {
+        const {
+          beginRun,
+          readRuns: ledger,
+          runsLedgerPath,
+        } = await import('../../../scripts/run-record.js');
+        beginRun({ lock: LOCK, run: 'test:rta' }).close();
+        return ledger(runsLedgerPath())[0];
+      } finally {
+        vi.doUnmock('node:child_process');
+        vi.resetModules();
+      }
+    };
+
+    it('stamps the commit and a dirty tree when git does answer', async () => {
+      // Mocked because the real answer depends on the checkout the tests run in,
+      // and "is the working tree dirty right now" is not something a unit test can
+      // pin. What IS pinned: both values reach the ledger line, and a non-empty
+      // `status --porcelain` reads as dirty.
+      expect(await withGit(' M scripts/run-record.js\n')).toMatchObject({
+        commit: 'deadbee',
+        dirty: true,
+      });
+    });
+
+    it('counts an UNTRACKED file as dirty — it still gets compiled in', async () => {
+      // `--porcelain` keeps its default untracked handling on purpose: an untracked
+      // `.bs` under `source/` lands in the build like any other file, so ignoring
+      // untracked files would report `dirty: false` for a run HEAD does not
+      // describe. Ignored paths (`out/`, `.device-runs/`) never appear here.
+      expect((await withGit('?? source/newThing.bs\n')).dirty).toBe(true);
+    });
+
+    it('reports a clean tree as false, not as unknown', async () => {
+      // `dirty: false` is a claim ("HEAD describes what ran"); `null` is the
+      // absence of one. Collapsing them would let an unanswerable git report as a
+      // clean baseline.
+      expect((await withGit('\n')).dirty).toBe(false);
+    });
+
+    it('is resolved at the OPEN, so the exit net folds it too', async () => {
+      // Provenance is captured in `beginRun` and closed over, exactly as
+      // `cumulative` is above — the handle's `close()` and the process-exit net
+      // fold the SAME args object, so a run abandoned to a signal handler carries
+      // what an explicit close would. Capturing it at the open is also what keeps a
+      // git subprocess off the exit path, where only synchronous work is legal.
+      const { beginRun, readRuns: ledger, runsLedgerPath } = await fresh();
+      process.env.npm_lifecycle_event = 'screenshots:capture';
+      try {
+        const run = beginRun({ lock: LOCK, run: 'capture-screenshots' });
+        delete process.env.npm_lifecycle_event; // gone by close time — the open already read it
+        run.close();
+        expect(ledger(runsLedgerPath())[0].variant).toBe('screenshots:capture');
+      } finally {
+        delete process.env.npm_lifecycle_event;
+      }
+    });
+  });
+
   it('writeRunMeta refuses an implicit directory', async () => {
     // The default this used to carry was `out/rta` — an alias onto one known run
     // kind, which is the clobber the split removes. A silent no-op would be worse
@@ -366,6 +490,45 @@ describe('summarizeRun', () => {
       run: 'test:rta',
       what: 'test:rta',
     });
+    expect(summary.what).toBeUndefined();
+  });
+
+  it('carries the invocation and the code it ran against', () => {
+    const summary = summarizeRun({
+      startedAt: '2026-08-11T15:44:00Z',
+      endedAt: '2026-08-11T15:46:00Z',
+      run: 'test:rta',
+      variant: 'test:rta:fast',
+      commit: 'abc1234',
+      dirty: true,
+    });
+    expect(summary).toMatchObject({ variant: 'test:rta:fast', commit: 'abc1234', dirty: true });
+  });
+
+  it('emits the three filter keys even when they are unknown', () => {
+    // The contract that separates these from `what`: they are what a baseline
+    // SELECTS on, so `runs.filter(r => r.variant === 'test:rta')` must never drop a
+    // row because the field was omitted as redundant. `null` says unknown; missing
+    // would require the reader to know a convention.
+    const summary = summarizeRun({ startedAt: 'a', endedAt: 'b', run: 'test:rta' });
+    expect(summary.variant).toBeNull();
+    expect(summary.commit).toBeNull();
+    expect(summary.dirty).toBeNull();
+    expect(Object.keys(summary)).toEqual(expect.arrayContaining(['variant', 'commit', 'dirty']));
+  });
+
+  it('keeps `variant` even when it equals the run kind — unlike `what`', () => {
+    // A full `npm run test:rta` has variant === run. Omitting it there is exactly
+    // the case that would break a filter, so the redundancy rule that governs
+    // `what` deliberately does NOT apply here.
+    const summary = summarizeRun({
+      startedAt: 'a',
+      endedAt: 'b',
+      run: 'test:rta',
+      variant: 'test:rta',
+      what: 'test:rta',
+    });
+    expect(summary.variant).toBe('test:rta');
     expect(summary.what).toBeUndefined();
   });
 

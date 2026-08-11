@@ -47,6 +47,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { writeRunMeta } from './device-lock.js';
 
 /**
@@ -232,7 +233,17 @@ export function crossesHourBoundary(fromIso, toIso) {
  * The hour flag is meaningless there (any session over an hour trips it), and a
  * flag that always fires is one nobody reads, so the formatter drops it.
  */
-export function summarizeRun({ startedAt, endedAt, failures = [], run, what, cumulative = false }) {
+export function summarizeRun({
+  startedAt,
+  endedAt,
+  failures = [],
+  run,
+  what,
+  variant,
+  commit,
+  dirty,
+  cumulative = false,
+}) {
   return {
     run,
     // What the lock holder called itself, when it says more than the run kind
@@ -240,6 +251,19 @@ export function summarizeRun({ startedAt, endedAt, failures = [], run, what, cum
     // the only record that survives the next run — cannot say which take a line
     // came from. Omitted when it would just repeat `run`.
     what: what && what !== run ? what : undefined,
+    // The npm script that produced this run, and the code it ran against. These
+    // three are what let a Phase-3 baseline SELECT its runs instead of being told
+    // to `rm` the ledger first — see `codeState` and the docs' ledger section.
+    //
+    // ALWAYS emitted, unlike `what` above, and that asymmetry is deliberate:
+    // `what` is prose for a human reading a line, but these are FILTER KEYS. A key
+    // that is absent when it equals some default silently drops rows from
+    // `runs.filter(r => r.variant === 'test:rta')` — which is the same shape of
+    // quiet miscount the ledger exists to prevent. `null` says "unknown"; missing
+    // would say "you have to know the convention".
+    variant: variant ?? null,
+    commit: commit ?? null,
+    dirty: dirty ?? null,
     startedAt,
     endedAt,
     cumulative: cumulative || undefined,
@@ -307,6 +331,40 @@ export function formatRunSummary(summary, file = failuresPath()) {
 }
 
 /**
+ * Which code this run actually ran against.
+ *
+ * `commit` alone would over-claim: during RTA work the tree is dirty far more often
+ * than not, and a bare SHA on a modified tree asserts a reproducibility the run does
+ * not have. So `dirty` rides with it, and a baseline that mixes the two can say so.
+ *
+ * `--porcelain` with its DEFAULT untracked handling, deliberately: an untracked
+ * `.bs` under `source/` is compiled into the build like any other file, so ignoring
+ * untracked files would report `dirty: false` for a run whose code HEAD does not
+ * describe. Ignored paths are excluded by definition, so `out/` and `.device-runs/`
+ * never trip it.
+ *
+ * Called from `beginRun`, never from `endRun` — the close runs inside a
+ * `process.on('exit')` handler, and spawning a subprocess from there is a far worse
+ * idea than paying ~10 ms once at the top of a multi-minute device run.
+ *
+ * Returns nulls rather than throwing: a checkout without git, or a tarball export,
+ * is a fine place to run the device tests and a bad place to fail them over
+ * bookkeeping.
+ */
+function codeState() {
+  const git = (args) =>
+    execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  try {
+    return {
+      commit: git(['rev-parse', '--short', 'HEAD']).trim() || null,
+      dirty: git(['status', '--porcelain']).trim().length > 0,
+    };
+  } catch {
+    return { commit: null, dirty: null };
+  }
+}
+
+/**
  * Open a run: stamp its origin, and clear the previous run's failure records.
  *
  * Every device entry point wants the same steps around its work, and three of them
@@ -316,8 +374,9 @@ export function formatRunSummary(summary, file = failuresPath()) {
  *
  * Returns `{ startedAt, dir, env, close }`. Pass `env` into a spawned child so it
  * writes its records where this run's fold will look for them, and call `close()`
- * to fold — it carries the lock, kind, origin and `cumulative` this call already
- * named, so no caller has to restate them and none can restate them wrongly.
+ * to fold — it carries the lock, kind, origin, `cumulative` and the invocation
+ * provenance this call already resolved, so no caller has to restate them and none
+ * can restate them wrongly.
  */
 export function beginRun({ lock, run, cumulative = false }) {
   activeRunDir = runDir(run);
@@ -325,11 +384,25 @@ export function beginRun({ lock, run, cumulative = false }) {
   closedSummary = undefined; // ...and a close that has not happened yet
   // Written BEFORE the work so it survives a run that never reaches `endRun`.
   const startedAt = new Date().toISOString();
-  writeRunMeta(lock.meta, { run, startedAt }, activeRunDir);
+  // Which npm script this was. Every device entry point is invoked as `node
+  // scripts/<x>.js` DIRECTLY from its npm script (none delegates through another
+  // `npm run`), so this arrives as the name the operator actually typed —
+  // `test:rta:fast` rather than `test:rta`, `test:integration` rather than the run
+  // kind they share. That distinction is invisible in the run kind and matters to a
+  // baseline: `:fast` skips the deploy, `:capture` adds per-screen PNG work, and
+  // `test:all` is a different suite from `test:unit`. Falls back to the run kind
+  // when someone invokes the script by hand.
+  const variant = process.env.npm_lifecycle_event || run;
+  const { commit, dirty } = codeState();
+  writeRunMeta(lock.meta, { run, startedAt, variant, commit, dirty }, activeRunDir);
   resetFailures();
-  // Closed over, not read from module state, so a second run in one process cannot
-  // make an earlier run's handle close the later one.
-  const args = { lock, run, startedAt, cumulative };
+  // Closed over rather than re-read at close time, so a handle always folds the run
+  // it was handed. Note the LIMIT of that: `activeRunDir` and the `closedSummary`
+  // guard below are module state, so this makes a handle carry the right VALUES —
+  // it does not make two concurrently-open runs safe in one process. Nothing does
+  // that today, and no entry point opens more than one; if a fifth ever needs to,
+  // this state moves onto the handle.
+  const args = { lock, run, startedAt, cumulative, variant, commit, dirty };
   closeArgs = args;
   armCloseOnExit();
   return {
@@ -377,18 +450,24 @@ function armCloseOnExit() {
  * and a second fold would append a second ledger line for one run — which is
  * precisely the miscount an N-run baseline cannot absorb.
  */
-export function endRun({ lock, run, startedAt, cumulative = false }) {
+export function endRun({ lock, run, startedAt, cumulative = false, variant, commit, dirty }) {
   if (closedSummary) return closedSummary;
   const summary = summarizeRun({
     run,
     what: lock?.meta?.holder?.what,
+    // Resolved at the OPEN and carried here, so the exit net folds the same
+    // provenance an explicit close would — and so no git subprocess runs on the
+    // exit path. See `codeState`.
+    variant,
+    commit,
+    dirty,
     startedAt,
     endedAt: new Date().toISOString(),
     failures: readFailures(),
     cumulative,
   });
   closedSummary = summary;
-  writeRunMeta(lock.meta, { run, startedAt, ...summary }, getRunDir());
+  writeRunMeta(lock?.meta, { run, startedAt, ...summary }, getRunDir());
   appendJsonLine(runsLedgerPath(), summary);
   for (const line of formatRunSummary(summary)) console.log(line);
   return summary;
