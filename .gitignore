@@ -8,6 +8,10 @@ build/
 # (every `npm run build*` starts with `rimraf out/`). See scripts/run-record.js.
 .device-runs/
 build-analysis/
+# roku-deploy drops a 10-byte case-sensitivity probe in the repo ROOT (random hex
+# suffix) and does not always clean it up — every sideload can leave one, so it
+# shows up as untracked and blocks any clean-tree gate (`/pr`'s pre-flight).
+ROKU_DEPLOY_CASE_CHECK_*.TXT
 roku_modules
 # Rooibos
 bsconfig-tdd.json
