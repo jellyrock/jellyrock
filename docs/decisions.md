@@ -332,6 +332,39 @@ in `docs/progress.md`) shows real cross-host contention — but note the resourc
 lock would then be the demo server account rather than the device, so the answer
 still would not be to restore the Actions-API check.
 
+## decision-id: run-record-per-run-kind
+
+**date**: 2026-08-10
+**status**: accepted
+**related-files**: scripts/run-record.js, scripts/device-lock.js, scripts/rta-run.js, scripts/run-roku-tests.js, scripts/capture-screenshots.js, tests/rta/demos/run.mjs, tests/rta/lib/diagnostics.js
+
+The device run record (`run-meta.json`, `failures.jsonl`, `runs.jsonl`) lives in a
+directory keyed on the RUN KIND — `out/rta/`, `out/screenshots/`, `out/demo/`,
+`out/device/` — and its lifecycle (`beginRun` / `endRun`) belongs to
+`scripts/run-record.js`, not to the RTA diagnostics module that writes into it.
+
+The directory split is not tidiness. `writeRunMeta` is a full overwrite against a
+module-level constant, so while all four entry points shared `out/rta/run-meta.json`
+any device run destroyed the previous one's record. Harmless while the file held
+only lock provenance; a live data-loss path once it carries folded failure records,
+because the flake baseline's documented workflow is to read them back across N runs
+— so a `npm run test:unit` between two RTA runs silently ate the first one's. An
+unmapped run kind gets its own sanitized directory rather than defaulting to
+`out/rta/`, since a default that aliases onto a known kind reintroduces exactly that
+clobber for the case nobody tested.
+
+The module split follows from the Rooibos runner needing the same record: #800
+reddened on `SessionManagement.spec.bs` → "connects to Jellyfin stable demo server",
+a Rooibos test against the same fixture, so its run window is evidence for the open
+re-derivation. Ruled out: having `run-roku-tests.js` import
+`tests/rta/lib/diagnostics.js`, which would drag the whole `roku-test-automation`
+client into a runner that drives the device over telnet and never touches ODC, and
+would invert the layering. Also ruled out: leaving `run-roku-tests.js` alone — that
+does not dodge the clobber, it only forgoes the instrumentation.
+
+This closes the "(b)" half of the `run-meta.json` followup in `docs/progress.md`;
+the CI-artifact half stays open.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

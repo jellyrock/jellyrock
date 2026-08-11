@@ -35,23 +35,39 @@
  * never by dumping the node. `JellyfinUser` carries `authToken`, so a whole-node
  * read would put a live demo credential into an artifact.
  *
+ * ## Two load signals, and why both
+ *
+ * `loadState` is GRID-ONLY. It is declared on `BaseGridView` alone
+ * (`components/ItemGrid/BaseGridView.xml`), where it carries a real four-value
+ * vocabulary — `loading` / `skeleton` / `loaded` / `empty`. `ItemDetails` extends
+ * `JRScreen`, a SIBLING of BaseGridView, so on a detail screen it does not resolve
+ * and prints `—`. That is correct, not a broken capture.
+ *
+ * The universal signal is the app shell's, on the scene root: `isLoading` /
+ * `loadingText` / `isRemoteDisabled`, driven by `startLoadingSpinner` /
+ * `stopLoadingSpinner` (`source/utils/misc.bs`) from every screen including
+ * ItemDetails. `isRemoteDisabled` is the highest-value field in the whole dump:
+ * `JRScene.onKeyEvent` does `if m.top.isRemoteDisabled then return true`, so a
+ * timeout with it set means THE APP WAS SWALLOWING OUR KEYPRESSES — the north-star
+ * failure mode in `tests/rta/CLAUDE.md`, which until now could only be inferred.
+ *
  * ## Where it lands
  *
- * One JSON line per failure into `out/rta/failures.jsonl`, appended by whichever
+ * One JSON line per failure into this run's `failures.jsonl`, appended by whichever
  * process hit it (the Vitest child for the suite; the orchestrator itself for
  * `capture-screenshots` / `demos`, which share these navs and are not Vitest).
- * [`scripts/rta-run.js`](../../../scripts/rta-run.js) folds them into
- * `out/rta/run-meta.json` once the child has exited, and prints the summary. The
- * parent stays the SOLE writer of run-meta.json: a child read-modify-writing a
- * file the parent also owns is how that record would start losing fields.
+ * The entry point's `endRun` folds them into `run-meta.json` once the child has
+ * exited, and prints the summary. The parent stays the SOLE writer of
+ * run-meta.json: a child read-modify-writing a file the parent also owns is how
+ * that record would start losing fields.
+ *
+ * The record itself — where it lives, its lifecycle, the run ledger — belongs to
+ * [`scripts/run-record.js`](../../../scripts/run-record.js), which is shared with
+ * the Rooibos runner and knows nothing about devices. This module only supplies
+ * the RTA-specific capture that goes INTO it.
  */
-import fs from 'node:fs';
-import path from 'node:path';
 import { odc } from 'roku-test-automation';
-
-/** Relative to cwd, like `device-lock.js`'s run-meta path — every entry point runs from the repo root. */
-export const FAILURES_PATH = path.join('out', 'rta', 'failures.jsonl');
-const RUN_META_PATH = path.join('out', 'rta', 'run-meta.json');
+import { crossesHourBoundary, recordFailure, runStartedAt } from '../../../scripts/run-record.js';
 
 /**
  * The fixed part of the dump — the questions worth asking about ANY failure.
@@ -66,7 +82,14 @@ const RUN_META_PATH = path.join('out', 'rta', 'run-meta.json');
 const CORE_REQUESTS = {
   viewSubtype: { base: 'global', keyPath: 'activeRoutedView.subtype()' },
   viewId: { base: 'global', keyPath: 'activeRoutedView.id' },
+  // Grid-only, by design — see "Two load signals" in the header.
   loadState: { base: 'global', keyPath: 'activeRoutedView.loadState' },
+  // The app shell's own state, on the scene root, and therefore the one load
+  // signal that answers on EVERY screen. `isRemoteDisabled` is the north-star
+  // tell: set means JRScene.onKeyEvent was returning true for every key we sent.
+  isLoading: { base: 'scene', keyPath: 'isLoading' },
+  loadingText: { base: 'scene', keyPath: 'loadingText' },
+  isRemoteDisabled: { base: 'scene', keyPath: 'isRemoteDisabled' },
   homeRowCount: { base: 'scene', keyPath: '#homeRows.content.getChildCount()' },
   detailRowCount: {
     base: 'global',
@@ -83,7 +106,8 @@ const unwrap = (results, key) => (results?.[key]?.found ? results[key].value : u
 /**
  * Bound on the capture, well under RTA's 10 s per-request default.
  *
- * The read is 26 ms when the device is healthy (measured on `.177`), so this only
+ * The read is a median 21 ms when the device is healthy (n=20 on `.177`, range
+ * 18-30 with occasional ~70 ms spikes under a busy render thread), so this only
  * ever bites when the device has stopped answering — and there it is the point:
  * a suite failing N times against a dead device would otherwise spend 10 s per
  * failure re-confirming the same thing. The unanswered read is still recorded.
@@ -102,7 +126,9 @@ export async function captureFailureState() {
   const started = Date.now();
   const opts = { timeout: CAPTURE_TIMEOUT_MS };
   const [focused, batch] = await Promise.all([
-    odc.getFocusedNode({ includeNode: true }, opts).catch(() => null),
+    // `includeNode` already defaults to true; we need the node for its subtype,
+    // and only subtype/id/keyPath are kept — the rest never reaches a record.
+    odc.getFocusedNode({}, opts).catch(() => null),
     odc
       .getValues({ requests: CORE_REQUESTS }, opts)
       .catch((e) => ({ error: e?.message || String(e) })),
@@ -122,6 +148,13 @@ export async function captureFailureState() {
       id: unwrap(results, 'viewId'),
       loadState: unwrap(results, 'loadState'),
     },
+    // Source field names verbatim, so a record greps back to the component that
+    // wrote it. The friendlier wording lives in `formatState`, for humans only.
+    shell: {
+      isLoading: unwrap(results, 'isLoading'),
+      loadingText: unwrap(results, 'loadingText'),
+      isRemoteDisabled: unwrap(results, 'isRemoteDisabled'),
+    },
     counts: {
       homeRows: unwrap(results, 'homeRowCount'),
       detailRows: unwrap(results, 'detailRowCount'),
@@ -135,6 +168,31 @@ export async function captureFailureState() {
     captureMs: Date.now() - started,
   };
 }
+
+/**
+ * The stable slugs a failure aggregates under. THE key Phase 3's flake baseline
+ * groups by, which is why it is a closed set rather than five string literals.
+ *
+ * Two ways a bucket goes wrong, and they need different guards: two names for one
+ * class SPLITS the count (a new throw site inventing its own slug), and one name
+ * for two classes MERGES it (a copy-pasted entry). The frozen object plus a
+ * uniqueness assertion in the tests cover the second; `kindUnknown` below covers
+ * the first.
+ *
+ * Add a member here BEFORE using it at a throw site — never an inline literal.
+ */
+export const FAILURE_KINDS = Object.freeze({
+  WAIT_FOR_TIMEOUT: 'wait-for-timeout',
+  WAIT_FOCUSED_TIMEOUT: 'wait-focused-timeout',
+  HOME_LIBRARY_TILE_NOT_FOUND: 'home-library-tile-not-found',
+  GRID_LOAD_TIMEOUT: 'grid-load-timeout',
+  DETAIL_ROW_NOT_FOUND: 'detail-row-not-found',
+});
+
+const KNOWN_KINDS = new Set(Object.values(FAILURE_KINDS));
+
+/** True for a slug that is not a registered member — see `FAILURE_KINDS`. */
+export const isUnknownKind = (kind) => !KNOWN_KINDS.has(kind);
 
 /**
  * Vitest's name for the test we are inside, when there is one.
@@ -153,19 +211,50 @@ async function currentTestName() {
   }
 }
 
+let failureContext;
+/**
+ * Ambient "what was this failure part of?", for entry points Vitest cannot label.
+ *
+ * `currentTestName` covers the suite; nothing covered `capture-screenshots` or
+ * `demos`, which drive the same navs. It also carries the piece those runners know
+ * and the throw site cannot: `capture-screenshots` RETRIES a screen three times,
+ * so without an attempt number a recovered screen leaves records indistinguishable
+ * from real failures.
+ *
+ * Pass nothing to clear.
+ */
+export function setFailureContext(context) {
+  failureContext = context && Object.keys(context).length ? context : undefined;
+}
+
 /** Truncated to keep a scannable line; the full value stays in the JSONL record. */
 const short = (v) => (typeof v === 'string' && v.length > 12 ? `${v.slice(0, 8)}…` : v);
 
-/** The 2–4 lines a human reads in the terminal. The JSONL record carries everything. */
+/**
+ * The 2–4 lines a human reads in the terminal. The JSONL record carries everything.
+ *
+ * The shell fields print only when they are the INTERESTING value — a loaded,
+ * responsive app says nothing about either, so a normal failure stays as short as
+ * it was before they existed and `input=BLOCKED` keeps its signal value.
+ */
 function formatState(state, observed) {
   const lines = [];
   if (state.unreachable) lines.push(`device did not answer ODC: ${state.unreachable}`);
   const focus = state.focus ? `${state.focus.subtype}@${state.focus.keyPath}` : 'none';
+  const shell = state.shell || {};
+  const shellBits = [
+    // The app was returning true for every key we sent (JRScene.onKeyEvent).
+    shell.isRemoteDisabled === true ? 'input=BLOCKED' : null,
+    shell.isLoading === true
+      ? `spinner=on${shell.loadingText ? `("${shell.loadingText}")` : ''}`
+      : null,
+  ].filter(Boolean);
   lines.push(
     // A routed view's id is the item GUID, so it is truncated here for the same
     // reason the identity line is — the untruncated value stays in the record.
     `view=${state.view.subtype ?? '?'}${state.view.id ? `#${short(state.view.id)}` : ''} ` +
-      `loadState=${state.view.loadState ?? '—'} · focus=${focus}`,
+      `loadState=${state.view.loadState ?? '—'} · focus=${focus}` +
+      (shellBits.length ? ` · ${shellBits.join(' · ')}` : ''),
   );
   const counts = [
     state.counts.homeRows !== undefined ? `home=${state.counts.homeRows}` : null,
@@ -175,62 +264,15 @@ function formatState(state, observed) {
     ([k, v]) => `${k}=${Array.isArray(v) ? `[${v.join(', ')}]` : JSON.stringify(v)}`,
   );
   if (counts.length || seen.length) lines.push([...counts, ...seen].join(' · '));
-  lines.push(
-    `server=${state.identity.serverUrl ?? '?'} (id ${short(state.identity.serverId) ?? '?'}) ` +
-      `user=${short(state.identity.userId) ?? '?'}`,
-  );
+  // Suppressed when nothing resolved: on an unreachable device the first line
+  // already says so, and `server=? (id ?) user=?` is pure noise under it.
+  const { serverUrl, serverId, userId } = state.identity;
+  if (serverUrl !== undefined || serverId !== undefined || userId !== undefined) {
+    lines.push(
+      `server=${serverUrl ?? '?'} (id ${short(serverId) ?? '?'}) user=${short(userId) ?? '?'}`,
+    );
+  }
   return lines.map((l) => `        ↳ ${l}`).join('\n');
-}
-
-let runStartCache;
-/**
- * When this run began, per the record the entry point wrote before spawning us.
- *
- * This is `run-meta.json`'s first reader. Until now it was written by four entry
- * points and read by nothing — so a degraded or unlocked run was only ever
- * identifiable by a scrollback line. Read once and cached: the file does not
- * change while the run is in flight.
- */
-function runStartedAt() {
-  if (runStartCache !== undefined) return runStartCache;
-  try {
-    const meta = JSON.parse(fs.readFileSync(RUN_META_PATH, 'utf8'));
-    runStartCache = meta.startedAt || meta.writtenAt || null;
-  } catch {
-    runStartCache = null;
-  }
-  return runStartCache;
-}
-
-/**
- * True when the top of an hour falls between two instants.
- *
- * The demo server resets hourly (watched data, playlists), so a ~13-minute suite
- * (measured at 13.6 min) starting after roughly `:46` can have its seeded state wiped MID-RUN — which
- * surfaces as an unrelated-looking nav timeout, never as an obvious seeding
- * error. Epoch-hour flooring is UTC, which is what the reset tracks.
- */
-export function crossesHourBoundary(fromIso, toIso) {
-  const a = Date.parse(fromIso);
-  const b = Date.parse(toIso);
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
-  const HOUR = 3600_000;
-  return Math.floor(a / HOUR) !== Math.floor(b / HOUR);
-}
-
-/**
- * Append one failure record. Never throws — bookkeeping must not mask the failure.
- *
- * `file` exists so the hardware-free tests can exercise the real append/read/reset
- * round-trip against a temp path instead of clobbering a live run's records.
- */
-export function recordFailure(entry, file = FAILURES_PATH) {
-  try {
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.appendFileSync(file, `${JSON.stringify(entry)}\n`);
-  } catch {
-    // A diagnostic that fails the run would be worse than no diagnostic.
-  }
 }
 
 /**
@@ -243,7 +285,7 @@ export function recordFailure(entry, file = FAILURES_PATH) {
  *
  * @param {string} message - the existing, human-written failure message
  * @param {object} opts
- * @param {string} opts.kind - stable slug for aggregation across runs (Phase 3)
+ * @param {string} opts.kind - a `FAILURE_KINDS` member; the Phase-3 aggregation key
  * @param {string} [opts.label] - what the wait was waiting for
  * @param {number} [opts.waitedMs] - how long it waited before giving up
  * @param {object} [opts.observed] - state the loop ALREADY read; costs no extra calls
@@ -256,9 +298,14 @@ export async function diagnosedError(message, { kind, label, waitedMs, observed 
   recordFailure({
     at,
     kind,
+    // Recorded rather than corrected: an unregistered slug is a bucket-integrity
+    // problem, and the run summary says so. Silently normalising it here would
+    // hide the split it causes; throwing would break the never-throws contract.
+    kindUnknown: isUnknownKind(kind) || undefined,
     label,
     waitedMs,
     test: await currentTestName(),
+    context: failureContext,
     message,
     observed,
     state,
@@ -269,78 +316,4 @@ export async function diagnosedError(message, { kind, label, waitedMs, observed 
     ? '\n        ↳ this run has crossed the top of the hour — the demo server resets its seeded state then'
     : '';
   return new Error(`${message}\n${formatState(state, observed)}${reset}`);
-}
-
-// ── The parent's side: fold the child's records into the run record ───────────
-
-/** Drop any records left by a previous run, so a fold can only ever see this one's. */
-export function resetFailures(file = FAILURES_PATH) {
-  try {
-    fs.rmSync(file, { force: true });
-  } catch {
-    // Nothing to clear, or the directory does not exist yet.
-  }
-}
-
-/** Read back the records. A truncated final line (a killed child) is skipped, not fatal. */
-export function readFailures(file = FAILURES_PATH) {
-  let raw;
-  try {
-    raw = fs.readFileSync(file, 'utf8');
-  } catch {
-    return [];
-  }
-  const out = [];
-  for (const line of raw.split('\n')) {
-    if (!line.trim()) continue;
-    try {
-      out.push(JSON.parse(line));
-    } catch {
-      // A half-written line means the process died mid-append; the rest still counts.
-    }
-  }
-  return out;
-}
-
-/** The whole-run view: the wall-clock window, whether it straddled a reset, and the failures. */
-export function summarizeRun({ startedAt, endedAt, failures }) {
-  return {
-    startedAt,
-    endedAt,
-    durationMs: Math.max(0, Date.parse(endedAt) - Date.parse(startedAt)) || 0,
-    crossedHourBoundary: crossesHourBoundary(startedAt, endedAt),
-    failures,
-  };
-}
-
-const clock = (iso) => (Date.parse(iso) ? new Date(iso).toISOString().slice(11, 16) : '??:??');
-
-/** Terminal lines for the end of a run. Returns [] when there is nothing to say. */
-export function formatRunSummary(summary) {
-  const { failures = [], startedAt, endedAt, crossedHourBoundary } = summary;
-  if (!failures.length && !crossedHourBoundary) return [];
-  const window = `${clock(startedAt)}→${clock(endedAt)} UTC`;
-  const lines = [];
-  if (crossedHourBoundary) {
-    lines.push(
-      `[rta] this run crossed the top of the hour (${window}) — the demo server resets its ` +
-        'seeded state then, so a mid-run failure here may be the fixture, not the app.',
-    );
-  }
-  if (failures.length) {
-    lines.push(`[rta] ${failures.length} failure(s) captured with device state → ${FAILURES_PATH}`);
-    for (const f of failures) {
-      const where = f.test || f.label || f.kind || 'unknown';
-      const view = f.state?.view;
-      const focus = f.state?.focus;
-      lines.push(
-        `[rta]   ${clock(f.at)} ${where} — ${f.kind || 'failure'}` +
-          (view?.subtype ? `; view=${view.subtype}` : '') +
-          (view?.loadState ? ` loadState=${view.loadState}` : '') +
-          (focus ? ` focus=${focus.subtype}` : '') +
-          (f.afterHourBoundary ? ' [AFTER the hourly reset]' : ''),
-      );
-    }
-  }
-  return lines;
 }

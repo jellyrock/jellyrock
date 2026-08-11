@@ -17,7 +17,7 @@
 import { ecp, odc } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
 import { libraryIdFor } from './jellyfin.js';
-import { diagnosedError } from './diagnostics.js';
+import { diagnosedError, FAILURE_KINDS } from './diagnostics.js';
 import {
   press,
   getVal,
@@ -196,7 +196,7 @@ async function findHomeLibraryTile(collectionType, libraryId = null) {
   // `rows` is the LAST pass's view of Home, so the dump says what the scan gave up
   // against rather than only what it wanted.
   const diag = {
-    kind: 'home-library-tile-not-found',
+    kind: FAILURE_KINDS.HOME_LIBRARY_TILE_NOT_FOUND,
     label: `home library tile (${collectionType})`,
     waitedMs: Date.now() - start,
     observed: { collectionType, libraryId, rows },
@@ -328,7 +328,7 @@ async function waitGridLoaded(label, timeout = 20000) {
   throw await diagnosedError(
     `nav timed out waiting for ${label} (last loadState=${JSON.stringify(last)})`,
     {
-      kind: 'grid-load-timeout',
+      kind: FAILURE_KINDS.GRID_LOAD_TIMEOUT,
       label,
       waitedMs: Date.now() - start,
       observed: { lastLoadState: last },
@@ -477,7 +477,7 @@ async function openChildDetailByRowType(tileType) {
       `detail row with tile type "${tileType}" not found after ` +
         `${Math.round((Date.now() - rowsStart) / 1000)}s (${rowCount} row(s) present)`,
       {
-        kind: 'detail-row-not-found',
+        kind: FAILURE_KINDS.DETAIL_ROW_NOT_FOUND,
         label: `detail row "${tileType}"`,
         waitedMs: Date.now() - rowsStart,
         observed: { wanted: tileType, rowTypes: seenTypes },

@@ -38,13 +38,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setupRtaEnv, deployRtaBuild, relaunch, ecp } from '../tests/rta/lib/driver.js';
 import { snapshotRegistry, restoreRegistry } from '../tests/rta/lib/registry.js';
-import {
-  resetFailures,
-  readFailures,
-  summarizeRun,
-  formatRunSummary,
-} from '../tests/rta/lib/diagnostics.js';
-import { acquireDeviceLock, writeRunMeta } from './device-lock.js';
+import { beginRun, endRun } from './run-record.js';
+import { acquireDeviceLock } from './device-lock.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const watch = process.argv.includes('--watch');
@@ -57,16 +52,14 @@ setupRtaEnv(); // throws if ROKU_IP / ROKU_PASSWORD are missing — fail before 
 // minutes, so a contended run fails in about a second instead of after a build —
 // which is the difference between an agent being able to react and not.
 const lock = await acquireDeviceLock({ what: runName });
-// `startedAt` is the run's wall-clock origin, and it is load-bearing rather than
-// decorative: the demo server resets its seeded state on the hour, so a ~13-minute
-// suite (measured at 13.6 min) starting after roughly `:46` loses that state MID-RUN and fails as an
-// unrelated-looking nav timeout. The child reads this back to stamp each failure;
-// the summary below reports the window. Written BEFORE the suite so it survives a
-// run that never reaches the fold.
-const startedAt = new Date().toISOString();
-writeRunMeta(lock.meta, { run: runName, startedAt });
-// Records from a previous run would otherwise be folded in as this one's.
-resetFailures();
+// Opens the run record: stamps the wall-clock origin and clears the previous
+// run's failure records. The origin is load-bearing rather than decorative — the
+// demo server resets on the hour, so a suite starting after roughly `:46` has
+// that reset land MID-RUN and fail as an unrelated-looking nav timeout. (A full
+// pass measured 13.6 min and 13.7 min on `.177`, which puts the threshold at
+// `:60 - 13.7`.) The Vitest child reads the origin back to stamp each failure;
+// `endRun` reports the window.
+const run = beginRun({ lock, run: runName });
 
 if (process.env.RTA_NO_DEPLOY === '1') {
   console.log('[rta] RTA_NO_DEPLOY=1 — skipping deploy, using the already-sideloaded build');
@@ -90,7 +83,9 @@ const child = spawn(
     'vitest.rta.config.js',
     ...passthrough,
   ],
-  { cwd: repoRoot, stdio: 'inherit', env: { ...process.env, RTA_RUNNER: '1' } },
+  // `run.env` carries RTA_RUN_DIR — the child is a separate process, so it cannot
+  // inherit which directory this run's records belong in any other way.
+  { cwd: repoRoot, stdio: 'inherit', env: { ...process.env, RTA_RUNNER: '1', ...run.env } },
 );
 
 let interrupting = false;
@@ -129,13 +124,11 @@ const exitCode = await new Promise((resolve) => {
 // points and read by nothing, so a degraded run's provenance — and now a
 // failure's device state — only ever lived in a scrollback line. Done before the
 // restore, so the summary survives a restore that throws.
-const summary = summarizeRun({
-  startedAt,
-  endedAt: new Date().toISOString(),
-  failures: readFailures(),
-});
-writeRunMeta(lock.meta, { run: runName, startedAt, ...summary });
-for (const line of formatRunSummary(summary)) console.log(line);
+//
+// `cumulative` in watch mode: the reset happened once at session start and this
+// fold happens once at exit, so the window spans every iteration rather than one
+// run. The hour flag is meaningless across a window that long.
+endRun({ lock, run: runName, startedAt: run.startedAt, cumulative: watch });
 
 try {
   await restoreRegistry(saved);

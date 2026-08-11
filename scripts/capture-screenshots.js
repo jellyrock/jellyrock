@@ -39,7 +39,9 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 
-import { acquireDeviceLock, writeRunMeta } from './device-lock.js';
+import { acquireDeviceLock } from './device-lock.js';
+import { beginRun, endRun } from './run-record.js';
+import { setFailureContext } from '../tests/rta/lib/diagnostics.js';
 import { RTA_CONFIG } from '../tests/rta/config.js';
 import {
   ecp,
@@ -248,6 +250,8 @@ function writeManifest() {
 
 /** Module-scoped so the top-level catch can release a lock main() took. */
 let activeLock = null;
+/** Module-scoped for the same reason as `activeLock` — the top-level catch closes the run. */
+let activeRun = null;
 
 async function main() {
   const { languages, screens, deploy, regen } = parseArgs();
@@ -266,7 +270,11 @@ async function main() {
   // Taken AFTER the --regen early-exit above, which touches no device at all.
   const lock = await acquireDeviceLock({ what: 'screenshots:capture' });
   activeLock = lock;
-  writeRunMeta(lock.meta, { run: 'capture-screenshots' });
+  // Records to `out/screenshots/`. This path drives the same navs as the RTA
+  // suite, so it produces the same failure records — and used to write them into
+  // the suite's own directory, where the next `test:rta` silently cleared them.
+  const run = beginRun({ lock, run: 'capture-screenshots' });
+  activeRun = run;
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
     process.on(signal, async () => {
       await lock.release();
@@ -371,12 +379,19 @@ async function main() {
   // one bad screen should never abandon a ~15-minute matrix run.
   const captureScreen = async (screen, locale, folder, attempts = 3) => {
     for (let i = 1; i <= attempts; i++) {
+      // Labels each failure record with the screen and which attempt produced it.
+      // Without the attempt number a screen that RECOVERED on retry leaves records
+      // indistinguishable from a real failure, so a fully successful matrix run
+      // reads as if it had failed three times.
+      setFailureContext({ screen: `${folder}/${screen.name}`, locale, attempt: i, attempts });
       try {
         await seedAndNav(screen, locale, folder);
         return;
       } catch (e) {
         console.log(`  ! ${folder}/${screen.name} attempt ${i}/${attempts} failed: ${e.message}`);
         if (i === attempts) throw e;
+      } finally {
+        setFailureContext();
       }
     }
   };
@@ -418,12 +433,18 @@ async function main() {
   writeManifest();
   generateIndex(); // regenerate docs/screenshots/README.md (the by-language index)
   console.log('Done.');
+  endRun({ lock, run: 'capture-screenshots', startedAt: run.startedAt });
   await lock.release();
   process.exit(0); // RTA keeps the port-9000 socket open; exit explicitly
 }
 
 main().catch(async (e) => {
   console.error('capture failed:', e?.stack || e?.message || e);
+  // A matrix run that died mid-way is exactly when the captured device state is
+  // worth reading, so the fold happens on this path too — not only on success.
+  if (activeLock && activeRun) {
+    endRun({ lock: activeLock, run: 'capture-screenshots', startedAt: activeRun.startedAt });
+  }
   await activeLock?.release();
   process.exit(1);
 });

@@ -20,7 +20,9 @@ import { authenticate, getHero, firstMovie } from '../lib/jellyfin.js';
 import { seedHome, seedHomeWithSavedServers } from '../lib/seed.js';
 import { snapshotRegistry, restoreRegistry, armRestoreOnInterrupt } from '../lib/registry.js';
 import { setupRtaEnv, relaunch, hardRelaunch, ecp, odc } from '../lib/driver.js';
-import { acquireDeviceLock, writeRunMeta } from '../../../scripts/device-lock.js';
+import { acquireDeviceLock } from '../../../scripts/device-lock.js';
+import { beginRun, endRun } from '../../../scripts/run-record.js';
+import { setFailureContext } from '../lib/diagnostics.js';
 import {
   press,
   waitHome,
@@ -34,6 +36,7 @@ import { TAKES } from './takes/index.js';
 
 /** Module-scoped so every exit path can release a lock main() took. */
 let activeLock = null;
+let activeRun = null;
 
 const LOCALE = RTA_CONFIG.languages[0];
 const PLAYING_STATES = ['startup', 'buffer', 'play', 'pause']; // Roku media-player active states
@@ -214,7 +217,11 @@ async function main() {
   // party driving the device mid-take does not just fail, it silently ruins
   // footage that looks fine until playback.
   activeLock = await acquireDeviceLock({ what: `demo:${take.name}` });
-  writeRunMeta(activeLock.meta, { run: 'demo', take: take.name });
+  // Records to `out/demo/`. Takes drive the same navs as the suite, so a nav that
+  // times out mid-recording now leaves the device state behind instead of just a
+  // ruined take.
+  activeRun = beginRun({ lock: activeLock, run: 'demo' });
+  setFailureContext({ take: take.name });
   // Registered BEFORE armRestoreOnInterrupt() below, because that installs its
   // own signal handlers which end in process.exit(). Node runs listeners in
   // registration order, so this gets to start the release first. It is
@@ -274,13 +281,20 @@ async function main() {
   }
 }
 
+const closeRun = () => {
+  if (activeLock && activeRun)
+    endRun({ lock: activeLock, run: 'demo', startedAt: activeRun.startedAt });
+};
+
 main()
   .then(async () => {
+    closeRun();
     await activeLock?.release();
     process.exit(0);
   })
   .catch(async (err) => {
     console.error(err);
+    closeRun();
     await activeLock?.release();
     process.exit(1);
   });

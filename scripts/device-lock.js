@@ -103,8 +103,13 @@
  * unlocked rather than blocking device work. A warning line alone is useless to
  * an agent: it is read when the command returns, minutes after the decision, and
  * the exit code stays 0, so a degraded green is indistinguishable from a real
- * one. The lock state is therefore stamped into `out/rta/run-meta.json` as
+ * one. The lock state is therefore stamped into the run record
+ * (`<runDir>/run-meta.json` — `out/rta/`, `out/device/`, … per run kind) as
  * provenance on the RESULT.
+ *
+ * That record is LOCAL-ONLY today: `out/` is gitignored and neither device
+ * workflow uploads it as an artifact, so in CI the provenance still dies with the
+ * runner. Locally it has a reader (the RTA failure fold + printed summary).
  *
  * `RTA_REQUIRE_LOCK=1` turns degraded into a hard failure. CI does NOT set it:
  * CI is alone on .200, so there is no contention for the flag to protect
@@ -133,7 +138,8 @@ import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 
 const API = 'https://api.github.com';
-const RUN_META_PATH = path.join('out', 'rta', 'run-meta.json');
+/** Fallback only — callers with a run lifecycle pass their own. See `writeRunMeta`. */
+const DEFAULT_RUN_DIR = path.join('out', 'rta');
 
 /** Heartbeat interval. Every publisher refreshes; see `startRefresh`. */
 const REFRESH_MS = 5 * 60 * 1000;
@@ -658,12 +664,20 @@ function startRefresh(repo, token, ref, deviceHost, holder) {
  * — from CI, from an agent, from a later triage — instead of living only in a
  * scrollback line nobody reads. Phase 4's measurement provenance extends this
  * same record rather than inventing a second one.
+ *
+ * `dir` is the caller's run-record directory, and it is load-bearing rather than
+ * a tidiness knob: this is a full OVERWRITE, so while every entry point shared one
+ * path, any device run destroyed the previous one's record. Harmless while the
+ * file held only lock provenance; not once it carries folded failure records. The
+ * run-kind mapping lives with those records in `tests/rta/lib/diagnostics.js`
+ * (`runDir`) — this module knows about locks, not about run kinds.
  */
-export function writeRunMeta(meta, extra = {}) {
+export function writeRunMeta(meta, extra = {}, dir = DEFAULT_RUN_DIR) {
   try {
-    fs.mkdirSync(path.dirname(RUN_META_PATH), { recursive: true });
+    const file = path.join(dir, 'run-meta.json');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(
-      RUN_META_PATH,
+      file,
       `${JSON.stringify({ ...meta, ...extra, writtenAt: new Date().toISOString() }, null, 2)}\n`,
     );
   } catch {

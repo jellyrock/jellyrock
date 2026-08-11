@@ -9,7 +9,7 @@
  * Node lookups use RTA's `#id` keyPath (a recursive findNode from the scene root).
  */
 import { ecp, odc } from 'roku-test-automation';
-import { diagnosedError } from './diagnostics.js';
+import { diagnosedError, FAILURE_KINDS } from './diagnostics.js';
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export const press = (key) => ecp.sendKeypress(key);
@@ -71,7 +71,7 @@ export async function waitFor(
     `nav timed out waiting for ${label || keyPath} (last=${JSON.stringify(last)})` +
       (actionErrors ? ` — ${actionErrors} action(s) threw; input may not have been delivered` : ''),
     {
-      kind: 'wait-for-timeout',
+      kind: FAILURE_KINDS.WAIT_FOR_TIMEOUT,
       label: label || keyPath,
       waitedMs: Date.now() - start,
       observed: { keyPath, last, actionErrors },
@@ -103,7 +103,7 @@ export async function waitFocused(
     `nav timed out waiting for focus (${label || 'predicate'}); last=${last}` +
       (actionErrors ? ` — ${actionErrors} action(s) threw; input may not have been delivered` : ''),
     {
-      kind: 'wait-focused-timeout',
+      kind: FAILURE_KINDS.WAIT_FOCUSED_TIMEOUT,
       label: label || 'predicate',
       waitedMs: Date.now() - start,
       observed: { last, actionErrors },

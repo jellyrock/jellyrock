@@ -6,6 +6,8 @@ related-files:
   - tests/rta/lib/nav.js
   - tests/rta/lib/steps.js
   - tests/rta/lib/diagnostics.js
+  - scripts/run-record.js
+  - scripts/run-roku-tests.js
   - tests/rta/specs/screens.spec.js
   - vitest.rta.config.js
   - scripts/capture-screenshots.js
@@ -123,20 +125,62 @@ harness throws through `diagnosedError`
 ([`lib/diagnostics.js`](../../tests/rta/lib/diagnostics.js)), which attaches the
 state the device was actually in.
 
+Both samples below are **real captured output** from forced failures on `.177`, not
+illustrations. A detail screen first:
+
 ```text
-detail row with tile type "Season" not found after 15s (2 row(s) present)
-        ↳ view=ItemDetails#a1b2… loadState=loaded · focus=RowList@#extrasGrid
-        ↳ home=5 · detail=2 · wanted="Season" · rowTypes=[Chapter, Person]
+nav timed out waiting for a detail row count that can never happen (last=3)
+        ↳ view=ItemDetails#91e3d867… loadState=— · focus=ResumeButton@#routerOutlet.#viewTarget.#91e3d867-….#buttons.#resumeButton
+        ↳ home=5 · detail=3 · keyPath="#extrasGrid.content.getChildCount()" · last=3 · actionErrors=0
         ↳ server=https://demo.jellyfin.org/stable (id f0b33816…) user=4ed1b8b4…
 ```
+
+…and the same wait against a library grid:
+
+```text
+nav timed out waiting for a grid item count that can never happen (last=11)
+        ↳ view=BaseGridView#649e2164… loadState=loaded · focus=JRMarkupGrid@#routerOutlet.#viewTarget.#649e2164-….#itemGrid
+        ↳ home=5 · keyPath="#itemGrid.content.getChildCount()" · last=11 · actionErrors=0
+        ↳ server=https://demo.jellyfin.org/stable (id f0b33816…) user=4ed1b8b4…
+```
+
+### `loadState=—` on a detail screen is correct, not a broken capture
+
+The difference between those two lines is the thing worth knowing before you read a
+failure record. **`loadState` is grid-only**: it is declared on `BaseGridView`
+([`BaseGridView.xml`](../../components/ItemGrid/BaseGridView.xml)) alone, where it
+carries a real four-value vocabulary (`loading` / `skeleton` / `loaded` / `empty`).
+`ItemDetails` extends `JRScreen`, a *sibling* of `BaseGridView`, so it has no such
+field and the dump shows `—`. On a detail screen the load signal is `detail=<n>`
+and the shell fields below.
+
+The universal signal — the one that answers on **every** screen — is the app
+shell's, read from the scene root:
+
+| Printed when | Field | What it tells you |
+|---|---|---|
+| `spinner=on("…")` | `isLoading` / `loadingText` | the app was still blocked on a fetch, and which one |
+| `input=BLOCKED` | `isRemoteDisabled` | **the app was swallowing our key presses** |
+
+`input=BLOCKED` is the highest-value field in the dump.
+[`JRScene.onKeyEvent`](../../components/JRScene.bs) does `if m.top.isRemoteDisabled
+then return true`, so a timeout carrying it means every key we sent was consumed and
+reported handled — the *"we acted before it could respond"* failure mode that
+[`tests/rta/CLAUDE.md`](../../tests/rta/CLAUDE.md) opens with, which until now could
+only be inferred. Both print **only when set**, so an ordinary failure stays as
+short as the samples above and the flag keeps its signal value.
 
 - **It costs nothing on the success path.** The capture runs *after* a poll loop
   has given up, at the throw site, never inside a tick — deliberately, because
   [#785](https://github.com/jellyrock/jellyrock/issues/785) may replace those loops
   with `onFieldChangeOnce` and diagnostics must not entrench a shape it might
   delete. At the boundary it is two round-trips issued in parallel (`getFocusedNode`
-  has no batch form; everything else rides one `getValues`) — **measured at 26 ms**
-  on `.177`.
+  has no batch form; everything else rides one `getValues` of 11 key paths) —
+  **median 21 ms, 18–30 ms typical** on `.177` (n=20 on `ItemDetails`), with occasional
+  spikes to ~70 ms when the render thread is busy. Adding the three shell fields did
+  not move that: it is still one round trip, and
+  [the platform cost model](../architecture/async.md#crossing-the-thread-boundary-costs-a-rendezvous--budget-crossings-not-bytes)
+  says the count of crossings dominates the size of each.
 - **The `observed` fields come free.** `rowTypes` / `rows` are retained from reads
   the loop was already making, so "2 row(s) present" becomes "the two that landed
   were Chapter and Person" — which is the difference between *Season is late* and
@@ -144,16 +188,23 @@ detail row with tile type "Season" not found after 15s (2 row(s) present)
 - **Identity is read by named field**, never by dumping the node: `JellyfinUser`
   carries `authToken`, and a whole-node read would put a live demo credential in an
   artifact.
-- **New throw sites in `steps.js` / `nav.js` should use `diagnosedError`**, not a
-  bare `new Error` — otherwise that failure mode is the one nobody can attribute.
+- **A new TIMEOUT in `steps.js` / `nav.js` should throw via `diagnosedError`**, not a
+  bare `new Error` — otherwise that failure mode is the one nobody can attribute. A
+  fail-fast that is *not* a timeout and already names its cause can stay a plain
+  throw; the ambiguous-library refusal in `nav.js` is the standing example.
+- **Register the `kind` first.** It is the key a flake baseline aggregates by, so it
+  comes from the frozen `FAILURE_KINDS` set in `diagnostics.js`, never an inline
+  string. An unregistered slug is recorded as-is and called out in the run summary
+  (`⚠ N unregistered failure kind(s)`) rather than silently forking a bucket.
 
-Each failure also lands as a JSON line in `out/rta/failures.jsonl`, which
-[`scripts/rta-run.js`](../../scripts/rta-run.js) folds into `out/rta/run-meta.json`
-after the suite exits, then summarizes:
+Each failure also lands as a JSON line in the run's `failures.jsonl`, which
+[`endRun`](../../scripts/run-record.js) folds into `run-meta.json` after the suite
+exits, then summarizes:
 
 ```text
-[rta] 1 failure(s) captured with device state → out/rta/failures.jsonl
-[rta]   23:24 screen "seasonDetails" loads — detail-row-not-found; view=ItemDetails loadState=loaded focus=RowList
+[rta] 2 failure(s) captured with device state in this run → out/rta/failures.jsonl
+[rta]   00:55 probe B: forced timeout on ItemDetails — wait-for-timeout; view=ItemDetails focus=ResumeButton
+[rta]   00:56 probe C: forced timeout on a library grid — wait-for-timeout; view=BaseGridView loadState=loaded focus=JRMarkupGrid
 ```
 
 That fold is what finally gives `run-meta.json` a **reader** — it was written by
@@ -161,15 +212,46 @@ four entry points and read by nothing, so lock provenance only ever lived in a
 terminal line that scrolls past. The parent stays the file's sole writer; the child appends to the
 JSONL and never touches run-meta.json.
 
+### One record directory per run kind
+
+`writeRunMeta` is a full overwrite, and every entry point used to share
+`out/rta/run-meta.json`. Harmless while the file held only lock provenance —
+destructive once it carries folded failure records, because a `npm run test:unit`
+between two RTA runs silently ate the first one's. So the record directory is keyed
+on the run kind ([`runDir`](../../scripts/run-record.js)):
+
+| Run | Records to |
+|---|---|
+| `npm run test:rta` (+ `:tdd`, `:fast`, `:capture`) | `out/rta/` |
+| `npm run screenshots:capture` | `out/screenshots/` |
+| `npm run demo` | `out/demo/` |
+| `npm run test:unit` / `test:integration` / `test:all` (Rooibos) | `out/device/` |
+
+Each holds `run-meta.json` (this run, overwritten) plus `failures.jsonl` (this run,
+truncated at start) and `runs.jsonl` — the **ledger**, one line per completed run,
+never reset. Aggregating N back-to-back suites is a read of the ledger rather than
+"remember to copy a file aside after each run".
+
+The two entry points that are not Vitest get a label Vitest would otherwise supply:
+`capture-screenshots` tags each record with its screen, locale and **retry attempt**,
+so a screen that recovered on attempt 2 is not mistaken for a failure.
+
 ### The run's wall-clock window is part of the evidence
 
 The summary also reports the window, and flags a run that **crossed the top of the
-hour** — the demo server resets its seeded state then (watched data, playlists), so
-a ~13-minute suite (measured at 13.6 min on `.177`) starting after roughly `:46` can have that state wiped *mid-run*
-and fail as an unrelated-looking nav timeout. Individual failures carry
-`afterHourBoundary`, so a record says whether it landed on the far side of a reset.
-A green run that straddled `:00` is flagged too: its result was taken against a
-fixture that changed underneath it.
+hour**. The demo server resets on the hour, which changes both its own content
+(playlists have come and gone) and anything a run marked watched through the app —
+so a ~13-minute suite (measured at 13.6 min on `.177`) starting after roughly `:46`
+can have that change land *mid-run* and fail as an unrelated-looking nav timeout.
+Individual failures carry `afterHourBoundary`, so a record says whether it landed on
+the far side of a reset. A green run that straddled `:00` is flagged too: its result
+was taken against a fixture that changed underneath it.
+
+The flag is **suppressed in watch mode** (`npm run test:rta:tdd`), where the record
+opens once at session start and folds once at exit: that window spans every
+iteration, so any session over an hour would trip it and a flag that always fires is
+one nobody reads. The summary says "this watch session" there, and per-failure
+`afterHourBoundary` stamps still apply.
 
 ## Driving intermediate load stages (`rtaSkeletonHoldMs`)
 
@@ -418,7 +500,7 @@ identity rather than on a role, it also covers a local run pointed at CI's `.200
 
 When GitHub is unreachable or you're not logged in, a run **warns and proceeds
 unlocked** rather than blocking your device work — but it records `locked: false`
-in `out/rta/run-meta.json`, because a warning line scrolls past and an exit code
+in the run's `run-meta.json`, because a warning line scrolls past and an exit code
 of 0 can't tell you the run was unverified. Set `RTA_REQUIRE_LOCK=1` to make that
 a hard failure instead, or `RTA_SKIP_LOCK=1` to deliberately bypass. CI does not
 set `RTA_REQUIRE_LOCK`: it is alone on `.200`, so there is no contention for the
