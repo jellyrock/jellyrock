@@ -382,10 +382,23 @@ export function formatRunSummary(summary, file = failuresPath()) {
  * Returns nulls rather than throwing: a checkout without git, or a tarball export,
  * is a fine place to run the device tests and a bad place to fail them over
  * bookkeeping.
+ *
+ * The timeout carries that same contract past the case try/catch cannot reach. git
+ * can BLOCK rather than fail — a stale `index.lock`, a slow or networked working
+ * tree — and a hang here stalls a device run at its open, before any output has
+ * explained what it is doing. `execFileSync` raises ETIMEDOUT, which the catch
+ * below already degrades to nulls: the run continues without provenance instead of
+ * waiting on bookkeeping.
  */
+const GIT_TIMEOUT_MS = 5000;
+
 function codeState() {
   const git = (args) =>
-    execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    execFileSync('git', args, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: GIT_TIMEOUT_MS,
+    });
   try {
     return {
       commit: git(['rev-parse', '--short', 'HEAD']).trim() || null,

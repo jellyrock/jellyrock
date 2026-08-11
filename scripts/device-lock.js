@@ -704,6 +704,8 @@ export const _internals = {
   setTransport: (fn) => {
     transport = fn ?? httpsTransport;
   },
+  /** Test seam — takes the directory so a test never reads the real `.device-runs/`. */
+  strandedSnapshotLines,
 };
 
 /**
@@ -728,30 +730,41 @@ export const _internals = {
  * — `tests/rta/lib/registry.js` owns that, and importing it here would drag the
  * whole `roku-test-automation` client into a module that only knows about locks.
  */
-function reportStrandedSnapshots() {
-  let files;
+function strandedSnapshotLines(dir = '.device-runs') {
+  const out = [];
+  let entries;
   try {
-    files = fs.readdirSync('.device-runs').filter((f) => /^registry-.*\.json$/.test(f));
+    entries = fs
+      .readdirSync(dir)
+      .map((f) => ({ file: f, host: /^registry-(.+)\.json$/.exec(f)?.[1] }))
+      .filter((e) => e.host);
   } catch {
-    return; // no `.device-runs/` yet — no device run has ever been taken here
+    return out; // no `.device-runs/` yet — no device run has ever been taken here
   }
-  for (const file of files) {
-    let host = 'an unknown device';
+  for (const { file, host: hostFromName } of entries) {
+    // The FILENAME is the fallback, not a placeholder. A truncated snapshot — what
+    // a killed write leaves — is exactly when an operator needs the recovery
+    // command, and a placeholder there produced `ROKU_IP=an unknown device npm run
+    // rta:restore`, which the shell parses as `ROKU_IP=an` and then tries to run
+    // `unknown`. The host is in the name either way, so the contents only ever add
+    // the timestamp.
+    let host = hostFromName;
     let takenAt = null;
     try {
-      const parsed = JSON.parse(fs.readFileSync(path.join('.device-runs', file), 'utf8'));
+      const parsed = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
       host = parsed.host || host;
       takenAt = parsed.takenAt || null;
     } catch {
       // A truncated or unreadable snapshot is still a stranded one — say so with
       // what we have rather than staying silent about the file that is sitting there.
     }
-    console.log(
+    out.push(
       `⚠️  ${host} was left mid-restore${takenAt ? ` (snapshot taken ${takenAt})` : ''} — ` +
         'its registry is NOT as you found it, and the snapshot holds an auth token.\n' +
         `    Recover: ROKU_IP=${host} npm run rta:restore`,
     );
   }
+  return out;
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
@@ -763,7 +776,7 @@ if (process.argv[1] && import.meta.url === `file://${path.resolve(process.argv[1
     console.log(cur ? `held by ${describeHolder(cur.holder)}` : 'free');
     // After the lock line, not instead of it: "free" and "left dirty" are both true
     // at once, and the second is the one that costs you the next run.
-    reportStrandedSnapshots();
+    for (const line of strandedSnapshotLines()) console.log(line);
   } else if (cmd === 'release') {
     const token = await getToken();
     const repo = await getRepo();

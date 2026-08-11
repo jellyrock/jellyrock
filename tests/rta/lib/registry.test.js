@@ -16,6 +16,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 import { planRestore, compareRegistries, snapshotDir } from './registry.js';
+import { runsLedgerPath } from '../../../scripts/run-record.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
@@ -151,5 +152,21 @@ describe('the snapshot survives a build', () => {
     // device entry point runs one first. If `test:rta` ever stops building, this
     // fails and the gate above can be reconsidered rather than cargo-culted.
     expect(pkg().scripts['test:rta']).toMatch(/npm run build\b/);
+  });
+
+  it('agrees with the run ledger about where survive-a-build state lives', () => {
+    // The root is spelled out in THREE modules — `registry.js` (this snapshot),
+    // `run-record.js` (the ledger) and `device-lock.js` (`device:status`'s stranded
+    // report) — because the import graph forbids a shared constant: run-record
+    // imports device-lock, so device-lock cannot import back, and importing this
+    // module there would drag the whole roku-test-automation client into one that
+    // only knows about locks.
+    //
+    // The drift that costs something is SILENT: `device:status` reads the directory
+    // with a `readdirSync` whose catch returns early, so if the root moved and it
+    // was missed there, the stranded-snapshot warning would simply stop appearing —
+    // going quiet at exactly the moment it should speak. This pins the two that CAN
+    // see each other, which is the cheaper half of closing that.
+    expect(runsLedgerPath().startsWith(`${snapshotDir()}${path.sep}`)).toBe(true);
   });
 });
