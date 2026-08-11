@@ -71,33 +71,23 @@ export default [
   },
 
   // RTA waits — a timeout must report what it SAW, so it throws through
-  // `diagnosedError` (tests/rta/lib/diagnostics.js), which attaches the device
-  // state at the throw site. A bare `new Error` produces "not found", which cannot
-  // be attributed to a cause after the fact — and the flake baseline is only worth
-  // producing if its failures can be. The rule was prose-only in
-  // tests/rta/CLAUDE.md until a spec-level timeout shipped without it.
+  // `diagnosedError` (tests/rta/lib/diagnostics.js), which attaches the device state
+  // at the throw site. A bare throw produces "not found", which cannot be attributed
+  // to a cause afterwards.
   //
-  // Scoped to the files that own the waits. The other lib modules throw fail-fasts
-  // that already name their own cause (a snapshot from the wrong device, a seed that
-  // did not take), and gating those would buy four disable comments and no signal.
-  //
-  // `demos/` IS in scope, on evidence rather than symmetry: while it was outside the
-  // glob it accumulated two unconverted waits — the runner's own playback timeout and
-  // a take's 15s dialog poll — both shipped in the same PR that wrote the rule down.
-  // It is also the directory that GROWS by adding choreography, which is where new
-  // waits come from. The cost is the handful of disables below it on genuine
-  // fail-fasts; the benefit is that the next take cannot repeat the miss.
-  //
-  // `specs/` stays out: most spec-level throws are assertions, not timeouts. A spec
-  // that genuinely polls until it gives up should still use `diagnosedError` — or
-  // better, one of the shared waits, which already do.
+  // The glob covers the files that own WAITS; a fail-fast that already names its own
+  // cause disables the rule on its line with a reason. Adding a new lib file that
+  // grows a wait is one line here. Why these three and not `specs/` or the other lib
+  // modules: docs/dev/rta-tests.md#when-a-wait-times-out-it-reports-what-it-saw.
   {
     files: ['tests/rta/lib/nav.js', 'tests/rta/lib/steps.js', 'tests/rta/demos/**/*.{js,mjs}'],
     rules: {
       'no-restricted-syntax': [
         'error',
         {
-          selector: "ThrowStatement > NewExpression[callee.name='Error']",
+          // Any `new` — not just `Error`. `throw new TypeError(...)` in a wait has the
+          // same problem and would otherwise slip a gate that reads as covering it.
+          selector: 'ThrowStatement > NewExpression',
           message:
             'RTA waits: throw via `diagnosedError` so the failure reports the device state it saw. A fail-fast that already names its cause may disable this with a reason.',
         },

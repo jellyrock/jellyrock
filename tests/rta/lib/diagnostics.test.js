@@ -272,6 +272,33 @@ describe('diagnosedError — the message a human reads and the record a baseline
     expect(error.message).not.toContain('crossed the top of the hour');
   });
 
+  it('leaves the crossing UNKNOWN for a cumulative watch session', async () => {
+    // In watch mode the record opens ONCE at session start, so the origin belongs
+    // to the session rather than to this iteration — any session running past an
+    // hour would stamp every failure from then on. That is the same always-fires
+    // noise `formatRunSummary` already suppresses for `cumulative`, and the flag
+    // had to stop at the run level only because the child could not see it.
+    //
+    // `undefined`, not `false`: the reset may well have happened, so `false` would
+    // be a claim. The ORIGIN is still recorded — a session's start is provenance
+    // either way, and it is what places the failure in the session.
+    const { record, error } = await diagnose('timed out', BASE, {
+      meta: { startedAt: '2026-08-10T14:52:00Z', cumulative: true },
+    });
+    expect(record.afterHourBoundary).toBeUndefined();
+    expect(error.message).not.toContain('crossed the top of the hour');
+    expect(record.runStartedAt).toBe('2026-08-10T14:52:00Z');
+  });
+
+  it('still flags the crossing for a single run — the flag keeps its meaning', async () => {
+    // The counterpart to the case above: suppressing it in watch mode must not
+    // suppress it where a ~13-minute suite really did straddle the reset.
+    const { record } = await diagnose('timed out', BASE, {
+      meta: { startedAt: '2026-08-10T14:52:00Z', cumulative: false },
+    });
+    expect(record.afterHourBoundary).toBe(true);
+  });
+
   it('leaves the crossing UNKNOWN when no run origin was stamped', async () => {
     // `false` would be a claim. Without an origin there is nothing to compare
     // against, and a run record that says "not after the reset" when it cannot know

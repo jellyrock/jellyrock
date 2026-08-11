@@ -44,31 +44,23 @@ import path from 'node:path';
 import { odc, device, hardRelaunch } from './driver.js';
 
 /**
- * Where the snapshot lives — deliberately NOT under `out/`.
+ * Where the snapshot lives — deliberately NOT under `out/`, and gitignored.
  *
- * It used to be `out/rta/`, and that quietly disabled the recovery below on the
- * likeliest path to need it. Every `build*` script opens with `npx rimraf build/
- * out/`, and `npm run test:rta` is `npm run build && node scripts/rta-run.js` —
- * so the sequence "abandon a run (device left dirty, snapshot deliberately KEPT)
- * → re-run `npm run test:rta`" deleted the snapshot before `snapshotRegistry()`
- * could read it, and the run then captured the demo-server state as if it were
- * the user's session. That is verbatim the compounding failure the recovery
- * exists to prevent (see `snapshotRegistry`). Reproduced without a device:
- * plant the file, `npm run build`, it is gone.
+ * Every `build*` script opens with `npx rimraf build/ out/` and `npm run test:rta`
+ * builds first, so a snapshot under `out/` was deleted before the recovery in
+ * `snapshotRegistry` could use it. A file whose contract is "survives across runs"
+ * cannot live in the build output directory — same fix as the run ledger in
+ * `scripts/run-record.js`.
  *
- * `screenshots:capture` had it too (`build:prod` rimrafs the same paths).
- * `demo`, `test:rta:fast`, `test:rta:tdd` and `rta:restore` never built, so the
- * recovery happened to survive there — which is why this stayed invisible.
- *
- * Same root cause and same fix as the run ledger in `scripts/run-record.js`: a
- * file whose contract is "survives across runs" cannot live in the build output
- * directory. `.device-runs/` is that root, and it is gitignored.
- *
- * Kept SHARED across entry points, unlike the per-run-kind record directory —
- * that difference is load-bearing. The record is per-run evidence, so sharing it
- * clobbers; the snapshot is cross-run recovery state, so a device stranded by
- * `npm run demo` MUST be repairable by the next `npm run test:rta`, and
+ * Kept SHARED across entry points, unlike the per-run-kind record directory, and
+ * that difference is load-bearing: the record is per-run evidence, so a shared path
+ * clobbers it; the snapshot is cross-run recovery state, so a device stranded by
+ * `npm run demo` must be repairable by the next `npm run test:rta` and
  * `rta:restore` has to find it with no arguments.
+ *
+ * Evidence, the reproduction and the ruled-out alternatives:
+ * `decisions.md` -> `registry-snapshot-outside-build-output`. Gated by
+ * `registry.test.js` ("the snapshot survives a build").
  */
 const SNAPSHOT_DIR = '.device-runs';
 

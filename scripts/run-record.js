@@ -183,25 +183,47 @@ export function readRuns(file = runsLedgerPath()) {
   return readJsonLines(file);
 }
 
-let runStartCache;
+let runMetaCache;
 
 /**
- * When this run began, per the record the entry point wrote before starting work.
+ * What the entry point recorded about this run before starting work.
  *
  * This is `run-meta.json`'s reader. Before it existed the file was written by four
  * entry points and read by nothing, so a degraded or unlocked run was only ever
- * identifiable by a scrollback line. Read once and cached: it does not change
- * while the run is in flight.
+ * identifiable by a scrollback line. Read once and cached: the OPEN's fields do
+ * not change while the run is in flight, and a spawned child re-reads nothing.
+ *
+ * Returns `{}` rather than null on a missing or unparseable file, so every reader
+ * below is a plain property access.
  */
-export function runStartedAt() {
-  if (runStartCache !== undefined) return runStartCache;
+function runMeta() {
+  if (runMetaCache !== undefined) return runMetaCache;
   try {
-    const meta = JSON.parse(fs.readFileSync(runMetaPath(), 'utf8'));
-    runStartCache = meta.startedAt || meta.writtenAt || null;
+    runMetaCache = JSON.parse(fs.readFileSync(runMetaPath(), 'utf8'));
   } catch {
-    runStartCache = null;
+    runMetaCache = {};
   }
-  return runStartCache;
+  return runMetaCache;
+}
+
+/** When this run began, per the record written before any work started. */
+export function runStartedAt() {
+  const meta = runMeta();
+  return meta.startedAt || meta.writtenAt || null;
+}
+
+/**
+ * True when the origin above belongs to a MANY-run window rather than one run —
+ * watch mode, where the record opens once at session start.
+ *
+ * Stamped by `beginRun` into the OPEN's record, deliberately, rather than passed
+ * to a child through its own environment variable: the child already reads this
+ * file for the origin, so this costs no second channel and no second parse. It
+ * also means a watch session ABANDONED before its fold still has a record saying
+ * what it was — the closed summary's `cumulative` only exists once `endRun` runs.
+ */
+export function runIsCumulative() {
+  return runMeta().cumulative === true;
 }
 
 /**
@@ -276,18 +298,28 @@ export function summarizeRun({
 
 const clock = (iso) => (Number.isFinite(Date.parse(iso)) ? iso.slice(11, 16) : '??:??');
 
-/** Terminal lines for the end of a run. Returns [] when there is nothing to say. */
+/**
+ * Terminal lines for the end of a run. Returns [] when there is nothing to say.
+ *
+ * The `[…]` tag names the RUN KIND, not the RTA harness. This module is shared
+ * with the Rooibos runner, so a hardcoded `[rta]` would print over `npm run
+ * test:unit` — the same "writes under a path named for the other harness"
+ * dishonesty the per-kind directory split removed, just in the output instead of
+ * on disk. Derived from the record directory's own name so there is no second
+ * mapping to keep in sync, exactly as `runsLedgerPath` does.
+ */
 export function formatRunSummary(summary, file = failuresPath()) {
   const { failures = [], startedAt, endedAt, crossedHourBoundary, cumulative } = summary;
   const unknownKinds = summary.unknownKinds || [];
   // Suppressed for a cumulative window — see `summarizeRun`.
   const flagHour = crossedHourBoundary && !cumulative;
   if (!failures.length && !flagHour && !unknownKinds.length) return [];
+  const tag = `[${path.basename(runDir(summary.run))}]`;
   const window = `${clock(startedAt)}→${clock(endedAt)} UTC`;
   const lines = [];
   if (flagHour) {
     lines.push(
-      `[rta] this run crossed the top of the hour (${window}) — the demo server resets then, ` +
+      `${tag} this run crossed the top of the hour (${window}) — the demo server resets then, ` +
         'changing its own content and any state this run created through the app, so a ' +
         'mid-run failure here may be the fixture, not the app.',
     );
@@ -295,7 +327,7 @@ export function formatRunSummary(summary, file = failuresPath()) {
   if (failures.length) {
     const scope = cumulative ? `this watch session (${window})` : 'this run';
     lines.push(
-      `[rta] ${failures.length} failure(s) captured with device state in ${scope} → ${file}`,
+      `${tag} ${failures.length} failure(s) captured with device state in ${scope} → ${file}`,
     );
     for (const f of failures) {
       // `context` covers the two entry points Vitest cannot label: a screenshot
@@ -307,7 +339,7 @@ export function formatRunSummary(summary, file = failuresPath()) {
       const view = f.state?.view;
       const focus = f.state?.focus;
       lines.push(
-        `[rta]   ${clock(f.at)} ${where}${attempt} — ${f.kind || 'failure'}` +
+        `${tag}   ${clock(f.at)} ${where}${attempt} — ${f.kind || 'failure'}` +
           (view?.subtype ? `; view=${view.subtype}` : '') +
           (view?.loadState ? ` loadState=${view.loadState}` : '') +
           (focus ? ` focus=${focus.subtype}` : '') +
@@ -321,7 +353,7 @@ export function formatRunSummary(summary, file = failuresPath()) {
   // itself at the moment it would corrupt the number.
   if (unknownKinds.length) {
     lines.push(
-      `[rta] ⚠ ${unknownKinds.length} unregistered failure kind(s): ${unknownKinds.join(', ')} — ` +
+      `${tag} ⚠ ${unknownKinds.length} unregistered failure kind(s): ${unknownKinds.join(', ')} — ` +
         "register them in the throwing harness's FAILURE_KINDS set (RTA's is " +
         'tests/rta/lib/diagnostics.js), or the flake baseline will aggregate these ' +
         'as separate buckets.',
@@ -380,7 +412,7 @@ function codeState() {
  */
 export function beginRun({ lock, run, cumulative = false }) {
   activeRunDir = runDir(run);
-  runStartCache = undefined; // a new run means a new origin to read back
+  runMetaCache = undefined; // a new run means a new record to read back
   closedSummary = undefined; // ...and a close that has not happened yet
   // Written BEFORE the work so it survives a run that never reaches `endRun`.
   const startedAt = new Date().toISOString();
@@ -394,7 +426,15 @@ export function beginRun({ lock, run, cumulative = false }) {
   // when someone invokes the script by hand.
   const variant = process.env.npm_lifecycle_event || run;
   const { commit, dirty } = codeState();
-  writeRunMeta(lock.meta, { run, startedAt, variant, commit, dirty }, activeRunDir);
+  // `cumulative` is stamped at the OPEN, not only into the closed summary, because
+  // a spawned child needs it WHILE the run is in flight — it is what tells the
+  // child its origin is a session's rather than an iteration's. Omitted when false,
+  // matching `summarizeRun`, so an ordinary run's record is unchanged.
+  writeRunMeta(
+    lock.meta,
+    { run, startedAt, variant, commit, dirty, ...(cumulative ? { cumulative: true } : {}) },
+    activeRunDir,
+  );
   resetFailures();
   // Closed over rather than re-read at close time, so a handle always folds the run
   // it was handed. Note the LIMIT of that: `activeRunDir` and the `closedSummary`

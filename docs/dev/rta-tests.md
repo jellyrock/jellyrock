@@ -192,10 +192,15 @@ short as the samples above and the flag keeps its signal value.
   that failure mode is the one nobody can attribute. This is **gated**, not just
   documented: an ESLint `no-restricted-syntax` rule in
   [`eslint.config.js`](../../eslint.config.js) fails `lint:js` (pre-push *and* CI,
-  and it underlines live in your editor) on a bare `throw new Error` in `nav.js` or
-  `steps.js`. A fail-fast that is *not* a timeout and already names its cause can
-  stay a plain throw — disable the rule on that line **with a reason**, as the
-  ambiguous-library refusal in `nav.js` does.
+  and it underlines live in your editor) on a bare `throw new …` in `lib/nav.js`,
+  `lib/steps.js` or anywhere under `demos/`. A fail-fast that is *not* a timeout and
+  already names its cause can stay a plain throw — disable the rule on that line
+  **with a reason**, as the ambiguous-library refusal in `nav.js` does.
+  - It matches any `new` in a `throw`, not just `Error`: `throw new TypeError(…)` in
+    a wait has the same problem, and a gate that reads as covering throws generally
+    should not have a hole in it. It is still only a **tripwire** — `const e = new
+    Error(…); throw e` slips it — so a green `lint:js` means "nobody wrote the
+    obvious shape", not "no unattributable timeout exists".
   - The gate covers `lib/nav.js`, `lib/steps.js` and **all of `demos/`**. The other
     lib modules throw fail-fasts that already name their cause (a snapshot from the
     wrong device, a seed that did not take), so gating them would buy four disable
@@ -245,12 +250,17 @@ destructive once it carries folded failure records, because a `npm run test:unit
 between two RTA runs silently ate the first one's. So the record directory is keyed
 on the run kind ([`runDir`](../../scripts/run-record.js)):
 
-| Run | Records to |
-|---|---|
-| `npm run test:rta` (+ `:tdd`, `:fast`, `:capture`) | `out/rta/` |
-| `npm run screenshots:capture` | `out/screenshots/` |
-| `npm run demo` | `out/demo/` |
-| `npm run test:unit` / `test:integration` / `test:all` (Rooibos) | `out/device/` |
+| Run | Records to | Summary tag |
+|---|---|---|
+| `npm run test:rta` (+ `:tdd`, `:fast`, `:capture`) | `out/rta/` | `[rta]` |
+| `npm run screenshots:capture` | `out/screenshots/` | `[screenshots]` |
+| `npm run demo` | `out/demo/` | `[demo]` |
+| `npm run test:unit` / `test:integration` / `test:all` (Rooibos) | `out/device/` | `[device]` |
+
+The tag on each summary line names the **run kind**, derived from that same
+directory so there is no second mapping to drift. A Rooibos run prints `[device]`,
+not `[rta]` — this record is shared with that runner, and a line claiming the wrong
+harness is the same dishonesty the directory split removed.
 
 Three files per run kind. They overlap deliberately — pick by the question you are
 asking, not by which one you found first:
@@ -330,8 +340,18 @@ was taken against a fixture that changed underneath it.
 The flag is **suppressed in watch mode** (`npm run test:rta:tdd`), where the record
 opens once at session start and folds once at exit: that window spans every
 iteration, so any session over an hour would trip it and a flag that always fires is
-one nobody reads. The summary says "this watch session" there, and per-failure
-`afterHourBoundary` stamps still apply.
+one nobody reads. The summary says "this watch session" there.
+
+**The per-failure stamp is suppressed there too**, for the same reason and not only
+at the run level. The origin a failure is measured against is the *session's*, so
+past the first hour of a watch session every failure would carry
+`afterHourBoundary` — the identical always-fires noise. In a cumulative window the
+field is therefore **absent, not `false`**: the reset may well have happened, so
+`false` would be a claim the record cannot support, exactly as it is when no origin
+was stamped at all. The origin itself is still recorded either way. `beginRun`
+stamps `cumulative` into the record at *open* time so the Vitest child can see it
+mid-run — the closed summary's copy arrives too late to be of use to the process
+actually writing the failures.
 
 ## Driving intermediate load stages (`rtaSkeletonHoldMs`)
 
@@ -529,6 +549,18 @@ runs Vitest **as a child process**, and restores. `npm run test:rta` (and `:fast
     across entry points: a device stranded by `npm run demo` has to be repairable by
     the next `npm run test:rta`, and `rta:restore` finds it with no arguments. The
     record wants per-run isolation; the snapshot wants cross-run reach.
+  - **It is your real registry, so treat it as a secret at rest.** The file is the
+    *whole* registry of the device it was taken from — including `authToken` for
+    whatever server you were signed into. It is gitignored, and nothing here ever
+    prints its contents (only its path). But note the consequence of the move: it
+    used to be wiped incidentally by the next `npm run build`, and now **nothing
+    removes it but a verified restore or `npm run rta:restore`**. That matters
+    because the case that strands it is a restore that never converged — see the
+    `restoreRegistry`/`authToken` entry in [`docs/progress.md`](../progress.md) —
+    so a token-bearing file can sit there indefinitely. If a restore has failed and
+    you are done with the device, run `rta:restore`; if it cannot converge, delete
+    `.device-runs/registry-<host>.json` by hand once the device is back as you want
+    it.
 - **Ctrl-C is safe.** The interrupt stops the child, and the parent restores before
   exiting (~30 s; press Ctrl-C again to abandon and recover later with
   `npm run rta:restore`). This is why the lifecycle cannot live in Vitest: `afterAll`

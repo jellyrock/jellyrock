@@ -27,9 +27,26 @@ import {
   summarizeRun,
   formatRunSummary,
 } from '../../../scripts/run-record.js';
-import { FAILURE_KINDS } from '../../../tests/rta/lib/diagnostics.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+
+/**
+ * Failure-kind slugs as LITERALS, deliberately — not imported from
+ * `tests/rta/lib/diagnostics.js`.
+ *
+ * `run-record.js` treats `kind` as an opaque string, and that is the whole point of
+ * the module split (`decisions.md` -> `run-record-per-run-kind`): it is what lets the
+ * Rooibos runner share this record without dragging the RTA harness in. A test that
+ * imported `FAILURE_KINDS` to spell them would re-couple exactly what the split
+ * decoupled — and would pull `roku-test-automation` (~250 ms of import) into a suite
+ * whose entire premise is that it needs no device. The registry's own invariants —
+ * uniqueness, kebab-case, frozen-ness — are gated next door in
+ * `tests/rta/lib/diagnostics.test.js`, which is the module that owns them.
+ */
+const WAIT_FOR_TIMEOUT = 'wait-for-timeout';
+const WAIT_FOCUSED_TIMEOUT = 'wait-focused-timeout';
+const GRID_LOAD_TIMEOUT = 'grid-load-timeout';
+const DETAIL_ROW_NOT_FOUND = 'detail-row-not-found';
 
 let tmpDir;
 let file;
@@ -254,7 +271,7 @@ describe('the run lifecycle — where a run s records actually land', () => {
     it('clears the previous run s failures, so a fold sees only this run', async () => {
       const { beginRun, failuresPath, recordFailure, readFailures } = await fresh();
       const first = beginRun({ lock: LOCK, run: 'test:rta' });
-      recordFailure({ kind: FAILURE_KINDS.WAIT_FOR_TIMEOUT, at: '2026-08-10T14:10:00Z' });
+      recordFailure({ kind: WAIT_FOR_TIMEOUT, at: '2026-08-10T14:10:00Z' });
       expect(readFailures(failuresPath())).toHaveLength(1);
       vi.spyOn(console, 'log').mockImplementation(() => {});
       first.close();
@@ -290,13 +307,50 @@ describe('the run lifecycle — where a run s records actually land', () => {
         vi.useRealTimers();
       }
     });
+
+    it('stamps `cumulative` into the OPEN s record, where a child can read it', async () => {
+      // Asserted BEFORE any close, because that is the whole point: the closed
+      // summary also carries `cumulative`, but a spawned child needs it WHILE the
+      // run is in flight. It is what tells the child its origin belongs to a
+      // session rather than an iteration — without which every failure past the
+      // first hour of a watch session is stamped as post-reset.
+      const { beginRun, runIsCumulative } = await fresh();
+      const run = beginRun({ lock: LOCK, run: 'test:rta:tdd', cumulative: true });
+      expect(runIsCumulative()).toBe(true);
+      const meta = JSON.parse(fs.readFileSync(path.join(run.dir, 'run-meta.json'), 'utf8'));
+      expect(meta.cumulative).toBe(true);
+      run.close();
+    });
+
+    it('leaves an ordinary run s record unchanged — no cumulative key at all', async () => {
+      // Omitted rather than written false, matching `summarizeRun`. A single run is
+      // the common case and its record should not grow a field to say so.
+      const { beginRun, runIsCumulative } = await fresh();
+      const run = beginRun({ lock: LOCK, run: 'test:rta' });
+      expect(runIsCumulative()).toBe(false);
+      const meta = JSON.parse(fs.readFileSync(path.join(run.dir, 'run-meta.json'), 'utf8'));
+      expect(meta).not.toHaveProperty('cumulative');
+      run.close();
+    });
+
+    it('re-reads `cumulative` for a second run rather than serving a cached one', async () => {
+      // `runStartedAt` and `runIsCumulative` share one cached parse, so an
+      // invalidation bug would strand the FLAG as well as the origin — and a watch
+      // session opened after a normal run would silently stamp its failures.
+      const { beginRun, runIsCumulative } = await fresh();
+      beginRun({ lock: LOCK, run: 'test:rta' }).close();
+      expect(runIsCumulative()).toBe(false);
+      const watch = beginRun({ lock: LOCK, run: 'test:rta:tdd', cumulative: true });
+      expect(runIsCumulative()).toBe(true);
+      watch.close();
+    });
   });
 
   describe('endRun', () => {
     it('folds the failures into run-meta and appends one ledger line', async () => {
       const { beginRun, recordFailure, readRuns: ledger, runsLedgerPath } = await fresh();
       const run = beginRun({ lock: LOCK, run: 'run-roku-tests' });
-      recordFailure({ kind: FAILURE_KINDS.WAIT_FOR_TIMEOUT, at: '2026-08-10T14:10:00Z' });
+      recordFailure({ kind: WAIT_FOR_TIMEOUT, at: '2026-08-10T14:10:00Z' });
       vi.spyOn(console, 'log').mockImplementation(() => {});
       const summary = run.close();
       vi.restoreAllMocks();
@@ -539,7 +593,7 @@ describe('summarizeRun', () => {
       failures: [
         { kind: 'made-up', kindUnknown: true },
         { kind: 'made-up', kindUnknown: true },
-        { kind: FAILURE_KINDS.WAIT_FOR_TIMEOUT },
+        { kind: WAIT_FOR_TIMEOUT },
       ],
     });
     expect(summary.unknownKinds).toEqual(['made-up']);
@@ -547,11 +601,18 @@ describe('summarizeRun', () => {
 });
 
 describe('formatRunSummary', () => {
+  /**
+   * A summary for an RTA run. Every case names its run kind, because the `[tag]`
+   * on each printed line is derived from it — and `endRun`, the only real caller,
+   * always supplies one. A `run`-less summary is not a shape this receives.
+   */
+  const rta = (fields) => summarizeRun({ run: 'test:rta', ...fields });
+
   it('says nothing about a clean run inside one hour', () => {
     // Silence on the happy path is the whole reason this can live in every run.
     expect(
       formatRunSummary(
-        summarizeRun({
+        rta({
           startedAt: '2026-08-10T14:02:00Z',
           endedAt: '2026-08-10T14:14:00Z',
           failures: [],
@@ -564,7 +625,7 @@ describe('formatRunSummary', () => {
     // A green run that straddled the reset is still a run whose result was taken
     // against a fixture that changed underneath it.
     const lines = formatRunSummary(
-      summarizeRun({
+      rta({
         startedAt: '2026-08-10T14:52:00Z',
         endedAt: '2026-08-10T15:04:00Z',
         failures: [],
@@ -573,12 +634,50 @@ describe('formatRunSummary', () => {
     expect(lines.join('\n')).toMatch(/crossed the top of the hour \(14:52→15:04 UTC\)/);
   });
 
+  it('tags each line with the RUN KIND, not with the RTA harness', () => {
+    // This module is shared with the Rooibos runner, so a hardcoded `[rta]` would
+    // print over `npm run test:unit` — the same "named for the other harness"
+    // dishonesty the per-kind directory split removed, just in the output rather
+    // than on disk. The tag is derived from the record directory's own name, so
+    // there is no second mapping that can drift out of sync with `runDir`.
+    const rooibos = formatRunSummary(
+      summarizeRun({
+        run: 'run-roku-tests',
+        startedAt: '2026-08-10T14:52:00Z',
+        endedAt: '2026-08-10T15:04:00Z',
+        failures: [],
+      }),
+    ).join('\n');
+    expect(rooibos).toContain('[device]');
+    expect(rooibos).not.toContain('[rta]');
+
+    // ...and the harness that IS rta still says so.
+    const suite = formatRunSummary(
+      rta({ startedAt: '2026-08-10T14:52:00Z', endedAt: '2026-08-10T15:04:00Z', failures: [] }),
+    ).join('\n');
+    expect(suite).toContain('[rta]');
+
+    // Every run kind maps to a distinct tag, so a demo and a screenshot matrix
+    // cannot be confused in a scrollback.
+    const tagFor = (run) =>
+      formatRunSummary(
+        summarizeRun({
+          run,
+          startedAt: '2026-08-10T14:52:00Z',
+          endedAt: '2026-08-10T15:04:00Z',
+          failures: [],
+        }),
+      )[0].split(' ')[0];
+    const tags = ['test:rta', 'capture-screenshots', 'demo', 'run-roku-tests'].map(tagFor);
+    expect(new Set(tags).size).toBe(4);
+  });
+
   it('drops the hour warning for a cumulative watch session', () => {
     // Watch mode resets once at session start and folds once at exit, so any
     // session over an hour trips the flag. A flag that always fires is noise, and
     // it would be noisiest in the mode where you are already watching the output.
     const lines = formatRunSummary(
-      summarizeRun({
+      rta({
         startedAt: '2026-08-10T14:52:00Z',
         endedAt: '2026-08-10T18:04:00Z',
         failures: [],
@@ -590,10 +689,10 @@ describe('formatRunSummary', () => {
 
   it('labels a cumulative failure list as the session, not the run', () => {
     const lines = formatRunSummary(
-      summarizeRun({
+      rta({
         startedAt: '2026-08-10T14:52:00Z',
         endedAt: '2026-08-10T18:04:00Z',
-        failures: [{ at: '2026-08-10T15:01:00Z', kind: FAILURE_KINDS.WAIT_FOR_TIMEOUT }],
+        failures: [{ at: '2026-08-10T15:01:00Z', kind: WAIT_FOR_TIMEOUT }],
         cumulative: true,
       }),
     ).join('\n');
@@ -603,13 +702,13 @@ describe('formatRunSummary', () => {
 
   it('names each failure with the state that was captured', () => {
     const lines = formatRunSummary(
-      summarizeRun({
+      rta({
         startedAt: '2026-08-10T14:52:00Z',
         endedAt: '2026-08-10T15:04:00Z',
         failures: [
           {
             at: '2026-08-10T15:01:00Z',
-            kind: FAILURE_KINDS.DETAIL_ROW_NOT_FOUND,
+            kind: DETAIL_ROW_NOT_FOUND,
             test: 'screen "seasonDetails" loads',
             afterHourBoundary: true,
             state: {
@@ -635,13 +734,13 @@ describe('formatRunSummary', () => {
     // `isRemoteDisabled` means JRScene.onKeyEvent was returning true for every key
     // we sent — the north-star failure mode, and the one a roll-up must not bury.
     const lines = formatRunSummary(
-      summarizeRun({
+      rta({
         startedAt: '2026-08-10T14:02:00Z',
         endedAt: '2026-08-10T14:14:00Z',
         failures: [
           {
             at: '2026-08-10T14:10:00Z',
-            kind: FAILURE_KINDS.WAIT_FOCUSED_TIMEOUT,
+            kind: WAIT_FOCUSED_TIMEOUT,
             state: { shell: { isRemoteDisabled: true } },
           },
         ],
@@ -652,13 +751,13 @@ describe('formatRunSummary', () => {
 
   it('names the attempt for a screenshot retry, so a recovered screen reads as one', () => {
     const lines = formatRunSummary(
-      summarizeRun({
+      rta({
         startedAt: '2026-08-10T14:02:00Z',
         endedAt: '2026-08-10T14:14:00Z',
         failures: [
           {
             at: '2026-08-10T14:10:00Z',
-            kind: FAILURE_KINDS.GRID_LOAD_TIMEOUT,
+            kind: GRID_LOAD_TIMEOUT,
             context: { screen: 'en_US/moviesLibrary', attempt: 1, attempts: 3 },
           },
         ],
@@ -672,13 +771,13 @@ describe('formatRunSummary', () => {
     // A demo failure carries neither a test name nor a screen, so without this it
     // printed a bare kind — which does not say which choreography was running.
     const lines = formatRunSummary(
-      summarizeRun({
+      rta({
         startedAt: '2026-08-10T14:02:00Z',
         endedAt: '2026-08-10T14:14:00Z',
         failures: [
           {
             at: '2026-08-10T14:10:00Z',
-            kind: FAILURE_KINDS.WAIT_FOR_TIMEOUT,
+            kind: WAIT_FOR_TIMEOUT,
             context: { take: 'browse-and-play' },
           },
         ],
@@ -692,7 +791,7 @@ describe('formatRunSummary', () => {
     // reads after every run, so a forked bucket announces itself at the moment it
     // would corrupt the number.
     const lines = formatRunSummary(
-      summarizeRun({
+      rta({
         startedAt: '2026-08-10T14:02:00Z',
         endedAt: '2026-08-10T14:14:00Z',
         failures: [{ at: '2026-08-10T14:10:00Z', kind: 'detail-rows-missing', kindUnknown: true }],
@@ -705,12 +804,10 @@ describe('formatRunSummary', () => {
   it('still names a failure whose device state could not be read', () => {
     // An unreachable device is itself the finding — it must not format away.
     const lines = formatRunSummary(
-      summarizeRun({
+      rta({
         startedAt: '2026-08-10T14:02:00Z',
         endedAt: '2026-08-10T14:14:00Z',
-        failures: [
-          { at: '2026-08-10T14:10:00Z', kind: FAILURE_KINDS.WAIT_FOR_TIMEOUT, label: 'home rows' },
-        ],
+        failures: [{ at: '2026-08-10T14:10:00Z', kind: WAIT_FOR_TIMEOUT, label: 'home rows' }],
       }),
     ).join('\n');
     expect(lines).toContain('home rows');

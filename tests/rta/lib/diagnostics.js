@@ -35,6 +35,13 @@
  * never by dumping the node. `JellyfinUser` carries `authToken`, so a whole-node
  * read would put a live demo credential into an artifact.
  *
+ * Those three name whatever server the app is CURRENTLY on, which is not
+ * structurally guaranteed to be the demo one. Today it always is: every wait that
+ * can reach here runs after a seed + `hardRelaunch`, and the demo runner refuses a
+ * non-demo host outright. But a wait added BEFORE a seed would record the
+ * developer's own server URL and user id — into `runs.jsonl`, which is never reset.
+ * Both are gitignored; keep it that way, and keep waits behind their seed.
+ *
  * ## Two load signals, and why both
  *
  * `loadState` is GRID-ONLY. It is declared on `BaseGridView` alone
@@ -67,7 +74,12 @@
  * the RTA-specific capture that goes INTO it.
  */
 import { odc } from 'roku-test-automation';
-import { crossesHourBoundary, recordFailure, runStartedAt } from '../../../scripts/run-record.js';
+import {
+  crossesHourBoundary,
+  recordFailure,
+  runIsCumulative,
+  runStartedAt,
+} from '../../../scripts/run-record.js';
 
 /**
  * The fixed part of the dump — the questions worth asking about ANY failure.
@@ -295,7 +307,16 @@ export async function diagnosedError(message, { kind, label, waitedMs, observed 
   const state = await captureFailureState();
   const at = new Date().toISOString();
   const startedAt = runStartedAt();
-  const afterHourBoundary = startedAt ? crossesHourBoundary(startedAt, at) : undefined;
+  // UNKNOWN in a cumulative window, not false. In watch mode the origin is the
+  // SESSION's — the record opens once at start and folds once at exit — so any
+  // session running over an hour would stamp every failure from then on, which is
+  // the same always-fires noise `formatRunSummary` already suppresses for
+  // `cumulative`. `false` would be a claim we cannot make (the reset may well have
+  // happened); `undefined` says the question is unanswerable here, matching how a
+  // missing origin is treated. The origin itself is still recorded — a session's
+  // start is provenance either way.
+  const afterHourBoundary =
+    startedAt && !runIsCumulative() ? crossesHourBoundary(startedAt, at) : undefined;
   recordFailure({
     at,
     kind,
