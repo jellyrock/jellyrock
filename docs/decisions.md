@@ -289,6 +289,7 @@ Accepted trade-off: total load grows ~280 ms (520 → 844 ms at 8 genres, 802 �
 **date**: 2026-08-10
 **status**: accepted
 **supersedes**: `rta-interrupt-restore-scripts-only`
+**partially-superseded-by**: `registry-snapshot-outside-build-output` (snapshot location)
 **related-files**: `scripts/rta-run.js`, `scripts/rta-restore.js`, `tests/rta/lib/registry.js`, `tests/rta/setup/global-setup.js`, `tests/rta/lib/seed.js`, `vitest.config.js`
 
 An RTA run owns the device's registry for its duration, so that ownership lives in `scripts/rta-run.js` — a parent process that deploys, snapshots, runs Vitest as a CHILD, and restores — rather than anywhere inside Vitest. The snapshot is the WHOLE registry, every section and key, written to `out/rta/registry-<host>.json` before any seeding. The restore is a verified diff: delete sections the run created, null keys it added, put changed values back, cold-restart, compare everything, retry, then throw naming the differing keys. `LastRunVersion` is the single documented exception, because the app rewrites it on boot by design. Specs no longer touch the lifecycle at all.
@@ -364,6 +365,41 @@ does not dodge the clobber, it only forgoes the instrumentation.
 
 This closes the "(b)" half of the `run-meta.json` followup in `docs/progress.md`;
 the CI-artifact half stays open.
+
+## decision-id: registry-snapshot-outside-build-output
+
+**date**: 2026-08-11
+**status**: accepted
+**partially-supersedes**: `rta-registry-lifecycle-outside-vitest` (the snapshot's location, and the recovery guarantee that depended on it)
+**related-files**: `tests/rta/lib/registry.js`, `scripts/rta-restore.js`, `tests/rta/lib/registry.test.js`
+
+The RTA device-registry snapshot lives at `.device-runs/registry-<host>.json`, outside
+`out/`, and stays SHARED across every entry point rather than being split per run kind.
+
+The move fixes a live defect, not a tidiness concern. `snapshotRegistry()` repairs a
+device the previous run left dirty by restoring from a leftover snapshot BEFORE taking
+its own — that is what stops a stranded run's state silently becoming the next run's
+baseline. But the file lived in `out/rta/`, every `build*` script opens with `npx rimraf
+build/ out/`, and `npm run test:rta` is `npm run build && node scripts/rta-run.js`. So
+"abandon a run, then re-run the suite" — the natural next move — deleted the recovery
+file before it could be used, and the run then captured the demo-server state as the
+user's real session and restored that from then on. Reproduced without a device: plant
+the file, `npm run build`, it is gone. Every path that actually EXERCISED the recovery
+(`demo`, `test:rta:fast`, `test:rta:tdd`, `rta:restore`) is a path that never builds,
+which is why it stayed invisible. Same root cause as the run ledger: a file whose
+contract is "survives across runs" cannot live in the build output directory.
+
+Ruled out: splitting the snapshot per run kind the way the run record is split. That
+symmetry is a trap, because the two want opposite things — the record is per-run
+evidence, so a shared path CLOBBERS it, while the snapshot is cross-run recovery state,
+so a device stranded by `npm run demo` must be repairable by the next `npm run test:rta`
+and `rta:restore` must find it with no arguments. Splitting it would have broken the
+recovery this change restores. `readSnapshotFile` falls back to the old location (and
+`clearSnapshotFile` clears both) so upgrading across the move cannot orphan the snapshot
+of a device that is stranded right now; the fallback is removable once none can exist.
+**Tripwire:** re-open if a build script stops wiping `out/` (a test pins that they do),
+or if concurrent device runs against one host ever become possible — the shared path is
+safe only because the device lock serializes writers.
 
 ## Migrated to ADRs
 
