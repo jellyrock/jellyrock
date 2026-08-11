@@ -15,7 +15,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import {
   crossesHourBoundary,
@@ -501,6 +502,97 @@ describe('the run lifecycle — where a run s records actually land', () => {
     // than a throw: it loses the record it exists to write.
     const { writeRunMeta } = await import('../../../scripts/device-lock.js');
     expect(() => writeRunMeta(LOCK.meta, { run: 'test:rta' })).toThrow(TypeError);
+  });
+});
+
+describe('the process-exit net — the fold nobody calls', () => {
+  /**
+   * These need a REAL process exit, so they run in a subprocess.
+   *
+   * `armCloseOnExit` is the only fold three of the four entry points have on their
+   * interrupt path — `capture-screenshots` and `demos` both hand their exit to
+   * `armRestoreOnInterrupt`, whose handler ends in `process.exit()`, so nothing they
+   * could write runs after it. It is also the whole fold for any path that throws.
+   * In-process that mechanism cannot be exercised at all: emitting `exit` by hand
+   * proves the listener is attached, not that Node runs it on a real exit, and
+   * `process.exit()` inside Vitest would take the runner down with it.
+   *
+   * The suite was already ACCOMMODATING this net (see the `setMaxListeners` bump
+   * above) without ever exercising it, which is the shape of an untested mechanism
+   * hiding behind tests that merely tolerate it.
+   */
+  const runRecord = pathToFileURL(path.join(repoRoot, 'scripts', 'run-record.js')).href;
+
+  /** Run `body` in a fresh node process rooted at the temp dir, and read its ledger back. */
+  const inSubprocess = (body, { exitCode = 0 } = {}) => {
+    const probe = path.join(tmpDir, 'probe.mjs');
+    fs.writeFileSync(
+      probe,
+      `import { beginRun } from ${JSON.stringify(runRecord)};\n` +
+        `const run = beginRun({ lock: ${JSON.stringify(LOCK)}, run: 'test:rta' });\n` +
+        `${body}\n`,
+    );
+    const result = spawnSync(process.execPath, [probe], {
+      cwd: tmpDir,
+      encoding: 'utf8',
+      // The provenance the fold must carry across, whichever path does the folding.
+      env: { ...process.env, npm_lifecycle_event: 'test:rta:fast' },
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(exitCode);
+    const ledger = path.join(tmpDir, '.device-runs', 'rta', 'runs.jsonl');
+    const lines = fs.existsSync(ledger)
+      ? fs.readFileSync(ledger, 'utf8').split('\n').filter(Boolean)
+      : [];
+    return { lines: lines.map((l) => JSON.parse(l)), stdout: result.stdout };
+  };
+
+  // The lock shape `beginRun` is handed in production — see the lifecycle block above.
+  const LOCK = { meta: { locked: true, mode: 'test', degraded: false } };
+
+  it('folds a run whose entry point exited without closing it', () => {
+    // The interrupt path, reproduced: open a run, then leave the way a signal
+    // handler does. Nothing in the process calls `close()`.
+    const { lines } = inSubprocess('process.exit(0);');
+    expect(lines).toHaveLength(1);
+    expect(lines[0].run).toBe('test:rta');
+  });
+
+  it('carries the open s provenance into a fold it never made', () => {
+    // The net folds `closeArgs`, captured at the open. If it ever re-derived them
+    // instead, this is where it would show: `npm_lifecycle_event` is read once, at
+    // `beginRun`, and a baseline filters on the result.
+    const { lines } = inSubprocess('process.exit(0);');
+    expect(lines[0].variant).toBe('test:rta:fast');
+  });
+
+  it('folds on an uncaught throw too, not only on an explicit exit', () => {
+    // `capture-screenshots`'s error path reaches `process.exit(1)` from a `.catch`,
+    // but a throw from anywhere else still has to leave the run recorded.
+    const { lines } = inSubprocess("throw new Error('take blew up');", { exitCode: 1 });
+    expect(lines).toHaveLength(1);
+  });
+
+  it('does not double-count a run the entry point already closed', () => {
+    // The counterpart to the in-process idempotency test: that one proves the guard,
+    // this one proves the guard is what the REAL exit path hits. A second ledger line
+    // per run is a miscount an N-run baseline has no way to see.
+    const { lines } = inSubprocess('run.close();\nprocess.exit(0);');
+    expect(lines).toHaveLength(1);
+  });
+
+  it('prints the summary from the net, so an abandoned run still says what it saw', () => {
+    // The net's `console.log` is the only narration an interrupted run gets. (It is
+    // synchronous on Linux/CI for pipes; `exit-net-summary-lost-on-macos-pipe` in
+    // tech-debt.md covers the macOS caveat, which is why the durable ledger line
+    // above is asserted separately rather than through this.)
+    const { stdout } = inSubprocess(
+      `const { recordFailure } = await import(${JSON.stringify(runRecord)});\n` +
+        `recordFailure({ at: new Date().toISOString(), kind: 'wait-for-timeout', label: 'home rows' });\n` +
+        'process.exit(0);',
+    );
+    expect(stdout).toContain('[rta]');
+    expect(stdout).toContain('home rows');
   });
 });
 

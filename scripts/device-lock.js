@@ -706,6 +706,54 @@ export const _internals = {
   },
 };
 
+/**
+ * Report any device left mid-restore, as part of `status`.
+ *
+ * A registry snapshot under `.device-runs/` means exactly one thing: a run did not
+ * put that device back. The file is the recovery path AND the device's whole
+ * registry including a live `authToken`, so it is both the most valuable and the
+ * most sensitive thing on disk here — and since it moved out of `out/` nothing
+ * deletes it but a verified restore or `npm run rta:restore`.
+ *
+ * It had no operator-facing surface at all, which is how it got destroyed: during
+ * review of this branch a stranded snapshot for `.177` was wiped by an `rm -rf`
+ * aimed at the ledger beside it, and recovery meant hand-writing registry keys back
+ * over ODC. Nothing would have told you it was there. This line does.
+ *
+ * Read by GLOB rather than by composing the path from `ROKU_IP`, deliberately, and
+ * it is not a shortcut: the case that bites is a snapshot for a device you are NOT
+ * currently pointed at (stranded by `npm run demo` on `.177`, then `ROKU_IP=.178`),
+ * which a host-specific check would report as clean. Each file names its own host,
+ * so the glob answers for every device with no second copy of the naming convention
+ * — `tests/rta/lib/registry.js` owns that, and importing it here would drag the
+ * whole `roku-test-automation` client into a module that only knows about locks.
+ */
+function reportStrandedSnapshots() {
+  let files;
+  try {
+    files = fs.readdirSync('.device-runs').filter((f) => /^registry-.*\.json$/.test(f));
+  } catch {
+    return; // no `.device-runs/` yet — no device run has ever been taken here
+  }
+  for (const file of files) {
+    let host = 'an unknown device';
+    let takenAt = null;
+    try {
+      const parsed = JSON.parse(fs.readFileSync(path.join('.device-runs', file), 'utf8'));
+      host = parsed.host || host;
+      takenAt = parsed.takenAt || null;
+    } catch {
+      // A truncated or unreadable snapshot is still a stranded one — say so with
+      // what we have rather than staying silent about the file that is sitting there.
+    }
+    console.log(
+      `⚠️  ${host} was left mid-restore${takenAt ? ` (snapshot taken ${takenAt})` : ''} — ` +
+        'its registry is NOT as you found it, and the snapshot holds an auth token.\n' +
+        `    Recover: ROKU_IP=${host} npm run rta:restore`,
+    );
+  }
+}
+
 // ── CLI ──────────────────────────────────────────────────────────────────────
 if (process.argv[1] && import.meta.url === `file://${path.resolve(process.argv[1])}`) {
   const [cmd] = process.argv.slice(2);
@@ -713,6 +761,9 @@ if (process.argv[1] && import.meta.url === `file://${path.resolve(process.argv[1
   if (cmd === 'status') {
     const cur = await readDeviceLock({ deviceHost: host });
     console.log(cur ? `held by ${describeHolder(cur.holder)}` : 'free');
+    // After the lock line, not instead of it: "free" and "left dirty" are both true
+    // at once, and the second is the one that costs you the next run.
+    reportStrandedSnapshots();
   } else if (cmd === 'release') {
     const token = await getToken();
     const repo = await getRepo();

@@ -320,6 +320,21 @@ so a hand-rolled fold in the happy path alone would skip exactly the interrupt a
 ~15-minute matrix run is most likely to end with. It is legal because `endRun` is
 all-synchronous. `close()` stays explicit where output ORDER matters: `rta-run`
 folds before the registry restore, so the summary survives a restore that throws.
+The net is gated by a subprocess test in
+[`run-record.test.js`](../../tests/scripts/unit/run-record.test.js) — in-process it
+cannot be exercised at all, since emitting `exit` by hand proves only that the
+listener is attached.
+
+**Know where the record STOPS.** That same ordering is a boundary: `rta-run` folds
+before it restores, so **a failed registry restore is not in the run record or the
+ledger**. A run that left the device dirty appears in `runs.jsonl` as an ordinary
+run — clean, zero failures — and the signal that it stranded the device is the
+snapshot file it left behind (which `npm run device:status` reports), not the
+record. That matters for a Phase-3 baseline specifically: the
+`restoreRegistry`/`authToken` failure in [`docs/progress.md`](../progress.md) wedges
+every *subsequent* run, so the runs whose numbers it corrupts are the ones that look
+most normal in the ledger. Check `device:status` between runs of a series; do not
+infer a clean device from a clean ledger line.
 
 One bounded caveat: writes to stdout from an `exit` handler are synchronous on Linux
 for TTYs, files and pipes, but **asynchronous for pipes on macOS** — so a macOS
@@ -561,6 +576,14 @@ runs Vitest **as a child process**, and restores. `npm run test:rta` (and `:fast
     you are done with the device, run `rta:restore`; if it cannot converge, delete
     `.device-runs/registry-<host>.json` by hand once the device is back as you want
     it.
+  - **`npm run device:status` tells you one is sitting there.** It reports every
+    stranded snapshot with the host it belongs to and when it was taken, alongside
+    the lock line — "free" and "left dirty" are both true at once, and the second is
+    the one that costs you the next run. It globs the directory rather than checking
+    the host `ROKU_IP` names, because the case that bites is a snapshot for a device
+    you are *not* currently pointed at (stranded by `npm run demo` on one Roku, then
+    a run against another). Before this the file had no operator-facing surface at
+    all, which is how one got destroyed by an `rm -rf` aimed at the ledger beside it.
 - **Ctrl-C is safe.** The interrupt stops the child, and the parent restores before
   exiting (~30 s; press Ctrl-C again to abandon and recover later with
   `npm run rta:restore`). This is why the lifecycle cannot live in Vitest: `afterAll`

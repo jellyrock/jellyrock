@@ -201,7 +201,7 @@ async function main() {
   // Records to `out/demo/`. Takes drive the same navs as the suite, so a nav that
   // times out mid-recording now leaves the device state behind instead of just a
   // ruined take.
-  beginRun({ lock: activeLock, run: 'demo' });
+  const run = beginRun({ lock: activeLock, run: 'demo' });
   setFailureContext({ take: take.name });
   // Registered BEFORE armRestoreOnInterrupt() below, because that installs its
   // own signal handlers which end in process.exit(). Node runs listeners in
@@ -261,6 +261,14 @@ async function main() {
     // state rather than a torn one (registry restored but the running app still on the demo token).
     await waitForEnter('\n⏹ Stop your capture card, then press ENTER to restore your session... ');
     await stopPlayback().catch(() => {});
+    // Folded HERE rather than left to the exit net, for the same reason `rta-run`
+    // does it before its restore: order. The net's `console.log` runs inside a
+    // `process.on('exit')` handler, where a write to a PIPE is asynchronous on
+    // macOS — so `npm run demo | tee` can lose the summary entirely
+    // (`exit-net-summary-lost-on-macos-pipe` in tech-debt.md). This is the path
+    // that can afford an explicit close, so it takes it; the net still covers the
+    // interrupt and early-exit paths, where nothing here could run.
+    run.close();
     await restoreRegistry(saved);
     await relaunch();
     cleanlyRestored = true;
@@ -276,10 +284,10 @@ async function main() {
   }
 }
 
-// No explicit endRun on either path: `beginRun` arms a process-exit net that folds
-// any run an entry point did not close. That is what covers the interrupt path
-// here, where armRestoreOnInterrupt owns the exit and a hand-rolled call could
-// never run. See `armCloseOnExit` in scripts/run-record.js.
+// Neither of these folds the run: the clean path already closed it above, and on
+// every other path `beginRun`'s process-exit net does. That net is what covers the
+// interrupt, where armRestoreOnInterrupt owns the exit and a hand-rolled call could
+// never run at all. See `armCloseOnExit` in scripts/run-record.js.
 main()
   .then(async () => {
     await activeLock?.release();
