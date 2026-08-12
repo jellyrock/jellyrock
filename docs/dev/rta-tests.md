@@ -287,7 +287,7 @@ filter can never silently drop a row:
 | `commit` | short SHA at the start of the run | "are these N runs even the same code?" |
 | `dirty` | working tree not clean at that SHA (untracked files included — they get compiled in) | during RTA work the tree is usually dirty, and a bare SHA would over-claim reproducibility |
 | `deviceKey` | **which Roku** — the lock's own `sha256(device-id)`, not an address | there are three on this LAN and they are not interchangeable. A baseline is specified on one device, so `variant` and `commit` are IDENTICAL across its runs and cannot separate a stray run on another one. `null` on the degraded lock path, which never resolves a device |
-| `outcome` | `passed` / `failed` / `interrupted` / `crashed` — what became of the run | the other four describe the INVOCATION; this is the only one about the run itself. See below — without it, a run that never executed a test is indistinguishable from a perfect one |
+| `outcome` | `passed` / `failed` / `interrupted` / `crashed` / `blocked` — what became of the run | the other four describe the INVOCATION; this is the only one about the run itself. See below — without it, a run that never executed a test is indistinguishable from a perfect one, and a run the fixture broke is indistinguishable from app flake |
 
 ### Reading a baseline out of it
 
@@ -344,15 +344,40 @@ whole field exists to prevent.
 **The rate reads `outcome`, never `failures.length`** — see the three-way conflation
 below.
 
-**The four outcomes are not four peers; they partition into samples and non-samples.**
+**The outcomes are not peers; they partition into samples and non-samples.**
 A `passed` or `failed` run reached a verdict, so it is evidence: in the population,
-and in the numerator respectively. A `crashed` or `interrupted` run never reached one
-— a deploy that 401'd, an operator's Ctrl-C — so it is not evidence about the app in
-either direction. Counting it red inflates the rate; counting it green hides a real
-failure; the only correct move is to drop it from the population. `SAMPLE_OUTCOMES` in
+and in the numerator respectively. A `crashed`, `interrupted` or `blocked` run never
+reached one — a deploy that 401'd, an operator's Ctrl-C, a fixture server that
+stopped answering — so it is not evidence about the app in either direction. Counting
+it red inflates the rate; counting it green hides a real failure; the only correct
+move is to drop it from the population. `SAMPLE_OUTCOMES` in
 [`run-record.js`](../../scripts/run-record.js) is that set, shared by the selector and
 by the run summary's own operator advice so the two cannot drift — they did not agree
 on first cut.
+
+**`blocked` is the one to understand, because it is the only non-sample that looks
+exactly like a sample.** The other two are obvious from outside: no suite ran, or a
+human stopped it. A blocked run ran its suite, failed tests, and exited non-zero —
+nothing about it reads as unusual. What separates it is that a request to the demo
+server failed underneath it, so whatever went red afterwards was never a fair test of
+the app. `tests/rta/lib/jellyfin.js` records that failure at the throw site and
+`rta-run.js` reads it back, because by the time it surfaces the cause is gone: a 401
+inside a helper arrives as an ordinary assertion failure several frames away.
+
+It outranks `failed` when a run has both, deliberately — a broken dependency is a
+plausible cause of whatever else went red in the same run. On 2026-08-12 two runs went
+red on a content assertion whose real cause was a session evicted 66 seconds in; both
+would have entered a baseline as app flake. **A `blocked` run in your series is not
+noise to ignore — it means the fixture failed you, and the run needs re-taking.**
+
+**Do not `git pull` while a series is running.** `commit` is stamped per run, at its
+open, so a pull mid-series silently splits one series into two populations and
+`--commit HEAD` then selects only the runs taken after it. This is the ledger working
+as designed — it is exactly the miscount the key exists to prevent — but it is silent
+in the sense that both halves look like complete series. It happened on 2026-08-12:
+two CI journal commits landed between run 1 and run 2, and the two runs are keyed to
+different commits despite testing an identical binary (`test:rta:fast` rebuilds
+nothing). Take the series on a checkout you are not also updating.
 
 **A dirty tree is excluded, so commit before the series.** `dirty: true` records that
 the tree was modified but carries no content hash, so two dirty runs are not provably

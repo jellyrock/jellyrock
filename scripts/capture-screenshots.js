@@ -314,7 +314,12 @@ async function main() {
   restoreArmed = true; // from here the restore handler owns the exit — see above
 
   console.log(`Authenticating ${CONFIG.server.username}@${CONFIG.server.url} ...`);
-  const session = await authenticate(CONFIG.server);
+  // Its OWN role, so a capture and an RTA run on two different devices cannot
+  // authenticate as the same client and evict each other — see `sessionDeviceId`.
+  const session = await authenticate(CONFIG.server, {
+    role: 'screenshots',
+    deviceKey: lock.meta?.deviceKey,
+  });
   console.log(`  userId=${session.userId} token=${session.token.length}c`);
 
   // Runtime library map (collectionType -> current id) for deterministic view seeding.

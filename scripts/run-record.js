@@ -247,6 +247,54 @@ export function crossesHourBoundary(fromIso, toIso) {
 }
 
 /**
+ * The stable slugs a failure aggregates under. THE key Phase 3's flake baseline
+ * groups by, which is why it is a closed set rather than string literals.
+ *
+ * Two ways a bucket goes wrong, and they need different guards: two names for one
+ * class SPLITS the count (a new throw site inventing its own slug), and one name
+ * for two classes MERGES it (a copy-pasted entry). The frozen object plus a
+ * uniqueness assertion in the tests cover the second; `kindUnknown` covers the first.
+ *
+ * Add a member here BEFORE using it at a throw site — never an inline literal.
+ *
+ * Lives in the ledger module rather than beside the RTA capture that first needed
+ * it, because it has two producers with nothing else in common:
+ * `tests/rta/lib/diagnostics.js` (device state at a wait's throw site) and
+ * `tests/rta/lib/jellyfin.js` (a fixture request that failed). The latter is a pure
+ * REST helper — reaching a registry inside `diagnostics.js` would import the whole
+ * device client into it. `diagnostics.js` re-exports these, so its own callers are
+ * unaffected.
+ */
+export const FAILURE_KINDS = Object.freeze({
+  WAIT_FOR_TIMEOUT: 'wait-for-timeout',
+  WAIT_FOCUSED_TIMEOUT: 'wait-focused-timeout',
+  HOME_LIBRARY_TILE_NOT_FOUND: 'home-library-tile-not-found',
+  GRID_LOAD_TIMEOUT: 'grid-load-timeout',
+  DETAIL_ROW_NOT_FOUND: 'detail-row-not-found',
+  MEDIA_PLAYER_NOT_STARTED: 'media-player-not-started',
+  /**
+   * A request to the fixture server did not answer usefully — a non-2xx, or a
+   * transport error. NOT an app failure, and the one kind that changes the run's
+   * OUTCOME rather than only describing it: see `RUN_OUTCOMES.BLOCKED`.
+   */
+  SERVER_REQUEST_FAILED: 'server-request-failed',
+});
+
+const KNOWN_KINDS = new Set(Object.values(FAILURE_KINDS));
+
+/** True for a slug that is not a registered member — see `FAILURE_KINDS`. */
+export const isUnknownKind = (kind) => !KNOWN_KINDS.has(kind);
+
+/**
+ * The kinds that mean the run was never a fair test of the app — see
+ * `RUN_OUTCOMES.BLOCKED`. Read by the entry point when it picks an outcome.
+ */
+export const BLOCKING_KINDS = new Set([FAILURE_KINDS.SERVER_REQUEST_FAILED]);
+
+/** True when a run's folded failures include a dependency failure. */
+export const wasBlocked = (failures) => (failures || []).some((f) => BLOCKING_KINDS.has(f?.kind));
+
+/**
  * What became of a run, as distinct from what it DIAGNOSED.
  *
  * `failures` is the diagnostic record — the five RTA throw sites that capture
@@ -274,18 +322,44 @@ export const RUN_OUTCOMES = Object.freeze({
   INTERRUPTED: 'interrupted',
   /** Nobody closed the run — the entry point died before it got there. */
   CRASHED: 'crashed',
+  /**
+   * The suite ran and went red, but a DEPENDENCY failed it — a request to the
+   * fixture server that never answered, or answered 401. The app was never on
+   * trial, so the red says nothing about it.
+   *
+   * Distinct from `failed` because it is the difference between evidence and
+   * noise, and the two are indistinguishable from the exit code alone: a 401
+   * inside a helper surfaces as an ordinary assertion failure several frames
+   * away from its cause. On 2026-08-12 an evicted session produced exactly that
+   * — a red run whose visible failure was a content assertion, whose real cause
+   * was a dead token, and which would have entered a flake baseline as an app
+   * failure.
+   *
+   * It OUTRANKS `failed` when a run has both, deliberately: a broken dependency
+   * is a plausible cause of whatever else went red in the same run, so the run
+   * cannot be used as evidence either way. Both observed failures that day were
+   * downstream of the same eviction.
+   */
+  BLOCKED: 'blocked',
 });
 
 /**
- * The four outcomes are NOT four peers — they partition into two kinds, and a rate
- * computed without that split is wrong in both directions.
+ * The outcomes are NOT peers — they partition into two kinds, and a rate computed
+ * without that split is wrong in both directions.
  *
  * A `passed` or `failed` run reached its verdict, so it is a SAMPLE: it belongs in
- * the population and in the numerator respectively. A `crashed` or `interrupted`
- * run never reached one — a deploy that 401'd, an operator's Ctrl-C — so it is not
- * evidence about the app either way. Counting it red inflates the rate; counting it
- * green hides a real failure; the only correct move is to drop it from the
- * population entirely.
+ * the population and in the numerator respectively. A `crashed`, `interrupted` or
+ * `blocked` run never reached one — a deploy that 401'd, an operator's Ctrl-C, a
+ * fixture server that stopped answering — so it is not evidence about the app either
+ * way. Counting it red inflates the rate; counting it green hides a real failure; the
+ * only correct move is to drop it from the population entirely.
+ *
+ * `blocked` is the subtlest member and the reason this set is worth its own export.
+ * The other two non-samples are obvious from outside — no suite ran, or a human
+ * stopped it. A blocked run looks EXACTLY like a red one: the suite ran, tests
+ * failed, the exit code is non-zero. Only the recorded cause separates them, which
+ * is why the dependency failure has to be written down at the moment it happens
+ * rather than inferred at the close.
  *
  * Exported because the aggregation lives with the reader, not here, and the doc's
  * filter recipe and this module's own operator advice have to agree on it. They did
@@ -429,14 +503,24 @@ export function formatRunSummary(summary, file = failuresPath()) {
     // which is DEFINED by the exit net firing — but false of `interrupted`, which
     // only ever comes from an entry point closing deliberately on the abandon path.
     // What both share, and all the shared clause may claim, is the missing verdict.
+    //
+    // `blocked` needs its own clause for the same reason and is the least obvious of
+    // the three: its entry point DID close it, and the operator DIDN'T stop it, so
+    // both existing clauses are false of it. It is also the only non-sample where the
+    // suite genuinely ran and genuinely went red — what it lacks is not an ending but
+    // a fair trial, because a dependency failed underneath it.
+    const why = {
+      [RUN_OUTCOMES.INTERRUPTED]: 'You stopped it',
+      [RUN_OUTCOMES.BLOCKED]:
+        'A request to the fixture server failed, so its red says nothing about the app',
+    };
     lines.push(
       `${tag} run ${outcome} (${window}) — recorded as \`outcome: "${outcome}"\` in the ledger. ` +
         (SAMPLE_OUTCOMES.has(outcome)
           ? 'It reached a verdict, so it counts: a rate over these runs reads `outcome`, never an empty failure list.'
-          : `${
-              outcome === RUN_OUTCOMES.INTERRUPTED ? 'You stopped it' : 'Nobody closed it'
-            }, so it never reached a verdict and what it completed is unknown — it is NOT a ` +
-            'sample: drop it from the population rather than counting it as a failure.'),
+          : `${why[outcome] ?? 'Nobody closed it'}, so it never reached a verdict ` +
+            'about the app — it is NOT a sample: drop it from the population rather ' +
+            'than counting it as a failure.'),
     );
   }
   if (flagUnknownOutcome) {
@@ -593,7 +677,17 @@ export function beginRun({ lock, run, cumulative = false }) {
   return {
     startedAt,
     dir: activeRunDir,
-    env: { RTA_RUN_DIR: activeRunDir },
+    // `RTA_DEVICE_KEY` rides along because the CHILD needs the device's identity and
+    // cannot cheaply resolve it: the key comes from an ECP lookup the lock already
+    // paid for, in this process. `tests/rta/lib/jellyfin.js` folds it into the
+    // DeviceId every session is minted under, so two devices driven at once cannot
+    // authenticate as the same client and log each other out. Omitted rather than
+    // `null` on the degraded path — `sessionDeviceId` then falls back to a hash of
+    // `ROKU_IP`, and an absent var picks that up where the string "null" would not.
+    env: {
+      RTA_RUN_DIR: activeRunDir,
+      ...(lock.meta?.deviceKey ? { RTA_DEVICE_KEY: lock.meta.deviceKey } : {}),
+    },
     // The outcome is passed at CLOSE, not at open: it is the one thing about a run
     // that cannot be known when it starts.
     close: (outcome) => endRun({ ...args, outcome }),

@@ -522,6 +522,32 @@ and every one produced a plausible number rather than an error. An unrecognized 
 is deliberately NOT coerced into a sample: it records as given, warns, and falls out of
 the population, so a typo cannot score green.
 
+## decision-id: session-identity-per-role-and-device
+
+**date**: 2026-08-12
+**status**: accepted
+**related-files**: tests/rta/lib/jellyfin.js, scripts/run-record.js, scripts/capture-screenshots.js, tests/rta/demos/run.mjs
+
+Jellyfin keys a session to its `DeviceId`, and a second `AuthenticateByName` under the same
+one EVICTS the first token — measured against the demo server, where session A went from
+OK to 401 the instant session B was minted. Every Node-side caller authenticated as the
+literal string `"jellyrock-screenshots"`, so any two running at once logged each other
+out. Sessions are now minted as `jellyrock-<role>-<deviceKey>`.
+
+Per role AND per device because either axis alone leaves a live collision: per-role only
+still breaks one tool driving two Roku devices, which is exactly the two-suite contention
+experiment. Stable rather than random-per-process, deliberately — a random id is
+collision-free but mints a new session on a shared public server every invocation, and a
+stable one is also readable in a session list, which is what makes a stray session
+traceable to the tool that opened it. The `deviceKey` comes from the lock (already resolved by an ECP lookup) via the
+child's env; the degraded-lock fallback hashes `ROKU_IP` rather than sending a LAN address
+to a third party.
+
+This was unreachable before two devices were driven at once — `device-lock.js` serialized
+every tool onto one device, which is why a shared `DeviceId` survived this long. Worth
+re-evaluating if a caller ever needs two concurrent sessions on ONE device: the id has no
+per-invocation component, so they would collide by design.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

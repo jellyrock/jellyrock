@@ -22,33 +22,24 @@ import path from 'node:path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { FAILURE_KINDS, isUnknownKind } from './diagnostics.js';
 
-describe('FAILURE_KINDS', () => {
-  const entries = Object.entries(FAILURE_KINDS);
-
-  it('maps every name to a distinct slug', () => {
-    // The silent-merge case: a copy-pasted entry that reuses a slug would fold two
-    // failure classes into one bucket, and nothing at runtime could tell.
-    const slugs = entries.map(([, slug]) => slug);
-    expect(new Set(slugs).size).toBe(slugs.length);
-  });
-
-  it('uses kebab-case slugs throughout', () => {
-    // Consistency is what lets the baseline group without normalising, and a
-    // one-off `detail_row` would aggregate as its own bucket forever.
-    for (const [name, slug] of entries) {
-      expect(slug, `${name} -> "${slug}"`).toMatch(/^[a-z]+(-[a-z]+)*$/);
-    }
-  });
-
-  it('is frozen, so a typo cannot quietly add a member at runtime', () => {
+describe('the FAILURE_KINDS re-export', () => {
+  // The registry itself moved to `scripts/run-record.js` (it has a second producer
+  // now — `lib/jellyfin.js`, which must not import the device client to reach it),
+  // and its invariants — uniqueness, kebab-case, frozen-ness — are gated there,
+  // beside the definition. What is still this module's contract is the RE-EXPORT:
+  // every throw site and spec imports these names from here, so a move that broke
+  // the alias would break them all. That is what these two assert, and nothing more.
+  it('re-exports the registry so existing throw sites keep importing from here', () => {
+    expect(FAILURE_KINDS.WAIT_FOR_TIMEOUT).toBe('wait-for-timeout');
     expect(Object.isFrozen(FAILURE_KINDS)).toBe(true);
   });
 
-  it('recognises its own members and rejects anything else', () => {
+  it('re-exports isUnknownKind bound to that same registry', () => {
+    // Guards the failure mode a bare `export { x } from` would have had: a re-export
+    // that resolves but is checked against a DIFFERENT set would call every
+    // registered slug unknown.
     for (const slug of Object.values(FAILURE_KINDS)) expect(isUnknownKind(slug)).toBe(false);
     expect(isUnknownKind('detail-rows-missing')).toBe(true);
-    // A typo'd property reads as undefined — it must not pass as registered.
-    expect(isUnknownKind(FAILURE_KINDS.DETAIL_ROW_NOT_FOND)).toBe(true);
     expect(isUnknownKind(undefined)).toBe(true);
   });
 });

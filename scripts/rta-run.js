@@ -38,7 +38,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setupRtaEnv, deployRtaBuild, relaunch, ecp } from '../tests/rta/lib/driver.js';
 import { snapshotRegistry, restoreRegistry } from '../tests/rta/lib/registry.js';
-import { beginRun, RUN_OUTCOMES } from './run-record.js';
+import { beginRun, readFailures, RUN_OUTCOMES, wasBlocked } from './run-record.js';
 import { acquireDeviceLock } from './device-lock.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -196,12 +196,16 @@ const exitCode = await new Promise((resolve) => {
 // throw sites write failure records, and the specs also assert with plain
 // `expect()`, so a red run can fold with an EMPTY failure list. Reading `failures`
 // as the outcome would score that run green.
+//
+// A RED run is then read once more, and only ever downgraded: if the child recorded a
+// dependency failure, the run is `blocked` rather than `failed` — it never put the app
+// on trial, so it leaves the baseline population instead of entering it as evidence.
+// Deliberately narrow: a green run is never re-read (a suite that passed IS a verdict,
+// whatever the fixture did along the way), and the check cannot promote a failure into
+// a pass. See `RUN_OUTCOMES.BLOCKED` for why blocked outranks failed.
+const redOutcome = wasBlocked(readFailures()) ? RUN_OUTCOMES.BLOCKED : RUN_OUTCOMES.FAILED;
 run.close(
-  interrupting
-    ? RUN_OUTCOMES.INTERRUPTED
-    : exitCode === 0
-      ? RUN_OUTCOMES.PASSED
-      : RUN_OUTCOMES.FAILED,
+  interrupting ? RUN_OUTCOMES.INTERRUPTED : exitCode === 0 ? RUN_OUTCOMES.PASSED : redOutcome,
 );
 
 try {
