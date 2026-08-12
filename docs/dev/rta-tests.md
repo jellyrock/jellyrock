@@ -287,20 +287,42 @@ filter can never silently drop a row:
 | `deviceKey` | **which Roku** — the lock's own `sha256(device-id)`, not an address | there are three on this LAN and they are not interchangeable. A baseline is specified on one device, so `variant` and `commit` are IDENTICAL across its runs and cannot separate a stray run on another one. `null` on the degraded lock path, which never resolves a device |
 | `outcome` | `passed` / `failed` / `interrupted` / `crashed` — what became of the run | the other four describe the INVOCATION; this is the only one about the run itself. See below — without it, a run that never executed a test is indistinguishable from a perfect one |
 
-So a clean N-run baseline is:
+### Reading a baseline out of it
 
-```js
-const VARIANTS = new Set(['test:rta', 'test:rta:fast']);
-const SAMPLES = new Set(['passed', 'failed']); // see below — the other two are not samples
-const sel = runs.filter(
-  (r) =>
-    r.commit === X && VARIANTS.has(r.variant) && r.deviceKey === D && !r.dirty && SAMPLES.has(r.outcome),
-);
-const flakeRate = sel.filter((r) => r.outcome === 'failed').length / sel.length;
+**`npm run flake-baseline`** — that is the whole recipe, and it is deliberately not a
+snippet to retype. Run it bare to see what the ledger holds, then name a series:
+
+```console
+$ npm run flake-baseline
+.device-runs/rta/runs.jsonl — 10 line(s)
+
+  variant     test:rta ×8   test:rta:fast ×2
+  device      (unrecorded) ×4   ac4701ca4a5d8a0b ×4   1f9118827848036c ×2
+  commit      27279e75 ×3   f45eebd7 ×2   ad1908cb ×2   …
+  outcome     (unrecorded) ×6   crashed ×2   passed ×1   failed ×1
+  tree        dirty ×9   clean ×1
+
+$ npm run flake-baseline -- --commit HEAD --device ac4701ca4a5d8a0b
+  samples     6   (6 passed, 0 failed)
+  excluded    4   2 dirty tree · 1 other device · 1 not a sample (1 crashed)
+
+  flake rate  0/6 = 0.0%   95% upper bound 39.3%
+  A clean series BOUNDS the rate, it does not measure 0% — …
 ```
 
-It is not a `rm` you have to remember before the series. Two things in that filter are
-easy to get wrong, and both produce a plausible-looking number rather than an error:
+`--run run-roku-tests` reads the Rooibos ledger instead; `--variant a,b` overrides the
+variant set (defaulted only for the RTA ledger — see below).
+
+**Why a command and not four lines of `runs.filter(...)` you can read here.** Because
+that is what this was, and it was wrong three times in one PR cycle — each time
+producing a plausible number rather than an error. It filtered
+`variant === 'test:rta'` while the protocol says to use `test:rta:fast` from run 2, so
+it selected the first run of a six-run series and reported a one-sample baseline. It
+counted `outcome !== 'passed'` as a failure while the run summary told the operator to
+*exclude* a crashed run. And after the copy here was fixed, the copy in the project
+plan still carried the second bug. None of those were defects in the ledger; they were
+defects in a recipe a human retypes. What is left below is the part that genuinely
+needs a human reader — *why* the filter is shaped this way.
 
 **The rate reads `outcome`, never `failures.length`** — see the three-way conflation
 below.
@@ -311,19 +333,31 @@ and in the numerator respectively. A `crashed` or `interrupted` run never reache
 — a deploy that 401'd, an operator's Ctrl-C — so it is not evidence about the app in
 either direction. Counting it red inflates the rate; counting it green hides a real
 failure; the only correct move is to drop it from the population. `SAMPLE_OUTCOMES` in
-[`run-record.js`](../../scripts/run-record.js) is the same set, exported so this recipe
-and the run summary's own operator advice cannot drift apart — they did not agree on
-first cut, which is the same shape of quiet miscount as the `variant` trap below.
+[`run-record.js`](../../scripts/run-record.js) is that set, shared by the selector and
+by the run summary's own operator advice so the two cannot drift — they did not agree
+on first cut.
 
-**`VARIANTS`, not `variant === 'test:rta'`** — and this is a live trap, not a
-nicety. The recommended protocol is one `test:rta` followed by `test:rta:fast` for
-runs 2..N, precisely so the whole series measures ONE binary instead of N rebuilds
-of it. Those runs land as `variant: 'test:rta:fast'`, so an equality filter on
-`'test:rta'` selects exactly the *first* run and silently reports a one-sample
-baseline. Use `new Set(['test:rta', 'test:rta:fast'])` for a FLAKE rate, where the
-deploy is not part of what is being measured. Keep them apart when comparing
-**durations** — that is what the row above is about, and `:fast` is ~30 s shorter by
-construction.
+**A dirty tree is excluded, so commit before the series.** `dirty: true` records that
+the tree was modified but carries no content hash, so two dirty runs are not provably
+the same code — which is the one thing `commit` is in the filter to establish. This is
+why a series is taken on a merged, clean checkout, and why the tool reports
+`N dirty tree` as an exclusion rather than quietly returning fewer runs.
+
+**Both variants, not `test:rta` alone.** The protocol is one `test:rta` followed by
+`test:rta:fast` for runs 2..N, precisely so the whole series measures ONE binary
+instead of N rebuilds of it. Those runs land as `variant: 'test:rta:fast'`. The tool
+defaults to both for the RTA ledger and to *no* variant filter for any other, because
+the Rooibos ledger's variants (`test:unit` / `test:integration` / `test:all`) are
+different SUITES rather than one suite deployed two ways. Keep the two apart when
+comparing **durations** — that is what the `variant` row above is about, and `:fast`
+is ~30 s shorter by construction.
+
+**A clean series does not measure a 0% flake rate**, which is why the tool prints a
+bound beside the estimate rather than the estimate alone. Six clean runs bound the
+per-run probability at 39%, ten at 26%, thirty at 10% — so no affordable N proves
+"fixed", and the honest report is *"consistent with fixed, upper bound X%"*. A single
+red run, by contrast, is immediately informative — that asymmetry is what sizes the
+series (below).
 
 **`failures: []` is not an outcome.** The failure records come from the five RTA
 throw sites that capture device state; an empty list means *those* did not fire, and
@@ -377,9 +411,11 @@ is append-only and lives outside `out/` for exactly that reason. The timeout is 
 not the record.)
 
 **So: N=6–8 on your device, and ~3 dispatches on the CI device.** The CI arm answers only
-*"is device identity a factor at all"* — it is not a second baseline. Get each arm's
-`deviceKey` from `npm run device:status`, which prints `device <ip> — ledger key <D>`;
-the ledger stores the hash and never an address, so that is the only way to learn `D`.
+*"is device identity a factor at all"* — it is not a second baseline. The ledger stores
+a device as a hash and never an address, so `deviceKey` has to be looked up rather than
+guessed: `npm run device:status` prints `device <ip> — ledger key <D>` for the device
+you can reach, and bare `npm run flake-baseline` lists every key that actually has runs
+— which is the one that works for the CI arm, whose device you cannot reach at all.
 
 **The decision rule matters more than the counts, because the obvious reading of a single
 red is wrong.** With 8 runs on one device and 3 on the other, if exactly one run in the 11
