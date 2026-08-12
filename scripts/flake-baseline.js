@@ -162,7 +162,38 @@ export function describeLedger(runs) {
     `  commit      ${tally(runs, (r) => r.commit)}`,
     `  outcome     ${tally(runs, (r) => r.outcome)}`,
     `  tree        ${tally(runs, (r) => (r.dirty == null ? null : r.dirty ? 'dirty' : 'clean'))}`,
+    // Not a selection key like the four above — you cannot filter on it, and the
+    // rate mode warns rather than excludes. It is here because it is the one
+    // property of a run that invalidates a series without changing any of them.
+    `  hour        ${tally(runs, (r) =>
+      r.crossedHourBoundary == null
+        ? null
+        : r.crossedHourBoundary
+          ? 'crossed :00'
+          : 'inside one hour',
+    )}`,
   ];
+}
+
+/**
+ * How many of a selection ran across the demo server's hourly reset.
+ *
+ * Counted over SAMPLES, not over the whole ledger: a run excluded for a dirty tree
+ * or a wrong commit cannot contaminate a rate it is not in.
+ *
+ * `crossedHourBoundary` is written by `summarizeRun` on every close, so an absent
+ * value means a hand-edited or truncated line rather than a run that did not cross.
+ * Counted separately for that reason — treating unknown as `false` is precisely the
+ * "silently assume the good case" move this whole field exists to prevent.
+ */
+export function hourCrossings(samples) {
+  let crossed = 0;
+  let unknown = 0;
+  for (const r of samples) {
+    if (r.crossedHourBoundary === true) crossed++;
+    else if (r.crossedHourBoundary == null) unknown++;
+  }
+  return { crossed, unknown };
 }
 
 /** Lines reporting a selected series: what counted, what did not, and the rate. */
@@ -203,6 +234,33 @@ export function reportBaseline(result) {
   lines.push(
     `  flake rate  ${failed}/${samples.length} = ${pct(rate)}   95% upper bound ${pct(bound)}`,
   );
+
+  // Warned, never excluded — and printed BEFORE the clean-series note, because it
+  // qualifies the number both of those lines are about.
+  //
+  // Not an exclusion because whether it invalidates the series depends on the
+  // PROPORTION, which is a judgment the operator can only make with the count in
+  // front of them: 1 of 8 is noise, 5 of 8 is measuring the fixture. Dropping them
+  // silently would also shrink the population, which widens the bound without
+  // saying why.
+  //
+  // This exists because everything above it is exact and this was not reported at
+  // all: a series could carry a rate AND a 95% bound with no signal that most of it
+  // straddled a reset — and a confidence interval over a contaminated population
+  // reads as rigour, which is worse than no tool.
+  const { crossed, unknown } = hourCrossings(samples);
+  if (crossed || unknown) {
+    const parts = [];
+    if (crossed) parts.push(`${crossed} of ${samples.length} samples crossed the top of the hour`);
+    if (unknown) parts.push(`${unknown} did not record the flag (hand-edited line?)`);
+    lines.push(
+      `  ⚠ ${parts.join('; ')}.`,
+      `  The demo server resets then, so those ran against a fixture that changed underneath`,
+      `  them. NOT excluded — whether it matters is the proportion, which is a judgment only`,
+      `  you can make: a rate drawn mostly from crossing runs measures the fixture, not the app.`,
+    );
+  }
+
   if (failed === 0) {
     // The instruction this replaces lived in a project plan as a note-to-self, which
     // is the wrong place for the one conclusion a clean series most invites getting

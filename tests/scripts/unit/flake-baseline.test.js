@@ -14,6 +14,7 @@ import {
   describeLedger,
   flakeUpperBound,
   ledgerFor,
+  hourCrossings,
   reportBaseline,
   selectBaseline,
 } from '../../../scripts/flake-baseline.js';
@@ -26,8 +27,18 @@ const row = (over = {}) => ({
   dirty: false,
   deviceKey: 'dev-a',
   outcome: 'passed',
+  // `summarizeRun` writes this on every close, so a complete ledger line always
+  // carries it. Cases that need an ABSENT flag delete it explicitly, below.
+  crossedHourBoundary: false,
   ...over,
 });
+
+/** A row from before the flag existed, or a hand-edited one. */
+const rowWithoutHourFlag = () => {
+  const r = row();
+  delete r.crossedHourBoundary;
+  return r;
+};
 
 const CRITERIA = { commit: 'abc1234', deviceKey: 'dev-a', variants: FLAKE_VARIANTS };
 
@@ -190,6 +201,50 @@ describe('describing a ledger nobody has filtered yet', () => {
     const text = describeLedger([row(), row({ dirty: true })]).join('\n');
     expect(text).toContain('clean ×1');
     expect(text).toContain('dirty ×1');
+  });
+});
+
+describe('the hourly reset, which invalidates a series without changing any run', () => {
+  const crossing = (n) => Array.from({ length: n }, () => row({ crossedHourBoundary: true }));
+  const inside = (n) => Array.from({ length: n }, () => row({ crossedHourBoundary: false }));
+  const rate = (runs) => reportBaseline(selectBaseline(runs, CRITERIA)).join('\n');
+
+  it('counts crossings over the SAMPLES, not the whole ledger', () => {
+    // A run excluded for a dirty tree cannot contaminate a rate it is not in.
+    const runs = [...inside(2), row({ dirty: true, crossedHourBoundary: true })];
+    expect(hourCrossings(selectBaseline(runs, CRITERIA).samples).crossed).toBe(0);
+  });
+
+  it('warns on the rate, naming the proportion the operator has to judge', () => {
+    const text = rate([...crossing(3), ...inside(5)]);
+    expect(text).toContain('3 of 8 samples crossed the top of the hour');
+    expect(text).toContain('measures the fixture, not the app');
+  });
+
+  it('warns WITHOUT excluding — the population is untouched', () => {
+    // Dropping them would shrink n and widen the bound without saying why.
+    const sel = selectBaseline([...crossing(3), ...inside(5)], CRITERIA);
+    expect(sel.samples).toHaveLength(8);
+    expect(reportBaseline(sel).join('\n')).toContain('8 = 0.0%');
+  });
+
+  it('stays silent when no sample crossed — silence is the clean signal', () => {
+    expect(rate(inside(4))).not.toMatch(/top of the hour/);
+  });
+
+  it('counts an ABSENT flag separately rather than reading it as "did not cross"', () => {
+    // `summarizeRun` writes the field on every close, so absence means a hand-edited
+    // or truncated line. Treating unknown as false is the assume-the-good-case move
+    // this field exists to prevent.
+    const { crossed, unknown } = hourCrossings([rowWithoutHourFlag(), row()]);
+    expect([crossed, unknown]).toEqual([0, 1]);
+    expect(rate([rowWithoutHourFlag(), ...inside(3)])).toContain('did not record the flag');
+  });
+
+  it('shows the split in describe mode, before a series has been named', () => {
+    const text = describeLedger([...crossing(1), ...inside(2)]).join('\n');
+    expect(text).toContain('crossed :00 ×1');
+    expect(text).toContain('inside one hour ×2');
   });
 });
 

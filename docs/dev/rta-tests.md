@@ -303,12 +303,16 @@ $ npm run flake-baseline
   commit      27279e75 ×3   f45eebd7 ×2   ad1908cb ×2   …
   outcome     (unrecorded) ×6   crashed ×2   passed ×1   failed ×1
   tree        dirty ×9   clean ×1
+  hour        inside one hour ×10
 
 $ npm run flake-baseline -- --commit HEAD --device ac4701ca4a5d8a0b
   samples     6   (6 passed, 0 failed)
   excluded    4   2 dirty tree · 1 other device · 1 not a sample (1 crashed)
 
   flake rate  0/6 = 0.0%   95% upper bound 39.3%
+  ⚠ 4 of 6 samples crossed the top of the hour.
+  The demo server resets then, so those ran against a fixture that changed underneath
+  them. NOT excluded — whether it matters is the proportion, …
   A clean series BOUNDS the rate, it does not measure 0% — …
 ```
 
@@ -325,6 +329,17 @@ counted `outcome !== 'passed'` as a failure while the run summary told the opera
 plan still carried the second bug. None of those were defects in the ledger; they were
 defects in a recipe a human retypes. What is left below is the part that genuinely
 needs a human reader — *why* the filter is shaped this way.
+
+**The hour row is a WARNING, not a filter.** It is the one property that invalidates a
+series without changing any single run in it: a ~13-minute suite starting after roughly
+`:46` has the demo server's reset land mid-run, so those samples ran against a fixture
+that changed underneath them. It is not excluded, for two reasons — whether it matters
+is the *proportion* (1 of 8 is noise, 5 of 8 is measuring the fixture, and only a human
+can make that call), and dropping them silently would shrink the population and widen
+the bound without saying why. An **absent** flag is counted separately rather than read
+as "did not cross": `summarizeRun` writes it on every close, so a missing one means a
+hand-edited or truncated line, and treating unknown as the good case is the move this
+whole field exists to prevent.
 
 **The rate reads `outcome`, never `failures.length`** — see the three-way conflation
 below.
