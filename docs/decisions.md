@@ -461,6 +461,38 @@ clears it automatically: a later verified restore proves the device matches the 
 snapshot, which after an accept IS the accepted state, so it cannot prove the
 original value came back. It is gone, and only a person can close that.
 
+## decision-id: ledger-records-run-outcome
+
+**date**: 2026-08-12
+**status**: accepted
+**related-files**: scripts/run-record.js, scripts/rta-run.js, scripts/run-roku-tests.js, scripts/capture-screenshots.js, tests/rta/demos/run.mjs
+
+A ledger line records what BECAME of a run — `passed` / `failed` / `interrupted` /
+`crashed` — as a field separate from the failures it diagnosed. `failures[]` fills
+only from the five RTA throw sites that capture device state, so an empty list is
+equally true of three different runs: one that passed, one that went red somewhere
+the diagnostics do not reach (a plain `expect()`, or any error raised by Vitest
+itself), and one that never executed at all. A flake baseline whose entire output is
+"how many of N runs were red" cannot infer its own answer from the absence of
+records.
+
+The third case is what forced it. A deploy 401 appended `durationMs: 621,
+failures: []` on a CLEAN tree — the first line ever to satisfy all four selection
+keys (`variant`/`commit`/`dirty`/`deviceKey`), from a run where nothing ran, and it
+printed nothing on the way out because a run with no failures had nothing to say.
+
+`crashed` is **inferred from the absence of a close**, not from an error signal.
+Every entry point closes explicitly on the paths it can reach, so `armCloseOnExit`
+firing on a still-open run *is* the definition of dying before one of them ran. That
+inversion is what makes it robust to the entry points that die in ways they cannot
+themselves report — which is precisely the case that produced this note.
+
+Deliberately NOT the raw exit code, and NOT per-test pass/fail counts. One derived
+field cannot disagree with itself the way a raw-plus-derived pair can, and the
+question the baseline asks is run-level. A per-test flake rate is the trade-off
+worth re-evaluating later: if it is ever wanted, this is the field to extend rather
+than a second one to add beside it.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
