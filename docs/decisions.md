@@ -465,6 +465,7 @@ original value came back. It is gone, and only a person can close that.
 
 **date**: 2026-08-12
 **status**: accepted
+**partially-superseded-by**: outcomes-partition-into-samples (how a baseline consumes the field)
 **related-files**: scripts/run-record.js, scripts/rta-run.js, scripts/run-roku-tests.js, scripts/capture-screenshots.js, tests/rta/demos/run.mjs
 
 A ledger line records what BECAME of a run — `passed` / `failed` / `interrupted` /
@@ -492,6 +493,34 @@ field cannot disagree with itself the way a raw-plus-derived pair can, and the
 question the baseline asks is run-level. A per-test flake rate is the trade-off
 worth re-evaluating later: if it is ever wanted, this is the field to extend rather
 than a second one to add beside it.
+
+## decision-id: outcomes-partition-into-samples
+
+**date**: 2026-08-12
+**status**: accepted
+**partially-supersedes**: ledger-records-run-outcome (how a baseline consumes the field)
+**related-files**: scripts/run-record.js, scripts/flake-baseline.js, docs/dev/rta-tests.md
+
+The four outcomes are not four peers. `passed` and `failed` reached a verdict, so they
+are SAMPLES — in the population, and in the numerator respectively. `crashed` and
+`interrupted` never reached one — a deploy that 401'd, an operator's Ctrl-C — so they
+are not evidence about the app in either direction and leave the population entirely.
+Counting a non-sample red inflates the rate; counting it green hides a real failure.
+`ledger-records-run-outcome` established the field but described consuming it as
+"counts `outcome === 'passed'`", which is the second of those two errors.
+
+`SAMPLE_OUTCOMES` is that partition, exported rather than restated by each reader: the
+run summary's operator advice and `npm run flake-baseline` both consume it, so the
+advice and the arithmetic cannot disagree. They did on first cut — the documented
+recipe counted a crashed run as a failure while the summary told the operator to
+exclude it.
+
+The aggregation itself moved out of doc prose into `flake-baseline.js` for the same
+reason: as a snippet a human retypes it was wrong three times in one PR cycle — the
+variant filter, the sample partition, and a stale copy in a gitignored project plan —
+and every one produced a plausible number rather than an error. An unrecognized outcome
+is deliberately NOT coerced into a sample: it records as given, warns, and falls out of
+the population, so a typo cannot score green.
 
 ## Migrated to ADRs
 

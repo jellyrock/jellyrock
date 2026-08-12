@@ -18,8 +18,10 @@ related-files:
   - scripts/rta-run.js
   - scripts/rta-restore.js
   - scripts/device-lock.js
+  - scripts/flake-baseline.js
+  - tests/rta/demos/run.mjs
   - .github/workflows/rta-functional-tests.yml
-last-reviewed: 2026-08-11
+last-reviewed: 2026-08-12
 ---
 
 # RTA functional tests (`tests/rta/`)

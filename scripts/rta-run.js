@@ -74,7 +74,7 @@ const lock = await acquireDeviceLock({ what: runName });
 // there: the handler has to be able to kill the child, and the crash this exists for
 // (the deploy 401) happens BEFORE the spawn — so a `const` declared later would make
 // the handler's own reference a TDZ `ReferenceError` on exactly that path.
-// (Initialised rather than bare, so the pre-spawn state is a value the handler
+// (Initialized rather than bare, so the pre-spawn state is a value the handler
 // tests rather than an absence, and so `prefer-const` reads the spawn as the
 // reassignment it is.)
 let child = null;

@@ -774,7 +774,7 @@ describe('an outcome nobody registered', () => {
       { ...summarizeRun({ ...at, run: 'test:rta', outcome: 'pased' }), run: 'test:rta' },
       'x.jsonl',
     ).join('\n');
-    expect(text).toContain('⚠ unrecognised outcome `pased`');
+    expect(text).toContain('⚠ unrecognized outcome `pased`');
     expect(text).toContain('RUN_OUTCOMES');
   });
 

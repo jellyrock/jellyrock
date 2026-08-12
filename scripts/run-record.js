@@ -301,7 +301,7 @@ export const RUN_OUTCOMES = Object.freeze({
 export const SAMPLE_OUTCOMES = new Set([RUN_OUTCOMES.PASSED, RUN_OUTCOMES.FAILED]);
 
 /**
- * Every value `outcome` is allowed to take. An unrecognised one is RECORDED as it
+ * Every value `outcome` is allowed to take. An unrecognized one is RECORDED as it
  * was given and flagged — never coerced, never thrown on.
  *
  * Not thrown on because of WHERE the check runs: the close is what reports that a
@@ -444,7 +444,7 @@ export function formatRunSummary(summary, file = failuresPath()) {
     // reason: a value nobody registered splits a baseline's buckets, and the run
     // summary is the one artifact an operator reads after every run in a series.
     lines.push(
-      `${tag} ⚠ unrecognised outcome \`${outcome}\` — recorded as given, not corrected. ` +
+      `${tag} ⚠ unrecognized outcome \`${outcome}\` — recorded as given, not corrected. ` +
         'Use a `RUN_OUTCOMES` member (scripts/run-record.js); until then this run is ' +
         'not a sample and drops out of any baseline.',
     );

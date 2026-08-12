@@ -108,13 +108,19 @@ to `.device-runs/device/runs.jsonl` (the ledger, never reset). It is the same re
 the RTA harness uses, deliberately: [#800](https://github.com/jellyrock/jellyrock/issues/800)
 went red on a *Rooibos* test hitting the shared demo server, so this path needs the
 run window too — a suite that straddled the top of the hour ran against a fixture
-that reset underneath it, and the summary says so. Each line also carries an
-`outcome` (`passed` / `failed` / `interrupted` / `crashed`), set from the runner's own
-exit and defaulted to `crashed` by the process-exit net: the failure records say what a
-run *diagnosed*, which is not the same question as whether it ran at all. The directory is `out/device/`,
-not `out/rta/`; the record module knows nothing about devices, so nothing drags the
-RTA client into a runner that drives the device over telnet. Shape and lifecycle in
+that reset underneath it, and the summary says so. The directory is `out/device/`, not
+`out/rta/`; the record module knows nothing about devices, so nothing drags the RTA
+client into a runner that drives the device over telnet. Shape and lifecycle in
 [`rta-tests.md`](../dev/rta-tests.md#one-record-directory-per-run-kind).
+
+Each line also carries an `outcome` — `passed` / `failed` / `interrupted` / `crashed`
+— set from the runner's own exit and defaulted to `crashed` by the process-exit net.
+The failure records say what a run *diagnosed*, which is not the same question as
+whether it ran at all. The four are not four peers, either: `passed` and `failed`
+reached a verdict and are evidence, while `crashed` and `interrupted` never did and
+leave the population entirely. `npm run flake-baseline` is the reader that applies
+that partition — see
+[`rta-tests.md`](../dev/rta-tests.md#reading-a-baseline-out-of-it).
 
 ### How agents run tests
 
