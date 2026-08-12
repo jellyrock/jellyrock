@@ -292,8 +292,29 @@ export const RUN_OUTCOMES = Object.freeze({
  * not on first cut: the recipe counted `outcome !== 'passed'` as a failure while the
  * summary told the operator to exclude a crashed run — the same shape of quiet
  * miscount as the `variant === 'test:rta'` trap the ledger keys exist to prevent.
+ *
+ * Deliberately NOT `Object.freeze`d, unlike `RUN_OUTCOMES` above: freezing a Set
+ * seals its own properties and does nothing to its CONTENTS (`Object.freeze(new
+ * Set(['a'])).add('b')` succeeds), so the call would read as a guarantee it does not
+ * make. The test that pins the membership is the actual guard.
  */
-export const SAMPLE_OUTCOMES = Object.freeze(new Set([RUN_OUTCOMES.PASSED, RUN_OUTCOMES.FAILED]));
+export const SAMPLE_OUTCOMES = new Set([RUN_OUTCOMES.PASSED, RUN_OUTCOMES.FAILED]);
+
+/**
+ * Every value `outcome` is allowed to take. An unrecognised one is RECORDED as it
+ * was given and flagged — never coerced, never thrown on.
+ *
+ * Not thrown on because of WHERE the check runs: the close is what reports that a
+ * run died, so a throw there would destroy the record it exists to write, on exactly
+ * the runs whose record matters most. Not coerced because a guess is how a bad value
+ * becomes invisible. Flagging follows `unknownKinds`, the same problem one field
+ * over — an unregistered value that would quietly split a baseline's buckets.
+ *
+ * It also degrades safely without any of that: an unknown value is not in
+ * `SAMPLE_OUTCOMES`, so a typo drops the run from the population rather than
+ * scoring it green.
+ */
+const KNOWN_OUTCOMES = new Set(Object.values(RUN_OUTCOMES));
 
 /**
  * The whole-run view: the wall-clock window, whether it straddled a reset, the
@@ -353,8 +374,12 @@ export function summarizeRun({
     // The fifth filter key, and the only one that is about the run rather than the
     // invocation. `null` when the entry point did not say — honest, and the same
     // "missing would mean you have to know the convention" argument as the four
-    // above. A baseline counts `outcome === 'passed'`, never `!failures.length`.
+    // above. A baseline reads `outcome` over `SAMPLE_OUTCOMES`, never
+    // `!failures.length` — see that set for why the four values are not four peers.
     outcome: outcome ?? null,
+    // Recorded rather than corrected — see `KNOWN_OUTCOMES`. Omitted when false, so
+    // an ordinary line is unchanged, matching `cumulative` above.
+    outcomeUnknown: (outcome != null && !KNOWN_OUTCOMES.has(outcome)) || undefined,
     startedAt,
     endedAt,
     cumulative: cumulative || undefined,
@@ -386,6 +411,7 @@ export function formatRunSummary(summary, file = failuresPath()) {
   // is exactly why it printed NOTHING and slipped into the ledger unnoticed. Silence
   // is the right output for a clean run only.
   const flagOutcome = outcome && outcome !== RUN_OUTCOMES.PASSED;
+  const flagUnknownOutcome = Boolean(summary.outcomeUnknown);
   if (!failures.length && !flagHour && !unknownKinds.length && !flagOutcome) return [];
   const tag = `[${path.basename(runDir(summary.run))}]`;
   const window = `${clock(startedAt)}→${clock(endedAt)} UTC`;
@@ -395,16 +421,32 @@ export function formatRunSummary(summary, file = failuresPath()) {
     // see SAMPLE_OUTCOMES. A `failed` run IS evidence and counts; a `crashed` or
     // `interrupted` one is not a sample at all and leaves the population.
     //
-    // It deliberately does NOT say "it ran no suite". That was true of the deploy
-    // 401 that motivated this field and false in general: `capture-screenshots` can
-    // die on locale 5 of 5, and `demos` is not running a suite in the first place.
-    // The only thing the record actually knows is that nobody closed the run.
+    // Each non-sample says HOW it failed to reach a verdict, and only what the
+    // record can actually support. Two earlier cuts of this line overclaimed: "it
+    // ran no suite" was true of the deploy 401 that motivated the field and false in
+    // general (`capture-screenshots` can die on locale 5 of 5, and `demos` runs no
+    // suite at all), and "its entry point never closed it" is true of `crashed` —
+    // which is DEFINED by the exit net firing — but false of `interrupted`, which
+    // only ever comes from an entry point closing deliberately on the abandon path.
+    // What both share, and all the shared clause may claim, is the missing verdict.
     lines.push(
       `${tag} run ${outcome} (${window}) — recorded as \`outcome: "${outcome}"\` in the ledger. ` +
         (SAMPLE_OUTCOMES.has(outcome)
           ? 'It reached a verdict, so it counts: a rate over these runs reads `outcome`, never an empty failure list.'
-          : 'Its entry point never closed it, so what it completed is unknown — it is NOT a sample: ' +
-            'drop it from the population rather than counting it as a failure.'),
+          : `${
+              outcome === RUN_OUTCOMES.INTERRUPTED ? 'You stopped it' : 'Nobody closed it'
+            }, so it never reached a verdict and what it completed is unknown — it is NOT a ` +
+            'sample: drop it from the population rather than counting it as a failure.'),
+    );
+  }
+  if (flagUnknownOutcome) {
+    // Same shape as the unregistered-failure-kind warning below, for the same
+    // reason: a value nobody registered splits a baseline's buckets, and the run
+    // summary is the one artifact an operator reads after every run in a series.
+    lines.push(
+      `${tag} ⚠ unrecognised outcome \`${outcome}\` — recorded as given, not corrected. ` +
+        'Use a `RUN_OUTCOMES` member (scripts/run-record.js); until then this run is ' +
+        'not a sample and drops out of any baseline.',
     );
   }
   if (flagHour) {

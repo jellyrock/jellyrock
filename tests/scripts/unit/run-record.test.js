@@ -732,6 +732,57 @@ describe('the run outcome — whether the suite actually ran', () => {
     expect(SAMPLE_OUTCOMES.has(RUN_OUTCOMES.CRASHED)).toBe(false);
     expect(SAMPLE_OUTCOMES.has(RUN_OUTCOMES.INTERRUPTED)).toBe(false);
   });
+
+  it('does not tell an interrupted run nobody closed it — an entry point did', () => {
+    // `interrupted` is only ever written by an explicit `close()` (rta-run's abandon
+    // path, run-roku-tests' `done(130)`); the exit net writes `crashed` and nothing
+    // else. So "its entry point never closed it" — true of a crash by definition —
+    // is false here. The shared clause may only claim the missing verdict.
+    const advice = (outcome) =>
+      formatRunSummary({ ...at, run: 'test:rta', failures: [], outcome }, 'x.jsonl').join('\n');
+    expect(advice(RUN_OUTCOMES.INTERRUPTED)).not.toMatch(/never closed it|[Nn]obody closed it/);
+    expect(advice(RUN_OUTCOMES.INTERRUPTED)).toContain('never reached a verdict');
+    // The crash keeps the claim that IS true of it — that is the definition of the
+    // value, not a guess about what it managed to run.
+    expect(advice(RUN_OUTCOMES.CRASHED)).toContain('Nobody closed it');
+    expect(advice(RUN_OUTCOMES.CRASHED)).toContain('never reached a verdict');
+  });
+});
+
+describe('an outcome nobody registered', () => {
+  const at = { startedAt: '2026-08-12T01:07:47Z', endedAt: '2026-08-12T01:07:48Z' };
+
+  it('records the value as given rather than correcting or dropping it', () => {
+    // Never coerced: a guess is how a bad value becomes invisible. The flag rides
+    // beside it so a reader does not have to know the vocabulary to spot one.
+    const summary = summarizeRun({ ...at, outcome: 'pased' });
+    expect(summary.outcome).toBe('pased');
+    expect(summary.outcomeUnknown).toBe(true);
+  });
+
+  it('leaves an ordinary line unchanged', () => {
+    // Omitted-when-false, matching `cumulative`, so no ledger line grows a field
+    // that is false on every run anyone will ever take.
+    for (const outcome of Object.values(RUN_OUTCOMES)) {
+      expect(summarizeRun({ ...at, outcome })).not.toHaveProperty('outcomeUnknown', true);
+    }
+    expect(summarizeRun(at).outcomeUnknown).toBeUndefined();
+  });
+
+  it('warns on the terminal, the way an unregistered failure kind does', () => {
+    const text = formatRunSummary(
+      { ...summarizeRun({ ...at, run: 'test:rta', outcome: 'pased' }), run: 'test:rta' },
+      'x.jsonl',
+    ).join('\n');
+    expect(text).toContain('⚠ unrecognised outcome `pased`');
+    expect(text).toContain('RUN_OUTCOMES');
+  });
+
+  it('degrades to "not a sample" rather than to a pass', () => {
+    // The fail-safe that makes the warning a convenience rather than the only
+    // defence: a typo cannot reach the numerator OR the denominator.
+    expect(SAMPLE_OUTCOMES.has('pased')).toBe(false);
+  });
 });
 
 describe('summarizeRun', () => {
