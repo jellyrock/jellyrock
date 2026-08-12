@@ -38,6 +38,73 @@ export async function getActiveVal(keyPath) {
 }
 
 /**
+ * `getActiveVal` for MANY keyPaths in one device round trip. Returns an array
+ * positionally aligned with `keyPaths`; a keyPath that does not resolve is
+ * `undefined`, exactly as the single-read form reports it.
+ *
+ * ## Why batch at all
+ *
+ * ODC's `getValues` is a real batch — the on-device component loops the requests
+ * inside a SINGLE message (`processGetValuesRequest`), so N keyPaths cost one round
+ * trip rather than N. `diagnostics.js` has used it since Phase 2; this is the same
+ * mechanism made available to assertions.
+ *
+ * **Not for speed.** Measured on `.177`, 5 alternating rounds of 57 keyPaths: 57
+ * sequential `getValue` calls take a median 303 ms and one batched `getValues` takes
+ * 58 ms — so a round trip is ~5.4 ms and the whole saving is ~245 ms inside a ~20 s
+ * test. End-to-end that is invisible, and the before/after suite runs confirmed it
+ * (19.87 s vs 20.24 s mean, n=3 each — no change, the batched arm nominally slower).
+ * Anyone reaching for this to make a suite faster is reading the wrong number.
+ *
+ * **For the observation WINDOW.** Those same figures say the thing that matters: a
+ * one-shot assertion reading N fields sequentially is not one observation of the
+ * device, it is N observations spread over 303 ms, and a screen that is still
+ * settling can differ between the first and the last. The field read at position 50
+ * need not describe the same frame as the field read at position 1. Batching collapses
+ * that window to 58 ms — the same class of fix as the north-star rule, applied to
+ * reads instead of to input. `assertGenreRowsOwnTheirItems` went from 57 reads to 3
+ * on exactly this reasoning (1 + 14 row titles + 14 child counts + 28 item titles,
+ * against the demo server's 14 genres / 28 filed items). It scales with the fixture,
+ * so a richer library widens the sequential window and leaves the batched one alone.
+ *
+ * ## Failure semantics — a dead batch is not a screen full of missing fields
+ *
+ * The single-read form swallows to `undefined`, which is right for a POLL: callers
+ * retry, and a persistent miss ends in a diagnosed timeout. It is wrong for a batch
+ * feeding a one-shot assertion, because an ODC failure would make every keyPath read
+ * `undefined` at once and the assertion would report "the screen has no rows" —
+ * a confident false statement about the app, which is the same defect
+ * `lib/jellyfin.js` exists to not repeat one layer up.
+ *
+ * So this THROWS when the batch itself fails, and reports `undefined` only for a
+ * keyPath the device answered about and did not find. Those are genuinely different
+ * on the wire: `processGetValueRequest` returns `found: false` for an unresolved
+ * keyPath and only errors on an unresolvable `base` — and every request here shares
+ * one `base: 'global'`, so a per-key miss cannot masquerade as a batch failure or
+ * vice versa.
+ */
+export async function getActiveVals(keyPaths) {
+  if (!keyPaths.length) return [];
+  // Positional keys rather than the keyPaths themselves: a keyPath is not a safe AA
+  // key (dots, `#`, indices) and duplicates in the input would silently collapse.
+  const requests = Object.fromEntries(
+    keyPaths.map((keyPath, i) => [
+      `k${i}`,
+      { base: 'global', keyPath: `activeRoutedView.${keyPath}` },
+    ]),
+  );
+  const batch = await odc.getValues({ requests });
+  const results = batch?.results;
+  if (!results) {
+    throw await diagnosedError(
+      `batched read of ${keyPaths.length} keyPath(s) returned no results — the device answered, but not with a batch`,
+      { kind: FAILURE_KINDS.BATCH_READ_FAILED, observed: { keyPaths: keyPaths.slice(0, 8) } },
+    );
+  }
+  return keyPaths.map((_, i) => (results[`k${i}`]?.found ? results[`k${i}`].value : undefined));
+}
+
+/**
  * Poll `keyPath` until `predicate(value)` is true, optionally re-issuing
  * `action` (e.g. a key press) each tick. Throws on timeout so a broken nav/test
  * fails loudly instead of silently proceeding. `read` selects the reader (default

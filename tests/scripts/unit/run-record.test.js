@@ -33,6 +33,9 @@ import {
   BLOCKING_KINDS,
   isUnknownKind,
   wasBlocked,
+  foldAssertions,
+  recordAssertion,
+  readAssertions,
 } from '../../../scripts/run-record.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -758,6 +761,72 @@ describe('the run outcome — whether the suite actually ran', () => {
     expect(advice).toContain('fixture server');
     expect(advice).toContain('drop it from the population');
     expect(advice).not.toMatch(/it counts/);
+  });
+
+  describe('assertion records — how much an assertion actually checked', () => {
+    it('folds records into a name -> verified map', () => {
+      expect(
+        foldAssertions([
+          { name: 'moviesLibraryGenres', verified: 12 },
+          { name: 'someOtherScreen', verified: 3 },
+        ]),
+      ).toEqual({ moviesLibraryGenres: 12, someOtherScreen: 3 });
+    });
+
+    it('keeps the LAST count for a repeated name', () => {
+      // Watch mode asserts the same screen once per iteration. The useful number is
+      // the current one, not the first, and definitely not their sum.
+      expect(
+        foldAssertions([
+          { name: 'moviesLibraryGenres', verified: 12 },
+          { name: 'moviesLibraryGenres', verified: 4 },
+        ]),
+      ).toEqual({ moviesLibraryGenres: 4 });
+    });
+
+    it('keeps a zero — the count that matters most', () => {
+      // `verified: 0` is the whole point of recording these: an assertion that has
+      // decayed to checking nothing. A truthiness filter would drop exactly it.
+      expect(foldAssertions([{ name: 'x', verified: 0 }])).toEqual({ x: 0 });
+    });
+
+    it('ignores malformed records rather than throwing', () => {
+      // Bookkeeping must never fail the run it is bookkeeping about.
+      expect(
+        foldAssertions([null, {}, { name: 'x' }, { verified: 1 }, { name: 'y', verified: '3' }]),
+      ).toEqual({});
+      expect(foldAssertions(undefined)).toEqual({});
+    });
+
+    it('leaves no `assertions` key in the LEDGER LINE when nothing recorded one', () => {
+      // Asserted on the serialized line, not the object: the field is set to
+      // `undefined` (matching `cumulative` / `what` / `outcomeUnknown` beside it),
+      // so the property exists but `JSON.stringify` drops it — and the ledger line
+      // is what has to stay comparable with entries written before this field.
+      const s = summarizeRun({ ...at, run: 'test:rta', outcome: RUN_OUTCOMES.PASSED });
+      expect(JSON.parse(JSON.stringify(s))).not.toHaveProperty('assertions');
+    });
+
+    it('carries the map onto the summary when there is one', () => {
+      const s = summarizeRun({
+        ...at,
+        run: 'test:rta',
+        outcome: RUN_OUTCOMES.PASSED,
+        assertions: { moviesLibraryGenres: 12 },
+      });
+      expect(s.assertions).toEqual({ moviesLibraryGenres: 12 });
+    });
+
+    it('round-trips through its own file, separate from failures', () => {
+      // The two streams must not share a file: these are written by assertions that
+      // PASSED, and folding them into `failures.jsonl` would confuse both readers.
+      const aFile = path.join(tmpDir, 'assertions.jsonl');
+      recordAssertion({ name: 'moviesLibraryGenres', verified: 7 }, aFile);
+      recordAssertion({ name: 'moviesLibraryGenres', verified: 9 }, aFile);
+      expect(foldAssertions(readAssertions(aFile))).toEqual({ moviesLibraryGenres: 9 });
+      // ...and the failures file is untouched by any of it.
+      expect(readFailures(file)).toEqual([]);
+    });
   });
 
   describe('FAILURE_KINDS — the registry, gated beside its definition', () => {

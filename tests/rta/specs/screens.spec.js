@@ -23,6 +23,7 @@ import {
 import { hardRelaunch } from '../lib/driver.js';
 import { SCREENS } from '../screens.js';
 import { captureRawUI } from '../capture.js';
+import { recordAssertion } from '../../../scripts/run-record.js';
 
 const CAPTURE = process.env.RTA_CAPTURE === '1';
 const LOCALE = RTA_CONFIG.languages[0]; // en_US
@@ -84,7 +85,16 @@ for (const screen of SCREENS) {
     await hardRelaunch();
     await assertSeedTookEffect(expectedServer, screen.name);
     if (screen.nav) await screen.nav(ctx); // nav's waitFor gates assert "loaded"
-    if (screen.assert) await screen.assert(ctx); // explicit assert for seed-to-land screens
+    if (screen.assert) {
+      // A content assertion that returns a NUMBER is reporting how much it actually
+      // checked; record it. Green says the invariant held, not that it held over
+      // anything — an assertion whose fixture has quietly stopped supplying data
+      // passes just as loudly right up until the run it fails. Recorded, never
+      // asserted on: a floor here would redden runs over fixture churn, which is the
+      // false-red this phase exists to remove. See `assertionsPath` in run-record.js.
+      const verified = await screen.assert(ctx);
+      if (typeof verified === 'number') recordAssertion({ name: screen.name, verified });
+    }
     if (CAPTURE && screen.capture?.eligible) await captureRawUI(screen.name);
   });
 }
