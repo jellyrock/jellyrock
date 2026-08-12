@@ -29,22 +29,30 @@ import {
   formatRunSummary,
   RUN_OUTCOMES,
   SAMPLE_OUTCOMES,
+  FAILURE_KINDS,
+  BLOCKING_KINDS,
+  isUnknownKind,
+  wasBlocked,
 } from '../../../scripts/run-record.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 /**
- * Failure-kind slugs as LITERALS, deliberately — not imported from
- * `tests/rta/lib/diagnostics.js`.
+ * Failure-kind slugs as LITERALS in the RECORD-SHAPE tests below, deliberately.
  *
- * `run-record.js` treats `kind` as an opaque string, and that is the whole point of
- * the module split (`decisions.md` -> `run-record-per-run-kind`): it is what lets the
- * Rooibos runner share this record without dragging the RTA harness in. A test that
- * imported `FAILURE_KINDS` to spell them would re-couple exactly what the split
- * decoupled — and would pull `roku-test-automation` (~250 ms of import) into a suite
- * whose entire premise is that it needs no device. The registry's own invariants —
- * uniqueness, kebab-case, frozen-ness — are gated next door in
- * `tests/rta/lib/diagnostics.test.js`, which is the module that owns them.
+ * The record round-trip, the ledger and the summary all treat `kind` as an opaque
+ * string — that is the point of the module split (`decisions.md` ->
+ * `run-record-per-run-kind`), and what lets the Rooibos runner share this record
+ * without dragging the RTA harness in. Spelling them out keeps those tests honest
+ * about handling ANY slug, including one this file has never heard of.
+ *
+ * That is a statement about the record's plumbing, not about the registry. The
+ * registry itself now LIVES in `run-record.js` — it grew a second producer
+ * (`tests/rta/lib/jellyfin.js`, a pure REST helper that must not import the device
+ * client to reach it), so it moved to the module both sides can import. Its own
+ * invariants are gated below, beside the definition; `FAILURE_KINDS` is imported for
+ * those, which costs nothing now that reaching it no longer means loading
+ * `roku-test-automation`.
  */
 const WAIT_FOR_TIMEOUT = 'wait-for-timeout';
 const WAIT_FOCUSED_TIMEOUT = 'wait-focused-timeout';
@@ -726,11 +734,95 @@ describe('the run outcome — whether the suite actually ran', () => {
     }
   });
 
-  it('partitions the four outcomes into samples and non-samples', () => {
+  it('partitions the outcomes into samples and non-samples', () => {
     // The set the doc's filter recipe imports, so the two cannot drift.
     expect([...SAMPLE_OUTCOMES].sort()).toEqual(['failed', 'passed']);
     expect(SAMPLE_OUTCOMES.has(RUN_OUTCOMES.CRASHED)).toBe(false);
     expect(SAMPLE_OUTCOMES.has(RUN_OUTCOMES.INTERRUPTED)).toBe(false);
+    // `blocked` is the one that would do damage if it leaked into the population:
+    // unlike the other two it LOOKS like a sample from outside (a suite ran, tests
+    // failed, non-zero exit), so nothing downstream would question it.
+    expect(SAMPLE_OUTCOMES.has(RUN_OUTCOMES.BLOCKED)).toBe(false);
+  });
+
+  it('tells a blocked run neither that it was stopped nor that nobody closed it', () => {
+    // Both existing non-sample clauses are FALSE of `blocked`: its entry point closed
+    // it deliberately, and no operator interrupted it. Same overclaim the
+    // `interrupted` case above already cost us once — a shared clause may only assert
+    // what every member of the set actually did.
+    const advice = formatRunSummary(
+      { ...at, run: 'test:rta', failures: [], outcome: RUN_OUTCOMES.BLOCKED },
+      'x.jsonl',
+    ).join('\n');
+    expect(advice).not.toMatch(/Nobody closed it|You stopped it/);
+    expect(advice).toContain('fixture server');
+    expect(advice).toContain('drop it from the population');
+    expect(advice).not.toMatch(/it counts/);
+  });
+
+  describe('FAILURE_KINDS — the registry, gated beside its definition', () => {
+    // Moved here with the registry itself. Two ways a bucket goes wrong and they
+    // need different guards: two names for one class SPLITS the count (covered at
+    // runtime by `kindUnknown`), one name for two classes MERGES it — invisible in
+    // review and invisible at runtime, because both sites look perfectly valid.
+    const entries = Object.entries(FAILURE_KINDS);
+
+    it('maps every name to a distinct slug', () => {
+      const slugs = entries.map(([, slug]) => slug);
+      expect(new Set(slugs).size).toBe(slugs.length);
+    });
+
+    it('uses kebab-case slugs throughout', () => {
+      // Consistency is what lets the baseline group without normalising; a one-off
+      // `detail_row` would aggregate as its own bucket forever.
+      for (const [name, slug] of entries) {
+        expect(slug, `${name} -> "${slug}"`).toMatch(/^[a-z]+(-[a-z]+)*$/);
+      }
+    });
+
+    it('is frozen, so a typo cannot quietly add a member at runtime', () => {
+      expect(Object.isFrozen(FAILURE_KINDS)).toBe(true);
+    });
+
+    it('recognises its own members and rejects anything else', () => {
+      for (const slug of Object.values(FAILURE_KINDS)) expect(isUnknownKind(slug)).toBe(false);
+      expect(isUnknownKind('detail-rows-missing')).toBe(true);
+      // A typo'd property reads as undefined — it must not pass as registered.
+      expect(isUnknownKind(FAILURE_KINDS.DETAIL_ROW_NOT_FOND)).toBe(true);
+      expect(isUnknownKind(undefined)).toBe(true);
+    });
+
+    it('keeps every BLOCKING_KIND a registered member', () => {
+      // A blocking kind that is not in the registry would be flagged `kindUnknown`
+      // by the very summary that is meant to explain the blocked run.
+      for (const slug of BLOCKING_KINDS) expect(isUnknownKind(slug)).toBe(false);
+    });
+  });
+
+  describe('wasBlocked — telling a broken dependency from a broken app', () => {
+    it('is false for an ordinary red run, so a real failure still counts', () => {
+      // The direction that matters most: this must never turn app failures into
+      // non-samples, or the baseline stops measuring anything.
+      expect(wasBlocked([])).toBe(false);
+      expect(wasBlocked([{ kind: FAILURE_KINDS.GRID_LOAD_TIMEOUT }])).toBe(false);
+      expect(wasBlocked(undefined)).toBe(false);
+    });
+
+    it('is true when a fixture request failed', () => {
+      expect(wasBlocked([{ kind: FAILURE_KINDS.SERVER_REQUEST_FAILED }])).toBe(true);
+    });
+
+    it('is true when a dependency failure sits ALONGSIDE app failures', () => {
+      // The observed shape on 2026-08-12, and why `blocked` outranks `failed`: the
+      // dead session came first and the content assertion that went red was
+      // downstream of it. A run carrying both cannot be used as evidence either way.
+      expect(
+        wasBlocked([
+          { kind: FAILURE_KINDS.SERVER_REQUEST_FAILED },
+          { kind: FAILURE_KINDS.DETAIL_ROW_NOT_FOUND },
+        ]),
+      ).toBe(true);
+    });
   });
 
   it('does not tell an interrupted run nobody closed it — an entry point did', () => {

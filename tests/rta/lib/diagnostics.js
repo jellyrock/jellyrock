@@ -76,6 +76,8 @@
 import { odc } from 'roku-test-automation';
 import {
   crossesHourBoundary,
+  FAILURE_KINDS,
+  isUnknownKind,
   recordFailure,
   runIsCumulative,
   runStartedAt,
@@ -182,30 +184,18 @@ export async function captureFailureState() {
 }
 
 /**
- * The stable slugs a failure aggregates under. THE key Phase 3's flake baseline
- * groups by, which is why it is a closed set rather than five string literals.
+ * The failure-kind registry now lives in `scripts/run-record.js` and is re-exported
+ * here, unchanged, so every existing `from './diagnostics.js'` import keeps working.
  *
- * Two ways a bucket goes wrong, and they need different guards: two names for one
- * class SPLITS the count (a new throw site inventing its own slug), and one name
- * for two classes MERGES it (a copy-pasted entry). The frozen object plus a
- * uniqueness assertion in the tests cover the second; `kindUnknown` below covers
- * the first.
- *
- * Add a member here BEFORE using it at a throw site — never an inline literal.
+ * It moved because a SECOND producer needs to register a kind: `lib/jellyfin.js`
+ * records a failed server request, and it is a pure REST helper — importing this
+ * module to reach the registry would drag `roku-test-automation` into it, and into
+ * everything that imports it. The registry is ledger vocabulary ("the key a flake
+ * baseline aggregates by"), so it belongs with the ledger, which is device-agnostic
+ * and importable from both sides. The rule is unchanged: add a member there before
+ * using it at a throw site, never an inline literal.
  */
-export const FAILURE_KINDS = Object.freeze({
-  WAIT_FOR_TIMEOUT: 'wait-for-timeout',
-  WAIT_FOCUSED_TIMEOUT: 'wait-focused-timeout',
-  HOME_LIBRARY_TILE_NOT_FOUND: 'home-library-tile-not-found',
-  GRID_LOAD_TIMEOUT: 'grid-load-timeout',
-  DETAIL_ROW_NOT_FOUND: 'detail-row-not-found',
-  MEDIA_PLAYER_NOT_STARTED: 'media-player-not-started',
-});
-
-const KNOWN_KINDS = new Set(Object.values(FAILURE_KINDS));
-
-/** True for a slug that is not a registered member — see `FAILURE_KINDS`. */
-export const isUnknownKind = (kind) => !KNOWN_KINDS.has(kind);
+export { FAILURE_KINDS, isUnknownKind };
 
 /**
  * Vitest's name for the test we are inside, when there is one.

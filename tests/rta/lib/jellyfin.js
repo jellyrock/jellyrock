@@ -1,10 +1,96 @@
 /**
  * Minimal Jellyfin demo-server REST helpers used to authenticate and locate the
  * hero movie. Plain node http/https — no SDK dependency.
+ *
+ * ## A failed request is never an empty result
+ *
+ * Every authenticated helper below used to end in `.catch(() => null)`, so a 401 or
+ * a dropped connection returned the same value as a successful query that found
+ * nothing. Callers cannot tell those apart, and they read the sentinel as a fact
+ * about the FIXTURE — which is how a transport failure becomes a confident false
+ * statement about the demo server.
+ *
+ * That is not theoretical, and it is worse than a red run. Measured 2026-08-12:
+ * `genreItemNames` queries its genres SEQUENTIALLY, and a session eviction partway
+ * through the loop made the first two genres return their items and the remaining
+ * twelve return empty sets. The output was not an error — it was a coherent, fully
+ * plausible picture of a demo server whose content had thinned to two genres, which
+ * was then written up as a finding and reasoned from. All 14 genres were populated
+ * the whole time. The reader who believed it had this exact defect open in front of
+ * them, having just diagnosed it.
+ *
+ * The rule that follows: **absence is only ever reported from a request that
+ * SUCCEEDED.** `findMovie` may still say "not in the library", `getLibraries` may
+ * still return `[]` — but only after the server actually answered. Anything else
+ * throws, and the run stops rather than reasoning from a fiction.
+ *
+ * The one deliberate exception is marked at its call site in `authenticate`.
  */
 import http from 'node:http';
 import https from 'node:https';
+import crypto from 'node:crypto';
+import { FAILURE_KINDS, recordFailure } from '../../../scripts/run-record.js';
 import { RTA_CONFIG } from '../config.js';
+
+/**
+ * A request that reached a verdict we cannot use — a non-2xx status, or a transport
+ * error with no status at all.
+ *
+ * Typed rather than a bare `Error` so the run record can tell an INFRASTRUCTURE
+ * failure from an app failure. A 401 midway through a suite says nothing about the
+ * app; counting it red inflates a flake rate and counting it green hides a real
+ * failure, so `rta-run.js` marks the run a non-sample and drops it from the
+ * population. Same partition, and same reasoning, as `crashed`/`interrupted` in
+ * `scripts/run-record.js`.
+ */
+export class JellyfinRequestError extends Error {
+  constructor(method, urlStr, status, statusMessage, cause) {
+    const where = `${method} ${urlStr}`;
+    super(status ? `${where} -> ${status} ${statusMessage}` : `${where} -> ${cause?.message}`);
+    this.name = 'JellyfinRequestError';
+    /** HTTP status, or `null` when the request never got one (DNS, reset, timeout). */
+    this.status = status ?? null;
+    this.url = urlStr;
+    if (cause) this.cause = cause;
+  }
+
+  /** A dead or evicted session, as opposed to a request the server refused on merit. */
+  get isAuth() {
+    return this.status === 401 || this.status === 403;
+  }
+}
+
+/** True for anything this module throws because the SERVER, not the app, failed us. */
+export const isRequestError = (e) => e instanceof JellyfinRequestError;
+
+/**
+ * Write the failure into the run record, at the throw site, before it propagates.
+ *
+ * Recorded HERE and not where it surfaces because by the time it surfaces the cause
+ * is gone: a 401 inside `getLibraries` reaches the operator as an assertion failure
+ * in a screen test several frames away, and the exit code cannot tell the parent
+ * process the difference. This is the only place that still knows the request failed
+ * and why. Same reasoning as `diagnostics.js` capturing device state at its throw
+ * site — a cause not written down when it happens is not recoverable afterwards.
+ *
+ * Best-effort by construction: a record that cannot be written must never replace the
+ * error it was describing.
+ */
+function fail(err) {
+  try {
+    recordFailure({
+      kind: FAILURE_KINDS.SERVER_REQUEST_FAILED,
+      at: new Date().toISOString(),
+      message: err.message,
+      status: err.status,
+      url: err.url,
+      isAuth: err.isAuth || undefined,
+    });
+  } catch {
+    /* the error we return is the signal that matters */
+  }
+  return err;
+}
 
 /**
  * Modern Jellyfin auth header for an authenticated request. Newer servers (e.g. the v12 unstable
@@ -28,11 +114,14 @@ export function postJson(urlStr, headers, bodyObj) {
         res.on('data', (c) => (data += c));
         res.on('end', () => {
           if (res.statusCode >= 200 && res.statusCode < 300) resolve(JSON.parse(data));
-          else reject(new Error(`POST ${urlStr} -> ${res.statusCode} ${res.statusMessage}`));
+          else
+            reject(
+              fail(new JellyfinRequestError('POST', urlStr, res.statusCode, res.statusMessage)),
+            );
         });
       },
     );
-    req.on('error', reject);
+    req.on('error', (e) => reject(fail(new JellyfinRequestError('POST', urlStr, null, null, e))));
     req.write(body);
     req.end();
   });
@@ -48,10 +137,11 @@ export function getJson(urlStr, headers) {
       res.on('data', (c) => (data += c));
       res.on('end', () => {
         if (res.statusCode >= 200 && res.statusCode < 300) resolve(JSON.parse(data));
-        else reject(new Error(`GET ${urlStr} -> ${res.statusCode} ${res.statusMessage}`));
+        else
+          reject(fail(new JellyfinRequestError('GET', urlStr, res.statusCode, res.statusMessage)));
       });
     });
-    req.on('error', reject);
+    req.on('error', (e) => reject(fail(new JellyfinRequestError('GET', urlStr, null, null, e))));
     req.end();
   });
 }
@@ -75,10 +165,59 @@ export function getBuffer(urlStr, headers) {
   });
 }
 
-/** Authenticate against the demo Jellyfin server -> session used to seed registry. */
-export async function authenticate(server) {
+/**
+ * The DeviceId a session is minted under.
+ *
+ * **Jellyfin keys a session to its DeviceId, and authenticating again under the same
+ * one EVICTS the previous session's token.** Verified against the demo server
+ * 2026-08-12: a second `AuthenticateByName` with an identical DeviceId turned the
+ * first token into a 401 on the next request.
+ *
+ * Every Node-side helper here — the RTA suite, `capture-screenshots.js`,
+ * `demos/run.mjs` — used to authenticate as the literal string
+ * `"jellyrock-screenshots"`, so any two of them running at once logged each other
+ * out. `device-lock.js` hid this by serializing them on ONE device; it becomes
+ * reachable the moment two devices are driven at once, which is exactly the
+ * two-suite contention experiment. It cost a real run: a probe sharing the DeviceId
+ * killed a suite's token 66 s into a 12-minute run, and every server-derived
+ * expectation for the rest of that file was computed from swallowed 401s.
+ *
+ * Per ROLE and per DEVICE, so neither axis can collide: two tools on one device get
+ * different ids, and one tool on two devices does too. Stable across runs rather
+ * than random per process, so the demo server reuses a session instead of
+ * accumulating one per invocation — and the id reads as what it is in the server's
+ * session list, which is the difference between debuggable and not.
+ *
+ * The discriminator is the run's `deviceKey` (the lock already resolved it, and
+ * `run-record.js` puts it on the child's env). It falls back to a hash of `ROKU_IP`
+ * for the degraded-lock path and for entry points that never took a lock — hashed,
+ * not raw, because a LAN address is the device's own business and this string is
+ * sent to a third-party server.
+ */
+export function sessionDeviceId(role, deviceKey) {
+  const disc =
+    deviceKey ||
+    process.env.RTA_DEVICE_KEY ||
+    crypto
+      .createHash('sha256')
+      .update(process.env.ROKU_IP || 'no-device')
+      .digest('hex')
+      .slice(0, 16);
+  return `jellyrock-${role}-${disc}`;
+}
+
+/**
+ * Authenticate against the demo Jellyfin server -> session used to seed registry.
+ *
+ * `role` names the tool, and rides into the DeviceId — see `sessionDeviceId` for why
+ * two callers must never share one. Defaults to `rta` because the suite is the
+ * caller that matters most; the other entry points name themselves.
+ */
+export async function authenticate(server, { role = 'rta', deviceKey } = {}) {
+  const deviceId = sessionDeviceId(role, deviceKey);
   const auth =
-    'MediaBrowser Client="JellyRock-screenshots", Device="ci", DeviceId="jellyrock-screenshots", Version="1.0.0"';
+    `MediaBrowser Client="JellyRock-${role}", Device="${role}", ` +
+    `DeviceId="${deviceId}", Version="1.0.0"`;
   const d = await postJson(
     `${server.url}/Users/AuthenticateByName`,
     { 'Content-Type': 'application/json', Authorization: auth },
@@ -86,8 +225,13 @@ export async function authenticate(server) {
   );
   // AuthenticateByName carries no server NAME (only ServerId); the human-readable
   // name lives on the unauthenticated public-info endpoint. seedServerSelect needs
-  // it for the saved-server picker entry, so fetch it once here. Best-effort: a
-  // missing name just renders an empty label, not a failed run.
+  // it for the saved-server picker entry, so fetch it once here.
+  //
+  // THE ONE DELIBERATE SWALLOW IN THIS FILE, and it is narrow on purpose: the value
+  // is a cosmetic label, the failure cannot be mistaken for a fact about the library
+  // (an empty name renders an empty label; nothing downstream reasons from it), and
+  // the request is unauthenticated so it cannot mask a session problem. Every other
+  // helper here throws — see the module header.
   const info = await getJson(`${server.url}/System/Info/Public`, {}).catch(() => null);
   return {
     serverUrl: server.url,
@@ -97,6 +241,12 @@ export async function authenticate(server) {
     serverId: d.ServerId,
     serverName: info?.ServerName || '',
     primaryImageTag: d.User?.PrimaryImageTag || '',
+    // Carried so a failure can name the identity it was minted under. `serverId` and
+    // `userId` cannot do that job: the stable and unstable demo backends are cloned
+    // from one seed DB and report IDENTICAL values for both (measured 2026-08-12 —
+    // 10.11.11 vs 12.0.0, same `f0b3381…`), so they distinguish neither the server
+    // nor the client. `serverUrl` separates the backends; this separates the tools.
+    deviceId,
   };
 }
 
@@ -113,7 +263,10 @@ export async function findMovie(session, movieName) {
   const url =
     `${session.serverUrl}/Items?UserId=${session.userId}` +
     `&IncludeItemTypes=Movie&Recursive=true&SortBy=SortName&SortOrder=Ascending`;
-  const data = await getJson(url, tokenHeader(session.token)).catch(() => null);
+  // Throws on a failed request. The `{ index: 0, id: '' }` miss below is reserved for
+  // a query that SUCCEEDED and did not list the movie — a fact about the library, and
+  // one a caller may legitimately act on. A request that never answered is not that.
+  const data = await getJson(url, tokenHeader(session.token));
   const items = data?.Items || [];
   const index = items.findIndex((i) => i.Name === movieName);
   if (index < 0) return { index: 0, id: '', backdropUrl: '' };
@@ -140,7 +293,9 @@ export async function firstMovie(session) {
   const url =
     `${session.serverUrl}/Items?UserId=${session.userId}` +
     `&IncludeItemTypes=Movie&Recursive=true&SortBy=SortName&SortOrder=Ascending&Limit=1`;
-  const data = await getJson(url, tokenHeader(session.token)).catch(() => null);
+  // Throws on a failed request; the empty result below means the server answered and
+  // the library has no movies. See the module header.
+  const data = await getJson(url, tokenHeader(session.token));
   const item = data?.Items?.[0];
   return item ? { id: item.Id, name: item.Name } : { id: '', name: '' };
 }
@@ -155,7 +310,15 @@ export async function firstMovie(session) {
  */
 export async function getLibraries(session) {
   const url = `${session.serverUrl}/Users/${session.userId}/Views`;
-  const data = await getJson(url, tokenHeader(session.token)).catch(() => null);
+  // Throws on a failed request, and this one is the sharpest case in the file.
+  // `screens.spec.js` skips a screen when `libraryIdFor` finds no library of its
+  // collectionType — correctly, since a fixture without a Music library is a
+  // statement about the fixture, not a regression. But a swallowed 401 here returned
+  // `[]`, which drove that same skip with the message `server has no "movies"
+  // library` — false, and GREEN. Since this runs once in `beforeAll`, one swallowed
+  // 401 would skip every view-based screen and report the run a success. A failing
+  // request must never be able to buy a pass.
+  const data = await getJson(url, tokenHeader(session.token));
   return (data?.Items || []).map((i) => ({
     name: i.Name,
     collectionType: i.CollectionType,
@@ -175,11 +338,22 @@ export async function getLibraries(session) {
 export async function genreItemNames(session, libraryId, includeItemTypes) {
   const headers = tokenHeader(session.token);
   const base = `${session.serverUrl}/Items?userId=${session.userId}&parentId=${libraryId}`;
+  // Both queries throw. This helper is where the swallow did its worst damage, and
+  // the loop is why: it fetches the genres one at a time, so a session that dies
+  // partway through returns real items for the genres before the break and empty sets
+  // for every genre after it. Nothing errors, and the result is a perfectly coherent
+  // "this library's later genres are empty" — a shape no reader questions.
+  //
+  // The empty set is also the tell that it was always a lie: `/Genres` only lists
+  // genres that EXIST in the library, so a genre with no items is self-contradictory.
+  // Measured 2026-08-12 with the catches removed: all 14 movie genres populated, all
+  // 14 queries fine. The two-genre reading that a swallowed run produced an hour
+  // earlier was pure artifact.
   const genres = await getJson(
     `${session.serverUrl}/Genres?userId=${session.userId}` +
       `&parentId=${libraryId}&includeItemTypes=${includeItemTypes}`,
     headers,
-  ).catch(() => null);
+  );
 
   const byGenre = new Map();
   for (const genre of genres?.Items || []) {
@@ -187,7 +361,7 @@ export async function genreItemNames(session, libraryId, includeItemTypes) {
       `${base}&genreIds=${genre.Id}&recursive=true` +
         `&includeItemTypes=${includeItemTypes}&enableTotalRecordCount=false`,
       headers,
-    ).catch(() => null);
+    );
     byGenre.set(genre.Name, new Set((items?.Items || []).map((i) => i.Name)));
   }
   return byGenre;
@@ -213,6 +387,9 @@ export async function firstItemId(session, includeItemTypes) {
   const url =
     `${session.serverUrl}/Items?UserId=${session.userId}` +
     `&IncludeItemTypes=${includeItemTypes}&Recursive=true&SortBy=SortName&SortOrder=Ascending&Limit=1`;
-  const data = await getJson(url, tokenHeader(session.token)).catch(() => null);
+  // Throws on a failed request; `''` means the server answered and has no such item.
+  // The deeplink spec's beforeAll guard reads that miss as "the fixture cannot support
+  // this test", which is only true when the server actually said so.
+  const data = await getJson(url, tokenHeader(session.token));
   return data?.Items?.[0]?.Id || '';
 }

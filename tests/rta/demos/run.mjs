@@ -235,7 +235,12 @@ async function main() {
     const sessions = {};
     for (const name of serverNames) {
       const cfg = serversByName[name];
-      const session = await authenticate(cfg);
+      // Its own role — see `sessionDeviceId`. A demo take and an RTA run on two
+      // devices would otherwise share a DeviceId and log each other out.
+      const session = await authenticate(cfg, {
+        role: 'demos',
+        deviceKey: activeLock?.meta?.deviceKey,
+      });
       // Apply a declared synthetic id (clone workaround — see DEMO_SERVERS) so takes can read
       // session.serverId transparently without knowing the demo servers share a real GUID. Pure
       // identity data layered on an immutable copy; the real url / token / name are untouched.
