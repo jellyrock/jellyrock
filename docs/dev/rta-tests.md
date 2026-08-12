@@ -285,10 +285,40 @@ filter can never silently drop a row:
 | `commit` | short SHA at the start of the run | "are these N runs even the same code?" |
 | `dirty` | working tree not clean at that SHA (untracked files included — they get compiled in) | during RTA work the tree is usually dirty, and a bare SHA would over-claim reproducibility |
 | `deviceKey` | **which Roku** — the lock's own `sha256(device-id)`, not an address | there are three on this LAN and they are not interchangeable. A baseline is specified on one device, so `variant` and `commit` are IDENTICAL across its runs and cannot separate a stray run on another one. `null` on the degraded lock path, which never resolves a device |
+| `outcome` | `passed` / `failed` / `interrupted` / `crashed` — what became of the run | the other four describe the INVOCATION; this is the only one about the run itself. See below — without it, a run that never executed a test is indistinguishable from a perfect one |
 
 So a clean N-run baseline is
-`runs.filter(r => r.commit === X && r.variant === 'test:rta' && r.deviceKey === D)`,
-not a `rm` you have to remember before the series. The file is still append-only and
+`runs.filter(r => r.commit === X && VARIANTS.has(r.variant) && r.deviceKey === D)`,
+and its **flake rate is `outcome`**, not `failures.length`, over that set —
+`selected.filter(r => r.outcome !== 'passed').length / selected.length`. It is not a
+`rm` you have to remember before the series.
+
+**`VARIANTS`, not `variant === 'test:rta'`** — and this is a live trap, not a
+nicety. The recommended protocol is one `test:rta` followed by `test:rta:fast` for
+runs 2..N, precisely so the whole series measures ONE binary instead of N rebuilds
+of it. Those runs land as `variant: 'test:rta:fast'`, so an equality filter on
+`'test:rta'` selects exactly the *first* run and silently reports a one-sample
+baseline. Use `new Set(['test:rta', 'test:rta:fast'])` for a FLAKE rate, where the
+deploy is not part of what is being measured. Keep them apart when comparing
+**durations** — that is what the row above is about, and `:fast` is ~30 s shorter by
+construction.
+
+**`failures: []` is not an outcome.** The failure records come from the five RTA
+throw sites that capture device state; an empty list means *those* did not fire, and
+that is true of three different runs:
+
+1. the suite ran and passed;
+2. the suite ran and went red somewhere the diagnostics do not cover — a plain
+   `expect()` (there are 11 in `tests/rta/specs/`) or an error raised by Vitest itself;
+3. the suite **never ran at all** — the entry point died first.
+
+(3) is not hypothetical. `ROKU_IP=192.168.1.200 npm run test:rta` on 2026-08-12 threw
+out of `deployRtaBuild()` on a 401 and appended `durationMs: 621, failures: []`, on a
+clean tree — the *first* line ever to satisfy all four filter keys above, from a run
+where nothing executed. `outcome` is what separates them: the entry points set it from
+their exit, and the process-exit net labels a run nobody closed `crashed`. A
+non-`passed` run now also prints a line, because a run with no failures printed
+nothing at all, which is how that one reached the ledger unnoticed. The file is still append-only and
 nothing prunes it — `rm .device-runs/<kind>/runs.jsonl` throws the history away if you
 want that, but it is no longer the way you get a trustworthy number. (Size is a
 non-issue: a clean line is ~200 bytes, and one carrying 30 failure records with full

@@ -40,7 +40,7 @@ import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 
 import { acquireDeviceLock } from './device-lock.js';
-import { beginRun } from './run-record.js';
+import { beginRun, RUN_OUTCOMES } from './run-record.js';
 import { setFailureContext } from '../tests/rta/lib/diagnostics.js';
 import { RTA_CONFIG } from '../tests/rta/config.js';
 import {
@@ -452,7 +452,9 @@ async function main() {
   writeManifest();
   generateIndex(); // regenerate docs/screenshots/README.md (the by-language index)
   console.log('Done.');
-  run.close();
+  // This line is only reached after the whole matrix and the restore; every other
+  // path exits through the `main().catch` below, where the net labels it `crashed`.
+  run.close(RUN_OUTCOMES.PASSED);
   await lock.release();
   process.exit(0); // RTA keeps the port-9000 socket open; exit explicitly
 }

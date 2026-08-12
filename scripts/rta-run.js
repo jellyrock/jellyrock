@@ -38,7 +38,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setupRtaEnv, deployRtaBuild, relaunch, ecp } from '../tests/rta/lib/driver.js';
 import { snapshotRegistry, restoreRegistry } from '../tests/rta/lib/registry.js';
-import { beginRun } from './run-record.js';
+import { beginRun, RUN_OUTCOMES } from './run-record.js';
 import { acquireDeviceLock } from './device-lock.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -52,6 +52,30 @@ setupRtaEnv(); // throws if ROKU_IP / ROKU_PASSWORD are missing — fail before 
 // minutes, so a contended run fails in about a second instead of after a build —
 // which is the difference between an agent being able to react and not.
 const lock = await acquireDeviceLock({ what: runName });
+
+// A throw anywhere below this line exits the module without reaching any of the
+// three `lock.release()` calls, leaving the device claimed by a dead process until
+// the lease expires. Measured 2026-08-12: `ROKU_IP=192.168.1.200 npm run test:rta`
+// threw a 401 out of `deployRtaBuild()` (that device's dev password is a CI secret)
+// and `npm run device:status` then reported the device held by a pid that no longer
+// existed, for the full 15-minute lease. The deploy is the most failure-prone step
+// here and it sits between the claim and every release.
+//
+// This is the lock's counterpart to `run-record.js`'s process-exit net, and it needs
+// its own hook rather than sharing that one: releasing is an API call, and nothing
+// can await inside a `process.on('exit')` handler.
+//
+// A rejection out of top-level await surfaces as `uncaughtException`, NOT
+// `unhandledRejection` (verified on Node 22.17) — hook both rather than depend on
+// which. `process.exit` still runs the record's exit net, so the run folds as
+// `crashed` on the way out.
+for (const event of ['uncaughtException', 'unhandledRejection']) {
+  process.on(event, async (err) => {
+    console.error(`\n[rta] ${event} — releasing the device.\n${err?.stack || err?.message || err}`);
+    await lock.release().catch(() => {});
+    process.exit(1);
+  });
+}
 // Opens the run record: stamps the wall-clock origin and clears the previous
 // run's failure records. The origin is load-bearing rather than decorative — the
 // demo server resets on the hour, so a suite starting after roughly `:46` has
@@ -105,6 +129,10 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
       // device left dirty, because it silently fights the recovery.
       console.log('\n[rta] second interrupt — abandoning restore. Recover: npm run rta:restore');
       child.kill('SIGKILL');
+      // Fold before the exit rather than leaving it to the net, which would label
+      // an operator's deliberate abandon `crashed`. The device is left dirty here;
+      // the RECORD does not have to be wrong as well.
+      run.close(RUN_OUTCOMES.INTERRUPTED);
       // Release even on the abandon path: the device is left dirty, but leaving
       // the LOCK behind too would wedge every other contender until the TTL
       // expires, for no benefit. `rta:restore` is the documented repair.
@@ -134,7 +162,17 @@ const exitCode = await new Promise((resolve) => {
 // In watch mode the record opened once at session start and folds once here, so
 // the window spans every iteration rather than one run — which is why the open
 // declared `cumulative` and the formatter drops the hour flag for it.
-run.close();
+// The child's exit code is the only account of whether the suite passed: only five
+// throw sites write failure records, and the specs also assert with plain
+// `expect()`, so a red run can fold with an EMPTY failure list. Reading `failures`
+// as the outcome would score that run green.
+run.close(
+  interrupting
+    ? RUN_OUTCOMES.INTERRUPTED
+    : exitCode === 0
+      ? RUN_OUTCOMES.PASSED
+      : RUN_OUTCOMES.FAILED,
+);
 
 try {
   await restoreRegistry(saved);

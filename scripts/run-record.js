@@ -247,8 +247,38 @@ export function crossesHourBoundary(fromIso, toIso) {
 }
 
 /**
- * The whole-run view: the wall-clock window, whether it straddled a reset, and the
- * failures.
+ * What became of a run, as distinct from what it DIAGNOSED.
+ *
+ * `failures` is the diagnostic record — the five RTA throw sites that capture
+ * device state. It is not an outcome, and reading it as one conflates three
+ * different runs into the identical line `failures: []`:
+ *
+ *   1. the suite ran and passed;
+ *   2. the suite ran and went red somewhere the diagnostics do not cover (a plain
+ *      `expect()` — there are 11 in `tests/rta/specs/` — or a Vitest-level error);
+ *   3. the suite never ran at all.
+ *
+ * (3) is not hypothetical: `ROKU_IP=192.168.1.200 npm run test:rta` on 2026-08-12
+ * threw out of `deployRtaBuild()` on a 401 (that device's dev password is a CI
+ * secret, not the one in `.env`) and appended `durationMs: 621, failures: []` —
+ * a line indistinguishable from a clean pass, on a clean commit, and the FIRST
+ * one ever to satisfy the documented baseline selection recipe.
+ *
+ * A flake baseline's entire output is "how many of N runs were red", so the
+ * ledger has to answer that directly instead of leaving it to be inferred from
+ * the absence of records.
+ */
+export const RUN_OUTCOMES = Object.freeze({
+  PASSED: 'passed',
+  FAILED: 'failed',
+  INTERRUPTED: 'interrupted',
+  /** Nobody closed the run — the entry point died before it got there. */
+  CRASHED: 'crashed',
+});
+
+/**
+ * The whole-run view: the wall-clock window, whether it straddled a reset, the
+ * outcome, and the failures.
  *
  * `cumulative` marks a window spanning MANY logical runs rather than one — watch
  * mode, where the reset happens once at session start and the fold once at exit.
@@ -265,6 +295,7 @@ export function summarizeRun({
   commit,
   dirty,
   deviceKey,
+  outcome,
   cumulative = false,
 }) {
   return {
@@ -300,6 +331,11 @@ export function summarizeRun({
     // both parties agree on. Null on the degraded lock path, which never resolves
     // one — honest, and the run really is of unknown provenance there.
     deviceKey: deviceKey ?? null,
+    // The fifth filter key, and the only one that is about the run rather than the
+    // invocation. `null` when the entry point did not say — honest, and the same
+    // "missing would mean you have to know the convention" argument as the four
+    // above. A baseline counts `outcome === 'passed'`, never `!failures.length`.
+    outcome: outcome ?? null,
     startedAt,
     endedAt,
     cumulative: cumulative || undefined,
@@ -323,14 +359,26 @@ const clock = (iso) => (Number.isFinite(Date.parse(iso)) ? iso.slice(11, 16) : '
  * mapping to keep in sync, exactly as `runsLedgerPath` does.
  */
 export function formatRunSummary(summary, file = failuresPath()) {
-  const { failures = [], startedAt, endedAt, crossedHourBoundary, cumulative } = summary;
+  const { failures = [], startedAt, endedAt, crossedHourBoundary, cumulative, outcome } = summary;
   const unknownKinds = summary.unknownKinds || [];
   // Suppressed for a cumulative window — see `summarizeRun`.
   const flagHour = crossedHourBoundary && !cumulative;
-  if (!failures.length && !flagHour && !unknownKinds.length) return [];
+  // A run that died before it could run anything has no failures to report, which
+  // is exactly why it printed NOTHING and slipped into the ledger unnoticed. Silence
+  // is the right output for a clean run only.
+  const flagOutcome = outcome && outcome !== RUN_OUTCOMES.PASSED;
+  if (!failures.length && !flagHour && !unknownKinds.length && !flagOutcome) return [];
   const tag = `[${path.basename(runDir(summary.run))}]`;
   const window = `${clock(startedAt)}→${clock(endedAt)} UTC`;
   const lines = [];
+  if (flagOutcome) {
+    lines.push(
+      `${tag} run ${outcome} (${window}) — recorded as \`outcome: "${outcome}"\` in the ledger. ` +
+        (outcome === RUN_OUTCOMES.CRASHED
+          ? 'It died before its entry point could close it, so it ran no suite: exclude it from a baseline.'
+          : 'A baseline counts `outcome === "passed"`, not an empty failure list.'),
+    );
+  }
   if (flagHour) {
     lines.push(
       `${tag} this run crossed the top of the hour (${window}) — the demo server resets then, ` +
@@ -476,7 +524,9 @@ export function beginRun({ lock, run, cumulative = false }) {
     startedAt,
     dir: activeRunDir,
     env: { RTA_RUN_DIR: activeRunDir },
-    close: () => endRun(args),
+    // The outcome is passed at CLOSE, not at open: it is the one thing about a run
+    // that cannot be known when it starts.
+    close: (outcome) => endRun({ ...args, outcome }),
   };
 }
 
@@ -506,7 +556,11 @@ function armCloseOnExit() {
   if (netArmed) return;
   netArmed = true;
   process.on('exit', () => {
-    if (closeArgs && !closedSummary) endRun(closeArgs);
+    // Reaching here with an unclosed run IS the definition of a crash: every entry
+    // point closes explicitly on the paths it can reach, so the net firing means
+    // the run died before one of them ran. Labelling it is what stops a run that
+    // never executed a test from reading as a clean pass.
+    if (closeArgs && !closedSummary) endRun({ ...closeArgs, outcome: RUN_OUTCOMES.CRASHED });
   });
 }
 
@@ -517,10 +571,20 @@ function armCloseOnExit() {
  * and a second fold would append a second ledger line for one run — which is
  * precisely the miscount an N-run baseline cannot absorb.
  */
-export function endRun({ lock, run, startedAt, cumulative = false, variant, commit, dirty }) {
+export function endRun({
+  lock,
+  run,
+  startedAt,
+  cumulative = false,
+  variant,
+  commit,
+  dirty,
+  outcome,
+}) {
   if (closedSummary) return closedSummary;
   const summary = summarizeRun({
     run,
+    outcome,
     what: lock?.meta?.holder?.what,
     // Read off the lock here rather than carried from the open, like `what` above
     // and unlike the three below: it is already resolved on `lock.meta` by the time

@@ -7,7 +7,7 @@ related-files:
   - bsconfig-tests.json
   - bsconfig-tests-unit.json
   - bsconfig-tests-integration.json
-last-reviewed: 2026-08-11
+last-reviewed: 2026-08-12
 ---
 
 # Testing
@@ -108,14 +108,17 @@ to `.device-runs/device/runs.jsonl` (the ledger, never reset). It is the same re
 the RTA harness uses, deliberately: [#800](https://github.com/jellyrock/jellyrock/issues/800)
 went red on a *Rooibos* test hitting the shared demo server, so this path needs the
 run window too — a suite that straddled the top of the hour ran against a fixture
-that reset underneath it, and the summary says so. The directory is `out/device/`,
+that reset underneath it, and the summary says so. Each line also carries an
+`outcome` (`passed` / `failed` / `interrupted` / `crashed`), set from the runner's own
+exit and defaulted to `crashed` by the process-exit net: the failure records say what a
+run *diagnosed*, which is not the same question as whether it ran at all. The directory is `out/device/`,
 not `out/rta/`; the record module knows nothing about devices, so nothing drags the
 RTA client into a runner that drives the device over telnet. Shape and lifecycle in
 [`rta-tests.md`](../dev/rta-tests.md#one-record-directory-per-run-kind).
 
 ### How agents run tests
 
-Tests deploy to a real Roku device, but the npm scripts are CLI-driven so an automated agent can run them just like a human. The runner reads `ROKU_IP` / `ROKU_PASSWORD` from a gitignored `.env` (with a fallback to `VSCode`'s `brightscript.debug.*` settings). If hardware isn't reachable, the runner exits with an error — agents are expected to surface this honestly rather than claim a fix was tested when only the build was verified. Debugger contention (a VSCode BrightScript debugger holding the port) is a real failure mode and shouldn't be retried blindly. See [`tests/CLAUDE.md`](../../tests/CLAUDE.md) for the rules and `docs/dev/unit-tests-tdd.md` for the full procedure.
+Tests deploy to a real Roku device, but the npm scripts are CLI-driven so an automated agent can run them just like a human. The runner reads `ROKU_IP` / `ROKU_PASSWORD` from a gitignored `.env` (with a fallback to `VSCode`'s `brightscript.debug.*` settings). Note `ROKU_PASSWORD` is that one device's **dev server** password, so overriding `ROKU_IP` alone is not enough to drive a different Roku — pointing a local run at CI's `.200` also needs `.200`'s password, which lives only in CI as an org secret. The deploy fails with a `401 Unauthorized` from `roku-deploy`, after the lock is taken. If hardware isn't reachable, the runner exits with an error — agents are expected to surface this honestly rather than claim a fix was tested when only the build was verified. Debugger contention (a VSCode BrightScript debugger holding the port) is a real failure mode and shouldn't be retried blindly. See [`tests/CLAUDE.md`](../../tests/CLAUDE.md) for the rules and `docs/dev/unit-tests-tdd.md` for the full procedure.
 
 ### Documentation
 

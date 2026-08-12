@@ -10,7 +10,7 @@ import net from 'node:net';
 import dotenv from 'dotenv';
 import * as rokuDeploy from 'roku-deploy';
 import { acquireDeviceLock } from './device-lock.js';
-import { beginRun } from './run-record.js';
+import { beginRun, RUN_OUTCOMES } from './run-record.js';
 
 dotenv.config();
 
@@ -193,7 +193,17 @@ async function main() {
   const done = async (code) => {
     if (exiting) return;
     exiting = true;
-    run.close();
+    // `done` is the single exit for this runner, so its code IS the outcome. Worth
+    // recording here specifically: #800 went red on a ROOIBOS test against the same
+    // fixture, and re-deriving that from the ledger needs the red run to be
+    // identifiable as red.
+    run.close(
+      code === 0
+        ? RUN_OUTCOMES.PASSED
+        : code === 130
+          ? RUN_OUTCOMES.INTERRUPTED
+          : RUN_OUTCOMES.FAILED,
+    );
     await lock.release();
     process.exit(code);
   };
