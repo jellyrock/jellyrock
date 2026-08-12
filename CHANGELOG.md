@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (rta) record which device a run drove in the run ledger ([8794b28](https://github.com/jellyrock/jellyrock/commit/8794b287))
 - (rta) compare re-minted credentials by presence so the restore converges ([#805](https://github.com/jellyrock/jellyrock/pull/805))
 
 ## [2.25.0](https://github.com/jellyrock/jellyrock/compare/v2.24.2...v2.25.0) - 2026-08-10
