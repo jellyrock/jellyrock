@@ -837,8 +837,29 @@ if (process.argv[1] && import.meta.url === `file://${path.resolve(process.argv[1
   const [cmd] = process.argv.slice(2);
   const host = process.env.ROKU_IP;
   if (cmd === 'status') {
-    const cur = await readDeviceLock({ deviceHost: host });
-    console.log(cur ? `held by ${describeHolder(cur.holder)}` : 'free');
+    // A device that cannot answer ECP makes `readDeviceLock` throw (it resolves the
+    // key first), which surfaced as a raw Node stack trace — an unreachable device
+    // is the most ordinary thing `status` gets asked about, and the least
+    // deserving of one. Report it and keep going: the stranded-snapshot and
+    // accepted-residue lines below are read from LOCAL disk and are still true, and
+    // they are the ones that cost you the next run.
+    const cur = await readDeviceLock({ deviceHost: host }).catch((e) => {
+      console.log(`lock state unknown — ${host} did not answer (${e.message})`);
+      return undefined;
+    });
+    if (cur !== undefined) console.log(cur ? `held by ${describeHolder(cur.holder)}` : 'free');
+    // Name the device this answer is ABOUT. `status` reads `ROKU_IP`, so on a LAN
+    // with three Rokus the line above is otherwise silent about which one it
+    // describes. It is also the only way to learn the key by which the run ledger
+    // records a device — `runs.jsonl` stores this hash, never an address, so
+    // filtering a baseline to one device (see rta-tests.md) needs it. Degrades to
+    // a reason rather than throwing: an unreachable device still has a lock state
+    // worth printing, and this line is provenance, not the answer.
+    try {
+      console.log(`device ${host} — ledger key ${await resolveDeviceKey(host)}`);
+    } catch (e) {
+      console.log(`device ${host} — could not identify over ECP (${e.message})`);
+    }
     // After the lock line, not instead of it: "free" and "left dirty" are both true
     // at once, and the second is the one that costs you the next run.
     for (const line of strandedSnapshotLines()) console.log(line);

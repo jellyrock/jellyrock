@@ -412,6 +412,27 @@ describe('the run lifecycle — where a run s records actually land', () => {
       expect(ledger(runsLedgerPath())[0].variant).toBe('test:rta');
     });
 
+    it('records the device the run drove, off the lock', async () => {
+      // The ledger is the only record that survives the next run, and `run-meta.json`
+      // is NOT a fallback for this: it is per-run and lives under `out/`, which the
+      // next `build*` wipes. So if the device is not on the ledger line it is nowhere.
+      const { beginRun, readRuns: ledger, runsLedgerPath } = await fresh();
+      const lock = { meta: { ...LOCK.meta, deviceKey: 'ac4701ca4a5d8a0b' } };
+      beginRun({ lock, run: 'test:rta' }).close();
+      expect(ledger(runsLedgerPath())[0].deviceKey).toBe('ac4701ca4a5d8a0b');
+    });
+
+    it('reports a null device rather than inventing one on the degraded lock path', async () => {
+      // `acquireDeviceLock` degrades to an unlocked run when GitHub is unreachable
+      // or the device cannot be identified over ECP, and that meta carries no
+      // `deviceKey`. Such a run genuinely IS of unknown provenance — which is the
+      // honest thing for a baseline to see, and a reason to exclude it.
+      const { beginRun, readRuns: ledger, runsLedgerPath } = await fresh();
+      const degraded = { meta: { locked: false, mode: 'degraded', degraded: true } };
+      beginRun({ lock: degraded, run: 'test:rta' }).close();
+      expect(ledger(runsLedgerPath())[0].deviceKey).toBeNull();
+    });
+
     it('reports nulls rather than failing the run when git cannot answer', async () => {
       // These cases chdir into a temp dir that is not a git checkout, so this is
       // the real unavailable path — not a mock. Bookkeeping must never fail a
@@ -651,7 +672,7 @@ describe('summarizeRun', () => {
     expect(summary).toMatchObject({ variant: 'test:rta:fast', commit: 'abc1234', dirty: true });
   });
 
-  it('emits the three filter keys even when they are unknown', () => {
+  it('emits the four filter keys even when they are unknown', () => {
     // The contract that separates these from `what`: they are what a baseline
     // SELECTS on, so `runs.filter(r => r.variant === 'test:rta')` must never drop a
     // row because the field was omitted as redundant. `null` says unknown; missing
@@ -660,7 +681,24 @@ describe('summarizeRun', () => {
     expect(summary.variant).toBeNull();
     expect(summary.commit).toBeNull();
     expect(summary.dirty).toBeNull();
-    expect(Object.keys(summary)).toEqual(expect.arrayContaining(['variant', 'commit', 'dirty']));
+    expect(summary.deviceKey).toBeNull();
+    expect(Object.keys(summary)).toEqual(
+      expect.arrayContaining(['variant', 'commit', 'dirty', 'deviceKey']),
+    );
+  });
+
+  it('records WHICH device the run drove', () => {
+    // The baseline is specified on one device (`.200`) because the three Rokus on
+    // this LAN are not interchangeable. `variant` and `commit` cannot separate a
+    // stray `.177` run from that series — a baseline's whole point is that those
+    // two are identical across its runs — so the device has to be its own key.
+    const summary = summarizeRun({
+      startedAt: 'a',
+      endedAt: 'b',
+      run: 'test:rta',
+      deviceKey: 'ac4701ca4a5d8a0b',
+    });
+    expect(summary.deviceKey).toBe('ac4701ca4a5d8a0b');
   });
 
   it('keeps `variant` even when it equals the run kind — unlike `what`', () => {

@@ -264,6 +264,7 @@ export function summarizeRun({
   variant,
   commit,
   dirty,
+  deviceKey,
   cumulative = false,
 }) {
   return {
@@ -273,9 +274,10 @@ export function summarizeRun({
     // the only record that survives the next run — cannot say which take a line
     // came from. Omitted when it would just repeat `run`.
     what: what && what !== run ? what : undefined,
-    // The npm script that produced this run, and the code it ran against. These
-    // three are what let a Phase-3 baseline SELECT its runs instead of being told
-    // to `rm` the ledger first — see `codeState` and the docs' ledger section.
+    // The npm script that produced this run, the code it ran against, and the
+    // DEVICE it drove. These four are what let a Phase-3 baseline SELECT its runs
+    // instead of being told to `rm` the ledger first — see `codeState` and the
+    // docs' ledger section.
     //
     // ALWAYS emitted, unlike `what` above, and that asymmetry is deliberate:
     // `what` is prose for a human reading a line, but these are FILTER KEYS. A key
@@ -286,6 +288,18 @@ export function summarizeRun({
     variant: variant ?? null,
     commit: commit ?? null,
     dirty: dirty ?? null,
+    // WHICH Roku. There are three on this LAN and they are not interchangeable:
+    // the flake baseline is specified on `.200` because it is quiet and gates a
+    // release. Without this key a `.177` run joins a `.200` series and NOTHING in
+    // the line says so — `variant` and `commit` cannot separate them, because the
+    // whole point of a baseline is that they are identical across its runs. That
+    // is the ledger's own failure mode, applied to the measurement it exists for.
+    //
+    // The lock's key, not an address: `sha256(device-id)` truncated, so it is
+    // stable across a DHCP lease change (an address is not) and it is already what
+    // both parties agree on. Null on the degraded lock path, which never resolves
+    // one — honest, and the run really is of unknown provenance there.
+    deviceKey: deviceKey ?? null,
     startedAt,
     endedAt,
     cumulative: cumulative || undefined,
@@ -508,6 +522,11 @@ export function endRun({ lock, run, startedAt, cumulative = false, variant, comm
   const summary = summarizeRun({
     run,
     what: lock?.meta?.holder?.what,
+    // Read off the lock here rather than carried from the open, like `what` above
+    // and unlike the three below: it is already resolved on `lock.meta` by the time
+    // the lock exists, so carrying it would duplicate state for no gain and add a
+    // way for the two copies to disagree.
+    deviceKey: lock?.meta?.deviceKey,
     // Resolved at the OPEN and carried here, so the exit net folds the same
     // provenance an explicit close would — and so no git subprocess runs on the
     // exit path. See `codeState`.
