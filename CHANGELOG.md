@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Read a screen in one batch, and report what an assertion checked ([#808](https://github.com/jellyrock/jellyrock/pull/808))
+
 ### Fixed
 
 - (rta) record what became of a run, and read the baseline ([#806](https://github.com/jellyrock/jellyrock/pull/806))
