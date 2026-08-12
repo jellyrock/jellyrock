@@ -548,6 +548,33 @@ every tool onto one device, which is why a shared `DeviceId` survived this long.
 re-evaluating if a caller ever needs two concurrent sessions on ONE device: the id has no
 per-invocation component, so they would collide by design.
 
+## decision-id: batch-reads-for-the-observation-window
+
+**date**: 2026-08-12
+**status**: accepted
+**related-files**: tests/rta/lib/steps.js, tests/rta/screens.js, tests/rta/CLAUDE.md
+
+A one-shot RTA assertion reads the screen through `getActiveVals` (one ODC `getValues`)
+rather than a `getActiveVal` per field. **The reason is NOT speed, and the measurement
+is what settled that.** On `.177`, 5 alternating rounds of 57 `keyPath`s: 57 sequential
+reads take a median 303 ms, one batched read 58 ms — about **5.4 ms per round trip**.
+Inside a ~20 s screen test that is a ~245 ms saving, and before/after full runs of the
+genre screen confirmed it is invisible (19.87 s vs 20.24 s mean, n=3 each, the batched
+arm nominally slower). Batching was folded into this phase partly on the theory that
+The harness's own timing could distort the app-performance work RTA is used to validate; at this scale it does not, and that justification is retired. If harness timing ever
+does distort a measurement, look at poll intervals and boot waits, not read patterns.
+
+What the same numbers DO establish is the observation window. 57 sequential reads
+observe a still-settling screen across 303 ms, so the field read 50th need not describe
+the same frame as the field read 1st; batching collapses that to 58 ms. That is the
+suite's north-star rule — establish the state that makes a read meaningful — applied to
+reads instead of to input, and it is a correctness property. It also leaves the whole
+view in memory, so the failure record carries it at no extra device cost.
+
+The keep/skip constant is the 5.4 ms: restructuring a read pattern is worth it when the
+reads must describe ONE moment, and not worth it for speed. Poll loops keep the
+single-read form — they retry by design and `waitFor` owns their timeout.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

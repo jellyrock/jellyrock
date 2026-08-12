@@ -21,7 +21,8 @@
  *      - backdrop: inject the in-film frame behind the OSD (store only)
  *      - scope: 'shared' => language-agnostic; captured once, copied to all locales
  */
-import { waitFor, waitHome, hasChildren, getActiveVal } from './lib/steps.js';
+import { waitFor, waitHome, hasChildren, getActiveVal, getActiveVals } from './lib/steps.js';
+import { diagnosedError, FAILURE_KINDS } from './lib/diagnostics.js';
 import { genreItemNames, libraryIdFor } from './lib/jellyfin.js';
 import {
   navLibraryGrid,
@@ -88,45 +89,110 @@ async function assertServerSelect() {
 async function assertGenreRowsOwnTheirItems(ctx) {
   const rowCount = await getActiveVal('#genreList.content.getChildCount()');
   if (typeof rowCount !== 'number' || rowCount < 1) {
-    throw new Error(`genre rows: expected at least one row, read ${JSON.stringify(rowCount)}`);
+    throw await diagnosedError(
+      `genre rows: expected at least one row, read ${JSON.stringify(rowCount)}`,
+      { kind: FAILURE_KINDS.GENRE_ROWS_NOT_READY, observed: { rowCount } },
+    );
   }
 
   const libraryId = libraryIdFor(ctx.libraries, 'movies');
   const byGenre = await genreItemNames(ctx.session, libraryId, 'Movie');
-  let verified = 0;
 
-  for (let row = 0; row < rowCount; row++) {
-    const genre = await getActiveVal(`#genreList.content.${row}.title`);
-    if (typeof genre !== 'string' || !genre) {
-      throw new Error(`genre row ${row} has no title (read ${JSON.stringify(genre)})`);
-    }
+  // TWO batches for the whole view, not two reads per row plus one per item.
+  //
+  // This used to issue one `getActiveVal` per field — 1 + rowCount×(title + count) +
+  // one per item, which is 57 sequential round trips against the demo server's 14
+  // genres and 28 filed items, and scales up with a richer library. Measured, that is
+  // 303 ms of reads against 58 ms batched: NOT a meaningful saving inside a ~20 s
+  // test, and the before/after runs showed no wall-clock change. What it buys is the
+  // window — 57 looks at a still-settling screen spread over 303 ms, versus one look
+  // over 58. Batch 1 takes the whole row structure in a single message; batch 2 takes
+  // every item title across every row, and cannot merge into batch 1 because it needs
+  // the child counts batch 1 returns.
+  //
+  // Reading every row's children and filtering afterwards — rather than skipping
+  // unknown genres before the read, as the sequential form did — is more VALUES for
+  // strictly fewer round trips, and it is what leaves the whole view in memory for
+  // the failure record below.
+  const rows = [...Array(rowCount).keys()];
+  const structure = await getActiveVals(
+    rows.flatMap((row) => [
+      `#genreList.content.${row}.title`,
+      `#genreList.content.${row}.getChildCount()`,
+    ]),
+  );
+  const titles = rows.map((row) => structure[row * 2]);
+  const counts = rows.map((row) => structure[row * 2 + 1]);
+
+  const missingTitle = rows.find((row) => typeof titles[row] !== 'string' || !titles[row]);
+  if (missingTitle !== undefined) {
+    throw await diagnosedError(
+      `genre row ${missingTitle} has no title (read ${JSON.stringify(titles[missingTitle])})`,
+      {
+        kind: FAILURE_KINDS.GENRE_ROWS_NOT_READY,
+        // The whole view, not just the offending row — "row 7 is untitled" and "rows
+        // 7-13 are all untitled" are different failures and the fix differs.
+        observed: { rowCount, titles, counts },
+      },
+    );
+  }
+
+  // Address every item of every row in one batch, keeping a parallel map back to
+  // (row, index) so a mismatch can still name where it was seen.
+  const cells = rows.flatMap((row) =>
+    [...Array(typeof counts[row] === 'number' ? counts[row] : 0).keys()].map((i) => ({ row, i })),
+  );
+  const cellTitles = await getActiveVals(
+    cells.map(({ row, i }) => `#genreList.content.${row}.${i}.title`),
+  );
+
+  let verified = 0;
+  for (const [cell, title] of cells.map((c, n) => [c, cellTitles[n]])) {
+    const genre = titles[cell.row];
     // A genre the server no longer lists is fixture drift, not a regression.
     const expected = byGenre.get(genre);
     if (!expected) continue;
-
-    const itemCount = await getActiveVal(`#genreList.content.${row}.getChildCount()`);
-    for (let i = 0; i < (typeof itemCount === 'number' ? itemCount : 0); i++) {
-      const title = await getActiveVal(`#genreList.content.${row}.${i}.title`);
-      if (typeof title !== 'string' || !title) continue;
-      if (expected.has(title)) {
-        verified++;
-        continue;
-      }
-      // The optional leading child is a "View All <genre>" affordance, not an item.
-      if (title.endsWith(genre)) continue;
-      throw new Error(
-        `genre row "${genre}" contains "${title}", which the server does not file under it — ` +
-          "the two-pass write-back has put another genre's items on this row",
-      );
+    if (typeof title !== 'string' || !title) continue;
+    if (expected.has(title)) {
+      verified++;
+      continue;
     }
+    // The optional leading child is a "View All <genre>" affordance, not an item.
+    if (title.endsWith(genre)) continue;
+    // Deliberately a plain throw: this is a fail-fast that already names its own
+    // cause — the two-pass write-back crossed its slot indices — rather than a
+    // timeout reporting that something did not show up. Same carve-out as the
+    // ambiguous-library refusal in `lib/nav.js`.
+    // eslint-disable-next-line no-restricted-syntax
+    throw new Error(
+      `genre row "${genre}" contains "${title}", which the server does not file under it — ` +
+        "the two-pass write-back has put another genre's items on this row",
+    );
   }
 
   if (!verified) {
-    throw new Error(
-      `genre rows: ${rowCount} row(s) read but not one item was checked against the server — ` +
-        'the assertion is not testing anything',
+    throw await diagnosedError(
+      `genre rows: ${rowCount} row(s) read but not one item was checked against the server`,
+      {
+        kind: FAILURE_KINDS.GENRE_ROWS_UNVERIFIED,
+        // Everything needed to tell the two live causes apart WITHOUT a re-run: rows
+        // present but empty (`counts` all zero — the items never landed) versus rows
+        // full of titles the server does not know (`serverGenres` disagreeing with
+        // `titles` — fixture drift). The batches already read all of it, so this
+        // costs nothing. Note what `verified === 0` no longer means: a swallowed
+        // query. `genreItemNames` throws now, so an empty map cannot reach here.
+        observed: {
+          rowCount,
+          titles,
+          counts,
+          serverGenres: [...byGenre.keys()],
+          serverItemCounts: [...byGenre.values()].map((s) => s.size),
+          sampleCellTitles: cellTitles.slice(0, 12),
+        },
+      },
     );
   }
+  return verified;
 }
 
 /**

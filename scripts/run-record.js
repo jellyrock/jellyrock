@@ -178,6 +178,65 @@ export function readFailures(file = failuresPath()) {
   return readJsonLines(file);
 }
 
+/**
+ * This run's ASSERTION records — how much each content assertion actually checked.
+ *
+ * A separate stream from `failures.jsonl` because these are written by assertions
+ * that PASSED, and folding them into a file named for failures would make both
+ * harder to read.
+ *
+ * ## Why record a passing assertion at all
+ *
+ * A content assertion's strength is invisible from its result. `assertGenreRowsOwnTheirItems`
+ * verifies a subset relation over whatever the fixture happens to hold, so it can
+ * check forty item-to-genre pairings or four and go green either way — and the day it
+ * can check zero it goes red, having silently weakened for months first. That decay is
+ * a shape this repo already expects: `tests/rta/CLAUDE.md` warns that "the demo library
+ * is small and shrinks" and that an assertion keyed on content it never has "passes
+ * vacuously forever and reads as coverage."
+ *
+ * Recording the count makes the weakening visible while it is still cheap to fix. It
+ * is deliberately NOT an assertion or a threshold — a floor here would fail runs over
+ * fixture churn, which is the false-red this whole phase exists to remove. It is
+ * provenance, in the same spirit as the measurement guard's tier 2: assert identity,
+ * record everything else.
+ */
+export const assertionsPath = () => path.join(getRunDir(), 'assertions.jsonl');
+
+/** Append one assertion record. Same never-throws contract as `recordFailure`. */
+export function recordAssertion(entry, file = assertionsPath()) {
+  appendJsonLine(file, entry);
+}
+
+/** Drop the previous run's assertion records. */
+export function resetAssertions(file = assertionsPath()) {
+  try {
+    fs.rmSync(file, { force: true });
+  } catch {
+    // Nothing to clear, or the directory does not exist yet.
+  }
+}
+
+/** Read back this run's assertion records. */
+export function readAssertions(file = assertionsPath()) {
+  return readJsonLines(file);
+}
+
+/**
+ * Collapse assertion records into `{ <name>: <verified> }` for the run summary.
+ *
+ * Last write wins per name, which matters for a watch-mode session where the same
+ * screen is asserted many times: the useful number is the most recent, not the first
+ * or a sum across iterations.
+ */
+export function foldAssertions(records) {
+  const out = {};
+  for (const r of records || []) {
+    if (r && typeof r.name === 'string' && typeof r.verified === 'number') out[r.name] = r.verified;
+  }
+  return out;
+}
+
 /** Read back the run ledger — one entry per completed run. */
 export function readRuns(file = runsLedgerPath()) {
   return readJsonLines(file);
@@ -278,6 +337,17 @@ export const FAILURE_KINDS = Object.freeze({
    * OUTCOME rather than only describing it: see `RUN_OUTCOMES.BLOCKED`.
    */
   SERVER_REQUEST_FAILED: 'server-request-failed',
+  /** A batched device read did not come back as a batch — see `getActiveVals`. */
+  BATCH_READ_FAILED: 'batch-read-failed',
+  /** The Genres view never presented the rows an assertion needs to read. */
+  GENRE_ROWS_NOT_READY: 'genre-rows-not-ready',
+  /**
+   * The Genres view presented rows, but not one item could be checked against the
+   * server. Distinct from `not-ready` because the structure DID arrive — and, since
+   * `/Genres` only lists genres that exist in the library, a populated view whose
+   * rows verify nothing is a real signal rather than a thin fixture.
+   */
+  GENRE_ROWS_UNVERIFIED: 'genre-rows-unverified',
 });
 
 const KNOWN_KINDS = new Set(Object.values(FAILURE_KINDS));
@@ -403,6 +473,7 @@ export function summarizeRun({
   startedAt,
   endedAt,
   failures = [],
+  assertions = {},
   run,
   what,
   variant,
@@ -460,6 +531,10 @@ export function summarizeRun({
     durationMs: Math.max(0, Date.parse(endedAt) - Date.parse(startedAt)) || 0,
     crossedHourBoundary: crossesHourBoundary(startedAt, endedAt),
     unknownKinds: [...new Set(failures.filter((f) => f?.kindUnknown).map((f) => f.kind))],
+    // How much each content assertion actually CHECKED — see `assertionsPath`.
+    // Omitted entirely when nothing recorded one, so an ordinary line is unchanged
+    // and older ledger entries stay comparable.
+    assertions: Object.keys(assertions).length ? assertions : undefined,
     failures,
   };
 }
@@ -665,6 +740,8 @@ export function beginRun({ lock, run, cumulative = false }) {
     activeRunDir,
   );
   resetFailures();
+  // Same contract as the failure records: a fold may only ever see THIS run's.
+  resetAssertions();
   // Closed over rather than re-read at close time, so a handle always folds the run
   // it was handed. Note the LIMIT of that: `activeRunDir` and the `closedSummary`
   // guard below are module state, so this makes a handle carry the right VALUES —
@@ -764,6 +841,7 @@ export function endRun({
     startedAt,
     endedAt: new Date().toISOString(),
     failures: readFailures(),
+    assertions: foldAssertions(readAssertions()),
     cumulative,
   });
   closedSummary = summary;

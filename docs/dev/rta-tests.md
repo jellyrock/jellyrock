@@ -289,6 +289,12 @@ filter can never silently drop a row:
 | `deviceKey` | **which Roku** — the lock's own `sha256(device-id)`, not an address | there are three on this LAN and they are not interchangeable. A baseline is specified on one device, so `variant` and `commit` are IDENTICAL across its runs and cannot separate a stray run on another one. `null` on the degraded lock path, which never resolves a device |
 | `outcome` | `passed` / `failed` / `interrupted` / `crashed` / `blocked` — what became of the run | the other four describe the INVOCATION; this is the only one about the run itself. See below — without it, a run that never executed a test is indistinguishable from a perfect one, and a run the fixture broke is indistinguishable from app flake |
 
+Plus one field that is **provenance, not a filter key**:
+
+| Key | Is | Why it is recorded |
+|---|---|---|
+| `assertions` | `{ <screen>: <count> }` — how many things each content assertion actually CHECKED. Omitted when nothing recorded one | a content assertion's strength is invisible from its result. `moviesLibraryGenres` verifies a subset relation over whatever the fixture holds, so it can check forty pairings or four and go green either way — and the day it can check zero it goes red, having weakened silently for months first. Never asserted on: a floor would redden runs over fixture churn, which is the false-red this is all here to remove. Watch the number across a series the way you would watch `durationMs` |
+
 ### Reading a baseline out of it
 
 **`npm run flake-baseline`** — that is the whole recipe, and it is deliberately not a

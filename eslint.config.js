@@ -77,10 +77,22 @@ export default [
   //
   // The glob covers the files that own WAITS; a fail-fast that already names its own
   // cause disables the rule on its line with a reason. Adding a new lib file that
-  // grows a wait is one line here. Why these three and not `specs/` or the other lib
+  // grows a wait is one line here. Why these and not `specs/` or the other lib
   // modules: docs/dev/rta-tests.md#when-a-wait-times-out-it-reports-what-it-saw.
+  //
+  // `screens.js` joined them after Phase 3's first baseline run went red and folded
+  // with `failures: []` — its content assertions were bare throws, so the one red
+  // sample the series produced could be recorded but not attributed. It is the screen
+  // REGISTRY, not a spec, so the "spec throws are assertions, not timeouts" carve-out
+  // that keeps `specs/` out does not cover it: an assertion that reads device state
+  // and finds it wrong is exactly the case that needs the state dumped.
   {
-    files: ['tests/rta/lib/nav.js', 'tests/rta/lib/steps.js', 'tests/rta/demos/**/*.{js,mjs}'],
+    files: [
+      'tests/rta/lib/nav.js',
+      'tests/rta/lib/steps.js',
+      'tests/rta/screens.js',
+      'tests/rta/demos/**/*.{js,mjs}',
+    ],
     rules: {
       'no-restricted-syntax': [
         'error',
