@@ -69,9 +69,39 @@ const lock = await acquireDeviceLock({ what: runName });
 // `unhandledRejection` (verified on Node 22.17) — hook both rather than depend on
 // which. `process.exit` still runs the record's exit net, so the run folds as
 // `crashed` on the way out.
+//
+// Declared before the hook and assigned at the spawn below, rather than `const`
+// there: the handler has to be able to kill the child, and the crash this exists for
+// (the deploy 401) happens BEFORE the spawn — so a `const` declared later would make
+// the handler's own reference a TDZ `ReferenceError` on exactly that path.
+// (Initialised rather than bare, so the pre-spawn state is a value the handler
+// tests rather than an absence, and so `prefer-const` reads the spawn as the
+// reassignment it is.)
+let child = null;
 for (const event of ['uncaughtException', 'unhandledRejection']) {
   process.on(event, async (err) => {
     console.error(`\n[rta] ${event} — releasing the device.\n${err?.stack || err?.message || err}`);
+    // Kill the child FIRST, then release. Releasing admits the next contender, and a
+    // Vitest that outlives its parent keeps driving the device — measured 2026-08-10,
+    // an orphan re-seeded the demo server underneath three restore attempts. Handing
+    // a live orphan and a free lock to the next run is strictly worse than the dead
+    // lock this hook was added to prevent. `undefined` before the spawn, which is the
+    // path the 401 takes.
+    if (child) {
+      // Cancel this run's normal continuation BEFORE the kill, or the kill WAKES it:
+      // the main flow is parked on `child.on('exit')`, and a SIGKILL settles that
+      // promise. Measured 2026-08-12 while dogfooding this hook — the woken flow read
+      // the signal as exit 130, folded the run `failed` (winning the idempotent close
+      // against this handler's `crashed`), and started the registry restore, racing
+      // the `process.exit` below. Removing the listener leaves the promise
+      // permanently unsettled, which is exactly right: on this path the handler owns
+      // the exit, and the record's net gets to label the run for what it was.
+      child.removeAllListeners('exit');
+      child.kill('SIGKILL');
+      // Same trade the second-interrupt path makes: the registry is left as the
+      // suite had it, and the snapshot on disk is the repair.
+      console.log('[rta] the device is left dirty. Recover: npm run rta:restore');
+    }
     await lock.release().catch(() => {});
     process.exit(1);
   });
@@ -103,7 +133,7 @@ if (process.env.RTA_NO_DEPLOY === '1') {
 
 const saved = await snapshotRegistry();
 
-const child = spawn(
+child = spawn(
   process.execPath,
   [
     path.join(repoRoot, 'node_modules', 'vitest', 'vitest.mjs'),
