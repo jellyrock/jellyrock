@@ -28,6 +28,7 @@ import {
   summarizeRun,
   formatRunSummary,
   RUN_OUTCOMES,
+  SAMPLE_OUTCOMES,
 } from '../../../scripts/run-record.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -689,12 +690,47 @@ describe('the run outcome — whether the suite actually ran', () => {
     ).toEqual([]);
   });
 
-  it('tells the operator a crashed run ran no suite, rather than just naming it', () => {
+  it('tells the operator a crashed run is not a sample, rather than just naming it', () => {
     const lines = formatRunSummary(
       { ...at, run: 'test:rta', failures: [], outcome: RUN_OUTCOMES.CRASHED },
       'x.jsonl',
     );
-    expect(lines.join('\n')).toContain('exclude it from a baseline');
+    expect(lines.join('\n')).toContain('NOT a sample');
+  });
+
+  it('does not claim a crashed run executed nothing — it cannot know that', () => {
+    // The deploy-401 that motivated this field ran no suite, but that is not general:
+    // `capture-screenshots` can die on locale 5 of 5, and `demos` runs no suite at all.
+    // All the record actually knows is that nobody closed the run.
+    for (const run of ['test:rta', 'capture-screenshots', 'demo']) {
+      const text = formatRunSummary(
+        { ...at, run, failures: [], outcome: RUN_OUTCOMES.CRASHED },
+        'x.jsonl',
+      ).join('\n');
+      expect(text).not.toMatch(/ran no suite/);
+    }
+  });
+
+  it('keeps the operator advice consistent with the documented flake formula', () => {
+    // These two disagreed on first cut: the doc counted `outcome !== 'passed'` as a
+    // failure while this summary told the operator to exclude a crashed run. Same
+    // shape of quiet miscount as the `variant === 'test:rta'` trap.
+    const advice = (outcome) =>
+      formatRunSummary({ ...at, run: 'test:rta', failures: [], outcome }, 'x.jsonl').join('\n');
+    // A sample: counts, stays in the population.
+    expect(advice(RUN_OUTCOMES.FAILED)).toContain('it counts');
+    // Not samples: leave the population entirely, in BOTH directions.
+    for (const o of [RUN_OUTCOMES.CRASHED, RUN_OUTCOMES.INTERRUPTED]) {
+      expect(advice(o)).toContain('drop it from the population');
+      expect(advice(o)).not.toMatch(/counts/);
+    }
+  });
+
+  it('partitions the four outcomes into samples and non-samples', () => {
+    // The set the doc's filter recipe imports, so the two cannot drift.
+    expect([...SAMPLE_OUTCOMES].sort()).toEqual(['failed', 'passed']);
+    expect(SAMPLE_OUTCOMES.has(RUN_OUTCOMES.CRASHED)).toBe(false);
+    expect(SAMPLE_OUTCOMES.has(RUN_OUTCOMES.INTERRUPTED)).toBe(false);
   });
 });
 

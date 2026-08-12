@@ -277,6 +277,25 @@ export const RUN_OUTCOMES = Object.freeze({
 });
 
 /**
+ * The four outcomes are NOT four peers — they partition into two kinds, and a rate
+ * computed without that split is wrong in both directions.
+ *
+ * A `passed` or `failed` run reached its verdict, so it is a SAMPLE: it belongs in
+ * the population and in the numerator respectively. A `crashed` or `interrupted`
+ * run never reached one — a deploy that 401'd, an operator's Ctrl-C — so it is not
+ * evidence about the app either way. Counting it red inflates the rate; counting it
+ * green hides a real failure; the only correct move is to drop it from the
+ * population entirely.
+ *
+ * Exported because the aggregation lives with the reader, not here, and the doc's
+ * filter recipe and this module's own operator advice have to agree on it. They did
+ * not on first cut: the recipe counted `outcome !== 'passed'` as a failure while the
+ * summary told the operator to exclude a crashed run — the same shape of quiet
+ * miscount as the `variant === 'test:rta'` trap the ledger keys exist to prevent.
+ */
+export const SAMPLE_OUTCOMES = Object.freeze(new Set([RUN_OUTCOMES.PASSED, RUN_OUTCOMES.FAILED]));
+
+/**
  * The whole-run view: the wall-clock window, whether it straddled a reset, the
  * outcome, and the failures.
  *
@@ -372,11 +391,20 @@ export function formatRunSummary(summary, file = failuresPath()) {
   const window = `${clock(startedAt)}→${clock(endedAt)} UTC`;
   const lines = [];
   if (flagOutcome) {
+    // What the operator is told has to match the aggregation the docs prescribe —
+    // see SAMPLE_OUTCOMES. A `failed` run IS evidence and counts; a `crashed` or
+    // `interrupted` one is not a sample at all and leaves the population.
+    //
+    // It deliberately does NOT say "it ran no suite". That was true of the deploy
+    // 401 that motivated this field and false in general: `capture-screenshots` can
+    // die on locale 5 of 5, and `demos` is not running a suite in the first place.
+    // The only thing the record actually knows is that nobody closed the run.
     lines.push(
       `${tag} run ${outcome} (${window}) — recorded as \`outcome: "${outcome}"\` in the ledger. ` +
-        (outcome === RUN_OUTCOMES.CRASHED
-          ? 'It died before its entry point could close it, so it ran no suite: exclude it from a baseline.'
-          : 'A baseline counts `outcome === "passed"`, not an empty failure list.'),
+        (SAMPLE_OUTCOMES.has(outcome)
+          ? 'It reached a verdict, so it counts: a rate over these runs reads `outcome`, never an empty failure list.'
+          : 'Its entry point never closed it, so what it completed is unknown — it is NOT a sample: ' +
+            'drop it from the population rather than counting it as a failure.'),
     );
   }
   if (flagHour) {

@@ -287,11 +287,33 @@ filter can never silently drop a row:
 | `deviceKey` | **which Roku** — the lock's own `sha256(device-id)`, not an address | there are three on this LAN and they are not interchangeable. A baseline is specified on one device, so `variant` and `commit` are IDENTICAL across its runs and cannot separate a stray run on another one. `null` on the degraded lock path, which never resolves a device |
 | `outcome` | `passed` / `failed` / `interrupted` / `crashed` — what became of the run | the other four describe the INVOCATION; this is the only one about the run itself. See below — without it, a run that never executed a test is indistinguishable from a perfect one |
 
-So a clean N-run baseline is
-`runs.filter(r => r.commit === X && VARIANTS.has(r.variant) && r.deviceKey === D)`,
-and its **flake rate is `outcome`**, not `failures.length`, over that set —
-`selected.filter(r => r.outcome !== 'passed').length / selected.length`. It is not a
-`rm` you have to remember before the series.
+So a clean N-run baseline is:
+
+```js
+const VARIANTS = new Set(['test:rta', 'test:rta:fast']);
+const SAMPLES = new Set(['passed', 'failed']); // see below — the other two are not samples
+const sel = runs.filter(
+  (r) =>
+    r.commit === X && VARIANTS.has(r.variant) && r.deviceKey === D && !r.dirty && SAMPLES.has(r.outcome),
+);
+const flakeRate = sel.filter((r) => r.outcome === 'failed').length / sel.length;
+```
+
+It is not a `rm` you have to remember before the series. Two things in that filter are
+easy to get wrong, and both produce a plausible-looking number rather than an error:
+
+**The rate reads `outcome`, never `failures.length`** — see the three-way conflation
+below.
+
+**The four outcomes are not four peers; they partition into samples and non-samples.**
+A `passed` or `failed` run reached a verdict, so it is evidence: in the population,
+and in the numerator respectively. A `crashed` or `interrupted` run never reached one
+— a deploy that 401'd, an operator's Ctrl-C — so it is not evidence about the app in
+either direction. Counting it red inflates the rate; counting it green hides a real
+failure; the only correct move is to drop it from the population. `SAMPLE_OUTCOMES` in
+[`run-record.js`](../../scripts/run-record.js) is the same set, exported so this recipe
+and the run summary's own operator advice cannot drift apart — they did not agree on
+first cut, which is the same shape of quiet miscount as the `variant` trap below.
 
 **`VARIANTS`, not `variant === 'test:rta'`** — and this is a live trap, not a
 nicety. The recommended protocol is one `test:rta` followed by `test:rta:fast` for
@@ -323,6 +345,54 @@ nothing prunes it — `rm .device-runs/<kind>/runs.jsonl` throws the history awa
 want that, but it is no longer the way you get a trustworthy number. (Size is a
 non-issue: a clean line is ~200 bytes, and one carrying 30 failure records with full
 device state is ~25 KB.)
+
+### Where a baseline runs: your device for the series, the CI device for a cross-check
+
+There are two Roku devices in play for any contributor, and they are not interchangeable:
+
+| | Reached via | You can deploy to it? |
+|---|---|---|
+| **your device** | `ROKU_IP` / `ROKU_PASSWORD` in your gitignored `.env` | yes — this is the one every `npm run` script drives |
+| **the CI device** | `secrets.ROKU_DEVICE_IP` / `secrets.ROKU_DEVICE_PASSWORD`, org-level secrets | **no** — see below |
+
+**Run the baseline series on YOUR device.** Cross-check on the CI device by dispatching
+[`rta-functional-tests.yml`](../../.github/workflows/rta-functional-tests.yml), which
+uploads the ledger as an artifact. Two independent reasons it is not the other way round:
+
+- **You cannot deploy to the CI device.** `ROKU_PASSWORD` in `.env` is *your* device's
+  dev server password. Overriding `ROKU_IP` alone is not enough — the CI device's
+  password is an org secret, so the deploy fails with a `401 Unauthorized` from
+  `roku-deploy`, *after* the lock has been taken.
+- **Even with the password it would be the wrong move.** `acquireDeviceLock` has no wait
+  budget, and CI's device jobs only READ the lock (they run with no write token) — so
+  while a workstation holds the CI device's lock, those jobs **fail rather than queue**.
+  A multi-hour series would red every PR's device check for its whole duration.
+
+The same arithmetic rules out running the series *inside* CI. A suite measures ~13 min
+against `timeout-minutes: 25`, so exactly one fits per job; a loop would need the timeout
+at ~4.5 h, and a single self-hosted runner carries the `roku-device` label and takes one
+job at a time — so that is a hard block on all device CI for the duration, the same
+objection relocated. (A multi-run job would produce N ledger lines, not one: `runs.jsonl`
+is append-only and lives outside `out/` for exactly that reason. The timeout is the wall,
+not the record.)
+
+**So: N=6–8 on your device, and ~3 dispatches on the CI device.** The CI arm answers only
+*"is device identity a factor at all"* — it is not a second baseline. Get each arm's
+`deviceKey` from `npm run device:status`, which prints `device <ip> — ledger key <D>`;
+the ledger stores the hash and never an address, so that is the only way to learn `D`.
+
+**The decision rule matters more than the counts, because the obvious reading of a single
+red is wrong.** With 8 runs on one device and 3 on the other, if exactly one run in the 11
+is red, then under the null that both devices behave identically that red lands in the
+3-run group **3/11 ≈ 27%** of the time. So "1 of 3" has a better-than-one-in-four
+false-alarm rate *by construction*, and treating it as a signal is how a cross-check meant
+to stop early instead burns the most device time:
+
+| CI-device result | Read it as |
+|---|---|
+| 0/3 | agreement — stop; device identity is not a factor |
+| 1/3 | **not separable.** Extend that arm to 6 before concluding anything |
+| 2+/3 | a real difference — chase it |
 
 **Why the ledger is not under `out/` with the others.** `out/` is the build output
 directory, and all eight `build*` npm scripts begin with `npx rimraf build/ out/`.
