@@ -146,7 +146,15 @@ export function getJson(urlStr, headers) {
   });
 }
 
-/** GET raw bytes (e.g. an image) as a Buffer. */
+/**
+ * GET raw bytes (e.g. an image) as a Buffer.
+ *
+ * Types its failures like every other request here even though its only caller
+ * (`capture-screenshots.js`, fetching a backdrop) discards the error and falls back.
+ * An untyped straggler would make the module's rule — every request throws
+ * `JellyfinRequestError` — false, and a rule with one undocumented exception is one
+ * a reader has to go and check rather than rely on.
+ */
 export function getBuffer(urlStr, headers) {
   const url = new URL(urlStr);
   const mod = url.protocol === 'http:' ? http : https;
@@ -154,13 +162,15 @@ export function getBuffer(urlStr, headers) {
     const req = mod.request(url, { method: 'GET', headers }, (res) => {
       if (res.statusCode < 200 || res.statusCode >= 300) {
         res.resume();
-        return reject(new Error(`GET ${urlStr} -> ${res.statusCode} ${res.statusMessage}`));
+        return reject(
+          fail(new JellyfinRequestError('GET', urlStr, res.statusCode, res.statusMessage)),
+        );
       }
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => resolve(Buffer.concat(chunks)));
     });
-    req.on('error', reject);
+    req.on('error', (e) => reject(fail(new JellyfinRequestError('GET', urlStr, null, null, e))));
     req.end();
   });
 }

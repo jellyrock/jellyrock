@@ -26,6 +26,7 @@ import {
   JellyfinRequestError,
   authenticate,
   findMovie,
+  getBuffer,
   getJson,
   getLibraries,
   isRequestError,
@@ -128,6 +129,16 @@ describe('a failed request is never an empty result', () => {
     expect(recorded[0].kind).toBe(FAILURE_KINDS.SERVER_REQUEST_FAILED);
     expect(recorded[0].status).toBe(401);
     expect(recorded[0].isAuth).toBe(true);
+  });
+
+  it('types getBuffer failures too, so the module rule has no exception', async () => {
+    // Its only caller discards the error, so nothing reads the type today. The point
+    // is that "every request in this file throws JellyfinRequestError" stays true —
+    // a rule with one silent straggler is one the next reader has to verify by hand.
+    routes['/Items'] = [404, {}];
+    const err = await getBuffer(`${base}/Items/x/Images/Primary`, {}).catch((e) => e);
+    expect(isRequestError(err)).toBe(true);
+    expect(err.status).toBe(404);
   });
 
   it('reports a transport error with no status rather than swallowing it', async () => {
