@@ -38,7 +38,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setupRtaEnv, deployRtaBuild, relaunch, ecp } from '../tests/rta/lib/driver.js';
 import { snapshotRegistry, restoreRegistry } from '../tests/rta/lib/registry.js';
-import { beginRun } from './run-record.js';
+import { beginRun, RUN_OUTCOMES } from './run-record.js';
 import { acquireDeviceLock } from './device-lock.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -52,6 +52,60 @@ setupRtaEnv(); // throws if ROKU_IP / ROKU_PASSWORD are missing — fail before 
 // minutes, so a contended run fails in about a second instead of after a build —
 // which is the difference between an agent being able to react and not.
 const lock = await acquireDeviceLock({ what: runName });
+
+// A throw anywhere below this line exits the module without reaching any of the
+// three `lock.release()` calls, leaving the device claimed by a dead process until
+// the lease expires. Measured 2026-08-12: `ROKU_IP=192.168.1.200 npm run test:rta`
+// threw a 401 out of `deployRtaBuild()` (that device's dev password is a CI secret)
+// and `npm run device:status` then reported the device held by a pid that no longer
+// existed, for the full 15-minute lease. The deploy is the most failure-prone step
+// here and it sits between the claim and every release.
+//
+// This is the lock's counterpart to `run-record.js`'s process-exit net, and it needs
+// its own hook rather than sharing that one: releasing is an API call, and nothing
+// can await inside a `process.on('exit')` handler.
+//
+// A rejection out of top-level await surfaces as `uncaughtException`, NOT
+// `unhandledRejection` (verified on Node 22.17) — hook both rather than depend on
+// which. `process.exit` still runs the record's exit net, so the run folds as
+// `crashed` on the way out.
+//
+// Declared before the hook and assigned at the spawn below, rather than `const`
+// there: the handler has to be able to kill the child, and the crash this exists for
+// (the deploy 401) happens BEFORE the spawn — so a `const` declared later would make
+// the handler's own reference a TDZ `ReferenceError` on exactly that path.
+// (Initialized rather than bare, so the pre-spawn state is a value the handler
+// tests rather than an absence, and so `prefer-const` reads the spawn as the
+// reassignment it is.)
+let child = null;
+for (const event of ['uncaughtException', 'unhandledRejection']) {
+  process.on(event, async (err) => {
+    console.error(`\n[rta] ${event} — releasing the device.\n${err?.stack || err?.message || err}`);
+    // Kill the child FIRST, then release. Releasing admits the next contender, and a
+    // Vitest that outlives its parent keeps driving the device — measured 2026-08-10,
+    // an orphan re-seeded the demo server underneath three restore attempts. Handing
+    // a live orphan and a free lock to the next run is strictly worse than the dead
+    // lock this hook was added to prevent. `undefined` before the spawn, which is the
+    // path the 401 takes.
+    if (child) {
+      // Cancel this run's normal continuation BEFORE the kill, or the kill WAKES it:
+      // the main flow is parked on `child.on('exit')`, and a SIGKILL settles that
+      // promise. Measured 2026-08-12 while dogfooding this hook — the woken flow read
+      // the signal as exit 130, folded the run `failed` (winning the idempotent close
+      // against this handler's `crashed`), and started the registry restore, racing
+      // the `process.exit` below. Removing the listener leaves the promise
+      // permanently unsettled, which is exactly right: on this path the handler owns
+      // the exit, and the record's net gets to label the run for what it was.
+      child.removeAllListeners('exit');
+      child.kill('SIGKILL');
+      // Same trade the second-interrupt path makes: the registry is left as the
+      // suite had it, and the snapshot on disk is the repair.
+      console.log('[rta] the device is left dirty. Recover: npm run rta:restore');
+    }
+    await lock.release().catch(() => {});
+    process.exit(1);
+  });
+}
 // Opens the run record: stamps the wall-clock origin and clears the previous
 // run's failure records. The origin is load-bearing rather than decorative — the
 // demo server resets on the hour, so a suite starting after roughly `:46` has
@@ -79,7 +133,7 @@ if (process.env.RTA_NO_DEPLOY === '1') {
 
 const saved = await snapshotRegistry();
 
-const child = spawn(
+child = spawn(
   process.execPath,
   [
     path.join(repoRoot, 'node_modules', 'vitest', 'vitest.mjs'),
@@ -105,6 +159,10 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
       // device left dirty, because it silently fights the recovery.
       console.log('\n[rta] second interrupt — abandoning restore. Recover: npm run rta:restore');
       child.kill('SIGKILL');
+      // Fold before the exit rather than leaving it to the net, which would label
+      // an operator's deliberate abandon `crashed`. The device is left dirty here;
+      // the RECORD does not have to be wrong as well.
+      run.close(RUN_OUTCOMES.INTERRUPTED);
       // Release even on the abandon path: the device is left dirty, but leaving
       // the LOCK behind too would wedge every other contender until the TTL
       // expires, for no benefit. `rta:restore` is the documented repair.
@@ -134,7 +192,17 @@ const exitCode = await new Promise((resolve) => {
 // In watch mode the record opened once at session start and folds once here, so
 // the window spans every iteration rather than one run — which is why the open
 // declared `cumulative` and the formatter drops the hour flag for it.
-run.close();
+// The child's exit code is the only account of whether the suite passed: only five
+// throw sites write failure records, and the specs also assert with plain
+// `expect()`, so a red run can fold with an EMPTY failure list. Reading `failures`
+// as the outcome would score that run green.
+run.close(
+  interrupting
+    ? RUN_OUTCOMES.INTERRUPTED
+    : exitCode === 0
+      ? RUN_OUTCOMES.PASSED
+      : RUN_OUTCOMES.FAILED,
+);
 
 try {
   await restoreRegistry(saved);

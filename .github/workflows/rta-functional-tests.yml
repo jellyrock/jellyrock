@@ -120,6 +120,28 @@ jobs:
           ROKU_PASSWORD: ${{ secrets.ROKU_DEVICE_PASSWORD }}
         run: npm run test:rta
 
+      # The run record, ALWAYS — this is the only way a `.200` sample leaves the
+      # runner. The ledger is the flake baseline's surface, and `.200` is the device
+      # the baseline is specified on; but a local run cannot drive `.200` (its
+      # dev-server password is an org secret, not the one in `.env`) and holding its
+      # lock from a workstation makes CI's own device jobs THROW rather than queue.
+      # So `.200` samples come from dispatching this workflow, and they are only
+      # readable if the record comes back with them.
+      #
+      # `if: always()` because a RED run is the interesting sample: `outcome` now
+      # separates `failed` from `crashed` from `passed`, and a baseline that only
+      # collected green runs would be measuring the wrong population.
+      - name: Upload the run record
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rta-run-record-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .device-runs/rta/runs.jsonl
+            out/rta/run-meta.json
+          retention-days: 30
+          if-no-files-found: warn
+
       # RTA's snapshot/restore is the safety net for the shared device's real
       # registry; if a run dies mid-suite the log is how you tell whether restore
       # completed. Mirrors device-unit-tests.yml's artifact upload.

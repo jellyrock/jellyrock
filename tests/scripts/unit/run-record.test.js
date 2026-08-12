@@ -27,6 +27,8 @@ import {
   runDir,
   summarizeRun,
   formatRunSummary,
+  RUN_OUTCOMES,
+  SAMPLE_OUTCOMES,
 } from '../../../scripts/run-record.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -602,6 +604,44 @@ describe('the process-exit net — the fold nobody calls', () => {
     expect(lines).toHaveLength(1);
   });
 
+  it('labels a run nobody closed `crashed`, so it cannot pass as a clean pass', () => {
+    // The measured case this exists for: `ROKU_IP=192.168.1.200 npm run test:rta`
+    // threw out of the deploy on a 401 and appended `durationMs: 621, failures: []`
+    // — a line the documented baseline recipe (`variant`/`commit`/`dirty`/
+    // `deviceKey`) selected, on a run where no test ever executed.
+    const { lines } = inSubprocess("throw new Error('deploy 401');", { exitCode: 1 });
+    expect(lines[0].outcome).toBe('crashed');
+    // The point of the field: BOTH runs fold with an empty failure list, so this is
+    // the only thing separating them.
+    expect(lines[0].failures).toEqual([]);
+  });
+
+  it('distinguishes a crashed run from a passed one, though both record no failures', () => {
+    // Both subprocesses append to the one ledger in this test's temp dir — which is
+    // the ledger's whole contract — so the second run is the LAST line, not line 0.
+    const crashed = inSubprocess("throw new Error('deploy 401');", { exitCode: 1 }).lines[0];
+    const passed = inSubprocess("run.close('passed');\nprocess.exit(0);").lines.at(-1);
+    expect([crashed.failures.length, passed.failures.length]).toEqual([0, 0]);
+    expect([crashed.outcome, passed.outcome]).toEqual(['crashed', 'passed']);
+  });
+
+  it('does not relabel a run the entry point closed as an outcome of its own', () => {
+    // The net must not overwrite a deliberate `interrupted` with `crashed` — the
+    // abandon path in `rta-run.js` closes explicitly for exactly that reason.
+    const { lines } = inSubprocess("run.close('interrupted');\nprocess.exit(130);", {
+      exitCode: 130,
+    });
+    expect(lines).toHaveLength(1);
+    expect(lines[0].outcome).toBe('interrupted');
+  });
+
+  it('announces a crashed run on the terminal, where silence used to hide it', () => {
+    // A run with no failures printed NOTHING, which is how the 621 ms line above
+    // reached the ledger unnoticed.
+    const { stdout } = inSubprocess("throw new Error('deploy 401');", { exitCode: 1 });
+    expect(stdout).toContain('run crashed');
+  });
+
   it('prints the summary from the net, so an abandoned run still says what it saw', () => {
     // The net's `console.log` is the only narration an interrupted run gets. (It is
     // synchronous on Linux/CI for pipes; `exit-net-summary-lost-on-macos-pipe` in
@@ -614,6 +654,134 @@ describe('the process-exit net — the fold nobody calls', () => {
     );
     expect(stdout).toContain('[rta]');
     expect(stdout).toContain('home rows');
+  });
+});
+
+describe('the run outcome — whether the suite actually ran', () => {
+  const at = { startedAt: '2026-08-12T01:07:47Z', endedAt: '2026-08-12T01:07:48Z' };
+
+  it('records the outcome it was given', () => {
+    expect(summarizeRun({ ...at, outcome: RUN_OUTCOMES.FAILED }).outcome).toBe('failed');
+  });
+
+  it('reports null rather than assuming a pass when the entry point did not say', () => {
+    // Same argument as the other four filter keys: absent would mean "you have to
+    // know the convention", and the convention a reader would guess is "passed".
+    expect(summarizeRun(at).outcome).toBeNull();
+  });
+
+  it('speaks up for a red run that captured no failure records', () => {
+    // The specs assert with plain `expect()` as well as through the five diagnosed
+    // throw sites, so a genuinely red suite can fold with `failures: []`. Reading
+    // the empty list as the outcome would score it green and print nothing.
+    const lines = formatRunSummary(
+      { ...at, run: 'test:rta', failures: [], outcome: RUN_OUTCOMES.FAILED },
+      'x.jsonl',
+    );
+    expect(lines.join('\n')).toContain('run failed');
+  });
+
+  it('stays silent on a clean pass — silence is still the clean-run signal', () => {
+    expect(
+      formatRunSummary(
+        { ...at, run: 'test:rta', failures: [], outcome: RUN_OUTCOMES.PASSED },
+        'x.jsonl',
+      ),
+    ).toEqual([]);
+  });
+
+  it('tells the operator a crashed run is not a sample, rather than just naming it', () => {
+    const lines = formatRunSummary(
+      { ...at, run: 'test:rta', failures: [], outcome: RUN_OUTCOMES.CRASHED },
+      'x.jsonl',
+    );
+    expect(lines.join('\n')).toContain('NOT a sample');
+  });
+
+  it('does not claim a crashed run executed nothing — it cannot know that', () => {
+    // The deploy-401 that motivated this field ran no suite, but that is not general:
+    // `capture-screenshots` can die on locale 5 of 5, and `demos` runs no suite at all.
+    // All the record actually knows is that nobody closed the run.
+    for (const run of ['test:rta', 'capture-screenshots', 'demo']) {
+      const text = formatRunSummary(
+        { ...at, run, failures: [], outcome: RUN_OUTCOMES.CRASHED },
+        'x.jsonl',
+      ).join('\n');
+      expect(text).not.toMatch(/ran no suite/);
+    }
+  });
+
+  it('keeps the operator advice consistent with the documented flake formula', () => {
+    // These two disagreed on first cut: the doc counted `outcome !== 'passed'` as a
+    // failure while this summary told the operator to exclude a crashed run. Same
+    // shape of quiet miscount as the `variant === 'test:rta'` trap.
+    const advice = (outcome) =>
+      formatRunSummary({ ...at, run: 'test:rta', failures: [], outcome }, 'x.jsonl').join('\n');
+    // A sample: counts, stays in the population.
+    expect(advice(RUN_OUTCOMES.FAILED)).toContain('it counts');
+    // Not samples: leave the population entirely, in BOTH directions.
+    for (const o of [RUN_OUTCOMES.CRASHED, RUN_OUTCOMES.INTERRUPTED]) {
+      expect(advice(o)).toContain('drop it from the population');
+      expect(advice(o)).not.toMatch(/counts/);
+    }
+  });
+
+  it('partitions the four outcomes into samples and non-samples', () => {
+    // The set the doc's filter recipe imports, so the two cannot drift.
+    expect([...SAMPLE_OUTCOMES].sort()).toEqual(['failed', 'passed']);
+    expect(SAMPLE_OUTCOMES.has(RUN_OUTCOMES.CRASHED)).toBe(false);
+    expect(SAMPLE_OUTCOMES.has(RUN_OUTCOMES.INTERRUPTED)).toBe(false);
+  });
+
+  it('does not tell an interrupted run nobody closed it — an entry point did', () => {
+    // `interrupted` is only ever written by an explicit `close()` (rta-run's abandon
+    // path, run-roku-tests' `done(130)`); the exit net writes `crashed` and nothing
+    // else. So "its entry point never closed it" — true of a crash by definition —
+    // is false here. The shared clause may only claim the missing verdict.
+    const advice = (outcome) =>
+      formatRunSummary({ ...at, run: 'test:rta', failures: [], outcome }, 'x.jsonl').join('\n');
+    expect(advice(RUN_OUTCOMES.INTERRUPTED)).not.toMatch(/never closed it|[Nn]obody closed it/);
+    expect(advice(RUN_OUTCOMES.INTERRUPTED)).toContain('never reached a verdict');
+    // The crash keeps the claim that IS true of it — that is the definition of the
+    // value, not a guess about what it managed to run.
+    expect(advice(RUN_OUTCOMES.CRASHED)).toContain('Nobody closed it');
+    expect(advice(RUN_OUTCOMES.CRASHED)).toContain('never reached a verdict');
+  });
+});
+
+describe('an outcome nobody registered', () => {
+  const at = { startedAt: '2026-08-12T01:07:47Z', endedAt: '2026-08-12T01:07:48Z' };
+
+  it('records the value as given rather than correcting or dropping it', () => {
+    // Never coerced: a guess is how a bad value becomes invisible. The flag rides
+    // beside it so a reader does not have to know the vocabulary to spot one.
+    const summary = summarizeRun({ ...at, outcome: 'pased' });
+    expect(summary.outcome).toBe('pased');
+    expect(summary.outcomeUnknown).toBe(true);
+  });
+
+  it('leaves an ordinary line unchanged', () => {
+    // Omitted-when-false, matching `cumulative`, so no ledger line grows a field
+    // that is false on every run anyone will ever take.
+    for (const outcome of Object.values(RUN_OUTCOMES)) {
+      expect(summarizeRun({ ...at, outcome })).not.toHaveProperty('outcomeUnknown', true);
+    }
+    expect(summarizeRun(at).outcomeUnknown).toBeUndefined();
+  });
+
+  it('warns on the terminal, the way an unregistered failure kind does', () => {
+    const text = formatRunSummary(
+      { ...summarizeRun({ ...at, run: 'test:rta', outcome: 'pased' }), run: 'test:rta' },
+      'x.jsonl',
+    ).join('\n');
+    expect(text).toContain('⚠ unrecognized outcome `pased`');
+    expect(text).toContain('RUN_OUTCOMES');
+  });
+
+  it('degrades to "not a sample" rather than to a pass', () => {
+    // The fail-safe that makes the warning a convenience rather than the only
+    // defence: a typo cannot reach the numerator OR the denominator.
+    expect(SAMPLE_OUTCOMES.has('pased')).toBe(false);
   });
 });
 

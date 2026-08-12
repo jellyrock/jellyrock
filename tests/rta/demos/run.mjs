@@ -21,7 +21,7 @@ import { seedHome, seedHomeWithSavedServers } from '../lib/seed.js';
 import { snapshotRegistry, restoreRegistry, armRestoreOnInterrupt } from '../lib/registry.js';
 import { setupRtaEnv, relaunch, hardRelaunch, ecp, odc } from '../lib/driver.js';
 import { acquireDeviceLock } from '../../../scripts/device-lock.js';
-import { beginRun } from '../../../scripts/run-record.js';
+import { beginRun, RUN_OUTCOMES } from '../../../scripts/run-record.js';
 import { setFailureContext } from '../lib/diagnostics.js';
 import {
   press,
@@ -268,7 +268,7 @@ async function main() {
     // (`exit-net-summary-lost-on-macos-pipe` in tech-debt.md). This is the path
     // that can afford an explicit close, so it takes it; the net still covers the
     // interrupt and early-exit paths, where nothing here could run.
-    run.close();
+    run.close(RUN_OUTCOMES.PASSED);
     await restoreRegistry(saved);
     await relaunch();
     cleanlyRestored = true;

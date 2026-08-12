@@ -251,3 +251,29 @@ jobs:
           name: roku-test-logs-${{ github.event.inputs.test_type || 'all' }}
           path: roku-test-output.log
           retention-days: 30
+
+      # The run record, ALWAYS — the counterpart to the same step in
+      # rta-functional-tests.yml, and the reason `run-roku-tests.js` records an
+      # `outcome` at all. #800 went red on a ROOIBOS test against the shared demo
+      # server, and the experiment that re-derives it needs a local RTA run and a CI
+      # Rooibos run to be comparable from BOTH sides afterwards. Without this the
+      # Rooibos ledger dies with the runner and that side is unreadable, which would
+      # leave `run-roku-tests.js`'s own comment claiming a capability the repo does
+      # not have.
+      #
+      # `if: always()` because a RED run is the interesting one. Adds no egress path:
+      # the step above already uploads a full telnet console dump from the same job,
+      # and this file carries only commit sha, timings, the `sha256(device-id)` key
+      # and the holder record — `recordFailure` lives in the RTA harness, so a
+      # Rooibos run's `failures` is always empty. upload-artifact authenticates with
+      # ACTIONS_RUNTIME_TOKEN, so `contents: read` is untouched.
+      - name: Upload the run record
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: roku-run-record-${{ github.event.inputs.test_type || 'all' }}
+          path: |
+            .device-runs/device/runs.jsonl
+            out/device/run-meta.json
+          retention-days: 30
+          if-no-files-found: warn

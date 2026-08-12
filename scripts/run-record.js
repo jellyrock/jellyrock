@@ -247,8 +247,78 @@ export function crossesHourBoundary(fromIso, toIso) {
 }
 
 /**
- * The whole-run view: the wall-clock window, whether it straddled a reset, and the
- * failures.
+ * What became of a run, as distinct from what it DIAGNOSED.
+ *
+ * `failures` is the diagnostic record — the five RTA throw sites that capture
+ * device state. It is not an outcome, and reading it as one conflates three
+ * different runs into the identical line `failures: []`:
+ *
+ *   1. the suite ran and passed;
+ *   2. the suite ran and went red somewhere the diagnostics do not cover (a plain
+ *      `expect()` — there are 11 in `tests/rta/specs/` — or a Vitest-level error);
+ *   3. the suite never ran at all.
+ *
+ * (3) is not hypothetical: `ROKU_IP=192.168.1.200 npm run test:rta` on 2026-08-12
+ * threw out of `deployRtaBuild()` on a 401 (that device's dev password is a CI
+ * secret, not the one in `.env`) and appended `durationMs: 621, failures: []` —
+ * a line indistinguishable from a clean pass, on a clean commit, and the FIRST
+ * one ever to satisfy the documented baseline selection recipe.
+ *
+ * A flake baseline's entire output is "how many of N runs were red", so the
+ * ledger has to answer that directly instead of leaving it to be inferred from
+ * the absence of records.
+ */
+export const RUN_OUTCOMES = Object.freeze({
+  PASSED: 'passed',
+  FAILED: 'failed',
+  INTERRUPTED: 'interrupted',
+  /** Nobody closed the run — the entry point died before it got there. */
+  CRASHED: 'crashed',
+});
+
+/**
+ * The four outcomes are NOT four peers — they partition into two kinds, and a rate
+ * computed without that split is wrong in both directions.
+ *
+ * A `passed` or `failed` run reached its verdict, so it is a SAMPLE: it belongs in
+ * the population and in the numerator respectively. A `crashed` or `interrupted`
+ * run never reached one — a deploy that 401'd, an operator's Ctrl-C — so it is not
+ * evidence about the app either way. Counting it red inflates the rate; counting it
+ * green hides a real failure; the only correct move is to drop it from the
+ * population entirely.
+ *
+ * Exported because the aggregation lives with the reader, not here, and the doc's
+ * filter recipe and this module's own operator advice have to agree on it. They did
+ * not on first cut: the recipe counted `outcome !== 'passed'` as a failure while the
+ * summary told the operator to exclude a crashed run — the same shape of quiet
+ * miscount as the `variant === 'test:rta'` trap the ledger keys exist to prevent.
+ *
+ * Deliberately NOT `Object.freeze`d, unlike `RUN_OUTCOMES` above: freezing a Set
+ * seals its own properties and does nothing to its CONTENTS (`Object.freeze(new
+ * Set(['a'])).add('b')` succeeds), so the call would read as a guarantee it does not
+ * make. The test that pins the membership is the actual guard.
+ */
+export const SAMPLE_OUTCOMES = new Set([RUN_OUTCOMES.PASSED, RUN_OUTCOMES.FAILED]);
+
+/**
+ * Every value `outcome` is allowed to take. An unrecognized one is RECORDED as it
+ * was given and flagged — never coerced, never thrown on.
+ *
+ * Not thrown on because of WHERE the check runs: the close is what reports that a
+ * run died, so a throw there would destroy the record it exists to write, on exactly
+ * the runs whose record matters most. Not coerced because a guess is how a bad value
+ * becomes invisible. Flagging follows `unknownKinds`, the same problem one field
+ * over — an unregistered value that would quietly split a baseline's buckets.
+ *
+ * It also degrades safely without any of that: an unknown value is not in
+ * `SAMPLE_OUTCOMES`, so a typo drops the run from the population rather than
+ * scoring it green.
+ */
+const KNOWN_OUTCOMES = new Set(Object.values(RUN_OUTCOMES));
+
+/**
+ * The whole-run view: the wall-clock window, whether it straddled a reset, the
+ * outcome, and the failures.
  *
  * `cumulative` marks a window spanning MANY logical runs rather than one — watch
  * mode, where the reset happens once at session start and the fold once at exit.
@@ -265,6 +335,7 @@ export function summarizeRun({
   commit,
   dirty,
   deviceKey,
+  outcome,
   cumulative = false,
 }) {
   return {
@@ -300,6 +371,15 @@ export function summarizeRun({
     // both parties agree on. Null on the degraded lock path, which never resolves
     // one — honest, and the run really is of unknown provenance there.
     deviceKey: deviceKey ?? null,
+    // The fifth filter key, and the only one that is about the run rather than the
+    // invocation. `null` when the entry point did not say — honest, and the same
+    // "missing would mean you have to know the convention" argument as the four
+    // above. A baseline reads `outcome` over `SAMPLE_OUTCOMES`, never
+    // `!failures.length` — see that set for why the four values are not four peers.
+    outcome: outcome ?? null,
+    // Recorded rather than corrected — see `KNOWN_OUTCOMES`. Omitted when false, so
+    // an ordinary line is unchanged, matching `cumulative` above.
+    outcomeUnknown: (outcome != null && !KNOWN_OUTCOMES.has(outcome)) || undefined,
     startedAt,
     endedAt,
     cumulative: cumulative || undefined,
@@ -323,14 +403,52 @@ const clock = (iso) => (Number.isFinite(Date.parse(iso)) ? iso.slice(11, 16) : '
  * mapping to keep in sync, exactly as `runsLedgerPath` does.
  */
 export function formatRunSummary(summary, file = failuresPath()) {
-  const { failures = [], startedAt, endedAt, crossedHourBoundary, cumulative } = summary;
+  const { failures = [], startedAt, endedAt, crossedHourBoundary, cumulative, outcome } = summary;
   const unknownKinds = summary.unknownKinds || [];
   // Suppressed for a cumulative window — see `summarizeRun`.
   const flagHour = crossedHourBoundary && !cumulative;
-  if (!failures.length && !flagHour && !unknownKinds.length) return [];
+  // A run that died before it could run anything has no failures to report, which
+  // is exactly why it printed NOTHING and slipped into the ledger unnoticed. Silence
+  // is the right output for a clean run only.
+  const flagOutcome = outcome && outcome !== RUN_OUTCOMES.PASSED;
+  const flagUnknownOutcome = Boolean(summary.outcomeUnknown);
+  if (!failures.length && !flagHour && !unknownKinds.length && !flagOutcome) return [];
   const tag = `[${path.basename(runDir(summary.run))}]`;
   const window = `${clock(startedAt)}→${clock(endedAt)} UTC`;
   const lines = [];
+  if (flagOutcome) {
+    // What the operator is told has to match the aggregation the docs prescribe —
+    // see SAMPLE_OUTCOMES. A `failed` run IS evidence and counts; a `crashed` or
+    // `interrupted` one is not a sample at all and leaves the population.
+    //
+    // Each non-sample says HOW it failed to reach a verdict, and only what the
+    // record can actually support. Two earlier cuts of this line overclaimed: "it
+    // ran no suite" was true of the deploy 401 that motivated the field and false in
+    // general (`capture-screenshots` can die on locale 5 of 5, and `demos` runs no
+    // suite at all), and "its entry point never closed it" is true of `crashed` —
+    // which is DEFINED by the exit net firing — but false of `interrupted`, which
+    // only ever comes from an entry point closing deliberately on the abandon path.
+    // What both share, and all the shared clause may claim, is the missing verdict.
+    lines.push(
+      `${tag} run ${outcome} (${window}) — recorded as \`outcome: "${outcome}"\` in the ledger. ` +
+        (SAMPLE_OUTCOMES.has(outcome)
+          ? 'It reached a verdict, so it counts: a rate over these runs reads `outcome`, never an empty failure list.'
+          : `${
+              outcome === RUN_OUTCOMES.INTERRUPTED ? 'You stopped it' : 'Nobody closed it'
+            }, so it never reached a verdict and what it completed is unknown — it is NOT a ` +
+            'sample: drop it from the population rather than counting it as a failure.'),
+    );
+  }
+  if (flagUnknownOutcome) {
+    // Same shape as the unregistered-failure-kind warning below, for the same
+    // reason: a value nobody registered splits a baseline's buckets, and the run
+    // summary is the one artifact an operator reads after every run in a series.
+    lines.push(
+      `${tag} ⚠ unrecognized outcome \`${outcome}\` — recorded as given, not corrected. ` +
+        'Use a `RUN_OUTCOMES` member (scripts/run-record.js); until then this run is ' +
+        'not a sample and drops out of any baseline.',
+    );
+  }
   if (flagHour) {
     lines.push(
       `${tag} this run crossed the top of the hour (${window}) — the demo server resets then, ` +
@@ -476,7 +594,9 @@ export function beginRun({ lock, run, cumulative = false }) {
     startedAt,
     dir: activeRunDir,
     env: { RTA_RUN_DIR: activeRunDir },
-    close: () => endRun(args),
+    // The outcome is passed at CLOSE, not at open: it is the one thing about a run
+    // that cannot be known when it starts.
+    close: (outcome) => endRun({ ...args, outcome }),
   };
 }
 
@@ -506,7 +626,11 @@ function armCloseOnExit() {
   if (netArmed) return;
   netArmed = true;
   process.on('exit', () => {
-    if (closeArgs && !closedSummary) endRun(closeArgs);
+    // Reaching here with an unclosed run IS the definition of a crash: every entry
+    // point closes explicitly on the paths it can reach, so the net firing means
+    // the run died before one of them ran. Labelling it is what stops a run that
+    // never executed a test from reading as a clean pass.
+    if (closeArgs && !closedSummary) endRun({ ...closeArgs, outcome: RUN_OUTCOMES.CRASHED });
   });
 }
 
@@ -517,10 +641,20 @@ function armCloseOnExit() {
  * and a second fold would append a second ledger line for one run — which is
  * precisely the miscount an N-run baseline cannot absorb.
  */
-export function endRun({ lock, run, startedAt, cumulative = false, variant, commit, dirty }) {
+export function endRun({
+  lock,
+  run,
+  startedAt,
+  cumulative = false,
+  variant,
+  commit,
+  dirty,
+  outcome,
+}) {
   if (closedSummary) return closedSummary;
   const summary = summarizeRun({
     run,
+    outcome,
     what: lock?.meta?.holder?.what,
     // Read off the lock here rather than carried from the open, like `what` above
     // and unlike the three below: it is already resolved on `lock.meta` by the time
