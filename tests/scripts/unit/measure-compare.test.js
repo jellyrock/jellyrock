@@ -149,7 +149,7 @@ describe('selecting an arm', () => {
 describe('comparability — what is refused', () => {
   const refuse = (overA, overB) => comparability(...armsFrom(twoArms(overA, overB))).refusals;
 
-  it('refuses two different servers, using tier 1s own normaliser', () => {
+  it('refuses two different servers, using tier 1s own normalizer', () => {
     const other = {
       provenance: {
         ...series().provenance,
@@ -210,6 +210,41 @@ describe('comparability — what is refused', () => {
     expect(comparability(a, b).refusals.join(' ')).toMatch(/SAME series/);
   });
 
+  it('refuses PARTIALLY overlapping arms, which is the shape an operator reaches', () => {
+    // Measuring an UNCOMMITTED change leaves both arms on one commit — the documented
+    // common case, and the reason `--arm` exists at all — so `--a commit=<sha>`
+    // swallows the `after` arm whole while `--b after` names it again. Reproduced
+    // against this repo's own ledger before this refusal existed: it printed a
+    // confident `Δ -45.5 ms (-2.5%)`, a p, and a twelve-entry `order` line built from
+    // eight distinct samples, with B's four counted on both sides.
+    const records = twoArms({}, { commit: 'abc1234' });
+    const a = buildArm('commit=abc1234', records, { commit: 'abc1234' });
+    const b = buildArm('after', records, { arm: 'after' });
+    expect(a.series).toHaveLength(2); // both arms
+    expect(b.series).toHaveLength(1); // one of the two A already has
+    const verdict = comparability(a, b);
+    expect(verdict.refusals.join(' ')).toMatch(/1 of commit=abc1234's 2 series is ALSO in after/);
+    expect(verdict.refusals.join(' ')).toMatch(/counted on both sides/);
+    // Named so the operator can act on it — the ledger is append-only, so an index
+    // would mean nothing, but `measure:compare` with no arguments prints these.
+    expect(verdict.refusals.join(' ')).toMatch(/arm after @ 2026-08-13/);
+    // …and never as a delta. Probed on the statistic itself rather than the words
+    // "rank test", which the refusal's own message contains.
+    expect(reportComparison(a, b, verdict).join('\n')).not.toMatch(/Mann-Whitney U =/);
+  });
+
+  it('refuses an arm that mixes ENABLE_RTA states within itself, not just across arms', () => {
+    const nonRta = { provenance: { ...series().provenance, enableRta: false } };
+    const records = [
+      series({ arm: 'before' }),
+      series({ arm: 'after', ...nonRta }),
+      series({ arm: 'after', commit: 'def5678' }),
+    ];
+    expect(comparability(...armsFrom(records)).refusals.join(' ')).toMatch(
+      /mixes 2 ENABLE_RTA states/,
+    );
+  });
+
   it('refuses an empty arm rather than reporting a median over nothing', () => {
     const [a, b] = armsFrom([series({ arm: 'before' })]);
     expect(comparability(a, b).refusals.join(' ')).toMatch(/selected no usable series/);
@@ -262,6 +297,29 @@ describe('comparability — what is only said out loud', () => {
   it('warns on two units of the same model, which is not the same device', () => {
     expect(warn({}, { deviceKey: 'dev-b' })).toMatch(/two different physical devices/);
   });
+
+  it('says out loud how many series it DROPPED, on the path that prints a delta', () => {
+    // `selectSeries`'s contract is that exclusions are output, not a silent filter —
+    // and the failure it names (a median over three samples when you took ten) lands
+    // on the success path, not on the refusal path where this used to be printed.
+    const records = [
+      ...twoArms(),
+      series({ arm: 'before', outcome: 'blocked' }),
+      series({ arm: 'before', outcome: 'blocked' }),
+      series({ arm: 'before', outcome: undefined }),
+      series({ arm: 'before', samples: [] }),
+    ];
+    const [a, b] = armsFrom(records);
+    const verdict = comparability(a, b);
+    expect(verdict.refusals).toEqual([]);
+    const text = reportComparison(a, b, verdict).join('\n');
+    expect(text).toMatch(/rank test/); // it still reports…
+    expect(text).toMatch(/arm before matched 5 series but is using 1/); // …and says what it dropped
+    expect(text).toMatch(/2 blocked, 1 unrecorded/);
+    expect(text).toMatch(/1 produced no cold sample/);
+    // The arm that dropped nothing says nothing — a per-arm line, not a banner.
+    expect(text).not.toMatch(/arm after matched/);
+  });
 });
 
 describe('the interleave check', () => {
@@ -281,6 +339,32 @@ describe('the interleave check', () => {
     expect(reportComparison(...blocked, comparability(...blocked)).join('\n')).toMatch(
       /were NOT interleaved/,
     );
+  });
+
+  it('does not demand interleaving of arms that cannot be interleaved', () => {
+    // One sample each: `AB` is the only sequence available, so telling the operator to
+    // alternate is advice they cannot take. The n<5 warning already covers this case.
+    const at = (n) => `2026-08-13T10:0${n}:00.000Z`;
+    const one = armsFrom(
+      twoArms(
+        { samples: [sample(2500, { launchAt: at(0) })] },
+        { samples: [sample(2000, { launchAt: at(2) })] },
+      ),
+    );
+    expect(interleaving(...one).blocks).toBe(2);
+    const text = reportComparison(...one, comparability(...one)).join('\n');
+    expect(text).not.toMatch(/were NOT interleaved/);
+    expect(text).toMatch(/has 1 sample\(s\)/);
+  });
+
+  it('reports a short span in seconds rather than rounding it to `0 min`', () => {
+    const [a, b] = armsFrom(
+      twoArms(
+        { samples: [sample(2500, { launchAt: '2026-08-13T10:00:00.000Z' })] },
+        { samples: [sample(2000, { launchAt: '2026-08-13T10:00:40.000Z' })] },
+      ),
+    );
+    expect(reportComparison(a, b, comparability(a, b)).join('\n')).toMatch(/over 40 s/);
   });
 
   it('never reads a missing timestamp as ordered', () => {

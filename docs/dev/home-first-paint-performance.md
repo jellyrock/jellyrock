@@ -9,6 +9,8 @@ related-files:
   - scripts/harden-prod-manifest.js
   - scripts/measure.js
   - scripts/measure-compare.js
+  - scripts/roku-devices.js
+  - scripts/data/roku-hardware.json
   - scripts/measurements.js
   - scripts/measurement-guard.js
   - manifest
@@ -426,6 +428,17 @@ What it does that a hand-built comparison does not:
 - **It refuses two experiments dressed as two arms**: different screen, server, device model,
   RAM tier, build flavor or `ENABLE_RTA` state. A `debug=true` arm against a `debug=false`
   one is +121 ms before the change under test does anything.
+- **It refuses two arms that share a series.** Measuring an uncommitted change leaves both
+  arms on one commit, so `--a commit=<sha> --b after` selects every arm on that commit as A —
+  including all of B. Those samples would be counted on both sides, in both medians and in
+  the rank test. Narrow one selector; two arms of one experiment share no series.
+- **It says what it dropped.** A series that never reached a verdict (`blocked`, or written
+  before `outcome` existed) is excluded from an arm, and the count is printed beside the
+  delta — a median over three samples when you took ten otherwise reads exactly like a result.
+- **The RAM tier comes from Roku's published table**, not from anyone's memory:
+  [`scripts/data/roku-hardware.json`](../../scripts/data/roku-hardware.json) is generated from
+  `rokudev/dev-doc` and refreshed by a weekly sync PR. So a Roku TV, a Projector and a
+  Streaming Stick all resolve, and a comparison across tiers is refused rather than eyeballed.
 - **It checks the arms were actually interleaved**, from the per-sample timestamps, and says
   so when they were not.
 - **Workload drift is reported, never refused.** Two arms at 10 rows and 9 rows are still

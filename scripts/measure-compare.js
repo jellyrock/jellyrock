@@ -3,7 +3,7 @@
  * the timing delta.
  *
  *   npm run measure:compare                                describe the ledger
- *   npm run measure:compare -- --a before --b after        two labelled arms
+ *   npm run measure:compare -- --a before --b after        two labeled arms
  *   npm run measure:compare -- --a commit=91363ce5 --b commit=4ee85e15
  *   npm run measure:compare -- --a before --b after --field emit
  *
@@ -47,7 +47,10 @@
 import path from 'node:path';
 
 import { readJsonLines, runDir, SAMPLE_OUTCOMES } from './run-record.js';
-import { ramTierFor, sameServer } from './measurement-guard.js';
+import { sameServer } from './measurement-guard.js';
+// From the dictionary directly, not through the guard: the guard imports the ODC
+// client, and this tool only ever reads a JSON Lines file off disk.
+import { ramTierFor } from './roku-devices.js';
 import { MeasureArgError } from './measure-args.js';
 
 /**
@@ -216,6 +219,14 @@ const distinct = (series, read) => [...new Set(series.map(read).map((v) => v ?? 
 const show = (value) =>
   value === null || value === undefined || value === '' ? '(not recorded)' : String(value);
 
+/**
+ * Name one series the way an operator can act on it: its arm label and when it was
+ * taken. Not the array index — the ledger is append-only and a reader cannot see
+ * positions, but `npm run measure:compare` with no arguments prints exactly these.
+ */
+const describeSeries = (r) =>
+  `arm ${show(SERIES_KEYS.arm(r))} @ ${r?.startedAt ? String(r.startedAt).slice(0, 16).replace('T', ' ') : 'unknown time'}`;
+
 /** `rows=10` for one sample's workload, so two workloads compare as strings. */
 const workloadKey = (workload) =>
   Object.keys(workload || {})
@@ -266,14 +277,34 @@ export function comparability(a, b) {
   }
   if (refusals.length) return { refusals, warnings };
 
-  // Both selectors resolving to the same rows is a typo with a plausible output: it
-  // prints a delta of zero and a p of 1, which reads as "no difference found".
+  // ANY shared series is a refusal, not just a total overlap. A series cannot be
+  // evidence for both sides of a comparison against itself.
+  //
+  // The total case is a typo with a plausible output — a delta of zero and a p of 1,
+  // which reads as "no difference found". The PARTIAL case is worse, and it is the one
+  // an operator actually reaches: `--a commit=<sha> --b after` on an uncommitted change
+  // selects every arm on that commit as A, including all of B. Measured against this
+  // repo's own ledger, that printed `Δ -45.5 ms (-2.5%)`, a p, and an `order` line of
+  // twelve entries built from eight distinct samples — with B's four values counted on
+  // both sides, and nothing anywhere saying so. The only visible tell was that both arms
+  // reported the same min and max.
+  //
+  // Both arms carrying the same `commit` is the DOCUMENTED common case (see `--arm` in
+  // `measure-args.js`: an uncommitted change leaves the two builds indistinguishable in
+  // every recorded field but the label), so a commit selector overlapping an arm
+  // selector is a shape to expect rather than an exotic mistake.
   const overlap = a.series.filter((r) => b.series.includes(r));
-  if (overlap.length === a.series.length && overlap.length === b.series.length) {
+  if (overlap.length) {
+    const total = overlap.length === a.series.length && overlap.length === b.series.length;
     refusals.push(
-      'both arms selected the SAME series — the delta below would be a series compared ' +
-        'against itself. Check the selectors; `npm run measure:compare` with no arguments ' +
-        'lists what is in the ledger.',
+      total
+        ? 'both arms selected the SAME series — the delta below would be a series compared ' +
+            'against itself. Check the selectors; `npm run measure:compare` with no arguments ' +
+            'lists what is in the ledger.'
+        : `${overlap.length} of ${a.label}'s ${a.series.length} series ${overlap.length === 1 ? 'is' : 'are'} ` +
+            `ALSO in ${b.label} (${overlap.map(describeSeries).join(', ')}) — those samples would be ` +
+            'counted on both sides, in both medians and in the rank test. Narrow one selector; ' +
+            'two arms of one experiment share no series.',
     );
   }
 
@@ -304,7 +335,7 @@ export function comparability(a, b) {
     }
   }
 
-  // The server is compared with tier 1's own normaliser, so a trailing slash is not a
+  // The server is compared with tier 1's own normalizer, so a trailing slash is not a
   // refusal and `/stable` vs `/unstable` is.
   const serverA = distinct(a.series, SERIES_KEYS.server);
   const serverB = distinct(b.series, SERIES_KEYS.server);
@@ -354,10 +385,25 @@ export function comparability(a, b) {
 
   // ENABLE_RTA is the third compile-time flag that can move a measurement, and it is
   // DERIVED from ODC answering rather than read from a manifest — see the guard.
+  //
+  // Checked WITHIN an arm as well as across, like every other refusal axis above. It
+  // was the one axis without the within-arm half, which would have let a single arm
+  // pool an RTA build and a non-RTA one and then compare that mixture confidently
+  // against the other side — the failure the cross-arm check exists to stop, hidden
+  // one level down.
   const rta = (arm) => distinct(arm.series, (r) => r?.provenance?.enableRta ?? null);
+  for (const arm of [a, b]) {
+    const values = rta(arm);
+    if (values.length > 1) {
+      refusals.push(
+        `arm ${arm.label} mixes ${values.length} ENABLE_RTA states (${values.map(show).join(', ')}) — ` +
+          'that is two populations in one arm, not a series.',
+      );
+    }
+  }
   if (rta(a).length === 1 && rta(b).length === 1 && rta(a)[0] !== rta(b)[0]) {
     refusals.push(
-      `the arms differ in ENABLE_RTA (${a.label}: ${rta(a)[0]} · ${b.label}: ${rta(b)[0]}) — a ` +
+      `the arms differ in ENABLE_RTA (${a.label}: ${show(rta(a)[0])} · ${b.label}: ${show(rta(b)[0])}) — a ` +
         'resident ODC component is an unmeasured variable, which is the calibration this ' +
         'comparison would need to have already done.',
     );
@@ -366,6 +412,33 @@ export function comparability(a, b) {
   if (refusals.length) return { refusals, warnings };
 
   // ── Recorded, not refused ────────────────────────────────────────────────────
+  // A line the selector MATCHED and the gates then dropped. Said out loud on the
+  // success path too, not only inside a refusal, because `selectSeries`'s whole
+  // contract is that exclusions are output rather than a silent `filter` — and the
+  // failure it names ("a median over three samples when you took ten reads exactly
+  // like a result") happens on the path that prints a delta, not on the one that
+  // refuses. Only the gate-dropped counts appear here: `notSelected` is every other
+  // line in the ledger and is noise until there is nothing left to compare, which is
+  // why the refusal branch prints that one and this does not.
+  for (const arm of [a, b]) {
+    const dropped = arm.excluded.notASample + arm.excluded.noColdSamples;
+    if (!dropped) continue;
+    const why = [];
+    if (arm.excluded.notASample) {
+      why.push(
+        `${arm.excluded.notASample} never reached a verdict (${Object.entries(arm.nonSampleOutcomes)
+          .map(([k, n]) => `${n} ${k}`)
+          .join(', ')})`,
+      );
+    }
+    if (arm.excluded.noColdSamples) {
+      why.push(`${arm.excluded.noColdSamples} produced no cold sample`);
+    }
+    warnings.push(
+      `arm ${arm.label} matched ${arm.series.length + dropped} series but is using ${arm.series.length}: ` +
+        `${why.join(' · ')}. Those runs happened; they are not in the numbers below.`,
+    );
+  }
   if (distinct(a.series, SERIES_KEYS.screen)[0] === null) {
     warnings.push(
       'neither series recorded a screen (the `item-grid` family backs every library grid), so ' +
@@ -480,7 +553,7 @@ export function summarizeValues(values) {
   };
 }
 
-/** Mid-ranks, so ties do not silently favour whichever arm was listed first. */
+/** Mid-ranks, so ties do not silently favor whichever arm was listed first. */
 function midRanks(sorted) {
   const ranks = new Array(sorted.length);
   let i = 0;
@@ -513,7 +586,7 @@ function normalCdf(z) {
  * The exact null distribution of U for sizes `m`, `n`, as counts indexed by U.
  *
  * `N(m, n, u) = N(m-1, n, u-n) + N(m, n-1, u)` — the standard recurrence, carried in
- * doubles and normalised by its own total, so no factorial is ever formed.
+ * doubles and normalized by its own total, so no factorial is ever formed.
  */
 function uDistribution(m, n) {
   // rows[j] holds the distribution for (i, j); only the previous i is needed.
@@ -549,7 +622,7 @@ const EXACT_MAX_PAIRS = 2500;
  * says which was used, because "p = 0.03, exact" and "p = 0.03, approximate at n=4"
  * are not the same claim.
  *
- * ## That distinction is not academic — it is already in the doc, unlabelled
+ * ## That distinction is not academic — it is already in the doc, unlabeled
  *
  * Re-deriving the two recorded p-values while writing this found they were computed
  * two different ways. The `apiPipeline` pair (n=5 vs 6, complete separation) records
@@ -561,6 +634,17 @@ const EXACT_MAX_PAIRS = 2500;
  * produced which number, and a reader re-deriving one from the other would have
  * concluded the arithmetic was broken. Both are reachable here, and both are pinned
  * by tests.
+ *
+ * ## Which ties force the approximation, and why this is conservative
+ *
+ * ANY tie in the combined sample sends it to the approximation, including a tie
+ * BETWEEN TWO VALUES OF THE SAME ARM. Strictly, a within-arm tie leaves U an integer
+ * and the exact null distribution valid, so the exact test would still be available
+ * there — this gives it up deliberately rather than by oversight. Timings are whole
+ * milliseconds and arms are small, so within-arm ties are common; distinguishing the
+ * two kinds of tie would mean a second code path whose only effect is a sharper p on
+ * a number this tool explicitly refuses to gate on. Losing precision in the safe
+ * direction is the cheaper mistake, and `method` in the output says which ran.
  *
  * @param {object} [options]
  * @param {'auto'|'normal'} [options.method] `'normal'` forces the approximation, for
@@ -650,7 +734,20 @@ export function interleaving(a, b) {
 // ── Report ───────────────────────────────────────────────────────────────────
 
 const ms = (v) => (v === null || v === undefined ? '—' : `${Math.round(v * 10) / 10} ms`);
-const minutes = (v) => `${Math.round(v / 60000)} min`;
+
+/**
+ * A span, in the largest unit that does not round it to nothing.
+ *
+ * Whole minutes alone printed `0 min` for anything under 30 s — and this number is
+ * read to judge how far apart the arms were taken, so the one span it must not
+ * describe as zero is a short one.
+ */
+const span = (v) => {
+  if (!Number.isFinite(v)) return 'an unknown span';
+  if (v < 90_000) return `${Math.round(v / 1000)} s`;
+  if (v < 5_400_000) return `${Math.round(v / 60000)} min`;
+  return `${(v / 3_600_000).toFixed(1)} h`;
+};
 
 /**
  * The comparison, as lines. Workload first, deliberately: it is the line that says
@@ -730,10 +827,15 @@ export function reportComparison(a, b, { refusals = [], warnings = [] } = {}) {
   lines.push('');
   if (order.sequence) {
     lines.push(
-      `  order       ${order.sequence}   ${order.blocks} block(s) over ${minutes(order.spanMs)}` +
+      `  order       ${order.sequence}   ${order.blocks} block(s) over ${span(order.spanMs)}` +
         (order.unknown ? `   (${order.unknown} sample(s) carry no timestamp)` : ''),
     );
-    if (order.blocks <= 2) {
+    // `<= 2` means one contiguous run of each arm. Suppressed when neither arm has
+    // more than one sample, where two blocks is the ONLY sequence available and the
+    // warning would be telling the operator to do something that does not exist. The
+    // n<5 warning already covers that case, and a warning that cannot be acted on is
+    // how the whole set stops being read.
+    if (order.blocks <= 2 && Math.max(a.samples.length, b.samples.length) > 1) {
       lines.push(
         '              ⚠ the arms were NOT interleaved — one was taken entirely before the other,',
         '                so anything that drifts with time (fixture content, device warm-up, a',
@@ -808,9 +910,14 @@ export function describeMeasurements(records) {
 const USAGE = [
   'Usage:',
   '  npm run measure:compare                              describe the measurement ledger',
-  '  npm run measure:compare -- --a before --b after      compare two labelled arms',
+  '  npm run measure:compare -- --a before --b after      compare two labeled arms',
   '  npm run measure:compare -- --a commit=abc1234 --b commit=def5678',
   '  npm run measure:compare -- --a before --b after --field emit',
+  '',
+  'Flags:',
+  '  --a / --b   an arm selector (required together)',
+  '  --field     the timing to headline, instead of the family primary',
+  `  --file      read a ledger other than ${MEASUREMENTS_LEDGER}`,
   '',
   `Selector keys: ${Object.keys(SERIES_KEYS).join(', ')} (a bare word means arm=<word>).`,
 ].join('\n');

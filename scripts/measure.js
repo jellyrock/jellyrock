@@ -152,6 +152,9 @@ let args;
 try {
   args = parseMeasureArgs(process.argv.slice(2), {
     measurementIds: measurementIds(),
+    // Each family's DECLARED screen, so the parser can refuse a `--screen` that
+    // contradicts one without importing the registry. See `parseMeasureArgs`.
+    screens: Object.fromEntries(MEASUREMENTS.map((m) => [m.id, m.screen ?? null])),
     defaultMeasurement: MEASUREMENTS[0].id,
   });
 } catch (e) {
@@ -499,7 +502,12 @@ const record = {
   // change are otherwise identical in every recorded field. `null` when not given,
   // never omitted — an absent key would silently drop the line out of a `screen ===
   // null` selection, which is the ledger's own documented failure mode.
-  screen: args.screen ?? measurement.screen ?? null,
+  //
+  // The FAMILY wins over the flag, and `parseMeasureArgs` has already refused a
+  // `--screen` that disagrees with one — so this order is belt and braces rather
+  // than a second policy. See that refusal for why the reverse precedence let the
+  // tool record a screen the app was never on.
+  screen: measurement.screen ?? args.screen ?? null,
   arm: args.arm ?? null,
   // The same selection keys the run ledger carries, so a comparison can pick its
   // two arms out of this file alone rather than joining it against `runs.jsonl`
@@ -511,11 +519,16 @@ const record = {
   // is not a duplicate of the ledger's outcome; it is this file's own verdict on
   // its own line.
   outcome,
-  // The series' own window, and whether it straddled the top of an hour. `runProvenance`
+  // The RUN's window, and whether it straddled the top of an hour. `runProvenance`
   // carries `startedAt` but nothing closed the window, so a reader could not tell a
-  // 40-second series from a 40-minute one — and a comparison whose arms are hours apart
+  // 40-second run from a 40-minute one — and a comparison whose arms are hours apart
   // is exactly the aliasing the interleave rule exists to prevent. Same flag, same
   // reason and the same helper as the run ledger's.
+  //
+  // The RUN's, not the SERIES': `startedAt` is stamped by `beginRun` above, so this
+  // window also covers the deploy and the tier-1 / tier-2 reads that precede the
+  // first launch. Per-SAMPLE instants are what tier 3 orders arms by — see
+  // `launchAt` — and they are the ones that describe the sampling itself.
   endedAt,
   crossedHourBoundary: crossesHourBoundary(runProvenance().startedAt, endedAt),
   tier1: { ...tier1, pinned: expectedServer },

@@ -105,8 +105,49 @@ describe('the comparison labels', () => {
     expect(parse([]).screen).toBeUndefined();
   });
 
-  it('REFUSES an empty label — `--arm=` is a typo, not an unlabelled series', () => {
+  it('REFUSES an empty label — `--arm=` is a typo, not an unlabeled series', () => {
     expect(() => parse(['--arm='])).toThrow(MeasureArgError);
     expect(() => parse(['--arm'])).toThrow(/needs a value/);
+  });
+
+  it('REFUSES a label the selector grammar could never name again', () => {
+    // `--a before,v2` parses to `{arm: 'v2'}` — a different selection, made silently.
+    // So the label is refused where it is created, not diagnosed where it fails.
+    expect(() => parse(['--arm', 'before,v2'])).toThrow(/may not contain/);
+    expect(() => parse(['--arm', 'a=b'])).toThrow(/may not contain/);
+    expect(() => parse(['--screen', 'movies,grid'])).toThrow(/may not contain/);
+    expect(() => parse(['--arm', ' before'])).toThrow(/leading or trailing whitespace/);
+  });
+
+  it('allows a space, which the selector parser trims per part and round-trips', () => {
+    expect(parse(['--arm', 'batched attach']).arm).toBe('batched attach');
+  });
+});
+
+describe('--screen may not contradict a family that declares one', () => {
+  // `measure.js` reaches a screen by RELAUNCHING, so the app is always on Home. With
+  // the old `args.screen ?? measurement.screen` precedence, `--screen movies-grid`
+  // wrote a record asserting a screen the app was never on — and tier 3 cannot tell
+  // that from provenance after the fact.
+  const withScreens = (argv) =>
+    parseMeasureArgs(argv, {
+      measurementIds: ['home-latest-rows', 'item-grid'],
+      screens: { 'home-latest-rows': 'home', 'item-grid': null },
+      defaultMeasurement: 'home-latest-rows',
+    });
+
+  it('refuses a --screen that disagrees with the declared one', () => {
+    expect(() => withScreens(['--screen', 'movies-grid'])).toThrow(MeasureArgError);
+    expect(() => withScreens(['--screen', 'movies-grid'])).toThrow(/contradicts/);
+  });
+
+  it('accepts --screen for a family whose screen the registry records as null', () => {
+    expect(withScreens(['--measurement', 'item-grid', '--screen', 'movies-grid']).screen).toBe(
+      'movies-grid',
+    );
+  });
+
+  it('accepts a --screen that merely restates the declared one', () => {
+    expect(withScreens(['--screen', 'home']).screen).toBe('home');
   });
 });
