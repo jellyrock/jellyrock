@@ -74,8 +74,17 @@ jobs:
 
       - run: npm ci
 
+      # `shell: bash` is LOAD-BEARING, not style. Actions' default shell on Linux is
+      # `bash -e {0}` — no `pipefail` — so the exit status of a pipeline is `tee`'s,
+      # and a failing `--fetch` would exit 0. The step would go green, the grep below
+      # would find no `data-changed=true` (the failure path never prints it), and the
+      # job would report "nothing to open" — weekly, forever. That is exactly the
+      # silent staleness this generator exists to end, one layer up, and it would look
+      # like a healthy sync the whole time. Naming the shell selects
+      # `bash --noprofile --norc -eo pipefail {0}`, which fails the step instead.
       - name: Fetch Roku's hardware table and re-derive the dataset
         id: fetch
+        shell: bash
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: npm run roku-hardware:fetch | tee /tmp/fetch.log
