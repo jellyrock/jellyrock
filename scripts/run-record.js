@@ -146,8 +146,14 @@ export function appendJsonLine(file, entry) {
   }
 }
 
-/** Read JSON lines back. A truncated final line (a killed process) is skipped, not fatal. */
-function readJsonLines(file) {
+/**
+ * Read JSON lines back. A truncated final line (a killed process) is skipped, not fatal.
+ *
+ * Exported for the accumulators that are NOT the run ledger — `measurements.jsonl` is
+ * read by `measure-compare.js` — so a second reader does not grow a second parser with
+ * its own idea of what a half-written line means.
+ */
+export function readJsonLines(file) {
   let raw;
   try {
     raw = fs.readFileSync(file, 'utf8');

@@ -44,6 +44,15 @@ const VALUE_FLAGS = new Map([
   ['--measurement', 'measurement'],
   ['--server', 'server'],
   ['--window-ms', 'windowMs'],
+  // Which side of a comparison this series belongs to — a free-form label read
+  // back by `measure-compare.js`. It exists because the two arms of the commonest
+  // comparison are otherwise INDISTINGUISHABLE in the record: measuring an
+  // uncommitted change means both arms carry the same `commit` and `dirty: true`,
+  // so nothing but a label the operator supplies can separate them.
+  ['--arm', 'arm'],
+  // WHERE the app was. Only meaningful for a family whose `screen` is null (see
+  // `measurements.js`); supplied by hand until measurement can navigate.
+  ['--screen', 'screen'],
 ]);
 
 /** Flags that take no value. */
@@ -122,5 +131,9 @@ export function parseMeasureArgs(argv = [], { measurementIds = [], defaultMeasur
   }
 
   if (raw.server !== undefined) args.server = raw.server;
+  // Free-form, and validated only for emptiness — an arm label means whatever the
+  // operator's experiment means. `--arm=` was already rejected above.
+  if (raw.arm !== undefined) args.arm = raw.arm;
+  if (raw.screen !== undefined) args.screen = raw.screen;
   return args;
 }

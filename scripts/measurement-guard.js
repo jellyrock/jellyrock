@@ -215,6 +215,90 @@ export function checkSeriesConsistency(first, current) {
 }
 
 /**
+ * Model-number family -> installed RAM, from Roku's published hardware spec.
+ *
+ * ## Why a maintained table and not a device read
+ *
+ * ECP does not report RAM. Verified against all three local devices: `model-number`
+ * is there, memory is not, and `roDeviceInfo` has no memory field a Node-side tool
+ * can reach. So the 512 MB / 1 GB / 2 GB label a device-matrix comparison needs is a
+ * lookup we own, and the alternative — asking every contributor to hand-label their
+ * own devices — is the shape of provenance this whole guard exists to remove.
+ *
+ * ## Why the key is the four-digit FAMILY, not the model number
+ *
+ * `.177` reports `3820RW`, which appears in no Roku table: the suffix is a regional
+ * / revision variant, and the spec lists `3820X` and `3820X2` for the same Streaming
+ * Stick 4K. Roku's own table already collapses such pairs into one row (`3930X,
+ * 3930EU`). Keying on the family is what makes another contributor's device resolve
+ * instead of coming back `null`.
+ *
+ * That is safe rather than convenient, and it was CHECKED before being adopted: no
+ * four-digit family in the published table carries two different RAM values (grouped
+ * over every row of the current / updatable / legacy tables). If a future family
+ * splits — Roku shipping a 2 GB revision under an existing prefix — this assumption
+ * breaks silently, so the check is worth re-running when a new device is added.
+ *
+ * Source: rokudev/dev-doc `docs/SPECIFICATIONS/hardware.md` @ v2.0, read 2026-08-13.
+ * Legacy rows whose RAM column the spec leaves as an OS version are omitted rather
+ * than guessed.
+ */
+export const DEVICE_RAM_TIERS = Object.freeze({
+  3600: '512MB', // Roku Streaming Stick (Briscoe)
+  3700: '512MB', // Roku Express
+  3710: '512MB', // Roku Express+
+  3800: '512MB', // Roku Streaming Stick
+  3840: '512MB', // Roku Streaming Stick
+  3900: '512MB', // Roku Express
+  3910: '512MB', // Roku Express+
+  3930: '512MB', // Roku Express (3930X, 3930EU)
+  3931: '512MB', // Roku Express+
+  3960: '512MB', // Roku Express
+  4200: '512MB', // Roku 3
+  4210: '512MB', // Roku 2
+  4230: '512MB', // Roku 3
+  5000: '512MB', // Roku TV
+  8000: '512MB', // Roku TV
+  3810: '1GB', // Roku Streaming Stick+
+  3811: '1GB', // Roku Streaming Stick+
+  3820: '1GB', // Roku Streaming Stick 4K (3820X, 3820X2, and `.177`'s 3820RW)
+  3821: '1GB', // Roku Streaming Stick 4K+
+  3830: '1GB', // Roku Streaming Stick Plus
+  3920: '1GB', // Roku Premiere
+  3921: '1GB', // Roku Premiere+
+  3940: '1GB', // Roku Express 4K / 4K+
+  3941: '1GB', // Roku Express 4K+
+  3942: '1GB', // Roku Express 4K+
+  4620: '1GB', // Roku Premiere
+  4630: '1GB', // Roku Premiere+
+  4640: '1GB', // Roku Ultra
+  4660: '1GB', // Roku Ultra
+  4662: '1GB', // Roku Ultra LT
+  7000: '1GB', // 4K Roku TV
+  9100: '1GB', // Roku Smart Soundbar
+  9102: '1GB', // Roku Streambar
+  9104: '1GB', // Roku Streambar SE
+  6000: '1.5GB', // 4K Roku TV
+  4670: '2GB', // Roku Ultra
+  4800: '2GB', // Roku Ultra LT / Ultra
+  4850: '2GB', // Roku Ultra (Brewster) — `.178`
+});
+
+/**
+ * The RAM tier for a `model-number`, or `null` when the family is not in the table.
+ *
+ * `null` rather than a guess, and rather than the commonest value: an unknown device
+ * that silently reads as 1 GB would let a comparison pair a 512 MB Stick against an
+ * Ultra and print a delta that is entirely hardware. Tier 3 refuses on a tier
+ * mismatch and reports an unknown tier as unknown, which is the only honest thing a
+ * lookup that cannot see the device can do.
+ */
+export function ramTierFor(modelNumber) {
+  const family = /^(\d{4})/.exec(String(modelNumber ?? ''))?.[1];
+  return (family && DEVICE_RAM_TIERS[family]) || null;
+}
+
+/**
  * Tier 2, device half. Model and Roku OS version, read from ECP.
  *
  * RECORDED, never asserted — and that is a decision with a history. The CI/local
@@ -225,9 +309,14 @@ export function checkSeriesConsistency(first, current) {
  */
 export async function readDeviceProvenance(host) {
   const info = await fetchDeviceInfo(host);
+  const modelNumber = info['model-number'] || undefined;
   return {
     model: info['model-name'] || undefined,
-    modelNumber: info['model-number'] || undefined,
+    modelNumber,
+    // Resolved at RECORD time rather than at read time, so a line written today
+    // still says what tier it was taken on after the table below has grown. The
+    // reader prefers the recorded value and falls back to the table for older lines.
+    ramTier: ramTierFor(modelNumber),
     osVersion: info['software-version'] || undefined,
     osBuild: info['software-build'] || undefined,
   };
@@ -270,7 +359,7 @@ const NOT_FROM_THE_CHECKOUT = new Set(['ENABLE_RTA']);
  *
  * ## What this is for, and what it is not
  *
- * It is NOT the running build's flavour. The app stamps `[debug=… perfTiming=…]`
+ * It is NOT the running build's flavor. The app stamps `[debug=… perfTiming=…]`
  * into its own timing lines and that bracket is authoritative, because it came out
  * of the build that produced the number; `measurements.js` captures it as each
  * sample's `buildFlags`. This read exists to be COMPARED against that bracket: a

@@ -7,6 +7,16 @@
  *   npm run measure -- --server http://192.168.1.2:8098   assert tier 1
  *   npm run measure -- --deploy              sideload first (default: use what is on the device)
  *   npm run measure -- --window-ms 20000     cap the per-launch watch (default 45 s)
+ *   npm run measure -- --arm before          label this series for `npm run measure:compare`
+ *   npm run measure -- --screen movies-grid  say which screen, when the family cannot
+ *
+ * ## Taking the two arms of a comparison
+ *
+ * Alternate the arms — `--arm before`, `--arm after`, `--arm before`, … — rather than
+ * taking all of one and then all of the other, so content drift and device warm-up
+ * cancel instead of aliasing onto one arm. `npm run measure:compare` reads the arms
+ * back, prints the workload delta beside the timing delta, and CHECKS the alternation
+ * from the recorded sample times rather than trusting that it happened.
  *
  * ## What it needs on the device — the precondition, stated
  *
@@ -103,7 +113,13 @@ import { fileURLToPath } from 'node:url';
 import { setupRtaEnv, deployRtaBuild, hardRelaunch, ecp } from '../tests/rta/lib/driver.js';
 import { RTA_CONFIG } from '../tests/rta/config.js';
 import { acquireDeviceLock } from './device-lock.js';
-import { beginRun, ledgerPath, runProvenance, RUN_OUTCOMES } from './run-record.js';
+import {
+  beginRun,
+  crossesHourBoundary,
+  ledgerPath,
+  runProvenance,
+  RUN_OUTCOMES,
+} from './run-record.js';
 import {
   MEASUREMENTS,
   measurementById,
@@ -304,7 +320,9 @@ const provenance = {
 };
 
 console.log(
-  `\n[measure] ${measurement.title} — n=${args.samples} on ${provenance.device.model} (Roku OS ${provenance.device.osVersion})`,
+  `\n[measure] ${measurement.title} — n=${args.samples} on ${provenance.device.model} ` +
+    `(${provenance.device.ramTier ?? 'RAM unknown'}, Roku OS ${provenance.device.osVersion})` +
+    (args.arm ? ` · arm "${args.arm}"` : ''),
 );
 console.log(
   `[measure] app ${provenance.checkout.appVersion} · server ${provenance.server.url} (Jellyfin ${provenance.server.version})`,
@@ -368,6 +386,13 @@ for (let i = 0; i < args.samples; i++) {
     const { workload, timings } = splitWorkload(measurement, sample.fields);
     samples.push({
       launch: i,
+      // WHEN this sample's window opened. Per sample rather than per series,
+      // because tier 3's interleave check needs to order two arms' samples against
+      // each other: an A,B,A,B experiment and an all-A-then-all-B one produce
+      // identical series records and are not equally trustworthy. The window
+      // instant, not the line's, since `assembleSamples` merges by line and has no
+      // timestamps to hand back.
+      launchAt: new Date(from).toISOString(),
       // 0 is the cold first paint; 1+ are the refreshes that follow it in the
       // same launch. Recorded, never averaged together — see trap 3.
       indexInLaunch,
@@ -462,11 +487,20 @@ if (provenance.checkout.agreesWithDevice === false) {
 const usable = consistency.ok && cold.length > 0;
 const outcome = usable ? RUN_OUTCOMES.PASSED : RUN_OUTCOMES.BLOCKED;
 
+const endedAt = new Date().toISOString();
 const record = {
   measurement: measurement.id,
   title: measurement.title,
   grounded: measurement.grounded,
   primary: measurement.primary,
+  // WHERE the app was, and WHICH side of a comparison this is. Both are selection
+  // keys for tier 3 and neither can be recovered afterwards: `--screen` is the only
+  // thing that can say which library grid was open, and two arms of an uncommitted
+  // change are otherwise identical in every recorded field. `null` when not given,
+  // never omitted — an absent key would silently drop the line out of a `screen ===
+  // null` selection, which is the ledger's own documented failure mode.
+  screen: args.screen ?? measurement.screen ?? null,
+  arm: args.arm ?? null,
   // The same selection keys the run ledger carries, so a comparison can pick its
   // two arms out of this file alone rather than joining it against `runs.jsonl`
   // on a timestamp.
@@ -477,6 +511,13 @@ const record = {
   // is not a duplicate of the ledger's outcome; it is this file's own verdict on
   // its own line.
   outcome,
+  // The series' own window, and whether it straddled the top of an hour. `runProvenance`
+  // carries `startedAt` but nothing closed the window, so a reader could not tell a
+  // 40-second series from a 40-minute one — and a comparison whose arms are hours apart
+  // is exactly the aliasing the interleave rule exists to prevent. Same flag, same
+  // reason and the same helper as the run ledger's.
+  endedAt,
+  crossedHourBoundary: crossesHourBoundary(runProvenance().startedAt, endedAt),
   tier1: { ...tier1, pinned: expectedServer },
   seriesConsistency: consistency,
   provenance,

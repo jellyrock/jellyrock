@@ -127,6 +127,7 @@
     "demo": "node tests/rta/demos/run.mjs",
     "rta:restore": "node scripts/rta-restore.js",
     "measure": "node scripts/measure.js",
+    "measure:compare": "node scripts/measure-compare.js",
     "flake-baseline": "node scripts/flake-baseline.js",
     "device:status": "node scripts/device-lock.js status",
     "device:release": "node scripts/device-lock.js release",

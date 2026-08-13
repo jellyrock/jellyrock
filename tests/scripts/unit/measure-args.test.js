@@ -93,3 +93,20 @@ describe('refusals — every one of these used to be a silent downgrade', () => 
     expect(parse(['--measurement', 'item-grid']).measurement).toBe('item-grid');
   });
 });
+
+describe('the comparison labels', () => {
+  it('carries an arm label and a screen through', () => {
+    const args = parse(['--arm', 'before', '--screen', 'movies-grid']);
+    expect([args.arm, args.screen]).toEqual(['before', 'movies-grid']);
+  });
+
+  it('leaves both undefined when not given, so the record writes null', () => {
+    expect(parse([]).arm).toBeUndefined();
+    expect(parse([]).screen).toBeUndefined();
+  });
+
+  it('REFUSES an empty label — `--arm=` is a typo, not an unlabelled series', () => {
+    expect(() => parse(['--arm='])).toThrow(MeasureArgError);
+    expect(() => parse(['--arm'])).toThrow(/needs a value/);
+  });
+});

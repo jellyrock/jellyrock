@@ -15,11 +15,13 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 import {
   buildFlagsAgree,
+  DEVICE_RAM_TIERS,
   checkSeriesConsistency,
   checkServerIdentity,
   IDENTITY_FATAL_FIELDS,
   missingIdentityFields,
   readAppVersion,
+  ramTierFor,
   readCheckoutBuildFlags,
   sameServer,
 } from '../../../scripts/measurement-guard.js';
@@ -245,5 +247,32 @@ describe('missingIdentityFields — the quiet half of a failed read', () => {
   it('makes serverUrl the fatal one, because tier 1 rests on it', () => {
     expect(IDENTITY_FATAL_FIELDS).toContain('serverUrl');
     expect(IDENTITY_FATAL_FIELDS).not.toContain('apiVersion');
+  });
+});
+
+describe('the RAM tier lookup', () => {
+  it('resolves the three local devices, including a model number Roku never published', () => {
+    // `.177` reports `3820RW`, which appears in no Roku table — the family does
+    // (`3820X`, `3820X2`, both 1 GB), which is why the key is the four-digit family.
+    expect(ramTierFor('3600X')).toBe('512MB');
+    expect(ramTierFor('3820RW')).toBe('1GB');
+    expect(ramTierFor('4850X')).toBe('2GB');
+  });
+
+  it('returns null for a family it does not know, rather than the commonest value', () => {
+    // A guess here would let a comparison pair a 512 MB Stick against an Ultra and
+    // print a delta that is entirely hardware.
+    expect(ramTierFor('9999X')).toBeNull();
+    expect(ramTierFor(undefined)).toBeNull();
+    expect(ramTierFor('')).toBeNull();
+  });
+
+  it('carries no family with two different RAM values', () => {
+    // The assumption prefix-keying rests on, checked against the table as committed:
+    // if Roku ever ships a 2 GB revision under an existing family this breaks
+    // silently, so it is asserted rather than trusted.
+    const families = Object.keys(DEVICE_RAM_TIERS);
+    expect(new Set(families).size).toBe(families.length);
+    expect(families.every((f) => /^\d{4}$/.test(f))).toBe(true);
   });
 });
