@@ -181,6 +181,39 @@ are looking at a re-insert run whose `attach` is not comparable to a normal one.
 
 ## How to run it
 
+**Prefer `npm run measure`.** It performs the procedure below and writes down what the
+sample was taken against, which the manual version leaves to whoever ran it to remember:
+
+```bash
+npm run measure -- -n 10 --server http://192.168.1.2:8098    # assert the server
+npm run measure -- -n 10 --measurement item-grid             # the grid/genres family
+npm run measure -- --deploy                                  # sideload first
+```
+
+It takes the device lock, holds ONE console socket for the whole session, relaunches n
+times, and appends one line per series to `.device-runs/measure/measurements.jsonl` —
+carrying the timings, the workload (`rows`), the device model + Roku OS version, the app
+version, the build flags, and the server's identity and version. `--server` makes the
+server a hard assert (tier 1): a mismatch refuses the run before taking a single sample.
+Without it the tool still pins the identity seen at session start and re-checks it at the
+end, and says out loud that it did **not** assert. Measurements it knows about are
+registered in [`scripts/measurements.js`](../../scripts/measurements.js); add an
+instrumented screen there rather than writing a parser.
+
+Two things it fixes by construction rather than by reminding you:
+
+- **Replay cannot enter a series.** Every sample is selected by timestamp from the window
+  after its own launch, so a line buffered before that window is not eligible. See the
+  trap below for what that is worth in practice.
+- **A window is never collapsed to "the" number.** Each run in a window is a separate
+  sample stamped with its position; only position 0 feeds the median, and the rest are
+  recorded beside it.
+
+It deliberately applies **no threshold and no gate** — same reasoning as
+[What this does NOT do](#what-this-does-not-do). It records; it does not judge.
+
+The manual procedure, still correct and still what the tool does:
+
 1. Sideload a **dev** build (`npm run build` + deploy). Production strips the logging.
    **Leave `bs_const=debug=false`** — the committed manifest value, which `npm run build`
    uses. See the warning below before you change it.
@@ -211,7 +244,20 @@ capture reads the **previous** run's line and reports it as a new sample — sil
 plausible-looking numbers.
 
 **Keep one console socket open for the whole session** and treat each newly-arriving line as
-the next sample.
+the next sample. `npm run measure` does this, and additionally selects each sample by
+timestamp from the window after its own launch, so a buffered line cannot enter a series.
+
+**Measured, `.177` 2026-08-12** — this trap is faster and larger than the warning suggests. A
+socket that connects and then sits **completely idle**, asking the device for nothing, receives
+a `latest-rows run complete` line **10 ms later** reading `10 rows 7241 ms`. The live samples
+that same session ranged 1439–2654 ms. So the replayed value was not a stale-but-similar
+number; it was ~3× the largest real one, and a per-sample reconnect would have folded it in.
+
+It is also worth knowing how this trap presents, because it caught the author of the tool
+above: a capture without timestamps saw two `run complete` lines and they were written up as
+"one launch emits a cold paint plus a refresh". A timestamped re-probe showed one launch emits
+exactly **one** run and the first line had been replayed. If you find yourself explaining an
+extra run, check when it arrived before you explain why.
 
 ### Optional: measuring under network latency
 

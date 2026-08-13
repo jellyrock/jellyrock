@@ -60,6 +60,7 @@ const RUN_DIRS = Object.freeze({
   'capture-screenshots': 'screenshots',
   demo: 'demo',
   'run-roku-tests': 'device',
+  measure: 'measure',
 });
 
 /**
@@ -117,8 +118,20 @@ const LEDGER_ROOT = '.device-runs';
  * Keyed off the run directory's own name, so it stays per-run-kind without
  * introducing a second mapping to keep in sync: `out/rta` -> `.device-runs/rta`.
  */
-export const runsLedgerPath = () =>
-  path.join(LEDGER_ROOT, path.basename(getRunDir()), 'runs.jsonl');
+export const runsLedgerPath = () => ledgerPath('runs.jsonl');
+
+/**
+ * Any other accumulating, never-reset artifact for this run kind.
+ *
+ * Exported so a new accumulator cannot accidentally be written under `out/`,
+ * which is the mistake this whole split exists to prevent and which is very easy
+ * to make: `beginRun` hands back a `dir`, that `dir` is the obvious place to put
+ * a record, and it is wiped by the next `npm run build`. A caller that reaches
+ * for this instead gets the surviving location and the per-run-kind separation
+ * for free.
+ */
+export const ledgerPath = (filename) =>
+  path.join(LEDGER_ROOT, path.basename(getRunDir()), filename);
 
 /**
  * Append one JSON line. Never throws — bookkeeping must not mask the thing it is
@@ -283,6 +296,33 @@ export function runStartedAt() {
  */
 export function runIsCumulative() {
   return runMeta().cumulative === true;
+}
+
+/**
+ * The OPEN's selection keys, for a record that is not the run ledger.
+ *
+ * `runs.jsonl` gets these stamped into every line by `endRun`, but an accumulator
+ * written by an entry point itself — a measurement series, say — would otherwise
+ * have to be joined against the ledger on a timestamp to learn what code it ran.
+ * A join is a second thing to get right, and the ledger's own history is a
+ * catalogue of what happens when a selection key is missing: `variant` and
+ * `commit` are identical across a baseline BY CONSTRUCTION, so they are exactly
+ * the keys that cannot separate a stray run, and `deviceKey` had to be added
+ * later for that reason.
+ *
+ * Reads the same `run-meta.json` as the wrappers above, so there is no second
+ * source and no second git invocation.
+ */
+export function runProvenance() {
+  const meta = runMeta();
+  return {
+    run: meta.run ?? null,
+    variant: meta.variant ?? null,
+    commit: meta.commit ?? null,
+    dirty: meta.dirty ?? null,
+    deviceKey: meta.deviceKey ?? null,
+    startedAt: meta.startedAt ?? null,
+  };
 }
 
 /**
@@ -581,13 +621,21 @@ export function formatRunSummary(summary, file = failuresPath()) {
     //
     // `blocked` needs its own clause for the same reason and is the least obvious of
     // the three: its entry point DID close it, and the operator DIDN'T stop it, so
-    // both existing clauses are false of it. It is also the only non-sample where the
-    // suite genuinely ran and genuinely went red — what it lacks is not an ending but
-    // a fair trial, because a dependency failed underneath it.
+    // both existing clauses are false of it. What it lacks is not an ending but a
+    // fair trial, because a precondition underneath it did not hold.
+    //
+    // The clause is deliberately stated at THAT level rather than as "a fixture
+    // request failed", which is how it was first written — true of the RTA suite,
+    // which was its only producer, and false the moment a second one arrived.
+    // `measure.js` blocks a run when the app is not on the server the measurement
+    // declared: nothing failed, and the old wording asserted a cause that had not
+    // happened. Same overclaiming this block's own history is a record of; the fix
+    // is to say only what every producer's record supports.
     const why = {
       [RUN_OUTCOMES.INTERRUPTED]: 'You stopped it',
       [RUN_OUTCOMES.BLOCKED]:
-        'A request to the fixture server failed, so its red says nothing about the app',
+        'A precondition underneath it did not hold (a fixture request failed, or the ' +
+        'device was not in the state the run requires), so its result says nothing about the app',
     };
     lines.push(
       `${tag} run ${outcome} (${window}) — recorded as \`outcome: "${outcome}"\` in the ledger. ` +
