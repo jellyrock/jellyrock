@@ -643,6 +643,38 @@ concluded the arithmetic was broken. So the tool reports which method produced a
 methods are reachable and pinned by tests, and the doc now says which produced its recorded
 value.
 
+## decision-id: roku-device-dictionary-generated
+
+**date**: 2026-08-13
+**status**: accepted
+**related-files**: scripts/generate/roku-hardware.js, scripts/data/roku-hardware.json, scripts/roku-devices.js, .github/workflows/roku-hardware-sync.yml
+
+The Roku device lookup is a GENERATED dataset derived from `rokudev/dev-doc`
+`SPECIFICATIONS/hardware.md`, not a table anyone types. It replaced a 38-entry
+`DEVICE_RAM_TIERS` literal that was *accurate* and still wrong: it keyed on `/^(\d{4})/`, so
+all sixteen letter-prefixed Roku TV and Projector families (`J000X`, `A000X`, `K8PXX`)
+resolved to `null` forever, spanning 512 MB to 2 GB — the largest device class Roku ships. It
+also could not notice upstream commit `0cddfa29`, which added a supported device (`K000X`,
+Roku TV "Roxton", 512 MB, 2024).
+
+Three sub-decisions carry the design. **The parser refuses what it does not recognize**
+rather than emitting null, so an upstream change of spelling fails the sync loudly instead of
+silently degrading a device to unknown-tier — a dataset that degrades quietly is the
+hand-typed table with extra steps. **The sync PR is gated on the derived DATA, not the
+upstream file**: of four commits to `hardware.md` in three months one touched only the
+document's own frontmatter and search metadata, so a file-watch would have been 25% noise,
+and noise is what kills a watch nobody has to read. **A scheduled PR was chosen over a signals-backlog row** for the same
+reason — a journal row someone must remember to read is a worse version of a diff that
+arrives in the review queue.
+
+The strict parser earned itself immediately by refusing to overwrite a key: one `GetModel()`
+value can map to two physical devices (`8000X` is both Roku TV and Roku TV (Brazil); `4800X`
+is both Roku Ultra LT and Roku Ultra). So `models` carry a `variants[]` array, with only RAM
+and support tier hoisted and asserted invariant across them. The four-character family key is
+the constraint worth re-evaluating: verified unambiguous across all 70 families today, and
+re-checked on every generate — if Roku ships a 2 GB revision under an existing prefix,
+`familyOf` needs revisiting.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

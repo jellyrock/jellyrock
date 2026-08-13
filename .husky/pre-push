@@ -205,6 +205,9 @@ npm run docs:dev-index:check
 echo "🗺️  Checking API usage manifest drift..."
 npm run docs:api-manifest:check
 
+echo "📟 Checking Roku device dictionary integrity..."
+npm run roku-hardware:check
+
 if [ -n "$HAS_ICON_SOURCES" ]; then
   echo "🎨 Checking icon-asset drift..."
   npm run icons:check

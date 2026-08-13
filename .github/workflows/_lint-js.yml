@@ -43,3 +43,12 @@ jobs:
         run: npm run lint:js
       - if: steps.detect.outputs.relevant == 'true'
         run: npm run check-formatting:js
+      # The Roku device dictionary (scripts/data/roku-hardware.json) is GENERATED, and
+      # this job's `\.(js|cjs|mjs|json)$` filter already matches both it and its
+      # generator — so it is the cheapest correct home rather than a new workflow pair.
+      # Offline: it validates the committed dataset's invariants and its tamper
+      # checksum, never the network. Drift against Roku's upstream table is a separate
+      # concern, handled by roku-hardware-sync.yml on a schedule.
+      - if: steps.detect.outputs.relevant == 'true'
+        name: Check Roku device dictionary integrity
+        run: npm run roku-hardware:check

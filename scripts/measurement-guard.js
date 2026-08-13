@@ -72,6 +72,7 @@
 import fs from 'node:fs';
 import { odc } from 'roku-test-automation';
 import { fetchDeviceInfo } from './device-lock.js';
+import { ramTierFor } from './roku-devices.js';
 
 /**
  * The identity + server-provenance read, as one batched ODC request.
@@ -215,88 +216,23 @@ export function checkSeriesConsistency(first, current) {
 }
 
 /**
- * Model-number family -> installed RAM, from Roku's published hardware spec.
+ * The RAM tier for a `model-number`, re-exported from the device dictionary.
  *
- * ## Why a maintained table and not a device read
+ * This used to be a 38-entry table typed by hand into this file off Roku's spec. It
+ * was accurate and it was still incomplete in the way hand-typed tables always are:
+ * it keyed on `/^(\\d{4})/`, so every Roku TV and the Projector — sixteen families
+ * from 512 MB to 2 GB — resolved to `null` forever. It also could not notice that
+ * upstream had added a new supported device.
  *
- * ECP does not report RAM. Verified against all three local devices: `model-number`
- * is there, memory is not, and `roDeviceInfo` has no memory field a Node-side tool
- * can reach. So the 512 MB / 1 GB / 2 GB label a device-matrix comparison needs is a
- * lookup we own, and the alternative — asking every contributor to hand-label their
- * own devices — is the shape of provenance this whole guard exists to remove.
+ * It is now derived from `scripts/data/roku-hardware.json`, generated from Roku's
+ * published table and kept current by a weekly sync. See `scripts/roku-devices.js`
+ * for the lookup contract and `scripts/generate/roku-hardware.js` for the pipeline.
  *
- * ## Why the key is the four-digit FAMILY, not the model number
- *
- * `.177` reports `3820RW`, which appears in no Roku table: the suffix is a regional
- * / revision variant, and the spec lists `3820X` and `3820X2` for the same Streaming
- * Stick 4K. Roku's own table already collapses such pairs into one row (`3930X,
- * 3930EU`). Keying on the family is what makes another contributor's device resolve
- * instead of coming back `null`.
- *
- * That is safe rather than convenient, and it was CHECKED before being adopted: no
- * four-digit family in the published table carries two different RAM values (grouped
- * over every row of the current / updatable / legacy tables). If a future family
- * splits — Roku shipping a 2 GB revision under an existing prefix — this assumption
- * breaks silently, so the check is worth re-running when a new device is added.
- *
- * Source: rokudev/dev-doc `docs/SPECIFICATIONS/hardware.md` @ v2.0, read 2026-08-13.
- * Legacy rows whose RAM column the spec leaves as an OS version are omitted rather
- * than guessed.
+ * Re-exported here rather than repointing every caller, because this is the name the
+ * guard's own API already promised and `readDeviceProvenance` below is its main user.
  */
-export const DEVICE_RAM_TIERS = Object.freeze({
-  3600: '512MB', // Roku Streaming Stick (Briscoe)
-  3700: '512MB', // Roku Express
-  3710: '512MB', // Roku Express+
-  3800: '512MB', // Roku Streaming Stick
-  3840: '512MB', // Roku Streaming Stick
-  3900: '512MB', // Roku Express
-  3910: '512MB', // Roku Express+
-  3930: '512MB', // Roku Express (3930X, 3930EU)
-  3931: '512MB', // Roku Express+
-  3960: '512MB', // Roku Express
-  4200: '512MB', // Roku 3
-  4210: '512MB', // Roku 2
-  4230: '512MB', // Roku 3
-  5000: '512MB', // Roku TV
-  8000: '512MB', // Roku TV
-  3810: '1GB', // Roku Streaming Stick+
-  3811: '1GB', // Roku Streaming Stick+
-  3820: '1GB', // Roku Streaming Stick 4K (3820X, 3820X2, and `.177`'s 3820RW)
-  3821: '1GB', // Roku Streaming Stick 4K+
-  3830: '1GB', // Roku Streaming Stick Plus
-  3920: '1GB', // Roku Premiere
-  3921: '1GB', // Roku Premiere+
-  3940: '1GB', // Roku Express 4K / 4K+
-  3941: '1GB', // Roku Express 4K+
-  3942: '1GB', // Roku Express 4K+
-  4620: '1GB', // Roku Premiere
-  4630: '1GB', // Roku Premiere+
-  4640: '1GB', // Roku Ultra
-  4660: '1GB', // Roku Ultra
-  4662: '1GB', // Roku Ultra LT
-  7000: '1GB', // 4K Roku TV
-  9100: '1GB', // Roku Smart Soundbar
-  9102: '1GB', // Roku Streambar
-  9104: '1GB', // Roku Streambar SE
-  6000: '1.5GB', // 4K Roku TV
-  4670: '2GB', // Roku Ultra
-  4800: '2GB', // Roku Ultra LT / Ultra
-  4850: '2GB', // Roku Ultra (Brewster) — `.178`
-});
-
-/**
- * The RAM tier for a `model-number`, or `null` when the family is not in the table.
- *
- * `null` rather than a guess, and rather than the commonest value: an unknown device
- * that silently reads as 1 GB would let a comparison pair a 512 MB Stick against an
- * Ultra and print a delta that is entirely hardware. Tier 3 refuses on a tier
- * mismatch and reports an unknown tier as unknown, which is the only honest thing a
- * lookup that cannot see the device can do.
- */
-export function ramTierFor(modelNumber) {
-  const family = /^(\d{4})/.exec(String(modelNumber ?? ''))?.[1];
-  return (family && DEVICE_RAM_TIERS[family]) || null;
-}
+export { deviceFor, describeDevice } from './roku-devices.js';
+export { ramTierFor };
 
 /**
  * Tier 2, device half. Model and Roku OS version, read from ECP.

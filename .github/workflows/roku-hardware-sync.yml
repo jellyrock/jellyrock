@@ -1,0 +1,178 @@
+name: roku-hardware sync
+
+# Keeps scripts/data/roku-hardware.json current with Roku's published hardware table
+# (rokudev/dev-doc docs/SPECIFICATIONS/hardware.md), by opening a pull request when —
+# and ONLY when — the device data actually changes.
+#
+# ## Why this is a scheduled PR and not a journal row
+#
+# The alternative was a signals-backlog row saying "re-check the Roku hardware table".
+# A journal entry someone has to remember to read is a worse version of a PR that turns
+# up in the review queue with the diff already in it, and the evidence says the data
+# does not move often enough for anyone to keep the habit: in the three months before
+# this workflow was written, `hardware.md` took four commits, and only one of them
+# added a device (`0cddfa29` — `K000X`, Roku TV "Roxton", 512 MB, 2024). Nothing in
+# this repo would have known.
+#
+# ## Why the PR gate is the DATA, not the file
+#
+# Of those four upstream commits, one (`c685ceb7`) edited only frontmatter and SEO
+# metadata. Watching the file would have opened a PR for it. So the generator emits
+# `roku-hardware:data-changed=<bool>`, computed from a checksum over the normalized
+# device data alone — never over provenance, which moves on every fetch. Prose,
+# whitespace, alignment markers and footnote churn upstream are invisible here. Every
+# PR this opens carries a real hardware diff.
+#
+# ## Failure is the point
+#
+# `--fetch` refuses anything it does not recognize: a new RAM spelling, an unknown
+# resolution, a model number listed under two RAM sizes, a table whose support-tier
+# heading moved, or `rokudev/dev-doc` cutting a new default branch. All of those fail
+# this job LOUDLY rather than committing a device with a null tier — which is exactly
+# how the hand-typed table it replaced went silently stale. A red scheduled run here
+# means "go look at what Roku changed", not "the sync is flaky".
+
+on:
+  schedule:
+    # 07:00 UTC Monday — deliberately offset from docs-stale-tracker.yml's 13:00 slot
+    # so two scheduled jobs don't land in the same minute. Weekly is generous for an
+    # upstream that moves a few times a year; it costs two API calls.
+    - cron: '0 7 * * MON'
+  workflow_dispatch:
+
+# Unused when authenticating as the JellyRock GitHub App (the App's installation
+# permissions apply instead) — kept for clarity, matching docs-stale-tracker.yml.
+# The App token is also what makes the opened PR run CI: a PR created with the stock
+# GITHUB_TOKEN does not trigger workflows, and an unverified data PR is worth little.
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: roku-hardware-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate JellyRock app token
+        id: app-token
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Fetch Roku's hardware table and re-derive the dataset
+        id: fetch
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: npm run roku-hardware:fetch | tee /tmp/fetch.log
+
+      - name: Decide whether any DEVICE changed
+        id: changed
+        run: |
+          # The generator prints this from a checksum over device data only, so a
+          # provenance-only refresh (new blob SHA, new fetch date) reports false.
+          if grep -q 'roku-hardware:data-changed=true' /tmp/fetch.log; then
+            echo "data=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "data=false" >> "$GITHUB_OUTPUT"
+            echo "Roku's table is unchanged in every field this repo derives. Nothing to open."
+          fi
+
+      # Validates what is about to be committed with the same gate CI and pre-push run,
+      # so a PR can never be opened carrying a dataset that would fail its own check.
+      - name: Validate the regenerated dataset
+        if: steps.changed.outputs.data == 'true'
+        run: npm run roku-hardware:check
+
+      - name: Confirm the consuming tests still pass
+        if: steps.changed.outputs.data == 'true'
+        run: npm run test:scripts
+
+      - name: Open or update the sync pull request
+        if: steps.changed.outputs.data == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          BRANCH="chore/roku-hardware-sync"
+
+          # `automated` is in journal-sync.yml's skip list, so this PR must carry it or
+          # merging it would try to run the journal close-loop on a data refresh.
+          # Created idempotently: the label predates nothing, so the first run makes it.
+          gh label create automated --color ededed \
+            --description "Opened by a scheduled workflow" --force >/dev/null
+
+          git config user.name "jellyrock-bot[bot]"
+          git config user.email "jellyrock-bot[bot]@users.noreply.github.com"
+
+          # One long-lived branch, force-pushed. A dated branch per run would leave a
+          # trail of stale PRs for the same fact; this way a second upstream change
+          # before anyone merges just updates the open PR in place.
+          git checkout -B "$BRANCH"
+          git add scripts/data/roku-hardware.json
+          git commit -m "chore(data): sync Roku hardware dictionary
+
+          Regenerated from rokudev/dev-doc docs/SPECIFICATIONS/hardware.md by
+          .github/workflows/roku-hardware-sync.yml. Device data changed; provenance-only
+          refreshes do not open a PR.
+
+          Review the JSON diff — added or removed model numbers, and any RAM, support
+          tier, resolution or HDR change. A new RAM tier on an existing family would
+          have failed the generator rather than reaching this PR."
+          git push --force origin "$BRANCH"
+
+          MODELS=$(node -p "Object.keys(require('./scripts/data/roku-hardware.json').models).length")
+          FAMILIES=$(node -p "Object.keys(require('./scripts/data/roku-hardware.json').families).length")
+          UPSTREAM=$(node -p "require('./scripts/data/roku-hardware.json')._provenance.upstreamCommit.slice(0,8)")
+
+          BODY=$(cat <<EOF
+          Roku changed its published hardware table, in a field this repo derives.
+
+          - **Dataset now:** $MODELS model numbers across $FAMILIES families
+          - **Upstream commit:** rokudev/dev-doc@$UPSTREAM (\`docs/SPECIFICATIONS/hardware.md\`)
+          - **Regenerated by:** \`npm run roku-hardware:fetch\`
+
+          ### What to check
+
+          The JSON diff is the review. Look for added or removed model numbers, and any
+          change to \`ramMb\` / \`ramTier\` / \`supportTier\` on an existing one — those are
+          what \`npm run measure\` and \`npm run measure:compare\` read.
+
+          A brand-new *family* RAM conflict, an unrecognized resolution or HDR spelling,
+          or a model number listed under two RAM sizes would have **failed** the sync
+          rather than reaching this PR, so anything here is already schema-valid and has
+          passed \`npm run roku-hardware:check\` and \`npm run test:scripts\`.
+
+          This PR is opened only when device data changes — an upstream prose or
+          frontmatter edit does not trigger it.
+          EOF
+          )
+
+          # Idempotent: update the existing PR rather than stacking a second one for
+          # the same branch.
+          if gh pr view "$BRANCH" --json number --jq .number >/dev/null 2>&1; then
+            gh pr edit "$BRANCH" --body "$BODY"
+            echo "Updated the existing sync PR."
+          else
+            gh pr create \
+              --title "chore(data): sync Roku hardware dictionary" \
+              --body "$BODY" \
+              --base main \
+              --head "$BRANCH" \
+              --label automated \
+              --label dependencies
+          fi

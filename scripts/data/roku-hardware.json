@@ -1,0 +1,3020 @@
+{
+  "_comment": "GENERATED — do not edit. Roku hardware specifications, normalized. Regenerate with `npm run roku-hardware:fetch`; validate with `npm run roku-hardware:check`.",
+  "_provenance": {
+    "source": "rokudev/dev-doc",
+    "path": "docs/SPECIFICATIONS/hardware.md",
+    "ref": "v2.0",
+    "blobSha": "c196976482b6f5b5c5aed7f5338a0af6729eede1",
+    "upstreamCommit": "c685ceb7f9c8952fd6cafe51e45d94864e5c618a",
+    "upstreamCommittedAt": "2026-05-08T04:14:18Z",
+    "fetchedAt": "2026-08-13",
+    "generator": "scripts/generate/roku-hardware.js"
+  },
+  "_checksum": "aaf98428a3c47c6f",
+  "enums": {
+    "resolution": [
+      "720p",
+      "1080p",
+      "4K"
+    ],
+    "hdrFormat": [
+      "HDR10",
+      "HDR10+",
+      "HLG",
+      "DolbyVision"
+    ],
+    "supportTier": [
+      "current",
+      "updatable",
+      "legacy"
+    ]
+  },
+  "models": {
+    "2000C": {
+      "family": "2000",
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTier": "legacy",
+      "variants": [
+        {
+          "name": "Roku HD",
+          "codeName": "Pico",
+          "cpu": "MIPS 400 MHz",
+          "cpuArch": "MIPS",
+          "graphicsApi": null,
+          "maxUi": null,
+          "maxPlayback": null,
+          "hdrFormats": null,
+          "hdrVariesByModel": null,
+          "yearReleased": null,
+          "latestRokuOs": "3.1"
+        }
+      ]
+    },
+    "2050N": {
+      "family": "2050",
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTier": "legacy",
+      "variants": [
+        {
+          "name": "Roku XD",
+          "codeName": "Pico",
+          "cpu": "MIPS 400 MHz",
+          "cpuArch": "MIPS",
+          "graphicsApi": null,
+          "maxUi": null,
+          "maxPlayback": null,
+          "hdrFormats": null,
+          "hdrVariesByModel": null,
+          "yearReleased": null,
+          "latestRokuOs": "3.1"
+        }
+      ]
+    },
+    "2050X": {
+      "family": "2050",
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTier": "legacy",
+      "variants": [
+        {
+          "name": "Roku XD",
+          "codeName": "Pico",
+          "cpu": "MIPS 400 MHz",
+          "cpuArch": "MIPS",
+          "graphicsApi": null,
+          "maxUi": null,
+          "maxPlayback": null,
+          "hdrFormats": null,
+          "hdrVariesByModel": null,
+          "yearReleased": null,
+          "latestRokuOs": "3.1"
+        }
+      ]
+    },
+    "2100N": {
+      "family": "2100",
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTier": "legacy",
+      "variants": [
+        {
+          "name": "Roku XD",
+          "codeName": "Pico",
+          "cpu": "MIPS 400 MHz",
+          "cpuArch": "MIPS",
+          "graphicsApi": null,
+          "maxUi": null,
+          "maxPlayback": null,
+          "hdrFormats": null,
+          "hdrVariesByModel": null,
+          "yearReleased": null,
+          "latestRokuOs": "3.1"
+        }
+      ]
+    },
+    "2100X": {
+      "family": "2100",
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTier": "legacy",
+      "variants": [
+        {
+          "name": "Roku XD",
+          "codeName": "Pico",
+          "cpu": "MIPS 400 MHz",
+          "cpuArch": "MIPS",
+          "graphicsApi": null,
+          "maxUi": null,
+          "maxPlayback": null,
+          "hdrFormats": null,
+          "hdrVariesByModel": null,
+          "yearReleased": null,
+          "latestRokuOs": "3.1"
+        }
+      ]
+    },
+    "2400X": {
+      "family": "2400",
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTier": "legacy",
+      "variants": [
+        {
+          "name": "Roku LT",
+          "codeName": "Giga",
+          "cpu": "ARM11 600 MHz",
+          "cpuArch": "ARM",
+          "graphicsApi": null,
+          "maxUi": null,
+          "maxPlayback": null,
+          "hdrFormats": null,
+          "hdrVariesByModel": null,
+          "yearReleased": null,
+          "latestRokuOs": "9.1"
+        }
+      ]
+    },
+    "2450X": {
+      "family": "2450",
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTier": "legacy",
+      "variants": [
+        {
+          "name": "Roku LT",
+          "codeName": "Paolo",
+          "cpu": "MIPS 400 MHz",
+          "cpuArch": "MIPS",
+          "graphicsApi": null,
+          "maxUi": null,
+          "maxPlayback": null,
+          "hdrFormats": null,
+          "hdrVariesByModel": null,
+          "yearReleased": null,
+          "latestRokuOs": "9.1"
+        }
+      ]
+    },
+    "2500X": {
+      "family": "2500",
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTier": "legacy",
+      "variants": [
+        {
+          "name": "Roku HD",
+          "codeName": "Paolo",
+          "cpu": "MIPS 400 MHz",
+          "cpuArch": "MIPS",
+          "graphicsApi": null,
+          "maxUi": null,
+          "maxPlayback": null,
+          "hdrFormats": null,
+          "hdrVariesByModel": null,
+          "yearReleased": null,
+          "latestRokuOs": "9.1"
+        }
+      ]
+    },
+    "2700X": {
+      "family": "2700",
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTier": "legacy",
+      "variants": [
+        {
+          "name": "Roku LT",
+          "codeName": "Tyler",
+          "cpu": "MIPS 600 MHz",
+          "cpuArch": "MIPS",
+          "graphicsApi": null,
+          "maxUi": null,
+          "maxPlayback": null,
+          "hdrFormats": null,
+          "hdrVariesByModel": null,
+          "yearReleased": null,
+          "latestRokuOs": "11"
+        }
+      ]
+    },
+    "2710X": {
+      "family": "2710",
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTier": "legacy",
+      "variants": [
+        {
+          "name": "Roku 1, Roku SE",
+          "codeName": "Tyler",
+          "cpu": "MIPS 600 MHz",
+          "cpuArch": "MIPS",
+          "graphicsApi": null,
+          "maxUi": null,
+          "maxPlayback": null,
+          "hdrFormats": null,
+          "hdrVariesByModel": null,
+          "yearReleased": null,
+          "latestRokuOs": "11"
+        }
+      ]
+    },
+    "2720X": {
+      "family": "2720",
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTier": "legacy",
+      "variants": [
+        {
+          "name": "Roku 2",
+          "codeName": "Tyler",
+          "cpu": "MIPS 600 MHz",
+          "cpuArch": "MIPS",
+          "graphicsApi": null,
+          "maxUi": null,
+          "maxPlayback": null,
+          "hdrFormats": null,
+          "hdrVariesByModel": null,
+          "yearReleased": null,
+          "latestRokuOs": "11"
+        }
+      ]
+    },
+    "3000X": {
+      "family": "3000",
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTier": "legacy",
+      "variants": [
+        {
+          "name": "Roku 2 HD",
+          "codeName": "Giga",
+          "cpu": "ARM11 600 MHz",
+          "cpuArch": "ARM",
+          "graphicsApi": null,
+          "maxUi": null,
+          "maxPlayback": null,
+          "hdrFormats": null,
+          "hdrVariesByModel": null,
+          "yearReleased": null,
+          "latestRokuOs": "9.1"
+        }
+      ]
+    },
+    "3050X": {
+      "family": "3050",
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTier": "legacy",
+      "variants": [
+        {
+          "name": "Roku 2 XD",
+          "codeName": "Giga",
+          "cpu": "ARM11 600 MHz",
+          "cpuArch": "ARM",
+          "graphicsApi": null,
+          "maxUi": null,
+          "maxPlayback": null,
+          "hdrFormats": null,
+          "hdrVariesByModel": null,
+          "yearReleased": null,
+          "latestRokuOs": "9.1"
+        }
+      ]
+    },
+    "3100X": {
+      "family": "3100",
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTier": "legacy",
+      "variants": [
+        {
+          "name": "Roku 2 XS",
+          "codeName": "Giga",
+          "cpu": "ARM11 600 MHz",
+          "cpuArch": "ARM",
+          "graphicsApi": null,
+          "maxUi": null,
+          "maxPlayback": null,
+          "hdrFormats": null,
+          "hdrVariesByModel": null,
+          "yearReleased": null,
+          "latestRokuOs": "9.1"
+        }
+      ]
+    },
+    "3400X": {
+      "family": "3400",
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTier": "legacy",
+      "variants": [
+        {
+          "name": "Roku Streaming Stick",
+          "codeName": "Jackson",
+          "cpu": "ARM11 600 MHz",
+          "cpuArch": "ARM",
+          "graphicsApi": null,
+          "maxUi": null,
+          "maxPlayback": null,
+          "hdrFormats": null,
+          "hdrVariesByModel": null,
+          "yearReleased": null,
+          "latestRokuOs": "9.1"
+        }
+      ]
+    },
+    "3420X": {
+      "family": "3420",
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTier": "legacy",
+      "variants": [
+        {
+          "name": "Roku Streaming Stick",
+          "codeName": "Jackson",
+          "cpu": "ARM11 600 MHz",
+          "cpuArch": "ARM",
+          "graphicsApi": null,
+          "maxUi": null,
+          "maxPlayback": null,
+          "hdrFormats": null,
+          "hdrVariesByModel": null,
+          "yearReleased": null,
+          "latestRokuOs": "9.1"
+        }
+      ]
+    },
+    "3500X": {
+      "family": "3500",
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTier": "legacy",
+      "variants": [
+        {
+          "name": "Roku Streaming Stick",
+          "codeName": "Sugarland",
+          "cpu": "ARM11 600 MHz",
+          "cpuArch": "ARM",
+          "graphicsApi": null,
+          "maxUi": null,
+          "maxPlayback": null,
+          "hdrFormats": null,
+          "hdrVariesByModel": null,
+          "yearReleased": null,
+          "latestRokuOs": "11"
+        }
+      ]
+    },
+    "3600X": {
+      "family": "3600",
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Streaming Stick",
+          "codeName": "Briscoe",
+          "cpu": "ARM Cortex A7 quad core 800 MHz",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "720p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "hdrFormats": [],
+          "hdrVariesByModel": false,
+          "yearReleased": 2016,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "3700X": {
+      "family": "3700",
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Express",
+          "codeName": "Littlefield",
+          "cpu": "MIPS 900 MHz",
+          "cpuArch": "MIPS",
+          "graphicsApi": null,
+          "maxUi": {
+            "resolution": "720p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "hdrFormats": [],
+          "hdrVariesByModel": false,
+          "yearReleased": 2016,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "3710X": {
+      "family": "3710",
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Express+",
+          "codeName": "Littlefield",
+          "cpu": "MIPS 900 MHz",
+          "cpuArch": "MIPS",
+          "graphicsApi": null,
+          "maxUi": {
+            "resolution": "720p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "hdrFormats": [],
+          "hdrVariesByModel": false,
+          "yearReleased": 2016,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "3800X": {
+      "family": "3800",
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Streaming Stick",
+          "codeName": "Amarillo 1080",
+          "cpu": "ARM Cortex A53",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "720p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "hdrFormats": [],
+          "hdrVariesByModel": false,
+          "yearReleased": 2017,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "3810X": {
+      "family": "3810",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Streaming Stick+",
+          "codeName": "Amarillo-2019",
+          "cpu": "ARM Cortex A53",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": true
+          },
+          "hdrFormats": [
+            "HDR10"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2019,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "3811X": {
+      "family": "3811",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Streaming Stick+",
+          "codeName": "Amarillo 2019-HP",
+          "cpu": "ARM Cortex A53",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": true
+          },
+          "hdrFormats": [
+            "HDR10"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2019,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "3820X": {
+      "family": "3820",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Streaming Stick 4K",
+          "codeName": "Madison",
+          "cpu": "ARM Cortex A55",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": true
+          },
+          "hdrFormats": [
+            "HDR10",
+            "HDR10+",
+            "HLG",
+            "DolbyVision"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2021,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "3820X2": {
+      "family": "3820",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "current",
+      "variants": [
+        {
+          "name": "Roku Streaming Stick 4K",
+          "codeName": "Logan",
+          "cpu": "ARM Cortex A55",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": true
+          },
+          "hdrFormats": [
+            "HDR10",
+            "HDR10+",
+            "HLG",
+            "DolbyVision"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2022,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "3821X": {
+      "family": "3821",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Streaming Stick 4K+",
+          "codeName": "Madison",
+          "cpu": "ARM Cortex A55",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": true
+          },
+          "hdrFormats": [
+            "HDR10",
+            "HDR10+",
+            "HLG",
+            "DolbyVision"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2021,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "3821X2": {
+      "family": "3821",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "current",
+      "variants": [
+        {
+          "name": "Roku Streaming Stick 4K+",
+          "codeName": "Logan",
+          "cpu": "ARM Cortex A55",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": true
+          },
+          "hdrFormats": [
+            "HDR10",
+            "HDR10+",
+            "HLG",
+            "DolbyVision"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2022,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "3830X": {
+      "family": "3830",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "current",
+      "variants": [
+        {
+          "name": "Roku Streaming Stick Plus",
+          "codeName": "Bayside",
+          "cpu": "ARM Cortex A55",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": 60,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": true
+          },
+          "hdrFormats": [
+            "HDR10",
+            "HDR10+",
+            "HLG"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2025,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "3840X": {
+      "family": "3840",
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTier": "current",
+      "variants": [
+        {
+          "name": "Roku Streaming Stick",
+          "codeName": "Lakeport",
+          "cpu": "ARM Cortex A55",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "720p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "hdrFormats": [],
+          "hdrVariesByModel": false,
+          "yearReleased": 2025,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "3900X": {
+      "family": "3900",
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Express",
+          "codeName": "Gilbert",
+          "cpu": "ARM Cortex A53",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "720p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "hdrFormats": [],
+          "hdrVariesByModel": false,
+          "yearReleased": 2019,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "3910X": {
+      "family": "3910",
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Express+",
+          "codeName": "Gilbert",
+          "cpu": "ARM Cortex A53",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "720p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "hdrFormats": [],
+          "hdrVariesByModel": false,
+          "yearReleased": 2019,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "3920X": {
+      "family": "3920",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Premiere",
+          "codeName": "Gilbert 4K",
+          "cpu": "ARM Cortex A53",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": false
+          },
+          "hdrFormats": [
+            "HDR10"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2019,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "3921X": {
+      "family": "3921",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Premiere+",
+          "codeName": "Gilbert 4K",
+          "cpu": "ARM Cortex A53",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": false
+          },
+          "hdrFormats": [
+            "HDR10"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2019,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "3930EU": {
+      "family": "3930",
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Express",
+          "codeName": "Nemo",
+          "cpu": "ARM Cortex A53",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "720p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "hdrFormats": [],
+          "hdrVariesByModel": false,
+          "yearReleased": 2019,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "3930X": {
+      "family": "3930",
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Express",
+          "codeName": "Nemo",
+          "cpu": "ARM Cortex A53",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "720p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "hdrFormats": [],
+          "hdrVariesByModel": false,
+          "yearReleased": 2019,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "3931X": {
+      "family": "3931",
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Express+",
+          "codeName": "Nemo",
+          "cpu": "ARM Cortex A53",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "720p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "hdrFormats": [],
+          "hdrVariesByModel": false,
+          "yearReleased": 2019,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "3940X": {
+      "family": "3940",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Express 4K",
+          "codeName": "Marlin",
+          "cpu": "ARM Cortex A55",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": 60,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": true
+          },
+          "hdrFormats": [
+            "HDR10",
+            "HDR10+",
+            "HLG"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2021,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "3940X2": {
+      "family": "3940",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Express 4K+",
+          "codeName": "Bailey",
+          "cpu": "ARM Cortex A55",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": 60,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": true
+          },
+          "hdrFormats": [
+            "HDR10",
+            "HDR10+",
+            "HLG"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2022,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "3941X": {
+      "family": "3941",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Express 4K+",
+          "codeName": "Marlin",
+          "cpu": "ARM Cortex A55",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": 60,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": true
+          },
+          "hdrFormats": [
+            "HDR10",
+            "HDR10+",
+            "HLG"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2021,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "3941X2": {
+      "family": "3941",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Express 4K+",
+          "codeName": "Bailey",
+          "cpu": "ARM Cortex A55",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": 60,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": true
+          },
+          "hdrFormats": [
+            "HDR10",
+            "HDR10+",
+            "HLG"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2022,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "3942X2": {
+      "family": "3942",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Express 4K+",
+          "codeName": "Bailey",
+          "cpu": "ARM Cortex A55",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": 60,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": true
+          },
+          "hdrFormats": [
+            "HDR10",
+            "HDR10+",
+            "HLG"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2022,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "3960X": {
+      "family": "3960",
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Express",
+          "codeName": "Rockett",
+          "cpu": "ARM Cortex A55",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "720p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "hdrFormats": [],
+          "hdrVariesByModel": false,
+          "yearReleased": 2022,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "4200X": {
+      "family": "4200",
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku 3",
+          "codeName": "Austin",
+          "cpu": "ARM Cortex A9 dual core 1 GHz",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "720p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "1080p",
+            "fps": 60,
+            "hdr": false
+          },
+          "hdrFormats": [],
+          "hdrVariesByModel": false,
+          "yearReleased": 2014,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "4210X": {
+      "family": "4210",
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku 2",
+          "codeName": "Mustang",
+          "cpu": "ARM Cortex A9 dual core 1 GHz",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "720p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "1080p",
+            "fps": 60,
+            "hdr": false
+          },
+          "hdrFormats": [],
+          "hdrVariesByModel": false,
+          "yearReleased": 2013,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "4230X": {
+      "family": "4230",
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku 3",
+          "codeName": "Mustang",
+          "cpu": "ARM Cortex A9 dual core 1 GHz",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "720p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "1080p",
+            "fps": 60,
+            "hdr": false
+          },
+          "hdrFormats": [],
+          "hdrVariesByModel": false,
+          "yearReleased": 2014,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "4400X": {
+      "family": "4400",
+      "ramMb": 1536,
+      "ramTier": "1.5GB",
+      "supportTier": "legacy",
+      "variants": [
+        {
+          "name": "Roku 4",
+          "codeName": "Dallas",
+          "cpu": "ARM quad core",
+          "cpuArch": "ARM",
+          "graphicsApi": null,
+          "maxUi": null,
+          "maxPlayback": null,
+          "hdrFormats": null,
+          "hdrVariesByModel": null,
+          "yearReleased": null,
+          "latestRokuOs": "11.5"
+        }
+      ]
+    },
+    "4620X": {
+      "family": "4620",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Premiere",
+          "codeName": "Cooper",
+          "cpu": "ARM Cortex A53 quad core 1.2 GHz",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": false
+          },
+          "hdrFormats": [],
+          "hdrVariesByModel": false,
+          "yearReleased": 2016,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "4630X": {
+      "family": "4630",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Premiere+",
+          "codeName": "Cooper",
+          "cpu": "ARM Cortex A53 quad core 1.2 GHz",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": false
+          },
+          "hdrFormats": [
+            "HDR10"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2016,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "4640X": {
+      "family": "4640",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Ultra",
+          "codeName": "Cooper",
+          "cpu": "ARM Cortex A53 quad core 1.2 GHz",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": false
+          },
+          "hdrFormats": [
+            "HDR10"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2016,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "4660X": {
+      "family": "4660",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Ultra",
+          "codeName": "Bryan",
+          "cpu": "ARM Cortex A53",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": false
+          },
+          "hdrFormats": [
+            "HDR10"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2017,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "4662X": {
+      "family": "4662",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Ultra LT",
+          "codeName": "Bryan -W",
+          "cpu": "ARM Cortex A53",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": true
+          },
+          "hdrFormats": [
+            "HDR10"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2017,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "4670X": {
+      "family": "4670",
+      "ramMb": 2048,
+      "ramTier": "2GB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Ultra",
+          "codeName": "Bryan 2",
+          "cpu": "ARM Cortex A53",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": true
+          },
+          "hdrFormats": [
+            "HDR10"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2019,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "4800X": {
+      "family": "4800",
+      "ramMb": 2048,
+      "ramTier": "2GB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Ultra LT",
+          "codeName": "Benjamin-W",
+          "cpu": "ARM Cortex A55",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": 60,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": true
+          },
+          "hdrFormats": [
+            "HDR10",
+            "HDR10+",
+            "HLG",
+            "DolbyVision"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2021,
+          "latestRokuOs": null
+        },
+        {
+          "name": "Roku Ultra",
+          "codeName": "Benjamin",
+          "cpu": "ARM Cortex A55",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": 60,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": true
+          },
+          "hdrFormats": [
+            "HDR10",
+            "HLG",
+            "DolbyVision"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2021,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "4850X": {
+      "family": "4850",
+      "ramMb": 2048,
+      "ramTier": "2GB",
+      "supportTier": "current",
+      "variants": [
+        {
+          "name": "Roku Ultra",
+          "codeName": "Brewster",
+          "cpu": "ARM Cortex A55",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": 60,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": true
+          },
+          "hdrFormats": [
+            "HDR10",
+            "HDR10+",
+            "HLG",
+            "DolbyVision"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2024,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "5000X": {
+      "family": "5000",
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku TV",
+          "codeName": "Liberty",
+          "cpu": "MIPS 1 GHz",
+          "cpuArch": "MIPS",
+          "graphicsApi": null,
+          "maxUi": {
+            "resolution": "720p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "1080p",
+            "fps": 60,
+            "hdr": false
+          },
+          "hdrFormats": [],
+          "hdrVariesByModel": false,
+          "yearReleased": 2016,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "6000X": {
+      "family": "6000",
+      "ramMb": 1536,
+      "ramTier": "1.5GB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "4K Roku TV",
+          "codeName": "Ft. Worth",
+          "cpu": "ARM quad core",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": null,
+            "hdr": false
+          },
+          "hdrFormats": [],
+          "hdrVariesByModel": false,
+          "yearReleased": 2016,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "7000X": {
+      "family": "7000",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "current",
+      "variants": [
+        {
+          "name": "4K Roku TV",
+          "codeName": "Longview",
+          "cpu": "ARM dual core 1.2 GHz",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": null,
+            "hdr": false
+          },
+          "hdrFormats": [
+            "HDR10",
+            "DolbyVision"
+          ],
+          "hdrVariesByModel": true,
+          "yearReleased": 2019,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "8000X": {
+      "family": "8000",
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTier": "current",
+      "variants": [
+        {
+          "name": "Roku TV",
+          "codeName": "Midland",
+          "cpu": "ARM",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "720p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "720p",
+            "fps": null,
+            "hdr": false
+          },
+          "hdrFormats": [],
+          "hdrVariesByModel": false,
+          "yearReleased": 2019,
+          "latestRokuOs": null
+        },
+        {
+          "name": "Roku TV (Brazil)",
+          "codeName": "El Paso",
+          "cpu": "ARM",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "720p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "hdrFormats": [],
+          "hdrVariesByModel": false,
+          "yearReleased": 2020,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "9100X": {
+      "family": "9100",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Smart Soundbar",
+          "codeName": "Fruitland",
+          "cpu": "ARM Cortex A53",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": true
+          },
+          "hdrFormats": [
+            "HDR10"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2019,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "9102X": {
+      "family": "9102",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku Streambar",
+          "codeName": "Chico",
+          "cpu": "ARM Cortex A53",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": 60,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": true
+          },
+          "hdrFormats": [
+            "HDR10",
+            "HLG"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2020,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "9104X": {
+      "family": "9104",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "current",
+      "variants": [
+        {
+          "name": "Roku Streambar SE",
+          "codeName": "Lockhart",
+          "cpu": "ARM Cortex A55",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": 60,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 60,
+            "hdr": true
+          },
+          "hdrFormats": [
+            "HDR10",
+            "HDR10+",
+            "HLG"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2024,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "A000X": {
+      "family": "A000",
+      "ramMb": 1536,
+      "ramTier": "1.5GB",
+      "supportTier": "current",
+      "variants": [
+        {
+          "name": "4K Roku TV",
+          "codeName": "Reno",
+          "cpu": "ARM quad core 1 GHz",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": null,
+            "hdr": false
+          },
+          "hdrFormats": [
+            "HDR10",
+            "HLG",
+            "DolbyVision"
+          ],
+          "hdrVariesByModel": true,
+          "yearReleased": 2019,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "C000GB": {
+      "family": "C000",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "4K Roku TV (EU)",
+          "codeName": "Camden",
+          "cpu": "ARM quad core 1 GHz",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": null,
+            "hdr": false
+          },
+          "hdrFormats": [
+            "HDR10",
+            "HLG",
+            "DolbyVision"
+          ],
+          "hdrVariesByModel": true,
+          "yearReleased": 2019,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "C000X": {
+      "family": "C000",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "current",
+      "variants": [
+        {
+          "name": "4K Roku TV",
+          "codeName": "Malone",
+          "cpu": "ARM quad core 1 GHz",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": null,
+            "hdr": false
+          },
+          "hdrFormats": [
+            "HDR10",
+            "HLG",
+            "DolbyVision"
+          ],
+          "hdrVariesByModel": true,
+          "yearReleased": 2019,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "D000X": {
+      "family": "D000",
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTier": "updatable",
+      "variants": [
+        {
+          "name": "Roku TV",
+          "codeName": "Roma",
+          "cpu": "ARM Cortex A55",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "720p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "hdrFormats": [],
+          "hdrVariesByModel": false,
+          "yearReleased": 2020,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "E000X": {
+      "family": "E000",
+      "ramMb": 1536,
+      "ramTier": "1.5GB",
+      "supportTier": "legacy",
+      "variants": [
+        {
+          "name": "8K Roku TV",
+          "codeName": "Bandera",
+          "cpu": "ARM quad core 1 GHz",
+          "cpuArch": "ARM",
+          "graphicsApi": null,
+          "maxUi": null,
+          "maxPlayback": null,
+          "hdrFormats": null,
+          "hdrVariesByModel": null,
+          "yearReleased": null,
+          "latestRokuOs": "13.1"
+        }
+      ]
+    },
+    "G000X": {
+      "family": "G000",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "current",
+      "variants": [
+        {
+          "name": "4K Roku TV",
+          "codeName": "Athens",
+          "cpu": "ARM quad core 1 GHz",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": null,
+            "hdr": false
+          },
+          "hdrFormats": [
+            "HDR10",
+            "HLG",
+            "DolbyVision"
+          ],
+          "hdrVariesByModel": true,
+          "yearReleased": 2021,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "H000X": {
+      "family": "H000",
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTier": "current",
+      "variants": [
+        {
+          "name": "2K Roku TV",
+          "codeName": "Miami",
+          "cpu": "ARM quad core 1 GHz",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "720p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "1080p",
+            "fps": 60,
+            "hdr": false
+          },
+          "hdrFormats": [],
+          "hdrVariesByModel": false,
+          "yearReleased": 2022,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "J000X": {
+      "family": "J000",
+      "ramMb": 2048,
+      "ramTier": "2GB",
+      "supportTier": "current",
+      "variants": [
+        {
+          "name": "4K Roku TV",
+          "codeName": "Trinidad",
+          "cpu": "ARM quad core CA73 1 GHz",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": 60,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": 144,
+            "hdr": true
+          },
+          "hdrFormats": [
+            "HDR10",
+            "HDR10+",
+            "HLG",
+            "DolbyVision"
+          ],
+          "hdrVariesByModel": false,
+          "yearReleased": 2021,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "K000X": {
+      "family": "K000",
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTier": "current",
+      "variants": [
+        {
+          "name": "Roku TV",
+          "codeName": "Roxton",
+          "cpu": "ARM Cortex A35",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "720p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "1080p",
+            "fps": 60,
+            "hdr": false
+          },
+          "hdrFormats": [],
+          "hdrVariesByModel": false,
+          "yearReleased": 2024,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "K8PXX": {
+      "family": "K8PX",
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTier": "current",
+      "variants": [
+        {
+          "name": "Projector",
+          "codeName": "Avery",
+          "cpu": "ARM Cortex A35",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "720p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "1080p",
+            "fps": 60,
+            "hdr": false
+          },
+          "hdrFormats": [],
+          "hdrVariesByModel": false,
+          "yearReleased": 2024,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "L000X": {
+      "family": "L000",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "current",
+      "variants": [
+        {
+          "name": "4k Roku TV",
+          "codeName": "Sandia",
+          "cpu": "ARM quad core 1 GHz",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": null,
+            "hdr": false
+          },
+          "hdrFormats": [
+            "HDR10",
+            "HDR10+",
+            "HLG",
+            "DolbyVision"
+          ],
+          "hdrVariesByModel": true,
+          "yearReleased": 2024,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "M000X": {
+      "family": "M000",
+      "ramMb": 2048,
+      "ramTier": "2GB",
+      "supportTier": "current",
+      "variants": [
+        {
+          "name": "4k Roku TV",
+          "codeName": "Shiner",
+          "cpu": "ARM quad core 1 GHz",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": null,
+            "hdr": false
+          },
+          "hdrFormats": [
+            "HDR10",
+            "HDR10+",
+            "HLG",
+            "DolbyVision"
+          ],
+          "hdrVariesByModel": true,
+          "yearReleased": 2024,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "N1000": {
+      "family": "N100",
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTier": "legacy",
+      "variants": [
+        {
+          "name": "Roku DVP",
+          "codeName": "Griffin",
+          "cpu": "MIPS 400 MHz",
+          "cpuArch": "MIPS",
+          "graphicsApi": null,
+          "maxUi": null,
+          "maxPlayback": null,
+          "hdrFormats": null,
+          "hdrVariesByModel": null,
+          "yearReleased": null,
+          "latestRokuOs": "3.1"
+        }
+      ]
+    },
+    "N1050": {
+      "family": "N105",
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTier": "legacy",
+      "variants": [
+        {
+          "name": "Roku SD",
+          "codeName": "Redwood",
+          "cpu": "MIPS 400 MHz",
+          "cpuArch": "MIPS",
+          "graphicsApi": null,
+          "maxUi": null,
+          "maxPlayback": null,
+          "hdrFormats": null,
+          "hdrVariesByModel": null,
+          "yearReleased": null,
+          "latestRokuOs": "3.1"
+        }
+      ]
+    },
+    "N1100": {
+      "family": "N110",
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTier": "legacy",
+      "variants": [
+        {
+          "name": "Roku HD",
+          "codeName": "Redwood",
+          "cpu": "MIPS 400 MHz",
+          "cpuArch": "MIPS",
+          "graphicsApi": null,
+          "maxUi": null,
+          "maxPlayback": null,
+          "hdrFormats": null,
+          "hdrVariesByModel": null,
+          "yearReleased": null,
+          "latestRokuOs": "3.1"
+        }
+      ]
+    },
+    "N1101": {
+      "family": "N110",
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTier": "legacy",
+      "variants": [
+        {
+          "name": "Roku HD-XR",
+          "codeName": "Redwood",
+          "cpu": "MIPS 400 MHz",
+          "cpuArch": "MIPS",
+          "graphicsApi": null,
+          "maxUi": null,
+          "maxPlayback": null,
+          "hdrFormats": null,
+          "hdrVariesByModel": null,
+          "yearReleased": null,
+          "latestRokuOs": "3.1"
+        }
+      ]
+    },
+    "P000X": {
+      "family": "P000",
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTier": "current",
+      "variants": [
+        {
+          "name": "4k Roku TV",
+          "codeName": "Damon",
+          "cpu": "ARM quad core 1 GHz",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "1080p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "4K",
+            "fps": null,
+            "hdr": false
+          },
+          "hdrFormats": [
+            "HDR10",
+            "HLG",
+            "DolbyVision"
+          ],
+          "hdrVariesByModel": true,
+          "yearReleased": 2024,
+          "latestRokuOs": null
+        }
+      ]
+    },
+    "T100X": {
+      "family": "T100",
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTier": "current",
+      "variants": [
+        {
+          "name": "Roku TV",
+          "codeName": "Alpine",
+          "cpu": "ARM Cortex A35",
+          "cpuArch": "ARM",
+          "graphicsApi": "OpenGL ES 2.0",
+          "maxUi": {
+            "resolution": "720p",
+            "fps": null,
+            "hdr": false
+          },
+          "maxPlayback": {
+            "resolution": "1080p",
+            "fps": 60,
+            "hdr": false
+          },
+          "hdrFormats": [],
+          "hdrVariesByModel": false,
+          "yearReleased": 2025,
+          "latestRokuOs": null
+        }
+      ]
+    }
+  },
+  "families": {
+    "2000": {
+      "models": [
+        "2000C"
+      ],
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTiers": [
+        "legacy"
+      ]
+    },
+    "2050": {
+      "models": [
+        "2050N",
+        "2050X"
+      ],
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTiers": [
+        "legacy"
+      ]
+    },
+    "2100": {
+      "models": [
+        "2100N",
+        "2100X"
+      ],
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTiers": [
+        "legacy"
+      ]
+    },
+    "2400": {
+      "models": [
+        "2400X"
+      ],
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTiers": [
+        "legacy"
+      ]
+    },
+    "2450": {
+      "models": [
+        "2450X"
+      ],
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTiers": [
+        "legacy"
+      ]
+    },
+    "2500": {
+      "models": [
+        "2500X"
+      ],
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTiers": [
+        "legacy"
+      ]
+    },
+    "2700": {
+      "models": [
+        "2700X"
+      ],
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTiers": [
+        "legacy"
+      ]
+    },
+    "2710": {
+      "models": [
+        "2710X"
+      ],
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTiers": [
+        "legacy"
+      ]
+    },
+    "2720": {
+      "models": [
+        "2720X"
+      ],
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTiers": [
+        "legacy"
+      ]
+    },
+    "3000": {
+      "models": [
+        "3000X"
+      ],
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTiers": [
+        "legacy"
+      ]
+    },
+    "3050": {
+      "models": [
+        "3050X"
+      ],
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTiers": [
+        "legacy"
+      ]
+    },
+    "3100": {
+      "models": [
+        "3100X"
+      ],
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTiers": [
+        "legacy"
+      ]
+    },
+    "3400": {
+      "models": [
+        "3400X"
+      ],
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTiers": [
+        "legacy"
+      ]
+    },
+    "3420": {
+      "models": [
+        "3420X"
+      ],
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTiers": [
+        "legacy"
+      ]
+    },
+    "3500": {
+      "models": [
+        "3500X"
+      ],
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTiers": [
+        "legacy"
+      ]
+    },
+    "3600": {
+      "models": [
+        "3600X"
+      ],
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "3700": {
+      "models": [
+        "3700X"
+      ],
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "3710": {
+      "models": [
+        "3710X"
+      ],
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "3800": {
+      "models": [
+        "3800X"
+      ],
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "3810": {
+      "models": [
+        "3810X"
+      ],
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "3811": {
+      "models": [
+        "3811X"
+      ],
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "3820": {
+      "models": [
+        "3820X",
+        "3820X2"
+      ],
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTiers": [
+        "current",
+        "updatable"
+      ]
+    },
+    "3821": {
+      "models": [
+        "3821X",
+        "3821X2"
+      ],
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTiers": [
+        "current",
+        "updatable"
+      ]
+    },
+    "3830": {
+      "models": [
+        "3830X"
+      ],
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTiers": [
+        "current"
+      ]
+    },
+    "3840": {
+      "models": [
+        "3840X"
+      ],
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTiers": [
+        "current"
+      ]
+    },
+    "3900": {
+      "models": [
+        "3900X"
+      ],
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "3910": {
+      "models": [
+        "3910X"
+      ],
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "3920": {
+      "models": [
+        "3920X"
+      ],
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "3921": {
+      "models": [
+        "3921X"
+      ],
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "3930": {
+      "models": [
+        "3930EU",
+        "3930X"
+      ],
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "3931": {
+      "models": [
+        "3931X"
+      ],
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "3940": {
+      "models": [
+        "3940X",
+        "3940X2"
+      ],
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "3941": {
+      "models": [
+        "3941X",
+        "3941X2"
+      ],
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "3942": {
+      "models": [
+        "3942X2"
+      ],
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "3960": {
+      "models": [
+        "3960X"
+      ],
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "4200": {
+      "models": [
+        "4200X"
+      ],
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "4210": {
+      "models": [
+        "4210X"
+      ],
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "4230": {
+      "models": [
+        "4230X"
+      ],
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "4400": {
+      "models": [
+        "4400X"
+      ],
+      "ramMb": 1536,
+      "ramTier": "1.5GB",
+      "supportTiers": [
+        "legacy"
+      ]
+    },
+    "4620": {
+      "models": [
+        "4620X"
+      ],
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "4630": {
+      "models": [
+        "4630X"
+      ],
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "4640": {
+      "models": [
+        "4640X"
+      ],
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "4660": {
+      "models": [
+        "4660X"
+      ],
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "4662": {
+      "models": [
+        "4662X"
+      ],
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "4670": {
+      "models": [
+        "4670X"
+      ],
+      "ramMb": 2048,
+      "ramTier": "2GB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "4800": {
+      "models": [
+        "4800X"
+      ],
+      "ramMb": 2048,
+      "ramTier": "2GB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "4850": {
+      "models": [
+        "4850X"
+      ],
+      "ramMb": 2048,
+      "ramTier": "2GB",
+      "supportTiers": [
+        "current"
+      ]
+    },
+    "5000": {
+      "models": [
+        "5000X"
+      ],
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "6000": {
+      "models": [
+        "6000X"
+      ],
+      "ramMb": 1536,
+      "ramTier": "1.5GB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "7000": {
+      "models": [
+        "7000X"
+      ],
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTiers": [
+        "current"
+      ]
+    },
+    "8000": {
+      "models": [
+        "8000X"
+      ],
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTiers": [
+        "current"
+      ]
+    },
+    "9100": {
+      "models": [
+        "9100X"
+      ],
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "9102": {
+      "models": [
+        "9102X"
+      ],
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "9104": {
+      "models": [
+        "9104X"
+      ],
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTiers": [
+        "current"
+      ]
+    },
+    "A000": {
+      "models": [
+        "A000X"
+      ],
+      "ramMb": 1536,
+      "ramTier": "1.5GB",
+      "supportTiers": [
+        "current"
+      ]
+    },
+    "C000": {
+      "models": [
+        "C000GB",
+        "C000X"
+      ],
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTiers": [
+        "current",
+        "updatable"
+      ]
+    },
+    "D000": {
+      "models": [
+        "D000X"
+      ],
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTiers": [
+        "updatable"
+      ]
+    },
+    "E000": {
+      "models": [
+        "E000X"
+      ],
+      "ramMb": 1536,
+      "ramTier": "1.5GB",
+      "supportTiers": [
+        "legacy"
+      ]
+    },
+    "G000": {
+      "models": [
+        "G000X"
+      ],
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTiers": [
+        "current"
+      ]
+    },
+    "H000": {
+      "models": [
+        "H000X"
+      ],
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTiers": [
+        "current"
+      ]
+    },
+    "J000": {
+      "models": [
+        "J000X"
+      ],
+      "ramMb": 2048,
+      "ramTier": "2GB",
+      "supportTiers": [
+        "current"
+      ]
+    },
+    "K000": {
+      "models": [
+        "K000X"
+      ],
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTiers": [
+        "current"
+      ]
+    },
+    "K8PX": {
+      "models": [
+        "K8PXX"
+      ],
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTiers": [
+        "current"
+      ]
+    },
+    "L000": {
+      "models": [
+        "L000X"
+      ],
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTiers": [
+        "current"
+      ]
+    },
+    "M000": {
+      "models": [
+        "M000X"
+      ],
+      "ramMb": 2048,
+      "ramTier": "2GB",
+      "supportTiers": [
+        "current"
+      ]
+    },
+    "N100": {
+      "models": [
+        "N1000"
+      ],
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTiers": [
+        "legacy"
+      ]
+    },
+    "N105": {
+      "models": [
+        "N1050"
+      ],
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTiers": [
+        "legacy"
+      ]
+    },
+    "N110": {
+      "models": [
+        "N1100",
+        "N1101"
+      ],
+      "ramMb": 256,
+      "ramTier": "256MB",
+      "supportTiers": [
+        "legacy"
+      ]
+    },
+    "P000": {
+      "models": [
+        "P000X"
+      ],
+      "ramMb": 1024,
+      "ramTier": "1GB",
+      "supportTiers": [
+        "current"
+      ]
+    },
+    "T100": {
+      "models": [
+        "T100X"
+      ],
+      "ramMb": 512,
+      "ramTier": "512MB",
+      "supportTiers": [
+        "current"
+      ]
+    }
+  }
+}
