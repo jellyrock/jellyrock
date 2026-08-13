@@ -18,6 +18,7 @@ related-files:
   - scripts/rta-run.js
   - scripts/rta-restore.js
   - scripts/device-lock.js
+  - scripts/measure.js
   - scripts/flake-baseline.js
   - tests/rta/demos/run.mjs
   - .github/workflows/rta-functional-tests.yml
@@ -258,6 +259,7 @@ on the run kind ([`runDir`](../../scripts/run-record.js)):
 | `npm run screenshots:capture` | `out/screenshots/` | `[screenshots]` |
 | `npm run demo` | `out/demo/` | `[demo]` |
 | `npm run test:unit` / `test:integration` / `test:all` (Rooibos) | `out/device/` | `[device]` |
+| `npm run measure` (on-device perf sample) | `out/measure/` | `[measure]` |
 
 The tag on each summary line names the **run kind**, derived from that same
 directory so there is no second mapping to drift. A Rooibos run prints `[device]`,
@@ -272,6 +274,27 @@ asking, not by which one you found first:
 | `run-meta.json` | `out/<kind>/` | this run, **overwritten** | the whole of ONE run in one place — lock provenance, window, and the folded failures |
 | `failures.jsonl` | `out/<kind>/` | this run, **truncated at start** | to stream failures as they land, mid-run, before the fold |
 | `runs.jsonl` | **`.device-runs/<kind>/`** | **the ledger — never reset** | to aggregate ACROSS runs (this is the one a flake baseline reads) |
+
+One run kind adds a fourth. `npm run measure` appends
+`.device-runs/measure/measurements.jsonl` — **one line per SERIES**, carrying the
+samples, the workload, and the provenance the sample was taken against. It uses
+[`ledgerPath()`](../../scripts/run-record.js) rather than the `dir` `beginRun` hands
+back, for the reason the ledger itself is not under `out/`: a series can cost an
+hour of exclusive device time and the next `npm run build` would `rimraf` it.
+
+It is **not** a second run ledger, and the two files are deliberately not joinable:
+
+- `runs.jsonl` is a side effect of using `beginRun` for its lifecycle (lock
+  provenance, the process-exit net, the outcome). Nothing reads it for `measure`,
+  and a flake rate over measurement invocations would not mean anything.
+- `measurements.jsonl` is the aggregation surface, and it carries the selection keys
+  (`variant`, `commit`, `dirty`, `deviceKey`, `startedAt`) *itself* so a comparison
+  never has to join on a timestamp.
+- **Their cardinality differs by design.** A run refused by tier 1 writes a
+  `runs.jsonl` line with `outcome: "blocked"` and no measurement record at all — a
+  refused run is not a measurement. Each measurement line therefore carries its own
+  `outcome`, so a reader can tell a usable series from one that produced no sample
+  without consulting the other file.
 
 **The ledger is the Phase-3 surface.** Aggregating N back-to-back suites is a read
 of `.device-runs/rta/runs.jsonl`, not "remember to copy a file aside after each

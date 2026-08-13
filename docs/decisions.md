@@ -575,6 +575,41 @@ The keep/skip constant is the 5.4 ms: restructuring a read pattern is worth it w
 reads must describe ONE moment, and not worth it for speed. Poll loops keep the
 single-read form — they retry by design and `waitFor` owns their timeout.
 
+## decision-id: measurement-identity-is-observed-not-declared
+
+**date**: 2026-08-12
+**status**: accepted
+**related-files**: scripts/measurement-guard.js, scripts/measure.js, scripts/device-lock.js
+
+An on-device performance sample is only worth the answer to "what was it taken against?", and
+this note records two calls about where that answer comes from: it is **observed from the
+running app**, never declared by the repo.
+
+**Tier 1 asserts `serverUrl`, not the `serverId`/`userId` pair.** The original design called
+that pair immune to content drift, because only a real server switch moves it — true for a
+switch to a *different* server, and false for the mistake most likely here. Measured
+2026-08-12: `demo.jellyfin.org/stable` and `/unstable` are genuinely different backends
+(Jellyfin 10.11.11 vs 12.0.0, different `ServerName`) **cloned from one seed database, so they
+report an identical `serverId` AND `userId`**. `RTA_CONFIG` points at `/stable` while the
+API-version work targets `/unstable`, so that is the live confusion, and the pair cannot see
+it. `serverUrl` can. The other two are kept as recorded provenance, where being equal across
+two servers costs nothing. A mutation test pins it — making the URL normalizer one step more
+eager turns three tests red on exactly that case — because the tempting future change is
+"normalize a bit harder", and that is precisely what re-blinds it.
+
+**`ENABLE_RTA` is derived from ODC answering, not read from the manifest.** The first revision
+read it from the checkout and got it backwards on every run: RTA's deploy rewrites the flag in
+the STAGED build directory, never in the repo, so the committed value is always `false` — and
+the record carried `manifestFlags.ENABLE_RTA: false` two fields away from `enableRta: true`.
+One record, two contradictory answers about one flag, manufactured by consulting a file that
+structurally cannot know. The on-device ODC component exists only in a build deployed with
+`injectTestingFiles`, so an identity read that ANSWERS is itself proof the running build has
+the flag on — strictly more than a manifest read can say, and true whether or not this
+invocation performed the deploy. The general rule this leaves behind: the checkout may only
+speak for itself, which is why `appVersion` / `commit` / `dirty` now sit under a `checkout`
+key beside `deployedFromCheckout` and an `agreesWithDevice` comparison against the app's own
+`[debug=… perfTiming=…]` bracket.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

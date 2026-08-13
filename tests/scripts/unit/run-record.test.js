@@ -758,9 +758,23 @@ describe('the run outcome — whether the suite actually ran', () => {
       'x.jsonl',
     ).join('\n');
     expect(advice).not.toMatch(/Nobody closed it|You stopped it/);
-    expect(advice).toContain('fixture server');
+    expect(advice).toContain('precondition');
     expect(advice).toContain('drop it from the population');
     expect(advice).not.toMatch(/it counts/);
+  });
+
+  it('does not assert a CAUSE that only one producer can have had', () => {
+    // The clause used to say a fixture request had failed. True while the RTA suite
+    // was its only producer; false as soon as `measure.js` began blocking a run for
+    // being pointed at the wrong server, where nothing failed at all. A shared
+    // clause may only assert what every producer's record supports — the same rule
+    // the `interrupted` and `crashed` wordings were already corrected under.
+    const advice = formatRunSummary(
+      { ...at, run: 'measure', failures: [], outcome: RUN_OUTCOMES.BLOCKED },
+      'x.jsonl',
+    ).join('\n');
+    expect(advice).not.toMatch(/A request to the fixture server failed/);
+    expect(advice).toMatch(/says nothing about the app/);
   });
 
   describe('assertion records — how much an assertion actually checked', () => {

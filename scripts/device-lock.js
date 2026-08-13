@@ -199,7 +199,35 @@ function deviceKey(id) {
  * exactly like an idle device. `device-id` is stable, and any host on the LAN can
  * read it unauthenticated, so both parties always agree.
  */
-function fetchDeviceId(host) {
+/**
+ * Read ECP `/query/device-info` and return its flat `<tag>value</tag>` pairs.
+ *
+ * Exported because the measurement guard needs the SAME document for tier-2
+ * provenance (device model, Roku OS version) that this module already fetches for
+ * the lock key. A second fetcher would be a second timeout policy, a second error
+ * vocabulary, and a second thing to fix when ECP changes — so this one grew a
+ * general return value rather than growing a sibling.
+ *
+ * Values are returned verbatim (trimmed); no field is required here, because the
+ * callers disagree about which ones they cannot proceed without.
+ *
+ * ⚠️ **XML entities are NOT decoded.** Verified against live ECP on three devices
+ * (2026-08-12): zero entities in any response, and every field read today is
+ * machine-generated — `device-id` (a serial), `model-name`, `model-number`,
+ * `software-version`, `software-build`. None can contain user input, so none can
+ * carry one.
+ *
+ * The exposure is the user-settable name fields — `user-device-name`,
+ * `friendly-device-name`, `default-device-name` — which nothing reads yet. A device
+ * named "Living Room & Den" would come back as the literal `Living Room &amp; Den`:
+ * a wrong value, not a parse failure. Worth knowing because the field a future
+ * caller is most likely to want is a human-readable device LABEL, which is exactly
+ * the one that can carry an entity. Roku's ECP reference does not specify the
+ * encoding either way, and a name cannot be set over ECP, so this is reasoned from
+ * XML well-formedness rather than demonstrated. Decode at the call site if you read
+ * a name field.
+ */
+export function fetchDeviceInfo(host) {
   return new Promise((resolve, reject) => {
     const req = http.get(`http://${host}:8060/query/device-info`, (res) => {
       let data = '';
@@ -208,12 +236,31 @@ function fetchDeviceId(host) {
         data += c;
       });
       res.on('end', () => {
-        const id = /<device-id>([^<]+)<\/device-id>/.exec(data)?.[1];
-        id ? resolve(id.trim()) : reject(new Error('no device-id in ECP device-info'));
+        const info = {};
+        for (const [, tag, value] of data.matchAll(/<([a-z0-9-]+)>([^<]*)<\/\1>/g)) {
+          info[tag] = value.trim();
+        }
+        resolve(info);
       });
     });
     req.on('error', (e) => reject(new Error(e.code || 'ECP unreachable')));
     req.setTimeout(5000, () => req.destroy(new Error('ECP timeout')));
+  });
+}
+
+/**
+ * The lock key's half of the document above.
+ *
+ * Kept as its own function rather than inlined at the call site: the lock CANNOT
+ * proceed without `device-id` (see the note above on why an address is not an
+ * acceptable fallback), so the missing-field throw belongs here, next to the
+ * reasoning, and not in a caller that might be tempted to default it.
+ */
+function fetchDeviceId(host) {
+  return fetchDeviceInfo(host).then((info) => {
+    const id = info['device-id'];
+    if (!id) throw new Error('no device-id in ECP device-info');
+    return id;
   });
 }
 
