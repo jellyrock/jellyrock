@@ -74,6 +74,7 @@ backtick-wrapped
 backtrace
 Backtrace
 backtrace's
+cardinality
 backtraces
 Backtraces
 backfill
@@ -295,6 +296,7 @@ invariants
 IPs
 JavaScript
 jellyfin
+joinable
 Jellyfin
 jellyfin-roku
 jellyfin-roku-legacy
@@ -488,6 +490,7 @@ rooibos-roku
 ropm
 rta
 RTA
+RTA's
 RTA-based
 RTL
 runbook

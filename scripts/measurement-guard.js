@@ -51,12 +51,17 @@
  * arguments, so per-sample identity logging was never available on the app side
  * either.
  *
- * `ENABLE_RTA` itself is recorded in tier 2 for the same reason `debug` and
- * `perfTiming` are stamped into the app's own log lines: so a number can never be
- * silently compared against one measured in a differently-compiled build. Note
- * the app's `[debug=… perfTiming=…]` bracket does NOT carry `ENABLE_RTA`, so a
- * line lifted out of a scrollback cannot self-report it — only a tool that knows
- * which deploy it performed can.
+ * That ODC dependency is also what makes `ENABLE_RTA` KNOWN rather than guessed.
+ * The on-device component is present only because a build was deployed with
+ * `injectTestingFiles`, and RTA's deploy flips `ENABLE_RTA=false` -> `true` in the
+ * staged manifest to compile in the hook that starts it. So an identity read that
+ * ANSWERS is itself proof that the running build has `ENABLE_RTA=true` — which is
+ * strictly more than a tool can learn by reading a manifest, and it holds whether
+ * or not this invocation performed the deploy. See `measure.js` for the derivation
+ * at the call site.
+ *
+ * The app's own `[debug=… perfTiming=…]` bracket does NOT carry `ENABLE_RTA`, so a
+ * line lifted out of a scrollback cannot self-report it.
  *
  * ## What it never reads
  *
@@ -111,6 +116,25 @@ export async function readIdentity() {
     out[key] = results[key]?.found ? results[key].value : undefined;
   }
   return out;
+}
+
+/**
+ * The fields the batch ANSWERED but could not find.
+ *
+ * `readIdentity` throws when the whole batch fails, which is the loud case. This is
+ * the quiet one: ODC answers, and reports `found: false` for a field — the node
+ * exists but the app has no server on it, or a field was renamed under us. Left
+ * alone that becomes `serverUrl: undefined` in a written record, which is the exact
+ * laundering the throw above exists to prevent, one layer down. The caller decides
+ * what is fatal; `serverUrl` is, because tier 1 rests on it and a sample nobody can
+ * attribute to a server is not a sample.
+ */
+export const IDENTITY_FATAL_FIELDS = Object.freeze(['serverUrl']);
+
+export function missingIdentityFields(identity) {
+  return Object.keys(IDENTITY_REQUESTS).filter(
+    (key) => identity?.[key] === undefined || identity?.[key] === '',
+  );
 }
 
 /**
@@ -210,11 +234,18 @@ export async function readDeviceProvenance(host) {
 }
 
 /**
- * Tier 2, app half. The version the sample was taken against, from the manifest.
+ * Tier 2, app half. The version THIS CHECKOUT would build.
  *
- * Read from the manifest rather than `package.json` because the manifest is what
- * the DEVICE was given — the two can disagree mid-release, and the question a
+ * Read from the manifest rather than `package.json` because the manifest is what a
+ * deploy hands the device — the two can disagree mid-release, and the question a
  * sample answers is about the artifact that ran.
+ *
+ * ⚠️ It describes the device only when this invocation performed the deploy.
+ * `npm run measure` defaults to measuring the build ALREADY on the device, which
+ * may have been sideloaded from another branch days ago; the record therefore
+ * files this under `checkout` and carries `deployedFromCheckout` beside it, rather
+ * than presenting a working-tree version as the running app's. `git blame` on this
+ * comment leads to the review that caught it being presented as the latter.
  */
 export function readAppVersion(manifestPath) {
   let text;
@@ -229,16 +260,39 @@ export function readAppVersion(manifestPath) {
 }
 
 /**
- * The compile-time flags the manifest was built with.
- *
- * The app stamps `debug` and `perfTiming` into its own log lines, and those are
- * authoritative for a sample — they came from the running build. This reads the
- * manifest instead, and exists for the ONE flag the app does not stamp:
- * `ENABLE_RTA`. Recorded beside the app's own bracket rather than instead of it,
- * so a disagreement between them is visible instead of resolved by whichever was
- * consulted last.
+ * `ENABLE_RTA` is excluded from the checkout read below, because the checkout is
+ * the one place its value is knowably WRONG about the device — see the note there.
  */
-export function readBuildFlags(manifestPath) {
+const NOT_FROM_THE_CHECKOUT = new Set(['ENABLE_RTA']);
+
+/**
+ * The compile-time flags THIS CHECKOUT's manifest declares.
+ *
+ * ## What this is for, and what it is not
+ *
+ * It is NOT the running build's flavour. The app stamps `[debug=… perfTiming=…]`
+ * into its own timing lines and that bracket is authoritative, because it came out
+ * of the build that produced the number; `measurements.js` captures it as each
+ * sample's `buildFlags`. This read exists to be COMPARED against that bracket: a
+ * disagreement is the only available evidence that the device is running something
+ * other than what this checkout would build, which is exactly the case where the
+ * record's `appVersion` and `commit` describe the wrong artifact.
+ *
+ * ## Why `ENABLE_RTA` is deliberately dropped
+ *
+ * It used to be the stated reason this function existed — "the ONE flag the app
+ * does not stamp". That was backwards. RTA's deploy rewrites `ENABLE_RTA=false` ->
+ * `true` in the STAGED build dir, never in the repo (see `harden-prod-manifest.js`
+ * and `driver.js`), and the committed value is `false`. So this read reported
+ * `ENABLE_RTA: false` on every run — including runs that had just deployed with it
+ * on, where the record then carried `enableRta: true` two fields away. One record,
+ * two contradictory answers about the same flag, and the contradiction was
+ * manufactured by reading a file that cannot know.
+ *
+ * The flag is now derived where it is actually observable — a responding ODC proves
+ * it — so this function returns only the flags the checkout can honestly speak to.
+ */
+export function readCheckoutBuildFlags(manifestPath) {
   let text;
   try {
     text = fs.readFileSync(manifestPath, 'utf8');
@@ -250,9 +304,28 @@ export function readBuildFlags(manifestPath) {
   const flags = {};
   for (const pair of line.split(';')) {
     const [k, v] = pair.split('=');
-    if (k && v !== undefined) {
-      flags[k.trim()] = v.trim() === 'true' ? true : v.trim() === 'false' ? false : v.trim();
-    }
+    if (!k || v === undefined) continue;
+    const name = k.trim();
+    if (NOT_FROM_THE_CHECKOUT.has(name)) continue;
+    flags[name] = v.trim() === 'true' ? true : v.trim() === 'false' ? false : v.trim();
   }
   return Object.keys(flags).length ? flags : undefined;
+}
+
+/**
+ * Does the build that produced a sample agree with the checkout's manifest?
+ *
+ * `null` when there is nothing to compare — no complete sample carried a bracket,
+ * or the manifest could not be read. Deliberately NOT `true`: "the flags match" and
+ * "there were no flags to match" must not look alike, for the same reason
+ * `checkServerIdentity` refuses to let `asserted: false` look like a pass.
+ *
+ * Only the keys the app actually stamps are compared. The checkout declares more
+ * than the bracket carries, and an absent key is not a disagreement.
+ */
+export function buildFlagsAgree(observed, checkoutFlags) {
+  if (!observed || !checkoutFlags) return null;
+  const shared = Object.keys(observed).filter((k) => checkoutFlags[k] !== undefined);
+  if (!shared.length) return null;
+  return shared.every((k) => observed[k] === checkoutFlags[k]);
 }

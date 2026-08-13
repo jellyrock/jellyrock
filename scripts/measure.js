@@ -6,6 +6,34 @@
  *   npm run measure -- --measurement item-grid
  *   npm run measure -- --server http://192.168.1.2:8098   assert tier 1
  *   npm run measure -- --deploy              sideload first (default: use what is on the device)
+ *   npm run measure -- --window-ms 20000     cap the per-launch watch (default 45 s)
+ *
+ * ## What it needs on the device — the precondition, stated
+ *
+ * **The build on the device must be an RTA deploy** (`injectTestingFiles`, which
+ * flips `ENABLE_RTA` on in the staged manifest). Identity is read over ODC and
+ * nothing else, so ODC is a hard precondition, not a nicety: without it the tool
+ * refuses before taking a sample rather than recording a series it cannot attribute.
+ *
+ * `--deploy` guarantees that state. The default does NOT — it measures whatever is
+ * resident, which in practice means "whatever the last `npm run test:rta` or
+ * `npm run measure -- --deploy` left there". That was an unstated assumption in the
+ * first revision and it is worth being blunt about, because it cuts both ways: the
+ * mode that avoids re-deploying is the mode where the tool knows least about what
+ * it is measuring. See the provenance note below.
+ *
+ * ## What the record can and cannot claim about the build
+ *
+ * - `enableRta` is **derived, not assumed**: a responding ODC proves the running
+ *   build has it on. True on every run that gets far enough to record anything.
+ * - `checkout.appVersion` / `commit` / `dirty` describe **this working tree**. They
+ *   describe the device only when `--deploy` put it there, which is why
+ *   `checkout.deployedFromCheckout` is recorded beside them instead of leaving a
+ *   reader to assume.
+ * - `checkout.agreesWithDevice` compares the checkout's `bs_const` against the
+ *   `[debug=… perfTiming=…]` bracket the app stamps into its own timing lines. It
+ *   is the only evidence available that a non-deploy run measured this checkout's
+ *   code at all, and `false` is printed loudly.
  *
  * ## What this replaces
  *
@@ -86,71 +114,36 @@ import {
 } from './measurements.js';
 import {
   readIdentity,
+  missingIdentityFields,
+  IDENTITY_FATAL_FIELDS,
   checkServerIdentity,
   checkSeriesConsistency,
   readDeviceProvenance,
   readAppVersion,
-  readBuildFlags,
+  readCheckoutBuildFlags,
+  buildFlagsAgree,
 } from './measurement-guard.js';
+import { parseMeasureArgs, MeasureArgError } from './measure-args.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const manifestPath = path.join(repoRoot, 'manifest');
 
-/** Minimal flag parsing, matching the `--flag value` / `--flag=value` shapes the other scripts accept. */
-function parseArgs(argv) {
-  const args = { samples: 5, measurement: MEASUREMENTS[0].id, deploy: false };
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    // Accepts `--name value`, `--name=value`, and the short `-n` the header
-    // documents. The short form is spelled out rather than derived, so a flag
-    // named in the usage block cannot silently fail to parse — which it did, and
-    // only a read of both caught it.
-    const take = (...names) => {
-      const eq = arg.indexOf('=');
-      for (const name of names) {
-        const long = name.length === 1 ? `-${name}` : `--${name}`;
-        if (arg === long) return argv[++i];
-        if (eq > 0 && arg.slice(0, eq) === long) return arg.slice(eq + 1);
-      }
-      return undefined;
-    };
-    const n = take('n', 'samples');
-    if (n !== undefined) {
-      args.samples = Number(n);
-      continue;
-    }
-    const m = take('measurement');
-    if (m !== undefined) {
-      args.measurement = m;
-      continue;
-    }
-    const s = take('server');
-    if (s !== undefined) {
-      args.server = s;
-      continue;
-    }
-    const w = take('window-ms');
-    if (w !== undefined) {
-      args.windowMs = Number(w);
-      continue;
-    }
-    if (arg === '--deploy') args.deploy = true;
-  }
-  return args;
+// Parsed by `measure-args.js`, which REFUSES an unknown flag or a value flag with
+// no value rather than dropping it. A dropped `--server` is a run that silently
+// stopped asserting the thing the operator typed it to assert, which is the one
+// failure this tool must not have.
+let args;
+try {
+  args = parseMeasureArgs(process.argv.slice(2), {
+    measurementIds: measurementIds(),
+    defaultMeasurement: MEASUREMENTS[0].id,
+  });
+} catch (e) {
+  if (!(e instanceof MeasureArgError)) throw e;
+  console.error(`[measure] ${e.message}`);
+  process.exit(1);
 }
-
-const args = parseArgs(process.argv.slice(2));
 const measurement = measurementById(args.measurement);
-if (!measurement) {
-  console.error(
-    `[measure] unknown measurement ${JSON.stringify(args.measurement)}. Registered: ${measurementIds().join(', ')}`,
-  );
-  process.exit(1);
-}
-if (!Number.isInteger(args.samples) || args.samples < 1) {
-  console.error(`[measure] --n must be a positive integer, got ${JSON.stringify(args.samples)}`);
-  process.exit(1);
-}
 
 // How long to watch the console after each launch, capped so a device that never
 // paints cannot hang the series. Cut short once a complete sample has been seen
@@ -202,6 +195,11 @@ const lines = [];
 // initializer because the only reads happen after a launch has reset it — an
 // initial value here would be dead, and ESLint says so.
 let lastMatchAt;
+// The instant the current sample's window opens. Read by the socket callback, which
+// runs outside the loop, so it cannot be a loop-local. `Infinity` until the first
+// launch sets it: before that every arriving line is replay or setup traffic, and
+// none of it may move the quiet clock.
+let windowFrom = Infinity;
 socket = net.createConnection(8085, host);
 let buffered = '';
 socket.on('data', (chunk) => {
@@ -215,7 +213,11 @@ socket.on('data', (chunk) => {
     // the pattern: the console carries a lot of unrelated traffic (`[http]` lines
     // arrive continuously during a load), so "something was printed" is not a
     // signal that the MEASUREMENT is still emitting.
-    if (matchLine(measurement, raw)) lastMatchAt = Date.now();
+    //
+    // Gated on the same window the samples are, so a line the window excludes
+    // cannot move the quiet clock either — otherwise a straggler from the previous
+    // launch would age the clock and cut this launch's watch short.
+    if (Date.now() >= windowFrom && matchLine(measurement, raw)) lastMatchAt = Date.now();
   }
 });
 socket.on('error', (e) => console.error(`[measure] console socket: ${e.message}`));
@@ -230,33 +232,89 @@ const since = (from) => lines.filter((l) => l.at >= from).map((l) => l.raw);
 // and the line being measured — see the guard's header for why ODC traffic stays
 // out of the measured window.
 await hardRelaunch();
-const identityAtStart = await readIdentity();
+
+/** Fold the run as a NON-sample, release everything, and exit. */
+async function refuse(message) {
+  console.error(`\n[measure] ${message}`);
+  run.close(RUN_OUTCOMES.BLOCKED);
+  socket.destroy();
+  await lock.release();
+  process.exit(1);
+}
+
+// The ODC precondition, checked as a precondition rather than surfacing as a stack
+// trace 5 s into an unexplained timeout. This is the documented failure of the
+// default mode — nothing guarantees the resident build was RTA-deployed — so it
+// gets the sentence that says what to do about it.
+let identityAtStart;
+try {
+  identityAtStart = await readIdentity();
+} catch (e) {
+  await refuse(
+    `could not read identity over ODC: ${e.message}\n` +
+      '  `npm run measure` reads the server identity over ODC, which is present only in an RTA\n' +
+      '  deploy. Re-run with --deploy to sideload one, or point it at a device that has one.',
+  );
+}
+
+// A field ODC answered but could not find. `serverUrl` is fatal: tier 1 rests on
+// it, and a series nobody can attribute to a server is not a series. The rest are
+// reported and recorded as absent.
+const missing = missingIdentityFields(identityAtStart);
+const fatal = missing.filter((f) => IDENTITY_FATAL_FIELDS.includes(f));
+if (fatal.length) {
+  await refuse(
+    `the app answered ODC but has no ${fatal.join(', ')} — it is probably not signed in.\n` +
+      '  A sample cannot be attributed to a server, so it is not a sample.',
+  );
+}
+if (missing.length) {
+  console.log(`[measure] ⚠ identity fields absent, recorded as null: ${missing.join(', ')}`);
+}
+
 const expectedServer = args.server || identityAtStart.serverUrl;
 const tier1 = checkServerIdentity(identityAtStart, args.server);
+const checkoutFlags = readCheckoutBuildFlags(manifestPath);
 const provenance = {
   device: await readDeviceProvenance(host),
-  appVersion: readAppVersion(manifestPath),
-  manifestFlags: readBuildFlags(manifestPath),
-  // The deploy this invocation performed. `--deploy` uses `injectTestingFiles`,
-  // which makes the on-device ODC component resident; without it we are measuring
-  // whatever build was already there, and cannot claim to know. Honest `null`
-  // rather than a guess.
-  enableRta: args.deploy ? true : null,
+  // DERIVED, not assumed. `readIdentity()` above is pure ODC and it answered; the
+  // on-device component exists only in a build deployed with `injectTestingFiles`,
+  // whose staged manifest has `ENABLE_RTA=true`. So reaching this line is proof,
+  // and it holds whether or not THIS invocation performed the deploy — which is
+  // strictly more than the old `args.deploy ? true : null` could say, and it
+  // replaces a `manifestFlags.ENABLE_RTA` that read `false` on every run.
+  enableRta: true,
+  // What this WORKING TREE would build. Not the device — unless `--deploy` put it
+  // there, which is what `deployedFromCheckout` records instead of leaving a reader
+  // to assume. `agreesWithDevice` is filled in after the series, once the app's own
+  // `[debug=… perfTiming=…]` bracket has been seen.
+  checkout: {
+    appVersion: readAppVersion(manifestPath),
+    manifestFlags: checkoutFlags,
+    deployedFromCheckout: args.deploy,
+    agreesWithDevice: null,
+  },
   server: {
     url: identityAtStart.serverUrl,
-    id: identityAtStart.serverId,
-    version: identityAtStart.serverVersion,
-    apiVersion: identityAtStart.apiVersion,
+    id: identityAtStart.serverId ?? null,
+    version: identityAtStart.serverVersion ?? null,
+    apiVersion: identityAtStart.apiVersion ?? null,
   },
-  userId: identityAtStart.userId,
+  userId: identityAtStart.userId ?? null,
 };
 
 console.log(
   `\n[measure] ${measurement.title} — n=${args.samples} on ${provenance.device.model} (Roku OS ${provenance.device.osVersion})`,
 );
 console.log(
-  `[measure] app ${provenance.appVersion} · server ${provenance.server.url} (Jellyfin ${provenance.server.version})`,
+  `[measure] app ${provenance.checkout.appVersion} · server ${provenance.server.url} (Jellyfin ${provenance.server.version})`,
 );
+if (!args.deploy) {
+  console.log(
+    '[measure] ⚠ measuring the build ALREADY on the device — the recorded appVersion/commit ' +
+      'describe this checkout, not necessarily what ran (pass --deploy to make them the same thing).',
+  );
+}
 if (!measurement.grounded) {
   console.log(
     `[measure] ⚠ the ${measurement.id} pattern has never matched a real device line — ` +
@@ -271,24 +329,33 @@ if (tier1.asserted) {
       'for series consistency only.',
   );
 }
-if (tier1.asserted && !tier1.ok) {
-  console.error(`\n[measure] ${tier1.reason}`);
-  run.close(RUN_OUTCOMES.BLOCKED);
-  socket.destroy();
-  await lock.release();
-  process.exit(1);
-}
+if (tier1.asserted && !tier1.ok) await refuse(tier1.reason);
 
 // ─── The series ──────────────────────────────────────────────────────────────
 const windowMs = Number.isFinite(args.windowMs) ? args.windowMs : MAX_WINDOW_MS;
 const samples = [];
 for (let i = 0; i < args.samples; i++) {
-  const from = Date.now();
+  // The window opens at the LAUNCH, not at the keypress. `hardRelaunch()` presses
+  // Home and sleeps `exitMs` (~4 s) before it launches anything, so a window that
+  // opened at `Date.now()` would cover 4 s in which the PREVIOUS launch can still
+  // be emitting. `assembleSamples` merges by line, not by launch, so a straggler
+  // landing there is absorbed into this launch's sample and the record fabricates
+  // one run out of halves of two — exactly what `measurements.js` refuses to do
+  // with an incomplete sample. Filtering by a future instant is safe: lines are
+  // stamped as they arrive, so nothing before it can ever be eligible.
+  //
+  // Usually masked by the quiet-break below, which will not fire until the console
+  // has been silent for QUIET_MS. Not masked on the deadline path — i.e. exactly
+  // when the device is already misbehaving.
+  const from = Date.now() + RTA_CONFIG.exitMs;
+  windowFrom = from;
   lastMatchAt = 0;
   await hardRelaunch();
 
-  // Watch until the console goes quiet after a complete sample, or the cap.
-  const deadline = from + windowMs + RTA_CONFIG.bootMs + RTA_CONFIG.exitMs;
+  // Watch until the console goes quiet after a complete sample, or the cap. `from`
+  // already excludes `exitMs`, so the deadline adds only the boot it still has to
+  // wait through plus the watch budget itself.
+  const deadline = from + windowMs + RTA_CONFIG.bootMs;
   let assembled = [];
   while (Date.now() < deadline) {
     await sleep(1000);
@@ -327,9 +394,30 @@ for (let i = 0; i < args.samples; i++) {
 }
 
 // ─── Close the boundary ──────────────────────────────────────────────────────
-const identityAtEnd = await readIdentity();
-const consistency = checkSeriesConsistency(identityAtStart, identityAtEnd);
-if (!consistency.ok) {
+// The closing read must NOT be able to destroy the series. It is a 5 s-bounded ODC
+// call arriving after every sample has been taken, and an unguarded throw here went
+// to the `uncaughtException` handler, which releases the device and exits WITHOUT
+// writing `measurements.jsonl` — up to an hour of exclusive device time discarded
+// because a bookkeeping read timed out. That is the same defect that moved the run
+// ledger out of `out/`, one layer up: a record that costs real time to produce must
+// survive the failure of the thing that annotates it.
+//
+// A failed read is recorded as an unverifiable boundary, which is a NON-sample and
+// not a pass, because the series genuinely cannot be shown to be one population.
+let consistency;
+try {
+  consistency = checkSeriesConsistency(identityAtStart, await readIdentity());
+} catch (e) {
+  consistency = {
+    ok: false,
+    drifted: [],
+    unreadable:
+      `the closing identity read failed (${e.message}), so the series could not be ` +
+      'shown to be one population. The samples below are kept; treat them as unverified.',
+  };
+  console.error(`\n[measure] ⚠ ${consistency.unreadable}`);
+}
+if (!consistency.ok && consistency.drifted.length) {
   console.error(
     '\n[measure] ⚠ IDENTITY DRIFTED DURING THE SERIES — these samples are not one population:',
   );
@@ -347,7 +435,32 @@ const median = values.length
   ? values.length % 2
     ? values[(values.length - 1) / 2]
     : (values[values.length / 2 - 1] + values[values.length / 2]) / 2
-  : undefined;
+  : null;
+
+// Did the build that produced these samples agree with the checkout? The app's own
+// bracket is authoritative — it came out of the running build — so a disagreement
+// says the device is running something this checkout would not produce, which is
+// the case where `checkout.appVersion` and `commit` describe the wrong artifact.
+provenance.checkout.agreesWithDevice = buildFlagsAgree(
+  samples.find((s) => s.buildFlags)?.buildFlags,
+  checkoutFlags,
+);
+if (provenance.checkout.agreesWithDevice === false) {
+  console.error(
+    '\n[measure] ⚠ the build on the device does NOT match this checkout — its own ' +
+      `[debug=… perfTiming=…] bracket disagrees with ${JSON.stringify(checkoutFlags)}. ` +
+      'The recorded appVersion/commit describe the checkout, not what ran.',
+  );
+}
+
+// A series with no cold sample is not a measurement of anything: the app emitted
+// nothing the registry recognised (a build without `perfTiming`, a pattern that has
+// never been grounded, a screen that never painted). Carried IN the record rather
+// than left to a reader to infer from `coldSamples: 0`, because this file is the
+// one with a reader coming and it has to be self-describing about whether a line is
+// usable. Same partition, same vocabulary as the run ledger.
+const usable = consistency.ok && cold.length > 0;
+const outcome = usable ? RUN_OUTCOMES.PASSED : RUN_OUTCOMES.BLOCKED;
 
 const record = {
   measurement: measurement.id,
@@ -358,6 +471,12 @@ const record = {
   // two arms out of this file alone rather than joining it against `runs.jsonl`
   // on a timestamp.
   ...runProvenance(),
+  // Whether tier 3 may use this line at all, without a join it is designed not to
+  // need. Note the two files have different cardinality BY DESIGN — a run refused
+  // by tier 1 writes a `runs.jsonl` line and no measurement record at all — so this
+  // is not a duplicate of the ledger's outcome; it is this file's own verdict on
+  // its own line.
+  outcome,
   tier1: { ...tier1, pinned: expectedServer },
   seriesConsistency: consistency,
   provenance,
@@ -389,12 +508,21 @@ if (cold.length < args.samples) {
     `[measure] ⚠ ${args.samples - cold.length} launch(es) produced no complete sample — reported, not dropped.`,
   );
 }
+if (!cold.length) {
+  console.error(
+    `[measure] ⚠ NO cold sample in the whole series — recorded as \`outcome: "${outcome}"\`.` +
+      (measurement.grounded
+        ? ' Check that the build on the device was compiled with perfTiming=true.'
+        : ` The ${measurement.id} pattern has never matched a real device line, so this is at ` +
+          'least as likely to be the pattern as the app.'),
+  );
+}
 
-// A series whose identity drifted is not a sample of anything, so it folds as a
-// NON-sample rather than a failure — the same partition `run-record.js` applies
-// to a run blocked by a broken dependency.
-run.close(consistency.ok ? RUN_OUTCOMES.PASSED : RUN_OUTCOMES.BLOCKED);
+// A series whose identity drifted, or which produced no sample at all, is not a
+// sample of anything, so it folds as a NON-sample rather than a failure — the same
+// partition `run-record.js` applies to a run blocked by a broken dependency.
+run.close(outcome);
 socket.destroy();
 await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false }).catch(() => {});
 await lock.release();
-process.exit(consistency.ok ? 0 : 1);
+process.exit(usable ? 0 : 1);

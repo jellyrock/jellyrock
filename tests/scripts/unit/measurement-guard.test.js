@@ -14,10 +14,13 @@ import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 
 import {
+  buildFlagsAgree,
   checkSeriesConsistency,
   checkServerIdentity,
+  IDENTITY_FATAL_FIELDS,
+  missingIdentityFields,
   readAppVersion,
-  readBuildFlags,
+  readCheckoutBuildFlags,
   sameServer,
 } from '../../../scripts/measurement-guard.js';
 
@@ -126,7 +129,10 @@ describe('checkSeriesConsistency', () => {
 });
 
 describe('readAppVersion', () => {
-  it('reads the version the DEVICE was given, from the manifest', () => {
+  it('reads the version THIS CHECKOUT would build, from the manifest', () => {
+    // Not "what the device is running" — `npm run measure` defaults to measuring a
+    // build it did not deploy. The record files this under `checkout` and carries
+    // `deployedFromCheckout` beside it for exactly that reason.
     const p = writeManifest(
       'title=JellyRock\nmajor_version=2\nminor_version=25\nbuild_version=0\n',
     );
@@ -143,25 +149,101 @@ describe('readAppVersion', () => {
   });
 });
 
-describe('readBuildFlags', () => {
-  it('parses bs_const, including the ENABLE_RTA the app never stamps', () => {
+describe('readCheckoutBuildFlags', () => {
+  it('parses bs_const', () => {
+    const p = writeManifest('bs_const=debug=false;perfTiming=true\n');
+    expect(readCheckoutBuildFlags(p)).toEqual({ debug: false, perfTiming: true });
+  });
+
+  it('REFUSES to report ENABLE_RTA, which the checkout cannot know', () => {
+    // The committed value is always `false`; RTA's deploy flips it to `true` in the
+    // STAGED build dir only. Reading it here reported `ENABLE_RTA: false` on every
+    // run, including runs that had just deployed with it on and recorded
+    // `enableRta: true` two fields away — one record, two answers, and the
+    // contradiction manufactured by reading a file that cannot know. It is derived
+    // from a responding ODC instead.
     const p = writeManifest('bs_const=debug=false;ENABLE_RTA=false;perfTiming=true\n');
-    expect(readBuildFlags(p)).toEqual({ debug: false, ENABLE_RTA: false, perfTiming: true });
+    expect(readCheckoutBuildFlags(p)).not.toHaveProperty('ENABLE_RTA');
+    expect(readCheckoutBuildFlags(p)).toEqual({ debug: false, perfTiming: true });
   });
 
   it('keeps a non-boolean value as a string rather than coercing it', () => {
     const p = writeManifest('bs_const=debug=false;someLevel=3\n');
-    expect(readBuildFlags(p).someLevel).toBe('3');
+    expect(readCheckoutBuildFlags(p).someLevel).toBe('3');
   });
 
   it('returns undefined when there is no bs_const line', () => {
-    expect(readBuildFlags(writeManifest('title=JellyRock\n'))).toBeUndefined();
+    expect(readCheckoutBuildFlags(writeManifest('title=JellyRock\n'))).toBeUndefined();
   });
 
   it('matches the committed manifest, so the recorded flavor is real', () => {
     // Pins the tool against the actual repo state rather than a synthetic string:
     // `perfTiming` must be true or `npm run measure` samples a silent app.
-    const flags = readBuildFlags(path.join(process.cwd(), 'manifest'));
+    const flags = readCheckoutBuildFlags(path.join(process.cwd(), 'manifest'));
     expect(flags.perfTiming).toBe(true);
+  });
+});
+
+describe('buildFlagsAgree — is the device running THIS checkout?', () => {
+  it('is true when the app bracket matches the checkout', () => {
+    expect(
+      buildFlagsAgree({ debug: false, perfTiming: true }, { debug: false, perfTiming: true }),
+    ).toBe(true);
+  });
+
+  it('is false when the running build was compiled differently', () => {
+    // The only available evidence that a non-deploy run measured something other
+    // than what this checkout would build — which is exactly the case where the
+    // record's appVersion and commit describe the wrong artifact.
+    expect(
+      buildFlagsAgree({ debug: true, perfTiming: true }, { debug: false, perfTiming: true }),
+    ).toBe(false);
+  });
+
+  it('is NULL, never true, when there is nothing to compare', () => {
+    // "The flags match" and "no flags were seen" must not look alike — the same
+    // rule that keeps `asserted: false` from looking like a tier-1 pass.
+    expect(buildFlagsAgree(undefined, { debug: false })).toBeNull();
+    expect(buildFlagsAgree({ debug: false }, undefined)).toBeNull();
+    expect(buildFlagsAgree({ somethingElse: true }, { debug: false })).toBeNull();
+  });
+
+  it('ignores checkout flags the app does not stamp', () => {
+    // The checkout declares more than the bracket carries; an absent key is not a
+    // disagreement.
+    expect(buildFlagsAgree({ debug: false }, { debug: false, perfTiming: true })).toBe(true);
+  });
+});
+
+describe('missingIdentityFields — the quiet half of a failed read', () => {
+  const full = {
+    serverUrl: 'http://a',
+    serverId: 's1',
+    serverVersion: '10.11.11',
+    apiVersion: 2,
+    userId: 'u1',
+  };
+
+  it('reports nothing when the batch answered every field', () => {
+    expect(missingIdentityFields(full)).toEqual([]);
+  });
+
+  it('names a field ODC answered but could not find', () => {
+    // `readIdentity` throws when the BATCH fails — the loud case. This is the quiet
+    // one: ODC answers and reports `found: false`, which otherwise becomes
+    // `serverUrl: undefined` in a written record. That is the laundering the throw
+    // exists to prevent, one layer down.
+    expect(missingIdentityFields({ ...full, serverUrl: undefined })).toEqual(['serverUrl']);
+  });
+
+  it('treats an empty string as absent, not as a value', () => {
+    // `JellyfinServer.serverUrl` defaults to `""`, so a not-signed-in app reports
+    // found-but-empty rather than not-found.
+    expect(missingIdentityFields({ ...full, serverUrl: '' })).toEqual(['serverUrl']);
+  });
+
+  it('makes serverUrl the fatal one, because tier 1 rests on it', () => {
+    expect(IDENTITY_FATAL_FIELDS).toContain('serverUrl');
+    expect(IDENTITY_FATAL_FIELDS).not.toContain('apiVersion');
   });
 });

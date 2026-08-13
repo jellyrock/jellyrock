@@ -7,8 +7,11 @@ related-files:
   - source/api/apiPipeline.bs
   - source/constants/apiPool.bs
   - scripts/harden-prod-manifest.js
+  - scripts/measure.js
+  - scripts/measurements.js
+  - scripts/measurement-guard.js
   - manifest
-last-reviewed: 2026-08-09
+last-reviewed: 2026-08-12
 ---
 
 # Measuring orchestrator wait-vs-emit on device
@@ -199,6 +202,26 @@ Without it the tool still pins the identity seen at session start and re-checks 
 end, and says out loud that it did **not** assert. Measurements it knows about are
 registered in [`scripts/measurements.js`](../../scripts/measurements.js); add an
 instrumented screen there rather than writing a parser.
+
+**Precondition: the device must be holding an RTA build.** Identity is read over ODC and
+nothing else, and ODC exists only in a build deployed with `injectTestingFiles`. `--deploy`
+guarantees that; the default measures whatever is resident, which in practice means
+whatever the last `npm run test:rta` or `--deploy` run left there. Without ODC the tool
+refuses up front and tells you to pass `--deploy`, rather than taking a series it cannot
+attribute to a server.
+
+That default has a cost worth knowing: **`appVersion`, `commit` and `dirty` in the record
+describe your working tree, not necessarily the build that produced the numbers.** The
+record says which it was (`checkout.deployedFromCheckout`), and compares the checkout's
+`bs_const` against the `[debug=… perfTiming=…]` bracket the app stamps into its own timing
+lines (`checkout.agreesWithDevice`) — a `false` there means the device is running something
+this checkout would not build. `ENABLE_RTA` is *derived* from ODC answering at all, not read
+from the manifest, because RTA's deploy flips it in the staged build directory and the committed
+value is always `false`.
+
+Unrecognized arguments are an **error**, not a warning. `--sever https://…` used to be
+dropped silently, which produced a confident series that had quietly stopped asserting the
+server — the exact failure the tool exists to prevent.
 
 Two things it fixes by construction rather than by reminding you:
 

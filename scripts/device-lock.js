@@ -210,6 +210,22 @@ function deviceKey(id) {
  *
  * Values are returned verbatim (trimmed); no field is required here, because the
  * callers disagree about which ones they cannot proceed without.
+ *
+ * ⚠️ **XML entities are NOT decoded.** Verified against live ECP on three devices
+ * (2026-08-12): zero entities in any response, and every field read today is
+ * machine-generated — `device-id` (a serial), `model-name`, `model-number`,
+ * `software-version`, `software-build`. None can contain user input, so none can
+ * carry one.
+ *
+ * The exposure is the user-settable name fields — `user-device-name`,
+ * `friendly-device-name`, `default-device-name` — which nothing reads yet. A device
+ * named "Living Room & Den" would come back as the literal `Living Room &amp; Den`:
+ * a wrong value, not a parse failure. Worth knowing because the field a future
+ * caller is most likely to want is a human-readable device LABEL, which is exactly
+ * the one that can carry an entity. Roku's ECP reference does not specify the
+ * encoding either way, and a name cannot be set over ECP, so this is reasoned from
+ * XML well-formedness rather than demonstrated. Decode at the call site if you read
+ * a name field.
  */
 export function fetchDeviceInfo(host) {
   return new Promise((resolve, reject) => {
