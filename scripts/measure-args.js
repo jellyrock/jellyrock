@@ -44,25 +44,80 @@ const VALUE_FLAGS = new Map([
   ['--measurement', 'measurement'],
   ['--server', 'server'],
   ['--window-ms', 'windowMs'],
+  // Which side of a comparison this series belongs to — a free-form label read
+  // back by `measure-compare.js`. It exists because the two arms of the commonest
+  // comparison are otherwise INDISTINGUISHABLE in the record: measuring an
+  // uncommitted change means both arms carry the same `commit` and `dirty: true`,
+  // so nothing but a label the operator supplies can separate them.
+  ['--arm', 'arm'],
+  // WHERE the app was. Only meaningful for a family whose `screen` is null (see
+  // `measurements.js`); supplied by hand until measurement can navigate.
+  ['--screen', 'screen'],
 ]);
 
 /** Flags that take no value. */
 const BOOLEAN_FLAGS = new Map([['--deploy', 'deploy']]);
+
+/**
+ * Characters a `--arm` / `--screen` label may not contain, because they are the
+ * SELECTOR grammar `measure-compare.js` reads the label back with.
+ *
+ * `--a` splits on `,` and takes the first `=` as a key/value break. So a label
+ * carrying either is written into the ledger fine and is then unaddressable:
+ * `--arm "before,v2"` records `before,v2`, and `--a before,v2` parses to
+ * `{arm: 'v2'}` — a DIFFERENT selection, made silently, which matches nothing and
+ * reports "selected no usable series" while pointing at the wrong cause. `--arm
+ * "a=b"` fails differently, as an unknown selector key `a`.
+ *
+ * Refused at the moment the label is created rather than diagnosed later, for the
+ * same reason as every other refusal in this file: the failure is silent, and the
+ * only place it can be attributed to what caused it is here. Spaces are deliberately
+ * allowed — `--a "batched attach"` round-trips, because the selector parser trims
+ * each part rather than splitting on whitespace.
+ */
+const LABEL_FORBIDDEN = /[,=]/;
+
+/**
+ * Refuse a label the selector grammar cannot name. Shared by `--arm` and `--screen`
+ * because both are selector keys and both fail identically.
+ */
+function checkLabel(flag, value) {
+  if (LABEL_FORBIDDEN.test(value)) {
+    throw new MeasureArgError(
+      `${flag} may not contain "," or "=" (got ${JSON.stringify(value)}) — those are the ` +
+        'selector grammar `npm run measure:compare -- --a <selector>` reads the label back ' +
+        'with, so a label carrying one records fine and can never be selected again.',
+    );
+  }
+  if (value !== value.trim()) {
+    throw new MeasureArgError(
+      `${flag} may not have leading or trailing whitespace (got ${JSON.stringify(value)}) — ` +
+        'the selector parser trims, so the recorded label would never match what you type.',
+    );
+  }
+}
 
 const knownFlags = () => [...VALUE_FLAGS.keys(), ...BOOLEAN_FLAGS.keys()].join(', ');
 
 /**
  * Parse `process.argv.slice(2)`.
  *
- * `measurementIds` is passed in rather than imported so the validation message can
- * name the registered families without this module depending on the registry — the
- * registry is what the CLI is *about*, and a parser that imports it makes a cycle
- * the moment the registry wants to report a usage error.
+ * `measurementIds` and `screens` are passed in rather than imported so the validation
+ * messages can name the registered families without this module depending on the
+ * registry — the registry is what the CLI is *about*, and a parser that imports it
+ * makes a cycle the moment the registry wants to report a usage error.
  *
+ * @param {string[]} [options.measurementIds] every registered family id.
+ * @param {Record<string, string|null>} [options.screens] each family's DECLARED
+ *   screen, or null where the family alone cannot say. Used to refuse a `--screen`
+ *   that contradicts one.
  * @throws {MeasureArgError} on an unknown flag, a value flag with no value, or a
  *   value that cannot be what the flag means.
  */
-export function parseMeasureArgs(argv = [], { measurementIds = [], defaultMeasurement } = {}) {
+export function parseMeasureArgs(
+  argv = [],
+  { measurementIds = [], screens = {}, defaultMeasurement } = {},
+) {
   const raw = {};
   const args = { samples: 5, measurement: defaultMeasurement, deploy: false };
 
@@ -122,5 +177,38 @@ export function parseMeasureArgs(argv = [], { measurementIds = [], defaultMeasur
   }
 
   if (raw.server !== undefined) args.server = raw.server;
+
+  // Free-form in MEANING — an arm label means whatever the operator's experiment
+  // means — but not in SHAPE: see `checkLabel`. `--arm=` was already rejected above.
+  if (raw.arm !== undefined) {
+    checkLabel('--arm', raw.arm);
+    args.arm = raw.arm;
+  }
+
+  if (raw.screen !== undefined) {
+    checkLabel('--screen', raw.screen);
+    // A family that DECLARES its screen owns it, and `--screen` may not contradict
+    // it. `home-latest-rows` is emitted by Home's own loader and by nothing else, so
+    // its screen is a property of the family; `item-grid` backs every library grid,
+    // so its screen is null and only the operator can say.
+    //
+    // Precedence used to run the other way (`args.screen ?? measurement.screen`),
+    // which made the ONE thing this tool exists to prevent reachable from its own
+    // command line: `measure.js` cannot navigate — it relaunches, so the app is
+    // always on Home — and `npm run measure -- --screen movies-grid` therefore wrote
+    // a record asserting a screen the app was never on. Tier 3 would then compare it
+    // against a real movies-grid series and refuse nothing, because by then the lie
+    // is indistinguishable from provenance.
+    const declared = screens[args.measurement];
+    if (declared != null && declared !== raw.screen) {
+      throw new MeasureArgError(
+        `--screen ${JSON.stringify(raw.screen)} contradicts the ${JSON.stringify(args.measurement)} ` +
+          `family, which is always taken on ${JSON.stringify(declared)}. Drop --screen; it exists ` +
+          'for families whose screen the registry records as null, which nothing but the ' +
+          'operator can supply.',
+      );
+    }
+    args.screen = raw.screen;
+  }
   return args;
 }

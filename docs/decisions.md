@@ -610,6 +610,71 @@ speak for itself, which is why `appVersion` / `commit` / `dirty` now sit under a
 key beside `deployedFromCheckout` and an `agreesWithDevice` comparison against the app's own
 `[debug=… perfTiming=…]` bracket.
 
+## decision-id: comparison-refuses-identity-reports-drift
+
+**date**: 2026-08-13
+**status**: accepted
+**related-files**: scripts/measure-compare.js, scripts/measurements.js, docs/dev/home-first-paint-performance.md
+
+Tier 3 pairs two measurement series, and the rule for what makes them incomparable is the
+guard's own rule one level up — **assert identity, record everything else**. An identity
+difference REFUSES the comparison (measurement family, screen, server URL, device model, RAM
+tier, build flags, `ENABLE_RTA`): those are two experiments, not two arms of one. Everything
+else is REPORTED and never refused — workload drift, a series crossing the top of the hour, a
+dirty tree, two units of the same model, an n below what the method resolves.
+
+Both symmetric alternatives were considered and both fail. **Refuse on any difference** breaks
+exactly where the tool earns its keep: an arm that rendered 9 rows against 10 is the case a
+human most needs to see, and a tool that swallowed it would have nothing to say about the
+failure it exists for. **Report everything, refuse nothing** fails the other way: a
+`debug=true` arm is +121 ms on a Stick 4K before the change under test does anything, and no
+amount of printing turns that into a comparison. The re-evaluation trigger is a legitimate
+comparison being refused — that means an axis is on the wrong list, and the lists are one
+function (`comparability`) pinned by tests, so moving one is a small diff.
+
+The rank test moved into code for a reason worth recording beside it. Re-deriving the two
+p-values in [`home-first-paint-performance.md`](dev/home-first-paint-performance.md) found
+they were computed by **different methods and neither said so**: the `apiPipeline` pair
+(n=5/6) is genuinely exact at 2/C(11,5) = 0.00433, while the batched-attach pair's
+"U = 0.0, p = 0.0002" is the normal approximation with a continuity correction (z = 3.742 →
+1.83e-4) whose exact value is 2/C(20,10) = 1.08e-5, seventeen times smaller. Both conclusions
+are unaffected — they only get stronger — but a reader deriving one from the other would have
+concluded the arithmetic was broken. So the tool reports which method produced a number, both
+methods are reachable and pinned by tests, and the doc now says which produced its recorded
+value.
+
+## decision-id: roku-device-dictionary-generated
+
+**date**: 2026-08-13
+**status**: accepted
+**related-files**: scripts/generate/roku-hardware.js, scripts/data/roku-hardware.json, scripts/roku-devices.js, .github/workflows/roku-hardware-sync.yml
+
+The Roku device lookup is a GENERATED dataset derived from `rokudev/dev-doc`
+`SPECIFICATIONS/hardware.md`, not a table anyone types. It replaced a 38-entry
+`DEVICE_RAM_TIERS` literal that was *accurate* and still wrong: it keyed on `/^(\d{4})/`, so
+all sixteen letter-prefixed Roku TV and Projector families (`J000X`, `A000X`, `K8PXX`)
+resolved to `null` forever, spanning 512 MB to 2 GB — the largest device class Roku ships. It
+also could not notice upstream commit `0cddfa29`, which added a supported device (`K000X`,
+Roku TV "Roxton", 512 MB, 2024).
+
+Three sub-decisions carry the design. **The parser refuses what it does not recognize**
+rather than emitting null, so an upstream change of spelling fails the sync loudly instead of
+silently degrading a device to unknown-tier — a dataset that degrades quietly is the
+hand-typed table with extra steps. **The sync PR is gated on the derived DATA, not the
+upstream file**: of four commits to `hardware.md` in three months one touched only the
+document's own frontmatter and search metadata, so a file-watch would have been 25% noise,
+and noise is what kills a watch nobody has to read. **A scheduled PR was chosen over a signals-backlog row** for the same
+reason — a journal row someone must remember to read is a worse version of a diff that
+arrives in the review queue.
+
+The strict parser earned itself immediately by refusing to overwrite a key: one `GetModel()`
+value can map to two physical devices (`8000X` is both Roku TV and Roku TV (Brazil); `4800X`
+is both Roku Ultra LT and Roku Ultra). So `models` carry a `variants[]` array, with only RAM
+and support tier hoisted and asserted invariant across them. The four-character family key is
+the constraint worth re-evaluating: verified unambiguous across all 70 families today, and
+re-checked on every generate — if Roku ships a 2 GB revision under an existing prefix,
+`familyOf` needs revisiting.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

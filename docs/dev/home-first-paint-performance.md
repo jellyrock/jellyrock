@@ -8,10 +8,13 @@ related-files:
   - source/constants/apiPool.bs
   - scripts/harden-prod-manifest.js
   - scripts/measure.js
+  - scripts/measure-compare.js
+  - scripts/roku-devices.js
+  - scripts/data/roku-hardware.json
   - scripts/measurements.js
   - scripts/measurement-guard.js
   - manifest
-last-reviewed: 2026-08-12
+last-reviewed: 2026-08-13
 ---
 
 # Measuring orchestrator wait-vs-emit on device
@@ -361,6 +364,15 @@ The before arm reproduces the n=30 baseline (2646 vs 2626 ms), which is what mak
 trustworthy. **Every after sample beats every before sample** — complete separation,
 Mann-Whitney U = 0.0, p = 0.0002.
 
+> **That p is the normal approximation, not the exact test** — established 2026-08-13 while
+> pinning both against `measure-compare.js`. With complete separation at n=10 per arm, the
+> approximation with a continuity correction gives z = 3.742 → p = 1.8e-4; the **exact**
+> value is 2/C(20,10) = **1.1e-5**. The conclusion is unchanged (it only gets stronger), and
+> the recorded value is kept as it was published — but the two p-values recorded in this
+> document were computed by *different methods* and neither said so, which is exactly why
+> the test now lives in code: `npm run measure:compare` reports which method it used.
+> The `apiPipeline` pair below is genuinely exact, as it says.
+
 **Verified non-vacuous.** A run that renders fewer items looks identical in these numbers, so
 the timings alone cannot tell a win from a regression that skipped work. Reading the live
 content tree off the device on both builds gave the same 13 rows, same 9 `latest_` rows, same
@@ -386,7 +398,53 @@ from the run that produced this table:
 
 Use a rank test, not a median difference. A median gap that looks decisive can sit well
 inside the spread — and the per-column split (`wait` / `emit`) is noisy enough at n=10 to
-reverse sign between samples, so decide on `total`.
+reverse sign between samples, so decide on `total`. **`npm run measure:compare` runs the
+test for you** (see [below](#comparing-two-arms)); it also prints this floor beside any
+result it cannot distinguish, so a small delta is read against what the method can resolve.
+
+### Comparing two arms
+
+Take the arms **alternating** — `--arm before`, `--arm after`, `--arm before`, … — never all
+of one and then all of the other, so anything that drifts with time (fixture content, device
+warm-up, a server getting busy) cancels instead of landing on one arm:
+
+```bash
+npm run measure -- -n 5 --arm before --server http://192.168.1.2:8098
+npm run measure -- -n 5 --arm after  --server http://192.168.1.2:8098   # …and repeat
+npm run measure:compare                              # what is in the ledger
+npm run measure:compare -- --a before --b after      # the comparison
+npm run measure:compare -- --a before --b after --field emit
+```
+
+An arm can be named by any recorded key, not just a label — `--a commit=abc1234`,
+`--a device=<key>` — and `npm run measure:compare` with no arguments lists the values
+available to select on.
+
+What it does that a hand-built comparison does not:
+
+- **The workload delta is printed above the timing delta.** This section's own
+  *"verified non-vacuous"* check — same rows, same items, same per-row tile counts — is the
+  thing the tool now does on every comparison rather than when someone remembers to.
+- **It refuses two experiments dressed as two arms**: different screen, server, device model,
+  RAM tier, build flavor or `ENABLE_RTA` state. A `debug=true` arm against a `debug=false`
+  one is +121 ms before the change under test does anything.
+- **It refuses two arms that share a series.** Measuring an uncommitted change leaves both
+  arms on one commit, so `--a commit=<sha> --b after` selects every arm on that commit as A —
+  including all of B. Those samples would be counted on both sides, in both medians and in
+  the rank test. Narrow one selector; two arms of one experiment share no series.
+- **It says what it dropped.** A series that never reached a verdict (`blocked`, or written
+  before `outcome` existed) is excluded from an arm, and the count is printed beside the
+  delta — a median over three samples when you took ten otherwise reads exactly like a result.
+- **The RAM tier comes from Roku's published table**, not from anyone's memory:
+  [`scripts/data/roku-hardware.json`](../../scripts/data/roku-hardware.json) is generated from
+  `rokudev/dev-doc` and refreshed by a weekly sync PR. So a Roku TV, a Projector and a
+  Streaming Stick all resolve, and a comparison across tiers is refused rather than eyeballed.
+- **It checks the arms were actually interleaved**, from the per-sample timestamps, and says
+  so when they were not.
+- **Workload drift is reported, never refused.** Two arms at 10 rows and 9 rows are still
+  worth looking at; missing that they differ is not.
+- No threshold, no gate, no CI — same reasoning as
+  [What this does NOT do](#what-this-does-not-do).
 
 ## Why this costs production nothing
 

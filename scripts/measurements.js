@@ -121,6 +121,15 @@ const nums = (groups) => {
  * One measurement family.
  *
  * - `id` — the record key and the `--measurement` argument.
+ * - `screen` — WHERE the app was when the lines were emitted, or `null` when the
+ *   family alone cannot say. A measurement is a `(screen, family)` pair: the family
+ *   says which loader emitted the timing, the screen says what was on the device.
+ *   Today `measure.js` reaches a screen by RELAUNCHING, so only Home is reachable
+ *   and the field looks redundant — it is not, and it is declared now rather than
+ *   retrofitted, because tier 3's selection predicate is `(measurement, screen)`
+ *   and this project has already paid for the retrofit lesson once: `deviceKey` was
+ *   added to the run ledger after the fact and the first four runs predate it
+ *   entirely, so they can never join a series.
  * - `lines` — the console lines that together make ONE sample. `required` lines
  *   must all be seen before a sample is complete; an optional line enriches it.
  * - `workload` — which of the parsed fields describe HOW MUCH WORK the run did
@@ -139,6 +148,9 @@ export const MEASUREMENTS = Object.freeze([
     id: 'home-latest-rows',
     title: 'Home first paint (latest-rows)',
     doc: 'docs/dev/home-first-paint-performance.md',
+    // Fixed: this family is emitted by Home's own loader and by nothing else, so
+    // the screen is a property of the family rather than of the run.
+    screen: 'home',
     // Observed end to end on `.177`, 2026-08-12.
     grounded: true,
     primary: 'totalMs',
@@ -176,6 +188,13 @@ export const MEASUREMENTS = Object.freeze([
     id: 'item-grid',
     title: 'Item grid / genres load',
     doc: 'docs/dev/home-first-paint-performance.md#the-grids-genre-loop--the-same-method-the-opposite-answer',
+    // NULL, deliberately, and not an oversight: `LoadItemsTask2` backs EVERY library
+    // grid because they are all `BaseGridView`, so this family says nothing about
+    // which library was open — and a movies grid and a shows grid are different
+    // workloads under one id. Whoever navigates there has to say (`--screen`), and
+    // until something can, a comparison of two null-screen series is warned about
+    // rather than silently trusted.
+    screen: null,
     // Written from the emitting call site (LoadItemsTask2.bs:421), which is
     // authoritative for the MESSAGE — it is the format string. Not yet seen on
     // the wire, so `measure.js` refuses to report it as grounded.

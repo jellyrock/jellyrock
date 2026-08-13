@@ -9,6 +9,7 @@ scripts/
 ├── bsc-plugins/   BSC compiler plugins (loaded via bsconfig*.json)
 ├── lint/          Validators that fail CI on bad input
 ├── generate/      Output emitters (write files; no validation role)
+├── data/          Committed GENERATED datasets (never hand-edited)
 ├── lib/           Shared CJS helpers (require()'d by the above)
 ├── *.cjs / *.js   One-off tooling (build, ropm, telemetry, changelog, test runner)
 ```
@@ -65,6 +66,34 @@ needs to come first.
   for the full pipeline shape and
   [`resources/icons/README.md`](../resources/icons/README.md) for the
   contributor workflow + per-icon glyph-density rules.
+
+## `scripts/data/` — committed generated datasets
+
+Data derived from an upstream source, normalized, and committed so nothing has to
+fetch (or hand-transcribe) it at runtime. **Never hand-edit a file here** — each one
+carries a `_checksum` over its own data and a `:check` script that fails on tampering.
+
+| File | Generator | Upstream | Consumer |
+|---|---|---|---|
+| [`roku-hardware.json`](data/roku-hardware.json) | [`generate/roku-hardware.js`](generate/roku-hardware.js) | `rokudev/dev-doc` `docs/SPECIFICATIONS/hardware.md` | [`roku-devices.js`](roku-devices.js) |
+
+Each dataset gets three things, and a new one should copy the shape:
+
+1. **`<name>:fetch`** — pulls upstream and re-derives. Network; run by hand or by a
+   scheduled workflow. **Refuses anything it does not recognize** rather than emitting
+   a null: an unparseable cell must fail the sync, not degrade the data silently.
+2. **`<name>:check`** — offline invariant + checksum validation. Joins `npm run lint`,
+   pre-push, and a CI workflow whose path filter already matches the files it reads
+   (`npm run lint:ci-parity` fails if you skip the CI half).
+3. **A scheduled sync workflow** that opens a PR **only when the derived DATA changes**
+   — never when upstream merely edits prose. That gate is the whole reason the
+   automation is worth having rather than being noise: of four upstream edits to
+   `hardware.md` in three months, one was pure SEO metadata.
+
+Why generated rather than hand-typed: the Roku table began as 38 lines of object
+literal. Every entry was correct, and it was still wrong — it keyed on four *digits*,
+so all sixteen letter-prefixed Roku TV / Projector families resolved to `null`
+forever, and it could not notice that Roku had added a new supported device.
 
 ## Linting and formatting
 

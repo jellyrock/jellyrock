@@ -72,6 +72,7 @@
 import fs from 'node:fs';
 import { odc } from 'roku-test-automation';
 import { fetchDeviceInfo } from './device-lock.js';
+import { ramTierFor } from './roku-devices.js';
 
 /**
  * The identity + server-provenance read, as one batched ODC request.
@@ -215,6 +216,25 @@ export function checkSeriesConsistency(first, current) {
 }
 
 /**
+ * The RAM tier for a `model-number`, re-exported from the device dictionary.
+ *
+ * This used to be a 38-entry table typed by hand into this file off Roku's spec. It
+ * was accurate and it was still incomplete in the way hand-typed tables always are:
+ * it keyed on `/^(\\d{4})/`, so every Roku TV and the Projector — sixteen families
+ * from 512 MB to 2 GB — resolved to `null` forever. It also could not notice that
+ * upstream had added a new supported device.
+ *
+ * It is now derived from `scripts/data/roku-hardware.json`, generated from Roku's
+ * published table and kept current by a weekly sync. See `scripts/roku-devices.js`
+ * for the lookup contract and `scripts/generate/roku-hardware.js` for the pipeline.
+ *
+ * Re-exported here rather than repointing every caller, because this is the name the
+ * guard's own API already promised and `readDeviceProvenance` below is its main user.
+ */
+export { deviceFor, describeDevice } from './roku-devices.js';
+export { ramTierFor };
+
+/**
  * Tier 2, device half. Model and Roku OS version, read from ECP.
  *
  * RECORDED, never asserted — and that is a decision with a history. The CI/local
@@ -225,9 +245,14 @@ export function checkSeriesConsistency(first, current) {
  */
 export async function readDeviceProvenance(host) {
   const info = await fetchDeviceInfo(host);
+  const modelNumber = info['model-number'] || undefined;
   return {
     model: info['model-name'] || undefined,
-    modelNumber: info['model-number'] || undefined,
+    modelNumber,
+    // Resolved at RECORD time rather than at read time, so a line written today
+    // still says what tier it was taken on after the table below has grown. The
+    // reader prefers the recorded value and falls back to the table for older lines.
+    ramTier: ramTierFor(modelNumber),
     osVersion: info['software-version'] || undefined,
     osBuild: info['software-build'] || undefined,
   };
@@ -270,7 +295,7 @@ const NOT_FROM_THE_CHECKOUT = new Set(['ENABLE_RTA']);
  *
  * ## What this is for, and what it is not
  *
- * It is NOT the running build's flavour. The app stamps `[debug=… perfTiming=…]`
+ * It is NOT the running build's flavor. The app stamps `[debug=… perfTiming=…]`
  * into its own timing lines and that bracket is authoritative, because it came out
  * of the build that produced the number; `measurements.js` captures it as each
  * sample's `buildFlags`. This read exists to be COMPARED against that bracket: a
