@@ -610,6 +610,39 @@ speak for itself, which is why `appVersion` / `commit` / `dirty` now sit under a
 key beside `deployedFromCheckout` and an `agreesWithDevice` comparison against the app's own
 `[debug=… perfTiming=…]` bracket.
 
+## decision-id: comparison-refuses-identity-reports-drift
+
+**date**: 2026-08-13
+**status**: accepted
+**related-files**: scripts/measure-compare.js, scripts/measurements.js, docs/dev/home-first-paint-performance.md
+
+Tier 3 pairs two measurement series, and the rule for what makes them incomparable is the
+guard's own rule one level up — **assert identity, record everything else**. An identity
+difference REFUSES the comparison (measurement family, screen, server URL, device model, RAM
+tier, build flags, `ENABLE_RTA`): those are two experiments, not two arms of one. Everything
+else is REPORTED and never refused — workload drift, a series crossing the top of the hour, a
+dirty tree, two units of the same model, an n below what the method resolves.
+
+Both symmetric alternatives were considered and both fail. **Refuse on any difference** breaks
+exactly where the tool earns its keep: an arm that rendered 9 rows against 10 is the case a
+human most needs to see, and a tool that swallowed it would have nothing to say about the
+failure it exists for. **Report everything, refuse nothing** fails the other way: a
+`debug=true` arm is +121 ms on a Stick 4K before the change under test does anything, and no
+amount of printing turns that into a comparison. The re-evaluation trigger is a legitimate
+comparison being refused — that means an axis is on the wrong list, and the lists are one
+function (`comparability`) pinned by tests, so moving one is a small diff.
+
+The rank test moved into code for a reason worth recording beside it. Re-deriving the two
+p-values in [`home-first-paint-performance.md`](dev/home-first-paint-performance.md) found
+they were computed by **different methods and neither said so**: the `apiPipeline` pair
+(n=5/6) is genuinely exact at 2/C(11,5) = 0.00433, while the batched-attach pair's
+"U = 0.0, p = 0.0002" is the normal approximation with a continuity correction (z = 3.742 →
+1.83e-4) whose exact value is 2/C(20,10) = 1.08e-5, seventeen times smaller. Both conclusions
+are unaffected — they only get stronger — but a reader deriving one from the other would have
+concluded the arithmetic was broken. So the tool reports which method produced a number, both
+methods are reachable and pinned by tests, and the doc now says which produced its recorded
+value.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
