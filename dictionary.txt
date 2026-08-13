@@ -74,6 +74,7 @@ backtick-wrapped
 backtrace
 Backtrace
 backtrace's
+backends
 cardinality
 backtraces
 Backtraces
@@ -366,6 +367,7 @@ Nygard
 Nygard's
 onboarding
 ODC
+ODC-precondition
 OpenAPI
 opencode
 orchestrator
@@ -492,6 +494,10 @@ rta
 RTA
 RTA's
 RTA-based
+RTA-deployed
+normalizer
+non-RTA
+runnable
 RTL
 runbook
 sandboxed
