@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-08-12
+last-updated: 2026-08-13
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-13 — ci(rta): Measure on-device performance with its own provenance (`npm run measure`)
 - 2026-08-12 — ci(rta): Stop laundering failed fixture requests into fixture facts
 - 2026-08-12 — fix(rta): record what became of a run, and read the baseline
 - 2026-08-11 — fix(rta): compare re-minted credentials by presence so the restore converges
