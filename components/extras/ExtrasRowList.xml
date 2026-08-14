@@ -11,6 +11,19 @@
     <function name="onDestroy" />
     <field id="personHasMedia" type="bool" value="false" alwaysNotify="true" />
     <field id="playlistContentKind" type="string" value="unknown" alwaysNotify="true" />
+    <!-- The extras chain has run to its end. Reset false when a chain starts, set true
+         by the handler that launches nothing further — which differs by item type, since
+         a Movie ends at SpecialFeatures, a MusicArtist at ArtistSimilar, a Person at
+         Series, and everything else at LikeThis.
+
+         There was no way to know this before: the chain is a run of observers with a
+         different tail per type, so a caller could see rows arriving but never that they
+         had stopped. ItemDetails needs exactly that to say when its screen settled, and
+         it is a signal this component should arguably have had regardless.
+
+         NOT alwaysNotify: the reset-to-false is a real transition an observer would
+         otherwise be woken for and have to filter out. Read the value before acting. -->
+    <field id="contentReady" type="bool" value="false" />
     <!-- Target Y for animating the RowList's translation within extrasGrp.
          Observed by ItemDetails.bs which drives the gridAnime Animation.
          Set early (onKeyEvent) so animation starts in sync with the RowList focus animation.

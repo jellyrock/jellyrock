@@ -14,6 +14,7 @@ import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/placeholderImage.bs"
+import "pkg:/source/utils/screenReadiness.bs"
 import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
@@ -212,6 +213,11 @@ sub init()
   ' Observe personHasMedia to show/hide Shuffle button after Person media chain completes
   m.extrasGrid.observeField("personHasMedia", "onPersonHasMediaChanged")
 
+  ' Observe contentReady to close the extras fill in the readiness ledger — the extras
+  ' chain is the largest and most universal of this screen's async fills, so `settled`
+  ' is almost always waiting on this one.
+  m.extrasGrid.observeField("contentReady", "onExtrasContentReady")
+
   ' Observe playlistContentKind to show/hide Watched button and set "Tracks"/"Items" label
   ' after the Playlist items chain completes.
   m.extrasGrid.observeField("playlistContentKind", "onPlaylistContentKindChanged")
@@ -309,6 +315,17 @@ sub loadFromRoute(route as object)
   if not isValid(route) or not isValid(route.routeParams) then return
   params = route.routeParams
   if not isValidAndNotEmpty(params.id) then return
+
+  ' Open the readiness ledger HERE rather than in onItemIdChanged, because the two
+  ' load paths diverge below and only this point precedes both: a deep-link route
+  ' adopts an already-fetched node into itemContent (which paints immediately) and
+  ' onItemIdChanged then skips the fetch entirely, so a ledger opened there would miss
+  ' the deep-link load's paint completely.
+  '
+  ' Only reached on a FRESH mount (onScreenShown calls this only when itemId is empty),
+  ' which is the definition of one load of this screen. A later in-place refresh does
+  ' not re-open the ledger — see `pending`'s post-settle rule in screenReadiness.bs.
+  screenLoad.begin("itemDetails")
 
   if isValid(params.type)
     m.top.itemType = params.type
@@ -834,8 +851,15 @@ sub checkTrailerAvailability(itemId as string)
   ' Pass itemId through the promise context (the no-closure state channel) so a result
   ' that lands after the user navigated to a different item is dropped — content changes
   ' re-run this check, and only the current item's answer should touch trailerAvailable.
+  ' The readiness fill is resolved HERE, in both settlement paths, and NOT in
+  ' onTrailerAvailableChanged: `trailerAvailable` is an ordinary bool field defaulting
+  ' to false, so an item with no trailer assigns false over false and the observer never
+  ' fires at all. Resolving there would leave every trailer-less Movie permanently
+  ' unsettled — a whole item type reported unmeasurable by an instrumentation bug rather
+  ' than by anything about the app.
   promises.chain(fetchAsync(req, "trailerCheck-" + m.trailerCheckSeq.toStr()), { itemId: itemId }).then(sub(res as object, ctx as object)
     if ctx.itemId <> m.top.itemId then return ' stale — content changed under us
+    screenLoad.resolve("trailer")
     if res.ok and isValid(res.json)
       m.top.trailerAvailable = res.json.Count() > 0
     else
@@ -845,6 +869,7 @@ sub checkTrailerAvailability(itemId as string)
   end sub).catch(sub(err as object, ctx as object)
     ' Transport failure / timeout — treat as "no trailer", same as the old callback's else.
     if ctx.itemId <> m.top.itemId then return
+    screenLoad.resolve("trailer")
     m.log.warn("trailer-availability fetch failed", err.reason)
     m.top.trailerAvailable = false
   end sub)
@@ -1156,6 +1181,18 @@ sub onNextUpEpisodeChanged()
   end if
 end sub
 
+' onExtrasContentReady: the extras chain has run to its end — close the ledger's extras
+' fill.
+'
+' Reads the VALUE rather than treating the notification as the signal: the field is
+' reset to false at the start of every chain, so half the callbacks here are the reset
+' rather than the completion. (This is why it is not declared alwaysNotify — an
+' alwaysNotify field would wake this on every re-set of false as well.)
+sub onExtrasContentReady()
+  if not m.extrasGrid.contentReady then return
+  screenLoad.resolve("extras")
+end sub
+
 ' getResumeButtonText: Return "Resume S{n}E{n}" when season and episode numbers are known,
 ' otherwise fall back to plain "Resume".
 ' @param {object} item - nextUpEpisode JellyfinBaseItem node
@@ -1439,6 +1476,7 @@ sub populateDescriptionGroup()
       m.loadLyricsTask.control = "STOP"
       m.loadLyricsTask.itemId = item.id
       m.loadLyricsTask.observeField("content", "onLyricsLoaded")
+      screenLoad.pending("lyrics")
       launchTask(m.loadLyricsTask)
     end if
     return
@@ -2446,7 +2484,26 @@ sub onItemContentChanged()
     ' history so sgRouter.goBack() can't find this (keepAlive-suspended) view on the way
     ' back from the player -> back wrongly bubbles to the scene's Exit dialog. Consumers that
     ' need the item id read m.top.itemId (the route param) or m.top.itemContent.id instead.
+
+    ' The logo is a TEXTURE fill, declared at the call site rather than inside
+    ' setItemLogo — that function has fifteen return points, one per item type, and a
+    ' declaration on each is fifteen chances to add a sixteenth without one.
+    '
+    ' Gated on the uri actually CHANGING: a Poster re-loads only when its uri changes,
+    ' so declaring a fill for an unchanged uri would wait on a load that never starts
+    ' and leave the screen permanently unsettled. Reading either side of the call is
+    ' the only way to know that from out here.
+    '
+    ' The isValid guard mirrors setItemLogo's own first line. Without it this call site
+    ' would fault on a node that function is written to tolerate — an instrumentation
+    ' change that made a screen CRASH where it used to degrade.
+    previousLogoUri = ""
+    if isValid(m.itemLogo) then previousLogoUri = m.itemLogo.uri
     setItemLogo(item)
+    if isValid(m.itemLogo) and m.itemLogo.uri <> previousLogoUri
+      screenLoad.pending("logo", screenLoad.TEXTURE)
+    end if
+
     setDateAdded(item)
 
     setupButtons(item)
@@ -2535,12 +2592,14 @@ sub onItemContentChanged()
       m.loadSeriesResumeTask.control = "STOP"
       m.loadSeriesResumeTask.itemId = item.id
       m.loadSeriesResumeTask.observeField("content", "onSeriesResumeLoaded")
+      screenLoad.pending("seriesResume")
       launchTask(m.loadSeriesResumeTask)
     end if
 
     ' Trailer availability check — re-run on every content change so refreshes get fresh data.
     ' onTrailerAvailableChanged() adds or removes the button when the result arrives.
     if item.type = "Movie" or item.type = "Video" or item.type = "MusicVideo"
+      screenLoad.pending("trailer")
       checkTrailerAvailability(m.top.itemId)
     end if
 
@@ -2550,12 +2609,17 @@ sub onItemContentChanged()
       m.loadSeasonSeriesTask.unobserveField("content")
       m.loadSeasonSeriesTask.itemId = item.seriesId
       m.loadSeasonSeriesTask.observeField("content", "onSeasonSeriesDataLoaded")
+      screenLoad.pending("seasonSeries")
       launchTask(m.loadSeasonSeriesTask)
     end if
 
     ' Load extras rows on first content load only; explicit refresh via onRefreshExtrasData.
     if not m.extrasLoaded
       m.extrasLoaded = true
+      ' The extras chain is the one fill EVERY item type runs, and the largest — it is
+      ' a serial run of up to five task hops. Its completion is `contentReady`, a signal
+      ' ExtrasRowList did not previously expose; see markChainComplete there.
+      screenLoad.pending("extras")
       if item.type = "Person"
         m.extrasGrid.callFunc("loadPersonVideos", item.id)
       else
@@ -2566,6 +2630,19 @@ sub onItemContentChanged()
   end if
 
   m.buttonGrp.visible = true
+
+  ' PAINT. Everything above is the synchronous render, and every async fill this load
+  ' waits on has been declared by now — which is the ledger's first rule, and the reason
+  ' `settled` can never fire in a gap between two declarations.
+  '
+  ' The variant is the ITEM TYPE, and it is what makes a sample attributable: reaching a
+  ' Season means walking THROUGH its Series, so one launch mounts this screen more than
+  ' once and "the first sample in the window" is not the screen that was asked for.
+  if isValid(item) and isValidAndNotEmpty(item.type)
+    screenLoad.paint(item.type)
+  else
+    screenLoad.paint()
+  end if
 
   ' Re-hide description and tracks if extras slider is still active (e.g. returning from sub-screen)
   if m.extrasActive
@@ -3053,6 +3130,14 @@ end sub
 ' unless the logo is very wide/flat, in which case LOGO_MAX_DISPLAY_WIDTH takes precedence.
 sub onLogoLoadStatusChanged()
   if not isValid(m.itemLogo) then return
+
+  ' Both TERMINAL statuses resolve the texture fill. "failed" is as final an answer as
+  ' "ready" — the screen has stopped waiting either way — and a Poster whose image 404s
+  ' would otherwise hold the whole screen unsettled forever. "loading" is skipped
+  ' because it is the transition INTO the wait, not out of it.
+  if m.itemLogo.loadStatus = "ready" or m.itemLogo.loadStatus = "failed"
+    screenLoad.resolve("logo")
+  end if
 
   if m.itemLogo.loadStatus = "ready"
     ' Tint placeholder PNGs (white glyph on transparent BG) with a near-page-BG
@@ -3951,6 +4036,11 @@ end function
 
 ' onSeasonSeriesDataLoaded: Update Season info rows and logo with parent series metadata
 sub onSeasonSeriesDataLoaded()
+  ' At the TOP, ahead of the "no data" early returns below. A fill is resolved when the
+  ' answer ARRIVES, not when the answer turns out to be useful — a Season whose parent
+  ' series returned nothing has still finished waiting, and resolving after the returns
+  ' would leave it pending forever and the screen permanently unsettled.
+  screenLoad.resolve("seasonSeries")
   m.loadSeasonSeriesTask.unobserveField("content")
   content = m.loadSeasonSeriesTask.content
 
@@ -3983,6 +4073,7 @@ end sub
 
 ' onSeriesResumeLoaded: Set nextUpEpisode from seriesResume task result to show/hide the Resume button
 sub onSeriesResumeLoaded()
+  screenLoad.resolve("seriesResume")
   m.loadSeriesResumeTask.unobserveField("content")
   content = m.loadSeriesResumeTask.content
   m.loadSeriesResumeTask.content = []
@@ -4019,6 +4110,9 @@ end sub
 
 ' onLyricsLoaded: Show lyrics in the description area once the async fetch completes (Audio only)
 sub onLyricsLoaded()
+  ' At the TOP — same reason as onSeasonSeriesDataLoaded: the returns below are "no
+  ' usable lyrics", which is still an answer that ended the wait.
+  screenLoad.resolve("lyrics")
   m.loadLyricsTask.unobserveField("content")
   content = m.loadLyricsTask.content
   m.loadLyricsTask.content = []
@@ -4212,6 +4306,7 @@ sub onDestroy()
   m.itemLogo.unobserveField("loadStatus")
   m.itemDetails.unobserveField("renderTracking")
   m.extrasGrid.unobserveField("personHasMedia")
+  m.extrasGrid.unobserveField("contentReady")
   m.extrasGrid.unobserveField("playlistContentKind")
   m.extrasGrid.unobserveField("targetTranslationY")
 

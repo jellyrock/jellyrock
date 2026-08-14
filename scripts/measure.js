@@ -9,6 +9,19 @@
  *   npm run measure -- --window-ms 20000     cap the per-launch watch (default 45 s)
  *   npm run measure -- --arm before          label this series for `npm run measure:compare`
  *   npm run measure -- --screen movies-grid  say which screen, when the family cannot
+ *   npm run measure -- --measurement screen-load --nav movieDetails
+ *                                            drive to a screen after each relaunch
+ *   npm run measure -- --nav seriesDetails --library <id>
+ *                                            …targeting one library, on a server with several
+ *
+ * ## Reaching a screen that is not Home
+ *
+ * `--nav <screen>` runs the navigation declared for that screen in
+ * [`tests/rta/screens.js`](../tests/rta/screens.js) after each relaunch, which makes
+ * measurement the THIRD consumer of that registry after the functional suite and the
+ * store screenshots. Nothing is seeded — this tool still never writes the registry —
+ * so it reaches every screen navigable from a signed-in Home and refuses the ones
+ * that are not.
  *
  * ## Taking the two arms of a comparison
  *
@@ -112,6 +125,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setupRtaEnv, deployRtaBuild, hardRelaunch, ecp } from '../tests/rta/lib/driver.js';
 import { RTA_CONFIG } from '../tests/rta/config.js';
+import { SCREENS } from '../tests/rta/screens.js';
 import { acquireDeviceLock } from './device-lock.js';
 import {
   beginRun,
@@ -155,6 +169,7 @@ try {
     // Each family's DECLARED screen, so the parser can refuse a `--screen` that
     // contradicts one without importing the registry. See `parseMeasureArgs`.
     screens: Object.fromEntries(MEASUREMENTS.map((m) => [m.id, m.screen ?? null])),
+    navScreens: SCREENS.map((s) => ({ name: s.name, state: s.state })),
     defaultMeasurement: MEASUREMENTS[0].id,
   });
 } catch (e) {
@@ -176,6 +191,35 @@ const measurement = measurementById(args.measurement);
 // lines arrived well inside 1 s on `.177`) without doubling the series length.
 const MAX_WINDOW_MS = 45000;
 const QUIET_MS = 6000;
+
+// ─── Navigation, when a screen is not reachable by relaunching ───────────────
+// The screen registry is `tests/rta/screens.js` and this makes measurement its THIRD
+// consumer, after the functional suite and the store screenshots. Deliberately not a
+// registry of its own: those two already drive every nav against a real device on
+// every run, so reusing them means a nav that breaks is caught by a red test rather
+// than by a measurement that quietly stopped reaching the screen it names.
+const navEntry = args.nav ? SCREENS.find((s) => s.name === args.nav) : null;
+
+// The nav context, built WITHOUT a Jellyfin session — which is the whole reason this
+// works inside a tool that does no seeding and points at the developer's own server.
+// The navs read it defensively (`libraryIdFor(ctx?.libraries, …)`, `ctx?.heroIndex || 0`)
+// and `navLibraryByType` falls back to scanning Home tiles by collection type, so the
+// detail screens navigate with nothing supplied.
+//
+// Two consequences worth stating rather than discovering:
+//  - Without `--library`, a server with MORE THAN ONE library of a type makes that scan
+//    ambiguous, and `nav.js` refuses rather than guessing. `--library` is the way out.
+//  - Screens whose landing VIEW is seeded by the functional suite (the music album vs
+//    artist detail pair) are not distinguishable here; whichever view the device has
+//    stickily persisted is the one measured. Warned about below, not silently allowed.
+//  - `osd` / `trickplay` need a live session (`ctx.heroId`) and will fail their first
+//    nav. That failure aborts the series rather than repeating n times — see the loop.
+const collectionTypes = [
+  ...new Set(SCREENS.filter((s) => s.view).map((s) => s.view.collectionType)),
+];
+const navContext = args.library
+  ? { libraries: collectionTypes.map((collectionType) => ({ collectionType, id: args.library })) }
+  : undefined;
 
 setupRtaEnv(); // throws if ROKU_IP / ROKU_PASSWORD are missing — fail before touching anything
 
@@ -336,6 +380,31 @@ if (!args.deploy) {
       'describe this checkout, not necessarily what ran (pass --deploy to make them the same thing).',
   );
 }
+if (navEntry) {
+  console.log(
+    `[measure] driving to "${navEntry.name}" after each relaunch, via tests/rta/screens.js` +
+      (args.library ? ` (library ${args.library})` : ''),
+  );
+  if (navEntry.view) {
+    // The functional suite seeds this screen's landing view so its capture is
+    // deterministic. Nothing is seeded here, so the library opens on whatever view the
+    // device last persisted. For most screens that changes the WORKLOAD (which is
+    // recorded, and visible in a comparison). For the two music-detail screens it
+    // changes WHICH SCREEN — both run the same nav and are told apart only by the
+    // seeded landing — so there the variant the app stamps is the only thing that says
+    // what was actually measured. Worth reading before quoting a music number.
+    const musical = navEntry.view.collectionType === 'music';
+    console.log(
+      `[measure] ⚠ "${navEntry.name}" has a seeded landing view in the functional suite ` +
+        `(${navEntry.view.collectionType}/${navEntry.view.landing}); nothing is seeded here, so ` +
+        'the library opens on whatever view the device last persisted' +
+        (musical
+          ? ' — and for the music detail screens that decides WHICH screen you measured. Check ' +
+            'the recorded `variant` before quoting this number.'
+          : '.'),
+    );
+  }
+}
 if (!measurement.grounded) {
   console.log(
     `[measure] ⚠ the ${measurement.id} pattern has never matched a real device line — ` +
@@ -373,10 +442,42 @@ for (let i = 0; i < args.samples; i++) {
   lastMatchAt = 0;
   await hardRelaunch();
 
+  // Drive to the screen INSIDE the window, not before it. The nav's final gate waits
+  // on a node the screen paints, so it necessarily returns AFTER the paint line has
+  // been emitted — a window opened when the nav returns would start by missing the
+  // very thing it was opened to catch.
+  //
+  // The intermediate screens a chained nav passes through emit their own lines and are
+  // filed as their own samples, told apart by the `variant` the app stamps. That is
+  // the shape, not a defect: reaching a Season means loading its Series first, and both
+  // loads really happened.
+  if (navEntry?.nav) {
+    try {
+      await navEntry.nav(navContext);
+    } catch (e) {
+      // Aborts the SERIES rather than counting a failed launch and trying again: a nav
+      // that cannot reach its screen once will not reach it on the next four attempts,
+      // and n launches of a screen that never loaded is a long way to travel to record
+      // nothing. `diagnosedError` has already attached what the device was showing.
+      await refuse(
+        `--nav ${args.nav} failed on launch ${i + 1}: ${e.message}\n` +
+          '  The series is abandoned rather than retried — a nav that cannot reach its screen\n' +
+          '  once will not reach it on the remaining launches.',
+      );
+    }
+  }
+
   // Watch until the console goes quiet after a complete sample, or the cap. `from`
   // already excludes `exitMs`, so the deadline adds only the boot it still has to
   // wait through plus the watch budget itself.
-  const deadline = from + windowMs + RTA_CONFIG.bootMs;
+  //
+  // The nav's own wall clock is added on top, because it is spent INSIDE the window and
+  // would otherwise eat the watch budget: an episode detail is four screens deep, and
+  // on `.177` that walk alone outlasts the 45 s cap the relaunch-only mode was sized
+  // for. Measured from this launch rather than assumed, so a slow nav lengthens only
+  // its own window.
+  const navMs = navEntry?.nav ? Date.now() - from : 0;
+  const deadline = from + navMs + windowMs + RTA_CONFIG.bootMs;
   let assembled = [];
   while (Date.now() < deadline) {
     await sleep(1000);
@@ -386,7 +487,7 @@ for (let i = 0; i < args.samples; i++) {
   }
 
   assembled.forEach((sample, indexInLaunch) => {
-    const { workload, timings } = splitWorkload(measurement, sample.fields);
+    const { workload, timings, dimensions } = splitWorkload(measurement, sample.fields);
     samples.push({
       launch: i,
       // WHEN this sample's window opened. Per sample rather than per series,
@@ -404,6 +505,12 @@ for (let i = 0; i < args.samples; i++) {
       buildFlags: sample.buildFlags,
       workload,
       timings,
+      // What the app said this sample WAS — its screen, and which variant of it. Empty
+      // for the two legacy families, which emit no non-numeric field. This is the only
+      // thing that can tell two samples from the same launch apart: a chained
+      // navigation mounts one screen several times (a Season is reached through its
+      // Series), so `indexInLaunch` orders them but cannot say which is which.
+      dimensions,
     });
   });
 
@@ -455,15 +562,46 @@ if (!consistency.ok && consistency.drifted.length) {
 }
 
 const cold = samples.filter((s) => s.indexInLaunch === 0 && s.complete);
-const values = cold
-  .map((s) => s.timings[measurement.primary] ?? s.workload[measurement.primary])
-  .filter((v) => Number.isFinite(v))
-  .sort((a, b) => a - b);
-const median = values.length
-  ? values.length % 2
-    ? values[(values.length - 1) / 2]
-    : (values[values.length / 2 - 1] + values[values.length / 2]) / 2
-  : null;
+
+const medianOf = (raw) => {
+  const v = raw.filter((n) => Number.isFinite(n)).sort((a, b) => a - b);
+  if (!v.length) return null;
+  return v.length % 2 ? v[(v.length - 1) / 2] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2;
+};
+
+const median = medianOf(
+  cold.map((s) => s.timings[measurement.primary] ?? s.workload[measurement.primary]),
+);
+
+// A median for EVERY timing the family emitted, each with the number of samples that
+// actually carried it — not just the primary.
+//
+// This is what makes a multi-milestone family honest. A screen emits a paint time and a
+// settle time; reporting only the primary would leave the second milestone with no
+// number at all, and — worse — an optional line that stopped appearing would look
+// exactly like one that was never declared. `n` beside each median is the difference
+// between "settled at 3104 ms" and "settled at 3104 ms in three of five runs", and only
+// the second of those can be acted on.
+//
+// Over `cold` alone, matching the primary: a later run in the same launch is a warm
+// refresh and is recorded beside the cold sample, never folded into it (trap 3).
+const timingKeys = [...new Set(cold.flatMap((s) => Object.keys(s.timings)))].sort();
+const medians = Object.fromEntries(
+  timingKeys.map((k) => {
+    const values = cold.map((s) => s.timings[k]).filter((v) => Number.isFinite(v));
+    return [k, { median: medianOf(values), samples: values.length }];
+  }),
+);
+
+// How many cold samples carried each DECLARED line. The required lines are what
+// `complete` already summarises; this exists for the optional ones, where a milestone
+// can go missing without anything else in the record changing shape. Declared-line
+// keyed rather than observed-line keyed, so a line that appeared in ZERO samples is
+// reported as 0 rather than being absent from the report — which is the whole
+// distinction between "unmeasurable" and "not asked for".
+const lineCoverage = Object.fromEntries(
+  measurement.lines.map((l) => [l.key, cold.filter((s) => s.lines.includes(l.key)).length]),
+);
 
 // Did the build that produced these samples agree with the checkout? The app's own
 // bracket is authoritative — it came out of the running build — so a disagreement
@@ -490,6 +628,27 @@ if (provenance.checkout.agreesWithDevice === false) {
 const usable = consistency.ok && cold.length > 0;
 const outcome = usable ? RUN_OUTCOMES.PASSED : RUN_OUTCOMES.BLOCKED;
 
+// A series that matched NOTHING has to say what the console did carry, or the two
+// causes are indistinguishable from the outside: a pattern that is wrong, and an app
+// that is silent. Reporting only "0 samples" leaves whoever reads it to re-run the
+// whole series by hand with a socket open — which is the manual procedure this tool
+// exists to retire, reintroduced at exactly the moment the tool is least useful.
+//
+// Written to the run dir rather than the accumulator: it is a diagnostic for ONE failed
+// run, not a series anyone will join later, and `run.dir` is truncated at open anyway.
+// Only on the zero-sample path, so a healthy series never pays for it.
+if (!cold.length && lines.length) {
+  const dumpPath = path.join(run.dir, 'console-window.log');
+  fs.writeFileSync(
+    dumpPath,
+    lines.map((l) => `${new Date(l.at).toISOString()} ${l.raw}`).join('\n') + '\n',
+  );
+  console.error(
+    `[measure] the console carried ${lines.length} line(s) and none matched ${measurement.id}. ` +
+      `Verbatim, with timestamps: ${path.relative(repoRoot, dumpPath)}`,
+  );
+}
+
 const endedAt = new Date().toISOString();
 const record = {
   measurement: measurement.id,
@@ -507,7 +666,18 @@ const record = {
   // `--screen` that disagrees with one — so this order is belt and braces rather
   // than a second policy. See that refusal for why the reverse precedence let the
   // tool record a screen the app was never on.
-  screen: measurement.screen ?? args.screen ?? null,
+  // Precedence: the FAMILY, then what the APP said, then what the operator typed. The
+  // middle term is new and it outranks the flag for the same reason `enableRta` is
+  // derived rather than assumed — the app reporting its own screen name is evidence,
+  // while `--screen` is an assertion nobody checks. Taken from the first sample that
+  // carried one; `checkSeriesConsistency` already refuses a series whose identity moved
+  // under it, and a series that changed SCREEN mid-run would have to have changed
+  // launches too.
+  screen:
+    measurement.screen ??
+    samples.find((s) => s.dimensions?.screen)?.dimensions.screen ??
+    args.screen ??
+    null,
   arm: args.arm ?? null,
   // The same selection keys the run ledger carries, so a comparison can pick its
   // two arms out of this file alone rather than joining it against `runs.jsonl`
@@ -537,6 +707,8 @@ const record = {
   requested: args.samples,
   coldSamples: cold.length,
   median,
+  medians,
+  lineCoverage,
   samples,
 };
 
@@ -556,6 +728,26 @@ fs.appendFileSync(outPath, `${JSON.stringify(record)}\n`);
 console.log(
   `\n[measure] ${measurement.primary} median ${median ?? '—'} ms over ${cold.length}/${args.samples} cold samples`,
 );
+// Every other timing the family emitted, each with its own sample count. Printed
+// rather than left in the record because the second milestone is the reason a
+// multi-line family exists, and a number nobody sees on the terminal is a number
+// nobody checks.
+for (const key of timingKeys) {
+  if (key === measurement.primary) continue;
+  const { median: m, samples: n } = medians[key];
+  console.log(
+    `[measure] ${key} median ${m ?? '—'} ms over ${n}/${cold.length} cold samples` +
+      (n < cold.length ? '  ⚠ absent from some samples — reported, not averaged away' : ''),
+  );
+}
+const missingLines = measurement.lines.filter((l) => lineCoverage[l.key] < cold.length);
+if (cold.length && missingLines.length) {
+  console.log(
+    `[measure] ⚠ line coverage: ${missingLines
+      .map((l) => `${l.key} ${lineCoverage[l.key]}/${cold.length}`)
+      .join(' · ')} — a milestone the app did not emit is NOT the same as one it emitted as zero.`,
+  );
+}
 console.log(`[measure] record: ${path.relative(repoRoot, outPath)}`);
 if (cold.length < args.samples) {
   console.log(
@@ -570,6 +762,30 @@ if (!cold.length) {
         : ` The ${measurement.id} pattern has never matched a real device line, so this is at ` +
           'least as likely to be the pattern as the app.'),
   );
+  // The FIRST thing to suspect on a zero-sample run, said first, because the guard
+  // that would normally answer it cannot: `agreesWithDevice` is derived from the
+  // `[debug=… perfTiming=…]` bracket carried BY A SAMPLE, so a run with no samples
+  // records it as `null` — the check meant to catch "the device is not running this
+  // checkout" is blind in exactly the case that most needs it, and no amount of
+  // reading the record afterwards recovers the answer.
+  //
+  // Not hypothetical: this cost three consecutive runs and a build inspection to
+  // diagnose. Newly-added instrumentation is precisely the case where the resident
+  // build and the checkout differ, and `--deploy` is the one-word fix.
+  //
+  // Note what would NOT have helped, which is why the hint is worth its lines: the
+  // flags AGREED. `agreesWithDevice` compares `bs_const` only, so a device running an
+  // older build of the same flavour reads as agreeing — it cannot see stale code, only
+  // a stale flavour.
+  if (!args.deploy) {
+    console.error(
+      '[measure] ⚠ this run did NOT deploy, so it measured whatever build was already resident.\n' +
+        '  If the instrumentation you are measuring is new in this checkout, the device is very\n' +
+        '  likely running a build that predates it. Re-run with --deploy before concluding the\n' +
+        '  pattern or the app is at fault — `agreesWithDevice` cannot tell you, because it is\n' +
+        '  derived from a sample and there were none.',
+    );
+  }
 }
 
 // A series whose identity drifted, or which produced no sample at all, is not a

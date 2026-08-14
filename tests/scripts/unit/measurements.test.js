@@ -205,6 +205,82 @@ describe('assembleSamples', () => {
   });
 });
 
+/**
+ * One `screen-load` sample as `source/utils/screenReadiness.bs` builds it, with
+ * roku-log's real prefix and trailing padding.
+ *
+ * ⚠️ Written from the emitting source, NOT captured off a device — the family's
+ * `grounded: false` says the same thing, and `measure.js` prints it. A test written
+ * from the emitter proves the pattern matches what THIS repo emits; only a device can
+ * prove the device emits it. That is exactly the distinction the header above draws,
+ * and the reason the Home fixture is verbatim capture instead.
+ */
+const SCREEN_LOAD_LINES = [
+  'INFO file:///x/source/utils/screenReadiness.bs:118 screen-load paint - screen itemDetails variant Movie ms 812 [debug=false perfTiming=true]  ',
+  'INFO file:///x/source/utils/screenReadiness.bs:212 screen-load settled - screen itemDetails variant Movie ms 3104 fills 3 [debug=false perfTiming=true]  ',
+  'INFO file:///x/source/utils/screenReadiness.bs:213 screen-load split - content 2 contentMs 2704 slowestContent extras 2310 texture 1 textureMs 640 slowestTexture logo 640  ',
+];
+
+describe('the screen-load family', () => {
+  const load = measurementById('screen-load');
+
+  it('assembles paint + settled + split into ONE sample', () => {
+    const samples = assembleSamples(load, SCREEN_LOAD_LINES);
+    expect(samples).toHaveLength(1);
+    expect(samples[0].complete).toBe(true);
+    expect(samples[0].lines).toEqual(['paint', 'settled', 'split']);
+  });
+
+  it('keeps a screen that painted but never settled, marked complete', () => {
+    // The whole reason `paint` is the only required line. A fill that never resolved
+    // must produce a sample carrying a paint time and NO settle time — not a dropped
+    // sample, which would make a broken screen look like a device that ran fewer
+    // times, and not an incomplete one, which would fall out of the median entirely.
+    const [sample] = assembleSamples(load, [SCREEN_LOAD_LINES[0]]);
+    expect(sample.complete).toBe(true);
+    expect(sample.fields.paintMs).toBe(812);
+    expect(sample.fields).not.toHaveProperty('settledMs');
+  });
+
+  it('splits two mounts of one screen into two samples, told apart by variant', () => {
+    // Reaching a Season means loading its Series first, so ONE launch legitimately
+    // mounts this screen twice. Both loads really happened; what makes them usable is
+    // that the app names which is which.
+    const chained = [
+      'INFO file:///x/screenReadiness.bs:118 screen-load paint - screen itemDetails variant Series ms 900 [debug=false perfTiming=true]  ',
+      'INFO file:///x/screenReadiness.bs:118 screen-load paint - screen itemDetails variant Season ms 700 [debug=false perfTiming=true]  ',
+    ];
+    const samples = assembleSamples(load, chained);
+    expect(samples).toHaveLength(2);
+    expect(samples.map((s) => s.fields.variant)).toEqual(['Series', 'Season']);
+  });
+
+  it('reads the build flags the app stamped into the paint line', () => {
+    const [sample] = assembleSamples(load, SCREEN_LOAD_LINES);
+    expect(sample.buildFlags).toEqual({ debug: false, perfTiming: true });
+  });
+
+  it('matches a screen with no variant and no slowest fill', () => {
+    // `screenReadiness.bs` writes the literal `none` rather than an empty token: an
+    // empty one collapses the two spaces around it and shifts every field after it,
+    // so the pattern would match the wrong group rather than fail.
+    const [sample] = assembleSamples(load, [
+      'INFO file:///x/screenReadiness.bs:118 screen-load paint - screen settings variant none ms 240 [debug=false perfTiming=true]  ',
+      'INFO file:///x/screenReadiness.bs:213 screen-load split - content 0 contentMs 0 slowestContent none 0 texture 0 textureMs 0 slowestTexture none 0  ',
+    ]);
+    expect(sample.fields.screen).toBe('settings');
+    expect(sample.fields.variant).toBe('none');
+    expect(sample.fields.slowestContent).toBe('none');
+  });
+
+  it('is declared with no screen, because the app names its own', () => {
+    // Unlike `item-grid`, whose null screen is a GAP only `--screen` can fill. Here the
+    // screen arrives as evidence in the line rather than as an operator's assertion.
+    expect(load.screen).toBeNull();
+    expect(measurementIds()).toContain('screen-load');
+  });
+});
+
 describe('splitWorkload', () => {
   it('separates what the run had to DO from how long it took', () => {
     const [first] = assembleSamples(home, CAPTURED);
@@ -214,6 +290,41 @@ describe('splitWorkload', () => {
     expect(workload).toEqual({ rows: 10 });
     expect(timings.totalMs).toBe(1500);
     expect(timings).not.toHaveProperty('rows');
+  });
+
+  it('leaves a family that emits only numbers with no dimensions', () => {
+    const [first] = assembleSamples(home, CAPTURED);
+    expect(splitWorkload(home, first.fields).dimensions).toEqual({});
+  });
+
+  it('routes a NON-NUMERIC field to dimensions, out of both halves', () => {
+    const load = measurementById('screen-load');
+    const [sample] = assembleSamples(load, SCREEN_LOAD_LINES);
+    const { workload, timings, dimensions } = splitWorkload(load, sample.fields);
+
+    // The three names the app stamps. Subtracting two of these is meaningless, and
+    // leaving them in `timings` would hand `measure-compare.js` string operands for a
+    // numeric delta and a Mann-Whitney.
+    expect(dimensions).toEqual({
+      screen: 'itemDetails',
+      variant: 'Movie',
+      slowestContent: 'extras',
+      slowestTexture: 'logo',
+    });
+    expect(timings).not.toHaveProperty('screen');
+    expect(workload).not.toHaveProperty('variant');
+
+    // Counts are workload, durations are timings — the family still has to say which,
+    // because both are numbers.
+    expect(workload).toEqual({ fills: 3, contentFills: 2, textureFills: 1 });
+    expect(timings).toEqual({
+      paintMs: 812,
+      settledMs: 3104,
+      contentMs: 2704,
+      slowestContentMs: 2310,
+      textureMs: 640,
+      slowestTextureMs: 640,
+    });
   });
 });
 

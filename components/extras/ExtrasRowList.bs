@@ -173,6 +173,30 @@ sub cancelInFlightChain()
   m.LoadChannelProgramsTask.unobserveField("content")
 end sub
 
+' markChainComplete: the extras chain has run to its end — no further task will be
+' launched for this load.
+'
+' Called from the FOUR handlers that launch nothing after them, which is the whole
+' inventory of the chain's tails:
+'
+'   onSpecialFeaturesLoaded  Movie / Video / Recording
+'   onLikeThisLoaded         every type in NO_SPECIAL_FEATURES (its else branch)
+'   onArtistSimilarLoaded    MusicArtist, which never reaches LikeThis
+'   onSeriesLoaded           Person, via loadPersonVideos' separate chain
+'
+' Deliberately marked at the tails rather than derived from a counter of in-flight
+' tasks: a counter has to be decremented at the END of every handler to know whether
+' that handler launched a successor, which is a line in all twenty-odd of them instead
+' of four — more places to forget, and each one silent when forgotten.
+'
+' The failure mode when a tail IS missed is loud rather than silent: the caller's
+' readiness ledger never settles, so `npm run measure` reports that item type as
+' producing no settled line instead of publishing a plausible wrong number. That is
+' the same partition `screenReadiness.bs` documents — unmeasurable beats averaged.
+sub markChainComplete()
+  m.top.contentReady = true
+end sub
+
 ' loadParts: Start the extras loading chain appropriate for the item type.
 '
 ' Chain by type:
@@ -190,6 +214,7 @@ end sub
 ' m.top.type must be set before calling this function (done by ShowScenes.bs).
 sub loadParts(data as object)
   cancelInFlightChain()
+  m.top.contentReady = false
   m.rowHeights = []
   m.lastFocusedRowIndex = -1
   m.top.translation = [0, EXTRAS_ROWLIST_DEFAULT_Y]
@@ -339,6 +364,7 @@ end sub
 
 sub loadPersonVideos(personId)
   cancelInFlightChain()
+  m.top.contentReady = false
   m.rowHeights = []
   m.lastFocusedRowIndex = -1
   m.top.translation = [0, EXTRAS_ROWLIST_DEFAULT_Y]
@@ -617,6 +643,9 @@ sub onLikeThisLoaded()
     m.SpecialFeaturesTask.observeField("content", "onSpecialFeaturesLoaded")
     m.SpecialFeaturesTask.itemId = m.top.parentId
     launchTask(m.SpecialFeaturesTask)
+  else
+    ' The chain's tail for every type that has no special features — see markChainComplete.
+    markChainComplete()
   end if
 end sub
 
@@ -631,6 +660,9 @@ function onSpecialFeaturesLoaded()
     removeRow(m.rowSpecialFeatures)
     m.rowSpecialFeatures = invalid
   end if
+
+  ' The chain's tail for Movie / Video / Recording — see markChainComplete.
+  markChainComplete()
 
   return m.top.content
 end function
@@ -684,6 +716,11 @@ sub onSeriesLoaded()
   ' Final authoritative signal — covers the false case (no media at all) and the Series-only case.
   ' onPersonHasMediaChanged guards against adding a duplicate button if already signalled true above.
   m.top.personHasMedia = isValid(m.rowMovies) or isValid(m.rowTvShows) or isValid(m.rowSeries)
+
+  ' The chain's tail for Person — see markChainComplete. AFTER personHasMedia, so a
+  ' caller that treats "extras done" as permission to read the shuffle answer finds it
+  ' already written rather than one observer hop behind.
+  markChainComplete()
 end sub
 
 ' onArtistAlbumsLoaded: Build "Albums" row then chain to Appears On (MusicArtist only)
@@ -757,6 +794,9 @@ sub onArtistSimilarLoaded()
     removeRow(m.rowLikeThis)
     m.rowLikeThis = invalid
   end if
+
+  ' The chain's tail for MusicArtist, which never reaches LikeThis — see markChainComplete.
+  markChainComplete()
 end sub
 
 ' onAlbumSongsLoaded: Build "Songs" row then chain to More Albums by Artist → More Like This (MusicAlbum only)

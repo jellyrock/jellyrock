@@ -151,3 +151,71 @@ describe('--screen may not contradict a family that declares one', () => {
     expect(withScreens(['--screen', 'home']).screen).toBe('home');
   });
 });
+
+describe('--nav, which is what makes anything but Home reachable', () => {
+  // The registry reduced to what the parser needs. Mirrors `tests/rta/screens.js`:
+  // most screens are reached from a signed-in Home, and two are reached by SEEDING
+  // the registry into a signed-out state — which `measure` never does.
+  const withNav = (argv) =>
+    parseMeasureArgs(argv, {
+      measurementIds: ['home-latest-rows', 'screen-load'],
+      screens: { 'home-latest-rows': 'home', 'screen-load': null },
+      navScreens: [
+        { name: 'home', state: 'home' },
+        { name: 'movieDetails', state: 'home' },
+        { name: 'userSelect', state: 'userSelect' },
+      ],
+      defaultMeasurement: 'home-latest-rows',
+    });
+
+  it('accepts a screen the registry knows', () => {
+    expect(withNav(['--nav', 'movieDetails']).nav).toBe('movieDetails');
+  });
+
+  it('REFUSES a screen the registry does not have, naming the ones it does', () => {
+    // A typo'd screen name would otherwise navigate nowhere and record a series taken
+    // on Home under a name that says otherwise.
+    expect(() => withNav(['--nav', 'movieDetials'])).toThrow(MeasureArgError);
+    expect(() => withNav(['--nav', 'movieDetials'])).toThrow(/unknown screen/);
+    expect(() => withNav(['--nav', 'movieDetials'])).toThrow(/movieDetails/);
+  });
+
+  it('REFUSES a screen that can only be reached by seeding the registry', () => {
+    // `measure` writes no registry and restores none, so a signed-out screen is not
+    // "hard" for it — it is impossible. Refused with the reason rather than attempted
+    // and timed out on a screen that was never going to appear.
+    expect(() => withNav(['--nav', 'userSelect'])).toThrow(/seeding the registry/);
+  });
+
+  it('REFUSES --screen alongside --nav', () => {
+    // Driving there is evidence; typing it is an assertion. Once the tool has driven,
+    // a hand-typed screen can only agree redundantly or contradict silently.
+    expect(() => withNav(['--nav', 'movieDetails', '--screen', 'home'])).toThrow(
+      /may not be combined with --nav/,
+    );
+  });
+
+  it('REFUSES a --nav carrying the selector grammar', () => {
+    expect(() => withNav(['--nav', 'a,b'])).toThrow(/may not contain/);
+  });
+});
+
+describe('--library', () => {
+  const withNav = (argv) =>
+    parseMeasureArgs(argv, {
+      measurementIds: ['screen-load'],
+      navScreens: [{ name: 'movieDetails', state: 'home' }],
+      defaultMeasurement: 'screen-load',
+    });
+
+  it('threads an explicit library id through to the nav', () => {
+    // Not hypothetical: the first real run of `--nav movieDetails` against a developer
+    // server refused, because that server has FOUR movie libraries and `nav.js` will
+    // not guess between them.
+    expect(withNav(['--nav', 'movieDetails', '--library', 'abc123']).library).toBe('abc123');
+  });
+
+  it('REFUSES --library without --nav, where it selects nothing', () => {
+    expect(() => withNav(['--library', 'abc123'])).toThrow(/only means something with --nav/);
+  });
+});

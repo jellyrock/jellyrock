@@ -3,8 +3,26 @@
  * truth for what `npm run measure` can sample, and how a console line becomes a
  * number.
  *
- * This is the measurement-side twin of [`tests/rta/screens.js`](../tests/rta/screens.js):
- * add an instrumented screen by adding ONE entry here, not by writing a parser.
+ * This is the measurement-side twin of [`tests/rta/screens.js`](../tests/rta/screens.js).
+ *
+ * ## Adding an instrumented screen costs NOTHING here
+ *
+ * The two legacy families below are per-COMPONENT, because they were written against
+ * lines the app was already emitting and those lines do not share a shape. A screen
+ * instrumented with the readiness ledger
+ * ([`source/utils/screenReadiness.bs`](../source/utils/screenReadiness.bs)) does share
+ * one — the emit is uniform by construction, and the screen's name travels IN the line
+ * as a dimension. So `screen-load` is one entry that covers every such screen, present
+ * and future, and instrumenting the next one is app-side work only.
+ *
+ * That inverts the note below rather than contradicting it: a registry beats a parser
+ * because the EXISTING lines disagree about their shape. A new shape that agrees with
+ * itself does not need an entry per instance, only per shape.
+ *
+ * The two remain complementary rather than competing, and answer different questions:
+ * `home-latest-rows` and `item-grid` say where the time went INSIDE one loader (the
+ * wait/emit/xform split), while `screen-load` says when the SCREEN became usable and
+ * when it stopped changing. Neither is derivable from the other.
  *
  * ## Why a registry rather than a parser for Home
  *
@@ -213,6 +231,59 @@ export const MEASUREMENTS = Object.freeze([
       }),
     ]),
   }),
+  Object.freeze({
+    id: 'screen-load',
+    title: 'Screen readiness (paint + settle)',
+    doc: 'docs/dev/measuring-performance.md',
+    // NULL because this family covers EVERY instrumented screen — and unlike
+    // `item-grid` above, that is not a gap waiting to be filled by `--screen`. The
+    // app emits its own screen name into the line, so the screen arrives as a
+    // DIMENSION of the sample rather than as something the operator asserts from
+    // outside. That is strictly better evidence, and it is the same argument that
+    // made `enableRta` derived rather than assumed in `measure.js`.
+    screen: null,
+    // Written from `source/utils/screenReadiness.bs`, which is authoritative for the
+    // MESSAGE (it is the format string) but has not yet been seen on the wire.
+    grounded: false,
+    primary: 'paintMs',
+    // Counts of fills, not durations. `fills` is the total; the two class counts sum
+    // to it. A sample with more fills than another did more work, which is exactly
+    // what tier 2 means by workload.
+    workload: Object.freeze(['fills', 'contentFills', 'textureFills']),
+    lines: Object.freeze([
+      Object.freeze({
+        key: 'paint',
+        // The only REQUIRED line, and deliberately so. A screen that paints and then
+        // never settles has an async fill that never landed, and that must show up as
+        // a sample with a paint time and no settle time — not as a dropped sample
+        // (which would make a broken screen look like a device that ran fewer times)
+        // and not as a silently shorter series.
+        required: true,
+        pattern:
+          /screen-load paint - screen (?<screen>\S+) variant (?<variant>\S+) ms (?<paintMs>\d+)/,
+      }),
+      Object.freeze({
+        key: 'settled',
+        required: false,
+        pattern: /screen-load settled -.*? ms (?<settledMs>\d+) fills (?<fills>\d+)/,
+      }),
+      Object.freeze({
+        // The per-class breakdown, split off `settled` only because roku-log caps a
+        // call at nine arguments — see the note in screenReadiness.bs. It is one
+        // sample with the line above, not a second measurement.
+        //
+        // ⚠️ `contentMs` / `textureMs` are SUMS OVER CONCURRENT FILLS and are NOT
+        // shares of `settledMs`. The fills overlap, so the sums can exceed the wall
+        // clock — observed on `.177`: a Series detail settled in 845 ms with
+        // `contentMs 878`. Do not render either as a percentage of the load.
+        // `slowestContentMs` IS bounded by `settledMs`, and is the one to act on.
+        key: 'split',
+        required: false,
+        pattern:
+          /screen-load split - content (?<contentFills>\d+) contentMs (?<contentMs>\d+) slowestContent (?<slowestContent>\S+) (?<slowestContentMs>\d+) texture (?<textureFills>\d+) textureMs (?<textureMs>\d+) slowestTexture (?<slowestTexture>\S+) (?<slowestTextureMs>\d+)/,
+      }),
+    ]),
+  }),
 ]);
 
 /** Look a family up by id; `undefined` when it is not registered. */
@@ -312,19 +383,33 @@ export function assembleSamples(measurement, rawLines) {
 }
 
 /**
- * Split a sample's fields into the tier-2 halves: what the run had to do, and
- * how long it took.
+ * Split a sample's fields into the tier-2 halves — what the run had to do, and how
+ * long it took — plus the DIMENSIONS that say which run it was.
  *
- * The guard's whole shape rests on this being explicit rather than inferred —
- * tier 2 RECORDS workload and never asserts on it, and tier 3 prints the workload
- * delta beside the timing delta so drift is visible instead of refused.
+ * The workload/timing split rests on being explicit rather than inferred: tier 2
+ * RECORDS workload and never asserts on it, and tier 3 prints the workload delta
+ * beside the timing delta so drift is visible instead of refused.
+ *
+ * The third bucket is inferred, and can be: a dimension is any field whose value is
+ * not a number. `screen-load` emits `screen itemDetails`, `variant Movie` and
+ * `slowestContent extras` alongside its milliseconds, and none of the three is a
+ * quantity — subtracting two of them is meaningless, so leaving them in `timings`
+ * would hand `measure:compare` string operands for a numeric delta and a
+ * Mann-Whitney. No per-family declaration is needed for the same reason the split
+ * above needs one: "is this a count or a duration" genuinely requires the family to
+ * say, while "is this a number at all" is decidable here and cannot drift.
+ *
+ * Families that emit no non-numeric field get an empty object, which is why the two
+ * pre-existing ones are unaffected.
  */
 export function splitWorkload(measurement, fields = {}) {
   const workload = {};
   const timings = {};
+  const dimensions = {};
   for (const [k, v] of Object.entries(fields)) {
-    if (measurement.workload.includes(k)) workload[k] = v;
+    if (typeof v !== 'number') dimensions[k] = v;
+    else if (measurement.workload.includes(k)) workload[k] = v;
     else timings[k] = v;
   }
-  return { workload, timings };
+  return { workload, timings, dimensions };
 }
