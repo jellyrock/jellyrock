@@ -91,8 +91,12 @@ sub onScreenShown()
   ' screen permanently unsettled. The wait being measured is the router's show, not the
   ' focus assignments underneath it.
   '
-  ' Silent on every later call: a keepAlive resume re-runs this long after the open run
-  ' settled, and `resolve` ignores a run that is over — see screenReadiness.bs.
+  ' Silent on every later call: `/search` is keepAlive, so a back-resume re-runs this long
+  ' after the open run settled, and `resolve` ignores a run that is over — see
+  ' screenReadiness.bs. The one case it does NOT swallow is a resume onto a query run still
+  ' in flight, where it warns and returns without counting; left unguarded on purpose, since
+  ' nothing is mis-timed by it and the warning is the only way that ordering would ever be
+  ' seen. Same reasoning as `onResultRowsReady`.
   screenLoad.resolve("focus")
 
   ' Voice search arrives as route.context.query — pre-populate the search box and focus its
@@ -254,6 +258,35 @@ sub searchMedias()
 end sub
 
 sub loadResults()
+  results = m.searchTask.results
+
+  ' A DETECTOR, not a guard — it reports the invariant breaking and then carries on.
+  '
+  ' The invariant: a delivery that arrives here answers the query the box currently holds.
+  ' If it ever does not, three things go wrong at once — the screen shows a prefix of what
+  ' was typed, `results` closes on a clock that started at the LATER keystroke (a short
+  ' number filed against the wrong query), and the `unobserveField` below tears down the
+  ' observer the live query still needs.
+  '
+  ' It holds because of WHERE `SearchTask` publishes: `searchMedia` runs four fetches and
+  ' assigns `m.top.results` exactly once, as its last statement. So the `control = "stop"`
+  ' that every keystroke issues lands before that assignment for any query still in flight,
+  ' and a superseded query does not deliver AT ALL — the exposure is only the notification
+  ' already queued when the keystroke arrives, which is one field-write wide.
+  '
+  ' Measured on `.177`, 12 keystrokes at 550 ms against a query answering in ~570 ms (so
+  ' every one superseded the last): 12 launches produced 6 deliveries, and all 6 answered
+  ' the current query. The stop is what makes the race unreachable in practice — not luck,
+  ' and not this line. So this does NOT drop the delivery: acting on a window nothing has
+  ' entered would be a behaviour change, and dropping it would also destroy the evidence
+  ' that it happened. If a `superseded search delivery` line ever appears, the invariant
+  ' above broke — most likely because something moved the publish earlier or made it
+  ' incremental — and a fix is then justified on its own evidence rather than on this
+  ' comment. See the followup in `docs/progress.md`.
+  if isValid(results) and isValid(results.query) and results.query <> m.top.searchAlpha
+    m.log.info("superseded search delivery - answered", results.query, "current", m.top.searchAlpha)
+  end if
+
   ' The server work is done. Resolved at the TOP because this handler has an early return
   ' on the no-results path. Measured on `.177`, this fill is nearly the whole wait: the
   ' task runs FOUR round trips serially (`/items`, `/persons`, `/artists`,
@@ -265,9 +298,19 @@ sub loadResults()
   stopLoadingSpinner()
 
   ' Declared before the assignment that triggers it, not after: `SearchRow.getData` runs
-  ' off an `onChange`, and whether Scene Graph dispatches that inline or a turn later is
-  ' not something to assume — declaring first is correct under both, and the fill's own
-  ' duration is what says which it was.
+  ' off an `onChange`, and declaring first is correct whether Scene Graph dispatches that
+  ' inline or a turn later.
+  '
+  ' The BUILD is answered: it runs inline inside the assignment below. Across every series
+  ' taken on `.177` the `rows` fill measures ~46 ms and `settled` lands within 1 ms of
+  ' `paint`, so that 46 ms sits between THIS line and paint rather than after it — which
+  ' means `paint` for a query already contains the row building, and the paint/settle split
+  ' says nothing for this variant. The actionable split is the two fills: server (~1.3 s
+  ' cold) against row-building (~46 ms).
+  '
+  ' The MARK's delivery is the half that moves — at or just before paint in one series, 1 ms
+  ' after it in another — and that is the whole reason `onResultRowsReady` asks the ledger
+  ' before resolving rather than assuming it is still the same run.
   screenLoad.pending("rows")
 
   m.searchSelect.itemdata = m.searchTask.results
@@ -292,6 +335,15 @@ end sub
 ' Reads the VALUE rather than treating the notification as the signal: SearchRow clears the
 ' field at the start of every build, so half the callbacks here are the clear rather than
 ' the completion.
+'
+' Deliberately UNGUARDED against arriving late. The mark is delivered by a CHILD, so a
+' keystroke landing between the build and the mark would open the next run before it lands,
+' and this would then resolve a fill that run never declared. `resolve` already handles that
+' safely on its own — it warns and returns WITHOUT counting, and the next run still declares
+' and closes its own `rows` — so the only thing a guard here would buy is silence, and the
+' warning is the one signal that would ever tell anyone the race is real. Unobserved on
+' `.177` across two keystroke intervals; if `screen-load unbalanced` ever names `rows`, that
+' is the race, and the tripwire is worth more than the suppressed edge case.
 sub onResultRowsReady()
   if not m.searchSelect.contentReady then return
   screenLoad.resolve("rows")

@@ -74,6 +74,14 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 ' reason the ledger is worth having over per-screen clocks: adding a screen is a
 ' handful of ordinary-looking statements, and `scripts/measurements.js` never changes.
 '
+' ⚠️ That holds for the `screenLoad.*` calls themselves and NOT for a fill whose signal
+' has to cross a component boundary. A child that cannot reach the screen's ledger marks
+' a field instead — `ExtrasRowList.contentReady`, `SearchRow.contentReady` — and the field
+' write plus the parent's `observeField` are ordinary app code that ships. The cost is
+' small and thread-local (both ends are on the render thread, so no rendezvous), but it is
+' not zero and it is not compiled out, so a cross-component fill is the one kind that is
+' worth declaring only when the milestone is genuinely worth having.
+'
 ' State lives on the CALLER's `m` (these are namespaced free functions, so `m` is the
 ' calling component's), which is what keeps two screens loading at once from sharing a
 ' ledger — a chained navigation mounts a fresh component per screen, so each gets its own.
