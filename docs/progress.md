@@ -22,19 +22,11 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Currently running
 
-Measurement platform Phase 1 — the screen readiness ledger, on branch
-`feat/screen-readiness-ledger` and not yet merged. A screen declares its pending async
-fills and `paint` / `settled` fall out (ADR 0027); `npm run measure -- --nav <screen>`
-drives there through `tests/rta/screens.js`. Under review: the second pass closed the
-chained-navigation gaps (identity on every emitted line, an identity-keyed assembler, a
-multi-mount refusal with `--variant`) and promoted `component` / `variant` / `nav` /
-`library` to record level so `measure:compare`'s gates can see them. Next: `/pr`, then
-Phase 2 instruments `settings` and `OSD`.
-
 ## Recently shipped
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-14 — ci(rta): Measure when a screen paints and when it settles
 - 2026-08-14 — **Root-caused and fixed: `npm run measure -- --deploy` deployed a build it never built.** `deployRtaBuild()` sideloads the `build/` DIRECTORY, and every bsconfig in the repo writes to that same directory — so `--deploy` shipped whatever npm script ran last. Every sibling pairs the deploy with a build in its npm script (`test:rta` = `npm run build && …`, `screenshots:capture` = `npm run build:prod && …`); `measure` was the only entry point offering `--deploy` without one. It cost four device runs across two sessions: once it shipped a build predating the instrumentation being grounded (zero samples, blamed on the pattern), and once — straight after `npm run test:unit` — it shipped the Rooibos TEST build, whose ODC refusal then advised re-running with the `--deploy` that had just caused it. `--deploy` now builds this checkout first and refuses to deploy a stale `build/` if that build fails.
 - 2026-08-13 — ci(rta): Compare two measurement arms with `measure:compare`
 - 2026-08-13 — ci(rta): Measure on-device performance with its own provenance (`npm run measure`)
