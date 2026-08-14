@@ -88,7 +88,18 @@ export const SERIES_KEYS = Object.freeze({
   server: (r) => r?.provenance?.server?.url ?? null,
   serverVersion: (r) => r?.provenance?.server?.version ?? null,
   appVersion: (r) => r?.provenance?.checkout?.appVersion ?? null,
+  // WHICH NPM SCRIPT launched the run (`process.env.npm_lifecycle_event`), written by
+  // `runProvenance()`. NOT the item type — see `screenVariant` below, and do not merge
+  // the two: they are unrelated senses of one word and the record carries both.
   variant: (r) => r?.variant ?? null,
+  // WHICH kind of thing the screen loaded — the item type for `itemDetails`, the library
+  // type for a grid. This is the field that separates two screens backed by ONE component,
+  // and without it `screen` alone is too coarse for a component-level family.
+  screenVariant: (r) => r?.screenVariant ?? null,
+  // WHICH component emitted the lines. One component backs many screens (`itemDetails`
+  // backs all nine `*Details` entries), so this is deliberately NOT `screen`.
+  component: (r) => r?.component ?? null,
+  library: (r) => r?.library ?? null,
 });
 
 /** `[debug=… perfTiming=…]` as the running build stamped it, as a stable string. */
@@ -313,6 +324,15 @@ export function comparability(a, b) {
   for (const [key, what] of [
     ['measurement', 'measurement family'],
     ['screen', 'screen'],
+    // A component-level family makes `screen` alone too coarse: `itemDetails` backs nine
+    // screens, so a Movie series and a Series series agree on component and would agree
+    // on every other key here. `variant` is the field that separates them, and it is
+    // checked at BOTH levels — mixed within an arm, and differing across arms — for the
+    // same reason `screen` is.
+    ['screenVariant', 'item variant'],
+    // On a server with several libraries of one type, two arms that opened different
+    // ones are two workloads wearing one name. Nothing else in the record can say.
+    ['library', 'library id'],
     ['model', 'device model'],
     ['tier', 'device RAM tier'],
   ]) {

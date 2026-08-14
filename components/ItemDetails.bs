@@ -2490,18 +2490,25 @@ sub onItemContentChanged()
     ' declaration on each is fifteen chances to add a sixteenth without one.
     '
     ' Gated on the uri actually CHANGING: a Poster re-loads only when its uri changes,
-    ' so declaring a fill for an unchanged uri would wait on a load that never starts
-    ' and leave the screen permanently unsettled. Reading either side of the call is
-    ' the only way to know that from out here.
+    ' so a fill left declared for an unchanged uri would wait on a load that never
+    ' starts and leave the screen permanently unsettled. Whether it changed is knowable
+    ' only AFTER the call, which is why this is declare-then-cancel rather than the
+    ' obvious check-then-declare: if a warm texture cache can deliver `loadStatus`
+    ' synchronously during the assignment, declaring afterwards would let the resolve
+    ' outrun its own pending — stranding the screen unsettled and emitting a spurious
+    ' "unbalanced" warning. Roku documents the `loadStatus` progression but not whether
+    ' a same-thread observer is delivered synchronously, so this ordering is correct
+    ' under both answers instead of betting on one.
     '
     ' The isValid guard mirrors setItemLogo's own first line. Without it this call site
     ' would fault on a node that function is written to tolerate — an instrumentation
     ' change that made a screen CRASH where it used to degrade.
     previousLogoUri = ""
     if isValid(m.itemLogo) then previousLogoUri = m.itemLogo.uri
+    screenLoad.pending("logo", screenLoad.TEXTURE)
     setItemLogo(item)
-    if isValid(m.itemLogo) and m.itemLogo.uri <> previousLogoUri
-      screenLoad.pending("logo", screenLoad.TEXTURE)
+    if not isValid(m.itemLogo) or m.itemLogo.uri = previousLogoUri
+      screenLoad.cancel("logo")
     end if
 
     setDateAdded(item)
@@ -4067,7 +4074,15 @@ sub onSeasonSeriesDataLoaded()
 
   ' Update logo using series data if the season didn't carry parentLogoItemId
   if isValid(m.itemLogo) and not m.itemLogo.visible
+    ' A SECOND logo load for the same screen, so it gets its own declared fill by the
+    ' same declare-then-cancel rule as the first. Without one, its `loadStatus` resolves
+    ' a "logo" fill that is already closed and trips the unbalanced warning on every
+    ' Season whose own poster never rendered. Where the ledger has already settled both
+    ' calls are no-ops, which is the ordinary case on a refresh.
+    previousLogoUri = m.itemLogo.uri
+    screenLoad.pending("logo", screenLoad.TEXTURE)
     setItemLogo(m.seasonSeriesData)
+    if m.itemLogo.uri = previousLogoUri then screenLoad.cancel("logo")
   end if
 end sub
 

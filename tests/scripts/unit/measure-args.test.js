@@ -219,3 +219,29 @@ describe('--library', () => {
     expect(() => withNav(['--library', 'abc123'])).toThrow(/only means something with --nav/);
   });
 });
+
+describe('--variant, which says WHICH mount a chained nav meant', () => {
+  const withNav = (argv) =>
+    parseMeasureArgs(argv, {
+      measurementIds: ['screen-load'],
+      navScreens: [{ name: 'seasonDetails', state: 'home' }],
+      defaultMeasurement: 'screen-load',
+    });
+
+  it('accepts a variant', () => {
+    expect(withNav(['--nav', 'seasonDetails', '--variant', 'Season']).variant).toBe('Season');
+  });
+
+  it('REFUSES a variant carrying the selector grammar', () => {
+    // Same hygiene as --arm / --screen: it becomes a recorded selector, so a label the
+    // `measure:compare` grammar cannot name would record fine and never select again.
+    expect(() => withNav(['--variant', 'a=b'])).toThrow(/may not contain/);
+  });
+
+  it('REFUSES a --library carrying the selector grammar', () => {
+    // This was the one value flag that skipped checkLabel, and it is recorded now.
+    expect(() => withNav(['--nav', 'seasonDetails', '--library', 'a,b'])).toThrow(
+      /may not contain/,
+    );
+  });
+});

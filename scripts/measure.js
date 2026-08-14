@@ -5,7 +5,7 @@
  *   npm run measure -- -n 30                 a real series
  *   npm run measure -- --measurement item-grid
  *   npm run measure -- --server http://192.168.1.2:8098   assert tier 1
- *   npm run measure -- --deploy              sideload first (default: use what is on the device)
+ *   npm run measure -- --deploy              BUILD this checkout, then sideload it
  *   npm run measure -- --window-ms 20000     cap the per-launch watch (default 45 s)
  *   npm run measure -- --arm before          label this series for `npm run measure:compare`
  *   npm run measure -- --screen movies-grid  say which screen, when the family cannot
@@ -13,6 +13,8 @@
  *                                            drive to a screen after each relaunch
  *   npm run measure -- --nav seriesDetails --library <id>
  *                                            …targeting one library, on a server with several
+ *   npm run measure -- --nav seasonDetails --variant Season
+ *                                            …saying which mount, when the nav is chained
  *
  * ## Reaching a screen that is not Home
  *
@@ -22,6 +24,13 @@
  * store screenshots. Nothing is seeded — this tool still never writes the registry —
  * so it reaches every screen navigable from a signed-in Home and refuses the ones
  * that are not.
+ *
+ * A CHAINED nav mounts one component several times — reaching a Season loads its Series
+ * first — and those loads all really happened, so all of them are recorded. What the
+ * tool will not do is guess which one you meant: a launch carrying more than one variant
+ * publishes no median until `--variant` names one, and `--variant` is refused if no
+ * sample carried it. `--library <id>` binds to the target screen's own collection type,
+ * never to every library type at once.
  *
  * ## Taking the two arms of a comparison
  *
@@ -38,9 +47,12 @@
  * nothing else, so ODC is a hard precondition, not a nicety: without it the tool
  * refuses before taking a sample rather than recording a series it cannot attribute.
  *
- * `--deploy` guarantees that state. The default does NOT — it measures whatever is
- * resident, which in practice means "whatever the last `npm run test:rta` or
- * `npm run measure -- --deploy` left there". That was an unstated assumption in the
+ * `--deploy` guarantees that state — it builds this checkout and sideloads the result,
+ * because every bsconfig writes to the same `build/` directory and deploying without
+ * building ships whatever npm script ran last (including a Rooibos TEST build, which has
+ * no ODC at all). The default does NOT — it measures whatever is resident, which in
+ * practice means "whatever the last `npm run test:rta` or `npm run measure -- --deploy`
+ * left there". That was an unstated assumption in the
  * first revision and it is worth being blunt about, because it cuts both ways: the
  * mode that avoids re-deploying is the mode where the tool knows least about what
  * it is measuring. See the provenance note below.
@@ -119,6 +131,7 @@
  * threshold cannot separate a regression from a busy server — and a flaky perf
  * gate teaches people to ignore it. This tool records; it never judges.
  */
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
@@ -214,11 +227,18 @@ const navEntry = args.nav ? SCREENS.find((s) => s.name === args.nav) : null;
 //    stickily persisted is the one measured. Warned about below, not silently allowed.
 //  - `osd` / `trickplay` need a live session (`ctx.heroId`) and will fail their first
 //    nav. That failure aborts the series rather than repeating n times — see the loop.
-const collectionTypes = [
-  ...new Set(SCREENS.filter((s) => s.view).map((s) => s.view.collectionType)),
-];
+//
+// `--library` is bound to the collection type the TARGET SCREEN declares, not mapped
+// onto every type in the registry. The blanket form handed a movies id to a TV nav
+// without a word — `--nav tvLibraryShows --library <a-movie-id>` would have opened the
+// wrong library and recorded it as the right one, which is the exact class of silent
+// mis-attribution this tool exists to refuse. A screen with no declared `view`
+// (`movieDetails`, `personDetails`, `libraryOptions`) navigates to a movies library by
+// construction, so that is the honest default, and it is stated rather than assumed.
+const DEFAULT_NAV_COLLECTION_TYPE = 'movies';
+const navCollectionType = navEntry?.view?.collectionType ?? DEFAULT_NAV_COLLECTION_TYPE;
 const navContext = args.library
-  ? { libraries: collectionTypes.map((collectionType) => ({ collectionType, id: args.library })) }
+  ? { libraries: [{ collectionType: navCollectionType, id: args.library }] }
   : undefined;
 
 setupRtaEnv(); // throws if ROKU_IP / ROKU_PASSWORD are missing — fail before touching anything
@@ -246,6 +266,28 @@ for (const event of ['uncaughtException', 'unhandledRejection']) {
 const run = beginRun({ lock, run: 'measure' });
 
 if (args.deploy) {
+  // BUILD, then deploy. `deployRtaBuild()` sideloads the `build/` DIRECTORY and does not
+  // produce it, and every bsconfig in the repo writes to that same directory — so
+  // `build/` holds whatever npm script ran last, which may be a Rooibos TEST build or a
+  // build from before the change being measured. Every sibling consumer pairs the deploy
+  // with a build in its npm script (`test:rta` = `npm run build && …`,
+  // `screenshots:capture` = `npm run build:prod && …`); `measure` was the one entry point
+  // that offered `--deploy` without one, and the flag's own help says "sideload first",
+  // which nobody reads as "sideload whatever happens to be lying around".
+  //
+  // This is not hypothetical and it is not cheap: it cost four device runs and a build
+  // inspection across two sessions. Once it shipped a build predating the instrumentation
+  // being grounded (zero samples, blamed on the pattern), and once — straight after a
+  // `npm run test:unit` — it shipped the TEST build, whose refusal message then advised
+  // re-running with the `--deploy` that had just caused it.
+  console.log('[measure] building this checkout ...');
+  const built = spawnSync('npm', ['run', 'build'], { stdio: 'inherit', shell: false });
+  if (built.status !== 0) {
+    console.error('\n[measure] the build failed — refusing to deploy a stale `build/`.');
+    run.close(RUN_OUTCOMES.BLOCKED);
+    await lock.release();
+    process.exit(1);
+  }
   console.log('[measure] deploying (ENABLE_RTA) ...');
   await deployRtaBuild();
 } else {
@@ -471,13 +513,18 @@ for (let i = 0; i < args.samples; i++) {
   // already excludes `exitMs`, so the deadline adds only the boot it still has to
   // wait through plus the watch budget itself.
   //
-  // The nav's own wall clock is added on top, because it is spent INSIDE the window and
-  // would otherwise eat the watch budget: an episode detail is four screens deep, and
-  // on `.177` that walk alone outlasts the 45 s cap the relaunch-only mode was sized
-  // for. Measured from this launch rather than assumed, so a slow nav lengthens only
-  // its own window.
-  const navMs = navEntry?.nav ? Date.now() - from : 0;
-  const deadline = from + navMs + windowMs + RTA_CONFIG.bootMs;
+  // The time already spent getting here is added on top, because it is spent INSIDE the
+  // window and would otherwise eat the watch budget: an episode detail is four screens
+  // deep, and on `.177` that walk alone outlasts the 45 s cap the relaunch-only mode was
+  // sized for. Note this span is the RELAUNCH plus the nav (less `exitMs`, which `from`
+  // already excluded), not the nav alone — and the deadline adds `bootMs` again below.
+  // Both make the window longer than strictly needed, which is the safe direction: the
+  // quiet-break ends a healthy launch early anyway, so the only thing a generous cap
+  // changes is how long a MISBEHAVING device is given before being reported.
+  // Measured from this launch rather than assumed, so a slow nav lengthens only its own
+  // window.
+  const spentReachingScreen = navEntry?.nav ? Date.now() - from : 0;
+  const deadline = from + spentReachingScreen + windowMs + RTA_CONFIG.bootMs;
   let assembled = [];
   while (Date.now() < deadline) {
     await sleep(1000);
@@ -561,7 +608,51 @@ if (!consistency.ok && consistency.drifted.length) {
   }
 }
 
-const cold = samples.filter((s) => s.indexInLaunch === 0 && s.complete);
+// ─── Which samples the report is about ───────────────────────────────────────
+// Every distinct variant the app stamped, per launch. More than one means the launch
+// mounted the same component several times — which is what a CHAINED navigation does:
+// reaching a Season loads its Series first, and an Episode loads both.
+const variantsPerLaunch = new Map();
+for (const s of samples) {
+  const v = s.dimensions?.variant;
+  if (!v) continue;
+  if (!variantsPerLaunch.has(s.launch)) variantsPerLaunch.set(s.launch, new Set());
+  variantsPerLaunch.get(s.launch).add(v);
+}
+const observedVariants = [...new Set(samples.map((s) => s.dimensions?.variant).filter(Boolean))];
+const multiMount = [...variantsPerLaunch.values()].some((set) => set.size > 1);
+
+// A launch that mounted more than one screen has no obvious "the" sample, and picking
+// one by POSITION is how the tool would confidently report the wrong screen: for
+// `--nav episodeDetails`, `indexInLaunch === 0` is the Series. Rather than guess — by
+// position or by "the last one", which is a heuristic that breaks the first time an
+// intermediate screen re-mounts — refuse the median and say what to pass. This is the
+// same posture the tool already takes on an ambiguous library, and it is the Charter's
+// "never silently averaged" applied to the one case that can actually produce it.
+let selectionRefusal = null;
+if (multiMount && !args.variant) {
+  selectionRefusal =
+    `this navigation mounted more than one screen per launch (${observedVariants.join(', ')}), ` +
+    'so no sample is "the" one. Re-run with --variant <one of those> to say which you meant.';
+} else if (args.variant && !observedVariants.includes(args.variant)) {
+  // Checkable, and therefore checked — the difference between this flag and `--screen`.
+  selectionRefusal =
+    `--variant ${args.variant} matched no sample. The app stamped: ` +
+    `${observedVariants.length ? observedVariants.join(', ') : '(none)'}.`;
+}
+
+// With `--variant`, the FIRST matching sample of each launch; without it, the first
+// mount, which is what every single-mount screen has always meant.
+const coldOf = (launch) =>
+  samples.find(
+    (s) =>
+      s.launch === launch &&
+      s.complete &&
+      (args.variant ? s.dimensions?.variant === args.variant : s.indexInLaunch === 0),
+  );
+const cold = selectionRefusal
+  ? []
+  : [...new Set(samples.map((s) => s.launch))].map(coldOf).filter(Boolean);
 
 const medianOf = (raw) => {
   const v = raw.filter((n) => Number.isFinite(n)).sort((a, b) => a - b);
@@ -625,7 +716,11 @@ if (provenance.checkout.agreesWithDevice === false) {
 // than left to a reader to infer from `coldSamples: 0`, because this file is the
 // one with a reader coming and it has to be self-describing about whether a line is
 // usable. Same partition, same vocabulary as the run ledger.
-const usable = consistency.ok && cold.length > 0;
+// A run whose samples cannot be attributed to ONE screen is not a measurement of that
+// screen, so it folds as a NON-sample exactly like a drifted identity. The samples are
+// still written — they are real loads and `--variant` can select one on a re-read — but
+// nothing is published from them.
+const usable = consistency.ok && cold.length > 0 && !selectionRefusal;
 const outcome = usable ? RUN_OUTCOMES.PASSED : RUN_OUTCOMES.BLOCKED;
 
 // A series that matched NOTHING has to say what the console did carry, or the two
@@ -655,29 +750,49 @@ const record = {
   title: measurement.title,
   grounded: measurement.grounded,
   primary: measurement.primary,
-  // WHERE the app was, and WHICH side of a comparison this is. Both are selection
-  // keys for tier 3 and neither can be recovered afterwards: `--screen` is the only
-  // thing that can say which library grid was open, and two arms of an uncommitted
-  // change are otherwise identical in every recorded field. `null` when not given,
-  // never omitted — an absent key would silently drop the line out of a `screen ===
-  // null` selection, which is the ledger's own documented failure mode.
+  // WHICH SCREEN, and WHICH side of a comparison this is. Both are selection keys for
+  // tier 3 and neither can be recovered afterwards.
   //
-  // The FAMILY wins over the flag, and `parseMeasureArgs` has already refused a
-  // `--screen` that disagrees with one — so this order is belt and braces rather
-  // than a second policy. See that refusal for why the reverse precedence let the
-  // tool record a screen the app was never on.
-  // Precedence: the FAMILY, then what the APP said, then what the operator typed. The
-  // middle term is new and it outranks the flag for the same reason `enableRta` is
-  // derived rather than assumed — the app reporting its own screen name is evidence,
-  // while `--screen` is an assertion nobody checks. Taken from the first sample that
-  // carried one; `checkSeriesConsistency` already refuses a series whose identity moved
-  // under it, and a series that changed SCREEN mid-run would have to have changed
-  // launches too.
-  screen:
-    measurement.screen ??
-    samples.find((s) => s.dimensions?.screen)?.dimensions.screen ??
-    args.screen ??
-    null,
+  // Precedence: the FAMILY's declared screen, then `--nav`, then `--screen`. `--nav` is
+  // EVIDENCE rather than an assertion — the tool drove there and the nav's own waitFor
+  // gate gave up if the screen never rendered — which is why it outranks the flag a
+  // human types and nothing checks.
+  //
+  // Deliberately NOT the app's own name: the app knows its COMPONENT (`itemDetails`),
+  // which backs all nine `*Details` entries in the screen registry, and it cannot know
+  // which of them was navigated to. Recording that as `screen` cost real discriminating
+  // power — a `movieDetails` arm and a `seriesDetails` arm both read `itemDetails` and
+  // passed `measure:compare`'s mixed-population gate cleanly, which is strictly worse
+  // than the operator-typed `--screen` it replaced. The component is recorded below,
+  // under its own name.
+  screen: measurement.screen ?? args.nav ?? args.screen ?? null,
+  // The component the app named, and which KIND of thing it loaded. Promoted from the
+  // samples to the record because they are selectors: `measure-compare.js` has read
+  // `record.variant` since it was written and nothing had ever written it, so the one
+  // field that can separate two item types on one component was dead on arrival.
+  //
+  // From the first sample carrying one, the same rule as the build flags — a series
+  // whose identity moved under it is already refused by `checkSeriesConsistency`.
+  component: samples.find((s) => s.dimensions?.component)?.dimensions.component ?? null,
+  // NULL when the launch mounted several and nobody said which — naming the first one
+  // here would be the same wrong answer the median refuses to publish, written into the
+  // field a comparison selects on. `observedVariants` still lists everything that ran.
+  // `screenVariant`, NOT `variant`: `runProvenance()` already spreads a `variant` of its
+  // own — `process.env.npm_lifecycle_event`, i.e. WHICH NPM SCRIPT launched the run — and
+  // it is spread BELOW this, so a field named `variant` here is silently overwritten by
+  // the string "measure". Caught on hardware: the record read `variant: "measure"` while
+  // the samples plainly carried `Series` and `Season`. Two unrelated senses of one word,
+  // one of them load-bearing for the run ledger, so the new one takes the distinct name.
+  screenVariant:
+    args.variant ??
+    (selectionRefusal
+      ? null
+      : (samples.find((s) => s.dimensions?.variant)?.dimensions.variant ?? null)),
+  // How the screen was reached, and against which library. Neither is recoverable after
+  // the fact, and on the server that motivated `--library` (four movie libraries) a
+  // comparison cannot otherwise show that both arms opened the same one.
+  nav: args.nav ?? null,
+  library: args.library ?? null,
   arm: args.arm ?? null,
   // The same selection keys the run ledger carries, so a comparison can pick its
   // two arms out of this file alone rather than joining it against `runs.jsonl`
@@ -705,6 +820,10 @@ const record = {
   seriesConsistency: consistency,
   provenance,
   requested: args.samples,
+  // Why no median, when there is none. `coldSamples: 0` alone cannot tell "the app
+  // emitted nothing" from "the app emitted several screens and nobody said which".
+  selectionRefusal,
+  observedVariants,
   coldSamples: cold.length,
   median,
   medians,
@@ -725,8 +844,17 @@ const outPath = ledgerPath('measurements.jsonl');
 fs.mkdirSync(path.dirname(outPath), { recursive: true });
 fs.appendFileSync(outPath, `${JSON.stringify(record)}\n`);
 
+if (selectionRefusal) {
+  console.error(`\n[measure] ⚠ NO MEDIAN PUBLISHED — ${selectionRefusal}`);
+  console.error(
+    `[measure]   ${samples.length} sample(s) were recorded and are in the record; nothing is lost.\n` +
+      '[measure]   Refused rather than picked by position: for a chained navigation the first\n' +
+      '[measure]   mount is the screen you passed THROUGH, not the one you asked for.',
+  );
+}
 console.log(
-  `\n[measure] ${measurement.primary} median ${median ?? '—'} ms over ${cold.length}/${args.samples} cold samples`,
+  `\n[measure] ${measurement.primary} median ${median ?? '—'} ms over ${cold.length}/${args.samples} cold samples` +
+    (args.variant ? ` · variant ${args.variant}` : ''),
 );
 // Every other timing the family emitted, each with its own sample count. Printed
 // rather than left in the record because the second milestone is the reason a

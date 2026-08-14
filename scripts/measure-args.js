@@ -69,6 +69,12 @@ const VALUE_FLAGS = new Map([
   // an ambiguous match rather than guessing — correct, but it refuses on exactly the
   // large multi-library servers a perf measurement most wants to run against.
   ['--library', 'library'],
+  // WHICH mount to report, when one launch produced several. A chained navigation
+  // mounts one component more than once (a Season is reached THROUGH its Series), so
+  // `indexInLaunch === 0` is the wrong screen. Unlike `--screen` this is CHECKABLE —
+  // `measure.js` refuses a value no sample carried — so it is evidence rather than an
+  // assertion, which is the same distinction that made the family's screen derived.
+  ['--variant', 'variant'],
 ]);
 
 /** Flags that take no value. */
@@ -266,6 +272,10 @@ export function parseMeasureArgs(
   }
 
   if (raw.library !== undefined) {
+    // Through the same label hygiene as every other recorded value: `--library` is
+    // recorded in the measurement record and is therefore a selector like the rest, and
+    // it was the one value flag that skipped this.
+    checkLabel('--library', raw.library);
     if (raw.nav === undefined) {
       throw new MeasureArgError(
         '--library only means something with --nav — it selects which library the nav opens, ' +
@@ -273,6 +283,11 @@ export function parseMeasureArgs(
       );
     }
     args.library = raw.library;
+  }
+
+  if (raw.variant !== undefined) {
+    checkLabel('--variant', raw.variant);
+    args.variant = raw.variant;
   }
 
   return args;

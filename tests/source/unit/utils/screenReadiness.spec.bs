@@ -1,0 +1,265 @@
+import "pkg:/source/utils/screenReadiness.bs"
+
+namespace tests
+
+  ' Clear the ledger the module actually writes to.
+  '
+  ' It CANNOT be done from a suite method: a class method's `m` is the class instance,
+  ' while `screenLoad.*` resolves `m` from the enclosing scope — so `m.screenLoad = invalid`
+  ' inside the suite clears a different AA and leaves the real ledger standing. A free
+  ' function in this namespace resolves `m` by the same rule the module does, so this
+  ' reaches the same one.
+  '
+  ' Needed because the module's `m` outlives a test. Most tests here open with `begin()`,
+  ' which discards whatever was there — but the one that asserts "paint with no ledger
+  ' does nothing" must NOT call `begin()`, and without this it inherited the previous
+  ' test's ledger and failed. That is the leak `tests/CLAUDE.md` warns about, arriving
+  ' from an `m` that is not the suite's.
+  sub clearScreenLoadLedger()
+    m.screenLoad = invalid
+    m.screenLoadLog = invalid
+  end sub
+
+  ' The readiness ledger's state machine — see `docs/adr/0027-screen-readiness-ledger.md`.
+  '
+  ' These are the invariants the whole subsystem rests on, and they were prose-only until
+  ' this suite existed. That matters more than usual here: the module's entire thesis is
+  ' that instrumenting the NEXT screen is cheap, so every screen added from here on
+  ' inherits whatever these rules actually do rather than what the header says they do.
+  '
+  ' The ledger keeps its state on the CALLER's `m`, and inside a suite that is NOT this
+  ' instance — see `clearScreenLoadLedger` above. So every read goes through
+  ' `screenLoad.state()`, which resolves `m` in the same place the writes did. Reading the
+  ' state rather than the emitted log line is deliberate: the log is roku-log's to format,
+  ' and asserting on its text would make this suite fail on a harmless wording change
+  ' while telling us nothing about the state machine.
+  '
+  ' NOTE: every assertion below depends on `perfTiming`, which the manifest sets true and
+  ' `scripts/harden-prod-manifest.js` forces false for release artifacts. In a build with
+  ' it off these functions compile to empty subs and `state()` returns invalid —
+  ' which is the intended production shape, and why the first test asserts the ledger
+  ' exists at all rather than silently passing on a no-op.
+  @suite("screenReadiness ledger")
+  class ScreenReadinessTests extends tests.BaseTestSuite
+
+    ' Per TEST, never per suite: the ledger is one mutable AA that outlives a test, so a
+    ' leaked one lets the next test read its neighbour's fills. Most tests here open with
+    ' `begin()` and would not notice — but the one asserting "paint with no ledger does
+    ' nothing" must not call `begin()`, and it failed on exactly that leftover before this
+    ' existed.
+    protected override sub beforeEach()
+      super.beforeEach()
+      clearScreenLoadLedger()
+    end sub
+
+    protected override sub afterEach()
+      clearScreenLoadLedger()
+      super.afterEach()
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("begin() / paint()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("opens a ledger carrying the component name")
+    function _()
+      screenLoad.begin("itemDetails")
+      m.assertNotInvalid(screenLoad.state())
+      m.assertEqual(screenLoad.state().component, "itemDetails")
+      m.assertFalse(screenLoad.state().painted)
+      m.assertFalse(screenLoad.state().settled)
+    end function
+
+    @it("settles immediately when nothing was declared")
+    function _()
+      screenLoad.begin("settings")
+      screenLoad.paint("none")
+      m.assertTrue(screenLoad.state().painted)
+      m.assertTrue(screenLoad.state().settled)
+      m.assertEqual(screenLoad.state().fills, 0)
+    end function
+
+    @it("does NOT settle while a fill is still open")
+    function _()
+      screenLoad.begin("itemDetails")
+      screenLoad.pending("extras")
+      screenLoad.paint("Movie")
+      m.assertTrue(screenLoad.state().painted)
+      m.assertFalse(screenLoad.state().settled)
+    end function
+
+    @it("records the variant paint was given")
+    function _()
+      screenLoad.begin("itemDetails")
+      screenLoad.paint("Series")
+      m.assertEqual(screenLoad.state().variant, "Series")
+    end function
+
+    @it("paints once — a second paint cannot restart or re-report the run")
+    function _()
+      screenLoad.begin("itemDetails")
+      screenLoad.paint("Movie")
+      screenLoad.paint("Series")
+      ' The variant of the FIRST paint stands; a later one would silently re-attribute a
+      ' sample that has already been published.
+      m.assertEqual(screenLoad.state().variant, "Movie")
+    end function
+
+    @it("ignores paint entirely when no ledger was opened")
+    function _()
+      ' The no-ledger case warns rather than faulting. It must not create state either —
+      ' a ledger conjured by `paint` would have no start time to measure from.
+      screenLoad.paint("Movie")
+      m.assertInvalid(screenLoad.state())
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("pending() / resolve()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("settles once the last declared fill resolves")
+    function _()
+      screenLoad.begin("itemDetails")
+      screenLoad.pending("extras")
+      screenLoad.pending("trailer")
+      screenLoad.paint("Movie")
+      screenLoad.resolve("extras")
+      m.assertFalse(screenLoad.state().settled)
+      screenLoad.resolve("trailer")
+      m.assertTrue(screenLoad.state().settled)
+      m.assertEqual(screenLoad.state().fills, 2)
+    end function
+
+    @it("counts a fill against its declared class, content by default")
+    function _()
+      screenLoad.begin("itemDetails")
+      screenLoad.pending("extras")
+      screenLoad.pending("logo", screenLoad.TEXTURE)
+      screenLoad.paint("Movie")
+      screenLoad.resolve("extras")
+      screenLoad.resolve("logo")
+      m.assertEqual(screenLoad.state().contentCount, 1)
+      m.assertEqual(screenLoad.state().textureCount, 1)
+      m.assertEqual(screenLoad.state().fills, 2)
+    end function
+
+    @it("keeps the FIRST declaration when one fill is declared twice")
+    function _()
+      ' Taking the later start time would silently shorten the fill. One `resolve` closes
+      ' it either way, so a double-declare must not leave a second entry open forever.
+      screenLoad.begin("itemDetails")
+      screenLoad.pending("extras")
+      screenLoad.pending("extras")
+      screenLoad.paint("Movie")
+      screenLoad.resolve("extras")
+      m.assertTrue(screenLoad.state().settled)
+      m.assertEqual(screenLoad.state().fills, 1)
+    end function
+
+    @it("a fill declared after paint but before settle extends the run")
+    function _()
+      screenLoad.begin("itemDetails")
+      screenLoad.pending("extras")
+      screenLoad.paint("Movie")
+      screenLoad.pending("trailer")
+      screenLoad.resolve("extras")
+      m.assertFalse(screenLoad.state().settled)
+      screenLoad.resolve("trailer")
+      m.assertTrue(screenLoad.state().settled)
+    end function
+
+    @it("ignores a fill declared AFTER settle — the run is over")
+    function _()
+      ' The ordinary refresh: a user returns from playback and the trailer check re-runs
+      ' on a screen that settled long ago. Admitting it would publish a second, later
+      ' settled time for a load that already reported one.
+      screenLoad.begin("itemDetails")
+      screenLoad.paint("Movie")
+      m.assertTrue(screenLoad.state().settled)
+      screenLoad.pending("trailer")
+      m.assertEqual(screenLoad.state().open.count(), 0)
+    end function
+
+    @it("ignores a resolve AFTER settle, mirroring pending")
+    function _()
+      ' The other half of the same refresh. Without this guard the re-resolve reaches the
+      ' unbalanced warning — the one signal that is supposed to mean the two sides have
+      ' drifted — on every return from playback in every perfTiming build.
+      screenLoad.begin("itemDetails")
+      screenLoad.pending("trailer")
+      screenLoad.paint("Movie")
+      screenLoad.resolve("trailer")
+      m.assertTrue(screenLoad.state().settled)
+      fillsAfterSettle = screenLoad.state().fills
+      screenLoad.resolve("trailer")
+      m.assertEqual(screenLoad.state().fills, fillsAfterSettle)
+    end function
+
+    @it("does not count a resolve for a fill that was never pending")
+    function _()
+      screenLoad.begin("itemDetails")
+      screenLoad.pending("extras")
+      screenLoad.paint("Movie")
+      screenLoad.resolve("lyrics")
+      m.assertEqual(screenLoad.state().fills, 0)
+      m.assertFalse(screenLoad.state().settled)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("cancel()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("withdraws a fill without recording it")
+    function _()
+      ' A cancelled fill never happened, so it must not inflate the fill count or the
+      ' class totals — that is the whole difference between `cancel` and a 0 ms resolve.
+      screenLoad.begin("itemDetails")
+      screenLoad.pending("logo", screenLoad.TEXTURE)
+      screenLoad.cancel("logo")
+      screenLoad.paint("Movie")
+      m.assertTrue(screenLoad.state().settled)
+      m.assertEqual(screenLoad.state().fills, 0)
+      m.assertEqual(screenLoad.state().textureCount, 0)
+    end function
+
+    @it("can complete the run when it withdraws the LAST open fill")
+    function _()
+      ' The logo case: the fill is declared before `setItemLogo` (so a synchronous
+      ' resolve cannot outrun it) and withdrawn when the uri turns out unchanged. If
+      ' cancel did not settle, a screen whose only fill was cancelled after paint would
+      ' hang unsettled forever.
+      screenLoad.begin("itemDetails")
+      screenLoad.pending("logo", screenLoad.TEXTURE)
+      screenLoad.paint("Movie")
+      m.assertFalse(screenLoad.state().settled)
+      screenLoad.cancel("logo")
+      m.assertTrue(screenLoad.state().settled)
+    end function
+
+    @it("is a no-op for a fill that was never pending")
+    function _()
+      screenLoad.begin("itemDetails")
+      screenLoad.pending("extras")
+      screenLoad.cancel("logo")
+      screenLoad.paint("Movie")
+      m.assertFalse(screenLoad.state().settled)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("begin() restarts")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a second begin() discards the previous run rather than continuing it")
+    function _()
+      screenLoad.begin("itemDetails")
+      screenLoad.pending("extras")
+      screenLoad.paint("Movie")
+      screenLoad.begin("itemDetails")
+      m.assertFalse(screenLoad.state().painted)
+      m.assertFalse(screenLoad.state().settled)
+      m.assertEqual(screenLoad.state().fills, 0)
+      m.assertEqual(screenLoad.state().open.count(), 0)
+    end function
+
+  end class
+end namespace

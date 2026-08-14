@@ -9,6 +9,10 @@
  * written from the doc matches nothing at all. A test using a hand-typed line
  * would have agreed with the bug.
  */
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -216,9 +220,29 @@ describe('assembleSamples', () => {
  * and the reason the Home fixture is verbatim capture instead.
  */
 const SCREEN_LOAD_LINES = [
-  'INFO file:///x/source/utils/screenReadiness.bs:118 screen-load paint - screen itemDetails variant Movie ms 812 [debug=false perfTiming=true]  ',
-  'INFO file:///x/source/utils/screenReadiness.bs:212 screen-load settled - screen itemDetails variant Movie ms 3104 fills 3 [debug=false perfTiming=true]  ',
-  'INFO file:///x/source/utils/screenReadiness.bs:213 screen-load split - content 2 contentMs 2704 slowestContent extras 2310 texture 1 textureMs 640 slowestTexture logo 640  ',
+  'INFO file:///x/source/utils/screenReadiness.bs:118 screen-load paint - component itemDetails variant Movie ms 812 [debug=false perfTiming=true]  ',
+  'INFO file:///x/source/utils/screenReadiness.bs:212 screen-load settled - component itemDetails variant Movie ms 3104 fills 3 [debug=false perfTiming=true]  ',
+  'INFO file:///x/source/utils/screenReadiness.bs:213 screen-load split - component itemDetails variant Movie content 2 contentMs 2704 slowestContent extras 2310 texture 1 textureMs 640 slowestTexture logo 640  ',
+];
+
+/**
+ * A chained navigation, as `--nav seasonDetails` produces it: the Series and the Season
+ * are two SEPARATE ItemDetails mounts (the details route is keepAlive with no
+ * allowReuse), so two ledgers emit onto one console and interleave. The nav's gate waits
+ * on paint, so it presses into the Season while the Series' extras chain is still
+ * running — which puts the Series' settle AFTER the Season's paint.
+ *
+ * Written from the emitter, not captured: the ordering is inferred from the nav gate and
+ * the measured fill durations. The point of the fixture is that the assembler must be
+ * correct WITHOUT anyone having to prove this exact ordering occurs.
+ */
+const INTERLEAVED_LINES = [
+  'INFO file:///x/screenReadiness.bs:118 screen-load paint - component itemDetails variant Series ms 900 [debug=false perfTiming=true]  ',
+  'INFO file:///x/screenReadiness.bs:118 screen-load paint - component itemDetails variant Season ms 700 [debug=false perfTiming=true]  ',
+  'INFO file:///x/screenReadiness.bs:212 screen-load settled - component itemDetails variant Series ms 2400 fills 2 [debug=false perfTiming=true]  ',
+  'INFO file:///x/screenReadiness.bs:213 screen-load split - component itemDetails variant Series content 1 contentMs 1500 slowestContent extras 1500 texture 1 textureMs 200 slowestTexture logo 200  ',
+  'INFO file:///x/screenReadiness.bs:212 screen-load settled - component itemDetails variant Season ms 1800 fills 2 [debug=false perfTiming=true]  ',
+  'INFO file:///x/screenReadiness.bs:213 screen-load split - component itemDetails variant Season content 1 contentMs 1100 slowestContent extras 1100 texture 1 textureMs 150 slowestTexture logo 150  ',
 ];
 
 describe('the screen-load family', () => {
@@ -242,16 +266,39 @@ describe('the screen-load family', () => {
     expect(sample.fields).not.toHaveProperty('settledMs');
   });
 
-  it('splits two mounts of one screen into two samples, told apart by variant', () => {
+  it('splits two mounts of one component into two samples, told apart by variant', () => {
     // Reaching a Season means loading its Series first, so ONE launch legitimately
-    // mounts this screen twice. Both loads really happened; what makes them usable is
-    // that the app names which is which.
-    const chained = [
-      'INFO file:///x/screenReadiness.bs:118 screen-load paint - screen itemDetails variant Series ms 900 [debug=false perfTiming=true]  ',
-      'INFO file:///x/screenReadiness.bs:118 screen-load paint - screen itemDetails variant Season ms 700 [debug=false perfTiming=true]  ',
-    ];
-    const samples = assembleSamples(load, chained);
+    // mounts this component twice. Both loads really happened; what makes them usable
+    // is that the app names which is which.
+    const samples = assembleSamples(load, [INTERLEAVED_LINES[0], INTERLEAVED_LINES[1]]);
     expect(samples).toHaveLength(2);
+    expect(samples.map((s) => s.fields.variant)).toEqual(['Series', 'Season']);
+  });
+
+  it("does NOT file one mount's settle against another mount's paint", () => {
+    // The finding this identity exists for. Under a single-open assembler the Series'
+    // settle arrives while the Season is the open sample, and is merged into it —
+    // producing one well-formed sample whose paint is the Season and whose settled
+    // describes the Series. Nothing in the fields would reveal it.
+    const samples = assembleSamples(load, INTERLEAVED_LINES);
+    expect(samples).toHaveLength(2);
+
+    const series = samples.find((s) => s.fields.variant === 'Series');
+    const season = samples.find((s) => s.fields.variant === 'Season');
+    expect(series.fields.paintMs).toBe(900);
+    expect(series.fields.settledMs).toBe(2400);
+    expect(series.fields.slowestContentMs).toBe(1500);
+    expect(season.fields.paintMs).toBe(700);
+    expect(season.fields.settledMs).toBe(1800);
+    expect(season.fields.slowestContentMs).toBe(1100);
+    expect(series.complete && season.complete).toBe(true);
+  });
+
+  it('emits samples in MOUNT order, not completion order', () => {
+    // `indexInLaunch` has to keep meaning "which mount". The two differ exactly here:
+    // the Series opens first and finishes last, because its extras chain outlives the
+    // walk into the Season.
+    const samples = assembleSamples(load, INTERLEAVED_LINES);
     expect(samples.map((s) => s.fields.variant)).toEqual(['Series', 'Season']);
   });
 
@@ -265,10 +312,10 @@ describe('the screen-load family', () => {
     // empty one collapses the two spaces around it and shifts every field after it,
     // so the pattern would match the wrong group rather than fail.
     const [sample] = assembleSamples(load, [
-      'INFO file:///x/screenReadiness.bs:118 screen-load paint - screen settings variant none ms 240 [debug=false perfTiming=true]  ',
-      'INFO file:///x/screenReadiness.bs:213 screen-load split - content 0 contentMs 0 slowestContent none 0 texture 0 textureMs 0 slowestTexture none 0  ',
+      'INFO file:///x/screenReadiness.bs:118 screen-load paint - component settings variant none ms 240 [debug=false perfTiming=true]  ',
+      'INFO file:///x/screenReadiness.bs:213 screen-load split - component settings variant none content 0 contentMs 0 slowestContent none 0 texture 0 textureMs 0 slowestTexture none 0  ',
     ]);
-    expect(sample.fields.screen).toBe('settings');
+    expect(sample.fields.component).toBe('settings');
     expect(sample.fields.variant).toBe('none');
     expect(sample.fields.slowestContent).toBe('none');
   });
@@ -306,12 +353,12 @@ describe('splitWorkload', () => {
     // leaving them in `timings` would hand `measure-compare.js` string operands for a
     // numeric delta and a Mann-Whitney.
     expect(dimensions).toEqual({
-      screen: 'itemDetails',
+      component: 'itemDetails',
       variant: 'Movie',
       slowestContent: 'extras',
       slowestTexture: 'logo',
     });
-    expect(timings).not.toHaveProperty('screen');
+    expect(timings).not.toHaveProperty('component');
     expect(workload).not.toHaveProperty('variant');
 
     // Counts are workload, durations are timings — the family still has to say which,
@@ -328,7 +375,23 @@ describe('splitWorkload', () => {
   });
 });
 
+const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+
 describe('the registry itself', () => {
+  it("every family's doc: path resolves to a file that exists", () => {
+    // `doc:` is printed to operators and pasted into write-ups, and NOTHING reads it —
+    // there is no consumer to fail, so a dead path survives indefinitely. `screen-load`
+    // shipped pointing at `docs/dev/measuring-performance.md`, a Charter deliverable
+    // that has not been written; the only file by that name lived under a gitignored
+    // archive. This converts the eyeball into a gate.
+    for (const m of MEASUREMENTS) {
+      // Strip a `#anchor` — the file is what must exist; anchor resolution is
+      // `lint:docs`' job and it already owns it.
+      const file = m.doc.split('#')[0];
+      expect(fs.existsSync(path.join(repoRoot, file)), `${m.id} doc: ${file}`).toBe(true);
+    }
+  });
+
   it('registers the item-grid family the genres work reads', () => {
     // The reason this is a registry and not a Home parser: the app already emits a
     // second family, and every future instrumented screen adds a third.

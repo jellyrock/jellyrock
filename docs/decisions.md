@@ -705,9 +705,20 @@ refused at parse time with the reason, rather than attempted and timed out on.
 Not speculative: the FIRST real run against the developer's server refused, because that
 server has four movie libraries (and, separately, two TV ones) and the `collectionType` scan
 will not guess between them. The refusal is correct — it fails rather than measuring the
-wrong library — so the flag is the way out of it, not a loosening of it. A nav failure
-abandons the series rather than retrying, since a nav that cannot reach its screen once will
-not reach it on the remaining launches.
+wrong library — so the flag is the way out of it, not a loosening of it. It binds to the
+TARGET SCREEN's own collection type rather than being mapped onto every type at once: the
+blanket form handed a movies id to a TV nav without a word, which is the same silent
+misreading the refusal exists to prevent. It is also recorded, because two arms that
+opened different libraries are two workloads wearing one name and nothing else in the record
+can say so. A nav failure abandons the series rather than retrying, since a nav that cannot
+reach its screen once will not reach it on the remaining launches.
+
+A CHAINED nav (a Season reached through its Series) mounts one component several times per
+launch, and all of those loads really happened, so all are recorded. What the tool refuses is
+to guess which one was meant: a launch carrying more than one variant publishes no median
+until `--variant` names one, and `--variant` is refused when no sample carried it. Selecting
+by position was the alternative, and it is how the tool would confidently report the screen
+you passed THROUGH as the screen you asked for.
 
 ## Migrated to ADRs
 
