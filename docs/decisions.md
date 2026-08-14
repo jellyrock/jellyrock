@@ -720,6 +720,34 @@ until `--variant` names one, and `--variant` is refused when no sample carried i
 by position was the alternative, and it is how the tool would confidently report the screen
 you passed THROUGH as the screen you asked for.
 
+## decision-id: screen-with-two-loads-is-two-runs
+
+**date**: 2026-08-14
+**status**: accepted
+**related-files**: components/search/SearchResults.bs, components/search/SearchRow.bs, source/utils/screenReadiness.bs
+
+A screen whose two loads are separated by a USER is measured as TWO readiness-ledger runs,
+told apart by `variant`, rather than as one run. `search` is the first: it opens a keyboard
+(`open`) and then runs a query (`query`), and a person types in between. One run spanning
+both was rejected on a measurement rather than an argument — its `settled` would include the
+typing, and the RTA harness alone sits 1.2 s in that gap on `.177`, which is a property of
+whatever did the typing and not of this screen. Not instrumenting the open was also
+rejected: the screen paints in 3 ms and cannot ACCEPT A KEYSTROKE for another ~200 ms, because nothing
+takes focus until the router shows the view, so a single number would have published "search
+opens in 4 ms" and hidden 98% of the wait — the flattering-first-paint failure the ledger
+exists to prevent, and the same one the `settings` screen had already produced once.
+
+This EXTENDS [ADR 0028](adr/0028-mount-identity-component-and-variant.md) rather than
+competing with it. There `variant` answers "what KIND of thing this load was" (an item type,
+a library type); here it also answers "WHICH of this screen's loads". Both are the same job —
+separating the samples of one component so a reader can name the one it meant — so no new
+field and no tooling change was needed, and the existing ambiguity refusal does the work: a
+bare `--nav search` publishes no median and names `searchResults/open, searchResults/query`.
+The cost is that every search measurement must pass `--variant`, which is accepted because
+the tool prints exactly what to pass. Recorded because 0028 read narrowly would suggest this
+is a misuse of the field, and the convention would then get "corrected" out by someone
+instrumenting the next multi-load screen.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
