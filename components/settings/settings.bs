@@ -83,20 +83,33 @@ sub init()
   m.boolSetting.observeField("checkedItem", "boolSettingChanged")
   m.radioSetting.observeField("checkedItem", "radioSettingChanged")
 
+  ' The right-hand panel — description text plus whichever setting control the focused row
+  ' uses — is filled by `settingFocused`, which Scene Graph dispatches from the observer
+  ' above on a LATER turn of the event loop, not inline from `LoadMenu`'s content
+  ' assignment. So it is outstanding at paint, and the ledger's first rule is that it must
+  ' be declared before paint rather than discovered afterwards.
+  screenLoad.pending("detail")
+
   ' Load Configuration Tree
   m.configTree = GetConfigTree()
   LoadMenu({ children: m.configTree })
 
-  ' PAINT — and SETTLE, in the same statement. This screen declares NO fills, because it
-  ' has none: every byte it shows comes from two `pkg:` reads (`languages.json` above and
-  ' `settings.json` in `GetConfigTree`), both synchronous, and `LoadMenu` builds the whole
-  ' list before this line. Nothing is outstanding, so `paint` emits the settled pair too.
+  ' PAINT — the LEFT half of the screen. The menu list is built and focusable by here, and
+  ' the two `pkg:` JSON reads that feed it (`languages.json` above, `settings.json` in
+  ' `GetConfigTree`) are synchronous, so this is genuinely "content ready" for that half.
   '
-  ' That is the point of measuring it. `settled - paint = 0` here is a RESULT, not a gap in
-  ' the instrumentation — the ledger emits "settled" as its own line precisely so a screen
-  ' that settles instantly cannot read the same as one that never settles at all. If a
-  ' future change moves any of this work off the render thread, the fill it adds is what
-  ' that number will start to show.
+  ' The RIGHT half is not, and that is why `detail` is declared above rather than this
+  ' screen reporting zero fills. Setting `m.settingsMenu.content` does not call
+  ' `settingFocused` inline — Scene Graph delivers the `itemFocused` change through the
+  ' message port, so the handler that fills the description and reveals the setting control
+  ' runs on a later turn of the event loop, ~250 ms after this line on a Stick 4K.
+  '
+  ' Verified on device rather than reasoned about, because same-component observer dispatch
+  ' is exactly the kind of platform behaviour that is easy to assume and wrong: a probe log
+  ' in `settingFocused` landed after the `screen-load paint` line on every launch. An
+  ' earlier cut of this file marked paint here and declared nothing, and so published a
+  ' number for a screen whose right half was still empty — the flattering-first-paint
+  ' failure the whole ledger exists to prevent.
   screenLoad.paint()
 end sub
 
@@ -323,6 +336,15 @@ sub LoadMenu(configSection)
 end sub
 
 sub settingFocused()
+  ' The right panel has landed. Resolved at the TOP because this handler has an early
+  ' return (an entry with no `type`), and a `pending` that some path can skip leaves the
+  ' screen permanently unsettled — reported as unmeasurable, never as a wrong number. The
+  ' wait being measured is the DISPATCH, which is the ~250 ms; everything below is
+  ' synchronous node writes on the render thread.
+  '
+  ' Silent on every later call. Moving focus re-runs this on a screen that settled long
+  ' ago, and `resolve` ignores a run that is over — see screenReadiness.bs.
+  screenLoad.resolve("detail")
 
   selectedSetting = m.userLocation.peek().filteredChildren[m.settingsMenu.itemFocused]
   m.settingDesc.text = translate(selectedSetting.descriptionKey)

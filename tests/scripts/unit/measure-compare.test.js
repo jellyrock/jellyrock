@@ -31,9 +31,17 @@ import {
 } from '../../../scripts/measure-compare.js';
 import { MeasureArgError } from '../../../scripts/measure-args.js';
 
-/** One cold sample, as `measure.js` writes it. */
+/**
+ * One cold sample, as `measure.js` writes it.
+ *
+ * `launch` is deliberately NOT defaulted here — `series()` assigns it per sample index,
+ * because `measure.js` writes `launch: i` and one series' samples come from DIFFERENT app
+ * launches. This fixture used to hardcode `launch: 0` on every sample, which no assertion
+ * could see while cold selection ignored the field; it became visible the moment
+ * selection became per-launch. Pass `launch` explicitly to put two samples in ONE launch,
+ * which is what a warm refresh beside a cold paint actually is.
+ */
 const sample = (totalMs, over = {}) => ({
-  launch: 0,
   launchAt: '2026-08-13T10:00:00.000Z',
   indexInLaunch: 0,
   complete: true,
@@ -77,8 +85,14 @@ const series = (over = {}) => ({
   requested: 3,
   coldSamples: 3,
   median: 2600,
-  samples: [sample(2500), sample(2600), sample(2700)],
   ...over,
+  // One series' samples come from different app LAUNCHES, so give each the launch index
+  // `measure.js` would have written — unless a case pinned one deliberately, which is how
+  // a warm refresh beside a cold paint is expressed.
+  samples: (over.samples ?? [sample(2500), sample(2600), sample(2700)]).map((s, i) => ({
+    launch: i,
+    ...s,
+  })),
 });
 
 /** Both arms of a healthy comparison, interleaved. */
@@ -131,11 +145,48 @@ describe('selecting an arm', () => {
   });
 
   it('pools only the cold first paints, never the refresh runs beside them', () => {
-    const warm = sample(900, { indexInLaunch: 1 });
-    const incomplete = sample(800, { complete: false });
-    const record = series({ samples: [sample(2500), warm, incomplete] });
+    // All three in ONE launch — that is what a refresh run IS. Pinned explicitly, because
+    // the default fixture spreads samples across launches like a real series does.
+    const warm = sample(900, { launch: 0, indexInLaunch: 1 });
+    const incomplete = sample(800, { launch: 0, complete: false });
+    const record = series({ samples: [sample(2500, { launch: 0 }), warm, incomplete] });
     expect(coldSamples(record)).toHaveLength(1);
     expect(buildArm('before', [record], { arm: 'before' }).values).toEqual([2500]);
+  });
+
+  it('reads the mount the RECORD says it is about, not the first one in each launch', () => {
+    // The 8x defect. A playback nav mounts the details screen it walks THROUGH at index 0
+    // and the player at index 1, so selecting by position read `itemDetails` out of a
+    // record that published `videoPlayer`: `measure` printed 2135 ms and this read the
+    // same record back as 254 ms. Six samples, all the wrong screen, silently.
+    const mount = (launch, i, component, paintMs) =>
+      sample(paintMs, {
+        launch,
+        indexInLaunch: i,
+        dimensions: { component, variant: 'Movie' },
+        timings: { totalMs: paintMs },
+      });
+    const record = series({
+      screen: 'osd',
+      component: 'videoPlayer',
+      screenVariant: 'Movie',
+      samples: [
+        mount(0, 0, 'itemDetails', 267),
+        mount(0, 1, 'videoPlayer', 2811),
+        mount(1, 0, 'itemDetails', 333),
+        mount(1, 1, 'videoPlayer', 3471),
+      ],
+    });
+    expect(coldSamples(record).map((c) => c.timings.totalMs)).toEqual([2811, 3471]);
+    expect(buildArm('before', [record], { arm: 'before' }).values).toEqual([2811, 3471]);
+  });
+
+  it('still selects by position for a family that stamps no dimensions', () => {
+    // `home-latest-rows` (bare `npm run measure`) and `item-grid` emit purely numeric
+    // lines, so `splitWorkload` gives them no dimensions to match on. Honouring a record
+    // field against unstamped samples would select none and read as an empty series.
+    const record = series({ screenVariant: 'Movie' });
+    expect(coldSamples(record)).toHaveLength(3);
   });
 
   it('honours --field over the family primary', () => {
@@ -247,6 +298,19 @@ describe('comparability — what is refused', () => {
       series({ arm: 'after', variant: 'measure', screenVariant: 'Series' }),
     ];
     expect(comparability(...armsFrom(mixed)).refusals.join(' ')).toMatch(/different item variants/);
+  });
+
+  it('refuses two arms that are two different COMPONENTS', () => {
+    // Until measurement reached a playback screen, `screen` implied the component and the
+    // gate did not need this. A nav that walks through another instrumented screen breaks
+    // the implication: an `itemDetails` arm and a `videoPlayer` arm can BOTH carry
+    // `screen: osd`, agree on every other key here, and be compared without a word —
+    // while the workload line prints "identical: not a run that did less work".
+    const records = [
+      series({ arm: 'before', screen: 'osd', component: 'itemDetails' }),
+      series({ arm: 'after', screen: 'osd', component: 'videoPlayer' }),
+    ];
+    expect(comparability(...armsFrom(records)).refusals.join(' ')).toMatch(/different components/);
   });
 
   it('refuses two arms that opened different LIBRARIES', () => {

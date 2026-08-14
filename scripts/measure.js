@@ -179,6 +179,12 @@ import {
   buildFlagsAgree,
 } from './measurement-guard.js';
 import { parseMeasureArgs, MeasureArgError } from './measure-args.js';
+import {
+  analyseMounts,
+  launchAudit,
+  selectColdSamples,
+  selectionRefusalFor,
+} from './measure-selection.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const manifestPath = path.join(repoRoot, 'manifest');
@@ -204,16 +210,10 @@ try {
 }
 const measurement = measurementById(args.measurement);
 
-// Does this sample match the mount the operator NAMED? Defined once, up here, because two
-// places need it and they must not disagree: the per-launch progress line printed during
-// the series, and the selection of the cold samples the medians are taken over. It asks
-// the SAMPLES rather than the flags — "did they pass something" is the wrong question,
-// since `--variant Movie` is passed and still ambiguous when both mounts of a playback
-// nav stamp `Movie`. With neither flag it is vacuously true, and each caller falls back
-// to first-mount, which is what every single-mount screen has always meant.
-const selects = (s) =>
-  (!args.variant || s.dimensions?.variant === args.variant) &&
-  (!args.component || s.dimensions?.component === args.component);
+// WHICH sample of a launch this run is about. One rule, defined in `measure-selection.js`
+// and shared with `measure:compare`, because three implementations of it existed and two
+// were wrong.
+const selector = { component: args.component, variant: args.variant };
 
 // How long to watch the console after each launch, capped so a device that never
 // paints cannot hang the series. Cut short once a complete sample has been seen
@@ -584,19 +584,23 @@ for (let i = 0; i < args.samples; i++) {
     });
   });
 
-  // The SAME selector the medians use — see `selects` — rather than a second copy that
-  // silently means something else. Hardcoding `indexInLaunch === 0` here printed the
-  // first mount every launch while the summary below printed the mount the operator
-  // NAMED: for `--nav osd --component videoPlayer` the progress lines read
-  // `paintMs=260` (the details screen it walked through) and the median then read
-  // 2135 ms. Two numbers 8x apart, from one tool, in one output, both labelled `osd`.
-  const cold = samples.find(
-    (s) => s.launch === i && (args.variant || args.component ? selects(s) : s.indexInLaunch === 0),
-  );
+  // The SAME rule the medians use, through the same function — not a second copy that
+  // can silently come to mean something else. Hardcoding the first mount here printed
+  // 260 ms (the details screen a playback nav walks THROUGH) while the summary printed
+  // the mount actually named: two numbers 8x apart, one tool, one output, both `osd`.
+  //
+  // `selectColdSamples` also filters on `complete`, which this line used not to do — it
+  // took the first MATCHING sample and only then asked whether it was complete, so a
+  // launch whose target mount emitted an incomplete sample ahead of a complete one
+  // printed "no complete sample" while the summary counted it.
+  const cold = selectColdSamples(
+    samples.filter((s) => s.launch === i),
+    selector,
+  )[0];
   const extra = assembled.length - 1;
   console.log(
     `[measure] ${i + 1}/${args.samples}  ` +
-      (cold?.complete
+      (cold
         ? `${measurement.primary}=${cold.timings[measurement.primary] ?? cold.workload[measurement.primary]} ` +
           `workload=${JSON.stringify(cold.workload)}`
         : '⚠ no complete sample in the window') +
@@ -640,91 +644,26 @@ if (!consistency.ok && consistency.drifted.length) {
 }
 
 // ─── Which samples the report is about ───────────────────────────────────────
-// Every distinct MOUNT IDENTITY the app stamped, per launch. A mount's identity is its
-// component AND its variant, and it takes both: the two ways one launch can carry
-// several samples are different in shape and each is invisible to the other half.
-//
-//  - Same component, different variant — a CHAINED navigation. Reaching a Season loads
-//    its Series first, and an Episode loads both. Told apart by `variant`.
-//  - Different component, same variant — a PLAYBACK navigation. Reaching the player
-//    means walking through `ItemDetails`, and for a movie both stamp `Movie`. Told
-//    apart only by `component`.
-//
-// Keying on `variant` alone made the second shape read as single-mount: `--nav osd` saw
-// one variant, skipped the refusal, took `indexInLaunch === 0` and published the DETAILS
-// screen's paint time under `screen: osd` — a well-formed record describing the wrong
-// screen, which is the exact failure this selection layer exists to prevent. Measured
-// on `.177` before the fix: `osd` reported paint 300 ms (itemDetails) while the player's
-// own samples, recorded in the same file, said 2811 and 3471 ms.
-const idOf = (s) => [s.dimensions?.component, s.dimensions?.variant].filter(Boolean).join('/');
-const idsPerLaunch = new Map();
-for (const s of samples) {
-  const id = idOf(s);
-  if (!id) continue;
-  if (!idsPerLaunch.has(s.launch)) idsPerLaunch.set(s.launch, new Set());
-  idsPerLaunch.get(s.launch).add(id);
-}
-const observedVariants = [...new Set(samples.map((s) => s.dimensions?.variant).filter(Boolean))];
-const observedComponents = [
-  ...new Set(samples.map((s) => s.dimensions?.component).filter(Boolean)),
-];
-const observedIds = [...new Set(samples.map(idOf).filter(Boolean))];
-const multiMount = [...idsPerLaunch.values()].some((set) => set.size > 1);
+// All of this lives in `measure-selection.js` — pure, shared with `measure:compare`, and
+// unit-tested. It used to live here, where nothing could reach it: `measure.js` claims
+// the device on import, so the one layer every defect in this subsystem has been found in
+// was the one layer with no tests. Same reason `measure-args.js` exists.
+const analysis = analyseMounts(samples, selector);
+const { observedVariants, observedComponents } = analysis;
+const selectionRefusal = selectionRefusalFor(samples, selector, analysis);
 
-const stillAmbiguous = [...idsPerLaunch.keys()].some(
-  (launch) => samples.filter((s) => s.launch === launch && s.complete && selects(s)).length > 1,
+const cold = selectionRefusal ? [] : selectColdSamples(samples, selector);
+
+// Split by WHY a launch came back empty — nothing emitted at all, versus the named mount
+// missing from a launch that otherwise recorded fine. See `launchAudit`.
+//
+// Reaching here means every launch ran: the sample loop has no `continue`, and its only
+// early exit is `refuse()`, which closes the run and exits the process.
+const { completeSamples, withoutAnySample, withoutNamedMount } = launchAudit(
+  samples,
+  selector,
+  args.samples,
 );
-
-// A launch that mounted more than one screen has no obvious "the" sample, and picking
-// one by POSITION is how the tool would confidently report the wrong screen: for
-// `--nav episodeDetails`, `indexInLaunch === 0` is the Series. Rather than guess — by
-// position or by "the last one", which is a heuristic that breaks the first time an
-// intermediate screen re-mounts — refuse the median and say what to pass. This is the
-// same posture the tool already takes on an ambiguous library, and it is the Charter's
-// "never silently averaged" applied to the one case that can actually produce it.
-let selectionRefusal = null;
-if (args.variant && !observedVariants.includes(args.variant)) {
-  // Checkable, and therefore checked — the difference between these flags and `--screen`.
-  selectionRefusal =
-    `--variant ${args.variant} matched no sample. The app stamped: ` +
-    `${observedVariants.length ? observedVariants.join(', ') : '(none)'}.`;
-} else if (args.component && !observedComponents.includes(args.component)) {
-  selectionRefusal =
-    `--component ${args.component} matched no sample. The app stamped: ` +
-    `${observedComponents.length ? observedComponents.join(', ') : '(none)'}.`;
-} else if (multiMount && stillAmbiguous) {
-  // Names the full identities rather than one dimension, so the message says what to
-  // pass in the case where the ambiguity is NOT the variant.
-  selectionRefusal =
-    `this navigation mounted more than one screen per launch (${observedIds.join(', ')}), ` +
-    'and the flags given do not narrow it to one. Re-run naming a mount with ' +
-    '--component <name> and/or --variant <name>.';
-}
-
-// The FIRST sample of each launch matching whatever was named; with nothing named, the
-// first mount, which is what every single-mount screen has always meant.
-const coldOf = (launch) =>
-  samples.find(
-    (s) =>
-      s.launch === launch &&
-      s.complete &&
-      (args.variant || args.component ? selects(s) : s.indexInLaunch === 0),
-  );
-const cold = selectionRefusal
-  ? []
-  : [...new Set(samples.map((s) => s.launch))].map(coldOf).filter(Boolean);
-
-// Every sample the pattern matched and assembled whole, whether or not one was SELECTED.
-// The two differ ONLY on a selection refusal, and that is the case the reporting below
-// has to tell apart: "the app emitted nothing" and "the app emitted several things and
-// you have not said which you meant" are opposite problems with opposite next steps.
-const completeSamples = samples.filter((s) => s.complete);
-// Launches that emitted no complete sample at all — the honest count for the warning
-// below, which previously subtracted `cold.length` and so counted every REFUSED launch
-// as one that had produced nothing.
-const launchesWithoutSample = [...Array(args.samples).keys()].filter(
-  (i) => !completeSamples.some((s) => s.launch === i),
-).length;
 
 const medianOf = (raw) => {
   const v = raw.filter((n) => Number.isFinite(n)).sort((a, b) => a - b);
@@ -814,6 +753,15 @@ const outcome = usable ? RUN_OUTCOMES.PASSED : RUN_OUTCOMES.BLOCKED;
 // Four complete samples were sitting in the record while it said all three.
 if (!completeSamples.length && lines.length) {
   const dumpPath = path.join(run.dir, 'console-window.log');
+  // The run dir has to be created here, exactly as the accumulator's write does below.
+  // `--deploy` runs `npm run build`, which is `rimraf build/ out/` — so the deploy
+  // DELETES the directory this dump writes into, and the write then throws ENOENT into
+  // the `uncaughtException` handler: the tool dies, and the run records as `crashed`.
+  // That lands on the one combination the dump exists to serve — a `--deploy` of new
+  // instrumentation that emitted nothing — where it destroys the console capture that
+  // is the only evidence of why. Found by dogfooding the dump to answer an unrelated
+  // question, not by review.
+  fs.mkdirSync(path.dirname(dumpPath), { recursive: true });
   fs.writeFileSync(
     dumpPath,
     lines.map((l) => `${new Date(l.at).toISOString()} ${l.raw}`).join('\n') + '\n',
@@ -851,30 +799,29 @@ const record = {
   // `record.variant` since it was written and nothing had ever written it, so the one
   // field that can separate two item types on one component was dead on arrival.
   //
-  // Under the same discipline as `screenVariant` below, and for the same reason: a
-  // launch that mounted `itemDetails` and then `videoPlayer` would otherwise record
-  // `component: "itemDetails"` from the first sample — the wrong half of a playback
-  // nav, written into a field a comparison selects on, beside a median the tool
-  // refused to publish for exactly that ambiguity.
-  component:
-    args.component ??
-    (selectionRefusal
-      ? null
-      : (samples.find((s) => s.dimensions?.component)?.dimensions.component ?? null)),
-  // NULL when the launch mounted several and nobody said which — naming the first one
-  // here would be the same wrong answer the median refuses to publish, written into the
-  // field a comparison selects on. `observedVariants` still lists everything that ran.
+  // Both of these are NULL on a refusal, including when the operator NAMED one. That
+  // ordering is the point: a flag is advertised as checkable evidence, so on the one path
+  // where the check FAILED — `--component X matched no sample` — recording X anyway would
+  // turn it back into the bare assertion that `--screen` is criticised for two hundred
+  // lines above. `selectionRefusal` and the `observed*` lists below say what really ran.
+  //
+  // Naming the first sample instead would be the same wrong answer the median refuses to
+  // publish, written into the field a comparison selects on: a launch that mounted
+  // `itemDetails` and then `videoPlayer` would record `component: "itemDetails"`.
+  component: selectionRefusal
+    ? null
+    : (args.component ??
+      samples.find((s) => s.dimensions?.component)?.dimensions.component ??
+      null),
   // `screenVariant`, NOT `variant`: `runProvenance()` already spreads a `variant` of its
   // own — `process.env.npm_lifecycle_event`, i.e. WHICH NPM SCRIPT launched the run — and
   // it is spread BELOW this, so a field named `variant` here is silently overwritten by
   // the string "measure". Caught on hardware: the record read `variant: "measure"` while
   // the samples plainly carried `Series` and `Season`. Two unrelated senses of one word,
   // one of them load-bearing for the run ledger, so the new one takes the distinct name.
-  screenVariant:
-    args.variant ??
-    (selectionRefusal
-      ? null
-      : (samples.find((s) => s.dimensions?.variant)?.dimensions.variant ?? null)),
+  screenVariant: selectionRefusal
+    ? null
+    : (args.variant ?? samples.find((s) => s.dimensions?.variant)?.dimensions.variant ?? null),
   // How the screen was reached, and against which library. Neither is recoverable after
   // the fact, and on the server that motivated `--library` (four movie libraries) a
   // comparison cannot otherwise show that both arms opened the same one.
@@ -910,7 +857,14 @@ const record = {
   // Why no median, when there is none. `coldSamples: 0` alone cannot tell "the app
   // emitted nothing" from "the app emitted several screens and nobody said which".
   selectionRefusal,
+  // BOTH halves of what the app stamped, because both halves of `component` /
+  // `screenVariant` can be nulled by a refusal — and a record whose selection field is
+  // null with no list beside it cannot say what it saw without re-deriving from
+  // `samples`. `observedVariants` shipped first and `observedComponents` did not, which
+  // left the component half of a two-component record silent in exactly the case that
+  // made two-component records possible.
   observedVariants,
+  observedComponents,
   coldSamples: cold.length,
   median,
   medians,
@@ -965,9 +919,22 @@ if (cold.length && missingLines.length) {
   );
 }
 console.log(`[measure] record: ${path.relative(repoRoot, outPath)}`);
-if (launchesWithoutSample > 0) {
+// Two warnings, because they are two different failures with two different next steps,
+// and one count cannot carry both. A launch that emitted NOTHING points at the build or
+// the pattern; a launch that emitted fine but lacked the mount you NAMED points at that
+// screen — a playback that never reached its first frame while the details screen it
+// walked through recorded perfectly. Collapsing the second into the first hides it behind
+// a healthy-looking sample count, which is the opposite of this file's posture.
+if (withoutAnySample > 0) {
   console.log(
-    `[measure] ⚠ ${launchesWithoutSample} launch(es) produced no complete sample — reported, not dropped.`,
+    `[measure] ⚠ ${withoutAnySample} launch(es) emitted no complete sample at all — reported, not dropped.`,
+  );
+}
+if (withoutNamedMount > 0) {
+  console.log(
+    `[measure] ⚠ ${withoutNamedMount} launch(es) emitted samples but NOT the mount you named ` +
+      `(${[args.component, args.variant].filter(Boolean).join(' / ')}) — that screen did not ` +
+      'complete on those launches; the others did.',
   );
 }
 if (!completeSamples.length) {

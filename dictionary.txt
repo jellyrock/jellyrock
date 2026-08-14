@@ -116,6 +116,7 @@ catchup-discipline
 changelog
 Changelog
 CHANGELOG
+checkable
 checkboxes
 ci
 CAS

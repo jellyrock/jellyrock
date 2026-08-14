@@ -196,6 +196,22 @@ npm run measure -- -n 10 --measurement item-grid             # the grid/genres f
 npm run measure -- --deploy                                  # sideload first
 ```
 
+Screens other than Home are reached with `--nav <screen>`, driving the navigation
+`tests/rta/screens.js` already declares. A nav that walks THROUGH another instrumented
+screen mounts more than one per launch, and the tool refuses to publish a median until
+one of them is named — by `--component` when the mounts are different components (every
+playback nav walks through `ItemDetails` to reach the player, and for a movie both stamp
+variant `Movie`), or by `--variant` when one component mounted twice (a Season is reached
+through its Series). Both are checked against what the app actually stamped, so a value no
+sample carried is refused rather than recorded. See [ADR
+0028](../adr/0028-mount-identity-component-and-variant.md).
+
+```bash
+npm run measure -- --measurement screen-load --nav settings -n 5
+npm run measure -- --measurement screen-load --nav osd --component videoPlayer -n 5
+npm run measure -- --measurement screen-load --nav seasonDetails --variant Season -n 5
+```
+
 It takes the device lock, holds ONE console socket for the whole session, relaunches n
 times, and appends one line per series to `.device-runs/measure/measurements.jsonl` —
 carrying the timings, the workload (`rows`), the device model + Roku OS version, the app
