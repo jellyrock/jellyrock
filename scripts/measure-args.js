@@ -75,6 +75,13 @@ const VALUE_FLAGS = new Map([
   // `measure.js` refuses a value no sample carried — so it is evidence rather than an
   // assertion, which is the same distinction that made the family's screen derived.
   ['--variant', 'variant'],
+  // The other half of a mount's identity, and the half `--variant` alone cannot express:
+  // a launch can mount two DIFFERENT components under the SAME variant. Every playback
+  // nav does — reaching the player means walking through `ItemDetails`, and for a movie
+  // both stamp `Movie` — so `--nav osd` saw one variant, concluded the launch was
+  // single-mount, and reported the details screen's numbers under `screen: osd`.
+  // Checkable on the same terms as `--variant`: refused if no sample carried it.
+  ['--component', 'component'],
 ]);
 
 /** Flags that take no value. */
@@ -288,6 +295,11 @@ export function parseMeasureArgs(
   if (raw.variant !== undefined) {
     checkLabel('--variant', raw.variant);
     args.variant = raw.variant;
+  }
+
+  if (raw.component !== undefined) {
+    checkLabel('--component', raw.component);
+    args.component = raw.component;
   }
 
   return args;

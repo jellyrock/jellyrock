@@ -52,6 +52,9 @@ import { sameServer } from './measurement-guard.js';
 // client, and this tool only ever reads a JSON Lines file off disk.
 import { ramTierFor } from './roku-devices.js';
 import { MeasureArgError } from './measure-args.js';
+// The SAME selection rule the publisher uses. Not a copy — a copy is what produced the
+// 8x disagreement between what `measure` printed and what this read back.
+import { selectColdSamples } from './measure-selection.js';
 
 /**
  * The measurement accumulator. Derived from `runDir('measure')` rather than written
@@ -172,15 +175,29 @@ export function selectSeries(records, selector = {}) {
 }
 
 /**
- * The cold first paints of one series — `indexInLaunch === 0` and complete.
+ * The cold first paints of one series — the mount the RECORD says it is about.
  *
- * The later runs in a launch are real (Home's `refresh()` re-runs the load) and are
- * recorded, but they are a different measurement: a warm re-render, not a first
- * paint. `measure.js` already refuses to average them together, and a comparison
- * that pooled them would undo that.
+ * Through the shared `selectColdSamples`, because this is the same question `measure.js`
+ * answers when it publishes, and the two must not answer it differently. They did: this
+ * filtered on `indexInLaunch === 0` regardless of what the record said it was about, and
+ * index 0 of a playback launch is the `itemDetails` mount the nav walked THROUGH — so
+ * every sample of such a record read back as the wrong screen, while the workload line
+ * called it "identical" to an arm that genuinely was `itemDetails`.
+ *
+ * Note the field-name mapping: a SAMPLE carries `dimensions.variant`, a RECORD carries
+ * `screenVariant` (the rename exists because `runProvenance()` already spreads a
+ * `variant` of its own). Normalising here is what keeps the shared module ignorant of
+ * both shapes.
+ *
+ * A record with neither field set — the two dimension-less legacy families, or a run
+ * whose selection was refused — falls back to first-mount, which is what every
+ * single-mount series has always meant.
  */
 export function coldSamples(record) {
-  return (record?.samples || []).filter((s) => s?.indexInLaunch === 0 && s?.complete);
+  return selectColdSamples(record?.samples || [], {
+    component: record?.component ?? null,
+    variant: record?.screenVariant ?? null,
+  });
 }
 
 /**
@@ -330,6 +347,14 @@ export function comparability(a, b) {
     // checked at BOTH levels — mixed within an arm, and differing across arms — for the
     // same reason `screen` is.
     ['screenVariant', 'item variant'],
+    // WHICH component emitted the lines. Until measurement reached a playback screen,
+    // `screen` implied this — one screen, one component — so the gate did not need it.
+    // A nav that walks through another instrumented screen breaks that implication: an
+    // `itemDetails` arm and a `videoPlayer` arm can BOTH carry `screen: osd`, pass every
+    // other key here, and be compared without a word. Worse than silent — the workload
+    // line then prints "identical: the delta below is not a run that did less work",
+    // which is a positive reassurance that two different components are comparable.
+    ['component', 'component'],
     // On a server with several libraries of one type, two arms that opened different
     // ones are two workloads wearing one name. Nothing else in the record can say.
     ['library', 'library id'],

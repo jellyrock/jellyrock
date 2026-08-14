@@ -14,6 +14,7 @@ import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/mediaSegments.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
+import "pkg:/source/utils/screenReadiness.bs"
 import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/tasks.bs"
@@ -30,6 +31,15 @@ import "pkg:/source/utils/voiceTransport.bs"
 const TRICKPLAYBAR_POSITION_LABEL_INDEX = 8
 
 sub init()
+  ' Open the readiness ledger for one playback start. This is the RTA `osd` and
+  ' `trickplay` screens' load: both navs drive `startPlayback` and then wait for the
+  ' player, so the number a reader wants is time-to-first-frame — not the OSD's own
+  ' populate, which is three label assignments off a node the player already fetched.
+  '
+  ' `init()` is the right open because the player is mounted fresh per playback
+  ' (PlayerHostView.mountPlayer creates the node, and queue advancement destroys and
+  ' remounts it), so one component instance is exactly one load.
+  screenLoad.begin("videoPlayer")
   m.log = new log.Logger("VideoPlayerView")
   ' Guard against observer callbacks (notably onPositionChanged, driven by the
   ' native playback engine) that can still fire while onDestroy is tearing down
@@ -65,6 +75,17 @@ sub init()
     m.LoadMetaDataTask.mediaSourceId = m.currentItem.mediaSourceId
   end if
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
+  ' The two waits that make up time-to-first-frame, declared as fills so the split line
+  ' says WHICH of them the wait was. `metadata` is the server round trip (playback info,
+  ' the transcode decision, the stream URL); `buffer` — declared once the content is
+  ' handed to the Video node — is the device pulling enough stream to start.
+  '
+  ' Both RESOLVE BEFORE paint, which is unusual for this ledger but well within it: a
+  ' fill records a span inside the run, and `settleIfDone` will not fire until painted.
+  ' So this screen settles the instant it paints (nothing is outstanding by then) and
+  ' the value is entirely in the split: a slow start is either the server or the network,
+  ' and one number for the pair cannot say which.
+  screenLoad.pending("metadata")
   launchTask(m.LoadMetaDataTask)
 
   m.chapterList = m.top.findNode("chapterList")
@@ -606,6 +627,10 @@ sub onSubtitleChange()
   m.LoadMetaDataTask.selectedAudioStreamIndex = m.top.audioIndex
   m.LoadMetaDataTask.itemId = m.currentItem.id
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
+  ' Every launch of this task declares the fill its one handler resolves — see
+  ' onVideoContentLoaded. Silent on this path in practice: a mid-playback reload happens
+  ' long after the run settled, and the ledger ignores both sides after that.
+  screenLoad.pending("metadata")
   launchTask(m.LoadMetaDataTask)
 end sub
 
@@ -642,6 +667,10 @@ sub onAudioIndexChange()
   m.LoadMetaDataTask.selectedAudioStreamIndex = m.top.audioIndex
   m.LoadMetaDataTask.itemId = m.currentItem.id
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
+  ' Every launch of this task declares the fill its one handler resolves — see
+  ' onVideoContentLoaded. Silent on this path in practice: a mid-playback reload happens
+  ' long after the run settled, and the ledger ignores both sides after that.
+  screenLoad.pending("metadata")
   launchTask(m.LoadMetaDataTask)
 end sub
 
@@ -675,6 +704,10 @@ sub onVideoSourceChange()
   m.LoadMetaDataTask.itemId = m.currentItem.id
   m.LoadMetaDataTask.mediaSourceId = newSourceId
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
+  ' Every launch of this task declares the fill its one handler resolves — see
+  ' onVideoContentLoaded. Silent on this path in practice: a mid-playback reload happens
+  ' long after the run settled, and the ledger ignores both sides after that.
+  screenLoad.pending("metadata")
   launchTask(m.LoadMetaDataTask)
 end sub
 
@@ -705,6 +738,20 @@ sub showPlaybackErrorDialog(errorMessage = "" as string)
 end sub
 
 sub onVideoContentLoaded()
+  ' The ONE resolve for `metadata`, and the reason every one of the five
+  ' `launchTask(m.LoadMetaDataTask)` sites declares the fill rather than only the two that
+  ' can run before the first frame: this handler cannot tell which of them launched the
+  ' task, so pairing them individually is the only way the ledger stays balanced. The
+  ' three mid-playback reload sites (audio / subtitle / source switch) are silent in
+  ' practice — the run has long since settled and the ledger ignores both sides after that
+  ' — but "silent in practice" is not an invariant, and an unbalanced `resolve` warns.
+  ' That warning has to keep meaning something, so it must never fire on an ordinary path.
+  '
+  ' Resolved at the TOP, before the no-content early return below. An error path that
+  ' returned without resolving would strand the run open forever, and the screen would
+  ' report as unmeasurable rather than as the failed playback it was. Same placement, and
+  ' the same reason, as the resolve-at-the-top handlers in ItemDetails.bs.
+  screenLoad.resolve("metadata")
   m.LoadMetaDataTask.unobserveField("content")
   m.LoadMetaDataTask.control = "STOP"
 
@@ -729,6 +776,12 @@ sub onVideoContentLoaded()
 
 
   m.top.observeField("state", "onState")
+
+  ' The second half of the wait starts here: handing `content` to the Video node is what
+  ' sets it buffering. Declared after the early return above, so a playback that failed
+  ' to resolve a stream leaves the run unpainted and reports unmeasurable — never a
+  ' first-frame time for a frame that never arrived.
+  screenLoad.pending("buffer")
 
   m.top.content = videoContent[0].content
   m.top.PlaySessionId = videoContent[0].PlaySessionId
@@ -1381,6 +1434,14 @@ sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
   m.LoadMetaDataTask.selectedAudioStreamIndex = m.top.audioIndex
   m.LoadMetaDataTask.itemId = m.currentItem.id
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
+  ' Unlike the three reload paths, this one CAN run before the first frame, and when it
+  ' does the retry is still the same load — the user has been waiting since init and has
+  ' seen no frame — so the second fetch is recorded as a second `metadata` fill rather than
+  ' dropped. `contentMs` is a sum over fills, so a playback that fell back from direct play
+  ' to transcode reports both round trips, which is exactly why its first frame took as
+  ' long as it did. `buffer` stays open across the retry (`pending` keeps the first
+  ' declaration), so it spans the whole wait rather than restarting mid-way.
+  screenLoad.pending("metadata")
   launchTask(m.LoadMetaDataTask)
 end sub
 
@@ -1452,6 +1513,27 @@ sub onState()
     end if
   else if m.top.state = "playing"
     stopLoadingSpinner()
+
+    ' PAINT. `playing` is this screen's first frame — Roku is rendering the stream and the
+    ' spinner comes down on the line above — so it is the same "content ready, spinner
+    ' down" moment every other instrumented screen marks.
+    '
+    ' Marked BEFORE the background work below (next-episode prefetch, the `start` report,
+    ' the Live TV channel list). None of it is what the user is waiting for, and none of it
+    ' is declared as a fill: the next-episode button appears minutes later, so a run that
+    ' waited for it would report a `settled` measured in minutes for a screen that was
+    ' usable in seconds.
+    '
+    ' Both fills resolve by here — `metadata` in onVideoContentLoaded, `buffer` on the line
+    ' above — so `paint` settles the run in the same call. Re-entry on pause→play is a
+    ' no-op: `paint` is once-per-run and `resolve` is silent after settle.
+    screenLoad.resolve("buffer")
+    if isValid(m.currentItem) and isValidAndNotEmpty(m.currentItem.type)
+      screenLoad.paint(m.currentItem.type)
+    else
+      screenLoad.paint()
+    end if
+
     ' Check if next episode is available
     if isValid(m.top.showID) and m.top.showID <> "" and not m.checkedForNextEpisode and m.top.content.contenttype = 4
       fetchNextEpisode()
