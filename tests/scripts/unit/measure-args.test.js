@@ -245,3 +245,36 @@ describe('--variant, which says WHICH mount a chained nav meant', () => {
     );
   });
 });
+
+describe('--component, the other half of a mount identity', () => {
+  // `--variant` alone cannot name a mount when a launch mounts DIFFERENT components under
+  // the SAME variant, which is what every playback nav does: reaching the player means
+  // walking through `ItemDetails`, and for a movie both stamp `Movie`.
+  const withNav = (argv) =>
+    parseMeasureArgs(argv, {
+      measurementIds: ['screen-load'],
+      navScreens: [{ name: 'osd', state: 'home' }],
+      defaultMeasurement: 'screen-load',
+    });
+
+  it('accepts a component', () => {
+    expect(withNav(['--nav', 'osd', '--component', 'videoPlayer']).component).toBe('videoPlayer');
+  });
+
+  it('composes with --variant', () => {
+    const args = withNav(['--nav', 'osd', '--component', 'videoPlayer', '--variant', 'Movie']);
+    expect(args.component).toBe('videoPlayer');
+    expect(args.variant).toBe('Movie');
+  });
+
+  it('REFUSES a component carrying the selector grammar', () => {
+    // Recorded in the measurement record like every other selector, so it goes through
+    // the same label hygiene — a value `measure:compare`'s grammar cannot name would
+    // record fine and then never select again.
+    expect(() => withNav(['--component', 'a=b'])).toThrow(/may not contain/);
+  });
+
+  it('is absent when not passed, so the first-mount default still applies', () => {
+    expect(withNav(['--nav', 'osd']).component).toBeUndefined();
+  });
+});

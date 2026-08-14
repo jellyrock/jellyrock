@@ -7,10 +7,21 @@ import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/globals.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/screenReadiness.bs"
 import "pkg:/source/utils/translate.bs"
 import "pkg:/source/utils/translateLocale.bs"
 
 sub init()
+  ' Open the readiness ledger for one load of this screen. `init()` is the whole load:
+  ' everything this screen shows is built here, synchronously, from two `pkg:` JSON files
+  ' — so unlike `ItemDetails` (which opens its ledger in the route handler because its
+  ' load is a fetch that outlives init) there is no later handler to open it in.
+  '
+  ' Deliberately NOT `onScreenShown()`: that runs after the router has already mounted
+  ' this node, so a ledger opened there would begin AFTER the work it is supposed to
+  ' measure. `ItemDetails` measures the same span this does — from "the screen starts
+  ' loading" to "the screen has rendered" — and excludes the router's mount either way.
+  screenLoad.begin("settings")
   m.log = new log.Logger("Settings")
   m.top.overhangTitle = translate(translationKeys.LabelSettings)
   m.top.isOptionsAvailable = false
@@ -75,6 +86,18 @@ sub init()
   ' Load Configuration Tree
   m.configTree = GetConfigTree()
   LoadMenu({ children: m.configTree })
+
+  ' PAINT — and SETTLE, in the same statement. This screen declares NO fills, because it
+  ' has none: every byte it shows comes from two `pkg:` reads (`languages.json` above and
+  ' `settings.json` in `GetConfigTree`), both synchronous, and `LoadMenu` builds the whole
+  ' list before this line. Nothing is outstanding, so `paint` emits the settled pair too.
+  '
+  ' That is the point of measuring it. `settled - paint = 0` here is a RESULT, not a gap in
+  ' the instrumentation — the ledger emits "settled" as its own line precisely so a screen
+  ' that settles instantly cannot read the same as one that never settles at all. If a
+  ' future change moves any of this work off the render thread, the fill it adds is what
+  ' that number will start to show.
+  screenLoad.paint()
 end sub
 
 sub onKeyGridSubmit()
