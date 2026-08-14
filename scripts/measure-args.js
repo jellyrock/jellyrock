@@ -51,8 +51,30 @@ const VALUE_FLAGS = new Map([
   // so nothing but a label the operator supplies can separate them.
   ['--arm', 'arm'],
   // WHERE the app was. Only meaningful for a family whose `screen` is null (see
-  // `measurements.js`); supplied by hand until measurement can navigate.
+  // `measurements.js`), and only for a screen measurement cannot NAVIGATE to — see
+  // `--nav`, which supersedes it wherever it applies.
   ['--screen', 'screen'],
+  // DRIVE the app to a screen after each relaunch, by name, using the nav declared on
+  // that screen's entry in `tests/rta/screens.js`.
+  //
+  // This is what makes anything but Home measurable: without it `measure.js` reaches a
+  // screen by relaunching, so the app is always on Home and 26 of the 29 registered
+  // screens are unreachable. Naming the screen registry rather than growing a private
+  // one is the point — the functional suite and the store screenshots already drive
+  // these navs, and a second copy would drift from the app the first one is keeping
+  // honest.
+  ['--nav', 'nav'],
+  // The library id a nav should target, for a server with more than one library of a
+  // type. `navLibraryByType` matches on collectionType when this is absent and REFUSES
+  // an ambiguous match rather than guessing — correct, but it refuses on exactly the
+  // large multi-library servers a perf measurement most wants to run against.
+  ['--library', 'library'],
+  // WHICH mount to report, when one launch produced several. A chained navigation
+  // mounts one component more than once (a Season is reached THROUGH its Series), so
+  // `indexInLaunch === 0` is the wrong screen. Unlike `--screen` this is CHECKABLE —
+  // `measure.js` refuses a value no sample carried — so it is evidence rather than an
+  // assertion, which is the same distinction that made the family's screen derived.
+  ['--variant', 'variant'],
 ]);
 
 /** Flags that take no value. */
@@ -111,12 +133,16 @@ const knownFlags = () => [...VALUE_FLAGS.keys(), ...BOOLEAN_FLAGS.keys()].join('
  * @param {Record<string, string|null>} [options.screens] each family's DECLARED
  *   screen, or null where the family alone cannot say. Used to refuse a `--screen`
  *   that contradicts one.
+ * @param {{name: string, state: string}[]} [options.navScreens] the screen registry,
+ *   reduced to what validating `--nav` needs. Passed in for the same reason as the
+ *   two above — and additionally because importing `tests/rta/screens.js` here would
+ *   pull the whole nav/ODC stack into a pure parser.
  * @throws {MeasureArgError} on an unknown flag, a value flag with no value, or a
  *   value that cannot be what the flag means.
  */
 export function parseMeasureArgs(
   argv = [],
-  { measurementIds = [], screens = {}, defaultMeasurement } = {},
+  { measurementIds = [], screens = {}, navScreens = [], defaultMeasurement } = {},
 ) {
   const raw = {};
   const args = { samples: 5, measurement: defaultMeasurement, deploy: false };
@@ -210,5 +236,59 @@ export function parseMeasureArgs(
     }
     args.screen = raw.screen;
   }
+
+  if (raw.nav !== undefined) {
+    checkLabel('--nav', raw.nav);
+    const entry = navScreens.find((s) => s.name === raw.nav);
+    if (navScreens.length && !entry) {
+      throw new MeasureArgError(
+        `unknown screen ${JSON.stringify(raw.nav)}. Registered in tests/rta/screens.js: ` +
+          `${navScreens.map((s) => s.name).join(', ')}`,
+      );
+    }
+    // `measure` writes no registry and restores none — see its header. Every screen
+    // reachable without seeding is a `home`-state one; `userSelect` and `serverSelect`
+    // are reached by SEEDING the registry into a signed-out state, which this tool
+    // cannot do without adopting a lifecycle it deliberately does not have. Refused
+    // with the reason rather than attempted and timed out on a screen that never came.
+    if (entry && entry.state !== 'home') {
+      throw new MeasureArgError(
+        `--nav ${JSON.stringify(raw.nav)} needs the app in "${entry.state}" state, which is ` +
+          'reached by seeding the registry. `npm run measure` never writes the registry (it ' +
+          'measures the app as your device already has it, signed into your own server), so ' +
+          'it can only drive screens reachable from a signed-in Home.',
+      );
+    }
+    // The screen is now KNOWN, so a hand-typed one is at best redundant and at worst a
+    // contradiction the record would carry as provenance.
+    if (raw.screen !== undefined) {
+      throw new MeasureArgError(
+        `--screen may not be combined with --nav: --nav ${JSON.stringify(raw.nav)} already says ` +
+          'which screen the app was driven to, and it says so by driving there rather than by ' +
+          'being asserted. Drop --screen.',
+      );
+    }
+    args.nav = raw.nav;
+  }
+
+  if (raw.library !== undefined) {
+    // Through the same label hygiene as every other recorded value: `--library` is
+    // recorded in the measurement record and is therefore a selector like the rest, and
+    // it was the one value flag that skipped this.
+    checkLabel('--library', raw.library);
+    if (raw.nav === undefined) {
+      throw new MeasureArgError(
+        '--library only means something with --nav — it selects which library the nav opens, ' +
+          'and without a nav nothing opens one.',
+      );
+    }
+    args.library = raw.library;
+  }
+
+  if (raw.variant !== undefined) {
+    checkLabel('--variant', raw.variant);
+    args.variant = raw.variant;
+  }
+
   return args;
 }

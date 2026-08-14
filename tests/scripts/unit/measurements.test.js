@@ -9,6 +9,10 @@
  * written from the doc matches nothing at all. A test using a hand-typed line
  * would have agreed with the bug.
  */
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -205,6 +209,125 @@ describe('assembleSamples', () => {
   });
 });
 
+/**
+ * One `screen-load` sample as `source/utils/screenReadiness.bs` builds it, with
+ * roku-log's real prefix and trailing padding.
+ *
+ * ⚠️ Written from the emitting source, NOT captured off a device — the family's
+ * `grounded: false` says the same thing, and `measure.js` prints it. A test written
+ * from the emitter proves the pattern matches what THIS repo emits; only a device can
+ * prove the device emits it. That is exactly the distinction the header above draws,
+ * and the reason the Home fixture is verbatim capture instead.
+ */
+const SCREEN_LOAD_LINES = [
+  'INFO file:///x/source/utils/screenReadiness.bs:118 screen-load paint - component itemDetails variant Movie ms 812 [debug=false perfTiming=true]  ',
+  'INFO file:///x/source/utils/screenReadiness.bs:212 screen-load settled - component itemDetails variant Movie ms 3104 fills 3 [debug=false perfTiming=true]  ',
+  'INFO file:///x/source/utils/screenReadiness.bs:213 screen-load split - component itemDetails variant Movie content 2 contentMs 2704 slowestContent extras 2310 texture 1 textureMs 640 slowestTexture logo 640  ',
+];
+
+/**
+ * A chained navigation, as `--nav seasonDetails` produces it: the Series and the Season
+ * are two SEPARATE ItemDetails mounts (the details route is keepAlive with no
+ * allowReuse), so two ledgers emit onto one console and interleave. The nav's gate waits
+ * on paint, so it presses into the Season while the Series' extras chain is still
+ * running — which puts the Series' settle AFTER the Season's paint.
+ *
+ * Written from the emitter, not captured: the ordering is inferred from the nav gate and
+ * the measured fill durations. The point of the fixture is that the assembler must be
+ * correct WITHOUT anyone having to prove this exact ordering occurs.
+ */
+const INTERLEAVED_LINES = [
+  'INFO file:///x/screenReadiness.bs:118 screen-load paint - component itemDetails variant Series ms 900 [debug=false perfTiming=true]  ',
+  'INFO file:///x/screenReadiness.bs:118 screen-load paint - component itemDetails variant Season ms 700 [debug=false perfTiming=true]  ',
+  'INFO file:///x/screenReadiness.bs:212 screen-load settled - component itemDetails variant Series ms 2400 fills 2 [debug=false perfTiming=true]  ',
+  'INFO file:///x/screenReadiness.bs:213 screen-load split - component itemDetails variant Series content 1 contentMs 1500 slowestContent extras 1500 texture 1 textureMs 200 slowestTexture logo 200  ',
+  'INFO file:///x/screenReadiness.bs:212 screen-load settled - component itemDetails variant Season ms 1800 fills 2 [debug=false perfTiming=true]  ',
+  'INFO file:///x/screenReadiness.bs:213 screen-load split - component itemDetails variant Season content 1 contentMs 1100 slowestContent extras 1100 texture 1 textureMs 150 slowestTexture logo 150  ',
+];
+
+describe('the screen-load family', () => {
+  const load = measurementById('screen-load');
+
+  it('assembles paint + settled + split into ONE sample', () => {
+    const samples = assembleSamples(load, SCREEN_LOAD_LINES);
+    expect(samples).toHaveLength(1);
+    expect(samples[0].complete).toBe(true);
+    expect(samples[0].lines).toEqual(['paint', 'settled', 'split']);
+  });
+
+  it('keeps a screen that painted but never settled, marked complete', () => {
+    // The whole reason `paint` is the only required line. A fill that never resolved
+    // must produce a sample carrying a paint time and NO settle time — not a dropped
+    // sample, which would make a broken screen look like a device that ran fewer
+    // times, and not an incomplete one, which would fall out of the median entirely.
+    const [sample] = assembleSamples(load, [SCREEN_LOAD_LINES[0]]);
+    expect(sample.complete).toBe(true);
+    expect(sample.fields.paintMs).toBe(812);
+    expect(sample.fields).not.toHaveProperty('settledMs');
+  });
+
+  it('splits two mounts of one component into two samples, told apart by variant', () => {
+    // Reaching a Season means loading its Series first, so ONE launch legitimately
+    // mounts this component twice. Both loads really happened; what makes them usable
+    // is that the app names which is which.
+    const samples = assembleSamples(load, [INTERLEAVED_LINES[0], INTERLEAVED_LINES[1]]);
+    expect(samples).toHaveLength(2);
+    expect(samples.map((s) => s.fields.variant)).toEqual(['Series', 'Season']);
+  });
+
+  it("does NOT file one mount's settle against another mount's paint", () => {
+    // The finding this identity exists for. Under a single-open assembler the Series'
+    // settle arrives while the Season is the open sample, and is merged into it —
+    // producing one well-formed sample whose paint is the Season and whose settled
+    // describes the Series. Nothing in the fields would reveal it.
+    const samples = assembleSamples(load, INTERLEAVED_LINES);
+    expect(samples).toHaveLength(2);
+
+    const series = samples.find((s) => s.fields.variant === 'Series');
+    const season = samples.find((s) => s.fields.variant === 'Season');
+    expect(series.fields.paintMs).toBe(900);
+    expect(series.fields.settledMs).toBe(2400);
+    expect(series.fields.slowestContentMs).toBe(1500);
+    expect(season.fields.paintMs).toBe(700);
+    expect(season.fields.settledMs).toBe(1800);
+    expect(season.fields.slowestContentMs).toBe(1100);
+    expect(series.complete && season.complete).toBe(true);
+  });
+
+  it('emits samples in MOUNT order, not completion order', () => {
+    // `indexInLaunch` has to keep meaning "which mount". The two differ exactly here:
+    // the Series opens first and finishes last, because its extras chain outlives the
+    // walk into the Season.
+    const samples = assembleSamples(load, INTERLEAVED_LINES);
+    expect(samples.map((s) => s.fields.variant)).toEqual(['Series', 'Season']);
+  });
+
+  it('reads the build flags the app stamped into the paint line', () => {
+    const [sample] = assembleSamples(load, SCREEN_LOAD_LINES);
+    expect(sample.buildFlags).toEqual({ debug: false, perfTiming: true });
+  });
+
+  it('matches a screen with no variant and no slowest fill', () => {
+    // `screenReadiness.bs` writes the literal `none` rather than an empty token: an
+    // empty one collapses the two spaces around it and shifts every field after it,
+    // so the pattern would match the wrong group rather than fail.
+    const [sample] = assembleSamples(load, [
+      'INFO file:///x/screenReadiness.bs:118 screen-load paint - component settings variant none ms 240 [debug=false perfTiming=true]  ',
+      'INFO file:///x/screenReadiness.bs:213 screen-load split - component settings variant none content 0 contentMs 0 slowestContent none 0 texture 0 textureMs 0 slowestTexture none 0  ',
+    ]);
+    expect(sample.fields.component).toBe('settings');
+    expect(sample.fields.variant).toBe('none');
+    expect(sample.fields.slowestContent).toBe('none');
+  });
+
+  it('is declared with no screen, because the app names its own', () => {
+    // Unlike `item-grid`, whose null screen is a GAP only `--screen` can fill. Here the
+    // screen arrives as evidence in the line rather than as an operator's assertion.
+    expect(load.screen).toBeNull();
+    expect(measurementIds()).toContain('screen-load');
+  });
+});
+
 describe('splitWorkload', () => {
   it('separates what the run had to DO from how long it took', () => {
     const [first] = assembleSamples(home, CAPTURED);
@@ -215,9 +338,60 @@ describe('splitWorkload', () => {
     expect(timings.totalMs).toBe(1500);
     expect(timings).not.toHaveProperty('rows');
   });
+
+  it('leaves a family that emits only numbers with no dimensions', () => {
+    const [first] = assembleSamples(home, CAPTURED);
+    expect(splitWorkload(home, first.fields).dimensions).toEqual({});
+  });
+
+  it('routes a NON-NUMERIC field to dimensions, out of both halves', () => {
+    const load = measurementById('screen-load');
+    const [sample] = assembleSamples(load, SCREEN_LOAD_LINES);
+    const { workload, timings, dimensions } = splitWorkload(load, sample.fields);
+
+    // The three names the app stamps. Subtracting two of these is meaningless, and
+    // leaving them in `timings` would hand `measure-compare.js` string operands for a
+    // numeric delta and a Mann-Whitney.
+    expect(dimensions).toEqual({
+      component: 'itemDetails',
+      variant: 'Movie',
+      slowestContent: 'extras',
+      slowestTexture: 'logo',
+    });
+    expect(timings).not.toHaveProperty('component');
+    expect(workload).not.toHaveProperty('variant');
+
+    // Counts are workload, durations are timings — the family still has to say which,
+    // because both are numbers.
+    expect(workload).toEqual({ fills: 3, contentFills: 2, textureFills: 1 });
+    expect(timings).toEqual({
+      paintMs: 812,
+      settledMs: 3104,
+      contentMs: 2704,
+      slowestContentMs: 2310,
+      textureMs: 640,
+      slowestTextureMs: 640,
+    });
+  });
 });
 
+const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+
 describe('the registry itself', () => {
+  it("every family's doc: path resolves to a file that exists", () => {
+    // `doc:` is printed to operators and pasted into write-ups, and NOTHING reads it —
+    // there is no consumer to fail, so a dead path survives indefinitely. `screen-load`
+    // shipped pointing at `docs/dev/measuring-performance.md`, a Charter deliverable
+    // that has not been written; the only file by that name lived under a gitignored
+    // archive. This converts the eyeball into a gate.
+    for (const m of MEASUREMENTS) {
+      // Strip a `#anchor` — the file is what must exist; anchor resolution is
+      // `lint:docs`' job and it already owns it.
+      const file = m.doc.split('#')[0];
+      expect(fs.existsSync(path.join(repoRoot, file)), `${m.id} doc: ${file}`).toBe(true);
+    }
+  });
+
   it('registers the item-grid family the genres work reads', () => {
     // The reason this is a registry and not a Home parser: the app already emits a
     // second family, and every future instrumented screen adds a third.

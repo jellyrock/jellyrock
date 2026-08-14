@@ -38,3 +38,4 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0024](0024-crash-report-enrich-before-file.md) | Crash workflow — enrich before file, disposition routing to epics (supersedes 0006) | Accepted | 2026-07-22 |
 | [0025](0025-gradient-rendering-ramp-posters.md) | Gradients render as stretched tinted ramp posters, not Rectangle stacks | Accepted | 2026-08-08 |
 | [0026](0026-no-worker-pool-for-task-ui-handoff.md) | No worker-pool tier for Task→UI handoffs; the render thread is the shared bottleneck | Accepted | 2026-08-09 |
+| [0027](0027-screen-readiness-ledger.md) | A screen declares its pending fills; paint and settle fall out of the ledger | Accepted | 2026-08-13 |

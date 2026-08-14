@@ -203,6 +203,62 @@ describe('comparability — what is refused', () => {
     expect(comparability(...armsFrom(records)).refusals.join(' ')).toMatch(/mixes 2 screens/);
   });
 
+  it('refuses two item VARIANTS of one component — the gap a component-level family opens', () => {
+    // `screen` alone is too coarse once one component backs many screens: an
+    // `itemDetails` Movie series and an `itemDetails` Series series agree on component,
+    // measurement, model and tier, and would have passed every gate cleanly. `variant`
+    // is what separates them, and it had been read here since this file was written
+    // while nothing ever wrote it.
+    const records = [
+      series({ arm: 'before', screen: 'movieDetails', screenVariant: 'Movie' }),
+      series({ arm: 'after', screen: 'seriesDetails', screenVariant: 'Series' }),
+    ];
+    const refusals = comparability(...armsFrom(records)).refusals.join(' ');
+    expect(refusals).toMatch(/different item variants/);
+  });
+
+  it('refuses an arm that mixes two variants within itself', () => {
+    const mixed = {
+      samples: [sample(2000), sample(2100, { launchAt: '2026-08-13T10:06:00.000Z' })],
+    };
+    const records = [
+      series({ arm: 'after', screenVariant: 'Series', ...mixed }),
+      series({ arm: 'after', screenVariant: 'Season', ...mixed }),
+      series({ arm: 'before' }),
+    ];
+    expect(comparability(...armsFrom(records)).refusals.join(' ')).toMatch(/mixes 2 item variants/);
+  });
+
+  it('keeps the run-script `variant` and the screen `screenVariant` apart', () => {
+    // They are unrelated senses of one word and the record carries BOTH: `variant` is
+    // `process.env.npm_lifecycle_event` from `runProvenance()`, `screenVariant` is the
+    // item type the app stamped. Caught on hardware — an earlier cut named the second one
+    // `variant`, and because `runProvenance()` is spread BELOW it in the record literal,
+    // every record read `variant: "measure"` while its samples plainly said Series/Season.
+    const records = [
+      series({ arm: 'before', variant: 'measure', screenVariant: 'Movie' }),
+      series({ arm: 'after', variant: 'measure', screenVariant: 'Movie' }),
+    ];
+    // Same npm script on both arms is normal and must not refuse; same item type too.
+    expect(comparability(...armsFrom(records)).refusals).toEqual([]);
+    // And the item type is what the gate actually reads.
+    const mixed = [
+      series({ arm: 'before', variant: 'measure', screenVariant: 'Movie' }),
+      series({ arm: 'after', variant: 'measure', screenVariant: 'Series' }),
+    ];
+    expect(comparability(...armsFrom(mixed)).refusals.join(' ')).toMatch(/different item variants/);
+  });
+
+  it('refuses two arms that opened different LIBRARIES', () => {
+    // On the server that motivated `--library` (four movie libraries) two arms can
+    // agree on screen, variant, device and server while measuring different content.
+    const records = [
+      series({ arm: 'before', library: 'lib-a' }),
+      series({ arm: 'after', library: 'lib-b' }),
+    ];
+    expect(comparability(...armsFrom(records)).refusals.join(' ')).toMatch(/different library ids/);
+  });
+
   it('refuses when both selectors resolve to the same series', () => {
     const records = [series({ arm: 'before' })];
     const a = buildArm('a', records, { arm: 'before' });

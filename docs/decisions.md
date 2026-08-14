@@ -675,6 +675,51 @@ the constraint worth re-evaluating: verified unambiguous across all 70 families 
 re-checked on every generate — if Roku ships a 2 GB revision under an existing prefix,
 `familyOf` needs revisiting.
 
+## decision-id: measurement-navigates-via-screen-registry
+
+**date**: 2026-08-13
+**status**: accepted
+**related-files**: scripts/measure.js, scripts/measure-args.js, tests/rta/screens.js
+
+`npm run measure` reaches a non-Home screen by running the nav declared on that screen's
+entry in `tests/rta/screens.js` (`--nav <screen>`), making measurement the THIRD consumer of
+that registry after the functional suite and the store screenshots. A private nav registry
+was rejected: the other two consumers already drive this same nav code against a real device on
+every run, so reusing them means a broken nav surfaces as a red test rather than as a
+measurement that quietly stopped reaching the screen it names. Before this, `measure`
+reached a screen by RELAUNCHING, so the app was always on Home and 26 of the 29 registered
+screens were unreachable.
+
+It adopts that nav code WITHOUT the seeding. They read their context defensively
+(`libraryIdFor(ctx?.libraries, …)`, `ctx?.heroIndex || 0`), so the detail screens navigate
+with no session, no `ctx`, and no registry write — which is what lets `measure` keep the
+invariant its header states: it never writes the registry, and it measures the developer's
+own server rather than the demo. The cost is bounded and stated rather than discovered: the
+two music-detail screens are distinguished only by a seeded landing view, so unseeded they
+collapse into whichever view the device last persisted, and the recorded `variant` is the
+only thing that says which was measured. Adopting `lib/registry.js` to fix that was rejected
+— it would buy two screens and cost the invariant. Screens needing a signed-out state are
+refused at parse time with the reason, rather than attempted and timed out on.
+
+`--library <id>` threads an explicit library into `navLibraryByType`'s existing parameter.
+Not speculative: the FIRST real run against the developer's server refused, because that
+server has four movie libraries (and, separately, two TV ones) and the `collectionType` scan
+will not guess between them. The refusal is correct — it fails rather than measuring the
+wrong library — so the flag is the way out of it, not a loosening of it. It binds to the
+TARGET SCREEN's own collection type rather than being mapped onto every type at once: the
+blanket form handed a movies id to a TV nav without a word, which is the same silent
+misreading the refusal exists to prevent. It is also recorded, because two arms that
+opened different libraries are two workloads wearing one name and nothing else in the record
+can say so. A nav failure abandons the series rather than retrying, since a nav that cannot
+reach its screen once will not reach it on the remaining launches.
+
+A CHAINED nav (a Season reached through its Series) mounts one component several times per
+launch, and all of those loads really happened, so all are recorded. What the tool refuses is
+to guess which one was meant: a launch carrying more than one variant publishes no median
+until `--variant` names one, and `--variant` is refused when no sample carried it. Selecting
+by position was the alternative, and it is how the tool would confidently report the screen
+you passed THROUGH as the screen you asked for.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

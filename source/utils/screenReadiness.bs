@@ -1,0 +1,400 @@
+import "pkg:/source/roku_modules/log/LogMixin.brs"
+
+' The screen readiness ledger — when did a screen PAINT, and when did it stop CHANGING?
+'
+' ## Why a ledger rather than a per-screen clock
+'
+' A screen does not become ready at one moment. `ItemDetails` paints its springboard
+' from one metadata fetch and then keeps filling: the extras rows arrive from a serial
+' task chain, a Series swaps a loading placeholder for its Resume button, a Person
+' swaps one for Shuffle, a Playlist grows a Watched button, a Movie grows a Trailer
+' button, a Season back-fills ratings from its parent series, an Audio item fills
+' lyrics. Which of those apply depends on the item type, so between two and four fills
+' are outstanding at paint time and NO single "second milestone" is correct for all
+' nine item types the screen serves.
+'
+' So a screen does not declare WHICH milestone it has. It declares each outstanding
+' fill, and the two milestones fall out of the ledger:
+'
+'   paint    - the screen rendered something the user can look at and act on.
+'   settled  - every fill the screen declared has resolved; it has stopped changing.
+'
+' This is the split the mature platforms publish rather than choose between: the web's
+' first-contentful-paint against network-idle, and Android's time-to-initial-display
+' against `reportFullyDrawn()`. Both make the same admission — the framework can see
+' the first frame, but only the APP knows when the content the user came for landed.
+' Roku gives us neither for free, so this is the minimum that earns both numbers.
+'
+' ## The two rules a call site has to know
+'
+' 1. **Declare every fill BEFORE marking paint.** Every fill on every screen
+'    instrumented so far is discoverable synchronously in the same handler that
+'    paints, so this costs nothing and it keeps `settled` from firing in a gap
+'    between two declarations. A fill declared after paint but BEFORE settle is still
+'    honoured and simply extends the run; one declared after settle is ignored, because
+'    the run is over (see `pending`). Neither is warned about — the post-settle case is
+'    the ordinary user-driven refresh, not a defect.
+' 2. **Every `pending` gets exactly one `resolve`, on every path.** An error path that
+'    returns early without resolving leaves the screen permanently unsettled, which
+'    reports as a MISSING settled line rather than a wrong one. That is the intended
+'    failure: `scripts/measure.js` counts the lines it saw per sample, so a screen
+'    that never settles is reported unmeasurable instead of being quietly averaged in
+'    on its paint number alone.
+'
+' ## Two classes, decided mechanically
+'
+' A fill is `content` (it changes what the screen SAYS) or `texture` (an image or
+' texture load). The class is not a judgment about whether the user notices it — that
+' question has a different answer at every call site and drifts. It falls out of what
+' resolved the fill: a texture `loadStatus` callback is `texture`, data arriving is
+' `content`. `content` is the default so the common call site stays one argument.
+'
+' ⚠️ `contentMs` and `textureMs` are SUMS OF CONCURRENT WAITS, not shares of the load.
+' Fills are declared together and run in parallel, so their durations overlap and their
+' total can EXCEED the wall clock: measured on `.177`, a Series detail settled in 845 ms
+' with `contentMs 878`. Neither is a bug and neither is a percentage — dividing one by
+' `settledMs` is meaningless and will sometimes exceed 100%. The wall clock is
+' `settledMs` alone; the sums say how much waiting the screen did, and `slowestContent`
+' says which single wait to go and look at.
+'
+' Both classes are recorded and reported separately, and `content` is what a comparison
+' headlines. Recording both is deliberate and it is the irreversible half of the
+' choice: a texture timing that is noisy because the device cache was warm can be
+' ignored later, but a fill that was never recorded can never be joined to a series
+' taken before it existed. This project has already paid for that once — see the
+' `deviceKey` note in `scripts/measurements.js`, where four runs can never join a
+' series because a selection key was added after they were taken.
+'
+' ## Cost
+'
+' The gate is INSIDE each sub rather than at every call site. `scripts/harden-prod-manifest.js`
+' forces `perfTiming=false` into every release artifact, so a shipped build compiles
+' these to empty subs — one call and no allocation per fill — and an instrumented
+' screen reads as four plain lines instead of four `#if` blocks. That is the whole
+' reason the ledger is worth having over per-screen clocks: adding a screen is a
+' handful of ordinary-looking statements, and `scripts/measurements.js` never changes.
+'
+' State lives on the CALLER's `m` (these are namespaced free functions, so `m` is the
+' calling component's), which is what keeps two screens loading at once from sharing a
+' ledger — a chained navigation mounts a fresh component per screen, so each gets its own.
+'
+' ⚠️ "The caller's `m`" holds for a plain function in a component's scope, which is every
+' call site there is today. It does NOT hold inside a BrighterScript CLASS method: there
+' `m` is the class instance, while a global function it calls sees the enclosing scope's
+' `m`, so a class instrumenting itself would write one ledger and read another. Read
+' through `state()` rather than `m.screenLoad` and the distinction stops mattering.
+namespace screenLoad
+
+  ' A fill that changes what the screen says. The default.
+  const CONTENT = "content"
+  ' An image / texture load. Passed explicitly.
+  const TEXTURE = "texture"
+
+  ' The open ledger, or `invalid`. The one supported way to READ the state.
+  '
+  ' Exists because "the caller's `m`" is not the same `m` everywhere, and the difference
+  ' is invisible until something reads back what it wrote. A plain function in a
+  ' component's scope — every call site in `ItemDetails` — shares its `m` with the
+  ' namespaced functions it calls, which is what makes the ledger work at all. A
+  ' BrighterScript CLASS method does not: its `m` is the class instance, while a global
+  ' function it calls sees the enclosing scope's `m`, so a class that instrumented itself
+  ' would write one ledger and read another and never notice.
+  '
+  ' Reaching through this accessor is correct under both, because it resolves `m` exactly
+  ' where the writes did. Callers should not poke at `m.screenLoad` directly; the suite
+  ' in `tests/source/unit/utils/screenReadiness.spec.bs` found this the hard way.
+  function state() as object
+    #if perfTiming
+      return m.screenLoad
+    #else
+      return invalid
+    #end if
+  end function
+
+  ' begin: open a ledger for one load of this component. Restarts any ledger already
+  ' open — a re-load (a refresh, a second item opened without leaving the screen) is a
+  ' new run, not a continuation of the last one.
+  '
+  ' @param {string} component - the COMPONENT's name, e.g. "itemDetails". Deliberately
+  '                             NOT an entry in `tests/rta/screens.js`: one component
+  '                             serves many screens there (`itemDetails` backs all nine
+  '                             `*Details` entries), and the app has no way to know which
+  '                             of them the operator navigated to. The RTA screen name is
+  '                             established by `--nav` DRIVING there, and `measure.js`
+  '                             records the two separately for exactly that reason —
+  '                             conflating them under one word `screen` is what let a
+  '                             `movieDetails` series and a `seriesDetails` series compare
+  '                             as one population.
+  sub begin(component as string)
+    #if perfTiming
+      clock = CreateObject("roTimespan")
+      clock.mark()
+      m.screenLoad = {
+        component: component,
+        variant: "",
+        clock: clock,
+        painted: false,
+        settled: false,
+        open: {},
+        fills: 0,
+        contentCount: 0,
+        contentMs: 0,
+        slowestContent: "",
+        slowestContentMs: 0,
+        textureCount: 0,
+        textureMs: 0,
+        slowestTexture: "",
+        slowestTextureMs: 0
+      }
+    #end if
+  end sub
+
+  ' paint: the screen has rendered. Emits the paint line.
+  '
+  ' Stop the clock at the END of the handler that renders the content — the moment all
+  ' render work is submitted and the loading spinner comes down. That is "content
+  ' ready", not time-to-photons; the frame itself lands a beat later. The honest
+  ' alternative is the first `renderTracking` callback, which is closer to what the eye
+  ' sees but fires repeatedly and needs a per-screen rule for which fire counts — which
+  ' is exactly the per-screen knowledge this ledger exists to remove.
+  '
+  ' @param {string} [variant] - what KIND of thing this load was, when one screen
+  '                             serves several: the item type for `ItemDetails`, the
+  '                             library type for a grid. It is what lets a sample be
+  '                             attributed rather than guessed at by position — a
+  '                             chained navigation mounts `ItemDetails` more than once
+  '                             per launch (a Season is reached THROUGH its Series), so
+  '                             "the first sample in the window" is not the one asked
+  '                             for.
+  sub paint(variant = "" as string)
+    #if perfTiming
+      ' A screen that paints with no ledger open is an instrumentation gap — `begin`
+      ' was never called on the path this load actually took — and it is the ONE
+      ' failure that must not be silent, because silence here is indistinguishable
+      ' from a screen that never painted at all. That cost a device round trip to
+      ' diagnose the first time: every other signal (the transpiled output, the
+      ' `perfTiming` bracket on another family's line, the extras chain's own HTTP
+      ' traffic) said the instrumentation was present and running.
+      if not isValid(m.screenLoad)
+        if not isValid(m.screenLoadLog) then m.screenLoadLog = new log.Logger("ScreenLoad")
+        m.screenLoadLog.warn("screen-load no-ledger - a screen painted with no open ledger; screenLoad.begin() was not called on this load path")
+        return
+      end if
+      if m.screenLoad.painted then return
+
+      m.screenLoad.painted = true
+      if variant <> "" then m.screenLoad.variant = variant
+      paintMs = m.screenLoad.clock.totalMilliseconds()
+
+      if not isValid(m.screenLoadLog) then m.screenLoadLog = new log.Logger("ScreenLoad")
+      m.screenLoadLog.info("screen-load paint - component " + m.screenLoad.component + " variant " + variantOrNone() + " ms " + paintMs.toStr() + buildFlags())
+
+      ' A screen with nothing outstanding is settled the instant it paints. Emitted as
+      ' its own line rather than inferred from a missing one, so "settled immediately"
+      ' and "never settled" can never read the same on the wire.
+      settleIfDone()
+    #end if
+  end sub
+
+  ' pending: declare one outstanding async fill. See rule 1 in the header — declare
+  ' every fill before calling `paint`.
+  '
+  ' @param {string} id - a short stable name for the fill, e.g. "extras", "trailer".
+  '                      It is what the settled line names as the slowest, so it should
+  '                      say what was being waited on rather than which task ran.
+  ' @param {string} [fillClass] - `screenLoad.CONTENT` (default) or `screenLoad.TEXTURE`.
+  sub pending(id as string, fillClass = "content" as string)
+    #if perfTiming
+      if not isValid(m.screenLoad) then return
+      ' A run ENDS at settle. A fill declared after that belongs to work nobody opened a
+      ' ledger for — in practice a user-driven refresh, which re-runs the same fills on a
+      ' screen that has long since settled — and admitting it would publish a second,
+      ' later settled time for a load that already reported one. Ignored rather than
+      ' warned about, because the refresh case is ordinary rather than a defect.
+      ' `resolve` carries the SAME guard, and must: the refresh that re-declares these
+      ' fills also re-resolves them, so guarding only this side left every ordinary
+      ' return-from-playback emitting an "unbalanced" warning — the one warning that is
+      ' supposed to mean the two sides have drifted. A warning that fires routinely is a
+      ' warning nobody reads.
+      if m.screenLoad.settled then return
+      ' Keep the FIRST declaration. A fill re-declared while still open is one fill
+      ' that was asked for twice, and taking the later start time would silently
+      ' shorten it.
+      if isValid(m.screenLoad.open[id]) then return
+
+      m.screenLoad.open[id] = {
+        fillClass: fillClass,
+        startedMs: m.screenLoad.clock.totalMilliseconds()
+      }
+    #end if
+  end sub
+
+  ' cancel: withdraw a declared fill that turned out not to start, WITHOUT recording it.
+  '
+  ' Exists so a caller can declare a fill BEFORE the call that may or may not begin it,
+  ' which is the only ordering that is safe when the resolve could in principle land
+  ' synchronously inside that call. `ItemDetails`' logo is the case: a Poster only loads
+  ' when its `uri` actually changes, and whether it changed is knowable only after
+  ' `setItemLogo` returns — but if a warm texture cache could deliver `loadStatus`
+  ' synchronously during the assignment, declaring afterwards would let the resolve
+  ' outrun its own pending and strand the screen unsettled forever.
+  '
+  ' Roku documents `loadStatus` as a fetch-and-decode progression and says nothing about
+  ' whether a same-thread observer is delivered synchronously, so rather than assert an
+  ' answer, declare-then-cancel makes the ordering correct under BOTH. A cancelled fill
+  ' is not a zero-millisecond fill: it never happened, so it must not inflate the fill
+  ' count or the class totals.
+  sub cancel(id as string)
+    #if perfTiming
+      if not isValid(m.screenLoad) then return
+      if not isValid(m.screenLoad.open[id]) then return
+      m.screenLoad.open.delete(id)
+      ' Cancelling the last outstanding fill can complete the run.
+      settleIfDone()
+    #end if
+  end sub
+
+  ' resolve: one declared fill has landed. When the last one lands on a painted screen,
+  ' the settled line is emitted.
+  '
+  ' A `resolve` with no matching `pending` on an OPEN run is reported: it means the two
+  ' sides have drifted, and an unbalanced ledger publishes a settled time describing a
+  ' different set of fills than the reader will assume.
+  '
+  ' After settle, though, it is silent — mirroring `pending`. The run is over, and the
+  ' resolves that arrive next belong to work nobody opened a ledger for: a return from
+  ' playback re-runs the trailer check, the refresh button re-runs the extras chain, and
+  ' a Season re-sets its logo when the first one never became visible. All three are
+  ' ordinary user actions, all three happen in every `perfTiming` build, and warning on
+  ' them would fire the drift alarm routinely — which trains the reader to ignore the
+  ' one signal that is supposed to mean something is genuinely wrong.
+  sub resolve(id as string)
+    #if perfTiming
+      if not isValid(m.screenLoad) then return
+      if m.screenLoad.settled then return
+
+      entry = m.screenLoad.open[id]
+      if not isValid(entry)
+        if not isValid(m.screenLoadLog) then m.screenLoadLog = new log.Logger("ScreenLoad")
+        m.screenLoadLog.warn("screen-load unbalanced - component " + m.screenLoad.component + " resolved " + id + " which was never pending")
+        return
+      end if
+
+      elapsed = m.screenLoad.clock.totalMilliseconds() - entry.startedMs
+      m.screenLoad.open.delete(id)
+      m.screenLoad.fills++
+
+      if entry.fillClass = screenLoad.TEXTURE
+        m.screenLoad.textureCount++
+        m.screenLoad.textureMs += elapsed
+        if elapsed > m.screenLoad.slowestTextureMs
+          m.screenLoad.slowestTextureMs = elapsed
+          m.screenLoad.slowestTexture = id
+        end if
+      else
+        m.screenLoad.contentCount++
+        m.screenLoad.contentMs += elapsed
+        if elapsed > m.screenLoad.slowestContentMs
+          m.screenLoad.slowestContentMs = elapsed
+          m.screenLoad.slowestContent = id
+        end if
+      end if
+
+      settleIfDone()
+    #end if
+  end sub
+
+  ' ⚠️ These four are declared UNCONDITIONALLY and gate their own BODIES, exactly like the
+  ' public subs above. An earlier cut wrapped the whole group in one namespace-level
+  ' `#if perfTiming`, which BSC accepts and `npm run validate` passes — and which the Roku
+  ' compiler REJECTS the moment code coverage is on.
+  '
+  ' Rooibos injects a line-report call at the start of every block it instruments, so a
+  ' `#if` wrapping DECLARATIONS gets one placed between the `#if` and the first `sub` —
+  ' i.e. an executable statement at file scope, outside any function:
+  '
+  '     #if perfTiming
+  '         RBS_CC_271_reportLine("306", 4)   <- not inside a sub
+  '         sub screenLoad_settleIfDone()
+  '
+  ' `bsconfig-tests-unit.json` has `isRecordingCodeCoverage: false` and
+  ' `bsconfig-tests.json` has it TRUE, so `npm run test:unit` passed on hardware and
+  ' `npm run test:all` failed in CI with a bare "Deployment failed: Compile error" — the
+  ' device does not send the detail back. Gate bodies, never declarations.
+
+  ' Emit the settled pair once every declared fill has resolved on a painted screen.
+  '
+  ' Emits at most once per run. A fill that lands after the last one — a straggler
+  ' from a cancelled chain, a second callback on one task — must not publish a
+  ' second, later settled time for the same load: two lines that disagree, with
+  ' nothing on the wire to say which one the reader meant.
+  sub settleIfDone()
+    #if perfTiming
+      if not m.screenLoad.painted then return
+      ' Derived from the AA rather than a parallel counter: a count kept beside the set
+      ' it describes is a second source of truth that can drift, and `cancel` gave it a
+      ' third place to be decremented.
+      if m.screenLoad.open.count() > 0 then return
+      if m.screenLoad.settled then return
+      m.screenLoad.settled = true
+
+      if not isValid(m.screenLoadLog) then m.screenLoadLog = new log.Logger("ScreenLoad")
+
+      ' Two lines, because roku-log's Logger.info takes the message plus at most nine
+      ' arguments once the BSC plugin has spent one on the injected pkg path, and
+      ' exceeding it is not a compile error — it faults at runtime with "Wrong number
+      ' of function parameters" (&hf1) and drops the app into the debugger. Same reason
+      ' `LoadItemsTask2` carries `firstPaint` in its message. Everything rides in the
+      ' message here so the format is one thing to read rather than two.
+      '
+      ' `assembleSamples` in scripts/measurements.js merges every line of a family into
+      ' ONE sample, so splitting costs the reader nothing.
+      '
+      ' BOTH lines repeat the component + variant, and that is not redundancy — it is the
+      ' identity the assembler splits on. A chained navigation mounts this component more
+      ' than once per launch and the two ledgers interleave on one console, so a settled
+      ' line that could not say WHICH load it closed would be filed against whichever
+      ' paint happened to be open. That is not a detectable error afterwards: the fields
+      ' would look perfectly well-formed while describing two different screens.
+      m.screenLoadLog.info("screen-load settled - component " + m.screenLoad.component + " variant " + variantOrNone() + " ms " + m.screenLoad.clock.totalMilliseconds().toStr() + " fills " + m.screenLoad.fills.toStr() + buildFlags())
+      m.screenLoadLog.info("screen-load split - component " + m.screenLoad.component + " variant " + variantOrNone() + " content " + m.screenLoad.contentCount.toStr() + " contentMs " + m.screenLoad.contentMs.toStr() + " slowestContent " + slowestOrNone(m.screenLoad.slowestContent) + " " + m.screenLoad.slowestContentMs.toStr() + " texture " + m.screenLoad.textureCount.toStr() + " textureMs " + m.screenLoad.textureMs.toStr() + " slowestTexture " + slowestOrNone(m.screenLoad.slowestTexture) + " " + m.screenLoad.slowestTextureMs.toStr())
+    #end if
+  end sub
+
+  ' The wire must never carry an empty token where a name belongs: a line reading
+  ' `variant  ms 812` collapses two spaces and shifts every field after it, so the
+  ' pattern would either fail to match or match the wrong group. `none` is a value; an
+  ' empty string is a hole.
+  function variantOrNone() as string
+    #if perfTiming
+      if m.screenLoad.variant = "" then return "none"
+      return m.screenLoad.variant
+    #else
+      return "none"
+    #end if
+  end function
+
+  function slowestOrNone(id as string) as string
+    if id = "" then return "none"
+    return id
+  end function
+
+  ' The build flags the sample was taken under, stamped by the app itself so a number
+  ' can never be silently compared against one measured in a distorting build — a
+  ' `debug=true` build attaches `rawApiData` to every transformed item. Provenance
+  ' belongs in the sample, not in someone's memory of which manifest was checked out.
+  '
+  ' ENABLE_RTA is deliberately NOT here: it is the third flag that can move a
+  ' measurement (it makes the on-device ODC component resident) and the app cannot
+  ' self-report it usefully — `scripts/measure.js` derives it from the deploy it
+  ' performed. See the note in `scripts/measurements.js`.
+  function buildFlags() as string
+    #if debug
+      return " [debug=true perfTiming=true]"
+    #else
+      return " [debug=false perfTiming=true]"
+    #end if
+  end function
+
+
+end namespace
