@@ -11,11 +11,26 @@ import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/screenReadiness.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/translate.bs"
 
+' This screen has TWO loads, and they are measured as two ledger runs rather than one.
+'
+' Opening search and running a search are separated by the user typing, which is an
+' unbounded wait belonging to the person rather than to the app — measured on `.177`, the
+' RTA harness alone sits 1.2 s in that gap. One run spanning both would publish a `settled`
+' dominated by how fast something typed, which is not a property of this screen at all.
+'
+' So `init` opens a run that ends when the keyboard is typable (variant `open`), and every
+' query opens a fresh one that ends when its results are on screen (variant `query`) —
+' `begin`'s documented restart semantics, a re-load being a new run rather than a
+' continuation. The variants are what let a reader select between them; `npm run measure
+' --nav search` refuses a median until one is named, and names both.
 sub init()
+  screenLoad.begin("searchResults")
+
   m.log = new log.Logger("SearchResults")
   ' Clear backdrop immediately when search screen opens
   m.global.sceneManager.callFunc("setBackgroundImage", "")
@@ -36,6 +51,11 @@ sub init()
   ' Observe row item focus for backdrop updates
   m.searchSelect.observeField("rowItemFocused", "onSearchItemFocused")
 
+  ' Observe contentReady to close the `rows` fill in the readiness ledger. SearchRow builds
+  ' the rows in its OWN `m`, so it cannot resolve this screen's ledger directly — it marks a
+  ' field and this screen resolves on it, the same signal ExtrasRowList gives ItemDetails.
+  m.searchSelect.observeField("contentReady", "onResultRowsReady")
+
   ' SearchResults owns its own navigation — a selected result navigates to its route.
   m.searchSelect.observeField("itemSelected", "onSearchItemSelected")
 
@@ -52,9 +72,29 @@ sub init()
   ' focus) on a keepAlive back-resume that replays the same route context.
   m.lastAppliedQuery = ""
 
+  ' The keyboard is BUILT here but not yet typable: nothing has focus until the router shows
+  ' the view and `onScreenShown` runs, which is a later turn of the event loop. So it is
+  ' outstanding at paint and has to be declared here rather than discovered afterwards —
+  ' the same shape as `settings`' right-hand panel, and for the same reason.
+  screenLoad.pending("focus")
+
+  ' PAINT — the search UI exists and the help text is on screen. What it is NOT yet is
+  ' usable, which is exactly what `focus` above measures; collapsing the two into one
+  ' number would hide the wait between a screen appearing and it accepting a keystroke.
+  screenLoad.paint("open")
 end sub
 
 sub onScreenShown()
+  ' The screen is now showing and about to take focus — it has become typable. Resolved at
+  ' the TOP because every path below this line returns early on some route (a voice query,
+  ' a first show, a keepAlive resume), and a `pending` that any path can skip leaves the
+  ' screen permanently unsettled. The wait being measured is the router's show, not the
+  ' focus assignments underneath it.
+  '
+  ' Silent on every later call: a keepAlive resume re-runs this long after the open run
+  ' settled, and `resolve` ignores a run that is over — see screenReadiness.bs.
+  screenLoad.resolve("focus")
+
   ' Voice search arrives as route.context.query — pre-populate the search box and focus its
   ' text entry, skipping normal focus restoration.
   if applyRouteQuery() then return
@@ -191,6 +231,18 @@ sub searchMedias()
   'if search task is running and user selectes another letter stop the search and load the next letter
   m.searchTask.control = "stop"
   if isValid(query) and query <> ""
+    ' A new query is a NEW run, not a continuation — `begin` restarts the ledger, so the
+    ' clock starts at the keystroke rather than at the screen opening. Each keystroke
+    ' supersedes the last (the line above stops the task in flight), and the superseded run
+    ' simply never paints, so it emits nothing rather than a truncated number.
+    '
+    ' Deliberately inside this guard: an emptied search box also reaches here, and it
+    ' starts no task and produces no results, so opening a run for it would leave a ledger
+    ' that can never settle.
+    screenLoad.begin("searchResults")
+    ' Declared BEFORE `launchTask` below, so the resolve can never outrun its own pending.
+    screenLoad.pending("results")
+
     m.searchHelpText.visible = false
     startLoadingSpinner(false)
   end if
@@ -202,11 +254,29 @@ sub searchMedias()
 end sub
 
 sub loadResults()
+  ' The server work is done. Resolved at the TOP because this handler has an early return
+  ' on the no-results path. Measured on `.177`, this fill is nearly the whole wait: the
+  ' task runs FOUR round trips serially (`/items`, `/persons`, `/artists`,
+  ' `/livetv/programs`), 1676 ms end to end for a one-character query.
+  screenLoad.resolve("results")
+
   m.searchTask.unobserveField("results")
 
   stopLoadingSpinner()
+
+  ' Declared before the assignment that triggers it, not after: `SearchRow.getData` runs
+  ' off an `onChange`, and whether Scene Graph dispatches that inline or a turn later is
+  ' not something to assume — declaring first is correct under both, and the fill's own
+  ' duration is what says which it was.
+  screenLoad.pending("rows")
+
   m.searchSelect.itemdata = m.searchTask.results
   m.searchSelect.query = m.top.SearchAlpha
+
+  ' PAINT — the results are handed over and the spinner is down. The rows themselves are
+  ' built by `SearchRow.getData`, which is `rows` above; paint says the waiting is over,
+  ' settled says the results are on screen.
+  screenLoad.paint("query")
 
   if m.searchTask.results.TotalRecordCount = 0
     ' make sure focus is on the keyboard
@@ -215,6 +285,16 @@ sub loadResults()
     end if
     return
   end if
+end sub
+
+' The result rows are built and on screen — closes the `rows` fill.
+'
+' Reads the VALUE rather than treating the notification as the signal: SearchRow clears the
+' field at the start of every build, so half the callbacks here are the clear rather than
+' the completion.
+sub onResultRowsReady()
+  if not m.searchSelect.contentReady then return
+  screenLoad.resolve("rows")
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean
@@ -263,6 +343,7 @@ sub onDestroy()
   ' Unobserve child node observers
   if isValid(m.searchAlphabox) then m.searchAlphabox.unobserveField("focusedChild")
   m.searchSelect.unobserveField("rowItemFocused")
+  m.searchSelect.unobserveField("contentReady") ' readiness ledger's `rows` fill
   m.searchSelect.unobserveField("itemSelected") ' self-navigation observer
   m.top.unobserveField("quickPlayNode") ' playback launcher
 

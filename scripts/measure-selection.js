@@ -195,6 +195,25 @@ export function selectColdSamples(samples = [], selector = {}) {
 }
 
 /**
+ * The mounts of one launch that were NOT selected, named rather than counted.
+ *
+ * They used to be described as "later runs", which was true only while the selected sample
+ * was always the first one. A selector can now name a mount that came second — `--variant
+ * query` on the search screen selects the query, and the other sample is the screen OPENING,
+ * before it — so the per-launch progress line reported a screen-open as a re-render that
+ * followed the search. Naming them also makes the line checkable: "+1 other" says something
+ * happened, `searchResults/open` says what.
+ *
+ * `cold` is compared by IDENTITY, so callers must pass the very object `selectColdSamples`
+ * returned out of this same array rather than a re-shaped copy of it.
+ */
+export function otherMountsIn(launchSamples = [], cold = null) {
+  return launchSamples
+    .filter((s) => s !== cold)
+    .map((s) => mountIdOf(s?.dimensions) || `#${s?.indexInLaunch}`);
+}
+
+/**
  * How many launches came back empty, split by WHY — because the two causes have opposite
  * next steps and one count cannot carry both.
  *

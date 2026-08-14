@@ -32,6 +32,11 @@ sub init()
 end sub
 
 function getData()
+  ' Cleared at the START of every build so the completion below always NOTIFIES: a second
+  ' search would otherwise re-set `true` over `true`, which Scene Graph drops, and the
+  ' screen's `rows` fill would hang on every query after the first.
+  m.top.contentReady = false
+
   if not isValid(m.top.itemData)
     data = CreateObject("roSGNode", "ContentNode")
     return data
@@ -83,6 +88,11 @@ function getData()
   applyRowSizes(data)
   updateTextureBufferRange(m.top.content, 0, 0, m.top.numRows)
   activateTextureManager(m.top.content)
+
+  ' Every row is built and the texture manager is live — the results are on screen. This is
+  ' the ONLY tail of this function that has results, so it is the only place the signal
+  ' belongs; the early return above is the init-time call, which has no data yet.
+  m.top.contentReady = true
   return data
 end function
 

@@ -3,6 +3,10 @@
   <interface>
     <field id="rowSize" type="int" />
     <field id="itemData" type="assocarray" onChange="getData" />
+    <!-- Set true once getData has built every row; cleared at the start of each build.
+         SearchResults resolves its readiness ledger's `rows` fill on this, because a row
+         list building in its own `m` cannot close a fill on the screen that owns it. -->
+    <field id="contentReady" type="bool" value="false" />
     <field id="query" type="string" />
     <field id="itemSelected" type="node" alwaysNotify="true" />
   </interface>

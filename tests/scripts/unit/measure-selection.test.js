@@ -16,6 +16,7 @@ import {
   analyseMounts,
   launchAudit,
   mountIdOf,
+  otherMountsIn,
   selectColdSamples,
   selectionRefusalFor,
   selectsMount,
@@ -174,6 +175,40 @@ describe('selecting the cold sample of each launch', () => {
       s(0, 1, 'videoPlayer', 'Movie', { timings: { paintMs: 2155 } }),
     ];
     expect(selectColdSamples(samples, { component: 'videoPlayer' })[0].timings.paintMs).toBe(2155);
+  });
+});
+
+describe('naming the mounts a launch produced but did not publish', () => {
+  it('names the mount that came BEFORE the selected one, rather than calling it later', () => {
+    // The search screen opens (`open`) and then runs a query (`query`), so `--variant query`
+    // selects the SECOND sample. The other one precedes it, and the line used to call every
+    // unselected sample a "later run" — reporting a screen-open as a re-render that followed
+    // the search.
+    const launch = [s(0, 0, 'searchResults', 'open'), s(0, 1, 'searchResults', 'query')];
+    const cold = selectColdSamples(launch, { variant: 'query' })[0];
+
+    expect(cold).toBe(launch[1]);
+    expect(otherMountsIn(launch, cold)).toEqual(['searchResults/open']);
+  });
+
+  it('names nothing when the launch mounted one screen', () => {
+    const launch = [s(0, 0, 'settings', '')];
+    expect(otherMountsIn(launch, selectColdSamples(launch)[0])).toEqual([]);
+  });
+
+  it('names every mount when none was selected', () => {
+    // A launch whose named mount never painted still has samples worth naming: they are what
+    // the app DID emit, and printing them is how the operator sees they asked for the wrong
+    // one rather than reading "no complete sample" and suspecting the build.
+    const launch = playbackLaunch(0);
+    expect(otherMountsIn(launch, undefined)).toEqual(['itemDetails/Movie', 'videoPlayer/Movie']);
+  });
+
+  it('falls back to the sample index when the family stamps no identity', () => {
+    // `home-latest-rows` and `item-grid` emit purely numeric lines by design, so there is no
+    // mount id to print and the position is all there is to say.
+    const launch = [s(0, 0), s(0, 1)];
+    expect(otherMountsIn(launch, launch[0])).toEqual(['#1']);
   });
 });
 

@@ -182,6 +182,7 @@ import { parseMeasureArgs, MeasureArgError } from './measure-args.js';
 import {
   analyseMounts,
   launchAudit,
+  otherMountsIn,
   selectColdSamples,
   selectionRefusalFor,
 } from './measure-selection.js';
@@ -597,15 +598,23 @@ for (let i = 0; i < args.samples; i++) {
     samples.filter((s) => s.launch === i),
     selector,
   )[0];
-  const extra = assembled.length - 1;
+  // The OTHER mounts this launch produced, named — see `otherMountsIn`, which is where the
+  // rule and its test live. Passed the pushed `samples`, not `assembled`: the push above
+  // re-shapes each one into a different object, and this compares against `cold` by
+  // identity, so `assembled` would match nothing and count the selected sample as an other.
+  const others = otherMountsIn(
+    samples.filter((s) => s.launch === i),
+    cold,
+  );
   console.log(
     `[measure] ${i + 1}/${args.samples}  ` +
       (cold
         ? `${measurement.primary}=${cold.timings[measurement.primary] ?? cold.workload[measurement.primary]} ` +
           `workload=${JSON.stringify(cold.workload)}`
         : '⚠ no complete sample in the window') +
-      (extra > 0
-        ? `  (+${extra} later run${extra > 1 ? 's' : ''} in this launch, recorded separately)`
+      (others.length
+        ? `  (+${others.length} other run${others.length > 1 ? 's' : ''} in this launch, ` +
+          `recorded separately: ${others.join(', ')})`
         : ''),
   );
 }
