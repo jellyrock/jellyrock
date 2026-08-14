@@ -304,14 +304,32 @@ namespace screenLoad
     #end if
   end sub
 
-  #if perfTiming
-    ' Emit the settled pair once every declared fill has resolved on a painted screen.
-    '
-    ' Emits at most once per run. A fill that lands after the last one — a straggler
-    ' from a cancelled chain, a second callback on one task — must not publish a
-    ' second, later settled time for the same load: two lines that disagree, with
-    ' nothing on the wire to say which one the reader meant.
-    sub settleIfDone()
+  ' ⚠️ These four are declared UNCONDITIONALLY and gate their own BODIES, exactly like the
+  ' public subs above. An earlier cut wrapped the whole group in one namespace-level
+  ' `#if perfTiming`, which BSC accepts and `npm run validate` passes — and which the Roku
+  ' compiler REJECTS the moment code coverage is on.
+  '
+  ' Rooibos injects a line-report call at the start of every block it instruments, so a
+  ' `#if` wrapping DECLARATIONS gets one placed between the `#if` and the first `sub` —
+  ' i.e. an executable statement at file scope, outside any function:
+  '
+  '     #if perfTiming
+  '         RBS_CC_271_reportLine("306", 4)   <- not inside a sub
+  '         sub screenLoad_settleIfDone()
+  '
+  ' `bsconfig-tests-unit.json` has `isRecordingCodeCoverage: false` and
+  ' `bsconfig-tests.json` has it TRUE, so `npm run test:unit` passed on hardware and
+  ' `npm run test:all` failed in CI with a bare "Deployment failed: Compile error" — the
+  ' device does not send the detail back. Gate bodies, never declarations.
+
+  ' Emit the settled pair once every declared fill has resolved on a painted screen.
+  '
+  ' Emits at most once per run. A fill that lands after the last one — a straggler
+  ' from a cancelled chain, a second callback on one task — must not publish a
+  ' second, later settled time for the same load: two lines that disagree, with
+  ' nothing on the wire to say which one the reader meant.
+  sub settleIfDone()
+    #if perfTiming
       if not m.screenLoad.painted then return
       ' Derived from the AA rather than a parallel counter: a count kept beside the set
       ' it describes is a second source of truth that can drift, and `cancel` gave it a
@@ -340,38 +358,43 @@ namespace screenLoad
       ' would look perfectly well-formed while describing two different screens.
       m.screenLoadLog.info("screen-load settled - component " + m.screenLoad.component + " variant " + variantOrNone() + " ms " + m.screenLoad.clock.totalMilliseconds().toStr() + " fills " + m.screenLoad.fills.toStr() + buildFlags())
       m.screenLoadLog.info("screen-load split - component " + m.screenLoad.component + " variant " + variantOrNone() + " content " + m.screenLoad.contentCount.toStr() + " contentMs " + m.screenLoad.contentMs.toStr() + " slowestContent " + slowestOrNone(m.screenLoad.slowestContent) + " " + m.screenLoad.slowestContentMs.toStr() + " texture " + m.screenLoad.textureCount.toStr() + " textureMs " + m.screenLoad.textureMs.toStr() + " slowestTexture " + slowestOrNone(m.screenLoad.slowestTexture) + " " + m.screenLoad.slowestTextureMs.toStr())
-    end sub
+    #end if
+  end sub
 
-    ' The wire must never carry an empty token where a name belongs: a line reading
-    ' `variant  ms 812` collapses two spaces and shifts every field after it, so the
-    ' pattern would either fail to match or match the wrong group. `none` is a value; an
-    ' empty string is a hole.
-    function variantOrNone() as string
+  ' The wire must never carry an empty token where a name belongs: a line reading
+  ' `variant  ms 812` collapses two spaces and shifts every field after it, so the
+  ' pattern would either fail to match or match the wrong group. `none` is a value; an
+  ' empty string is a hole.
+  function variantOrNone() as string
+    #if perfTiming
       if m.screenLoad.variant = "" then return "none"
       return m.screenLoad.variant
-    end function
+    #else
+      return "none"
+    #end if
+  end function
 
-    function slowestOrNone(id as string) as string
-      if id = "" then return "none"
-      return id
-    end function
+  function slowestOrNone(id as string) as string
+    if id = "" then return "none"
+    return id
+  end function
 
-    ' The build flags the sample was taken under, stamped by the app itself so a number
-    ' can never be silently compared against one measured in a distorting build — a
-    ' `debug=true` build attaches `rawApiData` to every transformed item. Provenance
-    ' belongs in the sample, not in someone's memory of which manifest was checked out.
-    '
-    ' ENABLE_RTA is deliberately NOT here: it is the third flag that can move a
-    ' measurement (it makes the on-device ODC component resident) and the app cannot
-    ' self-report it usefully — `scripts/measure.js` derives it from the deploy it
-    ' performed. See the note in `scripts/measurements.js`.
-    function buildFlags() as string
-      #if debug
-        return " [debug=true perfTiming=true]"
-      #else
-        return " [debug=false perfTiming=true]"
-      #end if
-    end function
-  #end if
+  ' The build flags the sample was taken under, stamped by the app itself so a number
+  ' can never be silently compared against one measured in a distorting build — a
+  ' `debug=true` build attaches `rawApiData` to every transformed item. Provenance
+  ' belongs in the sample, not in someone's memory of which manifest was checked out.
+  '
+  ' ENABLE_RTA is deliberately NOT here: it is the third flag that can move a
+  ' measurement (it makes the on-device ODC component resident) and the app cannot
+  ' self-report it usefully — `scripts/measure.js` derives it from the deploy it
+  ' performed. See the note in `scripts/measurements.js`.
+  function buildFlags() as string
+    #if debug
+      return " [debug=true perfTiming=true]"
+    #else
+      return " [debug=false perfTiming=true]"
+    #end if
+  end function
+
 
 end namespace
