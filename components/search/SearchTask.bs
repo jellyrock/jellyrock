@@ -16,8 +16,19 @@ end sub
 
 ' Searches multiple Jellyfin endpoints for media matching the query.
 ' Runs on SearchTask thread — fetchJson blocks waiting for ApiPool responses.
+' Every result echoes the query it ANSWERS, so the caller can check that it got the one it
+' asked for. This node is reused across keystrokes — each stops the run in flight and
+' relaunches it — so `m.top.query` already holds the NEXT query by the time a delivery is
+' handled, and without the echo a late one is indistinguishable from the live one. Taken
+' from the local the search actually ran with, so the echo and the items cannot disagree.
+'
+' ⚠️ `m.top.results` is assigned ONCE, below, as this function's last act — and that is
+' load-bearing, not incidental. It is what lets the caller's `control = "stop"` prevent a
+' superseded query from delivering at all (measured: 12 keystrokes, 6 deliveries, every one
+' current). Publishing partial results as each fetch lands would open exactly the race
+' `SearchResults.loadResults` watches for.
 function searchMedia(query as string)
-  if query = "" then return { Items: [], TotalRecordCount: 0 }
+  if query = "" then return { Items: [], TotalRecordCount: 0, query: query }
 
   transformer = JellyfinDataTransformer()
   allItems = []
@@ -82,5 +93,6 @@ function searchMedia(query as string)
   result = {}
   result.Items = allItems
   result.TotalRecordCount = allItems.count()
+  result.query = query
   return result
 end function

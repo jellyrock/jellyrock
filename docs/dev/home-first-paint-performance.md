@@ -206,10 +206,17 @@ through its Series). Both are checked against what the app actually stamped, so 
 sample carried is refused rather than recorded. See [ADR
 0028](../adr/0028-mount-identity-component-and-variant.md).
 
+A screen can also mount once and load TWICE, which needs the same flag for a different
+reason. `search` opens a keyboard (`--variant open`) and then runs a query
+(`--variant query`), and the two are separate ledger runs because the user's typing sits
+between them — a single run would time the typing. So a bare `--nav search` refuses, and
+the variant says which of the screen's two loads the number is about.
+
 ```bash
 npm run measure -- --measurement screen-load --nav settings -n 5
 npm run measure -- --measurement screen-load --nav osd --component videoPlayer -n 5
 npm run measure -- --measurement screen-load --nav seasonDetails --variant Season -n 5
+npm run measure -- --measurement screen-load --nav search --variant query -n 5
 ```
 
 It takes the device lock, holds ONE console socket for the whole session, relaunches n
