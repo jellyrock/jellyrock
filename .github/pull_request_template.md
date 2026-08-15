@@ -1,4 +1,6 @@
 <!-- Your title should be short, descriptive, and in the imperative mood (Fix X, Change Y, instead of Fixed X, Changed Y) -->
+<!-- This description BECOMES the squash commit message on main (squash_merge_commit_message=PR_BODY),
+     so unfilled sections would land in `git log` permanently. CI gates that: scripts/lint/pr-body-check.js. -->
 # Overview
 <!-- Brief overview of PR -->
 
