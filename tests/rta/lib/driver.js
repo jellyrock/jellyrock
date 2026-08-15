@@ -40,8 +40,51 @@ export function setupRtaEnv() {
  * NOT build:prod, which compiles the #if ENABLE_RTA hook out).
  */
 export async function deployRtaBuild() {
-  await device.deploy({ rootDir: 'build', injectTestingFiles: true });
+  await withDeployTimeout(device.deploy({ rootDir: 'build', injectTestingFiles: true }));
   await sleep(RTA_CONFIG.bootMs);
+}
+
+/**
+ * Fail a wedged deploy with its most likely cause instead of waiting forever.
+ *
+ * `device.deploy({injectTestingFiles: true})` sideloads and then waits for the on-device
+ * component to answer — and the ODC lives INSIDE the app, so an app that crashes during
+ * launch never answers and the promise never settles. RTA sets no timeout of its own.
+ *
+ * Measured cost of not having this: two `npm run measure --deploy` runs sat at
+ * `deploying (ENABLE_RTA)` for 39 and 9 minutes against a build that crashed at launch
+ * (`&hec` out of a roku-log injection), printing nothing and producing no run record. The
+ * device console had the backtrace the whole time. The failure is common enough to name:
+ * any crash on the launch path presents exactly this way, as a hang rather than an error.
+ *
+ * The cap is deliberately far above a healthy deploy (~60-90 s here, including `bootMs`),
+ * because a slow-but-working sideload must never be turned into a spurious failure — this
+ * is a diagnosis for a wedge, not a performance gate.
+ */
+const DEPLOY_TIMEOUT_MS = 5 * 60 * 1000;
+
+async function withDeployTimeout(deployPromise) {
+  let timer;
+  const timeout = new Promise((_resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(
+        new Error(
+          `deploy did not finish within ${DEPLOY_TIMEOUT_MS / 1000}s. The sideload itself is ` +
+            'rarely the problem: this step also waits for the on-device component, which runs ' +
+            'INSIDE the app, so an app that CRASHES during launch never answers and the wait ' +
+            'never ends. Check the device debug console (telnet <ROKU_IP> 8085) for a backtrace ' +
+            'before re-running — a crash on the launch path presents as this hang, not as an error.',
+        ),
+      );
+    }, DEPLOY_TIMEOUT_MS);
+    // Never hold the process open on the timer alone.
+    timer.unref?.();
+  });
+  try {
+    return await Promise.race([deployPromise, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**

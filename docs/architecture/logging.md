@@ -4,7 +4,7 @@ related-files:
   - components/JRScene.bs
   - components/JRScreen.bs
   - scripts/bsc-plugins/roku-log.cjs
-last-reviewed: 2026-08-02
+last-reviewed: 2026-08-15
 ---
 
 # Logging
@@ -14,6 +14,38 @@ How JellyRock logs (`roku-log`), the initialization story, and the per-component
 ## roku-log
 
 JellyRock uses **roku-log** (`log` ropm package) for all logging. It supports multiple transports (telnet, on-screen overlay), structured logging with named loggers, and per-logger log levels.
+
+### "roku-log" is TWO artifacts, and only one of them is ours
+
+Say which one you mean. They fail differently, and a bug in the second reads like a bug in the first:
+
+| | What | Who owns it |
+|---|---|---|
+| **Runtime library** | `source/roku_modules/log/` + `components/roku_modules/log/` — `Logger`, the transports, `initializeLogManager` | **Upstream, stock.** `npm:roku-log@0.11.1`, vendored by ropm, which mechanically prefixes every symbol (`Logger` → `log_Logger`, `"Log"` → `"log_Log"`) |
+| **Compile-time plugin** | [`scripts/bsc-plugins/roku-log.cjs`](../../scripts/bsc-plugins/roku-log.cjs) — `strip` / `insertPkgPath` / `guard` / `removeComments` | **Ours outright.** Written from scratch to replace the unmaintained `roku-log-bsc-plugin@0.9.0-beta.1`, which BSC v1 broke. Nothing upstream to sync from |
+
+**Never hand-edit the vendored runtime files.** `roku_modules` is gitignored ([`.gitignore`](../../.gitignore)), so those files are untracked and regenerated on every install — an edit there is not a change to the project, it is a change that disappears at the next `npm i` with nothing to show it was ever made. The only differences between the installed copy and the npm package are the prefixes ropm adds; verify with
+`diff node_modules/log/dist/source/LogMixin.brs source/roku_modules/log/LogMixin.brs`.
+
+So when logging misbehaves, ask which artifact first. The plugin REWRITES your source before the compiler sees it, which means it can inject a statement your file never contained — see the guard rule below.
+
+### The `guard` transform only knows `m.log`
+
+With `guard` on, the plugin wraps `m.log.<level>()` calls in `if m.__le = true then …` and injects
+`m.__le = m.log.enabled` after `m.log = new log.Logger(…)` to cache the check.
+
+**Both halves are hardcoded to `m.log`, and the injection is deliberately restricted to that target.**
+A logger kept under any other name gets no cache line — nothing would read it (its calls are not
+guarded), and the read itself dots into an `m.log` the scope need not have. That is not theoretical:
+[`source/utils/screenReadiness.bs`](../../source/utils/screenReadiness.bs) keeps its logger on
+`m.screenLoadLog`, and the injection crashed the app at launch (`&hec`, `'Dot' Operator ... invalid`)
+the first time the ledger was called from **main-thread** `source/loginRouter.bs` — a scope with no
+`m.log` of its own. Every instrumented *component* sets `m.log` in `init()`, which is why the coupling
+stayed hidden until a main-thread caller existed.
+
+Practical consequence: **a component-style `m.log` is not a prerequisite for logging from `source/`
+main-thread code**, but a second logger in one scope will not get guard caching. Regression coverage
+lives in [`tests/scripts/unit/bsc-plugins/roku-log.test.js`](../../tests/scripts/unit/bsc-plugins/roku-log.test.js).
 
 ### Initialization
 

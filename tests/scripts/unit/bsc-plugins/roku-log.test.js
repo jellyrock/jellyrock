@@ -127,6 +127,46 @@ describe('roku-log plugin (Tier 2)', () => {
       );
       expect(out['source/foo.bs']).toMatch(/m\.__le\s*=\s*m\.log\.enabled/);
     });
+
+    // The cache line reads `m.log.enabled`, and only `m.log.<method>()` calls are guarded.
+    // So a logger kept under another name must get NO cache line: nothing would read it,
+    // and the read itself dots into an `m.log` the scope need not have.
+    //
+    // This crashed the app on device (&hec, 'Dot' operator on invalid) the first time the
+    // screen-readiness ledger — whose logger lives on `m.screenLoadLog` — was called from
+    // main-thread `source/loginRouter.bs`, a scope with no `m.log`. Every instrumented
+    // COMPONENT sets `m.log` in `init()`, which is why it stayed hidden.
+    it('does NOT inject the cache line for a logger stored under another name', async () => {
+      const out = await transpileWithPlugin(
+        rokuLogPlugin,
+        {
+          'source/foo.bs': `
+            sub init()
+              m.screenLoadLog = new log.Logger("ScreenLoad")
+            end sub
+          `,
+        },
+        { rokuLog: { strip: false, insertPkgPath: false, guard: false, removeComments: false } },
+      );
+      expect(out['source/foo.bs']).toMatch(/m\.screenLoadLog\s*=/);
+      expect(out['source/foo.bs']).not.toMatch(/m\.__le/);
+    });
+
+    it('does NOT inject the cache line for the factory form under another name', async () => {
+      const out = await transpileWithPlugin(
+        rokuLogPlugin,
+        {
+          'source/foo.bs': `
+            sub init()
+              m.screenLoadLog = log.Logger("ScreenLoad")
+            end sub
+          `,
+        },
+        { rokuLog: { strip: false, insertPkgPath: false, guard: false, removeComments: false } },
+      );
+      expect(out['source/foo.bs']).toMatch(/m\.screenLoadLog\s*=/);
+      expect(out['source/foo.bs']).not.toMatch(/m\.__le/);
+    });
   });
 
   describe('removeComments', () => {

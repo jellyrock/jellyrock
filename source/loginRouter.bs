@@ -23,13 +23,24 @@ import "pkg:/source/api/ApiClient.bs"
 ' main.bs which route to bring the router up on (or that we are already logged in).
 ' Mirrors LoginFlow()'s startLogin: server block + the saved-active-user branch.
 function beginLogin() as object
+  ' One ledger run per pre-login resolution. See the note above `enterDecision` for what
+  ' `paint` means for a coordinator that is not a screen, and why the FILLS rather than the
+  ' paint/settle split are what this run is read for.
+  screenLoad.begin("preLogin")
+
   ' === Server resolution (was LoginFlow startLogin:) ===
   serverUrl = getSetting("server")
   startOver = true
   if isValid(serverUrl)
     print "Previous server connection saved to registry"
     ' Pass originalUrl to preserve the user's input for re-discovery on each connection.
+    '
+    ' Declared inside the branch rather than around it: with no saved server nothing is
+    ' fetched at all, and a fill recorded for work that never ran is not a 0 ms fill — it
+    ' is a fill that did not happen. The `else` below is that path.
+    screenLoad.pending("serverConnect")
     startOver = not server.UpdateURL(serverUrl, serverUrl)
+    screenLoad.resolve("serverConnect")
     if startOver then print "Could not connect to previously saved server."
   else
     print "No previous server connection saved to registry"
@@ -38,7 +49,19 @@ function beginLogin() as object
   invalidServer = true
   if not startOver
     m.scene.isLoading = true
+    ' A SECOND fill rather than folding this into `serverConnect`, because reading the code
+    ' says these are two round trips to the SAME endpoint: `UpdateURL` calls `Populate`,
+    ' which calls `ServerInfo()`, and then this line calls `ServerInfo()` again.
+    '
+    ' Splitting them keeps this one's cost from being attributed to the connect, and names
+    ' it correctly on the day it IS the slowest fill (a WAN server, where round trips stop
+    ' being ~30 ms). It does NOT by itself confirm the duplicate: the ledger publishes only
+    ' the SLOWEST fill, so on a LAN both sit far under `userLoad` and never surface. The
+    ' bootstrap's sync calls emit no `[http]` line either, so settling whether that second
+    ' round trip is real needs a console probe, not this record.
+    screenLoad.pending("serverInfo")
     invalidServer = ServerInfo().Error
+    screenLoad.resolve("serverInfo")
     m.scene.isLoading = false
   end if
 
@@ -59,10 +82,22 @@ end function
 function validateSavedToken(localUser as object, token as string) as boolean
   localUser.authToken = token
   print "Attempting to use API with auth token"
+  ' TWO fills, because one number here was actively misleading. Measured on `.177`, the
+  ' whole function took 407–461 ms and the round trip was 29–47 ms of it: `user.Login`
+  ' below loads the user's settings out of the registry, on the main thread, and this
+  ' function does not return until it finishes. A single `session` fill therefore read as
+  ' "the server took 460 ms" when the server took 40.
+  '
+  ' The fills no-op when no ledger is open, which is the `onUserSelected` path — the user
+  ' picker calls this too, and that load is not one `beginLogin` opened.
+  screenLoad.pending("session")
   currentUser = AboutMe()
+  screenLoad.resolve("session")
   if isValid(currentUser)
     print "Success! Auth token is still valid"
+    screenLoad.pending("userLoad")
     user.Login(currentUser, true)
+    screenLoad.resolve("userLoad")
     return true
   end if
   return false
@@ -81,7 +116,12 @@ function resolveUser() as object
   if not isValid(activeUser)
     ' No active user — build the public + saved user list and decide.
     print "No active user found in registry"
+    ' The user picker's whole network wait. It happens HERE, before /users is routed to, so
+    ' `UserSelect` mounts with its list already in hand — the reason that screen carries no
+    ' content fill of its own.
+    screenLoad.pending("users")
     users = buildPublicUserList()
+    screenLoad.resolve("users")
     m.loginCtx = { hasPublicUsers: users.count() > 0 }
     if users.count() > 0
       return { status: "users", users: users }
@@ -102,9 +142,14 @@ function resolveUser() as object
     localUser.name = myUsername
     if isValidAndNotEmpty(myPrimaryImageTag) then localUser.primaryImageTag = myPrimaryImageTag
 
+    ' `validateSavedToken` declares its own `session` + `userLoad` fills — the split lives
+    ' there because that is where the two halves are, and because the user-picker path
+    ' calls the same function.
     if not validateSavedToken(localUser, myAuthToken)
       print "Auth token is no longer valid - attempting no-password login"
+      screenLoad.pending("noPasswordLogin")
       userData = getToken(myUsername, "")
+      screenLoad.resolve("noPasswordLogin")
       if isValid(userData)
         print "login success!"
         user.Login(userData, true)
@@ -196,7 +241,29 @@ end sub
 ' clearSpinner: pass true when navigating here with a blocking spinner up, so it stays up across the
 ' async nav and clears at NavigationEnd instead of being stopped early (which re-shows the outgoing
 ' view for a frame). The success branch defers to finishLogin, which carries the spinner to Home.
-sub enterDecision(decision as object, clearSpinner = false as boolean)
+'
+' ## What `paint` means for `preLogin`, which is NOT a screen
+'
+' Everywhere else in this app `screenLoad.paint` is a screen that rendered something the user
+' can act on. Here it is the coordinator handing a route to the router: the user is on a
+' spinner for the whole run and CANNOT act at this moment — the destination view has not
+' mounted yet (sgRouter resolves at NavigationEnd, on the render thread, where this ledger's
+' `m` does not reach). The destination's own paint is a SEPARATE run, the same shape `search`
+' established for a screen whose two loads are separated by a user.
+'
+' So this run's paint/settle split says nothing: every fill is a synchronous main-thread call
+' that has already resolved by the time we get here, so `settled` lands on the same
+' millisecond as `paint` — the `query` variant of `search` all over again. **Read the fills.**
+' They are the actionable decomposition: which of the blocking round trips cost what.
+'
+' `variant` names WHICH load, not which destination: `start` is a cold start or a session
+' reset arriving through `beginLogin`, `connect` is a server submitted from SetServerScreen.
+' The destination is already legible from the fills (a run carrying `users` built the picker),
+' and one run per entry point is what keeps two loads that route to the same place from
+' merging into one population.
+sub enterDecision(decision as object, clearSpinner = false as boolean, variant = "start" as string)
+  screenLoad.paint(variant)
+
   if decision.status = "success"
     finishLogin()
   else if decision.status = "server"
@@ -249,14 +316,27 @@ sub onServerSubmitted()
   ' server change and reset stale username/password (CreateServerGroup line 333/398).
   previousServerUrl = m.global.server.serverUrl
 
+  ' The connect is this component's SECOND load, and a person types in between — so it is its
+  ' own run, told apart by `variant`, exactly as `search` separates its open from its query.
+  screenLoad.begin("preLogin")
+
   ' Disable the remote across the blocking connect (inferServerUrl waits up to 15s, ServerInfo() is
   ' sync) so repeat Submit presses can't queue duplicate serverSubmitted intents. Matches onUserSelected.
   startLoadingSpinner()
+  ' `infer` is its own fill because it is the one step here that can dominate everything else:
+  ' it probes for a scheme and waits up to 15 s, against two round trips measured in tens of ms
+  ' on a LAN. Folded into the connect it would be an outlier nobody could attribute.
+  screenLoad.pending("infer")
   serverUrl = inferServerUrl(originalUrl)
+  screenLoad.resolve("infer")
+  screenLoad.pending("serverConnect")
   isConnected = server.UpdateURL(serverUrl, originalUrl)
+  screenLoad.resolve("serverConnect")
   serverInfoResult = invalid
   if isConnected
+    screenLoad.pending("serverInfo")
     serverInfoResult = ServerInfo()
+    screenLoad.resolve("serverInfo")
     canonicalUrl = m.global.server.serverUrl
     if previousServerUrl <> canonicalUrl
       setSetting("username", "")
@@ -266,6 +346,9 @@ sub onServerSubmitted()
 
   if isConnected = false or not isValid(serverInfoResult) or (isValid(serverInfoResult.Error) and serverInfoResult.Error)
     ' Failure stays here — stop the spinner so SetServerScreen re-shows with the error.
+    ' Deliberately NOT painted: a connect that failed is not a load, so the run stays open and
+    ' emits nothing rather than publishing a time for something that did not happen. The next
+    ' attempt's `begin` restarts it.
     stopLoadingSpinner()
     print "Server not found, is it online?"
     view.errorMessage = translate(translationKeys.MessageServerNotFoundIsItOnline)
@@ -277,7 +360,7 @@ sub onServerSubmitted()
   ' (clearSpinner=true, cleared at NavigationEnd) so the hidden SetServerScreen isn't re-shown for a
   ' frame before the destination mounts.
   SaveServerList()
-  enterDecision(resolveUser(), true)
+  enterDecision(resolveUser(), true, "connect")
 end sub
 
 ' A public/saved user was picked in UserSelect. Mirrors LoginFlow 120-163.

@@ -76,7 +76,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-08-13
+last-reviewed: 2026-08-15
 ---
 
 # Build & Tooling
@@ -201,10 +201,11 @@ Two custom plugins live in `scripts/bsc-plugins/`:
 
 ### `scripts/bsc-plugins/roku-log.cjs`
 
-Optimizes `roku-log` usage at compile time:
+Optimizes `roku-log` usage at compile time. **Ours, not a vendored plugin** — it replaces the unmaintained `roku-log-bsc-plugin`, unlike the roku-log RUNTIME library, which is stock upstream vendored by ropm into the gitignored `source/roku_modules/log/`. The split, and why it matters when logging misbehaves, is in [`logging.md`](logging.md).
 
 - **`strip`** (true in prod, false in dev) — removes all `m.log.*()` calls from compiled output. Production builds have **zero** logging overhead from removed levels.
 - **`insertPkgPath`** — automatically prepends the source file path to log lines so telnet output shows where each log came from.
+- **`guard`** — wraps `m.log.*()` calls in an `if m.__le = true then` check and caches the flag after `m.log = new log.Logger(…)`. Hardcoded to `m.log` on both halves, so it applies to that name only — see [`logging.md`](logging.md#the-guard-transform-only-knows-mlog) for the crash that rule prevents.
 - **`removeComments`** (false by default) — removes BS comments to shrink output.
 
 This is the reason `m.log.debug("intermediate value", x, y, z)` is fine to leave in code — in production, the entire call site disappears.

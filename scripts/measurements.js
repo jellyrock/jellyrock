@@ -390,8 +390,12 @@ export function assembleSamples(measurement, rawLines) {
   const open = new Map();
   let opened = 0;
 
+  // The separator is written as an ESCAPE, not as a literal NUL byte in the source. It
+  // has to be a character that cannot occur inside an identity value, and a raw \0 here
+  // made this whole file read as BINARY to grep/rg -- which return silently empty rather
+  // than erroring, so a search for a family in this file answers 'not found'.
   const identityOf = (fields) =>
-    (measurement.identity || []).map((k) => fields?.[k] ?? '').join(' ');
+    (measurement.identity || []).map((k) => fields?.[k] ?? '').join('\u0000');
 
   const finish = (key) => {
     const sample = open.get(key);
