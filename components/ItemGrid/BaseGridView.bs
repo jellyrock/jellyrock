@@ -1399,6 +1399,19 @@ sub onDestroy()
   ' Destroy texture manager — force-unloads all grid item textures
   destroyTextureManager(m.data)
 
+  ' Break the GridItem <-> content-root retain CYCLE before dropping our references.
+  ' Every GridItem caches m.gridView = this view node (resolveGridViewConfig walks up for
+  ' the gridTitles field) AND registers scoped observers on the shared content root, which
+  ' makes the content root hold each cell's component scope. That closes the loop:
+  '   view -> m.data -> cell scope -> m.gridView -> view
+  ' BrightScript refcounts, so a cycle is never collected — the whole view survived every
+  ' back-out as an unparented root, one per library visit. GridItem has no onDestroy and
+  ' only unobserves when the content root CHANGES, so the release has to come from here:
+  ' dropping BOTH references to the content root (ours and the ArrayGrid's) frees it, which
+  ' frees the cell scopes it holds, which drops their back-reference to us.
+  if isValid(m.itemGrid) then m.itemGrid.content = invalid
+  if isValid(m.genreList) then m.genreList.content = invalid
+
   ' Unobserve child node observers
   m.top.unobserveField("selectedItem") ' self-navigation observer
   m.top.unobserveField("quickPlayNode") ' playback launcher
