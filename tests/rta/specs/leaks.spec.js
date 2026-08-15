@@ -39,7 +39,25 @@
  *
  * A threshold invites the next leak to hide under it. These walks end with the user
  * back on Home having closed everything they opened, so the correct number of live
- * library/detail views is zero, and any other number is a defect regardless of size.
+ * library/detail/search views is zero, and any other number is a defect regardless
+ * of size.
+ *
+ * ## What the per-type census CANNOT see — and what covers it
+ *
+ * Counting subtypes only finds leaks whose leaked node IS one of the named types. The
+ * `BaseGridView` cycle was visible that way only because `GridItem` caches the VIEW
+ * node; a cell class that caches just the content root (`JRRowItem` does, and never
+ * unobserves) would strand the content root plus its cells as an island with no routed
+ * view in it, and every counter here would read zero. Adding `GridItem` to the list
+ * would not help: cells stay parented to their grid, so they never appear in
+ * `getRoots()` at all — pre-fix dumps show none.
+ *
+ * What does see it is `totalNodes` across the two grid walks. They are identical
+ * except for how many screens are opened and closed, so anything retained PER VISIT
+ * shows up as a difference between them — no absolute baseline, no device- or
+ * fixture-specific constant. Pre-fix that difference was ~938 roots (946 -> 1884
+ * across the six round trips); post-fix the walk ends flat, and below the cold-Home
+ * baseline it started from.
  *
  * ## What a failure here means
  *
@@ -52,19 +70,35 @@
  */
 import { beforeAll, it, expect } from 'vitest';
 import { RTA_CONFIG } from '../config.js';
-import { authenticate, getLibraries } from '../lib/jellyfin.js';
-import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
+import { authenticate, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
+import { seedHome, seedLibraryLanding, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch, odc } from '../lib/driver.js';
-import { navHomeReturnBare, navHomeReturnAfterDetails } from '../lib/nav.js';
+import { navHomeReturnBare, navHomeReturnAfterDetails, navSearchReturn } from '../lib/nav.js';
 import { waitHome, sleep } from '../lib/steps.js';
+import { MOVIES_GRID } from '../screens.js';
 
 const LOCALE = RTA_CONFIG.languages[0]; // en_US
 
 /** Routed views that must not outlive the user backing out of them. */
 const ROUTED_VIEWS = ['BaseGridView', 'ItemDetails', 'SearchResults'];
 
+/** Every routed view released — the expected census after any of these walks. */
+const NOTHING_RETAINED = Object.fromEntries(ROUTED_VIEWS.map((t) => [t, 0]));
+
+/**
+ * Ceiling on the extra unparented roots the six-screen walk may leave over the
+ * one-screen walk. Sized to catch a PER-VISIT leak, not to police jitter: the defect
+ * this replaced left ~938, and the fixed app leaves ~0, so 100 sits an order of
+ * magnitude under the failure and well over the noise from texture pools and the
+ * recycled cell pools Home rebuilds on return. Tighten it if a run ever shows the
+ * real spread is small enough to warrant it — do not raise it to make a run green.
+ */
+const PER_VISIT_ROOT_BUDGET = 100;
+
 let session;
 let ctx;
+/** `totalNodes` from the one-screen walk; the six-screen walk is compared against it. */
+let bareWalkRoots;
 
 beforeAll(async () => {
   session = await authenticate(RTA_CONFIG.server, { role: 'rta-leaks' });
@@ -73,7 +107,13 @@ beforeAll(async () => {
 });
 
 /**
- * Land on a seeded Home, run `walk`, and return the unparented count per routed view.
+ * Land on a seeded Home, run `walk`, and report the unparented-node census.
+ *
+ * Seeds the Movies landing as well as Home: `display.<id>.landing` is registry-persisted
+ * and survives the relaunch, so without it these walks inherit whichever view another
+ * spec left behind — and a Genres landing renders `#genreList`, not the `#itemGrid` the
+ * walks drive. A no-op when the server has no movies library, which the walk then reports
+ * itself rather than timing out here.
  *
  * The settle before reading is not a fixed-sleep workaround for a missing gate: the
  * walk's own waits already prove we are back on Home. It covers the render thread
@@ -81,6 +121,7 @@ beforeAll(async () => {
  */
 async function retainedAfter(walk, label) {
   const expectedServer = await seedHome(session, LOCALE);
+  await seedLibraryLanding(session, libraryIdFor(ctx.libraries, 'movies'), MOVIES_GRID.landing);
   await hardRelaunch(); // never plain relaunch — the app would re-persist over the seed
   await assertSeedTookEffect(expectedServer, label);
   await waitHome();
@@ -89,18 +130,18 @@ async function retainedAfter(walk, label) {
   await sleep(3000);
 
   const roots = await odc.getRootsCount();
-  return Object.fromEntries(ROUTED_VIEWS.map((t) => [t, roots.nodeCountByType?.[t] ?? 0]));
+  return {
+    byType: Object.fromEntries(ROUTED_VIEWS.map((t) => [t, roots.nodeCountByType?.[t] ?? 0])),
+    total: roots.totalNodes,
+  };
 }
 
 it('retains no views after a library round trip', async () => {
-  const retained = await retainedAfter(navHomeReturnBare, 'leak: library round trip');
+  const { byType, total } = await retainedAfter(navHomeReturnBare, 'leak: library round trip');
+  bareWalkRoots = total; // the per-visit comparison below reads this
   // One object compare rather than three: a failure then reports every view's count,
   // so "which one leaked" is in the diff instead of being the next thing to go find.
-  expect(retained, 'Home -> library -> back should leave nothing alive').toEqual({
-    BaseGridView: 0,
-    ItemDetails: 0,
-    SearchResults: 0,
-  });
+  expect(byType, 'Home -> library -> back should leave nothing alive').toEqual(NOTHING_RETAINED);
 }, 180000);
 
 it('retains no views after six distinct detail round trips', async () => {
@@ -108,10 +149,33 @@ it('retains no views after six distinct detail round trips', async () => {
   // the same item resumed one cached view and the count never grew — the leak was only
   // visible across different paths. A regression that reintroduces path-keyed caching
   // would pass a same-item walk and fail this one.
-  const retained = await retainedAfter(navHomeReturnAfterDetails, 'leak: six detail round trips');
-  expect(retained, 'opening and closing 6 details should leave nothing alive').toEqual({
-    BaseGridView: 0,
-    ItemDetails: 0,
-    SearchResults: 0,
-  });
+  const { byType, total } = await retainedAfter(
+    navHomeReturnAfterDetails,
+    'leak: six detail round trips',
+  );
+  expect(byType, 'opening and closing 6 details should leave nothing alive').toEqual(
+    NOTHING_RETAINED,
+  );
+
+  // The class-level half of the gate (see the header): six screens opened and closed
+  // must not cost meaningfully more unparented roots than one, whatever type they are.
+  // Asserted on the baseline's presence first, so a reordered/skipped first test fails
+  // as "the baseline never ran" rather than as an arithmetic result nobody can read.
+  expect(typeof bareWalkRoots, 'the one-screen walk must run first to set the baseline').toBe(
+    'number',
+  );
+  expect(
+    total - bareWalkRoots,
+    `six screens left ${total} roots vs ${bareWalkRoots} for one — something is retained per visit`,
+  ).toBeLessThanOrEqual(PER_VISIT_ROOT_BUDGET);
 }, 300000);
+
+it('retains no views after a search round trip', async () => {
+  // Search is the least-exercised of the three teardowns and the most consequential:
+  // /search was keepAlive, so SearchResults.onDestroy never ran in production, and it
+  // owns releasing the firmware's global voice route (one voiceEnabled node at a time —
+  // a leaked claim denies it to the next screen that wants one). Its rows are
+  // BrowseRowItem cells, the same cache-the-content-root shape the grid fix addresses.
+  const { byType } = await retainedAfter(navSearchReturn, 'leak: search round trip');
+  expect(byType, 'Home -> search -> back should leave nothing alive').toEqual(NOTHING_RETAINED);
+}, 180000);

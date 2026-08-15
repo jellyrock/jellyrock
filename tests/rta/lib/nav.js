@@ -538,8 +538,11 @@ export async function navAudioDetails(ctx) {
 }
 
 /**
- * Walk the loaded grid's focus rightward to tile `target`. No-op when `target` is
- * already 0 (the grid focuses tile 0 on load).
+ * Establish that focus is inside the loaded grid, then walk it rightward to tile
+ * `target`. The walk is skipped for tile 0 (the grid focuses it on load); the focus
+ * gate is NOT — every caller presses OK next, and "grid loaded" is not "grid focused",
+ * so an OK sent before focus arrives goes to whatever does hold it. That gate used to
+ * sit under the `target <= 0` return, which left exactly the tile-0 callers ungated.
  *
  * Extracted from `navMovieDetails` rather than copied for `navHomeReturn` below,
  * which walks the same grid to a different tile on every iteration: this file's own
@@ -548,11 +551,11 @@ export async function navAudioDetails(ctx) {
  * drift that rule exists to prevent.
  */
 async function focusGridTile(target) {
-  if (target <= 0) return;
   // Grid LOADED is not grid FOCUSED, and `itemFocused` retains its last value while
   // the grid is unfocused — so without this the walk can read a stale 0 forever and
   // press Right at whatever actually holds focus. Same precondition as the Home walk.
   await waitFocusInside('#itemGrid');
+  if (target <= 0) return;
   // Press Right until the grid reports the target tile focused (robust to a
   // dropped keypress — only presses while focus is still short of the target).
   await waitFor('#itemGrid.itemFocused', (v) => v === target, {
@@ -656,14 +659,35 @@ async function navHomeReturn(ctx, detailCount = 0) {
   await waitHome();
 }
 
-/** home -> Movies grid -> back to home. Leaves 1 retained view (the grid). */
+/**
+ * home -> Movies grid -> back to home. One screen opened and closed.
+ * (Under the pre-ADR-0029 `keepAlive` routes this left 1 retained view; it now leaves none,
+ * which is what `leaks.spec.js` asserts. The count is the measurement variable either way.)
+ */
 export async function navHomeReturnBare(ctx) {
   await navHomeReturn(ctx, 0);
 }
 
-/** home -> Movies grid -> 6 distinct details -> back to home. Leaves 7 retained views. */
+/** home -> Movies grid -> 6 distinct details -> back to home. Seven screens opened and closed. */
 export async function navHomeReturnAfterDetails(ctx) {
   await navHomeReturn(ctx, 6);
+}
+
+/**
+ * home -> search -> type the configured query -> back to home. The search half of the
+ * retained-view gate.
+ *
+ * Search is here because its teardown is the most consequential of the three routed screens
+ * and, until ADR 0029, the least exercised: `/search` was `keepAlive`, so a popped
+ * `SearchResults` was suspended rather than closed and `onDestroy` never ran in production —
+ * including the part that releases the firmware's global voice route (only one node may hold
+ * `voiceEnabled` at a time, so a leaked claim would deny it to the next screen that wants it).
+ * `navSearch` already gates on rendered result rows, so the only thing added here is the exit.
+ */
+export async function navSearchReturn() {
+  await navSearch();
+  await press(ecp.Key.Back);
+  await waitHome();
 }
 
 /** details -> OK on default Play/Resume button -> playback begins. */

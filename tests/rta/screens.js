@@ -44,6 +44,7 @@ import {
   navSearch,
   navHomeReturnBare,
   navHomeReturnAfterDetails,
+  navSearchReturn,
 } from './lib/nav.js';
 
 /** User-select screen is ready once the user row has rendered its users. */
@@ -212,6 +213,14 @@ const vw = (name, nav, collectionType, landing, assert) => ({
   ...(assert ? { assert } : {}),
 });
 
+/**
+ * The deterministic Movies landing view that every `#itemGrid` walk needs seeded, since
+ * `display.<id>.landing` is registry-persisted and survives a relaunch. Exported because
+ * `specs/leaks.spec.js` drives the same walks outside this registry and must seed the
+ * same view — one definition, so the two cannot drift into testing different screens.
+ */
+export const MOVIES_GRID = { collectionType: 'movies', landing: 'MoviesGrid' };
+
 export const SCREENS = [
   {
     name: 'userSelect',
@@ -267,12 +276,26 @@ export const SCREENS = [
   // after the suite and the store orchestrator), so a measurement nav has nowhere
   // else to live.
   //
-  // The pair is a controlled experiment, not two independent screens: they differ
-  // ONLY in how many distinct ItemDetails are opened and backed out of before
-  // returning, which is how many views sgRouter's detach store retains. See
-  // `navHomeReturn` in lib/nav.js for what the comparison separates and why.
-  { name: 'homeReturn', state: 'home', nav: navHomeReturnBare },
-  { name: 'homeReturnAfterDetails', state: 'home', nav: navHomeReturnAfterDetails },
+  // The first two are a controlled experiment, not two independent screens: they
+  // differ ONLY in how many distinct ItemDetails are opened and backed out of before
+  // returning. See `navHomeReturn` in lib/nav.js for what the comparison separates.
+  //
+  // They carry `view` for the two reasons every library-dependent entry does, and the
+  // grid walks need both: the landing view is registry-PERSISTED, so without a seed
+  // these inherit whichever view a previous test left behind (Genres shows `#genreList`,
+  // not `#itemGrid`, and the walk would press at a list that isn't there); and
+  // `screens.spec.js` skips a `view` screen whose library the server lacks, which is
+  // how a thin demo fixture stays a visible skip instead of a red run.
+  { name: 'homeReturn', state: 'home', nav: navHomeReturnBare, view: MOVIES_GRID },
+  {
+    name: 'homeReturnAfterDetails',
+    state: 'home',
+    nav: navHomeReturnAfterDetails,
+    view: MOVIES_GRID,
+  },
+  // No `view`: search depends on demo CONTENT matching RTA_CONFIG.searchQuery, not on a
+  // library landing — same as the `search` screen entry above.
+  { name: 'searchReturn', state: 'home', nav: navSearchReturn },
 
   // --- Library grids: one screen per VIEW per library type --------------------
   // The landing view is seeded deterministically (display.<id>.landing) so the
