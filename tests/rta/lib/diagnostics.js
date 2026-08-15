@@ -87,9 +87,8 @@ import {
  * The fixed part of the dump — the questions worth asking about ANY failure.
  *
  * Scoped to `activeRoutedView` (the app's own "view the user is on") wherever the
- * id recurs across views, for the same reason `getActiveVal` exists: sgRouter
- * `keepAlive` leaves suspended views in the scene tree, so a scene-rooted `#id`
- * read can answer for the wrong screen. `#homeRows` is deliberately scene-rooted
+ * id recurs across views, for the same reason `getActiveVal` exists: a suspended view can
+ * still be in the scene tree, so a scene-rooted `#id` read can answer for the wrong screen. `#homeRows` is deliberately scene-rooted
  * — on a failure deep in a drill-down, "is Home still populated behind me?" is
  * itself a signal.
  */

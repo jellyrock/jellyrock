@@ -108,12 +108,16 @@ branch to find it.
   skeleton sentinel string on the JS side and assumed row 0 filled ⇒ all rows filled).
   Anything that needs "is this grid settled?" should read `loadState`, not content
   internals.
-- **Scoping `#id` reads under sgRouter `keepAlive`**: `getVal` resolves `#id` by a
-  recursive `findNode` **from the scene root**, but `id` is not unique across components
-  (every `ItemDetails` has `#extrasGrid`; several declare `#options`). sgRouter
-  `keepAlive` routes (`/library`, `/details`) leave the SUSPENDED parent view in the
-  scene tree, so a recursive read can resolve to the wrong (suspended) view's node — e.g.
-  a detail→detail drill reading the parent's `#extrasGrid` instead of the active child's.
+- **Scoping `#id` reads when a suspended view is still in the tree**: `getVal` resolves
+  `#id` by a recursive `findNode` **from the scene root**, but `id` is not unique across
+  components (every `ItemDetails` has `#extrasGrid`; several declare `#options`). A view
+  suspended under the router's default `suspendMode: "hide"` — Home, `/settings`,
+  `/photo`, `/audio` — stays in the tree, hidden and parked off-screen, so its nodes can
+  still win a recursive lookup: the observed case is a suspended Home's own `#options`
+  (an `OptionsSlider`, hidden) beating the active grid's options dialog. Views on
+  `"detach"` routes (`/library`, `/details`, `/search`) are removed from the tree while
+  suspended, so they are not the hazard — but scoping the read costs nothing and does not
+  depend on knowing which mode a route carries.
   For value reads of such recurring ids, use `getActiveVal` (or `waitFor(..., { read:
   getActiveVal })`), which scopes to `m.global.activeRoutedView` (the app's own "view the
   user is on"). Focus-based assertions (`waitFocused`) are inherently unambiguous — there

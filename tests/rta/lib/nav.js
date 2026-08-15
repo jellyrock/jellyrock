@@ -319,7 +319,7 @@ export async function openLibraryByType(collectionType, libraryId = null) {
  * share this nav) only ever see real rows.
  *
  * Scoped to the active routed view (getActiveVal): `loadState` recurs on every
- * BaseGridView, and keepAlive routing leaves suspended views in the scene tree.
+ * BaseGridView, and a suspended view can still be in the scene tree (see getActiveVal).
  */
 async function waitGridLoaded(label, timeout = 20000) {
   const start = Date.now();
@@ -407,7 +407,7 @@ export async function navLibraryOptions(ctx) {
   await navLibraryGrid(ctx);
   await press(ecp.Key.Option); // '*' opens the grid options dialog
   // The dialog is shown AND focused on open, so assert focus ENTERS it rather than
-  // reading `#options.visible`: sgRouter keepAlive leaves a suspended Home in the tree
+  // reading `#options.visible`: a suspended Home stays in the tree (default "hide" mode)
   // whose own `#options` (an OptionsSlider, hidden) would win a recursive id lookup and
   // read visible=false. Focus is unambiguous (one focused node), so it's the robust
   // signal that the active grid's options dialog opened.
@@ -436,10 +436,10 @@ export async function navLibraryOptions(ctx) {
  */
 async function openChildDetailByRowType(tileType) {
   await press(ecp.Key.Down); // buttons -> rows panel (lands on the first row)
-  // Scope `#extrasGrid` reads to the active routed view: a detail->detail drill leaves
-  // the PARENT detail suspended (keepAlive) in the scene tree, and every ItemDetails has
-  // an `#extrasGrid`, so a recursive scene-root lookup would read the suspended parent's
-  // grid instead of the active child's. getActiveVal anchors to m.global.activeRoutedView.
+  // Scope `#extrasGrid` reads to the active routed view: every ItemDetails has an
+  // `#extrasGrid`, so a recursive scene-root lookup can read a suspended view's grid
+  // instead of the active one's. getActiveVal anchors to m.global.activeRoutedView, which
+  // is right whatever suspendMode the route carries (see steps.js).
   await waitFor('#extrasGrid.content.getChildCount()', hasChildren, {
     label: 'detail rows',
     timeout: 20000,
@@ -537,33 +537,158 @@ export async function navAudioDetails(ctx) {
   await openChildDetailByRowType('Audio');
 }
 
+/**
+ * Establish that focus is inside the loaded grid, then walk it rightward to tile
+ * `target`. The walk is skipped for tile 0 (the grid focuses it on load); the focus
+ * gate is NOT — every caller presses OK next, and "grid loaded" is not "grid focused",
+ * so an OK sent before focus arrives goes to whatever does hold it. That gate used to
+ * sit under the `target <= 0` return, which left exactly the tile-0 callers ungated.
+ *
+ * Extracted from `navMovieDetails` rather than copied for `navHomeReturn` below,
+ * which walks the same grid to a different tile on every iteration: this file's own
+ * rule is to put the retry in the SHARED helper so every caller inherits it, and a
+ * second copy of a walk whose entire purpose is the stale-read guard is exactly the
+ * drift that rule exists to prevent.
+ */
+async function focusGridTile(target) {
+  // Grid LOADED is not grid FOCUSED, and `itemFocused` retains its last value while
+  // the grid is unfocused — so without this the walk can read a stale 0 forever and
+  // press Right at whatever actually holds focus. Same precondition as the Home walk.
+  await waitFocusInside('#itemGrid');
+  if (target <= 0) return;
+  // Press Right until the grid reports the target tile focused (robust to a
+  // dropped keypress — only presses while focus is still short of the target).
+  await waitFor('#itemGrid.itemFocused', (v) => v === target, {
+    timeout: 15000,
+    interval: 500,
+    action: async () => {
+      const cur = await getVal('#itemGrid.itemFocused');
+      if (typeof cur === 'number' && cur < target) await press(ecp.Key.Right);
+    },
+    label: `grid focus -> tile ${target}`,
+  });
+}
+
 /** grid -> focus the hero tile (Right x heroIndex) -> OK -> ItemDetails. */
 export async function navMovieDetails(ctx) {
   await navLibraryGrid(ctx);
-  const target = ctx?.heroIndex || 0;
-  if (target > 0) {
-    // Grid LOADED is not grid FOCUSED, and `itemFocused` retains its last value while
-    // the grid is unfocused — so without this the walk can read a stale 0 forever and
-    // press Right at whatever actually holds focus. Same precondition as the Home walk.
-    await waitFocusInside('#itemGrid');
-    // Press Right until the grid reports the hero tile focused (robust to a
-    // dropped keypress — only presses while focus is still short of the target).
-    await waitFor('#itemGrid.itemFocused', (v) => v === target, {
-      timeout: 15000,
-      interval: 500,
-      action: async () => {
-        const cur = await getVal('#itemGrid.itemFocused');
-        if (typeof cur === 'number' && cur < target) await press(ecp.Key.Right);
-      },
-      label: `grid focus -> tile ${target}`,
-    });
-  }
+  await focusGridTile(ctx?.heroIndex || 0);
   await press(ecp.Key.Ok);
   await waitFor('#videoTitle.text', (t) => typeof t === 'string' && t.length > 0, {
     label: 'details title',
     timeout: 20000,
   });
   await sleep(1500); // let backdrop + logo paint
+}
+
+/**
+ * Home -> Movies grid -> open and back out of `detailCount` DISTINCT item details
+ * -> back to Home. The measurement nav for the sgRouter retained-view investigation,
+ * now also the walk `leaks.spec.js` gates on.
+ *
+ * ## What `detailCount` is for
+ *
+ * It is the INDEPENDENT VARIABLE, and the whole reason this nav exists. It sets how many
+ * screens the walk opens and closes: `1 + detailCount`, one BaseGridView plus one
+ * ItemDetails per distinct item. Under the `keepAlive` routes this nav was written to
+ * measure, every one of those stayed retained for the session (the store is keyed by
+ * `route.path` and `sgrouter_collectDetachedViewsToDestroy` skipped keepAlive views);
+ * since ADR 0029 they are destroyed on pop, and the spec asserts exactly that.
+ *
+ * Comparing Home's RETURN load across two values of `detailCount` is what separates
+ * retained views from Home's own `onScreenShown` -> `refresh()`, which re-runs the
+ * latest-rows load on every non-first show. `refresh()` fires identically at every
+ * `detailCount`, so any delta that TRACKS `detailCount` is the retained views and
+ * nothing else. A before/after pair of arms cannot make that split, because both
+ * arms carry `refresh()`.
+ *
+ * Read the `home-latest-rows` sample at `indexInLaunch: 1` — index 0 is the cold
+ * first paint on the way out, index 1 is this nav's return.
+ *
+ * ## Why the tiles are walked FORWARD and never reopened
+ *
+ * The store is keyed by path, so reopening the same item RESUMES the cached view
+ * instead of adding a second one. Reopening tile 0 `detailCount` times would leave
+ * exactly one retained ItemDetails and the variable would not move at all.
+ *
+ * ## What this nav does NOT assert
+ *
+ * `waitHome()` gates on `#homeRows` having children, which is already true the
+ * instant we come back — Home was suspended with its content intact, so that gate
+ * cannot see the refresh, and it is a liveness check here rather than the "loaded"
+ * assertion it is on a cold start. Nothing is added to make it one: `measure.js`
+ * holds its watch window open until the console goes quiet after a complete sample,
+ * so the refresh is bounded by the measurement rather than by this nav, and a settle
+ * `sleep` here would only eat that window's budget.
+ */
+async function navHomeReturn(ctx, detailCount = 0) {
+  await navLibraryGrid(ctx);
+
+  if (detailCount > 0) {
+    // Scoped to the ACTIVE routed view: `#itemGrid` recurs on every BaseGridView, and
+    // this investigation is precisely about suspended views outliving their screen.
+    const tiles = await getActiveVal('#itemGrid.content.getChildCount()');
+    if (typeof tiles !== 'number' || tiles < detailCount) {
+      // Not a timeout: a fail-fast that already names its own cause. More waiting will
+      // not add tiles to the library, and a clamp here would silently measure a smaller
+      // retained-view count than the name of the screen claims — which is the one
+      // failure this experiment cannot afford, since the count IS the variable.
+      // eslint-disable-next-line no-restricted-syntax -- fail-fast, cause already named
+      throw new Error(
+        `navHomeReturn needs ${detailCount} movie tiles to open distinct details, ` +
+          `but the grid reports ${JSON.stringify(tiles)}. The demo library is too small ` +
+          'for this measurement; lower detailCount or point at a fuller library.',
+      );
+    }
+  }
+
+  for (let i = 0; i < detailCount; i++) {
+    await focusGridTile(i);
+    await press(ecp.Key.Ok);
+    await waitFor('#videoTitle.text', (t) => typeof t === 'string' && t.length > 0, {
+      label: `homeReturn detail ${i} title`,
+      timeout: 20000,
+    });
+    await press(ecp.Key.Back);
+    // Back on the grid. `loadState` is already "loaded" (the grid was suspended, not
+    // destroyed) so it cannot gate this — focus returning INTO the grid is the state
+    // that makes the next walk's `itemFocused` read meaningful.
+    await waitFocusInside('#itemGrid');
+  }
+
+  await press(ecp.Key.Back);
+  await waitHome();
+}
+
+/**
+ * home -> Movies grid -> back to home. One screen opened and closed.
+ * (Under the pre-ADR-0029 `keepAlive` routes this left 1 retained view; it now leaves none,
+ * which is what `leaks.spec.js` asserts. The count is the measurement variable either way.)
+ */
+export async function navHomeReturnBare(ctx) {
+  await navHomeReturn(ctx, 0);
+}
+
+/** home -> Movies grid -> 6 distinct details -> back to home. Seven screens opened and closed. */
+export async function navHomeReturnAfterDetails(ctx) {
+  await navHomeReturn(ctx, 6);
+}
+
+/**
+ * home -> search -> type the configured query -> back to home. The search half of the
+ * retained-view gate.
+ *
+ * Search is here because its teardown is the most consequential of the three routed screens
+ * and, until ADR 0029, the least exercised: `/search` was `keepAlive`, so a popped
+ * `SearchResults` was suspended rather than closed and `onDestroy` never ran in production —
+ * including the part that releases the firmware's global voice route (only one node may hold
+ * `voiceEnabled` at a time, so a leaked claim would deny it to the next screen that wants it).
+ * `navSearch` already gates on rendered result rows, so the only thing added here is the exit.
+ */
+export async function navSearchReturn() {
+  await navSearch();
+  await press(ecp.Key.Back);
+  await waitHome();
 }
 
 /** details -> OK on default Play/Resume button -> playback begins. */

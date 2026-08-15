@@ -345,25 +345,57 @@ sub initRouter()
     { pattern: "/users", name: "users", component: "UserSelect" }
     { pattern: "/login", name: "login", component: "LoginScene" }
     { pattern: "/details/:type/:id/play", name: "play", component: "PlayerHostView", canActivate: guard }
+    ' The three routes below use `suspendMode: "detach"` and deliberately do NOT set
+    ' `keepAlive`. The two are independent knobs and it is worth being precise about which
+    ' does what, because the wrong one was set here and it leaked every screen the user
+    ' backed out of:
+    '
+    '   suspendMode governs how a view is held while it is COVERED (a new view pushed on
+    '     top). "detach" removes it from the tree into the router's detach store and
+    '     re-attaches it on goBack -- freeing its render/texture cost while it is not
+    '     visible. Every outgoing view is suspended this way regardless of keepAlive, and
+    '     _goBack resumes it via _onViewResume either way, so back navigation is unaffected.
+    '
+    '   keepAlive governs whether a view survives being POPPED. Upstream documents it as
+    '     "retained for later resumption" -- a session-lifetime, path-keyed view CACHE, so a
+    '     forward navigation to the same path resumes the old instance. That is a real
+    '     feature; it is just not one JellyRock wants. It is also unbounded: the only
+    '     eviction helper (sgrouter_collectDetachedViewsToDestroy) skips keepAlive views by
+    '     design, so nothing short of sgrouter.destroy() at sign-out ever releases them.
+    '
+    ' With keepAlive set, every DISTINCT path visited and backed out of stayed alive for the
+    ' session -- one BaseGridView per library, one ItemDetails per item. Those retained views
+    ' are not inert: onScreenHidden runs on suspend but onDestroy does not, and onDestroy is
+    ' where the real teardown lives (tasks stopped, ~40 observers dropped, textures freed,
+    ' promises abandoned). SearchResults.onDestroy is also what releases the firmware's global
+    ' voice route, which is why /search must not be keepAlive either.
+    '
+    ' Dropping keepAlive restores the intended shape: covered => suspended, popped => closed.
+    '
     ' NO allowReuse: JellyRock has always created a FRESH ItemDetails per navigation (the
     ' old SceneManager world pushScene'd a new one every time, including detail->detail).
     ' allowReuse would force in-place onRouteUpdate reuse the component was never built for.
-    ' keepAlive so navigating detail -> /play SUSPENDS the detail (keeps its node) rather than
-    ' destroying it -- the router equivalent of the detail staying beneath the pushed player --
-    ' so goBack restores the launching detail instead of bubbling a spurious Exit dialog.
-    { pattern: "/details/:type/:id", name: "details", component: "ItemDetails", keepAlive: { enabled: true }, canActivate: guard }
-    { pattern: "/library/:id", name: "library", component: "BaseGridView", keepAlive: { enabled: true }, canActivate: guard }
-    { pattern: "/search", name: "search", component: "SearchResults", keepAlive: { enabled: true }, canActivate: guard }
+    ' Note this does NOT affect a same-path navigation (a repeat cast of the item already
+    ' showing): the router reuses the ACTIVE view whenever isSamePath, independent of both
+    ' flags, which is the path ItemDetails.onRouteUpdate serves.
+    '
+    ' detail -> /play still restores the launching detail on back: the detail is COVERED by
+    ' the player, not popped, so it suspends and resumes exactly as before.
+    { pattern: "/details/:type/:id", name: "details", component: "ItemDetails", suspendMode: "detach", canActivate: guard }
+    { pattern: "/library/:id", name: "library", component: "BaseGridView", suspendMode: "detach", canActivate: guard }
+    { pattern: "/search", name: "search", component: "SearchResults", suspendMode: "detach", canActivate: guard }
     { pattern: "/settings", name: "settings", component: "Settings", canActivate: guard }
-    ' Photo viewer / slideshow. NO keepAlive: a fresh PhotoDetails per launch (the launch
-    ' data arrives as route context), destroyed on goBack — the router equivalent of the old
-    ' SceneManager pushScene/popScene. It sets isOverhangVisible=false, so the overhang hides
-    ' while it's the active routed view, and the keepAlive library/detail beneath it suspends
-    ' (focus saved) and resumes (focus restored) on back, exactly like the video player.
+    ' Photo viewer / slideshow. A fresh PhotoDetails per launch (the launch data arrives as
+    ' route context), destroyed on goBack — the router equivalent of the old SceneManager
+    ' pushScene/popScene. No suspendMode, so it defaults to "hide": kept in the tree and
+    ' parked off-screen while covered, rather than detached. It sets isOverhangVisible=false,
+    ' so the overhang hides while it's the active routed view, and the library/detail beneath
+    ' it suspends (focus saved) and resumes (focus restored) on back, like the video player.
     { pattern: "/photo", name: "photo", component: "PhotoDetails", canActivate: guard }
-    ' Music player. NO keepAlive: a fresh AudioPlayerView per launch (it self-loads from the
-    ' queue), destroyed on goBack. It suspends the keepAlive detail beneath (focus saved /
-    ' restored on back) instead of rendering over it — the same behavior as the video player.
+    ' Music player. A fresh AudioPlayerView per launch (it self-loads from the queue),
+    ' destroyed on goBack, "hide" while covered for the same reason as /photo. It suspends
+    ' the detail beneath (focus saved / restored on back) instead of rendering over it — the
+    ' same behavior as the video player.
     { pattern: "/audio", name: "audio", component: "AudioPlayerView", canActivate: guard }
   ])
 end sub

@@ -42,6 +42,9 @@ import {
   navEpisodeDetails,
   navAudioDetails,
   navSearch,
+  navHomeReturnBare,
+  navHomeReturnAfterDetails,
+  navSearchReturn,
 } from './lib/nav.js';
 
 /** User-select screen is ready once the user row has rendered its users. */
@@ -78,11 +81,11 @@ async function assertServerSelect() {
  * Throws when it verified nothing, so a fixture that stops producing genre rows (or
  * a keyPath that silently reads `undefined`) fails loudly rather than passing empty.
  *
- * Reads via `getActiveVal`, not `getVal`: `BaseGridView` is registered keepAlive
- * (`/library/:id` in JRScene.bs), so a recursive scene-root `#genreList` lookup can
- * resolve to a SUSPENDED grid the moment anything navigates twice. Today's spec
- * relaunches before every screen so only one exists — a property of the harness, not
- * of the app. Anchoring to the active routed view also fails the right way: an
+ * Reads via `getActiveVal`, not `getVal`: `#genreList` recurs on every `BaseGridView`, so a
+ * recursive scene-root lookup can resolve to the wrong grid the moment anything navigates
+ * twice. Today's spec relaunches before every screen so only one exists — a property of
+ * the harness, not of the app. Anchoring to the active routed view also fails the right
+ * way: an
  * unresolvable node reads `undefined` and trips the guard below, where the scene-root
  * form would quietly assert against the wrong screen.
  */
@@ -210,6 +213,14 @@ const vw = (name, nav, collectionType, landing, assert) => ({
   ...(assert ? { assert } : {}),
 });
 
+/**
+ * The deterministic Movies landing view that every `#itemGrid` walk needs seeded, since
+ * `display.<id>.landing` is registry-persisted and survives a relaunch. Exported because
+ * `specs/leaks.spec.js` drives the same walks outside this registry and must seed the
+ * same view — one definition, so the two cannot drift into testing different screens.
+ */
+export const MOVIES_GRID = { collectionType: 'movies', landing: 'MoviesGrid' };
+
 export const SCREENS = [
   {
     name: 'userSelect',
@@ -257,6 +268,34 @@ export const SCREENS = [
   },
   { name: 'settings', state: 'home', nav: navSettings, capture: { eligible: true } },
   { name: 'search', state: 'home', nav: navSearch, capture: { eligible: true } },
+
+  // --- Measurement navs: `npm run measure -- --nav <name>` --------------------
+  // No `capture` — these are not screens, they are ROUND TRIPS that end back on
+  // Home, and a screenshot of them would just be Home. They are here because
+  // `measure.js` resolves `--nav` out of THIS registry (it is the third consumer
+  // after the suite and the store orchestrator), so a measurement nav has nowhere
+  // else to live.
+  //
+  // The first two are a controlled experiment, not two independent screens: they
+  // differ ONLY in how many distinct ItemDetails are opened and backed out of before
+  // returning. See `navHomeReturn` in lib/nav.js for what the comparison separates.
+  //
+  // They carry `view` for the two reasons every library-dependent entry does, and the
+  // grid walks need both: the landing view is registry-PERSISTED, so without a seed
+  // these inherit whichever view a previous test left behind (Genres shows `#genreList`,
+  // not `#itemGrid`, and the walk would press at a list that isn't there); and
+  // `screens.spec.js` skips a `view` screen whose library the server lacks, which is
+  // how a thin demo fixture stays a visible skip instead of a red run.
+  { name: 'homeReturn', state: 'home', nav: navHomeReturnBare, view: MOVIES_GRID },
+  {
+    name: 'homeReturnAfterDetails',
+    state: 'home',
+    nav: navHomeReturnAfterDetails,
+    view: MOVIES_GRID,
+  },
+  // No `view`: search depends on demo CONTENT matching RTA_CONFIG.searchQuery, not on a
+  // library landing — same as the `search` screen entry above.
+  { name: 'searchReturn', state: 'home', nav: navSearchReturn },
 
   // --- Library grids: one screen per VIEW per library type --------------------
   // The landing view is seeded deterministically (display.<id>.landing) so the

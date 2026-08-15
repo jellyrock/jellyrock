@@ -247,16 +247,17 @@ end sub
 sub onScreenShown()
   ' On first mount, self-load from the route params (/details/:type/:id). The router creates
   ' this view, so there is no factory to set itemId — we read it from m.top.route here. The
-  ' details route is keepAlive with NO allowReuse, so every detail→detail navigation creates
-  ' a fresh ItemDetails (there is no in-place reuse path).
+  ' details route sets NO allowReuse, so every detail→detail navigation creates a fresh
+  ' ItemDetails. The one in-place path is a SAME-path navigation, which the router reuses
+  ' regardless of any flag and delivers through onRouteUpdate, not here.
   if not isValidAndNotEmpty(m.top.itemId)
     loadFromRoute(m.top.route)
   end if
 
   ' Fire the validate + auto-launch exactly once per deep-link NAVIGATION, whether this view
-  ' is freshly mounted OR resumed from the keepAlive cache (a repeat cast of the same item
-  ' resumes the cached ItemDetails — onScreenShown runs but the fresh-mount loadFromRoute
-  ' above does not). Keyed off the router's per-navigation route.id.
+  ' is freshly mounted OR resumed after being uncovered (back from /play — onScreenShown runs
+  ' but the fresh-mount loadFromRoute above does not). Keyed off the router's per-navigation
+  ' route.id, so an ordinary back-from-player resume, which keeps its route.id, does not re-fire.
   checkDeepLinkLaunch()
 
   ' Restore texture management — reactivate and restore buffer range so cells reload.
@@ -346,8 +347,9 @@ end sub
 
 ' See the call site in onScreenShown. A deep-link route carries ?deeplink=<action>
 ' (open | play | shuffle | trailer | instantmix). We handle it once per distinct navigation
-' (route.id), so a repeat cast of an item whose ItemDetails is cached (keepAlive) still fires,
-' while an ordinary back-from-player resume (which keeps the same route.id) does not re-fire.
+' (route.id), so a repeat cast of the item already showing still fires — the router reuses the
+' active view on a same-path navigation and calls onRouteUpdate, which routes back through here
+' with the new route.id — while a back-from-player resume (same route.id) does not re-fire.
 ' The ACTION (the sender's explicit intent — never inferred from the resolved item) is
 ' dispatched in dispatchDeepLinkAction. Fresh/loading -> flag for onDetailsLoaded (which also
 ' handles an invalid id -> error + Home); already-loaded resume -> dispatch once the router idles.
@@ -366,8 +368,9 @@ sub checkDeepLinkLaunch()
   end if
 end sub
 
-' keepAlive resume: the content is already loaded, but onScreenShown runs MID-navigation, and the
-' router rejects a navigateTo issued while a navigation is in progress (Router.brs _navigateTo).
+' Already-loaded view (an uncovered resume, or a same-path re-cast through onRouteUpdate): the
+' content is there, but the hook runs MID-navigation, and the router rejects a navigateTo issued
+' while a navigation is in progress (Router.brs _navigateTo).
 ' So wait for the navigation to settle (routerState -> NavigationEnd) before launching, otherwise
 ' startPlayFromDetail's navigateTo("/play") is swallowed (toast fires, but no player). Fresh mounts
 ' don't need this — they launch from onDetailsLoaded, which is already async / router-idle.
@@ -555,8 +558,8 @@ sub onDeleteConfirmResponse()
   if not isValid(dialog) or not isValid(dialog.result) or not isValidAndNotEmpty(deleteId) then return
   if dialog.result.confirmed
     SubmitSideEffect(GetApi().BuildDeleteItemRequest(deleteId))
-    ' The item is gone server-side, but a keepAlive library that contained it is suspended
-    ' with stale content. Bump the scene's content-freshness
+    ' The item is gone server-side, but the library that contained it is suspended beneath
+    ' us with stale content. Bump the scene's content-freshness
     ' token so that library (and any other kept-alive grid) re-fetches on its next resume —
     ' otherwise the deleted item lingers as a selectable ghost until logout.
     scene = m.top.getScene()
@@ -2481,7 +2484,7 @@ sub onItemContentChanged()
   if isValid(item) and isValidAndNotEmpty(item.id)
     ' Do NOT overwrite m.top.id with the item id. The router assigns this
     ' view's node id and tracks it in its history stack; reassigning it here desyncs that
-    ' history so sgRouter.goBack() can't find this (keepAlive-suspended) view on the way
+    ' history so sgRouter.goBack() can't find this (suspended) view on the way
     ' back from the player -> back wrongly bubbles to the scene's Exit dialog. Consumers that
     ' need the item id read m.top.itemId (the route param) or m.top.itemContent.id instead.
 

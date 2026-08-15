@@ -81,7 +81,7 @@ describe('getActiveVals', () => {
   it('sends ONE batch for many keyPaths, each scoped to the active routed view', async () => {
     // The round-trip saving is the reason this exists; and the `activeRoutedView.`
     // prefix is what keeps it reading the screen the user is on rather than a
-    // suspended keepAlive view (see getActiveVal).
+    // suspended view (see getActiveVal).
     getValues.mockResolvedValue({ results: { k0: { found: true, value: 1 } } });
     await getActiveVals(['#a.x', '#b.y', '#c.z']);
 

@@ -65,11 +65,11 @@ sub init()
 
   ' Set initial focus for scene navigation
   m.top.lastFocus = searchBox
-  ' First show focuses the keyboard to type immediately; later shows (keepAlive resume, e.g.
-  ' back from a result detail) restore the prior focus.
+  ' First show focuses the keyboard to type immediately; later shows (a resume, e.g. back
+  ' from a result detail) restore the prior focus.
   m.isFirstShow = true
   ' Last voice query applied via applyRouteQuery — guards against re-applying (and re-grabbing
-  ' focus) on a keepAlive back-resume that replays the same route context.
+  ' focus) on a back-resume that replays the same route context.
   m.lastAppliedQuery = ""
 
   ' The keyboard is BUILT here but not yet typable: nothing has focus until the router shows
@@ -110,7 +110,7 @@ sub onScreenShown()
   end if
 
   ' On first open, focus + activate the keyboard so the user can type immediately (the router
-  ' mounts this view). Subsequent shows (keepAlive resume) restore the prior focus.
+  ' mounts this view). Subsequent shows (a resume) restore the prior focus.
   if m.isFirstShow
     m.isFirstShow = false
     if isValid(m.searchAlphabox)
@@ -139,12 +139,12 @@ end sub
 ' triggers the search via the searchAlpha alias) and focus the text entry. Returns true when
 ' a query was applied so onScreenShown can skip normal focus.
 '
-' onScreenShown fires on first open AND on keepAlive resume, and the router replays the
+' onScreenShown fires on first open AND on resume, and the router replays the
 ' ORIGINAL route (with its query context) on a back-resume (Router.brs reuses view.route) — so
 ' applying unconditionally would re-grab focus to the text box every time the user backs out of
 ' a result. Guard on the last-applied value: a back-resume carries the same query we already
 ' applied (skip), while a genuinely new voice search carries a different query (apply). The box
-' already holds the prior term in the keepAlive case, so skipping a repeat is also the right UX.
+' already holds the prior term on a resume, so skipping a repeat is also the right UX.
 function applyRouteQuery() as boolean
   route = m.top.route
   if not isValid(route) or not isValid(route.context) then return false
@@ -406,6 +406,14 @@ sub onDestroy()
   m.searchSelect.unobserveField("contentReady") ' readiness ledger's `rows` fill
   m.searchSelect.unobserveField("itemSelected") ' self-navigation observer
   m.top.unobserveField("quickPlayNode") ' playback launcher
+
+  ' Drop the row content, same shape and same reason as BaseGridView.onDestroy: SearchRow's
+  ' cells are BrowseRowItem (a JRRowItem), which caches m.contentRoot and registers scoped
+  ' observers on it, so the content root holds each cell's scope. JRRowItem has no onDestroy
+  ' and SearchRow has none either, so the release has to come from here. Below the unobserve
+  ' block for the same reason it is there in BaseGridView — emptying the RowList can move
+  ' rowItemFocused, and onSearchItemFocused dereferences `.content`.
+  m.searchSelect.content = invalid
 
   ' Stop and release task node (observer may already be cleared by loadResults())
   m.searchTask.unobserveField("results")

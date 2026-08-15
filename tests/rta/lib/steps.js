@@ -23,12 +23,13 @@ export async function getVal(keyPath) {
 
 /**
  * Like getVal, but scoped to the ACTIVE routed view (`m.global.activeRoutedView`)
- * rather than a recursive scene-root find. sgRouter keepAlive leaves SUSPENDED views
- * in the scene tree, so a recursive `#id` lookup (getVal) can resolve to a suspended
- * view's node when ids aren't unique — e.g. every ItemDetails has `#extrasGrid`, and
- * several components declare `#options`. Anchoring to activeRoutedView (the app's own
- * "view the user is on", set on open/resume by the JRScreen lifecycle) reads the node
- * on the active screen. Use this for value reads of ids that recur across views.
+ * rather than a recursive scene-root find. A view suspended under sgRouter's default
+ * `suspendMode: "hide"` (Home, /settings, /photo, /audio) stays in the scene tree, so a
+ * recursive `#id` lookup (getVal) can resolve to ITS node when ids aren't unique — e.g.
+ * every ItemDetails has `#extrasGrid`, and several components declare `#options`.
+ * Anchoring to activeRoutedView (the app's own "view the user is on", set on open/resume
+ * by the JRScreen lifecycle) reads the node on the active screen. Use this for value
+ * reads of ids that recur across views — it holds whichever suspendMode a route carries.
  */
 export async function getActiveVal(keyPath) {
   const res = await odc

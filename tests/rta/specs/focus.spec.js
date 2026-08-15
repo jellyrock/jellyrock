@@ -5,7 +5,7 @@
  * with the JRScreen lifecycle bridge (saveLastFocus on onViewSuspend, handleFocus
  * on resume). This spec guards that contract end-to-end on a real device: after
  * Home -> Library -> Detail and two Backs, focus must return to exactly where it
- * was at each level — the keepAlive library grid tile, then Home's content.
+ * was at each level — the suspended library grid's tile, then Home's content.
  *
  * The waitFocused gates ARE the assertions (they throw on timeout). Run:
  *   npx vitest run --config vitest.rta.config.js -t 'focus'
@@ -41,7 +41,7 @@ it('focus restoration: Home -> Library -> Detail -> back -> back', async () => {
     'string',
   );
 
-  // Grid -> first item's detail (keepAlive grid is suspended; detail mounts).
+  // Grid -> first item's detail (the grid is suspended, not destroyed; detail mounts).
   await press(ecp.Key.Ok);
   await waitFor('#videoTitle.text', (t) => typeof t === 'string' && t.length > 0, {
     label: 'detail title',
@@ -52,10 +52,10 @@ it('focus restoration: Home -> Library -> Detail -> back -> back', async () => {
     timeout: 20000,
   });
 
-  // Back -> library grid resumes (keepAlive): focus must return INTO the grid, not be
-  // lost. (We assert the grid regained focus rather than a byte-identical keyPath: the
-  // keepAlive view is reparented between viewTarget<->keepAliveViewTarget on
-  // suspend/resume, which shifts the absolute keyPath even when the same tile is focused.)
+  // Back -> library grid resumes: focus must return INTO the grid, not be lost. (We assert
+  // the grid regained focus rather than a byte-identical keyPath: a `suspendMode: "detach"`
+  // view leaves the tree on suspend and is re-attached on resume, which shifts the absolute
+  // keyPath even when the same tile is focused.)
   await press(ecp.Key.Back);
   await waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes('#itemGrid'), {
     label: 'library grid focus restored',
@@ -63,10 +63,28 @@ it('focus restoration: Home -> Library -> Detail -> back -> back', async () => {
   });
 
   // Back -> Home resumes: focus must land back in Home's content (#homeRows), not lost.
+  //
+  // The press is GUARDED rather than fired once, because the gate above is a proxy for the
+  // state this press actually needs. `showView`'s finally restores focus BEFORE it dispatches
+  // NavigationEnd (Router.brs), so the instant the grid regains focus the router can still be
+  // mid-navigation — where `_goBack` rejects the key and JRScene's arbiter swallows it
+  // (JRScene.onKeyEvent, `isRouterNavigating`). The key is then simply gone, and this wait
+  // times out with focus still on #itemGrid. Observed exactly that way on 2026-08-15.
+  //
+  // Re-pressing only while the GRID still holds focus is what makes the retry safe: once the
+  // pop actually starts, focus has left #itemGrid, so this can never double-press onto Home
+  // and raise the Exit dialog.
   await press(ecp.Key.Back);
   await waitHome();
   await waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes('#homeRows'), {
     label: 'home content focus restored',
     timeout: 15000,
+    interval: 500,
+    action: async () => {
+      const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+      if (typeof f?.keyPath === 'string' && f.keyPath.includes('#itemGrid')) {
+        await press(ecp.Key.Back);
+      }
+    },
   });
 });

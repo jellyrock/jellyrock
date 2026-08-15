@@ -156,15 +156,16 @@ sub onScreenShown()
   ' deep link / cast pass the rich library node as route.context.item (in-app: the selected
   ' node; deep link: the node JRScene.resolveDeepLink already validated) — instant, no
   ' re-fetch. presenterType MUST be set before parentItem (parentItem triggers
-  ' loadInitialItems, which reads presenterType). keepAlive views skip this on resume
+  ' loadInitialItems, which reads presenterType). A resumed view skips this
   ' (parentItem already set).
   if not isValid(m.top.parentItem)
     loadLibraryFromRoute(m.top.route)
   else
-    ' keepAlive resume. If a mutation elsewhere (e.g. an item delete in ItemDetails) bumped
+    ' Resume: this view was suspended beneath a pushed screen, not destroyed, so its content
+    ' survived. If a mutation elsewhere (e.g. an item delete in ItemDetails) bumped
     ' the scene's content-freshness token since we last
     ' loaded, our cached grid is stale — re-fetch so deleted items don't linger as
-    ' selectable ghosts. Unchanged token = no reload (keepAlive's perf win is preserved).
+    ' selectable ghosts. Unchanged token = no reload, so the resume stays cheap.
     scene = m.top.getScene()
     if isValid(scene) and scene.contentVersion <> m.lastContentVersion
       reloadGridItems()
@@ -175,8 +176,8 @@ sub onScreenShown()
   m.global.sceneManager.callFunc("setBackgroundImage", "")
 
   ' Re-activate voice capture — the voiceBox loses its active connection to the
-  ' Roku firmware while this screen is suspended (keepAlive keeps the node in the
-  ' tree but inactive) and another view is on top.
+  ' Roku firmware while this screen is suspended ("detach" removes the node from the
+  ' tree entirely) and another view is on top.
   if isValid(m.voiceBox)
     m.voiceBox.active = true
   end if
@@ -1407,6 +1408,23 @@ sub onDestroy()
   m.itemGrid.unobserveField("itemFocused")
   m.itemGrid.unobserveField("itemSelected")
   m.voiceBox.unobserveField("text")
+
+  ' Break the GridItem <-> content-root retain CYCLE before dropping our references.
+  ' Every GridItem caches m.gridView = this view node (resolveGridViewConfig walks up for
+  ' the gridTitles field) AND registers scoped observers on the shared content root, which
+  ' makes the content root hold each cell's component scope. That closes the loop:
+  '   view -> m.data -> cell scope -> m.gridView -> view
+  ' BrightScript refcounts, so a cycle is never collected — the whole view survived every
+  ' back-out as an unparented root, one per library visit. GridItem has no onDestroy and
+  ' only unobserves when the content root CHANGES, so the release has to come from here:
+  ' dropping BOTH references to the content root (ours and the ArrayGrid's) frees it, which
+  ' frees the cell scopes it holds, which drops their back-reference to us.
+  '
+  ' MUST stay BELOW the unobserve block: emptying an ArrayGrid can move itemFocused /
+  ' rowItemFocused, and onItemFocused / onGenreItemFocused both dereference `.content`
+  ' unguarded. Dropping the observers first means a reset fires at nothing.
+  m.itemGrid.content = invalid
+  m.genreList.content = invalid
 
   ' tvGuide may already be cleaned up by hideTvGuide() on back-press
   if isValid(m.tvGuide)

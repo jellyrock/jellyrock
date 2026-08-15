@@ -9,7 +9,7 @@ related-files:
   - components/manager/QueueManager.bs
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
-last-reviewed: 2026-06-14
+last-reviewed: 2026-08-14
 ---
 
 # The User Journey
@@ -168,7 +168,7 @@ Each presenter declares: backdrop mode (fullscreen / presentation panel / none),
 
 This pattern keeps `BaseGridView.xml/.bs` clean — there's no `if libraryType = "movie"` ladder. Adding a new library type means writing a presenter, not editing the grid view.
 
-`BaseGridView` is a **`keepAlive`** route (`/library/:id`): when the user drills into an item, the grid is *suspended* (its node + focus saved) rather than destroyed, and *resumed* on back — so the cursor returns to the exact item the user left. `BaseGridView.onLibrarySelection` (`BaseGridView.bs:216`) computes `routeForItem(item)` and calls `sgrouter.navigateTo(route, { context: { item } })` itself (it routes to `/details/:type/:id` for an item, or to another `/library/:id` for a nested folder/genre). On resume it re-checks `m.scene.contentVersion` and re-fetches if a delete happened beneath it, so a deleted item can't linger in the cached grid (see `JRScene.xml`'s `contentVersion` field).
+`BaseGridView` is a **`suspendMode: "detach"`** route (`/library/:id`): when the user drills into an item, the grid is *suspended* out of the tree (its node + focus saved) rather than destroyed, and *resumed* on back — so the cursor returns to the exact item the user left. It is deliberately **not** `keepAlive`: backing out of the library entirely destroys it, so re-entering that library is a fresh load rather than a resumed cache — a spinner and tile 0, not the item you left. The view / sort / filter selection still survives, because that lives in the registry (`getLibraryDisplaySetting`), not on the view. See [ADR 0029](../adr/0029-destroy-routed-screens-on-pop.md) for the accepted cost. `BaseGridView.onLibrarySelection` (`BaseGridView.bs:216`) computes `routeForItem(item)` and calls `sgrouter.navigateTo(route, { context: { item } })` itself (it routes to `/details/:type/:id` for an item, or to another `/library/:id` for a nested folder/genre). On resume it re-checks `m.scene.contentVersion` and re-fetches if a delete happened beneath it, so a deleted item can't linger in the resumed grid (see `JRScene.xml`'s `contentVersion` field).
 
 ## 6. Item Detail — `components/ItemDetails.bs`
 
@@ -292,7 +292,7 @@ When the video finishes (`state = "finished"`), `PlayerHostView.onPlayerStateCha
 
 - **Live TV channel** — `playCurrentQueueItem()` (restart the same channel by remounting)
 - **More items in queue** — `moveForward` → `playCurrentQueueItem()` (remount for the next item)
-- **Queue exhausted** — `exitPlayback()` → `sgrouter.goBack()` (the `keepAlive` launching detail, or Home, resumes)
+- **Queue exhausted** — `exitPlayback()` → `sgrouter.goBack()` (the suspended launching detail, or Home, resumes)
 
 Whether the user backs out (router `goBack` → `beforeViewClose` → `onDestroy`) or the queue exhausts, `PlayerHostView.destroyPlayer()` sets `m.view.control = "stop"` so Jellyfin records the stop before the player node is destroyed.
 
