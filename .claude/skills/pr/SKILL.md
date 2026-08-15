@@ -17,7 +17,7 @@ Open a PR whose body comes from `.github/pull_request_template.md`, with the Iss
 
 **Inputs.** No `$ARGUMENTS` — the skill operates on the current branch and its commits. It expects a non-`main`, non-detached branch with a clean working tree and an upstream it can push (the pre-flight establishes these, pushing the branch where needed). It reads the PR template, the branch's commit log and diff vs `main`, an existing PR's body (when one is open) including the embedded `<!-- /pr render: sha=... -->` marker, and the architecture-docs related-files lint.
 
-**Outputs.** A created or updated pull request whose body is the filled template (section headings and HTML comments preserved) ending in a hidden `<!-- /pr render: sha=<40-char> ts=<ISO-8601-UTC> -->` marker that lets the next invocation narrow judgment-pass scope to "since last render"; an imperative-mood title with code identifiers backticked; drafted journal entries (tech-debt / decision / followup) surfaced per-candidate for the user to accept into `/log`; on the update path, a pre-render backup of the prior body in `.claude/handoffs/`; and the PR URL printed. No journal entry is written without per-candidate user accept; no body is overwritten without confirmation.
+**Outputs.** A created or updated pull request whose body is the filled template (section headings preserved; the template's hint comments dropped — see "Build the body") ending in a hidden `<!-- /pr render: sha=<40-char> ts=<ISO-8601-UTC> -->` marker that lets the next invocation narrow judgment-pass scope to "since last render"; an imperative-mood title with code identifiers backticked; drafted journal entries (tech-debt / decision / followup) surfaced per-candidate for the user to accept into `/log`; on the update path, a pre-render backup of the prior body in `.claude/handoffs/`; and the PR URL printed. No journal entry is written without per-candidate user accept; no body is overwritten without confirmation.
 
 **Success criteria.**
 
@@ -122,7 +122,20 @@ The CLAUDE.md `Followup-discipline rule` governs which journal each deferral lan
 
 ### Build the body
 
-Start from the template literally. Keep all section headings and HTML comments intact so future editors see the same hints humans get.
+Start from the template literally. Keep every section heading intact so the body's shape is
+predictable, and **drop the template's `<!-- hint -->` comments** rather than carrying them
+through.
+
+The hints exist to prompt whoever fills the template in; they are not content. That was a
+free choice when the body only lived on GitHub, and stopped being one when the repo set
+`squash_merge_commit_message=PR_BODY`: the body is now the **permanent commit message** of
+every squashed PR, so a carried-through hint is template scaffolding printed into `git log`
+forever. Anyone editing the body later can read the template itself, which is one click away
+and cannot go stale the way a copy would.
+
+The one comment that DOES stay is the trailing `<!-- /pr render: … -->` marker — it is
+machine-read by this skill's own update path, and one line of metadata is the price of not
+losing narrow-scope resolution across invocations.
 
 #### Title
 Imperative mood, < 70 chars. Synthesize from commits, not just the latest. Passed via `--title`, not in the body.
