@@ -42,6 +42,8 @@ import {
   navEpisodeDetails,
   navAudioDetails,
   navSearch,
+  navHomeReturnBare,
+  navHomeReturnAfterDetails,
 } from './lib/nav.js';
 
 /** User-select screen is ready once the user row has rendered its users. */
@@ -257,6 +259,20 @@ export const SCREENS = [
   },
   { name: 'settings', state: 'home', nav: navSettings, capture: { eligible: true } },
   { name: 'search', state: 'home', nav: navSearch, capture: { eligible: true } },
+
+  // --- Measurement navs: `npm run measure -- --nav <name>` --------------------
+  // No `capture` — these are not screens, they are ROUND TRIPS that end back on
+  // Home, and a screenshot of them would just be Home. They are here because
+  // `measure.js` resolves `--nav` out of THIS registry (it is the third consumer
+  // after the suite and the store orchestrator), so a measurement nav has nowhere
+  // else to live.
+  //
+  // The pair is a controlled experiment, not two independent screens: they differ
+  // ONLY in how many distinct ItemDetails are opened and backed out of before
+  // returning, which is how many views sgRouter's detach store retains. See
+  // `navHomeReturn` in lib/nav.js for what the comparison separates and why.
+  { name: 'homeReturn', state: 'home', nav: navHomeReturnBare },
+  { name: 'homeReturnAfterDetails', state: 'home', nav: navHomeReturnAfterDetails },
 
   // --- Library grids: one screen per VIEW per library type --------------------
   // The landing view is seeded deterministically (display.<id>.landing) so the
