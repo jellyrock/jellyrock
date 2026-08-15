@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-08-14
+last-updated: 2026-08-15
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-15 — ci(rta): Measure the `search` screen as its two separate loads
 - 2026-08-14 — ci(rta): Measure `settings` and the video player
 - 2026-08-14 — ci(rta): Measure when a screen paints and when it settles
 - 2026-08-14 — **Root-caused and fixed: `npm run measure -- --deploy` deployed a build it never built.** `deployRtaBuild()` sideloads the `build/` DIRECTORY, and every bsconfig in the repo writes to that same directory — so `--deploy` shipped whatever npm script ran last. Every sibling pairs the deploy with a build in its npm script (`test:rta` = `npm run build && …`, `screenshots:capture` = `npm run build:prod && …`); `measure` was the only entry point offering `--deploy` without one. It cost four device runs across two sessions: once it shipped a build predating the instrumentation being grounded (zero samples, blamed on the pattern), and once — straight after `npm run test:unit` — it shipped the Rooibos TEST build, whose ODC refusal then advised re-running with the `--deploy` that had just caused it. `--deploy` now builds this checkout first and refuses to deploy a stale `build/` if that build fails.
@@ -65,8 +66,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-08-03 — feat: Collapse `HomeRows` latest-media fan-out onto a bounded `apiPipeline`
 - 2026-08-02 — RTA screens `playlistsLibrary` + `playlistDetails` are content-FLAKY: the demo server (`demo.jellyfin.org/stable`) resets hourly and its playlists may be absent/changed, so `findHomeLibraryTile('playlists')` can time out (only `movies`/`tvshows`/`music` guaranteed). Guard/skip these two when no playlists library is present (or seed a playlist), like the other demo-content-dependent screens. Surfaced by the #550 sgRouter PR-hardening RTA run.
 - 2026-08-02 — fix: move log-manager init to `JRScene` so global nodes can log
-- 2026-07-31 — ci(lint): validate the `docs/decisions.md` supersede chain
-- 2026-07-31 — ci(lint): gate that every `npm run lint` check actually runs in CI
 
 ## Open followups
 
