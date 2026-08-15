@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-15 — ci: Make the PR description the commit message, and gate it
 - 2026-08-15 — fix(performance): Destroy popped routed screens and fix the `BaseGridView` retain cycle
 - 2026-08-15 — Measure the pre-login flow, and fix the `roku-log` crash it exposed
 - 2026-08-15 — ci(rta): Measure the `search` screen as its two separate loads
