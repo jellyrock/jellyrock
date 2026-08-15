@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (performance) Destroy popped routed screens and fix the `BaseGridView` retain cycle ([#816](https://github.com/jellyrock/jellyrock/pull/816))
 - (rta) record what became of a run, and read the baseline ([#806](https://github.com/jellyrock/jellyrock/pull/806))
 - (rta) record which device a run drove in the run ledger ([8794b28](https://github.com/jellyrock/jellyrock/commit/8794b287))
 - (rta) compare re-minted credentials by presence so the restore converges ([#805](https://github.com/jellyrock/jellyrock/pull/805))
