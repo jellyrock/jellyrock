@@ -258,6 +258,10 @@ sub searchMedias()
 end sub
 
 sub loadResults()
+  ' Read ONCE and used for everything below, so the delivery this handler checks is provably
+  ' the delivery it files and displays — a second read could not disagree today (nothing else
+  ' writes the field on this thread), but then the assertion below would be about a different
+  ' read than the data, which is a strange thing for an invariant check to be.
   results = m.searchTask.results
 
   ' A DETECTOR, not a guard — it reports the invariant breaking and then carries on.
@@ -283,8 +287,11 @@ sub loadResults()
   ' above broke — most likely because something moved the publish earlier or made it
   ' incremental — and a fix is then justified on its own evidence rather than on this
   ' comment. See the followup in `docs/progress.md`.
+  ' WARN, not info: this fires only when the invariant above has broken, and it is the twin of
+  ' `screen-load unbalanced` — the ledger's own drift alarm, which warns for the same reason.
+  ' At info it would sit unread in a console that prints a great deal of ordinary traffic.
   if isValid(results) and isValid(results.query) and results.query <> m.top.searchAlpha
-    m.log.info("superseded search delivery - answered", results.query, "current", m.top.searchAlpha)
+    m.log.warn("superseded search delivery - answered", results.query, "current", m.top.searchAlpha)
   end if
 
   ' The server work is done. Resolved at the TOP because this handler has an early return
@@ -313,15 +320,16 @@ sub loadResults()
   ' before resolving rather than assuming it is still the same run.
   screenLoad.pending("rows")
 
-  m.searchSelect.itemdata = m.searchTask.results
+  m.searchSelect.itemdata = results
   m.searchSelect.query = m.top.SearchAlpha
 
-  ' PAINT — the results are handed over and the spinner is down. The rows themselves are
-  ' built by `SearchRow.getData`, which is `rows` above; paint says the waiting is over,
-  ' settled says the results are on screen.
+  ' PAINT — the results are handed over, the rows are built and the spinner is down. Note
+  ' this is NOT the usual paint-then-settle shape: the build ran inline in the assignment
+  ' above, so both fills are already closed here and `settled` follows within a millisecond.
+  ' For this variant the two FILLS are the split, not paint against settled.
   screenLoad.paint("query")
 
-  if m.searchTask.results.TotalRecordCount = 0
+  if results.TotalRecordCount = 0
     ' make sure focus is on the keyboard
     if m.searchSelect.isinFocusChain()
       m.searchAlphabox.setFocus(true)
