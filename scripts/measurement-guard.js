@@ -139,6 +139,32 @@ export function missingIdentityFields(identity) {
 }
 
 /**
+ * Which absent fields should ABORT the series, given what the operator declared.
+ *
+ * Absent `serverUrl` has two completely different causes and they must not be
+ * conflated. Ordinarily it means the read went wrong or the app is in a state
+ * nobody meant to measure, and the series is worthless — that is the refusal
+ * `IDENTITY_FATAL_FIELDS` encodes. But the SIGNED-OUT screens (`serverSelect`,
+ * `userSelect`) can only be measured with no server on the node, because reaching
+ * them requires deleting it: `SetServerScreen` is where the user picks a server,
+ * so a run that has one is by definition not on that screen.
+ *
+ * So "signed out" becomes an ASSERTABLE state rather than a failed read — but only
+ * when the operator SAYS SO. Deriving it (treating any absent `serverUrl` as an
+ * intentional signed-out run) is how the tier goes blind: the ordinary case and the
+ * broken case look identical on the wire, and the ordinary case is the one this
+ * whole module exists to catch.
+ *
+ * Lives here rather than in `measure.js` for the reason ADR 0028 was written about:
+ * `measure.js` claims the device on import and cannot be unit-tested, so a rule that
+ * lives there is a rule with no gate under it.
+ */
+export function fatalIdentityFields(identity, { expectSignedOut = false } = {}) {
+  if (expectSignedOut) return [];
+  return missingIdentityFields(identity).filter((key) => IDENTITY_FATAL_FIELDS.includes(key));
+}
+
+/**
  * Compare two server URLs for the purposes of the tier-1 assert.
  *
  * Normalisation is deliberately SHALLOW — trailing slashes and the case of the
@@ -172,7 +198,32 @@ export function sameServer(a, b) {
  * to expect" and "the server is the one you expected" must never look alike in
  * the output, because the entire value of the tier is the difference between them.
  */
-export function checkServerIdentity(identity, expectedServerUrl) {
+export function checkServerIdentity(identity, expectedServerUrl, { expectSignedOut = false } = {}) {
+  // The signed-out arm ASSERTS, in both directions, and the second direction is the
+  // half that earns it. "No server, as declared" is a pass. "A server, when you
+  // declared none" is a HARD FAIL — because the signed-out screens are reached by
+  // LAUNCHING, not by navigating: `beginLogin()` re-reads `server` every launch, so a
+  // device that still has one lands on Home and every sample in the series is a Home
+  // measurement filed under `serverSelect`. That is the confidently-wrong-number
+  // failure this tier exists to prevent, and it is silent — the run completes, the
+  // samples are well-formed, and only the screen is wrong.
+  if (expectSignedOut) {
+    const observed = identity?.serverUrl;
+    const ok = observed === undefined || observed === '';
+    return {
+      asserted: true,
+      ok,
+      signedOut: true,
+      observed,
+      expected: null,
+      reason: ok
+        ? undefined
+        : `--signed-out declared that the app has NO server, but it is on ` +
+          `${JSON.stringify(observed)}. The signed-out screens are reached by launching, so a ` +
+          'device that still has a server lands on Home and the series would measure Home ' +
+          'under the name you asked for. Use Change Server in the app menu first.',
+    };
+  }
   if (!expectedServerUrl) {
     return {
       asserted: false,

@@ -85,7 +85,15 @@ const VALUE_FLAGS = new Map([
 ]);
 
 /** Flags that take no value. */
-const BOOLEAN_FLAGS = new Map([['--deploy', 'deploy']]);
+const BOOLEAN_FLAGS = new Map([
+  ['--deploy', 'deploy'],
+  // Declare that the app has NO server — the only state in which the login screens
+  // (`serverSelect`, `userSelect`) can be measured, because reaching them means
+  // deleting the server. Turns tier 1's absent `serverUrl` from a fatal read failure
+  // into an assertion, and asserts the OTHER direction too: a device that still has
+  // a server lands on Home, so the flag fails rather than measuring the wrong screen.
+  ['--signed-out', 'signedOut'],
+]);
 
 /**
  * Characters a `--arm` / `--screen` label may not contain, because they are the
@@ -152,7 +160,7 @@ export function parseMeasureArgs(
   { measurementIds = [], screens = {}, navScreens = [], defaultMeasurement } = {},
 ) {
   const raw = {};
-  const args = { samples: 5, measurement: defaultMeasurement, deploy: false };
+  const args = { samples: 5, measurement: defaultMeasurement, deploy: false, signedOut: false };
 
   for (let i = 0; i < argv.length; i++) {
     const arg = String(argv[i]);
@@ -253,17 +261,20 @@ export function parseMeasureArgs(
           `${navScreens.map((s) => s.name).join(', ')}`,
       );
     }
-    // `measure` writes no registry and restores none — see its header. Every screen
-    // reachable without seeding is a `home`-state one; `userSelect` and `serverSelect`
-    // are reached by SEEDING the registry into a signed-out state, which this tool
-    // cannot do without adopting a lifecycle it deliberately does not have. Refused
-    // with the reason rather than attempted and timed out on a screen that never came.
+    // `measure` writes no registry and restores none — see its header. Every screen it
+    // can DRIVE to is a `home`-state one. The signed-out screens are not driven to at
+    // all: `beginLogin()` re-reads `server` / `active_user` on every launch, so once the
+    // operator has signed out by hand (Change Server / Change User in the app menu) the
+    // relaunch loop lands on them sample after sample, with no nav involved. That is
+    // what `--signed-out` is for, and it is why this refusal is correct rather than a
+    // limitation to route around.
     if (entry && entry.state !== 'home') {
       throw new MeasureArgError(
-        `--nav ${JSON.stringify(raw.nav)} needs the app in "${entry.state}" state, which is ` +
-          'reached by seeding the registry. `npm run measure` never writes the registry (it ' +
-          'measures the app as your device already has it, signed into your own server), so ' +
-          'it can only drive screens reachable from a signed-in Home.',
+        `--nav ${JSON.stringify(raw.nav)} needs the app in "${entry.state}" state, and ` +
+          '`npm run measure` never writes the registry (it measures the app as your device ' +
+          'already has it), so it cannot put the app there. It does not need to: sign out by ' +
+          'hand via the app menu and run with --signed-out and NO --nav — every relaunch then ' +
+          'lands on that screen, which is also why the series inherits no navigation cap.',
       );
     }
     // The screen is now KNOWN, so a hand-typed one is at best redundant and at worst a
@@ -290,6 +301,28 @@ export function parseMeasureArgs(
       );
     }
     args.library = raw.library;
+  }
+
+  // `--signed-out` and `--server` are two different answers to tier 1's one question,
+  // and neither can win quietly: taking the URL would make the flag a no-op on the run
+  // that most needs it, and taking the flag would drop an assertion the operator typed
+  // in order to assert. Same refusal shape as `--screen` with `--nav`.
+  if (args.signedOut && args.server !== undefined) {
+    throw new MeasureArgError(
+      '--signed-out may not be combined with --server: one declares that the app has NO ' +
+        `server, the other declares that it is on ${JSON.stringify(args.server)}. Tier 1 ` +
+        'cannot assert both. Drop whichever one is not what you meant.',
+    );
+  }
+  // A nav needs a signed-in Home to start from, so this pair can never both be true —
+  // and it would fail late and obscurely (the nav timing out on a screen that never
+  // came) rather than here, where the contradiction is visible.
+  if (args.signedOut && args.nav !== undefined) {
+    throw new MeasureArgError(
+      `--signed-out may not be combined with --nav: a nav is driven from a signed-in Home, ` +
+        `and --signed-out says the app has no server to sign in to. The signed-out screens ` +
+        'are reached by LAUNCHING — drop --nav and every relaunch lands on one.',
+    );
   }
 
   if (raw.variant !== undefined) {

@@ -18,6 +18,7 @@ import {
   checkSeriesConsistency,
   checkServerIdentity,
   IDENTITY_FATAL_FIELDS,
+  fatalIdentityFields,
   missingIdentityFields,
   readAppVersion,
   readCheckoutBuildFlags,
@@ -66,15 +67,15 @@ describe('sameServer', () => {
   });
 
   it('separates two different hosts on the same path', () => {
-    expect(sameServer('http://192.168.1.2:8098', 'http://192.168.1.3:8098')).toBe(false);
+    expect(sameServer('http://192.0.2.10:8096', 'http://192.0.2.11:8096')).toBe(false);
   });
 });
 
 describe('checkServerIdentity (tier 1)', () => {
-  const identity = { serverUrl: 'http://192.168.1.2:8098', serverId: 'abc', userId: 'u1' };
+  const identity = { serverUrl: 'http://192.0.2.10:8096', serverId: 'abc', userId: 'u1' };
 
   it('passes when the app is on the declared server', () => {
-    const v = checkServerIdentity(identity, 'http://192.168.1.2:8098');
+    const v = checkServerIdentity(identity, 'http://192.0.2.10:8096');
     expect(v).toMatchObject({ asserted: true, ok: true });
   });
 
@@ -82,7 +83,7 @@ describe('checkServerIdentity (tier 1)', () => {
     const v = checkServerIdentity(identity, 'https://demo.jellyfin.org/stable');
     expect(v.asserted).toBe(true);
     expect(v.ok).toBe(false);
-    expect(v.reason).toContain('192.168.1.2');
+    expect(v.reason).toContain('192.0.2.10');
     expect(v.reason).toContain('demo.jellyfin.org/stable');
   });
 
@@ -99,6 +100,48 @@ describe('checkServerIdentity (tier 1)', () => {
   it('explains why serverId/userId are not the fields to compare', () => {
     const v = checkServerIdentity(identity, 'https://demo.jellyfin.org/unstable');
     expect(v.reason).toMatch(/cloned from one seed DB|identical pair/);
+  });
+});
+
+describe('checkServerIdentity — the signed-out arm (--signed-out)', () => {
+  const signedIn = { serverUrl: 'http://192.0.2.10:8096', serverId: 'abc', userId: 'u1' };
+  const signedOut = { serverUrl: undefined, serverId: undefined, userId: undefined };
+
+  it('ASSERTS rather than declining, when the app has no server as declared', () => {
+    // The distinction that makes the flag worth having: this is not the
+    // `asserted: false` case wearing a different hat. Something was checked.
+    const v = checkServerIdentity(signedOut, undefined, { expectSignedOut: true });
+    expect(v).toMatchObject({ asserted: true, ok: true, signedOut: true });
+    expect(v.reason).toBeUndefined();
+  });
+
+  it('treats an empty-string serverUrl as signed out, matching missingIdentityFields', () => {
+    // The app resets the server node in place rather than dropping it, so ODC can
+    // answer `found: true` with `""`. If the two helpers disagreed on what counts as
+    // absent, the run would pass tier 1 and then abort on a "fatal missing field".
+    const v = checkServerIdentity({ ...signedOut, serverUrl: '' }, undefined, {
+      expectSignedOut: true,
+    });
+    expect(v.ok).toBe(true);
+  });
+
+  it('FAILS when the app still has a server — the half that earns the assertion', () => {
+    // The signed-out screens are reached by LAUNCHING, so a device that still has a
+    // server lands on Home and every sample is a Home measurement filed under the
+    // screen the operator asked for. Silent: the run completes and the samples are
+    // well-formed. This is the only thing standing between that and a published number.
+    const v = checkServerIdentity(signedIn, undefined, { expectSignedOut: true });
+    expect(v).toMatchObject({ asserted: true, ok: false, signedOut: true });
+    expect(v.reason).toContain('192.0.2.10');
+    expect(v.reason).toMatch(/Change Server/);
+  });
+
+  it('does not change the ordinary arms when the option is absent or false', () => {
+    expect(checkServerIdentity(signedIn, undefined, {}).asserted).toBe(false);
+    expect(checkServerIdentity(signedIn, undefined, { expectSignedOut: false }).asserted).toBe(
+      false,
+    );
+    expect(checkServerIdentity(signedIn, 'http://192.0.2.10:8096').ok).toBe(true);
   });
 });
 
@@ -245,5 +288,31 @@ describe('missingIdentityFields — the quiet half of a failed read', () => {
   it('makes serverUrl the fatal one, because tier 1 rests on it', () => {
     expect(IDENTITY_FATAL_FIELDS).toContain('serverUrl');
     expect(IDENTITY_FATAL_FIELDS).not.toContain('apiVersion');
+  });
+});
+
+describe('fatalIdentityFields — which absent field aborts the series', () => {
+  const signedOut = { serverUrl: '', serverId: undefined, userId: undefined };
+
+  it('aborts on an absent serverUrl by default', () => {
+    expect(fatalIdentityFields(signedOut)).toEqual(['serverUrl']);
+  });
+
+  it('does not abort on the non-fatal absences', () => {
+    const noApiVersion = { serverUrl: 'http://a', serverId: 's1', apiVersion: undefined };
+    expect(fatalIdentityFields(noApiVersion)).toEqual([]);
+  });
+
+  it('aborts on nothing once the operator DECLARED the signed-out state', () => {
+    expect(fatalIdentityFields(signedOut, { expectSignedOut: true })).toEqual([]);
+  });
+
+  it('requires the declaration — an absent serverUrl is never self-declaring', () => {
+    // Deriving "signed out" from the absence itself is how the tier goes blind: the
+    // ordinary broken-read case and the intentional case become the same wire state,
+    // and the ordinary one is what this module exists to catch. The flag is the only
+    // thing that separates them, so its absence must still abort.
+    expect(fatalIdentityFields(signedOut, {})).toEqual(['serverUrl']);
+    expect(fatalIdentityFields(signedOut, { expectSignedOut: false })).toEqual(['serverUrl']);
   });
 });

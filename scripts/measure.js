@@ -4,7 +4,7 @@
  *   npm run measure                          n=5 samples of Home first paint
  *   npm run measure -- -n 30                 a real series
  *   npm run measure -- --measurement item-grid
- *   npm run measure -- --server http://192.168.1.2:8098   assert tier 1
+ *   npm run measure -- --server http://192.0.2.10:8096   assert tier 1
  *   npm run measure -- --deploy              BUILD this checkout, then sideload it
  *   npm run measure -- --window-ms 20000     cap the per-launch watch (default 45 s)
  *   npm run measure -- --arm before          label this series for `npm run measure:compare`
@@ -170,7 +170,7 @@ import {
 import {
   readIdentity,
   missingIdentityFields,
-  IDENTITY_FATAL_FIELDS,
+  fatalIdentityFields,
   checkServerIdentity,
   checkSeriesConsistency,
   readDeviceProvenance,
@@ -390,19 +390,29 @@ try {
 // it, and a series nobody can attribute to a server is not a series. The rest are
 // reported and recorded as absent.
 const missing = missingIdentityFields(identityAtStart);
-const fatal = missing.filter((f) => IDENTITY_FATAL_FIELDS.includes(f));
+const fatal = fatalIdentityFields(identityAtStart, { expectSignedOut: args.signedOut });
 if (fatal.length) {
   await refuse(
     `the app answered ODC but has no ${fatal.join(', ')} — it is probably not signed in.\n` +
-      '  A sample cannot be attributed to a server, so it is not a sample.',
+      '  A sample cannot be attributed to a server, so it is not a sample.\n' +
+      '  If that is the state you MEANT to measure (the `serverSelect` / `userSelect` screens\n' +
+      '  can only be reached with no server on the node), declare it with --signed-out.',
   );
 }
 if (missing.length) {
-  console.log(`[measure] ⚠ identity fields absent, recorded as null: ${missing.join(', ')}`);
+  // Under `--signed-out` this is the DECLARED state rather than a surprise, so it is
+  // not flagged with a warning glyph — the whole identity set is absent by definition
+  // and saying "⚠ absent" about it would train the reader to ignore the real case.
+  const note = args.signedOut
+    ? 'signed out — identity absent by declaration'
+    : '⚠ identity fields absent';
+  console.log(`[measure] ${note}, recorded as null: ${missing.join(', ')}`);
 }
 
 const expectedServer = args.server || identityAtStart.serverUrl;
-const tier1 = checkServerIdentity(identityAtStart, args.server);
+const tier1 = checkServerIdentity(identityAtStart, args.server, {
+  expectSignedOut: args.signedOut,
+});
 const checkoutFlags = readCheckoutBuildFlags(manifestPath);
 const provenance = {
   device: await readDeviceProvenance(host),
@@ -424,7 +434,12 @@ const provenance = {
     agreesWithDevice: null,
   },
   server: {
-    url: identityAtStart.serverUrl,
+    // `?? null` rather than left undefined: `JSON.stringify` DROPS an undefined value,
+    // so a signed-out record would silently have no `url` key at all — which reads as
+    // "this record predates the field", a different claim from "there was no server".
+    // The siblings below already learned this; `url` was the one that had never been
+    // absent, because until `--signed-out` a run with no server could not complete.
+    url: identityAtStart.serverUrl ?? null,
     id: identityAtStart.serverId ?? null,
     version: identityAtStart.serverVersion ?? null,
     apiVersion: identityAtStart.apiVersion ?? null,
@@ -438,7 +453,10 @@ console.log(
     (args.arm ? ` · arm "${args.arm}"` : ''),
 );
 console.log(
-  `[measure] app ${provenance.checkout.appVersion} · server ${provenance.server.url} (Jellyfin ${provenance.server.version})`,
+  `[measure] app ${provenance.checkout.appVersion} · ` +
+    (args.signedOut
+      ? 'SIGNED OUT (no server — asserted by --signed-out)'
+      : `server ${provenance.server.url} (Jellyfin ${provenance.server.version})`),
 );
 if (!args.deploy) {
   console.log(
@@ -477,7 +495,11 @@ if (!measurement.grounded) {
       'treat a zero-sample result as an unverified pattern, not as a silent app.',
   );
 }
-if (tier1.asserted) {
+if (tier1.signedOut) {
+  console.log(
+    `[measure] tier 1: signed-out state asserted — ${tier1.ok ? 'OK, no server on the node' : 'MISMATCH'}`,
+  );
+} else if (tier1.asserted) {
   console.log(`[measure] tier 1: server asserted — ${tier1.ok ? 'OK' : 'MISMATCH'}`);
 } else {
   console.log(
@@ -859,7 +881,7 @@ const record = {
   // `launchAt` — and they are the ones that describe the sampling itself.
   endedAt,
   crossedHourBoundary: crossesHourBoundary(runProvenance().startedAt, endedAt),
-  tier1: { ...tier1, pinned: expectedServer },
+  tier1: { ...tier1, pinned: expectedServer ?? null },
   seriesConsistency: consistency,
   provenance,
   requested: args.samples,

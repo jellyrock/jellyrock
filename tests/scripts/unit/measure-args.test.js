@@ -16,7 +16,12 @@ const parse = (argv) => parseMeasureArgs(argv, { measurementIds: IDS, defaultMea
 
 describe('defaults', () => {
   it('samples the first registered measurement five times, without deploying', () => {
-    expect(parse([])).toEqual({ samples: 5, measurement: 'home-latest-rows', deploy: false });
+    expect(parse([])).toEqual({
+      samples: 5,
+      measurement: 'home-latest-rows',
+      deploy: false,
+      signedOut: false,
+    });
   });
 });
 
@@ -154,8 +159,9 @@ describe('--screen may not contradict a family that declares one', () => {
 
 describe('--nav, which is what makes anything but Home reachable', () => {
   // The registry reduced to what the parser needs. Mirrors `tests/rta/screens.js`:
-  // most screens are reached from a signed-in Home, and two are reached by SEEDING
-  // the registry into a signed-out state — which `measure` never does.
+  // most screens are reached from a signed-in Home, and two are reached only with the
+  // app signed OUT — which `measure` cannot drive to, because it writes no registry.
+  // Those two are measured by LAUNCHING instead; see the `--signed-out` block below.
   const withNav = (argv) =>
     parseMeasureArgs(argv, {
       measurementIds: ['home-latest-rows', 'screen-load'],
@@ -180,11 +186,14 @@ describe('--nav, which is what makes anything but Home reachable', () => {
     expect(() => withNav(['--nav', 'movieDetials'])).toThrow(/movieDetails/);
   });
 
-  it('REFUSES a screen that can only be reached by seeding the registry', () => {
-    // `measure` writes no registry and restores none, so a signed-out screen is not
-    // "hard" for it — it is impossible. Refused with the reason rather than attempted
-    // and timed out on a screen that was never going to appear.
-    expect(() => withNav(['--nav', 'userSelect'])).toThrow(/seeding the registry/);
+  it('REFUSES a --nav to a screen the app must be signed OUT to see', () => {
+    // `measure` writes no registry and restores none, so it cannot put the app in that
+    // state. Refused rather than attempted and timed out on a screen that was never
+    // going to appear — and the refusal now names the path that DOES work, because
+    // "impossible" stopped being true when `--signed-out` landed: these screens are
+    // reached by LAUNCHING, so the refusal must not read as a dead end.
+    expect(() => withNav(['--nav', 'userSelect'])).toThrow(/never writes the registry/);
+    expect(() => withNav(['--nav', 'userSelect'])).toThrow(/--signed-out/);
   });
 
   it('REFUSES --screen alongside --nav', () => {
@@ -276,5 +285,53 @@ describe('--component, the other half of a mount identity', () => {
 
   it('is absent when not passed, so the first-mount default still applies', () => {
     expect(withNav(['--nav', 'osd']).component).toBeUndefined();
+  });
+});
+
+describe('--signed-out, which is how the login screens become measurable', () => {
+  const withNav = (argv) =>
+    parseMeasureArgs(argv, {
+      measurementIds: ['screen-load'],
+      navScreens: [
+        { name: 'home', state: 'home' },
+        { name: 'serverSelect', state: 'serverSelect' },
+      ],
+      defaultMeasurement: 'screen-load',
+    });
+
+  it('takes it as a bare switch, defaulting off', () => {
+    expect(withNav(['--signed-out']).signedOut).toBe(true);
+    expect(withNav([]).signedOut).toBe(false);
+  });
+
+  it('REFUSES a value, like every other boolean flag', () => {
+    expect(() => withNav(['--signed-out=true'])).toThrow(/takes no value/);
+  });
+
+  it('REFUSES --server alongside it — two answers to tier 1 one question', () => {
+    // Neither can win quietly: taking the URL makes the flag a no-op on the run that
+    // most needs it, and taking the flag drops an assertion the operator typed in
+    // order to assert.
+    expect(() => withNav(['--signed-out', '--server', 'http://x:8096'])).toThrow(
+      /may not be combined with --server/,
+    );
+    expect(() => withNav(['--server', 'http://x:8096', '--signed-out'])).toThrow(
+      /may not be combined with --server/,
+    );
+  });
+
+  it('REFUSES --nav alongside it, rather than letting the nav time out', () => {
+    // A nav is driven from a signed-in Home, so the pair can never both hold. Caught
+    // here, where the contradiction is visible, instead of ~30 s later on a screen
+    // that was never going to appear.
+    expect(() => withNav(['--signed-out', '--nav', 'home'])).toThrow(
+      /may not be combined with --nav/,
+    );
+  });
+
+  it('composes with the flags a signed-out series actually needs', () => {
+    const args = withNav(['--signed-out', '--deploy', '-n', '30', '--component', 'setServer']);
+    expect(args).toMatchObject({ signedOut: true, deploy: true, samples: 30 });
+    expect(args.component).toBe('setServer');
   });
 });
