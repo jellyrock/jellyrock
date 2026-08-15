@@ -644,10 +644,26 @@ async function navHomeReturn(ctx, detailCount = 0) {
 
   for (let i = 0; i < detailCount; i++) {
     await focusGridTile(i);
+    // GUARDED press, not a bare one. `focusGridTile` ends on a focus gate, and focus is a
+    // PROXY for "the router is idle": sgrouter_showView's finally restores focus BEFORE it
+    // dispatches NavigationEnd, so an OK sent the instant the grid regains focus can land
+    // mid-navigation, be rejected, and simply vanish — after which this wait times out with
+    // `#videoTitle` never resolving (`last=undefined`). Observed on detail 1, 2026-08-15.
+    //
+    // Re-pressing only while the GRID still holds focus is what makes the retry safe: once
+    // the detail opens, focus has left #itemGrid, so this cannot double-press into it.
+    // Same mechanism and same idiom as the second back press in focus.spec.js.
     await press(ecp.Key.Ok);
     await waitFor('#videoTitle.text', (t) => typeof t === 'string' && t.length > 0, {
       label: `homeReturn detail ${i} title`,
       timeout: 20000,
+      interval: 500,
+      action: async () => {
+        const focused = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+        if (typeof focused?.keyPath === 'string' && focused.keyPath.includes('#itemGrid')) {
+          await press(ecp.Key.Ok);
+        }
+      },
     });
     await press(ecp.Key.Back);
     // Back on the grid. `loadState` is already "loaded" (the grid was suspended, not

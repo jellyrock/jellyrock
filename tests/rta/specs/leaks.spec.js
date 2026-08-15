@@ -93,11 +93,21 @@ const NOTHING_RETAINED = Object.fromEntries(ROUTED_VIEWS.map((t) => [t, 0]));
  * magnitude under the failure and well over the noise from texture pools and the
  * recycled cell pools Home rebuilds on return.
  *
- * The observed delta is recorded as the `perVisitRootDelta` assertion on every run, so
- * the real spread accumulates in the run ledger instead of staying unknown. Tighten this
- * once a few green runs agree on a number — and do not raise it to make a run green.
+ * **Set from measurement, not from caution.** Nine runs on `.178` (2026-08-15, recorded as
+ * the `perVisitRootDelta` assertion) read `-5, +2, 0, 0, 1, 0, -1, 0` across the eight that
+ * were green — max magnitude 5, and negative as often as positive, which is the signature
+ * of pool jitter rather than of anything retained. 20 is 4x the observed noise.
+ *
+ * It stays this loose on purpose, because the gap it sits in is enormous: the delta spans
+ * SIX extra screen visits, and one leaked view is ~150 nodes, so the smallest real
+ * per-visit leak reads ~900. Anything between roughly 30 and 500 would catch the identical
+ * set of defects; 20 buys detection of the sub-view case (a stranded content-root island,
+ * which the per-type census structurally cannot see) without approaching the noise floor.
+ *
+ * Do not raise it to make a run green — a run that exceeds this is either a real leak or
+ * evidence the noise floor moved, and both deserve a look rather than a bigger number.
  */
-const PER_VISIT_ROOT_BUDGET = 100;
+const PER_VISIT_ROOT_BUDGET = 20;
 
 let session;
 let ctx;
