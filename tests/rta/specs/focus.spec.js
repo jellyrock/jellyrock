@@ -63,10 +63,28 @@ it('focus restoration: Home -> Library -> Detail -> back -> back', async () => {
   });
 
   // Back -> Home resumes: focus must land back in Home's content (#homeRows), not lost.
+  //
+  // The press is GUARDED rather than fired once, because the gate above is a proxy for the
+  // state this press actually needs. `showView`'s finally restores focus BEFORE it dispatches
+  // NavigationEnd (Router.brs), so the instant the grid regains focus the router can still be
+  // mid-navigation — where `_goBack` rejects the key and JRScene's arbiter swallows it
+  // (JRScene.onKeyEvent, `isRouterNavigating`). The key is then simply gone, and this wait
+  // times out with focus still on #itemGrid. Observed exactly that way on 2026-08-15.
+  //
+  // Re-pressing only while the GRID still holds focus is what makes the retry safe: once the
+  // pop actually starts, focus has left #itemGrid, so this can never double-press onto Home
+  // and raise the Exit dialog.
   await press(ecp.Key.Back);
   await waitHome();
   await waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes('#homeRows'), {
     label: 'home content focus restored',
     timeout: 15000,
+    interval: 500,
+    action: async () => {
+      const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+      if (typeof f?.keyPath === 'string' && f.keyPath.includes('#itemGrid')) {
+        await press(ecp.Key.Back);
+      }
+    },
   });
 });
