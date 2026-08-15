@@ -15,7 +15,7 @@ related-files:
   - source/utils/dialogs.bs
   - source/replayRoute.bs
   - source/loginRouter.bs
-last-reviewed: 2026-07-31
+last-reviewed: 2026-08-14
 ---
 
 # Navigation (sgRouter)
@@ -96,7 +96,7 @@ sgRouter drives the views it mounts through a promise-native lifecycle (`onViewO
 | Router callback | `JRScreen` bridge (`JRScreen.bs`) |
 |---|---|
 | `onViewOpen` (first activation) | publishes `m.global.activeRoutedView = m.top`, then `onScreenShown()` |
-| `onViewResume` (`keepAlive` view back on top) | publishes `m.global.activeRoutedView = m.top`, then `onScreenShown()` |
+| `onViewResume` (suspended view back on top) | publishes `m.global.activeRoutedView = m.top`, then `onScreenShown()` |
 | `onViewSuspend` (a new view pushed on top, this one kept alive) | `saveLastFocus()` (walk to deepest focused descendant → `m.top.lastFocus`), then `onScreenHidden()` |
 | `beforeViewClose` (permanent destroy) | `onScreenHidden()` + `onDestroy()` |
 | `handleFocus` (router asks for remote focus) | restore `m.top.lastFocus` if valid, else focus `m.top` |
@@ -138,20 +138,26 @@ Registered exactly as below. Pre-login routes carry **no guard** (their redirect
 | `/users` | `UserSelect` | (pre-login — none) |
 | `/login` | `LoginScene` | (pre-login — none) |
 | `/details/:type/:id/play` | `PlayerHostView` | `canActivate` |
-| `/details/:type/:id` | `ItemDetails` | `keepAlive: { enabled: true }`, `canActivate` — **no `allowReuse`** |
-| `/library/:id` | `BaseGridView` | `keepAlive: { enabled: true }`, `canActivate` |
-| `/search` | `SearchResults` | `keepAlive: { enabled: true }`, `canActivate` |
+| `/details/:type/:id` | `ItemDetails` | `suspendMode: "detach"`, `canActivate` — **no `allowReuse`** |
+| `/library/:id` | `BaseGridView` | `suspendMode: "detach"`, `canActivate` |
+| `/search` | `SearchResults` | `suspendMode: "detach"`, `canActivate` |
 | `/settings` | `Settings` | `canActivate` |
-| `/photo` | `PhotoDetails` | `canActivate` — **no `keepAlive`** |
-| `/audio` | `AudioPlayerView` | `canActivate` — **no `keepAlive`** |
+| `/photo` | `PhotoDetails` | `canActivate` |
+| `/audio` | `AudioPlayerView` | `canActivate` |
+
+> **No route sets `keepAlive`, and none should.** See the flag notes below — it is a
+> session-lifetime view cache, not a "stay alive while covered" switch.
 
 What the flags mean:
 
 - **`clearStackOnResolve`** (Home) — resolving `/` clears the visible router stack so Home becomes the back-stack root. This is how the pre-login screens fall away once login completes, and how a theme/locale reload rebuilds Home from scratch.
-  > **Locked invariant — session reset MUST use `resetRouter` (`sgrouter.destroy`), not `clearStackOnResolve`.** `clearStackOnResolve` does **not** tear down *suspended* `keepAlive` views; only `destroy()` clears both the active view target and the `keepAlive` view target. Signing out with only `clearStackOnResolve` would leak the suspended detail/library/search views.
+  > **Locked invariant — session reset MUST use `resetRouter` (`sgrouter.destroy`), not `clearStackOnResolve`.** `clearStackOnResolve` tears down the active view target and the detach store's non-`keepAlive` residents, but `destroy()` is what guarantees *everything* goes. Signing out with only `clearStackOnResolve` risks leaving suspended detail/library/search views behind.
 - **`allowReuse`** (Home only) — lets the router reuse the existing Home instance instead of recreating it. Deliberately **omitted** on `/details/:type/:id`: JellyRock has always created a fresh `ItemDetails` per navigation (detail→detail included). `allowReuse` would force an in-place `onRouteUpdate` reuse the component was never built for.
-- **`keepAlive`** (details / library / search) — when a new view is pushed on top, the view is **suspended** (its node kept, focus saved) rather than destroyed, and **resumed** (focus restored) on `goBack`. This is the router equivalent of a screen staying mounted beneath a pushed screen in the old stack. `keepAlive` on `/details` is what lets detail→`/play` restore the launching detail on back instead of bubbling a spurious Exit dialog.
-- **No `keepAlive`** (photo / audio) — a fresh `PhotoDetails` / `AudioPlayerView` per launch, destroyed on `goBack`. Both set `isOverhangVisible = false`, so the overhang hides while they're active and the `keepAlive` view beneath suspends (focus saved) and resumes (focus restored) on back — exactly like the video player.
+  > `allowReuse` does **not** govern a *same-path* navigation. The router reuses the active view whenever `isSamePath` (`Router.brs` `_navigateTo`), independent of every flag — that is the path `ItemDetails.onRouteUpdate` serves when a cast re-targets the item already showing.
+- **`suspendMode: "detach"`** (details / library / search) — governs how a view is held while it is **covered** by a view pushed on top: `"detach"` removes it from the tree into the router's detach store and re-attaches it on `goBack`, freeing its render/texture cost while it is not visible. Every outgoing view is suspended this way *regardless of any flag*, and `_goBack` resumes it through `_onViewResume` either way, so back navigation is unaffected. This is what lets detail→`/play` restore the launching detail on back instead of bubbling a spurious Exit dialog.
+- **`keepAlive` — do not use it.** It looks like the flag that means "don't destroy while covered". It is not. Upstream documents it as *"retained for later resumption"*: a session-lifetime, **path-keyed view cache**, so a view that is **popped** is kept rather than closed, and a later forward navigation to the same path resumes the old instance. It is also **unbounded** — the only eviction helper (`sgrouter_collectDetachedViewsToDestroy`) skips `keepAlive` views by design, so nothing short of `sgrouter.destroy()` at sign-out releases them.
+  > **Why this matters, measured.** These three routes carried `keepAlive` until the retained-view fix. Because the cache is keyed by `route.path`, every *distinct* path visited and backed out of stayed alive for the session — one `BaseGridView` per library, one `ItemDetails` per item. A retained view is **not** an inert node tree: `onScreenHidden` runs on suspend but `onDestroy` does not, and `onDestroy` is where the teardown lives (tasks stopped, ~40 observers dropped, textures freed, promises abandoned, and for `SearchResults` the firmware's global voice route released). An on-device node census — browse six items, back out of each, return Home — measured **1,936 live nodes against a 519-node cold-Home baseline**, growing monotonically. Removing the flag brought the same walk to **458**.
+- **No `suspendMode`** (photo / audio) — defaults to `"hide"`: kept in the tree, hidden and parked off-screen. Both set `isOverhangVisible = false`, so the overhang hides while they're active and the view beneath suspends (focus saved) and resumes (focus restored) on back — exactly like the video player.
 
 ### The auth guard — `components/auth/AuthManager`
 
@@ -183,7 +189,7 @@ On a present token it returns `true` (allow). On absence it **stashes the reques
 | `onPhotoLaunchRequested()` | Reads `m.global.photoLaunchRequest`; navigates `/photo` carrying the launch AA through as route context (`PhotoDetails` reads it on mount). |
 | `reloadRoutedHome()` | `sgrouter.navigateTo("/")` — a fresh Home render after theme/locale change (Home's `clearStackOnResolve` rebuilds it, picking up new theme constants / translations). |
 | `routerGoBack()` | Main-thread wrapper for `sgrouter.goBack()` (e.g. after a delete confirmation leaves the now-deleted detail). |
-| `resetRouter()` | Removes the overhang/playback/photo observers, **drives `beforeViewClose` (→ `onScreenHidden` + `onDestroy`) on every mounted routed view** (`teardownRoutedViews` — both the active view and the suspended `keepAlive` views), then `sgrouter.destroy()`, clears `m.global.activeRoutedView`, hides the overhang. Called on sign-out / change-user / change-server before `reenterLogin`. The explicit teardown is required because `sgrouter.destroy()` removes the view *nodes* without running their lifecycle — without it a `keepAlive` view suspended at sign-out leaks its Tasks/observers and never abandons in-flight API promises. |
+| `resetRouter()` | Removes the overhang/playback/photo observers, **drives `beforeViewClose` (→ `onScreenHidden` + `onDestroy`) on every mounted routed view** (`teardownRoutedViews` — both the active view and the suspended detached views), then `sgrouter.destroy()`, clears `m.global.activeRoutedView`, hides the overhang. Called on sign-out / change-user / change-server before `reenterLogin`. The explicit teardown is required because `sgrouter.destroy()` removes the view *nodes* without running their lifecycle — without it a view suspended at sign-out leaks its Tasks/observers and never abandons in-flight API promises. |
 
 ### Loading spinners across navigation
 
@@ -232,7 +238,7 @@ sgRouter is **hands-off about focus** — views own their own focus; `JRScene` o
 2. **On resume / open** (`onViewResume` / `onViewOpen`) — `onScreenShown()` runs; its default reads `m.top.lastFocus` and `.setFocus(true)`. Subclasses can override to re-fetch data first, then focus.
 3. **On `handleFocus`** — same rule: restore `lastFocus`, else focus the view root.
 
-Preserving the *deepest* focused element (not just `focusedChild`) matters for nested panels (a list inside a tab inside a screen) so back navigation lands the cursor exactly where the user left it. For `keepAlive` views, this is what makes suspend→resume feel seamless: the cursor returns to its exact prior position. The `lastFocus` mechanism is one of the things JellyRock gets reliably right.
+Preserving the *deepest* focused element (not just `focusedChild`) matters for nested panels (a list inside a tab inside a screen) so back navigation lands the cursor exactly where the user left it. For suspended views, this is what makes suspend→resume feel seamless: the cursor returns to its exact prior position. The `lastFocus` mechanism is one of the things JellyRock gets reliably right.
 
 ## Overhang controller
 
