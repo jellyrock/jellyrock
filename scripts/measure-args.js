@@ -87,12 +87,21 @@ const VALUE_FLAGS = new Map([
 /** Flags that take no value. */
 const BOOLEAN_FLAGS = new Map([
   ['--deploy', 'deploy'],
-  // Declare that the app has NO server — the only state in which the login screens
-  // (`serverSelect`, `userSelect`) can be measured, because reaching them means
-  // deleting the server. Turns tier 1's absent `serverUrl` from a fatal read failure
-  // into an assertion, and asserts the OTHER direction too: a device that still has
-  // a server lands on Home, so the flag fails rather than measuring the wrong screen.
-  ['--signed-out', 'signedOut'],
+  // Declare that the app has NO server on the node — the state `serverSelect` can only
+  // be measured in, because reaching that screen means deleting the server. Turns tier
+  // 1's absent `serverUrl` from a fatal read failure into an assertion, and asserts the
+  // OTHER direction too: a device that still has a server lands on Home, so the flag
+  // fails rather than measuring the wrong screen.
+  //
+  // NAMED for what it asserts, and that is a correction rather than a preference. The
+  // first cut called it `--signed-out`, which is the app's word for a DIFFERENT state:
+  // `SignOut()` (app menu → Sign out) and `SignOut(false)` (→ Change user) both clear
+  // `active_user` and leave `server` untouched, so both land on `userSelect` — where
+  // this flag REFUSES. Only Change server (`unsetSetting("server")` + `server.Delete()`)
+  // produces the state it asserts. A name that points at the wrong menu item generated
+  // four wrong sentences before anyone typed the flag; `--no-server` cannot, and it
+  // reads as the plain negation of `--server <url>`, which is exactly what it is.
+  ['--no-server', 'noServer'],
 ]);
 
 /**
@@ -160,7 +169,7 @@ export function parseMeasureArgs(
   { measurementIds = [], screens = {}, navScreens = [], defaultMeasurement } = {},
 ) {
   const raw = {};
-  const args = { samples: 5, measurement: defaultMeasurement, deploy: false, signedOut: false };
+  const args = { samples: 5, measurement: defaultMeasurement, deploy: false, noServer: false };
 
   for (let i = 0; i < argv.length; i++) {
     const arg = String(argv[i]);
@@ -262,19 +271,57 @@ export function parseMeasureArgs(
       );
     }
     // `measure` writes no registry and restores none — see its header. Every screen it
-    // can DRIVE to is a `home`-state one. The signed-out screens are not driven to at
-    // all: `beginLogin()` re-reads `server` / `active_user` on every launch, so once the
-    // operator has signed out by hand (Change Server / Change User in the app menu) the
-    // relaunch loop lands on them sample after sample, with no nav involved. That is
-    // what `--signed-out` is for, and it is why this refusal is correct rather than a
-    // limitation to route around.
+    // can DRIVE to is a `home`-state one. The other two are not driven to at all:
+    // `beginLogin()` re-reads `server` / `active_user` on every launch, so once the
+    // operator has put the app in that state BY HAND the relaunch loop lands on the
+    // screen sample after sample, with no nav involved. So this refusal names the path
+    // that works rather than calling the screen unreachable.
+    //
+    // Per STATE, and that distinction is the whole point of the branch below. An earlier
+    // cut said "sign out by hand (Change Server / Change User)" for both, which is two
+    // different registry states under one sentence — and following it for `userSelect`
+    // walked into a hard tier-1 refusal:
+    //
+    //   serverSelect — reached by DELETING the server (app menu → Change server, which
+    //                  runs `unsetSetting("server")` + `server.Delete()`). Identity then
+    //                  has no `serverUrl`, which is fatal unless `--no-server` declares it.
+    //   userSelect   — reached by clearing the ACTIVE USER (app menu → Change user, or
+    //                  Sign out). The server STAYS, so identity reads normally and no
+    //                  declaration is wanted at all; `--no-server` would refuse the run.
+    //                  `--server <url>` still works here, and is worth passing.
+    // `reach` is the imperative; `note` is the state's own caveat, kept as its own
+    // sentence rather than folded in as a parenthetical — the flag advice is the part a
+    // reader most needs to land on, and it is the part a mid-sentence aside loses.
+    const REACHED_BY_HAND = {
+      serverSelect: {
+        reach:
+          'delete the server by hand (app menu → Change server), then re-run with ' +
+          '--no-server and NO --nav',
+        note: '',
+      },
+      userSelect: {
+        reach:
+          'clear the active user by hand (app menu → Change user, or Sign out), then ' +
+          're-run with NO --nav',
+        note:
+          ' The server stays, so identity still reads normally: no declaration is needed ' +
+          'here, --server <url> still asserts tier 1, and --no-server would REFUSE the run.',
+      },
+    };
     if (entry && entry.state !== 'home') {
+      // An unrecognised state gets the shape of the answer without a fabricated menu
+      // item: the two above are the two `screens.js` declares, and a third would be
+      // worse served by a confident wrong instruction than by an honest general one.
+      const { reach, note } = REACHED_BY_HAND[entry.state] ?? {
+        reach: 'put the app in that state by hand, then re-run with NO --nav',
+        note: '',
+      };
       throw new MeasureArgError(
         `--nav ${JSON.stringify(raw.nav)} needs the app in "${entry.state}" state, and ` +
           '`npm run measure` never writes the registry (it measures the app as your device ' +
-          'already has it), so it cannot put the app there. It does not need to: sign out by ' +
-          'hand via the app menu and run with --signed-out and NO --nav — every relaunch then ' +
-          'lands on that screen, which is also why the series inherits no navigation cap.',
+          `already has it), so it cannot put the app there. It does not need to: ${reach} — ` +
+          'every relaunch then lands on that screen, which is also why the series inherits no ' +
+          `navigation cap.${note}`,
       );
     }
     // The screen is now KNOWN, so a hand-typed one is at best redundant and at worst a
@@ -303,13 +350,13 @@ export function parseMeasureArgs(
     args.library = raw.library;
   }
 
-  // `--signed-out` and `--server` are two different answers to tier 1's one question,
-  // and neither can win quietly: taking the URL would make the flag a no-op on the run
-  // that most needs it, and taking the flag would drop an assertion the operator typed
-  // in order to assert. Same refusal shape as `--screen` with `--nav`.
-  if (args.signedOut && args.server !== undefined) {
+  // The two answers to tier 1's one question, and neither can win quietly: taking the
+  // URL would make the flag a no-op on the run that most needs it, and taking the flag
+  // would drop an assertion the operator typed in order to assert. Same refusal shape as
+  // `--screen` with `--nav`.
+  if (args.noServer && args.server !== undefined) {
     throw new MeasureArgError(
-      '--signed-out may not be combined with --server: one declares that the app has NO ' +
+      '--no-server may not be combined with --server: one declares that the app has NO ' +
         `server, the other declares that it is on ${JSON.stringify(args.server)}. Tier 1 ` +
         'cannot assert both. Drop whichever one is not what you meant.',
     );
@@ -317,11 +364,11 @@ export function parseMeasureArgs(
   // A nav needs a signed-in Home to start from, so this pair can never both be true —
   // and it would fail late and obscurely (the nav timing out on a screen that never
   // came) rather than here, where the contradiction is visible.
-  if (args.signedOut && args.nav !== undefined) {
+  if (args.noServer && args.nav !== undefined) {
     throw new MeasureArgError(
-      `--signed-out may not be combined with --nav: a nav is driven from a signed-in Home, ` +
-        `and --signed-out says the app has no server to sign in to. The signed-out screens ` +
-        'are reached by LAUNCHING — drop --nav and every relaunch lands on one.',
+      '--no-server may not be combined with --nav: a nav is driven from a signed-in Home, ' +
+        'and --no-server says there is no server to sign in to. `serverSelect` is reached by ' +
+        'LAUNCHING — drop --nav and every relaunch lands on it.',
     );
   }
 

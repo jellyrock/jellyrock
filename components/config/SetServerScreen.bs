@@ -121,12 +121,14 @@ sub onScanForServersComplete(event)
   screenLoad.resolve("scan")
 
   ' What the picker is about to be built FROM, which is the workload this screen's
-  ' timing actually depends on. Measured on a LAN whose server answers neither SSDP
-  ' nor the Jellyfin client-discovery broadcast: discovery returned zero servers, the
-  ' picker filled entirely from `saved_servers`, and the wait was the task's hardcoded
-  ' 1500 ms collection window over content the registry already had. A run that cannot
-  ' say which of the two happened cannot be compared against one from a LAN where
-  ' discovery answers — those are different workloads, not a noisy one.
+  ' timing actually depends on: a LAN where discovery answers and one where the picker
+  ' fills from `saved_servers` alone are different workloads, not a noisy one, and a
+  ' sample that cannot say which it was must not be compared against the other.
+  '
+  ' ⚠️ Unlike every other `variant` in the app, this one is decided by the ENVIRONMENT
+  ' rather than by what the user opened — so it can differ BETWEEN launches of one
+  ' series. `scripts/measure-selection.js` refuses a median over a mixed series for
+  ' that reason; do not "simplify" this to a constant.
   discovered = 0
   if isValid(m.servers) then discovered = m.servers.Count()
 

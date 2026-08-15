@@ -103,45 +103,67 @@ describe('checkServerIdentity (tier 1)', () => {
   });
 });
 
-describe('checkServerIdentity — the signed-out arm (--signed-out)', () => {
-  const signedIn = { serverUrl: 'http://192.0.2.10:8096', serverId: 'abc', userId: 'u1' };
-  const signedOut = { serverUrl: undefined, serverId: undefined, userId: undefined };
+describe('checkServerIdentity — the no-server arm (--no-server)', () => {
+  const hasServer = { serverUrl: 'http://192.0.2.10:8096', serverId: 'abc', userId: 'u1' };
+  const noServer = { serverUrl: undefined, serverId: undefined, userId: undefined };
 
   it('ASSERTS rather than declining, when the app has no server as declared', () => {
     // The distinction that makes the flag worth having: this is not the
     // `asserted: false` case wearing a different hat. Something was checked.
-    const v = checkServerIdentity(signedOut, undefined, { expectSignedOut: true });
-    expect(v).toMatchObject({ asserted: true, ok: true, signedOut: true });
+    const v = checkServerIdentity(noServer, undefined, { expectNoServer: true });
+    expect(v).toMatchObject({ asserted: true, ok: true, noServer: true });
     expect(v.reason).toBeUndefined();
   });
 
-  it('treats an empty-string serverUrl as signed out, matching missingIdentityFields', () => {
+  it('treats an empty-string serverUrl as no server, matching missingIdentityFields', () => {
     // The app resets the server node in place rather than dropping it, so ODC can
     // answer `found: true` with `""`. If the two helpers disagreed on what counts as
     // absent, the run would pass tier 1 and then abort on a "fatal missing field".
-    const v = checkServerIdentity({ ...signedOut, serverUrl: '' }, undefined, {
-      expectSignedOut: true,
+    const v = checkServerIdentity({ ...noServer, serverUrl: '' }, undefined, {
+      expectNoServer: true,
     });
     expect(v.ok).toBe(true);
   });
 
   it('FAILS when the app still has a server — the half that earns the assertion', () => {
-    // The signed-out screens are reached by LAUNCHING, so a device that still has a
-    // server lands on Home and every sample is a Home measurement filed under the
-    // screen the operator asked for. Silent: the run completes and the samples are
-    // well-formed. This is the only thing standing between that and a published number.
-    const v = checkServerIdentity(signedIn, undefined, { expectSignedOut: true });
-    expect(v).toMatchObject({ asserted: true, ok: false, signedOut: true });
+    // `serverSelect` is reached by LAUNCHING, so a device that still has a server lands
+    // on Home and every sample is a Home measurement filed under the screen the operator
+    // asked for. Silent: the run completes and the samples are well-formed. This is the
+    // only thing standing between that and a published number.
+    const v = checkServerIdentity(hasServer, undefined, { expectNoServer: true });
+    expect(v).toMatchObject({ asserted: true, ok: false, noServer: true });
     expect(v.reason).toContain('192.0.2.10');
-    expect(v.reason).toMatch(/Change Server/);
+    expect(v.reason).toMatch(/Change server/);
+  });
+
+  it('offers the OTHER exit too, so a `userSelect` operator is not sent in a circle', () => {
+    // The failure this pins. Change user and Sign out both leave `server` in place, so
+    // an operator measuring `userSelect` who reaches for this flag lands here — and a
+    // message naming only "Change server" would send them off the screen they were
+    // measuring. The run needs no declaration at all in that state.
+    const v = checkServerIdentity(hasServer, undefined, { expectNoServer: true });
+    expect(v.reason).toMatch(/userSelect/);
+    expect(v.reason).toMatch(/drop --no-server/);
+    expect(v.reason).toMatch(/--server <url> still asserts it/);
+  });
+
+  it('states noServer on EVERY arm, so the wire never reads the key as missing', () => {
+    // Same argument as `provenance.server.url ?? null`: `JSON.stringify` drops an
+    // undefined value, so a key present only when true reads as "this record predates
+    // the field" on every record where it is false.
+    expect(checkServerIdentity(hasServer, undefined, {}).noServer).toBe(false);
+    expect(checkServerIdentity(hasServer, 'http://192.0.2.10:8096').noServer).toBe(false);
+    expect(
+      JSON.parse(JSON.stringify(checkServerIdentity(hasServer, undefined, {}))),
+    ).toHaveProperty('noServer', false);
   });
 
   it('does not change the ordinary arms when the option is absent or false', () => {
-    expect(checkServerIdentity(signedIn, undefined, {}).asserted).toBe(false);
-    expect(checkServerIdentity(signedIn, undefined, { expectSignedOut: false }).asserted).toBe(
+    expect(checkServerIdentity(hasServer, undefined, {}).asserted).toBe(false);
+    expect(checkServerIdentity(hasServer, undefined, { expectNoServer: false }).asserted).toBe(
       false,
     );
-    expect(checkServerIdentity(signedIn, 'http://192.0.2.10:8096').ok).toBe(true);
+    expect(checkServerIdentity(hasServer, 'http://192.0.2.10:8096').ok).toBe(true);
   });
 });
 
@@ -292,10 +314,10 @@ describe('missingIdentityFields — the quiet half of a failed read', () => {
 });
 
 describe('fatalIdentityFields — which absent field aborts the series', () => {
-  const signedOut = { serverUrl: '', serverId: undefined, userId: undefined };
+  const noServer = { serverUrl: '', serverId: undefined, userId: undefined };
 
   it('aborts on an absent serverUrl by default', () => {
-    expect(fatalIdentityFields(signedOut)).toEqual(['serverUrl']);
+    expect(fatalIdentityFields(noServer)).toEqual(['serverUrl']);
   });
 
   it('does not abort on the non-fatal absences', () => {
@@ -303,16 +325,30 @@ describe('fatalIdentityFields — which absent field aborts the series', () => {
     expect(fatalIdentityFields(noApiVersion)).toEqual([]);
   });
 
-  it('aborts on nothing once the operator DECLARED the signed-out state', () => {
-    expect(fatalIdentityFields(signedOut, { expectSignedOut: true })).toEqual([]);
+  it('aborts on nothing once the operator DECLARED the no-server state', () => {
+    expect(fatalIdentityFields(noServer, { expectNoServer: true })).toEqual([]);
   });
 
   it('requires the declaration — an absent serverUrl is never self-declaring', () => {
-    // Deriving "signed out" from the absence itself is how the tier goes blind: the
+    // Deriving "no server" from the absence itself is how the tier goes blind: the
     // ordinary broken-read case and the intentional case become the same wire state,
     // and the ordinary one is what this module exists to catch. The flag is the only
     // thing that separates them, so its absence must still abort.
-    expect(fatalIdentityFields(signedOut, {})).toEqual(['serverUrl']);
-    expect(fatalIdentityFields(signedOut, { expectSignedOut: false })).toEqual(['serverUrl']);
+    expect(fatalIdentityFields(noServer, {})).toEqual(['serverUrl']);
+    expect(fatalIdentityFields(noServer, { expectNoServer: false })).toEqual(['serverUrl']);
+  });
+
+  it('never aborts on the `userSelect` state, with or without the flag', () => {
+    // The screen that is NOT what this option is for, pinned so the two pre-login states
+    // cannot drift back together. Change user / Sign out clear `active_user` and leave
+    // `server` alone, so identity reads a real `serverUrl` and only `userId` is absent —
+    // which is deliberately not fatal. That is what already makes `userSelect`
+    // measurable with no declaration at all.
+    const onUserSelect = { serverUrl: 'http://192.0.2.10:8096', serverId: 'abc' };
+    expect(fatalIdentityFields(onUserSelect)).toEqual([]);
+    expect(missingIdentityFields(onUserSelect)).toContain('userId');
+    expect(IDENTITY_FATAL_FIELDS).not.toContain('userId');
+    // …and the flag would REFUSE that state, which is why nothing may advertise it there.
+    expect(checkServerIdentity(onUserSelect, undefined, { expectNoServer: true }).ok).toBe(false);
   });
 });

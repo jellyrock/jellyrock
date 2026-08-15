@@ -20,7 +20,7 @@ describe('defaults', () => {
       samples: 5,
       measurement: 'home-latest-rows',
       deploy: false,
-      signedOut: false,
+      noServer: false,
     });
   });
 });
@@ -159,9 +159,10 @@ describe('--screen may not contradict a family that declares one', () => {
 
 describe('--nav, which is what makes anything but Home reachable', () => {
   // The registry reduced to what the parser needs. Mirrors `tests/rta/screens.js`:
-  // most screens are reached from a signed-in Home, and two are reached only with the
-  // app signed OUT — which `measure` cannot drive to, because it writes no registry.
-  // Those two are measured by LAUNCHING instead; see the `--signed-out` block below.
+  // most screens are reached from a signed-in Home, and the two PRE-LOGIN ones are
+  // reached by hand — which `measure` cannot drive to, because it writes no registry.
+  // Both are carried here because they are two DIFFERENT registry states and the
+  // refusal must not describe them as one; see the `--no-server` block below.
   const withNav = (argv) =>
     parseMeasureArgs(argv, {
       measurementIds: ['home-latest-rows', 'screen-load'],
@@ -170,6 +171,7 @@ describe('--nav, which is what makes anything but Home reachable', () => {
         { name: 'home', state: 'home' },
         { name: 'movieDetails', state: 'home' },
         { name: 'userSelect', state: 'userSelect' },
+        { name: 'serverSelect', state: 'serverSelect' },
       ],
       defaultMeasurement: 'home-latest-rows',
     });
@@ -186,14 +188,46 @@ describe('--nav, which is what makes anything but Home reachable', () => {
     expect(() => withNav(['--nav', 'movieDetials'])).toThrow(/movieDetails/);
   });
 
-  it('REFUSES a --nav to a screen the app must be signed OUT to see', () => {
+  it('REFUSES a --nav to a pre-login screen, naming the path that DOES work', () => {
     // `measure` writes no registry and restores none, so it cannot put the app in that
     // state. Refused rather than attempted and timed out on a screen that was never
-    // going to appear — and the refusal now names the path that DOES work, because
-    // "impossible" stopped being true when `--signed-out` landed: these screens are
-    // reached by LAUNCHING, so the refusal must not read as a dead end.
-    expect(() => withNav(['--nav', 'userSelect'])).toThrow(/never writes the registry/);
-    expect(() => withNav(['--nav', 'userSelect'])).toThrow(/--signed-out/);
+    // going to appear — and the refusal names the hand path, because "impossible"
+    // stopped being true once these screens could be LANDED on. It must not read as a
+    // dead end.
+    expect(() => withNav(['--nav', 'serverSelect'])).toThrow(/never writes the registry/);
+    expect(() => withNav(['--nav', 'serverSelect'])).toThrow(/Change server/);
+    expect(() => withNav(['--nav', 'serverSelect'])).toThrow(/--no-server/);
+  });
+
+  it('gives the two pre-login screens DIFFERENT instructions, because they are different states', () => {
+    // The bug this pins. `userSelect` is reached by clearing the ACTIVE USER — Change
+    // user and Sign out both leave `server` in place — so its identity reads normally
+    // and `--no-server` would hard-refuse the run. One shared sentence sent an operator
+    // to Change server, which takes them off the very screen they were measuring.
+    let refusal;
+    try {
+      withNav(['--nav', 'userSelect']);
+    } catch (e) {
+      refusal = e.message;
+    }
+    expect(refusal).toMatch(/Change user/);
+    expect(refusal).toMatch(/server stays/);
+    // The flag must be named only as the thing NOT to pass here.
+    expect(refusal).toMatch(/--no-server would REFUSE the run/);
+    expect(refusal).not.toMatch(/Change server/);
+  });
+
+  it('refuses an UNKNOWN non-home state without inventing a menu item for it', () => {
+    // A third state added to `screens.js` later must not inherit either sentence: a
+    // confident wrong instruction costs more than an honest general one.
+    const exotic = (argv) =>
+      parseMeasureArgs(argv, {
+        measurementIds: ['screen-load'],
+        navScreens: [{ name: 'someday', state: 'kioskPairing' }],
+        defaultMeasurement: 'screen-load',
+      });
+    expect(() => exotic(['--nav', 'someday'])).toThrow(/put the app in that state by hand/);
+    expect(() => exotic(['--nav', 'someday'])).not.toThrow(/Change/);
   });
 
   it('REFUSES --screen alongside --nav', () => {
@@ -288,7 +322,7 @@ describe('--component, the other half of a mount identity', () => {
   });
 });
 
-describe('--signed-out, which is how the login screens become measurable', () => {
+describe('--no-server, which is how `serverSelect` becomes measurable', () => {
   const withNav = (argv) =>
     parseMeasureArgs(argv, {
       measurementIds: ['screen-load'],
@@ -300,22 +334,32 @@ describe('--signed-out, which is how the login screens become measurable', () =>
     });
 
   it('takes it as a bare switch, defaulting off', () => {
-    expect(withNav(['--signed-out']).signedOut).toBe(true);
-    expect(withNav([]).signedOut).toBe(false);
+    expect(withNav(['--no-server']).noServer).toBe(true);
+    expect(withNav([]).noServer).toBe(false);
   });
 
   it('REFUSES a value, like every other boolean flag', () => {
-    expect(() => withNav(['--signed-out=true'])).toThrow(/takes no value/);
+    expect(() => withNav(['--no-server=true'])).toThrow(/takes no value/);
+  });
+
+  it('no longer answers to `--signed-out`, which named the wrong app-menu action', () => {
+    // Not a rename for taste. `SignOut()` (app menu → Sign out) and `SignOut(false)`
+    // (→ Change user) BOTH leave `server` in place and land on `userSelect`, where this
+    // flag refuses; only Change server produces the state it asserts. The old name is
+    // refused loudly by the unknown-flag rule rather than silently ignored, which is
+    // the same reason every unknown flag is refused.
+    expect(() => withNav(['--signed-out'])).toThrow(/unknown argument/);
+    expect(() => withNav(['--signed-out'])).toThrow(/--no-server/);
   });
 
   it('REFUSES --server alongside it — two answers to tier 1 one question', () => {
     // Neither can win quietly: taking the URL makes the flag a no-op on the run that
     // most needs it, and taking the flag drops an assertion the operator typed in
     // order to assert.
-    expect(() => withNav(['--signed-out', '--server', 'http://x:8096'])).toThrow(
+    expect(() => withNav(['--no-server', '--server', 'http://x:8096'])).toThrow(
       /may not be combined with --server/,
     );
-    expect(() => withNav(['--server', 'http://x:8096', '--signed-out'])).toThrow(
+    expect(() => withNav(['--server', 'http://x:8096', '--no-server'])).toThrow(
       /may not be combined with --server/,
     );
   });
@@ -324,14 +368,14 @@ describe('--signed-out, which is how the login screens become measurable', () =>
     // A nav is driven from a signed-in Home, so the pair can never both hold. Caught
     // here, where the contradiction is visible, instead of ~30 s later on a screen
     // that was never going to appear.
-    expect(() => withNav(['--signed-out', '--nav', 'home'])).toThrow(
+    expect(() => withNav(['--no-server', '--nav', 'home'])).toThrow(
       /may not be combined with --nav/,
     );
   });
 
-  it('composes with the flags a signed-out series actually needs', () => {
-    const args = withNav(['--signed-out', '--deploy', '-n', '30', '--component', 'setServer']);
-    expect(args).toMatchObject({ signedOut: true, deploy: true, samples: 30 });
+  it('composes with the flags a `serverSelect` series actually needs', () => {
+    const args = withNav(['--no-server', '--deploy', '-n', '30', '--component', 'setServer']);
+    expect(args).toMatchObject({ noServer: true, deploy: true, samples: 30 });
     expect(args.component).toBe('setServer');
   });
 });

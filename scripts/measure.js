@@ -18,6 +18,10 @@
  *   npm run measure -- --nav osd --component videoPlayer
  *                                            …saying which COMPONENT, when the nav walks
  *                                            through another screen to reach the one asked for
+ *   npm run measure -- --no-server --component setServer
+ *                                            measure `serverSelect`, declaring that the device
+ *                                            has no server on it (see below — it is a workflow,
+ *                                            not just a flag)
  *
  * ## Reaching a screen that is not Home
  *
@@ -43,6 +47,41 @@
  *
  * `--library <id>` binds to the target screen's own collection type, never to every
  * library type at once.
+ *
+ * ## The two PRE-LOGIN screens, which are landed on rather than navigated to
+ *
+ * `--nav` refuses both, and that refusal is correct rather than a limitation: nothing is
+ * seeded here, so the tool cannot put the app in a pre-login state. It does not need to.
+ * `beginLogin()` re-reads `server` / `active_user` on EVERY launch, so once the app is in
+ * one of those states by hand, the relaunch loop lands on the screen sample after sample
+ * — no nav, and therefore none of the navigation caps a driven screen inherits.
+ *
+ * They are two DIFFERENT registry states and they want different flags. Conflating them
+ * is a documented mistake, not a hypothetical one:
+ *
+ *   `userSelect`   — app menu → **Change user** (or Sign out). Clears `active_user`; the
+ *                    server STAYS. Identity reads normally, so this needs no declaration
+ *                    at all, and `--server <url>` still asserts tier 1 as usual. Its wait
+ *                    is measured by the `preLogin` coordinator, not by a ledger in the
+ *                    screen. Passing `--no-server` here REFUSES the run.
+ *   `serverSelect` — app menu → **Change server**. Deletes the server, which makes tier
+ *                    1's `serverUrl` absent — ordinarily fatal. `--no-server` declares
+ *                    that absence, and asserts the other direction too: a device that
+ *                    still HAS a server fails the run instead of quietly measuring Home
+ *                    under the name you asked for.
+ *
+ * The `serverSelect` run is a workflow with a restore step, and leaving the device signed
+ * out is the cost of forgetting it:
+ *
+ *   1. `snapshotRegistry()` — take the device's registry before touching anything.
+ *   2. Delete `server` + `active_user` from the `JellyRock` section over ODC, then
+ *      `hardRelaunch()`. ⚠️ Do NOT use `seedServerSelect` from `tests/rta/lib/seed.js`:
+ *      it overwrites `saved_servers` with the DEMO server, which changes the workload
+ *      this screen is measured on — the picker fills from `saved_servers`.
+ *   3. `npm run measure -- --deploy --no-server --measurement screen-load --component setServer`
+ *      — `--component` is required, because EITHER pre-login launch mounts the `preLogin`
+ *      coordinator as well as the screen itself.
+ *   4. `npm run rta:restore`, and confirm it reports VERIFIED CLEAN.
  *
  * ## Taking the two arms of a comparison
  *
@@ -390,28 +429,29 @@ try {
 // it, and a series nobody can attribute to a server is not a series. The rest are
 // reported and recorded as absent.
 const missing = missingIdentityFields(identityAtStart);
-const fatal = fatalIdentityFields(identityAtStart, { expectSignedOut: args.signedOut });
+const fatal = fatalIdentityFields(identityAtStart, { expectNoServer: args.noServer });
 if (fatal.length) {
   await refuse(
-    `the app answered ODC but has no ${fatal.join(', ')} — it is probably not signed in.\n` +
+    `the app answered ODC but has no ${fatal.join(', ')} — there is no server on the node.\n` +
       '  A sample cannot be attributed to a server, so it is not a sample.\n' +
-      '  If that is the state you MEANT to measure (the `serverSelect` / `userSelect` screens\n' +
-      '  can only be reached with no server on the node), declare it with --signed-out.',
+      '  If that is the state you MEANT to measure — `serverSelect` can only be reached with\n' +
+      '  the server deleted — declare it with --no-server.\n' +
+      '  (The other pre-login screen, `userSelect`, KEEPS the server, so it never lands here.)',
   );
 }
 if (missing.length) {
-  // Under `--signed-out` this is the DECLARED state rather than a surprise, so it is
+  // Under `--no-server` this is the DECLARED state rather than a surprise, so it is
   // not flagged with a warning glyph — the whole identity set is absent by definition
   // and saying "⚠ absent" about it would train the reader to ignore the real case.
-  const note = args.signedOut
-    ? 'signed out — identity absent by declaration'
+  const note = args.noServer
+    ? 'no server on the node — identity absent by declaration'
     : '⚠ identity fields absent';
   console.log(`[measure] ${note}, recorded as null: ${missing.join(', ')}`);
 }
 
 const expectedServer = args.server || identityAtStart.serverUrl;
 const tier1 = checkServerIdentity(identityAtStart, args.server, {
-  expectSignedOut: args.signedOut,
+  expectNoServer: args.noServer,
 });
 const checkoutFlags = readCheckoutBuildFlags(manifestPath);
 const provenance = {
@@ -435,10 +475,10 @@ const provenance = {
   },
   server: {
     // `?? null` rather than left undefined: `JSON.stringify` DROPS an undefined value,
-    // so a signed-out record would silently have no `url` key at all — which reads as
+    // so a no-server record would silently have no `url` key at all — which reads as
     // "this record predates the field", a different claim from "there was no server".
     // The siblings below already learned this; `url` was the one that had never been
-    // absent, because until `--signed-out` a run with no server could not complete.
+    // absent, because until `--no-server` a run with no server could not complete.
     url: identityAtStart.serverUrl ?? null,
     id: identityAtStart.serverId ?? null,
     version: identityAtStart.serverVersion ?? null,
@@ -454,8 +494,8 @@ console.log(
 );
 console.log(
   `[measure] app ${provenance.checkout.appVersion} · ` +
-    (args.signedOut
-      ? 'SIGNED OUT (no server — asserted by --signed-out)'
+    (args.noServer
+      ? 'NO SERVER on the node (asserted by --no-server)'
       : `server ${provenance.server.url} (Jellyfin ${provenance.server.version})`),
 );
 if (!args.deploy) {
@@ -495,9 +535,9 @@ if (!measurement.grounded) {
       'treat a zero-sample result as an unverified pattern, not as a silent app.',
   );
 }
-if (tier1.signedOut) {
+if (tier1.noServer) {
   console.log(
-    `[measure] tier 1: signed-out state asserted — ${tier1.ok ? 'OK, no server on the node' : 'MISMATCH'}`,
+    `[measure] tier 1: no-server state asserted — ${tier1.ok ? 'OK, no server on the node' : 'MISMATCH'}`,
   );
 } else if (tier1.asserted) {
   console.log(`[measure] tier 1: server asserted — ${tier1.ok ? 'OK' : 'MISMATCH'}`);
