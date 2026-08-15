@@ -145,7 +145,7 @@ The processing functions write back into `VideoPlayerView`'s fields (`audioIndex
 - **`finished` state** but `isRetrying = true` → don't advance (`mid-DoVi-fallback` retry)
 - **Live TV channel that finished** → `playCurrentQueueItem()` (restart the same channel, host-internal remount)
 - **More items in queue** → `moveForward` + `playCurrentQueueItem()` (destroy + remount for the next item)
-- **Queue exhausted** → `exitPlayback()` → `sgrouter.goBack()` (leaves the play route; the `keepAlive` view beneath — the launching detail, or Home — resumes)
+- **Queue exhausted** → `exitPlayback()` → `sgrouter.goBack()` (leaves the play route; the suspended view beneath — the launching detail, or Home — resumes)
 
 The player reports its stop playstate to Jellyfin in `destroyPlayer()`: it removes the observer on `state`, then sets `m.view.control = "stop"` (the `Video` node's own `onDestroy` does not report a stop), before `callFunc("onDestroy")` and `removeChild`. So whether the user backs out (`goBack` → `beforeViewClose` → `onDestroy` → `destroyPlayer`) or the queue exhausts, Jellyfin records the stop.
 

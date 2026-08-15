@@ -227,8 +227,8 @@ const SCREEN_LOAD_LINES = [
 
 /**
  * A chained navigation, as `--nav seasonDetails` produces it: the Series and the Season
- * are two SEPARATE ItemDetails mounts (the details route is keepAlive with no
- * allowReuse), so two ledgers emit onto one console and interleave. The nav's gate waits
+ * are two SEPARATE ItemDetails mounts (the details route sets no allowReuse), so two
+ * ledgers emit onto one console and interleave. The nav's gate waits
  * on paint, so it presses into the Season while the Series' extras chain is still
  * running — which puts the Series' settle AFTER the Season's paint.
  *

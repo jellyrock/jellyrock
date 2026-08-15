@@ -81,11 +81,11 @@ async function assertServerSelect() {
  * Throws when it verified nothing, so a fixture that stops producing genre rows (or
  * a keyPath that silently reads `undefined`) fails loudly rather than passing empty.
  *
- * Reads via `getActiveVal`, not `getVal`: `BaseGridView` is registered keepAlive
- * (`/library/:id` in JRScene.bs), so a recursive scene-root `#genreList` lookup can
- * resolve to a SUSPENDED grid the moment anything navigates twice. Today's spec
- * relaunches before every screen so only one exists — a property of the harness, not
- * of the app. Anchoring to the active routed view also fails the right way: an
+ * Reads via `getActiveVal`, not `getVal`: `#genreList` recurs on every `BaseGridView`, so a
+ * recursive scene-root lookup can resolve to the wrong grid the moment anything navigates
+ * twice. Today's spec relaunches before every screen so only one exists — a property of
+ * the harness, not of the app. Anchoring to the active routed view also fails the right
+ * way: an
  * unresolvable node reads `undefined` and trips the guard below, where the scene-root
  * form would quietly assert against the wrong screen.
  */

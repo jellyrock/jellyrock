@@ -385,15 +385,17 @@ sub initRouter()
     { pattern: "/library/:id", name: "library", component: "BaseGridView", suspendMode: "detach", canActivate: guard }
     { pattern: "/search", name: "search", component: "SearchResults", suspendMode: "detach", canActivate: guard }
     { pattern: "/settings", name: "settings", component: "Settings", canActivate: guard }
-    ' Photo viewer / slideshow. NO keepAlive: a fresh PhotoDetails per launch (the launch
-    ' data arrives as route context), destroyed on goBack — the router equivalent of the old
-    ' SceneManager pushScene/popScene. It sets isOverhangVisible=false, so the overhang hides
-    ' while it's the active routed view, and the keepAlive library/detail beneath it suspends
-    ' (focus saved) and resumes (focus restored) on back, exactly like the video player.
+    ' Photo viewer / slideshow. A fresh PhotoDetails per launch (the launch data arrives as
+    ' route context), destroyed on goBack — the router equivalent of the old SceneManager
+    ' pushScene/popScene. No suspendMode, so it defaults to "hide": kept in the tree and
+    ' parked off-screen while covered, rather than detached. It sets isOverhangVisible=false,
+    ' so the overhang hides while it's the active routed view, and the library/detail beneath
+    ' it suspends (focus saved) and resumes (focus restored) on back, like the video player.
     { pattern: "/photo", name: "photo", component: "PhotoDetails", canActivate: guard }
-    ' Music player. NO keepAlive: a fresh AudioPlayerView per launch (it self-loads from the
-    ' queue), destroyed on goBack. It suspends the keepAlive detail beneath (focus saved /
-    ' restored on back) instead of rendering over it — the same behavior as the video player.
+    ' Music player. A fresh AudioPlayerView per launch (it self-loads from the queue),
+    ' destroyed on goBack, "hide" while covered for the same reason as /photo. It suspends
+    ' the detail beneath (focus saved / restored on back) instead of rendering over it — the
+    ' same behavior as the video player.
     { pattern: "/audio", name: "audio", component: "AudioPlayerView", canActivate: guard }
   ])
 end sub

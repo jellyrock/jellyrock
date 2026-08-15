@@ -142,7 +142,7 @@ Interface fields exposed for global control:
 | `exit` | bool | Setting this true exits the channel |
 | `userMenuAction` | string | Routed Home sets this (change user/server / sign out); `main.bs` observes it → `handleMenuAction` |
 | `preLoginIntent` | string | Routed pre-login views emit an intent string; `main.bs` observes it → `handlePreLoginIntent` |
-| `contentVersion` | int | Content-freshness token bumped on a content mutation (e.g. item delete); `keepAlive` grids re-fetch on resume when it differs |
+| `contentVersion` | int | Content-freshness token bumped on a content mutation (e.g. item delete); a grid suspended beneath the detail re-fetches on resume when it differs |
 | `testToast` | string | Debug-only test trigger (see `debug-tools.md`) |
 
 `JRScene` also exposes router hooks called from `main.bs` / `loginRouter` on the main thread (the `sgrouter` namespace resolves on the render thread, so the main loop can't call it directly): `initRouter`, `routerNavigate`, `replayRoutedDeepLink`, `reloadRoutedHome`, `resetRouter`, `routerGoBack`.

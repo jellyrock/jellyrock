@@ -7,7 +7,7 @@
  *
  * Ids are resolved at runtime from the demo (never hardcoded). Assertions read the
  * ACTIVE routed view (getActiveVal → m.global.activeRoutedView) and the device's
- * media-player state, both robust to sgRouter keepAlive (see tests/rta/CLAUDE.md).
+ * media-player state, both robust to a suspended view lingering (see tests/rta/CLAUDE.md).
  *
  * Requires a reachable device + .env (ROKU_IP / ROKU_PASSWORD), same as screens.spec.
  */
@@ -88,14 +88,14 @@ it('action=play starts playback', async () => {
 // (ItemDetails.checkDeepLinkLaunch / replayDeepLinkRuntime). TWO OPPOSING requirements ride on
 // that one field, and castFromHome relaunches every time so the specs above never exercise either:
 //   - a back-from-player resume (SAME route.id) must NOT re-fire (else an infinite relaunch loop);
-//   - a repeat cast of the SAME item (its keepAlive ItemDetails still mounted) must RE-fire.
-// This is the regression net docs/dev/deep-linking.md advertises for the keepAlive-resume bug.
+//   - a repeat cast of the SAME item (its ItemDetails still the active view) must RE-fire.
+// This is the regression net docs/dev/deep-linking.md advertises for the same-path-resume bug.
 it('back-from-player does not re-fire; a repeat play cast does', async () => {
   // First play cast → the movie plays (Home → Details(?deeplink=play) → Player back-stack).
   await castFromHome(`id=${heroId}|action=play`);
   await waitMediaPlaying('deep-link first play');
 
-  // Back from the player resumes the launching details (keepAlive). Same route.id, so
+  // Back from the player resumes the launching details (suspended, not popped). Same route.id, so
   // checkDeepLinkLaunch must NOT re-fire — playback must stay stopped.
   await press(ecp.Key.Back);
   await waitFor('itemId', (id) => id === heroId, {
@@ -108,8 +108,9 @@ it('back-from-player does not re-fire; a repeat play cast does', async () => {
   const afterBack = await ecp.getMediaPlayer().catch(() => null);
   expect(PLAYING_STATES.includes(afterBack?.state)).toBe(false);
 
-  // Repeat cast of the SAME item, NO relaunch — we're on its loaded keepAlive details. A fresh
-  // navigation route.id (the in-place playFromDeepLink path) must RE-fire playback.
+  // Repeat cast of the SAME item, NO relaunch — we're on its loaded details, which the router
+  // reuses on a same-path navigation. A fresh route.id (the in-place playFromDeepLink path)
+  // must RE-fire playback.
   await ecp.sendInput({ params: { contentId: `id=${heroId}|action=play` } });
   await waitMediaPlaying('deep-link repeat cast play');
   await stopPlayback();

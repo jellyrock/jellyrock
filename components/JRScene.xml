@@ -28,9 +28,11 @@
          pre-login flow is routed and driven by the same unified event loop). -->
     <field id="userMenuAction" type="string" value="" alwaysNotify="true" />
     <!-- Content-freshness token. Bumped when a view mutates server content that browse grids
-         display (currently: an item delete in ItemDetails). keepAlive grids (BaseGridView)
+         display (currently: an item delete in ItemDetails). Browse grids (BaseGridView)
          record the value they last loaded at and re-fetch on resume when it differs — so a
-         deleted item can't linger in a suspended-but-cached library. Plain field: grids read
+         deleted item can't linger in a library suspended beneath the detail that deleted
+         it. (A library the user fully backed out of is destroyed, so it reloads anyway;
+         this is for the suspend/resume path.) Plain field: grids read
          it synchronously on resume, no observer needed. -->
     <field id="contentVersion" type="integer" value="0" />
     <!-- Pre-login intent bridge. The routed pre-login views

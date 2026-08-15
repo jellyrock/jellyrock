@@ -103,10 +103,11 @@ Both funnel the params to `stashDeepLink()` (`source/replayRoute.bs`).
   - **`instantmix`** → builds an **instant mix** from the item (mirrors the `instantMixButton`; the
     quickplay engine lower-cases the verb and no-ops gracefully on a target that yields no mix).
 - **Once per navigation** — `checkDeepLinkLaunch()` keys off the router's per-navigation `route.id`,
-  so a **repeat cast of the same item** (whose `ItemDetails` is cached by `keepAlive`) still fires,
-  while an ordinary **back-from-player** resume (same `route.id`) does **not** re-fire. A runtime
-  recast that lands while already on the item's details dispatches the **new** action in place
-  (`playFromDeepLink(action)`), not the cached mount's stale one.
+  so a **repeat cast of the same item** still fires — the router reuses the **active** view on a
+  same-path navigation (independent of any route flag) and delivers it through `onRouteUpdate`
+  with a new `route.id` — while an ordinary **back-from-player** resume (same `route.id`) does
+  **not** re-fire. A runtime recast that lands while already on the item's details dispatches the
+  **new** action in place (`playFromDeepLink(action)`), not the stale one.
 
 ## Server resolution
 
@@ -175,5 +176,5 @@ curl -d '' "http://<IP>:8060/input?contentId=deadbeefdoesnotexist"
 
 A deep link whose `serverId` is a *different saved server* triggers the switch prompt; an *unknown*
 server GUID toasts. A repeat of the same `play`/`shuffle`/`trailer` command should re-fire (regression
-net for the `keepAlive-resume` bug fixed alongside this doc); a repeat `open` is a no-op (already
+net for the same-path-resume bug fixed alongside this doc); a repeat `open` is a no-op (already
 showing it).

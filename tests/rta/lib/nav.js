@@ -319,7 +319,7 @@ export async function openLibraryByType(collectionType, libraryId = null) {
  * share this nav) only ever see real rows.
  *
  * Scoped to the active routed view (getActiveVal): `loadState` recurs on every
- * BaseGridView, and keepAlive routing leaves suspended views in the scene tree.
+ * BaseGridView, and a suspended view can still be in the scene tree (see getActiveVal).
  */
 async function waitGridLoaded(label, timeout = 20000) {
   const start = Date.now();
@@ -407,7 +407,7 @@ export async function navLibraryOptions(ctx) {
   await navLibraryGrid(ctx);
   await press(ecp.Key.Option); // '*' opens the grid options dialog
   // The dialog is shown AND focused on open, so assert focus ENTERS it rather than
-  // reading `#options.visible`: sgRouter keepAlive leaves a suspended Home in the tree
+  // reading `#options.visible`: a suspended Home stays in the tree (default "hide" mode)
   // whose own `#options` (an OptionsSlider, hidden) would win a recursive id lookup and
   // read visible=false. Focus is unambiguous (one focused node), so it's the robust
   // signal that the active grid's options dialog opened.
@@ -436,10 +436,10 @@ export async function navLibraryOptions(ctx) {
  */
 async function openChildDetailByRowType(tileType) {
   await press(ecp.Key.Down); // buttons -> rows panel (lands on the first row)
-  // Scope `#extrasGrid` reads to the active routed view: a detail->detail drill leaves
-  // the PARENT detail suspended (keepAlive) in the scene tree, and every ItemDetails has
-  // an `#extrasGrid`, so a recursive scene-root lookup would read the suspended parent's
-  // grid instead of the active child's. getActiveVal anchors to m.global.activeRoutedView.
+  // Scope `#extrasGrid` reads to the active routed view: every ItemDetails has an
+  // `#extrasGrid`, so a recursive scene-root lookup can read a suspended view's grid
+  // instead of the active one's. getActiveVal anchors to m.global.activeRoutedView, which
+  // is right whatever suspendMode the route carries (see steps.js).
   await waitFor('#extrasGrid.content.getChildCount()', hasChildren, {
     label: 'detail rows',
     timeout: 20000,
@@ -583,19 +583,20 @@ export async function navMovieDetails(ctx) {
 
 /**
  * Home -> Movies grid -> open and back out of `detailCount` DISTINCT item details
- * -> back to Home. The measurement nav for the sgRouter retained-view investigation.
+ * -> back to Home. The measurement nav for the sgRouter retained-view investigation,
+ * now also the walk `leaks.spec.js` gates on.
  *
  * ## What `detailCount` is for
  *
- * It is the INDEPENDENT VARIABLE, and the whole reason this nav exists. sgRouter's
- * `keepAlive` routes are suspended rather than destroyed when they are POPPED, and
- * the store that holds them is keyed by `route.path` and never evicted
- * (`sgrouter_collectDetachedViewsToDestroy` skips keepAlive views). So returning to
- * Home from this nav leaves `1 + detailCount` screens retained — one BaseGridView
- * plus one ItemDetails per distinct item opened.
+ * It is the INDEPENDENT VARIABLE, and the whole reason this nav exists. It sets how many
+ * screens the walk opens and closes: `1 + detailCount`, one BaseGridView plus one
+ * ItemDetails per distinct item. Under the `keepAlive` routes this nav was written to
+ * measure, every one of those stayed retained for the session (the store is keyed by
+ * `route.path` and `sgrouter_collectDetachedViewsToDestroy` skipped keepAlive views);
+ * since ADR 0029 they are destroyed on pop, and the spec asserts exactly that.
  *
  * Comparing Home's RETURN load across two values of `detailCount` is what separates
- * that store from Home's own `onScreenShown` -> `refresh()`, which re-runs the
+ * retained views from Home's own `onScreenShown` -> `refresh()`, which re-runs the
  * latest-rows load on every non-first show. `refresh()` fires identically at every
  * `detailCount`, so any delta that TRACKS `detailCount` is the retained views and
  * nothing else. A before/after pair of arms cannot make that split, because both

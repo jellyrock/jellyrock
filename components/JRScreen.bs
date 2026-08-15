@@ -62,8 +62,8 @@ function onViewOpen(_params = {} as object) as dynamic
   return promises.resolve(invalid)
 end function
 
-' Router: a previously-suspended (keepAlive) view has returned to the top of the
-' stack. Re-publish it as the active routed view, then restore via onScreenShown.
+' Router: a previously-suspended view has returned to the top of the stack (goBack
+' uncovered it). Re-publish it as the active routed view, then restore via onScreenShown.
 function onViewResume(_params = {} as object) as dynamic
   m.global.activeRoutedView = m.top
   onScreenShown()

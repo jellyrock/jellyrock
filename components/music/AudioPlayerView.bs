@@ -317,8 +317,8 @@ end sub
 
 ' Advance to the next queue item on auto-finish. Audio stays in this routed /audio view
 ' (reload the stream in place via LoadNextSong). A non-audio next item in a mixed queue leaves
-' /audio for the player route — playQueue routes it to /play, and /audio (not keepAlive) is
-' destroyed.
+' /audio for the player route — playQueue routes it to /play, and /audio is popped, so it
+' is destroyed.
 sub advanceToNextItem()
   nextPosition = m.queueManager.callFunc("getPosition") + 1
   if nextPosition > m.queueManager.callFunc("getCount") - 1 then return
@@ -377,7 +377,7 @@ function previousClicked() as boolean
 
     if previousItemType <> "audio"
       ' A non-audio previous item leaves /audio for the player route (playQueue -> /play;
-      ' /audio is not keepAlive so it is destroyed).
+      ' /audio is popped, so it is destroyed).
       m.audioPlayer.control = "stop"
       m.queueManager.callFunc("moveBack")
       m.queueManager.callFunc("playQueue")
@@ -445,7 +445,7 @@ function nextClicked() as boolean
 
     if nextItemType <> "audio"
       ' A non-audio next item leaves /audio for the player route (playQueue -> /play; /audio
-      ' is not keepAlive so it is destroyed).
+      ' is popped, so it is destroyed).
       m.audioPlayer.control = "stop"
       m.queueManager.callFunc("moveForward")
       m.queueManager.callFunc("playQueue")
