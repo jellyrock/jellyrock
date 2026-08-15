@@ -76,6 +76,7 @@ import { hardRelaunch, odc } from '../lib/driver.js';
 import { navHomeReturnBare, navHomeReturnAfterDetails, navSearchReturn } from '../lib/nav.js';
 import { waitHome, sleep } from '../lib/steps.js';
 import { MOVIES_GRID } from '../screens.js';
+import { recordAssertion } from '../../../scripts/run-record.js';
 
 const LOCALE = RTA_CONFIG.languages[0]; // en_US
 
@@ -90,8 +91,11 @@ const NOTHING_RETAINED = Object.fromEntries(ROUTED_VIEWS.map((t) => [t, 0]));
  * one-screen walk. Sized to catch a PER-VISIT leak, not to police jitter: the defect
  * this replaced left ~938, and the fixed app leaves ~0, so 100 sits an order of
  * magnitude under the failure and well over the noise from texture pools and the
- * recycled cell pools Home rebuilds on return. Tighten it if a run ever shows the
- * real spread is small enough to warrant it — do not raise it to make a run green.
+ * recycled cell pools Home rebuilds on return.
+ *
+ * The observed delta is recorded as the `perVisitRootDelta` assertion on every run, so
+ * the real spread accumulates in the run ledger instead of staying unknown. Tighten this
+ * once a few green runs agree on a number — and do not raise it to make a run green.
  */
 const PER_VISIT_ROOT_BUDGET = 100;
 
@@ -136,6 +140,22 @@ async function retainedAfter(walk, label) {
   };
 }
 
+/**
+ * The one-screen walk's root total, which the six-screen walk is measured against.
+ *
+ * Normally set as a side effect of the first test, which already runs that walk. When
+ * that test did NOT run — `-t 'six distinct'`, a reorder, a `.only` — this recomputes it
+ * rather than failing on a missing baseline, so a filtered run still measures a real
+ * delta. Costs nothing in a full-file run, where the value is already cached.
+ */
+async function baselineRoots() {
+  if (typeof bareWalkRoots !== 'number') {
+    const { total } = await retainedAfter(navHomeReturnBare, 'leak: per-visit delta baseline');
+    bareWalkRoots = total;
+  }
+  return bareWalkRoots;
+}
+
 it('retains no views after a library round trip', async () => {
   const { byType, total } = await retainedAfter(navHomeReturnBare, 'leak: library round trip');
   bareWalkRoots = total; // the per-visit comparison below reads this
@@ -159,14 +179,19 @@ it('retains no views after six distinct detail round trips', async () => {
 
   // The class-level half of the gate (see the header): six screens opened and closed
   // must not cost meaningfully more unparented roots than one, whatever type they are.
-  // Asserted on the baseline's presence first, so a reordered/skipped first test fails
-  // as "the baseline never ran" rather than as an arithmetic result nobody can read.
-  expect(typeof bareWalkRoots, 'the one-screen walk must run first to set the baseline').toBe(
-    'number',
-  );
+  const baseline = await baselineRoots();
+  const delta = total - baseline;
+
+  // Recorded BEFORE the assertion, and on every outcome. PER_VISIT_ROOT_BUDGET is
+  // deliberately loose because nobody has ever seen the real spread — and nobody would,
+  // while the number appeared only inside a failure message. Landing it in the run record
+  // (`assertions` in run-meta.json / runs.jsonl) means a few green runs are enough to
+  // tighten the budget from data instead of from guesswork.
+  recordAssertion({ name: 'perVisitRootDelta', verified: delta });
+
   expect(
-    total - bareWalkRoots,
-    `six screens left ${total} roots vs ${bareWalkRoots} for one — something is retained per visit`,
+    delta,
+    `six screens left ${total} roots vs ${baseline} for one — something is retained per visit`,
   ).toBeLessThanOrEqual(PER_VISIT_ROOT_BUDGET);
 }, 300000);
 
