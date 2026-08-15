@@ -407,6 +407,14 @@ sub onDestroy()
   m.searchSelect.unobserveField("itemSelected") ' self-navigation observer
   m.top.unobserveField("quickPlayNode") ' playback launcher
 
+  ' Drop the row content, same shape and same reason as BaseGridView.onDestroy: SearchRow's
+  ' cells are BrowseRowItem (a JRRowItem), which caches m.contentRoot and registers scoped
+  ' observers on it, so the content root holds each cell's scope. JRRowItem has no onDestroy
+  ' and SearchRow has none either, so the release has to come from here. Below the unobserve
+  ' block for the same reason it is there in BaseGridView — emptying the RowList can move
+  ' rowItemFocused, and onSearchItemFocused dereferences `.content`.
+  m.searchSelect.content = invalid
+
   ' Stop and release task node (observer may already be cleared by loadResults())
   m.searchTask.unobserveField("results")
   m.searchTask.control = "STOP"

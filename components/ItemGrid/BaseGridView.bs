@@ -1399,6 +1399,15 @@ sub onDestroy()
   ' Destroy texture manager — force-unloads all grid item textures
   destroyTextureManager(m.data)
 
+  ' Unobserve child node observers
+  m.top.unobserveField("selectedItem") ' self-navigation observer
+  m.top.unobserveField("quickPlayNode") ' playback launcher
+  m.genreList.unobserveField("rowItemFocused")
+  m.genreList.unobserveField("itemSelected")
+  m.itemGrid.unobserveField("itemFocused")
+  m.itemGrid.unobserveField("itemSelected")
+  m.voiceBox.unobserveField("text")
+
   ' Break the GridItem <-> content-root retain CYCLE before dropping our references.
   ' Every GridItem caches m.gridView = this view node (resolveGridViewConfig walks up for
   ' the gridTitles field) AND registers scoped observers on the shared content root, which
@@ -1409,17 +1418,12 @@ sub onDestroy()
   ' only unobserves when the content root CHANGES, so the release has to come from here:
   ' dropping BOTH references to the content root (ours and the ArrayGrid's) frees it, which
   ' frees the cell scopes it holds, which drops their back-reference to us.
-  if isValid(m.itemGrid) then m.itemGrid.content = invalid
-  if isValid(m.genreList) then m.genreList.content = invalid
-
-  ' Unobserve child node observers
-  m.top.unobserveField("selectedItem") ' self-navigation observer
-  m.top.unobserveField("quickPlayNode") ' playback launcher
-  m.genreList.unobserveField("rowItemFocused")
-  m.genreList.unobserveField("itemSelected")
-  m.itemGrid.unobserveField("itemFocused")
-  m.itemGrid.unobserveField("itemSelected")
-  m.voiceBox.unobserveField("text")
+  '
+  ' MUST stay BELOW the unobserve block: emptying an ArrayGrid can move itemFocused /
+  ' rowItemFocused, and onItemFocused / onGenreItemFocused both dereference `.content`
+  ' unguarded. Dropping the observers first means a reset fires at nothing.
+  m.itemGrid.content = invalid
+  m.genreList.content = invalid
 
   ' tvGuide may already be cleaned up by hideTvGuide() on back-press
   if isValid(m.tvGuide)
