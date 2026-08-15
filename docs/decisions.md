@@ -748,6 +748,41 @@ the tool prints exactly what to pass. Recorded because 0028 read narrowly would 
 is a misuse of the field, and the convention would then get "corrected" out by someone
 instrumenting the next multi-load screen.
 
+## decision-id: prelogin-paint-is-a-handoff
+
+**date**: 2026-08-15
+**status**: accepted
+**related-files**: source/loginRouter.bs, source/utils/screenReadiness.bs
+
+The readiness ledger is used for `preLogin`, which is NOT a screen, and there its `paint`
+marks the moment the COORDINATOR stopped blocking and handed a route to the router — not a
+moment the user can act on. Everywhere else `paint` means a screen rendered something
+actionable, so this stretches [ADR 0027](adr/0027-screen-readiness-ledger.md) and is recorded
+rather than left for a reader to discover from a number that looks like every other paint.
+The user is on a spinner for the whole run; the destination view's own paint is a SEPARATE
+run, which is the shape `screen-with-two-loads-is-two-runs` already established. `variant`
+names WHICH load — `start` for a cold start or session reset, `connect` for a submitted
+server — because the fills already say where it routed.
+
+Two alternatives were rejected. **Painting at `NavigationEnd`**, which would be a true paint,
+is unreachable: sgRouter resolves on the RENDER thread and this ledger's state lives on the
+main thread's `m`, so closing the run there would mean a scene field plus an event-loop branch
+— shipped app code existing only for measurement, which the ledger's own header reserves for
+milestones genuinely worth it. **A second measurement family** with no paint/settle at all
+would be the most literal answer, and it was rejected because it buys honesty this note buys
+for free while giving up the property that has held for three component shapes: one
+`screen-load` family, `scripts/measurements.js` unchanged.
+
+The constraint worth re-evaluating: **for this component the paint/settle split says nothing
+— read the FILLS.** Every fill is a synchronous main-thread call already resolved by the time
+the handoff happens, so `settled` lands on the same millisecond as `paint`, exactly like the
+`query` variant of `search`. That is not a defect of the instrument, it is what makes it
+useful here: measured on `.177` the run's own 490-552 ms decomposes into `session` (the
+`AboutMe` round trip, 29-47 ms) and `userLoad` (`user.Login` reading the user's settings out
+of the registry on the main thread, ~350-460 ms). A single fill read as "the server took
+460 ms" when the server took 40. If a future change makes the handoff itself expensive, or
+moves the bootstrap off the main thread, revisit whether the split starts carrying meaning.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
