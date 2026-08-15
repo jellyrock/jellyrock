@@ -27,6 +27,7 @@ import {
   waitFocusInside,
   waitHome,
   hasChildren,
+  resendIfSwallowed,
   sleep,
 } from './steps.js';
 
@@ -658,12 +659,7 @@ async function navHomeReturn(ctx, detailCount = 0) {
       label: `homeReturn detail ${i} title`,
       timeout: 20000,
       interval: 500,
-      action: async () => {
-        const focused = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
-        if (typeof focused?.keyPath === 'string' && focused.keyPath.includes('#itemGrid')) {
-          await press(ecp.Key.Ok);
-        }
-      },
+      action: resendIfSwallowed(ecp.Key.Ok, '#itemGrid'),
     });
     await press(ecp.Key.Back);
     // Back on the grid. `loadState` is already "loaded" (the grid was suspended, not

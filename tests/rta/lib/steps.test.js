@@ -21,16 +21,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const getValues = vi.fn();
 const getFocusedNode = vi.fn();
+const sendKeypress = vi.fn();
 vi.mock('roku-test-automation', () => ({
   odc: {
     getValues: (...a) => getValues(...a),
     getValue: vi.fn(),
     getFocusedNode: (...a) => getFocusedNode(...a),
   },
-  ecp: { sendKeypress: vi.fn() },
+  ecp: { sendKeypress: (...a) => sendKeypress(...a) },
 }));
 
-const { getActiveVals } = await import('./steps.js');
+const { getActiveVals, resendIfSwallowed } = await import('./steps.js');
 
 beforeEach(() => {
   // NOTE the coupling these defaults model: the throw path runs through
@@ -107,5 +108,76 @@ describe('getActiveVals', () => {
   it('makes no device call at all for an empty list', async () => {
     await expect(getActiveVals([])).resolves.toEqual([]);
     expect(getValues).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The resend guard, gated without hardware.
+ *
+ * Two behaviours carry the whole helper and neither is visible by reading a call site:
+ * it must NOT press on the first tick (waitFor invokes `action` before its first read,
+ * and the caller has just pressed — resending there is a double-press into a screen
+ * that is still mounting), and it must STOP once focus has left the container (or the
+ * retry becomes the overshoot it was meant to avoid).
+ *
+ * Both were regressions waiting to happen: the two call sites this replaced were
+ * hand-rolled and had the first-tick bug, which no on-device run would report as
+ * anything but an occasional mystery.
+ */
+describe('resendIfSwallowed', () => {
+  beforeEach(() => {
+    getFocusedNode.mockReset();
+    sendKeypress.mockReset();
+  });
+
+  const focusedAt = (keyPath) => getFocusedNode.mockResolvedValue({ keyPath });
+
+  it('does not press on the first tick — the caller just pressed', async () => {
+    focusedAt('scene.#itemGrid.0');
+    const action = resendIfSwallowed('back', '#itemGrid');
+    await action();
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+
+  it('resends once focus is still inside the container on a later tick', async () => {
+    focusedAt('scene.#itemGrid.0');
+    const action = resendIfSwallowed('back', '#itemGrid');
+    await action(); // first tick, sits out
+    await action();
+    await action();
+    expect(sendKeypress).toHaveBeenCalledTimes(2);
+    expect(sendKeypress).toHaveBeenCalledWith('back');
+  });
+
+  it('stops pressing once focus has left the container', async () => {
+    focusedAt('scene.#itemGrid.0');
+    const action = resendIfSwallowed('back', '#itemGrid');
+    await action();
+    await action();
+    expect(sendKeypress).toHaveBeenCalledTimes(1);
+    focusedAt('scene.#homeRows.2'); // the press landed; we navigated away
+    await action();
+    await action();
+    expect(sendKeypress).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not press when the focus read fails — an unknown state is not a swallow', async () => {
+    getFocusedNode.mockRejectedValue(new Error('odc down'));
+    const action = resendIfSwallowed('back', '#itemGrid');
+    await action();
+    await action();
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+
+  it('gives each wait its own first-tick budget', async () => {
+    focusedAt('scene.#itemGrid.0');
+    const first = resendIfSwallowed('back', '#itemGrid');
+    await first();
+    await first();
+    expect(sendKeypress).toHaveBeenCalledTimes(1);
+    // A second wait must sit out its OWN first tick rather than inherit the first's state.
+    const second = resendIfSwallowed('back', '#itemGrid');
+    await second();
+    expect(sendKeypress).toHaveBeenCalledTimes(1);
   });
 });

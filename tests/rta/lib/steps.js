@@ -199,6 +199,57 @@ export async function waitFocusInside(containerId, { timeout = 12000, interval =
   });
 }
 
+/**
+ * An `action` for `waitFor` / `waitFocused` that RE-SENDS `key` when the previous press
+ * was swallowed.
+ *
+ * ## The failure it exists for
+ *
+ * `sgrouter_showView`'s `finally` restores focus BEFORE it dispatches `NavigationEnd`, so
+ * a key sent the instant focus lands can arrive while the router still reports itself
+ * navigating — `_goBack` rejects it and `JRScene`'s back arbiter swallows it. The key is
+ * then simply gone: no error, no retry, and whatever wait follows times out blaming the
+ * component it was watching rather than the input that never arrived. Measured twice on
+ * `.178` (2026-08-15): `focus.spec`'s second Back, and `navHomeReturn`'s OK on detail 1,
+ * the latter at roughly 1 run in 6.
+ *
+ * ## How it detects a swallow
+ *
+ * Focus still being INSIDE `containerId` means nothing navigated away, so the press did
+ * not take. That same test is what makes the retry safe against overshoot: once the press
+ * lands, focus has left the container and this stops pressing, so it cannot double-press
+ * into whatever just opened — the hazard `tests/rta/CLAUDE.md` warns about.
+ *
+ * ## Why it sits out the first tick
+ *
+ * `waitFor` / `waitFocused` invoke `action` BEFORE their first read, and any caller of
+ * this has just pressed. Re-sending there would fire within milliseconds of the original,
+ * before the app could possibly have answered — a double-press at exactly the moment a
+ * screen is mounting. Sitting out one tick spends the poll interval as the "did it land?"
+ * window instead.
+ *
+ * This is also why the skip lives HERE rather than in `waitFor`: an eager first action is
+ * *correct* for the focus WALKS (`focusGridTile`, `findHomeLibraryTile`, `focusOverhangIcon`),
+ * which want to start moving immediately. Only a resend needs to wait and see.
+ *
+ * @param {string} key - an `ecp.Key` value to re-send
+ * @param {string} containerId - `#id` of the container the press should navigate AWAY from
+ * @returns {() => Promise<void>} a fresh, single-use action (it carries per-wait state)
+ */
+export function resendIfSwallowed(key, containerId) {
+  let ticked = false;
+  return async () => {
+    if (!ticked) {
+      ticked = true;
+      return;
+    }
+    const focused = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+    if (typeof focused?.keyPath === 'string' && focused.keyPath.includes(containerId)) {
+      await press(key);
+    }
+  };
+}
+
 /** Home is ready once HomeRows has rendered its content. */
 export async function waitHome() {
   await waitFor('#homeRows.content.getChildCount()', hasChildren, {

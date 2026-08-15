@@ -16,7 +16,7 @@ import { authenticate, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch, ecp, odc } from '../lib/driver.js';
 import { navLibraryByType } from '../lib/nav.js';
-import { press, waitFor, waitFocused, waitHome } from '../lib/steps.js';
+import { press, resendIfSwallowed, waitFor, waitFocused, waitHome } from '../lib/steps.js';
 
 const LOCALE = RTA_CONFIG.languages[0]; // en_US
 
@@ -64,27 +64,15 @@ it('focus restoration: Home -> Library -> Detail -> back -> back', async () => {
 
   // Back -> Home resumes: focus must land back in Home's content (#homeRows), not lost.
   //
-  // The press is GUARDED rather than fired once, because the gate above is a proxy for the
-  // state this press actually needs. `showView`'s finally restores focus BEFORE it dispatches
-  // NavigationEnd (Router.brs), so the instant the grid regains focus the router can still be
-  // mid-navigation — where `_goBack` rejects the key and JRScene's arbiter swallows it
-  // (JRScene.onKeyEvent, `isRouterNavigating`). The key is then simply gone, and this wait
-  // times out with focus still on #itemGrid. Observed exactly that way on 2026-08-15.
-  //
-  // Re-pressing only while the GRID still holds focus is what makes the retry safe: once the
-  // pop actually starts, focus has left #itemGrid, so this can never double-press onto Home
-  // and raise the Exit dialog.
+  // The press is GUARDED rather than fired once: the gate above is a proxy for the state
+  // this press needs, so the Back can arrive mid-navigation and be swallowed. Mechanism,
+  // detection and the safety argument live with the helper in lib/steps.js.
   await press(ecp.Key.Back);
   await waitHome();
   await waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes('#homeRows'), {
     label: 'home content focus restored',
     timeout: 15000,
     interval: 500,
-    action: async () => {
-      const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
-      if (typeof f?.keyPath === 'string' && f.keyPath.includes('#itemGrid')) {
-        await press(ecp.Key.Back);
-      }
-    },
+    action: resendIfSwallowed(ecp.Key.Back, '#itemGrid'),
   });
 });
