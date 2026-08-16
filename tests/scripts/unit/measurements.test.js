@@ -213,11 +213,16 @@ describe('assembleSamples', () => {
  * One `screen-load` sample as `source/utils/screenReadiness.bs` builds it, with
  * roku-log's real prefix and trailing padding.
  *
- * ⚠️ Written from the emitting source, NOT captured off a device — the family's
- * `grounded: false` says the same thing, and `measure.js` prints it. A test written
- * from the emitter proves the pattern matches what THIS repo emits; only a device can
- * prove the device emits it. That is exactly the distinction the header above draws,
- * and the reason the Home fixture is verbatim capture instead.
+ * ⚠️ Written from the emitting source, NOT captured off a device. A test written from
+ * the emitter proves the pattern matches what THIS repo emits; only a device can prove
+ * the device emits it. That is exactly the distinction the header above draws, and the
+ * reason the Home fixture is verbatim capture instead.
+ *
+ * The family's `grounded` flag used to say the same thing and no longer does — it was
+ * flipped to `true` on 2026-08-16 once the ledger held 32 series with complete samples.
+ * So this fixture is now the WEAKER of the two claims about the same pattern, and it is
+ * still the right shape for a unit test: it fails when the emitter and the parser drift
+ * apart, which a device capture pinned in a file cannot.
  */
 const SCREEN_LOAD_LINES = [
   'INFO file:///x/source/utils/screenReadiness.bs:118 screen-load paint - component itemDetails variant Movie ms 812 [debug=false perfTiming=true]  ',
@@ -425,6 +430,12 @@ describe('the registry itself', () => {
     // the wire looks like. Flip this to true only after a real line has matched.
     expect(measurementById('item-grid').grounded).toBe(false);
     expect(measurementById('home-latest-rows').grounded).toBe(true);
+    // `screen-load` was flipped on 2026-08-16, on evidence rather than recollection:
+    // the measurement ledger held 35 series of it, 32 carrying a COMPLETE sample,
+    // across six components. Pinned here because the flag decides what `measure.js`
+    // tells an operator to suspect on a zero-sample run, and left stale it sent them
+    // to audit a parser that had matched hundreds of real lines.
+    expect(measurementById('screen-load').grounded).toBe(true);
   });
 
   it('names a primary field for every family', () => {

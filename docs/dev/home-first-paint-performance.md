@@ -191,7 +191,7 @@ are looking at a re-insert run whose `attach` is not comparable to a normal one.
 sample was taken against, which the manual version leaves to whoever ran it to remember:
 
 ```bash
-npm run measure -- -n 10 --server http://192.168.1.2:8098    # assert the server
+npm run measure -- -n 10 --server http://192.0.2.10:8096    # assert the server
 npm run measure -- -n 10 --measurement item-grid             # the grid/genres family
 npm run measure -- --deploy                                  # sideload first
 ```
@@ -218,6 +218,50 @@ npm run measure -- --measurement screen-load --nav osd --component videoPlayer -
 npm run measure -- --measurement screen-load --nav seasonDetails --variant Season -n 5
 npm run measure -- --measurement screen-load --nav search --variant query -n 5
 ```
+
+### More than one device
+
+`npm run measure:devices` takes the same measurement on every Roku in `ROKU_DEVICES`,
+one after another, and each device writes its own line to `measurements.jsonl`:
+
+```bash
+# .env: ROKU_DEVICES=192.0.2.10,192.0.2.11,192.0.2.12
+npm run measure:devices -- --deploy --server http://192.0.2.10:8096 --nav settings -n 30
+ROKU_DEVICES=192.0.2.10,192.0.2.12 npm run measure:devices -- --server … -n 5   # a subset
+```
+
+Every flag is forwarded verbatim to `npm run measure`, so nothing above changes. `.env`
+declares which devices EXIST; [`scripts/data/roku-hardware.json`](../../scripts/data/roku-hardware.json)
+declares what RAM tier a model IS, so listing your own addresses is enough to get correct
+tier labels. `ROKU_IP` stays the single-device default — leaving `ROKU_DEVICES` unset
+changes nothing.
+
+**A matrix run must pass `--server <url>` (or `--no-server`), and that is a hard
+refusal.** The server is the WORKLOAD, so a matrix whose devices are signed into
+different servers measures the libraries rather than the hardware. It is not a
+hypothetical: it has happened twice on the same three devices, most recently on this
+tool's own first run — a Stick on `demo.jellyfin.org` (4 rows, 1757 ms) beside a Stick 4K
+on a real server (10 rows, 1791 ms) reads as "the 512 MB device matches the 1 GB device"
+until you check the `rows` column. With the flag, tier 1 makes it an assert and a device
+on the wrong server refuses before taking a sample. `npm run measure` alone only warns,
+because with one device there is nothing to confound.
+
+Devices run **sequentially, never in parallel** — `--deploy` wipes `build/`, the server
+is shared, and `measurements.jsonl` is append-only. A device that fails costs its own row
+and not the run: the others still measure, the summary names it, and the exit code is
+non-zero. Before the first launch the tool checks every device over ECP and refuses the
+whole set if one is unreachable, is a model Roku says cannot run apps, or duplicates
+another (two addresses on one Roku after a DHCP move, or two devices of the same model —
+whose records could not be told apart, since `measurements.jsonl` identifies a device by
+model and RAM tier and by nothing else). Each refusal prints the one-line subset command
+to run the rest.
+
+The matrix REPORT — one screen across three tiers — is a separate reader over
+`measurements.jsonl`, not something this tool prints: a reader can rebuild the matrix from
+runs taken weeks apart, and an in-process report can only describe the run that just
+finished.
+
+### What one run does
 
 It takes the device lock, holds ONE console socket for the whole session, relaunches n
 times, and appends one line per series to `.device-runs/measure/measurements.jsonl` —
@@ -432,8 +476,8 @@ of one and then all of the other, so anything that drifts with time (fixture con
 warm-up, a server getting busy) cancels instead of landing on one arm:
 
 ```bash
-npm run measure -- -n 5 --arm before --server http://192.168.1.2:8098
-npm run measure -- -n 5 --arm after  --server http://192.168.1.2:8098   # …and repeat
+npm run measure -- -n 5 --arm before --server http://192.0.2.10:8096
+npm run measure -- -n 5 --arm after  --server http://192.0.2.10:8096   # …and repeat
 npm run measure:compare                              # what is in the ledger
 npm run measure:compare -- --a before --b after      # the comparison
 npm run measure:compare -- --a before --b after --field emit

@@ -247,8 +247,19 @@ export const MEASUREMENTS = Object.freeze([
     // made `enableRta` derived rather than assumed in `measure.js`.
     screen: null,
     // Written from `source/utils/screenReadiness.bs`, which is authoritative for the
-    // MESSAGE (it is the format string) but has not yet been seen on the wire.
-    grounded: false,
+    // MESSAGE (it is the format string) — and it has now been seen on the wire many
+    // times over. Flipped on evidence read out of the ledger rather than on the memory
+    // of having run it: `.device-runs/measure/measurements.jsonl` holds 35 `screen-load`
+    // series, 32 of them carrying at least one COMPLETE sample, across six distinct
+    // components (`itemDetails`, `videoPlayer`, `settings`, `searchResults`, `preLogin`,
+    // `setServer`) and three days.
+    //
+    // Left at `false` this was not a harmless stale flag: `measure.js` prints "the
+    // screen-load pattern has never matched a real device line" on EVERY run, and on a
+    // genuine zero-sample run it says the pattern is at least as likely at fault as the
+    // app. That is now backwards — a screen that emits nothing here is the app or the
+    // build, and the message was sending whoever hit it to audit a proven parser.
+    grounded: true,
     primary: 'paintMs',
     // WHICH LOAD a line belongs to. The assembler splits on this, and it is the whole
     // reason `component` + `variant` are repeated on all three lines rather than stated

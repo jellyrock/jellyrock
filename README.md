@@ -67,7 +67,7 @@ To run the latest version of JellyRock before it hits the Roku Channel Store:
 
 1. Put your Roku device in [Developer Mode](docs/dev/developer-mode.md). Save your password!
 2. Download the latest [build](https://github.com/jellyrock/jellyrock/actions/workflows/build.yml?query=branch%3Amain) created by GitHub Actions. Select the first item listed then click one of the links at the bottom of the page i.e. `JellyRock-prod-main-e34f4f169ff47531abd23ae3a11c102f6811f907`. This will download a zip file to your computer.
-3. Put your Roku's IP from step 1 into a browser i.e. `http://192.168.1.2` and press enter.
+3. Put your Roku's IP from step 1 into a browser i.e. `http://192.0.2.10` and press enter.
 4. Log in with credentials from step 1.
 5. Upload and install the zip file downloaded in step 2.
 
