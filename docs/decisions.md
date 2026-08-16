@@ -783,6 +783,62 @@ of the registry on the main thread, ~350-460 ms). A single fill read as "the ser
 460 ms" when the server took 40. If a future change makes the handoff itself expensive, or
 moves the bootstrap off the main thread, revisit whether the split starts carrying meaning.
 
+## decision-id: flag-names-assert-state-not-action
+
+**date**: 2026-08-15
+**status**: accepted
+**related-files**: scripts/measure-args.js, scripts/measurement-guard.js
+
+A measurement flag is named for the STATE it asserts, never for the user action that
+produces that state — because the action's ambiguity is inherited by the name. The flag
+declaring that the app has no server was first called `--signed-out`, borrowing the app's
+own word, and that word describes a DIFFERENT state: `SignOut()` (app menu → Sign out) and
+`SignOut(false)` (→ Change user) both clear `active_user` and leave `server` in place, so
+both land on `userSelect` — where the flag refuses. Only Change server
+(`unsetSetting("server")` + `server.Delete()`) produces what it asserts.
+
+The cost was paid before anyone typed it: four wrong sentences across the arg parser, two
+error messages and the project plan, plus a closed loop where an operator measuring
+`userSelect` is told to sign out, does, is refused by tier 1, and is pointed at the one menu
+item that takes them off the screen they were trying to measure. Renamed to `--no-server`,
+which reads as the plain negation of `--server <url>` and cannot drift, because the state it
+names is the state tier 1 checks.
+
+Rejected: keeping the name and fixing the prose around it. The prose had already been written
+four times and was wrong four times, which is the evidence that the name — not the writing —
+was doing it. Related to [`intent-based-naming`](../.claude/rules/intent-based-naming.md),
+which covers naming by goal over mechanism; this is the narrower case where two nearby STATES
+share one colloquial word, so the fix is precision about which state, not intent-vs-mechanism.
+
+## decision-id: environment-keyed-variant-is-two-populations
+
+**date**: 2026-08-15
+**status**: accepted
+**related-files**: scripts/measure-selection.js, components/config/SetServerScreen.bs
+
+A measurement series whose LAUNCHES stamped different `variant` values is REFUSED a median,
+not warned about. This extends [ADR 0028](adr/0028-mount-identity-component-and-variant.md),
+which established `variant` as half of a mount's identity on the assumption — true of every
+instrument until now — that it is a property of what the navigation opened (the item type,
+the library type) and therefore constant across a series by construction. `setServer` breaks
+that: it stamps `discovered` when SSDP answered THAT launch and `savedOnly` when it did not,
+so which one you get is decided by the ENVIRONMENT, and an intermittent LAN yields a series
+that is two populations with nothing per-launch to flag.
+
+Refused rather than warned because the failure is in the RECORD, not the console: with no
+variant named, `measure.js` writes `screenVariant` from the FIRST sample, so a six-and-nine
+split publishes a median over both populations, carrying the name of whichever variant
+the first launch happened to draw — well-formed, and undetectable by any later reader. A warning prints once and is
+gone; the record persists. The refusal nulls both selection fields and leaves
+`observedVariants` to say what was actually seen.
+
+Counted over the SELECTED samples, never all of them: a no-server launch legitimately mounts
+`preLogin/start` alongside `setServer/savedOnly`, so the naive form fires on every correct run
+of the screen that motivated the check — and a refusal that fires routinely is worse than
+none, the same reasoning the readiness ledger uses to stay silent on an ordinary post-settle
+refresh. Checked AFTER the per-launch ambiguity refusal, so a launch offering several mounts
+is reported as that instead, since its message already asks for the flag that resolves both.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
