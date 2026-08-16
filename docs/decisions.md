@@ -839,6 +839,26 @@ none, the same reasoning the readiness ledger uses to stay silent on an ordinary
 refresh. Checked AFTER the per-launch ambiguity refusal, so a launch offering several mounts
 is reported as that instead, since its message already asks for the flag that resolves both.
 
+## decision-id: measure-loop-throws-not-exits
+
+**date**: 2026-08-16
+**status**: accepted
+**related-files**: scripts/measure-loop.js, scripts/measure.js
+
+`runSeries` throws a typed `NavFailedError` when a navigation cannot reach its screen,
+where the inline loop it replaces called `refuse()` and exited the process. The entry point
+catches it and refuses with the identical message, so single-device behavior is unchanged —
+this changes a contract, not what an operator sees.
+
+Two things forced it. A `process.exit` inside the loop cannot be caught, so the rule it
+implements could not be tested at all: a nav that cannot reach its screen once will not reach
+it on the remaining launches, so the series is ABANDONED rather than retried — one of the few
+behaviors in this subsystem worth pinning, and there was nowhere to pin it. And the
+multi-device driver that [`measure-single-device-only`](architecture/tech-debt.md#measure-single-device-only)
+describes has to record one device as blocked and carry on; an exit inside the per-device
+loop takes the whole matrix down with it. Rejected: keeping `refuse()` inside the extracted
+loop, which would have preserved today's behavior exactly and left both problems in place.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

@@ -198,14 +198,8 @@ import {
   runProvenance,
   RUN_OUTCOMES,
 } from './run-record.js';
-import {
-  MEASUREMENTS,
-  measurementById,
-  measurementIds,
-  assembleSamples,
-  matchLine,
-  splitWorkload,
-} from './measurements.js';
+import { MEASUREMENTS, measurementById, measurementIds, matchLine } from './measurements.js';
+import { runSeries, NavFailedError } from './measure-loop.js';
 import {
   readIdentity,
   missingIdentityFields,
@@ -221,7 +215,6 @@ import { parseMeasureArgs, MeasureArgError } from './measure-args.js';
 import {
   analyseMounts,
   launchAudit,
-  otherMountsIn,
   selectColdSamples,
   selectionRefusalFor,
 } from './measure-selection.js';
@@ -551,134 +544,51 @@ if (tier1.asserted && !tier1.ok) await refuse(tier1.reason);
 
 // ─── The series ──────────────────────────────────────────────────────────────
 const windowMs = Number.isFinite(args.windowMs) ? args.windowMs : MAX_WINDOW_MS;
-const samples = [];
-for (let i = 0; i < args.samples; i++) {
-  // The window opens at the LAUNCH, not at the keypress. `hardRelaunch()` presses
-  // Home and sleeps `exitMs` (~4 s) before it launches anything, so a window that
-  // opened at `Date.now()` would cover 4 s in which the PREVIOUS launch can still
-  // be emitting. `assembleSamples` merges by line, not by launch, so a straggler
-  // landing there is absorbed into this launch's sample and the record fabricates
-  // one run out of halves of two — exactly what `measurements.js` refuses to do
-  // with an incomplete sample. Filtering by a future instant is safe: lines are
-  // stamped as they arrive, so nothing before it can ever be eligible.
-  //
-  // Usually masked by the quiet-break below, which will not fire until the console
-  // has been silent for QUIET_MS. Not masked on the deadline path — i.e. exactly
-  // when the device is already misbehaving.
-  const from = Date.now() + RTA_CONFIG.exitMs;
-  windowFrom = from;
-  lastMatchAt = 0;
-  await hardRelaunch();
-
-  // Drive to the screen INSIDE the window, not before it. The nav's final gate waits
-  // on a node the screen paints, so it necessarily returns AFTER the paint line has
-  // been emitted — a window opened when the nav returns would start by missing the
-  // very thing it was opened to catch.
-  //
-  // The intermediate screens a chained nav passes through emit their own lines and are
-  // filed as their own samples, told apart by the `variant` the app stamps. That is
-  // the shape, not a defect: reaching a Season means loading its Series first, and both
-  // loads really happened.
-  if (navEntry?.nav) {
-    try {
-      await navEntry.nav(navContext);
-    } catch (e) {
-      // Aborts the SERIES rather than counting a failed launch and trying again: a nav
-      // that cannot reach its screen once will not reach it on the next four attempts,
-      // and n launches of a screen that never loaded is a long way to travel to record
-      // nothing. `diagnosedError` has already attached what the device was showing.
-      await refuse(
-        `--nav ${args.nav} failed on launch ${i + 1}: ${e.message}\n` +
-          '  The series is abandoned rather than retried — a nav that cannot reach its screen\n' +
-          '  once will not reach it on the remaining launches.',
-      );
-    }
-  }
-
-  // Watch until the console goes quiet after a complete sample, or the cap. `from`
-  // already excludes `exitMs`, so the deadline adds only the boot it still has to
-  // wait through plus the watch budget itself.
-  //
-  // The time already spent getting here is added on top, because it is spent INSIDE the
-  // window and would otherwise eat the watch budget: an episode detail is four screens
-  // deep, and on `.177` that walk alone outlasts the 45 s cap the relaunch-only mode was
-  // sized for. Note this span is the RELAUNCH plus the nav (less `exitMs`, which `from`
-  // already excluded), not the nav alone — and the deadline adds `bootMs` again below.
-  // Both make the window longer than strictly needed, which is the safe direction: the
-  // quiet-break ends a healthy launch early anyway, so the only thing a generous cap
-  // changes is how long a MISBEHAVING device is given before being reported.
-  // Measured from this launch rather than assumed, so a slow nav lengthens only its own
-  // window.
-  const spentReachingScreen = navEntry?.nav ? Date.now() - from : 0;
-  const deadline = from + spentReachingScreen + windowMs + RTA_CONFIG.bootMs;
-  let assembled = [];
-  while (Date.now() < deadline) {
-    await sleep(1000);
-    assembled = assembleSamples(measurement, since(from));
-    const complete = assembled.filter((s) => s.complete);
-    if (complete.length && lastMatchAt && Date.now() - lastMatchAt > QUIET_MS) break;
-  }
-
-  assembled.forEach((sample, indexInLaunch) => {
-    const { workload, timings, dimensions } = splitWorkload(measurement, sample.fields);
-    samples.push({
-      launch: i,
-      // WHEN this sample's window opened. Per sample rather than per series,
-      // because tier 3's interleave check needs to order two arms' samples against
-      // each other: an A,B,A,B experiment and an all-A-then-all-B one produce
-      // identical series records and are not equally trustworthy. The window
-      // instant, not the line's, since `assembleSamples` merges by line and has no
-      // timestamps to hand back.
-      launchAt: new Date(from).toISOString(),
-      // 0 is the cold first paint; 1+ are the refreshes that follow it in the
-      // same launch. Recorded, never averaged together — see trap 3.
-      indexInLaunch,
-      complete: sample.complete,
-      lines: sample.lines,
-      buildFlags: sample.buildFlags,
-      workload,
-      timings,
-      // What the app said this sample WAS — its screen, and which variant of it. Empty
-      // for the two legacy families, which emit no non-numeric field. This is the only
-      // thing that can tell two samples from the same launch apart: a chained
-      // navigation mounts one screen several times (a Season is reached through its
-      // Series), so `indexInLaunch` orders them but cannot say which is which.
-      dimensions,
-    });
-  });
-
-  // The SAME rule the medians use, through the same function — not a second copy that
-  // can silently come to mean something else. Hardcoding the first mount here printed
-  // 260 ms (the details screen a playback nav walks THROUGH) while the summary printed
-  // the mount actually named: two numbers 8x apart, one tool, one output, both `osd`.
-  //
-  // `selectColdSamples` also filters on `complete`, which this line used not to do — it
-  // took the first MATCHING sample and only then asked whether it was complete, so a
-  // launch whose target mount emitted an incomplete sample ahead of a complete one
-  // printed "no complete sample" while the summary counted it.
-  const cold = selectColdSamples(
-    samples.filter((s) => s.launch === i),
-    selector,
-  )[0];
-  // The OTHER mounts this launch produced, named — see `otherMountsIn`, which is where the
-  // rule and its test live. Passed the pushed `samples`, not `assembled`: the push above
-  // re-shapes each one into a different object, and this compares against `cold` by
-  // identity, so `assembled` would match nothing and count the selected sample as an other.
-  const others = otherMountsIn(
-    samples.filter((s) => s.launch === i),
-    cold,
-  );
-  console.log(
-    `[measure] ${i + 1}/${args.samples}  ` +
-      (cold
-        ? `${measurement.primary}=${cold.timings[measurement.primary] ?? cold.workload[measurement.primary]} ` +
-          `workload=${JSON.stringify(cold.workload)}`
-        : '⚠ no complete sample in the window') +
-      (others.length
-        ? `  (+${others.length} other run${others.length > 1 ? 's' : ''} in this launch, ` +
-          `recorded separately: ${others.join(', ')})`
-        : ''),
-  );
+// The loop itself now lives in `measure-loop.js` — everything impure injected, and unit
+// tested there. It used to be inline here, where nothing could reach it: this file claims
+// the device on import, so the one layer every defect in this subsystem has been found in
+// was the one layer with no tests. Same reason `measure-args.js` and `measure-selection.js`
+// exist. Two callers beyond this one need it: the multi-device driver and the ODC
+// calibration harness, which would otherwise each grow their own copy of the replay defense.
+let samples;
+try {
+  ({ samples } = await runSeries(
+    {
+      sampleCount: args.samples,
+      windowMs,
+      quietMs: QUIET_MS,
+      exitMs: RTA_CONFIG.exitMs,
+      bootMs: RTA_CONFIG.bootMs,
+      measurement,
+      selector,
+      navLabel: args.nav,
+    },
+    {
+      now: Date.now,
+      sleep,
+      relaunch: hardRelaunch,
+      nav: navEntry?.nav ? () => navEntry.nav(navContext) : null,
+      // Publish this launch's window to the console reader: the socket callback gates its
+      // own `lastMatchAt` write on `windowFrom`, so a window it has not been told about
+      // would let setup traffic move the quiet clock. Zeroing the clock alongside it is
+      // this reader's own hygiene and NOT something the loop needs — the loop ignores any
+      // stamp older than the window it was handed.
+      openWindow: (from) => {
+        windowFrom = from;
+        lastMatchAt = 0;
+      },
+      linesSince: since,
+      lastMatchAt: () => lastMatchAt,
+      log: console.log,
+    },
+  ));
+} catch (e) {
+  // The loop THROWS where it used to exit, so a matrix driver can lose one device without
+  // killing the rest. Single-device, it refuses exactly as it always did — the message is
+  // built at the throw site rather than here so it can be asserted; nothing in this file
+  // can be, and a message assembled here from the error's fields would have no gate at all.
+  if (e instanceof NavFailedError) await refuse(e.message);
+  throw e;
 }
 
 // ─── Close the boundary ──────────────────────────────────────────────────────

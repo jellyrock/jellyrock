@@ -28,10 +28,19 @@ vi.mock('roku-test-automation', () => ({
     getValue: vi.fn(),
     getFocusedNode: (...a) => getFocusedNode(...a),
   },
-  ecp: { sendKeypress: (...a) => sendKeypress(...a) },
+  // `Key` carries the REAL values (verified against the installed package), not invented
+  // ones — a helper that sends `ecp.Key.Up` must be asserted against what the device would
+  // actually receive, or the test agrees with a typo.
+  ecp: { sendKeypress: (...a) => sendKeypress(...a), Key: { Up: 'Up', Right: 'Right' } },
 }));
 
-const { getActiveVals, resendIfSwallowed } = await import('./steps.js');
+const { getActiveVals, resendIfSwallowed, walkHomeToFirstRow } = await import('./steps.js');
+
+/** A `getFocusedNode` answer resting on a row list at `[row, item]`. */
+const onRow = (row) => ({
+  node: { subtype: 'HomeRows', id: 'homeRows', rowItemFocused: [row, 0] },
+  keyPath: '#viewTarget.#homeRows',
+});
 
 beforeEach(() => {
   // NOTE the coupling these defaults model: the throw path runs through
@@ -179,5 +188,63 @@ describe('resendIfSwallowed', () => {
     const second = resendIfSwallowed('back', '#itemGrid');
     await second();
     expect(sendKeypress).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("walkHomeToFirstRow — the precondition Home's Up-to-overhang escape requires", () => {
+  beforeEach(() => {
+    // The outer `beforeEach` does not own `sendKeypress`, and these tests install their own
+    // `getFocusedNode` implementations — both must be cleared or a later test inherits the
+    // presses and the focus script of an earlier one.
+    getFocusedNode.mockReset();
+    sendKeypress.mockReset().mockResolvedValue(undefined);
+  });
+
+  it('sends nothing when Home is already resting on row 0', async () => {
+    // The healthy case, and the one that runs on every nav. A helper that pressed here
+    // would escape into the overhang before the caller asked it to.
+    getFocusedNode.mockResolvedValue(onRow(0));
+    await expect(walkHomeToFirstRow()).resolves.toEqual({ walked: 0, from: null });
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+
+  it('walks up to row 0 and reports where it started', async () => {
+    // The recorded failure: Home resting on row 3, where `Home.onKeyEvent` returns false
+    // for Up, so the key bubbles away and the caller times out blaming the overhang.
+    let row = 3;
+    getFocusedNode.mockImplementation(async () => onRow(row));
+    sendKeypress.mockImplementation(async () => {
+      row -= 1;
+    });
+
+    await expect(walkHomeToFirstRow()).resolves.toEqual({ walked: 3, from: 3 });
+    expect(sendKeypress).toHaveBeenCalledTimes(3);
+    expect(sendKeypress).toHaveBeenLastCalledWith('Up');
+  });
+
+  it('stops pressing the moment a read reports row 0, mid-walk', async () => {
+    // The guard that keeps the walk from overshooting. Presses are counted against what the
+    // read SAYS, so a device that arrives at row 0 sooner than expected gets no extra Up —
+    // which would leave focus in the overhang and the caller somewhere it never asked for.
+    const rows = [2, 0, 0];
+    let i = 0;
+    getFocusedNode.mockImplementation(async () => onRow(rows[Math.min(i++, rows.length - 1)]));
+
+    await expect(walkHomeToFirstRow()).resolves.toEqual({ walked: 1, from: 2 });
+    expect(sendKeypress).toHaveBeenCalledTimes(1);
+  });
+
+  it('presses nothing when focus is not on a row list at all, and times out under its own name', async () => {
+    // An ABSENT `rowItemFocused` means focus is somewhere Up is not the right key. Pressing
+    // at an unidentified component is the north-star mistake; failing by name is not.
+    getFocusedNode.mockResolvedValue({
+      node: { subtype: 'ResumeButton', id: 'resumeButton' },
+      keyPath: '#resumeButton',
+    });
+
+    await expect(walkHomeToFirstRow({ timeout: 30, interval: 10 })).rejects.toThrow(
+      /home row 0 focused/,
+    );
+    expect(sendKeypress).not.toHaveBeenCalled();
   });
 });

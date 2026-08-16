@@ -45,15 +45,28 @@ something is missing, ask whether it was ever asked at a moment it could have an
 - Never paper over it with a longer timeout or a fixed `sleep`. The wait was not timing
   out; it was succeeding too early.
 
+There is a third shape, and it is the one that reads least like a harness bug: **acting
+from a position the app gates on.** `Home.onKeyEvent` releases focus to the overhang only
+when the active row list reports `rowItemFocused[0] = 0`; at any other index Up returns
+false, the key bubbles away, and the walk that follows spends its whole timeout pressing at
+a list that is not listening. Nothing about the state is "not ready" — Home is fully loaded
+and answering — so every gate that means "loaded" passes. Two investigations of a
+`focusOverhangIcon` timeout dead-ended here, because a healthy Home and a stuck one produce
+an IDENTICAL focused keyPath (`#homeRows`) and only the row index tells them apart; that
+field is now kept in the failure dump for exactly that reason.
+
 Canonical examples in [`lib/nav.js`](lib/nav.js): `waitOsdUp` (input), `findHomeLibraryTile`
 (scan), and the focus gates in `navLibraryByType` / `navMovieDetails` /
-`openChildDetailByRowType` (stale reads).
+`openChildDetailByRowType` (stale reads). For the third shape, `walkHomeToFirstRow` in
+[`lib/steps.js`](lib/steps.js) — shared rather than inlined at its one call site precisely
+because the next Home-relative press will need it too, and it is unit-tested there against a
+mocked device.
 
 ## Layout
 
 - `config.js` — `RTA_CONFIG` (demo server, hero movie, seek position, locales). Shared with the store screenshot generator.
 - `screens.js` — the **screen registry**, the single source of truth for both the tests and the screenshots. Add a screen here.
-- `lib/` — `driver` (env + deploy + relaunch), `steps` (press/getVal/waitFor/waitFocused, plus the shared media-player waits used by both the deep-link spec and the demo runner), `seed` (registry seeds), `registry` (whole-registry snapshot/verified restore), `jellyfin` (demo REST), `nav` (per-screen navigation), `diagnostics` (failure-time device-state dump + the `FAILURE_KINDS` registry). The run record it writes into — directories, lifecycle, ledger, summary — lives in [`scripts/run-record.js`](../../scripts/run-record.js), which is shared with the Rooibos runner and knows nothing about devices.
+- `lib/` — `driver` (env + deploy + relaunch), `steps` (press/getVal/waitFor/waitFocused, plus the shared media-player waits used by both the deep-link spec and the demo runner, and the shared Home preconditions `waitHome` / `walkHomeToFirstRow`), `seed` (registry seeds), `registry` (whole-registry snapshot/verified restore), `jellyfin` (demo REST), `nav` (per-screen navigation), `diagnostics` (failure-time device-state dump + the `FAILURE_KINDS` registry). The run record it writes into — directories, lifecycle, ledger, summary — lives in [`scripts/run-record.js`](../../scripts/run-record.js), which is shared with the Rooibos runner and knows nothing about devices.
 - `specs/` — the Vitest specs (a `for` loop over `SCREENS`, not `it.each`: `it.each` passes only the case object, so a case can't skip itself at runtime, and content-dependent screens need exactly that).
 - `capture.js`, `setup/` — the `RTA_CAPTURE` raw-capture helper and Vitest global/per-worker setup.
 - `demos/` — hands-free **video-capture** takes (`npm run demo`). `run.mjs` owns the privacy-safe lifecycle (snapshot → record gates → restore + relaunch); each `takes/*.js` declares only its choreography. NOT tests — these drive the device for marketing/PR demos against the public demo server only (the runner refuses any non-demo host).

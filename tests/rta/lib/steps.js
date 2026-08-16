@@ -258,6 +258,63 @@ export async function waitHome() {
   });
 }
 
+/**
+ * Bring Home's active row list to row 0 — the precondition for leaving Home upward.
+ *
+ * ## Why anything has to do this
+ *
+ * `Home.onKeyEvent` escapes to the overhang only when the active list reports
+ * `rowItemFocused[0] = 0`; at any other index it returns false, so the key bubbles away,
+ * focus never moves, and whatever the caller does next spends its whole timeout pressing at
+ * a list that is not listening. That presents as "the screen never loaded" — the north-star
+ * failure this suite's rules open with.
+ *
+ * `waitHome()` is NOT this precondition: it gates on rows EXISTING, and `HomeRows` inserts
+ * the latest-media rows MID-LIST (`insertLatestMediaSkeletons`) rather than appending them,
+ * so the focused row index can still move after that gate passes.
+ *
+ * ## Why it walks rather than waits
+ *
+ * The index does not return to 0 on its own, so a passive wait would simply time out. The
+ * walk reads off the FOCUSED node rather than `#homeRows`, for two reasons: Home's active
+ * list is `m.activeContent`, which is the favorites list while that tab is selected; and
+ * `rowItemFocused` RETAINS its last value while a list does not hold focus, so reading it
+ * off a named container can report a stale index forever.
+ *
+ * It presses ONLY at a row index it can currently see above 0. An ABSENT field means focus
+ * is not on a row list at all, where Up is not the right key — send nothing and let the wait
+ * time out under its own name rather than pressing at an unidentified component. That guard
+ * is also what stops a stale read pressing Up while already at row 0, which would escape
+ * into the overhang early and leave the caller somewhere it did not ask to be.
+ *
+ * Returns the observation instead of reporting it: resting anywhere but row 0 after a
+ * relaunch is an app-side surprise, and a harness that silently routes around one can mask
+ * the very regression a run exists to catch — but WHICH caller should shout about it, and
+ * how loudly, is the caller's call, not this helper's.
+ *
+ * @returns {Promise<{walked:number, from:number|null}>} how many Ups were sent, and the row
+ *   it started on. `{ walked: 0, from: null }` is the healthy case.
+ */
+export async function walkHomeToFirstRow({ timeout = 10000, interval = 400 } = {}) {
+  let walked = 0;
+  let from = null;
+  await waitFocused((f) => f?.node?.rowItemFocused?.[0] === 0, {
+    timeout,
+    interval,
+    label: 'home row 0 focused (Up leaves Home only from the first row)',
+    action: async () => {
+      const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+      const row = f?.node?.rowItemFocused?.[0];
+      if (typeof row === 'number' && row > 0) {
+        if (from === null) from = row;
+        walked++;
+        await press(ecp.Key.Up);
+      }
+    },
+  });
+  return { walked, from };
+}
+
 /** Roku media-player states that mean playback is live. Frozen — it is a shared registry now. */
 export const PLAYING_STATES = Object.freeze(['startup', 'buffer', 'play', 'pause']);
 

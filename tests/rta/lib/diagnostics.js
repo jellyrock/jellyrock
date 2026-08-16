@@ -139,8 +139,8 @@ export async function captureFailureState() {
   const started = Date.now();
   const opts = { timeout: CAPTURE_TIMEOUT_MS };
   const [focused, batch] = await Promise.all([
-    // `includeNode` already defaults to true; we need the node for its subtype,
-    // and only subtype/id/keyPath are kept — the rest never reaches a record.
+    // `includeNode` already defaults to true; we need the node for its subtype.
+    // Only the four fields below are kept — the rest never reaches a record.
     odc.getFocusedNode({}, opts).catch(() => null),
     odc
       .getValues({ requests: CORE_REQUESTS }, opts)
@@ -154,6 +154,14 @@ export async function captureFailureState() {
           subtype: focused.node.subtype,
           id: focused.node.id || undefined,
           keyPath: focused.keyPath,
+          // The focused list's [row, item]. Kept because the keyPath ALONE cannot tell a
+          // healthy Home from a stuck one: both rest on the `#homeRows` CONTAINER with an
+          // identical keyPath, and only this field says which ROW. That gap cost two
+          // investigations of a `focusOverhangIcon` timeout — each read the container
+          // keyPath as the anomaly, which it is not, and neither could see that Home's
+          // `onKeyEvent` releases focus upward only from row 0. Free: `getFocusedNode`
+          // already returns the whole field set, so this adds no device call.
+          rowItemFocused: focused.node.rowItemFocused ?? undefined,
         }
       : null,
     view: {
@@ -242,7 +250,13 @@ const short = (v) => (typeof v === 'string' && v.length > 12 ? `${v.slice(0, 8)}
 function formatState(state, observed) {
   const lines = [];
   if (state.unreachable) lines.push(`device did not answer ODC: ${state.unreachable}`);
-  const focus = state.focus ? `${state.focus.subtype}@${state.focus.keyPath}` : 'none';
+  // Source field name verbatim (`rowItemFocused`), for the same reason the shell fields
+  // are: a record greps back to the component that wrote it. Printed only when the
+  // focused node is a list, so a failure that has nothing to do with rows stays short.
+  const focus = state.focus
+    ? `${state.focus.subtype}@${state.focus.keyPath}` +
+      (state.focus.rowItemFocused ? ` rowItemFocused=[${state.focus.rowItemFocused}]` : '')
+    : 'none';
   const shell = state.shell || {};
   const shellBits = [
     // The app was returning true for every key we sent (JRScene.onKeyEvent).

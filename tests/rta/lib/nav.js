@@ -26,20 +26,36 @@ import {
   waitFocused,
   waitFocusInside,
   waitHome,
+  walkHomeToFirstRow,
   hasChildren,
   resendIfSwallowed,
   sleep,
 } from './steps.js';
 
 /**
- * From Home, move focus into the overhang and onto the icon with id `iconId`. Up
- * moves focus from the home content into the overhang; the overhang focus chain is
- * TabBar -> Search -> Settings (left to right, see JROverhang.bs), with a variable
- * tab count, so we walk Right until the icon is focused. The action is guarded to
+ * From Home, move focus into the overhang and onto the icon with id `iconId`.
+ *
+ * Two preconditions, in order. Home's active list must be resting on row 0, or Up does not
+ * leave Home at all (`walkHomeToFirstRow`). Only then does Up move focus into the overhang,
+ * whose focus chain is TabBar -> Search -> Settings (left to right, see JROverhang.bs) with
+ * a variable tab count, so we walk Right until the icon is focused. The action is guarded to
  * only press while NOT yet on the icon, so it can't overshoot onto the user dropdown.
  */
 async function focusOverhangIcon(iconId) {
   await waitHome();
+  // Up leaves Home ONLY from the first row — see `walkHomeToFirstRow`, which is where that
+  // rule and its tests live. Announced rather than silently routed around: resting anywhere
+  // but row 0 straight after a relaunch is an app-side surprise, and a harness that quietly
+  // recovers from one can mask the very regression a run exists to catch.
+  const { walked, from } = await walkHomeToFirstRow();
+  if (walked > 0) {
+    console.warn(
+      `[nav] Home was resting on row ${from}, not row 0 — walked up ${walked} time(s) ` +
+        'before reaching the overhang. Up cannot leave Home from any other row, so this ' +
+        'would previously have failed as "screen never loaded". Worth investigating why ' +
+        'the first row was not focused after a relaunch.',
+    );
+  }
   await press(ecp.Key.Up); // home content -> overhang
   await waitFocused((f) => f?.node?.id === iconId, {
     timeout: 15000,
