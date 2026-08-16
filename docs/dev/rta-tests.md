@@ -21,6 +21,7 @@ related-files:
   - scripts/measure.js
   - scripts/measure-devices.js
   - scripts/measure-matrix.js
+  - scripts/measure-signin.js
   - scripts/flake-baseline.js
   - tests/rta/demos/run.mjs
   - .github/workflows/rta-functional-tests.yml
@@ -846,6 +847,46 @@ runs Vitest **as a child process**, and restores. `npm run test:rta` (and `:fast
   a 1 ms timer, so nothing armed inside it can finish a ~30 s restore.
 - **Don't run `vitest --config vitest.rta.config.js` directly** — `globalSetup` refuses
   it, because that path takes no snapshot and performs no restore.
+
+### The second owner: `measure:devices --sign-in`
+
+`rta-run.js` is no longer the only entry point that owns a device's registry.
+**`npm run measure:devices -- --sign-in <url> --user <name>`** signs every device in
+`ROKU_DEVICES` into one server, measures it, and puts it back — because the matrix has
+always *asserted* that its devices share a server (the server is the workload) and could
+not *establish* it, which meant signing every device in by hand before every run.
+
+The split of responsibility is the part worth knowing:
+
+- **Single-device `npm run measure` still never writes the registry**, and that invariant
+  is load-bearing — it is what lets a lone series measure the app exactly as the device
+  already has it. The seed lives on the DRIVER, in
+  [`scripts/measure-signin.js`](../../scripts/measure-signin.js), one child process per
+  device (`roku-test-automation` binds its client singletons to one host per process).
+- **It reuses this same lifecycle rather than a parallel one**: `snapshotRegistry()` from
+  [`lib/registry.js`](../../tests/rta/lib/registry.js) before any write, `seedHome` from
+  [`lib/seed.js`](../../tests/rta/lib/seed.js), and `npm run rta:restore` afterwards —
+  so every guarantee above applies unchanged, including `VERIFIED CLEAN`.
+- **`--sign-in <url>` implies `--server <url>`.** The seed is checked rather than trusted:
+  tier 1 still hard-asserts the server on every device, so a seed that silently did not
+  take fails before a sample is written. Passing `--server` (or `--no-server`) alongside
+  it is refused rather than merged — `measure` would take the last one, which would settle
+  a disagreement between the seed and the assert silently.
+- **`hardRelaunch()` runs before the first registry read**, and that ordering is not
+  stylistic: the on-device component lives INSIDE the app, RTA sets no timeout on
+  `readRegistry`, so a device parked on the Roku home screen HANGS rather than failing —
+  and it presents exactly like a network problem.
+- **The restore runs whatever happened** — sign-in failure, measurement failure, or
+  Ctrl-C. The driver installs its own interrupt handler for that reason: the parent's
+  default SIGINT handling would terminate it in the window between "seeded" and
+  "restored". A second Ctrl-C abandons the restore, and the snapshot on disk is the
+  repair (`ROKU_IP=<host> npm run rta:restore`).
+- **A restore that did not verify fails the whole run** and prints the repair command on
+  its own line, even when every measurement succeeded. A summary reporting three measured
+  devices while one is still signed into the matrix's server would be true and useless.
+
+Use `MEASURE_SIGNIN_PASSWORD` in `.env` rather than a `--password` flag for an account
+that has one; blank is the common case on a LAN test server.
 
 ## The device lock
 

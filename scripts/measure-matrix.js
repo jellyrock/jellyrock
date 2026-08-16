@@ -138,8 +138,150 @@ export function serverDeclarationRefusal(forwarded = []) {
     '  reads as a hardware difference until somebody checks the `rows` column.\n' +
     '  `npm run measure` alone only WARNS about this, because with one device there is\n' +
     "  nothing to confound; the flag is a hard tier-1 assert, so a device that isn't on\n" +
-    '  that server refuses before taking a single sample.'
+    '  that server refuses before taking a single sample.\n' +
+    '  If the devices are NOT all on that server yet, --sign-in <url> --user <name> puts\n' +
+    '  each one there, measures it, and restores it — and declares the server by itself.'
   );
+}
+
+/** The flags that make up the sign-in mode, and the key each writes. */
+const SIGN_IN_FLAGS = new Map([
+  ['--sign-in', 'url'],
+  ['--user', 'username'],
+  ['--password', 'password'],
+]);
+
+/**
+ * Split the sign-in mode out of the flags bound for `measure`, or return `{signIn: null}`.
+ *
+ * ## Why the matrix needs this at all
+ *
+ * `serverDeclarationRefusal` above ASSERTS that every device is on one server; it cannot
+ * PUT them there, because `measure` deliberately never writes the registry. So until this
+ * existed, a cross-tier run meant signing three devices in by hand BEFORE every run — and
+ * because the sanctioned workflow restores each device afterwards, that ritual recurred
+ * indefinitely rather than being one-time setup (measured 2026-08-16: ~2 minutes per run,
+ * plus a restore to verify). A matrix that demands a manual ritual before every run is not
+ * the "cheap to take" the project charter asks for.
+ *
+ * ## Why the seed lives on the DRIVER and never on `measure`
+ *
+ * `measure.js`'s header states the terms: *"If a future mode needs to seed, it must adopt
+ * `lib/registry.js` at the same time; do not add a seed without one."* Its invariant of
+ * never touching the registry is load-bearing — it is what lets a single-device run measure
+ * the app exactly as the device already has it. The driver is a different contract: it
+ * already refuses a run whose devices might differ, so it is the layer that owes the
+ * operator a way to make them agree.
+ *
+ * ## `--sign-in <url>` IMPLIES `--server <url>`
+ *
+ * The seed and the assert must name the same server or the mode would be self-defeating:
+ * seeding device 3 into A while tier 1 asserts B is the confound this whole layer exists
+ * to refuse. Rather than asking the operator to type the URL twice and hoping they match,
+ * the URL is forwarded as `--server`, so tier 1 still hard-asserts on every device — the
+ * seed is CHECKED against the running app rather than trusted. That also means `--sign-in`
+ * satisfies the server declaration on its own, which falls out rather than being special-cased:
+ * the refusal reads the forwarded list, and by then it carries `--server`.
+ *
+ * @param {string[]} forwarded the raw command line, sign-in flags included.
+ * @param {object} env process env — `MEASURE_SIGNIN_PASSWORD` is the non-argv way to pass
+ *   a password, so a real one need not land in shell history or in `ps` output.
+ * @returns {{signIn: {url: string, username: string, password: string}|null, forward: string[]}}
+ *   `forward` is what `measure` should receive: the sign-in flags removed, `--server` added.
+ * @throws {MatrixError} on a half-configured or self-contradicting mode.
+ */
+export function parseSignIn(forwarded = [], env = {}) {
+  const list = [...(forwarded ?? [])];
+  const values = {};
+  const forward = [];
+
+  for (let i = 0; i < list.length; i++) {
+    const arg = list[i];
+    const eq = arg.indexOf('=');
+    const name = eq === -1 ? arg : arg.slice(0, eq);
+    const key = SIGN_IN_FLAGS.get(name);
+    if (!key) {
+      forward.push(arg);
+      continue;
+    }
+
+    let value;
+    if (eq === -1) {
+      value = list[i + 1];
+      // The `measure-args` lesson, one layer out: a trailing value flag that consumes
+      // `undefined` configures the mode half-way and fails much later, somewhere that
+      // cannot name the flag the operator actually typed. `--flag --other` is the same
+      // mistake wearing a value. (A password that genuinely starts with `--` is why
+      // MEASURE_SIGNIN_PASSWORD exists.)
+      if (value === undefined || value.startsWith('--')) {
+        throw new MatrixError(
+          `${name} needs a value, and the next thing on the command line was ` +
+            `${value === undefined ? 'nothing' : JSON.stringify(value)}.\n` +
+            `  e.g. ${CMD} -- --sign-in http://192.0.2.10:8096 --user alice --nav settings -n 30`,
+        );
+      }
+      i++;
+    } else {
+      value = arg.slice(eq + 1);
+    }
+
+    // A blank password is a real Jellyfin account state (`HasPassword: false`), so only
+    // the two flags that name something refuse an empty value.
+    if (value === '' && key !== 'password') {
+      throw new MatrixError(`${name} was given an empty value.`);
+    }
+    values[key] = value;
+  }
+
+  const { url, username, password } = values;
+
+  if (url === undefined) {
+    // Refused rather than ignored: silently dropping them would run the matrix against
+    // whatever the devices happen to be signed into, which is the exact state this mode
+    // exists to replace — and the operator would have no way to tell from the output.
+    const orphan = username !== undefined ? '--user' : password !== undefined ? '--password' : null;
+    if (orphan) {
+      throw new MatrixError(
+        `${orphan} was given without --sign-in <url>, so there is nothing to sign in to.\n` +
+          `  Add the server: ${CMD} -- --sign-in <url> --user <name> <the same flags>`,
+      );
+    }
+    return { signIn: null, forward };
+  }
+
+  if (username === undefined) {
+    throw new MatrixError(
+      '--sign-in <url> needs --user <name>: the seed writes a real authenticated session,\n' +
+        '  so it has to know whose. Passwordless accounts are the common case here and need\n' +
+        '  no --password; set MEASURE_SIGNIN_PASSWORD in the environment for one that does.',
+    );
+  }
+
+  // Both of these are contradictions rather than redundancies, and neither can be resolved
+  // by picking a winner: `measure` would take the LAST `--server` on its line, so forwarding
+  // two would settle a disagreement silently — which is how this subsystem produces a
+  // well-formed record of the wrong thing.
+  if (forward.some((a) => a === '--server' || a.startsWith('--server='))) {
+    throw new MatrixError(
+      '--sign-in <url> already declares the server, so --server is redundant at best and a\n' +
+        '  contradiction at worst: the mode seeds every device into the sign-in URL and\n' +
+        '  forwards that same URL as --server, so tier 1 asserts what was actually seeded.\n' +
+        '  Drop --server and keep --sign-in.',
+    );
+  }
+  if (forward.includes('--no-server')) {
+    throw new MatrixError(
+      '--sign-in <url> and --no-server contradict each other: one signs every device INTO a\n' +
+        '  server, the other asserts there is none on the node. A `serverSelect` matrix is\n' +
+        '  measured with --no-server and no sign-in — that screen is reached by DELETING the\n' +
+        '  server, so seeding one is the opposite of establishing its precondition.',
+    );
+  }
+
+  return {
+    signIn: { url, username, password: password ?? env.MEASURE_SIGNIN_PASSWORD ?? '' },
+    forward: [...forward, '--server', url],
+  };
 }
 
 /**
@@ -292,19 +434,34 @@ export function formatPlanLines(probes, { describeDevice = (m) => String(m) } = 
  * that losing one device costs one row rather than the run, and a summary that silently
  * omitted the row would turn a two-of-three matrix back into an unmarked one.
  *
+ * A device left DIRTY is louder still, and is the one thing here that is not about the
+ * measurement at all: under `--sign-in` the matrix seeds a real session onto someone's own
+ * Roku, so a restore that did not verify has to be named on its own line with the command
+ * that repairs it. It also fails the run — a summary reporting three measured devices while
+ * one of them is still signed into the matrix's server would be true and useless.
+ *
  * @param {{host: string, label: string, status: number|null, signal: string|null,
- *   skipped?: boolean}[]} results in the order the devices ran.
+ *   skipped?: boolean, stage?: string, restored?: boolean}[]} results in the order the
+ *   devices ran. `stage` names which child failed (`sign-in` / `measure`); `restored` is
+ *   absent when nothing was seeded, so there was nothing to put back.
  */
 export function summariseMatrix(results) {
-  const lines = results.map((r) => {
+  const lines = results.flatMap((r) => {
     const verdict = r.skipped
       ? 'not run (the matrix stopped first)'
       : r.signal
         ? `interrupted (${r.signal})`
         : r.status === 0
           ? 'measured'
-          : `FAILED (exit ${r.status}) — its own output above says why`;
-    return `  ${r.host} — ${r.label}: ${verdict}`;
+          : `${r.stage ? `${r.stage} ` : ''}FAILED (exit ${r.status}) — its own output above says why`;
+    const line = `  ${r.host} — ${r.label}: ${verdict}`;
+    return r.restored === false
+      ? [
+          line,
+          `    ⚠ RESTORE FAILED — this device is STILL SEEDED. Repair it before trusting it:`,
+          `        ROKU_IP=${r.host} npm run rta:restore`,
+        ]
+      : [line];
   });
   const measured = results.filter((r) => !r.skipped && !r.signal && r.status === 0).length;
   return {
@@ -313,6 +470,9 @@ export function summariseMatrix(results) {
     // The exit code the entry point returns. Anything short of every declared device
     // measuring cleanly is a non-zero exit, because a matrix that lost a tier is not the
     // thing that was asked for — even though the tiers that did run are on disk and real.
-    ok: measured === results.length && results.length > 0,
+    ok:
+      measured === results.length &&
+      results.length > 0 &&
+      !results.some((r) => r.restored === false),
   };
 }
