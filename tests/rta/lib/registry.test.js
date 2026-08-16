@@ -55,10 +55,10 @@ describe('planRestore', () => {
   });
 
   it('recreates a section the run removed entirely', () => {
-    const saved = { user1: { authToken: 'abc', username: 'charlie' } };
+    const saved = { user1: { authToken: 'abc', username: 'testuser' } };
     const { sectionsToDelete, writes } = planRestore(saved, {});
     expect(sectionsToDelete).toEqual([]);
-    expect(writes).toEqual({ user1: { authToken: 'abc', username: 'charlie' } });
+    expect(writes).toEqual({ user1: { authToken: 'abc', username: 'testuser' } });
   });
 
   it('writes nothing when the device already matches', () => {
@@ -176,16 +176,16 @@ describe('the accepted-difference record', () => {
 
   it('keeps non-secret values legible — the point is knowing WHAT was left wrong', () => {
     const [diff] = onlyEvent(
-      record([{ section: 'u1', key: 'username', want: 'charlie', got: 'demo' }]),
+      record([{ section: 'u1', key: 'username', want: 'testuser', got: 'demo' }]),
     ).differences;
-    expect(diff.want).toBe('charlie');
+    expect(diff.want).toBe('testuser');
     expect(diff.got).toBe('demo');
   });
 
   it('says which device, when, and how many — what device:status reports from', () => {
     const r = record([
       { section: 'u1', key: 'authToken', want: 'x', got: null },
-      { section: 'u1', key: 'username', want: 'charlie', got: null },
+      { section: 'u1', key: 'username', want: 'testuser', got: null },
     ]);
     expect(r.host).toBe('192.168.1.177');
     const event = onlyEvent(r);
@@ -244,10 +244,10 @@ describe('compareRegistries', () => {
   });
 
   it('catches a key that vanished', () => {
-    const saved = { user1: { authToken: 'abc', username: 'charlie' } };
+    const saved = { user1: { authToken: 'abc', username: 'testuser' } };
     const live = { user1: { authToken: 'abc' } };
     expect(compareRegistries(saved, live)).toEqual([
-      { section: 'user1', key: 'username', want: 'charlie', got: null },
+      { section: 'user1', key: 'username', want: 'testuser', got: null },
     ]);
   });
 
@@ -262,8 +262,10 @@ describe('compareRegistries', () => {
   it('does NOT ignore anything else the app writes', () => {
     // available_users is app-written too, but it is user state — a demo entry
     // appended during a run is a leak, not bookkeeping, so it must be caught.
-    const saved = { JellyRock: { available_users: '[{"username":"charlie"}]' } };
-    const live = { JellyRock: { available_users: '[{"username":"charlie"},{"username":"demo"}]' } };
+    const saved = { JellyRock: { available_users: '[{"username":"testuser"}]' } };
+    const live = {
+      JellyRock: { available_users: '[{"username":"testuser"},{"username":"demo"}]' },
+    };
     expect(compareRegistries(saved, live)).toHaveLength(1);
   });
 });

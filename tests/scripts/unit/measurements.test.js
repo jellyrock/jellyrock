@@ -31,6 +31,13 @@ import {
  * window. Trailing whitespace is REAL and preserved: `m.log.*` joins its nine
  * possible arguments with spaces whether or not they were supplied.
  *
+ * ⚠️ ONE substitution, and it is the only edit made to the captured text: the
+ * checkout path in each `file:///…` URI was replaced with a generic one, because
+ * the capture machine's real path carried a username. Nothing reads that prefix —
+ * `matchLine` anchors on the measurement name and its numeric fields — so the
+ * substitution cannot affect what these fixtures prove. Everything to the right of
+ * the path, including the trailing whitespace, is untouched device output.
+ *
  * ⚠️ These two runs were NOT both live. A later timestamped probe showed the
  * first was REPLAYED out of the device's console buffer 10 ms after connect, and
  * that one launch produces exactly one run. The fixture is kept because the lines
@@ -39,21 +46,21 @@ import {
  * but nothing here may be read as evidence about how many runs a launch emits.
  */
 const CAPTURED = [
-  'INFO file:///home/charlie/PROJECTS/JellyRock/jellyrock/components/home/HomeRows.bs:459 latest-rows run complete 10 rows 1500 ms    ',
-  'INFO file:///home/charlie/PROJECTS/JellyRock/jellyrock/components/home/HomeRows.bs:463 latest-rows populate split attach 209 detach 17 other 140  ',
-  'INFO file:///home/charlie/PROJECTS/JellyRock/jellyrock/components/home/LoadLatestRowsTask.bs:139 latest-rows orchestrator done - [debug=false perfTiming=true] task 1375 wait 776 emit 587  ',
-  'INFO file:///home/charlie/PROJECTS/JellyRock/jellyrock/components/home/LoadLatestRowsTask.bs:145 latest-rows emit split - [debug=false perfTiming=true] xform 164 append 28 notify 385  ',
-  'INFO file:///home/charlie/PROJECTS/JellyRock/jellyrock/components/home/HomeRows.bs:459 latest-rows run complete 10 rows 2654 ms    ',
-  'INFO file:///home/charlie/PROJECTS/JellyRock/jellyrock/components/home/HomeRows.bs:463 latest-rows populate split attach 288 detach 24 other 114  ',
-  'INFO file:///home/charlie/PROJECTS/JellyRock/jellyrock/components/home/LoadLatestRowsTask.bs:139 latest-rows orchestrator done - [debug=false perfTiming=true] task 2546 wait 1852 emit 685  ',
-  'INFO file:///home/charlie/PROJECTS/JellyRock/jellyrock/components/home/LoadLatestRowsTask.bs:145 latest-rows emit split - [debug=false perfTiming=true] xform 186 append 31 notify 456  ',
+  'INFO file:///Users/dev/jellyrock/components/home/HomeRows.bs:459 latest-rows run complete 10 rows 1500 ms    ',
+  'INFO file:///Users/dev/jellyrock/components/home/HomeRows.bs:463 latest-rows populate split attach 209 detach 17 other 140  ',
+  'INFO file:///Users/dev/jellyrock/components/home/LoadLatestRowsTask.bs:139 latest-rows orchestrator done - [debug=false perfTiming=true] task 1375 wait 776 emit 587  ',
+  'INFO file:///Users/dev/jellyrock/components/home/LoadLatestRowsTask.bs:145 latest-rows emit split - [debug=false perfTiming=true] xform 164 append 28 notify 385  ',
+  'INFO file:///Users/dev/jellyrock/components/home/HomeRows.bs:459 latest-rows run complete 10 rows 2654 ms    ',
+  'INFO file:///Users/dev/jellyrock/components/home/HomeRows.bs:463 latest-rows populate split attach 288 detach 24 other 114  ',
+  'INFO file:///Users/dev/jellyrock/components/home/LoadLatestRowsTask.bs:139 latest-rows orchestrator done - [debug=false perfTiming=true] task 2546 wait 1852 emit 685  ',
+  'INFO file:///Users/dev/jellyrock/components/home/LoadLatestRowsTask.bs:145 latest-rows emit split - [debug=false perfTiming=true] xform 186 append 31 notify 456  ',
 ];
 
 /** Console traffic that is NOT a measurement, also captured off the device. */
 const NOISE = [
   '[http] Response Code             200',
   '[http] ------ END HTTP REQUEST ------',
-  'INFO file:///home/charlie/PROJECTS/JellyRock/jellyrock/components/data/SceneManager.bs:39 SceneManager.setBackgroundImage called  true false     ',
+  'INFO file:///Users/dev/jellyrock/components/data/SceneManager.bs:39 SceneManager.setBackgroundImage called  true false     ',
 ];
 
 const home = measurementById('home-latest-rows');

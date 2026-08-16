@@ -13,8 +13,8 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("accepts http:// (any case) and rejects everything else")
-    @params("http://192.168.1.2:8098", true)
-    @params("HTTP://192.168.1.2:8098", true)
+    @params("http://192.0.2.10:8098", true)
+    @params("HTTP://192.0.2.10:8098", true)
     @params("https://jellyfin.example.com", false)
     @params("wss://x", false)
     @params("", false)
@@ -29,8 +29,8 @@ namespace tests
 
     @it("builds the ws:// session-socket URL for an http server")
     function _()
-      url = remoteProtocol.buildSocketUrl("http://192.168.1.2:8098", "tok123", "dev-abc")
-      m.assertEqual(url, "ws://192.168.1.2:8098/socket?api_key=tok123&deviceId=dev-abc")
+      url = remoteProtocol.buildSocketUrl("http://192.0.2.10:8098", "tok123", "dev-abc")
+      m.assertEqual(url, "ws://192.0.2.10:8098/socket?api_key=tok123&deviceId=dev-abc")
     end function
 
     @it("returns empty for an https server (never downgrades the token onto ws://)")
@@ -169,7 +169,7 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("builds the pair URL under the plugin route prefix (trimming a trailing slash)")
-    @params("http://192.168.1.2:8096", "http://192.168.1.2:8096/JellyRock/RemoteControl/pair")
+    @params("http://192.0.2.10:8096", "http://192.0.2.10:8096/JellyRock/RemoteControl/pair")
     @params("https://jellyfin.example.com", "https://jellyfin.example.com/JellyRock/RemoteControl/pair")
     @params("https://jellyfin.example.com/", "https://jellyfin.example.com/JellyRock/RemoteControl/pair")
     function _(serverUrl, expected)
