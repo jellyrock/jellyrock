@@ -19,19 +19,44 @@
  * ## The one behavioural change from the inline version
  *
  * A failed navigation THROWS `NavFailedError` instead of closing the run and calling
- * `process.exit`. The entry point catches it and refuses with the same message, so
- * single-device behaviour is unchanged — but a matrix driver has to be able to lose one
- * device without killing the other two, and an exit inside the loop cannot be caught.
+ * `process.exit`. The error carries the finished operator message, so the entry point
+ * refuses with byte-identical text and single-device behaviour is unchanged — but a matrix
+ * driver has to be able to lose one device without killing the other two, and an exit
+ * inside the loop cannot be caught.
  */
 import { assembleSamples, splitWorkload } from './measurements.js';
 import { otherMountsIn, selectColdSamples } from './measure-selection.js';
 
-/** A navigation that could not reach its screen. Carries the launch it died on. */
+/**
+ * A navigation that could not reach its screen.
+ *
+ * ## Why it carries the operator message rather than the entry point building one
+ *
+ * The refusal text lives here so it can be asserted. `measure.js` cannot be unit tested —
+ * it claims the device on import — so a message assembled there from this error's fields
+ * has no gate at all: rename a field and the operator reads `failed on launch undefined`,
+ * with nothing red anywhere. Building it at the throw site costs this module one CLI-shaped
+ * word (`--nav`), which is a smaller price than an untestable string.
+ *
+ * @param {number} launchNumber 1-BASED, because its only consumer is a human-facing message.
+ *   Deliberately NOT named `launch`: `sample.launch` in this same module is 0-based, and one
+ *   name meaning two bases is a defect waiting for the multi-device driver to find.
+ * @param {Error} cause the nav's own error — `diagnosedError` has already attached what the
+ *   device was showing, so the record survives on `.cause` even though only the message prints.
+ * @param {object[]} samples what the series had already collected. Attached because the whole
+ *   point of throwing rather than exiting is that a matrix driver survives losing one device;
+ *   surviving it while discarding that device's good launches is half a job.
+ */
 export class NavFailedError extends Error {
-  constructor(launch, cause) {
-    super(cause?.message || String(cause));
+  constructor(launchNumber, cause, samples = [], navLabel = '') {
+    super(
+      `--nav ${navLabel} failed on launch ${launchNumber}: ${cause?.message || String(cause)}\n` +
+        '  The series is abandoned rather than retried — a nav that cannot reach its screen\n' +
+        '  once will not reach it on the remaining launches.',
+    );
     this.name = 'NavFailedError';
-    this.launch = launch;
+    this.launchNumber = launchNumber;
+    this.samples = samples;
     this.cause = cause;
   }
 }
@@ -47,22 +72,25 @@ export class NavFailedError extends Error {
  * @param {number} config.bootMs        what `relaunch` spends waiting for the app
  * @param {object} config.measurement   the family from `measurements.js`
  * @param {object} config.selector      the mount selector, per `measure-selection.js`
+ * @param {string} [config.navLabel]    what to call the nav in a refusal — the `--nav` value
  * @param {object} deps                 everything impure
  * @param {() => number} deps.now
  * @param {(ms:number) => Promise<void>} deps.sleep
  * @param {() => Promise<void>} deps.relaunch
  * @param {(() => Promise<void>)|null} deps.nav  drive to the screen, or null to measure the launch
  * @param {(from:number) => void} deps.openWindow  publish this launch's window to the console
- *   reader. MUST also reset the quiet clock — the reader gates its own `lastMatchAt` write on
- *   this window, and a clock left at the previous launch's value would satisfy the quiet-break
- *   before this launch had emitted anything.
+ *   reader, so it can gate its own `lastMatchAt` writes on the same instant the samples are
+ *   filtered by. NO obligation to reset the quiet clock: the watch below ignores any stamp
+ *   older than this window, so a reader that leaves the previous launch's value in place
+ *   cannot cut this launch's watch short. That was once a rule stated here and obeyed by one
+ *   caller; it is now a property of the loop, which is the version a second caller inherits.
  * @param {(from:number) => string[]} deps.linesSince
  * @param {() => number} deps.lastMatchAt  when the reader last saw a line of THIS measurement
  * @param {(msg:string) => void} deps.log
  * @returns {Promise<{samples: object[]}>}
  */
 export async function runSeries(
-  { sampleCount, windowMs, quietMs, exitMs, bootMs, measurement, selector },
+  { sampleCount, windowMs, quietMs, exitMs, bootMs, measurement, selector, navLabel = '' },
   { now, sleep, relaunch, nav, openWindow, linesSince, lastMatchAt, log },
 ) {
   const samples = [];
@@ -101,7 +129,11 @@ export async function runSeries(
         // that cannot reach its screen once will not reach it on the next four attempts,
         // and n launches of a screen that never loaded is a long way to travel to record
         // nothing. `diagnosedError` has already attached what the device was showing.
-        throw new NavFailedError(i + 1, e);
+        //
+        // The launches taken BEFORE this one ride along on the error. They are real samples
+        // of a real device and the only thing that made them unusable was a later failure;
+        // a matrix driver that has to drop this device should not also have to drop them.
+        throw new NavFailedError(i + 1, e, samples, navLabel);
       }
     }
 
@@ -126,8 +158,14 @@ export async function runSeries(
       await sleep(1000);
       assembled = assembleSamples(measurement, linesSince(from));
       const complete = assembled.filter((s) => s.complete);
+      // Only THIS launch's silence may end the watch. Nothing clears the reader's clock
+      // between launches, so gating on the window instant makes that a property of the loop
+      // rather than a rule the caller has to remember — a second caller inherits it. Stale
+      // stamps are always strictly below `from`, which is computed after the previous
+      // launch's last line; `>=` rather than `>` because a stamp landing exactly on the
+      // window's first millisecond belongs to this launch.
       const quietSince = lastMatchAt();
-      if (complete.length && quietSince && now() - quietSince > quietMs) break;
+      if (complete.length && quietSince >= from && now() - quietSince > quietMs) break;
     }
 
     assembled.forEach((sample, indexInLaunch) => {

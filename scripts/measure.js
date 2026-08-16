@@ -561,16 +561,18 @@ try {
       bootMs: RTA_CONFIG.bootMs,
       measurement,
       selector,
+      navLabel: args.nav,
     },
     {
       now: Date.now,
       sleep,
       relaunch: hardRelaunch,
       nav: navEntry?.nav ? () => navEntry.nav(navContext) : null,
-      // Publish this launch's window to the console reader, and reset the quiet clock with
-      // it: the socket callback gates its own `lastMatchAt` write on `windowFrom`, so a
-      // clock left at the previous launch's value would satisfy the quiet-break before this
-      // launch had emitted anything.
+      // Publish this launch's window to the console reader: the socket callback gates its
+      // own `lastMatchAt` write on `windowFrom`, so a window it has not been told about
+      // would let setup traffic move the quiet clock. Zeroing the clock alongside it is
+      // this reader's own hygiene and NOT something the loop needs — the loop ignores any
+      // stamp older than the window it was handed.
       openWindow: (from) => {
         windowFrom = from;
         lastMatchAt = 0;
@@ -582,14 +584,10 @@ try {
   ));
 } catch (e) {
   // The loop THROWS where it used to exit, so a matrix driver can lose one device without
-  // killing the rest. Single-device, it refuses exactly as it always did.
-  if (e instanceof NavFailedError) {
-    await refuse(
-      `--nav ${args.nav} failed on launch ${e.launch}: ${e.message}\n` +
-        '  The series is abandoned rather than retried — a nav that cannot reach its screen\n' +
-        '  once will not reach it on the remaining launches.',
-    );
-  }
+  // killing the rest. Single-device, it refuses exactly as it always did — the message is
+  // built at the throw site rather than here so it can be asserted; nothing in this file
+  // can be, and a message assembled here from the error's fields would have no gate at all.
+  if (e instanceof NavFailedError) await refuse(e.message);
   throw e;
 }
 

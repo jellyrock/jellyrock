@@ -15,19 +15,56 @@ const triple = (component, variant, paintMs, settledMs) => [
   `INFO file:///x/source/utils/screenReadiness.bs:213 screen-load split - component ${component} variant ${variant} content 1 contentMs 1500 slowestContent extras 1500 texture 1 textureMs 200 slowestTexture logo 200  `,
 ];
 
+const EXIT_MS = 4000;
+const BOOT_MS = 10000;
+const WINDOW_MS = 45000;
+
+/**
+ * How long a series of ONE launch takes when the app never goes quiet, measured from before
+ * `runSeries` is called. Spelled out as arithmetic rather than recomputed from the loop, so
+ * a change to the deadline formula fails this file instead of silently agreeing with itself:
+ * the window opens `exitMs` ahead of the clock, and the deadline is that instant plus the
+ * watch budget plus one `bootMs`. The harness's relaunch burns `exitMs + bootMs` on the way,
+ * which lands INSIDE that span rather than adding to it.
+ */
+const FULL_WATCH_NO_NAV = EXIT_MS + WINDOW_MS + BOOT_MS; // 59_000
+
+/**
+ * The same, for a launch that also drove a nav taking `navMs`. The nav runs INSIDE the
+ * window, so its cost is added to the deadline — as is `bootMs` a second time, since the
+ * span already spent (`relaunch` + nav, less the excluded `exitMs`) contains one boot
+ * already. That double-count is deliberate and documented in the loop: it can only make a
+ * MISBEHAVING device wait longer, because the quiet-break ends a healthy launch early.
+ */
+const fullWatchWithNav = (navMs) => EXIT_MS + (BOOT_MS + navMs) + WINDOW_MS + BOOT_MS;
+
 /**
  * A fake clock + console. `now` only advances when the loop sleeps or when a harness step
  * says so, which is what makes the window arithmetic assertable at all — on a real device
  * these spans are milliseconds of wall clock nobody can pin.
+ *
+ * `resetsQuietClock: false` models a reader that publishes the window and keeps NO per-window
+ * quiet state — it stamps once when a matching line first arrives and never again, and
+ * `openWindow` zeroes nothing. That is a legal implementation of the dependency (the loop
+ * demands no reset) and it is the exact caller the loop's docblock used to require, so it is
+ * what proves the requirement is now carried by the loop instead of by a rule.
  */
-function harness({ emit = () => [], navFails = false, sampleCount = 2 } = {}) {
+function harness({
+  emit = () => [],
+  navFails = false,
+  navMs = null,
+  resetsQuietClock = true,
+  sampleCount = 2,
+} = {}) {
   let clock = 1_000_000;
   const opened = [];
   let windowFrom = Infinity;
   let matchAt = 0;
   let stamped = false;
+  let navCalls = 0;
   const logs = [];
   const relaunches = [];
+  const polls = [];
 
   const deps = {
     now: () => clock,
@@ -36,24 +73,36 @@ function harness({ emit = () => [], navFails = false, sampleCount = 2 } = {}) {
     },
     relaunch: async () => {
       relaunches.push(clock);
-      clock += 4000 + 10000; // exitMs + bootMs, as the real one spends
+      clock += EXIT_MS + BOOT_MS; // as the real one spends
     },
     nav: navFails
       ? async () => {
+          navCalls++;
           throw new Error('tile not found');
         }
-      : null,
+      : navMs === null
+        ? null
+        : async () => {
+            navCalls++;
+            clock += navMs;
+          },
     openWindow: (from) => {
       opened.push(from);
       windowFrom = from;
-      matchAt = 0; // the reset the real reader relies on
-      stamped = false;
+      if (resetsQuietClock) {
+        matchAt = 0;
+        stamped = false;
+      }
     },
     // The socket stamps `lastMatchAt` when a MATCHING LINE ARRIVES, then stops — the
     // lines stay in the buffer and keep being returned, but the quiet clock does not
     // keep advancing. Modelling that is the whole point: a clock that re-stamped on
     // every poll would never go quiet and the break could never fire.
     linesSince: (from) => {
+      // One poll of the watch loop. Counted per launch because "did this launch break early"
+      // is not answerable from the sample list — a launch cut short still records whatever
+      // it had already assembled, so the only evidence of a truncated watch is the count.
+      polls[opened.length - 1] = (polls[opened.length - 1] || 0) + 1;
       const lines = emit(from, clock, opened.length - 1);
       if (lines.length && !stamped && clock >= windowFrom) {
         matchAt = clock;
@@ -71,14 +120,17 @@ function harness({ emit = () => [], navFails = false, sampleCount = 2 } = {}) {
     opened,
     relaunches,
     clockNow: () => clock,
+    navCalls: () => navCalls,
+    polls,
     config: {
       sampleCount,
-      windowMs: 45000,
+      windowMs: WINDOW_MS,
       quietMs: 1500,
-      exitMs: 4000,
-      bootMs: 10000,
+      exitMs: EXIT_MS,
+      bootMs: BOOT_MS,
       measurement: SCREEN_LOAD,
       selector: {},
+      navLabel: 'settings',
     },
   };
 }
@@ -121,8 +173,10 @@ describe('runSeries', () => {
 
     expect(samples).toEqual([]);
     // A silent app must be given its whole budget — breaking early would report "no
-    // sample" for a device that was merely slow.
-    expect(h.clockNow() - before).toBeGreaterThanOrEqual(45000);
+    // sample" for a device that was merely slow. Asserted EXACTLY rather than as a floor:
+    // the harness burns exitMs + bootMs inside the window before the watch even starts, so
+    // a `>= windowMs` floor is satisfied by a watch that ended 14 s short of its deadline.
+    expect(h.clockNow() - before).toBe(FULL_WATCH_NO_NAV);
   });
 
   it('does not break on quiet alone when the sample is INCOMPLETE', async () => {
@@ -140,7 +194,7 @@ describe('runSeries', () => {
     });
     const before = h.clockNow();
     await runSeries(h.config, h.deps);
-    expect(h.clockNow() - before).toBeGreaterThanOrEqual(45000);
+    expect(h.clockNow() - before).toBe(FULL_WATCH_NO_NAV);
   });
 
   it('treats a paint-only emission as complete, since paint is the only required line', async () => {
@@ -159,6 +213,61 @@ describe('runSeries', () => {
     expect(h.clockNow() - before).toBeLessThan(4000 + 10000 + 45000);
   });
 
+  it('drives the nav once per launch, inside the window', async () => {
+    // The nav branch had no coverage at all while `nav` was either null or throwing: every
+    // assertion about the watch was made against a series that never navigated.
+    const h = harness({
+      sampleCount: 3,
+      navMs: 30000,
+      emit: () => triple('settings', 'none', 57, 297),
+    });
+    await runSeries(h.config, h.deps);
+
+    expect(h.navCalls()).toBe(3);
+    // Inside, not before: every window was already open when its nav ran.
+    h.opened.forEach((from, i) => expect(from).toBeLessThanOrEqual(h.relaunches[i] + EXIT_MS));
+  });
+
+  it('lengthens the watch by the time the nav spent inside the window', async () => {
+    // An episode detail is four screens deep, and on `.177` that walk alone outlasts the
+    // 45 s cap the relaunch-only mode was sized for. The walk is spent INSIDE the window,
+    // so charging it against the watch budget would leave a deep screen no budget at all.
+    const NAV_MS = 30000;
+    const h = harness({ sampleCount: 1, navMs: NAV_MS, emit: () => [] });
+    const before = h.clockNow();
+    await runSeries(h.config, h.deps);
+
+    expect(h.clockNow() - before).toBe(fullWatchWithNav(NAV_MS));
+    // And a slow nav lengthens only its OWN launch — the term is measured per launch rather
+    // than assumed once for the series.
+    expect(h.clockNow() - before).toBeGreaterThan(FULL_WATCH_NO_NAV);
+  });
+
+  it('never ends a launch on a quiet clock that predates its own window', async () => {
+    // `openWindow`'s only obligation is to publish the window. Given a reader that keeps no
+    // per-window quiet state, launch 2 sees lines it can assemble while the clock still
+    // holds launch 1's stamp — and that stamp is already `quietMs` stale, so a loop trusting
+    // it would break on the FIRST poll and cut the launch's watch to a single second. The
+    // gate on the window instant is what makes that unreachable no matter what the caller
+    // does; without it this test ends the series ~44 s early on the second launch.
+    const stubborn = harness({
+      sampleCount: 2,
+      resetsQuietClock: false,
+      emit: () => triple('settings', 'none', 57, 297),
+    });
+    const { samples } = await runSeries(stubborn.config, stubborn.deps);
+
+    // Launch 1 breaks legitimately: it stamped the clock itself, then went quiet — 3 polls
+    // (emit, +1 s, +2 s > quietMs).
+    expect(stubborn.polls[0]).toBe(3);
+    // Launch 2 gets its whole watch. Trusting the stale clock would end it on the FIRST
+    // poll — `polls[1] === 1` is exactly the regression this guards, and it is invisible in
+    // the sample list, because a launch cut short still records what it had already
+    // assembled. 45 = the window budget, one poll per second.
+    expect(stubborn.polls[1]).toBe(45);
+    expect(samples.map((s) => s.launch)).toEqual([0, 1]);
+  });
+
   it('aborts the whole series on a nav failure instead of retrying, naming the launch', async () => {
     const h = harness({ navFails: true, sampleCount: 5 });
     await expect(runSeries(h.config, h.deps)).rejects.toBeInstanceOf(NavFailedError);
@@ -171,8 +280,39 @@ describe('runSeries', () => {
     const h = harness({ navFails: true, sampleCount: 2 });
     const err = await runSeries(h.config, h.deps).catch((e) => e);
     expect(err).toBeInstanceOf(NavFailedError);
-    expect(err.launch).toBe(1);
-    expect(err.message).toContain('tile not found');
+    expect(err.launchNumber).toBe(1);
+    expect(err.cause.message).toBe('tile not found');
+  });
+
+  it('carries the refusal an operator reads, so the entry point asserts nothing itself', () => {
+    // `measure.js` cannot be unit tested — it claims the device on import — so a message
+    // assembled THERE out of this error's fields has no gate: rename a field and the
+    // operator reads `failed on launch undefined` with nothing red anywhere. Pinned here
+    // verbatim because this string IS the product for the person whose run just died.
+    const err = new NavFailedError(3, new Error('tile not found'), [], 'osd');
+    expect(err.message).toBe(
+      '--nav osd failed on launch 3: tile not found\n' +
+        '  The series is abandoned rather than retried — a nav that cannot reach its screen\n' +
+        '  once will not reach it on the remaining launches.',
+    );
+  });
+
+  it('hands back the launches taken BEFORE the nav failed, rather than dropping them', async () => {
+    // Losing the device is the accepted cost; losing the good samples it already produced
+    // is not. Without this a matrix driver survives the failure and still has nothing to
+    // show for the two launches that worked.
+    const h = harness({ sampleCount: 5, emit: () => triple('settings', 'none', 57, 297) });
+    let calls = 0;
+    h.deps.nav = async () => {
+      if (++calls === 3) throw new Error('tile not found');
+    };
+    const err = await runSeries(h.config, h.deps).catch((e) => e);
+
+    expect(err).toBeInstanceOf(NavFailedError);
+    expect(err.launchNumber).toBe(3);
+    // Launches 0 and 1 completed; the series stopped inside launch 2 (`launchNumber` 3).
+    expect(err.samples.map((s) => s.launch)).toEqual([0, 1]);
+    expect(h.relaunches).toHaveLength(3);
   });
 
   it('stamps launch, launchAt and indexInLaunch so a warm refresh never merges into the cold sample', async () => {
