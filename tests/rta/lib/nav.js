@@ -40,6 +40,50 @@ import {
  */
 async function focusOverhangIcon(iconId) {
   await waitHome();
+  // Up leaves Home ONLY from the first row. `Home.onKeyEvent` escapes to the overhang
+  // when `rowItemFocused[0] = 0`, and at any other index returns false — so the key
+  // bubbles away, focus never moves, and the Right walk below then spends its whole
+  // timeout pressing at a list that is not listening. That presents as "the screen
+  // never loaded", which is the north-star failure this file's header warns about.
+  //
+  // `waitHome()` is NOT this precondition: it gates on rows EXISTING, and `HomeRows`
+  // inserts the latest-media rows MID-LIST (`insertLatestMediaSkeletons`) rather than
+  // appending them, so the focused row index can still move after that gate passes.
+  //
+  // Read off the FOCUSED node rather than `#homeRows`: Home's active list is
+  // `m.activeContent`, which is the favorites list while that tab is selected.
+  //
+  // Walking rather than only waiting, because the index does NOT return to 0 on its own —
+  // a passive wait would just time out. The walk ANNOUNCES itself: resting anywhere but
+  // row 0 straight after a relaunch is an app-side surprise, and a harness that silently
+  // routes around one can mask the very regression a measurement run exists to catch.
+  let walked = 0;
+  let walkedFrom = null;
+  await waitFocused((f) => f?.node?.rowItemFocused?.[0] === 0, {
+    timeout: 10000,
+    interval: 400,
+    label: 'home row 0 focused (Up leaves Home only from the first row)',
+    action: async () => {
+      const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+      const row = f?.node?.rowItemFocused?.[0];
+      // Press ONLY on a row index we can actually see above 0. An ABSENT field means focus
+      // is not on a row list at all, where Up is not the right key — send nothing and let
+      // the wait time out under its own name rather than pressing at an unknown component.
+      if (typeof row === 'number' && row > 0) {
+        if (walkedFrom === null) walkedFrom = row;
+        walked++;
+        await press(ecp.Key.Up);
+      }
+    },
+  });
+  if (walked > 0) {
+    console.warn(
+      `[nav] Home was resting on row ${walkedFrom}, not row 0 — walked up ${walked} time(s) ` +
+        'before reaching the overhang. Up cannot leave Home from any other row, so this ' +
+        'would previously have failed as "screen never loaded". Worth investigating why ' +
+        'the first row was not focused after a relaunch.',
+    );
+  }
   await press(ecp.Key.Up); // home content -> overhang
   await waitFocused((f) => f?.node?.id === iconId, {
     timeout: 15000,

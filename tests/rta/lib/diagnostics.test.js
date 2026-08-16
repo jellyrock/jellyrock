@@ -299,7 +299,7 @@ describe('diagnosedError — the message a human reads and the record a baseline
     expect(record.runStartedAt).toBeUndefined();
   });
 
-  it('keeps only subtype/id/keyPath from the focused node — never the node itself', async () => {
+  it('keeps only the four named fields from the focused node — never the node itself', async () => {
     // `JellyfinUser` carries `authToken`, and identity is read by NAMED FIELD for
     // that reason. The focused node is the other whole-node read in the capture, so
     // it gets the same treatment: a record must never become a credential leak.
@@ -315,5 +315,28 @@ describe('diagnosedError — the message a human reads and the record a baseline
       keyPath: '#buttons.#resumeButton',
     });
     expect(JSON.stringify(record)).not.toContain('must-not-appear');
+  });
+
+  it('keeps rowItemFocused when the focused node is a list, and prints the row', async () => {
+    // The field that distinguishes a healthy Home from a stuck one: both rest on the
+    // `#homeRows` CONTAINER under an identical keyPath, so without the row index the
+    // record cannot say which is which. This is that exact failure, as recorded.
+    const { record, error } = await diagnose('nav timed out waiting for focus', BASE, {
+      focused: {
+        node: { subtype: 'HomeRows', id: 'homeRows', rowItemFocused: [3, 0] },
+        keyPath: '#viewTarget.#homeRows',
+      },
+    });
+    expect(record.state.focus.rowItemFocused).toEqual([3, 0]);
+    expect(error.message).toContain('rowItemFocused=[3,0]');
+  });
+
+  it('omits rowItemFocused when the focused node is not a list', async () => {
+    // Keeps an unrelated failure as short as it was before this field existed.
+    const { record, error } = await diagnose('timed out', BASE, {
+      focused: { node: { subtype: 'ResumeButton', id: 'resumeButton' }, keyPath: '#resumeButton' },
+    });
+    expect(record.state.focus.rowItemFocused).toBeUndefined();
+    expect(error.message).not.toContain('rowItemFocused');
   });
 });
