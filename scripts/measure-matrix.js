@@ -1,0 +1,318 @@
+/**
+ * The rules of a multi-device measurement run: which devices, whether the set is
+ * coherent, and how it went.
+ *
+ * ## Why this is separate from `measure-devices.js`
+ *
+ * Same reason `measure-args.js`, `measure-selection.js` and `measure-loop.js` are
+ * separate from `measure.js`: the entry point spawns processes and reads the network,
+ * so nothing in it can be reached by a test. Everything here is a pure function over
+ * plain data — a device list, a set of ECP probes, a set of child exit codes — so the
+ * refusals can be driven without three Rokus on the LAN.
+ *
+ * ## What a matrix run is, and what it is NOT
+ *
+ * It is the SAME measurement taken once per device, sequentially, each one writing its
+ * own line to `measurements.jsonl`. It is deliberately NOT a report: the matrix report
+ * is a READER over that file (see the 2026-08-16 decision in the project PLAN), because
+ * a reader can rebuild the matrix from runs taken weeks apart on different devices while
+ * an in-process report can only ever describe the run that just finished.
+ *
+ * So this module's whole job is to make sure the right lines get written, and to refuse
+ * a set of devices whose lines could not afterwards be told apart.
+ */
+
+/** Thrown for a matrix that cannot be run — the caller prints `.message` and exits. */
+export class MatrixError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'MatrixError';
+  }
+}
+
+/** The npm script, for use in refusal messages that name the way forward. */
+const CMD = 'npm run measure:devices';
+
+/**
+ * Split a `ROKU_DEVICES` value into an ordered device list.
+ *
+ * Strict on the same principle as `measure-args.js`: a silently-dropped address is a
+ * device missing from a matrix the operator believes is complete, and nothing later
+ * in the run can notice — `measurements.jsonl` records what WAS measured, never what
+ * was meant to be.
+ *
+ * @throws {MatrixError} on an empty list or a repeated address.
+ */
+export function parseDeviceList(raw) {
+  const hosts = String(raw ?? '')
+    .split(',')
+    .map((h) => h.trim())
+    .filter(Boolean);
+
+  if (!hosts.length) {
+    throw new MatrixError(
+      `ROKU_DEVICES is set but names no device (got ${JSON.stringify(raw)}). ` +
+        'Expected a comma-separated list of addresses, e.g. ROKU_DEVICES=192.0.2.10,192.0.2.11',
+    );
+  }
+
+  // A repeat is a typo every time. The run would take twice as long and write two
+  // records for one device, which is the mis-attribution this subsystem exists to
+  // refuse — see `sameModelRefusal` below for the harder version of the same problem.
+  const seen = new Set();
+  const repeated = hosts.filter((h) => (seen.has(h) ? true : (seen.add(h), false)));
+  if (repeated.length) {
+    throw new MatrixError(
+      `ROKU_DEVICES names ${[...new Set(repeated)].join(', ')} more than once. Each device is ` +
+        'measured once; a repeat only doubles the run and writes two records for one device.',
+    );
+  }
+
+  return hosts;
+}
+
+/**
+ * The device list for this run, from the environment.
+ *
+ * `ROKU_DEVICES` declares which devices EXIST; `scripts/data/roku-hardware.json` declares
+ * what tier a model IS. That split is what lets a contributor list only their own
+ * addresses and get correct tier labels for free — the addresses are the one thing no
+ * committed dataset can know.
+ *
+ * Absent means REFUSE rather than fall back to `ROKU_IP`. A one-device "matrix" is what
+ * `npm run measure` already is, and quietly delivering one under the matrix command
+ * would leave an operator believing they had measured three tiers.
+ *
+ * @throws {MatrixError} when `ROKU_DEVICES` is unset or unusable.
+ */
+export function resolveDevices(env = {}) {
+  if (env.ROKU_DEVICES === undefined) {
+    throw new MatrixError(
+      'ROKU_DEVICES is not set, so there is no matrix to run.\n' +
+        '  Add it to .env as a comma-separated list of the devices you have:\n' +
+        '    ROKU_DEVICES=192.0.2.10,192.0.2.11,192.0.2.12\n' +
+        '  ROKU_IP stays the single-device default — `npm run measure` is unchanged and is\n' +
+        '  still the right tool for one device.',
+    );
+  }
+  return parseDeviceList(env.ROKU_DEVICES);
+}
+
+/**
+ * Refuse a matrix that has not said which server every device must be on.
+ *
+ * **This is the one rule the driver keeps that `measure` cannot**, and it is worth being
+ * precise about why. Single-device, an undeclared server is merely unasserted: the tool
+ * pins whatever identity it finds, re-checks it at the end, and says out loud that it did
+ * not assert. Across devices it is something else entirely — the SERVER IS THE WORKLOAD,
+ * and a matrix whose rows differ in both hardware and library is not measuring hardware at
+ * all. Only this layer knows there is more than one arm, so only this layer can refuse it.
+ *
+ * Not a hypothetical, and not one incident. The tech-debt entry records the first
+ * hand-driven matrix measuring two devices against the DEMO server and one against the
+ * real one, which read as "the 512 MB Stick is nearly twice as fast as the 1 GB Stick 4K"
+ * until someone checked the `rows` column. The very first run of THIS tool then hit the
+ * same split on the same three devices — `.176` on `demo.jellyfin.org`, `.177` on the
+ * developer's own server — because nothing had changed on the devices in the meantime.
+ * A confound that survives being written down twice needs a gate, not a third warning.
+ *
+ * `--server <url>` is the instrument that already exists: tier 1 turns it into a hard
+ * assert, so a device on the wrong server refuses BEFORE it takes a sample, loudly and by
+ * name. `--no-server` is the coherent opposite for a `serverSelect` matrix. Either one
+ * makes the claim checkable; neither being present makes it unmade.
+ *
+ * @param {string[]} forwarded the flags being passed through to `measure`.
+ * @returns {string|null} the refusal, ready to print.
+ */
+export function serverDeclarationRefusal(forwarded = []) {
+  const declares = forwarded.some(
+    (a) => a === '--server' || a.startsWith('--server=') || a === '--no-server',
+  );
+  if (declares) return null;
+  return (
+    'a matrix run must declare which server the devices are on — pass --server <url>\n' +
+    '  (or --no-server for a `serverSelect` matrix).\n' +
+    '  The server is the WORKLOAD, so a matrix whose devices are signed into different\n' +
+    '  servers measures the libraries, not the hardware. It has happened twice on these\n' +
+    '  devices already: one Roku left on demo.jellyfin.org next to two on a real server\n' +
+    '  reads as a hardware difference until somebody checks the `rows` column.\n' +
+    '  `npm run measure` alone only WARNS about this, because with one device there is\n' +
+    "  nothing to confound; the flag is a hard tier-1 assert, so a device that isn't on\n" +
+    '  that server refuses before taking a single sample.'
+  );
+}
+
+/**
+ * Refuse a probe set that cannot produce an attributable matrix, or return null.
+ *
+ * Checked BEFORE the first sample rather than discovered during it, because a three-device
+ * series is tens of minutes long and every failure here is knowable in the first second.
+ *
+ * @param {{host: string, info: object|null, error: string|null}[]} probes one per device,
+ *   `info` being the flat ECP `device-info` document (see `fetchDeviceInfo`).
+ * @param {(modelNumber: string) => boolean} cannotRunApps injected rather than imported so
+ *   this module stays a pure function over data — and so a test can exercise the legacy
+ *   refusal without depending on which models Roku currently lists as legacy.
+ * @returns {string|null} the refusal, ready to print.
+ */
+export function preflightRefusal(probes, { cannotRunApps = () => false } = {}) {
+  return (
+    unreachableRefusal(probes) ?? legacyRefusal(probes, cannotRunApps) ?? sameDeviceRefusal(probes)
+  );
+}
+
+/** `ROKU_DEVICES=<the ones that are fine> npm run measure:devices -- <same flags>` */
+function subsetHint(probes, keep) {
+  const survivors = probes.filter(keep).map((p) => p.host);
+  if (!survivors.length) return '';
+  return (
+    `\n  To measure the rest anyway, name them for this run only:\n` +
+    `    ROKU_DEVICES=${survivors.join(',')} ${CMD} -- <the same flags>`
+  );
+}
+
+/**
+ * A device that did not answer ECP.
+ *
+ * The whole set is refused rather than the device dropped, and that is the deliberate
+ * direction: `ROKU_DEVICES` is a DECLARATION of the matrix, so a run that silently
+ * delivers two of its three tiers hands back a different deliverable under the same
+ * name. The subset hint makes proceeding one command rather than an argument.
+ */
+function unreachableRefusal(probes) {
+  const dead = probes.filter((p) => !p.info);
+  if (!dead.length) return null;
+  return (
+    `${dead.length} of ${probes.length} device(s) did not answer ECP:\n` +
+    dead.map((p) => `    ${p.host} — ${p.error || 'no response'}`).join('\n') +
+    '\n  A matrix run is tens of minutes long, so this is refused now rather than found\n' +
+    '  partway through. Check the device is powered on and on this network.' +
+    subsetHint(probes, (p) => p.info)
+  );
+}
+
+/**
+ * A device JellyRock cannot run on at all.
+ *
+ * Roku's own table says these models "cannot be used to run IDK apps", so this is not a
+ * gap in the dataset — it is a fact about the hardware, and the run would fail at deploy
+ * with something far less clear.
+ */
+function legacyRefusal(probes, cannotRunApps) {
+  const legacy = probes.filter((p) => p.info && cannotRunApps(p.info['model-number']));
+  if (!legacy.length) return null;
+  return (
+    'these device(s) cannot run JellyRock at all, per Roku’s published hardware table:\n' +
+    legacy
+      .map((p) => `    ${p.host} — ${p.info['model-name']} (${p.info['model-number']})`)
+      .join('\n') +
+    subsetHint(probes, (p) => p.info && !cannotRunApps(p.info['model-number']))
+  );
+}
+
+/**
+ * Two entries that cannot be told apart in the record afterwards.
+ *
+ * Two cases, one consequence. **Two addresses, one device** — a DHCP lease moved and the
+ * list now names the same Roku twice — would relaunch one device twice and write two
+ * records for it. **Two different devices of the same MODEL** is a legitimate thing to
+ * want to measure (device-to-device variance), and it still cannot be recorded here:
+ * `measurements.jsonl` identifies a device by `model` / `modelNumber` / `ramTier` and by
+ * nothing else, so the two series come back indistinguishable, and a reader pairing them
+ * as one population is exactly the silent mis-attribution the mount-identity work
+ * (ADR 0028) exists to prevent.
+ *
+ * The escape is real and is named in the message: measure them one at a time with
+ * `--arm`, which IS a per-series label the record carries and a comparison selects on.
+ */
+function sameDeviceRefusal(probes) {
+  const live = probes.filter((p) => p.info);
+  const byId = groupBy(live, (p) => p.info['device-id']);
+  const dupIds = [...byId.values()].filter((g) => g.length > 1);
+  if (dupIds.length) {
+    return (
+      'the same physical device is named more than once — ECP reports one `device-id` for:\n' +
+      dupIds.map((g) => `    ${g.map((p) => p.host).join(' and ')}`).join('\n') +
+      '\n  An address is not an identity: a DHCP lease can move, so two entries in\n' +
+      '  ROKU_DEVICES can be one Roku. It would be relaunched twice and recorded twice.'
+    );
+  }
+
+  const byModel = groupBy(live, (p) => p.info['model-number']);
+  const dupModels = [...byModel.entries()].filter(([, g]) => g.length > 1);
+  if (dupModels.length) {
+    return (
+      'two devices of the same MODEL are in one matrix, and their records could not be told\n' +
+      '  apart afterwards:\n' +
+      dupModels
+        .map(([model, g]) => `    ${model} — ${g.map((p) => p.host).join(', ')}`)
+        .join('\n') +
+      '\n  `measurements.jsonl` identifies a device by model / model number / RAM tier and by\n' +
+      '  nothing else, so both series read back as one population.\n' +
+      '  Measure them one at a time and label each with --arm, which the record does carry:\n' +
+      `    ROKU_IP=${dupModels[0][1][0].host} npm run measure -- --arm <a-name> <the same flags>`
+    );
+  }
+
+  return null;
+}
+
+function groupBy(items, key) {
+  const map = new Map();
+  for (const item of items) {
+    const k = key(item);
+    if (k === undefined || k === '') continue;
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(item);
+  }
+  return map;
+}
+
+/**
+ * One line per device, naming what is about to be measured.
+ *
+ * Printed before the first launch because a matrix is long and unattended, and "which
+ * three devices did this actually run on" is otherwise a question only the records can
+ * answer — after the fact. An unknown RAM tier is SAID rather than blanked: the dataset
+ * lags Roku's table by up to a week (see the sync workflow), and a device missing from it
+ * is still perfectly measurable, just not labelled.
+ *
+ * @param {(modelNumber: string) => string} describeDevice injected, per `preflightRefusal`.
+ */
+export function formatPlanLines(probes, { describeDevice = (m) => String(m) } = {}) {
+  return probes.map(
+    (p, i) => `  ${i + 1}. ${p.host} — ${describeDevice(p.info?.['model-number'])}`,
+  );
+}
+
+/**
+ * What became of each device, and whether the matrix as a whole stands.
+ *
+ * A device that failed is REPORTED, never dropped: the point of the per-device split is
+ * that losing one device costs one row rather than the run, and a summary that silently
+ * omitted the row would turn a two-of-three matrix back into an unmarked one.
+ *
+ * @param {{host: string, label: string, status: number|null, signal: string|null,
+ *   skipped?: boolean}[]} results in the order the devices ran.
+ */
+export function summariseMatrix(results) {
+  const lines = results.map((r) => {
+    const verdict = r.skipped
+      ? 'not run (the matrix stopped first)'
+      : r.signal
+        ? `interrupted (${r.signal})`
+        : r.status === 0
+          ? 'measured'
+          : `FAILED (exit ${r.status}) — its own output above says why`;
+    return `  ${r.host} — ${r.label}: ${verdict}`;
+  });
+  const measured = results.filter((r) => !r.skipped && !r.signal && r.status === 0).length;
+  return {
+    lines,
+    measured,
+    // The exit code the entry point returns. Anything short of every declared device
+    // measuring cleanly is a non-zero exit, because a matrix that lost a tier is not the
+    // thing that was asked for — even though the tiers that did run are on disk and real.
+    ok: measured === results.length && results.length > 0,
+  };
+}

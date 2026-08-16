@@ -551,6 +551,16 @@ const windowMs = Number.isFinite(args.windowMs) ? args.windowMs : MAX_WINDOW_MS;
 // exist. Two callers beyond this one need it: the multi-device driver and the ODC
 // calibration harness, which would otherwise each grow their own copy of the replay defense.
 let samples;
+// The operator-facing refusal a failed nav built, or null on a clean series. Kept
+// rather than exited on, so the launches taken BEFORE the failure survive — see the
+// catch below.
+let navFailure = null;
+// How many launches the series ACTUALLY took. Equal to what was asked for on every
+// healthy run, and smaller on a truncated one — which is a distinction the reporting
+// below cannot do without: every "n of m" line in this file was written when those two
+// numbers could not differ, so a truncated series reported the launches that never
+// happened as launches that emitted nothing.
+let launchesTaken = args.samples;
 try {
   ({ samples } = await runSeries(
     {
@@ -584,11 +594,30 @@ try {
   ));
 } catch (e) {
   // The loop THROWS where it used to exit, so a matrix driver can lose one device without
-  // killing the rest. Single-device, it refuses exactly as it always did — the message is
-  // built at the throw site rather than here so it can be asserted; nothing in this file
-  // can be, and a message assembled here from the error's fields would have no gate at all.
-  if (e instanceof NavFailedError) await refuse(e.message);
-  throw e;
+  // killing the rest. The message is built at the throw site rather than here so it can be
+  // asserted; nothing in this file can be, and a message assembled here from the error's
+  // fields would have no gate at all.
+  if (!(e instanceof NavFailedError)) throw e;
+  // Nothing had been collected when the nav failed, so there is nothing to write down and
+  // this refuses exactly as it always has. A record with no samples is not a record.
+  if (!e.samples.length) await refuse(e.message);
+  // Launches the device HAD taken before the failure. They are real samples of a real
+  // device and the only thing that made the series stop was a LATER failure, so they are
+  // carried through to the record rather than discarded with the run — the whole point of
+  // the loop throwing rather than exiting is that a matrix survives losing one device, and
+  // surviving it while dropping that device's good launches is half a job.
+  //
+  // The series is still a NON-sample: `usable` is false below, so the outcome is `blocked`,
+  // no comparison will select the line (`selectSeries` excludes any outcome that is not a
+  // pass), and the process still exits 1. What changes is that `3/30 cold samples` and the
+  // reason the other 27 never happened are on disk instead of nowhere.
+  samples = e.samples;
+  navFailure = e.message;
+  // `launchNumber` is 1-BASED and names the launch that FAILED, so the launches actually
+  // taken are the ones before it. (`sample.launch` in the same module is 0-based; the
+  // two are deliberately named differently for exactly this reason.)
+  launchesTaken = e.launchNumber - 1;
+  console.error(`\n[measure] ${e.message}`);
 }
 
 // ─── Close the boundary ──────────────────────────────────────────────────────
@@ -638,12 +667,16 @@ const cold = selectionRefusal ? [] : selectColdSamples(samples, selector);
 // Split by WHY a launch came back empty — nothing emitted at all, versus the named mount
 // missing from a launch that otherwise recorded fine. See `launchAudit`.
 //
-// Reaching here means every launch ran: the sample loop has no `continue`, and its only
-// early exit is `refuse()`, which closes the run and exits the process.
+// Over the launches the series actually TOOK, not the ones asked for. Those were the
+// same number until a failed nav stopped counting as an exit: a run abandoned on launch 2
+// of 30 audited against 30 and reported the 28 that never happened as "launches that
+// emitted no complete sample at all", which points at the app or the build when the cause
+// was a nav that never reached the screen. The audit's job is to split apart two failures
+// that look alike; inventing a third would be the same defect it exists to prevent.
 const { completeSamples, withoutAnySample, withoutNamedMount } = launchAudit(
   samples,
   selector,
-  args.samples,
+  launchesTaken,
 );
 
 const medianOf = (raw) => {
@@ -712,7 +745,11 @@ if (provenance.checkout.agreesWithDevice === false) {
 // screen, so it folds as a NON-sample exactly like a drifted identity. The samples are
 // still written — they are real loads, and `--component` / `--variant` can select one on
 // a re-read — but nothing is published from them.
-const usable = consistency.ok && cold.length > 0 && !selectionRefusal;
+// A series the nav cut short is a NON-sample for the same reason a drifted identity is:
+// the samples are real, and the SERIES is not the one that was asked for. `n` of the
+// launches requested never happened, so a median over what survived is a median over a
+// population nobody chose.
+const usable = !navFailure && consistency.ok && cold.length > 0 && !selectionRefusal;
 const outcome = usable ? RUN_OUTCOMES.PASSED : RUN_OUTCOMES.BLOCKED;
 
 // A series that matched NOTHING has to say what the console did carry, or the two
@@ -835,9 +872,19 @@ const record = {
   seriesConsistency: consistency,
   provenance,
   requested: args.samples,
+  // …and how many were actually taken. Equal to `requested` on every healthy run; smaller
+  // when `navFailure` stopped the series. Carried so a reader can see the truncation as a
+  // number rather than by parsing a refusal message.
+  launchesTaken,
   // Why no median, when there is none. `coldSamples: 0` alone cannot tell "the app
   // emitted nothing" from "the app emitted several screens and nobody said which".
   selectionRefusal,
+  // …and neither can tell either of those from "the series stopped early". Its own field
+  // rather than folded into `selectionRefusal`, because they are different failures with
+  // different next steps: a selection refusal is answered by naming a mount on a re-read
+  // of THIS record, while a nav failure means the device never reached the screen and the
+  // launches it did take are all there will ever be. Null on every healthy run.
+  navFailure,
   // BOTH halves of what the app stamped, because both halves of `component` /
   // `screenVariant` can be nulled by a refusal — and a record whose selection field is
   // null with no list beside it cannot say what it saw without re-deriving from
@@ -875,7 +922,7 @@ if (selectionRefusal) {
   );
 }
 console.log(
-  `\n[measure] ${measurement.primary} median ${median ?? '—'} ms over ${cold.length}/${args.samples} cold samples` +
+  `\n[measure] ${measurement.primary} median ${median ?? '—'} ms over ${cold.length}/${launchesTaken} cold samples` +
     (args.component ? ` · component ${args.component}` : '') +
     (args.variant ? ` · variant ${args.variant}` : ''),
 );
@@ -900,6 +947,15 @@ if (cold.length && missingLines.length) {
   );
 }
 console.log(`[measure] record: ${path.relative(repoRoot, outPath)}`);
+// Said again at the end, because the refusal itself printed before the whole series
+// report and a truncated series' numbers otherwise read exactly like a complete one's.
+if (navFailure) {
+  console.error(
+    `[measure] ⚠ THE SERIES WAS CUT SHORT — ${launchesTaken} of the ${args.samples} launches ` +
+      'you asked for were taken. Those samples are real and are recorded, but the run folds ' +
+      'as `outcome: "blocked"` and no comparison will select it.',
+  );
+}
 // Two warnings, because they are two different failures with two different next steps,
 // and one count cannot carry both. A launch that emitted NOTHING points at the build or
 // the pattern; a launch that emitted fine but lacked the mount you NAMED points at that

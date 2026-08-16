@@ -80,7 +80,7 @@ const series = (over = {}) => ({
     },
     enableRta: true,
     checkout: { appVersion: '2.25.0', manifestFlags: { debug: false, perfTiming: true } },
-    server: { url: 'http://192.168.1.2:8098', version: '10.11.11' },
+    server: { url: 'http://192.0.2.10:8096', version: '10.11.11' },
   },
   requested: 3,
   coldSamples: 3,
@@ -212,7 +212,7 @@ describe('comparability — what is refused', () => {
     const slash = {
       provenance: {
         ...series().provenance,
-        server: { url: 'http://192.168.1.2:8098/', version: '10.11.11' },
+        server: { url: 'http://192.0.2.10:8096/', version: '10.11.11' },
       },
     };
     expect(refuse({}, slash)).toEqual([]);

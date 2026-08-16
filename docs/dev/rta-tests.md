@@ -19,10 +19,12 @@ related-files:
   - scripts/rta-restore.js
   - scripts/device-lock.js
   - scripts/measure.js
+  - scripts/measure-devices.js
+  - scripts/measure-matrix.js
   - scripts/flake-baseline.js
   - tests/rta/demos/run.mjs
   - .github/workflows/rta-functional-tests.yml
-last-reviewed: 2026-08-12
+last-reviewed: 2026-08-16
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -299,6 +301,17 @@ It is **not** a second run ledger, and the two files are deliberately not joinab
   refused run is not a measurement. Each measurement line therefore carries its own
   `outcome`, so a reader can tell a usable series from one that produced no sample
   without consulting the other file.
+- **One exception, and it is not a refusal.** A `--nav` that fails PARTWAY abandons the
+  series but does write a record, carrying the launches the device had already taken and
+  a `navFailure` naming why the rest never happened. Those samples are real loads of a
+  real device and the only thing that made them unusable was a LATER failure; the series
+  still folds as `outcome: "blocked"` and no comparison selects it, so the choice is
+  between `3/30 cold samples` on disk and nothing on disk. A nav that fails on the FIRST
+  launch has nothing to keep and refuses exactly as tier 1 does.
+- **`npm run measure:devices` writes one line PER DEVICE**, all from the same invocation
+  — it runs `measure` once per Roku in `ROKU_DEVICES`, sequentially, in its own process
+  (`roku-test-automation` binds its client singletons to one host per process). See
+  [`home-first-paint-performance.md`](home-first-paint-performance.md#more-than-one-device).
 
 **The ledger is the Phase-3 surface.** Aggregating N back-to-back suites is a read
 of `.device-runs/rta/runs.jsonl`, not "remember to copy a file aside after each

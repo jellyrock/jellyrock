@@ -854,9 +854,10 @@ Two things forced it. A `process.exit` inside the loop cannot be caught, so the 
 implements could not be tested at all: a nav that cannot reach its screen once will not reach
 it on the remaining launches, so the series is ABANDONED rather than retried — one of the few
 behaviors in this subsystem worth pinning, and there was nowhere to pin it. And the
-multi-device driver that [`measure-single-device-only`](architecture/tech-debt.md#measure-single-device-only)
-describes has to record one device as blocked and carry on; an exit inside the per-device
-loop takes the whole matrix down with it. Rejected: keeping `refuse()` inside the extracted
+multi-device driver that `measure-single-device-only` described (since shipped as
+[`npm run measure:devices`](../scripts/measure-devices.js), and the slug retired) has to
+record one device as blocked and carry on; an exit inside the per-device loop takes the
+whole matrix down with it. Rejected: keeping `refuse()` inside the extracted
 loop, which would have preserved today's behavior exactly and left both problems in place.
 
 ## Migrated to ADRs
