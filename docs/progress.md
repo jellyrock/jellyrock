@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-16 — ci(rta): Gate `focusOverhangIcon` on row 0, extract the sampling loop
 - 2026-08-16 — ci(rta): Measure `serverSelect` and assert the no-server state
 - 2026-08-15 — cit(rta): Make the leak gate reliable, tighten its budget, and give the resend one home
 - 2026-08-15 — ci: Make the PR description the commit message, and gate it
