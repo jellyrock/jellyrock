@@ -135,6 +135,58 @@ describe('refusing to publish a median', () => {
     expect(selectionRefusalFor(playbackLaunch(0), { component: 'videoPlayer' })).toBeNull();
     expect(selectionRefusalFor([s(0, 0, 'settings')], {})).toBeNull();
   });
+
+  it('refuses a series whose LAUNCHES measured different variants, one mount each', () => {
+    // The case no per-launch check can see: every launch mounted exactly one screen, so
+    // nothing was ambiguous at the time — but which variant you got was decided by the
+    // ENVIRONMENT. `setServer` stamps `discovered` when SSDP answered that launch and
+    // `savedOnly` when it did not, so an intermittent LAN yields two populations.
+    const mixed = [
+      s(0, 0, 'setServer', 'savedOnly'),
+      s(1, 0, 'setServer', 'discovered'),
+      s(2, 0, 'setServer', 'savedOnly'),
+    ];
+    const refusal = selectionRefusalFor(mixed, { component: 'setServer' });
+    expect(refusal).toMatch(/did not all measure the same variant/);
+    expect(refusal).toMatch(/savedOnly ×2, discovered ×1/);
+    expect(refusal).toMatch(/--variant/);
+  });
+
+  it('publishes once one of those variants is NAMED', () => {
+    const mixed = [s(0, 0, 'setServer', 'savedOnly'), s(1, 0, 'setServer', 'discovered')];
+    expect(selectionRefusalFor(mixed, { component: 'setServer', variant: 'savedOnly' })).toBeNull();
+  });
+
+  it('does NOT fire on the two mounts of one no-server launch, which is every correct run', () => {
+    // The false positive that would have made this refusal worthless. A launch with no
+    // server mounts `preLogin/start` AND `setServer/savedOnly`, so counting variants over
+    // ALL samples refuses the very series the check was written for. It counts the
+    // SELECTED ones.
+    const noServerLaunch = (launch) => [
+      s(launch, 0, 'preLogin', 'start'),
+      s(launch, 1, 'setServer', 'savedOnly'),
+    ];
+    const clean = [...noServerLaunch(0), ...noServerLaunch(1)];
+    expect(selectionRefusalFor(clean, { component: 'setServer' })).toBeNull();
+  });
+
+  it('reports a per-launch ambiguity as THAT, not as a mixed series', () => {
+    // A chained nav mounts two variants inside ONE launch. Both messages would be true;
+    // only the ambiguity one tells the operator something they can act on first, and its
+    // advice (`--variant`) resolves this too.
+    const refusal = selectionRefusalFor([...chainedLaunch(0), ...chainedLaunch(1)], {});
+    expect(refusal).toMatch(/mounted more than one screen/);
+    expect(refusal).not.toMatch(/did not all measure the same variant/);
+  });
+
+  it('ignores a family that stamps no variant at all', () => {
+    // `home-latest-rows` and `item-grid` emit purely numeric lines by design. An
+    // unstamped series is one population by definition, not a mixed one.
+    const unstamped = [s(0, 0), s(1, 0), s(2, 0)];
+    expect(selectionRefusalFor(unstamped, {})).toBeNull();
+    // Same for a component that stamps no variant.
+    expect(selectionRefusalFor([s(0, 0, 'settings'), s(1, 0, 'settings')], {})).toBeNull();
+  });
 });
 
 describe('selecting the cold sample of each launch', () => {

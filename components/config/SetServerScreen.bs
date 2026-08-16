@@ -4,10 +4,15 @@ import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/screenReadiness.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/translate.bs"
 
 sub init()
+  ' Opened before anything else so the run covers the chrome build too — the
+  ' findNode/translate/center work below is part of what the user waits for, and a
+  ' ledger opened after it would report a screen that is faster than it is.
+  screenLoad.begin("setServer")
   m.log = new log.Logger("SetServerScreen")
   ' The router hands this view focus via the JRScreen lifecycle bridge (handleFocus).
   ' onScanForServersComplete sets the precise focus target (picker vs. textbox) once the SSDP
@@ -93,6 +98,11 @@ end sub
 sub ScanForServers()
   startLoadingSpinner(false)
 
+  ' Declared BEFORE the launch, per the ledger's rule 1. A `back` re-scan does not
+  ' re-open the ledger, so this is ignored on that path — the run is over and a
+  ' user-driven refresh is not a second load. Same shape as ItemDetails' refresh.
+  screenLoad.pending("scan")
+
   m.ssdpScanner = CreateObject("roSGNode", "ServerDiscoveryTask")
   'run the task
   m.ssdpScanner.observeField("content", "onScanForServersComplete")
@@ -101,6 +111,26 @@ end sub
 
 sub onScanForServersComplete(event)
   m.servers = event.getData()
+
+  ' Resolved at the TOP so the fill measures the TASK and nothing else. Everything
+  ' below it — the `saved_servers` registry read and the two merge passes — is
+  ' synchronous render-thread work with no async boundary to bracket, so it cannot be
+  ' a fill of its own; it falls out as `paint` minus `scan` instead. That subtraction
+  ' is only valid because the two spans nest exactly here, which is the whole reason
+  ' the resolve is not left at the bottom beside the paint.
+  screenLoad.resolve("scan")
+
+  ' What the picker is about to be built FROM, which is the workload this screen's
+  ' timing actually depends on: a LAN where discovery answers and one where the picker
+  ' fills from `saved_servers` alone are different workloads, not a noisy one, and a
+  ' sample that cannot say which it was must not be compared against the other.
+  '
+  ' ⚠️ Unlike every other `variant` in the app, this one is decided by the ENVIRONMENT
+  ' rather than by what the user opened — so it can differ BETWEEN launches of one
+  ' series. `scripts/measure-selection.js` refuses a median over a mixed series for
+  ' that reason; do not "simplify" this to a constant.
+  discovered = 0
+  if isValid(m.servers) then discovered = m.servers.Count()
 
   items = CreateObject("roSGNode", "ContentNode")
   stopLoadingSpinner()
@@ -176,6 +206,22 @@ sub onScanForServersComplete(event)
     m.serverUrlOutline.visible = true
   end if
 
+  ' Paint LAST, and deliberately not at the end of init(). At the end of init() the
+  ' user has prompt text, hints and a spinner — something to look at, and nothing to
+  ' act on: the picker is empty and no focus target has been chosen yet, so a keypress
+  ' lands nowhere. The screen becomes usable on the line above, which is why the clock
+  ' stops here. `settled` therefore lands with `paint` (the one fill resolved at the
+  ' top), and that is the honest report rather than a missing milestone: this screen
+  ' has exactly one readiness moment, and the number worth acting on is `scan` — the
+  ' share of it that was the task rather than the screen.
+  '
+  ' `variant` separates the two workloads, per ADR 0028. `savedOnly` is the run whose
+  ' whole wait was the collection window over registry content.
+  if discovered > 0
+    screenLoad.paint("discovered")
+  else
+    screenLoad.paint("savedOnly")
+  end if
 end sub
 
 ' Standard keyboard dialog (see source/utils/dialogs.bs). The helper owns the

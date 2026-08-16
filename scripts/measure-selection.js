@@ -158,6 +158,56 @@ export function selectionRefusalFor(samples = [], selector = {}, analysis = null
       '— it is the half that separates them.'
     );
   }
+
+  // Every launch mounted ONE screen, and they were not all the same one.
+  //
+  // Checked AFTER the ambiguity above, so a launch that offered several mounts is
+  // reported as that rather than as this — its message already asks for the flag that
+  // would resolve both.
+  //
+  // Distinct from every case above, and it is the one no per-launch check can see: there
+  // the operator must name a mount because a single LAUNCH offered several, and here
+  // every launch offered exactly one — but WHICH one was decided by the ENVIRONMENT
+  // rather than by the run. `setServer` is the first instrument with that property: it
+  // stamps `discovered` when SSDP answered on that launch and `savedOnly` when it did
+  // not, so a LAN where discovery is intermittent yields a series that is two
+  // populations with nothing per-launch to flag. Every variant before it was a property
+  // of what the nav opened (the item type, the library type) and therefore constant
+  // across a series by construction.
+  //
+  // REFUSED rather than warned, and the record is why. A warning prints and is gone;
+  // with nothing named `measure.js` writes `screenVariant` from the FIRST sample, so a
+  // six-and-nine split would publish a median over both populations LABELLED as whichever
+  // the first launch happened to draw — a well-formed record that no reader afterwards
+  // can detect, which is the failure this module exists to prevent. A refusal nulls both
+  // selection fields and leaves `observedVariants` to say what was really seen.
+  //
+  // Computed over the SELECTED samples, never all of them. A no-server launch
+  // legitimately mounts `preLogin/start` AND `setServer/savedOnly`, so the naive form
+  // fires on every correct run of the very screen that motivated it — and a refusal that
+  // fires routinely is worse than none, for the same reason the ledger declines to warn
+  // on an ordinary post-settle refresh.
+  if (!selector.variant) {
+    const tally = new Map();
+    for (const sample of selectColdSamples(samples, selector)) {
+      const variant = sample?.dimensions?.variant;
+      if (!variant) continue;
+      tally.set(variant, (tally.get(variant) ?? 0) + 1);
+    }
+    if (tally.size > 1) {
+      const seen = [...tally.entries()]
+        .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
+        .map(([variant, n]) => `${variant} ×${n}`)
+        .join(', ');
+      return (
+        `the launches in this series did not all measure the same variant (${seen}), so a ` +
+        'median over them would be a median over more than one population. Each launch ' +
+        'mounted exactly one screen, so no flag was missing at the time — which variant you ' +
+        'got was decided by the environment (for `setServer`, whether SSDP answered that ' +
+        'launch). Re-run naming one with --variant <name>.'
+      );
+    }
+  }
   return null;
 }
 
