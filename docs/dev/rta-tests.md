@@ -871,19 +871,47 @@ The split of responsibility is the part worth knowing:
   tier 1 still hard-asserts the server on every device, so a seed that silently did not
   take fails before a sample is written. Passing `--server` (or `--no-server`) alongside
   it is refused rather than merged — `measure` would take the last one, which would settle
-  a disagreement between the seed and the assert silently.
+  a disagreement between the seed and the assert silently. **Repeating any sign-in flag is
+  refused for the same reason** (`--sign-in A --sign-in B` would seed and assert `B`
+  without a word).
+- **The sign-in step takes the device lock**, exactly as `measure` does for the series. It
+  is the only part of a matrix run that writes the registry, so it is the part where a
+  concurrent run's `snapshotRegistry()` would adopt *our seed* as that user's state and
+  then restore it faithfully forever. The restore afterwards deliberately does **not** take
+  the lock: `rta:restore` is the documented repair for a device stranded by a dead run, and
+  a repair tool blocked by that run's leftover lock fails exactly when you need it.
 - **`hardRelaunch()` runs before the first registry read**, and that ordering is not
-  stylistic: the on-device component lives INSIDE the app, RTA sets no timeout on
-  `readRegistry`, so a device parked on the Roku home screen HANGS rather than failing —
-  and it presents exactly like a network problem.
-- **The restore runs whatever happened** — sign-in failure, measurement failure, or
-  Ctrl-C. The driver installs its own interrupt handler for that reason: the parent's
-  default SIGINT handling would terminate it in the window between "seeded" and
-  "restored". A second Ctrl-C abandons the restore, and the snapshot on disk is the
-  repair (`ROKU_IP=<host> npm run rta:restore`).
+  stylistic: the on-device component lives INSIDE the app, so an ODC read against a device
+  that is not running it HANGS rather than failing, and presents like a network problem.
+  RTA *does* time out its requests, but `sendRequest` awaits `setupClientSocket()` first
+  and that promise only self-rejects on `ECONNREFUSED`/`EPIPE` — so a connect that neither
+  connects nor errors never settles, and passing a `timeout` to `readRegistry` would not
+  help. The sign-in therefore carries its own **3-minute wall clock** against a ~40–50 s
+  healthy run. `hardRelaunch()` covers the common cause; the timeout covers the other one —
+  a resident build with no ODC (a Rooibos test build, a `build:prod`), which `--deploy`
+  does **not** rescue because that deploy happens inside `measure`, after the seed.
+- **The restore runs whatever happened** — sign-in failure, measurement failure, or an
+  interrupt. The driver installs handlers for `SIGINT`/`SIGTERM`/`SIGHUP` for that reason:
+  the default handling would terminate it in the window between "seeded" and "restored".
+  The rules are a pure function (`signalPolicy` in
+  [`measure-matrix.js`](../../scripts/measure-matrix.js)) rather than inline in the driver,
+  because the first cut of them was dead code — recorded in a flag a synchronous
+  `spawnSync` loop never let a handler set — and there was nowhere to pin it. The driver
+  awaits its children asynchronously now, like `rta-run.js` does.
+  - the **first** signal stops the run and kills the child so a bare `kill` means what
+    Ctrl-C means — **except when the restore is running**, which is the child the whole
+    mechanism exists to buy time for, so that one is left to finish;
+  - a **second** signal abandons it and names the device at risk
+    (`ROKU_IP=<the actual host> npm run rta:restore`); the snapshot on disk is the repair.
 - **A restore that did not verify fails the whole run** and prints the repair command on
   its own line, even when every measurement succeeded. A summary reporting three measured
   devices while one is still signed into the matrix's server would be true and useless.
+- **Every device is seeded in `RTA_CONFIG.languages[0]` (`en_US`)**, and that is a pin
+  rather than an oversight: a matrix compares hardware, so a row measured in `fr` beside
+  one in `en_US` differs in workload as well as in silicon. The cost is that a seeded
+  series and a plain `npm run measure` series on one device need not have run in the same
+  language, and `measurements.jsonl` carries no locale field to say so — the driver and the
+  sign-in both print it, and carrying it in the record is an open followup.
 
 Use `MEASURE_SIGNIN_PASSWORD` in `.env` rather than a `--password` flag for an account
 that has one; blank is the common case on a LAN test server.

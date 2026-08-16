@@ -33,6 +33,9 @@ export class MatrixError extends Error {
 /** The npm script, for use in refusal messages that name the way forward. */
 const CMD = 'npm run measure:devices';
 
+/** The repair for a device left seeded, named wherever one might be. */
+const RESTORE_CMD = 'npm run rta:restore';
+
 /**
  * Split a `ROKU_DEVICES` value into an ordered device list.
  *
@@ -230,6 +233,22 @@ export function parseSignIn(forwarded = [], env = {}) {
     if (value === '' && key !== 'password') {
       throw new MatrixError(`${name} was given an empty value.`);
     }
+
+    // A REPEAT is refused on exactly the reasoning that refuses `--server` beside
+    // `--sign-in` sixty lines below: the last one silently wins, so a disagreement
+    // between two spellings of the same intent gets SETTLED rather than surfaced,
+    // and the run produces a well-formed record of the wrong thing. `--sign-in A
+    // --sign-in B` would seed and assert B without a word. Same rule
+    // `parseDeviceList` applies to a repeated address, for the same reason.
+    //
+    // The values are deliberately NOT echoed: one of these flags is a password.
+    if (values[key] !== undefined) {
+      throw new MatrixError(
+        `${name} was given more than once, and the last one would silently win.\n` +
+          '  That is the one failure this mode cannot tolerate — the seed and the tier-1\n' +
+          '  assert have to name ONE server. Keep the one you meant and drop the other.',
+      );
+    }
     values[key] = value;
   }
 
@@ -281,6 +300,92 @@ export function parseSignIn(forwarded = [], env = {}) {
   return {
     signIn: { url, username, password: password ?? env.MEASURE_SIGNIN_PASSWORD ?? '' },
     forward: [...forward, '--server', url],
+  };
+}
+
+/**
+ * What an interrupt should do, given which child is running and whether one already landed.
+ *
+ * ## Why this is a function here rather than three `if`s in the handler
+ *
+ * The driver's interrupt handling has already been wrong once in a way no reader
+ * caught, and the reason it survived review is that there was nowhere to pin it. The
+ * first cut recorded the signal in a flag and branched on it — correct-looking, and
+ * DEAD: the device loop was `spawnSync` throughout, so the event loop never yielded a
+ * turn and the handler body never ran before `process.exit`. Verified 2026-08-16 by
+ * standalone reproduction, after which the loop went async (see `runFor` in
+ * `measure-devices.js`). The rules moved HERE at the same time, because this module's
+ * whole charter is that the driver's rules can be driven without three Rokus on the
+ * LAN — an interrupt policy is exactly that kind of rule, and it is the one that had
+ * been verified by reasoning instead.
+ *
+ * ## The rules, and the one the sibling entry point did not need
+ *
+ * `rta-run.js` faced this first and settled the shape: the first signal stops the run
+ * and lets the restore happen, a second abandons it, and the child is killed outright
+ * so a bare `kill` means the same thing a terminal Ctrl-C does. That is inherited.
+ *
+ * What is new here is that the matrix has THREE kinds of child and `rta-run.js` has
+ * one, so it never had to say which of them may be killed. The restore is the child
+ * this whole mechanism exists to buy time for, so a FIRST signal must not kill it —
+ * a literal port would abort the put-back while printing "stopping after this device
+ * is put back", which is the opposite of what it says. It is protected once; the
+ * second signal abandons it, and the snapshot on disk is what makes that safe.
+ *
+ * @param {string} signal the signal received, e.g. `SIGINT`.
+ * @param {object} state
+ * @param {string|null} state.kind which child is running — `sign-in` / `measure` /
+ *   `restore`, or `null` between two spawns (the window that used to be unreachable).
+ * @param {string|null} state.host the device that child is driving, so the abandon path
+ *   names the repair for the device actually at risk rather than a `<host>` placeholder.
+ * @param {boolean} state.interrupted whether a signal has already been recorded.
+ * @returns {{lines: string[], kill: 'SIGTERM'|'SIGKILL'|null, exit: number|null}}
+ *   `kill` is what to send the RUNNING child, and is `null` when there is none to send it
+ *   to — the caller would no-op on that anyway, but a policy that returns a signal for a
+ *   child that does not exist is a rule nobody can read back. `exit` is a process exit
+ *   code, or `null` to carry on.
+ */
+export function signalPolicy(signal, { kind = null, host = null, interrupted = false } = {}) {
+  // "Ctrl-C" only when Ctrl-C is what it was: this mode is now reachable by a bare
+  // `kill` and by a `timeout` wrapper, where telling the operator to press Ctrl-C
+  // names an action they did not take and cannot repeat.
+  const again = signal === 'SIGINT' ? 'Ctrl-C' : signal;
+
+  if (interrupted) {
+    // Never trap someone in an un-killable process. The snapshot is on disk before any
+    // seeding, so abandoning is recoverable rather than destructive — the same trade
+    // `armRestoreOnInterrupt` makes in `tests/rta/lib/registry.js`, and the reason the
+    // repair command travels with the message rather than being left to the summary
+    // (there will not be one).
+    return {
+      lines: [
+        `second ${signal} — abandoning the restore, exiting now.`,
+        `recover with: ROKU_IP=${host ?? '<host>'} ${RESTORE_CMD}`,
+      ],
+      kill: kind ? 'SIGKILL' : null,
+      exit: 130,
+    };
+  }
+
+  if (kind === 'restore') {
+    return {
+      lines: [
+        `${signal} — this device is being put back; that finishes first (~30 s).`,
+        `${again} again to abandon it — the snapshot on disk is the repair.`,
+      ],
+      kill: null,
+      exit: null,
+    };
+  }
+
+  return {
+    lines: [`${signal} — stopping after this device is put back. ${again} again to abandon.`],
+    // Killed rather than drained, so one signal means one thing however it was sent: a
+    // terminal Ctrl-C already reached the child through the process group, and this is
+    // what makes a bare `kill` behave the same instead of being absorbed for the rest
+    // of an n=30 series. The samples are lost either way on that path.
+    kill: kind ? 'SIGTERM' : null,
+    exit: null,
   };
 }
 
@@ -447,13 +552,17 @@ export function formatPlanLines(probes, { describeDevice = (m) => String(m) } = 
  */
 export function summariseMatrix(results) {
   const lines = results.flatMap((r) => {
+    // The stage rides on BOTH outcomes, not just the failure. "Interrupted" alone
+    // cannot say whether a device got as far as a series, and that is the difference
+    // between a row with samples on disk and one with none.
+    const stage = r.stage ? `${r.stage} ` : '';
     const verdict = r.skipped
       ? 'not run (the matrix stopped first)'
       : r.signal
-        ? `interrupted (${r.signal})`
+        ? `${stage}interrupted (${r.signal})`
         : r.status === 0
           ? 'measured'
-          : `${r.stage ? `${r.stage} ` : ''}FAILED (exit ${r.status}) — its own output above says why`;
+          : `${stage}FAILED (exit ${r.status}) — its own output above says why`;
     const line = `  ${r.host} — ${r.label}: ${verdict}`;
     return r.restored === false
       ? [

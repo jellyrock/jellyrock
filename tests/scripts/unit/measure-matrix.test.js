@@ -7,6 +7,7 @@ import {
   preflightRefusal,
   resolveDevices,
   serverDeclarationRefusal,
+  signalPolicy,
   summariseMatrix,
 } from '../../../scripts/measure-matrix.js';
 
@@ -235,6 +236,31 @@ describe('parseSignIn', () => {
     );
   });
 
+  /**
+   * A repeat is the same defect as `--server` beside `--sign-in`, in one flag instead
+   * of two: the last one wins silently, so the seed and the tier-1 assert could name
+   * different servers with nothing in the output saying so.
+   */
+  it('refuses a repeated sign-in flag rather than taking the last one', () => {
+    expect(() =>
+      parseSignIn(['--sign-in', URL, '--sign-in', 'http://other', '--user', 'a']),
+    ).toThrow(/--sign-in was given more than once/);
+    expect(() => parseSignIn(['--sign-in', URL, '--user', 'a', '--user', 'b'])).toThrow(
+      /--user was given more than once/,
+    );
+    expect(() => parseSignIn([`--sign-in=${URL}`, '--user', 'a', '--sign-in', URL])).toThrow(
+      /--sign-in was given more than once/,
+    );
+  });
+
+  /** The refusal must not echo the value it is refusing — one of these flags is a password. */
+  it('does not print the password when refusing a repeated --password', () => {
+    const run = () =>
+      parseSignIn(['--sign-in', URL, '--user', 'a', '--password', 's3cret', '--password', 'other']);
+    expect(run).toThrow(/--password was given more than once/);
+    expect(run).not.toThrow(/s3cret/);
+  });
+
   /** `--screen`/`--server` share a prefix; nothing here may swallow a neighbouring flag. */
   it('does not consume a different flag that starts the same way', () => {
     const { signIn, forward } = parseSignIn([
@@ -247,6 +273,98 @@ describe('parseSignIn', () => {
     ]);
     expect(signIn.username).toBe('alice');
     expect(forward).toEqual(['--username-ish', 'x', '--server', URL]);
+  });
+});
+
+/**
+ * The rules an interrupt follows. These live here rather than in the driver for a
+ * specific reason: the first cut of this policy was DEAD CODE — recorded in a flag the
+ * synchronous `spawnSync` loop never let a handler set — and it shipped because there
+ * was nowhere to pin it. Every rule below is now a red/green gate instead of a comment.
+ */
+describe('signalPolicy', () => {
+  const HOST = '192.0.2.10';
+
+  it('stops the run and kills the workload child on the first signal', () => {
+    for (const kind of ['sign-in', 'measure']) {
+      const p = signalPolicy('SIGINT', { kind, host: HOST });
+      expect(p.kill).toBe('SIGTERM');
+      expect(p.exit).toBeNull();
+      expect(p.lines[0]).toMatch(/stopping after this device is put back/);
+    }
+  });
+
+  /**
+   * The window that used to be unreachable: a signal landing between two spawns. It
+   * still has to STOP the run — the alternative is a matrix that carries on to the next
+   * device after the operator asked it not to.
+   */
+  it('stops the run when no child is running', () => {
+    const p = signalPolicy('SIGINT', { kind: null, host: HOST });
+    expect(p.kill).toBeNull();
+    expect(p.exit).toBeNull();
+    expect(p.lines[0]).toMatch(/stopping after this device is put back/);
+  });
+
+  /**
+   * The rule `rta-run.js` never needed, because it has one child and the matrix has
+   * three. Killing the restore here would abort the put-back while announcing it.
+   */
+  it('never kills the restore on a first signal', () => {
+    const p = signalPolicy('SIGINT', { kind: 'restore', host: HOST });
+    expect(p.kill).toBeNull();
+    expect(p.exit).toBeNull();
+    expect(p.lines[0]).toMatch(/being put back/);
+  });
+
+  /** Being un-killable is worse than being dirty; the snapshot on disk is what makes it safe. */
+  it('abandons on the second signal, whatever is running', () => {
+    for (const kind of ['sign-in', 'measure', 'restore']) {
+      const p = signalPolicy('SIGINT', { kind, host: HOST, interrupted: true });
+      expect(p.kill).toBe('SIGKILL');
+      expect(p.exit).toBe(130);
+      expect(p.lines[0]).toMatch(/second SIGINT — abandoning/);
+    }
+  });
+
+  /**
+   * `kill` names what to send the RUNNING child. With none running there is nothing to
+   * send it to, and a policy that returns a signal for a child that does not exist is a
+   * rule nobody can read back — even though the caller's optional chain would no-op.
+   */
+  it('asks for no kill when there is no child, on either path', () => {
+    expect(signalPolicy('SIGINT', { kind: null, interrupted: true })).toMatchObject({
+      kill: null,
+      exit: 130,
+    });
+    expect(signalPolicy('SIGINT', { kind: null })).toMatchObject({ kill: null, exit: null });
+  });
+
+  /**
+   * The abandon path is the one that leaves a device seeded, so it names the device
+   * actually at risk. A `<host>` placeholder makes the operator go and look it up at
+   * the exact moment the scrollback is being replaced by a shell prompt.
+   */
+  it('names the real host in the repair command, and falls back when it has none', () => {
+    expect(
+      signalPolicy('SIGINT', { kind: 'restore', host: HOST, interrupted: true }).lines[1],
+    ).toBe(`recover with: ROKU_IP=${HOST} npm run rta:restore`);
+    expect(signalPolicy('SIGINT', { interrupted: true }).lines[1]).toMatch(/ROKU_IP=<host>/);
+  });
+
+  /**
+   * This mode is reachable by a bare `kill` and by a `timeout` wrapper now, so telling
+   * the operator to press Ctrl-C would name an action they never took.
+   */
+  it('says "Ctrl-C" only for SIGINT', () => {
+    expect(signalPolicy('SIGINT', { kind: 'measure' }).lines[0]).toMatch(/Ctrl-C again/);
+    expect(signalPolicy('SIGTERM', { kind: 'measure' }).lines[0]).toMatch(/SIGTERM again/);
+    expect(signalPolicy('SIGHUP', { kind: 'restore' }).lines[1]).toMatch(/SIGHUP again/);
+  });
+
+  it('reports the signal it was actually given', () => {
+    expect(signalPolicy('SIGHUP', { kind: 'measure' }).lines[0]).toMatch(/^SIGHUP — /);
+    expect(signalPolicy('SIGTERM', { interrupted: true }).lines[0]).toMatch(/^second SIGTERM/);
   });
 });
 
@@ -411,6 +529,20 @@ describe('summariseMatrix', () => {
   it('names which stage failed when the run had more than one', () => {
     const s = summariseMatrix([row('a', { status: 1, stage: 'sign-in' })]);
     expect(s.lines[0]).toMatch(/a — Some Roku: sign-in FAILED \(exit 1\)/);
+  });
+
+  /**
+   * An interrupt needs the stage for the same reason a failure does, and arguably more:
+   * "interrupted" alone cannot say whether the device ever got as far as a series, which
+   * is the difference between a row with samples on disk and a row with none.
+   */
+  it('names the stage on an interrupted device too', () => {
+    const s = summariseMatrix([
+      row('a', { status: null, signal: 'SIGINT', stage: 'measure' }),
+      row('b', { status: null, signal: 'SIGINT', stage: 'sign-in' }),
+    ]);
+    expect(s.lines[0]).toMatch(/a — Some Roku: measure interrupted \(SIGINT\)/);
+    expect(s.lines[1]).toMatch(/b — Some Roku: sign-in interrupted \(SIGINT\)/);
   });
 
   /**

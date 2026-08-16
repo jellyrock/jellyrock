@@ -63,29 +63,48 @@ export async function deployRtaBuild() {
  */
 const DEPLOY_TIMEOUT_MS = 5 * 60 * 1000;
 
-async function withDeployTimeout(deployPromise) {
+/**
+ * Race `promise` against a wall clock, so an unbounded wait fails with a DIAGNOSIS.
+ *
+ * Exported because the deploy is not the only step here that can wait forever, and the
+ * second caller proved the shape general rather than deploy-specific. RTA's own timeouts
+ * do not cover this class: `sendRequest` races the request against `getTimeOut(options)`,
+ * but it `await`s `setupClientSocket()` FIRST — and that promise only self-rejects on
+ * `ECONNREFUSED`/`EPIPE`. A connect to port 9000 that neither connects nor errors leaves
+ * it unsettled, and `clientSocketPromise` is cached, so it stays that way. Read out of
+ * `client/dist/OnDeviceComponent.js` on 2026-08-16, not inferred from a symptom.
+ *
+ * So a caller that needs a bound on "the on-device component answers at all" has to put
+ * it OUTSIDE the ODC call. That is what this is for.
+ *
+ * @param {Promise} promise the work to bound.
+ * @param {number} ms the cap.
+ * @param {string} message what to throw — say the likely CAUSE, not just the elapsed time.
+ */
+export async function withTimeout(promise, ms, message) {
   let timer;
   const timeout = new Promise((_resolve, reject) => {
-    timer = setTimeout(() => {
-      reject(
-        new Error(
-          `deploy did not finish within ${DEPLOY_TIMEOUT_MS / 1000}s. The sideload itself is ` +
-            'rarely the problem: this step also waits for the on-device component, which runs ' +
-            'INSIDE the app, so an app that CRASHES during launch never answers and the wait ' +
-            'never ends. Check the device debug console (telnet <ROKU_IP> 8085) for a backtrace ' +
-            'before re-running — a crash on the launch path presents as this hang, not as an error.',
-        ),
-      );
-    }, DEPLOY_TIMEOUT_MS);
+    timer = setTimeout(() => reject(new Error(message)), ms);
     // Never hold the process open on the timer alone.
     timer.unref?.();
   });
   try {
-    return await Promise.race([deployPromise, timeout]);
+    return await Promise.race([promise, timeout]);
   } finally {
     clearTimeout(timer);
   }
 }
+
+const withDeployTimeout = (deployPromise) =>
+  withTimeout(
+    deployPromise,
+    DEPLOY_TIMEOUT_MS,
+    `deploy did not finish within ${DEPLOY_TIMEOUT_MS / 1000}s. The sideload itself is ` +
+      'rarely the problem: this step also waits for the on-device component, which runs ' +
+      'INSIDE the app, so an app that CRASHES during launch never answers and the wait ' +
+      'never ends. Check the device debug console (telnet <ROKU_IP> 8085) for a backtrace ' +
+      'before re-running — a crash on the launch path presents as this hang, not as an error.',
+  );
 
 /**
  * Foreground the dev channel and wait for boot + the RTA on-device component.

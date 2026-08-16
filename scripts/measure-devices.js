@@ -27,6 +27,14 @@
  * a mode that seeds must adopt `lib/registry.js` at the same time. This one does, through
  * that child — and the restore is `rta-restore.js`, which already owns exactly this job.
  *
+ * The sign-in child takes the device LOCK for its own step, exactly as `measure.js` does
+ * for the series. It is the one part of a matrix run that writes the registry, so it is the
+ * part where a concurrent run doing its own `snapshotRegistry()` would adopt OUR SEED as
+ * that user's state and then preserve it forever. The restore afterwards deliberately does
+ * not claim the lock: `rta-restore.js` is the documented repair for a device stranded by a
+ * dead run, and a repair tool that can be blocked by the lock the dead run left behind is
+ * one you need exactly when it will not work.
+ *
  * ## Why this drives `measure.js` as a CHILD PROCESS rather than calling `runSeries`
  *
  * The obvious shape is an in-process loop around `runSeries` — the loop was extracted for
@@ -89,11 +97,12 @@
  * of the matrix carries on.
  */
 import 'dotenv/config';
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchDeviceInfo } from './device-lock.js';
 import { describeDevice, cannotRunApps, ramTierFor } from './roku-devices.js';
+import { RTA_CONFIG } from '../tests/rta/config.js';
 import {
   MatrixError,
   formatPlanLines,
@@ -101,6 +110,7 @@ import {
   preflightRefusal,
   resolveDevices,
   serverDeclarationRefusal,
+  signalPolicy,
   summariseMatrix,
 } from './measure-matrix.js';
 
@@ -164,6 +174,11 @@ if (signIn) {
   console.log(
     `[matrix] --sign-in: each device is seeded into ${signIn.url} as ` +
       `${JSON.stringify(signIn.username)}, measured, then restored to the state it was found in.\n` +
+      // The locale is stated because the seed CHANGES it and no record carries it — a
+      // seeded series and a plain `npm run measure` series on one device need not have run
+      // in the same language, and this line is currently the only place that says so.
+      `[matrix]   Every device is seeded in ${RTA_CONFIG.languages[0]}, so the matrix compares\n` +
+      '[matrix]   hardware rather than translation length.\n' +
       '[matrix]   Its whole registry is written to .device-runs/registry-<host>.json before any\n' +
       '[matrix]   seeding, so an interrupted run is repaired by: ROKU_IP=<host> npm run rta:restore',
   );
@@ -178,46 +193,103 @@ if (untiered.length) {
   );
 }
 
+/**
+ * Run one of this tool's helper scripts against `host`, inheriting its output.
+ *
+ * ASYNC — `spawn` and an awaited `exit`, never `spawnSync` — and that is load-bearing
+ * rather than stylistic. Node delivers a signal to a JS handler on an event-loop TURN, and
+ * a run of blocking `spawnSync` calls never yields one. The first cut of this file was
+ * synchronous, and the consequence was invisible in review: the interrupt handlers below
+ * were installed (which suppressed Node's default termination, so the restore did run) but
+ * their bodies never executed. The recorded flag stayed null, every line they print was
+ * unreachable, and a bare `kill` was absorbed outright until the whole matrix finished.
+ * Reproduced standalone on 2026-08-16 — signal delivered mid-loop, flag still null three
+ * spawns later, handler firing only once an explicit yield was added after the loop.
+ *
+ * `rta-run.js` awaits its Vitest child the same way, for the same reason.
+ *
+ * Resolves rather than rejects on every outcome: a device that could not be driven is one
+ * ROW of this matrix, and the summary is where that belongs.
+ *
+ * `detached` puts a child in its own PROCESS GROUP, and only the restore asks for it. A
+ * terminal Ctrl-C signals the whole foreground group, so the parent merely DECLINING to
+ * kill the restore (which is what `signalPolicy` returns) protects nothing on the path
+ * that matters most — the child dies from the group signal regardless, while the handler
+ * prints "that finishes first". Measured 2026-08-16 both ways: same group, the restore is
+ * killed mid-put-back and never reaches its verify; its own group, it runs to completion
+ * and exits 0, and an explicit `child.kill('SIGKILL')` on the second signal still reaches
+ * it. Sign-in and measure deliberately stay in the group — those SHOULD die on Ctrl-C, and
+ * the policy kills them explicitly so a bare `kill` means the same thing.
+ */
+
+/** The child running right now, or null between two spawns. Maintained by `runFor` below. */
+let current = null;
+
+const runFor = (host, kind, script, argv = [], env = {}, { detached = false } = {}) =>
+  new Promise((resolve) => {
+    const child = spawn(process.execPath, [script, ...argv], {
+      stdio: 'inherit',
+      detached,
+      // `ROKU_IP` LAST so it wins over the inherited one. `.env` cannot take it back:
+      // dotenv leaves an already-set variable alone (verified, not assumed — the whole
+      // design rests on it).
+      env: { ...process.env, ...env, ROKU_IP: host },
+    });
+    // Published so an interrupt can act on whatever is running — which of the three kinds
+    // it is decides whether it may be killed. See `signalPolicy`.
+    current = { child, kind, host };
+
+    let settled = false;
+    const done = (result) => {
+      if (settled) return;
+      settled = true;
+      current = null;
+      resolve(result);
+    };
+    // A child that never STARTED (a bad path, a fork failure) emits `error` and no `exit`.
+    // Left unhandled that is a promise the matrix waits on forever; reported as a null
+    // status it reads as `FAILED (exit null) — its own output above says why` with no
+    // output above it, so the cause is printed here because nothing else will.
+    child.on('error', (e) => {
+      console.error(
+        `\n[matrix] could not start ${path.basename(script)} for ${host}: ${e.message}`,
+      );
+      done({ status: null, signal: null });
+    });
+    child.on('exit', (status, signal) => done({ status, signal }));
+  });
+
 // ─── Interrupts ──────────────────────────────────────────────────────────────
 //
-// Installed only for the sign-in mode, and it exists to buy the RESTORE a chance to run.
-// Ctrl-C reaches the whole process group, so the child dies either way — but the parent's
-// DEFAULT SIGINT handling is to terminate too, and it would do so the moment the blocking
-// `spawnSync` returned, i.e. exactly between "device is seeded" and "device is restored".
-// A handler that records the interrupt and returns suppresses that default, so the
-// synchronous flow below reaches its restore and its summary. (It also makes the
-// already-written "mark the rest skipped" path reachable on Ctrl-C for the first time; a
-// parent killed by the default handler never got there.)
+// Installed only for the sign-in mode: without a seed there is no restore to protect, and
+// Node's default termination is the right behavior.
 //
-// A SECOND interrupt abandons the restore and leaves immediately — the snapshot on disk is
-// what makes that safe, and being un-killable is worse than being dirty. Same trade
-// `armRestoreOnInterrupt` makes in `tests/rta/lib/registry.js`.
+// What the handler must buy is the RESTORE. Ctrl-C reaches the whole process group, so the
+// running child dies either way — but the parent's default handling would terminate it too,
+// in the window between "device is seeded" and "device is restored". Installing a handler
+// suppresses that default; running the policy is what makes the rest of it true.
+//
+// The rules themselves live in `signalPolicy` (`measure-matrix.js`) rather than here,
+// because this file cannot be reached by a test and that is exactly how the dead-code
+// version above shipped. What is left here is delivery: print, kill, exit, record.
 let interrupted = null;
 if (signIn) {
-  for (const signal of ['SIGINT', 'SIGTERM']) {
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
     process.on(signal, () => {
-      if (interrupted) {
-        console.log(`\n[matrix] second ${signal} — abandoning the restore, exiting now.`);
-        console.log('[matrix] recover with: ROKU_IP=<host> npm run rta:restore');
-        process.exit(130);
-      }
+      const policy = signalPolicy(signal, {
+        kind: current?.kind ?? null,
+        host: current?.host ?? null,
+        interrupted: Boolean(interrupted),
+      });
+      policy.lines.forEach((line, i) => console.log(`${i === 0 ? '\n' : ''}[matrix] ${line}`));
+      if (policy.kill) current?.child.kill(policy.kill);
+      // Recorded BEFORE the exit check so it cannot be lost, and after the policy has read
+      // its previous value — this is what turns the next signal into the abandon path.
       interrupted = signal;
-      console.log(
-        `\n[matrix] ${signal} — stopping after this device is put back. Ctrl-C again to abandon.`,
-      );
+      if (policy.exit !== null) process.exit(policy.exit);
     });
   }
 }
-
-/** Run one of this tool's helper scripts against `host`, inheriting its output. */
-const runFor = (host, script, argv = [], env = {}) =>
-  spawnSync(process.execPath, [script, ...argv], {
-    stdio: 'inherit',
-    // `ROKU_IP` LAST so it wins over the inherited one. `.env` cannot take it back:
-    // dotenv leaves an already-set variable alone (verified, not assumed — the whole
-    // design rests on it).
-    env: { ...process.env, ...env, ROKU_IP: host },
-  });
 
 // ─── The devices, in order ───────────────────────────────────────────────────
 const results = [];
@@ -234,8 +306,9 @@ for (const [i, probe] of probes.entries()) {
   // first write, so a sign-in that failed halfway is exactly the case it exists for.
   let seeded = false;
   if (signIn) {
-    const child = runFor(
+    const child = await runFor(
       probe.host,
+      'sign-in',
       SIGNIN,
       ['--url', signIn.url, '--user', signIn.username],
       // The password never reaches argv — see `measure-signin.js`.
@@ -255,12 +328,14 @@ for (const [i, probe] of probes.entries()) {
     // The sign-in failed, so there is no state to measure against. Its exit code is
     // already on the row; the restore below still runs.
   } else if (interrupted) {
-    // The interrupt landed between a successful sign-in and this spawn. Overwriting the
-    // sign-in's exit 0 is the whole point: without it the row keeps a passing status and
-    // the summary reports a device as `measured` that never ran a series at all.
+    // The interrupt landed between a successful sign-in and this spawn — a window that was
+    // unreachable while the loop was synchronous, and is now genuinely covered. Overwriting
+    // the sign-in's exit 0 is the whole point: without it the row keeps a passing status
+    // and the summary reports a device as `measured` that never ran a series at all.
     row.signal = interrupted;
+    row.stage = 'measure';
   } else {
-    const child = runFor(probe.host, MEASURE, forwarded);
+    const child = await runFor(probe.host, 'measure', MEASURE, forwarded);
     row.status = child.status;
     row.signal = child.signal;
     if (child.status !== 0 || child.signal) row.stage = 'measure';
@@ -268,10 +343,14 @@ for (const [i, probe] of probes.entries()) {
 
   // ALWAYS, whatever happened above — including an interrupt. A device left seeded is the
   // damage `lib/registry.js` was written to prevent, and it compounds: the next run that
-  // snapshots it adopts the leftovers as the user's own state.
+  // snapshots it adopts the leftovers as the user's own state. `signalPolicy` protects this
+  // child from a first interrupt for the same reason.
   if (seeded) {
     console.log(`\n[matrix] ${probe.host}: restoring the registry ...`);
-    row.restored = runFor(probe.host, RESTORE).status === 0;
+    // `detached` so a terminal Ctrl-C cannot kill it out from under the policy that just
+    // promised it would finish — see `runFor`.
+    row.restored =
+      (await runFor(probe.host, 'restore', RESTORE, [], {}, { detached: true })).status === 0;
   }
 
   // A signal is the operator, not the device. Carrying on to the next device would ignore

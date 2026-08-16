@@ -22,6 +22,8 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Currently running
 
+Reviewing and hardening `feat/measure-matrix-sign-in` before PR — the measurement matrix's `--sign-in` mode. The review found the driver's interrupt handling was dead code under a synchronous `spawnSync` loop (handlers installed, bodies never reached); fixed by moving to async `spawn` with the policy extracted as a pure, tested `signalPolicy`, plus a sign-in timeout, a device lock on the seed step, a repeated-flag refusal, and locale disclosure.
+
 ## Recently shipped
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
