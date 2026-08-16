@@ -26,59 +26,31 @@ import {
   waitFocused,
   waitFocusInside,
   waitHome,
+  walkHomeToFirstRow,
   hasChildren,
   resendIfSwallowed,
   sleep,
 } from './steps.js';
 
 /**
- * From Home, move focus into the overhang and onto the icon with id `iconId`. Up
- * moves focus from the home content into the overhang; the overhang focus chain is
- * TabBar -> Search -> Settings (left to right, see JROverhang.bs), with a variable
- * tab count, so we walk Right until the icon is focused. The action is guarded to
+ * From Home, move focus into the overhang and onto the icon with id `iconId`.
+ *
+ * Two preconditions, in order. Home's active list must be resting on row 0, or Up does not
+ * leave Home at all (`walkHomeToFirstRow`). Only then does Up move focus into the overhang,
+ * whose focus chain is TabBar -> Search -> Settings (left to right, see JROverhang.bs) with
+ * a variable tab count, so we walk Right until the icon is focused. The action is guarded to
  * only press while NOT yet on the icon, so it can't overshoot onto the user dropdown.
  */
 async function focusOverhangIcon(iconId) {
   await waitHome();
-  // Up leaves Home ONLY from the first row. `Home.onKeyEvent` escapes to the overhang
-  // when `rowItemFocused[0] = 0`, and at any other index returns false — so the key
-  // bubbles away, focus never moves, and the Right walk below then spends its whole
-  // timeout pressing at a list that is not listening. That presents as "the screen
-  // never loaded", which is the north-star failure this file's header warns about.
-  //
-  // `waitHome()` is NOT this precondition: it gates on rows EXISTING, and `HomeRows`
-  // inserts the latest-media rows MID-LIST (`insertLatestMediaSkeletons`) rather than
-  // appending them, so the focused row index can still move after that gate passes.
-  //
-  // Read off the FOCUSED node rather than `#homeRows`: Home's active list is
-  // `m.activeContent`, which is the favorites list while that tab is selected.
-  //
-  // Walking rather than only waiting, because the index does NOT return to 0 on its own —
-  // a passive wait would just time out. The walk ANNOUNCES itself: resting anywhere but
-  // row 0 straight after a relaunch is an app-side surprise, and a harness that silently
-  // routes around one can mask the very regression a measurement run exists to catch.
-  let walked = 0;
-  let walkedFrom = null;
-  await waitFocused((f) => f?.node?.rowItemFocused?.[0] === 0, {
-    timeout: 10000,
-    interval: 400,
-    label: 'home row 0 focused (Up leaves Home only from the first row)',
-    action: async () => {
-      const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
-      const row = f?.node?.rowItemFocused?.[0];
-      // Press ONLY on a row index we can actually see above 0. An ABSENT field means focus
-      // is not on a row list at all, where Up is not the right key — send nothing and let
-      // the wait time out under its own name rather than pressing at an unknown component.
-      if (typeof row === 'number' && row > 0) {
-        if (walkedFrom === null) walkedFrom = row;
-        walked++;
-        await press(ecp.Key.Up);
-      }
-    },
-  });
+  // Up leaves Home ONLY from the first row — see `walkHomeToFirstRow`, which is where that
+  // rule and its tests live. Announced rather than silently routed around: resting anywhere
+  // but row 0 straight after a relaunch is an app-side surprise, and a harness that quietly
+  // recovers from one can mask the very regression a run exists to catch.
+  const { walked, from } = await walkHomeToFirstRow();
   if (walked > 0) {
     console.warn(
-      `[nav] Home was resting on row ${walkedFrom}, not row 0 — walked up ${walked} time(s) ` +
+      `[nav] Home was resting on row ${from}, not row 0 — walked up ${walked} time(s) ` +
         'before reaching the overhang. Up cannot leave Home from any other row, so this ' +
         'would previously have failed as "screen never loaded". Worth investigating why ' +
         'the first row was not focused after a relaunch.',
