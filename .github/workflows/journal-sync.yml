@@ -18,9 +18,32 @@
 #   - Idempotency: today's date already has a Recently shipped bullet
 #     overlapping the PR title (re-runs are safe)
 #
-# Concurrency: serialized with the same group jellyrock-bot uses for main
-# pushes — these workflows mutate the same files, so a shared queue prevents
-# stale-base push failures.
+# Concurrency: ONE GROUP PER PR, and that is a fix rather than a style choice.
+#
+# This used to share `jellyrock-bot-main` with jellyrock-bot, on the reasoning that
+# both mutate the same files so a shared queue prevents stale-base push failures.
+# The queue does that, and it also silently destroys work: GitHub keeps only ONE
+# pending run per concurrency group, so a run waiting behind jellyrock-bot is
+# CANCELLED the moment a newer run enters the group. `cancel-in-progress: false`
+# does not help — it protects a run that is already executing, not a pending one.
+#
+# For jellyrock-bot that is survivable, because its jobs are idempotent recomputes:
+# the superseding run redoes whatever the superseded one would have done (see the
+# "do not re-add the actor guard" comment in jellyrock-bot.yml, which is this same
+# hazard). This workflow has no such property — it ships only the ONE PR in its own
+# trigger payload, so a superseded run's bullet is lost permanently, and a cancelled
+# run is indistinguishable from a successful one in the run list unless somebody
+# checks for the commit that never appeared.
+#
+# Measured, not theorised: of the runs on 2026-08-12 and 2026-08-14, #808's sync was
+# cancelled and its bullet NEVER landed, and #813's was cancelled and its bullet
+# exists only because a human wrote the commit by hand.
+#
+# Keying the group on the PR number means a journal-sync can never evict another
+# journal-sync, and can never be evicted by jellyrock-bot. The stale-base risk the
+# shared queue was covering is handled where it actually occurs — at the push, which
+# rebases and retries (see "Commit and push"). That converts a silent, permanent
+# loss into either a success or a loud red run.
 
 name: Journal Sync (post-merge)
 
@@ -29,7 +52,7 @@ on:
     types: [closed]
 
 concurrency:
-  group: jellyrock-bot-main
+  group: journal-sync-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
@@ -106,7 +129,28 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          git pull --rebase --autostash origin main
           git add docs/progress.md
           git commit -m "chore(journal): sync ${PR_TITLE} (#${PR_NUMBER})"
-          git push origin main
+
+          # Retry the rebase-and-push rather than relying on a shared queue to make
+          # races impossible. Now that this workflow has its own per-PR concurrency
+          # group, another writer to main (jellyrock-bot, or another PR's sync) CAN
+          # land between our fetch and our push — which is the stale-base failure the
+          # shared group used to prevent, and it is cheap to absorb here: the commit
+          # is already made, so a retry only has to replay it onto the new tip.
+          #
+          # A bounded loop, and a FAILURE at the end rather than a silent give-up:
+          # exhausting the retries means main is being written faster than this can
+          # keep up, which is a real condition someone should see as a red run. The
+          # thing this workflow must never do again is lose a bullet quietly.
+          for attempt in 1 2 3 4 5; do
+            if git pull --rebase --autostash origin main && git push origin main; then
+              echo "✅ pushed on attempt ${attempt}"
+              exit 0
+            fi
+            echo "⚠️ push attempt ${attempt} failed (main moved under us); retrying..."
+            sleep $((attempt * 5))
+          done
+
+          echo "::error::journal-sync could not push after 5 attempts — main is moving faster than this workflow can rebase onto it. The bullet for #${PR_NUMBER} has NOT landed; re-run this workflow."
+          exit 1
