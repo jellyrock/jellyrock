@@ -321,6 +321,37 @@ for (const event of ['uncaughtException', 'unhandledRejection']) {
 
 const run = beginRun({ lock, run: 'measure' });
 
+// The same net for a SIGNAL that the hooks above are for a throw, and it needs its own:
+// `run-record.js`'s backstop is a `process.on('exit')` handler, which a signal-terminated
+// process never reaches, and nothing can await inside one anyway. Without this a series
+// stopped with Ctrl-C leaves the device claimed by a pid that no longer exists, and
+// `npm run device:status` reports it busy for the rest of the lease.
+//
+// Pre-existing, and promoted from theoretical to routine by `measure:devices --sign-in`:
+// that driver KILLS this child on a first interrupt (so a bare `kill` means what Ctrl-C
+// means), so interrupting a matrix stranded a lock every time. Observed 2026-08-16 — the
+// next matrix run lost a whole RAM tier to a lock held by a dead process id.
+//
+// Releasing on the abandon path is deliberate, and `rta-run.js` states the reasoning this
+// mirrors: the run is over either way, and leaving the LOCK behind too would wedge every
+// other contender until the TTL expires, for no benefit.
+let interrupting = false;
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  process.on(signal, async () => {
+    // Never trap someone in an un-killable process — nothing here is destructive to leave
+    // (this tool does not write the registry), so a second signal just goes.
+    if (interrupting) process.exit(130);
+    interrupting = true;
+    console.log(`\n[measure] ${signal} — abandoning the series and releasing the device.`);
+    socket?.destroy();
+    // Folded as INTERRUPTED rather than left to the exit net, which would label an
+    // operator's deliberate stop `crashed` — the same correction `rta-run.js` makes.
+    run.close(RUN_OUTCOMES.INTERRUPTED);
+    await lock.release().catch(() => {});
+    process.exit(130);
+  });
+}
+
 if (args.deploy) {
   // BUILD, then deploy. `deployRtaBuild()` sideloads the `build/` DIRECTORY and does not
   // produce it, and every bsconfig in the repo writes to that same directory — so
