@@ -1,6 +1,6 @@
 ---
 name: log
-description: Append/update an entry in one of the project journals — `decision` (agent-gated: ADR-grade → a numbered record in `docs/adr/`, sub-architectural → a `docs/decisions.md` note, trivia declined), `followup` (`docs/progress.md` open followups, deferred work not yet issue-shaped or tech-debt-shaped), `signal` (`docs/signals-backlog.md`, an external version-watch row), or `running` (`docs/progress.md` `## Currently running` paragraph; replaces the in-flight cursor). Routes by first $ARGUMENTS token. Mechanical types (followup, signal, running) apply directly via Edit — no per-invocation confirmation prompt. The `decision` type is agent-gated: the agent drafts the record, applies a significance gate (architectural / hard-to-reverse / cross-component?), routes it (ADR vs. sub-ADR note vs. decline), and diff-confirms before writing, with one-tap human override — the human classifies nothing. The sole sanctioned capture path for these journals; raw markdown edits are not permitted (per AGENTS.md capture-discipline rule).
+description: Append/update an entry in one of the project journals — `decision` (agent-gated: ADR-grade → a numbered record in `docs/adr/`, sub-architectural → a `docs/decisions.md` note, trivia declined), `followup` (`docs/progress.md` open followups, deferred work not yet issue-shaped or tech-debt-shaped; `--replace=<substring>` revises one existing bullet in place rather than appending, for a multi-step entry whose step shipped), `signal` (`docs/signals-backlog.md`, an external version-watch row), or `running` (`docs/progress.md` `## Currently running` paragraph; replaces the in-flight cursor). Routes by first $ARGUMENTS token. Mechanical types (followup, signal, running) apply directly via Edit — no per-invocation confirmation prompt. The `decision` type is agent-gated: the agent drafts the record, applies a significance gate (architectural / hard-to-reverse / cross-component?), routes it (ADR vs. sub-ADR note vs. decline), and diff-confirms before writing, with one-tap human override — the human classifies nothing. The sole sanctioned capture path for these journals; raw markdown edits are not permitted (per AGENTS.md capture-discipline rule).
 model: sonnet
 effort: low
 ---
@@ -35,7 +35,7 @@ effort: low
 - **Decision-log creep + ADR creep.** The significance bar is load-bearing at two levels: a routine fix, an obvious choice, or time-bound state is NOT a decision entry at all; and a decision that's local in blast radius is a `docs/decisions.md` note, NOT a numbered ADR. If everything becomes an entry the high-signal ones drown; if every decision becomes an ADR, no decision is architectural.
 - **Letting the human predict ADR-grade at capture time.** `/log decision` must NOT ask the user "is this an ADR?" up front — that re-imports the prediction-at-capture friction the agent-gate exists to remove. The agent classifies with full session context and routes; the human only confirms or overrides the proposed routing in one tap.
 - **Inventing missing fields when they're not inferable.** If the user said "log a followup" with no body or inferable area, ask — don't pick a plausible-looking placeholder. The bar is "genuinely ambiguous," not "any uncertainty."
-- **Folding a closure into a `/log` capture.** `/log` only *appends* a new entry. Don't strike-through, ✅-mark, or otherwise "close" an existing bullet during a `/log` run, and don't touch a *different* bullet than the one you're appending. Closure is `/done`'s job, as a separate invocation.
+- **Folding a closure into a `/log` capture.** Don't strike-through, ✅-mark, or otherwise "close" an existing bullet during a `/log` run, and don't touch a *different* bullet than the one you're writing. Closure is `/done`'s job, as a separate invocation. `/log followup --replace=<substring>` is not an exception to this: it REVISES one bullet the caller named explicitly and leaves it open under `## Open followups`, writing nothing to `## Recently shipped`. The rule guards against a `/log` run silently touching a bullet nobody asked about — not against revising the one it was pointed at.
 - **Bumping multiple journals when only one was meant.** Each type's flow has a defined write surface; cross-bumping is a smell (the one sanctioned cross-write is the `last-updated:` bump that keeps the staleness banner honest).
 - **Manually bumping auto-maintained signal fields.** The `latest_upstream` + `last_checked` fields for aggregator-managed slugs (`jellyfin-server-stable`, `jellyfin-server-rc`, `roku-os`) are owned by `scripts/catchup-state.js`; don't hand-edit them.
 
@@ -149,24 +149,36 @@ This validates: every `tech-debt.md#anchor` ref resolves, every relative markdow
 
 ### Step 2-F — Followup
 
-Appends a bullet to a `### <area>` subsection of `## Open followups` in [`docs/progress.md`](../../../docs/progress.md), then bumps the file's `last-updated:` frontmatter to today.
+Appends a bullet to a `### <area>` subsection of `## Open followups` in [`docs/progress.md`](../../../docs/progress.md) — or, with `--replace=<substring>`, revises one existing bullet in place — then bumps the file's `last-updated:` frontmatter to today.
 
 #### Capture
 
 Elicit (or derive from `$ARGUMENTS`):
 
 - **text**: the followup description (one line, ~80 chars max). May be quoted in `$ARGUMENTS`.
-- **area**: one of the recognized areas (`scripts`, `components`, `source`, `tests`, `docs`, `claude`, etc. — match an existing `### <area>` subsection in progress.md, OR propose adding a new subsection).
+- **area**: one of the recognized areas (`scripts`, `components`, `source`, `tests`, `docs`, `claude`, etc. — match an existing `### <area>` subsection in progress.md, OR propose adding a new subsection). Append mode only — `--replace` keeps the target bullet's existing area.
+- **`--replace=<substring>`** (optional): revise ONE existing bullet in place instead of appending a new one. See below.
 
 If `--area=<name>` is not in `$ARGUMENTS`, infer from the recent working context (last commit's touched files map to an area; an open editor file's path) or ask. Don't guess silently.
 
-#### Compose the diff
+#### Compose the diff — append mode (the default)
 
 - If the target area subsection contains a `(none)` placeholder line, REMOVE that line and insert the new bullet `- <text>` in its place.
 - Otherwise, insert `- <text>` as the last bullet under the area heading (preserving any existing bullets above).
 - ALSO update the frontmatter: `last-updated: YYYY-MM-DD` → today's ISO date. Use `date +%Y-%m-%d` to get today.
 
 If the target area doesn't exist as a subsection, propose adding `### <area>\n\n- <text>` at the bottom of the `## Open followups` section. Ask before applying.
+
+#### Compose the diff — `--replace=<substring>` mode
+
+**Why this exists.** A followup that lists ordered steps has no other way to record that ONE step shipped. `/done` prepends the matched bullet's text VERBATIM to Recently shipped, so closing a three-step entry because step 2 landed publishes a shipped-line claiming the whole thing — which `/done`'s own "closure writes reflect reality, not optimism" rule forbids. Append-only `/log` leaves the stale bullet standing beside a new one that contradicts it, so `/catchup` reads whichever it hits first. The gap was filed as a followup in `docs/progress.md` after it was hit closing step 1 of the ODC-calibration entry, and hit again on step 2. This mode is the fix, and it keeps the write inside the skill — which is the property the capture-discipline rule actually cares about.
+
+- Search the bullet TEXT of every `### <area>` subsection under `## Open followups` for `<substring>` (plain substring, case-sensitive).
+- **Exactly one match is required.** On **zero** matches, refuse and say so — do not fall back to appending, because a silent append is precisely the two-contradicting-bullets state this mode exists to prevent. On **more than one**, refuse and print the matching bullets' opening words so the user can supply a longer substring; never pick one.
+- Replace that bullet's text with `<text>`. Keep it in its existing `### <area>` subsection and at its existing position — a revised entry is the same entry, and moving it would churn the ordering `/catchup` and `/focus` read.
+- ALSO bump `last-updated:` to today, exactly as append mode does.
+
+**`--replace` revises; it never closes.** The bullet stays under `## Open followups` and nothing is written to `## Recently shipped`. If the whole followup is done, that is `/done`, as a separate invocation. If the revision would leave the bullet saying nothing is outstanding, that is the tell that you wanted `/done` instead.
 
 #### Surface, apply, verify
 
