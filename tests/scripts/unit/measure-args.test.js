@@ -379,3 +379,80 @@ describe('--no-server, which is how `serverSelect` becomes measurable', () => {
     expect(args.component).toBe('setServer');
   });
 });
+
+describe('--enclosed-server — the arm that cannot read its own identity (ADR 0030)', () => {
+  const url = 'http://192.0.2.10:8096';
+
+  it('takes the URL the enclosing reads observed', () => {
+    expect(parse(['--enclosed-server', url]).enclosedServer).toBe(url);
+  });
+
+  it('is absent by default, so nothing reads as enclosed by accident', () => {
+    expect(parse([]).enclosedServer).toBeUndefined();
+  });
+
+  it('REFUSES --server beside it — two claims about where the expectation came from', () => {
+    // Not a duplicate flag: `--server` is checked against a read THIS run took,
+    // `--enclosed-server` against reads the caller took either side. Letting one win
+    // silently is how an inference gets recorded as an observation.
+    expect(() => parse(['--enclosed-server', url, '--server', url])).toThrow(MeasureArgError);
+    expect(() => parse(['--enclosed-server', url, '--server', url])).toThrow(
+      /may not be combined with --server/,
+    );
+  });
+
+  it('refuses --no-server beside it', () => {
+    expect(() => parse(['--enclosed-server', url, '--no-server'])).toThrow(/--no-server/);
+  });
+
+  it('refuses --nav beside it, because a nav is driven over the ODC this arm lacks', () => {
+    expect(() =>
+      parseMeasureArgs(['--enclosed-server', url, '--nav', 'settings'], {
+        measurementIds: IDS,
+        defaultMeasurement: IDS[0],
+        navScreens: [{ name: 'settings', state: 'home' }],
+      }),
+    ).toThrow(/may not be combined with --nav/);
+  });
+
+  it('refuses --deploy beside it — that sideloads the arm this flag says is absent', () => {
+    expect(() => parse(['--enclosed-server', url, '--deploy'])).toThrow(/--deploy/);
+  });
+
+  it('refuses either order of the pair, not just the one that happens to parse second', () => {
+    expect(() => parse(['--server', url, '--enclosed-server', url])).toThrow(
+      /may not be combined with --server/,
+    );
+    expect(() => parse(['--deploy', '--enclosed-server', url])).toThrow(/--deploy/);
+  });
+});
+
+describe('--record-to — handing the record over instead of publishing it', () => {
+  it('takes a path', () => {
+    expect(parse(['--record-to', '/tmp/block-0.json']).recordTo).toBe('/tmp/block-0.json');
+  });
+
+  it('is absent by default, so the ordinary run still appends to the ledger', () => {
+    expect(parse([]).recordTo).toBeUndefined();
+  });
+
+  it('needs a value like every other value flag', () => {
+    expect(() => parse(['--record-to'])).toThrow(/needs a value/);
+  });
+});
+
+describe('--deployed-by — who put this build here, when it was not this run', () => {
+  it('takes a label', () => {
+    expect(parse(['--deployed-by', 'measure-calibration']).deployedBy).toBe('measure-calibration');
+  });
+
+  it('refuses --deploy beside it, since that run IS the deploy', () => {
+    expect(() => parse(['--deploy', '--deployed-by', 'x'])).toThrow(/may not be combined/);
+  });
+
+  it('goes through the same label hygiene as every other recorded value', () => {
+    // It is written into the record, so it is a selector like the rest, and the selector
+    // grammar splits on `,` and `=`.
+    expect(() => parse(['--deployed-by', 'a,b'])).toThrow(/may not contain/);
+  });
+});
