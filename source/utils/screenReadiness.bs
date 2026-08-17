@@ -135,12 +135,43 @@ namespace screenLoad
   '                             as one population.
   sub begin(component as string)
     #if perfTiming
+      ' The instrument's own stopwatch, marked FIRST so everything this sub does after
+      ' it — including creating and marking `clock` — is attributed to the instrument
+      ' rather than to the screen. See `instrumentUs` below.
+      probe = CreateObject("roTimespan")
+      probe.mark()
       clock = CreateObject("roTimespan")
       clock.mark()
       m.screenLoad = {
         component: component,
         variant: "",
         clock: clock,
+        ' Re-used across every call of this run rather than created per call: a fresh
+        ' `roTimespan` per ledger call would make the measurement of the overhead a
+        ' significant part of the overhead.
+        probe: probe,
+        ' Microseconds this run spent INSIDE `screenLoad.*` — the ledger's own footprint
+        ' on the numbers it publishes, measured rather than argued about.
+        '
+        ' Why it exists: `paintMs` and `settledMs` are wall clocks that necessarily
+        ' contain the instrument's own bookkeeping and emits, so a reader has no way to
+        ' tell a screen that got slower from an instrument that got heavier. This makes
+        ' that separable on EVERY sample instead of once, in an experiment somebody has
+        ' to remember to re-run. `roTimespan.totalMicroseconds()` is what makes it
+        ' worth recording at all — at millisecond resolution the per-call cost rounds
+        ' to zero and the sum is dominated by rounding.
+        '
+        ' It is deliberately CONSERVATIVE — it over-reports slightly rather than under:
+        ' each `totalMicroseconds()` call is itself inside the span it closes. An
+        ' over-report is the safe direction for a number whose job is to answer "is the
+        ' instrument's footprint small enough to ignore?".
+        '
+        ' ⚠️ It covers begin -> the settled emit, which is everything inside the span
+        ' `settledMs` measures. The `split` line's OWN emit cannot be in it (the value
+        ' has to be stamped into that line), so the one unmeasured cost is a single
+        ' `info()` of the same shape as the settled one directly above it — bounded by
+        ' the number this field reports, not unknown.
+        instrumentUs: 0,
         painted: false,
         settled: false,
         open: {},
@@ -154,6 +185,7 @@ namespace screenLoad
         slowestTexture: "",
         slowestTextureMs: 0
       }
+      m.screenLoad.instrumentUs = probe.totalMicroseconds()
     #end if
   end sub
 
@@ -190,12 +222,17 @@ namespace screenLoad
       end if
       if m.screenLoad.painted then return
 
+      m.screenLoad.probe.mark()
       m.screenLoad.painted = true
       if variant <> "" then m.screenLoad.variant = variant
       paintMs = m.screenLoad.clock.totalMilliseconds()
 
       if not isValid(m.screenLoadLog) then m.screenLoadLog = new log.Logger("ScreenLoad")
       m.screenLoadLog.info("screen-load paint - component " + m.screenLoad.component + " variant " + variantOrNone() + " ms " + paintMs.toStr() + buildFlags())
+      ' This emit lands BETWEEN the paint stamp and the settle stamp, so its cost is
+      ' inside `settledMs` and inside nothing else. That asymmetry is the reason the
+      ' footprint is accumulated rather than assumed to cancel.
+      m.screenLoad.instrumentUs += m.screenLoad.probe.totalMicroseconds()
 
       ' A screen with nothing outstanding is settled the instant it paints. Emitted as
       ' its own line rather than inferred from a missing one, so "settled immediately"
@@ -230,10 +267,12 @@ namespace screenLoad
       ' shorten it.
       if isValid(m.screenLoad.open[id]) then return
 
+      m.screenLoad.probe.mark()
       m.screenLoad.open[id] = {
         fillClass: fillClass,
         startedMs: m.screenLoad.clock.totalMilliseconds()
       }
+      m.screenLoad.instrumentUs += m.screenLoad.probe.totalMicroseconds()
     #end if
   end sub
 
@@ -256,7 +295,9 @@ namespace screenLoad
     #if perfTiming
       if not isValid(m.screenLoad) then return
       if not isValid(m.screenLoad.open[id]) then return
+      m.screenLoad.probe.mark()
       m.screenLoad.open.delete(id)
+      m.screenLoad.instrumentUs += m.screenLoad.probe.totalMicroseconds()
       ' Cancelling the last outstanding fill can complete the run.
       settleIfDone()
     #end if
@@ -288,6 +329,7 @@ namespace screenLoad
         return
       end if
 
+      m.screenLoad.probe.mark()
       elapsed = m.screenLoad.clock.totalMilliseconds() - entry.startedMs
       m.screenLoad.open.delete(id)
       m.screenLoad.fills++
@@ -307,6 +349,7 @@ namespace screenLoad
           m.screenLoad.slowestContent = id
         end if
       end if
+      m.screenLoad.instrumentUs += m.screenLoad.probe.totalMicroseconds()
 
       settleIfDone()
     #end if
@@ -344,9 +387,18 @@ namespace screenLoad
       ' third place to be decremented.
       if m.screenLoad.open.count() > 0 then return
       if m.screenLoad.settled then return
+      m.screenLoad.probe.mark()
       m.screenLoad.settled = true
 
       if not isValid(m.screenLoadLog) then m.screenLoadLog = new log.Logger("ScreenLoad")
+
+      ' Stamped into a local BEFORE the line is built, rather than being read inline
+      ' partway through the concatenation as it used to be. The inline form put part of
+      ' the settled line's OWN string building inside the number it reports — which is
+      ' precisely the instrument-measures-itself confusion `instrumentUs` exists to
+      ' separate, so leaving it would have meant the two fields disagreed by
+      ' construction. Sub-millisecond, so no recorded number is expected to move.
+      settledMs = m.screenLoad.clock.totalMilliseconds()
 
       ' Two lines, because roku-log's Logger.info takes the message plus at most nine
       ' arguments once the BSC plugin has spent one on the injected pkg path, and
@@ -364,8 +416,14 @@ namespace screenLoad
       ' line that could not say WHICH load it closed would be filed against whichever
       ' paint happened to be open. That is not a detectable error afterwards: the fields
       ' would look perfectly well-formed while describing two different screens.
-      m.screenLoadLog.info("screen-load settled - component " + m.screenLoad.component + " variant " + variantOrNone() + " ms " + m.screenLoad.clock.totalMilliseconds().toStr() + " fills " + m.screenLoad.fills.toStr() + buildFlags())
-      m.screenLoadLog.info("screen-load split - component " + m.screenLoad.component + " variant " + variantOrNone() + " content " + m.screenLoad.contentCount.toStr() + " contentMs " + m.screenLoad.contentMs.toStr() + " slowestContent " + slowestOrNone(m.screenLoad.slowestContent) + " " + m.screenLoad.slowestContentMs.toStr() + " texture " + m.screenLoad.textureCount.toStr() + " textureMs " + m.screenLoad.textureMs.toStr() + " slowestTexture " + slowestOrNone(m.screenLoad.slowestTexture) + " " + m.screenLoad.slowestTextureMs.toStr())
+      m.screenLoadLog.info("screen-load settled - component " + m.screenLoad.component + " variant " + variantOrNone() + " ms " + settledMs.toStr() + " fills " + m.screenLoad.fills.toStr() + buildFlags())
+
+      ' Closed here, so the settled emit above — the largest single cost the instrument
+      ' has, and one that lands inside `settledMs` for any LATER load on this screen —
+      ' is inside the reported figure. Only the split emit below is outside it; see the
+      ' `instrumentUs` note in `begin`.
+      m.screenLoad.instrumentUs += m.screenLoad.probe.totalMicroseconds()
+      m.screenLoadLog.info("screen-load split - component " + m.screenLoad.component + " variant " + variantOrNone() + " content " + m.screenLoad.contentCount.toStr() + " contentMs " + m.screenLoad.contentMs.toStr() + " slowestContent " + slowestOrNone(m.screenLoad.slowestContent) + " " + m.screenLoad.slowestContentMs.toStr() + " texture " + m.screenLoad.textureCount.toStr() + " textureMs " + m.screenLoad.textureMs.toStr() + " slowestTexture " + slowestOrNone(m.screenLoad.slowestTexture) + " " + m.screenLoad.slowestTextureMs.toStr() + " instrumentUs " + m.screenLoad.instrumentUs.toStr())
     #end if
   end sub
 

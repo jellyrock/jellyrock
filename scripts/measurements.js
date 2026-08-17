@@ -315,8 +315,14 @@ export const MEASUREMENTS = Object.freeze([
         // `slowestContentMs` IS bounded by `settledMs`, and is the one to act on.
         key: 'split',
         required: false,
+        // `instrumentUs` is OPTIONAL in the pattern and that is load-bearing rather
+        // than lazy: every `screen-load` line taken before the ledger began timing
+        // itself lacks the field, and a required group would stop those lines matching
+        // at all — silently turning three days of recorded series into unparseable
+        // text. Absent reads as absent, which is the same rule the family already
+        // applies to a settled line that never arrived.
         pattern:
-          /screen-load split - component (?<component>\S+) variant (?<variant>\S+) content (?<contentFills>\d+) contentMs (?<contentMs>\d+) slowestContent (?<slowestContent>\S+) (?<slowestContentMs>\d+) texture (?<textureFills>\d+) textureMs (?<textureMs>\d+) slowestTexture (?<slowestTexture>\S+) (?<slowestTextureMs>\d+)/,
+          /screen-load split - component (?<component>\S+) variant (?<variant>\S+) content (?<contentFills>\d+) contentMs (?<contentMs>\d+) slowestContent (?<slowestContent>\S+) (?<slowestContentMs>\d+) texture (?<textureFills>\d+) textureMs (?<textureMs>\d+) slowestTexture (?<slowestTexture>\S+) (?<slowestTextureMs>\d+)(?: instrumentUs (?<instrumentUs>\d+))?/,
       }),
     ]),
   }),
@@ -468,6 +474,57 @@ export function assembleSamples(measurement, rawLines) {
  * Families that emit no non-numeric field get an empty object, which is why the two
  * pre-existing ones are unaffected.
  */
+/**
+ * The unit a timing field is expressed in, derived from its NAME.
+ *
+ * Every reporting layer used to append a bare `ms` to whatever number a family
+ * emitted, which was true for as long as every field was milliseconds. `instrumentUs`
+ * is the first that is not, and printing it as `3200 ms` would not be a cosmetic
+ * slip — it is the well-formed-but-wrong shape this subsystem exists to refuse, and
+ * a reader has no way to catch a unit error from the number alone.
+ *
+ * Keyed on the name's suffix rather than a per-field table, so a family that adds
+ * `somethingUs` tomorrow inherits it without a second place to update. Lives here
+ * rather than in `measure.js` / `measure-compare.js` for the reason ADR 0028 names:
+ * `measure.js` claims the device at import, so a rule that lives there has no gate
+ * under it.
+ */
+export function unitFor(key) {
+  return /Us$/.test(key) ? 'µs' : 'ms';
+}
+
+/**
+ * Every field name a family's patterns can produce.
+ *
+ * Distinct from the keys a RUN happened to observe, and the difference is the whole
+ * point: a family that DECLARES `instrumentUs` and saw none has an app older than the
+ * field or a build that emitted nothing, and that must be reported rather than read as
+ * "this family does not have one". Absence and inapplicability are different claims.
+ */
+export function declaredFields(measurement) {
+  return measurement.lines.flatMap((line) =>
+    [...line.pattern.source.matchAll(/\(\?<(\w+)>/g)].map(([, group]) => group),
+  );
+}
+
+/**
+ * What fraction of a run's wall clock the ledger itself accounts for.
+ *
+ * `settledMs` is the denominator rather than the family primary, and that is not a
+ * detail: the instrument's span runs from `begin` to the settled emit, which is
+ * precisely what `settledMs` measures. `paintMs` contains only the bookkeeping inside
+ * `begin`, so dividing by it would overstate the footprint several-fold on exactly the
+ * number people quote most.
+ *
+ * `null` — never 0 — when it cannot be computed. A screen that painted and never
+ * settled has no wall clock to be a fraction OF, and returning zero there would report
+ * the most broken case as the cleanest one.
+ */
+export function instrumentShare(instrumentUs, settledMs) {
+  if (!Number.isFinite(instrumentUs) || !Number.isFinite(settledMs) || settledMs <= 0) return null;
+  return instrumentUs / 1000 / settledMs;
+}
+
 export function splitWorkload(measurement, fields = {}) {
   const workload = {};
   const timings = {};

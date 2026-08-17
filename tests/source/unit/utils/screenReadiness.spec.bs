@@ -259,6 +259,69 @@ namespace tests
       m.assertFalse(screenLoad.state().settled)
       m.assertEqual(screenLoad.state().fills, 0)
       m.assertEqual(screenLoad.state().open.count(), 0)
+      ' The footprint is per RUN, not cumulative across runs — a restarted ledger that
+      ' inherited the previous run's microseconds would report a screen as having spent
+      ' instrument time it never spent, and the error would grow with every refresh.
+      m.assertTrue(screenLoad.state().instrumentUs < 1000)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("instrumentUs — the ledger measuring its own footprint")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("opens with a footprint that is recorded, never invalid")
+    function _()
+      ' `begin` closes its own span, so the field is a number from the first moment
+      ' anyone can read it. An `invalid` here would reach the wire as the string
+      ' `instrumentUs invalid`, which the split pattern's `\d+` refuses — turning a
+      ' complete sample into an unparseable line rather than a missing field.
+      screenLoad.begin("itemDetails")
+      m.assertNotInvalid(screenLoad.state().instrumentUs)
+      m.assertTrue(screenLoad.state().instrumentUs >= 0)
+    end function
+
+    @it("never decreases as the run proceeds")
+    function _()
+      ' Each ledger call ADDS the span it just spent. The failure this guards is a
+      ' call that marks the shared probe without closing it: the next accumulate then
+      ' measures from the wrong mark, and the total can fall. A footprint that moves
+      ' backwards is worse than no footprint — it reads as a real, tiny number.
+      screenLoad.begin("itemDetails")
+      afterBegin = screenLoad.state().instrumentUs
+      screenLoad.pending("extras")
+      afterPending = screenLoad.state().instrumentUs
+      m.assertTrue(afterPending >= afterBegin)
+      screenLoad.paint("Movie")
+      afterPaint = screenLoad.state().instrumentUs
+      m.assertTrue(afterPaint >= afterPending)
+      screenLoad.resolve("extras")
+      m.assertTrue(screenLoad.state().instrumentUs >= afterPaint)
+    end function
+
+    @it("counts the paint emit, which is the cost that lands INSIDE settledMs")
+    function _()
+      ' The asymmetry the whole field exists for: the paint line is emitted between the
+      ' paint stamp and the settle stamp, so its cost is inside `settledMs` and inside
+      ' nothing else. An emit is far more expensive than the bookkeeping around it, so
+      ' if `paint` stopped accumulating, this is the assertion that would notice.
+      screenLoad.begin("itemDetails")
+      screenLoad.pending("extras")
+      before = screenLoad.state().instrumentUs
+      screenLoad.paint("Movie")
+      m.assertTrue(screenLoad.state().instrumentUs > before)
+    end function
+
+    @it("has closed the settled emit into the total by the time the run ends")
+    function _()
+      ' The settled line is the largest single cost the instrument has. It is closed
+      ' BEFORE the split line is built so that the value the split line publishes
+      ' includes it — leaving only the split emit itself outside, bounded by the same
+      ' figure. A settled run whose footprint were still zero would mean nothing on the
+      ' emit path is being counted at all.
+      screenLoad.begin("settings")
+      screenLoad.paint("none")
+      m.assertTrue(screenLoad.state().settled)
+      m.assertTrue(screenLoad.state().instrumentUs > 0)
     end function
 
   end class
