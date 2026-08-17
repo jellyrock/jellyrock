@@ -20,7 +20,7 @@ related-files:
   - scripts/lint/progress-cursor-nudge.cjs
   - scripts/lint/session-start-nudge.cjs
   - .github/workflows/journal-sync.yml
-last-reviewed: 2026-08-15
+last-reviewed: 2026-08-17
 ---
 
 # System shape — how this repo's dev-process is structured and why
@@ -72,7 +72,7 @@ The central principle: **rules without skills drift**, because every rule that r
 |---|---|---|
 | [`/catchup`](../../.claude/skills/catchup/SKILL.md) | Start of session, after multi-day gap, "what's the state of the world?" | Reads all 4 journals + GH state via the [`scripts/catchup-state.js`](../../scripts/catchup-state.js) aggregator (one Node call → JSON); banner-detects on stale `progress.md`, stale signal rows, failing CI, etc. |
 | [`/focus`](../../.claude/skills/focus/SKILL.md) | Same moments as `/catchup`, but when multiple things look actionable and you want help picking | Same aggregator; ranks 3–5 next-move candidates across five tiers (Resume / Blocked / Drift / Hot / Momentum), surfaces a numbered menu with a "Recommended" call that cites the rule, then routes the user pick to the right downstream skill (`/issue-triage`, `/ci-triage`, `/done`, `/log`, `/tech-debt-scan`) with a session-context preamble. Opus (judgment-heavy); read-only |
-| [`/log <type>`](../../.claude/skills/log/SKILL.md) | Any new entry: `decision`, `followup`, `signal`, `running` | Routes to the right journal with templated format; auto-bumps `last-updated:` on followup/signal append; diff-and-wait (never auto-applies) |
+| [`/log <type>`](../../.claude/skills/log/SKILL.md) | Any new entry: `decision`, `followup`, `signal`, `running` — plus `followup --replace=<substring>` to revise one open entry in place | Routes to the right journal with templated format; auto-bumps `last-updated:` on followup/signal append. Mechanical types (`followup` / `signal` / `running`) apply directly — the corrective loop for systematic wrongness is `/audit-skill log`, not a prompt every session; only `decision` diff-and-confirms, because there the gate is a significance + routing *judgment*. **`--replace` is the one non-append write**: a followup listing ordered steps has no other way to say that ONE step shipped, since `/done` would publish a shipped-line claiming the whole entry. It revises and never closes — the bullet stays under Open followups and nothing reaches Recently shipped. Exactly one substring match is required; zero refuses rather than falling back to appending, because a silent append is the two-contradicting-bullets state it exists to prevent. |
 | [`/done <slug>`](../../.claude/skills/done/SKILL.md) | Any work landing: followup completed, signal resolved, cursor manually closed | Polymorphic match (followups first, then signals); for followups: removes bullet + prepends to "Recently shipped"; for signals: flips status → `completed`; bumps `last-updated:`. The `running` cursor close-loop normally fires automatically via [`journal-sync.yml`](../../.github/workflows/journal-sync.yml); manual `/done running` is the bypass path. |
 | [`/pr`](../../.claude/skills/pr/SKILL.md) | Ship moment — opening a PR | Bundles the four-pillar judgment passes (tech-debt scan, decision-shape detect, followup capture from PR body) so journal hygiene lands in the same change set as the code |
 
