@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-17 — ci(rta): Have the readiness ledger measure its own footprint
 - 2026-08-17 — **A multi-step followup can record that ONE step shipped**, closing the "no sanctioned way" followup. `/log followup --replace=<substring>` revises one named bullet in place instead of appending, so an entry listing ordered steps no longer has to choose between a `/done` that publishes a shipped-line claiming the whole thing and a raw edit the capture-discipline rule forbids. Exactly one match is required — zero refuses rather than falling back to appending (a silent append is the two-contradicting-bullets state the mode exists to prevent), more than one refuses and asks for a longer substring. It revises and never closes: the bullet stays under Open followups and nothing reaches Recently shipped. It was dogfooded on the ODC calibration entry, which is what surfaced the gap twice — once on step 1 (`fix/overhang-precondition-and-sampling-loop`) and again on step 2 (ADR 0030).
 - 2026-08-17 — fix: drop redundant am/pm from "Ends at" in `ItemDetails` and the OSD
 - 2026-08-17 — fix(overhang): stop long usernames rendering as a bare `...` in `JRDropdown`
