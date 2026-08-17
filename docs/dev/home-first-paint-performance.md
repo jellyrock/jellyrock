@@ -13,8 +13,10 @@ related-files:
   - scripts/data/roku-hardware.json
   - scripts/measurements.js
   - scripts/measurement-guard.js
+  - scripts/measure-arms.js
+  - scripts/measure-calibration.js
   - manifest
-last-reviewed: 2026-08-13
+last-reviewed: 2026-08-17
 ---
 
 # Measuring orchestrator wait-vs-emit on device
@@ -261,6 +263,50 @@ The matrix REPORT — one screen across three tiers — is a separate reader ove
 runs taken weeks apart, and an in-process report can only describe the run that just
 finished.
 
+### Calibrating the instrument — does the ODC component move the number?
+
+Every number above is taken on a device holding an **RTA build**, because identity is read
+over ODC and ODC exists only in one. That makes the on-device component resident for the
+whole session, which is an unmeasured variable in every measurement this tooling produces
+— and the reason the [baselines below](#baselines-2026-08-04), taken on plain builds, may
+not be compared against a `measure` series.
+
+`npm run measure:calibrate` answers it, on one device, in one command:
+
+```bash
+npm run measure:calibrate -- --server http://192.0.2.10:8096            # n=30, blocks of 5
+npm run measure:calibrate -- --server <url> -n 10 --block-size 5 --label smoke
+```
+
+What it does, and why each piece is not optional:
+
+- **Two arms off ONE build.** `rta` is the ordinary deploy; `plain` drops the on-device
+  component **and** restores `ENABLE_RTA=false` in the staged manifest, which makes it
+  byte-for-byte the build state the baselines were taken on. Dropping the component alone
+  does *not* do that — RTA's manifest rewrite is not behind `injectTestingFiles`, so that
+  arm would still run every `#if ENABLE_RTA` block. See
+  [`scripts/measure-arms.js`](../../scripts/measure-arms.js).
+- **`home-latest-rows`, measured by LAUNCHING.** `--nav` is driven over ODC, so the plain
+  arm cannot navigate anywhere; Home is also the only screen with non-RTA n=30 baselines
+  to be made comparable.
+- **Blocks of 5, alternating**, so anything that drifts with time cannot alias onto one
+  arm. Fewer than two blocks per arm is a refusal, not a warning.
+- **The plain arm's identity is asserted by ENCLOSURE** — observed reads taken immediately
+  either side of it, with nothing registry-writing in between
+  ([ADR 0030](../adr/0030-non-odc-arm-identity-by-enclosure.md)). A block whose brackets
+  disagree is recorded `blocked` and **not** published; the summary names every block that
+  did not reach the ledger, and the exit code follows that accounting rather than the last
+  child's status.
+- **It always redeploys the RTA build at the end**, including on the way out of a Ctrl-C.
+  A device left holding a build with no ODC refuses the next `measure`, the next
+  `test:rta` and the next sign-in — which has already cost this project a whole RAM tier.
+- **`--label <name>`** suffixes both arm labels (`rta-smoke` / `plain-smoke`). Arm labels
+  are selected across the *whole* ledger, so without it a second run pools into the first.
+
+Read the answer back with `npm run measure:compare -- --a arm=rta --b arm=plain`, which
+knows this one pair is allowed to differ in `ENABLE_RTA` — see
+[the refusal list](#comparing-two-arms).
+
 ### What one run does
 
 It takes the device lock, holds ONE console socket for the whole session, relaunches n
@@ -495,6 +541,13 @@ What it does that a hand-built comparison does not:
 - **It refuses two experiments dressed as two arms**: different screen, server, device model,
   RAM tier, build flavor or `ENABLE_RTA` state. A `debug=true` arm against a `debug=false`
   one is +121 ms before the change under test does anything.
+  **One sanctioned exception, since 2026-08-17:** the ODC calibration itself, whose two arms
+  differ in `ENABLE_RTA` by design. It is a property of the records rather than a flag —
+  both arms must carry an *asserted* identity, each arm's identity source must fit its own
+  ODC state (an arm reporting `enableRta: false` cannot claim it *observed* its identity,
+  since that field is derived from ODC answering), and the two must agree on the server.
+  `npm run measure:calibrate` establishes all three by construction; nothing else does.
+  See [ADR 0030](../adr/0030-non-odc-arm-identity-by-enclosure.md).
 - **It refuses two arms that share a series.** Measuring an uncommitted change leaves both
   arms on one commit, so `--a commit=<sha> --b after` selects every arm on that commit as A —
   including all of B. Those samples would be counted on both sides, in both medians and in
