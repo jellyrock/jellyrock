@@ -1,9 +1,11 @@
 # ADR 0030: A measurement arm with no ODC asserts its identity by ENCLOSURE, and records that it did
 
-**Status:** Accepted
+**Status:** Accepted — specified; not yet implemented
 **Date:** 2026-08-16
 
 **related-files**: `scripts/measurement-guard.js`, `scripts/measure.js`, `scripts/measure-compare.js`, `tests/scripts/unit/measurement-guard.test.js`
+
+> ⚠️ **Nothing in the tree implements this yet.** The rule below is written in the present tense because it describes the contract the harness must be built to, but no code carries `identitySource` and `measure:compare` does not yet know the sanctioned exception — grep either and you will find nothing, which is the expected state, not a removal. This ADR is step 2 of the three-step ODC calibration tracked in [`docs/progress.md`](../progress.md); building to it is the front half of step 3. Flip this status line to plain `Accepted` when the harness lands. Recorded ahead of the code deliberately: the decision is a *prerequisite* of the harness, so writing it afterwards would mean the harness had already chosen.
 
 The measurement platform's calibration question — *does a resident ODC component move a first-paint number?* — requires an arm with no resident ODC component. That arm is one deploy option away: `device.deploy({ injectTestingFiles: false })` skips both the `ENABLE_RTA=false` → `true` rewrite of the staged manifest and the injection of the on-device component, off the same `build/` directory the paired arm ships. Everything the sampling loop needs survives that: `hardRelaunch()` is pure ECP, and the console reader is a telnet socket on 8085. **Exactly one thing does not survive it — the identity read**, which is ODC and nothing else (`readIdentity`, `scripts/measurement-guard.js`). So the arm that has to exist for the calibration to happen is the one arm that cannot observe what server it measured against, and tier 1 is the gate that a sample nobody can attribute to a server is not a sample.
 

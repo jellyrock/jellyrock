@@ -786,7 +786,7 @@ export function interleaving(a, b) {
  * misstate the instrument's own footprint by three orders of magnitude in the one
  * report written to answer whether that footprint matters. See `unitFor`.
  */
-const ms = (v, unit = 'ms') =>
+const withUnit = (v, unit = 'ms') =>
   v === null || v === undefined ? '—' : `${Math.round(v * 10) / 10} ${unit}`;
 
 /**
@@ -857,9 +857,9 @@ export function reportComparison(a, b, { refusals = [], warnings = [] } = {}) {
   const delta = sa.median !== null && sb.median !== null ? sb.median - sa.median : null;
   const pct = delta !== null && sa.median ? (delta / sa.median) * 100 : null;
   lines.push(
-    `  ${a.primary.padEnd(11)} ${name(a)} median ${ms(sa.median, unit)}   (n=${sa.n}, ${ms(sa.min, unit)}–${ms(sa.max, unit)})`,
-    `              ${name(b)} median ${ms(sb.median, unit)}   (n=${sb.n}, ${ms(sb.min, unit)}–${ms(sb.max, unit)})`,
-    `              Δ ${delta > 0 ? '+' : ''}${ms(delta, unit)}${pct === null ? '' : ` (${pct > 0 ? '+' : ''}${pct.toFixed(1)}%)`}` +
+    `  ${a.primary.padEnd(11)} ${name(a)} median ${withUnit(sa.median, unit)}   (n=${sa.n}, ${withUnit(sa.min, unit)}–${withUnit(sa.max, unit)})`,
+    `              ${name(b)} median ${withUnit(sb.median, unit)}   (n=${sb.n}, ${withUnit(sb.min, unit)}–${withUnit(sb.max, unit)})`,
+    `              Δ ${delta > 0 ? '+' : ''}${withUnit(delta, unit)}${pct === null ? '' : ` (${pct > 0 ? '+' : ''}${pct.toFixed(1)}%)`}` +
       `  ${b.label} relative to ${a.label}`,
   );
 

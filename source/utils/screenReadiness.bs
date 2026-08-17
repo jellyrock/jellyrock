@@ -161,10 +161,13 @@ namespace screenLoad
         ' worth recording at all — at millisecond resolution the per-call cost rounds
         ' to zero and the sum is dominated by rounding.
         '
-        ' It is deliberately CONSERVATIVE — it over-reports slightly rather than under:
-        ' each `totalMicroseconds()` call is itself inside the span it closes. An
-        ' over-report is the safe direction for a number whose job is to answer "is the
-        ' instrument's footprint small enough to ignore?".
+        ' It is NOT a strict bound in either direction, and the residue is named rather
+        ' than argued: each `totalMicroseconds()` call sits inside the span it closes
+        ' (over-reports), while the handful of guard checks each sub runs BEFORE marking
+        ' are not counted at all (under-reports). Both are thread-local bookkeeping on
+        ' an AA, and every EMIT is counted — emits being three orders of magnitude
+        ' dearer — so the figure answers "is the instrument's footprint small enough to
+        ' ignore?" without pretending to be exact. That is the only question it is asked.
         '
         ' ⚠️ It covers begin -> the settled emit, which is everything inside the span
         ' `settledMs` measures. The `split` line's OWN emit cannot be in it (the value
@@ -322,14 +325,20 @@ namespace screenLoad
       if not isValid(m.screenLoad) then return
       if m.screenLoad.settled then return
 
+      m.screenLoad.probe.mark()
       entry = m.screenLoad.open[id]
       if not isValid(entry)
         if not isValid(m.screenLoadLog) then m.screenLoadLog = new log.Logger("ScreenLoad")
         m.screenLoadLog.warn("screen-load unbalanced - component " + m.screenLoad.component + " resolved " + id + " which was never pending")
+        ' Counted, because this is an EMIT and emits are the expensive thing here — the
+        ' same cost as the paint line, on a path that lands inside the span `settledMs`
+        ' measures. Leaving it out would mean the drift case, the one where the reader
+        ' most needs to know what the instrument cost, was the one case the footprint
+        ' silently understated.
+        m.screenLoad.instrumentUs += m.screenLoad.probe.totalMicroseconds()
         return
       end if
 
-      m.screenLoad.probe.mark()
       elapsed = m.screenLoad.clock.totalMilliseconds() - entry.startedMs
       m.screenLoad.open.delete(id)
       m.screenLoad.fills++

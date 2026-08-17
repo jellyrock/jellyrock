@@ -474,6 +474,18 @@ export function assembleSamples(measurement, rawLines) {
  * Families that emit no non-numeric field get an empty object, which is why the two
  * pre-existing ones are unaffected.
  */
+export function splitWorkload(measurement, fields = {}) {
+  const workload = {};
+  const timings = {};
+  const dimensions = {};
+  for (const [k, v] of Object.entries(fields)) {
+    if (typeof v !== 'number') dimensions[k] = v;
+    else if (measurement.workload.includes(k)) workload[k] = v;
+    else timings[k] = v;
+  }
+  return { workload, timings, dimensions };
+}
+
 /**
  * The unit a timing field is expressed in, derived from its NAME.
  *
@@ -494,17 +506,26 @@ export function unitFor(key) {
 }
 
 /**
- * Every field name a family's patterns can produce.
+ * Every field name a family's patterns can produce, each once.
  *
  * Distinct from the keys a RUN happened to observe, and the difference is the whole
  * point: a family that DECLARES `instrumentUs` and saw none has an app older than the
  * field or a build that emitted nothing, and that must be reported rather than read as
  * "this family does not have one". Absence and inapplicability are different claims.
+ *
+ * De-duplicated because a family's lines repeat the fields that IDENTIFY a sample —
+ * `screen-load` carries `component` and `variant` on all three — so the raw scan
+ * returns them once per line. No caller today is harmed by that, but "every field name"
+ * is the contract, and a count or a rendered list is the obvious next use.
  */
 export function declaredFields(measurement) {
-  return measurement.lines.flatMap((line) =>
-    [...line.pattern.source.matchAll(/\(\?<(\w+)>/g)].map(([, group]) => group),
-  );
+  return [
+    ...new Set(
+      measurement.lines.flatMap((line) =>
+        [...line.pattern.source.matchAll(/\(\?<(\w+)>/g)].map(([, group]) => group),
+      ),
+    ),
+  ];
 }
 
 /**
@@ -523,16 +544,4 @@ export function declaredFields(measurement) {
 export function instrumentShare(instrumentUs, settledMs) {
   if (!Number.isFinite(instrumentUs) || !Number.isFinite(settledMs) || settledMs <= 0) return null;
   return instrumentUs / 1000 / settledMs;
-}
-
-export function splitWorkload(measurement, fields = {}) {
-  const workload = {};
-  const timings = {};
-  const dimensions = {};
-  for (const [k, v] of Object.entries(fields)) {
-    if (typeof v !== 'number') dimensions[k] = v;
-    else if (measurement.workload.includes(k)) workload[k] = v;
-    else timings[k] = v;
-  }
-  return { workload, timings, dimensions };
 }

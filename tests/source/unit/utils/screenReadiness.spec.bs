@@ -254,6 +254,7 @@ namespace tests
       screenLoad.begin("itemDetails")
       screenLoad.pending("extras")
       screenLoad.paint("Movie")
+      firstRun = screenLoad.state().instrumentUs
       screenLoad.begin("itemDetails")
       m.assertFalse(screenLoad.state().painted)
       m.assertFalse(screenLoad.state().settled)
@@ -262,7 +263,13 @@ namespace tests
       ' The footprint is per RUN, not cumulative across runs — a restarted ledger that
       ' inherited the previous run's microseconds would report a screen as having spent
       ' instrument time it never spent, and the error would grow with every refresh.
-      m.assertTrue(screenLoad.state().instrumentUs < 1000)
+      '
+      ' Measured against the run it REPLACED rather than a microsecond constant, and the
+      ' difference matters on a device: the first run emitted a paint line and a fresh
+      ' `begin` cannot have emitted anything, so the inequality is structural. A constant
+      ' would be a wall-clock read taken while a full Rooibos suite drives the render
+      ' thread — green today, flaky on a slow day, for a property that is not about time.
+      m.assertTrue(screenLoad.state().instrumentUs < firstRun)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -308,6 +315,21 @@ namespace tests
       screenLoad.pending("extras")
       before = screenLoad.state().instrumentUs
       screenLoad.paint("Movie")
+      m.assertTrue(screenLoad.state().instrumentUs > before)
+    end function
+
+    @it("counts the unbalanced-resolve warning, which is an emit inside settledMs")
+    function _()
+      ' The drift case, and the one the first cut missed. A `resolve` with no matching
+      ' `pending` emits a full warn line and returns early, and that emit lands between
+      ' paint and settle exactly as the paint line does — so it is inside `settledMs` and
+      ' has to be inside the footprint too. Uncounted, the number would understate itself
+      ' precisely when instrumentation has gone wrong, which is the one moment a reader is
+      ' asking what the instrument cost.
+      screenLoad.begin("itemDetails")
+      screenLoad.pending("extras")
+      before = screenLoad.state().instrumentUs
+      screenLoad.resolve("neverPending")
       m.assertTrue(screenLoad.state().instrumentUs > before)
     end function
 
