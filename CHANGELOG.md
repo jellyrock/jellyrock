@@ -7,11 +7,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-### Changed
-
-- Measure the pre-login flow, and fix the `roku-log` crash it exposed ([#817](https://github.com/jellyrock/jellyrock/pull/817))
-- Read a screen in one batch, and report what an assertion checked ([#808](https://github.com/jellyrock/jellyrock/pull/808))
-
 ### Fixed
 
 - (performance) Destroy popped routed screens and fix the `BaseGridView` retain cycle ([#816](https://github.com/jellyrock/jellyrock/pull/816))
