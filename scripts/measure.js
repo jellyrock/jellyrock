@@ -208,6 +208,7 @@ import {
   instrumentShare,
 } from './measurements.js';
 import { runSeries, NavFailedError } from './measure-loop.js';
+import { INTERRUPTED_EXIT } from './measure-matrix.js';
 import {
   readIdentity,
   missingIdentityFields,
@@ -348,7 +349,7 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
   process.on(signal, async () => {
     // Never trap someone in an un-killable process — nothing here is destructive to leave
     // (this tool does not write the registry), so a second signal just goes.
-    if (interrupting) process.exit(130);
+    if (interrupting) process.exit(INTERRUPTED_EXIT);
     interrupting = true;
     console.log(`\n[measure] ${signal} — abandoning the series and releasing the device.`);
     socket?.destroy();
@@ -356,7 +357,10 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
     // operator's deliberate stop `crashed` — the same correction `rta-run.js` makes.
     run.close(RUN_OUTCOMES.INTERRUPTED);
     await lock.release().catch(() => {});
-    process.exit(130);
+    // The value is unchanged; it is now IMPORTED rather than retyped, because the driver
+    // reads it back through `wasInterrupted` to tell an operator's stop from a device
+    // failure. Two literals in two files that must agree is the shape that drifts.
+    process.exit(INTERRUPTED_EXIT);
   });
 }
 

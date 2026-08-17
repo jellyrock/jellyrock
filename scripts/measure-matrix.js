@@ -345,6 +345,44 @@ export function parseSignIn(forwarded = [], env = {}) {
  *   child that does not exist is a rule nobody can read back. `exit` is a process exit
  *   code, or `null` to carry on.
  */
+/**
+ * The exit code a child uses when a signal ended it.
+ *
+ * 130 rather than the shell's `128+n`, because that is already what every script in this
+ * repo that traps a signal exits with — `measure.js`, `measure-signin.js`, `rta-run.js`,
+ * `capture-screenshots.js`, `run-roku-tests.js` — and `rta-run.js` goes further, mapping a
+ * child KILLED by any signal onto 130 as well. The convention deliberately drops WHICH
+ * signal, and encoding it in two of the five would have bought that detail at the price of
+ * a reader having to remember which scripts do and do not.
+ *
+ * Exported so the children import it rather than each retyping a literal: the writer and
+ * `wasInterrupted` below are the two halves of one contract, and a drift between them is
+ * invisible until an operator's deliberate stop is filed as a device failure.
+ */
+export const INTERRUPTED_EXIT = 130;
+
+/**
+ * Did this child stop because someone signalled it?
+ *
+ * `signal` is the OBSERVED answer. Node fills it in only when the OS actually killed the
+ * process — so a child that TRAPS its signals and exits under its own power always reports
+ * `null` there. Both measurement children have to trap: releasing the device lock is an
+ * `await`, and a dying process never gets one. The result was that the driver saw nothing
+ * but a non-zero status and filed an operator's deliberate stop as that device's failure.
+ *
+ * The exit code is the INFERRED answer, and it is weaker on purpose — it establishes THAT a
+ * signal ended the child, never which one. Callers must keep the two apart rather than
+ * collapsing them into one field: `summariseMatrix` prints a signal name only where one was
+ * observed, and says a bare "interrupted" where only the code says so.
+ *
+ * @param {number|null} status the child's exit code, or `null` if a signal killed it.
+ * @param {string|null} [signal] the signal name Node reported, when it killed the child.
+ * @returns {boolean} whether a signal ended this child, observed or inferred.
+ */
+export function wasInterrupted(status, signal = null) {
+  return Boolean(signal) || status === INTERRUPTED_EXIT;
+}
+
 export function signalPolicy(signal, { kind = null, host = null, interrupted = false } = {}) {
   // "Ctrl-C" only when Ctrl-C is what it was: this mode is now reachable by a bare
   // `kill` and by a `timeout` wrapper, where telling the operator to press Ctrl-C
@@ -556,13 +594,20 @@ export function summariseMatrix(results) {
     // cannot say whether a device got as far as a series, and that is the difference
     // between a row with samples on disk and one with none.
     const stage = r.stage ? `${r.stage} ` : '';
+    // Named only when a name was OBSERVED. A child that trapped its signal and exited
+    // under its own power leaves the exit code as the only evidence, and that establishes
+    // THAT it was interrupted, never which signal did it — so the bare word is the honest
+    // rendering. Inventing a plausible name here would put a deduction in the one line an
+    // operator reads to decide whether their own Ctrl-C caused this.
     const verdict = r.skipped
       ? 'not run (the matrix stopped first)'
       : r.signal
         ? `${stage}interrupted (${r.signal})`
-        : r.status === 0
-          ? 'measured'
-          : `${stage}FAILED (exit ${r.status}) — its own output above says why`;
+        : r.interrupted
+          ? `${stage}interrupted`
+          : r.status === 0
+            ? 'measured'
+            : `${stage}FAILED (exit ${r.status}) — its own output above says why`;
     const line = `  ${r.host} — ${r.label}: ${verdict}`;
     return r.restored === false
       ? [
@@ -572,7 +617,9 @@ export function summariseMatrix(results) {
         ]
       : [line];
   });
-  const measured = results.filter((r) => !r.skipped && !r.signal && r.status === 0).length;
+  const measured = results.filter(
+    (r) => !r.skipped && !r.signal && !r.interrupted && r.status === 0,
+  ).length;
   return {
     lines,
     measured,
