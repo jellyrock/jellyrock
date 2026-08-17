@@ -6,7 +6,9 @@
     <Poster id="buttonBorder" uri="pkg:/images/9patch/border-6px.9.png" visible="false" />
     <LayoutGroup id="triggerContent" layoutDirection="horz" itemSpacings="[9]">
       <Poster id="triggerIcon" visible="false" width="36" height="36" loadWidth="36" loadHeight="36" loadDisplayMode="limitSize" />
-      <LabelSecondaryMedium id="triggerLabel" width="150" horizAlign="left" vertAlign="center" ellipsizeOnBoundary="true" />
+      <!-- No ellipsizeOnBoundary: this label doesn't wrap, so whole-word ellipsizing
+           drops a too-long single-word value entirely and renders a bare "..." (#798). -->
+      <LabelSecondaryMedium id="triggerLabel" width="150" horizAlign="left" vertAlign="center" />
     </LayoutGroup>
 
     <!-- Dropdown menu (positioned below trigger, initially hidden) -->
