@@ -121,7 +121,7 @@ end function
 
 ' Returns "am" or "pm" for 12h clock, empty string for 24h.
 ' Use for times the reader has no on-screen reference for — a broadcast range that may be hours
-' or days away. For a time anchored to "now", prefer getDisambiguatingTimePeriod().
+' or days away. For a time anchored to "now", prefer formatDisambiguatedTime().
 function getTimePeriod(time as object) as string
   if m.global.device.clockFormat <> "12h" then return ""
   if time.getHours() >= 12
@@ -138,20 +138,43 @@ function meridianDiffers(timeHours as integer, nowHours as integer) as boolean
   return (timeHours >= 12) <> (nowHours >= 12)
 end function
 
+' How far ahead a reader can still resolve a bare 12h time by comparing it to the clock. Dropping
+' the suffix asserts "the nearest clock face showing these digits", which stops being the time we
+' meant once the meridian comes back around: at 13:00 a 23-hour runtime ends at 12:00 pm — same
+' half of the day, so the suffix rule alone would omit it and "Ends at 12:00" would read as noon
+' today. Past this horizon the suffix always earns its place.
+const MERIDIAN_INFERENCE_HORIZON_SECONDS = 43200 ' 12h
+
 ' Returns "am"/"pm" ONLY when the suffix disambiguates the time against the current clock,
 ' empty string otherwise (and always empty on a 24h clock).
 '
-' Why this exists: the overhang clock renders bare in 12h mode — "10:32", never "10:32 pm"
-' (see Clock.bs). A time the reader measures against that clock therefore doesn't need a
-' meridian either, UNLESS it crosses noon or midnight, which is the one case the reader can't
-' infer at a glance. Only for now-anchored times; see getTimePeriod() for absolute ones.
+' Why this exists: the clock the reader compares against renders bare in 12h mode — "10:32",
+' never "10:32 pm" (see Clock.bs, used by both the overhang and the playback OSD). A time
+' measured against that clock therefore doesn't need a meridian either, UNLESS it crosses noon
+' or midnight, or sits beyond the horizon above — the cases the reader can't infer at a glance.
+' Only for now-anchored times; see getTimePeriod() for absolute ones.
 ' @param time - a LOCAL roDateTime (caller must have applied toLocalTime())
 function getDisambiguatingTimePeriod(time as object) as string
   if m.global.device.clockFormat <> "12h" then return ""
+
   now = CreateObject("roDateTime")
   now.toLocalTime()
+
+  ' Both sides have had toLocalTime() applied, so the timezone offset cancels out of the delta.
+  if time.asSeconds() - now.asSeconds() >= MERIDIAN_INFERENCE_HORIZON_SECONDS then return getTimePeriod(time)
+
   if not meridianDiffers(time.getHours(), now.getHours()) then return ""
   return getTimePeriod(time)
+end function
+
+' The one way to render a time the reader will read off against an on-screen clock — the "Ends at"
+' value in ItemDetails and in the playback OSD. Bare when the half of the day is inferable,
+' suffixed when it isn't, so the same end time reads identically on both screens.
+' @param time - a LOCAL roDateTime (caller must have applied toLocalTime())
+function formatDisambiguatedTime(time as object) as string
+  periodText = getDisambiguatingTimePeriod(time)
+  if periodText = "" then return formatTime(time)
+  return formatTime(time) + " " + periodText
 end function
 
 ' convert iso date string to a human readable date string

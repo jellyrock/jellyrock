@@ -2868,14 +2868,10 @@ end function
 ' any change to the rule had to be made twice or the label would render one way on open and
 ' another at the first clock tick.
 '
-' The am/pm suffix is contextual (getDisambiguatingTimePeriod): omitted when the end time is in
-' the same half of the day as the clock the reader is comparing it against, shown when it crosses
-' noon or midnight. 24h clocks never get one.
+' formatDisambiguatedTime() owns the contextual am/pm rule and is shared with the playback OSD's
+' own "Ends at", so one end time reads the same way on both screens.
 function formatEndsAtText(date as object) as string
-  timeStr = formatTime(date)
-  periodText = getDisambiguatingTimePeriod(date)
-  if periodText <> "" then timeStr += " " + periodText
-  return translate(translationKeys.MessageEndsAt1, [timeStr])
+  return translate(translationKeys.MessageEndsAt1, [formatDisambiguatedTime(date)])
 end function
 
 ' createEndsAtNode: Build an "Ends at" label and store it on m.endsAtNode for dynamic clock
