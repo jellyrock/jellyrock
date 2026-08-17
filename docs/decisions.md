@@ -931,6 +931,58 @@ therefore never set `ellipsizeOnBoundary`, which drops a too-long single-word na
 (issue #798). Worth re-evaluating if the trigger is ever re-anchored to grow leftward, which
 removes both objections at once but moves the search/settings icons with it.
 
+## decision-id: calibration-plain-arm-flips-the-flag
+
+**date**: 2026-08-17
+**status**: accepted
+**related-files**: `scripts/measure-arms.js`, `tests/rta/lib/driver.js`, `docs/adr/0030-non-odc-arm-identity-by-enclosure.md`
+
+The ODC calibration's `plain` arm drops the on-device component AND restores
+`ENABLE_RTA=false` in the staged manifest, rather than dropping the component alone as
+[ADR 0030](adr/0030-non-odc-arm-identity-by-enclosure.md) originally specified. That ADR
+assumed `injectTestingFiles: false` skips both jobs; it skips only the injection — the
+manifest rewrite sits outside that option's guard (`RokuDevice.js:71-76`) and `#if` is
+evaluated on the device from the shipped manifest, so the component-only arm would still
+run every `#if ENABLE_RTA` block. Three reasons to flip it: the resulting build is
+byte-for-byte the state the non-RTA n=30 baselines were taken on, which is the
+comparability harm this calibration exists to close; nothing then has to be argued
+negligible, since the leftover hooks (`m.global.addFields({rtaSkeletonHoldMs: 0})` and a
+`createObject` for a node type that is no longer there) are removed rather than dismissed;
+and `provenance.enableRta` stays a true statement about the build instead of reading
+`false` about a manifest saying `true`.
+
+The cost is that a delta cannot say WHICH of the two it was. **Rejected: taking all three
+arms up front** to decompose it — at n=30 the method resolves ~120 ms and up, and the
+leftover hooks are one field-add, so that arm could only ever report "below the floor".
+Revisit if a delta ever lands at or above the floor, which is the one case where the
+decomposition can return an answer.
+
+## decision-id: calibration-harness-out-of-process
+
+**date**: 2026-08-17
+**status**: accepted
+**related-files**: `scripts/measure-calibration.js`, `scripts/measure-loop.js`, `scripts/measure.js`
+
+`measure-calibration.js` spawns `measure.js` per block rather than calling `runSeries`
+in-process. This is the same conclusion `measure-devices.js` reached, minus its decisive
+reason: that driver had to go out-of-process because `roku-test-automation` binds its
+client singletons to one host, and this tool only ever talks to one device. What remains
+is decisive on its own — a series also needs the device lock, the console socket and its
+replay defense, mount selection, the medians, the launch audit and the record assembly,
+and that last one is the layer deliberately left untested
+([`measure-record-assembly-untested`](architecture/tech-debt.md#measure-record-assembly-untested)).
+An in-process harness would have doubled the subsystem's one untested surface to avoid
+passing flags to a process that already does the job.
+
+**Rejected: the in-process shape `measure-loop.js`'s own header predicted.** That
+extraction named the multi-device driver and this harness as the two callers that would
+otherwise duplicate the replay defense; both went the other way, so the module has one
+caller and its header is corrected rather than left claiming otherwise. The extraction
+still earned itself on testability (16 unit tests over window arithmetic that had none) —
+which is worth separating from the reuse argument, because the reuse argument is the one
+that did not hold. Consequence: the record a block publishes is assembled by the same code
+a single-device run uses, so the calibration cannot drift from `measure` in what it records.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
