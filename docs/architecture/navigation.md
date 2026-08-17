@@ -101,7 +101,7 @@ sgRouter drives the views it mounts through a promise-native lifecycle (`onViewO
 | `beforeViewClose` (permanent destroy) | `onScreenHidden()` + `onDestroy()` |
 | `handleFocus` (router asks for remote focus) | restore `m.top.lastFocus` if valid, else focus `m.top` |
 
-Publishing `activeRoutedView` *before* `onScreenShown` matters: `JRScene`'s overhang controller and `main.bs`'s playback/options/device code all resolve "what's on screen" via `getActiveView()`, which now simply returns `m.global.activeRoutedView` (`source/utils/misc.bs:218`).
+Publishing `activeRoutedView` *before* `onScreenShown` matters: `JRScene`'s overhang controller and `main.bs`'s playback/options/device code all resolve "what's on screen" via `getActiveView()`, which now simply returns `m.global.activeRoutedView` (`source/utils/misc.bs:255`).
 
 > **Locked invariant — never set `m.top.id` on a routed view.** sgRouter uses the view node's `id` as its history-node id; clobbering it breaks `goBack`.
 
