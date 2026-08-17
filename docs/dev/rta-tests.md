@@ -85,6 +85,13 @@ branch to find it.
   `RTA_OnDeviceComponent` at boot. This passthrough works for **both** dev and prod
   builds. Deploy runs once per test run, from [`scripts/rta-run.js`](../../scripts/rta-run.js)
   before Vitest starts; `RTA_NO_DEPLOY=1` skips it.
+  ⚠️ **Those are two separate jobs and only the injection is behind that option.** The
+  manifest rewrite sits outside it (`RokuDevice.js:71-76`) and runs on every deploy, so
+  `injectTestingFiles: false` does **not** give you a non-RTA build — it gives you an
+  `ENABLE_RTA=true` build whose component is missing, which still runs every `#if
+  ENABLE_RTA` block. Turning the flag off as well needs a `beforeZipCallback`; that is
+  what [`deployBuild`](../../tests/rta/lib/driver.js)'s `enableRta` parameter is for, and
+  only the ODC calibration wants it.
 - **Per worker**: `tests/rta/setup/env-setup.js` (Vitest `setupFiles`) configures the
   RTA client singletons from `.env` in the test worker.
 - **Seeding, then `hardRelaunch()` — never `relaunch()`**: seeds write the device
