@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (`ItemDetails`) drop redundant am/pm from the "Ends at" chip ([#826](https://github.com/jellyrock/jellyrock/pull/826))
 - (overhang) stop long usernames rendering as a bare `...` in `JRDropdown` ([#825](https://github.com/jellyrock/jellyrock/pull/825))
 - (performance) Destroy popped routed screens and fix the `BaseGridView` retain cycle ([#816](https://github.com/jellyrock/jellyrock/pull/816))
 - (rta) record what became of a run, and read the baseline ([#806](https://github.com/jellyrock/jellyrock/pull/806))
