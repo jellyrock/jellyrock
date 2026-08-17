@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-08-16
+last-updated: 2026-08-17
 ---
 
 # Progress
@@ -22,12 +22,11 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Currently running
 
-Reviewing and hardening `feat/measure-matrix-sign-in` before PR — the measurement matrix's `--sign-in` mode. The review found the driver's interrupt handling was dead code under a synchronous `spawnSync` loop (handlers installed, bodies never reached); fixed by moving to async `spawn` with the policy extracted as a pure, tested `signalPolicy`, plus a sign-in timeout, a device lock on the seed step, a repeated-flag refusal, and locale disclosure.
-
 ## Recently shipped
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-17 — ci(rta): Give `measure:devices` a `--sign-in` mode
 - 2026-08-16 — ci(rta): Drive the measurement matrix across every device in `ROKU_DEVICES`
 - 2026-08-16 — ci(rta): Gate `focusOverhangIcon` on row 0, extract the sampling loop
 - 2026-08-16 — ci(rta): Measure `serverSelect` and assert the no-server state
@@ -73,8 +72,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-08-03 — fix: Tighten Task-node hygiene and remove stranded dialog helpers
 - 2026-08-03 — fix: Remove invalid `focusable` attribute from `<component>` elements
 - 2026-08-03 — feat: Collapse `HomeRows` latest-media fan-out onto a bounded `apiPipeline`
-- 2026-08-02 — RTA screens `playlistsLibrary` + `playlistDetails` are content-FLAKY: the demo server (`demo.jellyfin.org/stable`) resets hourly and its playlists may be absent/changed, so `findHomeLibraryTile('playlists')` can time out (only `movies`/`tvshows`/`music` guaranteed). Guard/skip these two when no playlists library is present (or seed a playlist), like the other demo-content-dependent screens. Surfaced by the #550 sgRouter PR-hardening RTA run.
-- 2026-08-02 — fix: move log-manager init to `JRScene` so global nodes can log
 
 ## Open followups
 
