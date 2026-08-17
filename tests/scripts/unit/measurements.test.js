@@ -24,6 +24,9 @@ import {
   parseBuildFlags,
   parseLogLine,
   splitWorkload,
+  unitFor,
+  declaredFields,
+  instrumentShare,
 } from '../../../scripts/measurements.js';
 
 /**
@@ -267,6 +270,29 @@ describe('the screen-load family', () => {
     expect(samples[0].lines).toEqual(['paint', 'settled', 'split']);
   });
 
+  it('reads the ledger`s own footprint off the split line', () => {
+    // The instrument reporting how much of the number it produced is its own is what
+    // makes the calibration a property of every sample rather than of one experiment
+    // somebody has to remember to re-run.
+    const [sample] = assembleSamples(load, [
+      SCREEN_LOAD_LINES[0],
+      SCREEN_LOAD_LINES[1],
+      `${SCREEN_LOAD_LINES[2].trimEnd()} instrumentUs 2841  `,
+    ]);
+    expect(sample.fields.instrumentUs).toBe(2841);
+  });
+
+  it('still parses a split line from a build that predates instrumentUs', () => {
+    // The field is OPTIONAL in the pattern, and this is the gate under that. A
+    // required group would have stopped every previously-recorded `screen-load` line
+    // matching at all — 35 series across six components, silently unparseable. The
+    // absent field must read as absent, never as a failed match.
+    const [sample] = assembleSamples(load, SCREEN_LOAD_LINES);
+    expect(sample.lines).toContain('split');
+    expect(sample.fields.contentMs).toBe(2704);
+    expect(sample.fields).not.toHaveProperty('instrumentUs');
+  });
+
   it('keeps a screen that painted but never settled, marked complete', () => {
     // The whole reason `paint` is the only required line. A fill that never resolved
     // must produce a sample carrying a paint time and NO settle time — not a dropped
@@ -456,5 +482,77 @@ describe('the registry itself', () => {
 
   it('returns undefined for an unregistered id rather than guessing', () => {
     expect(measurementById('nope')).toBeUndefined();
+  });
+});
+
+describe('unitFor', () => {
+  it('calls a `*Us` field microseconds and everything else milliseconds', () => {
+    // The reporting layers used to append a bare `ms` to whatever a family emitted,
+    // which held only while every field WAS milliseconds. `instrumentUs` is the first
+    // that is not, and it is read to decide whether the instrument's footprint is
+    // negligible — so printing it as `3200 ms` would overstate that footprint by
+    // 1000x in the one report written to answer the question.
+    expect(unitFor('instrumentUs')).toBe('µs');
+    expect(unitFor('paintMs')).toBe('ms');
+    expect(unitFor('settledMs')).toBe('ms');
+    expect(unitFor('totalMs')).toBe('ms');
+  });
+
+  it('does not treat a field merely CONTAINING "us" as microseconds', () => {
+    // Anchored on the suffix, not a substring: `statusMs` and `focusMs` both contain
+    // `us` and are milliseconds. A substring match here would have mislabelled them.
+    expect(unitFor('statusMs')).toBe('ms');
+    expect(unitFor('focusMs')).toBe('ms');
+  });
+
+  it('covers every timing field the registry can actually emit', () => {
+    // The rule is derived from names, so it is only as good as the names in use. This
+    // walks the real families rather than a hand-listed sample, which is what keeps a
+    // future field with a third unit from slipping through as milliseconds by default.
+    const fields = MEASUREMENTS.flatMap((m) => declaredFields(m));
+    for (const field of fields) {
+      expect(['ms', 'µs']).toContain(unitFor(field));
+    }
+    expect(fields).toContain('instrumentUs');
+  });
+});
+
+describe('declaredFields', () => {
+  it('reports what a family CAN emit, not what a run happened to see', () => {
+    // The distinction the caller depends on: a `screen-load` run carrying no
+    // `instrumentUs` is an old app or a build that emitted nothing, and that has to be
+    // reportable as such. If this returned only observed keys, that case would be
+    // indistinguishable from a family that has no such field at all.
+    const fields = declaredFields(measurementById('screen-load'));
+    expect(fields).toEqual(expect.arrayContaining(['paintMs', 'settledMs', 'instrumentUs']));
+    expect(declaredFields(measurementById('home-latest-rows'))).not.toContain('instrumentUs');
+  });
+});
+
+describe('instrumentShare', () => {
+  it('divides by settledMs, converting microseconds to milliseconds first', () => {
+    // The real reading off `.177`: 1573 µs of ledger against a 301 ms settle.
+    expect(instrumentShare(1573, 301)).toBeCloseTo(0.005226, 6);
+  });
+
+  it('uses settledMs and NOT the family primary as the denominator', () => {
+    // The instrument's span is begin -> the settled emit, which is what `settledMs`
+    // measures. `paintMs` contains only `begin`'s bookkeeping, so dividing by it would
+    // overstate the footprint several-fold on the number people quote most: the same
+    // 1573 µs reads as 0.52% of a 301 ms settle and 2.9% of a 54 ms paint.
+    const againstSettled = instrumentShare(1573, 301);
+    const againstPaint = instrumentShare(1573, 54);
+    expect(againstPaint).toBeGreaterThan(againstSettled * 5);
+  });
+
+  it('returns null rather than 0 when there is no wall clock to divide by', () => {
+    // A screen that painted and never settled is the most broken case there is.
+    // Reporting it as `0.00%` would present it as the cleanest instrument reading in
+    // the record — absence reading as fine, which is the failure this project has now
+    // removed from several places.
+    expect(instrumentShare(1573, undefined)).toBeNull();
+    expect(instrumentShare(undefined, 301)).toBeNull();
+    expect(instrumentShare(1573, 0)).toBeNull();
+    expect(instrumentShare(1573, NaN)).toBeNull();
   });
 });

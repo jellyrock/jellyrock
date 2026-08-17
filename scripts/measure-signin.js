@@ -78,6 +78,7 @@ import { snapshotRegistry } from '../tests/rta/lib/registry.js';
 import { seedHome, assertSeedTookEffect } from '../tests/rta/lib/seed.js';
 import { authenticate } from '../tests/rta/lib/jellyfin.js';
 import { acquireDeviceLock } from './device-lock.js';
+import { INTERRUPTED_EXIT } from './measure-matrix.js';
 import { RTA_CONFIG } from '../tests/rta/config.js';
 
 /** `--url <v>` / `--url=<v>`, for the two flags the driver passes. */
@@ -145,6 +146,68 @@ try {
   process.exit(1);
 }
 
+// The `try`/`catch` below cannot catch everything that ends this process, and the gap is
+// not theoretical — it was hit on 2026-08-16. `roku-test-automation` surfaces a refused
+// ODC connect as an `error` EVENT on its socket, which lands OUTSIDE the await chain, so
+// no `catch` around `signIn()` can see it. The process died on an uncaughtException, the
+// release below was never reached, and `.178` stayed claimed by a dead pid until a manual
+// `node scripts/device-lock.js release` eight minutes later — blocking the very next run.
+//
+// A signal has the identical shape and is reachable on the ORDINARY path, not just a
+// crash: the driver's `signalPolicy` sends this child SIGTERM on a first Ctrl-C. That is
+// the same defect `measure.js` was given handlers for during #824 (filed as tech debt in
+// review, then fixed in that same branch, so no slug survives to cite); the sibling
+// seeding script was never given the equivalent.
+//
+// This file needs the net MORE than either sibling, because it is the first thing in a
+// matrix run to touch ODC — against a device whose build state nobody has verified, where
+// "no on-device component at all" is a documented expected state (see the header), not an
+// edge case. The most crash-prone step had the least protection.
+//
+// Nothing can await inside a `process.on('exit')` handler, so this needs its own hooks. A
+// rejection out of top-level await surfaces as `uncaughtException` rather than
+// `unhandledRejection`, so both are hooked instead of betting on which.
+//
+// Releasing on a signal deliberately admits the next contender while the device may still
+// be seeded — the state the lock exists to protect. That is the right trade anyway: the
+// driver runs `rta-restore.js` unconditionally right after this child dies, so the window
+// is one restore long, whereas a leaked lock blocks every contender for the full lease
+// with no upside at all. The snapshot is on disk before the first write either way.
+//
+// `released` keeps the net from firing again on the way OUT. The ordinary path releases the
+// lock at the bottom of this file and then prints and exits; a signal landing after that
+// would otherwise re-release — a DELETE on a ref that is already gone, which `device-lock`
+// reports as "could not release the lock; the lease will expire on its own", alarming and
+// untrue.
+//
+// It is set AFTER the release resolves, not before, and that ordering is the whole point:
+// the release is a GitHub round trip, so a signal can land mid-flight. Claiming the release
+// up front would make the handler skip it and exit — leaking exactly the lock this file
+// exists to free. Set afterwards, a mid-flight signal re-releases (idempotent, and the
+// duplicate warning is the cheap side of the trade) while a signal after it is done stays
+// quiet. Lock hygiene wins over a tidy log; a leaked lease blocks every contender.
+//
+// Signals exit `INTERRUPTED_EXIT` rather than 1, so the driver can tell an operator's
+// deliberate stop from a device that would not sign in — a bare 1 makes those identical,
+// and the matrix then carries on to the next device after being told to stop. Imported
+// rather than written as a literal because `wasInterrupted` on the reading side is the
+// other half of the same contract; see its note for why 130 and not `128+n`.
+let released = false;
+const releaseAndExit = async (why, detail, code) => {
+  console.error(`\n[signin] ${host}: ${why} — releasing the device.${detail ? `\n${detail}` : ''}`);
+  if (!released) {
+    await lock.release().catch(() => {});
+    released = true;
+  }
+  process.exit(code);
+};
+for (const event of ['uncaughtException', 'unhandledRejection']) {
+  process.on(event, (err) => releaseAndExit(event, err?.stack || err?.message || err, 1));
+}
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  process.on(signal, () => releaseAndExit(signal, null, INTERRUPTED_EXIT));
+}
+
 // `process.exit` does not run a `finally`, so the release is sequenced explicitly rather
 // than wrapped around an exit — a lock held by a process that is gone wedges every
 // contender until the lease expires.
@@ -165,6 +228,7 @@ try {
 }
 
 await lock.release().catch(() => {});
+released = true;
 
 if (failure) {
   console.error(`\n[signin] ${host}: FAILED — ${failure.message}`);

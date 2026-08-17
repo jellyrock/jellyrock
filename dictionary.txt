@@ -360,6 +360,7 @@ nominatively
 non-cloneable
 non-Jellyfin
 Non-Jellyfin
+non-ODC
 npm
 NPM
 ns
@@ -508,6 +509,7 @@ SceneGraph
 schemas
 schema-validated
 scrollable
+scrollback
 scrollbar
 sdk
 SDK
@@ -709,6 +711,7 @@ upserted
 upserts
 crashlog
 crashlogs
+dogfood
 dogfooding
 dogfooded
 unenriched

@@ -102,9 +102,11 @@ Tell the user no journal entry matched, then suggest:
 
 Compose the diff:
 
-1. Remove the matched bullet from the area subsection under `## Open followups`. If removing the bullet leaves the area subsection empty, restore the `(none)` placeholder line.
+1. Remove the matched bullet from the area subsection under `## Open followups`. If removing the bullet leaves the area subsection empty, restore the `(none)` placeholder line. If the bullet was the LAST line of the file, make sure the file still ends with a single newline — removing a final line takes its newline with it, and `markdownlint`'s MD047 fires on the next edit rather than on this one, so the breakage surfaces attached to unrelated work.
 2. Prepend a new bullet at the top of `## Recently shipped`: `- YYYY-MM-DD — <followup text>` using today's ISO date and the followup's text verbatim.
 3. Bump `last-updated:` in the frontmatter to today.
+
+**Verbatim has one exception, and it is not a style call.** A followup that states a PROBLEM rather than a deliverable — "X has no sanctioned way to do Y", "Z cannot be verified" — reads as a live complaint when copied verbatim under a today's date, i.e. it asserts the problem still exists on the very day it was fixed. That fails this skill's own "closure writes reflect reality, not optimism" criterion in the honest direction rather than the optimistic one, but it fails it. For those, write a one-line RESOLUTION naming what shipped and the followup it closes, which is the shape `docs/progress.md` already uses — see its `run-meta.json` and registry-restore entries. Deliverable-shaped bullets ("Expand automated store screenshots to all ~99 locales") are unaffected: verbatim is already the resolution, and rewriting them would just be drift.
 
 Apply directly via `Edit` (no confirmation prompt — trust the skill; `/audit-skill done` is the corrective loop for systematic issues).
 

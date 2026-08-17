@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  INTERRUPTED_EXIT,
   MatrixError,
   formatPlanLines,
   parseDeviceList,
@@ -9,6 +10,7 @@ import {
   serverDeclarationRefusal,
   signalPolicy,
   summariseMatrix,
+  wasInterrupted,
 } from '../../../scripts/measure-matrix.js';
 
 /**
@@ -282,6 +284,45 @@ describe('parseSignIn', () => {
  * synchronous `spawnSync` loop never let a handler set — and it shipped because there
  * was nowhere to pin it. Every rule below is now a red/green gate instead of a comment.
  */
+describe('wasInterrupted', () => {
+  it('reads the OBSERVED signal when the OS killed the child', () => {
+    // Node fills `signal` in only for a process it killed outright, and then `status` is
+    // null. That path predates this helper and must keep working unchanged.
+    expect(wasInterrupted(null, 'SIGTERM')).toBe(true);
+    expect(wasInterrupted(null, 'SIGINT')).toBe(true);
+  });
+
+  it('INFERS an interrupt from the exit code when the child trapped the signal', () => {
+    // The case the helper exists for. Both measurement children have to trap their signals
+    // — releasing the device lock is an `await`, and a dying process never gets one — so
+    // they exit under their own power and Node reports no signal at all. Without this the
+    // driver saw a bare non-zero status and blamed the device.
+    expect(wasInterrupted(INTERRUPTED_EXIT, null)).toBe(true);
+    expect(wasInterrupted(INTERRUPTED_EXIT)).toBe(true);
+  });
+
+  it('does not call an ordinary failure an interrupt', () => {
+    // The direction that would be worse to get wrong: a device that genuinely failed to
+    // sign in, reported as the operator having stopped the run, stops the whole matrix and
+    // hides a real fault behind a plausible story.
+    expect(wasInterrupted(0)).toBe(false);
+    expect(wasInterrupted(1)).toBe(false);
+    expect(wasInterrupted(2)).toBe(false);
+    expect(wasInterrupted(127)).toBe(false);
+    expect(wasInterrupted(null)).toBe(false);
+    expect(wasInterrupted(undefined)).toBe(false);
+  });
+
+  it('is pinned to the same constant the children exit with', () => {
+    // The two halves of one contract: `measure.js` and `measure-signin.js` import
+    // `INTERRUPTED_EXIT` to exit with, this reads it back. Asserting the round trip rather
+    // than the literal is what makes a future change to the value safe — the alternative
+    // is two 130s in two files whose disagreement is invisible until a real interrupt.
+    expect(wasInterrupted(INTERRUPTED_EXIT)).toBe(true);
+    expect(INTERRUPTED_EXIT).toBe(130);
+  });
+});
+
 describe('signalPolicy', () => {
   const HOST = '192.0.2.10';
 
@@ -518,6 +559,37 @@ describe('summariseMatrix', () => {
 
   it('is not ok with no devices at all', () => {
     expect(summariseMatrix([]).ok).toBe(false);
+  });
+
+  /**
+   * The child that TRAPPED its signal. Node reports no `signal` for it — it exited under
+   * its own power — so the only evidence is the exit code, and that says THAT it was
+   * interrupted and not which signal did it. The bare word is the honest rendering; a
+   * plausible name here would be a deduction printed in the line an operator reads to
+   * decide whether their own Ctrl-C caused this. It must still not count as measured.
+   */
+  it('says a bare "interrupted" when no signal name was observed', () => {
+    const s = summariseMatrix([
+      row('a'),
+      row('b', { status: INTERRUPTED_EXIT, signal: null, interrupted: true }),
+    ]);
+    expect(s.ok).toBe(false);
+    expect(s.measured).toBe(1);
+    expect(s.lines[1]).toMatch(/b — Some Roku: interrupted$/);
+    expect(s.lines[1]).not.toMatch(/FAILED/);
+    expect(s.lines[1]).not.toMatch(/SIG/);
+  });
+
+  /**
+   * The regression this whole split exists to prevent: before it, a trapped-signal child
+   * reached the summary as a bare non-zero exit and read as the DEVICE failing, which is
+   * the opposite of what happened and sends an operator to look at a Roku that is fine.
+   */
+  it('does not render a trapped-signal child as a device failure', () => {
+    const s = summariseMatrix([
+      row('a', { status: INTERRUPTED_EXIT, signal: null, interrupted: true, stage: 'sign-in' }),
+    ]);
+    expect(s.lines[0]).toMatch(/a — Some Roku: sign-in interrupted$/);
   });
 
   /**

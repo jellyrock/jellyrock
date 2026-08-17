@@ -111,6 +111,7 @@ import {
   resolveDevices,
   serverDeclarationRefusal,
   signalPolicy,
+  wasInterrupted,
   summariseMatrix,
 } from './measure-matrix.js';
 
@@ -320,8 +321,15 @@ for (const [i, probe] of probes.entries()) {
     // device with nobody looking at it.
     seeded = true;
     row.status = child.status;
+    // Two fields because they are two different claims. `signal` is the name Node OBSERVED,
+    // which it fills in only for a child the OS killed outright; `interrupted` also covers
+    // the child that trapped the signal and exited under its own power, which both
+    // measurement children must do because releasing the device lock needs an `await`.
+    // Before this, that child reported a bare non-zero status and the matrix filed an
+    // operator's deliberate stop as this device's failure — then carried on to the next one.
     row.signal = child.signal;
-    if (child.status !== 0 || child.signal) row.stage = 'sign-in';
+    row.interrupted = wasInterrupted(child.status, child.signal);
+    if (child.status !== 0 || row.interrupted) row.stage = 'sign-in';
   }
 
   if (row.stage) {
@@ -332,13 +340,16 @@ for (const [i, probe] of probes.entries()) {
     // unreachable while the loop was synchronous, and is now genuinely covered. Overwriting
     // the sign-in's exit 0 is the whole point: without it the row keeps a passing status
     // and the summary reports a device as `measured` that never ran a series at all.
+    // Observed, and by this process itself — the driver's own handler recorded the name.
     row.signal = interrupted;
+    row.interrupted = true;
     row.stage = 'measure';
   } else {
     const child = await runFor(probe.host, 'measure', MEASURE, forwarded);
     row.status = child.status;
     row.signal = child.signal;
-    if (child.status !== 0 || child.signal) row.stage = 'measure';
+    row.interrupted = wasInterrupted(child.status, child.signal);
+    if (child.status !== 0 || row.interrupted) row.stage = 'measure';
   }
 
   // ALWAYS, whatever happened above — including an interrupt. A device left seeded is the
@@ -354,8 +365,11 @@ for (const [i, probe] of probes.entries()) {
   }
 
   // A signal is the operator, not the device. Carrying on to the next device would ignore
-  // an interrupt that was aimed at the run rather than at one series.
-  if (interrupted || row.signal) {
+  // an interrupt that was aimed at the run rather than at one series. Reads `interrupted`
+  // rather than `signal` so a child that trapped its signal stops the matrix too — the
+  // observed name is for the SUMMARY, and gating the run on it meant only a child the OS
+  // killed outright could stop it.
+  if (interrupted || row.interrupted) {
     for (const rest of probes.slice(i + 1)) {
       results.push({
         host: rest.host,

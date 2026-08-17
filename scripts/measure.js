@@ -198,8 +198,17 @@ import {
   runProvenance,
   RUN_OUTCOMES,
 } from './run-record.js';
-import { MEASUREMENTS, measurementById, measurementIds, matchLine } from './measurements.js';
+import {
+  MEASUREMENTS,
+  measurementById,
+  measurementIds,
+  matchLine,
+  unitFor,
+  declaredFields,
+  instrumentShare,
+} from './measurements.js';
 import { runSeries, NavFailedError } from './measure-loop.js';
+import { INTERRUPTED_EXIT } from './measure-matrix.js';
 import {
   readIdentity,
   missingIdentityFields,
@@ -340,7 +349,7 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
   process.on(signal, async () => {
     // Never trap someone in an un-killable process — nothing here is destructive to leave
     // (this tool does not write the registry), so a second signal just goes.
-    if (interrupting) process.exit(130);
+    if (interrupting) process.exit(INTERRUPTED_EXIT);
     interrupting = true;
     console.log(`\n[measure] ${signal} — abandoning the series and releasing the device.`);
     socket?.destroy();
@@ -348,7 +357,10 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
     // operator's deliberate stop `crashed` — the same correction `rta-run.js` makes.
     run.close(RUN_OUTCOMES.INTERRUPTED);
     await lock.release().catch(() => {});
-    process.exit(130);
+    // The value is unchanged; it is now IMPORTED rather than retyped, because the driver
+    // reads it back through `wasInterrupted` to tell an operator's stop from a device
+    // failure. Two literals in two files that must agree is the shape that drifts.
+    process.exit(INTERRUPTED_EXIT);
   });
 }
 
@@ -953,7 +965,7 @@ if (selectionRefusal) {
   );
 }
 console.log(
-  `\n[measure] ${measurement.primary} median ${median ?? '—'} ms over ${cold.length}/${launchesTaken} cold samples` +
+  `\n[measure] ${measurement.primary} median ${median ?? '—'} ${unitFor(measurement.primary)} over ${cold.length}/${launchesTaken} cold samples` +
     (args.component ? ` · component ${args.component}` : '') +
     (args.variant ? ` · variant ${args.variant}` : ''),
 );
@@ -965,8 +977,27 @@ for (const key of timingKeys) {
   if (key === measurement.primary) continue;
   const { median: m, samples: n } = medians[key];
   console.log(
-    `[measure] ${key} median ${m ?? '—'} ms over ${n}/${cold.length} cold samples` +
+    `[measure] ${key} median ${m ?? '—'} ${unitFor(key)} over ${n}/${cold.length} cold samples` +
       (n < cold.length ? '  ⚠ absent from some samples — reported, not averaged away' : ''),
+  );
+}
+// How much of this number the INSTRUMENT is. Printed whenever the family can emit it,
+// including when it did not — a `screen-load` series with no `instrumentUs` is an app
+// older than the field or a build that emitted nothing, and reporting that as silence
+// would let the one case worth investigating look identical to a clean run.
+//
+// Said on the terminal rather than left in the record for the reason the per-field
+// medians above are: this is the number that decides whether a published figure needs
+// the instrument subtracted from it, and a reader should not have to do the division
+// by hand to find out.
+if (declaredFields(measurement).includes('instrumentUs')) {
+  const share = instrumentShare(medians.instrumentUs?.median, medians.settledMs?.median);
+  console.log(
+    share === null
+      ? '[measure] instrument share: not computable — needs both instrumentUs and settledMs ' +
+          'medians (a screen that never settled has no wall clock to be a fraction of)'
+      : `[measure] instrument share: the ledger itself accounts for ${(share * 100).toFixed(2)}% ` +
+          'of settledMs — measured per sample, not assumed',
   );
 }
 const missingLines = measurement.lines.filter((l) => lineCoverage[l.key] < cold.length);

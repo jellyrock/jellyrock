@@ -55,6 +55,7 @@ import { MeasureArgError } from './measure-args.js';
 // The SAME selection rule the publisher uses. Not a copy — a copy is what produced the
 // 8x disagreement between what `measure` printed and what this read back.
 import { selectColdSamples } from './measure-selection.js';
+import { unitFor } from './measurements.js';
 
 /**
  * The measurement accumulator. Derived from `runDir('measure')` rather than written
@@ -778,7 +779,15 @@ export function interleaving(a, b) {
 
 // ── Report ───────────────────────────────────────────────────────────────────
 
-const ms = (v) => (v === null || v === undefined ? '—' : `${Math.round(v * 10) / 10} ms`);
+/**
+ * A value with its unit. The unit is a PARAMETER rather than a hardcoded `ms`,
+ * because `--field` can headline any timing a family emits and not all of them are
+ * milliseconds — `instrumentUs` is microseconds, and printing it as `3200 ms` would
+ * misstate the instrument's own footprint by three orders of magnitude in the one
+ * report written to answer whether that footprint matters. See `unitFor`.
+ */
+const withUnit = (v, unit = 'ms') =>
+  v === null || v === undefined ? '—' : `${Math.round(v * 10) / 10} ${unit}`;
 
 /**
  * A span, in the largest unit that does not round it to nothing.
@@ -842,14 +851,15 @@ export function reportComparison(a, b, { refusals = [], warnings = [] } = {}) {
     '',
   );
 
+  const unit = unitFor(a.primary);
   const sa = summarizeValues(a.values);
   const sb = summarizeValues(b.values);
   const delta = sa.median !== null && sb.median !== null ? sb.median - sa.median : null;
   const pct = delta !== null && sa.median ? (delta / sa.median) * 100 : null;
   lines.push(
-    `  ${a.primary.padEnd(11)} ${name(a)} median ${ms(sa.median)}   (n=${sa.n}, ${ms(sa.min)}–${ms(sa.max)})`,
-    `              ${name(b)} median ${ms(sb.median)}   (n=${sb.n}, ${ms(sb.min)}–${ms(sb.max)})`,
-    `              Δ ${delta > 0 ? '+' : ''}${ms(delta)}${pct === null ? '' : ` (${pct > 0 ? '+' : ''}${pct.toFixed(1)}%)`}` +
+    `  ${a.primary.padEnd(11)} ${name(a)} median ${withUnit(sa.median, unit)}   (n=${sa.n}, ${withUnit(sa.min, unit)}–${withUnit(sa.max, unit)})`,
+    `              ${name(b)} median ${withUnit(sb.median, unit)}   (n=${sb.n}, ${withUnit(sb.min, unit)}–${withUnit(sb.max, unit)})`,
+    `              Δ ${delta > 0 ? '+' : ''}${withUnit(delta, unit)}${pct === null ? '' : ` (${pct > 0 ? '+' : ''}${pct.toFixed(1)}%)`}` +
       `  ${b.label} relative to ${a.label}`,
   );
 
