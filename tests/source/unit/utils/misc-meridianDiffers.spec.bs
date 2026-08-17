@@ -1,0 +1,76 @@
+
+namespace tests
+
+  @suite("misc.bs - meridianDiffers() Contextual AM/PM Suffix Rule")
+  class MeridianDiffersTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("meridianDiffers(timeHours, nowHours)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns false when both times are in the morning")
+    @params(0, 0)
+    @params(1, 9)
+    @params(9, 1)
+    @params(11, 11)
+    function _(timeHours, nowHours)
+      m.assertFalse(meridianDiffers(timeHours, nowHours))
+    end function
+
+    @it("returns false when both times are in the afternoon/evening")
+    @params(12, 12)
+    @params(13, 21)
+    @params(21, 13)
+    @params(23, 23)
+    function _(timeHours, nowHours)
+      m.assertFalse(meridianDiffers(timeHours, nowHours))
+    end function
+
+    @it("returns true when the end time crosses midnight (pm now, am end)")
+    ' 11:40 pm now, ends 12:15 am / 1:15 am — the case that motivated the rule
+    @params(0, 23)
+    @params(1, 23)
+    @params(2, 22)
+    function _(timeHours, nowHours)
+      m.assertTrue(meridianDiffers(timeHours, nowHours))
+    end function
+
+    @it("returns true when the end time crosses noon (am now, pm end)")
+    ' 11:30 am now, ends 12:15 pm / 1:15 pm — same ambiguity class as the midnight case
+    @params(12, 11)
+    @params(13, 11)
+    @params(14, 10)
+    function _(timeHours, nowHours)
+      m.assertTrue(meridianDiffers(timeHours, nowHours))
+    end function
+
+    @it("treats noon (12) as pm, not am")
+    function _()
+      m.assertTrue(meridianDiffers(12, 11), "12:00 vs 11:00 should differ — noon is pm")
+      m.assertFalse(meridianDiffers(12, 13), "12:00 vs 13:00 should not differ — both pm")
+    end function
+
+    @it("treats midnight (0) as am, not pm")
+    function _()
+      m.assertTrue(meridianDiffers(0, 23), "00:00 vs 23:00 should differ — midnight is am")
+      m.assertFalse(meridianDiffers(0, 1), "00:00 vs 01:00 should not differ — both am")
+    end function
+
+    @it("is symmetric — argument order does not change the answer")
+    @params(23, 1)
+    @params(11, 13)
+    @params(9, 10)
+    @params(15, 20)
+    function _(a, b)
+      m.assertEqual(meridianDiffers(a, b), meridianDiffers(b, a))
+    end function
+
+    @it("returns a Boolean type")
+    function _()
+      result = meridianDiffers(13, 9)
+      m.assertEqual(Type(result), "Boolean")
+    end function
+
+  end class
+
+end namespace

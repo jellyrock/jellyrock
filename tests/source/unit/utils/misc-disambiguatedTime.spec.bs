@@ -1,0 +1,103 @@
+
+namespace tests
+
+  ' Covers the two functions that decide whether a now-anchored time carries an am/pm suffix.
+  ' The pure half of the rule has its own suite (misc-meridianDiffers.spec.bs); this one exercises
+  ' what that predicate is wired into — the 24h short-circuit, the 12-hour inference horizon, and
+  ' the formatting both "Ends at" call sites (ItemDetails and the playback OSD) share.
+  '
+  ' Every case is anchored to the real clock instead of a fixed hour, so each asserts the same
+  ' thing whatever time the suite runs at: a time is always in the same half of the day as itself,
+  ' and now + 12h is always in the opposite half (h + 12 mod 24 flips the half for every h).
+  @suite("misc.bs - getDisambiguatingTimePeriod() / formatDisambiguatedTime()")
+  class DisambiguatedTimeTests extends tests.BaseTestSuite
+
+    ' Pre-fixture clock format, restored per test.
+    private originalClockFormat as string
+
+    protected override function beforeEach()
+      super.beforeEach()
+      ' m.global.device is a shared DeviceInfo NODE (globals.bs), mutated by field assignment.
+      ' `test:all` builds unit + integration into ONE channel run, so an unrestored fixture value
+      ' would follow this suite into every later one.
+      m.originalClockFormat = m.global.device.clockFormat
+      m.global.device.clockFormat = "12h"
+    end function
+
+    protected override function afterEach()
+      m.global.device.clockFormat = m.originalClockFormat
+      super.afterEach()
+    end function
+
+    ' A LOCAL roDateTime offset from now, built exactly the way the ends-at call sites build it.
+    private function localTimeIn(secondsFromNow as integer) as object
+      date = CreateObject("roDateTime")
+      date.fromSeconds(date.asSeconds() + secondsFromNow)
+      date.toLocalTime()
+      return date
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getDisambiguatingTimePeriod(time)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' 0s = now, 43200s = +12h (opposite half), 82800s = +23h (past the horizon).
+    @it("never suffixes on a 24h clock, whatever the distance")
+    @params(0)
+    @params(43200)
+    @params(82800)
+    function _(secondsFromNow)
+      m.global.device.clockFormat = "24h"
+      m.assertEqual(getDisambiguatingTimePeriod(m.localTimeIn(secondsFromNow)), "")
+    end function
+
+    @it("omits the suffix for a time in the same half of the day")
+    function _()
+      ' A time is trivially in its own half of the day, and zero seconds out, so both the
+      ' meridian test and the horizon test say the reader can infer it from the bare clock.
+      m.assertEqual(getDisambiguatingTimePeriod(m.localTimeIn(0)), "")
+    end function
+
+    @it("suffixes a time in the opposite half of the day")
+    function _()
+      ' +12h satisfies both conditions at once (opposite half AND exactly at the horizon), so
+      ' this pins the boundary as inclusive as well as the crossing itself.
+      target = m.localTimeIn(43200)
+      m.assertEqual(getDisambiguatingTimePeriod(target), getTimePeriod(target))
+    end function
+
+    @it("suffixes past the 12-hour horizon even when the meridian repeats")
+    function _()
+      ' +23h lands one hour before the current hour — the SAME half of the day for 22 of the 24
+      ' possible start hours, so the meridian test alone would drop the suffix and "Ends at 12:00"
+      ' would read as noon today rather than tomorrow. The horizon is what forces it here.
+      target = m.localTimeIn(82800)
+      m.assertEqual(getDisambiguatingTimePeriod(target), getTimePeriod(target))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("formatDisambiguatedTime(time)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("renders the bare time when the half of the day is inferable")
+    function _()
+      target = m.localTimeIn(0)
+      m.assertEqual(formatDisambiguatedTime(target), formatTime(target))
+    end function
+
+    @it("appends a space-separated suffix when it isn't")
+    function _()
+      target = m.localTimeIn(43200)
+      m.assertEqual(formatDisambiguatedTime(target), formatTime(target) + " " + getTimePeriod(target))
+    end function
+
+    @it("matches formatTime() exactly on a 24h clock")
+    function _()
+      m.global.device.clockFormat = "24h"
+      target = m.localTimeIn(43200)
+      m.assertEqual(formatDisambiguatedTime(target), formatTime(target))
+    end function
+
+  end class
+
+end namespace

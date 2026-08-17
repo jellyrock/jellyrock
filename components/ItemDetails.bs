@@ -1872,11 +1872,10 @@ sub populateInfoGroupSeason(item as object, userSettings as object)
   if isValid(seriesData) and seriesData.runTimeTicks > 0 and not userSettings.uiDesignHideClock
     ' Compute end time directly from series runTimeTicks — do NOT swap m.top.itemContent,
     ' as that fires onItemContentChanged() synchronously causing reentrancy and row duplication.
+    ' Setting the duration first lets createEndsAtNode() do the rest, so Season shares the one
+    ' formatter rather than keeping its own copy of it.
     m.endsAtDurationSeconds = int(seriesData.runTimeTicks / 10000000.0)
-    endDate = CreateObject("roDateTime")
-    endDate.fromSeconds(endDate.asSeconds() + m.endsAtDurationSeconds)
-    endDate.toLocalTime()
-    m.endsAtNode = createTimeLabel("ends-at", translate(translationKeys.MessageEndsAt1, [formatTime(endDate)]), getTimePeriod(endDate))
+    createEndsAtNode()
     displayInfoNode(m.endsAtNode)
   end if
 
@@ -2158,7 +2157,7 @@ end sub
 
 ' populateInfoGroupTvChannel: Info rows for TvChannel (Live TV)
 ' Displays metadata from the current program (the channel is a vessel for what's airing).
-' Row 1: CH N · OfficialRating · CommunityRating · CriticRating · S#E# · Program Name · Runtime · BroadcastTime · Ends At
+' Row 1: CH N · OfficialRating · CommunityRating · CriticRating · S#E# · Program Name · Runtime · BroadcastTime
 ' Row 2: Genres (or category flags)
 sub populateInfoGroupTvChannel(item as object, userSettings as object)
   if isValidAndNotEmpty(item.channelNumber)
@@ -2242,7 +2241,7 @@ sub populateInfoGroupTvChannel(item as object, userSettings as object)
 end sub
 
 ' populateInfoGroupProgram: Info rows for Program (Live TV EPG entry)
-' Row 1: Year · CH X - ChanName · OfficialRating · CommunityRating · CriticRating · S#E# · Premiere/Repeat · Runtime · BroadcastTime · Ends At
+' Row 1: Year · CH X - ChanName · OfficialRating · CommunityRating · CriticRating · S#E# · Premiere/Repeat · Runtime · BroadcastTime
 ' Row 2: Genres (or category flags)
 sub populateInfoGroupProgram(item as object, userSettings as object)
   if item.productionYear > 0
@@ -2319,13 +2318,8 @@ sub populateInfoGroupProgram(item as object, userSettings as object)
     displayInfoNode(createTimeLabel("broadcastTime", timeText, periodText))
   end if
 
-  ' "Ends at" — only for live programs with valid broadcast times
-  if item.isLive and not userSettings.uiDesignHideClock and isValidAndNotEmpty(item.endDate)
-    endDt = createObject("roDateTime")
-    endDt.FromISO8601String(item.endDate)
-    endDt.toLocalTime()
-    displayInfoNode(createTimeLabel("ends-at", translate(translationKeys.MessageEndsAt1, [formatTime(endDt)]), getTimePeriod(endDt)))
-  end if
+  ' No "Ends at" chip here: the broadcastTime range immediately above already ends with this
+  ' program's end time, so it rendered the same fact twice ("11:30 - 1:15 am • Ends at 1:15 am").
 
   ' Row 2: genres (or category flags)
   if item.genres.count() > 0
@@ -2861,25 +2855,36 @@ function getRuntime() as integer
   return round(m.top.itemContent.runTimeTicks / 600000000.0)
 end function
 
-' createEndsAtNode: Build an "Ends at" time label with AM/PM support and store it
-' on m.endsAtNode for dynamic clock updates. Used by types with runTimeTicks-based durations.
-sub createEndsAtNode()
+' endsAtDate: Local time at which playback would finish if started right now.
+function endsAtDate() as object
   date = CreateObject("roDateTime")
   date.fromSeconds(date.asSeconds() + m.endsAtDurationSeconds)
   date.toLocalTime()
-  m.endsAtNode = createTimeLabel("ends-at", translate(translationKeys.MessageEndsAt1, [formatTime(date)]), getTimePeriod(date))
+  return date
+end function
+
+' formatEndsAtText: The one place the "Ends at" label text is built. Both the initial build and
+' the per-minute refresh below go through here — they used to format independently, which meant
+' any change to the rule had to be made twice or the label would render one way on open and
+' another at the first clock tick.
+'
+' formatDisambiguatedTime() owns the contextual am/pm rule and is shared with the playback OSD's
+' own "Ends at", so one end time reads the same way on both screens.
+function formatEndsAtText(date as object) as string
+  return translate(translationKeys.MessageEndsAt1, [formatDisambiguatedTime(date)])
+end function
+
+' createEndsAtNode: Build an "Ends at" label and store it on m.endsAtNode for dynamic clock
+' updates. Used by types with runTimeTicks-based durations.
+sub createEndsAtNode()
+  m.endsAtNode = createInfoLabel("ends-at")
+  m.endsAtNode.text = formatEndsAtText(endsAtDate())
 end sub
 
 ' onClockMinuteChanged: Dynamically update "Ends At" time when overhang clock minute changes.
 sub onClockMinuteChanged()
   if not isValid(m.endsAtNode) then return
-  date = CreateObject("roDateTime")
-  date.fromSeconds(date.asSeconds() + m.endsAtDurationSeconds)
-  date.toLocalTime()
-  timeStr = formatTime(date)
-  periodText = getTimePeriod(date)
-  if periodText <> "" then timeStr += " " + periodText
-  m.endsAtNode.text = translate(translationKeys.MessageEndsAt1, [timeStr])
+  m.endsAtNode.text = formatEndsAtText(endsAtDate())
 end sub
 
 sub updateFavoriteButton()

@@ -257,6 +257,14 @@ sub detachGoToLiveButton()
   m.goToLiveAttached = false
 end sub
 
+' setEndsAtText: "Ends at <time>", refreshed on every clock minute tick.
+'
+' The time goes through formatDisambiguatedTime() — the same rule ItemDetails' "Ends at" chip
+' uses — so it picks up an am/pm suffix exactly when the bare `<Clock />` beside it can't
+' disambiguate (across noon/midnight, or beyond a 12-hour horizon). The suffix changes the
+' label's width, which is safe here: `endsAtGroup` is a horiz LayoutGroup with
+' horizAlignment="right", so its origin is the right edge of the last child and it grows
+' leftward from the action-safe x=1824 rather than toward the screen edge.
 sub setEndsAtText()
   endsAtText = m.top.findNode("endsAtText")
 
@@ -280,7 +288,7 @@ sub setEndsAtText()
         endDt.fromSeconds(endDt.asSeconds() + behindLive)
       end if
       endDt.toLocalTime()
-      m.endsAtTime.text = formatTime(endDt)
+      m.endsAtTime.text = formatDisambiguatedTime(endDt)
       endsAtText.visible = true
     else
       endsAtText.visible = false
@@ -302,7 +310,7 @@ sub setEndsAtText()
   date.fromSeconds(date.asSeconds() + endTime)
   date.toLocalTime()
 
-  m.endsAtTime.text = formatTime(date)
+  m.endsAtTime.text = formatDisambiguatedTime(date)
   endsAtText.visible = true
 end sub
 
