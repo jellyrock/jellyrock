@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-17 — fix: drop redundant am/pm from "Ends at" in `ItemDetails` and the OSD
 - 2026-08-17 — fix(overhang): stop long usernames rendering as a bare `...` in `JRDropdown`
 - 2026-08-17 — ci(rta): Give `measure:devices` a `--sign-in` mode
 - 2026-08-16 — ci(rta): Drive the measurement matrix across every device in `ROKU_DEVICES`
