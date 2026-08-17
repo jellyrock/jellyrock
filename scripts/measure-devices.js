@@ -1,14 +1,39 @@
 /**
  * Take the same measurement on every device in `ROKU_DEVICES`, one after another.
  *
- *   npm run measure:devices -- --measurement screen-load --nav settings -n 30
- *   npm run measure:devices -- --deploy --nav movieDetails -n 30
- *   ROKU_DEVICES=192.0.2.10,192.0.2.11 npm run measure:devices -- -n 5   # a subset, once
+ *   npm run measure:devices -- --server <url> --measurement screen-load --nav settings -n 30
+ *   npm run measure:devices -- --sign-in <url> --user <name> --nav settings -n 30
+ *   ROKU_DEVICES=192.0.2.10,192.0.2.11 npm run measure:devices -- --server <url> -n 5
  *
- * Every flag is forwarded VERBATIM to `npm run measure`; this tool knows nothing about
- * that grammar and deliberately does not re-implement any of it. What it adds is the one
- * thing `measure` cannot do for itself — drive more than one device — plus the preflight
- * that makes a long unattended run worth starting.
+ * Every flag except the sign-in ones is forwarded VERBATIM to `npm run measure`; this tool
+ * knows nothing about that grammar and deliberately does not re-implement any of it. What
+ * it adds is the one thing `measure` cannot do for itself — drive more than one device —
+ * plus the preflight that makes a long unattended run worth starting.
+ *
+ * ## `--sign-in <url> --user <name>` — establishing the precondition, not just asserting it
+ *
+ * This tool has always REFUSED a matrix whose devices might be on different servers (the
+ * server is the workload), and until now it could not PUT them on one: `measure` never
+ * writes the registry, so a cross-tier run meant signing every device in by hand, before
+ * every run, because the sanctioned workflow restores them all afterwards. The sign-in mode
+ * closes that: per device it seeds an authenticated session, measures, and restores.
+ *
+ * The rules — including why the URL is forwarded as `--server` so tier 1 still asserts what
+ * was seeded, and why `--server` / `--no-server` alongside it are refusals — are in
+ * `parseSignIn` (`measure-matrix.js`), where they can be tested. The seeding itself is
+ * `measure-signin.js`, one child per device for the same singleton reason as below.
+ *
+ * **The seed lives here and never in `measure.js`**, whose header states the terms:
+ * a mode that seeds must adopt `lib/registry.js` at the same time. This one does, through
+ * that child — and the restore is `rta-restore.js`, which already owns exactly this job.
+ *
+ * The sign-in child takes the device LOCK for its own step, exactly as `measure.js` does
+ * for the series. It is the one part of a matrix run that writes the registry, so it is the
+ * part where a concurrent run doing its own `snapshotRegistry()` would adopt OUR SEED as
+ * that user's state and then preserve it forever. The restore afterwards deliberately does
+ * not claim the lock: `rta-restore.js` is the documented repair for a device stranded by a
+ * dead run, and a repair tool that can be blocked by the lock the dead run left behind is
+ * one you need exactly when it will not work.
  *
  * ## Why this drives `measure.js` as a CHILD PROCESS rather than calling `runSeries`
  *
@@ -72,31 +97,45 @@
  * of the matrix carries on.
  */
 import 'dotenv/config';
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchDeviceInfo } from './device-lock.js';
 import { describeDevice, cannotRunApps, ramTierFor } from './roku-devices.js';
+import { RTA_CONFIG } from '../tests/rta/config.js';
 import {
   MatrixError,
   formatPlanLines,
+  parseSignIn,
   preflightRefusal,
   resolveDevices,
   serverDeclarationRefusal,
+  signalPolicy,
   summariseMatrix,
 } from './measure-matrix.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const MEASURE = path.join(here, 'measure.js');
+const SIGNIN = path.join(here, 'measure-signin.js');
+const RESTORE = path.join(here, 'rta-restore.js');
 
 const die = (message) => {
   console.error(`\n[matrix] ${message}`);
   process.exit(1);
 };
 
-const forwarded = process.argv.slice(2);
+// Free and instant, so these go ahead of anything that touches the network. Sign-in is
+// parsed FIRST because it rewrites what `measure` receives — `--sign-in <url>` forwards
+// `--server <url>`, which is what makes it a server declaration in its own right.
+let signIn = null;
+let forwarded = process.argv.slice(2);
+try {
+  ({ signIn, forward: forwarded } = parseSignIn(forwarded, process.env));
+} catch (e) {
+  if (!(e instanceof MatrixError)) throw e;
+  die(e.message);
+}
 
-// Free and instant, so it goes ahead of anything that touches the network.
 const undeclaredServer = serverDeclarationRefusal(forwarded);
 if (undeclaredServer) die(undeclaredServer);
 
@@ -131,6 +170,19 @@ console.log(`[matrix] each device runs: npm run measure -- ${forwarded.join(' ')
 if (forwarded.includes('--deploy')) {
   console.log('[matrix] --deploy: every device builds this checkout and sideloads it separately.');
 }
+if (signIn) {
+  console.log(
+    `[matrix] --sign-in: each device is seeded into ${signIn.url} as ` +
+      `${JSON.stringify(signIn.username)}, measured, then restored to the state it was found in.\n` +
+      // The locale is stated because the seed CHANGES it and no record carries it — a
+      // seeded series and a plain `npm run measure` series on one device need not have run
+      // in the same language, and this line is currently the only place that says so.
+      `[matrix]   Every device is seeded in ${RTA_CONFIG.languages[0]}, so the matrix compares\n` +
+      '[matrix]   hardware rather than translation length.\n' +
+      '[matrix]   Its whole registry is written to .device-runs/registry-<host>.json before any\n' +
+      '[matrix]   seeding, so an interrupted run is repaired by: ROKU_IP=<host> npm run rta:restore',
+  );
+}
 // The tier labels are the reason `.env` only has to carry addresses — but a device Roku
 // has not published is still measurable, so this is a note rather than a refusal.
 const untiered = probes.filter((p) => !ramTierFor(p.info['model-number']));
@@ -141,26 +193,169 @@ if (untiered.length) {
   );
 }
 
+/**
+ * Run one of this tool's helper scripts against `host`, inheriting its output.
+ *
+ * ASYNC — `spawn` and an awaited `exit`, never `spawnSync` — and that is load-bearing
+ * rather than stylistic. Node delivers a signal to a JS handler on an event-loop TURN, and
+ * a run of blocking `spawnSync` calls never yields one. The first cut of this file was
+ * synchronous, and the consequence was invisible in review: the interrupt handlers below
+ * were installed (which suppressed Node's default termination, so the restore did run) but
+ * their bodies never executed. The recorded flag stayed null, every line they print was
+ * unreachable, and a bare `kill` was absorbed outright until the whole matrix finished.
+ * Reproduced standalone on 2026-08-16 — signal delivered mid-loop, flag still null three
+ * spawns later, handler firing only once an explicit yield was added after the loop.
+ *
+ * `rta-run.js` awaits its Vitest child the same way, for the same reason.
+ *
+ * Resolves rather than rejects on every outcome: a device that could not be driven is one
+ * ROW of this matrix, and the summary is where that belongs.
+ *
+ * `detached` puts a child in its own PROCESS GROUP, and only the restore asks for it. A
+ * terminal Ctrl-C signals the whole foreground group, so the parent merely DECLINING to
+ * kill the restore (which is what `signalPolicy` returns) protects nothing on the path
+ * that matters most — the child dies from the group signal regardless, while the handler
+ * prints "that finishes first". Measured 2026-08-16 both ways: same group, the restore is
+ * killed mid-put-back and never reaches its verify; its own group, it runs to completion
+ * and exits 0, and an explicit `child.kill('SIGKILL')` on the second signal still reaches
+ * it. Sign-in and measure deliberately stay in the group — those SHOULD die on Ctrl-C, and
+ * the policy kills them explicitly so a bare `kill` means the same thing.
+ */
+
+/** The child running right now, or null between two spawns. Maintained by `runFor` below. */
+let current = null;
+
+const runFor = (host, kind, script, argv = [], env = {}, { detached = false } = {}) =>
+  new Promise((resolve) => {
+    const child = spawn(process.execPath, [script, ...argv], {
+      stdio: 'inherit',
+      detached,
+      // `ROKU_IP` LAST so it wins over the inherited one. `.env` cannot take it back:
+      // dotenv leaves an already-set variable alone (verified, not assumed — the whole
+      // design rests on it).
+      env: { ...process.env, ...env, ROKU_IP: host },
+    });
+    // Published so an interrupt can act on whatever is running — which of the three kinds
+    // it is decides whether it may be killed. See `signalPolicy`.
+    current = { child, kind, host };
+
+    let settled = false;
+    const done = (result) => {
+      if (settled) return;
+      settled = true;
+      current = null;
+      resolve(result);
+    };
+    // A child that never STARTED (a bad path, a fork failure) emits `error` and no `exit`.
+    // Left unhandled that is a promise the matrix waits on forever; reported as a null
+    // status it reads as `FAILED (exit null) — its own output above says why` with no
+    // output above it, so the cause is printed here because nothing else will.
+    child.on('error', (e) => {
+      console.error(
+        `\n[matrix] could not start ${path.basename(script)} for ${host}: ${e.message}`,
+      );
+      done({ status: null, signal: null });
+    });
+    child.on('exit', (status, signal) => done({ status, signal }));
+  });
+
+// ─── Interrupts ──────────────────────────────────────────────────────────────
+//
+// Installed only for the sign-in mode: without a seed there is no restore to protect, and
+// Node's default termination is the right behavior.
+//
+// What the handler must buy is the RESTORE. Ctrl-C reaches the whole process group, so the
+// running child dies either way — but the parent's default handling would terminate it too,
+// in the window between "device is seeded" and "device is restored". Installing a handler
+// suppresses that default; running the policy is what makes the rest of it true.
+//
+// The rules themselves live in `signalPolicy` (`measure-matrix.js`) rather than here,
+// because this file cannot be reached by a test and that is exactly how the dead-code
+// version above shipped. What is left here is delivery: print, kill, exit, record.
+let interrupted = null;
+if (signIn) {
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+    process.on(signal, () => {
+      const policy = signalPolicy(signal, {
+        kind: current?.kind ?? null,
+        host: current?.host ?? null,
+        interrupted: Boolean(interrupted),
+      });
+      policy.lines.forEach((line, i) => console.log(`${i === 0 ? '\n' : ''}[matrix] ${line}`));
+      if (policy.kill) current?.child.kill(policy.kill);
+      // Recorded BEFORE the exit check so it cannot be lost, and after the policy has read
+      // its previous value — this is what turns the next signal into the abandon path.
+      interrupted = signal;
+      if (policy.exit !== null) process.exit(policy.exit);
+    });
+  }
+}
+
 // ─── The devices, in order ───────────────────────────────────────────────────
 const results = [];
 for (const [i, probe] of probes.entries()) {
   const label = describeDevice(probe.info['model-number']);
+  const row = { host: probe.host, label, status: null, signal: null };
+  results.push(row);
   console.log(`\n[matrix] ── ${i + 1}/${probes.length}  ${probe.host} — ${label} ──`);
 
-  const child = spawnSync(process.execPath, [MEASURE, ...forwarded], {
-    stdio: 'inherit',
-    // `ROKU_IP` LAST so it wins over the inherited one. `.env` cannot take it back:
-    // dotenv leaves an already-set variable alone (verified, not assumed — the whole
-    // design rests on it).
-    env: { ...process.env, ROKU_IP: probe.host },
-  });
+  // Sign in first, and treat a failed sign-in as this device's failure rather than the
+  // run's: the remaining devices are still measurable, and stopping the matrix because one
+  // Roku would not take a session is the "lose a tier, lose the run" shape the per-device
+  // split exists to avoid. The restore below still runs — the snapshot is taken before the
+  // first write, so a sign-in that failed halfway is exactly the case it exists for.
+  let seeded = false;
+  if (signIn) {
+    const child = await runFor(
+      probe.host,
+      'sign-in',
+      SIGNIN,
+      ['--url', signIn.url, '--user', signIn.username],
+      // The password never reaches argv — see `measure-signin.js`.
+      { MEASURE_SIGNIN_PASSWORD: signIn.password },
+    );
+    // Unconditional, and deliberately not conditioned on the child's exit code: a failure
+    // says nothing about how far it got, and `rta-restore.js` is a no-op that prints so
+    // when there is no snapshot. Guessing wrong in the other direction leaves a seeded
+    // device with nobody looking at it.
+    seeded = true;
+    row.status = child.status;
+    row.signal = child.signal;
+    if (child.status !== 0 || child.signal) row.stage = 'sign-in';
+  }
 
-  results.push({ host: probe.host, label, status: child.status, signal: child.signal });
+  if (row.stage) {
+    // The sign-in failed, so there is no state to measure against. Its exit code is
+    // already on the row; the restore below still runs.
+  } else if (interrupted) {
+    // The interrupt landed between a successful sign-in and this spawn — a window that was
+    // unreachable while the loop was synchronous, and is now genuinely covered. Overwriting
+    // the sign-in's exit 0 is the whole point: without it the row keeps a passing status
+    // and the summary reports a device as `measured` that never ran a series at all.
+    row.signal = interrupted;
+    row.stage = 'measure';
+  } else {
+    const child = await runFor(probe.host, 'measure', MEASURE, forwarded);
+    row.status = child.status;
+    row.signal = child.signal;
+    if (child.status !== 0 || child.signal) row.stage = 'measure';
+  }
 
-  // A signal is the operator, not the device. Ctrl-C reaches the whole process group, so
-  // the child has already released its own lock — carrying on to the next device would
-  // ignore an interrupt that was aimed at the run, not at one series.
-  if (child.signal) {
+  // ALWAYS, whatever happened above — including an interrupt. A device left seeded is the
+  // damage `lib/registry.js` was written to prevent, and it compounds: the next run that
+  // snapshots it adopts the leftovers as the user's own state. `signalPolicy` protects this
+  // child from a first interrupt for the same reason.
+  if (seeded) {
+    console.log(`\n[matrix] ${probe.host}: restoring the registry ...`);
+    // `detached` so a terminal Ctrl-C cannot kill it out from under the policy that just
+    // promised it would finish — see `runFor`.
+    row.restored =
+      (await runFor(probe.host, 'restore', RESTORE, [], {}, { detached: true })).status === 0;
+  }
+
+  // A signal is the operator, not the device. Carrying on to the next device would ignore
+  // an interrupt that was aimed at the run rather than at one series.
+  if (interrupted || row.signal) {
     for (const rest of probes.slice(i + 1)) {
       results.push({
         host: rest.host,

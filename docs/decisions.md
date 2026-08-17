@@ -860,6 +860,53 @@ record one device as blocked and carry on; an exit inside the per-device loop ta
 whole matrix down with it. Rejected: keeping `refuse()` inside the extracted
 loop, which would have preserved today's behavior exactly and left both problems in place.
 
+## decision-id: matrix-seed-pins-the-locale
+
+**date**: 2026-08-16
+**status**: accepted
+**related-files**: scripts/measure-signin.js, scripts/measure-devices.js, tests/rta/lib/seed.js
+
+`measure:devices --sign-in` seeds every device with `RTA_CONFIG.languages[0]`, so a matrix
+measures every tier in one language regardless of what each device carried. Rejected:
+preserving each device's own `globalTranslationLocale`, which the snapshot already has in
+hand and which costs two lines. That option reads as the more conservative one — the seed
+would then change only the session, matching the mode's own "restored to the state it was
+found in" promise — and it is in fact the confounded choice: a matrix exists to compare
+HARDWARE, so a row measured in `fr` beside one in `en_US` differs in workload as well as in
+silicon, which is the same class of confound `--server` was made a hard refusal over.
+
+The cost is real and is disclosed rather than dismissed: a seeded series and a plain
+`npm run measure` series on one device need not have run in the same language, and
+`measurements.jsonl` carries no locale field to tell them apart. Both tools print the locale
+and [`rta-tests.md`](dev/rta-tests.md) documents the pin; carrying it in the record is
+tracked under `measure-record-assembly-untested`, deliberately blocked on checking whether
+the app exposes the active locale where `IDENTITY_REQUESTS` could batch-read it. Re-evaluate
+if the matrix ever needs to COMPARE locales rather than hold them still — that is a different
+measurement, and it wants `--locale` as an explicit arm rather than this default flipped.
+
+## decision-id: restore-path-stays-lock-free
+
+**date**: 2026-08-16
+**status**: accepted
+**related-files**: scripts/measure-signin.js, scripts/rta-restore.js, scripts/measure-devices.js
+
+The sign-in child of `measure:devices --sign-in` takes the device lock, as `measure.js` does
+for the series it drives. The restore that follows it — `rta-restore.js`, spawned per device
+— deliberately does not, even though it writes the registry too. Rejected: locking both,
+which is the symmetric-looking answer.
+
+The asymmetry is about what each window can damage, and about who needs the tool. The
+sign-in window is the one that POISONS: a concurrent run whose `snapshotRegistry()` lands
+while a device is seeded adopts our seed as that user's own state and then restores it
+faithfully forever — the compounding damage [`registry.js`](../tests/rta/lib/registry.js)
+was written to prevent, reached from outside. The restore window cannot do that; the worst
+it hands a contender is a mid-write registry, and the common case is a cleaner one. Against
+that, `rta:restore` is the documented repair for a device stranded by a run that DIED — and
+a repair tool the dead run's own leftover lease can block is unavailable exactly when it
+is needed, leaving `node scripts/device-lock.js release` or a ~15-minute wait as the only way
+out. Worth re-evaluating if the lock ever grows a "steal for repair" mode, which removes the
+objection entirely.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

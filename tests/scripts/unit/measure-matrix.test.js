@@ -3,9 +3,11 @@ import {
   MatrixError,
   formatPlanLines,
   parseDeviceList,
+  parseSignIn,
   preflightRefusal,
   resolveDevices,
   serverDeclarationRefusal,
+  signalPolicy,
   summariseMatrix,
 } from '../../../scripts/measure-matrix.js';
 
@@ -115,6 +117,254 @@ describe('serverDeclarationRefusal', () => {
   it('is not satisfied by a different flag that starts the same way', () => {
     expect(serverDeclarationRefusal(['--screen', 'movies-grid'])).not.toBeNull();
     expect(serverDeclarationRefusal(['--servername=x'])).not.toBeNull();
+  });
+});
+
+/**
+ * The mode that lets the matrix ESTABLISH the precondition it has always asserted. Every
+ * rule here is a refusal or a rewrite of the command line, so this is the only place the
+ * mode can be gated without three Rokus on the LAN.
+ */
+describe('parseSignIn', () => {
+  const URL = 'http://192.0.2.2:8096';
+
+  it('leaves a command line with no sign-in flags exactly as it found it', () => {
+    const argv = ['--server', URL, '--nav', 'settings', '-n', '30'];
+    expect(parseSignIn(argv)).toEqual({ signIn: null, forward: argv });
+    expect(parseSignIn([])).toEqual({ signIn: null, forward: [] });
+    expect(parseSignIn()).toEqual({ signIn: null, forward: [] });
+  });
+
+  /**
+   * The seed and the tier-1 assert must name ONE server or the mode defeats itself:
+   * seeding device 3 into A while asserting B is the confound this layer exists to refuse.
+   * Forwarding the sign-in URL as `--server` is what makes the seed CHECKED against the
+   * running app rather than trusted.
+   */
+  it('strips its own flags and forwards the URL as --server', () => {
+    const { signIn, forward } = parseSignIn([
+      '--sign-in',
+      URL,
+      '--user',
+      'alice',
+      '--nav',
+      'settings',
+      '-n',
+      '30',
+    ]);
+    expect(signIn).toEqual({ url: URL, username: 'alice', password: '' });
+    expect(forward).toEqual(['--nav', 'settings', '-n', '30', '--server', URL]);
+  });
+
+  /** So `--sign-in` satisfies the server declaration on its own, rather than by exemption. */
+  it('produces a command line the server-declaration gate accepts', () => {
+    const { forward } = parseSignIn(['--sign-in', URL, '--user', 'alice']);
+    expect(serverDeclarationRefusal(forward)).toBeNull();
+  });
+
+  it('accepts the --flag=value spelling too', () => {
+    const { signIn, forward } = parseSignIn([`--sign-in=${URL}`, '--user=alice', '--deploy']);
+    expect(signIn).toEqual({ url: URL, username: 'alice', password: '' });
+    expect(forward).toEqual(['--deploy', '--server', URL]);
+  });
+
+  /**
+   * A blank password is a real Jellyfin account state (`HasPassword: false`) and is the
+   * common case on a LAN test server, so it must not read as "no password given".
+   */
+  it('takes the password from the environment, and lets an explicit blank stand', () => {
+    expect(
+      parseSignIn(['--sign-in', URL, '--user', 'alice'], { MEASURE_SIGNIN_PASSWORD: 's3cret' })
+        .signIn.password,
+    ).toBe('s3cret');
+    expect(
+      parseSignIn(['--sign-in', URL, '--user', 'alice', '--password='], {
+        MEASURE_SIGNIN_PASSWORD: 's3cret',
+      }).signIn.password,
+    ).toBe('');
+  });
+
+  /**
+   * `measure-args`' lesson one layer out: a trailing value flag that consumes `undefined`
+   * half-configures the mode and fails somewhere that cannot name the flag responsible.
+   */
+  it('refuses a value flag with nothing after it, or another flag after it', () => {
+    expect(() => parseSignIn(['--sign-in'])).toThrow(MatrixError);
+    expect(() => parseSignIn(['--sign-in', '--user', 'alice'])).toThrow(/--sign-in needs a value/);
+    expect(() => parseSignIn(['--sign-in', URL, '--user'])).toThrow(/--user needs a value/);
+  });
+
+  it('refuses --sign-in without --user, and says passwordless accounts need no --password', () => {
+    const run = () => parseSignIn(['--sign-in', URL, '-n', '30']);
+    expect(run).toThrow(MatrixError);
+    expect(run).toThrow(/--user <name>/);
+    expect(run).toThrow(/MEASURE_SIGNIN_PASSWORD/);
+  });
+
+  /**
+   * Refused rather than ignored. Dropping them would run the matrix against whatever the
+   * devices are already signed into — the exact state the mode exists to replace — and
+   * nothing in the output would say so.
+   */
+  it('refuses --user or --password with no --sign-in to attach them to', () => {
+    expect(() => parseSignIn(['--user', 'alice', '--server', URL])).toThrow(
+      /--user was given without --sign-in/,
+    );
+    expect(() => parseSignIn(['--password', 'x', '--server', URL])).toThrow(
+      /--password was given without --sign-in/,
+    );
+  });
+
+  /**
+   * Not a redundancy — `measure` takes the LAST `--server` on its line, so forwarding two
+   * would settle a disagreement between the seed and the assert SILENTLY, which is how this
+   * subsystem produces a well-formed record of the wrong thing.
+   */
+  it('refuses --server alongside --sign-in, in either spelling', () => {
+    expect(() => parseSignIn(['--sign-in', URL, '--user', 'a', '--server', URL])).toThrow(
+      /already declares the server/,
+    );
+    expect(() => parseSignIn(['--sign-in', URL, '--user', 'a', `--server=${URL}`])).toThrow(
+      /already declares the server/,
+    );
+  });
+
+  /** `serverSelect` is reached by DELETING the server, so seeding one is its opposite. */
+  it('refuses --no-server alongside --sign-in', () => {
+    expect(() => parseSignIn(['--sign-in', URL, '--user', 'a', '--no-server'])).toThrow(
+      /contradict each other/,
+    );
+  });
+
+  /**
+   * A repeat is the same defect as `--server` beside `--sign-in`, in one flag instead
+   * of two: the last one wins silently, so the seed and the tier-1 assert could name
+   * different servers with nothing in the output saying so.
+   */
+  it('refuses a repeated sign-in flag rather than taking the last one', () => {
+    expect(() =>
+      parseSignIn(['--sign-in', URL, '--sign-in', 'http://other', '--user', 'a']),
+    ).toThrow(/--sign-in was given more than once/);
+    expect(() => parseSignIn(['--sign-in', URL, '--user', 'a', '--user', 'b'])).toThrow(
+      /--user was given more than once/,
+    );
+    expect(() => parseSignIn([`--sign-in=${URL}`, '--user', 'a', '--sign-in', URL])).toThrow(
+      /--sign-in was given more than once/,
+    );
+  });
+
+  /** The refusal must not echo the value it is refusing — one of these flags is a password. */
+  it('does not print the password when refusing a repeated --password', () => {
+    const run = () =>
+      parseSignIn(['--sign-in', URL, '--user', 'a', '--password', 's3cret', '--password', 'other']);
+    expect(run).toThrow(/--password was given more than once/);
+    expect(run).not.toThrow(/s3cret/);
+  });
+
+  /** `--screen`/`--server` share a prefix; nothing here may swallow a neighbouring flag. */
+  it('does not consume a different flag that starts the same way', () => {
+    const { signIn, forward } = parseSignIn([
+      '--sign-in',
+      URL,
+      '--user',
+      'alice',
+      '--username-ish',
+      'x',
+    ]);
+    expect(signIn.username).toBe('alice');
+    expect(forward).toEqual(['--username-ish', 'x', '--server', URL]);
+  });
+});
+
+/**
+ * The rules an interrupt follows. These live here rather than in the driver for a
+ * specific reason: the first cut of this policy was DEAD CODE — recorded in a flag the
+ * synchronous `spawnSync` loop never let a handler set — and it shipped because there
+ * was nowhere to pin it. Every rule below is now a red/green gate instead of a comment.
+ */
+describe('signalPolicy', () => {
+  const HOST = '192.0.2.10';
+
+  it('stops the run and kills the workload child on the first signal', () => {
+    for (const kind of ['sign-in', 'measure']) {
+      const p = signalPolicy('SIGINT', { kind, host: HOST });
+      expect(p.kill).toBe('SIGTERM');
+      expect(p.exit).toBeNull();
+      expect(p.lines[0]).toMatch(/stopping after this device is put back/);
+    }
+  });
+
+  /**
+   * The window that used to be unreachable: a signal landing between two spawns. It
+   * still has to STOP the run — the alternative is a matrix that carries on to the next
+   * device after the operator asked it not to.
+   */
+  it('stops the run when no child is running', () => {
+    const p = signalPolicy('SIGINT', { kind: null, host: HOST });
+    expect(p.kill).toBeNull();
+    expect(p.exit).toBeNull();
+    expect(p.lines[0]).toMatch(/stopping after this device is put back/);
+  });
+
+  /**
+   * The rule `rta-run.js` never needed, because it has one child and the matrix has
+   * three. Killing the restore here would abort the put-back while announcing it.
+   */
+  it('never kills the restore on a first signal', () => {
+    const p = signalPolicy('SIGINT', { kind: 'restore', host: HOST });
+    expect(p.kill).toBeNull();
+    expect(p.exit).toBeNull();
+    expect(p.lines[0]).toMatch(/being put back/);
+  });
+
+  /** Being un-killable is worse than being dirty; the snapshot on disk is what makes it safe. */
+  it('abandons on the second signal, whatever is running', () => {
+    for (const kind of ['sign-in', 'measure', 'restore']) {
+      const p = signalPolicy('SIGINT', { kind, host: HOST, interrupted: true });
+      expect(p.kill).toBe('SIGKILL');
+      expect(p.exit).toBe(130);
+      expect(p.lines[0]).toMatch(/second SIGINT — abandoning/);
+    }
+  });
+
+  /**
+   * `kill` names what to send the RUNNING child. With none running there is nothing to
+   * send it to, and a policy that returns a signal for a child that does not exist is a
+   * rule nobody can read back — even though the caller's optional chain would no-op.
+   */
+  it('asks for no kill when there is no child, on either path', () => {
+    expect(signalPolicy('SIGINT', { kind: null, interrupted: true })).toMatchObject({
+      kill: null,
+      exit: 130,
+    });
+    expect(signalPolicy('SIGINT', { kind: null })).toMatchObject({ kill: null, exit: null });
+  });
+
+  /**
+   * The abandon path is the one that leaves a device seeded, so it names the device
+   * actually at risk. A `<host>` placeholder makes the operator go and look it up at
+   * the exact moment the scrollback is being replaced by a shell prompt.
+   */
+  it('names the real host in the repair command, and falls back when it has none', () => {
+    expect(
+      signalPolicy('SIGINT', { kind: 'restore', host: HOST, interrupted: true }).lines[1],
+    ).toBe(`recover with: ROKU_IP=${HOST} npm run rta:restore`);
+    expect(signalPolicy('SIGINT', { interrupted: true }).lines[1]).toMatch(/ROKU_IP=<host>/);
+  });
+
+  /**
+   * This mode is reachable by a bare `kill` and by a `timeout` wrapper now, so telling
+   * the operator to press Ctrl-C would name an action they never took.
+   */
+  it('says "Ctrl-C" only for SIGINT', () => {
+    expect(signalPolicy('SIGINT', { kind: 'measure' }).lines[0]).toMatch(/Ctrl-C again/);
+    expect(signalPolicy('SIGTERM', { kind: 'measure' }).lines[0]).toMatch(/SIGTERM again/);
+    expect(signalPolicy('SIGHUP', { kind: 'restore' }).lines[1]).toMatch(/SIGHUP again/);
+  });
+
+  it('reports the signal it was actually given', () => {
+    expect(signalPolicy('SIGHUP', { kind: 'measure' }).lines[0]).toMatch(/^SIGHUP — /);
+    expect(signalPolicy('SIGTERM', { interrupted: true }).lines[0]).toMatch(/^second SIGTERM/);
   });
 });
 
@@ -268,5 +518,51 @@ describe('summariseMatrix', () => {
 
   it('is not ok with no devices at all', () => {
     expect(summariseMatrix([]).ok).toBe(false);
+  });
+
+  /**
+   * "It failed" and "it failed BEFORE it measured anything" send an operator to different
+   * places — a sign-in failure is a server or a credential, a measure failure is the app or
+   * the nav. The stage is the only thing that separates them in a summary printed after
+   * three devices' worth of scrollback.
+   */
+  it('names which stage failed when the run had more than one', () => {
+    const s = summariseMatrix([row('a', { status: 1, stage: 'sign-in' })]);
+    expect(s.lines[0]).toMatch(/a — Some Roku: sign-in FAILED \(exit 1\)/);
+  });
+
+  /**
+   * An interrupt needs the stage for the same reason a failure does, and arguably more:
+   * "interrupted" alone cannot say whether the device ever got as far as a series, which
+   * is the difference between a row with samples on disk and a row with none.
+   */
+  it('names the stage on an interrupted device too', () => {
+    const s = summariseMatrix([
+      row('a', { status: null, signal: 'SIGINT', stage: 'measure' }),
+      row('b', { status: null, signal: 'SIGINT', stage: 'sign-in' }),
+    ]);
+    expect(s.lines[0]).toMatch(/a — Some Roku: measure interrupted \(SIGINT\)/);
+    expect(s.lines[1]).toMatch(/b — Some Roku: sign-in interrupted \(SIGINT\)/);
+  });
+
+  /**
+   * A device left seeded is damage to someone's own Roku rather than a lost datapoint, and
+   * it compounds — the next run to snapshot it adopts the leftovers as the user's state. So
+   * it gets its own line WITH the repair command, and it fails the run even when the
+   * measurement itself was perfect.
+   */
+  it('fails the run and prints the repair command when a restore did not verify', () => {
+    const s = summariseMatrix([row('192.0.2.10', { restored: false })]);
+    expect(s.ok).toBe(false);
+    expect(s.measured).toBe(1); // the samples are real; the device is not clean
+    expect(s.lines[0]).toMatch(/measured/);
+    expect(s.lines[1]).toMatch(/RESTORE FAILED — this device is STILL SEEDED/);
+    expect(s.lines[2]).toMatch(/ROKU_IP=192\.0\.2\.10 npm run rta:restore/);
+  });
+
+  it('says nothing about restoring when nothing was seeded', () => {
+    const s = summariseMatrix([row('a'), row('b', { restored: true })]);
+    expect(s.ok).toBe(true);
+    expect(s.lines).toHaveLength(2);
   });
 });
