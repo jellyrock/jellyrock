@@ -181,6 +181,15 @@ namespace tests
       m.assertEqual(label.text, "TestUser")
     end function
 
+    @it("never ellipsizes the trigger on word boundaries")
+    function _()
+      ' #798: the label doesn't wrap, so whole-word ellipsizing drops a too-long
+      ' single-word username entirely and renders a bare "...". Measured on device:
+      ' ~10 mixed-case characters already overflow the 150px trigger.
+      label = m.dropdown.findNode("triggerLabel")
+      m.assertFalse(label.ellipsizeOnBoundary)
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Trigger icon")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
