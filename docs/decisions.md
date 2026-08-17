@@ -907,6 +907,30 @@ is needed, leaving `node scripts/device-lock.js release` or a ~15-minute wait as
 out. Worth re-evaluating if the lock ever grows a "steal for repair" mode, which removes the
 objection entirely.
 
+## decision-id: overhang-username-trigger-stays-fixed-width
+
+**date**: 2026-08-16
+**status**: accepted
+**related-files**: `components/ui/dropdown/JRDropdown.xml`, `components/ui/dropdown/JRDropdown.bs`, `components/JROverhang.bs`
+
+The overhang user menu's trigger label keeps a fixed `width="150"`, and long usernames
+truncate mid-character. Both obvious improvements were measured and rejected. **Widening**
+is blocked on the right: the trigger is anchored at x=1450, putting its right edge at
+x=1660, and the clock's left edge sits at x=1691 for a two-digit hour — `31px` of gutter, so
+the cap cannot move while that anchor holds. **Shrinking the trigger to its text** is worse
+than it looks: the menu is left-aligned to the trigger and expands rightward at
+`max(300, buttonWidth)`, and in clock-hidden mode `JROverhang.positionUserDropdown` computes
+the left edge as `1824 - triggerWidth - 15`, so a narrower trigger pushes the menu *right* —
+a prototype put a short username's menu at 1678..1978, i.e. `58px` off a 1920 screen.
+
+The cost is a fixed `150px` box that reserves space short names don't use, which shows as a
+gap inside the focus highlight and as the name sitting left of the action-safe edge when the
+clock is hidden. That is accepted. Measured on device at `fontSizeMedium`, `150px` holds about
+9 mixed-case characters, so truncation is common rather than exceptional — the trigger must
+therefore never set `ellipsizeOnBoundary`, which drops a too-long single-word name entirely
+(issue #798). Worth re-evaluating if the trigger is ever re-anchored to grow leftward, which
+removes both objections at once but moves the search/settings icons with it.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
