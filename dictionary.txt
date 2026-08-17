@@ -588,6 +588,7 @@ transport-agnostically
 triaging
 trickplay
 Trickplay
+TCP
 TSV
 TTL
 tvchannel
@@ -596,10 +597,12 @@ UIs
 unacked
 Unfavorite
 ungated
+unhandled
 unit-tests-tdd
 unlinked
 unmerged
 unobserve
+unowned
 unparented
 unprefixed
 unresolvable
