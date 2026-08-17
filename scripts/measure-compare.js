@@ -46,7 +46,7 @@
  */
 import path from 'node:path';
 
-import { readJsonLines, runDir, SAMPLE_OUTCOMES } from './run-record.js';
+import { measurementsLedgerPath, readJsonLines, SAMPLE_OUTCOMES } from './run-record.js';
 import { sameServer } from './measurement-guard.js';
 // From the dictionary directly, not through the guard: the guard imports the ODC
 // client, and this tool only ever reads a JSON Lines file off disk.
@@ -58,15 +58,12 @@ import { selectColdSamples } from './measure-selection.js';
 import { unitFor } from './measurements.js';
 
 /**
- * The measurement accumulator. Derived from `runDir('measure')` rather than written
- * out, so there is no second mapping to drift — exactly as `flake-baseline.js`
- * derives its own ledger path.
+ * The measurement accumulator. Now IMPORTED rather than derived here: this file had the
+ * right derivation and the writers had a different one, which is how a calibration run
+ * published two series into `.device-runs/rta/` where this reader never looks. One
+ * definition, in the module that owns the run kinds.
  */
-export const MEASUREMENTS_LEDGER = path.join(
-  '.device-runs',
-  path.basename(runDir('measure')),
-  'measurements.jsonl',
-);
+export const MEASUREMENTS_LEDGER = measurementsLedgerPath();
 
 /**
  * The selection keys, flattened out of the record.
@@ -89,8 +86,18 @@ export const SERIES_KEYS = Object.freeze({
   tier: (r) =>
     r?.provenance?.device?.ramTier ?? ramTierFor(r?.provenance?.device?.modelNumber) ?? null,
   os: (r) => r?.provenance?.device?.osVersion ?? null,
-  server: (r) => r?.provenance?.server?.url ?? null,
-  serverVersion: (r) => r?.provenance?.server?.version ?? null,
+  // Observed if there is one, else the identity an ENCLOSURE established. The fallback is
+  // what lets ADR 0030's no-ODC arm be compared at all: that arm records
+  // `provenance.server.url: null` on purpose — writing a deduction into the field a reader
+  // takes as an observation is the option the ADR rejects by name — so the value lives
+  // under `enclosure.identity`, and a reader that wants it opts in by reaching for it.
+  server: (r) => r?.provenance?.server?.url ?? r?.enclosure?.identity?.serverUrl ?? null,
+  // Same fallback as `server` above, and for the same reason. Without it the calibration's
+  // enclosed arm reads as "(not recorded)" and every run false-warns that the two arms ran
+  // against different Jellyfin versions — a warning about the one axis the enclosure has
+  // already proven identical.
+  serverVersion: (r) =>
+    r?.provenance?.server?.version ?? r?.enclosure?.identity?.serverVersion ?? null,
   appVersion: (r) => r?.provenance?.checkout?.appVersion ?? null,
   // WHICH NPM SCRIPT launched the run (`process.env.npm_lifecycle_event`), written by
   // `runProvenance()`. NOT the item type — see `screenVariant` below, and do not merge
@@ -448,11 +455,69 @@ export function comparability(a, b) {
     }
   }
   if (rta(a).length === 1 && rta(b).length === 1 && rta(a)[0] !== rta(b)[0]) {
-    refusals.push(
-      `the arms differ in ENABLE_RTA (${a.label}: ${show(rta(a)[0])} · ${b.label}: ${show(rta(b)[0])}) — a ` +
-        'resident ODC component is an unmeasured variable, which is the calibration this ' +
-        'comparison would need to have already done.',
-    );
+    // …EXCEPT for the one comparison that exists to measure that variable —
+    // [ADR 0030](../docs/adr/0030-non-odc-arm-identity-by-enclosure.md). The ODC
+    // calibration's whole point is two arms differing in exactly this, so a refusal with
+    // no exception makes the answer unreachable through the tool that would report it.
+    //
+    // The exception is EXPLICIT rather than a bypass flag, and the difference matters: a
+    // flag would be typed by whoever wanted the comparison to happen, which is precisely
+    // the person the refusal is for. What is required instead is a property of the
+    // records — both arms carry an identity, observed or enclosed, and they agree.
+    //
+    // `asserted: false` is not an identity. That keeps the cheapest of ADR 0030's three
+    // options (skip the assert in the arm that cannot read one) from quietly becoming the
+    // path of least resistance: an arm nobody can attribute to a server is not evidence
+    // about ODC, it is evidence about an unknown server.
+    //
+    // And each arm's identity SOURCE has to match its ODC state, which is what keeps the
+    // exception from swallowing the rule. `enableRta` is derived from ODC answering, so
+    // an arm claiming `false` cannot have observed its own identity — that pair is a
+    // contradiction, not a calibration, and it is exactly what someone comparing an RTA
+    // series against a hand-taken plain one would produce. A `null` (a line written
+    // before the field, i.e. unknown) is not `false` and does not qualify either.
+    //
+    // Agreement of the identities themselves is not re-checked here: the server refusal
+    // above already fails any pair whose recorded servers differ, and the enclosed arm's
+    // `provenance.server` is the identity its brackets established. What is added is the
+    // ASSERTED half, which that check does not cover.
+    const identityKind = (arm) => {
+      if (!arm.series.length || !arm.series.every((r) => r?.tier1?.asserted === true)) return null;
+      const sources = distinct(arm.series, (r) => r?.provenance?.identitySource ?? 'observed');
+      return sources.length === 1 ? sources[0] : null;
+    };
+    const kindA = identityKind(a);
+    const kindB = identityKind(b);
+    /** An arm with a resident ODC observes its own identity; one without encloses it. */
+    const fitsItsOdcState = (kind, enableRta) =>
+      enableRta === true ? kind === 'observed' : enableRta === false && kind === 'enclosed';
+    const sanctioned =
+      fitsItsOdcState(kindA, rta(a)[0]) &&
+      fitsItsOdcState(kindB, rta(b)[0]) &&
+      // Both sides know which server they were on, and the pair already passed the
+      // same-server refusal above.
+      serverA.length === 1 &&
+      serverB.length === 1 &&
+      sameServer(serverA[0], serverB[0]);
+    if (sanctioned) {
+      warnings.push(
+        `the arms differ in ENABLE_RTA (${a.label}: ${show(rta(a)[0])} · ${b.label}: ` +
+          `${show(rta(b)[0])}) — allowed here because both arms carry an asserted identity ` +
+          `(${a.label}: ${kindA} · ${b.label}: ${kindB}) and they agree on ` +
+          `${show(serverA[0])}. This is the ODC calibration (ADR 0030); the delta below IS ` +
+          'the resident component, not a change to the app.',
+      );
+    } else {
+      refusals.push(
+        `the arms differ in ENABLE_RTA (${a.label}: ${show(rta(a)[0])} · ${b.label}: ${show(rta(b)[0])}) — a ` +
+          'resident ODC component is an unmeasured variable, which is the calibration this ' +
+          'comparison would need to have already done.\n' +
+          '  ADR 0030 sanctions exactly one exception and these arms do not meet it: BOTH must ' +
+          'carry an ASSERTED identity — observed, or enclosed by observed reads either side — ' +
+          'and the two must agree. Take the pair with `npm run measure:calibrate`, which ' +
+          'establishes that by construction.',
+      );
+    }
   }
 
   if (refusals.length) return { refusals, warnings };

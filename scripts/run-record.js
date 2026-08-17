@@ -134,6 +134,27 @@ export const ledgerPath = (filename) =>
   path.join(LEDGER_ROOT, path.basename(getRunDir()), filename);
 
 /**
+ * WHERE the measurement accumulator lives — pinned to the `measure` run kind rather than
+ * to whichever kind the calling process happens to be.
+ *
+ * `ledgerPath` above reads `getRunDir()`, which is a property of the RUNNING PROCESS. That
+ * is right for a run's own ledger and wrong for a shared accumulator, and the difference is
+ * silent: `measure.js` calls `beginRun({run: 'measure'})` and lands in
+ * `.device-runs/measure/`, while `measure-calibration.js` — which publishes the same kind
+ * of record on a child's behalf and has no run of its own — landed in `.device-runs/rta/`.
+ * Two published series went somewhere `measure:compare` does not read, under a summary
+ * line naming the comparison to run next. Found by dogfooding the calibration 2026-08-17,
+ * not by review.
+ *
+ * So the path is derived ONCE here, from the run kind that owns the file, and every
+ * writer and reader imports it. `measure-compare.js` already derived it this way for
+ * exactly this reason ("no second mapping to drift"); what was missing is that the
+ * WRITERS were on the other derivation.
+ */
+export const measurementsLedgerPath = () =>
+  path.join(LEDGER_ROOT, path.basename(runDir('measure')), 'measurements.jsonl');
+
+/**
  * Append one JSON line. Never throws — bookkeeping must not mask the thing it is
  * bookkeeping about.
  */

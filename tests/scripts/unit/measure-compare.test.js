@@ -374,11 +374,118 @@ describe('comparability — what is refused', () => {
     const nonRta = { provenance: { ...series().provenance, enableRta: false } };
     expect(refuse({}, nonRta).join(' ')).toMatch(/ENABLE_RTA/);
   });
+
+  it('still refuses when the non-RTA arm claims it OBSERVED its own identity', () => {
+    // A contradiction rather than a calibration: `enableRta` is derived from ODC
+    // ANSWERING, so an arm reporting `false` cannot also have read its identity over it.
+    // This is the shape a hand-taken plain series compared against an RTA one produces,
+    // and it is the case ADR 0030's exception must not swallow.
+    const nonRta = {
+      provenance: { ...series().provenance, enableRta: false, identitySource: 'observed' },
+    };
+    expect(refuse({}, nonRta).join(' ')).toMatch(/ENABLE_RTA/);
+    expect(refuse({}, nonRta).join(' ')).toMatch(/ADR 0030 sanctions exactly one exception/);
+  });
+
+  it('still refuses an enclosed arm that never ASSERTED an identity', () => {
+    // ADR 0030 rejected `asserted: false` explicitly: an arm nobody can attribute to a
+    // server is not evidence about ODC, it is evidence about an unknown server. Without
+    // this, the cheapest of the three options becomes the path of least resistance.
+    const unasserted = {
+      tier1: { asserted: false, ok: true },
+      provenance: { ...series().provenance, enableRta: false, identitySource: 'enclosed' },
+    };
+    expect(refuse({}, unasserted).join(' ')).toMatch(/ENABLE_RTA/);
+  });
+
+  it('still refuses when the arms differ in ENABLE_RTA *and* in server', () => {
+    // The exception requires the two identities to AGREE. An enclosure that closed
+    // cleanly on the wrong server is sound and still not comparable.
+    const elsewhere = {
+      provenance: {
+        ...series().provenance,
+        enableRta: false,
+        identitySource: 'enclosed',
+        server: { url: 'http://192.0.2.99:8096', version: '10.11.11' },
+      },
+    };
+    expect(refuse({}, elsewhere).join(' ')).toMatch(/different servers/);
+  });
+
+  it('treats an unknown (null) ENABLE_RTA as not qualifying — unknown is not false', () => {
+    const older = {
+      provenance: { ...series().provenance, enableRta: null, identitySource: 'enclosed' },
+    };
+    expect(refuse({}, older).join(' ')).toMatch(/ENABLE_RTA/);
+  });
 });
 
 describe('comparability — what is only said out loud', () => {
   const warn = (overA, overB) =>
     comparability(...armsFrom(twoArms(overA, overB))).warnings.join(' ');
+
+  it('reads the enclosed arm’s server out of its ENCLOSURE, not provenance.server', () => {
+    // ADR 0030 rejects writing an enclosed identity into `provenance.server.url` — that
+    // is where a reader takes a value as observed. So the no-ODC arm records null there
+    // and the value lives under `enclosure.identity`; without this fallback the pair
+    // would fail the same-server check and the calibration could never be read back.
+    const enclosed = {
+      tier1: { asserted: true, ok: true, identitySource: 'enclosed' },
+      enclosure: { ok: true, identity: { serverUrl: 'http://192.0.2.10:8096' } },
+      provenance: {
+        ...series().provenance,
+        enableRta: false,
+        identitySource: 'enclosed',
+        server: { url: null, version: null },
+      },
+    };
+    const [a, b] = armsFrom(twoArms({}, enclosed));
+    const verdict = comparability(a, b);
+    expect(verdict.refusals).toEqual([]);
+    expect(verdict.warnings.join(' ')).toMatch(/ADR 0030/);
+  });
+
+  it('does not warn about Jellyfin versions when the enclosed arm recorded one', () => {
+    // The enclosed arm leaves `provenance.server` null on purpose, so every axis reading
+    // that object needs the enclosure fallback — not just the URL. Without it a clean
+    // calibration warns that its two arms ran against different server versions.
+    const enclosed = {
+      tier1: { asserted: true, ok: true },
+      enclosure: {
+        ok: true,
+        identity: { serverUrl: 'http://192.0.2.10:8096', serverVersion: '10.11.11' },
+      },
+      provenance: {
+        ...series().provenance,
+        enableRta: false,
+        identitySource: 'enclosed',
+        server: { url: null, version: null },
+      },
+    };
+    const verdict = comparability(...armsFrom(twoArms({}, enclosed)));
+    expect(verdict.warnings.join(' ')).not.toMatch(/different Jellyfin server versions/);
+  });
+
+  it('ALLOWS the ODC calibration pair, and says the delta IS the component', () => {
+    // ADR 0030's sanctioned exception, and the reason it is a property of the records
+    // rather than a flag: a bypass flag would be typed by exactly the person the refusal
+    // exists for. Both arms assert an identity, each one's source fits its ODC state, and
+    // the two agree — which is what `npm run measure:calibrate` establishes by
+    // construction.
+    const enclosed = {
+      provenance: { ...series().provenance, enableRta: false, identitySource: 'enclosed' },
+    };
+    const [a, b] = armsFrom(twoArms({}, enclosed));
+    const verdict = comparability(a, b);
+    expect(verdict.refusals).toEqual([]);
+    expect(verdict.warnings.join(' ')).toMatch(/ADR 0030/);
+    expect(verdict.warnings.join(' ')).toMatch(/delta below IS the resident component/);
+    // Each arm's identity source NAMED in full. It printed `o` and `e` on the first real
+    // run — the message indexed `[0]` into what had become a string, and nothing caught it
+    // because the assertions above both still passed.
+    expect(verdict.warnings.join(' ')).toMatch(/before: observed/);
+    expect(verdict.warnings.join(' ')).toMatch(/after: enclosed/);
+  });
 
   it('does NOT refuse a workload difference — it is the case a human must see', () => {
     const fewer = {
