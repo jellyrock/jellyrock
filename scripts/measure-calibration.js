@@ -83,6 +83,9 @@ const ARM_BY_ID = Object.fromEntries(Object.values(ARMS).map((a) => [a.id, a]));
 
 /** How many times a bracket read may come back empty before it is taken at its word. */
 const BRACKET_READ_ATTEMPTS = 5;
+/** Long enough to outlast a leaked lease (`DEFAULT_LEASE_MS`, 15 min) plus a steal. */
+const LOCK_WAIT_MS = 17 * 60 * 1000;
+const LOCK_RETRY_MS = 30 * 1000;
 const BRACKET_RETRY_MS = 2000;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -131,9 +134,44 @@ let residentArm = null;
 let current = null;
 let interrupted = false;
 
-/** Take the lock, do something to the device, release. See the header. */
+/**
+ * Take the lock, do something to the device, release. See the header.
+ *
+ * ## Why the acquire RETRIES instead of dying
+ *
+ * The lock is a GitHub ref, and `releaseRef` warns rather than throws when the DELETE
+ * fails — a leaked lease "expires on its own" after `DEFAULT_LEASE_MS` (15 min), which is
+ * the right call for a tool that takes the lock once per run. This driver takes it about
+ * TWENTY-FIVE times per run (a deploy plus a child per block, plus the restore), so it
+ * turns a rare transient into a likely one, and it is the only caller for which a leaked
+ * lease lands mid-run rather than at the end.
+ *
+ * Measured, twice on 2026-08-18: once harmlessly as the last line of a finished run, and
+ * once at block 4 of 12, where the next acquire found our own dead child still holding the
+ * ref and the whole 45-minute run died on it. Nothing was wrong with the device.
+ *
+ * `stealIfExpired` reclaims an expired lease automatically, so the failure is recoverable
+ * BY WAITING — which makes dying the wrong response. This waits past the lease and gives
+ * up only if the holder is genuinely someone else who is still alive.
+ */
 async function withLock(what, fn) {
-  const lock = await acquireDeviceLock({ what: `calibrate:${what}` });
+  let lock;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      lock = await acquireDeviceLock({ what: `calibrate:${what}` });
+      break;
+    } catch (e) {
+      if (attempt * LOCK_RETRY_MS > LOCK_WAIT_MS) throw e;
+      // Said every time rather than once: an operator watching a run stall deserves to
+      // know it is waiting on a lease rather than hung on the device.
+      console.warn(
+        `[calibrate] ⚠ could not take the device lock (attempt ${attempt}) — ${e.message.split('\n')[0]}\n` +
+          `[calibrate]   Retrying for up to ${Math.round(LOCK_WAIT_MS / 60000)} min; an expired ` +
+          'lease is reclaimed automatically. Ctrl-C to stop.',
+      );
+      await sleep(LOCK_RETRY_MS);
+    }
+  }
   try {
     return await fn();
   } finally {
