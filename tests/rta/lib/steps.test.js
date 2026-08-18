@@ -21,11 +21,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const getValues = vi.fn();
 const getFocusedNode = vi.fn();
+const getValue = vi.fn();
 const sendKeypress = vi.fn();
 vi.mock('roku-test-automation', () => ({
   odc: {
     getValues: (...a) => getValues(...a),
-    getValue: vi.fn(),
+    getValue: (...a) => getValue(...a),
     getFocusedNode: (...a) => getFocusedNode(...a),
   },
   // `Key` carries the REAL values (verified against the installed package), not invented
@@ -34,7 +35,8 @@ vi.mock('roku-test-automation', () => ({
   ecp: { sendKeypress: (...a) => sendKeypress(...a), Key: { Up: 'Up', Right: 'Right' } },
 }));
 
-const { getActiveVals, resendIfSwallowed, walkHomeToFirstRow } = await import('./steps.js');
+const { getActiveVals, resendIfSwallowed, walkHomeToFirstRow, overhangWalkKey, waitHome } =
+  await import('./steps.js');
 
 /** A `getFocusedNode` answer resting on a row list at `[row, item]`. */
 const onRow = (row) => ({
@@ -246,5 +248,97 @@ describe("walkHomeToFirstRow — the precondition Home's Up-to-overhang escape r
       /home row 0 focused/,
     );
     expect(sendKeypress).not.toHaveBeenCalled();
+  });
+});
+
+describe('overhangWalkKey — the key is chosen from where focus IS', () => {
+  const onIcon = { node: { id: 'settingsIcon' }, keyPath: '#overhang.#settingsIcon' };
+  const inHomeRows = {
+    node: { subtype: 'HomeRows', id: 'homeRows', rowItemFocused: [0, 2] },
+    keyPath: '#routerOutlet.#viewTarget.#abc.#homeRows',
+  };
+  const onTabBar = { node: { subtype: 'JRTabBar', id: 'tabBar' }, keyPath: '#overhang.#tabBar' };
+
+  it('sends nothing once the icon has focus', () => {
+    expect(overhangWalkKey(onIcon, 'settingsIcon')).toBeNull();
+  });
+
+  it('re-presses Up while focus is still inside Home rows — the #789 signature', () => {
+    // The exact recorded state: row 0, item index dragged to 2 by the Rights themselves.
+    // Right cannot leave Home from here, which is why the old walk could never recover.
+    expect(overhangWalkKey(inHomeRows, 'settingsIcon')).toBe('Up');
+  });
+
+  it('treats the favorites list as Home too', () => {
+    // Home's active list is `m.activeContent`, which is the favorites list under that tab.
+    const inFavorites = {
+      node: { subtype: 'FavoritesRows', id: 'favoritesRows', rowItemFocused: [0, 0] },
+      keyPath: '#routerOutlet.#viewTarget.#abc.#favoritesRows',
+    };
+    expect(overhangWalkKey(inFavorites, 'settingsIcon')).toBe('Up');
+  });
+
+  it('walks Right once focus has reached the overhang chain', () => {
+    expect(overhangWalkKey(onTabBar, 'settingsIcon')).toBe('Right');
+  });
+
+  it('falls back to Right when the focus read failed', () => {
+    // Unchanged from the pre-fix behaviour on purpose — a failed read is not evidence that
+    // the escape is stuck, and Up from the overhang is inert anyway.
+    expect(overhangWalkKey(null, 'settingsIcon')).toBe('Right');
+  });
+
+  it('does not mistake a DIFFERENT overhang icon for the target', () => {
+    expect(
+      overhangWalkKey(
+        { node: { id: 'searchIcon' }, keyPath: '#overhang.#searchIcon' },
+        'settingsIcon',
+      ),
+    ).toBe('Right');
+  });
+});
+
+describe('waitHome — the login flow is a separate question, asked first', () => {
+  beforeEach(() => {
+    getValue.mockReset();
+    getFocusedNode.mockReset();
+  });
+
+  it('waits for a routed view BEFORE it ever reads Home rows', async () => {
+    // The ordering IS the fix. Reading `#homeRows` while the app is still logging in
+    // reports "home rows never appeared" — a claim about Home caused by an unfinished
+    // login (recorded on .177, 2026-08-18).
+    const seen = [];
+    getValue.mockImplementation(async ({ base, keyPath }) => {
+      seen.push(`${base}:${keyPath}`);
+      if (keyPath === 'activeRoutedView.subtype()') return { found: true, value: 'Home' };
+      return { found: true, value: 3 };
+    });
+
+    await waitHome();
+
+    expect(seen[0]).toBe('global:activeRoutedView.subtype()');
+    expect(seen[1]).toBe('scene:#homeRows.content.getChildCount()');
+  });
+
+  it('does not accept an unresolved view as "mounted"', async () => {
+    // `found: false` is exactly what the 2026-08-18 record carried for both view fields.
+    // Treating it as a mounted view would put the gate straight back where it was.
+    let mounted = false;
+    getValue.mockImplementation(async ({ keyPath }) => {
+      if (keyPath === 'activeRoutedView.subtype()') {
+        const res = mounted ? { found: true, value: 'Home' } : { found: false };
+        mounted = true; // resolves on the SECOND read, so the gate must have polled again
+        return res;
+      }
+      return { found: true, value: 2 };
+    });
+
+    await waitHome();
+
+    const viewReads = getValue.mock.calls.filter(
+      ([a]) => a.keyPath === 'activeRoutedView.subtype()',
+    );
+    expect(viewReads.length).toBeGreaterThan(1);
   });
 });

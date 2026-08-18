@@ -27,6 +27,7 @@ import {
   waitFocusInside,
   waitHome,
   walkHomeToFirstRow,
+  overhangWalkKey,
   hasChildren,
   resendIfSwallowed,
   sleep,
@@ -57,15 +58,31 @@ async function focusOverhangIcon(iconId) {
     );
   }
   await press(ecp.Key.Up); // home content -> overhang
+  // The key is chosen from where focus IS, not from where the walk assumes it got to: while
+  // focus is still in Home's rows the escape has not happened and Right can only walk the row.
+  // See `overhangWalkKey`, which carries the recorded failures this rule comes from.
+  let escapeRetries = 0;
   await waitFocused((f) => f?.node?.id === iconId, {
     timeout: 15000,
     interval: 400,
     action: async () => {
       const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
-      if (f?.node?.id !== iconId) await press(ecp.Key.Right);
+      const key = overhangWalkKey(f, iconId);
+      if (key === ecp.Key.Up) escapeRetries++;
+      if (key) await press(key);
     },
     label: `overhang ${iconId}`,
   });
+  if (escapeRetries > 0) {
+    // Announced, not swallowed. A retry that succeeds means the FIRST Up was lost while Home
+    // was still settling — the open half of #789. This line is the only thing that says so,
+    // and a run that prints it is the run worth capturing.
+    console.warn(
+      `[nav] overhang ${iconId}: the first Up did not leave Home — re-pressed ${escapeRetries} ` +
+        "time(s) before the escape took. Focus was still inside Home's rows, where Right " +
+        'cannot help. Worth investigating why Up was lost (see #789).',
+    );
+  }
 }
 
 /** home -> overhang settings icon -> Settings screen (version label is the gate). */

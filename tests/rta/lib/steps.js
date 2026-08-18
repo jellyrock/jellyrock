@@ -250,8 +250,36 @@ export function resendIfSwallowed(key, containerId) {
   };
 }
 
-/** Home is ready once HomeRows has rendered its content. */
+/**
+ * Home is ready once HomeRows has rendered its content — but only once the app is PAST
+ * its login flow, which is a separate question and has to be asked first.
+ *
+ * ## Why the two phases
+ *
+ * `JRScene.isRemoteDisabled` defaults to `true` in the XML, and the app mounts no routed
+ * view until the login flow resolves the saved session. So between launch and Home there is
+ * a window with no `#homeRows` anywhere in the tree, and reading for one during it reports
+ * "home rows never appeared" — a statement about Home, produced by a login that simply had
+ * not finished.
+ *
+ * That is not hypothetical either. `.177`, 2026-08-18, ~30 s after a `hardRelaunch`: no
+ * routed view at all (`activeRoutedView.subtype()` unresolved), `isRemoteDisabled: true`
+ * with `isLoading: false` — a pair NEITHER `startLoadingSpinner` nor `stopLoadingSpinner`
+ * can produce, so JRScene was still sitting on its untouched defaults — while
+ * `m.global.server` and `m.global.user` were already populated. The app was mid-login
+ * against a demo server that had returned an outright auth failure earlier the same day.
+ *
+ * Gating on a view existing first means a slow login is WAITED for and, if it never
+ * arrives, is reported as itself instead of as a missing Home. The login phase carries the
+ * larger budget because it is the one bound by a remote server rather than by rendering.
+ */
 export async function waitHome() {
+  await waitFor('subtype()', (v) => typeof v === 'string' && v !== '', {
+    read: getActiveVal,
+    label: 'app past the login flow (a routed view mounted)',
+    timeout: 45000,
+    interval: 500,
+  });
   await waitFor('#homeRows.content.getChildCount()', hasChildren, {
     label: 'home rows',
     timeout: 20000,
@@ -313,6 +341,50 @@ export async function walkHomeToFirstRow({ timeout = 10000, interval = 400 } = {
     },
   });
   return { walked, from };
+}
+
+/**
+ * Which key advances the overhang walk, given where focus ACTUALLY is right now.
+ *
+ * ## The defect this exists to fix
+ *
+ * `focusOverhangIcon` pressed Up exactly ONCE and then spent its whole timeout pressing
+ * Right. Right is the correct key only AFTER the escape succeeded — it walks the overhang's
+ * TabBar -> Search -> Settings chain. While focus is still inside Home's rows, Right walks
+ * the ROW instead, and no number of Rights can ever leave Home. So a single lost Up was
+ * unrecoverable by construction, and it presented as "the screen never loaded".
+ *
+ * That is not hypothetical. Two failure records, `.176` 2026-08-16 and `.177` 2026-08-18
+ * (this suite, current `main`), carry the same signature: focus still on `#homeRows`,
+ * `rowItemFocused` at row 0 with the ITEM index moved off 0 — moved there by the Rights
+ * themselves, wrapping around a short row via `wrapRowFocus`. The 2026-08-18 record also
+ * shows `#homeRows.content.getChildCount()` at 2 where a settled Home on that fixture holds
+ * 6, so the escape was attempted while Home was still inserting rows. `waitHome()` gates on
+ * rows EXISTING, which is satisfied by the first one.
+ *
+ * ## Why re-pressing Up is safe
+ *
+ * Up is only ever returned while focus is inside a Home row list. At row 0 it is the escape;
+ * at any higher row it walks toward row 0, which is the same precondition `walkHomeToFirstRow`
+ * establishes. And a stray Up that arrives once focus HAS reached the overhang is inert:
+ * `JRTabBar.onKeyEvent` deliberately does not consume Up ("nothing above the tab bar").
+ *
+ * Kept pure, and here rather than in `nav.js`, for the reason `walkHomeToFirstRow` is here:
+ * `nav.js` binds the device at module scope and cannot be unit-tested.
+ *
+ * @param {object|null} focused `odc.getFocusedNode({includeNode:true})`, or null if it failed.
+ * @param {string} iconId the overhang icon the walk is trying to reach.
+ * @returns {string|null} the key to send, or null when focus has arrived.
+ */
+export function overhangWalkKey(focused, iconId) {
+  if (focused?.node?.id === iconId) return null;
+  const keyPath = typeof focused?.keyPath === 'string' ? focused.keyPath : '';
+  // Home's active list is `m.activeContent` — `#homeRows` or `#favoritesRows` depending on
+  // the selected tab — so both mean "the escape has not happened yet".
+  if (keyPath.includes('#homeRows') || keyPath.includes('#favoritesRows')) return ecp.Key.Up;
+  // Unknown focus (a failed read) keeps the pre-existing behaviour rather than inventing a
+  // new one: Right is inert on most of the overhang chain, Up from it is inert by design.
+  return ecp.Key.Right;
 }
 
 /** Roku media-player states that mean playback is live. Frozen — it is a shared registry now. */
