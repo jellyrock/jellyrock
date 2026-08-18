@@ -360,6 +360,7 @@ nominatively
 non-cloneable
 non-Jellyfin
 Non-Jellyfin
+no-ODC
 non-ODC
 npm
 NPM
@@ -738,3 +739,4 @@ macOS
 SHA
 unattributable
 subprocess
+pre-registered
