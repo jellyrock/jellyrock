@@ -70,6 +70,7 @@
  * are written to disk. Same rule, and the same reason, as `tests/rta/lib/diagnostics.js`.
  */
 import fs from 'node:fs';
+import net from 'node:net';
 import { odc } from 'roku-test-automation';
 import { fetchDeviceInfo } from './device-lock.js';
 import { ramTierFor } from './roku-devices.js';
@@ -267,6 +268,166 @@ export function checkServerIdentity(identity, expectedServerUrl, { expectNoServe
         `${JSON.stringify(expectedServerUrl)}. Note serverId/userId cannot be used to tell ` +
         'these apart — the demo stable/unstable backends are cloned from one seed DB and ' +
         'report an identical pair.',
+  };
+}
+
+/** The port RTA's on-device component listens on. Its default; nothing here overrides it. */
+export const ODC_PORT = 9000;
+
+/**
+ * Is the on-device component RESIDENT — i.e. is anything listening on its port?
+ *
+ * ## Why this is a raw socket and not `readIdentity()`
+ *
+ * The enclosed arm has to assert the ABSENCE of ODC, and the obvious way to test that is
+ * to try an ODC call and expect it to fail. That does not work, and the way it fails is
+ * worth stating because it has now bitten this subsystem twice.
+ *
+ * RTA's `setupClientSocket` RETRIES `ECONNREFUSED` once a second and only rejects its
+ * CACHED `clientSocketPromise` when its own connect timeout expires
+ * (`OnDeviceComponent.js:989-1000`). A caller that bounds the call more tightly — which
+ * one must, since RTA's timeout does not cover a connect that neither connects nor errors
+ * — gets its rejection, handles it, and moves on. The underlying promise is still alive,
+ * and when it finally rejects there is nobody attached: the rejection surfaces as an
+ * `unhandledRejection`, from a socket `error` EVENT outside any await chain.
+ *
+ * Measured 2026-08-17, dogfooding the calibration: both plain-arm blocks passed the probe,
+ * printed "identity asserted by ENCLOSURE", asserted tier 1 — and then died mid-series
+ * with `Failed to connect to Roku ... on port 9000`, recorded as `crashed`, no record
+ * written. `measure-signin.js` documents the same shape from a different angle ("RTA
+ * surfaces a refused connect as a socket error event, outside the await chain, where no
+ * `catch` can see it"), which is the second sighting.
+ *
+ * So the absence is tested WITHOUT RTA's client. A TCP connect to the port answers the
+ * only question that matters — is the component there — costs one round trip instead of a
+ * timeout, and leaves no promise behind.
+ *
+ * ⚠️ It says "something is listening", not "the ODC is healthy". That is the right
+ * direction for this caller: the failure it guards against is a mislabeled arm still
+ * holding an RTA build, and a listening port is enough to catch it. Callers who need the
+ * component to actually ANSWER should use `readIdentity`.
+ */
+export function odcIsResident(host, { port = ODC_PORT, timeoutMs = 2000 } = {}) {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host, port });
+    const settle = (resident) => {
+      socket.destroy();
+      resolve(resident);
+    };
+    // A connect that hangs is neither a refusal nor an answer. Resolved as NOT resident
+    // deliberately: this probe's job is to let the no-ODC arm proceed, and a port that
+    // will not complete a handshake cannot be an on-device component serving requests.
+    socket.setTimeout(timeoutMs, () => settle(false));
+    socket.on('connect', () => settle(true));
+    socket.on('error', () => settle(false));
+  });
+}
+
+/**
+ * Tier 1 for an arm that has no ODC to read — [ADR 0030](../docs/adr/0030-non-odc-arm-identity-by-enclosure.md).
+ *
+ * The ODC calibration needs one arm with no resident on-device component, and identity
+ * is read over ODC and nothing else, so that arm is the one arm that cannot observe what
+ * server it measured against. It does not get to skip the assert: the failure tier 1
+ * exists to catch — a device sitting on a server nobody meant to measure — has the same
+ * shape and the same silence in a build with no ODC as in one with it.
+ *
+ * So the identity is asserted by ENCLOSURE, by the caller, and this records that it was.
+ * `identitySource: 'enclosed'` is a FIELD rather than a note, so a reader wanting only
+ * observed identities filters on one value and a reader who does not know the distinction
+ * exists is told by what it reads. Never `'observed'`, and never written into
+ * `provenance.server.url` as though it had been seen — that is the laundering
+ * `readIdentity`'s throw exists to prevent, one layer up.
+ *
+ * What it does NOT claim is that the identity held at each sample; the enclosure is a
+ * property of the BLOCK. `enclosureVerdict` below is what establishes it, and the caller
+ * is responsible for not publishing a block whose enclosure did not close.
+ */
+export function enclosedServerIdentity(declaredServerUrl) {
+  return {
+    asserted: true,
+    ok: true,
+    noServer: false,
+    // Nothing was observed IN THIS ARM, and the field says so rather than echoing the
+    // declaration back — an `observed` equal to `expected` is exactly what a reader
+    // takes as a passing read.
+    observed: null,
+    expected: declaredServerUrl,
+    identitySource: 'enclosed',
+    reason:
+      'asserted by ENCLOSURE — this arm has no ODC, so identity comes from observed reads ' +
+      'taken either side of it (ADR 0030), never from a read of its own.',
+  };
+}
+
+/**
+ * Did an enclosure CLOSE — i.e. may the block it brackets be published?
+ *
+ * Both brackets must agree with each other AND with what the operator declared. A
+ * disagreement fails the whole enclosed block rather than one sample, because an
+ * enclosure cannot say at which point inside it the identity moved — that is the honest
+ * consequence of measuring at the boundary instead of at the sample, and it is why the
+ * verdict is computed here rather than left as a warning for a reader to weigh.
+ *
+ * A bracket that could not be READ is a failure too, and a distinct one: an unread
+ * bracket is not a disagreement, and saying "the identity drifted" about an ODC call that
+ * timed out would send whoever hit it to look at the server.
+ *
+ * @param {object|null} before identity observed immediately before the enclosed block.
+ * @param {object|null} after identity observed immediately after it.
+ * @param {string} [declaredServer] what tier 1 was told to expect.
+ */
+export function enclosureVerdict({ before, after, declaredServer } = {}) {
+  const missing = [!before && 'opening', !after && 'closing'].filter(Boolean);
+  if (missing.length) {
+    return {
+      ok: false,
+      identity: null,
+      reason:
+        `the ${missing.join(' and ')} bracket could not be read, so nothing observed this ` +
+        'block. An unread bracket is not a disagreement — check that the ODC answered on ' +
+        'the arms either side before suspecting the server moved.',
+    };
+  }
+  const consistency = checkSeriesConsistency(before, after);
+  if (!consistency.ok) {
+    return {
+      ok: false,
+      identity: null,
+      drifted: consistency.drifted,
+      reason:
+        'the two brackets disagree, so the identity moved somewhere inside this block: ' +
+        consistency.drifted
+          .map((d) => `${d.field} ${JSON.stringify(d.from)} → ${JSON.stringify(d.to)}`)
+          .join(', ') +
+        '. The whole enclosed block fails — an enclosure cannot say WHERE inside itself it ' +
+        'moved.',
+    };
+  }
+  if (declaredServer && !sameServer(before.serverUrl, declaredServer)) {
+    return {
+      ok: false,
+      identity: null,
+      reason:
+        `both brackets agree on ${JSON.stringify(before.serverUrl)}, which is not the ` +
+        `${JSON.stringify(declaredServer)} this run declared. The enclosure is sound and the ` +
+        'run is measuring the wrong server.',
+    };
+  }
+  return {
+    ok: true,
+    identitySource: 'enclosed',
+    identity: {
+      serverUrl: before.serverUrl ?? null,
+      serverId: before.serverId ?? null,
+      serverVersion: before.serverVersion ?? null,
+      apiVersion: before.apiVersion ?? null,
+      userId: before.userId ?? null,
+    },
+    // BOTH reads are carried, not just the agreed value: the claim being recorded is
+    // "two observations, taken either side, agreed", and a reader cannot check that
+    // against a single collapsed field.
+    brackets: { before, after },
   };
 }
 

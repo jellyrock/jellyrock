@@ -83,6 +83,27 @@
  *      coordinator as well as the screen itself.
  *   4. `npm run rta:restore`, and confirm it reports VERIFIED CLEAN.
  *
+ * ## The arm with no ODC (`--enclosed-server`), which this tool does not drive itself
+ *
+ * `npm run measure:calibrate` answers "does the resident ODC component move the number?",
+ * and one of its two arms has no ODC — so it cannot read the identity every other run
+ * reads, and tier 1 would refuse it. `--enclosed-server <url>` is how that arm declares
+ * what the driver observed either side of it ([ADR 0030](../docs/adr/0030-non-odc-arm-identity-by-enclosure.md)).
+ *
+ * Three things it does, none of which is "skip the check":
+ *
+ *   - it asserts the OPPOSITE precondition, in both directions: if ODC ANSWERS, the run
+ *     refuses, because a calibration whose two arms are the same build reports a delta of
+ *     zero for the best-looking reason;
+ *   - it records `identitySource: 'enclosed'`, never `'observed'`, and leaves
+ *     `provenance.server` NULL — ADR 0030 rejects writing an enclosed identity into the
+ *     field a reader takes as an observation. The identity the brackets agreed on is
+ *     recorded beside it, under `enclosure`;
+ *   - it refuses `--server`, `--no-server`, `--nav` and `--deploy`, each of which
+ *     contradicts one of the above.
+ *
+ * Not for hand use. The enclosure is only worth anything if somebody took the reads.
+ *
  * ## Taking the two arms of a comparison
  *
  * Alternate the arms — `--arm before`, `--arm after`, `--arm before`, … — rather than
@@ -194,7 +215,7 @@ import { acquireDeviceLock } from './device-lock.js';
 import {
   beginRun,
   crossesHourBoundary,
-  ledgerPath,
+  measurementsLedgerPath,
   runProvenance,
   RUN_OUTCOMES,
 } from './run-record.js';
@@ -214,6 +235,9 @@ import {
   missingIdentityFields,
   fatalIdentityFields,
   checkServerIdentity,
+  enclosedServerIdentity,
+  odcIsResident,
+  ODC_PORT,
   checkSeriesConsistency,
   readDeviceProvenance,
   readAppVersion,
@@ -389,6 +413,11 @@ if (args.deploy) {
   }
   console.log('[measure] deploying (ENABLE_RTA) ...');
   await deployRtaBuild();
+} else if (args.deployedBy) {
+  // The advice below is wrong for this caller: it did not deploy because something else
+  // just did, and `--deploy` here would sideload an arm the caller did not choose (and is
+  // refused outright alongside `--enclosed-server`).
+  console.log(`[measure] using the build ${args.deployedBy} just deployed`);
 } else {
   console.log('[measure] using the build already on the device (pass --deploy to sideload)');
 }
@@ -446,26 +475,66 @@ async function refuse(message) {
   process.exit(1);
 }
 
+// Whether identity was OBSERVED here or asserted by the caller's enclosure. Recorded as
+// a field on every run — see ADR 0030 and `enclosedServerIdentity`.
+const identitySource = args.enclosedServer ? 'enclosed' : 'observed';
+
 // The ODC precondition, checked as a precondition rather than surfacing as a stack
 // trace 5 s into an unexplained timeout. This is the documented failure of the
 // default mode — nothing guarantees the resident build was RTA-deployed — so it
 // gets the sentence that says what to do about it.
 let identityAtStart;
-try {
-  identityAtStart = await readIdentity();
-} catch (e) {
-  await refuse(
-    `could not read identity over ODC: ${e.message}\n` +
-      '  `npm run measure` reads the server identity over ODC, which is present only in an RTA\n' +
-      '  deploy. Re-run with --deploy to sideload one, or point it at a device that has one.',
+if (args.enclosedServer) {
+  // The enclosed arm asserts the OPPOSITE precondition, and asserts it in both
+  // directions exactly as `--no-server` does. An ODC that answers here means the device
+  // is holding an RTA build, so this arm is not the arm it says it is — and the
+  // calibration's whole delta is the presence of that component, so a mislabeled arm
+  // does not produce a wrong-ish number, it produces two copies of the same arm and a
+  // delta of zero. That is the confidently-wrong result this tool refuses.
+  //
+  // A raw TCP probe, NOT an ODC call — see `odcIsResident`. Trying an ODC call and
+  // catching its failure is the obvious shape and it does not work: RTA retries the
+  // refusal internally and rejects a cached promise later, with nobody attached, which
+  // killed both plain-arm blocks of the first calibration run AFTER they had passed this
+  // check.
+  if (await odcIsResident(host)) {
+    await refuse(
+      '--enclosed-server says this arm has NO resident ODC component, but something is ' +
+        `listening on port ${ODC_PORT}.\n` +
+        '  The device is holding an RTA build, so this is not the arm it claims to be, and a\n' +
+        '  calibration whose two arms are the same build reports a delta of zero for the\n' +
+        '  best-looking reason. Deploy the non-RTA arm first — `measure-calibration.js` does.',
+    );
+  }
+  console.log(
+    '[measure] no resident ODC — identity asserted by ENCLOSURE (ADR 0030), never observed here.',
   );
+  // Every field absent, which is the truth for this arm: nothing was read. `undefined`
+  // rather than the declared value, so nothing downstream can mistake the declaration
+  // for an observation — `provenance.server.url` below records null for the same reason.
+  identityAtStart = {};
+} else {
+  try {
+    identityAtStart = await readIdentity();
+  } catch (e) {
+    await refuse(
+      `could not read identity over ODC: ${e.message}\n` +
+        '  `npm run measure` reads the server identity over ODC, which is present only in an RTA\n' +
+        '  deploy. Re-run with --deploy to sideload one, or point it at a device that has one.',
+    );
+  }
 }
 
 // A field ODC answered but could not find. `serverUrl` is fatal: tier 1 rests on
 // it, and a series nobody can attribute to a server is not a series. The rest are
 // reported and recorded as absent.
-const missing = missingIdentityFields(identityAtStart);
-const fatal = fatalIdentityFields(identityAtStart, { expectNoServer: args.noServer });
+const missing = args.enclosedServer ? [] : missingIdentityFields(identityAtStart);
+// Not consulted at all in the enclosed arm: `fatalIdentityFields` answers "ODC replied
+// and could not find this field", and in that arm ODC was never asked. Feeding it an
+// empty identity would refuse the run for the absence the flag exists to declare.
+const fatal = args.enclosedServer
+  ? []
+  : fatalIdentityFields(identityAtStart, { expectNoServer: args.noServer });
 if (fatal.length) {
   await refuse(
     `the app answered ODC but has no ${fatal.join(', ')} — there is no server on the node.\n` +
@@ -485,10 +554,12 @@ if (missing.length) {
   console.log(`[measure] ${note}, recorded as null: ${missing.join(', ')}`);
 }
 
-const expectedServer = args.server || identityAtStart.serverUrl;
-const tier1 = checkServerIdentity(identityAtStart, args.server, {
-  expectNoServer: args.noServer,
-});
+const expectedServer = args.enclosedServer || args.server || identityAtStart.serverUrl;
+const tier1 = args.enclosedServer
+  ? enclosedServerIdentity(args.enclosedServer)
+  : checkServerIdentity(identityAtStart, args.server, {
+      expectNoServer: args.noServer,
+    });
 const checkoutFlags = readCheckoutBuildFlags(manifestPath);
 const provenance = {
   device: await readDeviceProvenance(host),
@@ -498,7 +569,21 @@ const provenance = {
   // and it holds whether or not THIS invocation performed the deploy — which is
   // strictly more than the old `args.deploy ? true : null` could say, and it
   // replaces a `manifestFlags.ENABLE_RTA` that read `false` on every run.
-  enableRta: true,
+  //
+  // The enclosed arm derives the NEGATIVE the same way, off a probe that had to fail
+  // for the run to get here: no component answered, so nothing was injected. Note
+  // what that does and does not establish — it proves the ODC component is absent,
+  // which is not by itself the manifest flag, because `injectTestingFiles: false`
+  // leaves `ENABLE_RTA=true` staged (see `deployBuild`). The literal `bs_const` the
+  // device was given is recorded by whoever performed the deploy, under
+  // `provenance.deploy`; this field stays what it has always been, the running app's
+  // answer about its own ODC.
+  enableRta: !args.enclosedServer,
+  // WHERE the identity above came from — observed here, or asserted by the reads the
+  // caller took either side of this run (ADR 0030). A field rather than an inference
+  // from `enableRta`, because a reader filtering for trustworthy provenance should not
+  // have to know how the two relate.
+  identitySource,
   // What this WORKING TREE would build. Not the device — unless `--deploy` put it
   // there, which is what `deployedFromCheckout` records instead of leaving a reader
   // to assume. `agreesWithDevice` is filled in after the series, once the app's own
@@ -507,6 +592,10 @@ const provenance = {
     appVersion: readAppVersion(manifestPath),
     manifestFlags: checkoutFlags,
     deployedFromCheckout: args.deploy,
+    // WHO deployed it, when this run did not. Null on an ordinary run, where nobody can
+    // say. Kept separate from `deployedFromCheckout` above, which is a claim about THIS
+    // process and stays false however trustworthy the caller is.
+    deployedBy: args.deployedBy ?? null,
     agreesWithDevice: null,
   },
   server: {
@@ -528,13 +617,29 @@ console.log(
     `(${provenance.device.ramTier ?? 'RAM unknown'}, Roku OS ${provenance.device.osVersion})` +
     (args.arm ? ` · arm "${args.arm}"` : ''),
 );
+// Three states, not two. The enclosed arm read NOTHING, so `provenance.server` is null by
+// design — and printing `server null (Jellyfin null)` for it is the log misnaming its own
+// arm two lines after correctly announcing the enclosure. These logs are the evidence
+// trail for a measurement; one that describes the wrong arm is worse than one that says
+// nothing.
 console.log(
   `[measure] app ${provenance.checkout.appVersion} · ` +
-    (args.noServer
-      ? 'NO SERVER on the node (asserted by --no-server)'
-      : `server ${provenance.server.url} (Jellyfin ${provenance.server.version})`),
+    (args.enclosedServer
+      ? `server ${args.enclosedServer} — NOT read here, asserted by the caller's ` +
+        'enclosing reads (ADR 0030)'
+      : args.noServer
+        ? 'NO SERVER on the node (asserted by --no-server)'
+        : `server ${provenance.server.url} (Jellyfin ${provenance.server.version})`),
 );
-if (!args.deploy) {
+if (args.deployedBy) {
+  // Not the resident-build warning: a caller that deployed this checkout immediately
+  // before invoking this run is exactly the case that warning exists to flag, already
+  // answered. Said out loud rather than silently skipped, so the log still records how
+  // the device came to hold what it is holding.
+  console.log(
+    `[measure] build deployed by ${args.deployedBy} immediately before this run, from this checkout.`,
+  );
+} else if (!args.deploy) {
   console.log(
     '[measure] ⚠ measuring the build ALREADY on the device — the recorded appVersion/commit ' +
       'describe this checkout, not necessarily what ran (pass --deploy to make them the same thing).',
@@ -591,8 +696,13 @@ const windowMs = Number.isFinite(args.windowMs) ? args.windowMs : MAX_WINDOW_MS;
 // tested there. It used to be inline here, where nothing could reach it: this file claims
 // the device on import, so the one layer every defect in this subsystem has been found in
 // was the one layer with no tests. Same reason `measure-args.js` and `measure-selection.js`
-// exist. Two callers beyond this one need it: the multi-device driver and the ODC
-// calibration harness, which would otherwise each grow their own copy of the replay defense.
+// exist — the extraction bought TESTABILITY, and that is the whole of what it bought.
+//
+// It predicted two more callers (the multi-device driver, the ODC calibration harness) and
+// got neither: both went out-of-process, spawning THIS file per unit of work, because a
+// series needs far more than the loop. `measure-loop.js` has one caller and its own header
+// records the correction — repeated here because the same wrong prediction was written in
+// two places, and only one of them was fixed when it was found.
 let samples;
 // The operator-facing refusal a failed nav built, or null on a clean series. Kept
 // rather than exited on, so the launches taken BEFORE the failure survive — see the
@@ -675,17 +785,35 @@ try {
 // A failed read is recorded as an unverifiable boundary, which is a NON-sample and
 // not a pass, because the series genuinely cannot be shown to be one population.
 let consistency;
-try {
-  consistency = checkSeriesConsistency(identityAtStart, await readIdentity());
-} catch (e) {
+if (args.enclosedServer) {
+  // There is nothing to close the boundary WITH in this arm, and that is the whole
+  // reason the enclosure exists. Recorded as an explicit `checked: false` rather than a
+  // bare `ok: true`: a series that was never tested for drift and one that passed the
+  // test must not read alike, and the value that establishes it lives on the caller's
+  // `enclosure` field — which is also what decides whether this record is published at
+  // all, so a line that reaches the ledger has had the question answered somewhere.
   consistency = {
-    ok: false,
+    ok: true,
+    checked: false,
     drifted: [],
-    unreadable:
-      `the closing identity read failed (${e.message}), so the series could not be ` +
-      'shown to be one population. The samples below are kept; treat them as unverified.',
+    identitySource: 'enclosed',
+    note:
+      'no ODC in this arm, so drift could not be checked here. The enclosing observed ' +
+      'reads are the check — see the `enclosure` field (ADR 0030).',
   };
-  console.error(`\n[measure] ⚠ ${consistency.unreadable}`);
+} else {
+  try {
+    consistency = checkSeriesConsistency(identityAtStart, await readIdentity());
+  } catch (e) {
+    consistency = {
+      ok: false,
+      drifted: [],
+      unreadable:
+        `the closing identity read failed (${e.message}), so the series could not be ` +
+        'shown to be one population. The samples below are kept; treat them as unverified.',
+    };
+    console.error(`\n[measure] ⚠ ${consistency.unreadable}`);
+  }
 }
 if (!consistency.ok && consistency.drifted.length) {
   console.error(
@@ -952,9 +1080,20 @@ const record = {
 //
 // One JSON line per SERIES (not per sample): the series is the unit a comparison
 // pairs, and tier 3 reads this the way `flake-baseline.js` reads `runs.jsonl`.
-const outPath = ledgerPath('measurements.jsonl');
+//
+// …unless the caller asked for it somewhere else. `--record-to` hands the assembled
+// record over instead of publishing it, for a caller that cannot yet know whether the
+// series may be published — the ODC calibration learns that from a bracket read which
+// necessarily happens after this process exits. It is a HAND-OFF, not a second copy: the
+// ledger gets nothing here, so there is no window in which an unverified line is
+// readable, and the caller is the one that appends.
+const outPath = args.recordTo ?? measurementsLedgerPath();
 fs.mkdirSync(path.dirname(outPath), { recursive: true });
-fs.appendFileSync(outPath, `${JSON.stringify(record)}\n`);
+if (args.recordTo) {
+  fs.writeFileSync(outPath, `${JSON.stringify(record)}\n`);
+} else {
+  fs.appendFileSync(outPath, `${JSON.stringify(record)}\n`);
+}
 
 if (selectionRefusal) {
   console.error(`\n[measure] ⚠ NO MEDIAN PUBLISHED — ${selectionRefusal}`);
@@ -1008,7 +1147,14 @@ if (cold.length && missingLines.length) {
       .join(' · ')} — a milestone the app did not emit is NOT the same as one it emitted as zero.`,
   );
 }
-console.log(`[measure] record: ${path.relative(repoRoot, outPath)}`);
+// Relative only while it IS relative: `--record-to` usually points at a temp dir, and
+// `path.relative` renders that as a ladder of `../` nobody can paste anywhere.
+const shownPath = outPath.startsWith(repoRoot) ? path.relative(repoRoot, outPath) : outPath;
+console.log(
+  args.recordTo
+    ? `[measure] record HELD for the caller (not published): ${shownPath}`
+    : `[measure] record: ${shownPath}`,
+);
 // Said again at the end, because the refusal itself printed before the whole series
 // report and a truncated series' numbers otherwise read exactly like a complete one's.
 if (navFailure) {

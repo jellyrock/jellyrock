@@ -7,6 +7,7 @@
  * available to any consumer (tests, screenshot script).
  */
 import 'dotenv/config';
+import fs from 'node:fs';
 import { ecp, odc, device, utils } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
 import { sleep } from './steps.js';
@@ -34,14 +35,105 @@ export function setupRtaEnv() {
 }
 
 /**
- * Sideload the dev build with RTA enabled. RTA's deploy stages build/, flips the
- * manifest `ENABLE_RTA=false`->`true`, and injects the on-device component. The
- * build must already exist (callers run `npm run build` first — the dev build,
- * NOT build:prod, which compiles the #if ENABLE_RTA hook out).
+ * Sideload `build/`, and say what the device was actually given.
+ *
+ * ## The two things a deploy decides, which are NOT one thing
+ *
+ * RTA's `device.deploy` does two separate jobs and only one of them is behind
+ * `injectTestingFiles`:
+ *
+ *  - it stages the on-device component's files (`RTA_OnDeviceComponent.*`,
+ *    `RTA_helpers.brs`) — this IS gated, at `RokuDevice.js:63-70`;
+ *  - it rewrites `ENABLE_RTA=false` -> `true` in the STAGED manifest — this is
+ *    **not** gated. The rewrite lives in the `createPackage` callback
+ *    (`RokuDevice.js:71-76`), outside that `if`, so it happens on every deploy.
+ *
+ * That matters because `#if` is evaluated **on the device at load time** from the
+ * shipped manifest, never by `bsc` (see
+ * [`home-first-paint-performance.md`](../../../docs/dev/home-first-paint-performance.md)).
+ * So `injectTestingFiles: false` alone does not produce a non-RTA build — it produces an
+ * `ENABLE_RTA=true` build whose ODC component is missing, which still runs every
+ * `#if ENABLE_RTA` block (a `createObject` for a node type that is no longer there, and
+ * `m.global.addFields({rtaSkeletonHoldMs: 0})`). Measured against the vendored source
+ * 2026-08-17, not inferred: staged both ways and read the manifest back out of RTA's own
+ * callback.
+ *
+ * `enableRta` is therefore its own parameter. It is applied in the `beforeZipCallback`,
+ * which RTA invokes LAST (`RokuDevice.js:86-88`), so it wins over the rewrite above.
+ *
+ * @param {boolean} [options.injectTestingFiles] stage the ODC component's files.
+ * @param {boolean} [options.enableRta] what the SHIPPED manifest must end up saying.
+ *   Defaults to `injectTestingFiles`, which is the only combination that was reachable
+ *   before this parameter existed — an ODC component with the hook that starts it
+ *   compiled out is a deploy nobody wants.
+ * @returns {Promise<{bsConst: string|null}>} the `bs_const` line as shipped. Returned
+ *   rather than assumed so a caller can record what the device was given instead of what
+ *   it meant to give it — the same posture as the app's own `[debug=… perfTiming=…]`
+ *   bracket, one layer earlier.
+ */
+/**
+ * Does the staged `bs_const` disagree with the `ENABLE_RTA` this deploy asked for? Returns
+ * the refusal text, or null when it agrees.
+ *
+ * ## Why the flip is VERIFIED rather than assumed
+ *
+ * The flip itself is an unanchored string replace against another package's output. If RTA
+ * ever changes how it spells its rewrite, that replace becomes a silent no-op — and what
+ * comes out is not a mislabeled arm, it is a DIFFERENT ARM: a `plain` deploy shipping
+ * `ENABLE_RTA=true` with no component is exactly the `no-component` arm, and nothing
+ * downstream can tell them apart (neither has a component, so `odcIsResident` is false and
+ * `provenance.enableRta` records `false` for both). The calibration would answer a question
+ * nobody asked and refuse nothing.
+ *
+ * Pure and exported so it has a test, which is not ceremony here: an unverified guard
+ * against a silent replace is the same shape as the silent replace. `bs_const` is already
+ * read back for the record — this only asks it the one question that makes it evidence.
+ *
+ * @param {string|null} bsConst the `bs_const=` line as staged.
+ * @param {boolean} wantRta what this deploy asked the shipped manifest to say.
+ */
+export function shippedRtaFlagMismatch(bsConst, wantRta) {
+  const shipped = /ENABLE_RTA=(true|false)/.exec(bsConst ?? '');
+  if (shipped && (shipped[1] === 'true') === wantRta) return null;
+  return (
+    `staged manifest says ${shipped ? shipped[0] : 'nothing about ENABLE_RTA'}, but this ` +
+    `deploy asked for ENABLE_RTA=${wantRta}. The staged line is: ` +
+    `${bsConst ?? '(no bs_const line)'}. RTA rewrites this flag OUTSIDE ` +
+    '`injectTestingFiles`, so a change to how it spells that rewrite silently defeats the ' +
+    'flip — which would make the calibration\'s "plain" arm indistinguishable from its ' +
+    '"no-component" one.'
+  );
+}
+
+export async function deployBuild({ injectTestingFiles = true, enableRta } = {}) {
+  const wantRta = enableRta ?? injectTestingFiles;
+  let bsConst = null;
+  await withDeployTimeout(
+    device.deploy({ rootDir: 'build', injectTestingFiles }, (info) => {
+      const manifestPath = `${info.stagingDir}/manifest`;
+      let text = fs.readFileSync(manifestPath, 'utf8');
+      if (!wantRta) {
+        text = text.replace('ENABLE_RTA=true', 'ENABLE_RTA=false');
+        fs.writeFileSync(manifestPath, text);
+      }
+      bsConst = /^bs_const=.*$/m.exec(text)?.[0] ?? null;
+      // Thrown from inside the callback deliberately: it runs before the zip and the
+      // publish, so a refusal here leaves the device holding what it already had.
+      const wrong = shippedRtaFlagMismatch(bsConst, wantRta);
+      if (wrong) throw new Error(`${wrong} Nothing was sideloaded.`);
+    }),
+  );
+  await sleep(RTA_CONFIG.bootMs);
+  return { bsConst };
+}
+
+/**
+ * Sideload the dev build with RTA enabled — the deploy every consumer but the ODC
+ * calibration wants. The build must already exist (callers run `npm run build` first —
+ * the dev build, NOT build:prod, which compiles the #if ENABLE_RTA hook out).
  */
 export async function deployRtaBuild() {
-  await withDeployTimeout(device.deploy({ rootDir: 'build', injectTestingFiles: true }));
-  await sleep(RTA_CONFIG.bootMs);
+  await deployBuild({ injectTestingFiles: true });
 }
 
 /**

@@ -11,10 +11,22 @@
  * as an injected dependency, so the window arithmetic and the quiet-break can be driven
  * with a fake clock and no device.
  *
- * Two callers beyond the entry point need this loop and would otherwise each grow their
- * own copy of the replay defense: the multi-device driver (tech-debt
- * `measure-single-device-only`) and the ODC calibration harness, which drives the same
- * logic across two build arms (`docs/progress.md`, step 1 of the calibration followup).
+ * ⚠️ **The second caller this extraction predicted never arrived, and the prediction is
+ * corrected here rather than left standing.** It said the multi-device driver and the ODC
+ * calibration harness would each otherwise grow their own copy of the replay defense.
+ * Both were then built OUT of process (`measure-devices.js` 2026-08-16,
+ * `measure-calibration.js` 2026-08-17), each spawning `measure.js` per unit of work —
+ * because a series needs far more than this loop (the device lock, the console socket,
+ * the tier guards, mount selection, the medians, and the record assembly that tech-debt
+ * flags as untested), and re-implementing that around a shared loop would have doubled
+ * the subsystem's one untested surface to avoid passing flags to a process that already
+ * does the job.
+ *
+ * So this file has ONE caller. The extraction still earned itself — 16 unit tests over
+ * window arithmetic and a quiet-break that had none, in the file every defect in this
+ * subsystem has been found in — but it earned it on testability, not on reuse, and a
+ * header claiming a caller that does not exist is how the next reader designs around a
+ * constraint nobody has.
  *
  * ## The one behavioural change from the inline version
  *

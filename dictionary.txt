@@ -360,6 +360,7 @@ nominatively
 non-cloneable
 non-Jellyfin
 Non-Jellyfin
+no-ODC
 non-ODC
 npm
 NPM
@@ -558,6 +559,7 @@ SVG
 SVGs
 teardown
 templated
+testability
 Tiago
 tmpdir
 tokenizer
@@ -587,6 +589,7 @@ transport-agnostically
 triaging
 trickplay
 Trickplay
+TCP
 TSV
 TTL
 tvchannel
@@ -595,10 +598,12 @@ UIs
 unacked
 Unfavorite
 ungated
+unhandled
 unit-tests-tdd
 unlinked
 unmerged
 unobserve
+unowned
 unparented
 unprefixed
 unresolvable
@@ -734,3 +739,4 @@ macOS
 SHA
 unattributable
 subprocess
+pre-registered

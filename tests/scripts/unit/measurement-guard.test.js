@@ -9,6 +9,7 @@
  * change from re-blinding it.
  */
 import fs from 'node:fs';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -18,6 +19,10 @@ import {
   checkSeriesConsistency,
   checkServerIdentity,
   IDENTITY_FATAL_FIELDS,
+  enclosedServerIdentity,
+  enclosureVerdict,
+  odcIsResident,
+  ODC_PORT,
   fatalIdentityFields,
   missingIdentityFields,
   readAppVersion,
@@ -350,5 +355,162 @@ describe('fatalIdentityFields — which absent field aborts the series', () => {
     expect(IDENTITY_FATAL_FIELDS).not.toContain('userId');
     // …and the flag would REFUSE that state, which is why nothing may advertise it there.
     expect(checkServerIdentity(onUserSelect, undefined, { expectNoServer: true }).ok).toBe(false);
+  });
+});
+
+describe('enclosedServerIdentity — tier 1 for an arm with no ODC (ADR 0030)', () => {
+  const url = 'http://192.0.2.10:8096';
+
+  it('asserts, and says the assertion was ENCLOSED rather than observed', () => {
+    expect(enclosedServerIdentity(url)).toMatchObject({
+      asserted: true,
+      ok: true,
+      expected: url,
+      identitySource: 'enclosed',
+    });
+  });
+
+  it('records `observed: null` rather than echoing the declaration back', () => {
+    // An `observed` equal to `expected` is exactly what a reader takes as a passing
+    // read, which would launder the caller's inference into this arm's own observation —
+    // the failure ADR 0030 rejected "carry the paired arm's identity across" over.
+    expect(enclosedServerIdentity(url).observed).toBeNull();
+  });
+
+  it('is never `observed`, whatever it was handed', () => {
+    expect(enclosedServerIdentity(url).identitySource).not.toBe('observed');
+  });
+});
+
+describe('enclosureVerdict — may the enclosed block be published?', () => {
+  const url = 'http://192.0.2.10:8096';
+  const identity = (over = {}) => ({
+    serverUrl: url,
+    serverId: 'abc',
+    serverVersion: '10.11.11',
+    apiVersion: '1',
+    userId: 'u1',
+    ...over,
+  });
+
+  it('closes when both brackets agree with each other and with the declaration', () => {
+    const verdict = enclosureVerdict({
+      before: identity(),
+      after: identity(),
+      declaredServer: url,
+    });
+    expect(verdict.ok).toBe(true);
+    expect(verdict.identitySource).toBe('enclosed');
+    expect(verdict.identity.serverUrl).toBe(url);
+  });
+
+  it('carries BOTH reads, not just the agreed value', () => {
+    // The claim on the record is "two observations, taken either side, agreed". A single
+    // collapsed field gives a reader no way to check that.
+    const verdict = enclosureVerdict({
+      before: identity(),
+      after: identity(),
+      declaredServer: url,
+    });
+    expect(verdict.brackets.before).toBeTruthy();
+    expect(verdict.brackets.after).toBeTruthy();
+  });
+
+  it('fails the WHOLE block when the brackets disagree, and names the drift', () => {
+    const verdict = enclosureVerdict({
+      before: identity(),
+      after: identity({ serverUrl: 'http://192.0.2.11:8096' }),
+      declaredServer: url,
+    });
+    expect(verdict.ok).toBe(false);
+    expect(verdict.identity).toBeNull();
+    expect(verdict.reason).toMatch(/serverUrl/);
+    expect(verdict.reason).toMatch(/cannot say WHERE inside itself it moved/);
+  });
+
+  it('catches drift in a field tier 1 does not assert on', () => {
+    // `serverId` / `userId` cannot tell the demo stable/unstable backends apart, which is
+    // why tier 1 asserts the URL — but a MOVE in one of them is still the server changing
+    // under the block, and the enclosure is the only thing watching here.
+    const verdict = enclosureVerdict({
+      before: identity(),
+      after: identity({ userId: 'someone-else' }),
+      declaredServer: url,
+    });
+    expect(verdict.ok).toBe(false);
+    expect(verdict.reason).toMatch(/userId/);
+  });
+
+  it('fails when the agreed identity is not the declared one', () => {
+    // The enclosure is sound and the run is measuring the wrong server — a distinct
+    // failure from the brackets disagreeing, and it needs a distinct sentence.
+    const other = 'http://192.0.2.11:8096';
+    const verdict = enclosureVerdict({
+      before: identity(),
+      after: identity(),
+      declaredServer: other,
+    });
+    expect(verdict.ok).toBe(false);
+    expect(verdict.reason).toMatch(/not the .* this run declared/);
+  });
+
+  it.each([
+    ['opening', { before: null, after: {} }],
+    ['closing', { before: {}, after: null }],
+  ])('fails on an unread %s bracket, and does NOT call it a disagreement', (which, brackets) => {
+    // "The identity drifted" about an ODC call that timed out sends whoever hit it to
+    // look at the server, which is the one place the answer is not.
+    const verdict = enclosureVerdict({ ...brackets, declaredServer: url });
+    expect(verdict.ok).toBe(false);
+    expect(verdict.reason).toMatch(new RegExp(`${which} bracket could not be read`));
+    expect(verdict.reason).toMatch(/not a disagreement/);
+  });
+
+  it('uses tier 1’s own normalizer, so a trailing slash is not a failure', () => {
+    expect(
+      enclosureVerdict({
+        before: identity(),
+        after: identity(),
+        declaredServer: `${url}/`,
+      }).ok,
+    ).toBe(true);
+  });
+});
+
+describe('odcIsResident — testing for the ODC WITHOUT using RTA to do it', () => {
+  /** Listen on an ephemeral port and hand it back, closing after the test. */
+  const listening = async () => {
+    const server = net.createServer();
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    return { port: server.address().port, close: () => new Promise((r) => server.close(r)) };
+  };
+
+  it('is true when something is listening', async () => {
+    const server = await listening();
+    try {
+      expect(await odcIsResident('127.0.0.1', { port: server.port })).toBe(true);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('is false when the port is refused — the plain arm’s expected answer', async () => {
+    // The case that matters: a build with no on-device component refuses on 9000, and
+    // this must resolve rather than reject. Trying the same question through RTA's client
+    // instead retries the refusal internally and rejects a CACHED promise later, with
+    // nobody attached — an `unhandledRejection` that killed both plain-arm blocks of the
+    // first calibration run AFTER they had passed the check (2026-08-17).
+    const server = await listening();
+    const port = server.port;
+    await server.close();
+    expect(await odcIsResident('127.0.0.1', { port })).toBe(false);
+  });
+
+  it('never rejects, so a caller cannot be taken out by the probe itself', async () => {
+    await expect(odcIsResident('127.0.0.1', { port: 1, timeoutMs: 500 })).resolves.toBe(false);
+  });
+
+  it('defaults to the port RTA’s component listens on', () => {
+    expect(ODC_PORT).toBe(9000);
   });
 });

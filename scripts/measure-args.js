@@ -82,6 +82,37 @@ const VALUE_FLAGS = new Map([
   // single-mount, and reported the details screen's numbers under `screen: osd`.
   // Checkable on the same terms as `--variant`: refused if no sample carried it.
   ['--component', 'component'],
+  // Tier 1's expectation for an arm that has NO ODC to read it from — see ADR 0030 and
+  // `enclosedServerIdentity`. Only the ODC calibration produces such an arm, and it is
+  // driven by `measure-calibration.js`, which takes the observed reads either side.
+  //
+  // Deliberately a SEPARATE flag rather than `--server` plus a boolean: the two make
+  // different claims about the same field ("this is what I observed" vs "this is what the
+  // reads either side of me observed"), and the record has to be able to say which. A
+  // boolean modifier would leave every existing reader of `--server` unable to tell them
+  // apart.
+  ['--enclosed-server', 'enclosedServer'],
+  // WHO put this build on the device, when it was not this run.
+  //
+  // The default mode measures whatever is resident and warns that the recorded
+  // appVersion/commit describe the checkout rather than what ran — true, and FALSE for a
+  // caller that deployed this checkout seconds earlier and then invoked this tool
+  // (`measure-calibration.js` deploys both arms itself, because they must come off ONE
+  // build). The warning was printing on every calibration block.
+  //
+  // Deliberately a LABEL rather than a boolean: it names who is making the claim, so the
+  // record carries evidence rather than an unattributable assertion. It does NOT set
+  // `deployedFromCheckout` — that field is about what THIS run did, and it stays false,
+  // which is the literal truth.
+  ['--deployed-by', 'deployedBy'],
+  // Write the record HERE instead of appending it to `measurements.jsonl`.
+  //
+  // For a caller that must decide whether the series may be published at all — the ODC
+  // calibration cannot know until its closing bracket read, which necessarily happens
+  // after this process has exited. Holding the line back is the only shape that keeps the
+  // ledger's promise: a published line's identity is one somebody actually established,
+  // not one that was appended optimistically and refuted afterwards.
+  ['--record-to', 'recordTo'],
 ]);
 
 /** Flags that take no value. */
@@ -370,6 +401,56 @@ export function parseMeasureArgs(
         'and --no-server says there is no server to sign in to. `serverSelect` is reached by ' +
         'LAUNCHING — drop --nav and every relaunch lands on it.',
     );
+  }
+
+  // ─── The enclosed arm ──────────────────────────────────────────────────────
+  // Every refusal here is a pair that would otherwise be settled SILENTLY, in favour of
+  // whichever branch happens to run second — the failure mode this parser exists for.
+  if (raw.enclosedServer !== undefined) {
+    args.enclosedServer = raw.enclosedServer;
+    if (args.server !== undefined) {
+      throw new MeasureArgError(
+        '--enclosed-server may not be combined with --server: both declare what tier 1 ' +
+          'expects, and they make DIFFERENT claims about where it came from — --server is ' +
+          'checked against a read this run took, --enclosed-server against reads taken either ' +
+          'side of it by the caller (ADR 0030). Recording one as the other is exactly the ' +
+          'inference-as-observation this tier refuses.',
+      );
+    }
+    if (args.noServer) {
+      throw new MeasureArgError(
+        '--enclosed-server may not be combined with --no-server: one names the server the ' +
+          'enclosing reads observed, the other declares there is no server on the node.',
+      );
+    }
+    if (args.nav !== undefined) {
+      throw new MeasureArgError(
+        '--enclosed-server may not be combined with --nav: a nav is driven over ODC, and ' +
+          'this flag exists precisely for the arm that has none. That is why the ODC ' +
+          'calibration measures a LAUNCH-only screen.',
+      );
+    }
+    if (args.deploy) {
+      throw new MeasureArgError(
+        '--enclosed-server may not be combined with --deploy: --deploy sideloads an ' +
+          'RTA build, which is the arm this flag says the device is NOT holding. The ' +
+          'calibration driver deploys both arms off ONE build; let it.',
+      );
+    }
+  }
+
+  if (raw.recordTo !== undefined) args.recordTo = raw.recordTo;
+
+  if (raw.deployedBy !== undefined) {
+    checkLabel('--deployed-by', raw.deployedBy);
+    if (args.deploy) {
+      throw new MeasureArgError(
+        '--deployed-by may not be combined with --deploy: this run IS the deploy, so the ' +
+          'record already says so (`deployedFromCheckout: true`). Two answers to "who put ' +
+          'this build here" is the contradiction the flag exists to remove.',
+      );
+    }
+    args.deployedBy = raw.deployedBy;
   }
 
   if (raw.variant !== undefined) {
