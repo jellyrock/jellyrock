@@ -62,6 +62,13 @@ Canonical examples in [`lib/nav.js`](lib/nav.js): `waitOsdUp` (input), `findHome
 because the next Home-relative press will need it too, and it is unit-tested there against a
 mocked device.
 
+**A guarded re-press must re-send the key that is actually still owed.** `waitOsdUp` re-sends
+`Up` until the OSD is up; `focusOverhangIcon` pressed `Up` once and then re-sent `Right`, which
+walks the row rather than leaving Home — so one lost `Up` could never be recovered and surfaced
+as "the screen never loaded" (reproduced on `main`, 2026-08-18). `overhangWalkKey` in
+[`lib/steps.js`](lib/steps.js) picks the key from the focused node for that reason, and warns
+when it had to re-press, because a silently recovered escape tells you nothing the next time.
+
 ## Layout
 
 - `config.js` — `RTA_CONFIG` (demo server, hero movie, seek position, locales). Shared with the store screenshot generator.
