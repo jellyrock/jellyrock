@@ -63,7 +63,7 @@ import { fileURLToPath } from 'node:url';
 import { setupRtaEnv, deployBuild, ecp } from '../tests/rta/lib/driver.js';
 import { acquireDeviceLock } from './device-lock.js';
 import { measurementsLedgerPath } from './run-record.js';
-import { readIdentity, enclosureVerdict } from './measurement-guard.js';
+import { readIdentity, enclosureVerdict, missingIdentityFields } from './measurement-guard.js';
 import {
   ARMS,
   armLabel,
@@ -80,6 +80,11 @@ const MEASURE = path.join(here, 'measure.js');
 
 /** Arms by their RECORDED id (`no-component`), which is not their JS key (`noComponent`). */
 const ARM_BY_ID = Object.fromEntries(Object.values(ARMS).map((a) => [a.id, a]));
+
+/** How many times a bracket read may come back empty before it is taken at its word. */
+const BRACKET_READ_ATTEMPTS = 5;
+const BRACKET_RETRY_MS = 2000;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // The one screen both arms can reach. `--nav` is driven over ODC, so the plain arm can
 // only measure what a LAUNCH lands on — and Home is also the only screen with the n=30
@@ -157,14 +162,39 @@ async function deployArm(arm) {
  * `measure.js` was hardened against.
  */
 async function bracketRead(when) {
-  try {
-    const identity = await readIdentity();
-    console.log(`[calibrate] bracket (${when}): ${identity.serverUrl}`);
-    return identity;
-  } catch (e) {
-    console.error(`[calibrate] ⚠ bracket (${when}) could not be read: ${e.message}`);
-    return null;
+  // RETRIED while the identity reads EMPTY, which is not the same as unreadable.
+  //
+  // `measure.js` fires a relaunch as it exits and does not wait for boot, so a read taken
+  // immediately after a child returns can catch the app with `m.global.server` created and
+  // not yet populated: ODC answers, every field is `""`, and the enclosure then sees
+  // `"" -> "http://…"` and correctly fails the whole block as drifted. Observed once on
+  // `.178` (block 10 of 12, 2026-08-17) — the gate was right and the input was wrong.
+  //
+  // Bounded, and it gives up rather than looping: if the app genuinely has no server this
+  // must still return the empty read so the enclosure can fail on it loudly. Silence here
+  // would be the guard going blind in exactly the case tier 1 exists for.
+  for (let attempt = 0; attempt < BRACKET_READ_ATTEMPTS; attempt++) {
+    try {
+      const identity = await readIdentity();
+      if (!missingIdentityFields(identity).includes('serverUrl')) {
+        console.log(`[calibrate] bracket (${when}): ${identity.serverUrl}`);
+        return identity;
+      }
+      if (attempt === BRACKET_READ_ATTEMPTS - 1) {
+        console.error(
+          `[calibrate] ⚠ bracket (${when}) read an EMPTY identity ${BRACKET_READ_ATTEMPTS}x — ` +
+            'the app answered ODC with no server on it. Recorded as-is; the enclosure will fail.',
+        );
+        return identity;
+      }
+      console.log(`[calibrate] bracket (${when}): empty, app still booting — retrying ...`);
+      await sleep(BRACKET_RETRY_MS);
+    } catch (e) {
+      console.error(`[calibrate] ⚠ bracket (${when}) could not be read: ${e.message}`);
+      return null;
+    }
   }
+  return null;
 }
 
 /** Run `measure.js` for one block, and hand back where it left its record. */
@@ -359,9 +389,11 @@ for (const block of blocks) {
     // Anything between them is `npm run build`'s output being sideloaded, ECP presses and
     // a console socket — none of which writes the app's registry, which is the whole
     // reason the enclosure is a real assertion rather than a guess (ADR 0030).
-    if (!arm.odcResident) openingBracket = await bracketRead('before the plain block');
+    if (!arm.odcResident) openingBracket = await bracketRead(`before the ${arm.id} block`);
     const staged = await deployArm(arm);
-    if (arm.odcResident && pending) closeEnclosure(await bracketRead('after the plain block'));
+    if (arm.odcResident && pending) {
+      closeEnclosure(await bracketRead(`after the ${pending.row.arm} block`));
+    }
     return staged;
   });
 
