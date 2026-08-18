@@ -617,11 +617,19 @@ console.log(
     `(${provenance.device.ramTier ?? 'RAM unknown'}, Roku OS ${provenance.device.osVersion})` +
     (args.arm ? ` · arm "${args.arm}"` : ''),
 );
+// Three states, not two. The enclosed arm read NOTHING, so `provenance.server` is null by
+// design — and printing `server null (Jellyfin null)` for it is the log misnaming its own
+// arm two lines after correctly announcing the enclosure. These logs are the evidence
+// trail for a measurement; one that describes the wrong arm is worse than one that says
+// nothing.
 console.log(
   `[measure] app ${provenance.checkout.appVersion} · ` +
-    (args.noServer
-      ? 'NO SERVER on the node (asserted by --no-server)'
-      : `server ${provenance.server.url} (Jellyfin ${provenance.server.version})`),
+    (args.enclosedServer
+      ? `server ${args.enclosedServer} — NOT read here, asserted by the caller's ` +
+        'enclosing reads (ADR 0030)'
+      : args.noServer
+        ? 'NO SERVER on the node (asserted by --no-server)'
+        : `server ${provenance.server.url} (Jellyfin ${provenance.server.version})`),
 );
 if (args.deployedBy) {
   // Not the resident-build warning: a caller that deployed this checkout immediately
@@ -688,8 +696,13 @@ const windowMs = Number.isFinite(args.windowMs) ? args.windowMs : MAX_WINDOW_MS;
 // tested there. It used to be inline here, where nothing could reach it: this file claims
 // the device on import, so the one layer every defect in this subsystem has been found in
 // was the one layer with no tests. Same reason `measure-args.js` and `measure-selection.js`
-// exist. Two callers beyond this one need it: the multi-device driver and the ODC
-// calibration harness, which would otherwise each grow their own copy of the replay defense.
+// exist — the extraction bought TESTABILITY, and that is the whole of what it bought.
+//
+// It predicted two more callers (the multi-device driver, the ODC calibration harness) and
+// got neither: both went out-of-process, spawning THIS file per unit of work, because a
+// series needs far more than the loop. `measure-loop.js` has one caller and its own header
+// records the correction — repeated here because the same wrong prediction was written in
+// two places, and only one of them was fixed when it was found.
 let samples;
 // The operator-facing refusal a failed nav built, or null on a clean series. Kept
 // rather than exited on, so the launches taken BEFORE the failure survive — see the

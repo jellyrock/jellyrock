@@ -71,6 +71,40 @@ export function setupRtaEnv() {
  *   it meant to give it — the same posture as the app's own `[debug=… perfTiming=…]`
  *   bracket, one layer earlier.
  */
+/**
+ * Does the staged `bs_const` disagree with the `ENABLE_RTA` this deploy asked for? Returns
+ * the refusal text, or null when it agrees.
+ *
+ * ## Why the flip is VERIFIED rather than assumed
+ *
+ * The flip itself is an unanchored string replace against another package's output. If RTA
+ * ever changes how it spells its rewrite, that replace becomes a silent no-op — and what
+ * comes out is not a mislabeled arm, it is a DIFFERENT ARM: a `plain` deploy shipping
+ * `ENABLE_RTA=true` with no component is exactly the `no-component` arm, and nothing
+ * downstream can tell them apart (neither has a component, so `odcIsResident` is false and
+ * `provenance.enableRta` records `false` for both). The calibration would answer a question
+ * nobody asked and refuse nothing.
+ *
+ * Pure and exported so it has a test, which is not ceremony here: an unverified guard
+ * against a silent replace is the same shape as the silent replace. `bs_const` is already
+ * read back for the record — this only asks it the one question that makes it evidence.
+ *
+ * @param {string|null} bsConst the `bs_const=` line as staged.
+ * @param {boolean} wantRta what this deploy asked the shipped manifest to say.
+ */
+export function shippedRtaFlagMismatch(bsConst, wantRta) {
+  const shipped = /ENABLE_RTA=(true|false)/.exec(bsConst ?? '');
+  if (shipped && (shipped[1] === 'true') === wantRta) return null;
+  return (
+    `staged manifest says ${shipped ? shipped[0] : 'nothing about ENABLE_RTA'}, but this ` +
+    `deploy asked for ENABLE_RTA=${wantRta}. The staged line is: ` +
+    `${bsConst ?? '(no bs_const line)'}. RTA rewrites this flag OUTSIDE ` +
+    '`injectTestingFiles`, so a change to how it spells that rewrite silently defeats the ' +
+    'flip — which would make the calibration\'s "plain" arm indistinguishable from its ' +
+    '"no-component" one.'
+  );
+}
+
 export async function deployBuild({ injectTestingFiles = true, enableRta } = {}) {
   const wantRta = enableRta ?? injectTestingFiles;
   let bsConst = null;
@@ -83,6 +117,10 @@ export async function deployBuild({ injectTestingFiles = true, enableRta } = {})
         fs.writeFileSync(manifestPath, text);
       }
       bsConst = /^bs_const=.*$/m.exec(text)?.[0] ?? null;
+      // Thrown from inside the callback deliberately: it runs before the zip and the
+      // publish, so a refusal here leaves the device holding what it already had.
+      const wrong = shippedRtaFlagMismatch(bsConst, wantRta);
+      if (wrong) throw new Error(`${wrong} Nothing was sideloaded.`);
     }),
   );
   await sleep(RTA_CONFIG.bootMs);
