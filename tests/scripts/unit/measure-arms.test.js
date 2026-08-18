@@ -5,6 +5,7 @@ import {
   armLabel,
   CalibrationError,
   blockSizes,
+  compareCommand,
   formatPlanLines,
   parseCalibrationArgs,
   planBlocks,
@@ -142,6 +143,29 @@ describe('formatPlanLines', () => {
     expect(lines).toMatch(/ENABLE_RTA=true/);
     expect(lines).toMatch(/http:\/\/192\.0\.2\.10:8096/);
   });
+
+  it('counts the launches of the arm actually PLANNED, not always `plain`', () => {
+    // It read `per(ARMS.plain.id)` while the descriptions below read `against`, so a
+    // decomposition run announced `10 + 0 launches` under two correctly-named arms. The
+    // zero is the only tell, and the run that printed it (2026-08-18) went ahead anyway.
+    const lines = formatPlanLines(
+      planBlocks({ samples: 10, blockSize: 5, against: 'no-component' }),
+      { samples: 10, server: 'http://192.0.2.10:8096', against: 'no-component' },
+    ).join('\n');
+    expect(lines).toMatch(/4 blocks, 10 \+ 10 launches/);
+    expect(lines).not.toMatch(/\+ 0 launches/);
+    expect(lines).toMatch(/arm no-component —/);
+  });
+
+  it('carries --label into the arm names it prints, so the plan names the recorded arms', () => {
+    const lines = formatPlanLines(planBlocks({ samples: 10, blockSize: 5 }), {
+      samples: 10,
+      server: 'http://192.0.2.10:8096',
+      label: 'smoke',
+    }).join('\n');
+    expect(lines).toMatch(/arm rta-smoke —/);
+    expect(lines).toMatch(/arm plain-smoke —/);
+  });
 });
 
 describe('summariseCalibration', () => {
@@ -203,6 +227,41 @@ describe('--label — keeping two calibration runs from pooling', () => {
   it('refuses a label the selector grammar cannot name', () => {
     expect(() => ok(['--label', 'a,b'])).toThrow(/may not contain/);
     expect(() => ok(['--label', 'a=b'])).toThrow(/may not contain/);
+  });
+});
+
+describe('compareCommand — the "read it back with" line the run prints', () => {
+  it('names the default pair', () => {
+    expect(compareCommand({})).toBe('npm run measure:compare -- --a arm=rta --b arm=plain');
+  });
+
+  it('names the arm --against actually planned', () => {
+    // It hardcoded `plain`, so a decomposition run told the operator to compare against
+    // an arm it never took.
+    expect(compareCommand({ against: 'no-component' })).toMatch(/--b arm=no-component/);
+  });
+
+  it('carries --label into BOTH selectors — the failure that shipped', () => {
+    // Without this the line reads `--a arm=rta --b arm=plain` after a run that recorded
+    // `rta-rep3` / `plain-rep3`, so following it selects a DIFFERENT run's series across
+    // the whole ledger. That is the mixed-population pooling `--label` exists to prevent,
+    // printed as the suggested next command.
+    expect(compareCommand({ label: 'rep3' })).toBe(
+      'npm run measure:compare -- --a arm=rta-rep3 --b arm=plain-rep3',
+    );
+  });
+
+  it('carries both flags at once', () => {
+    expect(compareCommand({ against: 'no-component', label: 'decomp' })).toBe(
+      'npm run measure:compare -- --a arm=rta-decomp --b arm=no-component-decomp',
+    );
+  });
+
+  it('takes the parsed args object verbatim, which is how the driver calls it', () => {
+    // The regression guard that matters: the driver passes `args`, so a rename of either
+    // field silently drops it back to the defaults unless this pins the real shape.
+    const args = ok(['--against', 'no-component', '--label', 'decomp']);
+    expect(compareCommand(args)).toMatch(/--a arm=rta-decomp --b arm=no-component-decomp/);
   });
 });
 

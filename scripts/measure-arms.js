@@ -330,13 +330,23 @@ export function planBlocks({
   return blocks;
 }
 
-/** The plan, as lines to print before anything touches the device. */
+/**
+ * The plan, as lines to print before anything touches the device.
+ *
+ * Both the launch counts and the arm descriptions are derived from the SAME pair, which
+ * is not a tidiness point: the count line used to read `per(ARMS.plain.id)` while the
+ * descriptions below read `against`, so `--against no-component` announced
+ * `30 + 0 launches` under two correctly-named arms. The zero is the tell and nobody read
+ * it — the decomposition run printed it 2026-08-18 and ran anyway. One source for the
+ * pair cannot say two things about it.
+ */
 export function formatPlanLines(blocks, { samples, server, label, against = ARMS.plain.id }) {
   const per = (arm) => blocks.filter((b) => b.arm === arm).reduce((total, b) => total + b.count, 0);
+  const arms = [ARMS.rta, AGAINST_ARMS[against]];
   return [
-    `${blocks.length} blocks, ${per(ARMS.rta.id)} + ${per(ARMS.plain.id)} launches, ` +
+    `${blocks.length} blocks, ${arms.map((arm) => per(arm.id)).join(' + ')} launches, ` +
       `alternating in blocks of up to ${Math.max(...blocks.map((b) => b.count))}`,
-    ...[ARMS.rta, AGAINST_ARMS[against]].map(
+    ...arms.map(
       (arm) =>
         `  arm ${armLabel(arm.id, label)} — ${arm.label} ` +
         `(injectTestingFiles: ${arm.injectTestingFiles}, ENABLE_RTA=${arm.enableRta})`,
@@ -346,6 +356,23 @@ export function formatPlanLines(blocks, { samples, server, label, against = ARMS
       'while this runs',
   ];
 }
+
+/**
+ * The `measure:compare` invocation that reads THIS run's answer back.
+ *
+ * Here rather than inlined at the end of the driver, and that is the whole point of it: it
+ * was inlined, it read `--a arm=rta --b arm=plain` with the ids hardcoded, and it ignored
+ * both `--against` and `--label`. So every labelled run printed the selector for the
+ * UNLABELLED arms — which is the pooling `--label` exists to prevent, handed to the
+ * operator as the suggested next command. It printed that for six weeks of runs and was
+ * never noticed, because whoever ran them pasted the right selectors from memory instead.
+ *
+ * A rule about what the run recorded belongs where the recording rule lives, next to
+ * `armLabel`, with a test on it. The delivery layer prints the string it is given.
+ */
+export const compareCommand = ({ against = ARMS.plain.id, label } = {}) =>
+  `npm run measure:compare -- --a arm=${armLabel(ARMS.rta.id, label)} ` +
+  `--b arm=${armLabel(against, label)}`;
 
 /**
  * How it went, and — the part that earns its own function — what did NOT reach the
@@ -361,12 +388,15 @@ export function formatPlanLines(blocks, { samples, server, label, against = ARMS
  */
 export function summariseCalibration(rows = [], { arms = [ARMS.rta.id, ARMS.plain.id] } = {}) {
   const lines = [];
+  // Width from the rows PRESENT, not a constant: the constant was 5, which aligns `rta`
+  // against `plain` and does nothing at all for `no-component`.
+  const armWidth = Math.max(0, ...rows.map((r) => String(r.arm).length));
   for (const row of rows) {
     const state = row.published
       ? 'published'
       : `NOT PUBLISHED — ${row.reason ?? 'no reason recorded'}`;
     lines.push(
-      `[calibrate] block ${row.index + 1} · arm ${row.arm.padEnd(5)} · n=${row.count} · ` +
+      `[calibrate] block ${row.index + 1} · arm ${row.arm.padEnd(armWidth)} · n=${row.count} · ` +
         `exit ${row.status ?? '—'} · ${state}`,
     );
   }

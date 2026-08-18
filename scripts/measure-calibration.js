@@ -68,6 +68,7 @@ import {
   ARMS,
   armLabel,
   CalibrationError,
+  compareCommand,
   formatPlanLines,
   parseCalibrationArgs,
   planBlocks,
@@ -476,6 +477,6 @@ console.log(
   `[calibrate] ${summary.published}/${rows.length} block(s) published to ` +
     `${path.relative(process.cwd(), outPath)}.\n` +
     '[calibrate] Read the answer back with:\n' +
-    `[calibrate]   npm run measure:compare -- --a arm=${ARMS.rta.id} --b arm=${ARMS.plain.id}`,
+    `[calibrate]   ${compareCommand(args)}`,
 );
 process.exit(summary.ok && !interrupted ? 0 : 1);
