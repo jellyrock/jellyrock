@@ -393,82 +393,136 @@ function closeEnclosure(after) {
   pending = null;
 }
 
-for (const block of blocks) {
-  const arm = ARM_BY_ID[block.arm];
-  const row = {
-    index: block.index,
-    arm: arm.id,
-    count: block.count,
-    status: null,
-    published: false,
-    reason: null,
-  };
-  rows.push(row);
+/**
+ * The run's fatal error, if it had one. See the `finally` below.
+ *
+ * Two things reach here: a deploy that failed or timed out (`withDeployTimeout`), and a
+ * `withLock` acquire that gave up after its 17-minute window. Both were previously
+ * uncaught, and an uncaught throw at this scope skipped BOTH of the two promises this file
+ * makes — the restore and the accounting — which is the one combination that is worse than
+ * either alone: the device is left holding an arm with no ODC and nothing says so.
+ */
+let runFailure = null;
+let restoreFailure = null;
 
-  // Checked at the TOP so an interrupt cannot buy one more 90-second deploy before it
-  // takes effect. Every block that never ran is still named in the summary — a run that
-  // stopped early and reported only what it managed is the shape this file refuses.
-  if (interrupted) {
-    row.reason = 'the run was interrupted before this block ran';
-    continue;
-  }
+try {
+  for (const block of blocks) {
+    const arm = ARM_BY_ID[block.arm];
+    const row = {
+      index: block.index,
+      arm: arm.id,
+      count: block.count,
+      status: null,
+      published: false,
+      reason: null,
+    };
+    rows.push(row);
 
-  console.log(
-    `\n[calibrate] ── block ${block.index + 1}/${blocks.length} · arm ${arm.id} · n=${block.count} ──`,
-  );
-
-  const bsConst = await withLock(`deploy:${arm.id}`, async () => {
-    // The two brackets are taken at the only two instants they can be, and both are
-    // pinned to the DEPLOY rather than to the block:
-    //
-    //  - the OPENING one immediately before the plain deploy, which is the last moment
-    //    ODC exists to be asked;
-    //  - the CLOSING one immediately after the next RTA deploy, which is the first.
-    //
-    // Anything between them is `npm run build`'s output being sideloaded, ECP presses and
-    // a console socket — none of which writes the app's registry, which is the whole
-    // reason the enclosure is a real assertion rather than a guess (ADR 0030).
-    if (!arm.odcResident) openingBracket = await bracketRead(`before the ${arm.id} block`);
-    const staged = await deployArm(arm);
-    if (arm.odcResident && pending) {
-      closeEnclosure(await bracketRead(`after the ${pending.row.arm} block`));
+    // Checked at the TOP so an interrupt cannot buy one more 90-second deploy before it
+    // takes effect. Every block that never ran is still named in the summary — a run that
+    // stopped early and reported only what it managed is the shape this file refuses.
+    if (interrupted) {
+      row.reason = 'the run was interrupted before this block ran';
+      continue;
     }
-    return staged;
-  });
 
-  const recordPath = path.join(tmpDir, `block-${block.index}.json`);
-  const { status } = await runMeasure(block, recordPath);
-  row.status = status;
-  const record = takeRecord(recordPath);
+    console.log(
+      `\n[calibrate] ── block ${block.index + 1}/${blocks.length} · arm ${arm.id} · n=${block.count} ──`,
+    );
 
-  if (!record) {
-    row.reason = `measure.js exited ${status ?? 'without a status'} and wrote no record`;
-    console.error(`[calibrate] ⚠ block ${block.index + 1}: ${row.reason}`);
-    continue;
+    const bsConst = await withLock(`deploy:${arm.id}`, async () => {
+      // The two brackets are taken at the only two instants they can be, and both are
+      // pinned to the DEPLOY rather than to the block:
+      //
+      //  - the OPENING one immediately before the plain deploy, which is the last moment
+      //    ODC exists to be asked;
+      //  - the CLOSING one immediately after the next RTA deploy, which is the first.
+      //
+      // Anything between them is `npm run build`'s output being sideloaded, ECP presses and
+      // a console socket — none of which writes the app's registry, which is the whole
+      // reason the enclosure is a real assertion rather than a guess (ADR 0030).
+      if (!arm.odcResident) openingBracket = await bracketRead(`before the ${arm.id} block`);
+      const staged = await deployArm(arm);
+      if (arm.odcResident && pending) {
+        closeEnclosure(await bracketRead(`after the ${pending.row.arm} block`));
+      }
+      return staged;
+    });
+
+    const recordPath = path.join(tmpDir, `block-${block.index}.json`);
+    const { status } = await runMeasure(block, recordPath);
+    row.status = status;
+    const record = takeRecord(recordPath);
+
+    if (!record) {
+      row.reason = `measure.js exited ${status ?? 'without a status'} and wrote no record`;
+      console.error(`[calibrate] ⚠ block ${block.index + 1}: ${row.reason}`);
+      continue;
+    }
+    stampDeploy(record, { arm, bsConst });
+
+    if (arm.odcResident) {
+      // This arm observed its own identity, so there is nothing to wait for.
+      publish(record);
+      row.published = true;
+    } else {
+      // Held until the next RTA deploy's read closes the enclosure.
+      pending = { record, row, before: openingBracket };
+    }
   }
-  stampDeploy(record, { arm, bsConst });
-
-  if (arm.odcResident) {
-    // This arm observed its own identity, so there is nothing to wait for.
-    publish(record);
-    row.published = true;
-  } else {
-    // Held until the next RTA deploy's read closes the enclosure.
-    pending = { record, row, before: openingBracket };
+} catch (e) {
+  // Recorded and carried, not rethrown: the restore below is the reason this catch
+  // exists, and it is worth more than the stack trace. The failure is reported after the
+  // accounting, where an operator reads it against the blocks it cost.
+  runFailure = e;
+  // The block that threw already has a row (pushed at the top of its iteration); the ones
+  // after it have none, and a summary that simply omits them is the silently-truncated run
+  // this file refuses. Name them.
+  const accounted = new Set(rows.map((r) => r.index));
+  const throwing = rows[rows.length - 1];
+  if (throwing && !throwing.reason) throwing.reason = `the run failed here: ${e.message}`;
+  for (const block of blocks) {
+    if (accounted.has(block.index)) continue;
+    rows.push({
+      index: block.index,
+      arm: block.arm,
+      count: block.count,
+      status: null,
+      published: false,
+      reason: 'the run failed before this block ran',
+    });
   }
+} finally {
+  // ─── Leave the device usable, and close the last enclosure with the read that does it ──
+  // In a `finally` because this is the promise that matters most when things go wrong: a
+  // device left holding a build with no ODC refuses the next `measure`, `test:rta` and
+  // sign-in, and that has already cost this project a whole RAM tier. The failure path is
+  // exactly when it was previously skipped.
+  console.log('\n[calibrate] restoring the RTA build ...');
+  try {
+    await withLock('restore', async () => {
+      await deployArm(ARMS.rta);
+      // The restore's read is the last enclosure's CLOSING bracket — which is why the plan
+      // does not need a trailing RTA block to buy one. Skipped when nothing is open (an
+      // interrupt during an RTA block, or a plain block that never wrote a record).
+      if (pending) closeEnclosure(await bracketRead('closing'));
+    });
+  } catch (e) {
+    // The one state this tool must never leave silently. Said as loudly as the interrupt
+    // handler says it, and with the same command, because it is the same damage.
+    restoreFailure = e;
+    console.error(`\n[calibrate] ⚠ THE RESTORE FAILED: ${e.message}`);
+    if (residentArm && !residentArm.odcResident) {
+      console.error(
+        `[calibrate] ⚠ THE DEVICE IS LEFT HOLDING THE "${residentArm.id}" BUILD, WHICH HAS NO ODC.\n` +
+          '[calibrate]   Nothing that talks to it will work until you re-deploy:\n' +
+          '[calibrate]   npm run measure -- --deploy',
+      );
+    }
+  }
+  await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false }).catch(() => {});
+  fs.rmSync(tmpDir, { recursive: true, force: true });
 }
-
-// ─── Leave the device usable, and close the last enclosure with the read that does it ──
-console.log('\n[calibrate] restoring the RTA build ...');
-await withLock('restore', async () => {
-  await deployArm(ARMS.rta);
-  // The restore's read is the last enclosure's CLOSING bracket — which is why the plan
-  // does not need a trailing RTA block to buy one. Skipped when nothing is open (an
-  // interrupt during an RTA block, or a plain block that never wrote a record).
-  if (pending) closeEnclosure(await bracketRead('closing'));
-});
-await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false }).catch(() => {});
-fs.rmSync(tmpDir, { recursive: true, force: true });
 
 const summary = summariseCalibration(rows, { arms: [ARMS.rta.id, args.against] });
 console.log('\n[calibrate] ── summary ──');
@@ -479,4 +533,11 @@ console.log(
     '[calibrate] Read the answer back with:\n' +
     `[calibrate]   ${compareCommand(args)}`,
 );
-process.exit(summary.ok && !interrupted ? 0 : 1);
+// Said AFTER the accounting, so an operator reads the failure against the blocks it cost
+// rather than the other way round.
+if (runFailure) console.error(`\n[calibrate] ⚠ the run failed: ${runFailure.message}`);
+
+// The exit code follows the ACCOUNTING, not the last thing that happened — and a run that
+// published every block it planned is still a failure if the device was left unusable,
+// because the next tool to touch it is the one that pays.
+process.exit(summary.ok && !interrupted && !runFailure && !restoreFailure ? 0 : 1);
