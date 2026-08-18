@@ -297,15 +297,59 @@ What it does, and why each piece is not optional:
   disagree is recorded `blocked` and **not** published; the summary names every block that
   did not reach the ledger, and the exit code follows that accounting rather than the last
   child's status.
-- **It always redeploys the RTA build at the end**, including on the way out of a Ctrl-C.
-  A device left holding a build with no ODC refuses the next `measure`, the next
-  `test:rta` and the next sign-in — which has already cost this project a whole RAM tier.
+- **It always redeploys the RTA build at the end**, including on the way out of a Ctrl-C
+  *and* out of a mid-run failure (the restore is in a `finally`). A device left holding a
+  build with no ODC refuses the next `measure`, the next `test:rta` and the next sign-in —
+  which has already cost this project a whole RAM tier. If the restore itself fails, the
+  run says so loudly, names the arm the device is stuck on, and exits non-zero.
+- **The deploy VERIFIES the flag it shipped.** The `ENABLE_RTA` flip is a string replace
+  against RTA's staged manifest, so the deploy reads `bs_const` back and refuses before
+  sideloading if it does not say what the arm asked for. A flip that silently
+  matched nothing would turn the `plain` arm into the `no-component` arm, and nothing
+  downstream can tell those two apart — neither one has the ODC component resident.
 - **`--label <name>`** suffixes both arm labels (`rta-smoke` / `plain-smoke`). Arm labels
   are selected across the *whole* ledger, so without it a second run pools into the first.
 
-Read the answer back with `npm run measure:compare -- --a arm=rta --b arm=plain`, which
-knows this one pair is allowed to differ in `ENABLE_RTA` — see
+#### `--against <arm>` — decomposing a delta that cleared the floor
+
+The default pair is `rta` vs `plain`, which answers the comparability question and nothing
+else: `plain` drops the component **and** the compiled-in `#if ENABLE_RTA` hooks, so a
+delta cannot say which of the two it was.
+
+`--against no-component` is the decomposition arm — the one
+[ADR 0030](../adr/0030-non-odc-arm-identity-by-enclosure.md) originally specified. It drops
+the component while leaving `ENABLE_RTA=true`, so against `rta` it isolates the **resident
+component** alone, and its difference from `plain` is the hooks.
+
+Only worth running once `rta` vs `plain` has produced a delta **at or above the method's
+~120 ms floor** — below that it can only report "not distinguishable" whichever way the
+truth lies. Two things to know before reading its output:
+
+- `provenance.enableRta` is derived from whether ODC answered, so this arm records `false`
+  while its shipped manifest says `true`. Read `provenance.deploy.bsConst` for it instead.
+- `createObject` on a node type that is no longer staged is a path nothing else exercises.
+  Smoke it (`-n 4 --block-size 2`) before committing to a full series.
+
+`rta` is always one side and is refused as an `--against` value: it is the only arm that
+can read its own identity, so it is what the enclosure is built from.
+
+Read the answer back with the command the run prints in its own summary — it names the
+arms that run actually recorded, including `--against` and `--label`:
+
+```bash
+npm run measure:compare -- --a arm=rta --b arm=plain                      # the default pair
+npm run measure:compare -- --a arm=rta-decomp --b arm=no-component-decomp # --against + --label
+```
+
+`measure:compare` knows this one pair is allowed to differ in `ENABLE_RTA` — see
 [the refusal list](#comparing-two-arms).
+
+**Every published figure comes out of `measure:compare`, never out of hand arithmetic.**
+That includes a pooled figure across two runs: filter the ledger to the arms you want,
+rewrite their labels to one pair, and point the reader at the copy with `--file`. The rule
+exists because it was broken — a headline delta was once computed by an ad-hoc script that
+took the upper of two middle values and skipped the cold-sample filter, and it sat in a
+table beside a figure that had come from `measure:compare`.
 
 ### What one run does
 
