@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-18 — ci(rta): Add `measure:calibrate`, the ODC calibration harness
 - 2026-08-17 — ci(rta): Have the readiness ledger measure its own footprint
 - 2026-08-17 — **A multi-step followup can record that ONE step shipped**, closing the "no sanctioned way" followup. `/log followup --replace=<substring>` revises one named bullet in place instead of appending, so an entry listing ordered steps no longer has to choose between a `/done` that publishes a shipped-line claiming the whole thing and a raw edit the capture-discipline rule forbids. Exactly one match is required — zero refuses rather than falling back to appending (a silent append is the two-contradicting-bullets state the mode exists to prevent), more than one refuses and asks for a longer substring. It revises and never closes: the bullet stays under Open followups and nothing reaches Recently shipped. It was dogfooded on the ODC calibration entry, which is what surfaced the gap twice — once on step 1 (`fix/overhang-precondition-and-sampling-loop`) and again on step 2 (ADR 0030).
 - 2026-08-17 — fix: drop redundant am/pm from "Ends at" in `ItemDetails` and the OSD
@@ -73,9 +74,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-08-06 — Measure the item-grid wait/emit split, pick `apiPipeline` for the genre loop, and keep the timers out of prod
 - 2026-08-04 — feat: PR #768 **merged** (`d1ec5683`) — epic #728 Phase 1's accounted `launchTask()` chokepoint, 99 launch sites migrated, `no-raw-run` making a bare launch a build error. The headline review fix: the debug thread ledger silently dropped the five Task threads `setGlobalNodes()` starts — it wrote to an `roSGNode` field that did not exist yet — so `printTaskThreads()` under-reported by a permanent five (device-verified either side of the fix, now a mutation-proven regression test). The post-completion pool refill was **reverted**: 190 measured runs across three device tiers found it slower in 6/6 independent comparisons (sign test p=0.031) and never faster, and its original n=4 justification did not reproduce. Home first-paint baselines were re-measured at n=30 per device against the committed artifact, with `drain` dropped from the published table as an unreliable derived quantity.
 - 2026-08-04 — fix(rta): `restoreSession` now proves the restore took — write → cold restart → read back → compare, retrying and THROWING on mismatch, plus `globalRememberMe` added to the snapshot and a `hardRelaunch` (an ECP `/launch/dev` on a running channel only foregrounds it, so the stale in-memory session used to survive and re-persist over the restore). Closes the "`npm run test:rta` can leave the device signed into the demo server" followup, which recurred and stranded two devices during the #768 measurement work before being fixed and dogfooded to recover them.
-- 2026-08-03 — fix: Tighten Task-node hygiene and remove stranded dialog helpers
-- 2026-08-03 — fix: Remove invalid `focusable` attribute from `<component>` elements
-- 2026-08-03 — feat: Collapse `HomeRows` latest-media fan-out onto a bounded `apiPipeline`
 
 ## Open followups
 
