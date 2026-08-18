@@ -78,6 +78,9 @@ import { INTERRUPTED_EXIT } from './measure-matrix.js';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const MEASURE = path.join(here, 'measure.js');
 
+/** Arms by their RECORDED id (`no-component`), which is not their JS key (`noComponent`). */
+const ARM_BY_ID = Object.fromEntries(Object.values(ARMS).map((a) => [a.id, a]));
+
 // The one screen both arms can reach. `--nav` is driven over ODC, so the plain arm can
 // only measure what a LAUNCH lands on — and Home is also the only screen with the n=30
 // non-RTA baselines this calibration exists to make comparable again
@@ -166,7 +169,7 @@ async function bracketRead(when) {
 
 /** Run `measure.js` for one block, and hand back where it left its record. */
 function runMeasure(block, recordPath) {
-  const arm = ARMS[block.arm];
+  const arm = ARM_BY_ID[block.arm];
   const argv = [
     MEASURE,
     '--measurement',
@@ -322,7 +325,7 @@ function closeEnclosure(after) {
 }
 
 for (const block of blocks) {
-  const arm = ARMS[block.arm];
+  const arm = ARM_BY_ID[block.arm];
   const row = {
     index: block.index,
     arm: arm.id,
@@ -396,7 +399,7 @@ await withLock('restore', async () => {
 await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false }).catch(() => {});
 fs.rmSync(tmpDir, { recursive: true, force: true });
 
-const summary = summariseCalibration(rows);
+const summary = summariseCalibration(rows, { arms: [ARMS.rta.id, args.against] });
 console.log('\n[calibrate] ── summary ──');
 for (const line of summary.lines) console.log(line);
 console.log(

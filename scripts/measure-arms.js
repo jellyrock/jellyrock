@@ -86,6 +86,37 @@ export const ARMS = Object.freeze({
     enableRta: false,
     odcResident: false,
   }),
+  // The DECOMPOSITION arm — the one ADR 0030 originally specced, kept out of the default
+  // pair on purpose and unlocked by `--against no-component`.
+  //
+  // It drops the component while leaving `ENABLE_RTA=true`, so the app still runs every
+  // `#if ENABLE_RTA` block (`m.global.addFields({rtaSkeletonHoldMs: 0})`, and a
+  // `createObject` for a node type that is no longer staged and therefore returns invalid).
+  // Against `rta` it isolates the RESIDENT COMPONENT alone; the difference between it and
+  // `plain` is the compiled-in hooks.
+  //
+  // Only worth running once `rta` vs `plain` has produced a delta at or above the method's
+  // floor — below that this arm can only report "not distinguishable" whichever way the
+  // truth lies. That condition was met on the 512 MB Stick 2026-08-18 (+153 ms, 6/6 cycles).
+  //
+  // ⚠️ Two honest caveats. `provenance.enableRta` is DERIVED from whether ODC answered, so
+  // this arm records `false` while its shipped manifest says `true` — the literal
+  // `bs_const` in `provenance.deploy` is the field to read for this arm, not `enableRta`.
+  // And `createObject` on an unstaged node type is a path nothing else exercises; smoke it
+  // for one sample before committing to a series.
+  noComponent: Object.freeze({
+    id: 'no-component',
+    label: 'no ODC component, ENABLE_RTA=true (hooks still compiled in)',
+    injectTestingFiles: false,
+    enableRta: true,
+    odcResident: false,
+  }),
+});
+
+/** The non-RTA arms `--against` may name, by id. */
+export const AGAINST_ARMS = Object.freeze({
+  [ARMS.plain.id]: ARMS.plain,
+  [ARMS.noComponent.id]: ARMS.noComponent,
 });
 
 /**
@@ -120,6 +151,9 @@ const VALUE_FLAGS = new Map([
   // through nothing but a default. With `--label smoke` the arms record as `rta-smoke` /
   // `plain-smoke` and can only be selected deliberately.
   ['--label', 'label'],
+  // WHICH non-RTA arm to compare `rta` against. Defaults to `plain`, the arm that answers
+  // the comparability question; `no-component` is the decomposition arm (see ARMS).
+  ['--against', 'against'],
   ['--samples', 'samples'],
   ['--block-size', 'blockSize'],
   ['--server', 'server'],
@@ -157,6 +191,7 @@ export function parseCalibrationArgs(argv = []) {
   const args = {
     samples: DEFAULT_SAMPLES,
     blockSize: DEFAULT_BLOCK_SIZE,
+    against: ARMS.plain.id,
     noBuild: false,
   };
 
@@ -196,6 +231,18 @@ export function parseCalibrationArgs(argv = []) {
       );
     }
     args.label = raw.label;
+  }
+
+  if (raw.against !== undefined) {
+    if (!AGAINST_ARMS[raw.against]) {
+      throw new CalibrationError(
+        `--against ${JSON.stringify(raw.against)} is not a comparable arm. Known: ` +
+          `${Object.keys(AGAINST_ARMS).join(', ')}.\n` +
+          '  `rta` is always one side — it is the arm that can read its own identity, which is\n' +
+          '  what brackets the other one (ADR 0030), so it cannot be the thing compared against.',
+      );
+    }
+    args.against = raw.against;
   }
 
   if (raw.samples !== undefined) args.samples = positiveInt(raw.samples, '-n / --samples');
@@ -270,24 +317,28 @@ export function blockSizes(samples, blockSize) {
  *   `enclosure` groups a plain block with the bracket reads either side of it; it is null
  *   for the RTA blocks, which observe their own identity.
  */
-export function planBlocks({ samples = DEFAULT_SAMPLES, blockSize = DEFAULT_BLOCK_SIZE } = {}) {
+export function planBlocks({
+  samples = DEFAULT_SAMPLES,
+  blockSize = DEFAULT_BLOCK_SIZE,
+  against = ARMS.plain.id,
+} = {}) {
   const blocks = [];
   blockSizes(samples, blockSize).forEach((count, cycle) => {
     blocks.push({ index: blocks.length, arm: ARMS.rta.id, count, enclosure: null });
-    blocks.push({ index: blocks.length, arm: ARMS.plain.id, count, enclosure: cycle });
+    blocks.push({ index: blocks.length, arm: against, count, enclosure: cycle });
   });
   return blocks;
 }
 
 /** The plan, as lines to print before anything touches the device. */
-export function formatPlanLines(blocks, { samples, server, label }) {
+export function formatPlanLines(blocks, { samples, server, label, against = ARMS.plain.id }) {
   const per = (arm) => blocks.filter((b) => b.arm === arm).reduce((total, b) => total + b.count, 0);
   return [
     `${blocks.length} blocks, ${per(ARMS.rta.id)} + ${per(ARMS.plain.id)} launches, ` +
       `alternating in blocks of up to ${Math.max(...blocks.map((b) => b.count))}`,
-    ...Object.values(ARMS).map(
+    ...[ARMS.rta, AGAINST_ARMS[against]].map(
       (arm) =>
-        `  arm ${armLabel(arm.id, label).padEnd(5)} ${arm.label} ` +
+        `  arm ${armLabel(arm.id, label)} — ${arm.label} ` +
         `(injectTestingFiles: ${arm.injectTestingFiles}, ENABLE_RTA=${arm.enableRta})`,
     ),
     `  n=${samples} per arm, every sample asserted against ${server}`,
@@ -308,7 +359,7 @@ export function formatPlanLines(blocks, { samples, server, label }) {
  * @param {{index: number, arm: string, count: number, status: number|null,
  *   published: boolean, reason: string|null}[]} rows
  */
-export function summariseCalibration(rows = []) {
+export function summariseCalibration(rows = [], { arms = [ARMS.rta.id, ARMS.plain.id] } = {}) {
   const lines = [];
   for (const row of rows) {
     const state = row.published
@@ -338,6 +389,6 @@ export function summariseCalibration(rows = []) {
     ok:
       rows.length > 0 &&
       withheld.length === 0 &&
-      new Set(published.map((r) => r.arm)).size === Object.keys(ARMS).length,
+      arms.every((id) => published.some((r) => r.arm === id)),
   };
 }

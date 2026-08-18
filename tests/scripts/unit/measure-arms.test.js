@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AGAINST_ARMS,
   ARMS,
   armLabel,
   CalibrationError,
@@ -202,5 +203,60 @@ describe('--label — keeping two calibration runs from pooling', () => {
   it('refuses a label the selector grammar cannot name', () => {
     expect(() => ok(['--label', 'a,b'])).toThrow(/may not contain/);
     expect(() => ok(['--label', 'a=b'])).toThrow(/may not contain/);
+  });
+});
+
+describe('--against — choosing which non-RTA arm to compare', () => {
+  it('defaults to the plain arm, which answers the comparability question', () => {
+    expect(ok([]).against).toBe('plain');
+    expect(planBlocks({ samples: 10, blockSize: 5 }).map((b) => b.arm)).toEqual([
+      'rta',
+      'plain',
+      'rta',
+      'plain',
+    ]);
+  });
+
+  it('plans the decomposition arm when asked for it', () => {
+    expect(ok(['--against', 'no-component']).against).toBe('no-component');
+    expect(
+      planBlocks({ samples: 10, blockSize: 5, against: 'no-component' }).map((b) => b.arm),
+    ).toEqual(['rta', 'no-component', 'rta', 'no-component']);
+  });
+
+  it('keeps `rta` on one side always — it is what brackets the other arm', () => {
+    // The RTA arm is the only one that can read its own identity, so it is what the
+    // enclosure is built from (ADR 0030). Naming it as the thing compared AGAINST would
+    // leave a run with no observed reads at all.
+    expect(AGAINST_ARMS).not.toHaveProperty('rta');
+    expect(() => ok(['--against', 'rta'])).toThrow(/not a comparable arm/);
+    expect(() => ok(['--against', 'rta'])).toThrow(/cannot be the thing compared against/);
+  });
+
+  it('refuses an unknown arm rather than planning an empty run', () => {
+    expect(() => ok(['--against', 'plian'])).toThrow(/not a comparable arm/);
+  });
+
+  it('the decomposition arm keeps ENABLE_RTA ON — that is the whole point of it', () => {
+    // `plain` removes the component AND the compiled-in hooks; `no-component` removes only
+    // the component, so the difference between the two arms is the hooks.
+    expect(ARMS.noComponent.injectTestingFiles).toBe(false);
+    expect(ARMS.noComponent.enableRta).toBe(true);
+    expect(ARMS.noComponent.odcResident).toBe(false);
+  });
+
+  it('passes a run only when BOTH planned arms published, whichever pair was planned', () => {
+    const row = (arm, index) => ({
+      index,
+      arm,
+      count: 5,
+      status: 0,
+      published: true,
+      reason: null,
+    });
+    const pair = [row('rta', 0), row('no-component', 1)];
+    expect(summariseCalibration(pair, { arms: ['rta', 'no-component'] }).ok).toBe(true);
+    // …and the DEFAULT expectation must not silently pass a decomposition run.
+    expect(summariseCalibration(pair).ok).toBe(false);
   });
 });
