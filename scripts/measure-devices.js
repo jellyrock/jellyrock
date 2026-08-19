@@ -85,7 +85,8 @@
  *
  * **No matrix report.** Each device writes its own line to `measurements.jsonl` and the
  * summary here says only which devices ran. The report that lays those lines out as one
- * screen × three tiers is a READER over that file (project PLAN, 2026-08-16), because a
+ * screen × three tiers is a READER over that file
+ * ([`matrix-report-is-a-reader`](../docs/decisions.md)), because a
  * reader can rebuild the matrix from runs taken weeks apart on different devices while an
  * in-process report can only ever describe the run that just finished.
  *
