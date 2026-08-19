@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-19 — ci(rta): Stop citing gitignored paths from tracked files
 - 2026-08-19 — ci(rta): Add `measure:report`, the screen × tier coverage matrix
 - 2026-08-19 — ci(rta): Make the overhang escape recoverable and gate `waitHome` on login
 - 2026-08-18 — ci(rta): Add `measure:calibrate`, the ODC calibration harness
