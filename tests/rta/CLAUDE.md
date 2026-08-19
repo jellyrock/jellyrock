@@ -62,6 +62,24 @@ Canonical examples in [`lib/nav.js`](lib/nav.js): `waitOsdUp` (input), `findHome
 because the next Home-relative press will need it too, and it is unit-tested there against a
 mocked device.
 
+**A guarded re-press must re-send the key that is actually still owed.** `waitOsdUp` re-sends
+`Up` until the OSD is up; `focusOverhangIcon` pressed `Up` once and then re-sent `Right`, which
+walks the row rather than leaving Home — so one lost `Up` could never be recovered and surfaced
+as "the screen never loaded" (reproduced on `main`, 2026-08-18). `overhangWalkKey` in
+[`lib/steps.js`](lib/steps.js) picks the key from the focused node for that reason, and warns
+when it had to re-press, because a silently recovered escape tells you nothing the next time.
+
+**Identify a dynamically-created node by `subtype`, never by `id` or a `#name` in its keyPath.**
+RTA builds each keyPath segment from `node.id` while it is non-empty and from the child INDEX
+otherwise, and the app creates plenty of nodes without ids — `Home.onTabChanged` re-creates
+BOTH row lists via `CreateObject` and re-assigns no id, and `JROverhang` appends its `JRTabBar`
+the same way. So a predicate keyed on `#homeRows` matches on a fresh launch and silently stops
+matching after one tab round trip, falling through to whatever its `else` branch does. That is a
+regression with no failure mode of its own — it just quietly restores the bug you fixed.
+`overhangWalkKey` matches `HOME_ROW_LIST_SUBTYPES`; the sibling walks in
+[`lib/nav.js`](lib/nav.js) still match by name (`rta-home-active-list-hardcoded` in
+[`tech-debt.md`](../../docs/architecture/tech-debt.md)).
+
 ## Layout
 
 - `config.js` — `RTA_CONFIG` (demo server, hero movie, seek position, locales). Shared with the store screenshot generator.

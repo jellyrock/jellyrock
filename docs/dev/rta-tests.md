@@ -25,7 +25,7 @@ related-files:
   - scripts/flake-baseline.js
   - tests/rta/demos/run.mjs
   - .github/workflows/rta-functional-tests.yml
-last-reviewed: 2026-08-16
+last-reviewed: 2026-08-19
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -108,6 +108,14 @@ branch to find it.
   the store-listing set.
 - **Serial**: one real device, so `vitest.rta.config.js` pins single-fork, no
   parallelism, long timeouts (OSD playback waits can take ~90 seconds).
+  `testTimeout` is deliberately set **above** the worst-case gate chain, not merely
+  above the longest single wait: a `waitFor` that gives up throws through
+  `diagnosedError` and reports the device state it saw, whereas a Vitest timeout
+  reports nothing — so a budget that lets Vitest fire first costs the suite its best
+  diagnostic exactly when a screen is failing. `screen "settings"` is the longest
+  chain (`hardRelaunch()` + `waitHome`'s login and rows phases + the row-0 walk + the
+  overhang focus walk + the version label). Re-do that arithmetic, in the config file's
+  own comment, whenever one of those gate timeouts moves.
 - **Assertions**: the `waitFor` / `waitFocused` steps poll real node state and THROW
   on timeout — that throw IS the test failure (a descriptive message). Don't wrap them
   in `expect`; use `expect` only for value checks (title text, focus subtype).

@@ -21,11 +21,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const getValues = vi.fn();
 const getFocusedNode = vi.fn();
+const getValue = vi.fn();
 const sendKeypress = vi.fn();
 vi.mock('roku-test-automation', () => ({
   odc: {
     getValues: (...a) => getValues(...a),
-    getValue: vi.fn(),
+    getValue: (...a) => getValue(...a),
     getFocusedNode: (...a) => getFocusedNode(...a),
   },
   // `Key` carries the REAL values (verified against the installed package), not invented
@@ -34,7 +35,8 @@ vi.mock('roku-test-automation', () => ({
   ecp: { sendKeypress: (...a) => sendKeypress(...a), Key: { Up: 'Up', Right: 'Right' } },
 }));
 
-const { getActiveVals, resendIfSwallowed, walkHomeToFirstRow } = await import('./steps.js');
+const { getActiveVals, resendIfSwallowed, walkHomeToFirstRow, overhangWalkKey, waitHome } =
+  await import('./steps.js');
 
 /** A `getFocusedNode` answer resting on a row list at `[row, item]`. */
 const onRow = (row) => ({
@@ -246,5 +248,123 @@ describe("walkHomeToFirstRow — the precondition Home's Up-to-overhang escape r
       /home row 0 focused/,
     );
     expect(sendKeypress).not.toHaveBeenCalled();
+  });
+});
+
+describe('overhangWalkKey — the key is chosen from where focus IS', () => {
+  // Fixtures mirror what the device actually reports, ids included. RTA builds each keyPath
+  // segment from `node.id` while it is non-empty and from the child INDEX otherwise
+  // (`processGetFocusedNodeRequest`), so a node the app creates WITHOUT an id shows up as a
+  // bare number — which is why several of these carry no `#name`. Getting that wrong is what
+  // made an earlier revision of this suite assert against states the device cannot produce.
+  const onIcon = {
+    node: { subtype: 'JROverhangIcon', id: 'settingsIcon' },
+    keyPath: '#overhang.#settingsIcon',
+  };
+  // Fresh launch: `Home.xml` declares `<HomeRows id="homeRows" />`, so the id IS present.
+  const inHomeRows = {
+    node: { subtype: 'HomeRows', id: 'homeRows', rowItemFocused: [0, 2] },
+    keyPath: '#routerOutlet.#viewTarget.#abc.#homeRows',
+  };
+  // `JROverhang.onTabsChanged` appends its JRTabBar with `CreateObject` and sets no id.
+  const onTabBar = { node: { subtype: 'JRTabBar', id: '' }, keyPath: '#overhang.2' };
+
+  it('sends nothing once the icon has focus', () => {
+    expect(overhangWalkKey(onIcon, 'settingsIcon')).toBeNull();
+  });
+
+  it('re-presses Up while focus is still inside Home rows — the #789 signature', () => {
+    // The exact recorded state: row 0, item index dragged to 2 by the Rights themselves.
+    // Right cannot leave Home from here, which is why the old walk could never recover.
+    expect(overhangWalkKey(inHomeRows, 'settingsIcon')).toBe('Up');
+  });
+
+  it('still recognises Home after a tab round trip, when the row list has NO id', () => {
+    // `Home.onTabChanged` re-creates the list with `CreateObject` and never re-assigns the
+    // id, so from here on the focused node reports `id: ''` and an index keyPath. Matching
+    // on id or keyPath would fall through to Right and quietly reinstate the defect above;
+    // subtype is set by the component, so it survives. Unreachable from the suite today
+    // (nothing in `specs/` selects a tab) — this pins the rule, not a live path.
+    const afterTabRoundTrip = {
+      node: { subtype: 'HomeRows', id: '', rowItemFocused: [0, 2] },
+      keyPath: '#routerOutlet.#viewTarget.#abc.0',
+    };
+    expect(overhangWalkKey(afterTabRoundTrip, 'settingsIcon')).toBe('Up');
+  });
+
+  it('treats the favorites list as Home too (future-proofing, not coverage)', () => {
+    // Home's active list is `m.activeContent`, which is the favorites list under that tab.
+    // Nothing in `specs/` selects a tab, so this state is unreachable from `focusOverhangIcon`
+    // today — asserted so the predicate agrees with the app, NOT as evidence it is exercised.
+    // See `rta-home-active-list-hardcoded` in docs/architecture/tech-debt.md.
+    const inFavorites = {
+      node: { subtype: 'FavoritesRows', id: '', rowItemFocused: [0, 0] },
+      keyPath: '#routerOutlet.#viewTarget.#abc.0',
+    };
+    expect(overhangWalkKey(inFavorites, 'settingsIcon')).toBe('Up');
+  });
+
+  it('walks Right once focus has reached the overhang chain', () => {
+    expect(overhangWalkKey(onTabBar, 'settingsIcon')).toBe('Right');
+  });
+
+  it('falls back to Right when the focus read failed', () => {
+    // Unchanged from the pre-fix behaviour on purpose — a failed read is not evidence that
+    // the escape is stuck, and Up from the overhang is inert anyway.
+    expect(overhangWalkKey(null, 'settingsIcon')).toBe('Right');
+  });
+
+  it('does not mistake a DIFFERENT overhang icon for the target', () => {
+    expect(
+      overhangWalkKey(
+        { node: { subtype: 'JROverhangIcon', id: 'searchIcon' }, keyPath: '#overhang.#searchIcon' },
+        'settingsIcon',
+      ),
+    ).toBe('Right');
+  });
+});
+
+describe('waitHome — the login flow is a separate question, asked first', () => {
+  beforeEach(() => {
+    getValue.mockReset();
+    getFocusedNode.mockReset();
+  });
+
+  it('waits for a routed view BEFORE it ever reads Home rows', async () => {
+    // The ordering IS the fix. Reading `#homeRows` while the app is still logging in
+    // reports "home rows never appeared" — a claim about Home caused by an unfinished
+    // login (recorded on .177, 2026-08-18).
+    const seen = [];
+    getValue.mockImplementation(async ({ base, keyPath }) => {
+      seen.push(`${base}:${keyPath}`);
+      if (keyPath === 'activeRoutedView.subtype()') return { found: true, value: 'Home' };
+      return { found: true, value: 3 };
+    });
+
+    await waitHome();
+
+    expect(seen[0]).toBe('global:activeRoutedView.subtype()');
+    expect(seen[1]).toBe('scene:#homeRows.content.getChildCount()');
+  });
+
+  it('does not accept an unresolved view as "mounted"', async () => {
+    // `found: false` is exactly what the 2026-08-18 record carried for both view fields.
+    // Treating it as a mounted view would put the gate straight back where it was.
+    let mounted = false;
+    getValue.mockImplementation(async ({ keyPath }) => {
+      if (keyPath === 'activeRoutedView.subtype()') {
+        const res = mounted ? { found: true, value: 'Home' } : { found: false };
+        mounted = true; // resolves on the SECOND read, so the gate must have polled again
+        return res;
+      }
+      return { found: true, value: 2 };
+    });
+
+    await waitHome();
+
+    const viewReads = getValue.mock.calls.filter(
+      ([a]) => a.keyPath === 'activeRoutedView.subtype()',
+    );
+    expect(viewReads.length).toBeGreaterThan(1);
   });
 });
