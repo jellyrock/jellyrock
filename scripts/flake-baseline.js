@@ -262,9 +262,9 @@ export function reportBaseline(result) {
   }
 
   if (failed === 0) {
-    // The instruction this replaces lived in a project plan as a note-to-self, which
-    // is the wrong place for the one conclusion a clean series most invites getting
-    // wrong.
+    // The instruction this replaces lived in a local planning note as a note-to-self,
+    // which is the wrong place for the one conclusion a clean series most invites getting
+    // wrong — it belongs in the output, where whoever reads the number reads it too.
     lines.push(
       `  A clean series BOUNDS the rate, it does not measure 0% — report "consistent with`,
       `  fixed, upper bound ${pct(bound)}", never a measured zero. One red run would say far more.`,

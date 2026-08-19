@@ -143,10 +143,9 @@ describe('a selection that finds nothing', () => {
 });
 
 describe('the upper bound on a clean series', () => {
-  // The figures the project plan carries, recomputed rather than copied: a clean
-  // series of N runs bounds the per-run flake probability, and no affordable N
-  // brings that bound near zero. This is the claim a green baseline is allowed to
-  // make.
+  // Derived here rather than copied from anywhere: a clean series of N runs bounds the
+  // per-run flake probability, and no affordable N brings that bound near zero. This is
+  // the claim a green baseline is allowed to make.
   it.each([
     [4, 0.53],
     [6, 0.39],

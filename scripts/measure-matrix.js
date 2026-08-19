@@ -14,7 +14,7 @@
  *
  * It is the SAME measurement taken once per device, sequentially, each one writing its
  * own line to `measurements.jsonl`. It is deliberately NOT a report: the matrix report
- * is a READER over that file (see the 2026-08-16 decision in the project PLAN), because
+ * is a READER over that file ([`matrix-report-is-a-reader`](../docs/decisions.md)), because
  * a reader can rebuild the matrix from runs taken weeks apart on different devices while
  * an in-process report can only ever describe the run that just finished.
  *

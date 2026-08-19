@@ -390,8 +390,11 @@ rebuild or redeploy.
 ## Reading the ledger back
 
 Every `measure` run appends one line per series to
-`.device-runs/measure/measurements.jsonl`. It is **append-only and gitignored** — the only
-copy of every number this tooling has taken. Two readers turn it into figures, and between
+`.device-runs/measure/measurements.jsonl`. It is **append-only, gitignored, and per-machine**
+— the only copy of every number YOUR setup has taken, and it is not shared with anyone. A
+fresh checkout has no ledger at all, so `measure:report` will tell you it is empty until you
+take a series; every worked example below therefore shows one developer's numbers rather than
+anything you can reproduce line-for-line. Two readers turn a ledger into figures, and between
 them they own every statistic:
 
 | Reader | Question |
@@ -469,7 +472,8 @@ much they move it:
   instead, beside the number.
 
 Silence is not one of the options. Before the provenance line existed, `search · 1GB`
-published a 14-sample median where five of its seven series recorded no commit, no device
+published (on one developer's ledger) a 14-sample median where five of its seven series
+recorded no commit, no device
 and no timestamp at all, and the report said nothing about it.
 
 #### Known limitation: a multi-model fleet collapses the tier axis
@@ -528,8 +532,11 @@ and both are printed under the number rather than left for the reader to work ou
 
 **`samples` — the number `n` has to be read against.** The recorded method wants **n≥5**
 and only resolves **~120 ms at n=30 per arm**. `n` was always visible; what it means was
-not. Six of the nine cells this report currently publishes sit below the n≥5 floor, and
-one publishes a median of a **single sample**:
+not. This is not a rare corner: on the ledger the feature was developed against, six of
+the nine cells with a median sat below the n≥5 floor and one published a median of a
+**single sample** — which is simply what a matrix looks like while it is being filled in,
+a few launches per screen taken between other work. Expect your own ledger to look the
+same early on:
 
 ```text
     samples     ⚠ n=1, below the method's floor of n≥5 — this median is not yet evidence
@@ -546,7 +553,12 @@ comparison and silently averaged by the matrix:
     integrity   ⚠ 1 of 1 series measured a build nobody attributed to a checkout, so its commit may describe code that never ran
 ```
 
-| Fact | Fires when | Share of the current ledger |
+The table's last column is a **snapshot of one developer's ledger** (163 records, August
+2026), not a property of the tooling — yours will differ, and on a fresh checkout every
+one of them reads 0% because the ledger starts empty. It is here to show which of these
+fire often enough to matter, not as a number to compare against.
+
+| Fact | Fires when | Seen in one 163-record ledger |
 |---|---|---|
 | dirty tree | `dirty: true` — the commit is an incomplete description of the source | 37% |
 | unattributed build | neither `--deploy` nor `--deployed-by` — nobody can say the measured build came from the recorded commit | 33% |
@@ -556,8 +568,8 @@ comparison and silently averaged by the matrix:
 | hour not recorded | the series predates the flag, so whether it crossed `:00` is unknown | 3% |
 
 **Acting on the dirty warning:** `--select dirty=false` narrows a cell to the series that
-recorded a clean tree. It is a three-state field, not a boolean — the 34 oldest records
-predate it and read as `(unrecorded)`, which `dirty=false` deliberately excludes. "Nobody
+recorded a clean tree. It is a three-state field, not a boolean — records predating the
+field read as `(unrecorded)`, which `dirty=false` deliberately excludes. "Nobody
 wrote it down" is not "it was clean".
 
 **None of these is a refusal**, and that is deliberate: each describes a number that is
@@ -569,7 +581,7 @@ anyone measures while working.
 
 `--deploy` settles the attribution warning. A tool that deploys and then runs `measure`
 itself should pass `--deployed-by <name>` so its series are attributable —
-`measure:calibrate` does, which is why 75 of the ledger's 127 `deployedFromCheckout: false`
+`measure:calibrate` does, which is why 75 of one ledger's 127 `deployedFromCheckout: false`
 records are **not** flagged.
 
 ### Comparing two arms
