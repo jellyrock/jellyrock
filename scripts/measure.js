@@ -225,6 +225,7 @@ import {
   measurementIds,
   matchLine,
   unitFor,
+  withUnit,
   declaredFields,
   instrumentShare,
 } from './measurements.js';
@@ -1104,7 +1105,7 @@ if (selectionRefusal) {
   );
 }
 console.log(
-  `\n[measure] ${measurement.primary} median ${median ?? '—'} ${unitFor(measurement.primary)} over ${cold.length}/${launchesTaken} cold samples` +
+  `\n[measure] ${measurement.primary} median ${withUnit(median, unitFor(measurement.primary, measurement))} over ${cold.length}/${launchesTaken} cold samples` +
     (args.component ? ` · component ${args.component}` : '') +
     (args.variant ? ` · variant ${args.variant}` : ''),
 );
@@ -1116,7 +1117,7 @@ for (const key of timingKeys) {
   if (key === measurement.primary) continue;
   const { median: m, samples: n } = medians[key];
   console.log(
-    `[measure] ${key} median ${m ?? '—'} ${unitFor(key)} over ${n}/${cold.length} cold samples` +
+    `[measure] ${key} median ${withUnit(m, unitFor(key, measurement))} over ${n}/${cold.length} cold samples` +
       (n < cold.length ? '  ⚠ absent from some samples — reported, not averaged away' : ''),
   );
 }

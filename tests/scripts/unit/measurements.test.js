@@ -25,6 +25,7 @@ import {
   parseLogLine,
   splitWorkload,
   unitFor,
+  withUnit,
   declaredFields,
   instrumentShare,
 } from '../../../scripts/measurements.js';
@@ -457,18 +458,21 @@ describe('the registry itself', () => {
     expect(matchLine(grid, line).fields.firstPaintMs).toBe(-1);
   });
 
-  it('flags item-grid as NOT yet observed on a device', () => {
-    // Honest provenance about the pattern itself: it is written from the format
-    // string, which is authoritative for the message but says nothing about what
-    // the wire looks like. Flip this to true only after a real line has matched.
-    expect(measurementById('item-grid').grounded).toBe(false);
-    expect(measurementById('home-latest-rows').grounded).toBe(true);
-    // `screen-load` was flipped on 2026-08-16, on evidence rather than recollection:
-    // the measurement ledger held 35 series of it, 32 carrying a COMPLETE sample,
-    // across six components. Pinned here because the flag decides what `measure.js`
-    // tells an operator to suspect on a zero-sample run, and left stale it sent them
-    // to audit a parser that had matched hundreds of real lines.
-    expect(measurementById('screen-load').grounded).toBe(true);
+  it('flags every family as observed on a real device — all three now are', () => {
+    // `grounded` is honest provenance about the PATTERN: written from the format
+    // string, which is authoritative for the message and says nothing about what the
+    // wire looks like. It is flipped only after a real line has matched, because the
+    // flag decides what `measure.js` tells an operator to suspect on a zero-sample run
+    // — left stale it sends them to audit a parser that has matched hundreds of lines.
+    //
+    // `screen-load` flipped 2026-08-16 (35 series in the ledger, 32 with a COMPLETE
+    // sample, six components). `item-grid` flipped 2026-08-19, and was last because
+    // reaching any library grid needs `--library <id>` on a server with more than one
+    // library of a type — two runs were blocked by that ambiguity before one landed
+    // 5/5 cold samples.
+    for (const m of MEASUREMENTS) {
+      expect(m.grounded, `${m.id} should be grounded`).toBe(true);
+    }
   });
 
   it('names a primary field for every family', () => {
@@ -482,6 +486,27 @@ describe('the registry itself', () => {
 
   it('returns undefined for an unregistered id rather than guessing', () => {
     expect(measurementById('nope')).toBeUndefined();
+  });
+});
+
+describe('withUnit', () => {
+  it('omits the separator when the unit is empty rather than emitting a trailing space', () => {
+    // The coupling that put this beside `unitFor`: a workload field's unit is '', and a
+    // renderer that pastes it on anyway prints `28 ` inside a padded column.
+    expect(withUnit(28, '')).toBe('28');
+    expect(withUnit(28, 'ms')).toBe('28 ms');
+    expect(withUnit(3200, 'µs')).toBe('3200 µs');
+  });
+
+  it('renders a missing value as `—`, never as 0', () => {
+    // No sample carrying the field and every sample carrying zero are different claims.
+    expect(withUnit(null, 'ms')).toBe('—');
+    expect(withUnit(undefined, 'ms')).toBe('—');
+    expect(withUnit(0, 'ms')).toBe('0 ms');
+  });
+
+  it('rounds to one decimal, which is what a device can resolve', () => {
+    expect(withUnit(60.549, 'ms')).toBe('60.5 ms');
   });
 });
 
@@ -509,11 +534,43 @@ describe('unitFor', () => {
     // The rule is derived from names, so it is only as good as the names in use. This
     // walks the real families rather than a hand-listed sample, which is what keeps a
     // future field with a third unit from slipping through as milliseconds by default.
-    const fields = MEASUREMENTS.flatMap((m) => declaredFields(m));
+    //
+    // WORKLOAD fields are excluded here rather than asserted as `ms`: they are counts,
+    // and the case below is the one that owns them.
+    const fields = MEASUREMENTS.flatMap((m) =>
+      declaredFields(m).filter((f) => !m.workload.includes(f)),
+    );
     for (const field of fields) {
       expect(['ms', 'µs']).toContain(unitFor(field));
     }
     expect(fields).toContain('instrumentUs');
+  });
+
+  it('gives a workload field no unit at all, when the family is passed', () => {
+    // A count is not a duration, and no naming convention can tell them apart — `rows`
+    // and `items` are counts, `totalMs` and `taskMs` are durations, and only the family
+    // knows which is which. Before this, `measure:report --field items` headlined an
+    // item count as `median 28 ms`.
+    for (const m of MEASUREMENTS) {
+      for (const field of m.workload) {
+        expect(unitFor(field, m), `${m.id}.${field}`).toBe('');
+      }
+    }
+    expect(measurementById('item-grid').workload).toContain('items');
+  });
+
+  it('still calls a TIMING milliseconds when the family is passed', () => {
+    // The family narrows the answer; it must not change it for the fields it does not
+    // list as workload.
+    const grid = measurementById('item-grid');
+    expect(unitFor('taskMs', grid)).toBe('ms');
+    expect(unitFor('instrumentUs', measurementById('screen-load'))).toBe('µs');
+  });
+
+  it('falls back to milliseconds without a family, which is the caller making a claim', () => {
+    // Omitting the family is only safe when the key is known to be a timing. Pinned so
+    // the fallback stays a deliberate, documented degradation rather than a surprise.
+    expect(unitFor('items')).toBe('ms');
   });
 });
 

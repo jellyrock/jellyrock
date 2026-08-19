@@ -99,6 +99,42 @@ export function ramTierFor(modelNumber) {
 }
 
 /**
+ * Every RAM tier the table knows, smallest first.
+ *
+ * Ordered by `ramMb` out of the SAME rows that assign the labels, rather than by
+ * parsing the labels — `512MB` and `1.5GB` do not sort as strings, and a second
+ * place that decodes the spelling is the drift the note above exists to prevent.
+ * A tier is listed once however many models carry it.
+ */
+export const RAM_TIERS = Object.freeze(
+  [
+    ...new Map(
+      [...Object.values(ROKU_HARDWARE.models), ...Object.values(ROKU_HARDWARE.families)]
+        .filter((d) => d?.ramTier)
+        .map((d) => [d.ramTier, d.ramMb ?? Number.POSITIVE_INFINITY]),
+    ),
+  ]
+    .sort((a, b) => a[1] - b[1])
+    .map(([tier]) => tier),
+);
+
+/**
+ * Sort comparator for tier labels — smallest RAM first, unknown labels LAST.
+ *
+ * Unknown is sorted rather than dropped, and that is the whole reason this is not an
+ * `indexOf` at the call site: a report column whose tier the table cannot place is a
+ * device nobody has added yet, and the honest output for it is a column at the end,
+ * not a silently missing one.
+ */
+export function compareRamTiers(a, b) {
+  const rank = (t) => {
+    const i = RAM_TIERS.indexOf(t);
+    return i === -1 ? RAM_TIERS.length : i;
+  };
+  return rank(a) - rank(b) || String(a ?? '').localeCompare(String(b ?? ''));
+}
+
+/**
  * True when a model number is one JellyRock cannot run on at all.
  *
  * Roku's legacy table is not merely "old": its own heading says those models "cannot

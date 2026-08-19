@@ -214,9 +214,22 @@ export const MEASUREMENTS = Object.freeze([
     // rather than silently trusted.
     screen: null,
     // Written from the emitting call site (LoadItemsTask2.bs:421), which is
-    // authoritative for the MESSAGE — it is the format string. Not yet seen on
-    // the wire, so `measure.js` refuses to report it as grounded.
-    grounded: false,
+    // authoritative for the MESSAGE — it is the format string.
+    //
+    // GROUNDED 2026-08-19, on ledger evidence rather than recollection — the same
+    // standard `screen-load` was flipped on, and this family was the last one left
+    // ungrounded. `--nav moviesLibraryGrid --library <id>` on a Stick 4K produced
+    // **5/5 cold samples** (taskMs median 426 ms, items 28, genreFetches 0). Until
+    // then every run printed "the item-grid pattern has never matched a real device
+    // line", which on a genuine zero-sample run tells the operator the pattern is at
+    // least as likely at fault as the app — backwards once the pattern is proven.
+    //
+    // ⚠️ It stayed ungrounded this long for a reason worth knowing: reaching ANY
+    // library grid needs `--library <id>` on a server with more than one library of a
+    // type, because the nav resolves the Home tile by `collectionType` and REFUSES an
+    // ambiguous match rather than guessing. Two runs were blocked by exactly that
+    // before one landed. See `docs/dev/measuring-performance.md`.
+    grounded: true,
     primary: 'taskMs',
     // `items` and `genreFetches` are already hand-rolled into the message, which
     // is the same instinct tier 2 formalises: record what the run had to chew on,
@@ -234,11 +247,13 @@ export const MEASUREMENTS = Object.freeze([
   Object.freeze({
     id: 'screen-load',
     title: 'Screen readiness (paint + settle)',
-    // The perf doc this family will eventually get its own section in. Pointed at the
-    // file that EXISTS: `docs/dev/measuring-performance.md` is a Charter deliverable
-    // that has not been written yet, and a `doc:` naming a missing file is a dead link
-    // in every message that prints it. A registry test asserts every path here resolves.
-    doc: 'docs/dev/home-first-paint-performance.md',
+    // The doc this family OWNS, as of 2026-08-19. It pointed at
+    // `home-first-paint-performance.md` only because that was the file that existed —
+    // a `doc:` naming a missing file is a dead link in every message that prints it, and
+    // a registry test asserts every path here resolves. The two docs answer different
+    // questions (see the note at the top of this file): `screen-load` is about WHEN a
+    // screen became usable, which is what `measuring-performance.md` is for.
+    doc: 'docs/dev/measuring-performance.md',
     // NULL because this family covers EVERY instrumented screen — and unlike
     // `item-grid` above, that is not a gap waiting to be filled by `--screen`. The
     // app emits its own screen name into the line, so the screen arrives as a
@@ -487,7 +502,8 @@ export function splitWorkload(measurement, fields = {}) {
 }
 
 /**
- * The unit a timing field is expressed in, derived from its NAME.
+ * The unit a field is expressed in — from its NAME for a duration, from the FAMILY
+ * for a count.
  *
  * Every reporting layer used to append a bare `ms` to whatever number a family
  * emitted, which was true for as long as every field was milliseconds. `instrumentUs`
@@ -495,15 +511,47 @@ export function splitWorkload(measurement, fields = {}) {
  * slip — it is the well-formed-but-wrong shape this subsystem exists to refuse, and
  * a reader has no way to catch a unit error from the number alone.
  *
- * Keyed on the name's suffix rather than a per-field table, so a family that adds
- * `somethingUs` tomorrow inherits it without a second place to update. Lives here
- * rather than in `measure.js` / `measure-compare.js` for the reason ADR 0028 names:
- * `measure.js` claims the device at import, so a rule that lives there has no gate
- * under it.
+ * Durations are keyed on the name's suffix rather than a per-field table, so a family
+ * that adds `somethingUs` tomorrow inherits it without a second place to update.
+ *
+ * A WORKLOAD field is not a duration and has no unit at all, and no naming convention
+ * can say which is which — `rows` is a count and `totalMs` is a duration, but so is
+ * `items` a count and `taskMs` a duration, and only the family knows. That is the same
+ * reason `splitWorkload` takes a `measurement`: *"is this a count or a duration"
+ * genuinely requires the family to say.* So pass the family whenever the caller has
+ * one. Every reader that headlines an arbitrary field does — `measure:report`'s
+ * `--field items` printed `median 28 ms` for an item count before this took one.
+ *
+ * @param key the field name.
+ * @param measurement OPTIONAL, and omitting it is a claim: without the family the
+ *   workload list is unknown, so a count reads as `ms`. Only safe when the key is
+ *   known to be a timing. Every caller that can name the family should.
+ *
+ * Lives here rather than in `measure.js` / `measure-compare.js` for the reason ADR
+ * 0028 names: `measure.js` claims the device at import, so a rule that lives there has
+ * no gate under it.
  */
-export function unitFor(key) {
+export function unitFor(key, measurement) {
+  if (measurement?.workload?.includes(key)) return '';
   return /Us$/.test(key) ? 'µs' : 'ms';
 }
+
+/**
+ * A value with its unit, as every reporting layer prints one.
+ *
+ * Beside `unitFor` rather than private to a reader, because it has to agree with it:
+ * a workload field's unit is the empty string, and a renderer that pastes it on anyway
+ * emits `28 ` — a trailing space inside a padded column. That coupling is the argument
+ * for one copy; `measure.js` and `measure:compare` both had their own before this.
+ *
+ * `—` for a missing value, never `0`: no sample carrying the field and every sample
+ * carrying zero are different claims, and this subsystem refuses to blur them.
+ */
+export const withUnit = (v, unit = 'ms') => {
+  if (v === null || v === undefined) return '—';
+  const n = Math.round(v * 10) / 10;
+  return unit ? `${n} ${unit}` : `${n}`;
+};
 
 /**
  * Every field name a family's patterns can produce, each once.

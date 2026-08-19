@@ -22,8 +22,11 @@ import {
   describeMeasurements,
   interleaving,
   mannWhitney,
+  describeMixed,
   median,
+  mixedPopulations,
   parseCompareArgs,
+  POPULATION_AXES,
   parseSelector,
   reportComparison,
   selectSeries,
@@ -417,6 +420,76 @@ describe('comparability — what is refused', () => {
       provenance: { ...series().provenance, enableRta: null, identitySource: 'enclosed' },
     };
     expect(refuse({}, older).join(' ')).toMatch(/ENABLE_RTA/);
+  });
+});
+
+describe('the shared population axes', () => {
+  it('reports an arm that is one population as mixing nothing', () => {
+    const [a] = armsFrom(twoArms());
+    expect(mixedPopulations(a)).toEqual([]);
+  });
+
+  it('names the axis and its values so a second caller can act on them', () => {
+    // The matrix report asks this of one pooled cell rather than of two arms, and prints
+    // the values in the note that tells the operator how to narrow the selection — so
+    // both fields are contract, not just the boolean.
+    const [before, after] = twoArms();
+    const [a] = armsFrom([before, { ...after, arm: 'before', screen: 'settings' }]);
+    const screen = mixedPopulations(a).find((m) => m.key === 'screen');
+    expect(screen.what).toBe('screen');
+    expect(screen.values.sort()).toEqual(['home', 'settings']);
+  });
+
+  it('covers the axes that are NOT selection keys, which is why they are shared', () => {
+    // `enableRta` and the build-flavor bracket have no `SERIES_KEYS` entry, so a caller
+    // that rebuilt this from the selector grammar would silently skip both.
+    expect(POPULATION_AXES.map((x) => x.key)).toEqual(
+      expect.arrayContaining(['enableRta', 'buildFlavor']),
+    );
+  });
+
+  it('declares its own cross-arm wording on the axis, not in a key list at the loop', () => {
+    // The three axes that word their differing-ACROSS-arms case themselves. Held here
+    // because the alternative — a list of key names two hundred lines from the axes it
+    // names — is how an axis added later silently inherits the generic message, which is
+    // the one-rule-two-implementations defect this extraction exists to prevent.
+    expect(POPULATION_AXES.filter((x) => x.crossArm === 'custom').map((x) => x.key)).toEqual([
+      'server',
+      'buildFlavor',
+      'enableRta',
+    ]);
+    // Every axis reading off SAMPLES must be custom: the generic branch reads `series`.
+    for (const axis of POPULATION_AXES) {
+      if (axis.scope === 'samples') expect(axis.crossArm).toBe('custom');
+    }
+  });
+
+  it('pluralises an axis whose name does not take a bare `s`', () => {
+    // Both callers say `mixes N <what>s`, which printed `2 measurement familys`.
+    const [before, after] = twoArms();
+    const [a] = armsFrom([before, { ...after, arm: 'before', measurement: 'item-grid' }]);
+    const family = mixedPopulations(a).find((m) => m.key === 'measurement');
+    expect(describeMixed('x', family)).toMatch(/2 measurement families/);
+    expect(describeMixed('x', family)).not.toMatch(/familys/);
+
+    // The cross-arm half says it too, and reads it from the same place.
+    const across = comparability(
+      ...armsFrom(twoArms({ measurement: 'home-latest-rows' }, { measurement: 'item-grid' })),
+    ).refusals.join(' ');
+    expect(across).toMatch(/different measurement families/);
+    expect(across).not.toMatch(/familys/);
+  });
+
+  it('says `unstamped` for a missing build-flavor bracket, not "(not recorded)"', () => {
+    const [before, after] = twoArms();
+    const bare = {
+      ...after,
+      arm: 'before',
+      samples: after.samples.map((s) => ({ ...s, buildFlags: null })),
+    };
+    const [a] = armsFrom([before, bare]);
+    const flavor = mixedPopulations(a).find((m) => m.key === 'buildFlavor');
+    expect(describeMixed('x', flavor)).toMatch(/unstamped/);
   });
 });
 

@@ -96,6 +96,7 @@ Task-oriented how-to guides live in [`docs/dev/`](../dev/). The index below is a
 | [`docs/dev/home-first-paint-performance.md`](../dev/home-first-paint-performance.md) | Measuring orchestrator wait-vs-emit on device |
 | [`docs/dev/jellyfin-server-versioning.md`](../dev/jellyfin-server-versioning.md) | JellyRock Versioning Systems Overview |
 | [`docs/dev/logging.md`](../dev/logging.md) | Logging Guide (roku-log) |
+| [`docs/dev/measuring-performance.md`](../dev/measuring-performance.md) | Measuring performance on device |
 | [`docs/dev/new-user-setting.md`](../dev/new-user-setting.md) | Adding User Settings Guide |
 | [`docs/dev/promises.md`](../dev/promises.md) | Promises How-To & Style Guide |
 | [`docs/dev/registry-migrations.md`](../dev/registry-migrations.md) | Registry Migrations Guide |
