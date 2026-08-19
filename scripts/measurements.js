@@ -200,6 +200,24 @@ export const MEASUREMENTS = Object.freeze([
         pattern:
           /latest-rows populate split attach (?<attachMs>\d+) detach (?<detachMs>\d+) other (?<otherMs>\d+)/,
       }),
+      Object.freeze({
+        // How often the row geometry was rewritten, and what that cost. Emitted as its
+        // OWN line rather than three more groups on `populate split` because `m.log.*`
+        // faults at runtime past nine call-site arguments.
+        //
+        // OPTIONAL, and that is load-bearing rather than cautious: only a build carrying
+        // the row-size batching emits it at all, so a REQUIRED line here would drop every
+        // sample taken on a build without it — which is exactly the arm any comparison
+        // needs as its baseline. An arm that emits nothing records the timings it does
+        // have and reports the line as uncovered.
+        key: 'sizeRecompute',
+        required: false,
+        // Ground truth: this is the pattern that read real `.177` lines throughout the
+        // #728 campaign (`tasks/measure-first-paint.mjs`'s RE_SIZE), transcribed to the
+        // registry's named-group form rather than rewritten from the call site.
+        pattern:
+          /latest-rows size recompute\s+calls\s+(?<sizeCalls>\d+)\s+drains\s+(?<sizeDrains>\d+)\s+ms\s+(?<sizeMs>\d+)/,
+      }),
     ]),
   }),
   Object.freeze({
