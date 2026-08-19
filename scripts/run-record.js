@@ -814,6 +814,28 @@ export function beginRun({ lock, run, cumulative = false }) {
     { run, startedAt, variant, commit, dirty, ...(cumulative ? { cumulative: true } : {}) },
     activeRunDir,
   );
+  // Read it straight back, so THIS PROCESS holds the record in memory for the rest of
+  // the run.
+  //
+  // `run-meta.json` lives under `out/`, and `measure --deploy` spawns `npm run build`
+  // AFTER this point — which opens with `rimraf build/ out/` and takes the file with it.
+  // Every later `runProvenance()` then read a path that no longer existed, caught, and
+  // degraded to nulls, so a `--deploy` series published no commit, no dirty flag, no
+  // deviceKey and no startedAt: exactly the attribution the ledger exists to carry. It
+  // also silently disabled `crossedHourBoundary`, which is derived from that startedAt.
+  //
+  // Measured rather than reasoned: on an independent 163-record ledger, 33 of 34 series
+  // with `deployedFromCheckout: true` carried a null commit, against 1 of 127 for the
+  // rest.
+  //
+  // This warms the EXISTING reader rather than assigning a hand-built object, so there is
+  // no second definition of the record to drift from `writeRunMeta`'s merge of
+  // `lock.meta`. The file stays the source of truth for every OTHER process.
+  //
+  // Note the header's rule already covers this hazard for the LEDGER ("it lives under
+  // `.device-runs/`, NOT `out/`, because every `build*` script starts with `rimraf out/`").
+  // `run-meta.json` is the one file that stayed behind; caching is what makes it safe.
+  runMeta();
   resetFailures();
   // Same contract as the failure records: a fold may only ever see THIS run's.
   resetAssertions();
