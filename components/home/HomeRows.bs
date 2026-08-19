@@ -450,10 +450,15 @@ sub startLatestMediaLoads()
   '     flush coalesces nothing. `drains` in the perfTiming line is what keeps that checkable.
   '   - The batch owns only the rows this run delivers. latestRows.removalIsDeferrable is the
   '     seam; every other Home section stays eager, and the reasoning is there.
-  '   - Batching does NOT pay off where only a row or two changes. The per-call price is not
-  '     fixed — a deferred recompute lands when the tree is fullest and costs more than an
-  '     early one — so at two structural changes it is a wash. The win is in the COUNT, and
-  '     the count is what grows with library count.
+  '   - It pays even at TWO structural changes, and this comment used to say the opposite.
+  '     The per-call price is not fixed — a deferred recompute lands when the tree is fullest
+  '     and costs more than an early one — so collapsing 2 calls into 1 does look like a wash
+  '     if you only read `ms`. The batch also defers the REMOVALS, and that saving never
+  '     appears in `ms`. It also makes the cost BOUNDED: `calls` is 1 regardless of how many
+  '     libraries come back empty, where the eager path's cost depends on where in the load
+  '     each removal happens to land. Measured on all three RAM tiers; the win grows as the
+  '     device weakens, because a busy render thread also slows the Task thread. Figures and
+  '     arms in the journal.
   m.rowSizesBatching = true
   m.isLoadingLatestRows = true
   m.latestRowsRunClock.mark()

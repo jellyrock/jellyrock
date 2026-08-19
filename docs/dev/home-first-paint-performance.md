@@ -214,9 +214,60 @@ works is the **whole run**.
 
 ⚠️ **The per-call price is not fixed, so `calls` alone does not predict `ms`.** It tracks how
 much content is in the tree when the write lands: ~85 ms for a call early in a load, ~200 ms
-for one after every row is populated. So batching is a **wash where few rows change** — at 2
-structural changes, `ms` was 161 vs 161 (n=6/14), one late recompute costing about what two
-early ones did. What grows with library count is `calls`, and that is where it pays:
+for one after every row is populated.
+
+**This section used to conclude from that "batching is a wash where few rows change", and
+that was wrong.** The `161 vs 161` behind the sentence is `ms` — time *inside*
+`setRowItemSize` — and that figure is fine: two early recomputes really do cost about what
+one late one does. The error was generalizing it to the whole change, because the batch also
+defers the row **removals**, and that saving does not land in `ms` at all. Corrected on
+measurement, not on argument.
+
+**Re-measured 2026-08-19**, against a server producing exactly **2** structural changes (10
+libraries requested, 2 returning nothing) — i.e. the very case the old sentence called a
+wash. `main` vs this branch, n=30 per arm per tier, alternating blocks, identical `rows=10`
+workload on every sample, every figure out of `measure:compare`:
+
+| `total` | 512 MB Stick | 1 GB Stick 4K | 2 GB Ultra |
+|---|---|---|---|
+| main | 3446 ms | 1760 ms | 1162.5 ms |
+| batched | **2828.5 ms** | **1533 ms** | **1042.5 ms** |
+| delta | **−617.5 (−17.9%)** | **−227 (−12.9%)** | **−120 (−10.3%)** |
+| rank test | p<0.0001 | p<0.0001 | p=0.0025 |
+
+The 1 GB column was taken **twice, with the arm order reversed** the second time (−216 ms,
+−12.3%). That control was not ceremony: the first campaign's per-block deltas grew across the
+session, and an order effect had to be excluded before any number could be published.
+
+**Why the win grows as the device weakens.** The recompute saving itself is roughly flat
+across tiers; the knock-on is not:
+
+| | 512 MB | 1 GB | 2 GB |
+|---|---|---|---|
+| `other` — the recompute | −104 | −108.5 | −45 *(complete separation, U=0)* |
+| `wait` — Task thread | **−308.5** (p=0.0002) | −83.5 (p=0.0012) | −24.5 *(not distinguishable)* |
+
+`wait` is time the Task thread spends on the network, and this change does not touch the
+network. It moves because a render thread with less to do stops slowing the Task thread down
+— [the rendezvous cost model](../architecture/async.md#crossing-the-thread-boundary-costs-a-rendezvous--budget-crossings-not-bytes)
+surfacing in the column you would least expect, and the reason the effect nearly triples
+between the Ultra and the 512 MB Stick.
+
+**The result that is easiest to miss: the batch makes the cost BOUNDED, not just smaller.**
+`sizeCalls` is 1 on every batched sample taken, on every tier:
+
+| `other` range | 512 MB | 1 GB | 2 GB |
+|---|---|---|---|
+| main | 202–857 ms | 93–531 ms | 76–251 ms |
+| batched | **193–222 ms** | **82–112 ms** | **58–73 ms** |
+
+Main's two recomputes land wherever the network happens to deliver the two empty libraries,
+so their cost depends on how full the tree is at that instant; the batch pins its single
+recompute to the end of the run. Non-vacuously confirmed: main's `detach` is **flat**
+(24–27 ms across all 12 blocks on the 1 GB device) while its `other` swings 128–300 — so the
+recomputes got more *expensive*, not more numerous.
+
+What grows with library count is `calls`, and that is where it pays hardest:
 
 | 6 libraries returning nothing | before | after |
 |---|---|---|
@@ -224,6 +275,13 @@ early ones did. What grows with library count is `calls`, and that is where it p
 | `ms` | 408 | **91** |
 | `other` | 661 | **95** |
 | **`total`** | **2593.5** | **1669 ms (−36%)** |
+
+⚠️ **That −36% was measured under an ENGINEERED condition and is not the general result.** It
+needs **6** libraries returning nothing; the bench server has 2, and this work's own session
+notes record "two such libraries on the test server". Nothing in the repo creates the 6-empty
+state — it was arranged by hand, and the magnitude has **not** been re-derived under the
+current method. Read it as evidence that the win scales with `calls`, and the three-tier
+table above as what the change is worth on a real library set.
 
 n=6/arm, back to back, same forced-empty probe on both, only the batching differing.
 Complete separation (U=0.0 against a null expectation of 18, p=0.005), and non-vacuous:
