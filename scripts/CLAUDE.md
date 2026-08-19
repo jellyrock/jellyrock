@@ -149,5 +149,5 @@ needs direct invocation later (`./scripts/foo.js`), the fix is to add it to
 ## Don't manually run
 
 - `npm run lint:js` / `check-formatting:js` — pre-push runs them
-- `npm run test:scripts` — pre-push + CI run it
+- `npm run test:scripts` — pre-push (on any JS in the push range) + CI run it. **This is the exception to the root `AGENTS.md` note about test scripts**, which is about the hardware suites (`test:tdd` / `test:unit` / `test:integration`) that no hook runs
 - Exception: debugging a specific lint failure

@@ -283,7 +283,11 @@ If a VSCode BrightScript debugger session is already attached to the test device
 
 ### When Hardware Isn't Available
 
-If no Roku is reachable (no `.env`, no device on network, debugger holding the port), say so explicitly. Do not claim a fix was tested when only the build (`npm run build:tdd`) was verified.
+**Check before you conclude it isn't: `npm run device:check`.** It probes every device in `.env` over ECP and tells you which answered. A device that answers is a device you can test on — run the tests.
+
+If the probe genuinely fails (no `.env`, no device on the network, debugger holding the port), say so explicitly, and say *the probe failed* rather than that you lack access. Do not claim a fix was tested when only the build (`npm run build:tdd`) was verified.
+
+ECP answering is not a promise that a sideload will succeed — dev mode off, or a `ROKU_PASSWORD` belonging to a different device, still fails at deploy. That is a different (and also checkable) report.
 
 ---
 

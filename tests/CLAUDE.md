@@ -61,7 +61,9 @@ Reads `ROKU_IP` and `ROKU_PASSWORD` from a gitignored `.env` at the repo root. I
 
 ### When hardware isn't available
 
-If no Roku is reachable (no `.env`, no device on network, debugger holding the port), **say so explicitly**. Do NOT claim a fix was tested when only the build (`npm run build:tdd`) was verified. A green build is not a green test run.
+**First run `npm run device:check`** — it probes every device in `.env` over ECP and prints which answered. Claiming no device without running it is the failure mode this exists for; a device that answers is a device you can test on.
+
+If the probe fails (no `.env`, no device on network, debugger holding the port), **say so explicitly** — and say *the probe failed*, not that you lack access. Do NOT claim a fix was tested when only the build (`npm run build:tdd`) was verified. A green build is not a green test run.
 
 ### Debugger contention
 
