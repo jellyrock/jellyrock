@@ -22,12 +22,11 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Currently running
 
-`fix/rta-overhang-escape-and-login-gate` — two RTA harness fixes, both reproduced on `main`: `focusOverhangIcon` can now recover a lost `Up` (it re-sends the key still owed instead of walking the row with `Right`), and `waitHome` gates on a routed view existing before it reads Home's rows, so a slow login is reported as itself rather than as "home rows never appeared". Proven necessary, not proven effective — the recovery path has never executed on hardware, so the next `[nav] overhang … re-pressed` warning in a run log is the observation worth capturing.
-
 ## Recently shipped
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-19 — ci(rta): Make the overhang escape recoverable and gate `waitHome` on login
 - 2026-08-18 — ci(rta): Add `measure:calibrate`, the ODC calibration harness
 - 2026-08-17 — ci(rta): Have the readiness ledger measure its own footprint
 - 2026-08-17 — **A multi-step followup can record that ONE step shipped**, closing the "no sanctioned way" followup. `/log followup --replace=<substring>` revises one named bullet in place instead of appending, so an entry listing ordered steps no longer has to choose between a `/done` that publishes a shipped-line claiming the whole thing and a raw edit the capture-discipline rule forbids. Exactly one match is required — zero refuses rather than falling back to appending (a silent append is the two-contradicting-bullets state the mode exists to prevent), more than one refuses and asks for a longer substring. It revises and never closes: the bullet stays under Open followups and nothing reaches Recently shipped. It was dogfooded on the ODC calibration entry, which is what surfaced the gap twice — once on step 1 (`fix/overhang-precondition-and-sampling-loop`) and again on step 2 (ADR 0030).
@@ -74,8 +73,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-08-06 — RTA functional tests now run in CI on the release-prep branch (`rta-functional-tests.yml`): path-scoped via `changed-paths` so a screenshot/docs push never spins the shared device, `jellyrock[bot]` version-bump commits skipped, and `concurrency` deliberately `cancel-in-progress: false` so a skipped run can't cancel a real one. Closes two duplicate followups that both asked for this.
 - 2026-08-06 — Run the Genres view's per-genre fetches through `apiPipeline`
 - 2026-08-06 — Measure the item-grid wait/emit split, pick `apiPipeline` for the genre loop, and keep the timers out of prod
-- 2026-08-04 — feat: PR #768 **merged** (`d1ec5683`) — epic #728 Phase 1's accounted `launchTask()` chokepoint, 99 launch sites migrated, `no-raw-run` making a bare launch a build error. The headline review fix: the debug thread ledger silently dropped the five Task threads `setGlobalNodes()` starts — it wrote to an `roSGNode` field that did not exist yet — so `printTaskThreads()` under-reported by a permanent five (device-verified either side of the fix, now a mutation-proven regression test). The post-completion pool refill was **reverted**: 190 measured runs across three device tiers found it slower in 6/6 independent comparisons (sign test p=0.031) and never faster, and its original n=4 justification did not reproduce. Home first-paint baselines were re-measured at n=30 per device against the committed artifact, with `drain` dropped from the published table as an unreliable derived quantity.
-- 2026-08-04 — fix(rta): `restoreSession` now proves the restore took — write → cold restart → read back → compare, retrying and THROWING on mismatch, plus `globalRememberMe` added to the snapshot and a `hardRelaunch` (an ECP `/launch/dev` on a running channel only foregrounds it, so the stale in-memory session used to survive and re-persist over the restore). Closes the "`npm run test:rta` can leave the device signed into the demo server" followup, which recurred and stranded two devices during the #768 measurement work before being fixed and dogfooded to recover them.
 
 ## Open followups
 
