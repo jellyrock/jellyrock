@@ -404,6 +404,103 @@ export const describeMixed = (label, axis) =>
   'not a series.';
 
 /**
+ * The sample sizes the recorded method is defined against.
+ *
+ * Extracted because these three numbers were already typed into three different message
+ * strings in this file, and the matrix report needs the same ones — a fourth copy of a
+ * constant is how two tools end up disagreeing about what "enough samples" means.
+ * Sourced from `docs/dev/home-first-paint-performance.md`, which established them.
+ */
+export const METHOD_FLOOR = Object.freeze({
+  /** Below this a series is not a series; the doc's stated minimum. */
+  minSamples: 5,
+  /** Per arm, the n the resolution below was measured at. */
+  resolvingN: 30,
+  /** The smallest difference the method can separate from run-to-run variation. */
+  resolvesMs: 120,
+});
+
+/**
+ * Facts about a SERIES that weaken what any number taken from it can claim.
+ *
+ * These are not population axes. A population axis asks "are these series the same
+ * experiment?" and refuses when they are not. These ask "is this series' own account of
+ * itself trustworthy?", and the answer never refuses anything — it is disclosed beside
+ * the number, because the alternative is a median that reads exactly like a good one.
+ *
+ * Shared for the reason `measure-selection.js` documents at length: `comparability`
+ * checked four of these inline and the matrix report checked none, so a cell could
+ * publish a median from a dirty tree while the paired comparison of the same series
+ * warned about it. One rule with two implementations is not a rule.
+ *
+ * Only the PREDICATES live here. `comparability` keeps its own arm-phrased wording
+ * ("arm before contains a series that…") and the report keeps its cell-phrased wording,
+ * because the same fact is addressed to two different readers. What must not diverge is
+ * WHEN it fires.
+ */
+export const SERIES_INTEGRITY = Object.freeze([
+  {
+    key: 'dirty',
+    // `flake-baseline.js` EXCLUDES these outright rather than disclosing them, and its
+    // reason applies here too: `dirty: true` carries no content hash, so two dirty runs
+    // are not provably the same code. A measurement reader discloses instead of
+    // excluding because a dirty tree is the normal state while iterating on a fix.
+    test: (r) => r?.dirty === true,
+    says: 'taken on a dirty tree, so the recorded commit does not pin the code that ran',
+  },
+  {
+    key: 'unattributedBuild',
+    // `deployedFromCheckout` is a claim about THIS run; `deployedBy` is the escape hatch
+    // for a caller that deployed immediately before and vouches for it (the calibration
+    // harness sets it). Neither means nobody can say the measured build came from the
+    // recorded commit at all — which is a WEAKER claim than a dirty tree, not a stronger
+    // one, and the two co-occur constantly.
+    //
+    // `!== true` deliberately catches `undefined` as well as `false`: a record predating
+    // the field cannot attribute its build either, and "we cannot say" is what the
+    // warning claims.
+    test: (r) =>
+      r?.provenance?.checkout?.deployedFromCheckout !== true &&
+      !r?.provenance?.checkout?.deployedBy,
+    says: 'measured a build nobody attributed to a checkout, so its commit may describe code that never ran',
+  },
+  {
+    key: 'serverUnasserted',
+    test: (r) => r?.tier1?.asserted !== true,
+    says: 'never asserted its server (no --server), so the server it names is what the app reported rather than what anyone declared',
+  },
+  {
+    key: 'identityDrift',
+    test: (r) => !!r?.seriesConsistency && r.seriesConsistency.ok === false,
+    says: 'had its identity drift or fail to re-read at the end, so its samples are not provably one population',
+  },
+  {
+    key: 'hourBoundary',
+    test: (r) => r?.crossedHourBoundary === true,
+    says: 'crossed the top of the hour, where a resetting fixture changes the workload underneath it',
+  },
+  {
+    key: 'hourUnknown',
+    // Split from `hourBoundary` rather than folded into it: "it crossed" and "nobody
+    // recorded whether it crossed" are different claims, and this subsystem does not
+    // blur an absent field into a negative answer.
+    test: (r) => r?.crossedHourBoundary == null,
+    says: 'did not record whether it crossed the top of the hour',
+  },
+]);
+
+/** Which integrity facts fire over a set of series, and how many series each covers. */
+export function seriesIntegrity(series = []) {
+  return SERIES_INTEGRITY.map((fact) => ({
+    ...fact,
+    count: series.filter(fact.test).length,
+  })).filter((fact) => fact.count > 0);
+}
+
+/** How one integrity fact reads about a CELL, as the matrix report phrases it. */
+export const describeIntegrity = (fact, total) => `${fact.count} of ${total} series ${fact.says}`;
+
+/**
  * Can these two arms be compared at all?
  *
  * REFUSALS are the axes on which two series are not a slow arm and a fast arm but
@@ -421,6 +518,9 @@ export const describeMixed = (label, axis) =>
 export function comparability(a, b) {
   const refusals = [];
   const warnings = [];
+  // The predicates are shared with the matrix report (`SERIES_INTEGRITY`); only the
+  // arm-phrased wording below is this function's own.
+  const fires = (arm, key) => arm.series.some(SERIES_INTEGRITY.find((f) => f.key === key).test);
 
   for (const arm of [a, b]) {
     if (!arm.series.length) {
@@ -641,22 +741,23 @@ export function comparability(a, b) {
           'workload, not a slow sample.',
       );
     }
-    if (arm.series.some((r) => r.tier1?.asserted !== true)) {
+    if (fires(arm, 'serverUnasserted')) {
       warnings.push(
         `arm ${arm.label} contains a series that did NOT assert its server (no --server). The ` +
           'server it recorded is what the app reported, not what anyone declared.',
       );
     }
-    if (arm.series.some((r) => r.seriesConsistency && r.seriesConsistency.ok === false)) {
+    if (fires(arm, 'identityDrift')) {
       warnings.push(
         `arm ${arm.label} contains a series whose identity drifted or could not be re-read at the ` +
           'end — those samples are not provably one population.',
       );
     }
-    if (arm.values.length < 5) {
+    if (arm.values.length < METHOD_FLOOR.minSamples) {
       warnings.push(
-        `arm ${arm.label} has ${arm.values.length} sample(s). The recorded method wants n≥5 and ` +
-          'resolves ~120 ms and up at n=30 per arm; below that a delta cannot be called either way.',
+        `arm ${arm.label} has ${arm.values.length} sample(s). The recorded method wants ` +
+          `n≥${METHOD_FLOOR.minSamples} and resolves ~${METHOD_FLOOR.resolvesMs} ms and up at ` +
+          `n=${METHOD_FLOOR.resolvingN} per arm; below that a delta cannot be called either way.`,
       );
     }
   }
@@ -681,9 +782,10 @@ export function comparability(a, b) {
         'same unit, and unit-to-unit variation has never been measured here.',
     );
   }
-  const crossed = [...a.series, ...b.series].filter((r) => r.crossedHourBoundary === true).length;
-  const unknownHour = [...a.series, ...b.series].filter(
-    (r) => r.crossedHourBoundary == null,
+  const both = [...a.series, ...b.series];
+  const crossed = both.filter(SERIES_INTEGRITY.find((f) => f.key === 'hourBoundary').test).length;
+  const unknownHour = both.filter(
+    SERIES_INTEGRITY.find((f) => f.key === 'hourUnknown').test,
   ).length;
   if (crossed || unknownHour) {
     const parts = [];
@@ -693,11 +795,24 @@ export function comparability(a, b) {
       `${parts.join('; ')} — a fixture that resets mid-series changes the workload underneath it.`,
     );
   }
-  const dirty = [...a.series, ...b.series].filter((r) => r.dirty === true);
+  const dirty = both.filter(SERIES_INTEGRITY.find((f) => f.key === 'dirty').test);
   if (dirty.length) {
     warnings.push(
       `${dirty.length} series ran against a DIRTY tree, so its commit does not pin the code that ` +
         'produced the numbers. Only the arm label distinguishes the two builds.',
+    );
+  }
+  // The WEAKER claim beside the one above, and it had no warning on either reader until
+  // 2026-08-19: a dirty tree means the commit is incomplete, this means nobody can say
+  // the measured build came from that commit at all. `--deploy` settles it, and a caller
+  // that deployed immediately before can say so with `--deployed-by`.
+  const unattributed = both.filter(
+    SERIES_INTEGRITY.find((f) => f.key === 'unattributedBuild').test,
+  );
+  if (unattributed.length) {
+    warnings.push(
+      `${unattributed.length} series measured a build nobody attributed to a checkout (no ` +
+        '`--deploy`, no `--deployed-by`), so its recorded commit may describe code that never ran.',
     );
   }
   return { refusals, warnings };

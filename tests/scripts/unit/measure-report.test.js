@@ -34,6 +34,7 @@ import {
 } from '../../../scripts/measure-report.js';
 import { MeasureArgError } from '../../../scripts/measure-args.js';
 import { compareRamTiers, RAM_TIERS } from '../../../scripts/roku-devices.js';
+import { METHOD_FLOOR, seriesIntegrity } from '../../../scripts/measure-compare.js';
 import { mixedPopulations, buildArm, parseSelector } from '../../../scripts/measure-compare.js';
 
 /**
@@ -307,6 +308,125 @@ describe('a sentinel is not a duration', () => {
     // The grid cell has no room to explain itself, so it must not show `-1 ×2`.
     const matrix = matrixOf(withSentinel, { field: 'firstPaintMs' });
     expect(cellText(cellAt(matrix, 'settings', '1GB'))).toBe('sentinel');
+  });
+});
+
+describe('integrity — what weakens a median, beside the number', () => {
+  // `measure:compare` has warned about most of these since it existed and the report
+  // warned about none, so the SAME series could be disclosed by one reader and silently
+  // averaged by the other. The predicates are now shared; only the wording differs.
+  const clean = () => ({
+    dirty: false,
+    tier1: { asserted: true, ok: true },
+    crossedHourBoundary: false,
+    provenance: { ...series().provenance, checkout: { deployedFromCheckout: true } },
+  });
+
+  it('discloses a dirty tree, which covers 37% of the real ledger', () => {
+    const out = renderDetail(matrixOf([series({ ...clean(), dirty: true })])).join('\n');
+    expect(out).toMatch(/integrity\s+⚠ 1 of 1 series taken on a dirty tree/);
+  });
+
+  it('discloses a build nobody attributed to a checkout', () => {
+    // The WEAKER claim beside a dirty tree: not "the commit is incomplete" but "the
+    // commit may describe code that never ran".
+    const out = renderDetail(
+      matrixOf([
+        series({
+          ...clean(),
+          provenance: { ...series().provenance, checkout: { deployedFromCheckout: false } },
+        }),
+      ]),
+    ).join('\n');
+    expect(out).toMatch(/nobody attributed to a checkout/);
+  });
+
+  it('accepts a build a caller vouched for with --deployed-by', () => {
+    // `measure-calibration` deploys and then runs, so `deployedFromCheckout` is false on
+    // 75 real records that ARE attributable. Treating those as unattributed would make
+    // the warning fire on most of the ledger and be ignored.
+    const out = renderDetail(
+      matrixOf([
+        series({
+          ...clean(),
+          provenance: {
+            ...series().provenance,
+            checkout: { deployedFromCheckout: false, deployedBy: 'measure-calibration' },
+          },
+        }),
+      ]),
+    ).join('\n');
+    expect(out).not.toMatch(/nobody attributed/);
+  });
+
+  it('discloses a server that was never asserted', () => {
+    const out = renderDetail(
+      matrixOf([series({ ...clean(), tier1: { asserted: false, ok: true } })]),
+    ).join('\n');
+    expect(out).toMatch(/never asserted its server/);
+  });
+
+  it('says nothing when every series is clean', () => {
+    expect(renderDetail(matrixOf([series(clean())])).join('\n')).not.toMatch(/integrity/);
+  });
+
+  it('uses the SAME predicates measure:compare uses', () => {
+    // The whole point of sharing them. If this drifts, one reader discloses and the
+    // other averages silently — which is what shipped before.
+    const dirty = [series({ ...clean(), dirty: true })];
+    const cell = cellAt(matrixOf(dirty), 'settings', '1GB');
+    expect(cell.integrity.map((f) => f.key)).toEqual(
+      seriesIntegrity(cell.provenance ? dirty : []).map((f) => f.key),
+    );
+  });
+});
+
+describe('the sample floor — n is visible, what it must be read against was not', () => {
+  it('warns that a median below n≥5 is not yet evidence', () => {
+    // 6 of the 9 cells the real report publishes are below this floor, including a
+    // ONE-sample median. Printing it unqualified invites a comparison it cannot support.
+    const one = [series({ samples: [sample(60)] })];
+    expect(renderDetail(matrixOf(one)).join('\n')).toMatch(
+      /samples\s+⚠ n=1, below the method's floor of n≥5 — this median is not yet evidence/,
+    );
+  });
+
+  it('states the resolution point for a cell above the floor but below n=30', () => {
+    const six = [series({ samples: Array.from({ length: 6 }, (_, i) => sample(60 + i)) })];
+    const out = renderDetail(matrixOf(six)).join('\n');
+    expect(out).toMatch(/samples\s+n=6; ~120 ms resolution is measured at n=30/);
+    expect(out).not.toMatch(/not yet evidence/);
+  });
+
+  it('takes the floor from the shared constant, not a retyped number', () => {
+    expect(METHOD_FLOOR).toEqual({ minSamples: 5, resolvingN: 30, resolvesMs: 120 });
+  });
+});
+
+describe('a workload headline earns a row of its own', () => {
+  it('gives the headline field a median row and the ← marker', () => {
+    // `--field items` headlines a workload count, which lives in `sample.workload` rather
+    // than `sample.timings` — so the grid published `28 ×5` while the detail block showed
+    // no row for it and marked nothing. The workload line tallies per-sample VALUES; it
+    // never states the median or the range.
+    // `fills` is a workload field the `screen-load` family actually DECLARES. That is what
+    // makes `unitFor` drop the unit: only the family knows a count from a duration, so a
+    // key it does not list still reads as milliseconds.
+    const recs = [
+      series({
+        samples: [sample(60, { workload: { fills: 3 } }), sample(70, { workload: { fills: 5 } })],
+      }),
+    ];
+    const out = renderDetail(matrixOf(recs, { field: 'fills' })).join('\n');
+    expect(out).toMatch(/fills\s+median 4 {2}×2 {2}range 3–5 ←/);
+    // No unit on a count.
+    expect(out).not.toMatch(/fills\s+median 4 ms/);
+  });
+
+  it('drops a headline field no sample in this cell carried', () => {
+    // n=0 would render `median — ×0`, which reads as a milestone the app failed to reach.
+    const cell = cellAt(matrixOf([series()], { field: 'nothingCarriesThis' }), 'settings', '1GB');
+    expect(cell.fields.map((f) => f.key)).not.toContain('nothingCarriesThis');
   });
 });
 

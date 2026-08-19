@@ -71,10 +71,13 @@ import {
   buildArm,
   coldSamples,
   describeExclusions,
+  describeIntegrity,
   describeMixed,
+  METHOD_FLOOR,
   mixedPopulations,
   parseSelector,
   selectSeries,
+  seriesIntegrity,
   SERIES_KEYS,
   summarizeValues,
   workloadTally,
@@ -216,23 +219,34 @@ export function buildCell(records, selector, field) {
       arm.series.flatMap((r) => coldSamples(r).flatMap((s) => Object.keys(s.timings || {}))),
     ),
   ];
+  // The HEADLINE field earns a row even when it is not a timing. `--field items` headlines
+  // a workload count, which lives in `sample.workload` rather than `sample.timings` — so
+  // the grid published `28 ×5` while the detail block listed only durations, showing no
+  // row for the number the table was built around and marking nothing with `←`. The
+  // workload line tallies per-sample VALUES; it never states the median or its range.
+  const detailKeys = field && !timingKeys.includes(field) ? [...timingKeys, field] : timingKeys;
   // Through `buildArm` per field rather than by reaching into the samples here, so every
   // number in the detail block is selected by the same rule as the headline one.
-  const fields = timingKeys.map((key) => {
-    const summary = summarizeValues(buildArm(arm.label, records, selector, key).values);
-    // A duration cannot be negative, so a negative value is a SENTINEL rather than a
-    // timing — `item-grid` initialises `firstPaintMs` to -1 and only assigns it on the
-    // genre-skeleton path, so a plain grid load (`genreFetches: 0`) reports -1 five times
-    // out of five. Publishing that as `median -1 ms` beside real medians is precisely the
-    // well-formed-but-wrong figure this subsystem refuses; it is flagged rather than
-    // dropped, because "the app never reached this milestone" is itself the finding.
-    return {
-      key,
-      unit: unitFor(key, family),
-      sentinel: summary.median !== null && summary.median < 0,
-      ...summary,
-    };
-  });
+  const fields = detailKeys
+    .map((key) => {
+      const summary = summarizeValues(buildArm(arm.label, records, selector, key).values);
+      // A duration cannot be negative, so a negative value is a SENTINEL rather than a
+      // timing — `item-grid` initialises `firstPaintMs` to -1 and only assigns it on the
+      // genre-skeleton path, so a plain grid load (`genreFetches: 0`) reports -1 five times
+      // out of five. Publishing that as `median -1 ms` beside real medians is precisely the
+      // well-formed-but-wrong figure this subsystem refuses; it is flagged rather than
+      // dropped, because "the app never reached this milestone" is itself the finding.
+      return {
+        key,
+        unit: unitFor(key, family),
+        sentinel: summary.median !== null && summary.median < 0,
+        ...summary,
+      };
+      // A headline field no sample in THIS cell carried resolves to n=0. Dropped rather
+      // than printed as `median — ×0`, which would read as a milestone the app failed to
+      // reach; the cell's own `—` already says nothing was measured here.
+    })
+    .filter((f) => f.n > 0);
 
   return {
     selector,
@@ -259,6 +273,11 @@ export function buildCell(records, selector, field) {
     // Taken from `arm.series` — the ones that actually fed the median, not every record
     // the selector matched.
     provenance: provenanceOf(arm.series),
+    // Facts about the SERIES that weaken what this cell's median can claim — a dirty
+    // tree, a build nobody attributed, a server never asserted. Shared with
+    // `measure:compare` so the two readers cannot disagree about when one fires; on the
+    // real ledger a dirty tree covers 37% of records and the report said nothing.
+    integrity: seriesIntegrity(arm.series),
     field,
     unit: unitFor(field, family),
     fields,
@@ -410,7 +429,13 @@ export function renderDetail(matrix) {
       // refused — the refusal has to hold in every view or it is decoration.
       if (!cell.n || cell.mixed.length) continue;
       lines.push(`  ${cell.label}`);
-      const keyWidth = Math.max(8, ...cell.fields.map((f) => f.key.length));
+      // The fixed labels below are part of this column too — a cell whose field names are
+      // all short (`items`, `taskMs`) left `provenance` and `integrity` hanging one
+      // character past every other row.
+      const keyWidth = Math.max(
+        ...DETAIL_LABELS.map((l) => l.length),
+        ...cell.fields.map((f) => f.key.length),
+      );
       for (const f of cell.fields) {
         const headline = f.key === matrix.primary ? ' ←' : '';
         if (f.sentinel) {
@@ -450,8 +475,50 @@ export function renderDetail(matrix) {
               .join(', '),
         );
       }
+      for (const line of integrityLines(cell, keyWidth)) lines.push(line);
       lines.push('');
     }
+  }
+  return lines;
+}
+
+/** The fixed row labels in a detail block, so the key column is wide enough for them. */
+const DETAIL_LABELS = Object.freeze(['workload', 'provenance', 'samples', 'integrity', 'yield']);
+
+/**
+ * What weakens this cell's median, beside the number rather than in a footnote.
+ *
+ * Two different kinds of caveat, deliberately printed together because a reader weighing
+ * a number needs both at once:
+ *
+ * - **The sample floor.** `n` is already visible, but the number it has to be read
+ *   against is not: the recorded method wants n≥5 and only resolves ~120 ms at n=30 per
+ *   arm. Six of the nine cells this report currently publishes sit below that floor, and
+ *   `movieDetails · 1GB` publishes a median of ONE sample. A matrix that prints a
+ *   one-sample median without saying so invites exactly the comparison it cannot support.
+ * - **Series integrity.** A dirty tree, a build nobody attributed to a checkout, a server
+ *   never asserted. `measure:compare` has warned about most of these since it existed and
+ *   the report warned about none, so the same series could be disclosed by one reader and
+ *   silently averaged by the other.
+ *
+ * Never a refusal. Every one of these describes a number that is still the best evidence
+ * available — the failure mode is publishing it as though it were unqualified.
+ */
+export function integrityLines(cell, keyWidth) {
+  const lines = [];
+  if (cell.n < METHOD_FLOOR.minSamples) {
+    lines.push(
+      `    ${pad('samples', keyWidth)}  ⚠ n=${cell.n}, below the method's floor of ` +
+        `n≥${METHOD_FLOOR.minSamples} — this median is not yet evidence`,
+    );
+  } else if (cell.n < METHOD_FLOOR.resolvingN) {
+    lines.push(
+      `    ${pad('samples', keyWidth)}  n=${cell.n}; ~${METHOD_FLOOR.resolvesMs} ms resolution ` +
+        `is measured at n=${METHOD_FLOOR.resolvingN}, so smaller differences cannot be called`,
+    );
+  }
+  for (const fact of cell.integrity) {
+    lines.push(`    ${pad('integrity', keyWidth)}  ⚠ ${describeIntegrity(fact, cell.series)}`);
   }
   return lines;
 }

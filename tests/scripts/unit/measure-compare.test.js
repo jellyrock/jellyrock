@@ -24,6 +24,9 @@ import {
   mannWhitney,
   describeMixed,
   median,
+  METHOD_FLOOR,
+  SERIES_INTEGRITY,
+  seriesIntegrity,
   mixedPopulations,
   parseCompareArgs,
   POPULATION_AXES,
@@ -82,7 +85,14 @@ const series = (over = {}) => ({
       osVersion: '15.3.4',
     },
     enableRta: true,
-    checkout: { appVersion: '2.25.0', manifestFlags: { debug: false, perfTiming: true } },
+    // `deployedFromCheckout: true` keeps the DEFAULT fixture a healthy series, so a test
+    // that wants the build-attribution warning has to opt into it. Without this every
+    // case in the file would carry that warning and none would be asserting it.
+    checkout: {
+      appVersion: '2.25.0',
+      manifestFlags: { debug: false, perfTiming: true },
+      deployedFromCheckout: true,
+    },
     server: { url: 'http://192.0.2.10:8096', version: '10.11.11' },
   },
   requested: 3,
@@ -592,6 +602,55 @@ describe('comparability — what is only said out loud', () => {
     expect(warn({}, { crossedHourBoundary: true })).toMatch(/crossed the top of the hour/);
     expect(warn({}, { crossedHourBoundary: undefined })).toMatch(/did not record the flag/);
     expect(warn({}, { seriesConsistency: { ok: false, drifted: [] } })).toMatch(/identity drifted/);
+  });
+
+  it('warns when nobody can attribute the build to a checkout', () => {
+    // NEW 2026-08-19, and it had no warning on either reader before: a dirty tree means
+    // the recorded commit is incomplete; this means nobody can say the measured build
+    // came from that commit AT ALL. `!== true` deliberately covers a record predating
+    // the field — "we cannot say" is exactly what the warning claims.
+    const unattributed = { provenance: { ...series().provenance, checkout: {} } };
+    expect(warn({}, unattributed)).toMatch(/nobody attributed to a checkout/);
+  });
+
+  it('accepts a build a caller vouched for with --deployed-by', () => {
+    // `measure:calibrate` deploys and then spawns `measure`, so `deployedFromCheckout` is
+    // false on 75 real ledger records that ARE attributable. Flagging those would fire the
+    // warning on most of the ledger and train people to ignore it.
+    const vouched = {
+      provenance: {
+        ...series().provenance,
+        checkout: { deployedFromCheckout: false, deployedBy: 'measure-calibration' },
+      },
+    };
+    expect(warn({}, vouched)).not.toMatch(/nobody attributed/);
+  });
+
+  it('drives every integrity warning off the SHARED predicates', () => {
+    // The whole point of extracting them: `measure:report` discloses the same facts, and
+    // before the extraction it disclosed none of them — so one reader could warn about a
+    // series the other silently averaged. If a predicate is edited here, both move.
+    expect(SERIES_INTEGRITY.map((f) => f.key)).toEqual([
+      'dirty',
+      'unattributedBuild',
+      'serverUnasserted',
+      'identityDrift',
+      'hourBoundary',
+      'hourUnknown',
+    ]);
+    const [dirty] = seriesIntegrity([series({ dirty: true })]);
+    expect(dirty.key).toBe('dirty');
+    expect(dirty.count).toBe(1);
+    expect(seriesIntegrity([series()])).toEqual([]);
+  });
+
+  it('states the method floor from one constant, not three retyped numbers', () => {
+    // These three were typed into three different message strings in this file before the
+    // matrix report needed them too; a fourth copy is how two tools end up disagreeing
+    // about what "enough samples" means.
+    expect(METHOD_FLOOR).toEqual({ minSamples: 5, resolvingN: 30, resolvesMs: 120 });
+    const thin = comparability(...armsFrom(twoArms({}, {})));
+    expect(thin.warnings.join(' ')).toMatch(/wants n≥5 and resolves ~120 ms and up at n=30/);
   });
 
   it('warns on two units of the same model, which is not the same device', () => {

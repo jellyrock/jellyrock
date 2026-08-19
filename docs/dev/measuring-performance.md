@@ -521,6 +521,52 @@ whenever the dates cover only some of the series, because those same legacy seri
 counts the series that **fed the median**, not every record the selector matched — dropouts
 are the `yield` line's job.
 
+#### The `samples` and `integrity` lines — what weakens the median
+
+A cell prints a median whenever it has one. Two things decide how much weight it carries,
+and both are printed under the number rather than left for the reader to work out.
+
+**`samples` — the number `n` has to be read against.** The recorded method wants **n≥5**
+and only resolves **~120 ms at n=30 per arm**. `n` was always visible; what it means was
+not. Six of the nine cells this report currently publishes sit below the n≥5 floor, and
+one publishes a median of a **single sample**:
+
+```text
+    samples     ⚠ n=1, below the method's floor of n≥5 — this median is not yet evidence
+    samples     n=6; ~120 ms resolution is measured at n=30, so smaller differences cannot be called
+```
+
+**`integrity` — facts about the series that weaken what any number from them can claim.**
+These are shared with `measure:compare` (`SERIES_INTEGRITY`), so the two readers cannot
+disagree about when one fires — before this, the same series could be flagged by the paired
+comparison and silently averaged by the matrix:
+
+```text
+    integrity   ⚠ 1 of 1 series taken on a dirty tree, so the recorded commit does not pin the code that ran
+    integrity   ⚠ 1 of 1 series measured a build nobody attributed to a checkout, so its commit may describe code that never ran
+```
+
+| Fact | Fires when | Share of the current ledger |
+|---|---|---|
+| dirty tree | `dirty: true` — the commit is an incomplete description of the source | 37% |
+| unattributed build | neither `--deploy` nor `--deployed-by` — nobody can say the measured build came from the recorded commit | 33% |
+| server not asserted | no `--server`, so the recorded server is what the app reported rather than what anyone declared | 32% |
+| identity drift | the server identity moved or could not be re-read at the end | 0% |
+| hour boundary | the series crossed `:00`, where a resetting fixture changes the workload | 2% |
+| hour not recorded | the series predates the flag, so whether it crossed `:00` is unknown | 3% |
+
+**None of these is a refusal**, and that is deliberate: each describes a number that is
+still the best evidence available. The failure mode is publishing it as though it were
+unqualified. A dirty tree in particular is the *normal* state while iterating on a fix —
+[`flake-baseline.js`](../../scripts/flake-baseline.js) excludes such runs outright, and a
+measurement reader discloses instead, because excluding them would throw away most of what
+anyone measures while working.
+
+`--deploy` settles the attribution warning. A tool that deploys and then runs `measure`
+itself should pass `--deployed-by <name>` so its series are attributable —
+`measure:calibrate` does, which is why 75 of the ledger's 127 `deployedFromCheckout: false`
+records are **not** flagged.
+
 ### Comparing two arms
 
 Take the arms **alternating** — `--arm before`, `--arm after`, `--arm before`, … — never all
