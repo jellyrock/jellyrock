@@ -22,8 +22,14 @@ import {
   describeMeasurements,
   interleaving,
   mannWhitney,
+  describeMixed,
   median,
+  METHOD_FLOOR,
+  SERIES_INTEGRITY,
+  seriesIntegrity,
+  mixedPopulations,
   parseCompareArgs,
+  POPULATION_AXES,
   parseSelector,
   reportComparison,
   selectSeries,
@@ -79,7 +85,14 @@ const series = (over = {}) => ({
       osVersion: '15.3.4',
     },
     enableRta: true,
-    checkout: { appVersion: '2.25.0', manifestFlags: { debug: false, perfTiming: true } },
+    // `deployedFromCheckout: true` keeps the DEFAULT fixture a healthy series, so a test
+    // that wants the build-attribution warning has to opt into it. Without this every
+    // case in the file would carry that warning and none would be asserting it.
+    checkout: {
+      appVersion: '2.25.0',
+      manifestFlags: { debug: false, perfTiming: true },
+      deployedFromCheckout: true,
+    },
     server: { url: 'http://192.0.2.10:8096', version: '10.11.11' },
   },
   requested: 3,
@@ -127,6 +140,19 @@ describe('selecting an arm', () => {
       commit: 'abc1234',
       device: 'dev-a',
     });
+  });
+
+  it('can select on `dirty`, which the integrity disclosure gives a reader to act on', () => {
+    // Added 2026-08-19 alongside the report's integrity line: telling a reader their
+    // median pools dirty-tree series and offering no way to exclude them is a dead end.
+    // Selectable, but deliberately NOT a refusal axis — mixing dirty and clean is
+    // disclosed, not refused.
+    expect(parseSelector('dirty=false')).toEqual({ dirty: 'false' });
+    const records = [series({ dirty: true }), series({ dirty: false }), series({ dirty: null })];
+    expect(selectSeries(records, { dirty: 'false' }).series).toHaveLength(1);
+    // `null` is `(unrecorded)`, NOT clean — "nobody wrote it down" is a third state.
+    expect(selectSeries(records, { dirty: '' }).series).toHaveLength(1);
+    expect(POPULATION_AXES.some((a) => a.key === 'dirty')).toBe(false);
   });
 
   it('refuses an unknown selector key rather than ignoring it', () => {
@@ -420,6 +446,76 @@ describe('comparability — what is refused', () => {
   });
 });
 
+describe('the shared population axes', () => {
+  it('reports an arm that is one population as mixing nothing', () => {
+    const [a] = armsFrom(twoArms());
+    expect(mixedPopulations(a)).toEqual([]);
+  });
+
+  it('names the axis and its values so a second caller can act on them', () => {
+    // The matrix report asks this of one pooled cell rather than of two arms, and prints
+    // the values in the note that tells the operator how to narrow the selection — so
+    // both fields are contract, not just the boolean.
+    const [before, after] = twoArms();
+    const [a] = armsFrom([before, { ...after, arm: 'before', screen: 'settings' }]);
+    const screen = mixedPopulations(a).find((m) => m.key === 'screen');
+    expect(screen.what).toBe('screen');
+    expect(screen.values.sort()).toEqual(['home', 'settings']);
+  });
+
+  it('covers the axes that are NOT selection keys, which is why they are shared', () => {
+    // `enableRta` and the build-flavor bracket have no `SERIES_KEYS` entry, so a caller
+    // that rebuilt this from the selector grammar would silently skip both.
+    expect(POPULATION_AXES.map((x) => x.key)).toEqual(
+      expect.arrayContaining(['enableRta', 'buildFlavor']),
+    );
+  });
+
+  it('declares its own cross-arm wording on the axis, not in a key list at the loop', () => {
+    // The three axes that word their differing-ACROSS-arms case themselves. Held here
+    // because the alternative — a list of key names two hundred lines from the axes it
+    // names — is how an axis added later silently inherits the generic message, which is
+    // the one-rule-two-implementations defect this extraction exists to prevent.
+    expect(POPULATION_AXES.filter((x) => x.crossArm === 'custom').map((x) => x.key)).toEqual([
+      'server',
+      'buildFlavor',
+      'enableRta',
+    ]);
+    // Every axis reading off SAMPLES must be custom: the generic branch reads `series`.
+    for (const axis of POPULATION_AXES) {
+      if (axis.scope === 'samples') expect(axis.crossArm).toBe('custom');
+    }
+  });
+
+  it('pluralises an axis whose name does not take a bare `s`', () => {
+    // Both callers say `mixes N <what>s`, which printed `2 measurement familys`.
+    const [before, after] = twoArms();
+    const [a] = armsFrom([before, { ...after, arm: 'before', measurement: 'item-grid' }]);
+    const family = mixedPopulations(a).find((m) => m.key === 'measurement');
+    expect(describeMixed('x', family)).toMatch(/2 measurement families/);
+    expect(describeMixed('x', family)).not.toMatch(/familys/);
+
+    // The cross-arm half says it too, and reads it from the same place.
+    const across = comparability(
+      ...armsFrom(twoArms({ measurement: 'home-latest-rows' }, { measurement: 'item-grid' })),
+    ).refusals.join(' ');
+    expect(across).toMatch(/different measurement families/);
+    expect(across).not.toMatch(/familys/);
+  });
+
+  it('says `unstamped` for a missing build-flavor bracket, not "(not recorded)"', () => {
+    const [before, after] = twoArms();
+    const bare = {
+      ...after,
+      arm: 'before',
+      samples: after.samples.map((s) => ({ ...s, buildFlags: null })),
+    };
+    const [a] = armsFrom([before, bare]);
+    const flavor = mixedPopulations(a).find((m) => m.key === 'buildFlavor');
+    expect(describeMixed('x', flavor)).toMatch(/unstamped/);
+  });
+});
+
 describe('comparability — what is only said out loud', () => {
   const warn = (overA, overB) =>
     comparability(...armsFrom(twoArms(overA, overB))).warnings.join(' ');
@@ -519,6 +615,55 @@ describe('comparability — what is only said out loud', () => {
     expect(warn({}, { crossedHourBoundary: true })).toMatch(/crossed the top of the hour/);
     expect(warn({}, { crossedHourBoundary: undefined })).toMatch(/did not record the flag/);
     expect(warn({}, { seriesConsistency: { ok: false, drifted: [] } })).toMatch(/identity drifted/);
+  });
+
+  it('warns when nobody can attribute the build to a checkout', () => {
+    // NEW 2026-08-19, and it had no warning on either reader before: a dirty tree means
+    // the recorded commit is incomplete; this means nobody can say the measured build
+    // came from that commit AT ALL. `!== true` deliberately covers a record predating
+    // the field — "we cannot say" is exactly what the warning claims.
+    const unattributed = { provenance: { ...series().provenance, checkout: {} } };
+    expect(warn({}, unattributed)).toMatch(/nobody attributed to a checkout/);
+  });
+
+  it('accepts a build a caller vouched for with --deployed-by', () => {
+    // `measure:calibrate` deploys and then spawns `measure`, so `deployedFromCheckout` is
+    // false on 75 real ledger records that ARE attributable. Flagging those would fire the
+    // warning on most of the ledger and train people to ignore it.
+    const vouched = {
+      provenance: {
+        ...series().provenance,
+        checkout: { deployedFromCheckout: false, deployedBy: 'measure-calibration' },
+      },
+    };
+    expect(warn({}, vouched)).not.toMatch(/nobody attributed/);
+  });
+
+  it('drives every integrity warning off the SHARED predicates', () => {
+    // The whole point of extracting them: `measure:report` discloses the same facts, and
+    // before the extraction it disclosed none of them — so one reader could warn about a
+    // series the other silently averaged. If a predicate is edited here, both move.
+    expect(SERIES_INTEGRITY.map((f) => f.key)).toEqual([
+      'dirty',
+      'unattributedBuild',
+      'serverUnasserted',
+      'identityDrift',
+      'hourBoundary',
+      'hourUnknown',
+    ]);
+    const [dirty] = seriesIntegrity([series({ dirty: true })]);
+    expect(dirty.key).toBe('dirty');
+    expect(dirty.count).toBe(1);
+    expect(seriesIntegrity([series()])).toEqual([]);
+  });
+
+  it('states the method floor from one constant, not three retyped numbers', () => {
+    // These three were typed into three different message strings in this file before the
+    // matrix report needed them too; a fourth copy is how two tools end up disagreeing
+    // about what "enough samples" means.
+    expect(METHOD_FLOOR).toEqual({ minSamples: 5, resolvingN: 30, resolvesMs: 120 });
+    const thin = comparability(...armsFrom(twoArms({}, {})));
+    expect(thin.warnings.join(' ')).toMatch(/wants n≥5 and resolves ~120 ms and up at n=30/);
   });
 
   it('warns on two units of the same model, which is not the same device', () => {

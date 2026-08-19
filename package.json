@@ -130,6 +130,7 @@
     "rta:restore": "node scripts/rta-restore.js",
     "measure": "node scripts/measure.js",
     "measure:compare": "node scripts/measure-compare.js",
+    "measure:report": "node scripts/measure-report.js",
     "measure:devices": "node scripts/measure-devices.js",
     "measure:calibrate": "node scripts/measure-calibration.js",
     "flake-baseline": "node scripts/flake-baseline.js",

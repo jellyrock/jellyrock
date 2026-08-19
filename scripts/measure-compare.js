@@ -55,7 +55,7 @@ import { MeasureArgError } from './measure-args.js';
 // The SAME selection rule the publisher uses. Not a copy — a copy is what produced the
 // 8x disagreement between what `measure` printed and what this read back.
 import { selectColdSamples } from './measure-selection.js';
-import { unitFor } from './measurements.js';
+import { measurementById, unitFor, withUnit } from './measurements.js';
 
 /**
  * The measurement accumulator. Now IMPORTED rather than derived here: this file had the
@@ -111,6 +111,17 @@ export const SERIES_KEYS = Object.freeze({
   // backs all nine `*Details` entries), so this is deliberately NOT `screen`.
   component: (r) => r?.component ?? null,
   library: (r) => r?.library ?? null,
+  // Whether the CHECKOUT had uncommitted changes. Selectable but deliberately NOT a
+  // refusal axis and NOT a provenance axis: mixing a dirty series with a clean one is
+  // disclosed by `SERIES_INTEGRITY`, and a second disclosure would say the same thing
+  // twice. What was missing is the way to ACT on that disclosure — the matrix report
+  // tells a reader their median includes dirty series, and without this key there was
+  // no `--select dirty=false` to answer it with.
+  //
+  // Three states, not two: `false` selects the 68 records that recorded a clean tree and
+  // leaves out the 34 that predate the field, which read as `(unrecorded)` like every
+  // other absent value here. "Nobody wrote it down" is not "it was clean".
+  dirty: (r) => r?.dirty ?? null,
 });
 
 /** `[debug=… perfTiming=…]` as the running build stamped it, as a stable string. */
@@ -281,12 +292,233 @@ export function workloadTally(arm) {
 }
 
 /**
+ * The axes on which ONE arm is secretly TWO populations.
+ *
+ * Split out of `comparability` because the paired comparison is no longer the only
+ * caller: the matrix report (`measure-report.js`) pools a cell out of every series
+ * that shares a screen and a tier, which is the same question asked of one arm rather
+ * than of two. A cell that quietly averaged an RTA build with a non-RTA one, or a
+ * `debug=true` build with a release one, would publish a well-formed number about two
+ * different experiments — the exact failure these checks were written for, one level
+ * down from where they were written.
+ *
+ * So the rules live here ONCE and both callers read them. A second copy in the report
+ * is how the selection rule ended up implemented three times with two of them wrong
+ * (see `measure-selection.js`).
+ *
+ * `scope` says what a value is read off: `series` keys come from the record, `samples`
+ * keys from the individual samples (the build-flavor bracket is stamped per sample).
+ *
+ * `crossArm: 'custom'` means the axis states its DIFFERING-ACROSS-ARMS case in its own
+ * words further down — because it normalizes before comparing (`server`), or carries a
+ * sanctioned exception (`enableRta`), or is not read off the record at all
+ * (`buildFlavor`). It is declared here, on the axis, rather than as a list of key names
+ * at the loop: a list two hundred lines from the axis it names is how an axis added
+ * later silently gets the generic message, which is the same one-rule-two-places defect
+ * `measure-selection.js` exists to stop.
+ *
+ * `plural` is only needed where appending `s` is wrong.
+ */
+export const POPULATION_AXES = Object.freeze([
+  {
+    key: 'measurement',
+    what: 'measurement family',
+    plural: 'measurement families',
+    scope: 'series',
+    read: SERIES_KEYS.measurement,
+  },
+  { key: 'screen', what: 'screen', scope: 'series', read: SERIES_KEYS.screen },
+  // A component-level family makes `screen` alone too coarse: `itemDetails` backs nine
+  // screens, so a Movie series and a Series series agree on component and would agree
+  // on every other key here. `variant` is the field that separates them, and it is
+  // checked at BOTH levels — mixed within an arm, and differing across arms — for the
+  // same reason `screen` is.
+  { key: 'screenVariant', what: 'item variant', scope: 'series', read: SERIES_KEYS.screenVariant },
+  // WHICH component emitted the lines. Until measurement reached a playback screen,
+  // `screen` implied this — one screen, one component — so the gate did not need it.
+  // A nav that walks through another instrumented screen breaks that implication: an
+  // `itemDetails` arm and a `videoPlayer` arm can BOTH carry `screen: osd`, pass every
+  // other key here, and be compared without a word. Worse than silent — the workload
+  // line then prints "identical: the delta below is not a run that did less work",
+  // which is a positive reassurance that two different components are comparable.
+  { key: 'component', what: 'component', scope: 'series', read: SERIES_KEYS.component },
+  // On a server with several libraries of one type, two arms that opened different
+  // ones are two workloads wearing one name. Nothing else in the record can say.
+  { key: 'library', what: 'library id', scope: 'series', read: SERIES_KEYS.library },
+  { key: 'model', what: 'device model', scope: 'series', read: SERIES_KEYS.model },
+  { key: 'tier', what: 'device RAM tier', scope: 'series', read: SERIES_KEYS.tier },
+  // Raw, NOT through `sameServer`: within one arm a trailing slash means two runs were
+  // configured differently, and this half has always been strict. The cross-arm check
+  // below is the one that normalizes.
+  { key: 'server', what: 'server', scope: 'series', crossArm: 'custom', read: SERIES_KEYS.server },
+  // Build flavor, as the RUNNING build stamped it. `debug=true` alone is +121 ms on a
+  // Stick 4K (measured, and recorded in `home-first-paint-performance.md`), which is
+  // larger than most changes anyone measures.
+  {
+    key: 'buildFlavor',
+    what: 'build flavor',
+    scope: 'samples',
+    crossArm: 'custom',
+    read: (s) => s.flags,
+    // `unstamped` rather than the shared "(not recorded)": a sample with no
+    // `[debug=… perfTiming=…]` bracket ran a build that did not stamp one, which is a
+    // statement about the BUILD. The cross-arm message below has always said it this way.
+    show: (v) => v ?? 'unstamped',
+  },
+  // ENABLE_RTA is the third compile-time flag that can move a measurement, and it is
+  // DERIVED from ODC answering rather than read from a manifest — see the guard.
+  {
+    key: 'enableRta',
+    what: 'ENABLE_RTA state',
+    scope: 'series',
+    crossArm: 'custom',
+    read: (r) => r?.provenance?.enableRta ?? null,
+  },
+]);
+
+/**
+ * An axis's name in the plural. `${what}s` is right for eight of the nine and wrong for
+ * the one that ends in a `y`, which printed `2 measurement familys` in both callers.
+ */
+const pluralOf = ({ what, plural }) => plural ?? `${what}s`;
+
+/**
+ * Which axes this arm mixes, and the values it mixes on them.
+ *
+ * Empty means the arm is one population. Every entry is a refusal for a paired
+ * comparison and an un-poolable cell for the matrix report — the two callers differ in
+ * what they DO about it, never in what counts as mixed.
+ */
+export function mixedPopulations(arm) {
+  const mixed = [];
+  for (const axis of POPULATION_AXES) {
+    const values =
+      axis.scope === 'samples'
+        ? [...new Set((arm.samples || []).map(axis.read))]
+        : distinct(arm.series || [], axis.read);
+    if (values.length > 1)
+      mixed.push({
+        key: axis.key,
+        what: axis.what,
+        plural: pluralOf(axis),
+        values,
+        show: axis.show,
+      });
+  }
+  return mixed;
+}
+
+/** `arm X mixes 2 screens (a, b) — …`, the one sentence both callers say. */
+export const describeMixed = (label, axis) =>
+  `arm ${label} mixes ${axis.values.length} ${pluralOf(axis)} ` +
+  `(${axis.values.map(axis.show ?? show).join(', ')}) — that is two populations in one arm, ` +
+  'not a series.';
+
+/**
+ * The sample sizes the recorded method is defined against.
+ *
+ * Extracted because these three numbers were already typed into three different message
+ * strings in this file, and the matrix report needs the same ones — a fourth copy of a
+ * constant is how two tools end up disagreeing about what "enough samples" means.
+ * Sourced from `docs/dev/home-first-paint-performance.md`, which established them.
+ */
+export const METHOD_FLOOR = Object.freeze({
+  /** Below this a series is not a series; the doc's stated minimum. */
+  minSamples: 5,
+  /** Per arm, the n the resolution below was measured at. */
+  resolvingN: 30,
+  /** The smallest difference the method can separate from run-to-run variation. */
+  resolvesMs: 120,
+});
+
+/**
+ * Facts about a SERIES that weaken what any number taken from it can claim.
+ *
+ * These are not population axes. A population axis asks "are these series the same
+ * experiment?" and refuses when they are not. These ask "is this series' own account of
+ * itself trustworthy?", and the answer never refuses anything — it is disclosed beside
+ * the number, because the alternative is a median that reads exactly like a good one.
+ *
+ * Shared for the reason `measure-selection.js` documents at length: `comparability`
+ * checked four of these inline and the matrix report checked none, so a cell could
+ * publish a median from a dirty tree while the paired comparison of the same series
+ * warned about it. One rule with two implementations is not a rule.
+ *
+ * Only the PREDICATES live here. `comparability` keeps its own arm-phrased wording
+ * ("arm before contains a series that…") and the report keeps its cell-phrased wording,
+ * because the same fact is addressed to two different readers. What must not diverge is
+ * WHEN it fires.
+ */
+export const SERIES_INTEGRITY = Object.freeze([
+  {
+    key: 'dirty',
+    // `flake-baseline.js` EXCLUDES these outright rather than disclosing them, and its
+    // reason applies here too: `dirty: true` carries no content hash, so two dirty runs
+    // are not provably the same code. A measurement reader discloses instead of
+    // excluding because a dirty tree is the normal state while iterating on a fix.
+    test: (r) => r?.dirty === true,
+    says: 'taken on a dirty tree, so the recorded commit does not pin the code that ran',
+  },
+  {
+    key: 'unattributedBuild',
+    // `deployedFromCheckout` is a claim about THIS run; `deployedBy` is the escape hatch
+    // for a caller that deployed immediately before and vouches for it (the calibration
+    // harness sets it). Neither means nobody can say the measured build came from the
+    // recorded commit at all — which is a WEAKER claim than a dirty tree, not a stronger
+    // one, and the two co-occur constantly.
+    //
+    // `!== true` deliberately catches `undefined` as well as `false`: a record predating
+    // the field cannot attribute its build either, and "we cannot say" is what the
+    // warning claims.
+    test: (r) =>
+      r?.provenance?.checkout?.deployedFromCheckout !== true &&
+      !r?.provenance?.checkout?.deployedBy,
+    says: 'measured a build nobody attributed to a checkout, so its commit may describe code that never ran',
+  },
+  {
+    key: 'serverUnasserted',
+    test: (r) => r?.tier1?.asserted !== true,
+    says: 'never asserted its server (no --server), so the server it names is what the app reported rather than what anyone declared',
+  },
+  {
+    key: 'identityDrift',
+    test: (r) => !!r?.seriesConsistency && r.seriesConsistency.ok === false,
+    says: 'had its identity drift or fail to re-read at the end, so its samples are not provably one population',
+  },
+  {
+    key: 'hourBoundary',
+    test: (r) => r?.crossedHourBoundary === true,
+    says: 'crossed the top of the hour, where a resetting fixture changes the workload underneath it',
+  },
+  {
+    key: 'hourUnknown',
+    // Split from `hourBoundary` rather than folded into it: "it crossed" and "nobody
+    // recorded whether it crossed" are different claims, and this subsystem does not
+    // blur an absent field into a negative answer.
+    test: (r) => r?.crossedHourBoundary == null,
+    says: 'did not record whether it crossed the top of the hour',
+  },
+]);
+
+/** Which integrity facts fire over a set of series, and how many series each covers. */
+export function seriesIntegrity(series = []) {
+  return SERIES_INTEGRITY.map((fact) => ({
+    ...fact,
+    count: series.filter(fact.test).length,
+  })).filter((fact) => fact.count > 0);
+}
+
+/** How one integrity fact reads about a CELL, as the matrix report phrases it. */
+export const describeIntegrity = (fact, total) => `${fact.count} of ${total} series ${fact.says}`;
+
+/**
  * Can these two arms be compared at all?
  *
  * REFUSALS are the axes on which two series are not a slow arm and a fast arm but
- * two different experiments. WARNINGS are everything the guard's tier 2 records: a
- * difference that changes what the number MEANS without making the comparison
- * meaningless, which the reader must see rather than be protected from.
+ * two different experiments — every one of them an entry in `POPULATION_AXES`, checked
+ * both WITHIN an arm and ACROSS the pair. WARNINGS are everything the guard's tier 2
+ * records: a difference that changes what the number MEANS without making the
+ * comparison meaningless, which the reader must see rather than be protected from.
  *
  * The asymmetry is deliberate and it is the tier-3 design: *drift is made visible
  * rather than refused.* A workload difference is the loudest thing this tool prints
@@ -297,6 +529,9 @@ export function workloadTally(arm) {
 export function comparability(a, b) {
   const refusals = [];
   const warnings = [];
+  // The predicates are shared with the matrix report (`SERIES_INTEGRITY`); only the
+  // arm-phrased wording below is this function's own.
+  const fires = (arm, key) => arm.series.some(SERIES_INTEGRITY.find((f) => f.key === key).test);
 
   for (const arm of [a, b]) {
     if (!arm.series.length) {
@@ -345,45 +580,24 @@ export function comparability(a, b) {
   }
 
   // Mixed WITHIN an arm is checked before differing ACROSS arms, because a mixed arm
-  // makes the cross-arm question meaningless rather than merely wrong.
-  for (const [key, what] of [
-    ['measurement', 'measurement family'],
-    ['screen', 'screen'],
-    // A component-level family makes `screen` alone too coarse: `itemDetails` backs nine
-    // screens, so a Movie series and a Series series agree on component and would agree
-    // on every other key here. `variant` is the field that separates them, and it is
-    // checked at BOTH levels — mixed within an arm, and differing across arms — for the
-    // same reason `screen` is.
-    ['screenVariant', 'item variant'],
-    // WHICH component emitted the lines. Until measurement reached a playback screen,
-    // `screen` implied this — one screen, one component — so the gate did not need it.
-    // A nav that walks through another instrumented screen breaks that implication: an
-    // `itemDetails` arm and a `videoPlayer` arm can BOTH carry `screen: osd`, pass every
-    // other key here, and be compared without a word. Worse than silent — the workload
-    // line then prints "identical: the delta below is not a run that did less work",
-    // which is a positive reassurance that two different components are comparable.
-    ['component', 'component'],
-    // On a server with several libraries of one type, two arms that opened different
-    // ones are two workloads wearing one name. Nothing else in the record can say.
-    ['library', 'library id'],
-    ['model', 'device model'],
-    ['tier', 'device RAM tier'],
-  ]) {
-    for (const arm of [a, b]) {
-      const values = distinct(arm.series, SERIES_KEYS[key]);
-      if (values.length > 1) {
-        refusals.push(
-          `arm ${arm.label} mixes ${values.length} ${what}s (${values.map(show).join(', ')}) — that is two ` +
-            'populations in one arm, not a series.',
-        );
-      }
-    }
-    const av = distinct(a.series, SERIES_KEYS[key]);
-    const bv = distinct(b.series, SERIES_KEYS[key]);
+  // makes the cross-arm question meaningless rather than merely wrong. Both arms are
+  // checked on EVERY axis first, out of the shared `POPULATION_AXES` — the matrix
+  // report asks the same question of one pooled cell, and one rule with two
+  // implementations is what `measure-selection.js` exists to stop happening again.
+  for (const arm of [a, b]) {
+    for (const axis of mixedPopulations(arm)) refusals.push(describeMixed(arm.label, axis));
+  }
+
+  for (const axis of POPULATION_AXES) {
+    // Axes that word their own cross-arm case say so on themselves; see `POPULATION_AXES`.
+    if (axis.crossArm === 'custom') continue;
+    const showValue = axis.show ?? show;
+    const av = distinct(a.series, axis.read);
+    const bv = distinct(b.series, axis.read);
     if (av.length === 1 && bv.length === 1 && av[0] !== bv[0]) {
       refusals.push(
-        `the arms are on different ${what}s (${a.label}: ${show(av[0])} · ${b.label}: ${show(bv[0])}) — ` +
-          'that is two experiments, not two arms of one.',
+        `the arms are on different ${pluralOf(axis)} (${a.label}: ${showValue(av[0])} · ` +
+          `${b.label}: ${showValue(bv[0])}) — that is two experiments, not two arms of one.`,
       );
     }
   }
@@ -392,14 +606,6 @@ export function comparability(a, b) {
   // refusal and `/stable` vs `/unstable` is.
   const serverA = distinct(a.series, SERIES_KEYS.server);
   const serverB = distinct(b.series, SERIES_KEYS.server);
-  for (const arm of [a, b]) {
-    const urls = distinct(arm.series, SERIES_KEYS.server);
-    if (urls.length > 1) {
-      refusals.push(
-        `arm ${arm.label} mixes ${urls.length} servers (${urls.map(show).join(', ')}).`,
-      );
-    }
-  }
   if (serverA.length === 1 && serverB.length === 1 && !sameServer(serverA[0], serverB[0])) {
     refusals.push(
       `the arms measured different servers (${a.label}: ${serverA[0]} · ${b.label}: ${serverB[0]}) ` +
@@ -407,21 +613,11 @@ export function comparability(a, b) {
     );
   }
 
-  // Build flavor, as the RUNNING build stamped it. `debug=true` alone is +121 ms on a
-  // Stick 4K (measured, and recorded in `home-first-paint-performance.md`), which is
-  // larger than most changes anyone measures.
+  // Build flavor cross-arm. The within-arm half is an axis in `POPULATION_AXES`, and
+  // `debug=true` alone is +121 ms on a Stick 4K (measured, and recorded in
+  // `home-first-paint-performance.md`) — larger than most changes anyone measures.
   const flagsA = [...new Set(a.samples.map((s) => s.flags))];
   const flagsB = [...new Set(b.samples.map((s) => s.flags))];
-  for (const [arm, flags] of [
-    [a, flagsA],
-    [b, flagsB],
-  ]) {
-    if (flags.length > 1) {
-      refusals.push(
-        `arm ${arm.label} mixes build flavors (${flags.map((f) => f ?? 'unstamped').join(' · ')}).`,
-      );
-    }
-  }
   if (flagsA.length === 1 && flagsB.length === 1 && flagsA[0] !== flagsB[0]) {
     refusals.push(
       `the arms were built differently (${a.label}: ${flagsA[0] ?? 'unstamped'} · ${b.label}: ` +
@@ -438,22 +634,11 @@ export function comparability(a, b) {
 
   // ENABLE_RTA is the third compile-time flag that can move a measurement, and it is
   // DERIVED from ODC answering rather than read from a manifest — see the guard.
-  //
-  // Checked WITHIN an arm as well as across, like every other refusal axis above. It
-  // was the one axis without the within-arm half, which would have let a single arm
-  // pool an RTA build and a non-RTA one and then compare that mixture confidently
-  // against the other side — the failure the cross-arm check exists to stop, hidden
-  // one level down.
+  // The within-arm half is an axis in `POPULATION_AXES`, checked above like every other
+  // refusal axis: a single arm pooling an RTA build and a non-RTA one and then being
+  // compared confidently against the other side is the failure the cross-arm check
+  // exists to stop, hidden one level down.
   const rta = (arm) => distinct(arm.series, (r) => r?.provenance?.enableRta ?? null);
-  for (const arm of [a, b]) {
-    const values = rta(arm);
-    if (values.length > 1) {
-      refusals.push(
-        `arm ${arm.label} mixes ${values.length} ENABLE_RTA states (${values.map(show).join(', ')}) — ` +
-          'that is two populations in one arm, not a series.',
-      );
-    }
-  }
   if (rta(a).length === 1 && rta(b).length === 1 && rta(a)[0] !== rta(b)[0]) {
     // …EXCEPT for the one comparison that exists to measure that variable —
     // [ADR 0030](../docs/adr/0030-non-odc-arm-identity-by-enclosure.md). The ODC
@@ -567,22 +752,23 @@ export function comparability(a, b) {
           'workload, not a slow sample.',
       );
     }
-    if (arm.series.some((r) => r.tier1?.asserted !== true)) {
+    if (fires(arm, 'serverUnasserted')) {
       warnings.push(
         `arm ${arm.label} contains a series that did NOT assert its server (no --server). The ` +
           'server it recorded is what the app reported, not what anyone declared.',
       );
     }
-    if (arm.series.some((r) => r.seriesConsistency && r.seriesConsistency.ok === false)) {
+    if (fires(arm, 'identityDrift')) {
       warnings.push(
         `arm ${arm.label} contains a series whose identity drifted or could not be re-read at the ` +
           'end — those samples are not provably one population.',
       );
     }
-    if (arm.values.length < 5) {
+    if (arm.values.length < METHOD_FLOOR.minSamples) {
       warnings.push(
-        `arm ${arm.label} has ${arm.values.length} sample(s). The recorded method wants n≥5 and ` +
-          'resolves ~120 ms and up at n=30 per arm; below that a delta cannot be called either way.',
+        `arm ${arm.label} has ${arm.values.length} sample(s). The recorded method wants ` +
+          `n≥${METHOD_FLOOR.minSamples} and resolves ~${METHOD_FLOOR.resolvesMs} ms and up at ` +
+          `n=${METHOD_FLOOR.resolvingN} per arm; below that a delta cannot be called either way.`,
       );
     }
   }
@@ -607,9 +793,10 @@ export function comparability(a, b) {
         'same unit, and unit-to-unit variation has never been measured here.',
     );
   }
-  const crossed = [...a.series, ...b.series].filter((r) => r.crossedHourBoundary === true).length;
-  const unknownHour = [...a.series, ...b.series].filter(
-    (r) => r.crossedHourBoundary == null,
+  const both = [...a.series, ...b.series];
+  const crossed = both.filter(SERIES_INTEGRITY.find((f) => f.key === 'hourBoundary').test).length;
+  const unknownHour = both.filter(
+    SERIES_INTEGRITY.find((f) => f.key === 'hourUnknown').test,
   ).length;
   if (crossed || unknownHour) {
     const parts = [];
@@ -619,11 +806,24 @@ export function comparability(a, b) {
       `${parts.join('; ')} — a fixture that resets mid-series changes the workload underneath it.`,
     );
   }
-  const dirty = [...a.series, ...b.series].filter((r) => r.dirty === true);
+  const dirty = both.filter(SERIES_INTEGRITY.find((f) => f.key === 'dirty').test);
   if (dirty.length) {
     warnings.push(
       `${dirty.length} series ran against a DIRTY tree, so its commit does not pin the code that ` +
         'produced the numbers. Only the arm label distinguishes the two builds.',
+    );
+  }
+  // The WEAKER claim beside the one above, and it had no warning on either reader until
+  // 2026-08-19: a dirty tree means the commit is incomplete, this means nobody can say
+  // the measured build came from that commit at all. `--deploy` settles it, and a caller
+  // that deployed immediately before can say so with `--deployed-by`.
+  const unattributed = both.filter(
+    SERIES_INTEGRITY.find((f) => f.key === 'unattributedBuild').test,
+  );
+  if (unattributed.length) {
+    warnings.push(
+      `${unattributed.length} series measured a build nobody attributed to a checkout (no ` +
+        '`--deploy`, no `--deployed-by`), so its recorded commit may describe code that never ran.',
     );
   }
   return { refusals, warnings };
@@ -845,16 +1045,6 @@ export function interleaving(a, b) {
 // ── Report ───────────────────────────────────────────────────────────────────
 
 /**
- * A value with its unit. The unit is a PARAMETER rather than a hardcoded `ms`,
- * because `--field` can headline any timing a family emits and not all of them are
- * milliseconds — `instrumentUs` is microseconds, and printing it as `3200 ms` would
- * misstate the instrument's own footprint by three orders of magnitude in the one
- * report written to answer whether that footprint matters. See `unitFor`.
- */
-const withUnit = (v, unit = 'ms') =>
-  v === null || v === undefined ? '—' : `${Math.round(v * 10) / 10} ${unit}`;
-
-/**
  * A span, in the largest unit that does not round it to nothing.
  *
  * Whole minutes alone printed `0 min` for anything under 30 s — and this number is
@@ -916,7 +1106,9 @@ export function reportComparison(a, b, { refusals = [], warnings = [] } = {}) {
     '',
   );
 
-  const unit = unitFor(a.primary);
+  // The FAMILY, so a workload-valued primary reads as a count rather than as `ms` —
+  // `--field rows` headlines a row count, and `unitFor` needs the family to know that.
+  const unit = unitFor(a.primary, measurementById(SERIES_KEYS.measurement(a.series[0])));
   const sa = summarizeValues(a.values);
   const sb = summarizeValues(b.values);
   const delta = sa.median !== null && sb.median !== null ? sb.median - sa.median : null;

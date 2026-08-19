@@ -327,7 +327,7 @@ It is **not** a second run ledger, and the two files are deliberately not joinab
 - **`npm run measure:devices` writes one line PER DEVICE**, all from the same invocation
   — it runs `measure` once per Roku in `ROKU_DEVICES`, sequentially, in its own process
   (`roku-test-automation` binds its client singletons to one host per process). See
-  [`home-first-paint-performance.md`](home-first-paint-performance.md#more-than-one-device).
+  [`measuring-performance.md`](measuring-performance.md#more-than-one-device).
 
 **The ledger is the Phase-3 surface.** Aggregating N back-to-back suites is a read
 of `.device-runs/rta/runs.jsonl`, not "remember to copy a file aside after each
