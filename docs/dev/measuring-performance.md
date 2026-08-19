@@ -555,6 +555,11 @@ comparison and silently averaged by the matrix:
 | hour boundary | the series crossed `:00`, where a resetting fixture changes the workload | 2% |
 | hour not recorded | the series predates the flag, so whether it crossed `:00` is unknown | 3% |
 
+**Acting on the dirty warning:** `--select dirty=false` narrows a cell to the series that
+recorded a clean tree. It is a three-state field, not a boolean — the 34 oldest records
+predate it and read as `(unrecorded)`, which `dirty=false` deliberately excludes. "Nobody
+wrote it down" is not "it was clean".
+
 **None of these is a refusal**, and that is deliberate: each describes a number that is
 still the best evidence available. The failure mode is publishing it as though it were
 unqualified. A dirty tree in particular is the *normal* state while iterating on a fix —

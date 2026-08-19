@@ -8,12 +8,13 @@
  *
  * ## Why a READER over the ledger, and not a report from the run
  *
- * Decided 2026-08-16 and recorded in the project plan: a reader can rebuild the matrix
- * from runs taken weeks apart, on devices that were never on the LAN at the same time,
- * because every `measure` invocation appends its own line to `measurements.jsonl`. An
- * in-process report can only ever describe the run that just finished, and no matrix
- * has ever been taken in one run. The consequence is load-bearing for the rest of the
- * subsystem: `measure.js`'s record assembly did NOT have to be extracted for this.
+ * Decided 2026-08-16 — [`matrix-report-is-a-reader`](../docs/decisions.md). A reader can
+ * rebuild the matrix from runs taken weeks apart, on devices that were never on the LAN at
+ * the same time, because every `measure` invocation appends its own line to
+ * `measurements.jsonl`. An in-process report can only ever describe the run that just
+ * finished, and no matrix has ever been taken in one run. The consequence is load-bearing
+ * for the rest of the subsystem: `measure.js`'s record assembly did NOT have to be
+ * extracted for this.
  *
  * Same shape as `flake-baseline.js` — the ledger's other reader — for the same reason,
  * and this one inherits the rule that file was written to enforce: **the exclusions are

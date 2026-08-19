@@ -983,6 +983,34 @@ which is worth separating from the reuse argument, because the reuse argument is
 that did not hold. Consequence: the record a block publishes is assembled by the same code
 a single-device run uses, so the calibration cannot drift from `measure` in what it records.
 
+## decision-id: matrix-report-is-a-reader
+
+**date**: 2026-08-16
+**status**: accepted
+**related-files**: scripts/measure-report.js, scripts/measure-matrix.js, scripts/measure-devices.js, scripts/measure.js, docs/dev/measuring-performance.md
+
+The screen × RAM-tier matrix is a **reader over `.device-runs/measure/measurements.jsonl`**,
+following the `flake-baseline.js` pattern — not a report the multi-device driver prints at the
+end of its run. Every `measure` invocation appends one line per series, so a reader can rebuild
+the matrix from runs taken weeks apart, on devices that were never on the LAN at the same time.
+No matrix has ever in fact been taken in a single run: the three tiers were measured on separate
+days, and the 512 MB device had to be signed in and restored around its block.
+
+**Rejected: an in-process report from `measure:devices`.** It can only ever describe the run
+that just finished, which is the one shape the data does not have. It would also have to hold
+every device's samples in memory to compare them, re-implementing selection rules that
+`measure-compare.js` already owns — and a second implementation of "which sample is the cold
+one" is exactly what `measure-selection.js` exists to prevent (that rule was implemented three
+times and two were wrong).
+
+**The consequence is what makes this worth recording.** `measure.js`'s record assembly does NOT
+need extracting for any phase of this work, because the reader consumes the artifact rather than
+the code that writes it. That is why
+[`measure-record-assembly-untested`](architecture/tech-debt.md#measure-record-assembly-untested)
+stays filed as tech debt rather than becoming project work. Re-evaluate if a matrix ever needs a
+figure the ledger does not carry — that would be a reason to change what `measure` RECORDS, not
+a reason to move the report in-process.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

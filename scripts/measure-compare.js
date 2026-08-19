@@ -111,6 +111,17 @@ export const SERIES_KEYS = Object.freeze({
   // backs all nine `*Details` entries), so this is deliberately NOT `screen`.
   component: (r) => r?.component ?? null,
   library: (r) => r?.library ?? null,
+  // Whether the CHECKOUT had uncommitted changes. Selectable but deliberately NOT a
+  // refusal axis and NOT a provenance axis: mixing a dirty series with a clean one is
+  // disclosed by `SERIES_INTEGRITY`, and a second disclosure would say the same thing
+  // twice. What was missing is the way to ACT on that disclosure — the matrix report
+  // tells a reader their median includes dirty series, and without this key there was
+  // no `--select dirty=false` to answer it with.
+  //
+  // Three states, not two: `false` selects the 68 records that recorded a clean tree and
+  // leaves out the 34 that predate the field, which read as `(unrecorded)` like every
+  // other absent value here. "Nobody wrote it down" is not "it was clean".
+  dirty: (r) => r?.dirty ?? null,
 });
 
 /** `[debug=… perfTiming=…]` as the running build stamped it, as a stable string. */

@@ -142,6 +142,19 @@ describe('selecting an arm', () => {
     });
   });
 
+  it('can select on `dirty`, which the integrity disclosure gives a reader to act on', () => {
+    // Added 2026-08-19 alongside the report's integrity line: telling a reader their
+    // median pools dirty-tree series and offering no way to exclude them is a dead end.
+    // Selectable, but deliberately NOT a refusal axis — mixing dirty and clean is
+    // disclosed, not refused.
+    expect(parseSelector('dirty=false')).toEqual({ dirty: 'false' });
+    const records = [series({ dirty: true }), series({ dirty: false }), series({ dirty: null })];
+    expect(selectSeries(records, { dirty: 'false' }).series).toHaveLength(1);
+    // `null` is `(unrecorded)`, NOT clean — "nobody wrote it down" is a third state.
+    expect(selectSeries(records, { dirty: '' }).series).toHaveLength(1);
+    expect(POPULATION_AXES.some((a) => a.key === 'dirty')).toBe(false);
+  });
+
   it('refuses an unknown selector key rather than ignoring it', () => {
     // The `--sever` lesson, one layer up: a dropped selector compares something
     // other than what the operator asked for, and says nothing about it.
