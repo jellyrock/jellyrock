@@ -69,6 +69,17 @@ as "the screen never loaded" (reproduced on `main`, 2026-08-18). `overhangWalkKe
 [`lib/steps.js`](lib/steps.js) picks the key from the focused node for that reason, and warns
 when it had to re-press, because a silently recovered escape tells you nothing the next time.
 
+**Identify a dynamically-created node by `subtype`, never by `id` or a `#name` in its keyPath.**
+RTA builds each keyPath segment from `node.id` while it is non-empty and from the child INDEX
+otherwise, and the app creates plenty of nodes without ids — `Home.onTabChanged` re-creates
+BOTH row lists via `CreateObject` and re-assigns no id, and `JROverhang` appends its `JRTabBar`
+the same way. So a predicate keyed on `#homeRows` matches on a fresh launch and silently stops
+matching after one tab round trip, falling through to whatever its `else` branch does. That is a
+regression with no failure mode of its own — it just quietly restores the bug you fixed.
+`overhangWalkKey` matches `HOME_ROW_LIST_SUBTYPES`; the sibling walks in
+[`lib/nav.js`](lib/nav.js) still match by name (`rta-home-active-list-hardcoded` in
+[`tech-debt.md`](../../docs/architecture/tech-debt.md)).
+
 ## Layout
 
 - `config.js` — `RTA_CONFIG` (demo server, hero movie, seek position, locales). Shared with the store screenshot generator.

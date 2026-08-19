@@ -344,6 +344,12 @@ export async function walkHomeToFirstRow({ timeout = 10000, interval = 400 } = {
 }
 
 /**
+ * Subtypes Home uses for `m.activeContent`, its active row list (`components/home/Home.bs`).
+ * Focus resting on one of these means the app is still inside Home's content.
+ */
+const HOME_ROW_LIST_SUBTYPES = Object.freeze(['HomeRows', 'FavoritesRows']);
+
+/**
  * Which key advances the overhang walk, given where focus ACTUALLY is right now.
  *
  * ## The defect this exists to fix
@@ -366,11 +372,31 @@ export async function walkHomeToFirstRow({ timeout = 10000, interval = 400 } = {
  *
  * Up is only ever returned while focus is inside a Home row list. At row 0 it is the escape;
  * at any higher row it walks toward row 0, which is the same precondition `walkHomeToFirstRow`
- * establishes. And a stray Up that arrives once focus HAS reached the overhang is inert:
- * `JRTabBar.onKeyEvent` deliberately does not consume Up ("nothing above the tab bar").
+ * establishes. And a stray Up that arrives once focus HAS reached the overhang is inert by
+ * design at every step of the chain it walks: `JRTabBar.onKeyEvent` and
+ * `JROverhangIcon.onKeyEvent` both fall through on Up ("nothing above the tab bar"), and
+ * `JRScene.onKeyEvent` does not handle it either.
  *
- * Kept pure, and here rather than in `nav.js`, for the reason `walkHomeToFirstRow` is here:
- * `nav.js` binds the device at module scope and cannot be unit-tested.
+ * ## Why it reads `subtype`, and not the id or the keyPath
+ *
+ * `Home.xml` declares `<HomeRows id="homeRows" />`, so on a fresh launch the focused node
+ * does carry that id. But `Home.onTabChanged` RE-CREATES both lists with `CreateObject` and
+ * never assigns an id — and RTA builds a keyPath segment from `node.id` only while it is
+ * non-empty, falling back to the child INDEX otherwise. So after one favorites round trip
+ * an id/keyPath match silently stops matching and falls straight through to Right, which is
+ * the exact defect above, reinstated and invisible. `subtype` is set by the component rather
+ * than by the call site, so it holds across that path.
+ *
+ * The favorites half is future-proofing, not coverage: nothing in `specs/` selects a tab, so
+ * `FavoritesRows` is unreachable from here today (see the `rta-home-active-list-hardcoded`
+ * entry in `docs/architecture/tech-debt.md`, whose sibling call sites still match by name).
+ * It is here because the predicate should agree with the app — `getActiveRows()` returns
+ * `m.activeContent` — not because a test exercises it.
+ *
+ * Kept pure, and here rather than in `nav.js`, so it can be unit-tested directly: `nav.js`
+ * IS importable under a mocked device, but its walk is wrapped in the unexported
+ * `focusOverhangIcon`, and a test that drove it through `navSettings` would be asserting on
+ * a nav rather than on this rule.
  *
  * @param {object|null} focused `odc.getFocusedNode({includeNode:true})`, or null if it failed.
  * @param {string} iconId the overhang icon the walk is trying to reach.
@@ -378,10 +404,9 @@ export async function walkHomeToFirstRow({ timeout = 10000, interval = 400 } = {
  */
 export function overhangWalkKey(focused, iconId) {
   if (focused?.node?.id === iconId) return null;
-  const keyPath = typeof focused?.keyPath === 'string' ? focused.keyPath : '';
-  // Home's active list is `m.activeContent` — `#homeRows` or `#favoritesRows` depending on
-  // the selected tab — so both mean "the escape has not happened yet".
-  if (keyPath.includes('#homeRows') || keyPath.includes('#favoritesRows')) return ecp.Key.Up;
+  // Home's active list is `m.activeContent` — `HomeRows` or `FavoritesRows` depending on the
+  // selected tab — so either subtype means "the escape has not happened yet".
+  if (HOME_ROW_LIST_SUBTYPES.includes(focused?.node?.subtype)) return ecp.Key.Up;
   // Unknown focus (a failed read) keeps the pre-existing behaviour rather than inventing a
   // new one: Right is inert on most of the overhang chain, Up from it is inert by design.
   return ecp.Key.Right;

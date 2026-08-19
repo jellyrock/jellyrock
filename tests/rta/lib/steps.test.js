@@ -252,12 +252,22 @@ describe("walkHomeToFirstRow — the precondition Home's Up-to-overhang escape r
 });
 
 describe('overhangWalkKey — the key is chosen from where focus IS', () => {
-  const onIcon = { node: { id: 'settingsIcon' }, keyPath: '#overhang.#settingsIcon' };
+  // Fixtures mirror what the device actually reports, ids included. RTA builds each keyPath
+  // segment from `node.id` while it is non-empty and from the child INDEX otherwise
+  // (`processGetFocusedNodeRequest`), so a node the app creates WITHOUT an id shows up as a
+  // bare number — which is why several of these carry no `#name`. Getting that wrong is what
+  // made an earlier revision of this suite assert against states the device cannot produce.
+  const onIcon = {
+    node: { subtype: 'JROverhangIcon', id: 'settingsIcon' },
+    keyPath: '#overhang.#settingsIcon',
+  };
+  // Fresh launch: `Home.xml` declares `<HomeRows id="homeRows" />`, so the id IS present.
   const inHomeRows = {
     node: { subtype: 'HomeRows', id: 'homeRows', rowItemFocused: [0, 2] },
     keyPath: '#routerOutlet.#viewTarget.#abc.#homeRows',
   };
-  const onTabBar = { node: { subtype: 'JRTabBar', id: 'tabBar' }, keyPath: '#overhang.#tabBar' };
+  // `JROverhang.onTabsChanged` appends its JRTabBar with `CreateObject` and sets no id.
+  const onTabBar = { node: { subtype: 'JRTabBar', id: '' }, keyPath: '#overhang.2' };
 
   it('sends nothing once the icon has focus', () => {
     expect(overhangWalkKey(onIcon, 'settingsIcon')).toBeNull();
@@ -269,11 +279,27 @@ describe('overhangWalkKey — the key is chosen from where focus IS', () => {
     expect(overhangWalkKey(inHomeRows, 'settingsIcon')).toBe('Up');
   });
 
-  it('treats the favorites list as Home too', () => {
+  it('still recognises Home after a tab round trip, when the row list has NO id', () => {
+    // `Home.onTabChanged` re-creates the list with `CreateObject` and never re-assigns the
+    // id, so from here on the focused node reports `id: ''` and an index keyPath. Matching
+    // on id or keyPath would fall through to Right and quietly reinstate the defect above;
+    // subtype is set by the component, so it survives. Unreachable from the suite today
+    // (nothing in `specs/` selects a tab) — this pins the rule, not a live path.
+    const afterTabRoundTrip = {
+      node: { subtype: 'HomeRows', id: '', rowItemFocused: [0, 2] },
+      keyPath: '#routerOutlet.#viewTarget.#abc.0',
+    };
+    expect(overhangWalkKey(afterTabRoundTrip, 'settingsIcon')).toBe('Up');
+  });
+
+  it('treats the favorites list as Home too (future-proofing, not coverage)', () => {
     // Home's active list is `m.activeContent`, which is the favorites list under that tab.
+    // Nothing in `specs/` selects a tab, so this state is unreachable from `focusOverhangIcon`
+    // today — asserted so the predicate agrees with the app, NOT as evidence it is exercised.
+    // See `rta-home-active-list-hardcoded` in docs/architecture/tech-debt.md.
     const inFavorites = {
-      node: { subtype: 'FavoritesRows', id: 'favoritesRows', rowItemFocused: [0, 0] },
-      keyPath: '#routerOutlet.#viewTarget.#abc.#favoritesRows',
+      node: { subtype: 'FavoritesRows', id: '', rowItemFocused: [0, 0] },
+      keyPath: '#routerOutlet.#viewTarget.#abc.0',
     };
     expect(overhangWalkKey(inFavorites, 'settingsIcon')).toBe('Up');
   });
@@ -291,7 +317,7 @@ describe('overhangWalkKey — the key is chosen from where focus IS', () => {
   it('does not mistake a DIFFERENT overhang icon for the target', () => {
     expect(
       overhangWalkKey(
-        { node: { id: 'searchIcon' }, keyPath: '#overhang.#searchIcon' },
+        { node: { subtype: 'JROverhangIcon', id: 'searchIcon' }, keyPath: '#overhang.#searchIcon' },
         'settingsIcon',
       ),
     ).toBe('Right');

@@ -68,8 +68,12 @@ async function focusOverhangIcon(iconId) {
     action: async () => {
       const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
       const key = overhangWalkKey(f, iconId);
+      if (!key) return;
+      await press(key);
+      // Counted only once the press RESOLVED. `waitFocused` swallows a throwing action into
+      // its own `actionErrors` tally, so a re-press that never reached the device must not
+      // be reported below as one that did — the warning's whole value is that it is exact.
       if (key === ecp.Key.Up) escapeRetries++;
-      if (key) await press(key);
     },
     label: `overhang ${iconId}`,
   });
