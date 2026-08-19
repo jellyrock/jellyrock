@@ -128,6 +128,7 @@
     "test:rta:capture": "npm run build && RTA_CAPTURE=1 node scripts/rta-run.js",
     "demo": "node tests/rta/demos/run.mjs",
     "rta:restore": "node scripts/rta-restore.js",
+    "device:check": "node scripts/device-check.js",
     "measure": "node scripts/measure.js",
     "measure:compare": "node scripts/measure-compare.js",
     "measure:report": "node scripts/measure-report.js",
