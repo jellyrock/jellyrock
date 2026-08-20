@@ -212,9 +212,10 @@ export const MEASUREMENTS = Object.freeze([
         // have and reports the line as uncovered.
         key: 'sizeRecompute',
         required: false,
-        // Ground truth: this is the pattern that read real `.177` lines throughout the
-        // #728 campaign (`tasks/measure-first-paint.mjs`'s RE_SIZE), transcribed to the
-        // registry's named-group form rather than rewritten from the call site.
+        // Transcribed from the pattern that read real device lines throughout the #728
+        // campaign rather than rewritten from the call site, so the two cannot disagree
+        // about spacing. The columns are documented in
+        // `docs/dev/home-first-paint-performance.md` ("size recompute").
         pattern:
           /latest-rows size recompute\s+calls\s+(?<sizeCalls>\d+)\s+drains\s+(?<sizeDrains>\d+)\s+ms\s+(?<sizeMs>\d+)/,
       }),
