@@ -1,0 +1,53 @@
+# Single source of truth for spellchecker-cli's dictionaries and plugins.
+#
+# spellchecker-cli auto-discovers this file at the package root, and CLI arguments override
+# whatever it finds. Four surfaces invoke the tool and they MUST agree — a rule that lives on
+# only some of them means a commit passes locally and fails in CI, or (worse) an agent gets an
+# end-of-turn finding nobody else can reproduce:
+#
+#   package.json `lint:spelling`          repo-wide, CI + pre-push
+#   .lintstagedrc.cjs                     pre-commit, staged files only
+#   scripts/lint/check-touched-lint.cjs   end-of-turn hook, changed files only
+#   scripts/journal-sync.js               post-merge, one candidate progress.md bullet
+#
+# They previously each carried their own copy of the flags below, held together by a
+# "keep in sync" comment. That drifted the first time it was tested. `tests/scripts/unit/lint/
+# spellchecker-config.test.js` is the gate that keeps it from drifting again.
+#
+# NOT here on purpose: the file globs and their excludes. Those already have one owner in
+# `scripts/lib/lint-excludes.cjs`, mirrored into package.json's `lint:spelling` globs. A third
+# copy in YAML would make that worse, not better.
+
+# ⚠️ Resolved relative to the CWD of whatever spawns the tool, NOT to this file — and the same
+# is true of THIS FILE's own discovery, which spellchecker-cli does by walking up from the CWD
+# with `pkg-dir`. So bare filenames are correct here, and the requirement that places on callers
+# is that they spawn from the repo root. Three do so naturally; journal-sync.js takes a
+# `--repo-root` that can differ from its CWD, so it passes `cwd: repoRoot` explicitly. Do not
+# "simplify" that away — without it neither the dictionaries NOR this file are found, and the
+# tool silently reverts to its own defaults (no `frontmatter` plugin, no custom words).
+#
+# The second dictionary is GENERATED from the first and holds each entry's sentence-final form
+# (`(?:handoff)\.`). retext stops treating a paragraph's final period as sentence-final when the
+# next block is a lowercase heading, a list, or a blockquote — the word is then looked up with
+# the period glued on. Base-dictionary words survive that; our own entries are matched as
+# anchored regexes and do not, so a paragraph ending on one of our words fails the lint. The
+# `## decision-id: <slug>` schema every docs/decisions.md note uses is exactly that shape, which
+# put the trap in the sanctioned `/log decision` path.
+#
+# ⚠️ Do NOT replace this with an `ignore:` regex matching any token that ends in a period. That
+# was tried here and reverted: it also stops reporting genuine typos in the same position, which
+# measured as 47 paragraph-above-a-list sites across 24 of 88 linted files. The generated
+# dictionary closes the same trap with no coverage loss — a typo is in neither dictionary, so
+# `typoo.` is still reported. `npm run dictionary:sentence-final:check` gates the two files
+# against drift; see scripts/generate/sentence-final-dictionary.js.
+dictionaries:
+  - dictionary.txt
+  - dictionary-sentence-final.txt
+
+plugins:
+  - spell
+  - indefinite-article
+  - repeated-words
+  - syntax-mentions
+  - syntax-urls
+  - frontmatter

@@ -126,6 +126,31 @@ describe('the Home pattern against captured device lines', () => {
     });
   });
 
+  it('reads the size-recompute line, which only a batching build emits', () => {
+    // ⚠️ NOT a verbatim device capture like CAPTURED above. Written from the emitting
+    // call site in `HomeRows.bs` — authoritative for the MESSAGE, since it is the format
+    // string — and cross-checked against the regex that read this line off `.177`
+    // throughout the #728 campaign. Replace with a real capture once one is in hand; the
+    // fixtures above carry that provenance and this one must not be read as if it did.
+    const line =
+      'INFO file:///Users/dev/jellyrock/components/home/HomeRows.bs:471 latest-rows size recompute calls 1 drains 11 ms 91  ';
+    expect(matchLine(home, line).fields).toEqual({
+      sizeCalls: 1,
+      sizeDrains: 11,
+      sizeMs: 91,
+    });
+  });
+
+  it('still assembles a sample from a build that emits no size-recompute line', () => {
+    // The gate under `required: false`. The BASELINE arm of any batching comparison is a
+    // build without this line, so a required group here would drop exactly the samples
+    // the comparison needs to compare against.
+    const samples = assembleSamples(home, CAPTURED.slice(0, 4));
+    expect(samples).toHaveLength(1);
+    expect(samples[0].complete).toBe(true);
+    expect(samples[0].fields.sizeCalls).toBeUndefined();
+  });
+
   it('ignores console traffic that is not a measurement', () => {
     for (const line of NOISE) expect(matchLine(home, line)).toBeNull();
   });

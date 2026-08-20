@@ -46,6 +46,10 @@ sub init()
   m.LoadActiveRecordingsTask = createObject("roSGNode", "LoadItemsTask")
   m.LoadActiveRecordingsTask.itemsToLoad = "activeRecordings"
 
+  m.rowSizesDirty = false
+  m.rowSizesBatching = false
+  m.pendingRowRemovals = []
+
   ' Track populated section count for AppLaunchComplete beacon
   m.populatedSectionCount = 0
   m.initialLoadComplete = false
@@ -81,6 +85,14 @@ sub init()
     m.popAttachMs = 0
     m.popDetachMs = 0
     m.popOtherMs = 0
+    ' How many times the row-size walk ran, and how many observer wakes it was spread
+    ' over. The pair is what makes a coalescing claim checkable: batching the walk at the
+    ' drain boundary can only pay if a wake routinely carries more than one row. Measured
+    ' on a Stick 4K it does not — 11 rows arrive over 11 wakes.
+    m.popSizeCalls = 0
+    m.popDrains = 0
+    m.popSizeMs = 0
+    m.sizeClock = CreateObject("roTimespan")
   #end if
 
   ' Track loading state for persistent tasks to prevent duplicate observers/requests
@@ -186,7 +198,7 @@ sub createSkeletonRows()
     end if
   end for
 
-  setRowItemSize()
+  rowStructureChanged()
 end sub
 
 ' createSkeletonRow: Creates a single empty HomeRow with correct title, sectionId, and cursorSize.
@@ -284,7 +296,7 @@ sub onLibrariesLoaded()
   ' because they had no data — populateRowFromData will re-insert them if data arrives.
   if not m.initialLoadComplete
     insertLatestMediaSkeletons()
-    setRowItemSize()
+    rowStructureChanged()
     m.initialLoadComplete = true
 
     ' Layout is stable — activate texture management so cells can start
@@ -421,7 +433,25 @@ sub startLatestMediaLoads()
     m.popAttachMs = 0
     m.popDetachMs = 0
     m.popOtherMs = 0
+    m.popSizeCalls = 0
+    m.popDrains = 0
+    m.popSizeMs = 0
   #end if
+  ' Hold the row-size recompute for the whole run, so a load pays one instead of one per
+  ' library that returned nothing.
+  '
+  ' Two things about the boundary that the code cannot tell you:
+  '
+  '   - The RUN is the boundary, NOT the drain loop, which looks like one and is not: the
+  '     orchestrator delivers one row per observer wake, so a per-drain flush coalesces
+  '     nothing. `drains` in the perfTiming line is what keeps that checkable.
+  '   - The batch owns only the rows this run delivers. latestRows.removalIsDeferrable is
+  '     the seam; every other Home section stays eager, and the reasoning is there.
+  '
+  ' Why this shape, which arms were rejected on measurement, and what it is worth per RAM
+  ' tier: decisions.md `home-row-removals-deferred` and
+  ' tech-debt.md#home-row-size-recompute-per-row.
+  m.rowSizesBatching = true
   m.isLoadingLatestRows = true
   m.latestRowsRunClock.mark()
   launchTask(m.latestRowsTask)
@@ -436,6 +466,9 @@ sub onLatestRowsReady()
   ' so they can be unit-tested without a callFunc seam on this component.
   drained = latestRows.drainReady(m.latestRowsTask, m.latestRowsProcessedIndex)
   m.latestRowsProcessedIndex = drained.nextIndex
+  #if perfTiming
+    m.popDrains++
+  #end if
 
   for each child in drained.ready
     populateRowFromData("latest_" + child.libId, child.items)
@@ -453,6 +486,15 @@ sub onLatestRowsReady()
   ' second interface field or a read of the firmware-managed `state` transitions.
   if m.latestRowsProcessedIndex >= m.latestRowsExpectedCount
     m.isLoadingLatestRows = false
+    #if perfTiming
+      m.popClock.mark()
+    #end if
+    m.rowSizesBatching = false
+    applyPendingRowRemovals()
+    flushRowSizes()
+    #if perfTiming
+      m.popOtherMs += m.popClock.totalMilliseconds()
+    #end if
     ' "No slower first paint than today" is a success criterion of the task-thread work,
     ' and this run IS Home's first paint for latest media. Log the wall clock so a
     ' regression is a number someone can compare, not a feeling. Stripped in prod builds.
@@ -461,6 +503,9 @@ sub onLatestRowsReady()
       ' These three are the render-thread work the orchestrator's `notify` column is
       ' blocked inside, so they must sum to roughly that figure.
       m.log.info("latest-rows populate split", "attach", m.popAttachMs, "detach", m.popDetachMs, "other", m.popOtherMs)
+      ' Separate line, not more arguments on the one above: m.log.* faults at RUNTIME past
+      ' nine call-site arguments and drops the app into the BrightScript debugger.
+      m.log.info("latest-rows size recompute", "calls", m.popSizeCalls, "drains", m.popDrains, "ms", m.popSizeMs)
     #end if
   end if
 end sub
@@ -480,6 +525,21 @@ sub resetLatestRowsRun()
   m.latestRowsProcessedIndex = 0
   m.latestRowsExpectedCount = 0
   m.isLoadingLatestRows = false
+
+  ' Close the row-size batch too. A run that is stopped or reclaimed never reaches its
+  ' completion branch, so without this the batch flag would stay set and the latest rows it
+  ' still had queued would never be dropped.
+  '
+  ' Note WHEN this fires: the next startLatestMediaLoads (which is where runIsStalled is
+  ' consulted) or onDestroy. There is no timer. So an orchestrator that wedges while the user
+  ' sits on Home holds the queue until they navigate away or Home reloads, and the queued rows
+  ' keep their skeletons for that whole time. Those rows are the ones that DID answer, empty —
+  ' before the batch they would already have been removed, so this is a real difference and not
+  ' a no-op. Accepted rather than overlooked: it needs a run to wedge, and the result is the
+  ' same skeleton a library whose request FAILED already leaves on screen.
+  m.rowSizesBatching = false
+  applyPendingRowRemovals()
+  flushRowSizes()
 end sub
 
 ' ============================================
@@ -518,10 +578,15 @@ end function
 
 ' removeRowAtIndex: Removes a row at the given index and recalculates sizes
 '
+' Recomputes IMMEDIATELY, batch or no batch. This path is only reached for a row the current
+' run does not own (latestRows.removalIsDeferrable said no), so nothing later is going to
+' flush on its behalf — and a removal without its recompute leaves the three geometry arrays
+' describing the old row list, which draws every row below it at its neighbour's size.
+'
 ' @param {integer} index - Content child index to remove
 sub removeRowAtIndex(index as integer)
   m.top.content.removeChildIndex(index)
-  setRowItemSize()
+  rowStructureChanged(true)
 end sub
 
 ' getRowConfigForSection: Returns title and slotSize for a sectionId.
@@ -695,9 +760,23 @@ sub populateRowFromData(sectionId as string, itemData as dynamic)
   result = findRowBySectionId(sectionId)
 
   if not isValidAndNotEmpty(itemData)
-    ' No data — remove the row if it exists
+    ' No data — remove the row if it exists.
+    '
+    ' A row the current run delivers is QUEUED instead, and dropped once the run ends.
+    ' Deferring only the SIZE recompute is not enough: the row list would shrink while the
+    ' three geometry arrays still described the old one, so every row below the removal
+    ' rendered at its neighbour's size — measured through ODC, not reasoned. Holding the row
+    ' keeps tree and arrays in step for the whole run, and it is what a FAILED row already
+    ' does: it keeps the skeleton insertLatestMediaSkeletons gave it.
+    '
+    ' WHICH rows may be held is latestRows.removalIsDeferrable's call, not this branch's —
+    ' every other Home section removes and recomputes immediately, mid-run or not.
     if isValid(result)
-      removeRowAtIndex(result.index)
+      if latestRows.removalIsDeferrable(sectionId, m.rowSizesBatching)
+        m.pendingRowRemovals.push(sectionId)
+      else
+        removeRowAtIndex(result.index)
+      end if
     end if
     ' Accumulate before returning, not just on the fall-through path. A library that
     ' holds nothing takes this exit on every run, and the three columns are only
@@ -789,7 +868,12 @@ sub populateRowFromData(sectionId as string, itemData as dynamic)
 
     insertIndex = findInsertIndexForSection(sectionId)
     m.top.content.insertChild(row, insertIndex)
-    setRowItemSize()
+    ' Recompute NOW even mid-run. An insertion makes the row list longer than the geometry
+    ' arrays, which is the same wrong-size-per-row defect deferring removals avoids, only
+    ' in the other direction. Removals are what there are many of (one per empty library,
+    ' every load); this branch fires only when a library that was empty last load has data
+    ' again, so flushing it eagerly costs a recompute that is rare rather than N of them.
+    rowStructureChanged(true)
   end if
 
   updateBackdropForFocusedItem()
@@ -815,14 +899,94 @@ end sub
 ' ROW SIZE CALCULATION
 ' ============================================
 
+' applyPendingRowRemovals: Drop the rows whose libraries returned nothing, queued during a
+' run so the row list and the geometry arrays never disagree mid-load. Looked up by
+' sectionId rather than a stored index — each removal shifts the ones after it.
+sub applyPendingRowRemovals()
+  if not isValidAndNotEmpty(m.pendingRowRemovals) then return
+
+  removed = 0
+  for each sectionId in m.pendingRowRemovals
+    result = findRowBySectionId(sectionId)
+    if isValid(result)
+      m.top.content.removeChildIndex(result.index)
+      removed++
+    end if
+  end for
+  m.pendingRowRemovals = []
+
+  ' Only announce a structural change if one happened. Every queued id has a live row today
+  ' — the orchestrator yields each library once, so nothing can drop one out from under the
+  ' queue — but rowStructureChanged() costs a full recompute, and it should never be spent
+  ' claiming an edit that did not occur. The guard is what keeps that true if the queue is
+  ' ever widened past the run's own rows.
+  if removed > 0 then rowStructureChanged()
+end sub
+
+' discardRowBatch: Drop pending row work without paying for it.
+'
+' Teardown only. setRowItemSize() is the most expensive call in this file (~90-200 ms, nearly
+' all of it the RowList re-measuring every cell against the new rowItemSize) and it runs on the
+' render thread — so flushing a batch for a node that is about to be released spends that on
+' geometry nobody will see. Clearing the state first makes resetLatestRowsRun's
+' applyPendingRowRemovals + flushRowSizes no-op.
+'
+' WHEN this is reached, because the obvious answer is wrong: NOT on navigating away from Home.
+' Home is SUSPENDED rather than destroyed by the router (see startLatestMediaLoads, which relies
+' on that). HomeRows.onDestroy comes from Home.destroyActiveContent() — a tab switch to
+' Favorites — and from Home.onDestroy when sgRouter permanently closes the view. So the way to
+' force a run in flight into this path is to switch tabs during a Home load.
+sub discardRowBatch()
+  m.pendingRowRemovals = []
+  m.rowSizesDirty = false
+  m.rowSizesBatching = false
+end sub
+
+' rowStructureChanged: Announce that a row was added to or removed from m.top.content.
+'
+' Outside a batch this recomputes immediately, so the single-row callers are unchanged.
+'
+' Don't go looking for the deferred path — no caller reaches it. Every mid-run caller passes
+' `immediate` (it MUST, or the geometry arrays stop describing the row list) and the rest only
+' run while m.rowSizesBatching is already false, so m.rowSizesDirty is false at both batch
+' boundaries and flushRowSizes() there is a no-op. What actually coalesces a run into one
+' recompute is m.pendingRowRemovals.
+'
+' m.rowSizesDirty is a FAIL-SAFE, not scaffolding for a future feature: a new mid-run caller
+' that forgets `immediate` recomputes at the batch boundary instead of never. That turns the
+' failure from wrong geometry — rows drawn at their neighbour's size, which produces no error,
+' no log line and no timing change — into geometry that is merely late. Deleting it makes that
+' mistake silent, which is the one failure mode in this file nothing else catches.
+sub rowStructureChanged(immediate = false as boolean)
+  m.rowSizesDirty = true
+  if immediate or not m.rowSizesBatching then flushRowSizes()
+end sub
+
+' flushRowSizes: Recompute if a structural change is still pending. No-op otherwise, so it
+' is safe to call unconditionally at a batch boundary.
+sub flushRowSizes()
+  if not m.rowSizesDirty then return
+  m.rowSizesDirty = false
+  setRowItemSize()
+end sub
+
 ' setRowItemSize: Loops through all home sections and sets the correct item sizes, heights, and spacings per row.
 ' rowItemSize[i] = slot size [width, posterHeight] — determines focus ring dimensions (poster only, no text).
 ' rowHeights[i]  = total row height: slot + 90px text area for standard rows; slot-only for library tiles.
 ' rowSpacings[i] = gap after each row before the next row label. Must be set for ALL rows because Roku
 '                  ignores itemSpacing entirely once rowSpacings is assigned (even partially). Standard rows
 '                  use 60px; My Media uses 78px to partially compensate for its absent text area.
+'
+' Reach for rowStructureChanged() rather than this — it is the coalescing seam, and this is
+' expensive enough (~85 ms early in a load, ~200 ms once every row is populated) that how
+' many times it runs is the whole cost model.
 sub setRowItemSize()
   if not isValid(m.top.content) then return
+
+  #if perfTiming
+    m.popSizeCalls++
+    m.sizeClock.mark()
+  #end if
 
   homeSections = m.top.content.getChildren(-1, 0)
   newSizeArray = CreateObject("roArray", homeSections.count(), false)
@@ -860,6 +1024,10 @@ sub setRowItemSize()
   m.top.rowItemSize = newSizeArray
   m.top.rowHeights = newRowHeights
   m.top.rowSpacings = newRowSpacings
+
+  #if perfTiming
+    m.popSizeMs += m.sizeClock.totalMilliseconds()
+  #end if
 end sub
 
 ' ============================================
@@ -1011,6 +1179,11 @@ sub onDestroy()
   m.LoadActiveRecordingsTask.unobserveField("content")
   m.LoadActiveRecordingsTask.control = "STOP"
   m.LoadActiveRecordingsTask = invalid
+
+  ' Drop any held row work BEFORE the reset — see discardRowBatch for why a teardown must not
+  ' pay for a recompute. This makes the reset's own flush a no-op rather than a render stall
+  ' on the way out of Home.
+  discardRowBatch()
 
   ' Stop and release the latest-media orchestrator
   resetLatestRowsRun()

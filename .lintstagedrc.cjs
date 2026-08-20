@@ -68,9 +68,6 @@ const cmdWithFiles = (cmd, files) => {
   return `${cmd} ${files.map(q).join(' ')}`;
 };
 
-const SPELLCHECKER_PLUGINS =
-  'spell indefinite-article repeated-words syntax-mentions syntax-urls frontmatter';
-
 module.exports = {
   // BrighterScript format — auto-fix; lint-staged re-stages the result.
   // bslint stays in pre-push (full project context required).
@@ -83,10 +80,9 @@ module.exports = {
   // Markdown — auto-fix style + spell-check (no spell auto-fix; check only).
   '*.md': (files) => {
     const mdLint = cmdWithFiles('npx markdownlint-cli2 --fix', keep(isMarkdownExcluded)(files));
-    const spell = cmdWithFiles(
-      `npx spellchecker -d dictionary.txt -p ${SPELLCHECKER_PLUGINS} --files`,
-      keep(isSpellExcluded)(files),
-    );
+    // Dictionaries and plugins come from `.spellcheckerrc.yaml` — see that file for why
+    // they must not be re-specified here.
+    const spell = cmdWithFiles('npx spellchecker --files', keep(isSpellExcluded)(files));
     return [mdLint, spell].filter(Boolean);
   },
 

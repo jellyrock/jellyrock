@@ -47,6 +47,31 @@ namespace latestRows
     return { ready: ready, nextIndex: index }
   end function
 
+  ' May a row's removal be held back until the current latest-rows run ends?
+  '
+  ' Only for the rows THAT run delivers. A run coalesces one row-size recompute per structural
+  ' change into one for the whole run, which is only safe while the row list and the three
+  ' geometry arrays stay in step — so the removals have to wait alongside the recompute.
+  '
+  ' Every other Home section (Continue Watching, Next Up, On Now, Active Recordings) removes
+  ' and recomputes immediately, mid-run or not. Two reasons, and the second is load-bearing:
+  '
+  '   - Those sections are fired by startParallelLoads, which RACES the orchestrator. Whether
+  '     one lands inside a run depends on which HTTP response wins, so batching them would make
+  '     a user-visible row collapse race-dependent — same server, two loads, two behaviours.
+  '   - The queue is keyed by sectionId and holds its entry until the run ends. The orchestrator
+  '     yields each library exactly once per run (see drainReady), so a queued latest_ row cannot
+  '     be repopulated before the flush. A parallel section CAN be — onProgramsExpired and
+  '     Home.refresh() both re-fire those tasks mid-run — and the flush would then delete a row
+  '     that had just been filled.
+  '
+  ' @param sectionId - the row's sectionId
+  ' @param batching - whether a latest-rows run is currently holding the recompute
+  ' @return true when the caller may queue the removal instead of applying it now
+  function removalIsDeferrable(sectionId as string, batching as boolean) as boolean
+    return batching and sectionId.startsWith("latest_")
+  end function
+
   ' Has a run been in flight long enough that its orchestrator thread must be gone?
   '
   ' HomeRows skips a refresh while a run is in flight, which is only safe if the in-flight

@@ -123,7 +123,7 @@ CAS
 CI
 ci-triage
 CJS
-.claude
+\.claude
 claude
 Claude
 CLDR
@@ -132,7 +132,6 @@ CLI-driven
 CLIs
 cloneable
 codebase
-codebase.
 codebehind
 codebehinds
 codec
@@ -211,7 +210,7 @@ DX
 e2e
 E2E
 ECP
-.editorconfig
+\.editorconfig
 ECP-disabled
 editorconfig
 enrichment
@@ -254,13 +253,12 @@ fullscreen
 getter
 getters
 GH
-.github
+\.github
 GitHub
 gitignored
 GitOps
 GitOps-adjacent
 globals
-globals.
 Globals
 glyphs
 GTD
@@ -323,7 +321,6 @@ last-updated
 Liveness
 lowercased
 lifecycle
-lifecycle.
 Lifecycle
 liveness
 linter
@@ -333,7 +330,6 @@ load-bearing
 lockfile
 longinteger
 lookups
-lookups.
 lossy
 LRU
 Luhmann
@@ -625,7 +621,7 @@ v1
 V1
 v2
 V2
-v2.0
+v2\.0
 v3
 validator
 validators
@@ -634,7 +630,7 @@ Vendored
 viewport
 virtuals
 Vitest
-.vscode
+\.vscode
 Vitest's
 vscode
 VSCode

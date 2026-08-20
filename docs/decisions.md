@@ -1011,6 +1011,32 @@ stays filed as tech debt rather than becoming project work. Re-evaluate if a mat
 figure the ledger does not carry — that would be a reason to change what `measure` RECORDS, not
 a reason to move the report in-process.
 
+## decision-id: home-row-removals-deferred
+
+**date**: 2026-08-10
+**status**: accepted
+**related-files**: `components/home/HomeRows.bs`, `source/home/latestRows.bs`
+
+During a latest-rows run, a Home row **that run delivers** whose library returned nothing is QUEUED for removal rather than removed on the spot, and the queue is drained — followed by a single `setRowItemSize()` — when the run ends. An empty library therefore keeps its skeleton for the rest of the run, which is already how a FAILED library's row behaves.
+
+Two cheaper-looking shapes were built and measured before this one, so both are closed questions rather than untried ideas. Flushing the recompute at `onLatestRowsReady`'s drain loop coalesces nothing — the orchestrator delivers one row per observer wake, so 11 rows arrive over 11 wakes. Deferring only the RECOMPUTE while removing rows immediately is a visible bug: the row list shrinks while the three geometry arrays still describe the old one, so rows below a removal draw at their neighbor's size for ~1 s of first paint. Keeping tree and arrays in step is what makes the batching safe. Evidence and numbers live in [`home-row-size-recompute-per-row`](architecture/tech-debt.md#home-row-size-recompute-per-row).
+
+**The batch stops at the run's own rows, and that scope is deliberate rather than inherited.** `populateRowFromData` serves every Home section, so a component-wide flag also swallows `resume` / `nextup` / `livetv` / `activeRecordings` removals — which it silently did at first, because the flag arrived by substituting `rowStructureChanged()` at every existing call site. Two reasons it does not stay that way. Those four are fired by `startParallelLoads`, which RACES the orchestrator, so whether a Continue Watching row collapses immediately or at the end of a run would depend on which HTTP response won — the same server, twice, two behaviors. And the queue is keyed by `sectionId` and held to the end of the run while `onProgramsExpired` and `Home.refresh()` can both re-fire those tasks mid-run, so a stale entry could delete a row that had just been repopulated. `latestRows.removalIsDeferrable` is the seam and is unit-tested.
+
+Accepted trade-off: an empty library's skeleton persists to the end of the run instead of vanishing mid-load, in exchange for one row-size recompute per load instead of one per empty library. The re-insert branch is deliberately NOT batched — an insertion is the same defect mirrored (row list longer than the arrays), and it is rare where removals are one per empty library on every load. Nor are the four parallel sections: a recompute only fires for a section that returned EMPTY, and at most four exist (two only with Live TV configured), so declining to batch them costs 0 for a user with watch history and ~2 on a fresh account. **Tripwire:** re-open if the lingering skeleton ever reads as a stall, if a measurement shows the single recompute dominating on a large library set, or if a measurement shows those eager per-section recomputes exceeding the bound above — which would justify batching the whole Home load, at the cost of a multi-condition close and a watchdog.
+
+## decision-id: spellchecker-sentence-final-dictionary
+
+**date**: 2026-08-19
+**status**: accepted
+**related-files**: `.spellcheckerrc.yaml`, `dictionary.txt`, `dictionary-sentence-final.txt`, `scripts/generate/sentence-final-dictionary.js`
+
+`retext` looks a paragraph's final word up WITH its period attached when the next block is a lowercase heading, a list, or a blockquote. Base-dictionary words survive that; `dictionary.txt` entries are matched as anchored regular expressions and do not — so a paragraph ending on one of our own words fails the lint. The `## decision-id: <slug>` schema of this very file is that shape, which put the trap inside the sanctioned `/log decision` path. The fix is a GENERATED companion dictionary holding each entry's sentence-final form, not a rule that ignores the reported token.
+
+**The `ignore:` regex shape is ruled out, and it was tried first here.** An `ignore` entry broad enough to cover a glued sentence-final period also stops reporting genuine typos in the same position — measured at 47 paragraph-above-a-list sites across 24 of 88 linted files, growing with the docs, and its own comment understated the loss as "directly above a lowercase heading" when a list or a blockquote does it too. Adding the period-forms to `dictionary.txt` by hand is ruled out for a second reason: that had already happened ad-hoc (`codebase.`, `globals.`, `lifecycle.`, `lookups.`) and each one also accepted `codebaseX`, because the period was left as a wildcard rather than escaped.
+
+Accepted cost: a committed generated artifact that can go stale, paid for by `dictionary:sentence-final:check` in the `lint` aggregate, in CI ahead of the spell lint, and in pre-push as both an auto-fix regen and a check. **Tripwire:** re-open if the generated file ever needs to diverge from a pure transform of `dictionary.txt`, or if `spellchecker-cli` gains an option controlling how it splits tokens, which would remove the need. Re-proposing the `ignore` shape needs a measurement showing the coverage loss is acceptable — the behavioral suite in `spellchecker-config.test.js` will fail until then.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

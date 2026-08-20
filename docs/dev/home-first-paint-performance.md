@@ -3,6 +3,7 @@ topic: home-first-paint-performance
 related-files:
   - components/home/LoadLatestRowsTask.bs
   - components/home/HomeRows.bs
+  - source/home/latestRows.bs
   - components/ItemGrid/LoadItemsTask2.bs
   - source/api/apiPipeline.bs
   - source/constants/apiPool.bs
@@ -38,10 +39,10 @@ network-bound. Measure per orchestrator; do not carry one result to another.
 ## What is being measured
 
 Opening Home fires one `LoadLatestRowsTask` run that fetches the latest items for every
-eligible library. Four log lines describe it, and all are permanent — they exist in dev
+eligible library. Five log lines describe it, and all are permanent — they exist in dev
 builds only (see [Why this costs production nothing](#why-this-costs-production-nothing)):
 
-The **format** they emit today. The first two are the top-level split; the second two break
+The **format** they emit today. The first two are the top-level split; the rest break
 `emit` and the render-side work down a level, and are described under
 [The second-level splits](#the-second-level-splits):
 
@@ -50,11 +51,16 @@ latest-rows run complete <n> rows <total> ms                                    
 latest-rows orchestrator done - [debug=? perfTiming=true] task <t> wait <w> emit <e>    # LoadLatestRowsTask
 latest-rows emit split - [debug=? perfTiming=true] xform <x> append <a> notify <no>     # LoadLatestRowsTask
 latest-rows populate split attach <at> detach <d> other <o>                             # HomeRows, render thread
+latest-rows size recompute calls <c> drains <d> ms <ms>                                 # HomeRows, render thread
 ```
 
-The two split lines are emitted **once per run**, not per row — they report accumulators.
-`emit split` follows `orchestrator done` on the task thread; `populate split` follows
-`run complete` on the render thread.
+The split lines are emitted **once per run**, not per row — they report accumulators.
+`emit split` follows `orchestrator done` on the task thread; `populate split` and
+`size recompute` follow `run complete` on the render thread.
+
+`size recompute` is a **separate line rather than three more columns on `populate split`**:
+`m.log.*` takes at most nine call-site arguments and faults at runtime past that, dropping
+the app into the BrightScript debugger.
 
 **Read the bracketed build flags before you trust a sample.** The two `LoadLatestRowsTask`
 lines carry the compile-time state the run was taken under, so a number can never be silently
@@ -179,6 +185,153 @@ established, so don't read the ~0 as free. Practically: `detach ≈ 0` in a samp
 are looking at a re-insert run whose `attach` is not comparable to a normal one. Decide on
 `total`. Full write-up:
 [`per-item-cross-thread-appends`](../architecture/tech-debt.md#per-item-cross-thread-appends).
+
+### `size recompute` — how often the row geometry was rewritten
+
+`setRowItemSize()` rebuilds `rowItemSize` / `rowHeights` / `rowSpacings` and writes all three
+to the `RowList`. It is expensive out of proportion to the arrays it builds, and it runs once
+per **structural** change (a row removed because its library returned nothing, or re-inserted
+because one that was empty now has data).
+
+| Column | What it covers |
+|---|---|
+| `calls` | how many times the recompute actually ran during the run |
+| `drains` | how many `rowReady` observer wakes the run was delivered over |
+| `ms` | total time inside `setRowItemSize()` |
+
+`calls` and `drains` are counted from the moment the run starts, so the recompute that
+follows skeleton insertion is not in them.
+
+⚠️ **`ms` is a SUBSET of `populate split`'s `other`, not a fourth sibling of it.** Every
+recompute during a run happens inside a window `other` is already accumulating, which is what
+keeps `attach + detach + other ≈ notify` true. Summing all four against `notify` double-counts
+— in the after-arm below, `ms` 91 of `other` 95 is the same 91 ms seen twice.
+
+**`drains` is there to stop a specific wrong fix from being re-proposed.** `onLatestRowsReady`
+drains a list and looks like a batch boundary, so coalescing the recompute there is the
+obvious move. It buys nothing: measured on a Stick 4K, 11 rows arrive over **11 separate
+wakes**, one row each, so a per-drain flush has nothing to coalesce. The batch boundary that
+works is the **whole run**.
+
+⚠️ **The per-call price is not fixed, so `calls` alone does not predict `ms`.** It tracks how
+much content is in the tree when the write lands: ~85 ms for a call early in a load, ~200 ms
+for one after every row is populated.
+
+**This section used to conclude from that "batching is a wash where few rows change", and
+that was wrong.** The `161 vs 161` behind the sentence is `ms` — time *inside*
+`setRowItemSize` — and that figure is fine: two early recomputes really do cost about what
+one late one does. The error was generalizing it to the whole change, because the batch also
+defers the row **removals**, and that saving does not land in `ms` at all. Corrected on
+measurement, not on argument.
+
+**Re-measured 2026-08-19**, against a server producing exactly **2** structural changes (10
+libraries requested, 2 returning nothing) — i.e. the very case the old sentence called a
+wash. `main` vs this branch, n=30 per arm per tier, alternating blocks, identical `rows=10`
+workload on every sample, every figure out of `measure:compare`:
+
+| `total` | 512 MB Stick | 1 GB Stick 4K | 2 GB Ultra |
+|---|---|---|---|
+| main | 3446 ms | 1760 ms | 1162.5 ms |
+| batched | **2828.5 ms** | **1533 ms** | **1042.5 ms** |
+| delta | **−617.5 (−17.9%)** | **−227 (−12.9%)** | **−120 (−10.3%)** |
+| rank test | p<0.0001 | p<0.0001 | p=0.0025 |
+
+The 1 GB column was taken **twice, with the arm order reversed** the second time (−216 ms,
+−12.3%). That control was not ceremony: the first campaign's per-block deltas grew across the
+session, and an order effect had to be excluded before any number could be published.
+
+**Why the win grows as the device weakens.** The recompute saving itself is roughly flat
+across tiers; the knock-on is not:
+
+| | 512 MB | 1 GB | 2 GB |
+|---|---|---|---|
+| `other` — the recompute | −104 | −108.5 | −45 *(complete separation, U=0)* |
+| `wait` — Task thread | **−308.5** (p=0.0002) | −83.5 (p=0.0012) | −24.5 *(not distinguishable)* |
+
+`wait` is time the Task thread spends on the network, and this change does not touch the
+network. It moves because a render thread with less to do stops slowing the Task thread down
+— [the rendezvous cost model](../architecture/async.md#crossing-the-thread-boundary-costs-a-rendezvous--budget-crossings-not-bytes)
+surfacing in the column you would least expect, and the reason the effect nearly triples
+between the Ultra and the 512 MB Stick.
+
+**The result that is easiest to miss: the batch makes the cost BOUNDED, not just smaller.**
+`sizeCalls` is 1 on every batched sample taken, on every tier:
+
+| `other` range | 512 MB | 1 GB | 2 GB |
+|---|---|---|---|
+| main | 202–857 ms | 93–531 ms | 76–251 ms |
+| batched | **193–222 ms** | **82–112 ms** | **58–73 ms** |
+
+Main's two recomputes land wherever the network happens to deliver the two empty libraries,
+so their cost depends on how full the tree is at that instant; the batch pins its single
+recompute to the end of the run. Non-vacuously confirmed: main's `detach` is **flat**
+(24–27 ms across all 12 blocks on the 1 GB device) while its `other` swings 128–300 — so the
+recomputes got more *expensive*, not more numerous.
+
+What grows with library count is `calls`, and that is where it pays hardest. **Re-derived
+2026-08-19 under the current method**, by adding four path-less libraries to the bench server
+so six eligible libraries returned nothing (14 requested, 6 empty), then deleting them again:
+
+| 14 rows, 6 empty · n=30/arm | `main` | batched | delta |
+|---|---|---|---|
+| `other` | 688.5 ms | **100 ms** | −588.5 (−85.5%) |
+| `wait` | 977.5 ms | **589 ms** | −388.5 (−39.7%) |
+| `emit` | 1391 ms | **689.5 ms** | −701.5 (−50.4%) |
+| **`total`** | **2831.5 ms** | **1648 ms** | **−1183.5 (−41.8%)** |
+
+**Complete separation (Mann-Whitney U = 0) on every column**, identical `rows=14` workload on
+all 60 samples, alternating blocks, `sizeCalls` 1 on every batched sample. So the scaling
+claim holds and is *stronger* than the −36% originally recorded here — at six structural
+changes the change is worth about 5× what it is worth at two.
+
+⚠️ **This is still an ENGINEERED condition.** Six libraries returning nothing is not what the
+bench server does — it has two, and this work's own session notes record "two such libraries
+on the test server". The four extra were created for the measurement and removed afterwards.
+Read this table as the SCALING result (what the win becomes on a library-rich server) and the
+three-tier table above as what the change is worth on a real library set.
+
+⚠️ **A first attempt at this run was discarded, and the reason is worth keeping.** Blocks 4+
+recorded `wait` values of 7–13 s against a normal ~600 ms, because the server's scheduled
+12-hourly `Scan Media Library` and `Media Segment Scan` fired mid-campaign. Nothing in the
+timing said "the server is busy" — it presented as the app getting slower. The run above was
+taken after those tasks went idle, and it reproduced the discarded run's headline (−41.8% in
+both) rather than being rescued by the re-run. **Check the server's scheduled tasks are idle
+before a campaign**; a maintenance pass is indistinguishable from a regression after the fact.
+
+The figure originally recorded here — `calls` 6 → 1, `ms` 408 → 91, `other` 661 → 95, first
+paint 2593.5 → 1669 ms (−36%), n=6/arm back to back at 11 rows — is superseded by the table
+above, which measures the same condition at n=30 with interleaved blocks.
+
+🚨 **Batching the recompute alone is a VISIBLE BUG — the removals have to be deferred with
+it.** Defer only the recompute and the row list shrinks while the three arrays still describe
+the old one, so every row below a removal renders at its neighbor's size. Measured through
+ODC, not guessed: a square row drawn at portrait height and a wide row at square width,
+across a ~1.0 s window of first paint. Deferring the removals too keeps tree and arrays in
+step for the whole run — 0 wrong rows after, against 4 samples before. The **re-insert**
+branch is the mirror image (row list longer than the arrays) and flushes eagerly instead,
+which is affordable because it is rare.
+
+**The batch holds back only the rows the run itself delivers.** Continue Watching, Next Up, On
+Now and Active Recordings share `populateRowFromData` but are fired by `startParallelLoads`,
+which races the orchestrator — batching them would make a visible row collapse depend on which
+HTTP response won, and their tasks can be re-fired mid-run (`onProgramsExpired`,
+`Home.refresh()`), so a queued removal could outlive a repopulate. They remove and recompute
+immediately, which is why `calls` can read above 1 on a load with empty non-library sections.
+The rule lives in `latestRows.removalIsDeferrable` and is unit-tested; the sizing of what that
+costs is in
+[`home-row-size-recompute-per-row`](../architecture/tech-debt.md#home-row-size-recompute-per-row).
+
+**How that was measured, since it is worth reaching for again.** Not a screenshot, and not a
+judgment call — an ODC probe polling a *structural invariant* through the transient:
+`rowItemSize.count()` against the live child count, and, whenever those disagree, each row's
+own `cursorSize` against the entry actually applied to it. That distinction is the point: a
+length mismatch alone is not a defect (the surplus entry may sit past the last row), so the
+oracle has to name which visible row is being drawn at a size that is not its own. Build with
+the RTA deploy path so ODC is injected, cold-start via ECP, and poll until the run settles.
+
+So read `calls` as the thing that grows with library count, and `ms` as what it cost this
+particular run. Full write-up:
+[`home-row-size-recompute-per-row`](../architecture/tech-debt.md#home-row-size-recompute-per-row).
 
 ## How to run it
 
