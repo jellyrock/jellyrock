@@ -282,6 +282,35 @@ describe('the run lifecycle — where a run s records actually land', () => {
       run.close();
     });
 
+    it('survives the run directory being deleted mid-run, as `--deploy` deletes it', async () => {
+      // The regression: `run-meta.json` lives under `out/`, and `measure --deploy` runs
+      // `npm run build` AFTER opening the run — which starts with `rimraf build/ out/`.
+      // `runProvenance()` then read a file that no longer existed and degraded every
+      // field to null, so a `--deploy` measurement series published no commit, no dirty
+      // flag, no deviceKey and no startedAt.
+      //
+      // Deleting the whole directory is the honest reproduction: `rimraf out/` does not
+      // politely remove one file.
+      const { beginRun, runProvenance, getRunDir } = await fresh();
+      const run = beginRun({ lock: LOCK, run: 'measure' });
+
+      // NOTHING may read provenance before the delete. An earlier draft of this test
+      // took a `before` snapshot to compare against, which warmed the very cache the
+      // fix installs — so it passed with the fix REMOVED. The read has to be the first
+      // one of the run, exactly as it is in `measure.js`.
+      fs.rmSync(getRunDir(), { recursive: true, force: true });
+
+      const after = runProvenance();
+      expect(after.run).toBe('measure');
+      expect(after.startedAt).toBe(run.startedAt);
+      // `commit` / `dirty` are deliberately NOT asserted: `fresh()` runs in a temp cwd
+      // where git resolves nothing, so they are legitimately null here. `run` and
+      // `startedAt` are set by `beginRun` itself, so they isolate the cache from the
+      // environment — and they are two of the four fields that were null in production.
+      expect(after.variant).not.toBeUndefined();
+      run.close();
+    });
+
     it('clears the previous run s failures, so a fold sees only this run', async () => {
       const { beginRun, failuresPath, recordFailure, readFailures } = await fresh();
       const first = beginRun({ lock: LOCK, run: 'test:rta' });
