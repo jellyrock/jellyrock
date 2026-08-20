@@ -267,25 +267,39 @@ recompute to the end of the run. Non-vacuously confirmed: main's `detach` is **f
 (24–27 ms across all 12 blocks on the 1 GB device) while its `other` swings 128–300 — so the
 recomputes got more *expensive*, not more numerous.
 
-What grows with library count is `calls`, and that is where it pays hardest:
+What grows with library count is `calls`, and that is where it pays hardest. **Re-derived
+2026-08-19 under the current method**, by adding four path-less libraries to the bench server
+so six eligible libraries returned nothing (14 requested, 6 empty), then deleting them again:
 
-| 6 libraries returning nothing | before | after |
-|---|---|---|
-| `calls` | 6 | **1** |
-| `ms` | 408 | **91** |
-| `other` | 661 | **95** |
-| **`total`** | **2593.5** | **1669 ms (−36%)** |
+| 14 rows, 6 empty · n=30/arm | `main` | batched | delta |
+|---|---|---|---|
+| `other` | 688.5 ms | **100 ms** | −588.5 (−85.5%) |
+| `wait` | 977.5 ms | **589 ms** | −388.5 (−39.7%) |
+| `emit` | 1391 ms | **689.5 ms** | −701.5 (−50.4%) |
+| **`total`** | **2831.5 ms** | **1648 ms** | **−1183.5 (−41.8%)** |
 
-⚠️ **That −36% was measured under an ENGINEERED condition and is not the general result.** It
-needs **6** libraries returning nothing; the bench server has 2, and this work's own session
-notes record "two such libraries on the test server". Nothing in the repo creates the 6-empty
-state — it was arranged by hand, and the magnitude has **not** been re-derived under the
-current method. Read it as evidence that the win scales with `calls`, and the three-tier
-table above as what the change is worth on a real library set.
+**Complete separation (Mann-Whitney U = 0) on every column**, identical `rows=14` workload on
+all 60 samples, alternating blocks, `sizeCalls` 1 on every batched sample. So the scaling
+claim holds and is *stronger* than the −36% originally recorded here — at six structural
+changes the change is worth about 5× what it is worth at two.
 
-n=6/arm, back to back, same forced-empty probe on both, only the batching differing.
-Complete separation (U=0.0 against a null expectation of 18, p=0.005), and non-vacuous:
-both arms end at **9 rows**, so the deferred removals really happen.
+⚠️ **This is still an ENGINEERED condition.** Six libraries returning nothing is not what the
+bench server does — it has two, and this work's own session notes record "two such libraries
+on the test server". The four extra were created for the measurement and removed afterwards.
+Read this table as the SCALING result (what the win becomes on a library-rich server) and the
+three-tier table above as what the change is worth on a real library set.
+
+⚠️ **A first attempt at this run was discarded, and the reason is worth keeping.** Blocks 4+
+recorded `wait` values of 7–13 s against a normal ~600 ms, because the server's scheduled
+12-hourly `Scan Media Library` and `Media Segment Scan` fired mid-campaign. Nothing in the
+timing said "the server is busy" — it presented as the app getting slower. The run above was
+taken after those tasks went idle, and it reproduced the discarded run's headline (−41.8% in
+both) rather than being rescued by the re-run. **Check the server's scheduled tasks are idle
+before a campaign**; a maintenance pass is indistinguishable from a regression after the fact.
+
+The figure originally recorded here — `calls` 6 → 1, `ms` 408 → 91, `other` 661 → 95, first
+paint 2593.5 → 1669 ms (−36%), n=6/arm back to back at 11 rows — is superseded by the table
+above, which measures the same condition at n=30 with interleaved blocks.
 
 🚨 **Batching the recompute alone is a VISIBLE BUG — the removals have to be deferred with
 it.** Defer only the recompute and the row list shrinks while the three arrays still describe
