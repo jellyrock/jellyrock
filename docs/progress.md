@@ -22,12 +22,11 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Currently running
 
-Re-measured the #728 Home row-size batch (PR #799) against `main` under the new `npm run measure` harness — **−17.9% / −12.9% / −10.3%** on 512 MB / 1 GB / 2 GB, n=30 per arm per tier, with the 1 GB pair replicated under reversed arm order to exclude an order effect. That refuted the branch's own "wash at two structural changes" claim, now corrected in `home-first-paint-performance.md`, the `home-row-size-recompute-per-row` tech-debt entry, the `HomeRows` comment and the PR body. PR #837 shipped alongside: `measure --deploy` was deleting the run provenance it had just written, so every `--deploy` series recorded a null commit.
-
 ## Recently shipped
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-20 — Batch Home's row-size recompute across a latest-rows run
 - 2026-08-20 — ci(rta): Fix `measure --deploy` deleting the run provenance it just wrote
 - 2026-08-19 — ci(rta): Add `npm run device:check` so "no device access" is a checked claim
 - 2026-08-19 — ci(rta): Stop citing gitignored paths from tracked files
