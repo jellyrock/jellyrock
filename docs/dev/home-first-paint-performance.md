@@ -3,6 +3,7 @@ topic: home-first-paint-performance
 related-files:
   - components/home/LoadLatestRowsTask.bs
   - components/home/HomeRows.bs
+  - source/home/latestRows.bs
   - components/ItemGrid/LoadItemsTask2.bs
   - source/api/apiPipeline.bs
   - source/constants/apiPool.bs
