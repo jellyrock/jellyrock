@@ -437,28 +437,20 @@ sub startLatestMediaLoads()
     m.popDrains = 0
     m.popSizeMs = 0
   #end if
-  ' Hold the row-size recompute for the whole run. A run removes one row per library that
-  ' returned nothing, and each removal used to pay its own recompute — so the cost grows with
-  ' library count, which is exactly the shape epic #728 exists for. Numbers, arms and the
-  ' shapes already rejected on measurement live in the journal, not here:
+  ' Hold the row-size recompute for the whole run, so a load pays one instead of one per
+  ' library that returned nothing.
+  '
+  ' Two things about the boundary that the code cannot tell you:
+  '
+  '   - The RUN is the boundary, NOT the drain loop, which looks like one and is not: the
+  '     orchestrator delivers one row per observer wake, so a per-drain flush coalesces
+  '     nothing. `drains` in the perfTiming line is what keeps that checkable.
+  '   - The batch owns only the rows this run delivers. latestRows.removalIsDeferrable is
+  '     the seam; every other Home section stays eager, and the reasoning is there.
+  '
+  ' Why this shape, which arms were rejected on measurement, and what it is worth per RAM
+  ' tier: decisions.md `home-row-removals-deferred` and
   ' tech-debt.md#home-row-size-recompute-per-row.
-  '
-  ' Three things about the boundary that are not guessable from this line:
-  '
-  '   - The RUN is it, NOT the drain loop, which looks like one and is not: the orchestrator
-  '     delivers one row per observer wake, so 11 rows arrive over 11 wakes and a per-drain
-  '     flush coalesces nothing. `drains` in the perfTiming line is what keeps that checkable.
-  '   - The batch owns only the rows this run delivers. latestRows.removalIsDeferrable is the
-  '     seam; every other Home section stays eager, and the reasoning is there.
-  '   - It pays even at TWO structural changes, and this comment used to say the opposite.
-  '     The per-call price is not fixed — a deferred recompute lands when the tree is fullest
-  '     and costs more than an early one — so collapsing 2 calls into 1 does look like a wash
-  '     if you only read `ms`. The batch also defers the REMOVALS, and that saving never
-  '     appears in `ms`. It also makes the cost BOUNDED: `calls` is 1 regardless of how many
-  '     libraries come back empty, where the eager path's cost depends on where in the load
-  '     each removal happens to land. Measured on all three RAM tiers; the win grows as the
-  '     device weakens, because a busy render thread also slows the Task thread. Figures and
-  '     arms in the journal.
   m.rowSizesBatching = true
   m.isLoadingLatestRows = true
   m.latestRowsRunClock.mark()
@@ -540,8 +532,11 @@ sub resetLatestRowsRun()
   '
   ' Note WHEN this fires: the next startLatestMediaLoads (which is where runIsStalled is
   ' consulted) or onDestroy. There is no timer. So an orchestrator that wedges while the user
-  ' sits on Home leaves the queue held until they navigate away or Home reloads — bounded to
-  ' this run's own rows, which are already unpopulated in that scenario.
+  ' sits on Home holds the queue until they navigate away or Home reloads, and the queued rows
+  ' keep their skeletons for that whole time. Those rows are the ones that DID answer, empty —
+  ' before the batch they would already have been removed, so this is a real difference and not
+  ' a no-op. Accepted rather than overlooked: it needs a run to wedge, and the result is the
+  ' same skeleton a library whose request FAILED already leaves on screen.
   m.rowSizesBatching = false
   applyPendingRowRemovals()
   flushRowSizes()
@@ -951,12 +946,17 @@ end sub
 '
 ' Outside a batch this recomputes immediately, so the single-row callers are unchanged.
 '
-' Don't go looking for the deferred path — there isn't one yet. No caller currently defers via
-' m.rowSizesDirty: every mid-run caller passes `immediate` (it MUST, or the geometry arrays stop
-' describing the row list), and the rest only run while m.rowSizesBatching is already false. So
-' the flag is false at both batch boundaries and flushRowSizes() there is a no-op; what actually
-' coalesces a run into one recompute is m.pendingRowRemovals. The dirty flag is kept as the seam
-' for a future structural change that CAN be deferred safely — a removal is only the first one.
+' Don't go looking for the deferred path — no caller reaches it. Every mid-run caller passes
+' `immediate` (it MUST, or the geometry arrays stop describing the row list) and the rest only
+' run while m.rowSizesBatching is already false, so m.rowSizesDirty is false at both batch
+' boundaries and flushRowSizes() there is a no-op. What actually coalesces a run into one
+' recompute is m.pendingRowRemovals.
+'
+' m.rowSizesDirty is a FAIL-SAFE, not scaffolding for a future feature: a new mid-run caller
+' that forgets `immediate` recomputes at the batch boundary instead of never. That turns the
+' failure from wrong geometry — rows drawn at their neighbour's size, which produces no error,
+' no log line and no timing change — into geometry that is merely late. Deleting it makes that
+' mistake silent, which is the one failure mode in this file nothing else catches.
 sub rowStructureChanged(immediate = false as boolean)
   m.rowSizesDirty = true
   if immediate or not m.rowSizesBatching then flushRowSizes()
