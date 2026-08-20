@@ -25,6 +25,8 @@ related-files:
   - scripts/lint/check-touched-related-files.cjs
   - dictionary.txt
   - .spellcheckerrc.yaml
+  - dictionary-sentence-final.txt
+  - scripts/generate/sentence-final-dictionary.js
   - .github/workflows/_lint-spelling.yml
   - scripts/lint/check-touched-lint.cjs
   - scripts/lint/decision-shape-nudge.cjs
@@ -78,7 +80,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-08-15
+last-reviewed: 2026-08-19
 ---
 
 # Build & Tooling
@@ -548,7 +550,7 @@ Surfaces 1–7 are a pure cost ladder — the same check pushed to the cheapest 
 | `bslint` (`lint:bs`) | — | ✓ | Needs full project context (cross-file scope resolution) |
 | `bsc --noEmit` (`validate`) | — | ✓ | Project-wide compile, ~10–30 s |
 | `markdownlint-cli2 --fix` (`lint:markdown`) | ✓ | ✓ | Pre-commit auto-fixes + re-stages; pre-push re-runs the read-only check (gated on `.md` changes) because rebase / cherry-pick / merge commits skip the pre-commit hook entirely |
-| `spellchecker` (`lint:spelling`) | ✓ | ✓ | Pre-commit checks (no auto-fix — correctness); pre-push re-runs it (gated on `.md` changes) as the same backstop for commits that bypass pre-commit. Dictionary / plugins / ignore rules come from [`.spellcheckerrc.yaml`](../../.spellcheckerrc.yaml), NOT from per-invocation flags — see below |
+| `spellchecker` (`lint:spelling`) | ✓ | ✓ | Pre-commit checks (no auto-fix — correctness); pre-push re-runs it (gated on `.md` changes) as the same backstop for commits that bypass pre-commit. Dictionaries and plugins come from [`.spellcheckerrc.yaml`](../../.spellcheckerrc.yaml), NOT from per-invocation flags — see below |
 | `jshint` (`lint:json`) | ✓ | — | File-scoped; no auto-fix |
 | `docs-check.cjs` (`lint:docs`) | — | ✓ | Cross-doc reference check; needs all docs loaded |
 | `generate-dev-index.cjs --check` | — | ✓ | Drift check on auto-generated table |
@@ -558,11 +560,19 @@ Surfaces 1–7 are a pure cost ladder — the same check pushed to the cheapest 
 
 Excludes mirror `package.json`'s `lint:*` scripts via shared helpers in [`scripts/lib/lint-excludes.cjs`](../../scripts/lib/lint-excludes.cjs) — the lint-staged config, the end-of-turn hook script, and the package.json scripts all consult the same source so excludes don't drift.
 
-**The spellchecker's other settings follow the same pattern, and that is load-bearing.** Four surfaces spawn `spellchecker-cli`: `lint:spelling` (CI + pre-push), [`.lintstagedrc.cjs`](../../.lintstagedrc.cjs) (pre-commit), [`check-touched-lint.cjs`](../../scripts/lint/check-touched-lint.cjs) (end-of-turn hook) and [`journal-sync.js`](../../scripts/journal-sync.js) (post-merge bullet check). They each used to carry their own copy of the dictionary path, plugin list and ignore regex, held together by a comment — and it drifted, leaving the hook reporting a word the others had stopped flagging. [`.spellcheckerrc.yaml`](../../.spellcheckerrc.yaml) is auto-discovered at the package root and CLI args override it, so every surface inherits the same rules. Two things to know before editing an invocation site:
+**The spellchecker's other settings follow the same pattern, and that is load-bearing.** Four surfaces spawn `spellchecker-cli`: `lint:spelling` (CI + pre-push), [`.lintstagedrc.cjs`](../../.lintstagedrc.cjs) (pre-commit), [`check-touched-lint.cjs`](../../scripts/lint/check-touched-lint.cjs) (end-of-turn hook) and [`journal-sync.js`](../../scripts/journal-sync.js) (post-merge bullet check). They each used to carry their own copy of the dictionary path and plugin list, held together by a comment — and it drifted, leaving the hook reporting a word the others had stopped flagging. [`.spellcheckerrc.yaml`](../../.spellcheckerrc.yaml) is auto-discovered at the package root and CLI args override it, so every surface inherits the same rules. Three things to know before editing an invocation site:
 
 - **Don't re-specify `-d` / `-p` / `-i`.** `tests/scripts/unit/lint/spellchecker-config.test.js` fails the build if a call site does — there are no exceptions. That test scans the whole **call expression**, not the matching line: a line-scoped version shipped first and missed a flag re-added on a continuation line, which is exactly the shape the migration removed.
-- **Spawn from the repo root.** Both the dictionary path and `.spellcheckerrc.yaml` **itself** are resolved against the `cwd` — the tool discovers its config by walking up from `process.cwd()`, not from the file being checked. Three surfaces run from the root naturally; `journal-sync.js` takes a `--repo-root` that can differ from its `cwd`, so it passes `cwd: repoRoot` to `spawnSync`. Without it the config is silently not found and the tool reverts to its defaults, dropping the `frontmatter` plugin and every ignore rule.
+- **Spawn from the repo root.** Both the dictionary paths and `.spellcheckerrc.yaml` **itself** are resolved against the `cwd` — the tool discovers its config by walking up from `process.cwd()`, not from the file being checked. Three surfaces run from the root naturally; `journal-sync.js` takes a `--repo-root` that can differ from its `cwd`, so it passes `cwd: repoRoot` to `spawnSync`. Without it the config is silently not found and the tool reverts to its defaults, dropping the `frontmatter` plugin and both dictionaries.
 - **The file globs deliberately stay OUT of the config**, for the reason above — `lint-excludes.cjs` already owns them, and a third copy in YAML would deepen the duplication rather than resolve it.
+
+#### The second dictionary is generated, and the `ignore` shape it replaced was worse
+
+[`dictionary-sentence-final.txt`](../../dictionary-sentence-final.txt) holds each `dictionary.txt` entry in its sentence-final form (`(?:handoff)\.`), generated by [`sentence-final-dictionary.js`](../../scripts/generate/sentence-final-dictionary.js) (`npm run dictionary:sentence-final`). It exists because `retext` stops treating a paragraph's final period as sentence-final when the next block is a **lowercase heading, a list, or a blockquote**, and then looks the word up with the period attached. Base-dictionary words survive that; `dictionary.txt` entries are matched as anchored regular expressions and do not — so a paragraph ending on one of our own words fails the lint. The `## decision-id: <slug>` schema every [`decisions.md`](../decisions.md) note uses is exactly that shape, which put the trap inside the sanctioned `/log decision` path. Two ad-hoc versions of the workaround had already been added by hand across separate commits (`codebase.`, `globals.`, `lifecycle.`, `lookups.` sat in `dictionary.txt`), each of which also accepted `codebaseX` because the `.` was not escaped, leaving it a wildcard.
+
+⚠️ **Do not replace it with an `ignore:` regex.** That shape shipped first here and was reverted: an `ignore` entry matching any token ending in a period stops reporting genuine typos in the same position — measured at 47 paragraph-above-a-list sites across 24 of 88 linted files. The generated dictionary closes the same trap with no coverage loss, because a typo is in neither dictionary. The behavioral suite in `spellchecker-config.test.js` spawns the real binary over a fixture and asserts both halves; it fails if an `ignore` key returns.
+
+Drift between the two files is gated by `npm run dictionary:sentence-final:check` — in the `lint` aggregate, in `_lint-spelling.yml` **ahead of** the spell lint, and in pre-push, which also regenerates on a `dictionary.txt` edit as an auto-fix step. It is not scoped to `dictionary.txt` changes: a stale companion silently weakens the lint everywhere, so the check runs on every push.
 
 ### Bypass discipline
 

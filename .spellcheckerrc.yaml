@@ -1,4 +1,4 @@
-# Single source of truth for spellchecker-cli's dictionary, plugins and ignore rules.
+# Single source of truth for spellchecker-cli's dictionaries and plugins.
 #
 # spellchecker-cli auto-discovers this file at the package root, and CLI arguments override
 # whatever it finds. Four surfaces invoke the tool and they MUST agree — a rule that lives on
@@ -20,13 +20,29 @@
 
 # ⚠️ Resolved relative to the CWD of whatever spawns the tool, NOT to this file — and the same
 # is true of THIS FILE's own discovery, which spellchecker-cli does by walking up from the CWD
-# with `pkg-dir`. So a bare filename is correct here, and the requirement it places on callers
+# with `pkg-dir`. So bare filenames are correct here, and the requirement that places on callers
 # is that they spawn from the repo root. Three do so naturally; journal-sync.js takes a
 # `--repo-root` that can differ from its CWD, so it passes `cwd: repoRoot` explicitly. Do not
-# "simplify" that away — without it neither the dictionary NOR this file is found, and the tool
-# silently reverts to its own defaults (no `frontmatter` plugin, no ignore rules).
+# "simplify" that away — without it neither the dictionaries NOR this file are found, and the
+# tool silently reverts to its own defaults (no `frontmatter` plugin, no custom words).
+#
+# The second dictionary is GENERATED from the first and holds each entry's sentence-final form
+# (`(?:handoff)\.`). retext stops treating a paragraph's final period as sentence-final when the
+# next block is a lowercase heading, a list, or a blockquote — the word is then looked up with
+# the period glued on. Base-dictionary words survive that; our own entries are matched as
+# anchored regexes and do not, so a paragraph ending on one of our words fails the lint. The
+# `## decision-id: <slug>` schema every docs/decisions.md note uses is exactly that shape, which
+# put the trap in the sanctioned `/log decision` path.
+#
+# ⚠️ Do NOT replace this with an `ignore:` regex matching any token that ends in a period. That
+# was tried here and reverted: it also stops reporting genuine typos in the same position, which
+# measured as 47 paragraph-above-a-list sites across 24 of 88 linted files. The generated
+# dictionary closes the same trap with no coverage loss — a typo is in neither dictionary, so
+# `typoo.` is still reported. `npm run dictionary:sentence-final:check` gates the two files
+# against drift; see scripts/generate/sentence-final-dictionary.js.
 dictionaries:
   - dictionary.txt
+  - dictionary-sentence-final.txt
 
 plugins:
   - spell
@@ -35,27 +51,3 @@ plugins:
   - syntax-mentions
   - syntax-urls
   - frontmatter
-
-# Ignore a word that arrived with its sentence-final period glued on.
-#
-# A heading whose first word is lowercase (`## decision-id: <slug>` — the schema every
-# docs/decisions.md note uses, and `### <slug>:` in docs/signals-backlog.md) stops retext
-# treating the PREVIOUS paragraph's final period as sentence-final. That paragraph's last word
-# is then looked up as `handoff.` rather than `handoff`. Base-dictionary words survive it;
-# words from our own dictionary.txt are matched exactly and fail — so appending a decision note
-# could break the build on the prose of the note above it, which is a trap sitting in the
-# sanctioned `/log decision` path.
-#
-# The regexes here are anchored with ^ and $ by the tool, so this only ever matches a whole
-# reported token. A token is reported WITH a trailing period only in the mis-tokenized case —
-# a typo at a normal sentence end is reported without one and still fails. The coverage lost is
-# a real typo that is BOTH paragraph-final AND directly above a lowercase heading.
-#
-# The apostrophe in the character class is load-bearing: dictionary.txt holds 15 possessives
-# (`orchestrator's`, `Jellyfin's`, `repo's`, …), each a live tripwire for a paragraph ending on
-# it. It could not be included while this regex lived in .lintstagedrc.cjs — lint-staged parses
-# that command string itself rather than handing it to a shell, so the `'\''` escaping the
-# config's `q()` helper emits split the arguments and left the tool with no --files at all.
-# Moving the rule here removed that constraint.
-ignore:
-  - "[A-Za-z][A-Za-z0-9'-]*\\."

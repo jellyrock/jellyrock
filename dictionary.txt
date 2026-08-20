@@ -132,7 +132,6 @@ CLI-driven
 CLIs
 cloneable
 codebase
-codebase.
 codebehind
 codebehinds
 codec
@@ -260,7 +259,6 @@ gitignored
 GitOps
 GitOps-adjacent
 globals
-globals.
 Globals
 glyphs
 GTD
@@ -323,7 +321,6 @@ last-updated
 Liveness
 lowercased
 lifecycle
-lifecycle.
 Lifecycle
 liveness
 linter
@@ -333,7 +330,6 @@ load-bearing
 lockfile
 longinteger
 lookups
-lookups.
 lossy
 LRU
 Luhmann

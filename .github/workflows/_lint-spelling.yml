@@ -23,10 +23,15 @@ jobs:
           # dictionary.txt is the spellchecker's own word list.
           #
           # .spellcheckerrc.yaml is the third real input — it owns the dictionary
-          # path, the plugin set and the ignore rules for every surface. Without it
-          # here, a PR that breaks the config (a bad ignore regex, a dropped plugin)
-          # while touching no .md file skips this job and lands green.
-          pattern: '\.md$|^dictionary\.txt$|^scripts/lint/dictionary-audit\.cjs$|^\.spellcheckerrc\.ya?ml$'
+          # list and the plugin set for every surface. Without it here, a PR that
+          # breaks the config (a dropped plugin, a removed dictionary) while
+          # touching no .md file skips this job and lands green.
+          #
+          # dictionary-sentence-final.txt and its generator are the fourth and
+          # fifth. The generated dictionary is a real spellchecker input, and the
+          # drift gate below is the only thing that catches it going stale — a
+          # stale one silently weakens the lint on every paragraph-final word.
+          pattern: '\.md$|^dictionary(-sentence-final)?\.txt$|^scripts/lint/dictionary-audit\.cjs$|^scripts/generate/sentence-final-dictionary\.js$|^\.spellcheckerrc\.ya?ml$'
           force: ${{ inputs.force }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: steps.detect.outputs.relevant == 'true'
@@ -45,6 +50,13 @@ jobs:
       - name: Install npm dependencies
         if: steps.detect.outputs.relevant == 'true'
         run: npm ci
+      # Ahead of the spell lint on purpose: dictionary-sentence-final.txt is
+      # GENERATED from dictionary.txt, and a stale copy presents as spelling
+      # failures on words that are already in the dictionary rather than as
+      # what it is. Fail on the drift, not on its symptom.
+      - name: Check sentence-final dictionary is in sync with dictionary.txt
+        if: steps.detect.outputs.relevant == 'true'
+        run: npm run dictionary:sentence-final:check
       - name: Check markdown files for spelling errors
         if: steps.detect.outputs.relevant == 'true'
         run: npm run lint:spelling

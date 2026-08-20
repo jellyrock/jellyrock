@@ -10,6 +10,14 @@
 // suite fails if any surface starts re-specifying a setting the config owns, which is the only
 // way that class of divergence can come back.
 //
+// The suite has a second half that is NOT about drift: it spawns the real binary over a fixture
+// and asserts what the configuration actually SPELLCHECKS. That exists because the first version
+// of the sentence-final fix was a broad `ignore` regex matching any token ending in a period,
+// and its unit test asserted the regex against hand-written tokens — which cannot catch a
+// TOKENIZATION problem, because the test supplies the token the author assumed. The regex
+// silently stopped reporting real typos at the end of any paragraph above a list, a numbered
+// list, a blockquote or a lowercase heading. Only spawning the tool shows that.
+//
 // ⚠️ The scan is over the whole CALL EXPRESSION, not the matching line. A line-scoped version
 // shipped first and had the very hole this gate exists to close: flags on a continuation line
 // were invisible, so re-adding `-p` in the multi-line argv shape — the shape the migration
@@ -19,7 +27,9 @@
 // property rather than an experiment someone has to remember to repeat.
 
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
@@ -127,9 +137,9 @@ describe('spellchecker config / .spellcheckerrc.yaml', () => {
     expect(() => parse(read(CONFIG_PATH))).not.toThrow();
   });
 
-  it('owns the dictionary, the plugin set and the ignore rules', () => {
+  it('owns both dictionaries and the plugin set', () => {
     const config = parse(read(CONFIG_PATH));
-    expect(config.dictionaries).toEqual(['dictionary.txt']);
+    expect(config.dictionaries).toEqual(['dictionary.txt', 'dictionary-sentence-final.txt']);
     expect(config.plugins).toEqual([
       'spell',
       'indefinite-article',
@@ -138,23 +148,14 @@ describe('spellchecker config / .spellcheckerrc.yaml', () => {
       'syntax-urls',
       'frontmatter',
     ]);
-    expect(config.ignore).toHaveLength(1);
   });
 
-  it('ignores a word carrying a glued sentence-final period, apostrophes included', () => {
-    // The regexes are anchored with ^ and $ by the tool, so match the whole token.
-    const [pattern] = parse(read(CONFIG_PATH)).ignore;
-    const re = new RegExp(`^${pattern}$`);
-
-    // The mis-tokenized shape this exists for. The possessive is the case that could not be
-    // covered while the regex lived in a lint-staged command string.
-    expect(re.test('handoff.')).toBe(true);
-    expect(re.test("orchestrator's.")).toBe(true);
-    expect(re.test('pre-commit.')).toBe(true);
-
-    // A typo reported without a trailing period still fails the lint.
-    expect(re.test('mispeled')).toBe(false);
-    expect(re.test('zzzqqq')).toBe(false);
+  it('carries no `ignore` rules at all', () => {
+    // Deliberate, and the reason is the whole point of the generated companion dictionary:
+    // an `ignore` regex broad enough to cover a glued sentence-final period also swallows a
+    // genuine typo in the same position. The behavioral suite below is what proves the
+    // replacement does not. If an `ignore` key comes back, that proof has to come back too.
+    expect(parse(read(CONFIG_PATH)).ignore).toBeUndefined();
   });
 
   it('does not let the excludes acquire a second owner here', () => {
@@ -235,5 +236,103 @@ describe('spellchecker config / the gate can actually fail', () => {
         const { code } = runBin('spellchecker', ['--files', ...targets]);
       `),
     ).toEqual([]);
+  });
+});
+
+// What the configuration actually spellchecks, taken from the real binary rather than from a
+// regex the test wrote itself. ONE spawn (~0.5 s) covers every case: the tool reports each
+// unknown word once, so a single fixture is both cheaper and a stricter assertion than a file
+// per case — anything unexpected shows up as a surplus entry.
+describe('spellchecker config / behaviour against the real binary', () => {
+  // retext stops treating a paragraph's final period as sentence-final when the next block is
+  // a lowercase heading, a list or a blockquote, and looks the word up with the period glued
+  // on. Each hostile position appears twice below: once ending on a dictionary.txt word (must
+  // stay silent) and once ending on a nonsense word (must still be reported).
+  const FIXTURE = [
+    '# Fixture',
+    '',
+    'A dictionary word above a lowercase heading is the handoff.',
+    '',
+    '## decision-id: some-slug',
+    '',
+    "A dictionary word above a bullet list is the orchestrator's.",
+    '',
+    '- a list item',
+    '',
+    'A dictionary word above a blockquote names Jellyfin.',
+    '',
+    '> a quoted line',
+    '',
+    'A misspelling above a lowercase heading is zzqqxaa.',
+    '',
+    '## decision-id: another-slug',
+    '',
+    'A misspelling above a bullet list is wibblesnark.',
+    '',
+    '- another list item',
+    '',
+    'A misspelling at a normal sentence end is frotzbarple. More text follows here.',
+    '',
+  ].join('\n');
+
+  // Resolved from the repo's own node_modules, and spawned with `cwd: REPO_ROOT` — the same
+  // two requirements every production call site has, for the same reason: spellchecker-cli
+  // discovers .spellcheckerrc.yaml by walking up from process.cwd().
+  const BIN = join(REPO_ROOT, 'node_modules', '.bin', 'spellchecker');
+
+  const run = (() => {
+    const dir = mkdtempSync(join(tmpdir(), 'spellchecker-behaviour-'));
+    const file = join(dir, 'fixture.md');
+    try {
+      writeFileSync(file, FIXTURE);
+      const res = spawnSync(BIN, ['--files', file], { encoding: 'utf8', cwd: REPO_ROOT });
+      const output = (res.stdout || '') + (res.stderr || '');
+      return {
+        status: res.status,
+        error: res.error,
+        output,
+        // Trailing period included when present — the mis-tokenized form is the evidence.
+        reported: [...output.matchAll(/unknown word `([^`]+)`/g)].map((m) => m[1]),
+      };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  })();
+  const reported = run.reported;
+
+  it('actually spawned the binary', () => {
+    // Non-vacuity guard, and it is not paranoia: if the spawn failed — binary absent, config
+    // not discovered from this cwd — `reported` would be empty and the "does not report"
+    // case below would pass by checking nothing. spellchecker-cli exits 1 when it reports a
+    // warning, so a successful run over this fixture is exit 1 with output, not exit 0.
+    expect(run.error, `spawn failed: ${run.error?.message}`).toBeUndefined();
+    expect(run.output).toContain('Spellchecking 1 file');
+    expect(run.status).toBe(1);
+  });
+
+  it('does not report a dictionary word that ends a paragraph in any hostile position', () => {
+    // The trap this configuration exists to close. `## decision-id: <slug>` is the schema
+    // every docs/decisions.md note uses, so this sat directly in the `/log decision` path.
+    for (const word of ['handoff.', "orchestrator's.", 'Jellyfin.']) {
+      expect(reported, `${word} must not be reported`).not.toContain(word);
+    }
+  });
+
+  it('still reports a real typo in those same positions', () => {
+    // The regression the broad `ignore` regex introduced and this fixture now gates. Note the
+    // glued period: these are reported in the mis-tokenized form, which is exactly the shape
+    // an `ignore: "[A-Za-z][A-Za-z0-9\'-]*\\."` rule would swallow.
+    expect(reported).toContain('zzqqxaa.');
+    expect(reported).toContain('wibblesnark.');
+  });
+
+  it('still reports a real typo at an ordinary sentence end', () => {
+    expect(reported).toContain('frotzbarple');
+  });
+
+  it('reports nothing else, so the fixture cannot pass by reporting everything', () => {
+    // Non-vacuity in the other direction: a configuration that flagged every word would
+    // satisfy the two "still reports" cases above.
+    expect(reported.sort()).toEqual(['frotzbarple', 'wibblesnark.', 'zzqqxaa.']);
   });
 });

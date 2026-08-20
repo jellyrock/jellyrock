@@ -30,6 +30,13 @@
 #                                    rebase / cherry-pick / merge commits.
 #  9a'. npm run lint:spelling     — when any *.md changed. spellchecker against
 #                                    dictionary.txt. Same rebase-bypass backstop.
+#  9a''. npm run dictionary:sentence-final:check — ALWAYS, and BEFORE 9a' so a
+#                                    stale companion dictionary reports as drift
+#                                    rather than as a wall of spelling failures.
+#                                    dictionary-sentence-final.txt is generated
+#                                    from dictionary.txt; when it goes stale the
+#                                    spell lint silently weakens everywhere, so
+#                                    this is not scoped to dictionary.txt edits.
 #  9b. npm run lint:ci-workflow-sync — ALWAYS. Verifies every _lint-*.yml /
 #                                    _test-*.yml / _smoke-test-*.yml reusable
 #                                    workflow is listed in _validate-dependencies.yml.
@@ -99,13 +106,13 @@ HAS_JSON_OR_JS=$(echo "$CHANGED" | grep -qE '\.(js|cjs|mjs|json)$' && echo 1 || 
 HAS_ICON_SOURCES=$(echo "$CHANGED" | grep -qE '^resources/icons/.*\.svg$|^resources/(icons/icons|placeholders/placeholders)\.json$|^scripts/generate/icons-build\.js$' && echo 1 || true)
 HAS_GRADIENT_SOURCES=$(echo "$CHANGED" | grep -qE '^images/gradients/|^scripts/generate/gradient-assets\.js$' && echo 1 || true)
 HAS_API_MANIFEST_SOURCES=$(echo "$CHANGED" | grep -qE '^source/api/.*\.bs$|^source/data/.*Transformer\.bs$|^source/utils/(session|streamSelection|subtitles)\.bs$|^scripts/generate/api-usage-manifest\.js$' && echo 1 || true)
-HAS_DICTIONARY=$(echo "$CHANGED" | grep -qE '^dictionary\.txt$|^scripts/lint/dictionary-audit\.cjs$' && echo 1 || true)
+HAS_DICTIONARY=$(echo "$CHANGED" | grep -qE '^dictionary(-sentence-final)?\.txt$|^scripts/lint/dictionary-audit\.cjs$|^scripts/generate/sentence-final-dictionary\.js$' && echo 1 || true)
 HAS_MD=$(echo "$CHANGED" | grep -qE '\.md$' && echo 1 || true)
 
 # ──────────────────────────────────────────────────────────────────────────
 # Auto-fix steps (project-wide regens; combined into one commit at the end)
 # ──────────────────────────────────────────────────────────────────────────
-if [ -n "$TRANSLATION_TRIGGERS" ] || [ -n "$HAS_DEV_DOCS" ] || [ -n "$HAS_ICON_SOURCES" ] || [ -n "$HAS_GRADIENT_SOURCES" ] || [ -n "$HAS_API_MANIFEST_SOURCES" ]; then
+if [ -n "$TRANSLATION_TRIGGERS" ] || [ -n "$HAS_DEV_DOCS" ] || [ -n "$HAS_ICON_SOURCES" ] || [ -n "$HAS_GRADIENT_SOURCES" ] || [ -n "$HAS_API_MANIFEST_SOURCES" ] || [ -n "$HAS_DICTIONARY" ]; then
   if ! git diff-index --quiet HEAD --; then
     echo "⚠️  Working tree has uncommitted changes; skipping auto-fix steps."
     echo "   Commit or stash them, then re-push to enable auto-fix."
@@ -133,6 +140,11 @@ if [ -n "$TRANSLATION_TRIGGERS" ] || [ -n "$HAS_DEV_DOCS" ] || [ -n "$HAS_ICON_S
     if [ -n "$HAS_API_MANIFEST_SOURCES" ]; then
       echo "🗺️  Regenerating API usage manifest..."
       npm run docs:api-manifest
+    fi
+
+    if [ -n "$HAS_DICTIONARY" ]; then
+      echo "📖 Regenerating the sentence-final companion dictionary..."
+      npm run dictionary:sentence-final
     fi
 
     if ! git diff --quiet; then
@@ -184,6 +196,11 @@ fi
 
 echo "📚 Validating doc references..."
 npm run lint:docs
+
+# Ahead of lint:spelling on purpose: a stale companion dictionary presents as
+# unrelated spelling failures on words that are already in dictionary.txt.
+echo "📖 Checking sentence-final dictionary drift..."
+npm run dictionary:sentence-final:check
 
 if [ -n "$HAS_MD" ]; then
   echo "📝 Linting markdown style..."

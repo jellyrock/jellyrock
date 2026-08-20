@@ -363,9 +363,9 @@ export function pruneRecentlyShipped(content, today, maxAgeDays) {
 // runs `check`, and `ship` runs the same check as a safety net before write.
 // ──────────────────────────────────────────────────────────────────────────
 
-// Dictionary, plugins and ignore rules come from `.spellcheckerrc.yaml`. Inheriting
-// them rather than restating them is load-bearing — if a bullet passes here, it must
-// pass the lint on the next PR that touches a .md file.
+// Dictionaries and plugins come from `.spellcheckerrc.yaml`. Inheriting them rather
+// than restating them is load-bearing — if a bullet passes here, it must pass the lint
+// on the next PR that touches a .md file.
 //
 // ⚠️ That inheritance is why the spawn below sets `cwd: repoRoot`, and it is not
 // cosmetic. spellchecker-cli discovers the config with `pkg-dir` walking up from
@@ -373,8 +373,10 @@ export function pruneRecentlyShipped(content, today, maxAgeDays) {
 // This runner takes `--repo-root`, so its CWD and its repo root are routinely different
 // (CI checkouts, the test fixtures below); left unset, the config is simply not found
 // and the tool falls back to its own defaults, silently dropping the `frontmatter`
-// plugin and every ignore rule. Verified by spawning it from outside the repo: the
-// mis-tokenized `handoff.` the config exists to ignore came back as a failure.
+// plugin and BOTH dictionaries. Verified by spawning it from outside the repo: the
+// mis-tokenized `handoff.` the companion dictionary exists to cover came back as a
+// failure. That matters most here — a `/log decision` bullet is exactly the shape
+// (a paragraph above a `## decision-id:` heading) that produces the mis-tokenization.
 
 // Resolve spellchecker-cli's binary from THIS script's own node_modules so
 // runs against a fixture repo (test or CI checkout of a different working

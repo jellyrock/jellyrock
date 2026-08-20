@@ -80,8 +80,8 @@ module.exports = {
   // Markdown — auto-fix style + spell-check (no spell auto-fix; check only).
   '*.md': (files) => {
     const mdLint = cmdWithFiles('npx markdownlint-cli2 --fix', keep(isMarkdownExcluded)(files));
-    // Dictionary, plugins and ignore rules come from `.spellcheckerrc.yaml` — see that file
-    // for why they must not be re-specified here.
+    // Dictionaries and plugins come from `.spellcheckerrc.yaml` — see that file for why
+    // they must not be re-specified here.
     const spell = cmdWithFiles('npx spellchecker --files', keep(isSpellExcluded)(files));
     return [mdLint, spell].filter(Boolean);
   },

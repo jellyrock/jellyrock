@@ -46,7 +46,11 @@ jobs:
           # is one of those sites. Without them a PR re-adding `-i` there alone
           # skips the one gate that exists to catch it — which is precisely the
           # drift that gate was written for. See ci-path-filters-unverified.
-          pattern: '^scripts/|^tests/scripts/|^images/gradients/|^vitest\.config\.js$|^package(-lock)?\.json$|^\.lintstagedrc\.cjs$|^\.spellcheckerrc\.ya?ml$'
+          # dictionary.txt and dictionary-sentence-final.txt are here because
+          # sentence-final-dictionary.test.js asserts the generated file is in
+          # step with its source; a PR editing only dictionary.txt would
+          # otherwise skip the test that exists to catch exactly that.
+          pattern: '^scripts/|^tests/scripts/|^images/gradients/|^vitest\.config\.js$|^package(-lock)?\.json$|^\.lintstagedrc\.cjs$|^\.spellcheckerrc\.ya?ml$|^dictionary(-sentence-final)?\.txt$'
           force: ${{ inputs.force }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: steps.detect.outputs.relevant == 'true'
