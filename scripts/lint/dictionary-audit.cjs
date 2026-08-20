@@ -114,38 +114,62 @@ const CAMEL_CASE_RE = /^[a-z]+[A-Z]/;
 const IDENTIFIER_PREFIX_RE = /^[A-Z]{2,}[a-z]/;
 const PASCAL_HUMP_RE = /[A-Z][a-z]+/g;
 
-function classify(word) {
-  if (ALLOWLIST.has(word)) return null;
-  if (ACRONYM_PLURAL_RE.test(word)) return null;
+/**
+ * The first unescaped regex metacharacter in an entry, or null.
+ *
+ * A backslash escapes the character after it, so `\.claude` is clean while
+ * `.claude` is not. `-` is deliberately absent: it is only special inside a
+ * character class, and this file is full of legitimately hyphenated entries.
+ */
+function unescapedMetacharacters(word) {
+  for (let i = 0; i < word.length; i++) {
+    if (word[i] === '\\') {
+      i++; // skip whatever it escapes
+      continue;
+    }
+    if ('.*+?^$()[]{}|'.includes(word[i])) return word[i];
+  }
+  return null;
+}
+
+function shapeVerdict(word) {
+  // Every check below is about what the entry MEANS, not how it is written, so
+  // they run against the UNESCAPED literal. Without this, correctly escaping
+  // `.claude` to `\.claude` trips the path-separator rule on its own escape
+  // character — the audit would reject the very fix it just demanded.
+  const literal = word.replace(/\\(.)/g, '$1');
+
+  if (ALLOWLIST.has(literal)) return null;
+  if (ACRONYM_PLURAL_RE.test(literal)) return null;
 
   // Possessive form of an allowlisted entry (e.g., "BrighterScript's")
-  if (word.endsWith("'s") && ALLOWLIST.has(word.slice(0, -2))) return null;
+  if (literal.endsWith("'s") && ALLOWLIST.has(literal.slice(0, -2))) return null;
 
-  if (PATH_SEPARATOR_RE.test(word)) {
+  if (PATH_SEPARATOR_RE.test(literal)) {
     return {
       reason: 'path separator',
       hint: 'paths should be backticked in markdown, not added here',
     };
   }
-  if (FILE_EXTENSION_RE.test(word)) {
+  if (FILE_EXTENSION_RE.test(literal)) {
     return {
       reason: 'file extension',
       hint: 'file names should be backticked in markdown, not added here',
     };
   }
-  if (CAMEL_CASE_RE.test(word)) {
+  if (CAMEL_CASE_RE.test(literal)) {
     return {
       reason: 'camelCase identifier',
       hint: 'code identifiers should be backticked in markdown, not added here',
     };
   }
-  if (IDENTIFIER_PREFIX_RE.test(word)) {
+  if (IDENTIFIER_PREFIX_RE.test(literal)) {
     return {
       reason: 'class-prefix identifier',
       hint: 'class/component names should be backticked in markdown, not added here',
     };
   }
-  const humps = word.match(PASCAL_HUMP_RE) || [];
+  const humps = literal.match(PASCAL_HUMP_RE) || [];
   if (humps.length >= 2) {
     return {
       reason: 'PascalCase identifier',
@@ -153,6 +177,33 @@ function classify(word) {
     };
   }
 
+  return null;
+}
+
+/**
+ * Two independent problems, in the order their FIXES make sense.
+ *
+ * An identifier-shaped entry should be DELETED, so it is reported first — telling
+ * someone to escape the dot in `package.json` would be advice toward keeping an
+ * entry that should never have been added. Only once an entry is otherwise
+ * legitimate does an unescaped metacharacter become the actionable problem.
+ *
+ * The metacharacter check deliberately sits AFTER the allowlist rather than
+ * before it: `shapeVerdict` returns null for an allowlisted entry, so control
+ * still reaches here and an allowlisted proper noun written with a live
+ * metacharacter is caught too.
+ */
+function classify(word) {
+  const shape = shapeVerdict(word);
+  if (shape) return shape;
+
+  const meta = unescapedMetacharacters(word);
+  if (meta) {
+    return {
+      reason: `unescaped regex metacharacter ${meta}`,
+      hint: `entries compile to anchored regexes — write ${meta} as \\${meta} if you meant it literally`,
+    };
+  }
   return null;
 }
 
@@ -190,18 +241,29 @@ function main() {
   }
 
   console.error(
-    `dictionary-audit: found ${violations.length} identifier-shaped entr${violations.length === 1 ? 'y' : 'ies'} in dictionary.txt:\n`,
+    `dictionary-audit: found ${violations.length} problem entr${violations.length === 1 ? 'y' : 'ies'} in dictionary.txt:\n`,
   );
   for (const v of violations) {
     console.error(`  dictionary.txt:${v.line}  ${v.word}  (${v.reason})`);
     console.error(`    → ${v.hint}`);
   }
-  console.error(
-    '\nFix: remove the entry, then backtick the identifier in any markdown that referenced it.',
-  );
-  console.error(
-    'If an entry is a legitimate proper noun (product name, brand), add it to ALLOWLIST in scripts/lint/dictionary-audit.cjs.',
-  );
+  // The two violation classes have OPPOSITE fixes — an identifier-shaped entry
+  // should be deleted, an unescaped metacharacter should be escaped and KEPT — so
+  // printing both footers unconditionally tells half the readers to do the wrong
+  // thing. Each prints only when its own class is present.
+  if (violations.some((v) => !v.reason.startsWith('unescaped regex metacharacter'))) {
+    console.error(
+      '\nFix: remove the entry, then backtick the identifier in any markdown that referenced it.',
+    );
+    console.error(
+      'If an entry is a legitimate proper noun (product name, brand), add it to ALLOWLIST in scripts/lint/dictionary-audit.cjs.',
+    );
+  }
+  if (violations.some((v) => v.reason.startsWith('unescaped regex metacharacter'))) {
+    console.error(
+      '\nFix: escape the metacharacter (`.claude` → `\\.claude`) and regenerate the companion dictionary with `npm run dictionary:sentence-final`.',
+    );
+  }
   return 1;
 }
 

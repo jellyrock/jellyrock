@@ -90,6 +90,58 @@ describe('dictionary-audit classify()', () => {
   });
 });
 
+describe('dictionary-audit classify() / unescaped regex metacharacters', () => {
+  // spellchecker-cli compiles each entry to an ANCHORED regex, so an unescaped
+  // metacharacter silently widens what the entry accepts. Measured against the real
+  // binary before this check existed: `.claude` / `.github` / `.vscode` /
+  // `.editorconfig` / `v2.0` were all present unescaped, and `Xclaude`, `Xgithub`,
+  // `Xvscode`, `Xeditorconfig` and `v2X0` therefore passed the spellchecker.
+  it.each([
+    ['.claude'],
+    ['.github'],
+    ['.vscode'],
+    ['.editorconfig'],
+    ['v2.0'],
+    ['foo*'],
+    ['a|b'],
+    ['x+'],
+  ])('flags %s', (word) => {
+    const verdict = classify(word);
+    expect(verdict).not.toBeNull();
+    expect(verdict.reason).toMatch(/^unescaped regex metacharacter/);
+  });
+
+  it.each([['\\.claude'], ['\\.github'], ['\\.vscode'], ['\\.editorconfig'], ['v2\\.0']])(
+    'accepts the escaped form %s',
+    (word) => {
+      expect(classify(word)).toBeNull();
+    },
+  );
+
+  it('does not let the escape character itself trip the path-separator rule', () => {
+    // The regression this guards: the identifier-shape checks read the RAW entry,
+    // so `\\.claude` was rejected as containing a path separator — the audit
+    // rejecting the exact fix it had just demanded.
+    expect(classify('\\.claude')).toBeNull();
+  });
+
+  it('reports an identifier-shaped entry as identifier-shaped, not as a metacharacter', () => {
+    // The unescape must not become a way to smuggle an identifier past the audit.
+    const verdict = classify('src\\/BaseGridView');
+    expect(verdict).not.toBeNull();
+    expect(verdict.reason).not.toMatch(/^unescaped regex metacharacter/);
+  });
+
+  it('catches an allowlisted proper noun that carries a live metacharacter', () => {
+    // The metacharacter check runs AFTER the shape checks (an identifier-shaped
+    // entry should be deleted, not escaped), and the allowlist makes `shapeVerdict`
+    // return null rather than short-circuiting `classify` — so an allowlisted entry
+    // written with a live metacharacter is still caught.
+    const [allowlisted] = [...require('../../../../scripts/lint/dictionary-audit.cjs').ALLOWLIST];
+    expect(classify(`${allowlisted}.`)).not.toBeNull();
+  });
+});
+
 describe('dictionary-audit audit()', () => {
   it('repo dictionary.txt has no identifier-shaped entries (smoke)', () => {
     const violations = audit();
