@@ -1,3 +1,5 @@
+import "pkg:/source/utils/cellLoad.bs"
+
 ' Texture Manager Utility
 '
 ' State machine managing texture memory for RowList and MarkupGrid screens.
@@ -77,6 +79,16 @@ sub initTextureManager(contentRoot as object, itemSize as dynamic, focusXOffset 
     contentRoot.addField("textureManagerState", "string", false)
   end if
   contentRoot.textureManagerState = "init"
+
+  ' Attach the cell-load ledger to the same lifecycle. `m.top.subtype()` resolves to the
+  ' CALLING component (these are free functions, so `m` is the caller's — the same
+  ' mechanism `screenReadiness.bs` documents), which is what lets every screen name itself
+  ' without a single call site changing. Every caller today is a component codebehind; the
+  ' caller's-`m` rule does not hold inside a BrighterScript class method, so a future class
+  ' caller would have to pass its name instead.
+  if isValid(m.top)
+    cellLoad.attach(contentRoot, m.top.subtype())
+  end if
 end sub
 
 ' Calculates the usable row width for determining how many items fit on screen.
@@ -234,6 +246,10 @@ end sub
 sub hideTextureManager(contentRoot as object)
   if not isValid(contentRoot) or not contentRoot.hasField("textureManagerState") then return
   contentRoot.textureManagerState = "hidden"
+  ' A screen being hidden is a COMPLETE viewing session — the user navigated away — and
+  ' it is the only session boundary Home ever reaches, because the router SUSPENDS Home
+  ' rather than destroying it.
+  cellLoad.emit(contentRoot)
 end sub
 
 ' Destroys texture management during component teardown.
@@ -243,4 +259,7 @@ end sub
 sub destroyTextureManager(contentRoot as object)
   if not isValid(contentRoot) or not contentRoot.hasField("textureManagerState") then return
   contentRoot.textureManagerState = "destroyed"
+  ' No-ops when hideTextureManager already published this session (see cellLoad.emit).
+  cellLoad.emit(contentRoot)
 end sub
+

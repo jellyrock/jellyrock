@@ -36,6 +36,7 @@ sub init()
   m.cachedPosterUri = ""
   m.cachedLoadDisplayMode = "scaleToZoom"
   m.isTextureUnloaded = false
+  m.lastBindKey = ""
 
   ' Reference to the MarkupGrid's root ContentNode — used to observe loadedRowRange.
   ' Set once in setupGridTextureObserver() when the first itemContent is assigned.
@@ -86,14 +87,28 @@ sub onItemContentChanged()
   setupGridTextureObserver()
 
   if m.top.width <= 0 or m.top.height <= 0 then return
+  cellLoad.bind(m.contentRoot, cellLoad.FROM_CONTENT, isRepeatBind())
   renderItem()
 end sub
+
+' Mirror of JRRowItem.isRepeatBind — same waste question, same skeleton-safety constraint
+' (a placeholder carries only `type`, so read `id` and compare rather than casting).
+function isRepeatBind() as boolean
+  item = m.top.itemContent
+  id = ""
+  if isValid(item) and isValid(item.id) then id = item.id
+  key = id + "@" + int(m.top.width).toStr() + "x" + int(m.top.height).toStr()
+  isRepeat = (m.lastBindKey = key)
+  m.lastBindKey = key
+  return isRepeat
+end function
 
 ' Re-render when the parent applies/changes the cell size (MarkupGrid itemSize or
 ' RowList rowItemSize). Mirrors JRRowItem so one component renders every cell size.
 sub onSizeChanged()
   if not isValid(m.top.itemContent) then return
   if m.top.width <= 0 or m.top.height <= 0 then return
+  cellLoad.bind(m.contentRoot, cellLoad.FROM_SIZE, isRepeatBind())
   renderItem()
 end sub
 
@@ -257,6 +272,7 @@ sub renderMediaItem(itemData as object, itemType as string)
     ' Image expected and the texture manager wants this cell loaded — start
     ' the placeholder in loading state; the load-status observer takes over.
     resetPlaceholderToLoading()
+    cellLoad.loadStarted(m.contentRoot)
     m.itemPoster.uri = posterUri
   else
     ' Image expected but the texture manager is keeping this cell off-screen
@@ -302,6 +318,7 @@ sub onPosterLoadStatusChanged()
     m.placeholder.visible = false
   else if m.itemPoster.loadStatus = "failed" and m.itemPoster.uri <> ""
     ' Real image failed — surface a type-appropriate glyph on the backdrop
+    cellLoad.loadErrored(m.contentRoot)
     showPlaceholder(resolveItemPlaceholderType(m.top.itemContent))
   else
     ' Loading or no URI — keep the placeholder visible in its current state
@@ -325,6 +342,7 @@ end sub
 ' unload paths so off-screen / unloaded cells don't carry a stale failure-state
 ' glyph back into view when they reload.
 sub resetPlaceholderToLoading()
+  if m.placeholder.itemType <> "" then cellLoad.glyphWipe(m.contentRoot, cellLoad.WIPE_BIND)
   m.placeholder.itemType = ""
   m.placeholder.visible = true
 end sub
@@ -499,6 +517,7 @@ end sub
 sub unloadGridTexture()
   if m.cachedPosterUri = "" or m.isTextureUnloaded then return
 
+  cellLoad.unload(m.contentRoot)
   m.isTextureUnloaded = true
   m.itemPoster.uri = ""
   resetPlaceholderToLoading()
@@ -516,6 +535,8 @@ end sub
 ' The backdrop will show briefly while the image reloads from Roku's HTTP cache.
 sub reloadGridTexture()
   if m.cachedPosterUri <> "" and m.itemPoster.uri <> m.cachedPosterUri
+    cellLoad.reload(m.contentRoot)
+    cellLoad.loadStarted(m.contentRoot)
     m.isTextureUnloaded = false
     m.itemPoster.loadDisplayMode = m.cachedLoadDisplayMode
     m.itemPoster.uri = m.cachedPosterUri

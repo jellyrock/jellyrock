@@ -360,6 +360,60 @@ export const MEASUREMENTS = Object.freeze([
       }),
     ]),
   }),
+  Object.freeze({
+    id: 'cell-load',
+    title: 'Cell binds and image loads',
+    doc: 'docs/dev/measuring-performance.md',
+    // NULL for the same reason `screen-load` is: this family covers EVERY screen that
+    // uses the texture manager, and the app emits its own component name into the line,
+    // so the screen arrives as a DIMENSION of the sample rather than as something the
+    // operator asserts from outside.
+    screen: null,
+    // GROUNDED 2026-08-20 on `.177`, on ledger evidence rather than on having written the
+    // emit: one launch produced EIGHT lines across three distinct components (`HomeRows`,
+    // `ExtrasRowList`, `BaseGridView` twice), every field populated, no crash. The
+    // multi-component run is what makes it grounded rather than merely seen — it exercised
+    // both content shapes (two-level RowList and flat MarkupGrid) and both emit triggers
+    // (hide on navigate-away, destroy on teardown).
+    grounded: true,
+    primary: 'binds',
+    // What the run had to chew on. `items` is the content root's child count at emit —
+    // rows for a RowList, items for a grid — so `binds / items` is the REBIND RATE, which
+    // is the number this family exists to publish.
+    workload: Object.freeze(['items']),
+    // A session is per COMPONENT, and a chained navigation mounts more than one cell-
+    // bearing screen per launch (Home is suspended, not destroyed, while ItemDetails
+    // loads over it), so their sessions interleave on one console exactly the way two
+    // `screen-load` ledgers do. Without this identity the assembler would file a grid's
+    // work line against Home's bind line and every field would look well-formed.
+    identity: Object.freeze(['component']),
+    lines: Object.freeze([
+      Object.freeze({
+        key: 'binds',
+        required: true,
+        // `fromSize` is expected to read ZERO — measured 2026-08-20 across Home and
+        // ItemDetails, 289 binds, none of them size-triggered. It is carried anyway as a
+        // standing invariant: a layout change that starts re-issuing image requests has
+        // no other symptom, and a counter that is always zero is the cheapest possible
+        // way to notice it stopped being.
+        pattern:
+          /cell-load binds - component (?<component>\S+) binds (?<binds>\d+) fromContent (?<bindsFromContent>\d+) fromSize (?<bindsFromSize>\d+) redundant (?<bindsRedundant>\d+) items (?<items>\d+)/,
+      }),
+      Object.freeze({
+        // Split off `binds` only because roku-log caps a call at nine arguments once the
+        // BSC plugin has spent one on the injected pkg path — the same constraint that
+        // splits `screen-load settled` from `screen-load split`. One sample, two lines.
+        key: 'work',
+        required: false,
+        // `loadsFailed` far exceeding the number of distinct broken images is the
+        // signature of a retry that has no memory of the last failure. `wipesReload` vs
+        // `wipesBind` separates a glyph wiped on a cell that was CHANGING anyway from one
+        // wiped on a cell sitting still — only the second reads to a user as flicker.
+        pattern:
+          /cell-load work - component (?<component>\S+) loadsStarted (?<loadsStarted>\d+) loadsFailed (?<loadsFailed>\d+) reloads (?<reloads>\d+) unloads (?<unloads>\d+) wipesBind (?<wipesBind>\d+) wipesReload (?<wipesReload>\d+)(?: instrumentUs (?<instrumentUs>\d+))?/,
+      }),
+    ]),
+  }),
 ]);
 
 /** Look a family up by id; `undefined` when it is not registered. */
