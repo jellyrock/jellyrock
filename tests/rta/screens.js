@@ -45,6 +45,10 @@ import {
   navHomeReturnBare,
   navHomeReturnAfterDetails,
   navSearchReturn,
+  navCellSweepHome,
+  navCellSweepGrid,
+  navCellSweepExtras,
+  navCellSweepSearch,
 } from './lib/nav.js';
 
 /** User-select screen is ready once the user row has rendered its users. */
@@ -296,6 +300,26 @@ export const SCREENS = [
   // No `view`: search depends on demo CONTENT matching RTA_CONFIG.searchQuery, not on a
   // library landing — same as the `search` screen entry above.
   { name: 'searchReturn', state: 'home', nav: navSearchReturn },
+
+  // --- Cell-load workloads: `npm run measure -- --measurement cell-load --nav <name>` ---
+  // Scripted SCROLLS, not screens. Each opens a cell-bearing screen, travels a fixed
+  // distance through it, waits for its cell-load counters to go quiet, and then leaves — the
+  // leaving is not politeness, it is what makes `hideTextureManager` publish the counters.
+  //
+  // They exist because a rebind rate needs a denominator. Every `cell-load` figure recorded
+  // before them came from a hand-driven scroll of unknown extent, so no two runs were
+  // comparable and no rate had a target; `CELL_SWEEP` in lib/nav.js is now that denominator,
+  // and the per-run console line reports the distance actually travelled.
+  //
+  // They carry `view` for the same reason the round trips above do: the landing view is
+  // registry-persisted, so without a seed a grid walk inherits whatever view the last test
+  // left and may press at a `#genreList` that has no `#itemGrid`.
+  { name: 'cellSweepHome', state: 'home', nav: navCellSweepHome },
+  { name: 'cellSweepGrid', state: 'home', nav: navCellSweepGrid, view: MOVIES_GRID },
+  { name: 'cellSweepExtras', state: 'home', nav: navCellSweepExtras, view: MOVIES_GRID },
+  // No `view`: search depends on server CONTENT matching RTA_CONFIG.searchQuery, not on a
+  // library landing — same as the `search` and `searchReturn` entries above.
+  { name: 'cellSweepSearch', state: 'home', nav: navCellSweepSearch },
 
   // --- Library grids: one screen per VIEW per library type --------------------
   // The landing view is seeded deterministically (display.<id>.landing) so the

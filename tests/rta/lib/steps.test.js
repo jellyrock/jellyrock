@@ -32,11 +32,21 @@ vi.mock('roku-test-automation', () => ({
   // `Key` carries the REAL values (verified against the installed package), not invented
   // ones — a helper that sends `ecp.Key.Up` must be asserted against what the device would
   // actually receive, or the test agrees with a typo.
-  ecp: { sendKeypress: (...a) => sendKeypress(...a), Key: { Up: 'Up', Right: 'Right' } },
+  ecp: {
+    sendKeypress: (...a) => sendKeypress(...a),
+    Key: { Up: 'Up', Down: 'Down', Left: 'Left', Right: 'Right' },
+  },
 }));
 
-const { getActiveVals, resendIfSwallowed, walkHomeToFirstRow, overhangWalkKey, waitHome } =
-  await import('./steps.js');
+const {
+  getActiveVals,
+  resendIfSwallowed,
+  walkHomeToFirstRow,
+  overhangWalkKey,
+  waitHome,
+  scrollFocus,
+  waitCellsQuiet,
+} = await import('./steps.js');
 
 /** A `getFocusedNode` answer resting on a row list at `[row, item]`. */
 const onRow = (row) => ({
@@ -366,5 +376,248 @@ describe('waitHome — the login flow is a separate question, asked first', () =
       ([a]) => a.keyPath === 'activeRoutedView.subtype()',
     );
     expect(viewReads.length).toBeGreaterThan(1);
+  });
+});
+
+/**
+ * `scrollFocus` is the whole correctness surface of the scripted cell workload: if it does
+ * not land exactly on the target, the measurement's denominator moved and two runs stop
+ * being comparable — which is the defect the scripted workload exists to remove. Its two
+ * hard cases are both about a device that is BEHIND: an index short of the target because
+ * the burst is still draining (wait) versus short because a key was lost (press again), and
+ * they are indistinguishable from a single read. Both are here.
+ *
+ * Driven entirely through the mocked device: the behaviours are "what did we send" and
+ * "when did we stop", neither of which needs a Roku. What does need one — that a given
+ * keyPath resolves at all — stays covered by `npm run test:rta`.
+ */
+describe('scrollFocus', () => {
+  /** Serve a scripted sequence of index reads, one per `getValue` call. */
+  const indexReads = (values) => {
+    let i = 0;
+    getValue.mockImplementation(async () => ({
+      found: true,
+      value: values[Math.min(i++, values.length - 1)],
+    }));
+  };
+
+  beforeEach(() => {
+    getValue.mockReset();
+    sendKeypress.mockReset().mockResolvedValue(undefined);
+  });
+
+  it('bursts exactly the distance asked for, and reports it', async () => {
+    indexReads([0, 5]);
+    const walk = await scrollFocus({
+      keyPath: '#itemGrid.itemFocused',
+      target: 5,
+      forwardKey: 'Right',
+      keyIntervalMs: 0,
+      interval: 1,
+    });
+
+    expect(sendKeypress.mock.calls.map(([k]) => k)).toEqual([
+      'Right',
+      'Right',
+      'Right',
+      'Right',
+      'Right',
+    ]);
+    expect(walk).toEqual({ from: 0, to: 5, pressed: 5, recovered: 0 });
+  });
+
+  it('walks backwards with the back key when the target is behind', async () => {
+    indexReads([4, 1]);
+    const walk = await scrollFocus({
+      keyPath: '#homeRows.rowItemFocused',
+      select: (v) => (Array.isArray(v) ? v[0] : v),
+      target: 1,
+      forwardKey: 'Down',
+      backKey: 'Up',
+      keyIntervalMs: 0,
+      interval: 1,
+    });
+
+    expect(sendKeypress.mock.calls.map(([k]) => k)).toEqual(['Up', 'Up', 'Up']);
+    expect(walk.pressed).toBe(3);
+  });
+
+  it('refuses to walk backwards with no key for that direction, naming the cause', async () => {
+    indexReads([9]);
+    await expect(
+      scrollFocus({ keyPath: '#g.itemFocused', target: 2, forwardKey: 'Right', keyIntervalMs: 0 }),
+    ).rejects.toThrow(/no key was given for that direction/);
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+
+  it('does NOT press while the index is still moving — a burst still draining is not a drop', async () => {
+    // THE overshoot case. Reads climb 0 -> 1 -> 2 -> 3 with no repeat, so every corrective
+    // tick sees a different value and must hold its fire; pressing on top of keys already in
+    // flight is what sends the walk past its target and starts it oscillating back.
+    indexReads([0, 1, 2, 3]);
+    const walk = await scrollFocus({
+      keyPath: '#g.itemFocused',
+      target: 3,
+      forwardKey: 'Right',
+      keyIntervalMs: 0,
+      interval: 1,
+    });
+
+    expect(sendKeypress).toHaveBeenCalledTimes(3); // the burst, and nothing else
+    expect(walk.recovered).toBe(0);
+  });
+
+  it('re-presses once the index has STOPPED short — a dropped key is recoverable', async () => {
+    // A device modelled rather than a read sequence scripted: it applies every press except
+    // the third, which is exactly the swallow `resendIfSwallowed` documents. The index then
+    // stalls one short and STAYS there, and no amount of further waiting fixes it — the
+    // distinction the corrective press turns on.
+    let pressed = 0;
+    let index = 0;
+    sendKeypress.mockImplementation(async () => {
+      pressed++;
+      if (pressed !== 3) index++;
+    });
+    getValue.mockImplementation(async () => ({ found: true, value: index }));
+
+    const walk = await scrollFocus({
+      keyPath: '#g.itemFocused',
+      target: 3,
+      forwardKey: 'Right',
+      keyIntervalMs: 0,
+      interval: 1,
+    });
+
+    expect(walk).toMatchObject({ from: 0, to: 3, pressed: 3, recovered: 1 });
+    expect(pressed).toBe(4); // the burst of 3, plus the one that replaced the lost key
+    expect(index).toBe(3); // and it really did arrive
+  });
+
+  it('presses once per STRIDE, not once per index — a grid row is numColumns items', async () => {
+    // The defect this closes, measured on `.177` 2026-08-20: a library grid's `itemFocused`
+    // moves by `numColumns` on Down, so a walk from 0 to 18 on a 6-column grid is THREE
+    // presses. Treating it as 18 would send fifteen keys the grid has nowhere to put.
+    indexReads([0, 18]);
+    const walk = await scrollFocus({
+      keyPath: '#itemGrid.itemFocused',
+      target: 18,
+      stride: 6,
+      forwardKey: 'Down',
+      backKey: 'Up',
+      keyIntervalMs: 0,
+      interval: 1,
+    });
+
+    expect(sendKeypress.mock.calls.map(([k]) => k)).toEqual(['Down', 'Down', 'Down']);
+    expect(walk.pressed).toBe(3);
+  });
+
+  it('refuses a target that is not a whole number of strides', async () => {
+    // Down out of the last FULL row of a grid lands on the final item rather than the same
+    // column, so `row * numColumns` is not always a stop the grid has. Pressing at one is an
+    // unreachable target, which presents as a timeout blaming the list.
+    indexReads([0]);
+    await expect(
+      scrollFocus({
+        keyPath: '#itemGrid.itemFocused',
+        target: 20,
+        stride: 6,
+        forwardKey: 'Down',
+        keyIntervalMs: 0,
+      }),
+    ).rejects.toThrow(/not a whole number of 6-unit presses/);
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+
+  it('waits for the index to become readable before pressing anything', async () => {
+    // The north-star precondition: `itemFocused` reads as its retained value — or as
+    // nothing at all — until the list holds focus, and a burst sent then goes to whatever
+    // does hold it. Not one key may be sent while the field is unreadable.
+    let reads = 0;
+    getValue.mockImplementation(async () => {
+      reads++;
+      if (reads === 1) return { found: false };
+      expect(sendKeypress.mock.calls.length).toBe(reads > 2 ? 2 : 0);
+      return { found: true, value: reads > 2 ? 2 : 0 };
+    });
+
+    await scrollFocus({
+      keyPath: '#g.itemFocused',
+      target: 2,
+      forwardKey: 'Right',
+      keyIntervalMs: 0,
+      interval: 1,
+    });
+
+    expect(reads).toBeGreaterThan(2);
+  });
+});
+
+/**
+ * `waitCellsQuiet` decides WHERE the measured session ends. Its failure modes are silent by
+ * construction — ending early undercounts `loadsFailed`, ending on a build with no counters
+ * would hang a nav that has nothing to wait for — so both are gated here rather than left to
+ * a device run to notice.
+ */
+describe('waitCellsQuiet', () => {
+  beforeEach(() => {
+    getValue.mockReset();
+  });
+
+  it('returns immediately, and says so, when the build carries no counters', async () => {
+    // `perfTiming` off is the correct state for a production build, not an anomaly — so it
+    // is reported as uninstrumented rather than warned about or waited on. The content root
+    // resolving is what separates it from a keyPath that is simply wrong.
+    getValue.mockImplementation(async ({ keyPath }) =>
+      keyPath.endsWith('getChildCount()') ? { found: true, value: 12 } : { found: false },
+    );
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const res = await waitCellsQuiet('#itemGrid', { quietMs: 10, interval: 1, timeout: 100 });
+
+    expect(res).toMatchObject({ instrumented: false, resolved: true, quiet: true });
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('distinguishes an unreadable keyPath from an uninstrumented build', async () => {
+    // Both read `undefined` from the counters alone, and collapsing them tells an operator
+    // whose keyPath was wrong that their production build has `perfTiming` off — while the
+    // counts they go on to publish have no settle behind them at all.
+    getValue.mockResolvedValue({ found: false });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const res = await waitCellsQuiet('#nope', { quietMs: 10, interval: 1, timeout: 100 });
+
+    expect(res).toMatchObject({ instrumented: false, resolved: false });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('watched nothing'));
+    warn.mockRestore();
+  });
+
+  it('waits until the counters stop moving, not merely until they are readable', async () => {
+    const binds = [10, 12, 14, 14, 14, 14, 14, 14];
+    let i = 0;
+    getValue.mockImplementation(async ({ keyPath }) => ({
+      found: true,
+      value: keyPath.endsWith('cellLoadBinds') ? binds[Math.min(i++, binds.length - 1)] : 3,
+    }));
+
+    const res = await waitCellsQuiet('#itemGrid', { quietMs: 20, interval: 5, timeout: 3000 });
+    expect(res).toMatchObject({ quiet: true, instrumented: true, binds: 14 });
+  });
+
+  it('reports a list that never settles instead of throwing', async () => {
+    // A runaway rebind is a FINDING — the very shape the ledger was built to catch — and
+    // every caller also runs as a functional test, where a throw would read as "the screen
+    // did not load".
+    let n = 100;
+    getValue.mockImplementation(async () => ({ found: true, value: n++ }));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const res = await waitCellsQuiet('#extrasGrid', { quietMs: 20, interval: 1, timeout: 60 });
+
+    expect(res).toMatchObject({ quiet: false, instrumented: true });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('never went quiet'));
+    warn.mockRestore();
   });
 });

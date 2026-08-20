@@ -25,7 +25,7 @@ related-files:
   - scripts/flake-baseline.js
   - tests/rta/demos/run.mjs
   - .github/workflows/rta-functional-tests.yml
-last-reviewed: 2026-08-19
+last-reviewed: 2026-08-20
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -670,6 +670,31 @@ come and go — so a missing library says something about the fixture, not about
 This is why the spec is a plain `for` loop instead of `it.each`: `it.each` passes only the
 case object, with no Vitest `TestContext`, so a case has no way to skip itself once
 `beforeAll` has learned what the server actually holds.
+
+### The other kind of registry entry: a WORKLOAD, not a screen
+
+Some entries in `SCREENS` are not screens at all — they are round trips that end back where
+they started, and a screenshot of one would just show Home. They are in the registry because
+[`scripts/measure.js`](../../scripts/measure.js) resolves `--nav` out of it, so a measurement
+`nav` has nowhere else to live. Two families exist today:
+
+- **Retained-view round trips** — `homeReturn`, `homeReturnAfterDetails`, `searchReturn`.
+- **Cell sweeps** — `cellSweepHome`, `cellSweepGrid`, `cellSweepExtras`, `cellSweepSearch`.
+  Each opens a cell-bearing screen, travels a FIXED distance through it, waits for its
+  cell-load counters to stop moving, and leaves; leaving is what makes the counters publish.
+  See [measuring-performance.md](measuring-performance.md#cell-workloads--how-much-work-did-the-cells-do).
+
+They carry no `capture`, and they still become functional tests — which is a feature, since
+a workload that can no longer drive its screen is a navigation regression like any other.
+Two consequences for writing one:
+
+- **Clamp to the fixture; never refuse it.** These run against the thin demo server as well
+  as against whatever server a measurement targets, and a red in this suite is supposed to
+  mean "the screen did not load". A sweep that wants 12 steps and finds 4 rows takes 3 and
+  says so on the console. It is still deterministic — content, not timing, decided it.
+- **The console line is the only record of the distance.** `measure` writes down the `nav`'s
+  NAME, not its itinerary, so the travel constants are effectively frozen once a series
+  exists; changing one forks the series silently. Add a `nav` instead.
 
 ## Store set vs website gallery (the `store` flag)
 

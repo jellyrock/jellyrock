@@ -13,11 +13,13 @@ related-files:
   - scripts/measure-loop.js
   - scripts/measurements.js
   - scripts/measurement-guard.js
+  - tests/rta/lib/nav.js
+  - tests/rta/lib/steps.js
   - scripts/roku-devices.js
   - scripts/data/roku-hardware.json
   - source/utils/screenReadiness.bs
   - tests/rta/screens.js
-last-reviewed: 2026-08-19
+last-reviewed: 2026-08-20
 ---
 
 # Measuring performance on device
@@ -36,12 +38,19 @@ two quantities that share a name.
 | Question | Doc |
 |---|---|
 | *When did this SCREEN become usable, and how does that differ across devices?* | **this doc** — the `screen-load` family, every screen in [`tests/rta/screens.js`](../../tests/rta/screens.js) |
+| *How much work did a screen's CELLS do, and how much of it was waste?* | **this doc** — the [`cell-load` family](#cell-workloads--how-much-work-did-the-cells-do) |
 | *Where did the time go INSIDE one orchestrator — waiting on the network, or working on its own thread?* | [`home-first-paint-performance.md`](home-first-paint-performance.md) — the `home-latest-rows` and `item-grid` families |
 
 The split is the same one [`scripts/measurements.js`](../../scripts/measurements.js) draws
 between its measurement families. `screen-load` says **when** a screen painted and when it
-stopped changing; `home-latest-rows` says **why** one loader took as long as it did. A
-regression hunt usually starts here and ends there.
+stopped changing; `cell-load` says **how much** its cells bound and re-requested along the
+way; `home-latest-rows` says **why** one loader took as long as it did. A regression hunt
+usually starts here and ends there.
+
+`screen-load` and `cell-load` also differ in WHEN they close, which is why neither could be
+folded into the other. A readiness ledger closes when the screen stops loading; a cell
+rebind storm during scrolling happens entirely after that, so it is invisible to one and is
+the whole subject of the other.
 
 ## The two milestones, and why one number is not enough
 
@@ -137,6 +146,124 @@ from `/UserViews`, so seed and nav can silently disagree about which library the
 That already produced a valid-looking but wrong measurement — a 12-genre library sampled
 where an 8-genre one was seeded. A wrong-library sample is indistinguishable from a slow
 one after the fact.
+
+### Cell workloads — how much work did the cells do?
+
+The `cell-load` family counts what a screen's CELLS did: how many times they were bound,
+how many of those binds were redundant, how many image loads started and failed, and how
+many failure glyphs were wiped back to a loading state (split by whether a rebind or a
+texture reload did it). It covers every screen that uses the texture manager — Home,
+Favorites, search results, `ItemDetails` extras and library grids — because the counters hang
+off the content root that `initTextureManager` already owns, so no screen has a call site of
+its own.
+
+```bash
+npm run measure -- --measurement cell-load --nav cellSweepExtras --component ExtrasRowList -n 5
+```
+
+**The `--nav` is not optional here, and it is not just navigation — it IS the denominator.**
+A bind count means nothing without knowing how far the list was scrolled to produce it, so
+the family's `nav`s are scripted SWEEPS: open the screen, travel a fixed distance through it,
+wait for the counters to stop moving, then leave. The leaving is load-bearing — the counters
+are published by `hideTextureManager` / `destroyTextureManager`, so a walk that stays on its
+screen records nothing at all.
+
+| `nav` | Screen it measures | Component to name |
+|---|---|---|
+| `cellSweepHome` | Home's rows | *(none — the only single-sample `nav`)* |
+| `cellSweepGrid` | a library grid | `--component BaseGridView` |
+| `cellSweepExtras` | `ItemDetails` extras rows | `--component ExtrasRowList` |
+| `cellSweepSearch` | grouped search results | `--component SearchRow` |
+
+Every `nav` but `cellSweepHome` mounts more than one cell-bearing screen per launch, so the
+tool refuses a median until one is named — reaching the extras rows means loading Home and
+the grid above them, and **being hidden is what makes a screen publish**, so even a `nav` that
+opens no grid still emits Home's sample on the way out. Those extra samples are recorded
+beside the one you asked for, never folded into it.
+
+**A short fixture clamps the sweep rather than failing it**, and says so on the console:
+
+```text
+[nav] cellSweepGrid rows: fixture holds 4 entries, so the sweep clamps to 3 of 12 steps.
+[nav] cellSweepGrid: swept rows (x6 tiles) 0->18 of 4, row 3 columns 18->23 of 6; cells quiet after 1669 ms
+```
+
+That second line is the only record of the distance traveled — `measure` writes down the
+`nav`'s NAME, not its itinerary — so keep it beside any figure you publish. The travel
+distances live in `CELL_SWEEP` in [`tests/rta/lib/nav.js`](../../tests/rta/lib/nav.js) and
+are effectively frozen: changing one silently forks the series, because every record taken
+before it describes a different workload and nothing in the record says so. Want a different
+distance? Add a `nav`.
+
+**What it produced on a 1 GB Stick 4K, 2026-08-20** (n=3 per screen, one developer's server —
+reproduce rather than cite):
+
+| Screen | `binds` | `items` | `redundant` | `loadsStarted` | `loadsFailed` | `wipesReload` |
+|---|---|---|---|---|---|---|
+| `HomeRows` | 238 | 129 | 1 | 165 | 0 | 0 |
+| `BaseGridView` | 28 | 28 | 0 | 28 | 0 | 0 |
+| `ExtrasRowList` | 74 | 41 | **26** | **140** | **117** | **103** |
+| `SearchRow` | 67 | 160 | 0 | 49 | 5 | 4 |
+
+The grid's 28-of-28 is a **1.00 rebind rate under a real scroll** and is non-vacuous —
+`unloads` was 6, so cells genuinely recycled; an earlier 1.00 on a grid that had never been
+scrolled meant nothing, and a rate is meaningless without the workload that produced it.
+
+**How reproducible it is, measured** — across two campaigns of n=3, a day apart, with a
+redeploy between them. Compare per `(nav, component)`: a sweep's launch also mounts the
+screens it passed THROUGH, and pooling a swept mount with one it merely passed through is the
+mixed-population error the readers refuse by design.
+
+| Sweep | n | Fields exact on every launch | Fields that moved |
+|---|---|---|---|
+| `cellSweepGrid` | 3 | all | — |
+| `cellSweepSearch` | 6 | all | — |
+| `cellSweepExtras` | 6 | `binds` 74, `bindsRedundant` 26, `loadsStarted` 140, `wipesReload` 103 | `loadsFailed` 116–118, `reloads` 121–123, `wipesBind` 32–34, `unloads` 7–8 |
+| `cellSweepHome` | 6 | `loadsFailed`, `unloads`, `wipesBind`, `wipesReload` | **`binds` 231–253**, `loadsStarted` 164–179, `bindsFromSize` 0–1 |
+
+Three things to take from that table.
+
+**The extras sweep's headline fields are exact, including the one that matters.**
+`wipesReload` — the discriminator the parked reload-guard fix has to move — is 103 on all
+six launches. What wobbles is the failure tail (`loadsFailed`, `reloads`, `wipesBind`) by
+±1–2, which is the residual `waitCellsQuiet` does not remove: quiescence bounds the
+in-flight window, it does not make it empty. Budget ±2 there and treat `wipesReload` as
+exact.
+
+**Home needs a real sample size; the other three do not.** Six launches gave `binds` of
+231 / 231 / 235 / 235 / 238 / 253 — median 235, range **22, or 9.4%**. (An initial
+three-launch campaign read 231 / 235 / 235 and was briefly written up here as a ~2% floor;
+the second campaign refuted that, which is the argument against bounding a floor from one
+campaign of three.)
+
+**This is a statement about cost, not about feasibility.** An exact metric is a luxury: it
+lets a grid, extras or search sweep settle a question at n=3. A noisy one just needs the
+protocol every other comparison in this repo already uses — n≈20–30 per arm, arms
+**alternated** rather than blocked, and the delta read from
+[`measure:compare`](#comparing-two-arms), which applies a rank test instead of eyeballing
+two medians. Home has already carried exactly that: the row-size-batching change was
+measured on Home at n=30/arm/tier with alternating blocks and separated cleanly
+(p<0.0001). Do not read "noisy at n=6" as "off limits" — Home has the most cells of any
+screen in the app and is the screen a cell optimization most needs to be provable on.
+
+Alternating is not optional here, and Home is why: within each campaign the counts rose
+monotonically with launch index, so a blocked A,A,A,B,B,B pair would alias that drift
+straight onto one arm.
+
+**`bindsFromSize` is the one field that is NOT zero everywhere, and it earned its keep.**
+It is 0 on the grid, extras and search sweeps on every launch, and 0 on five of Home's six
+— but the sixth read **1**, and it is the same launch that was the outlier on `binds` (253)
+and `loadsStarted` (179). That counter exists precisely because a layout change that starts
+re-issuing image requests has no other symptom, and here it fired on the anomalous run and
+nowhere else. It is one observation, not a proof, but it points the same way the variance
+does: rows still arriving mid-sweep change the row structure, which is the size-recompute
+path. Anyone chasing Home's spread should start there.
+
+**Known limit, inherited from the ledger:** a screen that REPLACES its content root starts
+fresh counters, and the old root's counts are never emitted at all. `BaseGridView` does that at five
+call sites and `SearchRow` at two, so a grid's line covers "since the last rebuild", not
+"since the screen opened". Nothing in the sweeps triggers a rebuild, but a filter or sort
+change would.
 
 ### More than one device
 
