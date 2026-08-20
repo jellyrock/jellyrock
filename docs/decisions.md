@@ -1025,6 +1025,18 @@ Two cheaper-looking shapes were built and measured before this one, so both are 
 
 Accepted trade-off: an empty library's skeleton persists to the end of the run instead of vanishing mid-load, in exchange for one row-size recompute per load instead of one per empty library. The re-insert branch is deliberately NOT batched — an insertion is the same defect mirrored (row list longer than the arrays), and it is rare where removals are one per empty library on every load. Nor are the four parallel sections: a recompute only fires for a section that returned EMPTY, and at most four exist (two only with Live TV configured), so declining to batch them costs 0 for a user with watch history and ~2 on a fresh account. **Tripwire:** re-open if the lingering skeleton ever reads as a stall, if a measurement shows the single recompute dominating on a large library set, or if a measurement shows those eager per-section recomputes exceeding the bound above — which would justify batching the whole Home load, at the cost of a multi-condition close and a watchdog.
 
+## decision-id: spellchecker-sentence-final-dictionary
+
+**date**: 2026-08-19
+**status**: accepted
+**related-files**: `.spellcheckerrc.yaml`, `dictionary.txt`, `dictionary-sentence-final.txt`, `scripts/generate/sentence-final-dictionary.js`
+
+`retext` looks a paragraph's final word up WITH its period attached when the next block is a lowercase heading, a list, or a blockquote. Base-dictionary words survive that; `dictionary.txt` entries are matched as anchored regular expressions and do not — so a paragraph ending on one of our own words fails the lint. The `## decision-id: <slug>` schema of this very file is that shape, which put the trap inside the sanctioned `/log decision` path. The fix is a GENERATED companion dictionary holding each entry's sentence-final form, not a rule that ignores the reported token.
+
+**The `ignore:` regex shape is ruled out, and it was tried first here.** An `ignore` entry broad enough to cover a glued sentence-final period also stops reporting genuine typos in the same position — measured at 47 paragraph-above-a-list sites across 24 of 88 linted files, growing with the docs, and its own comment understated the loss as "directly above a lowercase heading" when a list or a blockquote does it too. Adding the period-forms to `dictionary.txt` by hand is ruled out for a second reason: that had already happened ad-hoc (`codebase.`, `globals.`, `lifecycle.`, `lookups.`) and each one also accepted `codebaseX`, because the period was left as a wildcard rather than escaped.
+
+Accepted cost: a committed generated artifact that can go stale, paid for by `dictionary:sentence-final:check` in the `lint` aggregate, in CI ahead of the spell lint, and in pre-push as both an auto-fix regen and a check. **Tripwire:** re-open if the generated file ever needs to diverge from a pure transform of `dictionary.txt`, or if `spellchecker-cli` gains an option controlling how it splits tokens, which would remove the need. Re-proposing the `ignore` shape needs a measurement showing the coverage loss is acceptable — the behavioral suite in `spellchecker-config.test.js` will fail until then.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
