@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Batch Home's row-size recompute across a latest-rows run ([#799](https://github.com/jellyrock/jellyrock/pull/799))
+
 ### Dependencies
 
 - Update js-yaml from v5.2.3 to v5.3.0 ([#812](https://github.com/jellyrock/jellyrock/pull/812))
