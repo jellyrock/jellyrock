@@ -415,11 +415,12 @@ sub onPosterLoadStatusChanged()
     ' Real image failed — surface a type-appropriate placeholder glyph on the
     ' themed backdrop. Library tiles already have their own fallback (backdrop
     ' + itemIcon + text), so skip the generic glyph to avoid covering them.
-    ' Keep cachedPosterUri intact so reloadTexture() retries the original URL
-    ' when the cell scrolls off-screen and back. If the failure was transient
-    ' (network hiccup, server throttle), the retry succeeds and the real image
-    ' replaces the placeholder. If it fails again, this callback fires again
-    ' and the placeholder stays.
+    ' Keep cachedPosterUri intact so the cell can retry the original URL — but only
+    ' once it has actually LEFT the loaded range, because `unloadTexture` is what sets
+    ' `isTextureUnloaded` and that flag is what `shouldReloadTexture` gates on. Moving
+    ' back and forth within the range no longer re-requests it, which is what stopped
+    ' the glyph blinking. If the retry fails again, this callback fires again and the
+    ' placeholder stays.
     '
     ' The uri <> "" guard prevents recursive re-trigger after showPlaceholder
     ' clears the URI: clearing produces a "failed" loadStatus from Roku, but
@@ -836,9 +837,12 @@ end sub
 
 ' Restores poster/icon URIs from cache when the cell scrolls back on screen.
 ' The placeholder will show briefly while the real image reloads from Roku's
-' HTTP cache. Also serves as a retry path for previously failed loads — if the
-' cell currently shows the fallback placeholder glyph, this re-attempts the
-' real load.
+' HTTP cache.
+'
+' It is NOT a general retry path for a failed load. `shouldReloadTexture` deliberately
+' skips a cell that is showing its failure glyph but was never unloaded — see
+' `failed-poster-no-scroll-retry` in docs/decisions.md. Such a cell does get one fresh
+' attempt, but only after it leaves the loaded range and `unloadTexture` sets the flag.
 sub reloadTexture()
   if shouldReloadTexture(m.isTextureUnloaded, m.cachedPosterUri)
     logTextureAction("reloadTexture")

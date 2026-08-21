@@ -265,18 +265,21 @@ end sub
 
 ' Decides whether a cell scrolling back into range should re-issue its image load.
 '
-' A cell's poster URI is cleared by TWO different mechanisms, and only one of them is a
-' texture-management action: unloadTexture() released the texture to free memory (the cell
-' still wants its image), while showPlaceholder() cleared it because the image FAILED, to
-' reveal the type glyph underneath. Deciding on `currentUri <> cachedUri` cannot tell those
-' apart — both leave the poster at "" with the real URL still cached. `isTextureUnloaded`
-' can: showPlaceholder does not set it, unloadTexture does.
+' THREE paths leave a cell's poster at "" with the real URL still cached, and they do not
+' all want the same thing:
+'   - unloadTexture()    — the manager evicted a resident texture to free memory.
+'   - deferTextureLoad() — the cell bound while off screen, so no request was ever issued.
+'   - showPlaceholder()  — the image FAILED, and the URI was cleared to reveal the type
+'                          glyph underneath.
+' The first two want the load; the third does not, because re-requesting a known-broken
+' image wipes the glyph off a cell that is sitting still and then fails again. Deciding on
+' `currentUri <> cachedUri` cannot separate them — all three look identical from there.
+' `isTextureUnloaded` can: the first two set it, showPlaceholder does not.
 '
-' ⚠️ UNVALIDATED. Request count did NOT move when this shipped (302 -> 298 across a fixed
-' scroll), because the dominant path is renderStandardItem, not reloadTexture. It may still
-' reduce visible FLICKER — reloadTexture is the only wipe path that hits a cell sitting
-' still — but that is unmeasured. Settle it with the cell-load ledger's wipesReload counter
-' before shipping.
+' Worth knowing before "fixing" the missing retry: a failed image does NOT retry while its
+' cell stays in range, only at the next unload or rebind. That is deliberate, and the
+' measurement behind it is recorded as `failed-poster-no-scroll-retry` in
+' docs/decisions.md.
 function shouldReloadTexture(isTextureUnloaded as boolean, cachedUri as string) as boolean
   if cachedUri = "" then return false
   return isTextureUnloaded
