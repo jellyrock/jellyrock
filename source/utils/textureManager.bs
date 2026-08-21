@@ -263,3 +263,21 @@ sub destroyTextureManager(contentRoot as object)
   cellLoad.emit(contentRoot)
 end sub
 
+' Decides whether a cell scrolling back into range should re-issue its image load.
+'
+' A cell's poster URI is cleared by TWO different mechanisms, and only one of them is a
+' texture-management action: unloadTexture() released the texture to free memory (the cell
+' still wants its image), while showPlaceholder() cleared it because the image FAILED, to
+' reveal the type glyph underneath. Deciding on `currentUri <> cachedUri` cannot tell those
+' apart — both leave the poster at "" with the real URL still cached. `isTextureUnloaded`
+' can: showPlaceholder does not set it, unloadTexture does.
+'
+' ⚠️ UNVALIDATED. Request count did NOT move when this shipped (302 -> 298 across a fixed
+' scroll), because the dominant path is renderStandardItem, not reloadTexture. It may still
+' reduce visible FLICKER — reloadTexture is the only wipe path that hits a cell sitting
+' still — but that is unmeasured. Settle it with the cell-load ledger's wipesReload counter
+' before shipping.
+function shouldReloadTexture(isTextureUnloaded as boolean, cachedUri as string) as boolean
+  if cachedUri = "" then return false
+  return isTextureUnloaded
+end function

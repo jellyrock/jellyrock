@@ -825,7 +825,7 @@ end sub
 ' cell currently shows the fallback placeholder glyph, this re-attempts the
 ' real load.
 sub reloadTexture()
-  if m.cachedPosterUri <> "" and m.poster.uri <> m.cachedPosterUri
+  if shouldReloadTexture(m.isTextureUnloaded, m.cachedPosterUri)
     logTextureAction("reloadTexture")
     cellLoad.reload(m.contentRoot)
     cellLoad.loadStarted(m.contentRoot)
