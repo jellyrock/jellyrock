@@ -392,6 +392,52 @@ describe('the screen-load family', () => {
   });
 });
 
+describe('the cell-load family', () => {
+  const cells = measurementById('cell-load');
+
+  // Built from the emit in `source/utils/cellLoad.bs` rather than pasted off a console,
+  // because nothing captures raw cell-load lines to a file. The end-to-end evidence that
+  // the pattern matches real device output is the 2026-08-21 three-arm campaign, where
+  // `loadsSucceeded` published a median on all 30 launches — a regex that missed would
+  // have produced no field at all.
+  const WORK =
+    'INFO file:///Users/dev/jellyrock/source/utils/cellLoad.bs:216 cell-load work - component ExtrasRowList loadsStarted 140 loadsFailed 117 loadsSucceeded 1 reloads 123 unloads 8 wipesBind 33 wipesReload 103 instrumentUs 13256  ';
+
+  it('reads loadsSucceeded off the work line', () => {
+    expect(matchLine(cells, WORK).fields).toEqual({
+      component: 'ExtrasRowList',
+      loadsStarted: 140,
+      loadsFailed: 117,
+      loadsSucceeded: 1,
+      reloads: 123,
+      unloads: 8,
+      wipesBind: 33,
+      wipesReload: 103,
+      instrumentUs: 13256,
+    });
+  });
+
+  it('still parses a line emitted before loadsSucceeded existed', () => {
+    // The group is optional for the same reason `instrumentUs` is: the ledger holds
+    // records taken before the counter, and a pattern that stopped matching them would
+    // silently drop every historical arm out of a comparison rather than fail loudly.
+    const legacy = WORK.replace(' loadsSucceeded 1', '');
+    const { fields } = matchLine(cells, legacy);
+    expect(fields.loadsSucceeded).toBeUndefined();
+    expect(fields.loadsStarted).toBe(140);
+    expect(fields.wipesReload).toBe(103);
+  });
+
+  it('publishes the in-flight residual the counter exists to expose', () => {
+    // `loadsStarted - (loadsFailed + loadsSucceeded)` is the count still outstanding when
+    // the session was emitted. It is the reason the counter was added: without it, those
+    // requests were indistinguishable from successes, and a "successful loads" figure
+    // inferred as `loadsStarted - loadsFailed` read 23 where the measured answer is 1.
+    const { fields } = matchLine(cells, WORK);
+    expect(fields.loadsStarted - (fields.loadsFailed + fields.loadsSucceeded)).toBe(22);
+  });
+});
+
 describe('splitWorkload', () => {
   it('separates what the run had to DO from how long it took', () => {
     const [first] = assembleSamples(home, CAPTURED);
