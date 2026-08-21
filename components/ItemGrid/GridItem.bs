@@ -315,6 +315,7 @@ sub onPosterLoadStatusChanged()
 
   if m.itemPoster.loadStatus = "ready" and m.itemPoster.uri <> ""
     ' Real image loaded — placeholder is no longer needed
+    cellLoad.loadSucceeded(m.contentRoot)
     m.placeholder.visible = false
   else if m.itemPoster.loadStatus = "failed" and m.itemPoster.uri <> ""
     ' Real image failed — surface a type-appropriate glyph on the backdrop

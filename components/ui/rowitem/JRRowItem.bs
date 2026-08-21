@@ -403,6 +403,7 @@ sub onPosterLoadStatusChanged()
 
   if m.poster.loadStatus = "ready" and m.poster.uri <> ""
     ' Real image loaded — hide the placeholder so the poster shows through.
+    cellLoad.loadSucceeded(m.contentRoot)
     m.placeholder.visible = false
     if m.isLibraryTile
       backdropText = m.top.findNode("backdropText")

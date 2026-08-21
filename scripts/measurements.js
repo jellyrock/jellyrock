@@ -415,8 +415,15 @@ export const MEASUREMENTS = Object.freeze([
         // signature of a retry that has no memory of the last failure. `wipesReload` vs
         // `wipesBind` separates a glyph wiped on a cell that was CHANGING anyway from one
         // wiped on a cell sitting still — only the second reads to a user as flicker.
+        //
+        // `loadsSucceeded` is OPTIONAL in the pattern so records emitted before it existed
+        // still parse. Read it with `loadsStarted`: their difference minus `loadsFailed` is
+        // the count still in flight at the emit boundary, which a run ended on quiescence
+        // should report as zero. Before this counter, "successful loads" could only be
+        // inferred as `loadsStarted - loadsFailed`, which silently counts a request that
+        // never came back as a success.
         pattern:
-          /cell-load work - component (?<component>\S+) loadsStarted (?<loadsStarted>\d+) loadsFailed (?<loadsFailed>\d+) reloads (?<reloads>\d+) unloads (?<unloads>\d+) wipesBind (?<wipesBind>\d+) wipesReload (?<wipesReload>\d+)(?: instrumentUs (?<instrumentUs>\d+))?/,
+          /cell-load work - component (?<component>\S+) loadsStarted (?<loadsStarted>\d+) loadsFailed (?<loadsFailed>\d+)(?: loadsSucceeded (?<loadsSucceeded>\d+))? reloads (?<reloads>\d+) unloads (?<unloads>\d+) wipesBind (?<wipesBind>\d+) wipesReload (?<wipesReload>\d+)(?: instrumentUs (?<instrumentUs>\d+))?/,
       }),
     ]),
   }),

@@ -99,6 +99,7 @@ namespace cellLoad
         cellLoadBindsRedundant: 0,
         cellLoadLoadsStarted: 0,
         cellLoadLoadsFailed: 0,
+        cellLoadLoadsSucceeded: 0,
         cellLoadReloads: 0,
         cellLoadUnloads: 0,
         cellLoadWipesBind: 0,
@@ -154,6 +155,19 @@ namespace cellLoad
     #end if
   end sub
 
+  ' An image request came back ready. Its job is not the count itself but the RESIDUAL:
+  ' `loadsStarted - (loadsFailed + loadsSucceeded)` is the number of requests still in
+  ' flight when the session was emitted, and at a quiescent boundary it should be zero.
+  ' Without it, an outstanding request is indistinguishable from a success — every
+  ' "successful loads" figure was an inference subtracting one counter from another, with
+  ' nothing able to check it. See `waitCellsQuiet` in `tests/rta/lib/steps.js`, which
+  ' watches this counter for the same reason it watches `loadsFailed`.
+  sub loadSucceeded(contentRoot as object)
+    #if perfTiming
+      bump(contentRoot, "cellLoadLoadsSucceeded")
+    #end if
+  end sub
+
   sub reload(contentRoot as object)
     #if perfTiming
       bump(contentRoot, "cellLoadReloads")
@@ -199,7 +213,7 @@ namespace cellLoad
       ' because `assembleSamples` splits a family on that identity.
       component = contentRoot.cellLoadComponent
       m.cellLoadLog.info("cell-load binds - component " + component + " binds " + contentRoot.cellLoadBinds.toStr() + " fromContent " + contentRoot.cellLoadBindsContent.toStr() + " fromSize " + contentRoot.cellLoadBindsSize.toStr() + " redundant " + contentRoot.cellLoadBindsRedundant.toStr() + " items " + countItems(contentRoot).toStr())
-      m.cellLoadLog.info("cell-load work - component " + component + " loadsStarted " + contentRoot.cellLoadLoadsStarted.toStr() + " loadsFailed " + contentRoot.cellLoadLoadsFailed.toStr() + " reloads " + contentRoot.cellLoadReloads.toStr() + " unloads " + contentRoot.cellLoadUnloads.toStr() + " wipesBind " + contentRoot.cellLoadWipesBind.toStr() + " wipesReload " + contentRoot.cellLoadWipesReload.toStr() + " instrumentUs " + contentRoot.cellLoadInstrumentUs.toStr())
+      m.cellLoadLog.info("cell-load work - component " + component + " loadsStarted " + contentRoot.cellLoadLoadsStarted.toStr() + " loadsFailed " + contentRoot.cellLoadLoadsFailed.toStr() + " loadsSucceeded " + contentRoot.cellLoadLoadsSucceeded.toStr() + " reloads " + contentRoot.cellLoadReloads.toStr() + " unloads " + contentRoot.cellLoadUnloads.toStr() + " wipesBind " + contentRoot.cellLoadWipesBind.toStr() + " wipesReload " + contentRoot.cellLoadWipesReload.toStr() + " instrumentUs " + contentRoot.cellLoadInstrumentUs.toStr())
 
       reset(contentRoot)
     #end if
@@ -217,6 +231,7 @@ namespace cellLoad
         cellLoadBindsRedundant: 0,
         cellLoadLoadsStarted: 0,
         cellLoadLoadsFailed: 0,
+        cellLoadLoadsSucceeded: 0,
         cellLoadReloads: 0,
         cellLoadUnloads: 0,
         cellLoadWipesBind: 0,
