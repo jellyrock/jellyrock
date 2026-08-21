@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- stop `FontDownloadTask` crashing on servers that omit `EnableFallbackFont` ([#841](https://github.com/jellyrock/jellyrock/pull/841))
 - Stop posters blinking on the Cast & Crew row as you scroll it ([#840](https://github.com/jellyrock/jellyrock/pull/840))
 
 ### Dependencies
