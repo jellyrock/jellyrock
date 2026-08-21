@@ -1,6 +1,7 @@
 ' bsc-disable-file print-locations — legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements
 import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/roku_modules/rr/Requests.brs"
+import "pkg:/source/utils/fallbackFont.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -23,7 +24,7 @@ sub downloadFallbackFont()
     return
   end if
   r = rr_Requests().get(encodingUrl, authArgs)
-  if not r.ok or not isValid(r.json) or not r.json.EnableFallbackFont
+  if not serverSupportsFallbackFont(r)
     print "FontDownloadTask: Server does not support fallback fonts"
     m.top.errorMessage = "Server does not support fallback fonts"
     m.top.isFontDownloadSuccess = false

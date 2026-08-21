@@ -1,0 +1,29 @@
+' True when the server's `/system/configuration/encoding` response advertises
+' fallback-font support (#582).
+'
+' Every operand is type-checked rather than negated or compared directly. A key
+' the server omits dereferences to Invalid, and `not Invalid` faults with `&h18`
+' — as does `= true` against a value that is a String or an AA. Establishing the
+' type first is what keeps a missing, malformed or mistyped field returning
+' false instead of crashing the guard that exists to select the fallback.
+'
+' @param response - an `rr_Requests()` response AA
+' @return true only when the server advertises the capability as boolean true
+function serverSupportsFallbackFont(response as dynamic) as boolean
+  if LCase(type(response)) <> "roassociativearray" then return false
+  if not isBooleanTrue(response.ok) then return false
+  if LCase(type(response.json)) <> "roassociativearray" then return false
+  return isBooleanTrue(response.json.EnableFallbackFont)
+end function
+
+' True only for a real boolean true. `value = true` faults `&h18` on a
+' non-boolean operand, so the type is established before the comparison.
+' ParseJson yields an unboxed "Boolean" and an AA literal a boxed "roBoolean" —
+' both are genuine booleans, so both have to pass.
+'
+' @param value - any value, including Invalid
+' @return true when value is boolean true; false for every other type or value
+function isBooleanTrue(value as dynamic) as boolean
+  valueType = LCase(type(value))
+  return (valueType = "boolean" or valueType = "roboolean") and value = true
+end function
