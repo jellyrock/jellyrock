@@ -15,11 +15,12 @@ related-files:
   - scripts/measurement-guard.js
   - tests/rta/lib/nav.js
   - tests/rta/lib/steps.js
+  - source/utils/cellLoad.bs
   - scripts/roku-devices.js
   - scripts/data/roku-hardware.json
   - source/utils/screenReadiness.bs
   - tests/rta/screens.js
-last-reviewed: 2026-08-20
+last-reviewed: 2026-08-21
 ---
 
 # Measuring performance on device
@@ -224,16 +225,22 @@ before it describes a different workload and nothing in the record says so. Want
 distance? Add a `nav`.
 
 **What it produced on a 1 GB Stick 4K, 2026-08-21** (one developer's server — reproduce
-rather than cite), n=3 per screen. A field that was not identical on every launch carries its
-range, because a median hides exactly the thing you need to know before trusting a delta:
+rather than cite). A field that was not identical on every launch carries its range, because
+a median hides exactly the thing you need to know before trusting a delta.
 
-| Screen | `binds` | `items` | `redundant` | `loadsStarted` | `loadsFailed` | `reloads` | `wipesReload` |
-|---|---|---|---|---|---|---|---|
-| `HomeRows` | 231 *(222–234)* | 129 | 1 | 164 *(163–164)* | 0 | 57 *(56–57)* | 0 |
-| `BaseGridView` | 28 | 28 | 0 | 34 | 0 | 7 | 0 |
-| `ExtrasRowList` *(pre-fix)* | 74 | 41 | **26** | **140** | **116–118** | 121–123 | **103** |
-| `ExtrasRowList` *(post reload-guard)* | 74 | 41 | **26** | **43** | **31–34** | 22–26 | **6** |
-| `SearchRow` | 67 | 160 | 0 | 49 | 5 | 9 | 4 |
+**The two `ExtrasRowList` rows are n=10 and the other three are n=3, and they are different
+campaigns** — the extras pair comes from the three-arm reload-guard campaign later on this
+page, the rest from the n=3 sweep. They are labeled rather than silently pooled for the
+reason the box below this table gives. `loadsSucceeded` reads `—` on the three n=3 rows
+because it did not exist when they were taken:
+
+| Screen | `binds` | `items` | `redundant` | `loadsStarted` | `loadsFailed` | `loadsSucceeded` | `reloads` | `wipesReload` |
+|---|---|---|---|---|---|---|---|---|
+| `HomeRows` *(n=3)* | 231 *(222–234)* | 129 | 1 | 164 *(163–164)* | 0 | — | 57 *(56–57)* | 0 |
+| `BaseGridView` *(n=3)* | 28 | 28 | 0 | 34 | 0 | — | 7 | 0 |
+| `ExtrasRowList` *(arm `preguard`, n=10)* | 74 *(73–75)* | 41 | **26** | **140** *(134–159)* | **116.5** *(109–139)* | **1** | 121.5 *(117–139)* | **103** *(97–121)* |
+| `ExtrasRowList` *(arm `guarddefer`, n=10)* | 74 *(73–74)* | 41 | **26** *(25–26)* | **43** | **33** *(32–34)* | **1** | 25.5 *(25–26)* | **6** |
+| `SearchRow` *(n=3)* | 67 | 160 | 0 | 49 | 5 | — | 9 | 4 |
 
 > **Pool per `(nav, component)`, never across campaigns that ran a different itinerary or a
 > different settle.** An earlier draft of this table mixed two campaigns — Home's row carried
@@ -324,13 +331,22 @@ deciding that per sweep rather than per campaign is the point:
 
 Three things to take from that table.
 
-**The extras sweep's headline fields are exact, including the one that matters.**
-`wipesReload` — the discriminator the reload-guard fix had to move — is 103 on all
-nine launches. What wobbles is the failure tail (`loadsFailed` 116–118, `reloads` 121–123,
-`unloads` 7–8, `wipesBind` 32–34). Budget ±2 there and treat `wipesReload` as exact.
+**The extras sweep's headline fields are TIGHT, not exact — and an earlier draft of this
+page said exact.** Across the n=3 sweep `wipesReload` read 103 on all nine launches, and
+that got written up as a field to treat as exact. Ten launches of the same code later read
+`103 103 103 103 103 103 121 102 100 97`: the median is still 103, but the spread is 97–121
+and it runs BOTH ways. The single high launch is the same one carrying `loadsStarted` 159
+and `reloads` 139, so it is a launch that did more reload work, not a miscount.
 
-**That exactness is what let the reload-guard A/B settle at n=10/arm** — see
-[the reload-guard result](#the-reload-guard-ab--what-an-exact-discriminator-buys) below.
+Nine identical readings did not measure the variance — they bounded it from below, and the
+distinction is the whole lesson. Pick a sample size from a field's observed spread AT that
+sample size, and treat a run of identical numbers as the weakest possible evidence that a
+field is stable.
+
+**A ±12% wobble still left the reload-guard comparison decidable at n=10/arm**, because the
+effect is an order larger than the spread — 103 against 6, with no overlap between the arms.
+See [the reload-guard result](#the-reload-guard-ab--and-the-number-it-took-a-new-counter-to-get-right) below.
+Exactness was never what made it work; separation was.
 
 **That residual is the app's path choice drifting, not a measurement artifact** — worth
 stating because an earlier draft here explained it as one ("quiescence bounds the in-flight
@@ -402,46 +418,78 @@ call sites and `SearchRow` at two, so a grid's line covers "since the last rebui
 "since the screen opened". Nothing in the sweeps triggers a rebuild, but a filter or sort
 change would.
 
-### The reload-guard A/B — what an exact discriminator buys
+### The reload-guard A/B — and the number it took a new counter to get right
 
 The first change settled with this family, and the worked example for the whole section.
-**n=10/arm, alternated `AAAAABBBBBAAAAABBBBB` over 13 min** on a 1 GB Stick 4K against a real
-server, `--nav cellSweepExtras --component ExtrasRowList`. All 20 launches swept ONE itinerary
-(`rows 0→1 of 3, row 1 items 0→12 of 31, rows 1→2 of 3`) and `measure:compare` confirmed
-identical workload (`items` 41 ×10 on both arms), so the deltas are not a run that did less work.
+**Three commit-pinned arms, n=10 each, interleaved `AAAAABBBBBCCCCC` twice over 21 min** on a
+1 GB Stick 4K against a real server, `--nav cellSweepExtras --component ExtrasRowList`. All 30
+launches swept ONE itinerary (`rows 0→1 of 3, row 1 items 0→12 of 31, rows 1→2 of 3`) with
+`items` 41 on every launch, so the deltas are not a run that did less work. The arms are
+`preguard` (before the fix), `guard` (the reload guard alone) and `guarddefer` (what ships).
 
-| field | before | after | delta | rank test |
+`preguard` → `guarddefer`:
+
+| field | `preguard` | `guarddefer` | delta | rank test |
 |---|---|---|---|---|
 | `wipesReload` | 103 | 6 | **−94.2%** | p=0.0000, complete separation |
-| `reloads` | 122 | 25.5 | −79.1% | p=0.0001, complete separation |
+| `reloads` | 121.5 | 25.5 | −79.0% | p=0.0001, complete separation |
 | `loadsStarted` | 140 | 43 | −69.3% | p=0.0001, complete separation |
-| `loadsFailed` | 116.5 | 32 | −72.5% | p=0.0002, complete separation |
-| `binds` | 74 | 74 | 0% | p=0.35, not distinguishable |
-| `bindsRedundant` | 26 | 26 | 0% | p=0.36, not distinguishable |
-| `unloads` | 8 | 8 | 0% | p=0.90, not distinguishable |
-| `wipesBind` | 32 | 33.5 | +4.7% | p=0.073, not distinguishable |
+| `loadsFailed` | 116.5 | 33 | −71.7% | p=0.0002, complete separation |
+| `loadsSucceeded` | 1 | 1 | **0%** | p=1.0000, identical on all 20 launches |
+| `binds` | 74 | 74 | 0% | p=0.36, not distinguishable |
+| `bindsRedundant` | 26 | 26 | 0% | p=0.17, not distinguishable |
+| `unloads` | 8 | 8 | 0% | p=0.30, not distinguishable |
+| `wipesBind` | 33.5 | 34 | +1.5% | p=0.10, not distinguishable |
 
 **The nulls carry the argument, not the headline.** A −94% on `wipesReload` alone is equally
 consistent with "the work moved somewhere else": `binds` flat at 74 is what rules that out,
 and `unloads` flat at 8 is what shows the buffer-window preloading path was not disturbed. Quote
 those two beside the headline or the headline does not mean what it appears to.
 
-**`wipesBind` +1.5 (p=0.073) is the one field that drifted the wrong way**, and it is the
-direction that would indicate work relocating to the bind path. n=10 BOUNDS it at about +1.5
-rather than proving it zero; it is recorded here rather than rounded to "no change" so a later
-change that makes the bind path hot has a prior to compare against.
+**`loadsSucceeded` is the null that matters most, and it exists because the first version of
+this section was wrong.** That draft reported a successful-load count falling 23.5 → 11 and
+called it "the real cost of the change (transient retries that would eventually have
+succeeded)". It was computed as `loadsStarted − loadsFailed`, because no counter recorded a
+success — and that subtraction silently counts every request still outstanding at the emit
+boundary as one. With `cellLoad.loadSucceeded` added, successes read **exactly 1 on all 30
+launches in all three arms**. The ~97 suppressed retries per sweep recovered nothing. The
+earlier figure is retracted, not qualified: it was never a measurement of successes.
 
-**A field this family cannot give you: `loadsStarted − loadsFailed`.** The successful-load
-count fell roughly 23.5 → 11, which is the real cost of the change (transient retries that
-would eventually have succeeded). That figure is arithmetic on two medians — a
-median-of-differences is not a difference-of-medians — so it is approximate and is NOT a
-`measure:compare` result, unlike every other number on this page. Treat it as a magnitude, not
-a measurement.
+**The residual is the counter's real payload.** `loadsStarted − (loadsFailed +
+loadsSucceeded)` is the count still in flight when the session was emitted — 21.5 on `preguard`
+(19–24) against 9 shipped (8–10), so roughly 15% and 21% of started loads respectively. Only
+an unload can swallow a resolution (the load-status observer returns early on
+`isTextureUnloaded`), and `unloads` is 8 in every arm, so that mechanism accounts for nearly
+all of the shipped arm's 9 and under half of the `preguard` arm's 21.5. The rest were genuinely
+outstanding. **This does not reinstate the withdrawn explanation for the failure tail's
+wobble** — that was withdrawn because the whole chain shifts together, which truncation would
+not do, and it stays withdrawn. A non-empty in-flight window and a drifting path split are
+two different facts, and the residual is evidence for only the first.
 
-**Why this settled at n=10 when Home needs 20–30.** Extras is exact run-to-run on its headline
-fields, so complete separation appears immediately; Home's `binds` spread is wider than most
-effects worth measuring. Exactness is a property of the SCREEN, not of the family — check the
-per-field ranges before picking a sample size.
+**`wipesBind` +0.5 (p=0.10) is the one field that drifted the wrong way**, and it is the
+direction that would indicate work relocating to the bind path. n=10 BOUNDS it rather than
+proving it zero; it is recorded here rather than rounded to "no change" so a later change that
+makes the bind path hot has a prior to compare against.
+
+**The third arm isolates the second fix and finds nothing.** `guard` → `guarddefer` — clearing
+the poster URI when a cell defers an off-screen load — moves no field: `loadsStarted`
+p=1.0000, `unloads` p=0.17 at an identical median of 8, every other field p≥0.70. That fix is
+justified by code correctness (the flag claimed a texture was released while it was still
+resident), not by a measured improvement, and this sweep does not exercise the path it
+repairs. Recorded so nobody quotes the −94% as evidence for it.
+
+**What this campaign cannot tell you.** `loadsSucceeded` = 1 means the fixture's cast artwork
+is essentially all missing, so "the suppressed retries recovered nothing" is a fact about THIS
+library. On one where person artwork exists and fails intermittently, those retries could
+recover real images and the guard would cost the user something. The check is one number on
+that library — `loadsSucceeded` with and without the guard — not a re-derivation.
+
+**Why this settled at n=10 when Home needs 20–30.** Not exactness: the discriminator wobbles
+97–121 on the `preguard` arm. Separation — 103 against 6 with no overlap, so the arms are
+decidable at any sample size that establishes the medians, while Home's `binds` spread is
+wider than most effects worth measuring there. Check a field's observed range before picking
+a sample size, and see the tightness note above for why a run of identical readings is not
+that range.
 
 ### More than one device
 
