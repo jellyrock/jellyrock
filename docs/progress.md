@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-08-20
+last-updated: 2026-08-21
 ---
 
 # Progress
@@ -22,12 +22,11 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Currently running
 
-Review pass on `perf/728-cell-load-workload` (scripted `cell-load` sweeps) — complete and verified, not yet committed. Fixed a real `scrollFocus` defect: a corrective press did not re-arm the "unchanged across a tick" guard, so one dropped key drew two corrections and the walk returned its target while a press was still in flight, landing the list one index past it. Widened `waitCellsQuiet`'s gate to the four counters that can move independently, with the call-site argument for why the other six cannot. Split `sweepExtent` into `sweepBudget` / `axisEnd` so a grid row reaching its own end stops crying clamp on every run, and bounded the grid's horizontal target by tile count — a library thinner than one row would have timed out blaming `#itemGrid` (found by enumerating all 14,400 column/tile shapes, not on device). Added `cellSweepGrid`'s return leg because the parked reload-guard fix edits `reloadGridTexture` and the sweep measured `reloads` 1, leaving that half of the A/B impossible to measure; re-measured at `reloads` 7, `binds` unchanged. Republished the results table from the ledger (the old one silently mixed two campaigns) and withdrew the claim that extras' residual came from the settle boundary — the wobbling fields move together, which is a difference in which path the app took, and widening the gate left their ranges identical exactly as predicted. Verified: `test:rta` 48/48, `test:scripts` 1741/1741, four sweeps re-measured n=3.
-
 ## Recently shipped
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-21 — Give `cell-load` rates a denominator with scripted RTA sweeps
 - 2026-08-20 — Batch Home's row-size recompute across a latest-rows run
 - 2026-08-20 — ci(rta): Fix `measure --deploy` deleting the run provenance it just wrote
 - 2026-08-19 — ci(rta): Add `npm run device:check` so "no device access" is a checked claim
@@ -76,10 +75,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-08-07 — RTA library navigation now targets a library BY ID instead of the first Home tile of a matching `collectionType`. Seed (`libraryIdFor`, `/UserViews` order) and nav (first Home tile) were unrelated orderings, so on a multi-library server a screen seeded for library A was navigated to library B with nothing flagging it — it had already corrupted a perf sample. Verified on a 14-library server: tile `.id` is the Jellyfin GUID (14/14 vs `/UserViews`), and targeting the LAST of four `movies` libraries opened it while the id-less call opened a different one. `ctx.libraries` is threaded through every nav including the chained ones.
 - 2026-08-07 — test(rta): hard-relaunch after seeding so the seed actually takes
 - 2026-08-07 — feat(ci): Run the RTA suite in CI on the release-prep branch
-- 2026-08-06 — Stop `progress-cursor-nudge` reading Recently-shipped as the cursor
-- 2026-08-06 — RTA functional tests now run in CI on the release-prep branch (`rta-functional-tests.yml`): path-scoped via `changed-paths` so a screenshot/docs push never spins the shared device, `jellyrock[bot]` version-bump commits skipped, and `concurrency` deliberately `cancel-in-progress: false` so a skipped run can't cancel a real one. Closes two duplicate followups that both asked for this.
-- 2026-08-06 — Run the Genres view's per-genre fetches through `apiPipeline`
-- 2026-08-06 — Measure the item-grid wait/emit split, pick `apiPipeline` for the genre loop, and keep the timers out of prod
 
 ## Open followups
 
