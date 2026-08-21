@@ -146,12 +146,17 @@ namespace tests
       cellLoad.bind(root, cellLoad.FROM_CONTENT, true)
       cellLoad.loadStarted(root)
       cellLoad.loadErrored(root)
+      cellLoad.loadSucceeded(root)
       cellLoad.reload(root)
       cellLoad.unload(root)
       cellLoad.emit(root)
       m.assertEqual(root.getField("cellLoadBindsRedundant"), 0)
       m.assertEqual(root.getField("cellLoadLoadsStarted"), 0)
       m.assertEqual(root.getField("cellLoadLoadsFailed"), 0)
+      ' Not redundant with the others: a success count that survives a reset leaks into
+      ' the NEXT session's `loadsStarted - (loadsFailed + loadsSucceeded)` residual, which
+      ' is the one figure this counter was added to make trustworthy.
+      m.assertEqual(root.getField("cellLoadLoadsSucceeded"), 0)
       m.assertEqual(root.getField("cellLoadReloads"), 0)
       m.assertEqual(root.getField("cellLoadUnloads"), 0)
     end function

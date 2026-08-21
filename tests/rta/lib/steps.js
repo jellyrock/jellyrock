@@ -688,6 +688,7 @@ export const CELL_QUIET_COUNTERS = Object.freeze([
   'Binds',
   'LoadsStarted',
   'LoadsFailed',
+  'LoadsSucceeded',
   'Unloads',
 ]);
 
@@ -720,13 +721,20 @@ export const formatCellCounts = (counts) =>
  *
  * `CELL_QUIET_COUNTERS` is minimal AND complete, and both halves are checked against the
  * emit sites in `source/utils/cellLoad.bs` rather than chosen by feel. A counter needs
- * watching only if it can move while `binds` and `loadsStarted` both sit still. Exactly two
- * can:
+ * watching only if it can move while `binds` and `loadsStarted` both sit still. Exactly
+ * three can:
  *
  *   - **`cellLoadLoadsFailed`** — `JRRowItem.onPosterLoadStatusChanged` / `GridItem`'s
  *     equivalent, an ASYNCHRONOUS completion callback. It is the whole reason this function
  *     exists: a request that has started and not yet failed is counted by `loadsStarted` and
  *     not by `loadsFailed`, so a boundary drawn while one is outstanding splits a pair.
+ *   - **`cellLoadLoadsSucceeded`** — the `ready` half of that same callback, and watched
+ *     for the identical reason. It was added after a review asked how a "successful loads"
+ *     figure was known, and the answer was that it was not: successes were inferred as
+ *     `loadsStarted - loadsFailed`, which counts a request that never came back as a
+ *     success. With it watched, the same quiescence that pairs a start with its failure
+ *     pairs a start with its success, and `loadsStarted - (loadsFailed + loadsSucceeded)`
+ *     becomes a residual the caller can assert is zero rather than a gap it cannot see.
  *   - **`cellLoadUnloads`** — `unloadTexture` bumps nothing else, so an off-screen cell
  *     releasing its texture is invisible to the other three.
  *

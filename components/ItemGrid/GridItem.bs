@@ -315,6 +315,7 @@ sub onPosterLoadStatusChanged()
 
   if m.itemPoster.loadStatus = "ready" and m.itemPoster.uri <> ""
     ' Real image loaded — placeholder is no longer needed
+    cellLoad.loadSucceeded(m.contentRoot)
     m.placeholder.visible = false
   else if m.itemPoster.loadStatus = "failed" and m.itemPoster.uri <> ""
     ' Real image failed — surface a type-appropriate glyph on the backdrop
@@ -534,7 +535,7 @@ end sub
 ' Restores poster URI from cache when the cell scrolls back on screen.
 ' The backdrop will show briefly while the image reloads from Roku's HTTP cache.
 sub reloadGridTexture()
-  if m.cachedPosterUri <> "" and m.itemPoster.uri <> m.cachedPosterUri
+  if shouldReloadTexture(m.isTextureUnloaded, m.cachedPosterUri)
     cellLoad.reload(m.contentRoot)
     cellLoad.loadStarted(m.contentRoot)
     m.isTextureUnloaded = false

@@ -460,6 +460,35 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("shouldReloadTexture()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reloads a cell the texture manager unloaded")
+    function _()
+      m.assertTrue(shouldReloadTexture(true, "http://server/Items/abc/Images/Primary"))
+    end function
+
+    @it("does NOT reload a cell whose image failed but was never unloaded")
+    function _()
+      ' showPlaceholder() clears the poster URI to reveal the type glyph, and it does NOT
+      ' set isTextureUnloaded. The URI compare this predicate replaced could not tell that
+      ' apart from an unload, so a permanently-broken image was re-requested on every pass.
+      m.assertFalse(shouldReloadTexture(false, "http://server/Items/abc/Images/Primary"))
+    end function
+
+    @it("does NOT reload a cell that never had an image to cache")
+    function _()
+      m.assertFalse(shouldReloadTexture(false, ""))
+    end function
+
+    @it("does NOT reload an unloaded cell with no cached URI to restore")
+    function _()
+      ' Unloaded but nothing to put back — reloading would assign "" and wipe the glyph
+      ' for no gain.
+      m.assertFalse(shouldReloadTexture(true, ""))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("TEXTURE_BUFFER_THRESHOLD constant")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

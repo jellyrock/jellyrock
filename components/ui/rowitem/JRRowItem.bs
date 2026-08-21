@@ -182,7 +182,7 @@ sub renderLibraryTile(item as object, slotWidth as float, posterHeight as float)
     cellLoad.loadStarted(m.contentRoot)
     m.poster.uri = posterUri
   else
-    m.isTextureUnloaded = true
+    deferTextureLoad()
   end if
 
   ' When the same URL is re-assigned (e.g. data refresh returns identical libraries),
@@ -254,7 +254,7 @@ sub renderStandardItem(item as object, slotWidth as float, posterHeight as float
       cellLoad.loadStarted(m.contentRoot)
       m.poster.uri = posterUri
     else
-      m.isTextureUnloaded = true
+      deferTextureLoad()
     end if
   end if
 
@@ -403,6 +403,7 @@ sub onPosterLoadStatusChanged()
 
   if m.poster.loadStatus = "ready" and m.poster.uri <> ""
     ' Real image loaded — hide the placeholder so the poster shows through.
+    cellLoad.loadSucceeded(m.contentRoot)
     m.placeholder.visible = false
     if m.isLibraryTile
       backdropText = m.top.findNode("backdropText")
@@ -414,11 +415,12 @@ sub onPosterLoadStatusChanged()
     ' Real image failed — surface a type-appropriate placeholder glyph on the
     ' themed backdrop. Library tiles already have their own fallback (backdrop
     ' + itemIcon + text), so skip the generic glyph to avoid covering them.
-    ' Keep cachedPosterUri intact so reloadTexture() retries the original URL
-    ' when the cell scrolls off-screen and back. If the failure was transient
-    ' (network hiccup, server throttle), the retry succeeds and the real image
-    ' replaces the placeholder. If it fails again, this callback fires again
-    ' and the placeholder stays.
+    ' Keep cachedPosterUri intact so the cell can retry the original URL — but only
+    ' once it has actually LEFT the loaded range, because `unloadTexture` is what sets
+    ' `isTextureUnloaded` and that flag is what `shouldReloadTexture` gates on. Moving
+    ' back and forth within the range no longer re-requests it, which is what stopped
+    ' the glyph blinking. If the retry fails again, this callback fires again and the
+    ' placeholder stays.
     '
     ' The uri <> "" guard prevents recursive re-trigger after showPlaceholder
     ' clears the URI: clearing produces a "failed" loadStatus from Roku, but
@@ -791,6 +793,20 @@ sub onFocusedColumnsChanged()
   evaluateTextureState()
 end sub
 
+' Skips the image request for a cell the texture manager is keeping off screen. The
+' caller has already cached the URI, so reloadTexture() issues the load when the cell
+' enters the buffer zone.
+'
+' Clearing the poster URI is what makes `isTextureUnloaded` true by construction. Leave a
+' recycled cell's PREVIOUS poster live and the flag claims a texture was released while it
+' is still resident: unloadTexture() then early-returns on that flag and never frees it,
+' and the stale image can surface under the new item if the cell draws before its range
+' observer fires. GridItem's equivalent branch clears it for the same reason.
+sub deferTextureLoad()
+  m.isTextureUnloaded = true
+  m.poster.uri = ""
+end sub
+
 ' Clears poster/icon URIs to release texture memory when the cell is off-screen.
 ' Items with no real image (cachedPosterUri = "") are skipped — they already show
 ' a lightweight local placeholder that costs negligible texture memory.
@@ -821,11 +837,14 @@ end sub
 
 ' Restores poster/icon URIs from cache when the cell scrolls back on screen.
 ' The placeholder will show briefly while the real image reloads from Roku's
-' HTTP cache. Also serves as a retry path for previously failed loads — if the
-' cell currently shows the fallback placeholder glyph, this re-attempts the
-' real load.
+' HTTP cache.
+'
+' It is NOT a general retry path for a failed load. `shouldReloadTexture` deliberately
+' skips a cell that is showing its failure glyph but was never unloaded — see
+' `failed-poster-no-scroll-retry` in docs/decisions.md. Such a cell does get one fresh
+' attempt, but only after it leaves the loaded range and `unloadTexture` sets the flag.
 sub reloadTexture()
-  if m.cachedPosterUri <> "" and m.poster.uri <> m.cachedPosterUri
+  if shouldReloadTexture(m.isTextureUnloaded, m.cachedPosterUri)
     logTextureAction("reloadTexture")
     cellLoad.reload(m.contentRoot)
     cellLoad.loadStarted(m.contentRoot)
@@ -838,6 +857,11 @@ sub reloadTexture()
     m.placeholder.itemType = ""
     m.placeholder.visible = true
   end if
+  ' The icon keeps the URI compare the poster gave up, and is NOT the same bug: nothing
+  ' clears itemIcon.uri on failure — onIconLoadStatusChanged only hides the icon — so a
+  ' failed icon still compares EQUAL to its cached URI and is never re-requested. The
+  ' compare only fires when an unload actually cleared it. Checked rather than assumed,
+  ' because this line reads exactly like the predicate that was replaced.
   if m.cachedIconUri <> "" and m.itemIcon.uri <> m.cachedIconUri
     m.itemIcon.uri = m.cachedIconUri
   end if

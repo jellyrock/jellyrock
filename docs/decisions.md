@@ -1037,6 +1037,18 @@ Accepted trade-off: an empty library's skeleton persists to the end of the run i
 
 Accepted cost: a committed generated artifact that can go stale, paid for by `dictionary:sentence-final:check` in the `lint` aggregate, in CI ahead of the spell lint, and in pre-push as both an auto-fix regen and a check. **Tripwire:** re-open if the generated file ever needs to diverge from a pure transform of `dictionary.txt`, or if `spellchecker-cli` gains an option controlling how it splits tokens, which would remove the need. Re-proposing the `ignore` shape needs a measurement showing the coverage loss is acceptable — the behavioral suite in `spellchecker-config.test.js` will fail until then.
 
+## decision-id: failed-poster-no-scroll-retry
+
+**date**: 2026-08-21
+**status**: accepted
+**related-files**: `components/ui/rowitem/JRRowItem.bs`, `components/ItemGrid/GridItem.bs`, `source/utils/textureManager.bs`, `source/utils/cellLoad.bs`
+
+`reloadTexture` / `reloadGridTexture` gate on `isTextureUnloaded` rather than comparing the live poster URI to the cached one. Three paths leave a poster URI empty with the real URL still cached — eviction to free memory, a deferred off-screen bind, and the failure glyph — and only the first two want the image back. The URI compare could not tell the third from the other two, so a broken image was re-requested every time its cell came back into range: 103 glyph wipes per extras sweep on cells that were not moving, which is what reads to a user as blinking.
+
+**What this closes off is retrying on scroll position.** It had no backoff, no attempt limit, and keyed on which way the user was scrolling rather than on elapsed time; it was a side effect of using URI equality as a proxy for "needs a texture" rather than a retry policy anyone designed. A deliberate one would be bounded and timed, and is left open as tech debt rather than folded in here.
+
+**The constraint worth re-evaluating is the failure population, and the first answer to it was wrong.** The suppressed retries ARE the failed loads, so on a library whose artwork fails transiently this would suppress real recoveries. Measured 2026-08-21 on a 1 GB Stick 4K across three commit-pinned arms at n=10 each, it suppresses ~97 retries per extras sweep and costs zero recovered images: `loadsSucceeded` reads exactly 1 on all 30 launches in every arm. That figure is only trustworthy because the same branch added the counter — the earlier inference `loadsStarted - loadsFailed` put successes near 23, and the gap was requests still outstanding at the emit boundary rather than images that had arrived. Unmeasured on any other library, so the tripwire is a library whose person artwork exists and fails intermittently.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
