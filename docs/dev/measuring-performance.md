@@ -175,6 +175,20 @@ screen records nothing at all.
 | `cellSweepExtras` | `ItemDetails` extras rows | `--component ExtrasRowList` |
 | `cellSweepSearch` | grouped search results | `--component SearchRow` |
 
+`Favorites` is the one cell-bearing screen with no sweep. `Home.onTabChanged` re-creates
+both row lists with `CreateObject` and assigns no id, so RTA can only address the active one
+by child index — the fragility
+[`rta-home-active-list-hardcoded`](../architecture/tech-debt.md#rta-home-active-list-hardcoded)
+already tracks. Restoring the ids is an app change with its own device-test cost, so it is
+tracked as a followup rather than folded in here.
+
+**These figures do not compare ACROSS DEVICES, and `measure:devices` will not tell you so.**
+`cellSweepGrid` travels `rowTarget × numColumns` tiles, and `numColumns` is a property of the
+device's layout (6 on a Stick 4K). A device that lays out 8 columns runs a materially longer
+sweep for the same `nav` name, so a cross-device `cell-load` table is comparing itineraries,
+not devices. The `RowList` sweeps are bounded by row and item counts instead, so they travel
+the same distance everywhere — the grid is the exception. Compare a device against itself.
+
 Every `nav` but `cellSweepHome` mounts more than one cell-bearing screen per launch, so the
 tool refuses a median until one is named — reaching the extras rows means loading Home and
 the grid above them, and **being hidden is what makes a screen publish**, so even a `nav` that
@@ -188,6 +202,10 @@ beside the one you asked for, never folded into it.
 [nav] cellSweepGrid: swept rows (x6 tiles) 0->18 of 4, row 3 columns 18->23 of 6; cells quiet after 1669 ms
 ```
 
+A clamp line means the *fixture* was shallower than the itinerary. Reaching the end of an
+axis whose length is a structural bound — a grid row is exactly `numColumns` wide — is the
+itinerary working and is deliberately silent, so a clamp line always carries news.
+
 That second line is the only record of the distance traveled — `measure` writes down the
 `nav`'s NAME, not its itinerary — so keep it beside any figure you publish. The travel
 distances live in `CELL_SWEEP` in [`tests/rta/lib/nav.js`](../../tests/rta/lib/nav.js) and
@@ -195,46 +213,143 @@ are effectively frozen: changing one silently forks the series, because every re
 before it describes a different workload and nothing in the record says so. Want a different
 distance? Add a `nav`.
 
-**What it produced on a 1 GB Stick 4K, 2026-08-20** (n=3 per screen, one developer's server —
-reproduce rather than cite):
+**What it produced on a 1 GB Stick 4K, 2026-08-21** (one developer's server — reproduce
+rather than cite), n=3 per screen. A field that was not identical on every launch carries its
+range, because a median hides exactly the thing you need to know before trusting a delta:
 
-| Screen | `binds` | `items` | `redundant` | `loadsStarted` | `loadsFailed` | `wipesReload` |
-|---|---|---|---|---|---|---|
-| `HomeRows` | 238 | 129 | 1 | 165 | 0 | 0 |
-| `BaseGridView` | 28 | 28 | 0 | 28 | 0 | 0 |
-| `ExtrasRowList` | 74 | 41 | **26** | **140** | **117** | **103** |
-| `SearchRow` | 67 | 160 | 0 | 49 | 5 | 4 |
+| Screen | `binds` | `items` | `redundant` | `loadsStarted` | `loadsFailed` | `reloads` | `wipesReload` |
+|---|---|---|---|---|---|---|---|
+| `HomeRows` | 231 *(222–234)* | 129 | 1 | 164 *(163–164)* | 0 | 57 *(56–57)* | 0 |
+| `BaseGridView` | 28 | 28 | 0 | 34 | 0 | 7 | 0 |
+| `ExtrasRowList` | 74 | 41 | **26** | **140** | **116–118** | 121–123 | **103** |
+| `SearchRow` | 67 | 160 | 0 | 49 | 5 | 9 | 4 |
 
-The grid's 28-of-28 is a **1.00 rebind rate under a real scroll** and is non-vacuous —
-`unloads` was 6, so cells genuinely recycled; an earlier 1.00 on a grid that had never been
-scrolled meant nothing, and a rate is meaningless without the workload that produced it.
+> **Pool per `(nav, component)`, never across campaigns that ran a different itinerary or a
+> different settle.** An earlier draft of this table mixed two campaigns — Home's row carried
+> the second's medians while extras still carried the first's — so two rows described
+> different populations and nothing said so. Every figure here is recomputed from
+> `.device-runs/measure/measurements.jsonl` rather than transcribed. Two earlier populations
+> are deliberately excluded rather than pooled in: the earlier extras campaign taken before the horizontal leg hunted the widest row
+> (`binds` 44, horizontal leg traveled zero), and everything taken before `waitCellsQuiet`
+> widened its gate and `cellSweepGrid` gained its return leg.
 
-**How reproducible it is, measured** — across two campaigns of n=3, a day apart, with a
-redeploy between them. Compare per `(nav, component)`: a sweep's launch also mounts the
+**What the harness change did to the numbers, measured rather than assumed.** Re-running all
+four sweeps under the new code against the same library and server:
+
+- **The grid's reload path went from never exercised to exercised, which was the point.**
+  `reloads` **1 → 7** and `loadsStarted` **28 → 34**, the +6 matching the 6 extra reloads
+  exactly, since `reloadGridTexture` bumps both in one block. `binds` stayed at **28** and
+  `bindsRedundant` at **0** — a returning tile reloads a texture, it does not re-bind, so the
+  `MarkupGrid` never recycled a cell. `loadsStarted − reloads` is 27 before and after, i.e.
+  the bind-path request count is untouched. The grid can now see a change to
+  `reloadGridTexture`; before, it could not.
+- **`SearchRow` is bit-identical** across the change, all nine counters.
+- **`ExtrasRowList`'s headline fields are bit-identical too** — `binds` 74, `bindsRedundant`
+  26, `loadsStarted` 140, and `wipesReload` **103**, which matters because 103 is the baseline
+  a reload-guard change has to beat and it survived the harness change intact.
+- **Home moved and tightened** (`binds` 231–253 → 222–234, `loadsStarted` 164–179 → 163–164).
+  Do not read that as the gate fixing Home. It is n=3 against n=6 on the one screen documented
+  below as itinerary-timing-sensitive, taken directly after a full `test:rta` run left the
+  device and server warm — three candidate explanations that n=3 cannot separate. Home needs
+  the alternating protocol described below before any claim is made about it.
+
+### Read `binds / items` per screen, never across them
+
+`binds / items` is worth watching for ONE screen over time. It is not a figure of merit you
+can rank four screens by, because `items` is the content root's whole child count and the
+two list geometries reach it differently:
+
+- **A `MarkupGrid`** binds a tile as it enters the render window. A sweep that goes one way
+  therefore binds each tile it visits about once, and `binds / items` is a **coverage
+  fraction** — how much of the library the sweep reached. The grid's `28 / 28 = 1.00` says
+  the sweep covered all 28 tiles and bound each exactly once, with `bindsRedundant` 0. That
+  is a clean result, but it is not a measurement of rebinding: on a 200-tile library the same
+  sweep would read ~0.36. It stayed at 1.00 after `cellSweepGrid` gained its return leg, which
+  is the direct evidence for the distinction — the leg sent tiles out of the render window and
+  back (`reloads` 1 → 7) and `binds` did not move, because a returning tile reloads a texture
+  without re-binding unless the grid recycled its cell component.
+- **A `RowList`** rebinds cells as rows scroll and again as the horizontal leg moves along a
+  shelf, so its ratio mixes coverage WITH rebinding. Home's 1.82 and extras' 1.80 are above
+  1.00 for that reason. `SearchRow`'s 0.42 is the other end of the same confound: the sweep
+  walks Right along one row only, so most of its 160 items never scroll into view and the
+  denominator counts content that was never touched.
+
+**So lead the waste story with the fields that mean waste directly.** `bindsRedundant` is a
+bind to the same item at the same size — provably zero-value work — and `wipesReload` is a
+failure glyph wiped on a cell that was sitting still, which is what a user sees as flicker.
+Both point at `ExtrasRowList` (26 and 103) while the other three sit at or near zero, and
+both are exact on every sweep except `bindsRedundant` on Home, which reads 0–1 — a single
+no-op bind that comes and goes with the same row-arrival timing as the rest of Home's spread.
+That is the finding; the ratio is context for it.
+
+**How reproducible it is, measured** — across two campaigns of n=3 taken **9 hours apart on
+the same day (2026-08-20)**, with a redeploy between them (`deployedFromCheckout` flips
+false → true in the ledger). Read that as the bound it is: the redeploy is the discriminator
+that matters, but a same-day pair is weaker evidence of independence than a pair separated by
+a reboot, an OS update or a server restart, none of which happened here. Compare per `(nav, component)`: a sweep's launch also mounts the
 screens it passed THROUGH, and pooling a swept mount with one it merely passed through is the
 mixed-population error the readers refuse by design.
 
 | Sweep | n | Fields exact on every launch | Fields that moved |
 |---|---|---|---|
-| `cellSweepGrid` | 3 | all | — |
-| `cellSweepSearch` | 6 | all | — |
-| `cellSweepExtras` | 6 | `binds` 74, `bindsRedundant` 26, `loadsStarted` 140, `wipesReload` 103 | `loadsFailed` 116–118, `reloads` 121–123, `wipesBind` 32–34, `unloads` 7–8 |
-| `cellSweepHome` | 6 | `loadsFailed`, `unloads`, `wipesBind`, `wipesReload` | **`binds` 231–253**, `loadsStarted` 164–179, `bindsFromSize` 0–1 |
+| `cellSweepGrid` | 3 | **all** | — |
+| `cellSweepSearch` | 9 | **all** | — |
+| `cellSweepExtras` | 9 | `binds` 74, `bindsRedundant` 26, `loadsStarted` 140, `wipesReload` 103 | `loadsFailed` 116–118, `reloads` 121–123, `wipesBind` 32–34, `unloads` 7–8 |
+| `cellSweepHome` | 6 + 3, **not pooled** | `loadsFailed` 0, `wipesBind` 20, `wipesReload` 0 | **`binds` 231–253** then 222–234, `loadsStarted` 164–179 then 163–164 |
+
+**Read the `n` column carefully — the four sweeps do not all pool the same way**, and
+deciding that per sweep rather than per campaign is the point:
+
+- **Extras pools to 9** precisely BECAUSE the gate widening changed nothing: its four
+  wobbling fields land on identical bounds before (n=6) and after (n=3), so the two
+  campaigns are one population and saying so is a measurement, not a convenience.
+- **Search pools to 9** for the same reason, trivially — every field is exact in both.
+- **Grid is post-return-leg only.** The earlier campaign was a different itinerary (no
+  reload coverage, `reloads` 1), so pooling it would average two workloads. Both were
+  internally exact.
+- **Home does NOT pool.** Its bounds moved (231–253 → 222–234) across a change that
+  altered the settle, so the two campaigns are two populations and neither is a bound on
+  the other. That is also why the headline table quotes only the later one.
 
 Three things to take from that table.
 
 **The extras sweep's headline fields are exact, including the one that matters.**
 `wipesReload` — the discriminator the parked reload-guard fix has to move — is 103 on all
-six launches. What wobbles is the failure tail (`loadsFailed`, `reloads`, `wipesBind`) by
-±1–2, which is the residual `waitCellsQuiet` does not remove: quiescence bounds the
-in-flight window, it does not make it empty. Budget ±2 there and treat `wipesReload` as
-exact.
+nine launches. What wobbles is the failure tail (`loadsFailed` 116–118, `reloads` 121–123,
+`unloads` 7–8, `wipesBind` 32–34). Budget ±2 there and treat `wipesReload` as exact.
 
-**Home needs a real sample size; the other three do not.** Six launches gave `binds` of
-231 / 231 / 235 / 235 / 238 / 253 — median 235, range **22, or 9.4%**. (An initial
-three-launch campaign read 231 / 235 / 235 and was briefly written up here as a ~2% floor;
-the second campaign refuted that, which is the argument against bounding a floor from one
-campaign of three.)
+**That residual is the app's path choice drifting, not a measurement artifact** — worth
+stating because an earlier draft here explained it as one ("quiescence bounds the in-flight
+window, it does not make it empty") and that explanation was wrong. The four wobbling fields
+move TOGETHER on every launch while `loadsStarted` holds at exactly 140. A boundary that
+truncated the count would show the *same* `reloads` with *fewer* `loadsFailed`; instead the
+whole chain shifts.
+
+But note what "together" does and does not mean here, because the obvious reading is also
+wrong: the workload is not getting bigger or smaller. There are **140 load attempts every
+launch**, and the bind-path share (`loadsStarted - reloads`) falls 19 → 17 exactly as
+`reloads` rises 121 → 123. The total is fixed and its *split* drifts — the same cell taking
+the reload path rather than the bind path. That is a timing-dependent choice inside the app,
+which is worth knowing before comparing two arms that touch `reloadTexture`; it is not slack
+in the harness. The one part that does look like a boundary effect is the ±1 at constant
+`reloads`, seen in one launch of nine.
+
+`waitCellsQuiet` gates on `loadsFailed` and `unloads` as well as `binds` and `loadsStarted` —
+the only two counters that can move while the other two sit still (the rest share a
+straight-line block with one of them; the argument is in that function's header comment). That is
+worth having because it makes "every field the sample publishes has stopped moving" an
+invariant a caller can rely on. **It is not a variance fix, and that was predicted here
+before it was tested, then confirmed:** widening the gate left extras' wobbling fields on
+exactly the ranges they already had — `loadsFailed` 116–118, `reloads` 121–123, `wipesBind`
+32–34, both bounds unchanged. Budget the ±2; it is the workload, not the instrument.
+
+**Home needs a real sample size; the other three do not.** Its `binds` has now been read
+across three campaigns and has moved every time: 231 / 235 / 235, then 231 / 238 / 253,
+then 222 / 231 / 234. **No campaign has bounded it**, and the history is the argument —
+the first was published here as a ~2% floor and the second refuted it, so a third quoting
+9.4% (or the 13.2% the raw pool would give) would be making the same mistake with a bigger
+number. What is established is only the direction: Home varies where the other three
+sweeps do not, by an amount larger than any effect worth calling small.
 
 **This is a statement about cost, not about feasibility.** An exact metric is a luxury: it
 lets a grid, extras or search sweep settle a question at n=3. A noisy one just needs the
@@ -258,6 +373,14 @@ re-issuing image requests has no other symptom, and here it fired on the anomalo
 nowhere else. It is one observation, not a proof, but it points the same way the variance
 does: rows still arriving mid-sweep change the row structure, which is the size-recompute
 path. Anyone chasing Home's spread should start there.
+
+**Home's itinerary is itself timing-dependent, which is the likeliest reason it is the only
+noisy sweep.** `waitHome()` gates on the row list holding SOME rows, not all of them, and
+`sweepRowList` then reads the row count and picks the widest row from that one snapshot. A
+row that lands a moment later can change both the row limit and which row the horizontal leg
+walks — so on Home, unlike the other three, the sweep distance is not fully pinned by the
+fixture. Anything that makes Home's rows settle before the sweep reads them would tighten
+this; nothing else on the page depends on it.
 
 **Known limit, inherited from the ledger:** a screen that REPLACES its content root starts
 fresh counters, and the old root's counts are never emitted at all. `BaseGridView` does that at five

@@ -691,7 +691,13 @@ Two consequences for writing one:
 - **Clamp to the fixture; never refuse it.** These run against the thin demo server as well
   as against whatever server a measurement targets, and a red in this suite is supposed to
   mean "the screen did not load". A sweep that wants 12 steps and finds 4 rows takes 3 and
-  says so on the console. It is still deterministic — content, not timing, decided it.
+  says so on the console. Where the content is settled before the sweep reads it, that clamp
+  is deterministic — content, not timing, decided it.
+- **Home is the exception, and it is why Home's counts move.** `waitHome()` gates on the row
+  list having SOME rows, not all of them, so a sweep that reads its row count and picks its
+  widest row at that moment can get a different itinerary on a later-arriving row. Every
+  other sweep reads a list that is complete before it starts. Do not describe a sweep as
+  deterministic without checking that its content stopped arriving first.
 - **The console line is the only record of the distance.** `measure` writes down the `nav`'s
   NAME, not its itinerary, so the travel constants are effectively frozen once a series
   exists; changing one forks the series silently. Add a `nav` instead.

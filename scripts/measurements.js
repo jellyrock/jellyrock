@@ -391,11 +391,17 @@ export const MEASUREMENTS = Object.freeze([
       Object.freeze({
         key: 'binds',
         required: true,
-        // `fromSize` is expected to read ZERO — measured 2026-08-20 across Home and
-        // ItemDetails, 289 binds, none of them size-triggered. It is carried anyway as a
-        // standing invariant: a layout change that starts re-issuing image requests has
-        // no other symptom, and a counter that is always zero is the cheapest possible
-        // way to notice it stopped being.
+        // `fromSize` is USUALLY zero and is carried as a standing invariant: a layout
+        // change that starts re-issuing image requests has no other symptom, and a counter
+        // that is almost always zero is the cheapest possible way to notice it moved.
+        //
+        // It is NOT always zero, and the earlier note here saying so was withdrawn on
+        // 2026-08-20 rather than qualified. Across the scripted cell sweeps it reads 0 on
+        // the grid, extras and search mounts on every launch, and on five of Home's six —
+        // but the sixth read 1, and that was the same launch that was the outlier on both
+        // `binds` (253 against a median of 235) and `loadsStarted` (179 against 164). The
+        // counter fired on exactly the anomalous run and nowhere else, which is the
+        // behaviour it was added for. See `docs/dev/measuring-performance.md`.
         pattern:
           /cell-load binds - component (?<component>\S+) binds (?<binds>\d+) fromContent (?<bindsFromContent>\d+) fromSize (?<bindsFromSize>\d+) redundant (?<bindsRedundant>\d+) items (?<items>\d+)/,
       }),

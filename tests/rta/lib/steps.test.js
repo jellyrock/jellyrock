@@ -17,7 +17,7 @@
  * shapes at the module boundary. What needs a real Roku is whether a given keyPath
  * resolves — that stays hardware-verified via `npm run test:rta`.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const getValues = vi.fn();
 const getFocusedNode = vi.fn();
@@ -46,6 +46,8 @@ const {
   waitHome,
   scrollFocus,
   waitCellsQuiet,
+  axisEnd,
+  sweepBudget,
 } = await import('./steps.js');
 
 /** A `getFocusedNode` answer resting on a row list at `[row, item]`. */
@@ -493,6 +495,49 @@ describe('scrollFocus', () => {
     expect(index).toBe(3); // and it really did arrive
   });
 
+  it('does not stack a second correction on top of one still in flight', async () => {
+    // THE regression this locks down. The zero-latency device above cannot see it: its
+    // correction lands before the next read, so the guard is never asked to hold twice.
+    // Model a device where a press takes three polls to apply, and drop exactly one key.
+    // Before the `lastSeen` reset, the tick after a correction still read the pre-press
+    // index, scored it as "stuck and short", and pressed AGAIN — two corrections for one
+    // lost key. The walk then returned reporting the target while a fifth press was still
+    // in flight, and the list settled one PAST it: a denominator that moved after
+    // `scrollFocus` said it had not, which is the whole defect the scripted workload exists
+    // to remove.
+    const LATENCY_TICKS = 3;
+    let inFlight = [];
+    let tick = 0;
+    let sent = 0;
+    let index = 0;
+    sendKeypress.mockImplementation(async (key) => {
+      sent++;
+      if (sent === 3) return; // the swallowed key
+      inFlight.push({ at: tick + LATENCY_TICKS, key });
+    });
+    getValue.mockImplementation(async () => {
+      tick++;
+      for (const p of inFlight.filter((p) => p.at <= tick)) index += p.key === 'Right' ? 1 : -1;
+      inFlight = inFlight.filter((p) => p.at > tick);
+      return { found: true, value: index };
+    });
+
+    const walk = await scrollFocus({
+      keyPath: '#g.itemFocused',
+      target: 3,
+      forwardKey: 'Right',
+      backKey: 'Left',
+      keyIntervalMs: 0,
+      interval: 1,
+    });
+
+    expect(walk).toMatchObject({ from: 0, to: 3, pressed: 3, recovered: 1 });
+    expect(sent).toBe(4); // the burst of 3 plus ONE correction, not two
+    // Nothing left in flight, so the index the walk reported is the index that stands.
+    expect(inFlight).toHaveLength(0);
+    expect(index).toBe(3);
+  });
+
   it('presses once per STRIDE, not once per index — a grid row is numColumns items', async () => {
     // The defect this closes, measured on `.177` 2026-08-20: a library grid's `itemFocused`
     // moves by `numColumns` on Down, so a walk from 0 to 18 on a 6-column grid is THREE
@@ -590,6 +635,10 @@ describe('waitCellsQuiet', () => {
     const res = await waitCellsQuiet('#nope', { quietMs: 10, interval: 1, timeout: 100 });
 
     expect(res).toMatchObject({ instrumented: false, resolved: false });
+    // NOT quiet. A caller that reads only `.quiet` must not be told a watch of nothing was
+    // a settle; the uninstrumented-but-resolved case above is the one that is genuinely
+    // quiet, because a production build has no counters to wait on.
+    expect(res.quiet).toBe(false);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('watched nothing'));
     warn.mockRestore();
   });
@@ -603,7 +652,46 @@ describe('waitCellsQuiet', () => {
     }));
 
     const res = await waitCellsQuiet('#itemGrid', { quietMs: 20, interval: 5, timeout: 3000 });
-    expect(res).toMatchObject({ quiet: true, instrumented: true, binds: 14 });
+    expect(res).toMatchObject({ quiet: true, instrumented: true });
+    expect(res.counts.Binds).toBe(14);
+  });
+
+  it('keeps waiting while ONLY an asynchronously-closing counter is still moving', async () => {
+    // The counter set is the point of this function, so it gets a test that fails if the
+    // set shrinks back. `binds` and `loadsStarted` are stable from the first read — the
+    // shape a sweep is in the moment the last keypress lands — while `loadsFailed` is still
+    // arriving, because a request that has started and not yet failed is exactly the
+    // in-flight case the settle exists to close. Gating on the old two-counter set would
+    // declare quiet here and publish a truncated `loadsFailed`.
+    const failed = [0, 4, 9, 11, 11, 11, 11, 11, 11, 11];
+    let i = 0;
+    getValue.mockImplementation(async ({ keyPath }) => {
+      if (keyPath.endsWith('cellLoadLoadsFailed'))
+        return { found: true, value: failed[Math.min(i++, failed.length - 1)] };
+      return { found: true, value: keyPath.endsWith('cellLoadBinds') ? 40 : 7 };
+    });
+
+    const res = await waitCellsQuiet('#extrasGrid', { quietMs: 20, interval: 5, timeout: 3000 });
+
+    expect(res.quiet).toBe(true);
+    expect(res.counts.LoadsFailed).toBe(11); // settled, not the 4 an early gate would have
+  });
+
+  it('watches unloads too — an off-screen release moves nothing else', async () => {
+    // `unloadTexture` bumps no other counter, so it is the second field that can move while
+    // binds and loadsStarted sit still. Same guard, different mechanism.
+    const unloads = [0, 2, 3, 3, 3, 3, 3, 3, 3];
+    let i = 0;
+    getValue.mockImplementation(async ({ keyPath }) => {
+      if (keyPath.endsWith('cellLoadUnloads'))
+        return { found: true, value: unloads[Math.min(i++, unloads.length - 1)] };
+      return { found: true, value: keyPath.endsWith('cellLoadBinds') ? 40 : 7 };
+    });
+
+    const res = await waitCellsQuiet('#homeRows', { quietMs: 20, interval: 5, timeout: 3000 });
+
+    expect(res.quiet).toBe(true);
+    expect(res.counts.Unloads).toBe(3);
   });
 
   it('reports a list that never settles instead of throwing', async () => {
@@ -619,5 +707,52 @@ describe('waitCellsQuiet', () => {
     expect(res).toMatchObject({ quiet: false, instrumented: true });
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('never went quiet'));
     warn.mockRestore();
+  });
+});
+
+/**
+ * `sweepBudget` and `axisEnd` decide how far a sweep travels, which IS the measurement's
+ * denominator — so their arithmetic is the itinerary's correctness, and it was previously
+ * private to `nav.js` with no test at all. They are separated by what a shortfall MEANS: a
+ * budget can be cut short by a thin fixture (news, because it changes every published
+ * count), while a structurally-bounded axis reaching its end is the itinerary working.
+ */
+describe('sweepBudget / axisEnd — how far a sweep is allowed to travel', () => {
+  let warn;
+  beforeEach(() => {
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => warn.mockRestore());
+
+  it('returns the requested last index and says nothing when the fixture is deep enough', () => {
+    expect(sweepBudget('rows', 6, 31)).toBe(6);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('clamps to the last reachable index and ANNOUNCES it', () => {
+    // A run that swept 3 rows and a run that swept 12 differ in every count the ledger
+    // publishes, and `measure` records the nav's NAME, not its itinerary — so this console
+    // line is the only thing that tells the two records apart.
+    expect(sweepBudget('cellSweepGrid rows', 12, 4)).toBe(3);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('clamps to 3 of 12'));
+  });
+
+  it('reports an axis with nothing to travel rather than returning a bogus index', () => {
+    expect(sweepBudget('rows', 6, 0)).toBe(0);
+    expect(sweepBudget('rows', 6, undefined)).toBe(0);
+    expect(axisEnd('columns', 0)).toBe(0);
+    expect(warn).toHaveBeenCalledTimes(3);
+    expect(warn).toHaveBeenLastCalledWith(expect.stringContaining('sweeping nothing'));
+  });
+
+  it('does NOT announce a clamp for a whole-axis traverse — the layout is not a shortfall', () => {
+    // The cry-wolf case, and the reason the two are separate functions. A grid row is
+    // `numColumns` wide by layout, so asking a 12-step budget for it warned on EVERY run
+    // and taught the operator to skip the channel that reports a changed workload.
+    expect(axisEnd('cellSweepGrid columns', 6)).toBe(5);
+    expect(warn).not.toHaveBeenCalled();
+    // Same six columns through the budget helper is what used to happen, and it warns.
+    expect(sweepBudget('cellSweepGrid columns', 12, 6)).toBe(5);
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 });

@@ -33,6 +33,9 @@ import {
   resendIfSwallowed,
   scrollFocus,
   waitCellsQuiet,
+  formatCellCounts,
+  axisEnd,
+  sweepBudget,
   sleep,
 } from './steps.js';
 
@@ -899,34 +902,14 @@ export async function navTrickplay(ctx) {
  * `gridRows` is deliberately larger than `rows`, because equal press counts are very unequal
  * workloads: one Down in a `MarkupGrid` advances by `numColumns` items (6 on a Stick 4K),
  * while one Down in a RowList advances by a single shelf.
- */
-const CELL_SWEEP = Object.freeze({ rows: 6, gridRows: 12, cols: 12 });
-
-/**
- * The last index a sweep of `wanted` steps can actually reach in a list of `available`
- * entries, announcing a clamp.
  *
- * A clamp is not a failure — it is the fixture being smaller than the itinerary, and it is
- * still deterministic (content, not timing, decides it), so the run stays comparable to
- * other runs on the same fixture. What it must not be is SILENT: a run that swept 3 grid
- * rows and a run that swept 12 differ in every count the ledger publishes, and the operator
- * comparing them has only this line to tell them apart.
+ * There is deliberately no `gridCols`. A grid row is exactly `numColumns` wide, so its
+ * horizontal axis is traversed WHOLE (`axisEnd`) rather than budgeted — see that function
+ * for why budgeting a structurally-bounded axis made the clamp warning fire on every run.
+ * `rowItems` is a RowList's shelf only, where a 31-item Cast & Crew row genuinely can
+ * exceed the budget and the clamp is real news.
  */
-function sweepExtent(label, wanted, available) {
-  if (typeof available !== 'number' || available < 1) {
-    console.warn(`[nav] ${label}: read ${JSON.stringify(available)} entries — sweeping nothing.`);
-    return 0;
-  }
-  const target = Math.min(wanted, available - 1);
-  if (target < wanted) {
-    console.warn(
-      `[nav] ${label}: fixture holds ${available} entries, so the sweep clamps to ${target} of ` +
-        `${wanted} steps. Counts from this run are comparable only to other runs on a fixture ` +
-        'this size.',
-    );
-  }
-  return target;
-}
+const CELL_SWEEP = Object.freeze({ rows: 6, gridRows: 12, rowItems: 12 });
 
 /**
  * Print what the sweep actually did, in one line per screen.
@@ -946,7 +929,7 @@ function reportSweep(name, legs, quiet) {
       (recovered ? `, ${recovered} corrective press(es)` : '') +
       (quiet.instrumented
         ? `; cells ${quiet.quiet ? 'quiet' : 'STILL BUSY'} after ${quiet.waitedMs} ms ` +
-          `(binds=${quiet.binds} loadsStarted=${quiet.loadsStarted})`
+          `(${formatCellCounts(quiet.counts)})`
         : quiet.resolved
           ? '; no cell-load counters on this build (perfTiming off)'
           : '; ⚠ the list did not resolve — nothing was settled'),
@@ -982,15 +965,15 @@ function reportSweep(name, legs, quiet) {
  */
 async function sweepRowList(listId, { label } = {}) {
   const rowCount = await getActiveVal(`${listId}.content.getChildCount()`);
-  const rowLimit = sweepExtent(`${label} rows`, CELL_SWEEP.rows, rowCount);
+  const rowLimit = sweepBudget(`${label} rows`, CELL_SWEEP.rows, rowCount);
   const widths = await getActiveVals(
     [...Array(rowLimit + 1).keys()].map((r) => `${listId}.content.${r}.getChildCount()`),
   );
   const widthOf = (r) => (typeof widths[r] === 'number' ? widths[r] : 0);
   const widestRow = widths.reduce((best, _w, r) => (widthOf(r) > widthOf(best) ? r : best), 0);
-  const colLimit = sweepExtent(
+  const colLimit = sweepBudget(
     `${label} row ${widestRow} items`,
-    CELL_SWEEP.cols,
+    CELL_SWEEP.rowItems,
     widthOf(widestRow),
   );
 
@@ -1085,6 +1068,32 @@ export async function navCellSweepHome() {
  * 28-tile grid), so an index computed as `row * numColumns` is not reachable there and the
  * walk would press at a position the grid cannot stop on.
  *
+ * ## Why it walks back up, when the other sweeps do not
+ *
+ * Because a one-way pass leaves `GridItem`'s reload path unexecuted, and that path is real
+ * code with no other coverage. A tile releases its texture when it scrolls out of the render
+ * window (`unloadGridTexture`) and restores it when it comes back (`reloadGridTexture`) —
+ * two separate subs from the `JRRowItem` pair the RowList sweeps exercise. Measured before
+ * this leg existed: three launches all read `unloads` 6 and `reloads` **1**, so tiles were
+ * being released and essentially never restored, and any change to the restore guard would
+ * have been invisible to every sweep in the suite.
+ *
+ * MEASURED before and after on the same 28-tile library, n=3 each: `reloads` **1 -> 7** and
+ * `loadsStarted` **28 -> 34**, the +6 matching the extra reloads exactly because
+ * `reloadGridTexture` bumps both in one block. `binds` stayed at **28** and `bindsRedundant`
+ * at **0**, so `loadsStarted - reloads` is 27 either way — the bind path is untouched and the
+ * leg adds reload coverage without changing the rest of the workload.
+ *
+ * That last part is worth keeping in mind before reading anything into a grid's rebind rate:
+ * a returning tile reloads a texture, it does not re-bind, so `binds / items` on a grid is a
+ * coverage fraction rather than a measure of waste and this leg does not move it.
+ * `docs/dev/measuring-performance.md` carries the full reading of that ratio.
+ *
+ * Deliberately NOT applied to `sweepRowList`: `cellSweepExtras` is the arm the reload work is
+ * measured against, its itinerary is the denominator a recorded baseline was taken at, and it
+ * already drives its reload path hard (`reloads` 123 against the grid's 1). Changing it would
+ * retire that baseline to buy coverage it already has.
+ *
  * Reads are scoped to the active routed view: `#itemGrid` recurs on every `BaseGridView`,
  * and Home stays in the tree behind this one.
  */
@@ -1106,7 +1115,7 @@ export async function navCellSweepGrid(ctx) {
   }
   // FULL rows only — see the docblock. A partial last row is not a stop the walk can name.
   const fullRows = Math.floor((typeof tiles === 'number' ? tiles : 0) / columns);
-  const rowTarget = sweepExtent('cellSweepGrid rows', CELL_SWEEP.gridRows, fullRows);
+  const rowTarget = sweepBudget('cellSweepGrid rows', CELL_SWEEP.gridRows, fullRows);
   const down = await scrollFocus({
     keyPath: '#itemGrid.itemFocused',
     read: getActiveVal,
@@ -1117,7 +1126,18 @@ export async function navCellSweepGrid(ctx) {
     label: 'cellSweepGrid rows',
   });
 
-  const colTarget = sweepExtent('cellSweepGrid columns', CELL_SWEEP.cols, columns);
+  // A whole-axis traverse, not a budget: the row is `numColumns` wide by layout, so
+  // reaching its end is the itinerary succeeding and must not report a clamp.
+  //
+  // Bounded by the TILE COUNT as well as by the column count, for the one case where those
+  // differ: a library thinner than one row (fewer than `numColumns` items) has no full row
+  // at all, so row 0 holds `tiles` items and not `columns`. Walking to `columns - 1` there
+  // presses Right at positions the grid has nothing in, which does not fail fast — the walk
+  // simply never arrives and times out blaming `#itemGrid`, i.e. reports "the screen never
+  // loaded" about a fixture that loaded fine. Found by enumerating every (columns, tiles)
+  // shape rather than on a device; the demo server is one thin library away from it.
+  const rowWidth = Math.min(columns, typeof tiles === 'number' ? tiles : 0);
+  const colTarget = axisEnd('cellSweepGrid columns', rowWidth);
   const right = await scrollFocus({
     keyPath: '#itemGrid.itemFocused',
     read: getActiveVal,
@@ -1127,12 +1147,28 @@ export async function navCellSweepGrid(ctx) {
     label: `cellSweepGrid row ${rowTarget} columns`,
   });
 
+  // Back UP to row 0, staying in the same column. This is the leg that makes the grid's
+  // reload path reachable at all — see the docblock. The target is `colTarget` rather than
+  // 0 because the walk moves a whole row per press: from `rowTarget * columns + colTarget`
+  // the distance home is exactly `rowTarget` strides, while index 0 would not be a whole
+  // number of them and `scrollFocus` would (correctly) refuse it.
+  const back = await scrollFocus({
+    keyPath: '#itemGrid.itemFocused',
+    read: getActiveVal,
+    target: colTarget,
+    stride: columns,
+    forwardKey: ecp.Key.Down,
+    backKey: ecp.Key.Up,
+    label: 'cellSweepGrid rows -> 0',
+  });
+
   const quiet = await waitCellsQuiet('#itemGrid', { read: getActiveVal });
   reportSweep(
     'cellSweepGrid',
     [
       { axis: `rows (x${columns} tiles)`, walk: down, available: fullRows },
-      { axis: `row ${rowTarget} columns`, walk: right, available: columns },
+      { axis: `row ${rowTarget} columns`, walk: right, available: rowWidth },
+      { axis: 'rows -> 0', walk: back, available: fullRows },
     ],
     quiet,
   );

@@ -507,8 +507,20 @@ export const SCROLL_KEY_INTERVAL_MS = 150;
  * really was dropped. Same shape as `resendIfSwallowed`, whose comment carries the recorded
  * cases of a swallowed key, and the same reason it sits out its first tick.
  *
+ * **That rule has to be re-armed after every corrective press, not just the first.** A
+ * correction is itself a key in flight, so the tick after one fires sees the index still
+ * unchanged — and treating that as "stuck and short" presses again on top of it, which is
+ * the overshoot this whole gate exists to avoid, just one step later. Clearing `lastSeen`
+ * makes the next tick re-establish an unchanged observation before it may press again, so
+ * each correction gets a full poll interval to land. Modelled in the unit tests by a device
+ * that applies presses with LATENCY: without the reset, one dropped key out of three drew
+ * two corrections and left the list one index past the target, with `scrollFocus` reporting
+ * the target it had asked for — a denominator that moved after the walk said it had not.
+ *
  * Returns what it actually did, because the caller has to be able to say so: a workload is
- * only "fixed" if the run can report the distance it travelled.
+ * only "fixed" if the run can report the distance it travelled. `to` is the index READ at
+ * the moment the gate opened, not the one that was requested — they are equal by the gate's
+ * own predicate, and reporting the observed one keeps that an assertion rather than a claim.
  *
  * ## `stride` — one press is not always one index
  *
@@ -530,6 +542,10 @@ export const SCROLL_KEY_INTERVAL_MS = 150;
  * @param {(v:any)=>any} [opts.select] pull the index out of the field (`rowItemFocused` is a
  *                                     `[row, item]` pair, `itemFocused` is the index itself)
  * @param {(k:string)=>Promise<any>} [opts.read] `getVal` (default) or `getActiveVal`
+ * @param {string} [opts.label]      what to call this walk in waits, warnings and the report
+ * @param {number} [opts.keyIntervalMs] burst cadence; defaults to `SCROLL_KEY_INTERVAL_MS`
+ * @param {number} [opts.timeout]    budget for the reconciliation, once the burst is sent
+ * @param {number} [opts.interval]   poll interval of the reconciliation
  * @returns {Promise<{from:number, to:number, pressed:number, recovered:number}>}
  */
 export async function scrollFocus({
@@ -581,7 +597,7 @@ export async function scrollFocus({
 
   let recovered = 0;
   let lastSeen = null;
-  await waitFor(keyPath, (v) => select(v) === target, {
+  const landed = await waitFor(keyPath, (v) => select(v) === target, {
     read,
     timeout,
     interval,
@@ -596,10 +612,88 @@ export async function scrollFocus({
       }
       recovered++;
       await press(cur < target ? forwardKey : backKey);
+      // Re-arm the "unchanged across a tick" rule: the press just sent is now itself in
+      // flight, and the next tick will still read the pre-press index. Without this the
+      // guard decays into "press every tick until it moves" — see the docblock.
+      lastSeen = null;
     },
   });
-  return { from, to: target, pressed: Math.abs(delta) / stride, recovered };
+  return { from, to: select(landed), pressed: Math.abs(delta) / stride, recovered };
 }
+
+/**
+ * An axis a sweep intends to travel COMPLETELY: the last index there is, announced only
+ * when there is nothing to travel.
+ *
+ * ## Why this is not `sweepBudget` with a big number
+ *
+ * The two look alike and mean opposite things, and conflating them is what made the clamp
+ * warning worthless. A `MarkupGrid` row is `numColumns` wide — 6 on a Stick 4K — because
+ * that is the LAYOUT, not because the fixture ran short. Asking `sweepBudget` for 12 columns
+ * there warned on every single run, in the one channel that exists to say "this run did not
+ * travel as far as the last one", which trains an operator to skip the line that matters.
+ * Reaching the end of a bounded axis is the itinerary succeeding; say nothing about it.
+ *
+ * @returns {number} the last index, or 0 when the axis holds nothing to travel
+ */
+export function axisEnd(label, available) {
+  if (typeof available !== 'number' || available < 1) {
+    console.warn(`[nav] ${label}: read ${JSON.stringify(available)} entries — sweeping nothing.`);
+    return 0;
+  }
+  return available - 1;
+}
+
+/**
+ * A BUDGETED axis: travel `wanted` steps, or as far as the fixture allows, announcing any
+ * shortfall.
+ *
+ * A clamp is not a failure — it is the fixture being smaller than the itinerary, and it is
+ * still deterministic wherever the content itself is settled, so the run stays comparable to
+ * other runs on the same fixture. What it must not be is SILENT: a run that swept 3 rows and
+ * a run that swept 12 differ in every count the ledger publishes, and the operator comparing
+ * them has only this line to tell them apart.
+ *
+ * Use this only where `wanted` is a genuine time budget the axis could exceed — the row
+ * count of a RowList, the items in a shelf. For an axis whose length is a structural bound
+ * the sweep always means to traverse, use `axisEnd`.
+ *
+ * @returns {number} the last index to travel to
+ */
+export function sweepBudget(label, wanted, available) {
+  if (typeof available !== 'number' || available < 1) {
+    console.warn(`[nav] ${label}: read ${JSON.stringify(available)} entries — sweeping nothing.`);
+    return 0;
+  }
+  const target = Math.min(wanted, available - 1);
+  if (target < wanted) {
+    console.warn(
+      `[nav] ${label}: fixture holds ${available} entries, so the sweep clamps to ${target} of ` +
+        `${wanted} steps. Counts from this run are comparable only to other runs on a fixture ` +
+        'this size.',
+    );
+  }
+  return target;
+}
+
+/**
+ * The cell-load counters a settle has to watch, as the `cellLoad<Name>` field suffix.
+ *
+ * Minimal and complete — the reasoning, and the emit sites it was checked against, are in
+ * `waitCellsQuiet`'s docblock. Adding a counter to `source/utils/cellLoad.bs` only belongs
+ * here if it can increment while `Binds` and `LoadsStarted` both sit still; everything that
+ * shares a straight-line block with one of those is already covered.
+ */
+export const CELL_QUIET_COUNTERS = Object.freeze([
+  'Binds',
+  'LoadsStarted',
+  'LoadsFailed',
+  'Unloads',
+]);
+
+/** The watched counters as one `name=value` run, for a warning or a report line. */
+export const formatCellCounts = (counts) =>
+  CELL_QUIET_COUNTERS.map((c) => `${c[0].toLowerCase()}${c.slice(1)}=${counts?.[c]}`).join(' ');
 
 /**
  * Wait until a texture-managed list's cell-load counters stop moving.
@@ -622,6 +716,42 @@ export async function scrollFocus({
  * one of the three reasons they live there. Gating the measurement's end on the measured
  * quantity is the closest thing available to an exact boundary.
  *
+ * ## Which counters it watches, and why exactly these four
+ *
+ * `CELL_QUIET_COUNTERS` is minimal AND complete, and both halves are checked against the
+ * emit sites in `source/utils/cellLoad.bs` rather than chosen by feel. A counter needs
+ * watching only if it can move while `binds` and `loadsStarted` both sit still. Exactly two
+ * can:
+ *
+ *   - **`cellLoadLoadsFailed`** — `JRRowItem.onPosterLoadStatusChanged` / `GridItem`'s
+ *     equivalent, an ASYNCHRONOUS completion callback. It is the whole reason this function
+ *     exists: a request that has started and not yet failed is counted by `loadsStarted` and
+ *     not by `loadsFailed`, so a boundary drawn while one is outstanding splits a pair.
+ *   - **`cellLoadUnloads`** — `unloadTexture` bumps nothing else, so an off-screen cell
+ *     releasing its texture is invisible to the other three.
+ *
+ * Every remaining counter is structurally PINNED to one of those two and needs no watch of
+ * its own: `bindsFromContent` / `bindsFromSize` / `bindsRedundant` increment inside
+ * `cellLoad.bind` itself; `wipesBind` fires in `renderItem()`, whose only two callers invoke
+ * `cellLoad.bind` on the line above it; `reloads` and `wipesReload` sit in `reloadTexture`'s
+ * same straight-line block as its `loadStarted`. None of them can move alone, so watching
+ * them would cost reads and buy nothing.
+ *
+ * **What this does NOT fix, measured rather than hoped.** Across six `cellSweepExtras`
+ * launches on `.177` the wobbling fields (`loadsFailed` 116–118, `reloads` 121–123,
+ * `unloads` 7–8, `wipesBind` 32–34) all moved TOGETHER and in the same direction, while
+ * `loadsStarted` held at exactly 140. Two things follow, and the second is easy to state
+ * backwards. It is NOT a count truncated at the boundary — that would show the same
+ * `reloads` with fewer `loadsFailed`, and instead the whole chain shifts. But it is not the
+ * workload getting BIGGER or smaller either: 140 attempts every launch, with bind-path
+ * loads (`loadsStarted - reloads`) falling 19 -> 17 exactly as `reloads` rises 121 -> 123.
+ * The total work is fixed and its SPLIT drifts — the same cell taking the reload path
+ * instead of the bind path — which is a timing-dependent choice in the app, not slack in
+ * the harness. Only the +/-1 seen at CONSTANT `reloads` (one launch of nine) is a boundary
+ * artefact this can remove. Widening the gate is still right, because the invariant it
+ * buys — every field the sample publishes has stopped moving — is one the caller can rely
+ * on; it is not a variance fix, and must not be sold as one.
+ *
  * ## Why it warns instead of throwing
  *
  * A list that never goes quiet is a FINDING, not a harness failure — it is precisely the
@@ -639,21 +769,31 @@ export async function scrollFocus({
  * Collapsing them would print "perfTiming off" at an operator whose keyPath was simply wrong.
  *
  * @param {string} listId the list's `#id` — the counters hang off `<listId>.content`
+ * @param {object} [opts]
+ * @param {(k:string)=>Promise<any>} [opts.read] defaults to `getActiveVal`, which is what
+ *   every cell-bearing list needs: `#itemGrid`, `#extrasGrid` and `#homeRows` all recur
+ *   across suspended views, so a scene-rooted read can settle on the wrong screen's counters
  * @returns {Promise<{quiet:boolean, instrumented:boolean, resolved:boolean,
- *                    binds:number|undefined, loadsStarted:number|undefined, waitedMs:number}>}
+ *                    counts:Record<string, number|undefined>, waitedMs:number}>}
  */
 export async function waitCellsQuiet(
   listId,
-  { read = getVal, quietMs = 1500, timeout = 15000, interval = 400 } = {},
+  { read = getActiveVal, quietMs = 1500, timeout = 15000, interval = 400 } = {},
 ) {
   const start = Date.now();
-  const sample = async () => [
-    await read(`${listId}.content.cellLoadBinds`),
-    await read(`${listId}.content.cellLoadLoadsStarted`),
-  ];
+  const sample = async () => {
+    const out = {};
+    // Sequential single reads, not `getActiveVals`. The batch rule in `tests/rta/CLAUDE.md`
+    // governs ONE-SHOT assertions, where a spread-out read window can straddle a settling
+    // screen; a poll loop is explicitly carved out of it. It is also safe here for a reason
+    // specific to these fields: the counters only ever increase, so a sample that straddles
+    // an increment can delay quiescence but can never declare it early.
+    for (const c of CELL_QUIET_COUNTERS) out[c] = await read(`${listId}.content.cellLoad${c}`);
+    return out;
+  };
 
-  let [binds, loadsStarted] = await sample();
-  if (typeof binds !== 'number') {
+  let counts = await sample();
+  if (typeof counts.Binds !== 'number') {
     const resolved = typeof (await read(`${listId}.content.getChildCount()`)) === 'number';
     if (!resolved) {
       console.warn(
@@ -662,15 +802,20 @@ export async function waitCellsQuiet(
           'them. Check the keyPath and whether the list is still mounted.',
       );
     }
-    return { quiet: true, instrumented: false, resolved, binds, loadsStarted, waitedMs: 0 };
+    // `quiet: false` when the list never resolved — this call observed no quiet point, and
+    // saying otherwise would let a caller that reads only `.quiet` treat a watch of nothing
+    // as a settle. `instrumented: false` with `resolved: true` is the genuinely quiet case:
+    // a production build carries no counters, so there is nothing to wait for.
+    return { quiet: resolved, instrumented: false, resolved, counts, waitedMs: 0 };
   }
 
+  const changed = (a, b) => CELL_QUIET_COUNTERS.some((c) => a[c] !== b[c]);
   let lastChange = Date.now();
   while (Date.now() - start < timeout) {
     await sleep(interval);
-    const [b, l] = await sample();
-    if (b !== binds || l !== loadsStarted) {
-      [binds, loadsStarted] = [b, l];
+    const next = await sample();
+    if (changed(counts, next)) {
+      counts = next;
       lastChange = Date.now();
       continue;
     }
@@ -679,24 +824,16 @@ export async function waitCellsQuiet(
         quiet: true,
         instrumented: true,
         resolved: true,
-        binds,
-        loadsStarted,
+        counts,
         waitedMs: Date.now() - start,
       };
     }
   }
   console.warn(
     `[nav] ${listId}: cell-load counters never went quiet for ${quietMs} ms within ` +
-      `${timeout} ms — last binds=${binds} loadsStarted=${loadsStarted}. The emitted sample ` +
-      'still describes a real session, but its boundary falls inside ongoing work, so ' +
-      'loadsFailed is undercounted relative to a run that did settle.',
+      `${timeout} ms — last ${formatCellCounts(counts)}. The emitted sample still describes a ` +
+      'real session, but its boundary falls inside ongoing work, so the fields that close ' +
+      'asynchronously (loadsFailed, unloads) are undercounted relative to a run that settled.',
   );
-  return {
-    quiet: false,
-    instrumented: true,
-    resolved: true,
-    binds,
-    loadsStarted,
-    waitedMs: Date.now() - start,
-  };
+  return { quiet: false, instrumented: true, resolved: true, counts, waitedMs: Date.now() - start };
 }
