@@ -231,7 +231,8 @@ range, because a median hides exactly the thing you need to know before trusting
 |---|---|---|---|---|---|---|---|
 | `HomeRows` | 231 *(222–234)* | 129 | 1 | 164 *(163–164)* | 0 | 57 *(56–57)* | 0 |
 | `BaseGridView` | 28 | 28 | 0 | 34 | 0 | 7 | 0 |
-| `ExtrasRowList` | 74 | 41 | **26** | **140** | **116–118** | 121–123 | **103** |
+| `ExtrasRowList` *(pre-fix)* | 74 | 41 | **26** | **140** | **116–118** | 121–123 | **103** |
+| `ExtrasRowList` *(post reload-guard)* | 74 | 41 | **26** | **43** | **31–34** | 22–26 | **6** |
 | `SearchRow` | 67 | 160 | 0 | 49 | 5 | 9 | 4 |
 
 > **Pool per `(nav, component)`, never across campaigns that ran a different itinerary or a
@@ -324,9 +325,12 @@ deciding that per sweep rather than per campaign is the point:
 Three things to take from that table.
 
 **The extras sweep's headline fields are exact, including the one that matters.**
-`wipesReload` — the discriminator the parked reload-guard fix has to move — is 103 on all
+`wipesReload` — the discriminator the reload-guard fix had to move — is 103 on all
 nine launches. What wobbles is the failure tail (`loadsFailed` 116–118, `reloads` 121–123,
 `unloads` 7–8, `wipesBind` 32–34). Budget ±2 there and treat `wipesReload` as exact.
+
+**That exactness is what let the reload-guard A/B settle at n=10/arm** — see
+[the reload-guard result](#the-reload-guard-ab--what-an-exact-discriminator-buys) below.
 
 **That residual is the app's path choice drifting, not a measurement artifact** — worth
 stating because an earlier draft here explained it as one ("quiescence bounds the in-flight
@@ -397,6 +401,47 @@ fresh counters, and the old root's counts are never emitted at all. `BaseGridVie
 call sites and `SearchRow` at two, so a grid's line covers "since the last rebuild", not
 "since the screen opened". Nothing in the sweeps triggers a rebuild, but a filter or sort
 change would.
+
+### The reload-guard A/B — what an exact discriminator buys
+
+The first change settled with this family, and the worked example for the whole section.
+**n=10/arm, alternated `AAAAABBBBBAAAAABBBBB` over 13 min** on a 1 GB Stick 4K against a real
+server, `--nav cellSweepExtras --component ExtrasRowList`. All 20 launches swept ONE itinerary
+(`rows 0→1 of 3, row 1 items 0→12 of 31, rows 1→2 of 3`) and `measure:compare` confirmed
+identical workload (`items` 41 ×10 on both arms), so the deltas are not a run that did less work.
+
+| field | before | after | delta | rank test |
+|---|---|---|---|---|
+| `wipesReload` | 103 | 6 | **−94.2%** | p=0.0000, complete separation |
+| `reloads` | 122 | 25.5 | −79.1% | p=0.0001, complete separation |
+| `loadsStarted` | 140 | 43 | −69.3% | p=0.0001, complete separation |
+| `loadsFailed` | 116.5 | 32 | −72.5% | p=0.0002, complete separation |
+| `binds` | 74 | 74 | 0% | p=0.35, not distinguishable |
+| `bindsRedundant` | 26 | 26 | 0% | p=0.36, not distinguishable |
+| `unloads` | 8 | 8 | 0% | p=0.90, not distinguishable |
+| `wipesBind` | 32 | 33.5 | +4.7% | p=0.073, not distinguishable |
+
+**The nulls carry the argument, not the headline.** A −94% on `wipesReload` alone is equally
+consistent with "the work moved somewhere else": `binds` flat at 74 is what rules that out,
+and `unloads` flat at 8 is what shows the buffer-window preloading path was not disturbed. Quote
+those two beside the headline or the headline does not mean what it appears to.
+
+**`wipesBind` +1.5 (p=0.073) is the one field that drifted the wrong way**, and it is the
+direction that would indicate work relocating to the bind path. n=10 BOUNDS it at about +1.5
+rather than proving it zero; it is recorded here rather than rounded to "no change" so a later
+change that makes the bind path hot has a prior to compare against.
+
+**A field this family cannot give you: `loadsStarted − loadsFailed`.** The successful-load
+count fell roughly 23.5 → 11, which is the real cost of the change (transient retries that
+would eventually have succeeded). That figure is arithmetic on two medians — a
+median-of-differences is not a difference-of-medians — so it is approximate and is NOT a
+`measure:compare` result, unlike every other number on this page. Treat it as a magnitude, not
+a measurement.
+
+**Why this settled at n=10 when Home needs 20–30.** Extras is exact run-to-run on its headline
+fields, so complete separation appears immediately; Home's `binds` spread is wider than most
+effects worth measuring. Exactness is a property of the SCREEN, not of the family — check the
+per-field ranges before picking a sample size.
 
 ### More than one device
 
