@@ -22,6 +22,7 @@ import {
   press,
   getVal,
   getActiveVal,
+  getActiveVals,
   waitFor,
   waitFocused,
   waitFocusInside,
@@ -30,6 +31,11 @@ import {
   overhangWalkKey,
   hasChildren,
   resendIfSwallowed,
+  scrollFocus,
+  waitCellsQuiet,
+  formatCellCounts,
+  axisEnd,
+  sweepBudget,
   sleep,
 } from './steps.js';
 
@@ -868,4 +874,365 @@ export async function navTrickplay(ctx) {
     label: 'trickplay visible',
   });
   await sleep(2000); // let the filmstrip thumbnails load while the trickPlayBar is still up
+}
+
+// ---------------------------------------------------------------------------
+// Scripted CELL workloads — the `cell-load` measurement family's navs
+// ---------------------------------------------------------------------------
+
+/**
+ * How far a scripted cell sweep travels, in list positions.
+ *
+ * ## These numbers are the measurement's denominator — treat them as frozen
+ *
+ * `scripts/measure.js` records the `--nav` name in every ledger record but has no way to
+ * know how far that nav traveled, so the constants here are what make two records with the
+ * same nav name comparable. Changing one silently forks the series: every figure taken
+ * before the change describes a different workload from every figure taken after, and
+ * nothing in the record says so. If a different distance is wanted, add a nav rather than
+ * retune these — a name is the only thing a reader can compare on.
+ *
+ * Chosen to be a few viewports of travel on each axis, which is what forces the cell
+ * recycling the ledger exists to count, while staying inside a per-launch budget that ~10
+ * launches can pay: at `SCROLL_KEY_INTERVAL_MS` a 12-press sweep is under 2 s of keypresses.
+ * They are CEILINGS, not requirements — a fixture with less content clamps (see
+ * `sweepExtent`), because these navs also run as functional tests against the thin demo
+ * server, where refusing would redden a suite whose reds mean "the screen did not load".
+ *
+ * `gridRows` is deliberately larger than `rows`, because equal press counts are very unequal
+ * workloads: one Down in a `MarkupGrid` advances by `numColumns` items (6 on a Stick 4K),
+ * while one Down in a RowList advances by a single shelf.
+ *
+ * There is deliberately no `gridCols`. A grid row is exactly `numColumns` wide, so its
+ * horizontal axis is traversed WHOLE (`axisEnd`) rather than budgeted — see that function
+ * for why budgeting a structurally-bounded axis made the clamp warning fire on every run.
+ * `rowItems` is a RowList's shelf only, where a 31-item Cast & Crew row genuinely can
+ * exceed the budget and the clamp is real news.
+ */
+const CELL_SWEEP = Object.freeze({ rows: 6, gridRows: 12, rowItems: 12 });
+
+/**
+ * Print what the sweep actually did, in one line per screen.
+ *
+ * The console is the only channel: `measure.js` records the nav's NAME, not its itinerary,
+ * so this line plus the emitted `items` field are how a reader confirms two runs did the
+ * same work. `recovered` is the interesting field — a run that needed corrective presses
+ * met a device dropping input, which is worth knowing before trusting a delta.
+ */
+function reportSweep(name, legs, quiet) {
+  const path = legs
+    .map((l) => `${l.axis} ${l.walk.from}->${l.walk.to} of ${l.available}`)
+    .join(', ');
+  const recovered = legs.reduce((n, l) => n + l.walk.recovered, 0);
+  console.log(
+    `[nav] ${name}: swept ${path}` +
+      (recovered ? `, ${recovered} corrective press(es)` : '') +
+      (quiet.instrumented
+        ? `; cells ${quiet.quiet ? 'quiet' : 'STILL BUSY'} after ${quiet.waitedMs} ms ` +
+          `(${formatCellCounts(quiet.counts)})`
+        : quiet.resolved
+          ? '; no cell-load counters on this build (perfTiming off)'
+          : '; ⚠ the list did not resolve — nothing was settled'),
+  );
+}
+
+/**
+ * Sweep a two-level RowList: down to the widest row in scope, right along it, then on down
+ * to the row limit. Shared by every RowList-backed cell screen (Home, ItemDetails extras) —
+ * they differ only in which list they drive and how they are reached.
+ *
+ * ## Why both axes
+ *
+ * They recycle different things. Moving DOWN brings whole rows into the render window, so it
+ * binds a row's worth of cells at a time and is the axis Home's first paint pays; moving
+ * RIGHT recycles cells within one shelf, which is the axis a user browsing produces and the
+ * one the extras-row flicker was reported on.
+ *
+ * ## Why the horizontal leg hunts for the WIDEST row rather than using the one it lands on
+ *
+ * Measured, not guessed: the first version swept right on whichever row the vertical leg
+ * ended on, and on `.177`'s ItemDetails that was a 1-item row — so the horizontal leg
+ * travelled ZERO and three launches agreed on a number that had never exercised the axis the
+ * defect was reported on. A rate that reproduces perfectly can still be a rate for the wrong
+ * workload. Picking the widest row in scope puts the travel where the content is, on any
+ * fixture, and stays deterministic: same content, same choice.
+ *
+ * The row is picked from ONE batched read of the rows in scope rather than a read per row —
+ * a one-shot look at the screen, per `tests/rta/CLAUDE.md`.
+ *
+ * The caller establishes focus inside the list first; `scrollFocus` gates on the index being
+ * readable, but it cannot make focus arrive.
+ */
+async function sweepRowList(listId, { label } = {}) {
+  const rowCount = await getActiveVal(`${listId}.content.getChildCount()`);
+  const rowLimit = sweepBudget(`${label} rows`, CELL_SWEEP.rows, rowCount);
+  const widths = await getActiveVals(
+    [...Array(rowLimit + 1).keys()].map((r) => `${listId}.content.${r}.getChildCount()`),
+  );
+  const widthOf = (r) => (typeof widths[r] === 'number' ? widths[r] : 0);
+  const widestRow = widths.reduce((best, _w, r) => (widthOf(r) > widthOf(best) ? r : best), 0);
+  const colLimit = sweepBudget(
+    `${label} row ${widestRow} items`,
+    CELL_SWEEP.rowItems,
+    widthOf(widestRow),
+  );
+
+  const row = (v) => (Array.isArray(v) ? v[0] : undefined);
+  const item = (v) => (Array.isArray(v) ? v[1] : undefined);
+  const vertical = (target, legLabel) =>
+    scrollFocus({
+      keyPath: `${listId}.rowItemFocused`,
+      select: row,
+      read: getActiveVal,
+      target,
+      forwardKey: ecp.Key.Down,
+      backKey: ecp.Key.Up,
+      label: legLabel,
+    });
+
+  const toWidest = await vertical(widestRow, `${label} rows -> ${widestRow}`);
+  const across = await scrollFocus({
+    keyPath: `${listId}.rowItemFocused`,
+    select: item,
+    read: getActiveVal,
+    target: colLimit,
+    forwardKey: ecp.Key.Right,
+    backKey: ecp.Key.Left,
+    label: `${label} row ${widestRow} items`,
+  });
+  const toLimit = await vertical(rowLimit, `${label} rows -> ${rowLimit}`);
+
+  return [
+    { axis: `rows -> ${widestRow}`, walk: toWidest, available: rowCount },
+    { axis: `row ${widestRow} items`, walk: across, available: widthOf(widestRow) },
+    { axis: `rows -> ${rowLimit}`, walk: toLimit, available: rowCount },
+  ];
+}
+
+/**
+ * home -> sweep Home's rows -> open Settings, which hides Home and emits its cell-load
+ * session.
+ *
+ * ## Why it leaves through Settings
+ *
+ * The counters are published by `hideTextureManager` / `destroyTextureManager`, so a sweep
+ * that stays on the screen it measured records nothing at all. Home cannot simply be backed
+ * out of, and every other exit is itself cell-bearing: opening a library grid mounts a
+ * `BaseGridView` that emits a second, unswept sample, and switching to the Favorites tab
+ * destroys HomeRows only to build FavoritesRows. Settings is the one exit that mounts no
+ * cells, so the launch carries exactly one cell-load sample and needs no `--component`.
+ *
+ * The walk back up to row 0 is part of the itinerary rather than a tidy-up: Home releases
+ * focus to the overhang only from row 0 (`walkHomeToFirstRow`), so SOMETHING has to make
+ * that trip. Doing it here, gated, keeps it inside the recorded distance instead of leaving
+ * it to `focusOverhangIcon`'s recovery walk, which would also warn on every single run about
+ * a row index this nav moved on purpose.
+ */
+export async function navCellSweepHome() {
+  await waitHome();
+  await waitFocusInside('#homeRows');
+  const legs = await sweepRowList('#homeRows', { label: 'cellSweepHome' });
+  const back = await scrollFocus({
+    keyPath: '#homeRows.rowItemFocused',
+    select: (v) => (Array.isArray(v) ? v[0] : undefined),
+    read: getActiveVal,
+    target: 0,
+    forwardKey: ecp.Key.Down,
+    backKey: ecp.Key.Up,
+    label: 'cellSweepHome back to row 0',
+  });
+  legs.push({ axis: 'rows -> 0', walk: back, available: legs[0].available });
+  const quiet = await waitCellsQuiet('#homeRows', { read: getActiveVal });
+  reportSweep('cellSweepHome', legs, quiet);
+  await navSettings();
+}
+
+/**
+ * home -> Movies grid -> sweep the grid -> back to home, which pops the grid and emits its
+ * cell-load session.
+ *
+ * The one screen session 16 never measured under load: the grid line it recorded came from a
+ * view that was opened and immediately selected out of, so no cell ever recycled and its
+ * 1.00 rebind rate was the trivial load-only result.
+ *
+ * ## Why a grid needs both axes, and why the vertical one is the workload
+ *
+ * A `MarkupGrid`'s `itemFocused` is a flat index over a 2-D layout, and the two directions
+ * move it very differently — MEASURED on `.177`, 2026-08-20: Down moves it by `numColumns`
+ * (6 there), Right by exactly one, and Right does NOT wrap at a row end, so from index 0 the
+ * sixth Right and every one after it is inert. Down is therefore what actually scrolls a
+ * grid, and it is also what a user does; Right only walks the row it lands on.
+ *
+ * The vertical target is pinned to a FULL row for a reason the same probe found: Down out of
+ * the last full row lands on the final item rather than the same column (23 -> 27 on a
+ * 28-tile grid), so an index computed as `row * numColumns` is not reachable there and the
+ * walk would press at a position the grid cannot stop on.
+ *
+ * ## Why it walks back up, when the other sweeps do not
+ *
+ * Because a one-way pass leaves `GridItem`'s reload path unexecuted, and that path is real
+ * code with no other coverage. A tile releases its texture when it scrolls out of the render
+ * window (`unloadGridTexture`) and restores it when it comes back (`reloadGridTexture`) —
+ * two separate subs from the `JRRowItem` pair the RowList sweeps exercise. Measured before
+ * this leg existed: three launches all read `unloads` 6 and `reloads` **1**, so tiles were
+ * being released and essentially never restored, and any change to the restore guard would
+ * have been invisible to every sweep in the suite.
+ *
+ * MEASURED before and after on the same 28-tile library, n=3 each: `reloads` **1 -> 7** and
+ * `loadsStarted` **28 -> 34**, the +6 matching the extra reloads exactly because
+ * `reloadGridTexture` bumps both in one block. `binds` stayed at **28** and `bindsRedundant`
+ * at **0**, so `loadsStarted - reloads` is 27 either way — the bind path is untouched and the
+ * leg adds reload coverage without changing the rest of the workload.
+ *
+ * That last part is worth keeping in mind before reading anything into a grid's rebind rate:
+ * a returning tile reloads a texture, it does not re-bind, so `binds / items` on a grid is a
+ * coverage fraction rather than a measure of waste and this leg does not move it.
+ * `docs/dev/measuring-performance.md` carries the full reading of that ratio.
+ *
+ * Deliberately NOT applied to `sweepRowList`: `cellSweepExtras` is the arm the reload work is
+ * measured against, its itinerary is the denominator a recorded baseline was taken at, and it
+ * already drives its reload path hard (`reloads` 123 against the grid's 1). Changing it would
+ * retire that baseline to buy coverage it already has.
+ *
+ * Reads are scoped to the active routed view: `#itemGrid` recurs on every `BaseGridView`,
+ * and Home stays in the tree behind this one.
+ */
+export async function navCellSweepGrid(ctx) {
+  await navLibraryGrid(ctx);
+  await waitFocusInside('#itemGrid');
+  const [tiles, columns] = await getActiveVals([
+    '#itemGrid.content.getChildCount()',
+    '#itemGrid.numColumns',
+  ]);
+  if (typeof columns !== 'number' || columns < 1) {
+    // A fail-fast naming its cause: every index in this sweep is arithmetic on `numColumns`,
+    // and guessing it would walk to positions the grid cannot stop on.
+    // eslint-disable-next-line no-restricted-syntax -- fail-fast, cause already named
+    throw new Error(
+      `cellSweepGrid: #itemGrid.numColumns read ${JSON.stringify(columns)} — the sweep's ` +
+        'row arithmetic has nothing to stand on',
+    );
+  }
+  // FULL rows only — see the docblock. A partial last row is not a stop the walk can name.
+  const fullRows = Math.floor((typeof tiles === 'number' ? tiles : 0) / columns);
+  const rowTarget = sweepBudget('cellSweepGrid rows', CELL_SWEEP.gridRows, fullRows);
+  const down = await scrollFocus({
+    keyPath: '#itemGrid.itemFocused',
+    read: getActiveVal,
+    target: rowTarget * columns,
+    stride: columns,
+    forwardKey: ecp.Key.Down,
+    backKey: ecp.Key.Up,
+    label: 'cellSweepGrid rows',
+  });
+
+  // A whole-axis traverse, not a budget: the row is `numColumns` wide by layout, so
+  // reaching its end is the itinerary succeeding and must not report a clamp.
+  //
+  // Bounded by the TILE COUNT as well as by the column count, for the one case where those
+  // differ: a library thinner than one row (fewer than `numColumns` items) has no full row
+  // at all, so row 0 holds `tiles` items and not `columns`. Walking to `columns - 1` there
+  // presses Right at positions the grid has nothing in, which does not fail fast — the walk
+  // simply never arrives and times out blaming `#itemGrid`, i.e. reports "the screen never
+  // loaded" about a fixture that loaded fine. Found by enumerating every (columns, tiles)
+  // shape rather than on a device; the demo server is one thin library away from it.
+  const rowWidth = Math.min(columns, typeof tiles === 'number' ? tiles : 0);
+  const colTarget = axisEnd('cellSweepGrid columns', rowWidth);
+  const right = await scrollFocus({
+    keyPath: '#itemGrid.itemFocused',
+    read: getActiveVal,
+    target: rowTarget * columns + colTarget,
+    forwardKey: ecp.Key.Right,
+    backKey: ecp.Key.Left,
+    label: `cellSweepGrid row ${rowTarget} columns`,
+  });
+
+  // Back UP to row 0, staying in the same column. This is the leg that makes the grid's
+  // reload path reachable at all — see the docblock. The target is `colTarget` rather than
+  // 0 because the walk moves a whole row per press: from `rowTarget * columns + colTarget`
+  // the distance home is exactly `rowTarget` strides, while index 0 would not be a whole
+  // number of them and `scrollFocus` would (correctly) refuse it.
+  const back = await scrollFocus({
+    keyPath: '#itemGrid.itemFocused',
+    read: getActiveVal,
+    target: colTarget,
+    stride: columns,
+    forwardKey: ecp.Key.Down,
+    backKey: ecp.Key.Up,
+    label: 'cellSweepGrid rows -> 0',
+  });
+
+  const quiet = await waitCellsQuiet('#itemGrid', { read: getActiveVal });
+  reportSweep(
+    'cellSweepGrid',
+    [
+      { axis: `rows (x${columns} tiles)`, walk: down, available: fullRows },
+      { axis: `row ${rowTarget} columns`, walk: right, available: rowWidth },
+      { axis: 'rows -> 0', walk: back, available: fullRows },
+    ],
+    quiet,
+  );
+  await press(ecp.Key.Back);
+  await waitHome();
+}
+
+/**
+ * home -> Movies grid -> movie detail -> sweep the extras rows -> back, which pops
+ * ItemDetails and emits `ExtrasRowList`'s cell-load session.
+ *
+ * This is where the defect that started the investigation lives: 27 of 77 binds redundant
+ * and 22 of 23 image loads failing, on rows whose Person items carry `PrimaryImageTag`s
+ * whose files are gone. Session 16 measured that by hand; this is the same walk with a
+ * denominator.
+ *
+ * The launch carries THREE cell-load samples — Home's (hidden when the grid opens), the
+ * grid's (hidden when the detail opens) and this one — so a measurement of it must name
+ * `--component ExtrasRowList`. That is the shape rather than a defect: reaching the extras
+ * rows means loading both screens above them, and both loads really happened.
+ */
+export async function navCellSweepExtras(ctx) {
+  await navMovieDetails(ctx);
+  await press(ecp.Key.Down); // buttons -> extras rows panel
+  await waitFocusInside('#extrasGrid');
+  const legs = await sweepRowList('#extrasGrid', { label: 'cellSweepExtras' });
+  const quiet = await waitCellsQuiet('#extrasGrid', { read: getActiveVal });
+  reportSweep('cellSweepExtras', legs, quiet);
+  // Back is not intercepted in the extras panel (`ItemDetails.onKeyEvent` handles only Up
+  // and Down there), so one press pops the whole screen and lands back on the grid. Guarded
+  // for the swallow `resendIfSwallowed` documents — the router restores focus before it
+  // dispatches NavigationEnd, and a Back that arrives in that gap simply vanishes.
+  await press(ecp.Key.Back);
+  await waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes('#itemGrid'), {
+    label: 'cellSweepExtras back on the grid',
+    timeout: 20000,
+    interval: 500,
+    action: resendIfSwallowed(ecp.Key.Back, '#extrasGrid'),
+  });
+}
+
+/**
+ * home -> search -> type the configured query -> sweep the result rows -> back to home,
+ * which pops `SearchResults` and emits its cell-load session.
+ *
+ * `navSearch` already lands focus on `#searchSelect` (it walks off the keyboard onto the
+ * first result), so the sweep starts from the state it leaves behind. The rows are grouped
+ * by result type — Movies, Episodes, People, … — which makes this the one cell screen whose
+ * rows hold genuinely different item shapes, and People is exactly the type carrying the
+ * stale image tags the extras row trips over.
+ *
+ * Two cell-load samples per launch, so a measurement of it must name `--component SearchRow`.
+ * Reaching search through the overhang still HIDES Home, and a hidden screen publishes — so
+ * "no grid was opened" does not mean "only one screen emitted". Verified on `.177`
+ * 2026-08-20: the launch carried `HomeRows` and `SearchRow`, and the tool refused a median
+ * until one was named. `cellSweepHome` is the only one of these navs that needs no
+ * `--component`, because the screen it measures IS the one being hidden and its exit
+ * (Settings) has no cells of its own.
+ */
+export async function navCellSweepSearch() {
+  await navSearch();
+  const legs = await sweepRowList('#searchSelect', { label: 'cellSweepSearch' });
+  const quiet = await waitCellsQuiet('#searchSelect', { read: getActiveVal });
+  reportSweep('cellSweepSearch', legs, quiet);
+  await press(ecp.Key.Back);
+  await waitHome();
 }

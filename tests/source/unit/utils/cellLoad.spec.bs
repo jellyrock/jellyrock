@@ -1,0 +1,161 @@
+namespace tests
+
+  @suite("cellLoad.bs - Cell Load Ledger")
+  class CellLoadTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("attach()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("adds the counter fields, zeroed")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.attach(root, "HomeRows")
+      m.assertTrue(root.hasField("cellLoadBinds"))
+      m.assertEqual(root.getField("cellLoadBinds"), 0)
+      m.assertEqual(root.getField("cellLoadComponent"), "HomeRows")
+    end function
+
+    @it("does not zero an in-progress session when re-attached")
+    function _()
+      ' SearchRow calls initTextureManager again when new data arrives, and BaseGridView at
+      ' five sites. Re-attaching must not silently discard counts already taken.
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.attach(root, "SearchRow")
+      cellLoad.bind(root, cellLoad.FROM_CONTENT, false)
+      cellLoad.attach(root, "SearchRow")
+      m.assertEqual(root.getField("cellLoadBinds"), 1)
+    end function
+
+    @it("is safe on an invalid root")
+    function _()
+      cellLoad.attach(invalid, "HomeRows")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("bind()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("splits binds by trigger")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.attach(root, "HomeRows")
+      cellLoad.bind(root, cellLoad.FROM_CONTENT, false)
+      cellLoad.bind(root, cellLoad.FROM_CONTENT, false)
+      cellLoad.bind(root, cellLoad.FROM_SIZE, false)
+      m.assertEqual(root.getField("cellLoadBinds"), 3)
+      m.assertEqual(root.getField("cellLoadBindsContent"), 2)
+      m.assertEqual(root.getField("cellLoadBindsSize"), 1)
+    end function
+
+    @it("counts redundant binds separately without double counting the total")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.attach(root, "ExtrasRowList")
+      cellLoad.bind(root, cellLoad.FROM_CONTENT, true)
+      m.assertEqual(root.getField("cellLoadBinds"), 1)
+      m.assertEqual(root.getField("cellLoadBindsRedundant"), 1)
+    end function
+
+    @it("is a no-op on a root that was never attached")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.bind(root, cellLoad.FROM_CONTENT, false)
+      m.assertFalse(root.hasField("cellLoadBinds"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("glyphWipe()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("routes each source to its own counter")
+    function _()
+      ' The split is the point: a wipe on a cell that was changing anyway is not the same
+      ' defect as a wipe on a cell sitting still, and only the second reads as flicker.
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.attach(root, "ExtrasRowList")
+      cellLoad.glyphWipe(root, cellLoad.WIPE_BIND)
+      cellLoad.glyphWipe(root, cellLoad.WIPE_RELOAD)
+      cellLoad.glyphWipe(root, cellLoad.WIPE_RELOAD)
+      m.assertEqual(root.getField("cellLoadWipesBind"), 1)
+      m.assertEqual(root.getField("cellLoadWipesReload"), 2)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("countItems()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("counts a FLAT grid root's children as the items")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      for i = 0 to 5
+        root.createChild("ContentNode")
+      end for
+      m.assertEqual(cellLoad.countItems(root), 6)
+    end function
+
+    @it("counts a HIERARCHICAL RowList root's GRANDchildren as the items")
+    function _()
+      ' The denominator of the rebind rate. Using the child count here would divide by
+      ' rows and publish a rate an order of magnitude wrong.
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      for i = 0 to 2
+        row = root.createChild("ContentNode")
+        for j = 0 to 3
+          row.createChild("ContentNode")
+        end for
+      end for
+      m.assertEqual(cellLoad.countItems(root), 12)
+    end function
+
+    @it("returns 0 for an empty root")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      m.assertEqual(cellLoad.countItems(root), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("emit()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("publishes once when a screen is hidden AND then destroyed")
+    function _()
+      ' Both lifecycle hooks call emit. A second line of zeroes would read on the wire as
+      ' a real session in which nothing happened.
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.attach(root, "ItemDetails")
+      cellLoad.bind(root, cellLoad.FROM_CONTENT, false)
+      cellLoad.emit(root)
+      m.assertEqual(root.getField("cellLoadBinds"), 0)
+      secondEmitCounts = root.getField("cellLoadEmitted")
+      m.assertFalse(secondEmitCounts)
+    end function
+
+    @it("does not publish a session in which nothing happened")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.attach(root, "HomeRows")
+      cellLoad.emit(root)
+      m.assertFalse(root.getField("cellLoadEmitted"))
+    end function
+
+    @it("resets every counter so the next session starts clean")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.attach(root, "HomeRows")
+      cellLoad.bind(root, cellLoad.FROM_CONTENT, true)
+      cellLoad.loadStarted(root)
+      cellLoad.loadErrored(root)
+      cellLoad.reload(root)
+      cellLoad.unload(root)
+      cellLoad.emit(root)
+      m.assertEqual(root.getField("cellLoadBindsRedundant"), 0)
+      m.assertEqual(root.getField("cellLoadLoadsStarted"), 0)
+      m.assertEqual(root.getField("cellLoadLoadsFailed"), 0)
+      m.assertEqual(root.getField("cellLoadReloads"), 0)
+      m.assertEqual(root.getField("cellLoadUnloads"), 0)
+    end function
+
+  end class
+
+end namespace

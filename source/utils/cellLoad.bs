@@ -1,0 +1,284 @@
+import "pkg:/source/roku_modules/log/LogMixin.brs"
+
+' The cell-load ledger — how much work did a screen's CELLS do, and how much of it was waste?
+'
+' ## Why this exists as a second ledger rather than more fields on `screenLoad`
+'
+' [`screenReadiness.bs`](screenReadiness.bs) answers "when did this screen become usable
+' and when did it stop changing" — a question with a beginning and an end, whose state
+' lives on the SCREEN's `m`. This answers a different one: how many times were cells bound,
+' and how much network did that cost. Two things force it apart:
+'
+'   1. **Cells are separate components**, so they cannot reach the screen's `m` at all.
+'      `screenReadiness`'s own header names this constraint and takes the same way out
+'      (a field the parent observes) for `ExtrasRowList.contentReady`.
+'   2. **The interesting behaviour happens AFTER settle.** A cell rebind storm during
+'      scrolling is invisible to a ledger that closes when the screen stops loading.
+'
+' It deliberately keeps every other convention `screenLoad` established: namespaced free
+' functions, the `#if perfTiming` gate INSIDE each sub so a shipped build compiles them to
+' empty calls, one uniform emit shape so `scripts/measurements.js` needs ONE entry covering
+' every screen present and future, and an `instrumentUs` that measures the instrument's own
+' footprint rather than arguing about it.
+'
+' ## Where the counters live, and why the content root
+'
+' On the RowList / MarkupGrid content root — the same node `initTextureManager` already
+' hangs `loadedRowRange` on, and the one every cell already holds a reference to
+' (`m.contentRoot`). Three reasons it is the right home and not `m.global`:
+'
+'   - **Thread-local.** All SceneGraph component code runs on the render thread, so a cell
+'     incrementing a content-root field never crosses a boundary. MEASURED on device rather
+'     than assumed, on HomeRows' root specifically because a Task also writes that node:
+'     100 writes to a locally-created node took 351 us, 100 to the content root 379 us —
+'     ~3.8 us per write, a ratio of 1.08. A rendezvous would be orders of magnitude.
+'     `m.global` is main-thread-owned and WOULD cross, which is the one design that must
+'     not be used here: it would add a rendezvous per cell render to the very path being
+'     measured. See `docs/architecture/async.md`.
+'   - **Race-free without any locking.** The render thread is single-threaded, so
+'     read-modify-write across cells cannot interleave.
+'   - **Free live readout.** Node fields are readable over ODC, so a probe can watch the
+'     counters mid-scroll without waiting for an emit. There is no second mechanism.
+'
+' ## Lifecycle — no per-screen call sites
+'
+' Bound to the texture-manager lifecycle, which all five cell-bearing screens already drive:
+' `initTextureManager` attaches the counters, `hideTextureManager` / `destroyTextureManager`
+' emit them. Every content root already receives both, though often from its PARENT
+' (`Home` hides HomeRows' root; `ItemDetails` hides and destroys ExtrasRowList's). So
+' instrumenting a sixth screen costs nothing here — using the texture manager is the
+' opt-in.
+'
+' ⚠️ **Known limit, stated rather than hidden:** a screen that REPLACES its content root
+' starts a fresh set of counters, and the old root's counts die unemitted.
+' `BaseGridView` does this at five call sites (refresh, filter change, …) and `SearchRow`
+' at two. So a grid's line covers "since the last rebuild", not "since the screen opened".
+' Fixable by emitting before the replace; deliberately not done in the first cut because
+' it needs five call sites and the limit is visible in the numbers rather than silent.
+namespace cellLoad
+
+  ' Bind triggers. Which one fired is the whole point of splitting them: `content` is a
+  ' cell being recycled onto new data (legitimate), `size` is a re-render caused by a
+  ' layout change alone. MEASURED 2026-08-20 on ItemDetails + Home: 289 binds, ALL of them
+  ' `content` and none `size`. So `bindsFromSize` is expected to be ZERO and is worth
+  ' keeping precisely as a standing invariant — if it ever goes positive, a layout change
+  ' has started re-issuing image requests, which is a regression with no other symptom.
+  const FROM_CONTENT = "content"
+  const FROM_SIZE = "size"
+
+  ' Which path wiped a failure glyph back to the loading state. Both are visible flicker,
+  ' but they are not equally bad and the split is what tells them apart: a `bind` wipe
+  ' lands on a cell whose content is changing anyway, while a `reload` wipe hits a cell
+  ' that is SITTING STILL showing a stable glyph — which is what reads to a user as
+  ' blinking for no reason.
+  const WIPE_BIND = "bind"
+  const WIPE_RELOAD = "reload"
+
+  ' Attach counters to a content root. Called by initTextureManager, so every screen that
+  ' uses the texture manager is instrumented without its own call site.
+  '
+  ' @param contentRoot - the RowList / MarkupGrid content root. Typed `as object` so
+  '                      BrighterScript does not schema-check the dynamic fields below
+  '                      against ContentNode's declared interface.
+  ' @param component - the COMPONENT's name, e.g. "homeRows". Same convention as
+  '                    `screenLoad.begin` and for the same reason: the screen an operator
+  '                    navigated to is established by the nav, not by the app.
+  sub attach(contentRoot as object, component as string)
+    #if perfTiming
+      if not isValid(contentRoot) then return
+      if contentRoot.hasField("cellLoadBinds")
+        ' Re-attach on an existing root (SearchRow re-inits on new data) — keep the
+        ' counts rather than silently zeroing a session in progress.
+        return
+      end if
+      contentRoot.addFields({
+        cellLoadComponent: component,
+        cellLoadBinds: 0,
+        cellLoadBindsContent: 0,
+        cellLoadBindsSize: 0,
+        cellLoadBindsRedundant: 0,
+        cellLoadLoadsStarted: 0,
+        cellLoadLoadsFailed: 0,
+        cellLoadReloads: 0,
+        cellLoadUnloads: 0,
+        cellLoadWipesBind: 0,
+        cellLoadWipesReload: 0,
+        cellLoadInstrumentUs: 0,
+        cellLoadEmitted: false
+      })
+    #end if
+  end sub
+
+  ' One cell bind. `isRedundant` is the cell's own answer to "did I just bind this exact
+  ' item at this exact size again?" — kept on the CELL because its previous bind is
+  ' free to remember there and would cost a node round trip to store here.
+  sub bind(contentRoot as object, trigger as string, isRedundant as boolean)
+    #if perfTiming
+      if not isValid(contentRoot) or not contentRoot.hasField("cellLoadBinds") then return
+      probe = cellLoad.probe()
+      probe.mark()
+      contentRoot.cellLoadBinds = contentRoot.cellLoadBinds + 1
+      if trigger = cellLoad.FROM_SIZE
+        contentRoot.cellLoadBindsSize = contentRoot.cellLoadBindsSize + 1
+      else
+        contentRoot.cellLoadBindsContent = contentRoot.cellLoadBindsContent + 1
+      end if
+      if isRedundant
+        contentRoot.cellLoadBindsRedundant = contentRoot.cellLoadBindsRedundant + 1
+      end if
+      contentRoot.cellLoadInstrumentUs = contentRoot.cellLoadInstrumentUs + probe.totalMicroseconds()
+    #end if
+  end sub
+
+  ' An image request was issued (the poster URI was assigned a real URL).
+  sub loadStarted(contentRoot as object)
+    #if perfTiming
+      bump(contentRoot, "cellLoadLoadsStarted")
+    #end if
+  end sub
+
+  ' An image request came back failed. `loadsFailed` far exceeding the number of distinct
+  ' broken images is the signature of a retry with no memory of the last failure.
+  '
+  ' ⚠️ NAMED `loadErrored` RATHER THAN `loadFailed`, and it must stay that way. Rooibos's
+  ' transpiler mistakes a namespaced call whose method name it reads as an assertion for a
+  ' call ON THE TEST SUITE, and rewrites its own bookkeeping against the NAMESPACE instead
+  ' of `m` — `cellLoad.currentAssertLineNumber = 148`, `cellLoad_done()`. That is a
+  ' compile-time rewrite producing code that crashes with "Use of uninitialized variable"
+  ' at runtime, and only in the spec, so the app is fine while the suite reports a crash it
+  ' cannot explain. The emitted LOG FIELD is still `loadsFailed` — the wire format is what
+  ' scripts/measurements.js reads and it is unaffected by this rename.
+  sub loadErrored(contentRoot as object)
+    #if perfTiming
+      bump(contentRoot, "cellLoadLoadsFailed")
+    #end if
+  end sub
+
+  sub reload(contentRoot as object)
+    #if perfTiming
+      bump(contentRoot, "cellLoadReloads")
+    #end if
+  end sub
+
+  sub unload(contentRoot as object)
+    #if perfTiming
+      bump(contentRoot, "cellLoadUnloads")
+    #end if
+  end sub
+
+  ' A failure glyph was reset to the loading state. See WIPE_* for why the source matters.
+  sub glyphWipe(contentRoot as object, source as string)
+    #if perfTiming
+      if source = cellLoad.WIPE_RELOAD
+        bump(contentRoot, "cellLoadWipesReload")
+      else
+        bump(contentRoot, "cellLoadWipesBind")
+      end if
+    #end if
+  end sub
+
+  ' Emit the session's counters and reset them. Called by hideTextureManager (the user
+  ' navigated away — a complete viewing session) and destroyTextureManager (teardown).
+  ' Emitting on BOTH is why `cellLoadEmitted` exists: a screen that is hidden and then
+  ' destroyed must publish one line, not two, and a second line of zeroes would read as a
+  ' real session in which nothing happened.
+  sub emit(contentRoot as object)
+    #if perfTiming
+      if not isValid(contentRoot) or not contentRoot.hasField("cellLoadBinds") then return
+      if contentRoot.cellLoadEmitted then return
+      if contentRoot.cellLoadBinds = 0 then return
+      contentRoot.cellLoadEmitted = true
+
+      if not isValid(m.cellLoadLog) then m.cellLoadLog = new log.Logger("CellLoad")
+
+      ' Two lines for the same reason `screenLoad` splits its own: roku-log's Logger.info
+      ' takes the message plus at most nine arguments once the BSC plugin has spent one on
+      ' the injected pkg path, and exceeding it is NOT a compile error — it faults at
+      ' runtime with &hf1 and drops the app into the debugger. Everything rides in the
+      ' message so the format is one thing to read, and BOTH lines repeat the component
+      ' because `assembleSamples` splits a family on that identity.
+      component = contentRoot.cellLoadComponent
+      m.cellLoadLog.info("cell-load binds - component " + component + " binds " + contentRoot.cellLoadBinds.toStr() + " fromContent " + contentRoot.cellLoadBindsContent.toStr() + " fromSize " + contentRoot.cellLoadBindsSize.toStr() + " redundant " + contentRoot.cellLoadBindsRedundant.toStr() + " items " + countItems(contentRoot).toStr())
+      m.cellLoadLog.info("cell-load work - component " + component + " loadsStarted " + contentRoot.cellLoadLoadsStarted.toStr() + " loadsFailed " + contentRoot.cellLoadLoadsFailed.toStr() + " reloads " + contentRoot.cellLoadReloads.toStr() + " unloads " + contentRoot.cellLoadUnloads.toStr() + " wipesBind " + contentRoot.cellLoadWipesBind.toStr() + " wipesReload " + contentRoot.cellLoadWipesReload.toStr() + " instrumentUs " + contentRoot.cellLoadInstrumentUs.toStr())
+
+      reset(contentRoot)
+    #end if
+  end sub
+
+  ' Zero the counters for the next session. `cellLoadEmitted` is cleared LAST so a hidden
+  ' screen that is shown again starts a fresh, emittable session.
+  sub reset(contentRoot as object)
+    #if perfTiming
+      if not isValid(contentRoot) or not contentRoot.hasField("cellLoadBinds") then return
+      contentRoot.setFields({
+        cellLoadBinds: 0,
+        cellLoadBindsContent: 0,
+        cellLoadBindsSize: 0,
+        cellLoadBindsRedundant: 0,
+        cellLoadLoadsStarted: 0,
+        cellLoadLoadsFailed: 0,
+        cellLoadReloads: 0,
+        cellLoadUnloads: 0,
+        cellLoadWipesBind: 0,
+        cellLoadWipesReload: 0,
+        cellLoadInstrumentUs: 0,
+        cellLoadEmitted: false
+      })
+    #end if
+  end sub
+
+  ' The instrument's own stopwatch, created ONCE per cell and reused.
+  '
+  ' `m` here is the CALLING component's — these are namespaced free functions, the same
+  ' mechanism `screenReadiness.bs` relies on — so this caches on the cell, which is
+  ' exactly the right lifetime: one per pooled cell rather than one per event.
+  '
+  ' Measured before this existed, on a Home load: 15458 us across ~706 counter calls, or
+  ' ~22 us each, against ~3.8 us for the field write the call is actually making. So the
+  ' STOPWATCH was five times the cost of the thing it was timing. `screenReadiness.bs`
+  ' warns about precisely this ("a fresh roTimespan per ledger call would make the
+  ' measurement of the overhead a significant part of the overhead") and this repeated it
+  ' anyway; `instrumentUs` is what caught it, which is the argument for carrying that field
+  ' at all.
+  function probe() as object
+    if not isValid(m.cellLoadProbe) then m.cellLoadProbe = CreateObject("roTimespan")
+    return m.cellLoadProbe
+  end function
+
+  ' Total ITEMS under a content root, which is the denominator of the rebind rate and is
+  ' NOT `getChildCount()`. The two content shapes disagree about what a child is: a
+  ' MarkupGrid root is flat, so its children ARE the items, while a RowList root is two
+  ' level and its children are ROWS. Using the child count for both would have divided
+  ' Home's binds by its ~10 rows instead of its ~68 items and published a "rebind rate"
+  ' an order of magnitude wrong — in a field that looks equally plausible either way.
+  '
+  ' Detected by shape rather than by a flag the caller has to pass correctly: a root whose
+  ' first child has children of its own is hierarchical. Walked once per emit, never per
+  ' bind.
+  function countItems(contentRoot as object) as integer
+    rows = contentRoot.getChildCount()
+    if rows = 0 then return 0
+    first = contentRoot.getChild(0)
+    if not isValid(first) or first.getChildCount() = 0 then return rows
+    total = 0
+    for i = 0 to rows - 1
+      child = contentRoot.getChild(i)
+      if isValid(child) then total = total + child.getChildCount()
+    end for
+    return total
+  end function
+
+  ' Increment one counter. Extracted so the nine single-counter call sites above do not
+  ' each repeat the guard, and so the instrument's own cost is accumulated in exactly one
+  ' place rather than nine that can drift.
+  sub bump(contentRoot as object, field as string)
+    #if perfTiming
+      if not isValid(contentRoot) or not contentRoot.hasField(field) then return
+      probe = cellLoad.probe()
+      probe.mark()
+      contentRoot.setField(field, contentRoot.getField(field) + 1)
+      contentRoot.cellLoadInstrumentUs = contentRoot.cellLoadInstrumentUs + probe.totalMicroseconds()
+    #end if
+  end sub
+
+end namespace

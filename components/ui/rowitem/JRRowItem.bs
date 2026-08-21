@@ -29,6 +29,7 @@ sub init()
   ' These caches hold the real URIs so they can be restored when the cell scrolls back.
   m.cachedPosterUri = ""
   m.cachedIconUri = ""
+  m.lastBindKey = ""
   m.cachedLoadDisplayMode = "scaleToZoom"
   m.isTextureUnloaded = false
 
@@ -61,14 +62,33 @@ sub onItemContentChanged()
   end if
   if m.top.width <= 0 or m.top.height <= 0 then return
   setupTextureObserver()
+  cellLoad.bind(m.contentRoot, cellLoad.FROM_CONTENT, isRepeatBind())
   renderItem()
 end sub
 
 sub onSizeChanged()
   if not isValid(m.top.itemContent) then return
   if m.top.width <= 0 or m.top.height <= 0 then return
+  cellLoad.bind(m.contentRoot, cellLoad.FROM_SIZE, isRepeatBind())
   renderItem()
 end sub
+
+' True when this cell is being bound to the SAME item at the SAME size it already holds —
+' a bind that cannot change a single pixel and exists only to be counted as waste.
+' Kept on the cell because its own previous bind is free to remember here, where storing
+' it on the shared content root would cost a node round trip per bind.
+' Reads `id` rather than a title: a skeleton placeholder carries ONLY `type`, and anything
+' that CASTS an absent field (`getRowItemTitle` returns `item.name as String`) is a &h18
+' crash on that path. A field read compared with isValid is safe on every item shape.
+function isRepeatBind() as boolean
+  item = m.top.itemContent
+  id = ""
+  if isValid(item) and isValid(item.id) then id = item.id
+  key = id + "@" + int(m.top.width).toStr() + "x" + int(m.top.height).toStr()
+  isRepeat = (m.lastBindKey = key)
+  m.lastBindKey = key
+  return isRepeat
+end function
 
 sub renderItem()
   item = m.top.itemContent
@@ -92,6 +112,7 @@ sub renderItem()
   ' Reset placeholder to loading state (themed backdrop only, no glyph) on
   ' every recycle. JRPlaceholder resets glyph visibility internally when
   ' itemType becomes "".
+  if m.placeholder.itemType <> "" then cellLoad.glyphWipe(m.contentRoot, cellLoad.WIPE_BIND)
   m.placeholder.itemType = ""
   m.placeholder.visible = true
 
@@ -158,6 +179,7 @@ sub renderLibraryTile(item as object, slotWidth as float, posterHeight as float)
   m.cachedPosterUri = posterUri
   m.cachedLoadDisplayMode = "scaleToZoom"
   if shouldLoadTexture()
+    cellLoad.loadStarted(m.contentRoot)
     m.poster.uri = posterUri
   else
     m.isTextureUnloaded = true
@@ -229,6 +251,7 @@ sub renderStandardItem(item as object, slotWidth as float, posterHeight as float
     ' Only fetch the image if this cell is on screen or in the buffer zone.
     ' Off-screen cells cache the URI for later reload but skip the network request.
     if shouldLoadTexture()
+      cellLoad.loadStarted(m.contentRoot)
       m.poster.uri = posterUri
     else
       m.isTextureUnloaded = true
@@ -400,6 +423,7 @@ sub onPosterLoadStatusChanged()
     ' The uri <> "" guard prevents recursive re-trigger after showPlaceholder
     ' clears the URI: clearing produces a "failed" loadStatus from Roku, but
     ' since we set uri="" intentionally there's nothing to fall back to.
+    cellLoad.loadErrored(m.contentRoot)
     if not m.isLibraryTile
       itemType = ""
       if isValid(m.top.itemContent) then itemType = m.top.itemContent.type
@@ -774,6 +798,7 @@ sub unloadTexture()
   if m.cachedPosterUri = "" or m.isTextureUnloaded then return
 
   logTextureAction("unloadTexture")
+  cellLoad.unload(m.contentRoot)
   m.isTextureUnloaded = true
   m.poster.uri = ""
   m.placeholder.visible = true
@@ -802,11 +827,14 @@ end sub
 sub reloadTexture()
   if m.cachedPosterUri <> "" and m.poster.uri <> m.cachedPosterUri
     logTextureAction("reloadTexture")
+    cellLoad.reload(m.contentRoot)
+    cellLoad.loadStarted(m.contentRoot)
     m.isTextureUnloaded = false
     m.poster.loadDisplayMode = m.cachedLoadDisplayMode
     m.poster.uri = m.cachedPosterUri
     ' Reset the placeholder to loading state (backdrop only, no glyph) — the
     ' real image is starting to load again.
+    if m.placeholder.itemType <> "" then cellLoad.glyphWipe(m.contentRoot, cellLoad.WIPE_RELOAD)
     m.placeholder.itemType = ""
     m.placeholder.visible = true
   end if
