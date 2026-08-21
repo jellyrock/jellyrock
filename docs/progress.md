@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-21 — fix: stop `FontDownloadTask` crashing on servers that omit `EnableFallbackFont`
 - 2026-08-21 — fix: Stop posters blinking on the Cast & Crew row as you scroll it
 - 2026-08-21 — Give `cell-load` rates a denominator with scripted RTA sweeps
 - 2026-08-20 — Batch Home's row-size recompute across a latest-rows run
