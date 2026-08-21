@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Give `cell-load` rates a denominator with scripted RTA sweeps ([#838](https://github.com/jellyrock/jellyrock/pull/838))
 - Batch Home's row-size recompute across a latest-rows run ([#799](https://github.com/jellyrock/jellyrock/pull/799))
 
+### Fixed
+
+- Stop posters blinking on the Cast & Crew row as you scroll it ([#840](https://github.com/jellyrock/jellyrock/pull/840))
+
 ### Dependencies
 
 - Update vitest from v4.1.10 to v4.1.11 ([#831](https://github.com/jellyrock/jellyrock/pull/831))
