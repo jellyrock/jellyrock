@@ -1,0 +1,92 @@
+import "pkg:/source/utils/fallbackFont.bs"
+
+namespace tests
+
+  ' Guards the crash class behind #582 (`&h18` Type Mismatch at
+  ' FontDownloadTask.bs:26). The old guard negated `r.json.EnableFallbackFont`
+  ' directly, so a server that answered 200 with an encoding config omitting
+  ' the field faulted instead of taking the fallback branch. The omitted-field
+  ' case below is the regression pin; the rest fix the surrounding contract so
+  ' a later "simplification" can't quietly reintroduce a bare negation.
+  @suite("fallbackFont - serverSupportsFallbackFont()")
+  class FallbackFontTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("advertised support")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("true when the server advertises the capability")
+    function _()
+      response = { ok: true, json: { EnableFallbackFont: true } }
+
+      m.assertTrue(serverSupportsFallbackFont(response))
+    end function
+
+    @it("false when the server advertises it as disabled")
+    function _()
+      response = { ok: true, json: { EnableFallbackFont: false } }
+
+      m.assertFalse(serverSupportsFallbackFont(response))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("missing field — the #582 regression")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("false, not a fault, when the encoding config omits EnableFallbackFont")
+    function _()
+      ' A real 200 response from a server whose encoding config has no such
+      ' key. `not response.json.EnableFallbackFont` faulted &h18 here.
+      response = { ok: true, json: { EncoderAppPath: "/usr/bin/ffmpeg", HardwareAccelerationType: "none" } }
+
+      m.assertFalse(serverSupportsFallbackFont(response))
+    end function
+
+    @it("false when the JSON body is empty")
+    function _()
+      response = { ok: true, json: {} }
+
+      m.assertFalse(serverSupportsFallbackFont(response))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("malformed or failed responses")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("false when the request failed")
+    function _()
+      response = { ok: false, json: { EnableFallbackFont: true } }
+
+      m.assertFalse(serverSupportsFallbackFont(response))
+    end function
+
+    @it("false when the response carries no parsed JSON")
+    function _()
+      ' `rr_Requests_response` only sets `json` when the body parsed, so the
+      ' key can be absent entirely rather than invalid.
+      response = { ok: true }
+
+      m.assertFalse(serverSupportsFallbackFont(response))
+    end function
+
+    @it("false when the JSON parsed to a non-object")
+    function _()
+      response = { ok: true, json: ["not", "an", "object"] }
+
+      m.assertFalse(serverSupportsFallbackFont(response))
+    end function
+
+    @it("false when the response itself is invalid")
+    function _()
+      m.assertFalse(serverSupportsFallbackFont(invalid))
+    end function
+
+    @it("false when the response has no ok field")
+    function _()
+      response = { json: { EnableFallbackFont: true } }
+
+      m.assertFalse(serverSupportsFallbackFont(response))
+    end function
+
+  end class
+end namespace

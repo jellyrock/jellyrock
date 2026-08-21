@@ -1,0 +1,19 @@
+' True when the server's `/system/configuration/encoding` response advertises
+' fallback-font support.
+'
+' Every operand is type-checked rather than negated directly. The crash this
+' replaces (#582) was `not r.json.EnableFallbackFont` faulting with `&h18` —
+' "Operator 'not' can't be applied to 'Invalid'" — against a server that
+' answered 200 with a valid encoding config that simply omits the field. A
+' missing key dereferences to Invalid, and while `Invalid = true` is merely
+' false, `not Invalid` is a type mismatch. The guard crashed instead of
+' reaching the fallback it exists to select.
+'
+' @param response - an `rr_Requests()` response AA
+' @return true only when the server explicitly advertises the capability
+function serverSupportsFallbackFont(response as dynamic) as boolean
+  if LCase(type(response)) <> "roassociativearray" then return false
+  if response.ok <> true then return false
+  if LCase(type(response.json)) <> "roassociativearray" then return false
+  return response.json.EnableFallbackFont = true
+end function
