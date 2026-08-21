@@ -857,6 +857,11 @@ sub reloadTexture()
     m.placeholder.itemType = ""
     m.placeholder.visible = true
   end if
+  ' The icon keeps the URI compare the poster gave up, and is NOT the same bug: nothing
+  ' clears itemIcon.uri on failure — onIconLoadStatusChanged only hides the icon — so a
+  ' failed icon still compares EQUAL to its cached URI and is never re-requested. The
+  ' compare only fires when an unload actually cleared it. Checked rather than assumed,
+  ' because this line reads exactly like the predicate that was replaced.
   if m.cachedIconUri <> "" and m.itemIcon.uri <> m.cachedIconUri
     m.itemIcon.uri = m.cachedIconUri
   end if
