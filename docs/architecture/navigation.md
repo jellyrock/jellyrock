@@ -15,7 +15,7 @@ related-files:
   - source/utils/dialogs.bs
   - source/replayRoute.bs
   - source/loginRouter.bs
-last-reviewed: 2026-08-14
+last-reviewed: 2026-08-21
 ---
 
 # Navigation (sgRouter)
@@ -271,7 +271,7 @@ end sub
 
 `components/data/SceneManager.bs` no longer manages a navigation stack. The stack methods (`pushScene` / `popScene` / `getActiveScene` / `clearScenes` / `clearPreviousScene` / `deleteSceneAtIndex` / `settings`) and `SceneManager`'s own overhang-sync helpers were **deleted** in #550. It survives as a shared **service node** at `m.global.sceneManager`:
 
-- **Dialogs** — `userMessage`, `standardDialog`, `radioDialog`, `showConfirmationDialog`, `dismissDialog`, `isDialogOpen`, plus the selection-return contract (`returnData` / `isDataReturned`, `optionSelected` / `optionClosed`). **Do not add new call sites here.** New dialogs go through `source/utils/dialogs.bs` (see below); the remaining `SceneManager` consumers are tracked for migration by [`dialog-returndata-shared-global`](tech-debt.md#dialog-returndata-shared-global).
+- **Dialogs** — `userMessage`, `showConfirmationDialog`, `dismissDialog`, `isDialogOpen`, plus the selection-return contract (`returnData` / `isDataReturned`, `optionSelected` / `optionClosed`). **Do not add new call sites here.** New dialogs go through `source/utils/dialogs.bs` (see below); the remaining `SceneManager` consumers are tracked for migration by [`dialog-returndata-shared-global`](tech-debt.md#dialog-returndata-shared-global). (`standardDialog` / `radioDialog` and their `StandardDialog` / `RadioDialog` components are gone — `PlayerHostView`'s pickers, their only consumer, moved to `showListDialog` / `showInfoDialog`.) Note `isDialogOpen` only knows about Roku's modal channel (`m.scene.dialog`); it cannot see a scene-appended overlay, so a screen holding one abandons it itself.
 - **Backdrop** — `setBackgroundImage` (passthrough to `JRScene.setBackgroundImage`).
 - **Theme** — `refreshThemeColors` (walks the overhang tree, re-applies `m.global.constants`).
 - **Overhang passthrough fields** — `updateUser`, `resetTime`.

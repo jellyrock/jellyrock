@@ -1,0 +1,103 @@
+import "pkg:/source/utils/playbackInfo.bs"
+
+namespace tests
+
+  @suite("playbackInfo.bs - rendering the playback-info report")
+  class PlaybackInfoTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("formatPlaybackInfoText")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("renders a heading on its own line and fields as bulleted label/value pairs")
+    function _()
+      text = formatPlaybackInfoText({
+        sections: [{
+          heading: "Stream information",
+          rows: [{ label: "Codec", value: "h264" }, { label: "Bit rate", value: "12 Mbps" }]
+        }]
+      })
+
+      m.assertEqual(text, "Stream information" + Chr(10) + "• Codec: h264" + Chr(10) + "• Bit rate: 12 Mbps")
+    end function
+
+    @it("separates sections with a blank line, and never leads with one")
+    function _()
+      text = formatPlaybackInfoText({
+        sections: [
+          { heading: "A", rows: [{ label: "x", value: "1" }] },
+          { heading: "B", rows: [{ label: "y", value: "2" }] }
+        ]
+      })
+
+      lines = text.split(Chr(10))
+      m.assertEqual(lines, ["A", "• x: 1", "", "B", "• y: 2"])
+    end function
+
+    @it("renders a label-less row as a standalone sentence")
+    function _()
+      ' The direct-play message is a statement about the stream, not a field.
+      text = formatPlaybackInfoText({
+        sections: [{ heading: "Direct playing", rows: [{ label: "", value: "The source file is compatible." }] }]
+      })
+
+      m.assertEqual(text, "Direct playing" + Chr(10) + "The source file is compatible.")
+    end function
+
+    @it("renders an unsectioned block (the error case) with no heading line")
+    function _()
+      text = formatPlaybackInfoText({
+        sections: [{ heading: "", rows: [{ label: "", value: "Unable to get playback information" }] }]
+      })
+
+      m.assertEqual(text, "Unable to get playback information")
+    end function
+
+    @it("drops a row that carries neither a label nor a value")
+    function _()
+      text = formatPlaybackInfoText({
+        sections: [{ heading: "A", rows: [{ label: "", value: "" }, { label: "x", value: "1" }] }]
+      })
+
+      m.assertEqual(text, "A" + Chr(10) + "• x: 1")
+    end function
+
+    @it("returns an empty string when there is nothing to show")
+    function _()
+      m.assertEqual(formatPlaybackInfoText(invalid), "")
+      m.assertEqual(formatPlaybackInfoText({}), "")
+      m.assertEqual(formatPlaybackInfoText({ sections: [] }), "")
+    end function
+
+    @it("survives a section with no rows array")
+    function _()
+      text = formatPlaybackInfoText({ sections: [{ heading: "A" }, { heading: "B", rows: [{ label: "y", value: "2" }] }] })
+      m.assertEqual(text, "A" + Chr(10) + Chr(10) + "B" + Chr(10) + "• y: 2")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getDisplayBitrate")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("carries NO leading space — Str() adds one, and the row separator adds another")
+    function _()
+      ' The bug this exists for rendered as "Bit Rate:  4 Mbps" on device.
+      rate = getDisplayBitrate(4000000)
+      m.assertEqual(rate, "4 Mbps")
+      m.assertEqual(rate.trim(), rate)
+    end function
+
+    @it("switches to Kbps at or below a megabit, truncating rather than rounding")
+    function _()
+      m.assertEqual(getDisplayBitrate(1000000), "1000 Kbps")
+      m.assertEqual(getDisplayBitrate(850500), "850 Kbps")
+      m.assertEqual(getDisplayBitrate(1500000), "1 Mbps")
+    end function
+
+    @it("returns an empty string for an absent bitrate")
+    function _()
+      m.assertEqual(getDisplayBitrate(invalid), "")
+    end function
+
+  end class
+end namespace

@@ -50,7 +50,7 @@ Roku Scene Graph (RSG) components — XML interface + paired BrighterScript back
 
 - **Always go through `source/utils/dialogs.bs`** — `showAlertDialog`, `showConfirmDialog`, `showChoiceDialog`, `showListDialog`, `showInfoDialog`, `showKeyboardDialog`. `import "pkg:/source/utils/dialogs.bs"` and call one. Canonical call sites: `ItemDetails.onWatchedButtonPressed` / `onDeleteButtonPressed`.
 - The result arrives on the **dialog node's own `result` field**, shape `{ cancelled, confirmed, buttonIndex, buttonText, optionIndex, value }`. Pass `onResult` (a function name in *your* scope) and the helper wires the scoped observer; keep the returned node so the callback can read `.result`.
-- **Do NOT add new `m.global.sceneManager` dialog calls** (`userMessage` / `standardDialog` / `showConfirmationDialog` + the shared `returnData` / `isDataReturned` fields). That path is being retired — remaining consumers are tracked by [`dialog-returndata-shared-global`](../docs/architecture/tech-debt.md#dialog-returndata-shared-global).
+- **Do NOT add new `m.global.sceneManager` dialog calls** (`userMessage` / `showConfirmationDialog` + the shared `returnData` / `isDataReturned` fields). That path is being retired — remaining consumers are tracked by [`dialog-returndata-shared-global`](../docs/architecture/tech-debt.md#dialog-returndata-shared-global).
 - Overlay dialogs are appended to the **scene**, not to your screen, so they survive your `onDestroy`. A screen that opens one owns tearing it down.
 - Full contract: [navigation.md → The standard dialog system](../docs/architecture/navigation.md).
 

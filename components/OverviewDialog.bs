@@ -1,4 +1,5 @@
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/dialogNarration.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
@@ -84,6 +85,16 @@ sub init()
 
   ' Observe focus changes to show/hide scrollbar
   m.top.observeField("focusedChild", "onFocusChanged")
+
+  ' Screen-reader announcement — mirrors JRDialog / JRListDialog. Without it this
+  ' overlay is SILENT: a scene-appended Group gets only Scene's fallback rule,
+  ' which speaks the focused descendant, and both things focus can land on here
+  ' (the scroll area and the OK button) are Groups the platform never announces.
+  ' See source/utils/dialogNarration.bs.
+  m.narrationTimer = m.top.findNode("narrationTimer")
+  m.narrationTimer.duration = 0.15
+  m.narrationTimer.observeField("fire", "onOpeningAnnouncementDue")
+  m.hasNarrated = false
 
   ' Scroll state
   m.scrollPosition = 0
@@ -201,6 +212,32 @@ sub onFocusChanged()
   else
     updateScrollbarFocus(false)
   end if
+
+  if not m.hasNarrated
+    m.narrationTimer.control = "start"
+    return
+  end if
+
+  ' Afterwards only the OK button needs announcing — moving between it and the
+  ' scroll area is otherwise silent.
+  if m.okButton.hasFocus() then narrateFocusedElement(toString(m.okButton.text))
+end sub
+
+' Announce the dialog once the platform's own focus announcement is out of the
+' way. The overview text IS the announcement here: this dialog exists to be read,
+' so a screen-reader user opening it wants its contents, not just its title.
+sub onOpeningAnnouncementDue()
+  if m.hasNarrated then return
+  m.hasNarrated = true
+
+  body = []
+  if isValidAndNotEmpty(m.top.tagline) then body.push(m.top.tagline)
+  if isValidAndNotEmpty(m.top.overview) then body.push(m.top.overview)
+
+  focusedText = ""
+  if m.okButton.hasFocus() then focusedText = toString(m.okButton.text)
+
+  narrateDialogOpening(m.top.title, body.join(". "), focusedText)
 end sub
 
 ' Updates scrollbar thumb color based on focus state

@@ -1,10 +1,13 @@
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/playbackInfo.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
 import "pkg:/source/utils/tasks.bs"
+import "pkg:/source/utils/trackPickerOptions.bs"
 import "pkg:/source/utils/translate.bs"
 
 ' Routed host for video playback. See PlayerHostView.xml header.
@@ -51,7 +54,6 @@ end function
 ' the host instead of SceneManager.pushScene.
 sub mountPlayer()
   m.playbackData = {}
-  m.selectedSubtitle = {}
 
   m.view = CreateObject("roSGNode", "VideoPlayerView")
   ' Keep video player invisible during loading to prevent black background from covering backdrop
@@ -139,9 +141,13 @@ end sub
 ' player child. abandonApiPromises() is injected here by the auto-abandon-promises BSC
 ' plugin (JRScreen.onDestroy's floor doesn't chain to SG-component overrides).
 sub onDestroy()
-  if isValid(m.global.sceneManager)
-    m.global.sceneManager.unobserveField("returnData")
-  end if
+  ' The picker / info overlays are appended to the SCENE, so they outlive this
+  ' view — anything that navigates without the user closing the dialog first
+  ' (deep link, session expiry, voice "stop") would strand one over the incoming
+  ' screen. See abandonDialog in source/utils/dialogs.bs.
+  abandonDialog(m.playbackDialog)
+  m.playbackDialog = invalid
+  m.trackPickerOptions = invalid
   destroyPlayer()
 end sub
 
@@ -159,7 +165,12 @@ sub onPlayerStateChange()
   sceneManager = m.global.sceneManager
   queueManager = m.global.queueManager
 
-  ' Close any open dialogs
+  ' Close any open dialogs. Two channels to cover: our own scene-appended picker /
+  ' info overlay, and Roku's modal channel (m.scene.dialog) that isDialogOpen sees
+  ' — the latter cannot see the former, so abandoning ours is not optional.
+  abandonDialog(m.playbackDialog)
+  m.playbackDialog = invalid
+  m.trackPickerOptions = invalid
   if sceneManager.callFunc("isDialogOpen")
     sceneManager.callFunc("dismissDialog")
   end if
@@ -197,183 +208,97 @@ end function
 
 ' ===========================================================================
 ' Playback-time track / source / info selection dialogs.
-' Ported verbatim from ViewCreator (they read the child player via m.view and show
-' dialogs through SceneManager, both unchanged under the host).
+'
+' All four go through the standard dialog helpers (source/utils/dialogs.bs): the
+' three pickers are JRListDialogs, the info report an OverviewDialog. Each result
+' arrives on its own dialog node's `result` field, so every picker has its OWN
+' handler — the old path shared SceneManager.returnData between all three and
+' told them apart with a `type` string stamped into every option.
+'
+' Only ONE of these can be open at a time (the OSD is unreachable behind a modal),
+' so they share one node slot, which is also the one thing teardown has to abandon.
 ' ===========================================================================
+
+' Present a picker built by source/utils/trackPickerOptions.bs. Holding the option
+' set is what makes the result usable: JRListDialog answers with an INDEX, and
+' `values` is what that index means.
+sub showTrackPicker(title as string, options as object, onResult as string)
+  if options.labels.count() = 0 then return
+
+  m.trackPickerOptions = options
+  m.playbackDialog = showListDialog(title, options.labels, onResult, options.defaultIndex)
+end sub
+
+' The option the user picked, or invalid if they backed out. Clears the dialog
+' slot — every result handler starts here.
+function resolvePickedValue() as object
+  dialog = m.playbackDialog
+  options = m.trackPickerOptions
+  m.playbackDialog = invalid
+  m.trackPickerOptions = invalid
+
+  if not isValid(dialog) or not isValid(dialog.result) or not isValid(options) then return invalid
+
+  index = dialog.result.optionIndex
+  if index < 0 or index >= options.values.count() then return invalid
+
+  return options.values[index]
+end function
 
 ' onSelectAudioPressed: Display audio selection dialog
 sub onSelectAudioPressed()
-  audioData = {
-    data: []
-  }
-
   m.log.debug("onSelectAudioPressed", "currentAudioIndex", m.view.audioIndex, "trackCount", m.view.fullAudioData.Count())
-
-  for each item in m.view.fullAudioData
-
-    audioStreamItem = {
-      "index": item.index,
-      "isExternal": item.isExternal,
-      "track": {
-        "description": formatAudioDisplayTitle(item)
-      },
-      "type": "audioselection"
-    }
-
-    isSelected = m.view.audioIndex = item.index
-    if isSelected
-      audioStreamItem.selected = true
-    end if
-    m.log.debug("Audio track item", "jellyfinIndex", item.index, "isSelected", isSelected, "title", formatAudioDisplayTitle(item))
-
-    audioData.data.push(audioStreamItem)
-  end for
-  sceneManager = m.global.sceneManager
-  sceneManager.callFunc("radioDialog", translate(translationKeys.LabelSelectAudio), audioData)
-  sceneManager.observeField("returnData", "onSelectionMade")
+  options = buildAudioTrackOptions(m.view.fullAudioData, m.view.audioIndex)
+  showTrackPicker(translate(translationKeys.LabelSelectAudio), options, "onAudioTrackSelected")
 end sub
 
-' User requested subtitle selection popup
-sub onSelectSubtitlePressed()
-  subtitleData = {
-    data: []
-  }
+' Audio track selection handler
+sub onAudioTrackSelected()
+  audioIndex = resolvePickedValue()
+  if not isValid(audioIndex) then return
 
-  for each item in m.view.fullSubtitleData
-    item.type = "subtitleselection"
-
-    if m.view.selectedSubtitle <> SubtitleSelection.NONE
-      ' Subtitle is a track within the file
-      if item.index = m.view.selectedSubtitle
-        item.selected = true
-      end if
-    else
-      ' Subtitle is from an external source
-      availableSubtitleTrackIndex = availSubtitleTrackIdx(item.track.TrackName)
-      if availableSubtitleTrackIndex <> SubtitleSelection.NONE
-
-        ' Convert Jellyfin subtitle track name to Roku track name
-        subtitleFullTrackName = m.view.availableSubtitleTracks[availableSubtitleTrackIndex].TrackName
-
-        if subtitleFullTrackName = m.view.subtitleTrack
-          item.selected = true
-        end if
-
-      end if
-    end if
-
-    ' Put the selected item at the top of the option list
-    if isValid(item.selected) and item.selected
-      subtitleData.data.Unshift(item)
-    else
-      subtitleData.data.push(item)
-    end if
-  end for
-
-  ' Manually create the None option and place at top
-  subtitleData.data.Unshift({
-    "Index": SubtitleSelection.NONE,
-    "IsExternal": false,
-    "Track": {
-      "description": "None"
-    },
-    "Type": "subtitleselection"
-  })
-
-  sceneManager = m.global.sceneManager
-  sceneManager.callFunc("radioDialog", translate(translationKeys.LabelSelectSubtitles), subtitleData)
-  sceneManager.observeField("returnData", "onSelectionMade")
+  m.log.info("onAudioTrackSelected", "selectedJellyfinIndex", audioIndex, "previousAudioIndex", m.view.audioIndex)
+  m.view.audioIndex = audioIndex
 end sub
 
 ' onSelectVideoSourcePressed: Display video source selection dialog
 sub onSelectVideoSourcePressed()
-  videoSourceData = {
-    data: []
-  }
-
-  if not isValid(m.view.fullVideoSourceData) then return
-
-  hasMultipleSources = m.view.fullVideoSourceData.Count() > 1
-
-  for each source in m.view.fullVideoSourceData
-    sourceItem = {
-      "Index": source.Id,
-      "IsExternal": false,
-      "Track": {
-        "description": formatVideoSourceTitle(source, hasMultipleSources)
-      },
-      "Type": "videosourceselection"
-    }
-
-    if m.view.mediaSourceId = source.Id
-      sourceItem.selected = true
-    end if
-
-    videoSourceData.data.push(sourceItem)
-  end for
-
-  sceneManager = m.global.sceneManager
-  sceneManager.callFunc("radioDialog", translate(translationKeys.LabelSelectVideoSource), videoSourceData)
-  sceneManager.observeField("returnData", "onSelectionMade")
+  options = buildVideoSourceOptions(m.view.fullVideoSourceData, m.view.mediaSourceId)
+  showTrackPicker(translate(translationKeys.LabelSelectVideoSource), options, "onVideoSourceSelected")
 end sub
 
-' User has selected something from the radioDialog popup
-sub onSelectionMade()
-  sceneManager = m.global.sceneManager
-  sceneManager.unobserveField("returnData")
+' Video source selection handler. Writing mediaSourceId triggers a video reload,
+' so only write it when the source actually changed.
+sub onVideoSourceSelected()
+  sourceId = resolvePickedValue()
+  if not isValid(sourceId) then return
 
-  if not isValid(sceneManager.returnData) then return
-  if not isValid(sceneManager.returnData.type) then return
-
-  if LCase(sceneManager.returnData.type) = "subtitleselection"
-    processSubtitleSelection()
-    return
-  end if
-
-  if LCase(sceneManager.returnData.type) = "audioselection"
-    processAudioSelection()
-    return
-  end if
-
-  if LCase(sceneManager.returnData.type) = "videosourceselection"
-    processVideoSourceSelection()
-    return
-  end if
+  if sourceId <> m.view.mediaSourceId then m.view.mediaSourceId = sourceId
 end sub
 
-' processAudioSelection: Audio track selection handler
-sub processAudioSelection()
-  selectedAudioTrack = m.global.sceneManager.returnData
-
-  if isValid(selectedAudioTrack)
-    if isValid(selectedAudioTrack.index)
-      m.log.info("processAudioSelection", "selectedJellyfinIndex", selectedAudioTrack.index, "previousAudioIndex", m.view.audioIndex)
-      m.view.audioIndex = selectedAudioTrack.index
-    else
-      m.log.warn("processAudioSelection: selectedAudioTrack.index is invalid", selectedAudioTrack)
-    end if
-  end if
+' User requested subtitle selection popup
+sub onSelectSubtitlePressed()
+  options = buildSubtitleTrackOptions(m.view.fullSubtitleData, m.view.selectedSubtitle, m.view.subtitleTrack, m.view.availableSubtitleTracks)
+  showTrackPicker(translate(translationKeys.LabelSelectSubtitles), options, "onSubtitleTrackSelected")
 end sub
 
-' processVideoSourceSelection: Video source selection handler
-' Triggers video reload with the new MediaSource ID
-sub processVideoSourceSelection()
-  selectedSource = m.global.sceneManager.returnData
+' Subtitle selection handler. `selected` is { index, isEncoded, trackName } — the
+' "None" row is the one whose index is SubtitleSelection.NONE, which is why this
+' no longer compares the row's LABEL against the literal string "none" (that
+' comparison is why the None row could never be translated).
+sub onSubtitleTrackSelected()
+  selected = resolvePickedValue()
+  if not isValid(selected) then return
 
-  if isValid(selectedSource) and isValid(selectedSource.index)
-    ' Only trigger reload if source actually changed
-    if selectedSource.index <> m.view.mediaSourceId
-      m.view.mediaSourceId = selectedSource.index
-    end if
-  end if
-end sub
-
-sub processSubtitleSelection()
-  m.selectedSubtitle = m.global.sceneManager.returnData
-
-  ' The selected encoded subtitle did not change.
-  if m.view.selectedSubtitle <> SubtitleSelection.NONE or m.selectedSubtitle.index <> SubtitleSelection.NONE
-    if m.view.selectedSubtitle = m.selectedSubtitle.index then return
+  ' Nothing changed — leave the stream (and the playbackData cache) alone.
+  '
+  ' Both-NONE is deliberately NOT treated as "no change": an EXTERNAL subtitle
+  ' track leaves selectedSubtitle at NONE (only in-file tracks are tracked by
+  ' index), so picking None while one is showing hits this with both sides NONE
+  ' and still has real work to do — clearing subtitleTrack below is what actually
+  ' turns it off.
+  if m.view.selectedSubtitle <> SubtitleSelection.NONE or selected.index <> SubtitleSelection.NONE
+    if m.view.selectedSubtitle = selected.index then return
   end if
 
   ' The playbackData is now outdated and must be refreshed
@@ -387,10 +312,12 @@ sub processSubtitleSelection()
     end if
   end for
 
-  if LCase(m.selectedSubtitle.track.description) = "none"
+  if selected.index = SubtitleSelection.NONE
     m.view.globalCaptionMode = "Off"
     m.view.subtitleTrack = ""
 
+    ' SelectedSubtitle is alwaysNotify — writing the value it already holds still
+    ' fires its observers, so only write it when it actually changes.
     if m.view.selectedSubtitle <> SubtitleSelection.NONE
       m.view.selectedSubtitle = SubtitleSelection.NONE
     end if
@@ -398,7 +325,7 @@ sub processSubtitleSelection()
     return
   end if
 
-  if m.selectedSubtitle.IsEncoded
+  if selected.isEncoded
     ' Roku can not natively display these subtitles, so turn off the caption mode on the device
     m.view.globalCaptionMode = "Off"
   else
@@ -406,20 +333,20 @@ sub processSubtitleSelection()
     m.view.globalCaptionMode = "On"
 
     ' Roku may rearrange subtitle tracks. Look up track based on name to ensure we get the correct index
-    availableSubtitleTrackIndex = availSubtitleTrackIdx(m.selectedSubtitle.Track.TrackName)
-    if availableSubtitleTrackIndex = SubtitleSelection.NONE then return
+    rokuIndex = availableSubtitleTrackIndex(m.view.availableSubtitleTracks, selected.trackName)
+    if rokuIndex = SubtitleSelection.NONE then return
 
-    m.view.subtitleTrack = m.view.availableSubtitleTracks[availableSubtitleTrackIndex].TrackName
+    m.view.subtitleTrack = m.view.availableSubtitleTracks[rokuIndex].TrackName
   end if
 
-  m.view.selectedSubtitle = m.selectedSubtitle.Index
+  m.view.selectedSubtitle = selected.index
 end sub
 
 ' User requested playback info
 sub onSelectPlaybackInfoPressed()
   ' Check if we already have playback info and show it in a popup
   if isValid(m.playbackData) and isValid(m.playbackData.playbackinfo)
-    m.global.sceneManager.callFunc("standardDialog", translate(translationKeys.LabelPlaybackInfo), m.playbackData.playbackinfo)
+    showPlaybackInfo()
     return
   end if
 
@@ -434,24 +361,15 @@ sub onPlaybackInfoLoaded()
 
   ' Check if we have playback info and show it in a popup
   if isValid(m.playbackData) and isValid(m.playbackData.playbackinfo)
-    m.global.sceneManager.callFunc("standardDialog", translate(translationKeys.LabelPlaybackInfo), m.playbackData.playbackinfo)
+    showPlaybackInfo()
   end if
 end sub
 
-' Roku translates the info provided in subtitleTracks into availableSubtitleTracks
-' Including ignoring tracks, if they are not understood, thus making indexing unpredictable.
-' This function translates between our internel selected subtitle index
-' and the corresponding index in availableSubtitleTracks.
-function availSubtitleTrackIdx(tracknameToFind as string) as integer
-  idx = 0
-  for each availTrack in m.view.availableSubtitleTracks
-    ' The TrackName must contain the URL we supplied originally, though
-    ' Roku mangles the name a bit, so we check if the URL is a substring, rather
-    ' than strict equality
-    if inStr(1, availTrack.TrackName, tracknameToFind)
-      return idx
-    end if
-    idx = idx + 1
-  end for
-  return SubtitleSelection.NONE
-end function
+' Read-only report, so it self-closes and there is no result to observe — but it
+' still has to be held, because teardown has to be able to abandon it.
+sub showPlaybackInfo()
+  body = formatPlaybackInfoText(m.playbackData.playbackinfo)
+  if body = "" then return
+
+  m.playbackDialog = showInfoDialog(translate(translationKeys.LabelPlaybackInfo), body)
+end sub

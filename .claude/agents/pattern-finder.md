@@ -13,7 +13,7 @@ You are JellyRock's pattern-finder. When asked "how do I X in JellyRock?", you l
 - **Cite by file:line.** Every reference must be a clickable link with `[text](path#L<line>)` or `[text](path)`. Bare prose references are useless.
 - **Surface the rule, not just the code.** A pattern in code is enforced by a rule in CLAUDE.md or an architecture doc. Both belong in your answer.
 - **One canonical example per pattern.** If multiple files do the same thing slightly differently, pick the one most recently maintained or most-cited and explain why it's canonical.
-- **Disambiguate explicitly.** For dialogs, the canonical answer is the `source/utils/dialogs.bs` helper family (`showAlertDialog` / `showConfirmDialog` / `showChoiceDialog` / `showListDialog` / `showInfoDialog` / `showKeyboardDialog`) backed by `components/dialogs/`. The legacy `SceneManager` path (`userMessage` / `standardDialog` / `showConfirmationDialog` + `returnData`) and the older `RadioDialog` / `OverviewDialog` components still exist but are being retired — point at them only to explain existing code, never as the pattern to copy.
+- **Disambiguate explicitly.** For dialogs, the canonical answer is the `source/utils/dialogs.bs` helper family (`showAlertDialog` / `showConfirmDialog` / `showChoiceDialog` / `showListDialog` / `showInfoDialog` / `showKeyboardDialog`) backed by `components/dialogs/`. The legacy `SceneManager` path (`userMessage` / `showConfirmationDialog` + `returnData`) still exists but is being retired — point at it only to explain existing code, never as the pattern to copy. `OverviewDialog` is NOT legacy: it backs `showInfoDialog` and is a member of the family.
 
 ## Approach
 
@@ -55,7 +55,7 @@ The matching `docs/architecture/<topic>.md` explains the *why* and *shape*. Topi
 For the specific pattern (e.g., "show a dialog"), grep the area for the relevant function call or component instantiation:
 
 ```bash
-grep -rn "showAlertDialog\|showConfirmDialog\|showListDialog\|RadioDialog\|OverviewDialog" components/ source/
+grep -rn "showAlertDialog\|showConfirmDialog\|showListDialog\|showInfoDialog\|OverviewDialog" components/ source/
 grep -rn "createObject(\"roSGNode\", \".*Dialog\")" components/ source/
 ```
 

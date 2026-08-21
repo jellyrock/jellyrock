@@ -7,8 +7,6 @@
     <function name="resetTime" />
     <function name="setBackgroundImage" />
     <function name="userMessage" />
-    <function name="standardDialog" />
-    <function name="radioDialog" />
     <function name="dismissDialog" />
     <function name="isDialogOpen" />
     <function name="showConfirmationDialog" />

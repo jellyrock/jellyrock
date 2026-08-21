@@ -30,6 +30,10 @@
 
     <!-- OK button -->
     <TextButton id="okButton" text="" />
+
+    <!-- Delays ONLY the opening announcement; see OPENING_ANNOUNCEMENT_DELAY in
+         components/dialogs/JRDialog.bs. -->
+    <Timer id="narrationTimer" repeat="false" />
   </children>
   <interface>
     <field id="title" type="string" onChange="onTitleChanged" />

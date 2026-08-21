@@ -58,52 +58,6 @@ sub userMessage(title as string, message as string)
 end sub
 
 ' Display dialog to user with an OK button
-sub standardDialog(title, message)
-  constants = m.global.constants
-
-  dialog = createObject("roSGNode", "StandardDialog")
-  dlgPalette = createObject("roSGNode", "RSGPalette")
-  dlgPalette.colors = {
-    DialogBackgroundColor: constants.colorBackgroundPrimary,
-    DialogFocusColor: constants.colorPrimary,
-    DialogFocusItemColor: constants.colorTextPrimary,
-    DialogSecondaryTextColor: constants.colorTextSecondary,
-    DialogSecondaryItemColor: constants.colorSecondary,
-    DialogTextColor: constants.colorTextPrimary
-  }
-  dialog.palette = dlgPalette
-  dialog.observeField("buttonSelected", "dismissDialog")
-  dialog.title = title
-  dialog.setField("contentData", message) ' setField: BSC cannot resolve custom fields on built-in dialog subtypes
-  dialog.setField("buttons", [translate(translationKeys.ButtonOk)])
-
-  m.scene.dialog = dialog
-end sub
-
-' Display dialog to user with an OK button
-sub radioDialog(title, message)
-  constants = m.global.constants
-
-  dialog = createObject("roSGNode", "RadioDialog")
-  dlgPalette = createObject("roSGNode", "RSGPalette")
-  dlgPalette.colors = {
-    DialogBackgroundColor: constants.colorBackgroundPrimary,
-    DialogFocusColor: constants.colorPrimary,
-    DialogFocusItemColor: constants.colorTextPrimary,
-    DialogSecondaryTextColor: constants.colorTextSecondary,
-    DialogSecondaryItemColor: constants.colorSecondary,
-    DialogTextColor: constants.colorTextPrimary
-  }
-  dialog.palette = dlgPalette
-  dialog.observeField("buttonSelected", "dismissDialog")
-  dialog.title = title
-  dialog.setField("contentData", message) ' setField: BSC cannot resolve custom fields on built-in dialog subtypes
-  dialog.setField("buttons", [translate(translationKeys.ButtonOk)])
-
-  m.scene.dialog = dialog
-end sub
-
-' Display dialog to user with an OK button
 sub showConfirmationDialog(title, message, buttons)
   constants = m.global.constants
   m.top.isDataReturned = false
