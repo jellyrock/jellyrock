@@ -29,6 +29,17 @@ namespace tests
       m.assertFalse(serverSupportsFallbackFont(response))
     end function
 
+    @it("true for a ParseJson body, the shape production actually sees")
+    function _()
+      ' An AA literal boxes its booleans (`roBoolean`); ParseJson does not
+      ' (`Boolean`). Production only ever supplies the latter, so a type check
+      ' written against what the literals above produce would pass every other
+      ' spec here and still reject every real server.
+      response = { ok: true, json: ParseJson("{""EnableFallbackFont"": true}") }
+
+      m.assertTrue(serverSupportsFallbackFont(response))
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("missing field — the #582 regression")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -45,6 +56,44 @@ namespace tests
     @it("false when the JSON body is empty")
     function _()
       response = { ok: true, json: {} }
+
+      m.assertFalse(serverSupportsFallbackFont(response))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("mistyped field values")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' `= true` faults with the same `&h18` the bare negation did, just with a
+    ' different operator: the first three crashed before isBooleanTrue(), and
+    ' the number one didn't crash — it silently answered true.
+
+    @it("false when the field is a string rather than a boolean")
+    function _()
+      response = { ok: true, json: { EnableFallbackFont: "true" } }
+
+      m.assertFalse(serverSupportsFallbackFont(response))
+    end function
+
+    @it("false when the field is an object")
+    function _()
+      response = { ok: true, json: { EnableFallbackFont: { nested: true } } }
+
+      m.assertFalse(serverSupportsFallbackFont(response))
+    end function
+
+    @it("false when the field is a number")
+    function _()
+      ' Not a crash before, but `1 = true` is true in BrightScript, so this
+      ' one silently reported support the server never advertised.
+      response = { ok: true, json: { EnableFallbackFont: 1 } }
+
+      m.assertFalse(serverSupportsFallbackFont(response))
+    end function
+
+    @it("false when ok is not a boolean")
+    function _()
+      response = { ok: "true", json: { EnableFallbackFont: true } }
 
       m.assertFalse(serverSupportsFallbackFont(response))
     end function
