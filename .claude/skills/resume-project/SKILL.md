@@ -64,10 +64,22 @@ Pick up an active project from `docs/projects/` and bind this session to the lif
 Confirm the prior session ended cleanly before building on it:
 
 - `git status --short` — if the working tree is dirty, surface the uncommitted paths and ask whether to proceed. A prior `/end-session` should have left it clean; dirt suggests an interrupted session.
+- `git fetch --quiet && git log --oneline origin/main..main` — **local commits that were never pushed.** If this prints anything, say so before any branch is cut, and say what it means: the next branch will carry those commits, so a diff taken against local `main` is NOT the diff the eventual PR will have.
 - Confirm the most recent commit references this project (its slug or a `<project>:` prefix). If the last commit is unrelated, flag it — the prior session may not have run `/end-session`.
 - Optionally confirm the branch is the expected one (usually `main`).
 
 These are warnings, not gates: report anomalies and let the user decide; don't refuse to load the project.
+
+**Why the unpushed-commits check is here and not "optional".** It is the one anomaly the other
+two cannot see: an unpushed commit leaves the tree CLEAN and leaves the last commit looking
+perfectly on-topic for the project, so `git status` and `git log` both report a healthy
+session. Recorded 2026-08-21 — a resumed session found `main` two commits ahead of
+`origin/main` (a prior session's work, committed and never pushed), branched from it, and
+described the branch throughout as touching no app code. That was true of the diff against
+LOCAL `main` and false of the PR, which silently carried the earlier commits; the squash
+message on `main` now understates what it shipped. Nothing broke — the carried work was
+already reviewed and tested — but every "what changed" claim in that session rested on a diff
+base nobody had validated. Two commands would have caught it.
 
 ### Step 3 — Adopt the kickoff
 

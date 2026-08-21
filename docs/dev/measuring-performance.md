@@ -161,6 +161,16 @@ its own.
 npm run measure -- --measurement cell-load --nav cellSweepExtras --component ExtrasRowList -n 5
 ```
 
+> **Provenance, because the squash message understates it.** The ledger (`source/utils/cellLoad.bs`
+> and its instrumentation of `JRRowItem` / `GridItem` / `textureManager`) and the scripted sweeps
+> that give it a denominator were built in separate sessions but landed on `main` in **one squash,
+> [`7cb73074`](https://github.com/jellyrock/jellyrock/pull/838)**. The ledger half had been
+> committed to a local `main` and never pushed, so the branch carried it and the PR body — which
+> becomes the commit message here — describes only the harness half and says the change touches no
+> app code. It does: ~353 lines of it. Nothing is wrong with the code (that half was reviewed and
+> device-tested on its own), but anyone bisecting cell-load behavior should know both halves
+> arrive at the same commit rather than looking for an earlier one.
+
 **The `--nav` is not optional here, and it is not just navigation — it IS the denominator.**
 A bind count means nothing without knowing how far the list was scrolled to produce it, so
 the family's `nav`s are scripted SWEEPS: open the screen, travel a fixed distance through it,
