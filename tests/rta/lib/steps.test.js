@@ -840,6 +840,21 @@ describe('waitRowsSettled', () => {
     };
   };
 
+  /**
+   * A device that answers ONE full 2-row sample and then goes away for good — the screen
+   * replaced, the view swapped. Shared by the two tests that need it because they pin two
+   * different properties of the same event: that it is not reported as settled, and that it
+   * is not reported as a screen still being built.
+   */
+  const vanishingReader = () => {
+    let reads = 0;
+    return async ({ keyPath }) => {
+      reads++;
+      if (reads > 3) return { found: false };
+      return { found: true, value: keyPath.endsWith('content.getChildCount()') ? 2 : 16 };
+    };
+  };
+
   it('waits for rows still ARRIVING, not merely for rows to exist', async () => {
     // `waitHome()` passes on skeletons; this is the gate that does not. The row count grows
     // as `insertLatestMediaSkeletons` inserts, which is the coarse half of the signal.
@@ -961,18 +976,32 @@ describe('waitRowsSettled', () => {
     // reads that as the quietest screen it has ever seen and returns `settled: true` for a
     // list that is not there. Found by mutation: the first version of the test above passed
     // with that guard deleted, because it never got past the early return.
-    let reads = 0;
-    getValue.mockImplementation(async ({ keyPath }) => {
-      reads++;
-      if (reads > 3) return { found: false }; // the list goes away after one full sample
-      return { found: true, value: keyPath.endsWith('content.getChildCount()') ? 2 : 16 };
-    });
+    getValue.mockImplementation(vanishingReader());
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const res = await waitRowsSettled('#homeRows', { quietMs: 20, interval: 5, timeout: 150 });
 
     expect(res.settled).toBe(false);
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('never held still'));
+    warn.mockRestore();
+  });
+
+  it('names the list going AWAY as its own finding, not as a screen still being built', async () => {
+    // The two ways this gives up need two diagnoses, and the wrong one costs an operator the
+    // whole investigation: "still being built" sends them at row-arrival timing, when the
+    // real event was the screen being replaced underneath the call. Same split
+    // `waitCellsQuiet` draws between an uninstrumented build and an unreadable keyPath.
+    getValue.mockImplementation(vanishingReader());
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const res = await waitRowsSettled('#homeRows', { quietMs: 20, interval: 5, timeout: 150 });
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('STOPPED ANSWERING'));
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('still being built'));
+    // ...and it hands back the structure it DID read, not the failed read that followed. The
+    // regression this pins printed `last undefined row(s), 0 item(s)` and returned the same.
+    expect(res).toMatchObject({ rows: 2, items: 32 });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('2 row(s), 32 item(s)'));
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('undefined'));
     warn.mockRestore();
   });
 

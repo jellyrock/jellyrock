@@ -414,6 +414,15 @@ because it did not exist when they were taken:
 > are deliberately excluded rather than pooled in: the earlier extras campaign taken before the horizontal leg hunted the widest row
 > (`binds` 44, horizontal leg traveled zero), and everything taken before `waitCellsQuiet`
 > widened its gate and `cellSweepGrid` gained its return leg.
+>
+> **The 2026-08-22 n=40 Home campaign is excluded too, and this is the exclusion most likely
+> to be undone by mistake** — it is the same screen on the same server, which is exactly what
+> makes pooling it look reasonable. It is not: it ran a different fixture (128 items against
+> this row's 129), a different app ([#840](https://github.com/jellyrock/jellyrock/pull/840)
+> changed the reload guard in between) and a different instrument
+> ([#843](https://github.com/jellyrock/jellyrock/pull/843) added the pop-in counters). It
+> lives in the reproducibility table below, and it supersedes this row's *conclusions* about
+> Home without superseding its *numbers*.
 
 **What the harness change did to the numbers, measured rather than assumed.** Re-running all
 four sweeps under the new code against the same library and server:
@@ -433,7 +442,12 @@ four sweeps under the new code against the same library and server:
   Do not read that as the gate fixing Home. It is n=3 against n=6 on the one screen documented
   below as itinerary-timing-sensitive, taken directly after a full `test:rta` run left the
   device and server warm — three candidate explanations that n=3 cannot separate. Home needs
-  the alternating protocol described below before any claim is made about it.
+  the alternating protocol described below before any claim is made about it. **That protocol
+  has since been run** (n=20/arm, 2026-08-22) and the answer was that no harness quantity
+  explains the spread — see
+  [Home's spread is NOT the harness](#-homes-spread-is-not-the-harness--settled-by-measurement-2026-08-22).
+  These n=3 → n=6 bounds are still not a claim about Home; they are what the newer campaign
+  replaced.
 
 ### Read `binds / items` per screen, never across them
 
@@ -490,11 +504,22 @@ deciding that per sweep rather than per campaign is the point:
 - **Grid is post-return-leg only.** The earlier campaign was a different itinerary (no
   reload coverage, `reloads` 1), so pooling it would average two workloads. Both were
   internally exact.
-- **Home does NOT pool.** Its bounds moved (231–253 → 222–234) across a change that
-  altered the settle, so the two campaigns are two populations and neither is a bound on
-  the other. That is also why the headline table quotes only the later one.
+- **Home's two n=3 campaigns do NOT pool with each other.** Their bounds moved (231–253 →
+  222–234) across a change that altered the settle, so they are two populations and neither
+  is a bound on the other. That is why the headline table quotes only the later of the two.
+- **The 2026-08-22 row DOES pool its 40, and pools nothing else.** Its two arms differ only
+  by the settle gate, and pooling them is licensed the same way Extras' is — measured, not
+  assumed: identical `binds` bounds, medians 242 vs 242, |z| < 1.7 on every field (the box
+  below). Pooling it with EITHER n=3 campaign would be the error this bullet list exists to
+  prevent, for three independent reasons — a different fixture (128 items against 129), a
+  different app ([#840](https://github.com/jellyrock/jellyrock/pull/840) changed the reload
+  guard in between, and its whole measured effect was on these counters), and a different
+  instrument ([#843](https://github.com/jellyrock/jellyrock/pull/843) added `appearances` /
+  `popIns` and fixed a suspend that inflated them). Same screen and same server is NOT the
+  test; same workload, same app and same instrument is.
 
-🚨 **Home's spread is NOT the harness, and that was settled by measurement on 2026-08-22.**
+#### 🚨 Home's spread is NOT the harness — settled by measurement, 2026-08-22
+
 Every earlier reading of this table treated Home's moving counts as a sweep that had never
 been pinned down. A 40-launch campaign (n=20 per arm, alternated in four blocks, `.177`,
 one real 12-row / 128-item server, one build) pinned every harness-side quantity there is —
@@ -510,7 +535,7 @@ identical, settled workload, and the question belongs to `HomeRows` / `JRRowItem
 (`appearances` 105×5, `popIns` 42×5) and n=20 erased it; on a discrete, clustered
 distribution a range statistic at n=5 is not evidence.
 
-Three things to take from that table.
+#### Three things to take from that table
 
 **The extras sweep's headline fields are TIGHT, not exact — and an earlier draft of this
 page said exact.** Across the n=3 sweep `wipesReload` read 103 on all nine launches, and
@@ -554,13 +579,17 @@ before it was tested, then confirmed:** widening the gate left extras' wobbling 
 exactly the ranges they already had — `loadsFailed` 116–118, `reloads` 121–123, `wipesBind`
 32–34, both bounds unchanged. Budget the ±2; it is the workload, not the instrument.
 
-**Home needs a real sample size; the other three do not.** Its `binds` has now been read
-across three campaigns and has moved every time: 231 / 235 / 235, then 231 / 238 / 253,
-then 222 / 231 / 234. **No campaign has bounded it**, and the history is the argument —
-the first was published here as a ~2% floor and the second refuted it, so a third quoting
-9.4% (or the 13.2% the raw pool would give) would be making the same mistake with a bigger
-number. What is established is only the direction: Home varies where the other three
-sweeps do not, by an amount larger than any effect worth calling small.
+**Home needs a real sample size; the other three do not.** Its `binds` was read across three
+n=3 campaigns and moved every time: 231 / 235 / 235, then 231 / 238 / 253, then 222 / 231 /
+234. **No n=3 campaign bounded it**, and the history is the argument — the first was
+published here as a ~2% floor and the second refuted it, so a third quoting 9.4% (or the
+13.2% the raw pool would give) would have been making the same mistake with a bigger number.
+
+**The fourth campaign is the one that settled it, at n=40** — see
+[Home's spread is NOT the harness](#-homes-spread-is-not-the-harness--settled-by-measurement-2026-08-22)
+above. It did not shrink the
+spread; it pinned everything the spread could have been blamed on. `binds` 235–255 stands as
+the bound, and it is a bound on the APP, not on the instrument.
 
 **This is a statement about cost, not about feasibility.** An exact metric is a luxury: it
 lets a grid, extras or search sweep settle a question at n=3. A noisy one just needs the

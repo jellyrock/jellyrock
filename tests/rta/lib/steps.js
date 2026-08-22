@@ -950,14 +950,46 @@ export async function waitCellsQuiet(
  * announces a different `rows`/`items` pair. The confound becomes visible instead of being
  * eliminated, which is what the ledger's `items` field failed to do.
  *
+ * **The itinerary is deliberately NOT read from this gate's return value.** `sweepRowList`
+ * takes its own look at the same two quantities, so the settle's pair and the swept pair are
+ * two INDEPENDENT observations — and that is the only thing that can catch the failure named
+ * directly above, because a gate cannot self-detect firing early. Thread the settled sample
+ * into the sweep and it becomes authoritative and unfalsifiable: the itinerary would agree
+ * with the settle BY CONSTRUCTION, on a mid-build lull exactly as readily as on a finished
+ * screen. That is the same weakness that makes the ledger's `items` a poor certificate,
+ * reintroduced one layer up. The second opinion is close to free — `sweepRowList` re-reads
+ * the pair in TWO round trips, since `getActiveVals` batches the per-row widths, against the
+ * ~2000 ms this gate already spends.
+ *
  * Warns rather than throwing, exactly as `waitCellsQuiet` does: every caller is a nav that
  * also runs as a functional test, where a red means "the screen did not load".
+ *
+ * **Why the timeout is 20000 and not `waitCellsQuiet`'s 15000 — reasoning added at review,
+ * and NOT the basis on which the number was originally picked.** `waitHome`'s rows gate
+ * already allows 20000 for `#homeRows.content.getChildCount()` to become non-empty: the HEAD
+ * of the latest-rows arrival process. This gate waits for the TAIL of that same process, so
+ * the two belong on one budget and should move together when Home's arrival budget moves.
+ * `waitCellsQuiet`'s 15000 covers a different situation — it runs AFTER the sweep, when the
+ * screen is already settled and quiescence is imminent. No measurement prefers 20000 over
+ * 15000: observed settles were ~2000 ms, so either is 7–10x headroom, and the timeout bites
+ * only when the structure genuinely never stops moving, which warns and proceeds.
+ *
+ * **The two ways this gives up are different findings and warn differently**, on the same
+ * split `waitCellsQuiet` draws between an uninstrumented build and an unreadable keyPath: a
+ * structure that never held still means the screen was still being BUILT, while one that
+ * stopped answering means the list went AWAY — replaced, unmounted, or swapped by a view
+ * change — and telling an operator the second was the first sends them after the wrong bug.
  *
  * @param {string} listId the list's `#id` — rows hang off `<listId>.content`
  * @param {object} [opts]
  * @param {(k:string)=>Promise<any>} [opts.read] defaults to `getActiveVal`
  * @returns {Promise<{settled:boolean, resolved:boolean, rows:number|undefined,
  *                    items:number|undefined, widths:number[], waitedMs:number}>}
+ *   `resolved` is answered at GATE-OPEN — false only when the list never answered at all.
+ *   A list that answers once and then vanishes still reports `resolved: true`, because the
+ *   structure it hands back is the real one it read before vanishing; the warning is what
+ *   carries that it went away. `rows`/`items`/`widths` therefore always describe a structure
+ *   this call actually observed, never a failed read.
  */
 export async function waitRowsSettled(
   listId,
@@ -1002,10 +1034,19 @@ export async function waitRowsSettled(
     };
   }
 
+  // The last sample whose reads SUCCEEDED, tracked separately from `shape` because the two
+  // diverge in exactly the case worth reporting well: a list that goes away mid-poll answers
+  // `{ rows: undefined, widths: [] }` for the rest of the timeout, so `shape` — which must
+  // follow the live reading to keep the settle honest — stops describing anything. Reporting
+  // it prints `last undefined row(s)` and blames a screen still being BUILT for a screen that
+  // is no longer THERE. Those are two different findings with two different fixes, so the
+  // structure this call reports is always one it actually observed.
+  let lastGood = shape;
   let lastChange = Date.now();
   while (Date.now() - start < timeout) {
     await sleep(interval);
     const next = await sample();
+    if (typeof next.rows === 'number') lastGood = next;
     if (!same(shape, next)) {
       shape = next;
       lastChange = Date.now();
@@ -1023,17 +1064,22 @@ export async function waitRowsSettled(
     }
   }
   console.warn(
-    `[nav] ${listId}: the row structure never held still for ${quietMs} ms within ${timeout} ms — ` +
-      `last ${shape.rows} row(s), ${total(shape)} item(s). The sweep still ran, but it read its ` +
-      'bounds off a screen that was still being built, so its counts are comparable only to ' +
-      'other runs that also failed to settle.',
+    typeof shape.rows === 'number'
+      ? `[nav] ${listId}: the row structure never held still for ${quietMs} ms within ` +
+          `${timeout} ms — last ${lastGood.rows} row(s), ${total(lastGood)} item(s). The sweep ` +
+          'still ran, but it read its bounds off a screen that was still being built, so its ' +
+          'counts are comparable only to other runs that also failed to settle.'
+      : `[nav] ${listId}: the list STOPPED ANSWERING mid-settle — it resolved at gate-open with ` +
+          `${lastGood.rows} row(s), ${total(lastGood)} item(s) and then read nothing for the rest ` +
+          `of ${timeout} ms. The screen was replaced or unmounted underneath this call, so the ` +
+          'structure reported here is the one at gate-open and NOT the one the sweep travelled.',
   );
   return {
     settled: false,
     resolved: true,
-    rows: shape.rows,
-    items: total(shape),
-    widths: shape.widths,
+    rows: lastGood.rows,
+    items: total(lastGood),
+    widths: lastGood.widths,
     waitedMs: Date.now() - start,
   };
 }

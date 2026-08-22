@@ -1063,6 +1063,20 @@ The pop-in ledger scores an appearance off the compositor's `renderTracking`, no
 
 **No sweep measurement can catch a regression here**, which is why the invariant is gated on device instead. `cellSweepGrid` reads identically with and without the gate — 46 appearances, 24 pop-ins, 6 cold, 1 reload, 17 first, on every one of 5 launches in both arms — because a sweep never suspends its screen. [`tests/rta/specs/cell-load.spec.js`](../tests/rta/specs/cell-load.spec.js) asserts `appearances <= binds` for a resume with no scrolling, which fails at 18 vs 10 when the gate is removed.
 
+## decision-id: settle-gate-kept-for-its-null
+
+**date**: 2026-08-22
+**status**: accepted
+**related-files**: `tests/rta/lib/steps.js`, `tests/rta/lib/nav.js`, `docs/dev/measuring-performance.md`
+
+`waitRowsSettled` was built to remove `cellSweepHome`'s bind variance and does not remove it. It is kept anyway, and the null result is the reason rather than a caveat attached to one. A 40-launch alternated campaign (n=20/arm, `.177`, build `ad944494`) put `binds` at 235–255 in BOTH arms, medians 242 and 242, |z| < 1.7 on every field — so the gate buys no dispersion at all, and the n=5 pilot that appeared to pin four fields was noise.
+
+**What it is kept for is the precondition it prints, which nothing else could certify.** On all 20 gated launches it reported Home's rows already stable at gate-open (`settled in 1983–2048 ms`, the `quietMs` floor plus one poll), which is what converts "the sweep might be reading a half-built screen" from an untested hypothesis into a fact on every run. The ledger's `items` cannot do this: `cell-load` counts it at EMIT time, so it certifies the structure the sweep ENDED on and reads identically whether the sweep traveled a whole screen or a half-built one. Cost is ~2 s per `cellSweepHome` launch, on a nav that also runs once per full `test:rta` pass.
+
+**This closes off two things.** Deleting the gate and keeping only the write-up: that leaves the strongest harness-side refutation resting on a paragraph, where the next session re-derives it — the campaign cost 40 launches and a printed line inherits it for free. And threading the settled sample into `sweepRowList` to save its re-read: the gate's one self-undetectable failure is firing early during a mid-build lull, and two independent observations are the only thing that can catch it. Made authoritative, the itinerary would agree with the settle BY CONSTRUCTION — reintroducing, one layer up, exactly the weakness that makes the ledger's `items` a poor certificate. The re-read costs two round trips against the ~2000 ms the gate already spends.
+
+**The constraint worth re-evaluating is the justification itself, not the gate's cost.** It rests entirely on the printed precondition being worth ~2 s per launch, which holds while Home's spread is unexplained. If Phase B finds the app-side mechanism in `HomeRows` / `JRRowItem`, that premise expires and the gate should be re-examined rather than kept by inertia — the null result stays true either way, but "we still don't know why" stops being the reason to keep paying for the check.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

@@ -933,8 +933,12 @@ function reportSweep(name, legs, quiet, settle = null) {
     .map((l) => `${l.axis} ${l.walk.from}->${l.walk.to} of ${l.available}`)
     .join(', ');
   const recovered = legs.reduce((n, l) => n + l.walk.recovered, 0);
+  // `at sweep start` is not padding: the ledger publishes a field ALSO called `items`, counted
+  // at emit time, and on the 2026-08-22 campaign both read 128 — so the two are separable on
+  // the line only if the line says which one it is. A reader comparing a settle pair against a
+  // ledger pair is comparing the screen the sweep STARTED on against the one it ENDED on.
   const over = settle
-    ? `over ${settle.rows} row(s) / ${settle.items} item(s)` +
+    ? `over ${settle.rows} row(s) / ${settle.items} item(s) at sweep start` +
       (settle.settled ? ` (settled in ${settle.waitedMs} ms), ` : ' (NEVER SETTLED), ')
     : '';
   console.log(
