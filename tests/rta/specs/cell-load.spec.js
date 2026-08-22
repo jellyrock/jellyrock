@@ -51,21 +51,37 @@
  */
 import { beforeAll, it, expect } from 'vitest';
 import { RTA_CONFIG } from '../config.js';
-import { authenticate, getLibraries } from '../lib/jellyfin.js';
+import { authenticate, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
+import { seedHome, seedLibraryLanding, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch, ecp } from '../lib/driver.js';
 import { navMovieDetails } from '../lib/nav.js';
 import { getActiveVal, press, waitHome, waitFocusInside, waitCellsQuiet } from '../lib/steps.js';
+import { MOVIES_GRID } from '../screens.js';
 
+const LOCALE = RTA_CONFIG.languages[0];
+
+let session;
 let ctx;
 
 beforeAll(async () => {
-  const session = await authenticate(RTA_CONFIG.server);
+  session = await authenticate(RTA_CONFIG.server);
   ctx = { libraries: await getLibraries(session) };
-  await hardRelaunch();
 });
 
 it('resuming a suspended grid does not manufacture cell appearances', async (testCtx) => {
-  if (!ctx.libraries?.length) testCtx.skip('server exposes no libraries');
+  const moviesId = libraryIdFor(ctx.libraries, MOVIES_GRID.collectionType);
+  if (!moviesId) testCtx.skip('server has no "movies" library');
+
+  // Seed the landing view, do NOT inherit it. `display.<id>.landing` is registry-PERSISTED
+  // and survives a relaunch, so the Movies library opens on whatever view ran last — and
+  // `genre-skeleton.spec.js` leaves it on `Genres`, which is a RowList with no `#itemGrid`
+  // in it at all. Without this the walk below times out waiting for focus that can never
+  // arrive, and it does so ONLY when the suite runs in the order that puts that spec first:
+  // caught 2026-08-22 by the full suite after the spec had passed twice in isolation.
+  const expectedServer = await seedHome(session, LOCALE);
+  await seedLibraryLanding(session, moviesId, MOVIES_GRID.landing);
+  await hardRelaunch(); // never plain relaunch — the app re-persists over the seed
+  await assertSeedTookEffect(expectedServer, 'cell-load suspend/resume');
 
   await waitHome();
   // home -> Movies grid -> movie detail. Opening the detail SUSPENDS the grid
