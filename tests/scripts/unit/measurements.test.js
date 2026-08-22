@@ -683,6 +683,43 @@ describe('unitFor', () => {
     expect(unitFor('popIns', measurementById('cell-load'))).toBe('');
   });
 
+  it('classifies every NUMERIC field a family emits, so a new count cannot default to ms', () => {
+    // The complement of the check below, and the half that catches the defect ORIGINALLY
+    // fixed by `counts`. That one verifies every name in `counts` is emitted; this one
+    // verifies every emitted NUMBER is classified. Without it, adding a counter to the emit
+    // line and forgetting to declare it silently reintroduces `--field newCounter -> "42 ms"`
+    // — a count headlined as a duration, which is exactly what `counts` exists to stop and
+    // exactly what nothing would have caught.
+    //
+    // Decidable statically because the patterns say which is which: a numeric group is
+    // captured with `\d+` and a dimension with `\S+`. So this needs no per-family
+    // allowlist and cannot drift out of step with the registry.
+    //
+    // `counts` is consulted BEFORE the name heuristic, and the heuristic matches `Ms`/`Us`
+    // followed by a capital or end-of-name — not anchored at the end. Both details are
+    // load-bearing and were found by this test failing on its first run: `loadMsMax` IS a
+    // duration and an end-anchor rejected it, while `loadMsCount` is a COUNT whose name
+    // contains `Ms`, so only the counts-first order classifies it correctly. A name alone
+    // cannot separate those two, which is the same reason `counts` has to be declared.
+    for (const m of MEASUREMENTS) {
+      const numeric = m.lines
+        .flatMap((l) => [...l.pattern.source.matchAll(/\(\?<(\w+)>\\d\+\)/g)])
+        .map((g) => g[1]);
+      for (const field of new Set(numeric)) {
+        const classified =
+          m.workload.includes(field) ||
+          (m.counts ?? []).includes(field) ||
+          /(Ms|Us)([A-Z]|$)/.test(field);
+        expect(
+          classified,
+          `${m.id} emits numeric field "${field}" but classifies it nowhere — it is not in ` +
+            'workload, not in counts, and its name does not end Ms/Us, so unitFor() will ' +
+            "answer 'ms' for it. Add it to counts if it is a count.",
+        ).toBe(true);
+      }
+    }
+  });
+
   it('names only fields the family actually emits in counts', () => {
     // Without this, a typo in `counts` is a SILENT no-op: the two tests around it iterate
     // `counts` and assert properties of whatever names are listed, so `popInsColdd` passes

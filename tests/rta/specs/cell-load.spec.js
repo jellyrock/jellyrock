@@ -48,6 +48,20 @@
  * How many cells the grid rebinds on resume is a property of the fixture (library size,
  * column count, which row focus was left on), and pinning it would make this fail on any
  * library but the one it was written against. The BOUND is a property of the app.
+ *
+ * ⚠️ The bind count in particular is not stable even on one fixture: this was written
+ * against a run reading 10 binds, and a later run on the same demo server read **0 binds
+ * against 11 items** — a correct resume that rebinds nothing at all. Both satisfy the
+ * bound; neither is the number to assert. That second reading is also why the item-count
+ * guard below the assertion exists: at 0 binds the bound degenerates to `0 <= 0`, which a
+ * broken walk satisfies just as well as a correct one.
+ *
+ * Re-verified on that second fixture rather than trusting the first: reverting the
+ * `textureManagerState` gate in both cell components fails this at **11 appearances against
+ * 0 binds** — one phantom per cell in an 11-item grid — where the original run failed it at
+ * 18 against 10. The counts moved; the direction and the failure did not. Anywhere those
+ * two numbers appear as a pair (here, and in `appearance-signal-gates-departure-only` in
+ * `docs/decisions.md`) read them as one fixture's reading of a bound, never as the bound.
  */
 import { beforeAll, it, expect } from 'vitest';
 import { RTA_CONFIG } from '../config.js';
@@ -102,6 +116,23 @@ it('resuming a suspended grid does not manufacture cell appearances', async (tes
 
   const binds = await getActiveVal('#itemGrid.content.cellLoadBinds');
   const appearances = await getActiveVal('#itemGrid.content.cellLoadAppearances');
+
+  // The grid must actually HOLD cells for the bound below to have verified anything.
+  // Measured on the demo server 2026-08-22: a correct resume reads `binds` 0 and
+  // `appearances` 0 against **11 items** — so the assertion is `0 <= 0`, which is exactly
+  // what the pre-fix build would have failed (11 phantom appearances against 0 binds) and
+  // equally what a walk that silently stopped reaching the grid would PASS. Without this
+  // line the two are indistinguishable and the spec goes green either way. Same rule the
+  // genre-row assertion in #770 was rebuilt around: an assertion that verified nothing
+  // must fail rather than pass.
+  const items = await getActiveVal('#itemGrid.content.getChildCount()');
+  expect(
+    items,
+    `#itemGrid resolved but holds ${items} item(s), so "${appearances} appearance(s) <= ` +
+      `${binds} bind(s)" verified nothing — a phantom appearance needs a cell to fire on. ` +
+      'The walk reached the grid without populating it; check the seeded landing view and ' +
+      'the library id rather than trusting the bound below.',
+  ).toBeGreaterThan(0);
 
   expect(
     appearances,

@@ -173,6 +173,17 @@ export const MEASUREMENTS = Object.freeze([
     grounded: true,
     primary: 'totalMs',
     workload: Object.freeze(['rows']),
+    // Counts, not durations — `sizeMs` beside them is the duration. Kept out of `workload`
+    // because they are OUTCOMES of the run rather than what it was handed: `rows` is the
+    // same across arms by construction, while a batching change is measured precisely by
+    // `sizeCalls` moving. Putting them in workload would make `measure:compare` report that
+    // the arms did different work, which is the finding rather than a fault.
+    //
+    // Found 2026-08-22 by the "classify every numeric field" test, not by a reader:
+    // `unitFor('sizeCalls', family)` answered `'ms'`, so `measure:report --field sizeCalls`
+    // headlined a call count as milliseconds — the identical defect `counts` was added to
+    // fix for `cell-load`, sitting undetected in a second family the whole time.
+    counts: Object.freeze(['sizeCalls', 'sizeDrains']),
     lines: Object.freeze([
       Object.freeze({
         key: 'total',
