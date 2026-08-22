@@ -32,10 +32,10 @@ sub init()
   m.optionList = m.top.findNode("optionList")
   m.optionList.observeField("itemSelected", "onItemSelected")
 
-  ' floatingFocus, ALWAYS — never fixedFocusWrap. Roku's wrap consumes UP and
-  ' DOWN at both ends, which would take the dialog's only two dPad gestures away
-  ' from it. Wrapping is implemented here instead (see onKeyEvent), so it stays
-  ' one-directional the way TrackDropdown's is.
+  ' floatingFocus, ALWAYS — never fixedFocusWrap. Roku's own wrap engages only
+  ' "as long as the list contains enough items to fill the list", so the dialog's
+  ' behaviour would change shape with its content. Wrapping is implemented here
+  ' instead (see onKeyEvent), where it is unconditional and unit-tested.
   m.optionList.vertFocusAnimationStyle = "floatingFocus"
 
   m.resolved = false
@@ -169,6 +169,11 @@ function onKeyEvent(key as string, press as boolean) as boolean
 
   if action = "wrapToTop"
     m.optionList.jumpToItem = 0
+    return true
+  end if
+
+  if action = "wrapToBottom"
+    m.optionList.jumpToItem = itemCount - 1
     return true
   end if
 

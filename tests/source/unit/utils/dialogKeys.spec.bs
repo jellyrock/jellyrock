@@ -16,15 +16,13 @@ namespace tests
       m.assertEqual(listDialogKeyAction("back", 29, 30), "dismiss")
     end function
 
-    @it("UP on the first row dismisses — the dPad escape")
+    @it("BACK is the ONLY exit — no dPad gesture dismisses")
     function _()
-      m.assertEqual(listDialogKeyAction("up", 0, 30), "dismiss")
-    end function
-
-    @it("UP anywhere else belongs to the list")
-    function _()
-      m.assertEqual(listDialogKeyAction("up", 1, 30), "consume")
-      m.assertEqual(listDialogKeyAction("up", 29, 30), "consume")
+      for each key in ["up", "down", "left", "right", "OK"]
+        for each index in [0, 15, 29]
+          m.assertNotEqual(listDialogKeyAction(key, index, 30), "dismiss")
+        end for
+      end for
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -40,25 +38,29 @@ namespace tests
       m.assertEqual(listDialogKeyAction("down", 29, 30), "wrapToTop")
     end function
 
-    ' Long lists are exactly the case that broke, so assert it at a length past
-    ' the 8-row visible cap rather than only on a list that fits.
-    @it("DOWN never dismisses — a list dialog has no downward exit")
+    ' The whole point of wrapping: reaching the END of a long list should cost one
+    ' press, not thirty. An asymmetric wrap only cycles forward and never delivers
+    ' that, which is why UP wraps rather than dismissing.
+    @it("UP on the first row wraps to the bottom")
     function _()
-      for each index in [0, 1, 14, 28, 29]
-        m.assertNotEqual(listDialogKeyAction("down", index, 30), "dismiss")
-      end for
+      m.assertEqual(listDialogKeyAction("up", 0, 2), "wrapToBottom")
+      m.assertEqual(listDialogKeyAction("up", 0, 30), "wrapToBottom")
     end function
 
-    @it("DOWN mid-list belongs to the list")
+    @it("mid-list movement belongs to the list, both directions")
     function _()
       m.assertEqual(listDialogKeyAction("down", 0, 30), "consume")
       m.assertEqual(listDialogKeyAction("down", 28, 30), "consume")
+      m.assertEqual(listDialogKeyAction("up", 1, 30), "consume")
+      m.assertEqual(listDialogKeyAction("up", 29, 30), "consume")
     end function
 
-    @it("DOWN is inert when there is nowhere to wrap to")
+    @it("neither direction wraps when there is nowhere to wrap to")
     function _()
-      m.assertEqual(listDialogKeyAction("down", 0, 1), "consume")
-      m.assertEqual(listDialogKeyAction("down", 0, 0), "consume")
+      for each key in ["up", "down"]
+        m.assertEqual(listDialogKeyAction(key, 0, 1), "consume")
+        m.assertEqual(listDialogKeyAction(key, 0, 0), "consume")
+      end for
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

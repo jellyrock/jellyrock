@@ -14,17 +14,22 @@ import "pkg:/source/utils/misc.bs"
 
 ' What a key press means to a selection-list dialog.
 '
-' The model matches ItemDetails' TrackDropdown, which is the app's OTHER picker
-' for the same job (choosing an audio/subtitle track) and shipped this first:
+' The list WRAPS IN BOTH DIRECTIONS and Back is the way out:
 '
-'   DOWN past the last row  -> wraps to the top; the list never exits downward
-'   UP on the first row     -> dismisses without choosing
-'   BACK                    -> dismisses without choosing
-'   anything else           -> consumed (a modal lets nothing reach the screen behind it)
+'   OK on a row             commits (the list's own business, not ours)
+'   DOWN past the last row  wraps to the top
+'   UP past the first row   wraps to the bottom
+'   BACK                    dismisses without choosing
+'   anything else           consumed (a modal lets nothing reach the screen behind it)
 '
-' The asymmetry is the point: wrapping is what makes a 30-track list navigable
-' with a remote, and UP-on-the-first-row is then the dPad escape that wrapping
-' would otherwise take away.
+' Symmetric on purpose. Wrapping is only worth having because it makes a long
+' list cheap to navigate with a remote — one UP to reach the end of thirty
+' tracks — and an asymmetric wrap does not deliver that; it only cycles forward.
+'
+' ItemDetails' TrackDropdown, which this otherwise mirrors, dismisses on UP-at-top
+' instead. That is right for a dropdown: UP returns you to the trigger you opened
+' it from. A centred modal has no trigger above it, so the gesture would be
+' arbitrary here, and it would cost the one ergonomic win wrapping exists for.
 '
 ' `focusedIndex` is checked EXPLICITLY rather than inferred from the fact that
 ' the key reached us. Inferring position from bubbling is precisely the
@@ -34,15 +39,16 @@ import "pkg:/source/utils/misc.bs"
 ' @param {string} key - the key name from onKeyEvent
 ' @param {integer} focusedIndex - the list's currently focused row
 ' @param {integer} itemCount - number of rows in the list
-' @returns {string} - "dismiss" | "wrapToTop" | "consume"
+' @returns {string} - "dismiss" | "wrapToTop" | "wrapToBottom" | "consume"
 function listDialogKeyAction(key as string, focusedIndex as integer, itemCount as integer) as string
   if key = "back" then return "dismiss"
 
-  if key = "up" and focusedIndex <= 0 then return "dismiss"
-
-  ' An empty or single-row list has nowhere to wrap to, so DOWN is inert rather
-  ' than a no-op jump back onto the row you are already on.
-  if key = "down" and itemCount > 1 and focusedIndex >= itemCount - 1 then return "wrapToTop"
+  ' A list with fewer than two rows has nowhere to wrap to, so both directions
+  ' are inert rather than a no-op jump onto the row you are already on.
+  if itemCount > 1
+    if key = "down" and focusedIndex >= itemCount - 1 then return "wrapToTop"
+    if key = "up" and focusedIndex <= 0 then return "wrapToBottom"
+  end if
 
   return "consume"
 end function

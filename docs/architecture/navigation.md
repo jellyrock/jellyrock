@@ -313,15 +313,22 @@ that reason.
 
 #### The list dialog has no Cancel button
 
-`JRListDialog`'s gestures match `ItemDetails`' `TrackDropdown`, the app's other picker for the
-same job, so choosing a track behaves the same before and during playback:
+The rows are the only focusable thing in it, so there is nothing for a button to add — and
+`Back` is how Roku documents dismissing a popup dialog. Its gestures otherwise follow
+`ItemDetails`' `TrackDropdown`, the app's other picker for the same job:
 
 | Gesture | Effect |
 |---|---|
 | `OK` on a row | commits the selection |
-| `DOWN` past the last row | wraps to the top — the list never exits downward |
-| `UP` on the first row | dismisses without choosing |
+| `DOWN` past the last row | wraps to the top |
+| `UP` past the first row | wraps to the bottom |
 | `Back` | dismisses without choosing |
+
+The wrap is **symmetric**, and that is the point of having it: one `UP` reaches the end of a
+thirty-track list. `TrackDropdown` dismisses on `UP`-at-top instead, which is right for a
+dropdown — `UP` returns you to the trigger you opened — but a centered modal has no trigger
+above it, so the gesture would be arbitrary here and would cost the only ergonomic win
+wrapping exists for.
 
 The decision lives in `listDialogKeyAction` (`source/utils/dialogKeys.bs`), not in
 `onKeyEvent`, because the first version put it there and got it wrong in a way no test could

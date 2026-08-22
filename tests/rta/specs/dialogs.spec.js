@@ -219,10 +219,9 @@ it('osd video-source button opens the list dialog; back cancels it', async () =>
     timeout: 5000,
   });
 
-  // The gestures are TrackDropdown's (see the file header): DOWN past the last
-  // row wraps to the top and never exits, UP on the first row dismisses. This is
-  // the only place that combination is exercised against a real LabelList, whose
-  // own wrap mode would swallow both keys if it were ever re-enabled.
+  // The list wraps in BOTH directions and Back is the only exit. This is the one
+  // place that runs against a real LabelList, whose own wrap mode would swallow
+  // both keys if it were ever re-enabled — which is the bug this replaced.
   const rows = await getVal('#optionList.content.getChildCount()');
   const startIndex = await getVal('#optionList.itemFocused');
 
@@ -241,10 +240,18 @@ it('osd video-source button opens the list dialog; back cancels it', async () =>
   if ((await getVal('#jrDialog.id')) !== 'jrDialog')
     throw new Error('DOWN past the last row dismissed the dialog instead of wrapping');
 
-  // UP on the first row is the dPad exit.
+  // ...and UP on the first row wraps the other way, which is the reason wrapping
+  // is worth having: one press reaches the end of a long list.
   await press(ecp.Key.Up);
+  await waitFor('#optionList.itemFocused', (n) => n === rows - 1, {
+    label: 'UP on the first row wrapped to the bottom',
+    timeout: 8000,
+  });
+
+  // Back is the only exit, so it has to work from anywhere in the list.
+  await press(ecp.Key.Back);
   await waitFor('#jrDialog.id', (v) => v === undefined, {
-    label: 'UP on the first row dismissed the dialog',
+    label: 'Back dismissed the dialog',
     timeout: 10000,
   });
   await waitFocused((f) => f.node?.id === 'showVideoSourceMenu', {

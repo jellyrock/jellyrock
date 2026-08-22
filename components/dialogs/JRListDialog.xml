@@ -3,13 +3,14 @@
      (audio tracks, subtitles, video sources — anything past JRDialog's 3-button
      cap). Chrome comes from JRDialogPanel, so this component owns only the list.
 
-     There is no Cancel button, deliberately. The gestures match ItemDetails'
-     TrackDropdown — the app's other picker for the same job — so choosing a
-     track behaves the same way before and during playback:
+     There is no Cancel button, deliberately: the rows are the only focusable
+     thing in it, and Back is how a Roku dialog is dismissed. The list wraps in
+     both directions, which is what makes a thirty-track list cheap to navigate
+     with a remote:
 
        OK on a row     commits
        DOWN past last  wraps to the top
-       UP on the first dismisses
+       UP past first   wraps to the bottom
        BACK            dismisses
 
      The decision lives in listDialogKeyAction (source/utils/dialogKeys.bs) where
