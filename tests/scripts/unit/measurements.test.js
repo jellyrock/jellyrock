@@ -428,6 +428,44 @@ describe('the cell-load family', () => {
     expect(fields.wipesReload).toBe(103);
   });
 
+  // Built from the emit in `source/utils/cellLoad.bs` the same way `WORK` is, and asserted
+  // field-by-field for the same reason: this pattern is the seam between what the device
+  // prints and every figure the pop-in section publishes, and a regex is exactly the kind
+  // of thing that stays well-formed while it stops matching. The values are the 2026-08-22
+  // `cellSweepGrid` medians, so a reader can check them against the doc.
+  const POPIN =
+    'INFO file:///Users/dev/jellyrock/source/utils/cellLoad.bs:216 cell-load popin - component BaseGridView appearances 46 popIns 24 popInsCold 6 popInsReload 1 popInsFirst 17 loadMs 16416 loadMsCount 34 loadMsMax 877  ';
+
+  it('reads every field off the popin line', () => {
+    expect(matchLine(cells, POPIN).fields).toEqual({
+      component: 'BaseGridView',
+      appearances: 46,
+      popIns: 24,
+      popInsCold: 6,
+      popInsReload: 1,
+      popInsFirst: 17,
+      loadMs: 16416,
+      loadMsCount: 34,
+      loadMsMax: 877,
+    });
+  });
+
+  it('keeps the three pop-in buckets a PARTITION of popIns', () => {
+    // Emitted rather than derived precisely so this can be checked instead of assumed.
+    // If the buckets ever stop summing, one of them is being written on a path that does
+    // not own the pop-in, and every remedy the split steers toward is misaddressed.
+    const { fields } = matchLine(cells, POPIN);
+    expect(fields.popInsCold + fields.popInsReload + fields.popInsFirst).toBe(fields.popIns);
+  });
+
+  it('still assembles a record taken before the popin line existed', () => {
+    // `required: false` under test. Every cell-load record in the ledger before 2026-08-21
+    // carries `binds` and `work` only, and a required popin line would drop them all out of
+    // a comparison silently rather than failing.
+    expect(matchLine(cells, WORK).fields.loadsStarted).toBe(140);
+    expect(matchLine(cells, WORK).fields.appearances).toBeUndefined();
+  });
+
   it('publishes the in-flight residual the counter exists to expose', () => {
     // `loadsStarted - (loadsFailed + loadsSucceeded)` is the count still outstanding when
     // the session was emitted. It is the reason the counter was added: without it, those
@@ -628,6 +666,89 @@ describe('unitFor', () => {
       }
     }
     expect(measurementById('item-grid').workload).toContain('items');
+  });
+
+  it('gives a declared COUNT no unit at all, when the family is passed', () => {
+    // A count is not a duration, and `cell-load` is almost all counts: before `counts`
+    // existed, `unitFor('binds', cellLoad)` answered `'ms'`, so a bind count or a pop-in
+    // count headlined as milliseconds. Same wrong shape `--field items` had before
+    // workload took a family; different list, because these are outcomes rather than
+    // inputs.
+    for (const m of MEASUREMENTS) {
+      for (const field of m.counts ?? []) {
+        expect(unitFor(field, m), `${m.id}.${field}`).toBe('');
+      }
+    }
+    expect(measurementById('cell-load').counts).toContain('popIns');
+    expect(unitFor('popIns', measurementById('cell-load'))).toBe('');
+  });
+
+  it('classifies every NUMERIC field a family emits, so a new count cannot default to ms', () => {
+    // The complement of the check below, and the half that catches the defect ORIGINALLY
+    // fixed by `counts`. That one verifies every name in `counts` is emitted; this one
+    // verifies every emitted NUMBER is classified. Without it, adding a counter to the emit
+    // line and forgetting to declare it silently reintroduces `--field newCounter -> "42 ms"`
+    // — a count headlined as a duration, which is exactly what `counts` exists to stop and
+    // exactly what nothing would have caught.
+    //
+    // Decidable statically because the patterns say which is which: a numeric group is
+    // captured with `\d+` and a dimension with `\S+`. So this needs no per-family
+    // allowlist and cannot drift out of step with the registry.
+    //
+    // `counts` is consulted BEFORE the name heuristic, and the heuristic matches `Ms`/`Us`
+    // followed by a capital or end-of-name — not anchored at the end. Both details are
+    // load-bearing and were found by this test failing on its first run: `loadMsMax` IS a
+    // duration and an end-anchor rejected it, while `loadMsCount` is a COUNT whose name
+    // contains `Ms`, so only the counts-first order classifies it correctly. A name alone
+    // cannot separate those two, which is the same reason `counts` has to be declared.
+    for (const m of MEASUREMENTS) {
+      const numeric = m.lines
+        .flatMap((l) => [...l.pattern.source.matchAll(/\(\?<(\w+)>\\d\+\)/g)])
+        .map((g) => g[1]);
+      for (const field of new Set(numeric)) {
+        const classified =
+          m.workload.includes(field) ||
+          (m.counts ?? []).includes(field) ||
+          /(Ms|Us)([A-Z]|$)/.test(field);
+        expect(
+          classified,
+          `${m.id} emits numeric field "${field}" but classifies it nowhere — it is not in ` +
+            'workload, not in counts, and its name does not end Ms/Us, so unitFor() will ' +
+            "answer 'ms' for it. Add it to counts if it is a count.",
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('names only fields the family actually emits in counts', () => {
+    // Without this, a typo in `counts` is a SILENT no-op: the two tests around it iterate
+    // `counts` and assert properties of whatever names are listed, so `popInsColdd` passes
+    // both while `unitFor` quietly goes on answering 'ms' for the real field. Checked
+    // against the patterns' own named groups, which is the only place the emitted field
+    // names actually exist.
+    for (const m of MEASUREMENTS) {
+      if (!m.counts) continue;
+      const emitted = new Set(
+        m.lines.flatMap((l) => [...l.pattern.source.matchAll(/\(\?<(\w+)>/g)].map((g) => g[1])),
+      );
+      for (const field of m.counts) {
+        expect(emitted.has(field), `${m.id}.counts names "${field}", which no line emits`).toBe(
+          true,
+        );
+      }
+    }
+  });
+
+  it('keeps counts out of workload, because only workload defines same-work', () => {
+    // `workloadKey` builds a sample's same-work identity from its workload fields, and
+    // `measure:compare` warns when two samples disagree. An OUTCOME in that list would
+    // make every A/B report "the samples did not all do the same work" — the arms are
+    // supposed to differ on `popIns`, that is the experiment.
+    for (const m of MEASUREMENTS) {
+      for (const field of m.counts ?? []) {
+        expect(m.workload, `${m.id}.${field}`).not.toContain(field);
+      }
+    }
   });
 
   it('still calls a TIMING milliseconds when the family is passed', () => {

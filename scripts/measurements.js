@@ -173,6 +173,17 @@ export const MEASUREMENTS = Object.freeze([
     grounded: true,
     primary: 'totalMs',
     workload: Object.freeze(['rows']),
+    // Counts, not durations — `sizeMs` beside them is the duration. Kept out of `workload`
+    // because they are OUTCOMES of the run rather than what it was handed: `rows` is the
+    // same across arms by construction, while a batching change is measured precisely by
+    // `sizeCalls` moving. Putting them in workload would make `measure:compare` report that
+    // the arms did different work, which is the finding rather than a fault.
+    //
+    // Found 2026-08-22 by the "classify every numeric field" test, not by a reader:
+    // `unitFor('sizeCalls', family)` answered `'ms'`, so `measure:report --field sizeCalls`
+    // headlined a call count as milliseconds — the identical defect `counts` was added to
+    // fix for `cell-load`, sitting undetected in a second family the whole time.
+    counts: Object.freeze(['sizeCalls', 'sizeDrains']),
     lines: Object.freeze([
       Object.freeze({
         key: 'total',
@@ -381,6 +392,30 @@ export const MEASUREMENTS = Object.freeze([
     // rows for a RowList, items for a grid — so `binds / items` is the REBIND RATE, which
     // is the number this family exists to publish.
     workload: Object.freeze(['items']),
+    // Every other numeric field here is a COUNT, and a count is not milliseconds. Kept
+    // apart from `workload` on purpose: workload is an INPUT held constant across arms and
+    // feeds the same-work identity check, while these are the OUTCOMES an A/B is trying to
+    // move. See `unitFor`. `loadMs` / `loadMsMax` are absent because they really are
+    // durations; `instrumentUs` is absent because its name already answers the question.
+    counts: Object.freeze([
+      'binds',
+      'bindsFromContent',
+      'bindsFromSize',
+      'bindsRedundant',
+      'loadsStarted',
+      'loadsFailed',
+      'loadsSucceeded',
+      'reloads',
+      'unloads',
+      'wipesBind',
+      'wipesReload',
+      'appearances',
+      'popIns',
+      'popInsCold',
+      'popInsReload',
+      'popInsFirst',
+      'loadMsCount',
+    ]),
     // A session is per COMPONENT, and a chained navigation mounts more than one cell-
     // bearing screen per launch (Home is suspended, not destroyed, while ItemDetails
     // loads over it), so their sessions interleave on one console exactly the way two
@@ -424,6 +459,45 @@ export const MEASUREMENTS = Object.freeze([
         // never came back as a success.
         pattern:
           /cell-load work - component (?<component>\S+) loadsStarted (?<loadsStarted>\d+) loadsFailed (?<loadsFailed>\d+)(?: loadsSucceeded (?<loadsSucceeded>\d+))? reloads (?<reloads>\d+) unloads (?<unloads>\d+) wipesBind (?<wipesBind>\d+) wipesReload (?<wipesReload>\d+)(?: instrumentUs (?<instrumentUs>\d+))?/,
+      }),
+      Object.freeze({
+        // The RACE, where `binds` and `work` are the WORK. The buffer exists to load a
+        // cell's image before the cell is on screen; `popIns` is how often it did not.
+        //
+        // Read `popIns` against `appearances`, never on its own — a raw count moves with
+        // how far the sweep travelled, which is the same trap `binds` needs `items` for.
+        //
+        // A pop-in is scored only once the image ACTUALLY ARRIVES, so a permanently broken
+        // image lands in `loadsFailed` and not here. Without that, `ExtrasRowList` (117 of
+        // 140 loads fail against a real server) would report a total buffer failure caused
+        // entirely by missing artwork.
+        //
+        // `popInsCold` / `popInsReload` / `popInsFirst` partition `popIns` three ways, all
+        // emitted so none has to be derived by subtraction. Cold: no request in flight, so
+        // the user outran the buffer's DEPTH and more depth would help. Reload: a re-entry
+        // request was running and the network was slower — depth cannot fix it. First: the
+        // cell's FIRST render was still loading, so the data had only just arrived and no
+        // buffer could have won. **`popInsFirst` dominates any sweep that OPENS its
+        // screen** — measured 2026-08-21 on `cellSweepGrid`, where `popIns` read 18 of 28
+        // appearances with `popInsCold` 0. Reading that 18 as a buffer failure is the
+        // mistake this split exists to prevent.
+        //
+        // 🚨 `loadMs` is a SUM OVER CONCURRENT REQUESTS and is NOT a share of the wall
+        // clock — measured 16416 ms inside an ~1800 ms sweep, 9.1x, because the grid has
+        // ~34 posters in flight at once. Same hazard, and same wording, as `screen-load`'s
+        // `contentMs`. `loadMsMax` IS bounded by the sweep.
+        //
+        // `loadMsMax` is the one to act on; `loadMs / loadMsCount` is the mean. Divide by
+        // `loadMsCount` and NOT by `loadsSucceeded`: a "ready" with no matching issue is a
+        // success with no interval, so the two counts legitimately differ.
+        //
+        // Not `required`, for the reason `screen-load split` is not: every cell-load record
+        // taken before this line existed lacks it, and a required line would stop those
+        // samples assembling at all.
+        key: 'popin',
+        required: false,
+        pattern:
+          /cell-load popin - component (?<component>\S+) appearances (?<appearances>\d+) popIns (?<popIns>\d+) popInsCold (?<popInsCold>\d+) popInsReload (?<popInsReload>\d+) popInsFirst (?<popInsFirst>\d+) loadMs (?<loadMs>\d+) loadMsCount (?<loadMsCount>\d+) loadMsMax (?<loadMsMax>\d+)/,
       }),
     ]),
   }),
@@ -600,6 +674,17 @@ export function splitWorkload(measurement, fields = {}) {
  * Durations are keyed on the name's suffix rather than a per-field table, so a family
  * that adds `somethingUs` tomorrow inherits it without a second place to update.
  *
+ * An OUTCOME COUNT is not a duration either, and it is not workload: workload is what the
+ * run had to chew on and is expected to be IDENTICAL across arms (`workloadKey` builds a
+ * comparison identity out of it, and `measure:compare` warns when two samples disagree),
+ * while `popIns` and `binds` are results that are SUPPOSED to differ — putting them in
+ * `workload` would make every cell-load comparison report samples that "did not all do the
+ * same work". Hence a separate `counts` list: same unit answer, opposite role. Verified
+ * before it was added rather than supposed — `unitFor('binds', cellLoad)` returned `'ms'`,
+ * so `measure:report --field popIns` would have headlined a pop-in count as milliseconds,
+ * the same well-formed-but-wrong shape that `--field items` printed before workload took a
+ * family.
+ *
  * A WORKLOAD field is not a duration and has no unit at all, and no naming convention
  * can say which is which — `rows` is a count and `totalMs` is a duration, but so is
  * `items` a count and `taskMs` a duration, and only the family knows. That is the same
@@ -619,6 +704,7 @@ export function splitWorkload(measurement, fields = {}) {
  */
 export function unitFor(key, measurement) {
   if (measurement?.workload?.includes(key)) return '';
+  if (measurement?.counts?.includes(key)) return '';
   return /Us$/.test(key) ? 'µs' : 'ms';
 }
 

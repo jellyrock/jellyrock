@@ -690,11 +690,26 @@ export const CELL_QUIET_COUNTERS = Object.freeze([
   'LoadsFailed',
   'LoadsSucceeded',
   'Unloads',
+  // Qualifies under the rule above rather than by being new — a returning cell moves this
+  // and nothing else. Reasoning and the emit sites it was checked against: `waitCellsQuiet`.
+  'Appearances',
 ]);
 
-/** The watched counters as one `name=value` run, for a warning or a report line. */
+/**
+ * Counters the report LINE carries, which is a superset of the ones a settle watches.
+ *
+ * `PopIns` is here and NOT in `CELL_QUIET_COUNTERS`, by the same rule: it only ever
+ * increments inside `loadSucceeded`, so it cannot move while `LoadsSucceeded` sits still
+ * and adding it to the settle would buy nothing. It is on the line because it is the
+ * number a reader most needs to SEE — the run that shipped the blind spot this counter
+ * exists to close had `appearances` equal to `binds`, and nobody looked, because neither
+ * value was printed anywhere.
+ */
+export const CELL_REPORT_COUNTERS = Object.freeze([...CELL_QUIET_COUNTERS, 'PopIns']);
+
+/** The reported counters as one `name=value` run, for a warning or a report line. */
 export const formatCellCounts = (counts) =>
-  CELL_QUIET_COUNTERS.map((c) => `${c[0].toLowerCase()}${c.slice(1)}=${counts?.[c]}`).join(' ');
+  CELL_REPORT_COUNTERS.map((c) => `${c[0].toLowerCase()}${c.slice(1)}=${counts?.[c]}`).join(' ');
 
 /**
  * Wait until a texture-managed list's cell-load counters stop moving.
@@ -717,12 +732,12 @@ export const formatCellCounts = (counts) =>
  * one of the three reasons they live there. Gating the measurement's end on the measured
  * quantity is the closest thing available to an exact boundary.
  *
- * ## Which counters it watches, and why exactly these four
+ * ## Which counters it watches, and why exactly these six
  *
  * `CELL_QUIET_COUNTERS` is minimal AND complete, and both halves are checked against the
  * emit sites in `source/utils/cellLoad.bs` rather than chosen by feel. A counter needs
  * watching only if it can move while `binds` and `loadsStarted` both sit still. Exactly
- * three can:
+ * four can:
  *
  *   - **`cellLoadLoadsFailed`** — `JRRowItem.onPosterLoadStatusChanged` / `GridItem`'s
  *     equivalent, an ASYNCHRONOUS completion callback. It is the whole reason this function
@@ -736,7 +751,13 @@ export const formatCellCounts = (counts) =>
  *     pairs a start with its success, and `loadsStarted - (loadsFailed + loadsSucceeded)`
  *     becomes a residual the caller can assert is zero rather than a gap it cannot see.
  *   - **`cellLoadUnloads`** — `unloadTexture` bumps nothing else, so an off-screen cell
- *     releasing its texture is invisible to the other three.
+ *     releasing its texture is invisible to the others.
+ *   - **`cellLoadAppearances`** — a cell that scrolls back into view with its texture still
+ *     loaded bumps this and NOTHING else: it was never rebound, the buffer held the image
+ *     so no load ran, and nothing unloaded. On `cellSweepGrid` that is 12 of the 18
+ *     re-entries, so a settle blind to it could declare quiet while cells were still
+ *     re-appearing and publish an `appearances` short by most of what the pop-in line
+ *     exists to count.
  *
  * Every remaining counter is structurally PINNED to one of those two and needs no watch of
  * its own: `bindsFromContent` / `bindsFromSize` / `bindsRedundant` increment inside
@@ -796,7 +817,9 @@ export async function waitCellsQuiet(
     // screen; a poll loop is explicitly carved out of it. It is also safe here for a reason
     // specific to these fields: the counters only ever increase, so a sample that straddles
     // an increment can delay quiescence but can never declare it early.
-    for (const c of CELL_QUIET_COUNTERS) out[c] = await read(`${listId}.content.cellLoad${c}`);
+    // Reads the REPORT set; the quiet comparison below uses only `CELL_QUIET_COUNTERS`.
+    // A report-only counter must not be able to hold a settle open.
+    for (const c of CELL_REPORT_COUNTERS) out[c] = await read(`${listId}.content.cellLoad${c}`);
     return out;
   };
 

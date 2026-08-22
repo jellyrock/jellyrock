@@ -469,7 +469,7 @@ that is true of three different runs:
 
 1. the suite ran and passed;
 2. the suite ran and went red somewhere the diagnostics do not cover — a plain
-   `expect()` (there are 11 in `tests/rta/specs/`) or an error raised by Vitest itself;
+   `expect()` (the specs use them directly) or an error raised by Vitest itself;
 3. the suite **never ran at all** — the entry point died first.
 
 (3) is not hypothetical. `ROKU_IP=192.168.1.200 npm run test:rta` on 2026-08-12 threw

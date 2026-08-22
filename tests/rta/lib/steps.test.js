@@ -46,6 +46,7 @@ const {
   waitHome,
   scrollFocus,
   waitCellsQuiet,
+  formatCellCounts,
   axisEnd,
   sweepBudget,
 } = await import('./steps.js');
@@ -692,6 +693,55 @@ describe('waitCellsQuiet', () => {
 
     expect(res.quiet).toBe(true);
     expect(res.counts.Unloads).toBe(3);
+  });
+
+  it('watches appearances too — a cell returning with its texture moves nothing else', async () => {
+    // The third field that can move while binds and loadsStarted sit still, and the one the
+    // settle was blind to until 2026-08-22. A cell that scrolls back into view with its
+    // texture ALREADY loaded bumps only this: no bind (it was never rebound), no load (the
+    // buffer held it), no unload. Measured on cellSweepGrid, that is 12 of 18 re-entries —
+    // so a settle gated on the old five would declare quiet mid-sweep and publish an
+    // `appearances` short by most of the re-entries the pop-in line exists to count.
+    const appearances = [28, 34, 41, 46, 46, 46, 46, 46, 46];
+    let i = 0;
+    getValue.mockImplementation(async ({ keyPath }) => {
+      if (keyPath.endsWith('cellLoadAppearances'))
+        return { found: true, value: appearances[Math.min(i++, appearances.length - 1)] };
+      return { found: true, value: keyPath.endsWith('cellLoadBinds') ? 28 : 7 };
+    });
+
+    const res = await waitCellsQuiet('#itemGrid', { quietMs: 20, interval: 5, timeout: 3000 });
+
+    expect(res.quiet).toBe(true);
+    expect(res.counts.Appearances).toBe(46); // settled, not the 28 an early gate would have
+  });
+
+  it('does NOT let popIns hold a settle open — it cannot move on its own', async () => {
+    // The negative half of the same rule, and it is what keeps the watched set MINIMAL.
+    // popIns only ever increments inside loadSucceeded, so it cannot move while
+    // loadsSucceeded sits still; watching it would add a read per poll and buy nothing.
+    // It is still reported, because seeing it is the whole point.
+    let popIns = 0;
+    getValue.mockImplementation(async ({ keyPath }) => {
+      // Rises forever — if popIns were in the quiet set this could never settle.
+      if (keyPath.endsWith('cellLoadPopIns')) return { found: true, value: popIns++ };
+      return { found: true, value: keyPath.endsWith('cellLoadBinds') ? 28 : 7 };
+    });
+
+    const res = await waitCellsQuiet('#itemGrid', { quietMs: 20, interval: 5, timeout: 3000 });
+
+    expect(res.quiet).toBe(true);
+    expect(typeof res.counts.PopIns).toBe('number'); // read and reported, just not watched
+  });
+
+  it('puts both new counters on the report line', async () => {
+    // The line is the deliverable here: the run that shipped the re-entry blind spot had
+    // appearances equal to binds and nobody caught it, because neither number was printed.
+    expect(formatCellCounts({ Binds: 28, Appearances: 46, PopIns: 24 })).toContain(
+      'appearances=46',
+    );
+    expect(formatCellCounts({ Binds: 28, Appearances: 46, PopIns: 24 })).toContain('popIns=24');
+    expect(formatCellCounts({ Binds: 28, Appearances: 46, PopIns: 24 })).toContain('binds=28');
   });
 
   it('reports a list that never settles instead of throwing', async () => {

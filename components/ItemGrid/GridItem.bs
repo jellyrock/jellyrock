@@ -160,6 +160,8 @@ sub renderItem()
   else
     renderMediaItem(itemData, itemType)
   end if
+
+  noteAppearance()
 end sub
 
 ' Sizes and positions every child to the current cell dimensions. The focus slot is
@@ -537,15 +539,40 @@ end sub
 sub reloadGridTexture()
   if shouldReloadTexture(m.isTextureUnloaded, m.cachedPosterUri)
     cellLoad.reload(m.contentRoot)
-    cellLoad.loadStarted(m.contentRoot)
+    ' Re-entry request — see JRRowItem.reloadTexture for why the origin is tracked.
+    cellLoad.loadStarted(m.contentRoot, true)
     m.isTextureUnloaded = false
     m.itemPoster.loadDisplayMode = m.cachedLoadDisplayMode
     m.itemPoster.uri = m.cachedPosterUri
   end if
 end sub
 
+' Mirror of JRRowItem.noteAppearance — same pop-in question, same two call sites, same
+' reason for using renderTracking rather than getGridRowPosition(). See that function for
+' the full rationale; the grid keeps its own copy because the two cell components are
+' parallel by design and share no base.
+sub noteAppearance()
+  ' Off screen: end the episode so a scroll-back counts as a new appearance. Without this
+  ' the once-per-bind gate swallows every re-entry, which is the race the buffer exists
+  ' to win — see cellLoad.departed().
+  '
+  ' 🚨 Gated on "active" for the reason `evaluateGridTextureState` refuses renderTracking
+  ' in `init` and `hidden`: a "none" there is a layout recalculation or `visible=false`
+  ' propagating, not a departure, and closing the episode makes the return score a
+  ' phantom appearance. THIS grid is where it was measured — against the demo server, 18
+  ' appearances against 10 binds on a suspend/resume with no scrolling. Full rationale, and
+  ' why the BOUND rather than the counts is the durable part, in JRRowItem.noteAppearance.
+  if m.top.renderTracking = "none"
+    if getGridTextureManagerState() = "active" then cellLoad.departed(m.contentRoot)
+    return
+  end if
+  if m.cachedPosterUri = "" then return
+  cellLoad.appeared(m.contentRoot, m.itemPoster.loadStatus = "ready", m.isTextureUnloaded)
+end sub
+
 ' Fires when the cell scrolls in/out of the visible area.
 sub onRenderTrackingChanged()
+  noteAppearance()
   evaluateGridTextureState()
 end sub
 
