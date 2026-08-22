@@ -144,14 +144,33 @@ namespace tests
 
       m.assertTrue(row.findNode("checkIcon").visible)
       m.assertTrue(row.findNode("selectedBackground").visible)
-      ' Hue, not just luminance — the surface is only ~10 levels in the default
-      ' palette, which a dim panel or low vision loses entirely.
-      '
-      ' Compared through a reference node, not against the constant directly: a
-      ' node's `color` field normalises "0x3B82F6" to the RGBA integer 0x3B82F6FF,
-      ' so asserting against the theme string compares an integer to a string and
-      ' fails on a correct implementation.
-      m.assertEqual(row.findNode("rowLabel").color, m.themeColor(m.global.constants.colorSecondary))
+    end function
+
+    ' The label is NOT one of the signals, and this is the assertion that keeps
+    ' it that way. Recolouring it to match the check was tried and read as too
+    ' much contrast on device: with the surface already there, three treatments
+    ' on one row is louder than the state warrants.
+    '
+    ' Compared through a reference node, not against the constant directly: a
+    ' node's `color` field normalises "0x3B82F6" to the RGBA integer 0x3B82F6FF,
+    ' so asserting against the theme string compares an integer to a string and
+    ' fails on a correct implementation.
+    @it("a row's label colour does NOT change with selection")
+    function _()
+      expected = m.themeColor(m.global.constants.colorTextPrimary)
+
+      for each selected in [true, false]
+        row = CreateObject("roSGNode", "JRListDialogRow")
+        row.width = 800
+        row.height = 60
+
+        content = CreateObject("roSGNode", "ContentNode")
+        content.title = "English 5.1"
+        content.addFields({ isSelected: selected })
+        row.itemContent = content
+
+        m.assertEqual(row.findNode("rowLabel").color, expected)
+      end for
     end function
 
     @it("a row shows neither marker when it is not the current option")

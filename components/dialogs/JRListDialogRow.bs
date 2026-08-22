@@ -43,25 +43,22 @@ sub onItemContentChanged()
   ' isSelected is added to the ContentNode by JRListDialog. Absent (a row built
   ' by anything else) reads as not selected rather than faulting.
   '
-  ' Three signals for one state, each covering the others' blind spot: the check
-  ' is a SHAPE (survives any palette and colour-blindness), the surface gives the
-  ' row weight, and the label's hue survives a dim or badly calibrated panel where
-  ' a ten-level luminance lift does not.
+  ' Two signals for one state, covering each other's blind spot: the check is a
+  ' SHAPE (survives any palette and colour-blindness), and the surface gives the
+  ' row weight in a long single-colour list.
   isSelected = isValid(content.isSelected) and content.isSelected
   m.checkIcon.visible = isSelected
   m.selectedBackground.visible = isSelected
 
-  ' The label carries the state too, in the SAME colour as the check. The surface
-  ' alone is a luminance-only difference of about ten levels in the default
-  ' palette — below what many TVs resolve at viewing distance, and the first
-  ' thing to vanish for a low-vision viewer. Hue survives all of that.
-  ' JRDropdownItem marks its selected label the same way.
-  constants = m.global.constants
-  if isSelected
-    m.rowLabel.color = constants.colorSecondary
-  else
-    m.rowLabel.color = constants.colorTextPrimary
-  end if
+  ' The LABEL stays colorTextPrimary either way. Recolouring it to match the
+  ' check was tried and read as too much contrast on device once the surface
+  ' landed: three simultaneous treatments on one row is louder than the state
+  ' warrants, and the row's job is to be readable first.
+  '
+  ' The accessibility argument that motivated the hue is carried by the CHECK,
+  ' which is a SHAPE — it survives colour-blindness and a dim or badly
+  ' calibrated panel, which is more than a hue swap ever did. The surface adds
+  ' weight for everyone else.
 
   layoutRow()
 end sub
