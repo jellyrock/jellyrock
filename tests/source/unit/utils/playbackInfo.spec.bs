@@ -69,10 +69,33 @@ namespace tests
       m.assertEqual(formatPlaybackInfoText({ sections: [] }), "")
     end function
 
-    @it("survives a section with no rows array")
+    ' Was "survives a section with no rows array", asserting that a bare heading
+    ' rendered. It no longer does — dropping a heading with nothing under it is
+    ' now this function's job rather than each producer's (GetPlaybackInfoTask
+    ' guarded its transcoding section and not its stream section, so the rule
+    ' held in one branch of one producer). The crash-safety half of the original
+    ' test is kept, and is the first assertion below.
+    @it("drops a section with no rows array instead of leaving a bare heading")
     function _()
       text = formatPlaybackInfoText({ sections: [{ heading: "A" }, { heading: "B", rows: [{ label: "y", value: "2" }] }] })
-      m.assertEqual(text, "A" + Chr(10) + Chr(10) + "B" + Chr(10) + "• y: 2")
+      m.assertEqual(text, "B" + Chr(10) + "• y: 2")
+    end function
+
+    ' The same rule, but where the rows EXIST and all render to nothing — the
+    ' shape a producer actually reaches when the server answers with a stream it
+    ' knows no properties of.
+    @it("drops a section whose rows all render empty")
+    function _()
+      text = formatPlaybackInfoText({
+        sections: [{ heading: "Stream Information", rows: [{ label: "", value: "" }] }, { heading: "B", rows: [{ label: "y", value: "2" }] }]
+      })
+
+      m.assertEqual(text, "B" + Chr(10) + "• y: 2")
+    end function
+
+    @it("still returns an empty string when every section is empty")
+    function _()
+      m.assertEqual(formatPlaybackInfoText({ sections: [{ heading: "A" }, { heading: "B", rows: [] }] }), "")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

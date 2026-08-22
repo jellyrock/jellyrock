@@ -82,9 +82,10 @@ function GetTranscodingStats(deviceSession)
       transcodingSection.rows.push({ label: translate(translationKeys.LabelAudioChannels), value: toString(audioChannels).trim() })
     end if
 
-    ' A heading with nothing under it is noise — only report the section if the
-    ' server actually told us something about the transcode.
-    if transcodingSection.rows.count() > 0 then sessionStats.sections.push(transcodingSection)
+    ' Pushed unconditionally: whether an empty section is worth rendering is a
+    ' presentation question, and formatPlaybackInfoText drops heading-only
+    ' sections for every producer rather than each producer guarding itself.
+    sessionStats.sections.push(transcodingSection)
   else
     sessionStats.sections.push({
       heading: translate(translationKeys.LabelDirectPlaying),

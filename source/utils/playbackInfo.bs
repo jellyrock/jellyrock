@@ -34,22 +34,30 @@ function formatPlaybackInfoText(playbackInfo as object) as string
   for each section in playbackInfo.sections
     if not isValid(section) then continue for
 
-    ' Blank line BETWEEN sections only — never a leading one.
-    if lines.count() > 0 then lines.push("")
-    if isValidAndNotEmpty(section.heading) then lines.push(section.heading)
-
+    ' Render the rows FIRST, so a section that turns out to contribute nothing
+    ' can be dropped whole. A heading with nothing under it is noise, and that
+    ' is a presentation rule, so it belongs here rather than in the task: it
+    ' then holds for every section any producer sends, not just the two that
+    ' exist today.
+    sectionLines = []
     if isValid(section.rows)
       for each row in section.rows
         if isValid(row)
           value = toString(row.value)
           if isValidAndNotEmpty(row.label)
-            lines.push("• " + row.label + ": " + value)
+            sectionLines.push("• " + row.label + ": " + value)
           else if value <> ""
-            lines.push(value)
+            sectionLines.push(value)
           end if
         end if
       end for
     end if
+    if sectionLines.count() = 0 then continue for
+
+    ' Blank line BETWEEN sections only — never a leading one.
+    if lines.count() > 0 then lines.push("")
+    if isValidAndNotEmpty(section.heading) then lines.push(section.heading)
+    lines.append(sectionLines)
   end for
 
   return lines.join(Chr(10))
