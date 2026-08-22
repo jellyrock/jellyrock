@@ -189,6 +189,14 @@ sub resolveDialog(index as integer)
   closeDialog()
 end sub
 
+' Cancel this dialog from OUTSIDE — see cancelOpenDialog() in source/utils/dialogs.bs.
+' Routed through resolveDialog so the once-only guard and the standard cancelled
+' result both apply: a third party clearing the screen must be indistinguishable
+' from the user pressing Back, or the owner waiting on the result is stranded.
+sub cancelDialog()
+  resolveDialog(-1)
+end sub
+
 ' Same close mechanics as JRDialog / OverviewDialog: removeChild + returnFocusTo.
 sub closeDialog()
   returnFocusTo = m.top.returnFocusTo

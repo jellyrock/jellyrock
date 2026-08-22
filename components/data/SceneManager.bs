@@ -1,8 +1,6 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
-import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/misc.bs"
-import "pkg:/source/utils/translate.bs"
 
 sub init()
   m.log = new log.Logger("SceneManager")
@@ -10,9 +8,12 @@ sub init()
   m.overhang = m.scene.findNode("overhang")
 end sub
 
-' SceneManager is purely a shared SERVICE node — dialogs, toast/spinner, backdrop, theme, and
-' the overhang user/clock passthroughs below. The router host (JRScene) owns navigation and its
-' own overhang controller; there is no scene stack (pushScene / popScene / getActiveScene etc.).
+' SceneManager is purely a shared SERVICE node — backdrop, theme, the overhang user/clock
+' passthroughs below, and the one dialog QUERY (isDialogOpen) that needs to answer for both
+' presentation channels at once. It no longer SHOWS dialogs: every dialog in the app goes
+' through source/utils/dialogs.bs and answers on its own node. The router host (JRScene) owns
+' navigation and its own overhang controller; there is no scene stack (pushScene / popScene /
+' getActiveScene etc.).
 
 ' Signal that home screen should be reloaded (used after theme color changes)
 ' Main.bs observes reloadHomeRequested field and handles the actual reload
@@ -44,79 +45,6 @@ sub setBackgroundImage(uri as string, isAnimated = true as boolean, forceBackdro
   else
     m.log.error("SceneManager.setBackgroundImage: m.scene is invalid!")
   end if
-end sub
-
-' Display dialog to user with an OK button
-sub userMessage(title as string, message as string)
-  dialog = createObject("roSGNode", "StandardMessageDialog")
-  dialog.title = title
-  ' StandardMessageDialog.message is an array-of-strings field; assigning a
-  ' bare string fails silently and renders an empty body.
-  dialog.message = [message]
-  dialog.buttons = [translate(translationKeys.ButtonOk)]
-  dialog.observeField("buttonSelected", "dismissDialog")
-  m.scene.dialog = dialog
-end sub
-
-' Display dialog to user with an OK button
-sub showConfirmationDialog(title, message, buttons)
-  constants = m.global.constants
-  m.top.isDataReturned = false
-  m.top.returnData = invalid
-  m.userselection = false
-
-  dialog = createObject("roSGNode", "StandardMessageDialog")
-  dlgPalette = createObject("roSGNode", "RSGPalette")
-  dlgPalette.colors = {
-    DialogBackgroundColor: constants.colorBackgroundPrimary,
-    DialogFocusColor: constants.colorPrimary,
-    DialogFocusItemColor: constants.colorTextPrimary,
-    DialogSecondaryTextColor: constants.colorTextSecondary,
-    DialogSecondaryItemColor: constants.colorSecondary,
-    DialogTextColor: constants.colorTextPrimary
-  }
-  dialog.palette = dlgPalette
-  dialog.observeField("buttonSelected", "optionSelected")
-  dialog.observeField("wasClosed", "optionClosed")
-  dialog.title = title
-  if message = invalid
-    dialog.message = invalid
-  else if type(message) = "roArray"
-    dialog.message = message
-  else
-    dialog.message = [message]
-  end if
-  dialog.buttons = buttons
-
-  m.scene.dialog = dialog
-end sub
-
-' Return button the user selected
-sub optionClosed()
-  if m.userselection then return
-
-  m.top.returnData = {
-    indexSelected: -1,
-    buttonSelected: ""
-  }
-  m.top.isDataReturned = true
-end sub
-
-' Return button the user selected
-sub optionSelected()
-  m.userselection = true
-  m.top.returnData = {
-    indexSelected: m.scene.dialog.buttonSelected,
-    buttonSelected: m.scene.dialog.buttons[m.scene.dialog.buttonSelected]
-  }
-  m.top.isDataReturned = true
-
-  dismissDialog()
-end sub
-
-' Close currently displayed dialog
-sub dismissDialog()
-  m.scene.dialog.close = true
 end sub
 
 ' Is ANY dialog currently on screen? Callers use this to hold off on something

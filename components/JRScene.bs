@@ -1,6 +1,7 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/backdrop.bs"
+import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 ' JRScene is a Scene (not a sgrouter_View), so it does NOT inherit the router scripts from
@@ -729,13 +730,31 @@ sub onActiveRoutedViewChanged()
   m.previousRoutedView = newView
 end sub
 
-' Confirm app exit. Reuses SceneManager's confirmation dialog + the existing
-' isPendingExitConfirmation contract that main.bs's isDataReturned handler reads
-' to set m.scene.exit on confirm — unchanged from the old popScene stack<=1 branch.
+' Confirm app exit.
+'
+' Handled HERE rather than on the main thread, even though exiting is main.bs's
+' job. JRScene is a component with its own script scope, so it can use the
+' standard scoped-observer path (`onResult`) like every other component dialog;
+' the confirm then travels to main.bs the way it already does, through the `exit`
+' field it observes on this scene. Routing the dialog itself through main.bs's
+' message port would cross the thread boundary for every field write and gain
+' nothing.
 sub showExitConfirmation()
-  sceneManager = m.global.sceneManager
-  sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.LabelExitJellyrock), [translate(translationKeys.MessageAreYouSureYouWantTo)], [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonExit)])
-  sceneManager.isPendingExitConfirmation = true
+  ' A second press while the prompt is up would stack a second overlay. It should
+  ' not be reachable — the dialog consumes every key once it has focus — but the
+  ' guard is a line and the failure mode is two dialogs sharing one node id.
+  if isValid(m.exitDialog) then return
+
+  m.exitDialog = showConfirmDialog(translate(translationKeys.LabelExitJellyrock), translate(translationKeys.MessageAreYouSureYouWantTo), "onExitConfirmResult", translate(translationKeys.ButtonExit), translate(translationKeys.ButtonCancel))
+end sub
+
+' Exit prompt answered. `exit` is observed by main.bs on its message port; setting
+' it returns from Main() and Roku OS tears the channel down.
+sub onExitConfirmResult()
+  result = m.exitDialog.result
+  m.exitDialog = invalid
+
+  if result.confirmed then m.top.exit = true
 end sub
 
 ' ---------------------------------------------------------------------------

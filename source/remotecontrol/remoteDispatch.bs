@@ -63,16 +63,27 @@ namespace remoteDispatch
       end if
       displayToast(line, "info")
     else
-      ' Persistent -> a dialog the user must dismiss. JR supplies a provenance TITLE (LabelCastMessage)
-      ' so the message reads as an incoming cast message, not a JR system prompt — otherwise a bare
-      ' "<header>/<text>" has no context. The sender's Header + Text are the body lines. An unflagged
-      ' dialog is a no-op in main.bs's isDataReturned handler, so the sole OK button just closes it.
-      lines = []
-      if isValidAndNotEmpty(header) then lines.push(header)
-      if isValidAndNotEmpty(text) then lines.push(text)
-      m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.LabelCastMessage), lines, [translate(translationKeys.ButtonOk)])
+      ' Persistent -> a dialog the user must dismiss, with an OK button and no result to
+      ' observe. JR owns the TITLE (LabelCastMessage) so the dialog reads as something that
+      ' arrived from elsewhere; putting the sender's Header there instead would make arbitrary
+      ' LAN-supplied text indistinguishable from an app-native prompt. The Header keeps its
+      ' title ROLE as the dialog's bold subheading — Jellyfin's contract is Header = title,
+      ' Text = body (see remoteCommand.parseGeneralCommand).
+      parts = castMessageParts(header, text)
+      showAlertDialog(translate(translationKeys.LabelCastMessage), parts.body, "", parts.subheading)
     end if
   end sub
+
+  ' Split a DisplayMessage's { Header, Text } across the dialog's subheading + body slots.
+  ' Pure, so the mapping is unit-testable — the caller only renders it.
+  '
+  ' A Header with no Text has nothing to lead, so it becomes the body rather than a bold line
+  ' floating alone above an empty message. Either field may be absent; dispatchMessage has
+  ' already returned when BOTH are.
+  function castMessageParts(header as string, text as string) as object
+    if not isValidAndNotEmpty(text) then return { subheading: "", body: header }
+    return { subheading: header, body: text }
+  end function
 
   ' play -> the deep-link play seam. Casts a SINGLE item (itemIds[startIndex]); the socket is already
   ' bound to the active server's session, so no serverId is minted (an empty guid resolves to the active

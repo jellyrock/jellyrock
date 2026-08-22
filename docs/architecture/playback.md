@@ -154,9 +154,15 @@ option — a discriminator that existed only because the return channel was glob
 Only one of these can be open at a time (the OSD is unreachable behind a modal), so they
 share one node slot (`m.playbackDialog`). That slot is what teardown abandons: these
 overlays are appended to the **scene**, so `onDestroy` *and* `onPlayerStateChange` call
-`abandonDialog()` on it. `SceneManager.isDialogOpen()` *can* see them (it folds in
-`isOverlayDialogOpen`), but `dismissDialog` only closes Roku's modal channel, so
-abandoning ours explicitly is still required.
+`abandonDialog()` on it.
+
+`onPlayerStateChange` then calls `cancelOpenDialog()` as well, and the two are not
+redundant. A main-thread flow can open a dialog *over* the player — a cast notice, the
+deep-link server-switch prompt — and it holds state until that dialog answers. Ours is
+**abandoned** (the scope that would receive the result is being torn down); anything else
+is **canceled** (its owner is alive and has to be told, exactly as if the user had pressed
+`Back`). Leaving a foreign dialog up is not an option either: playback teardown navigates,
+the incoming screen takes focus, and the dialog is left on screen but deaf.
 
 **Playback info** (`selectPlaybackInfoPressed`) takes the same route to a different
 member of the family: `GetPlaybackInfoTask` reports what the server is doing with the

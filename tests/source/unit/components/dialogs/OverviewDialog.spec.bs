@@ -86,5 +86,24 @@ namespace tests
       m.assertInvalid(m.dialog.findNode("dialogBackground"))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("cancelDialog — third-party dismissal")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' This dialog is read-only and has no `result` field, so cancelling it is
+    ' exactly closing it. It still needs the function: cancelOpenDialog() reaches
+    ' whatever overlay is open by the shared id and cannot know which kind it is.
+    @it("closes, having no result to deliver")
+    function _()
+      scene = m.top.getScene()
+      m.dialog.title = "Overview"
+      m.dialog.overview = "A description."
+      scene.appendChild(m.dialog)
+
+      m.dialog.callFunc("cancelDialog")
+
+      m.assertInvalid(m.dialog.getParent())
+    end function
+
   end class
 end namespace

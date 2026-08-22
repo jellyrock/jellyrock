@@ -13,6 +13,11 @@
          other dialog. See JRDialogPanel.xml for the ordering contract. -->
     <JRDialogPanel id="chrome" />
 
+    <!-- Optional bold lead line above the body, for a message that arrives in
+         two parts (a sender-supplied heading + its text). Absent unless the
+         `subheading` field is set, and then it takes no space at all. -->
+    <LabelPrimaryMedium id="subheadingText" horizAlign="center" wrap="true" isBold="true" />
+
     <!-- Message body -->
     <LabelPrimaryMedium id="messageText" horizAlign="center" wrap="true" />
 
@@ -29,6 +34,10 @@
   <interface>
     <field id="title" type="string" onChange="onTitleChanged" />
     <field id="message" type="string" onChange="onMessageChanged" />
+    <!-- Optional bold lead line rendered ABOVE the message. It is a lead-in to
+         the body, not a second title: it sits inside the body's space, below the
+         accent rule. Empty (the default) removes the slot entirely. -->
+    <field id="subheading" type="string" onChange="onSubheadingChanged" />
     <!-- Array of button label strings, left to right. Design cap is 3 — the helpers
          route larger sets to JRListDialog; this component logs a warning beyond 3. -->
     <field id="buttons" type="array" onChange="onButtonsChanged" />
@@ -42,5 +51,9 @@
     <field id="result" type="assocarray" alwaysNotify="true" />
     <!-- Node to restore remote focus to on close. Set by the dialogs.bs helper. -->
     <field id="returnFocusTo" type="node" />
+    <!-- Cancel this dialog from OUTSIDE (source/utils/dialogs.bs cancelOpenDialog).
+         A third party clearing the screen must look exactly like the user
+         pressing Back, so this routes through the same resolve path. -->
+    <function name="cancelDialog" />
   </interface>
 </component>

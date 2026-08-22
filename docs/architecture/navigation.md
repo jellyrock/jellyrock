@@ -220,7 +220,7 @@ if key = "back"
   return true
 ```
 
-`showExitConfirmation()` (`JRScene.bs:451`) reuses `SceneManager`'s `showConfirmationDialog` and sets `sceneManager.isPendingExitConfirmation = true`. `main.bs`'s `isDataReturned` handler reads that flag and sets `m.scene.exit = true` on confirm — unchanged from the old stack≤1 branch.
+`showExitConfirmation()` shows a standard `showConfirmDialog` and owns the whole exchange itself. `JRScene` is a component with its own script scope, so it reads the answer through a scoped observer (`onExitConfirmResult`) and sets `m.top.exit = true` on confirm; `main.bs` sees only the `exit` field it already observes. Routing the dialog through `main.bs`'s message port instead would cross the thread boundary for every field write and buy nothing.
 
 To distinguish the two reasons a back bubbles up — at history root (confirm exit) vs. a navigation still in flight (the settling nav owns the back) — the arbiter calls `isRouterNavigating()`, which reads the router's public `routerState.type` field **directly**. A non-terminal type means a nav is in flight (swallow the back); a terminal type (`NavigationEnd`/`NavigationError`/`NavigationCancel`), or no router yet, means idle (confirm exit). The field is **read**, never observed: a `routerState` observer *coalesces* rapid writes and reliably drops the terminal `NavigationEnd` (proven on device — a mirrored `navInProgress` flag wedged true and ate back→exit), but a field *read* never coalesces, so the field always holds the true latest state.
 
@@ -276,7 +276,7 @@ end sub
 
 `components/data/SceneManager.bs` no longer manages a navigation stack. The stack methods (`pushScene` / `popScene` / `getActiveScene` / `clearScenes` / `clearPreviousScene` / `deleteSceneAtIndex` / `settings`) and `SceneManager`'s own overhang-sync helpers were **deleted** in #550. It survives as a shared **service node** at `m.global.sceneManager`:
 
-- **Dialogs** — `userMessage`, `showConfirmationDialog`, `dismissDialog`, `isDialogOpen`, plus the selection-return contract (`returnData` / `isDataReturned`, `optionSelected` / `optionClosed`). **Do not add new call sites here.** New dialogs go through `source/utils/dialogs.bs` (see below); the remaining `SceneManager` consumers are tracked for migration by [`dialog-returndata-shared-global`](tech-debt.md#dialog-returndata-shared-global). (`standardDialog` / `radioDialog` and their `StandardDialog` / `RadioDialog` components are gone — `PlayerHostView`'s pickers, their only consumer, moved to `showListDialog` / `showInfoDialog`.) Note `isDialogOpen` answers for BOTH channels — Roku's modal channel (`m.scene.dialog`) and the scene-appended overlays (via `isOverlayDialogOpen`). `dismissDialog`, however, only closes the modal one, so a screen holding an overlay still abandons it itself.
+- **The one dialog QUERY** — `isDialogOpen`. `SceneManager` no longer *shows* dialogs at all: `userMessage`, `showConfirmationDialog`, `dismissDialog`, `standardDialog`, `radioDialog`, the shared `returnData` / `isDataReturned` fields and the `isPending*` flags are all **deleted**, along with the `StandardDialog` / `RadioDialog` components. Every dialog goes through `source/utils/dialogs.bs` (see below). What survives is the query, because it has to answer for BOTH channels at once — Roku's modal channel (`m.scene.dialog`) and the scene-appended overlays (via `isOverlayDialogOpen`) — which is what the OSD inactivity auto-hide and the player's end-of-playback teardown ask before acting.
 - **Backdrop** — `setBackgroundImage` (passthrough to `JRScene.setBackgroundImage`).
 - **Theme** — `refreshThemeColors` (walks the overhang tree, re-applies `m.global.constants`).
 - **Overhang passthrough fields** — `updateUser`, `resetTime`.
@@ -348,7 +348,16 @@ result shape is identical either way:
 
 Overlay dialogs are appended to the **scene**, not to the opening screen, so they outlive a
 routed view that is destroyed while one is open — a screen that opens a dialog is
-responsible for its own teardown.
+responsible for its own teardown. Two verbs do that, and the difference between them is
+whether the dialog's OWNER is told:
+
+| Verb | Delivers | Use when |
+|---|---|---|
+| `abandonDialog(dialog)` | nothing | **You** own it and your scope is being torn down (`onDestroy`) — there is nobody left to receive a result |
+| `cancelOpenDialog()` | a canceled result | **Someone else** owns it and is still alive, holding state until it answers (a main-thread flow such as the deep-link server switch). Indistinguishable from the user pressing `Back` |
+
+`PlayerHostView`'s end-of-playback teardown calls both, in that order, for exactly that
+reason: its own picker is abandoned, anything else on screen is canceled.
 
 ## Deferred deep links
 

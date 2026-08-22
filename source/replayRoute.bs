@@ -313,12 +313,15 @@ sub onRuntimeDeepLink()
   displayToast(translate(translationKeys.MessageContentOnUnknownServer), "error")
 end sub
 
-' Ask before switching servers (it signs the user out of the current one). The choice comes
-' back through SceneManager.returnData -> main.bs's isDataReturned handler (the same bridge
-' the exit dialog uses), which calls performServerSwitch on confirm.
+' Ask before switching servers (it signs the user out of the current one).
+'
+' This runs on the MAIN thread, which has no component scope for
+' observeFieldScoped, so the result comes back through Main()'s message port
+' instead of a scoped observer — see the two-channel contract at the top of
+' source/utils/dialogs.bs. main.bs routes every `result` event on its port to
+' onServerSwitchDialogResult below.
 sub promptServerSwitch(entry as object)
   m.pendingSwitchServer = entry
-  m.global.sceneManager.isPendingServerSwitch = true
 
   ' Name what's being cast when the sender provided a title, so the user can tell a real cast
   ' from a stray/accidental one; fall back to a server-named, provenance-aware message otherwise.
@@ -331,7 +334,37 @@ sub promptServerSwitch(entry as object)
     message = Substitute(translate(translationKeys.MessageSwitchServerToPlay), entry.name)
   end if
 
-  m.global.sceneManager.callFunc("showConfirmationDialog", translate(translationKeys.LabelChangeServer), [message], [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonSwitch)])
+  dialog = showConfirmDialog(translate(translationKeys.LabelChangeServer), message, "", translate(translationKeys.ButtonSwitch), translate(translationKeys.ButtonCancel))
+  dialog.observeField("result", m.port)
+  m.serverSwitchDialog = dialog
+end sub
+
+' The server-switch prompt was answered (or dismissed). On "Switch", run the pre-flighted
+' switch; on cancel, discard the stashed deep link.
+'
+' IDENTITY, not a flag. Every dialog delivers its result on its OWN node, so holding the
+' node we opened and comparing it against the event's is what tells us the event is ours —
+' and it stays correct if a second main-thread flow ever observes `result` on the same port.
+' The old path could not do this: every dialog wrote one shared SceneManager field, so it
+' needed an isPendingServerSwitch flag to keep routed views' dialogs from cross-firing here.
+sub onServerSwitchDialogResult(dialog as object)
+  if not isValid(m.serverSwitchDialog) or not dialog.isSameNode(m.serverSwitchDialog) then return
+
+  result = m.serverSwitchDialog.result
+  m.serverSwitchDialog.unobserveField("result")
+  m.serverSwitchDialog = invalid
+
+  ' Carried over from the branch this replaces: nothing here raises the spinner today, but
+  ' the deep-link path around it does, and stopping an already-stopped spinner is a no-op.
+  stopLoadingSpinner()
+
+  if result.confirmed
+    performServerSwitch(m.pendingSwitchServer)
+  else
+    m.pendingSwitchServer = invalid
+    m.global.AuthManager.stashedDeepLink = invalid
+    displayToast(translate(translationKeys.MessageCastCanceled), "info")
+  end if
 end sub
 
 ' Perform the confirmed switch. Pre-flight the target FIRST (non-destructive) so an offline

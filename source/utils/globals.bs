@@ -120,7 +120,6 @@ sub setGlobalNodes()
   m.global.addFields({ sideEffectTask: sideEffectTask })
 
   sceneManager = CreateObject("roSGNode", "SceneManager")
-  sceneManager.observeField("isDataReturned", m.port)
   sceneManager.observeField("reloadHomeRequested", m.port)
   m.global.addFields({ sceneManager: sceneManager })
 

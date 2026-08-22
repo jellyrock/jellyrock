@@ -29,9 +29,16 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
 ' Simple message + OK button. result.buttonIndex = 0 (OK) or cancelled on back.
-function showAlertDialog(title as string, message as string, onResult = "" as string) as object
+'
+' `subheading` is an optional BOLD lead line above the message, for a message
+' that genuinely arrives in two parts — a heading and its text. Use it only when
+' the two parts come from different places (the cast notice: JellyRock owns the
+' provenance title, the sender owns the heading and the body). A message you
+' wrote yourself belongs in one string.
+function showAlertDialog(title as string, message as string, onResult = "" as string, subheading = "" as string) as object
   dialog = createObject("roSGNode", "JRDialog")
   dialog.title = title
+  if subheading <> "" then dialog.subheading = subheading
   dialog.message = message
   dialog.buttons = [translate(translationKeys.ButtonOk)]
   return presentOverlayDialog(dialog, onResult)
@@ -162,6 +169,30 @@ sub abandonDialog(dialog as object)
 
   parent = dialog.getParent()
   if isValid(parent) then parent.removeChild(dialog)
+end sub
+
+' Close whatever dialog is open, delivering a CANCELLED result to whoever opened
+' it. The counterpart to abandonDialog(): use this when a THIRD PARTY needs the
+' screen clear while the dialog's owner is still alive and waiting on a result.
+'
+' The distinction matters. abandonDialog() delivers NOTHING, which is right in
+' onDestroy — the scope that would receive the result is being torn down. Here
+' the owner is a main-thread flow that holds state until its dialog answers (the
+' deep-link server switch holds the pending server and the stashed link), so
+' closing without an answer strands it. A cancelled result is the same thing the
+' user pressing Back would have produced.
+'
+' Covers BOTH channels, like isDialogOpen(): the scene-appended overlays cancel
+' through their own once-only resolve guard, and Roku's modal channel resolves as
+' cancelled on `close` (see JRKeyboardDialog.onWasClosed).
+sub cancelOpenDialog()
+  scene = appScene()
+  if not isValid(scene) then return
+
+  overlay = scene.findNode(OVERLAY_DIALOG_ID)
+  if isValid(overlay) then overlay.callFunc("cancelDialog")
+
+  if isValid(scene.dialog) then scene.dialog.close = true
 end sub
 
 ' ---- internals ----

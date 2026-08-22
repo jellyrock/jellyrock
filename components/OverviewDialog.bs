@@ -279,6 +279,13 @@ sub updateScrollbarFocus(isFocused as boolean)
   end if
 end sub
 
+' Cancel this dialog from OUTSIDE — see cancelOpenDialog() in source/utils/dialogs.bs.
+' This dialog is read-only and has no `result` field, so there is nothing to
+' deliver: cancelling it is exactly closing it.
+sub cancelDialog()
+  closeDialog()
+end sub
+
 ' Dismiss this overlay. It is appended directly to the scene by FocusableOverview, so closing
 ' is a removeChild from our parent + restoring focus to the element that opened us
 ' (returnFocusTo).

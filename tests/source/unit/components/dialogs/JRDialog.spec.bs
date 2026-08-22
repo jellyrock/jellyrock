@@ -5,13 +5,21 @@ namespace tests
 
     private dialog as object
 
-    protected override function setup()
-      super.setup()
+    ' beforeEach, not setup: every test here MUTATES the dialog (buttons, focus,
+    ' now a result), so a suite-scoped node would hand each test whatever the last
+    ' one left behind. See tests/CLAUDE.md's lifecycle-hooks section.
+    protected override function beforeEach()
+      super.beforeEach()
       m.dialog = CreateObject("roSGNode", "JRDialog")
     end function
 
-    protected override function teardown()
+    protected override function afterEach()
+      ' Tests that append to the scene remove it themselves; this covers the ones
+      ' that fault before they get there.
+      parent = m.dialog.getParent()
+      if isValid(parent) then parent.removeChild(m.dialog)
       m.dialog = invalid
+      super.afterEach()
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -22,6 +30,7 @@ namespace tests
     function _()
       m.assertTrue(m.dialog.doesExist("title"))
       m.assertTrue(m.dialog.doesExist("message"))
+      m.assertTrue(m.dialog.doesExist("subheading"))
       m.assertTrue(m.dialog.doesExist("buttons"))
       m.assertTrue(m.dialog.doesExist("result"))
       m.assertTrue(m.dialog.doesExist("returnFocusTo"))
@@ -107,6 +116,89 @@ namespace tests
       scene.removeChild(m.dialog)
 
       m.assertTrue(secondFocused)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Subheading")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("has no subheading by default")
+    function _()
+      m.assertEqual(m.dialog.subheading, "")
+      m.assertEqual(m.dialog.findNode("subheadingText").text, "")
+    end function
+
+    ' The subheading is a lead-in to the body, not a second title: it renders
+    ' BELOW the accent rule and ABOVE the message. Asserted against the rendered
+    ' translations rather than the layout function, which is gated separately —
+    ' this is the wiring between them.
+    @it("renders above the message when set")
+    function _()
+      scene = m.top.getScene()
+      m.dialog.title = "Message from another device"
+      m.dialog.subheading = "Server maintenance"
+      m.dialog.message = "The server will restart in five minutes."
+      m.dialog.buttons = ["OK"]
+
+      scene.appendChild(m.dialog)
+      m.dialog.setFocus(true)
+
+      subheadingNode = m.dialog.findNode("subheadingText")
+      messageNode = m.dialog.findNode("messageText")
+      subheadingY = subheadingNode.translation[1]
+      messageY = messageNode.translation[1]
+      renderedText = subheadingNode.text
+      scene.removeChild(m.dialog)
+
+      m.assertEqual(renderedText, "Server maintenance")
+      m.assertTrue(subheadingY > 0, "subheading was never positioned")
+      m.assertTrue(subheadingY < messageY, "subheading must render above the message")
+    end function
+
+    ' It is BOLD because that is the only thing separating it from the body — it
+    ' shares the body's size, colour and centring. Losing the weight would leave
+    ' two indistinguishable lines.
+    @it("renders bold, to distinguish it from the body it leads")
+    function _()
+      m.assertTrue(m.dialog.findNode("subheadingText").isBold)
+      m.assertFalse(m.dialog.findNode("messageText").isBold)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("cancelDialog — third-party dismissal")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Cancelling from outside has to be indistinguishable from the user pressing
+    ' Back, or a main-thread flow holding state until its dialog answers is
+    ' stranded. See cancelOpenDialog() in source/utils/dialogs.bs.
+    @it("delivers a cancelled result and closes")
+    function _()
+      scene = m.top.getScene()
+      m.dialog.message = "Are you sure?"
+      m.dialog.buttons = ["Cancel", "Delete"]
+      scene.appendChild(m.dialog)
+
+      m.dialog.callFunc("cancelDialog")
+
+      m.assertNotInvalid(m.dialog.result)
+      m.assertTrue(m.dialog.result.cancelled)
+      m.assertFalse(m.dialog.result.confirmed)
+      m.assertEqual(m.dialog.result.buttonIndex, -1)
+      m.assertInvalid(m.dialog.getParent())
+    end function
+
+    @it("is once-only, like every other route out of the dialog")
+    function _()
+      scene = m.top.getScene()
+      m.dialog.confirmIndex = 1
+      m.dialog.buttons = ["Cancel", "Delete"]
+      scene.appendChild(m.dialog)
+
+      m.dialog.callFunc("cancelDialog")
+      ' A second cancel (or a resolve racing it) must not overwrite the first
+      m.dialog.callFunc("cancelDialog")
+
+      m.assertTrue(m.dialog.result.cancelled)
     end function
 
   end class

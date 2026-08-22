@@ -86,6 +86,65 @@ namespace tests
       m.assertFalse(isOverlayDialogOpen())
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("cancelOpenDialog vs abandonDialog")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The two verbs differ in exactly one thing — whether the OWNER is told — and
+    ' that difference is the whole reason both exist. abandonDialog is for an
+    ' owner whose scope is being torn down (onDestroy); cancelOpenDialog is for a
+    ' third party clearing the screen while the owner is alive and holding state
+    ' until its dialog answers. Getting them the wrong way round strands a flow.
+    @it("cancelOpenDialog closes the overlay AND delivers a cancelled result")
+    function _()
+      dialog = CreateObject("roSGNode", "JRDialog")
+      dialog.title = "Change server"
+      dialog.confirmIndex = 1
+      dialog.buttons = ["Cancel", "Switch"]
+      presented = presentOverlayDialog(dialog, "")
+
+      cancelOpenDialog()
+
+      m.assertFalse(isOverlayDialogOpen())
+      m.assertNotInvalid(presented.result)
+      m.assertTrue(presented.result.cancelled)
+      m.assertFalse(presented.result.confirmed)
+    end function
+
+    @it("abandonDialog closes the overlay and deliberately delivers NOTHING")
+    function _()
+      dialog = CreateObject("roSGNode", "JRDialog")
+      dialog.title = "Change server"
+      dialog.buttons = ["Cancel", "Switch"]
+      presented = presentOverlayDialog(dialog, "")
+
+      abandonDialog(presented)
+
+      m.assertFalse(isOverlayDialogOpen())
+      m.assertInvalid(presented.result)
+    end function
+
+    @it("cancelOpenDialog is safe with nothing open")
+    function _()
+      m.assertFalse(isOverlayDialogOpen())
+      cancelOpenDialog()
+      m.assertFalse(isOverlayDialogOpen())
+    end function
+
+    @it("cancels a list dialog too — it reaches whatever is open by the shared id")
+    function _()
+      dialog = CreateObject("roSGNode", "JRListDialog")
+      dialog.title = "Select audio"
+      dialog.items = ["English", "Spanish"]
+      presented = presentOverlayDialog(dialog, "")
+
+      cancelOpenDialog()
+
+      m.assertFalse(isOverlayDialogOpen())
+      m.assertTrue(presented.result.cancelled)
+      m.assertEqual(presented.result.optionIndex, -1)
+    end function
+
   end class
 
 end namespace
