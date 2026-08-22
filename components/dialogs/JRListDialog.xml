@@ -22,9 +22,13 @@
   <children>
     <JRDialogPanel id="chrome" />
 
-    <JRLabelList id="optionList">
+    <!-- MarkupList, not JRLabelList: a LabelList row is text only, and this list
+         has to show which option is already the current one. The focus chrome is
+         still the list's own (applyListFocusChrome); JRListDialogRow adds the
+         label and the selected-check. -->
+    <MarkupList id="optionList" itemComponentName="JRListDialogRow">
       <ContentNode id="content" role="content" />
-    </JRLabelList>
+    </MarkupList>
 
     <!-- Delays ONLY the opening announcement; see OPENING_ANNOUNCEMENT_DELAY in
          JRDialog.bs. -->

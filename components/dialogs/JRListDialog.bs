@@ -3,6 +3,7 @@ import "pkg:/source/utils/dialogKeys.bs"
 import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/dialogNarration.bs"
 import "pkg:/source/utils/dialogResult.bs"
+import "pkg:/source/utils/listTheme.bs"
 import "pkg:/source/utils/misc.bs"
 
 ' See JRListDialog.xml for the interaction contract. Chrome and its arithmetic
@@ -29,6 +30,7 @@ sub init()
 
   m.optionList = m.top.findNode("optionList")
   m.optionList.observeField("itemSelected", "onItemSelected")
+  applyListFocusChrome(m.optionList)
 
   ' floatingFocus, ALWAYS — never fixedFocusWrap. Roku's own wrap engages only
   ' "as long as the list contains enough items to fill the list", so the dialog's
@@ -65,10 +67,17 @@ sub onItemsChanged()
   while content.getChildCount() > 0
     content.removeChildIndex(0)
   end while
+  ' The CURRENT option is marked on the row itself, so it stays visible once the
+  ' user moves focus off it. defaultIndex is which option is active now — it is
+  ' set before `items` by showListDialog, so it is readable here.
+  selectedIndex = m.top.defaultIndex
+  index = 0
   for each item in items
     row = CreateObject("roSGNode", "ContentNode")
     row.title = toString(item)
+    row.addFields({ isSelected: index = selectedIndex })
     content.appendChild(row)
+    index++
   end for
 
   applyLayout()

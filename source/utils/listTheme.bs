@@ -1,0 +1,33 @@
+' The ONE definition of what a focused list row looks like.
+'
+' Every ArrayGrid-derived list in JellyRock draws its own focus indicator, and the
+' four fields that describe it are the app's focus vocabulary: a 6px border in
+' colorPrimary over a filled footprint in colorBackgroundSecondary.
+'
+' Shared rather than copied because that vocabulary MOVES. The border-weight
+' convention (3px static edges, 6px focusable things) was settled after these
+' components were written, and the theme table's rule that colorPrimary means
+' "focusable" was too. A second copy is a second place to forget.
+import "pkg:/source/utils/misc.bs"
+
+' Apply the standard focus chrome to a list node (LabelList, MarkupList, or any
+' other ArrayGrid subtype — they all share these four fields).
+'
+' Deliberately does NOT touch fonts, colours, alignment or spacing: those belong
+' to whatever renders the ROW, which is the list itself for a LabelList and the
+' item component for a MarkupList.
+'
+' @param {object} list - the list node to theme
+sub applyListFocusChrome(list as object)
+  if not isValid(list) then return
+
+  constants = m.global.constants
+
+  ' 6px, not 3px: the border-weight convention encodes interaction state, and a
+  ' focus indicator is the definitive "you can act on this". See the border-weight
+  ' section in components/CLAUDE.md.
+  list.focusBitmapUri = "pkg:/images/9patch/border-6px.9.png"
+  list.focusBitmapBlendColor = constants.colorPrimary
+  list.focusFootprintBitmapUri = "pkg:/images/9patch/filled-rounded.9.png"
+  list.focusFootprintBlendColor = constants.colorBackgroundSecondary
+end sub

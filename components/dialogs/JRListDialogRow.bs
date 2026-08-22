@@ -1,0 +1,62 @@
+import "pkg:/source/utils/misc.bs"
+
+' See JRListDialogRow.xml for why the check is a tinted Poster rather than a
+' RadioButtonList.
+
+' The left gutter the check sits in. A fixed gutter on EVERY row, selected or
+' not, so the labels line up with each other — a gutter that only existed on the
+' selected row would shift that one line and read as a rendering fault.
+'
+' 84 = 24 padding + 36 icon slot + 24 gap. All multiples of 6, so the row
+' survives the Roku OS downscale to 720p without landing on a fractional pixel.
+const CHECK_GUTTER = 84
+const ROW_PADDING = 24
+const CHECK_ICON_SIZE = 35
+
+sub init()
+  m.checkIcon = m.top.findNode("checkIcon")
+  m.rowLabel = m.top.findNode("rowLabel")
+
+  constants = m.global.constants
+  ' Sized 1:1 with the source bitmap so it renders crisp at native resolution,
+  ' the same way the app's other inline icons are declared.
+  m.checkIcon.uri = constants.iconCheckWhite
+  m.checkIcon.width = CHECK_ICON_SIZE
+  m.checkIcon.height = CHECK_ICON_SIZE
+
+  ' colorSecondary, NOT colorPrimary. The theme table reserves colorPrimary for
+  ' things the user can focus or act on — it is the focus ring around this very
+  ' row — and defines colorSecondary as non-focusable emphasis, which is exactly
+  ' what "this is your current pick" is. JRDropdownItem marks its selected item
+  ' the same way.
+  m.checkIcon.blendColor = constants.colorSecondary
+end sub
+
+sub onItemContentChanged()
+  content = m.top.itemContent
+  if not isValid(content) then return
+
+  m.rowLabel.text = content.title
+
+  ' isSelected is added to the ContentNode by JRListDialog. Absent (a row built
+  ' by anything else) reads as not selected rather than faulting.
+  m.checkIcon.visible = isValid(content.isSelected) and content.isSelected
+
+  layoutRow()
+end sub
+
+sub onSizeChanged()
+  layoutRow()
+end sub
+
+sub layoutRow()
+  rowWidth = m.top.width
+  rowHeight = m.top.height
+  if rowWidth <= 0 or rowHeight <= 0 then return
+
+  m.checkIcon.translation = [ROW_PADDING, int((rowHeight - CHECK_ICON_SIZE) / 2)]
+
+  m.rowLabel.translation = [CHECK_GUTTER, 0]
+  m.rowLabel.width = rowWidth - CHECK_GUTTER - ROW_PADDING
+  m.rowLabel.height = rowHeight
+end sub

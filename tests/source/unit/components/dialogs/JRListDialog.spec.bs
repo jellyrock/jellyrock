@@ -48,6 +48,39 @@ namespace tests
       m.assertEqual(content.getChild(2).title, "Spanish")
     end function
 
+    ' Focus says where you ARE; it cannot say which track is already playing once
+    ' you move off it. The row carries that, so it survives scrolling away.
+    @it("marks the current option on the row, not just by focusing it")
+    function _()
+      m.dialog.defaultIndex = 2
+      m.dialog.items = ["English 5.1", "English Stereo", "Spanish"]
+
+      content = m.dialog.findNode("content")
+      m.assertFalse(content.getChild(0).isSelected)
+      m.assertFalse(content.getChild(1).isSelected)
+      m.assertTrue(content.getChild(2).isSelected)
+    end function
+
+    @it("marks the first row when nothing else is current")
+    function _()
+      m.dialog.items = ["English 5.1", "Spanish"]
+
+      content = m.dialog.findNode("content")
+      m.assertTrue(content.getChild(0).isSelected)
+      m.assertFalse(content.getChild(1).isSelected)
+    end function
+
+    @it("re-marks correctly when the items are reassigned")
+    function _()
+      m.dialog.defaultIndex = 1
+      m.dialog.items = ["A", "B", "C"]
+      m.dialog.items = ["X", "Y", "Z"]
+
+      content = m.dialog.findNode("content")
+      m.assertFalse(content.getChild(0).isSelected)
+      m.assertTrue(content.getChild(1).isSelected)
+    end function
+
     @it("rebuilds rows on reassignment instead of appending")
     function _()
       m.dialog.items = ["A", "B", "C", "D"]
@@ -93,6 +126,13 @@ namespace tests
     function _()
       m.dialog.items = ["one", "two"]
       m.assertInvalid(m.dialog.findNode("cancelButton"))
+    end function
+
+    @it("renders rows through JRListDialogRow so they can carry the check")
+    function _()
+      m.dialog.items = ["one", "two"]
+      optionList = m.dialog.findNode("optionList")
+      m.assertEqual(optionList.itemComponentName, "JRListDialogRow")
     end function
 
     @it("takes its chrome from JRDialogPanel rather than its own nodes")
