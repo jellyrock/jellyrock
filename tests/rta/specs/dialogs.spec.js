@@ -31,6 +31,7 @@ import {
   waitHome,
   waitMediaPlaying,
   stopPlayback,
+  PLAYING_STATES,
   getVal,
   press,
   sleep,
@@ -114,6 +115,34 @@ async function pressOsdButton(buttonId) {
     label: `osd button ${buttonId} focused`,
   });
   await press(ecp.Key.Ok);
+}
+
+/**
+ * Playback with the OSD up and STILL PLAYING — deliberately not paused.
+ *
+ * `pausedOsd` pauses, and OSD.inactiveCheck returns early while paused, so the
+ * 5s auto-hide never runs there. That is convenient for driving a dialog, and it
+ * is exactly why the auto-hide focus-theft bug was invisible to this suite: the
+ * helper avoided the only state that reproduces it.
+ */
+async function playingOsd() {
+  const expectedServer = await seedHome(session, LOCALE);
+  await hardRelaunch();
+  await assertSeedTookEffect(expectedServer, 'playingOsd');
+  await waitHome();
+
+  await ecp.sendInput({ params: { contentId: `id=${heroId}|action=play` } });
+  await waitMediaPlaying('osd auto-hide');
+  await sleep(1500);
+
+  await waitFor('#osd.visible', (v) => v === true, {
+    timeout: 30000,
+    interval: 2000,
+    action: async () => {
+      if ((await getVal('#osd.visible')) !== true) await press(ecp.Key.Up);
+    },
+    label: 'osd visible (playing)',
+  });
 }
 
 it('series watched button opens the standard confirm dialog; back cancels it', async () => {
@@ -281,6 +310,50 @@ it('osd info button opens the playback-info report; back dismisses it', async ()
     label: 'playback info dismissed',
     timeout: 10000,
   });
+
+  await stopPlayback();
+}, 240000);
+
+// REGRESSION. The OSD auto-hides 5s after the last keypress, and hiding used to
+// take focus back from whatever held it — including a dialog opened FROM the OSD.
+// The dialog stayed on screen but stopped receiving keys, so Back fell through to
+// the player and exited playback without ever closing it.
+//
+// Everything here happens with playback RUNNING: paused, OSD.inactiveCheck
+// returns early and the auto-hide never fires at all.
+it('a dialog keeps focus when the osd auto-hides underneath it', async () => {
+  await playingOsd();
+  await pressOsdButton('showVideoInfoPopup');
+
+  await waitFor('#overviewText.text', (t) => typeof t === 'string' && t.length > 0, {
+    label: 'playback info rendered',
+    timeout: 25000,
+  });
+
+  // Out-wait the 5s inactivity window WITHOUT touching the remote — a keypress
+  // would reset the very timer under test.
+  await sleep(9000);
+
+  // The dialog must still own input. Asserted via the focused node rather than
+  // "#jrDialog exists": the bug left the dialog on screen and only took its focus,
+  // so presence alone would have passed while the dialog was already dead.
+  const focused = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+  const keyPath = typeof focused?.keyPath === 'string' ? focused.keyPath : '';
+  if (!keyPath.includes('jrDialog'))
+    throw new Error(
+      `focus left the dialog while the osd auto-hid (focused: ${keyPath || 'unknown'})`,
+    );
+
+  // ...and Back still closes the dialog rather than leaving playback.
+  await press(ecp.Key.Back);
+  await waitFor('#jrDialog.id', (v) => v === undefined, {
+    label: 'back closed the dialog after the osd auto-hide window',
+    timeout: 10000,
+  });
+
+  const mp = await ecp.getMediaPlayer().catch(() => null);
+  if (!mp || !PLAYING_STATES.includes(mp.state))
+    throw new Error('back exited playback instead of closing the dialog');
 
   await stopPlayback();
 }, 240000);

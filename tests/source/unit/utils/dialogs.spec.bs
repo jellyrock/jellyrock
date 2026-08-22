@@ -40,6 +40,52 @@ namespace tests
       m.assertFalse(choicesFitAsButtons([wide, wide, wide]))
     end function
 
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isOverlayDialogOpen")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' This answers a question the OSD's inactivity timer asks before hiding
+    ' itself. It was answered by Roku's modal channel alone, which the JRDialog
+    ' family does not use — so it said "no dialog" while a dialog was on screen,
+    ' and the OSD hid out from under it, taking focus with it.
+    @it("is false with nothing on screen")
+    function _()
+      m.assertFalse(isOverlayDialogOpen())
+    end function
+
+    @it("is true while an overlay dialog is appended to the scene")
+    function _()
+      scene = m.top.getScene()
+      m.assertNotInvalid(scene)
+
+      dialog = CreateObject("roSGNode", "JRDialog")
+      dialog.title = "Delete"
+      dialog.buttons = ["Cancel", "Delete"]
+      presented = presentOverlayDialog(dialog, "")
+
+      wasOpen = isOverlayDialogOpen()
+      abandonDialog(presented)
+      afterAbandon = isOverlayDialogOpen()
+
+      m.assertTrue(wasOpen)
+      m.assertFalse(afterAbandon)
+    end function
+
+    @it("is true for a list dialog too — it keys off the shared overlay id")
+    function _()
+      dialog = CreateObject("roSGNode", "JRListDialog")
+      dialog.title = "Select audio"
+      dialog.items = ["English", "Spanish"]
+      presented = presentOverlayDialog(dialog, "")
+
+      wasOpen = isOverlayDialogOpen()
+      abandonDialog(presented)
+
+      m.assertTrue(wasOpen)
+      m.assertFalse(isOverlayDialogOpen())
+    end function
+
   end class
 
 end namespace

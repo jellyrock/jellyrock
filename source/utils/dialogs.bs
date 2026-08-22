@@ -115,6 +115,19 @@ function showKeyboardDialog(title as string, onResult = "" as string, defaultTex
   return dialog
 end function
 
+' Is a scene-appended overlay dialog currently on screen?
+'
+' The JRDialog family does NOT use Roku's modal channel (m.scene.dialog), so
+' anything asking "is a dialog open?" via that channel alone has been answering
+' false for every dialog in the app since the family moved to scene overlays.
+' SceneManager.isDialogOpen() folds this in; prefer that if you have it, because
+' it covers the keyboard dialogs on the modal channel too.
+function isOverlayDialogOpen() as boolean
+  scene = appScene()
+  if not isValid(scene) then return false
+  return isValid(scene.findNode(OVERLAY_DIALOG_ID))
+end function
+
 ' Abandon a dialog this screen opened, delivering no result. Call from onDestroy
 ' for any dialog node you are still holding.
 '
@@ -141,6 +154,11 @@ end sub
 
 ' ---- internals ----
 
+' The id every overlay dialog is stamped with. One definition, because two things
+' now depend on being able to FIND an open dialog by it (the duplicate-overlay
+' warning below, and isOverlayDialogOpen above).
+const OVERLAY_DIALOG_ID = "jrDialog"
+
 ' Append an overlay dialog to the scene, capture focus, wire the caller's
 ' result observer. onResult is resolved in the CALLER's scope because these
 ' helpers execute inside the importing component's script scope.
@@ -152,11 +170,11 @@ function presentOverlayDialog(dialog as object, onResult as string) as object
   ' flow (session expiry, server switch) can still open one over a screen's own.
   ' Don't auto-dismiss the incumbent: its caller is waiting on a result that
   ' would then never arrive. Surface it instead.
-  if isValid(scene.findNode("jrDialog"))
+  if isValid(scene.findNode(OVERLAY_DIALOG_ID))
     print "WARNING - presentOverlayDialog: a dialog is already open; two overlays will overlap and share the id 'jrDialog'"
   end if
 
-  dialog.id = "jrDialog"
+  dialog.id = OVERLAY_DIALOG_ID
   dialog.returnFocusTo = lastFocusedChild(scene)
   if onResult <> "" then dialog.observeFieldScoped("result", onResult)
   scene.appendChild(dialog)

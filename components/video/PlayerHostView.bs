@@ -166,8 +166,9 @@ sub onPlayerStateChange()
   queueManager = m.global.queueManager
 
   ' Close any open dialogs. Two channels to cover: our own scene-appended picker /
-  ' info overlay, and Roku's modal channel (m.scene.dialog) that isDialogOpen sees
-  ' — the latter cannot see the former, so abandoning ours is not optional.
+  ' info overlay, and Roku's modal channel (m.scene.dialog). isDialogOpen now
+  ' reports both, but dismissDialog only closes the modal one, so abandoning ours
+  ' explicitly is still required.
   abandonDialog(m.playbackDialog)
   m.playbackDialog = invalid
   m.trackPickerOptions = invalid

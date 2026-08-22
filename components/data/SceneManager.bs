@@ -1,5 +1,6 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
@@ -118,9 +119,18 @@ sub dismissDialog()
   m.scene.dialog.close = true
 end sub
 
-' Returns bool indicating if dialog is currently displayed
+' Is ANY dialog currently on screen? Callers use this to hold off on something
+' that would interfere — the OSD's inactivity auto-hide, the player's
+' end-of-playback teardown.
+'
+' There are TWO channels and this must answer for both. It used to check only
+' Roku's modal channel, so it began silently returning false for every dialog in
+' the app when the JRDialog family moved to scene-appended overlays. The OSD read
+' that false and hid itself out from under an open dialog, taking focus with it
+' — the dialog stayed on screen but deaf, and Back fell through to the player.
 function isDialogOpen() as boolean
-  return isValid(m.scene.dialog)
+  if isValid(m.scene.dialog) then return true
+  return isOverlayDialogOpen()
 end function
 
 ' Refresh theme colors on JRScene and overhang.
