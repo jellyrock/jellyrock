@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-08-21
+last-updated: 2026-08-22
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-22 — Move `PlayerHostView` onto the standard dialogs and unify the chrome
 - 2026-08-21 — fix: stop `FontDownloadTask` crashing on servers that omit `EnableFallbackFont`
 - 2026-08-21 — fix: Stop posters blinking on the Cast & Crew row as you scroll it
 - 2026-08-21 — Give `cell-load` rates a denominator with scripted RTA sweeps
@@ -71,12 +72,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-08-08 — Genres view item counter no longer reads "1 of 1" during the skeleton window — Roku's `RowList` counter is suppressed while rows hold placeholders and restored on fill (PR #779)
 - 2026-08-08 — **Pre-playback input window: closed, no app change needed.** A loading spinner IS shown during the window on both the 720p Stick `3600X` and the Ultra `4850X` (screenshots), so the player swallowing keys until `stateAllowsOSD()` passes is expected app behavior, not a defect. Measured press→playable at ~5-7 s on BOTH devices (stick 5.6/5.8 s, Ultra 7.2 s) — the window tracks stream start against the remote server, NOT device speed, which refuted the "slow devices stretch the window" theory that motivated the question. Deferring/replaying input was proposed and rejected (its benefit and its risk scale with the same variable).
 - 2026-08-08 — RTA harness hardening: `waitFor`/`waitFocused` count actions that throw and name them in the timeout message, so a dropped ECP key press no longer reads as "the screen never loaded"; precondition rule added to `tests/rta/CLAUDE.md` and load-window + power-cycle-first triage guidance to [rta-tests.md](dev/rta-tests.md). A proposed `logInput` debug flag was dropped as out-of-scope, not deferred.
-- 2026-08-07 — chore: Retire `hd-native-layout-refactor` after 720p hardware verification
-- 2026-08-07 — test(rta): restore the device session when a capture run is interrupted
-- 2026-08-07 — test(rta): navigate to a library by id, not by first matching tile
-- 2026-08-07 — RTA library navigation now targets a library BY ID instead of the first Home tile of a matching `collectionType`. Seed (`libraryIdFor`, `/UserViews` order) and nav (first Home tile) were unrelated orderings, so on a multi-library server a screen seeded for library A was navigated to library B with nothing flagging it — it had already corrupted a perf sample. Verified on a 14-library server: tile `.id` is the Jellyfin GUID (14/14 vs `/UserViews`), and targeting the LAST of four `movies` libraries opened it while the id-less call opened a different one. `ctx.libraries` is threaded through every nav including the chained ones.
-- 2026-08-07 — test(rta): hard-relaunch after seeding so the seed actually takes
-- 2026-08-07 — feat(ci): Run the RTA suite in CI on the release-prep branch
 
 ## Open followups
 
