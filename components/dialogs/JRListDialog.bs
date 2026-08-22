@@ -10,13 +10,10 @@ import "pkg:/source/utils/misc.bs"
 ' live elsewhere (JRDialogPanel + source/utils/dialogLayout.bs); this file owns
 ' the list, the key model's effects, and resolution.
 
+' Row height and spacing come from dialogLayout.bs (LIST_ROW_*), where the
+' spacing gate covers them. LIST_ROW_SPACING matches JRLabelList's own default
+' so the dialog's list has the same visual rhythm as every other list in the app.
 const PANEL_WIDTH = 900
-const ITEM_HEIGHT = 60
-' Matches JRLabelList's own default spacing so the dialog's list has the same
-' visual rhythm as every other list in the app. 24 (not 20) also survives the
-' Roku OS downscale to 720p cleanly: it is divisible by 3, so x2/3 stays an
-' integer and the rows don't pick up sub-pixel drift.
-const ITEM_SPACING = 24
 const MAX_VISIBLE_ROWS = 8
 
 sub init()
@@ -95,7 +92,7 @@ sub applyLayout()
   visibleRows = items.count()
   if visibleRows > MAX_VISIBLE_ROWS then visibleRows = MAX_VISIBLE_ROWS
 
-  listHeight = (visibleRows * ITEM_HEIGHT) + ((visibleRows - 1) * ITEM_SPACING)
+  listHeight = (visibleRows * LIST_ROW_HEIGHT) + ((visibleRows - 1) * LIST_ROW_SPACING)
 
   layout = computeDialogLayout({
     panelWidth: PANEL_WIDTH,
@@ -107,8 +104,8 @@ sub applyLayout()
 
   m.chrome.layout = layout
 
-  m.optionList.itemSize = [layout.body.width, ITEM_HEIGHT]
-  m.optionList.itemSpacing = [0, ITEM_SPACING]
+  m.optionList.itemSize = [layout.body.width, LIST_ROW_HEIGHT]
+  m.optionList.itemSpacing = [0, LIST_ROW_SPACING]
   m.optionList.numRows = visibleRows
   m.optionList.translation = [layout.body.x, layout.body.y]
 end sub

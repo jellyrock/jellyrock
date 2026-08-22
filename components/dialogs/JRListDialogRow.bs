@@ -1,16 +1,16 @@
+import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/misc.bs"
 
 ' See JRListDialogRow.xml for why the check is a tinted Poster rather than a
 ' RadioButtonList.
 
-' The left gutter the check sits in. A fixed gutter on EVERY row, selected or
-' not, so the labels line up with each other — a gutter that only existed on the
-' selected row would shift that one line and read as a rendering fault.
+' The gutter and padding live in dialogLayout.bs (LIST_ROW_CHECK_GUTTER /
+' LIST_ROW_PADDING) so the spacing gate covers them.
 '
-' 84 = 24 padding + 36 icon slot + 24 gap. All multiples of 6, so the row
-' survives the Roku OS downscale to 720p without landing on a fractional pixel.
-const CHECK_GUTTER = 84
-const ROW_PADDING = 24
+' CHECK_ICON_SIZE stays HERE and stays off the 6px scale on purpose: it is the
+' source bitmap's size, not a spacing choice. The $$RES$$ pipeline substitutes a
+' 23x23 _hd asset decoded at physical output size, so 35 design units is 1:1 on
+' both tiers — rounding it to 36 would break that and soften the glyph.
 const CHECK_ICON_SIZE = 35
 
 sub init()
@@ -78,9 +78,9 @@ sub layoutRow()
   m.selectedBackground.width = rowWidth
   m.selectedBackground.height = rowHeight
 
-  m.checkIcon.translation = [ROW_PADDING, int((rowHeight - CHECK_ICON_SIZE) / 2)]
+  m.checkIcon.translation = [LIST_ROW_PADDING, int((rowHeight - CHECK_ICON_SIZE) / 2)]
 
-  m.rowLabel.translation = [CHECK_GUTTER, 0]
-  m.rowLabel.width = rowWidth - CHECK_GUTTER - ROW_PADDING
+  m.rowLabel.translation = [LIST_ROW_CHECK_GUTTER, 0]
+  m.rowLabel.width = rowWidth - LIST_ROW_CHECK_GUTTER - LIST_ROW_PADDING
   m.rowLabel.height = rowHeight
 end sub
