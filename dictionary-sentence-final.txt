@@ -729,3 +729,4 @@
 (?:pre-registered)\.
 (?:lexically)\.
 (?:interprocedural)\.
+(?:closable)\.
