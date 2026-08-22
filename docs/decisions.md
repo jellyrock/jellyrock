@@ -1077,6 +1077,18 @@ The pop-in ledger scores an appearance off the compositor's `renderTracking`, no
 
 **The constraint worth re-evaluating is the justification itself, not the gate's cost.** It rests entirely on the printed precondition being worth ~2 s per launch, which holds while Home's spread is unexplained. If Phase B finds the app-side mechanism in `HomeRows` / `JRRowItem`, that premise expires and the gate should be re-examined rather than kept by inertia — the null result stays true either way, but "we still don't know why" stops being the reason to keep paying for the check.
 
+## decision-id: task-fanout-keys-on-argument
+
+**date**: 2026-08-22
+**status**: accepted
+**related-files**: `scripts/bsc-plugins/no-task-fanout.cjs`, `bsconfig.json`, `bsconfig-prod.json`, `docs/architecture/build-and-tooling.md`
+
+The `no-task-fanout` plugin keys on the launched ARGUMENT's stability, not on the presence of a loop. A `launchTask()` inside a `for` / `for each` / `while` body is an Error unless its argument is a stable dotted path rooted at `m` — such a path names ONE node however many times the loop turns, so the thread count is bounded by the number of distinct field paths written in source rather than by the collection being iterated. An indexed step (`m.tasks[i]`), a loop variable, or a call result is flagged.
+
+**This closes off two rules that are more obvious and both wrong.** A blanket "no `launchTask` in a loop" would have failed the codebase on day one: `HomeRows.startParallelLoads()` legitimately loops over `m.sectionPlan` and launches four fixed singleton slots, each flag-guarded. A construction-site rule ("no `CreateObject(..Task)` inside a loop") is simpler to implement but guards the wrong event — construction costs nothing, the launch spends the thread — and misses a helper that builds the node outside the loop body. Validated against the real crash rather than a synthetic case: run over `HomeRows.bs` at `c59e96a1^` the rule reports exactly one diagnostic, the per-library `launchTask(loadLatest)` that caused `&h29`, and leaves the six stable-slot launches in that same file alone.
+
+**The constraint worth re-evaluating is the two accepted interprocedural gaps**, neither closable without call-graph analysis: a loop calling a helper that launches internally, and a local aliased to a stable slot before the loop (flagged though safe — contrived, absent from the codebase, and covered by the escape hatch). Alias-awareness is what `observe-without-on-destroy` pays real complexity for; there its false positives are routine, here they are hypothetical. If either gap produces a real miss or a real false positive, that is the evidence to revisit — not the theoretical incompleteness.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
