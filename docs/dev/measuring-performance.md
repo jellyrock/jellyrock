@@ -478,6 +478,7 @@ mixed-population error the readers refuse by design.
 | `cellSweepSearch` | 9 | **all** | — |
 | `cellSweepExtras` | 9 | `binds` 74, `bindsRedundant` 26, `loadsStarted` 140, `wipesReload` 103 | `loadsFailed` 116–118, `reloads` 121–123, `wipesBind` 32–34, `unloads` 7–8 |
 | `cellSweepHome` | 6 + 3, **not pooled** | `loadsFailed` 0, `wipesBind` 20, `wipesReload` 0 | **`binds` 231–253** then 222–234, `loadsStarted` 164–179 then 163–164 |
+| `cellSweepHome`, 2026-08-22 | **40** (20/arm, alternated) | `items` 128, `unloads` 59, `popInsCold` 29, the itinerary itself | **`binds` 235–255**, `loadsStarted` 168–181, `appearances` 104–123 |
 
 **Read the `n` column carefully — the four sweeps do not all pool the same way**, and
 deciding that per sweep rather than per campaign is the point:
@@ -492,6 +493,22 @@ deciding that per sweep rather than per campaign is the point:
 - **Home does NOT pool.** Its bounds moved (231–253 → 222–234) across a change that
   altered the settle, so the two campaigns are two populations and neither is a bound on
   the other. That is also why the headline table quotes only the later one.
+
+🚨 **Home's spread is NOT the harness, and that was settled by measurement on 2026-08-22.**
+Every earlier reading of this table treated Home's moving counts as a sweep that had never
+been pinned down. A 40-launch campaign (n=20 per arm, alternated in four blocks, `.177`,
+one real 12-row / 128-item server, one build) pinned every harness-side quantity there is —
+**identical itinerary on all 40 launches with zero corrective presses**, `items` **128**,
+`unloads` **59**, `popInsCold` **29**, and, on the 20 launches that ran the
+[`waitRowsSettled`](../../tests/rta/lib/steps.js) gate, the row structure measured already
+stable before the first key press (`settled in 1983–2048 ms`, the `quietMs` floor plus one
+poll). `binds` still spans **235–255**. So Home binds a different number of cells over an
+identical, settled workload, and the question belongs to `HomeRows` / `JRRowItem`, not to
+`tests/rta/`. Two harness fixes were tried and neither moved the dispersion: the settle gate
+(|z| < 1.7 on every field, medians 242 vs 242) and a doubled wait before the sweep (worse —
+`binds` range 17 against 7 at n=5). ⚠️ **A pilot at n=5 made the settle gate look like a clean win**
+(`appearances` 105×5, `popIns` 42×5) and n=20 erased it; on a discrete, clustered
+distribution a range statistic at n=5 is not evidence.
 
 Three things to take from that table.
 

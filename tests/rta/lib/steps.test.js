@@ -46,6 +46,7 @@ const {
   waitHome,
   scrollFocus,
   waitCellsQuiet,
+  waitRowsSettled,
   formatCellCounts,
   axisEnd,
   sweepBudget,
@@ -804,5 +805,194 @@ describe('sweepBudget / axisEnd — how far a sweep is allowed to travel', () =>
     // Same six columns through the budget helper is what used to happen, and it warns.
     expect(sweepBudget('cellSweepGrid columns', 12, 6)).toBe(5);
     expect(warn).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * `waitRowsSettled` decides WHERE the measured session begins, and its failure is silent by
+ * construction: a sweep that starts too early still travels, still reports a clean itinerary
+ * and still emits a `cell-load` sample whose `items` field agrees with every other run —
+ * because that field is counted at emit time, after the screen finished building. Three
+ * `cellSweepHome` campaigns spent their spread (222–253 binds) on exactly this, so the gate
+ * gets tests rather than a device run to notice.
+ */
+describe('waitRowsSettled', () => {
+  beforeEach(() => {
+    getValue.mockReset();
+  });
+
+  /** A device whose row structure walks through `shapes`, one step per full sample. */
+  const structureReader = (shapes) => {
+    let i = 0;
+    let readsThisSample = 0;
+    return async ({ keyPath }) => {
+      const shape = shapes[Math.min(i, shapes.length - 1)];
+      if (keyPath.endsWith('content.getChildCount()')) {
+        readsThisSample = 0;
+        return { found: true, value: shape.length };
+      }
+      const m = keyPath.match(/content\.(\d+)\.getChildCount\(\)$/);
+      if (!m) return { found: false };
+      const width = shape[Number(m[1])];
+      readsThisSample++;
+      if (readsThisSample >= shape.length) i++; // sample complete — advance the device
+      return { found: true, value: width };
+    };
+  };
+
+  it('waits for rows still ARRIVING, not merely for rows to exist', async () => {
+    // `waitHome()` passes on skeletons; this is the gate that does not. The row count grows
+    // as `insertLatestMediaSkeletons` inserts, which is the coarse half of the signal.
+    getValue.mockImplementation(
+      structureReader([
+        [1, 1],
+        [1, 1, 1],
+        [1, 1, 1, 1],
+        [1, 1, 1, 1],
+        [1, 1, 1, 1],
+        [1, 1, 1, 1],
+      ]),
+    );
+
+    const res = await waitRowsSettled('#homeRows', { quietMs: 20, interval: 5, timeout: 3000 });
+
+    expect(res).toMatchObject({ settled: true, resolved: true, rows: 4 });
+  });
+
+  it('waits for a row FILLING, which does not move the row count at all', async () => {
+    // The half a row-count gate would miss, and the one that actually moves the sweep: a
+    // skeleton row carries ONE placeholder child and a populated one carries its items, so
+    // `populateRowFromData` changes the widest row — which is the row `sweepRowList` picks
+    // its horizontal leg from — while leaving the row count exactly where it was.
+    getValue.mockImplementation(
+      structureReader([
+        [1, 1, 1],
+        [16, 1, 1],
+        [16, 16, 1],
+        [16, 16, 16],
+        [16, 16, 16],
+        [16, 16, 16],
+        [16, 16, 16],
+      ]),
+    );
+
+    const res = await waitRowsSettled('#homeRows', { quietMs: 20, interval: 5, timeout: 3000 });
+
+    expect(res).toMatchObject({ settled: true, rows: 3, items: 48 });
+    expect(res.widths).toEqual([16, 16, 16]);
+  });
+
+  it('reports the structure the sweep will travel, because the ledger cannot', async () => {
+    // The deliverable. `cell-load`'s `items` is counted at EMIT time and read 129 on all
+    // nine launches of the unbounded campaigns, so it cannot tell a run that swept a
+    // half-built Home from one that swept a whole one. This return value can.
+    getValue.mockImplementation(structureReader([[16, 16, 5]]));
+
+    const res = await waitRowsSettled('#homeRows', { quietMs: 20, interval: 5, timeout: 3000 });
+
+    expect(res.items).toBe(37);
+    expect(res.rows).toBe(3);
+  });
+
+  it('holds the gate open for the whole quiet window, not just until two samples agree', async () => {
+    // Two agreeing samples are what a screen mid-lull looks like: `LoadLatestRowsTask`
+    // delivers one row per observer wake, so the structure genuinely does hold still
+    // between arrivals. The window is the only thing separating that from a finished
+    // screen, so a settle that returned on the first match would be gating on nothing.
+    getValue.mockImplementation(structureReader([[16, 16]]));
+
+    const res = await waitRowsSettled('#homeRows', { quietMs: 60, interval: 5, timeout: 3000 });
+
+    expect(res.settled).toBe(true);
+    expect(res.waitedMs).toBeGreaterThanOrEqual(60);
+  });
+
+  it('measures the quiet window from the LAST change, not from when the gate opened', async () => {
+    // The window has to re-arm on every change or it degenerates into "quietMs after the
+    // gate opened", which is a fixed sleep wearing a settle's clothes — and it fails exactly
+    // where Home needs it, because Home spends SECONDS building. Once the build outlasts
+    // `quietMs`, a gate that never re-armed returns on the first agreeing pair, however
+    // early that lands. Found by mutation: every other test here passed with the re-arm
+    // deleted, because their structures settle sooner than the window is wide.
+    const shapes = [];
+    for (let i = 1; i <= 15; i++) shapes.push([i, 1]); // a long build, then the last shape holds
+    let lastAdvanceAt = 0;
+    let i = 0;
+    let readsThisSample = 0;
+    getValue.mockImplementation(async ({ keyPath }) => {
+      const shape = shapes[Math.min(i, shapes.length - 1)];
+      if (keyPath.endsWith('content.getChildCount()')) {
+        readsThisSample = 0;
+        return { found: true, value: shape.length };
+      }
+      readsThisSample++;
+      if (readsThisSample >= shape.length) {
+        i++;
+        if (i < shapes.length) lastAdvanceAt = Date.now();
+      }
+      return { found: true, value: shape[readsThisSample - 1] };
+    });
+
+    const res = await waitRowsSettled('#homeRows', { quietMs: 60, interval: 5, timeout: 5000 });
+    const settledAt = Date.now();
+
+    expect(res.settled).toBe(true);
+    expect(settledAt - lastAdvanceAt).toBeGreaterThanOrEqual(60);
+  });
+
+  it('reports a list that never resolved at all, rather than waiting out its timeout on it', async () => {
+    // The keyPath is simply wrong, or the list is not mounted. Waiting cannot fix either,
+    // and the caller needs to know its sweep had no gate rather than to lose 20 s first.
+    getValue.mockResolvedValue({ found: false });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const res = await waitRowsSettled('#nope', { quietMs: 20, interval: 5, timeout: 200 });
+
+    expect(res).toMatchObject({ settled: false, resolved: false });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('did not resolve'));
+    warn.mockRestore();
+  });
+
+  it('does NOT call a list that stops answering MID-POLL settled', async () => {
+    // The case the early return above cannot reach, and the one that would publish a
+    // confident falsehood: the list answered once and then went away — the screen was
+    // replaced, the view swapped — so every later sample is `{ rows: undefined, widths: [] }`,
+    // which compares EQUAL to itself. A structural compare without the resolved-ness guard
+    // reads that as the quietest screen it has ever seen and returns `settled: true` for a
+    // list that is not there. Found by mutation: the first version of the test above passed
+    // with that guard deleted, because it never got past the early return.
+    let reads = 0;
+    getValue.mockImplementation(async ({ keyPath }) => {
+      reads++;
+      if (reads > 3) return { found: false }; // the list goes away after one full sample
+      return { found: true, value: keyPath.endsWith('content.getChildCount()') ? 2 : 16 };
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const res = await waitRowsSettled('#homeRows', { quietMs: 20, interval: 5, timeout: 150 });
+
+    expect(res.settled).toBe(false);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('never held still'));
+    warn.mockRestore();
+  });
+
+  it('warns and hands back the unsettled structure when rows never stop moving', async () => {
+    // A screen that never settles is a FINDING, not a harness failure — every caller is a
+    // nav that also runs as a functional test, where a throw would read as "the screen did
+    // not load". The counts still describe a real session; the warning is what stops them
+    // being compared against a settled run.
+    let n = 2;
+    getValue.mockImplementation(async ({ keyPath }) =>
+      keyPath.endsWith('content.getChildCount()')
+        ? { found: true, value: 2 }
+        : { found: true, value: n++ },
+    );
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const res = await waitRowsSettled('#homeRows', { quietMs: 20, interval: 5, timeout: 120 });
+
+    expect(res).toMatchObject({ settled: false, resolved: true, rows: 2 });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('never held still'));
+    warn.mockRestore();
   });
 });
