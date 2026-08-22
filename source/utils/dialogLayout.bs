@@ -182,8 +182,6 @@ function computeDialogLayout(spec as object) as object
   end if
   if fixedPanelHeight > 0 then panelHeight = fixedPanelHeight
 
-  overflows = panelHeight > PANEL_MAX_HEIGHT
-
   ' --- place the panel, then resolve everything to screen coordinates --------
   ' Both origins snap to the grid, because every offset is measured from them —
   ' they decide whether anything else lands on it. Centring halves a snapped
@@ -197,6 +195,27 @@ function computeDialogLayout(spec as object) as object
   ' caller that picks a width off the scale: one crisp edge beats none.
   panelX = floorToGrid(int((SCREEN_WIDTH - panelWidth) / 2))
   panelY = floorToGrid(int((SCREEN_HEIGHT - panelHeight) / 2))
+
+  ' --- ceiling ---------------------------------------------------------------
+  ' PANEL_MAX_HEIGHT bounds the PANEL, which is the whole story only while the
+  ' footer flows inside it. An OUTSIDE footer sits below the panel and is not
+  ' part of panelHeight, so the panel ceiling says nothing about it: a panel at
+  ' exactly PANEL_MAX_HEIGHT with a 72px button below put that button 18px off
+  ' the bottom of the screen and still reported overflows = false.
+  '
+  ' Not reachable today — OverviewDialog is the only footerInside:false caller
+  ' and its panel is a fixed 762 — so this is a wrong contract rather than a
+  ' live defect. It is gated because the constant's whole job is to be the
+  ' answer to "will this fit", and it was only the answer for one of the two
+  ' footer placements.
+  '
+  ' The margin below the footer mirrors the one above it, so an outside footer
+  ' is never flush against the screen edge.
+  overflows = panelHeight > PANEL_MAX_HEIGHT
+  if not footerInside and footerHeight > 0
+    footerBottom = panelY + panelHeight + FOOTER_OUTSIDE_MARGIN + footerHeight
+    if footerBottom + FOOTER_OUTSIDE_MARGIN > SCREEN_HEIGHT then overflows = true
+  end if
 
   layout = {
     panel: layoutRect(panelX, panelY, panelWidth, panelHeight),

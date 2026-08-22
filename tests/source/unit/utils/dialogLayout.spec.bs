@@ -185,6 +185,30 @@ namespace tests
       m.assertTrue(tooTall.overflows)
     end function
 
+    ' PANEL_MAX_HEIGHT bounds the PANEL. With the footer OUTSIDE it, the button
+    ' sits below that bound and the panel ceiling stops being the whole answer —
+    ' a panel at exactly the ceiling put a 72px button 18px off the screen and
+    ' reported overflows = false. Ungated, the constant answers "will this fit"
+    ' correctly for one of the two footer placements and wrongly for the other.
+    @it("counts a footer placed OUTSIDE the panel against the ceiling")
+    function _()
+      spec = { panelWidth: 1602, panelHeight: PANEL_MAX_HEIGHT, titleHeight: 54, footerHeight: 72, footerInside: false }
+      atCeiling = computeDialogLayout(spec)
+
+      m.assertTrue(atCeiling.overflows, "a ceiling-height panel with an outside footer must report overflow")
+      m.assertTrue(atCeiling.footer.y + atCeiling.footer.height > 1080 - FOOTER_OUTSIDE_MARGIN)
+    end function
+
+    ' ...and the shipping case must NOT trip it, or the guard is just a ban on
+    ' outside footers.
+    @it("leaves OverviewDialog's actual geometry well inside the ceiling")
+    function _()
+      layout = computeDialogLayout({ panelWidth: 1602, panelHeight: 762, titleHeight: 54, footerHeight: 72, footerInside: false })
+
+      m.assertFalse(layout.overflows)
+      m.assertTrue(layout.footer.y + layout.footer.height <= 1080 - FOOTER_OUTSIDE_MARGIN)
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("unmeasured input")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
