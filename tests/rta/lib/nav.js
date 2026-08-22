@@ -33,6 +33,7 @@ import {
   resendIfSwallowed,
   scrollFocus,
   waitCellsQuiet,
+  waitRowsSettled,
   formatCellCounts,
   axisEnd,
   sweepBudget,
@@ -915,17 +916,33 @@ const CELL_SWEEP = Object.freeze({ rows: 6, gridRows: 12, rowItems: 12 });
  * Print what the sweep actually did, in one line per screen.
  *
  * The console is the only channel: `measure.js` records the nav's NAME, not its itinerary,
- * so this line plus the emitted `items` field are how a reader confirms two runs did the
- * same work. `recovered` is the interesting field — a run that needed corrective presses
- * met a device dropping input, which is worth knowing before trusting a delta.
+ * so this line is how a reader confirms two runs did the same work. `recovered` is the
+ * interesting field — a run that needed corrective presses met a device dropping input,
+ * which is worth knowing before trusting a delta.
+ *
+ * ⚠️ **The emitted `items` field is a WEAKER second opinion than it reads as.** `cell-load`
+ * publishes it from `countItems()` at EMIT time, when the screen is hidden and everything
+ * has arrived, so it certifies the structure the sweep ENDED on rather than the one it
+ * travelled: nine `cellSweepHome` launches read `items: 129` across a 222–253 bind spread.
+ * Where a settle was taken, `settle` carries the structure as the sweep saw it at its START,
+ * and whether it was still moving then — see `waitRowsSettled`, including the A/B in which
+ * that turned out NOT to be Home's problem.
  */
-function reportSweep(name, legs, quiet) {
+function reportSweep(name, legs, quiet, settle = null) {
   const path = legs
     .map((l) => `${l.axis} ${l.walk.from}->${l.walk.to} of ${l.available}`)
     .join(', ');
   const recovered = legs.reduce((n, l) => n + l.walk.recovered, 0);
+  // `at sweep start` is not padding: the ledger publishes a field ALSO called `items`, counted
+  // at emit time, and on the 2026-08-22 campaign both read 128 — so the two are separable on
+  // the line only if the line says which one it is. A reader comparing a settle pair against a
+  // ledger pair is comparing the screen the sweep STARTED on against the one it ENDED on.
+  const over = settle
+    ? `over ${settle.rows} row(s) / ${settle.items} item(s) at sweep start` +
+      (settle.settled ? ` (settled in ${settle.waitedMs} ms), ` : ' (NEVER SETTLED), ')
+    : '';
   console.log(
-    `[nav] ${name}: swept ${path}` +
+    `[nav] ${name}: ${over}swept ${path}` +
       (recovered ? `, ${recovered} corrective press(es)` : '') +
       (quiet.instrumented
         ? `; cells ${quiet.quiet ? 'quiet' : 'STILL BUSY'} after ${quiet.waitedMs} ms ` +
@@ -1031,6 +1048,12 @@ async function sweepRowList(listId, { label } = {}) {
 export async function navCellSweepHome() {
   await waitHome();
   await waitFocusInside('#homeRows');
+  // The opening half of `waitCellsQuiet`, and the reason this sweep never reproduced:
+  // `waitHome()` is satisfied by SKELETON rows, and Home keeps inserting and filling rows
+  // mid-list for seconds afterwards. Reading the itinerary off that screen picks a row
+  // count and a widest row that another launch need not agree with. See `waitRowsSettled`
+  // for what the gate can and cannot prove, and why only Home carries it.
+  const settle = await waitRowsSettled('#homeRows', { read: getActiveVal });
   const legs = await sweepRowList('#homeRows', { label: 'cellSweepHome' });
   const back = await scrollFocus({
     keyPath: '#homeRows.rowItemFocused',
@@ -1043,7 +1066,7 @@ export async function navCellSweepHome() {
   });
   legs.push({ axis: 'rows -> 0', walk: back, available: legs[0].available });
   const quiet = await waitCellsQuiet('#homeRows', { read: getActiveVal });
-  reportSweep('cellSweepHome', legs, quiet);
+  reportSweep('cellSweepHome', legs, quiet, settle);
   await navSettings();
 }
 
