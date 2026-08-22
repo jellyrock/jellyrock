@@ -19,8 +19,15 @@ const DIALOG_HEIGHT = 762
 const SCROLL_STEP = 150
 const SCROLLBAR_THUMB_WIDTH = 12
 const SCROLLBAR_TRACK_WIDTH = 3
-const SCROLLBAR_MARGIN = 8
-const OK_BUTTON_MIN_WIDTH = 200
+' 12, not 8: the text column's right edge is body.width - THUMB - MARGIN, so a
+' margin off the 6px scale pushed that edge off the 720p grid.
+const SCROLLBAR_MARGIN = 12
+
+' Centring offset for the 3px track inside the 12px thumb gutter. The true
+' centre is 4.5, which is both fractional AND off the grid — for a 3px hard edge
+' that is the worst case, so it sits one and a half pixels right of centre
+' instead, which nothing can see and the output grid can.
+const SCROLLBAR_TRACK_INSET = 6
 
 sub init()
   constants = m.global.constants
@@ -51,7 +58,7 @@ sub init()
 
   m.okButton = m.top.findNode("okButton")
   m.okButton.text = translate(translationKeys.ButtonOk)
-  m.okButton.minWidth = OK_BUTTON_MIN_WIDTH
+  m.okButton.minWidth = DIALOG_BUTTON_MIN_WIDTH
 
   ' Observe focus changes to show/hide scrollbar
   m.top.observeField("focusedChild", "onFocusChanged")
@@ -101,11 +108,11 @@ sub applyLayout()
   if isValid(m.taglineText) then m.taglineText.width = m.textAreaWidth
 
   scrollTrackX = layout.body.x + layout.body.width - SCROLLBAR_THUMB_WIDTH
-  m.scrollTrack.translation = [scrollTrackX + ((SCROLLBAR_THUMB_WIDTH - SCROLLBAR_TRACK_WIDTH) / 2), layout.body.y]
+  m.scrollTrack.translation = [scrollTrackX + SCROLLBAR_TRACK_INSET, layout.body.y]
   m.scrollTrack.height = m.textAreaHeight
   m.scrollThumb.translation = [scrollTrackX, layout.body.y]
 
-  m.okButton.translation = [centreInRect(layout.footer, OK_BUTTON_MIN_WIDTH), layout.footer.y]
+  m.okButton.translation = [centreInRect(layout.footer, DIALOG_BUTTON_MIN_WIDTH), layout.footer.y]
 
   ' The text column may have changed width, so any measured scroll bounds are stale.
   m.scrollBoundsCalculated = false

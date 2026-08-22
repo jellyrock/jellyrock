@@ -13,7 +13,6 @@ import "pkg:/source/utils/misc.bs"
 ' source/utils/dialogLayout.bs, shared with JRListDialog and OverviewDialog and
 ' unit-tested there. What stays here is what is specific to THIS dialog: a panel
 ' that grows to fit its button row, and the row that made it grow.
-const BUTTON_MIN_WIDTH = 200
 const BUTTON_SPACING = 24
 const MAX_BUTTONS = 3
 
@@ -122,7 +121,7 @@ sub onButtonsChanged()
   for each label in labels
     btn = CreateObject("roSGNode", "TextButton")
     btn.text = label
-    btn.minWidth = BUTTON_MIN_WIDTH
+    btn.minWidth = DIALOG_BUTTON_MIN_WIDTH
     ' Re-layout once this button knows its own size; the panel's width, height
     ' and the row's position are all derived from it.
     btn.observeField("isReady", "onButtonReady")
@@ -260,7 +259,7 @@ function naturalButtonRowWidth() as integer
   total = 0
   for each btn in m.buttonNodes
     w = btn.localBoundingRect().width
-    if w < BUTTON_MIN_WIDTH then w = BUTTON_MIN_WIDTH
+    if w < DIALOG_BUTTON_MIN_WIDTH then w = DIALOG_BUTTON_MIN_WIDTH
     total += w
   end for
   return total + (BUTTON_SPACING * (m.buttonNodes.count() - 1))
@@ -284,7 +283,7 @@ sub applyButtonLayout(contentWidth as integer)
     m.buttonRow.horizAlignment = "left"
     m.buttonRow.itemSpacings = [BUTTON_SPACING]
     for each btn in m.buttonNodes
-      btn.minWidth = BUTTON_MIN_WIDTH
+      btn.minWidth = DIALOG_BUTTON_MIN_WIDTH
     end for
   end if
 end sub

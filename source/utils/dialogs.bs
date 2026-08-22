@@ -23,6 +23,7 @@
 ' showKeyboardDialog uses Roku's modal channel (m.scene.dialog) because it wraps
 ' the OS keyboard. Callers don't need to care — the result contract is identical.
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/dialogNarration.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
@@ -226,7 +227,7 @@ function choicesFitAsButtons(choices as object) as boolean
   totalWidth = 0
   for each label in choices
     labelWidth = font.GetOneLineWidth(toString(label), 9999) + buttonPadding
-    if labelWidth < 200 then labelWidth = 200 ' TextButton minWidth used by JRDialog
+    if labelWidth < DIALOG_BUTTON_MIN_WIDTH then labelWidth = DIALOG_BUTTON_MIN_WIDTH
     totalWidth += labelWidth
   end for
   totalWidth += spacing * (choices.count() - 1)

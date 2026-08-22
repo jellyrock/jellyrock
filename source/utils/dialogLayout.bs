@@ -64,6 +64,14 @@ const LIST_ROW_SPACING = 24
 const LIST_ROW_PADDING = 24
 const LIST_ROW_CHECK_GUTTER = 84
 
+' Minimum width of a dialog footer button. Shared because THREE places need the
+' same number — JRDialog sizes its row with it, choicesFitAsButtons estimates
+' against it to decide button-row vs list, and OverviewDialog's OK uses it — and
+' the last two previously carried their own copy of the literal.
+'
+' 204, not 200: on the 6px scale so the button's own edges land on the 720p grid.
+const DIALOG_BUTTON_MIN_WIDTH = 204
+
 ' A short accent rule under the title, not a full-width divider: at content width
 ' it competed with the body instead of supporting the title.
 '
