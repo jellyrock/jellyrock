@@ -1,0 +1,90 @@
+import "pkg:/source/utils/dialogLayout.bs"
+
+namespace tests
+
+  @suite("OverviewDialog - geometry against the screen")
+  class OverviewDialogTests extends tests.BaseTestSuite
+
+    private dialog as object
+
+    ' beforeEach, not setup: the node is laid out and read per test, so a
+    ' per-suite one would hand each test whatever the last left behind
+    ' (tests/CLAUDE.md).
+    protected override function beforeEach()
+      super.beforeEach()
+      m.dialog = CreateObject("roSGNode", "OverviewDialog")
+    end function
+
+    protected override function afterEach()
+      m.dialog = invalid
+      super.afterEach()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("fitting on screen")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' THE GATE ON DIALOG_HEIGHT ITSELF.
+    '
+    ' This dialog's OK button sits OUTSIDE the panel, so it is not part of the
+    ' panel height and the panel ceiling alone never bounded it — a panel at
+    ' PANEL_MAX_HEIGHT puts a 72px button 18px off the bottom of the screen.
+    ' computeDialogLayout accounts for that now, but its own spec pins the
+    ' geometry by passing 762 as a literal, so raising DIALOG_HEIGHT would not
+    ' fail anything: the constant is file-scoped in the component and unreachable
+    ' from a spec.
+    '
+    ' So read the panel the component actually rendered and run THOSE numbers
+    ' through the real guard. This is the assertion that fails if someone grows
+    ' the panel past what the screen can hold.
+    @it("leaves room below the panel for the OK button that sits outside it")
+    function _()
+      panel = m.dialog.findNode("panelBackground")
+      m.assertNotInvalid(panel)
+      m.assertTrue(panel.height > 0, "panel has not been laid out; the rest of this test would assert nothing")
+
+      ' 72 is a representative TextButton height at fontSizeMedium — the same
+      ' figure computeDialogLayout's own outside-footer cases use.
+      layout = computeDialogLayout({
+        panelWidth: panel.width,
+        panelHeight: panel.height,
+        titleHeight: 54,
+        footerHeight: 72,
+        footerInside: false
+      })
+
+      m.assertFalse(layout.overflows, "OverviewDialog's panel is too tall for its outside OK button to fit on screen")
+      m.assertTrue(layout.footer.y + layout.footer.height <= 1080 - FOOTER_OUTSIDE_MARGIN)
+    end function
+
+    @it("centres its panel on screen and keeps it on the 720p grid")
+    function _()
+      panel = m.dialog.findNode("panelBackground")
+
+      ' translation is a float vector — int() first, so this compares integers
+      ' rather than asking mod to do it.
+      left = int(panel.translation[0])
+      top = int(panel.translation[1])
+      right = left + int(panel.width)
+
+      m.assertEqual(left mod 3, 0, "panel left edge off the output grid at x=" + left.toStr())
+      m.assertEqual(top mod 3, 0, "panel top edge off the output grid at y=" + top.toStr())
+      m.assertEqual(right mod 3, 0, "panel right edge off the output grid at x=" + right.toStr())
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("chrome")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("takes its chrome from JRDialogPanel rather than its own nodes")
+    function _()
+      chrome = m.dialog.findNode("chrome")
+      m.assertNotInvalid(chrome)
+      m.assertEqual(chrome.subtype(), "JRDialogPanel")
+      ' The panel owns these now; a copy here would be the divergence returning
+      m.assertInvalid(m.dialog.findNode("separator"))
+      m.assertInvalid(m.dialog.findNode("dialogBackground"))
+    end function
+
+  end class
+end namespace

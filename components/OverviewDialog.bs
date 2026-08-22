@@ -1,3 +1,4 @@
+import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/dialogNarration.bs"
@@ -30,6 +31,7 @@ const SCROLLBAR_MARGIN = 12
 const SCROLLBAR_TRACK_INSET = 6
 
 sub init()
+  m.log = new log.Logger("OverviewDialog")
   constants = m.global.constants
 
   m.chrome = m.top.findNode("chrome")
@@ -95,6 +97,16 @@ sub applyLayout()
     footerHeight: m.okButton.localBoundingRect().height,
     footerInside: false
   })
+
+  ' The ceiling is only a safety claim if something acts on it. JRDialog reads
+  ' `overflows` and truncates; this dialog cannot — its panel is a fixed size and
+  ' its body scrolls — so the honest response is to say which constant is wrong.
+  ' Without this the flag has exactly one reader (JRDialog), which always places
+  ' its footer INSIDE the panel, so the outside-footer half of the guard would
+  ' report to nobody and the OK button would leave the screen silently.
+  if layout.overflows
+    m.log.warn("OverviewDialog does not fit the screen; reduce DIALOG_HEIGHT", "panelHeight", layout.panel.height, "footerBottom", layout.footer.y + layout.footer.height)
+  end if
 
   m.chrome.layout = layout
 
