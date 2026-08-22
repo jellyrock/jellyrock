@@ -555,8 +555,15 @@ sub noteAppearance()
   ' Off screen: end the episode so a scroll-back counts as a new appearance. Without this
   ' the once-per-bind gate swallows every re-entry, which is the race the buffer exists
   ' to win — see cellLoad.departed().
+  '
+  ' 🚨 Gated on "active" for the reason `evaluateGridTextureState` refuses renderTracking
+  ' in `init` and `hidden`: a "none" there is a layout recalculation or `visible=false`
+  ' propagating, not a departure, and closing the episode makes the return score a
+  ' phantom appearance. THIS grid is where it was measured — against the demo server, 18
+  ' appearances against 10 binds on a suspend/resume with no scrolling. Full rationale, and
+  ' why the BOUND rather than the counts is the durable part, in JRRowItem.noteAppearance.
   if m.top.renderTracking = "none"
-    cellLoad.departed(m.contentRoot)
+    if getGridTextureManagerState() = "active" then cellLoad.departed(m.contentRoot)
     return
   end if
   if m.cachedPosterUri = "" then return

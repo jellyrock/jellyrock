@@ -322,6 +322,35 @@ The corroboration worth trusting is that **`popInsCold` equaled `unloads` exactl
 all five launches**: an evicted cell has nothing in flight when it returns, so two independent
 counters agree on what the code says must happen.
 
+🚨 **An appearance is scored per EPISODE, and a screen SUSPEND is not an episode boundary.**
+sgRouter suspends rather than destroys (`suspendMode: "hide"` — Home, and any grid with a
+detail open over it), and `visible=false` propagates down to every cell's `renderTracking`.
+Read naively that looks exactly like the whole screen departing and then re-arriving. It is
+not: `hidden` deliberately freezes textures loaded so returning is instant, so every one of
+those re-arrivals is a guaranteed **non**-pop-in. Left uncounted-for they land in the
+denominator of `popIns / appearances` as free wins and flatter the buffer. The INVARIANT is
+the app property worth remembering — *on a resume with no scrolling, every appearance must
+be paid for by a bind* — and the counts under it are a fixture's, not a constant. Measured
+2026-08-22 on `.177` against the **demo server** (`tests/rta/config.js`, so it reproduces
+for anyone): backing out of one item detail onto the Movies grid, scrolling nothing, read
+**18 appearances against 10 binds with 0 pop-ins**. `cellLoad.departed()` is therefore gated
+on `textureManagerState = "active"` in both cell components, matching the refusal
+`evaluateTextureState` already makes for the same flip. Gating it costs nothing on a sweep:
+on a **real server**, `cellSweepGrid` read 46 / 24 / 6 / 1 / 17 on every one of 5 launches,
+identical before and after, because a sweep never suspends its screen. That is also why no sweep
+measurement could have caught this, and why the invariant is a gate in
+[`tests/rta/specs/cell-load.spec.js`](../../tests/rta/specs/cell-load.spec.js) instead.
+
+⚠️ **`instrumentUs` is a LOWER BOUND: `departed()` is deliberately not probed.** That was
+measured rather than argued — on a **real server**, same fixture in both arms, adding the
+probe took `instrumentUs` from `7371 µs` to `8411 µs`, **+1040 (+14.1%)**, on an identical
+workload (`binds` 28, `appearances` 46, `popIns` 24, `loadsStarted` 34, `unloads` 6 in
+both), for a function whose whole body is two associative-array assignments and no node
+write. That delta *is* the probe — an `roTimespan` pair plus a render-thread
+read-modify-write on `cellLoadInstrumentUs` — so probing it would make the instrument
+meaningfully more expensive in order to report a figure that is almost entirely the
+measurement apparatus.
+
 ⚠️ **The line is designed for a SCROLL sweep, and first paint is a different phenomenon.**
 Cells bound while a screen is still laying itself out appear with no image because the data
 has only just arrived, not because a buffer lost anything, and `renderTracking` is least

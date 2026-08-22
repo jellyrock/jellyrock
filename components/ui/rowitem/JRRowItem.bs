@@ -813,8 +813,26 @@ sub noteAppearance()
   ' Off screen: end the episode so a scroll-back counts as a new appearance. Without this
   ' the once-per-bind gate swallows every re-entry, which is the race the buffer exists
   ' to win — see cellLoad.departed().
+  '
+  ' 🚨 GATED ON "active" — this is the same refusal `evaluateTextureState` makes two
+  ' functions below, and for the same reason. A "none" that arrives while the screen is
+  ' `hidden` is `visible=false` propagating down, and one that arrives during `init` is a
+  ' layout recalculation. Neither is the cell leaving the screen, and closing the episode
+  ' on either re-arms the gate so the return scores a FRESH appearance the user never saw.
+  ' The rule is that on a resume with no scrolling every appearance must be paid for by a
+  ' bind. Measured against the demo server, backing out of one item detail: 18 appearances
+  ' against 10 binds — every one a guaranteed non-pop-in, because `hidden` freezes textures
+  ' loaded. They land in the denominator of `popIns / appearances` as free wins and flatter
+  ' the buffer. Those counts are that fixture's; the bound is not, and it is gated in
+  ' tests/rta/specs/cell-load.spec.js.
+  '
+  ' Only the DEPARTURE is gated, not `cellLoad.appeared()` below. Closing an episode is
+  ' the sole destructive step — an appearance is idempotent per episode, so an ungated
+  ' `appeared()` cannot double-count, while first paint legitimately happens during `init`
+  ' (`activateTextureManager` runs only once initial content has loaded) and gating it
+  ' would delete `popInsFirst` entirely.
   if m.top.renderTracking = "none"
-    cellLoad.departed(m.contentRoot)
+    if getTextureManagerState() = "active" then cellLoad.departed(m.contentRoot)
     return
   end if
   ' No real image expected — a skeleton, a library tile with no artwork, or an item whose

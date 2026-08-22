@@ -204,21 +204,6 @@ namespace cellLoad
     #end if
   end sub
 
-  ' The cell is on screen. One half of the pop-in race; `loadSucceeded` is the other.
-  '
-  ' `hasTexture` is the caller's read of its own poster's `loadStatus`, and it is
-  ' deliberately NOT trusted alone. A request issued and not yet resolved means the texture
-  ' currently on screen belongs to the cell's PREVIOUS item while `loadStatus` still reads
-  ' "ready" from it — established behaviour, not supposition: `JRRowItem.renderItem`'s
-  ' same-URI shortcut exists precisely because Roku leaves `loadStatus` alone until a new
-  ' request resolves. Trusting it alone would under-count exactly the recycled-cell case
-  ' pop-in is about.
-  '
-  ' Counted at most ONCE per bind. The caller's appearance signal is the compositor's
-  ' `renderTracking`, which can flip spuriously during a layout recalculation — the app's
-  ' own texture code refuses to act on it for that reason. The gate turns a spurious flip
-  ' into a no-op rather than a fresh sample, and it matches what a user experiences: an item
-  ' pops in once, not once per compositor event.
   ' The cell LEFT the screen. Ends the appearance episode, so a later return counts as a
   ' NEW appearance rather than being swallowed by the once-per-bind gate.
   '
@@ -233,6 +218,26 @@ namespace cellLoad
   '
   ' A pending pop-in is dropped here rather than carried: a cell that appeared without its
   ' image and then went away was never watched fading in, so a late arrival is not a pop-in.
+  '
+  ' ⚠️ CALLER'S OBLIGATION: only call this while the texture manager is "active". A
+  ' `renderTracking` of "none" during `init` is a layout recalculation and during `hidden`
+  ' is `visible=false` propagating — neither is a departure, and closing the episode on one
+  ' makes the screen's return score a fresh appearance nobody saw. Both cell components
+  ' gate the call for this; `evaluateTextureState` refuses the same two states already.
+  ' The INVARIANT is what to remember — on a resume with no scrolling, every appearance has
+  ' to be paid for by a bind. Measured before the gate against the demo server: 18
+  ' appearances against 10 binds, all non-pop-ins, inflating the denominator that
+  ' `popIns / appearances` divides by. The counts are that fixture's; the bound is the app's,
+  ' and it is gated in tests/rta/specs/cell-load.spec.js.
+  '
+  ' ⚠️ Deliberately NOT probed into `instrumentUs`, unlike every other entry point here.
+  ' Measured on `cellSweepGrid` against a real server (.177, n=5, same fixture and identical
+  ' workload in both arms): adding the probe took `instrumentUs` 7371 -> 8411 µs, +1040 µs /
+  ' +14.1%. Absolute µs are that fixture's; the RATIO is the point — for a body that is two
+  ' AA assignments and no node write. That delta IS the probe — an `roTimespan` pair plus a
+  ' render-thread read-modify-write on `cellLoadInstrumentUs` — so probing here would make
+  ' the instrument meaningfully more expensive to report a figure that is almost entirely
+  ' the measurement apparatus. `instrumentUs` is therefore a LOWER BOUND by this much.
   sub departed(contentRoot as object)
     #if perfTiming
       if not isValid(contentRoot) or not contentRoot.hasField("cellLoadAppearances") then return
@@ -242,6 +247,22 @@ namespace cellLoad
     #end if
   end sub
 
+  ' The cell is on screen. One half of the pop-in race; `loadSucceeded` is the other.
+  '
+  ' `hasTexture` is the caller's read of its own poster's `loadStatus`, and it is
+  ' deliberately NOT trusted alone. A request issued and not yet resolved means the texture
+  ' currently on screen belongs to the cell's PREVIOUS item while `loadStatus` still reads
+  ' "ready" from it — established behaviour, not supposition: `JRRowItem.renderItem`'s
+  ' same-URI shortcut exists precisely because Roku leaves `loadStatus` alone until a new
+  ' request resolves. Trusting it alone would under-count exactly the recycled-cell case
+  ' pop-in is about.
+  '
+  ' Counted at most ONCE per EPISODE, an episode being bind -> visible -> gone. Ungated
+  ' otherwise, deliberately: an appearance is idempotent within an episode, so calling this
+  ' from both `renderItem` and `onRenderTrackingChanged` cannot double-count, and first
+  ' paint legitimately happens before `activateTextureManager` runs. The episode is closed
+  ' only by `bind` and `departed`, and it is `departed` — not this — that carries the
+  ' state gate keeping a spurious compositor flip from re-arming it.
   sub appeared(contentRoot as object, hasTexture as boolean, isCold as boolean)
     #if perfTiming
       if not isValid(contentRoot) or not contentRoot.hasField("cellLoadAppearances") then return
@@ -253,7 +274,7 @@ namespace cellLoad
       contentRoot.cellLoadAppearances = contentRoot.cellLoadAppearances + 1
       state.popInPending = not (hasTexture and not state.loadPending)
       state.popInCold = isCold
-      state.popInFromReload = state.loadPending and state.loadFromReload = true
+      state.popInFromReload = state.loadPending and state.loadFromReload
       contentRoot.cellLoadInstrumentUs = contentRoot.cellLoadInstrumentUs + probe.totalMicroseconds()
     #end if
   end sub
@@ -271,6 +292,10 @@ namespace cellLoad
   ' scripts/measurements.js reads and it is unaffected by this rename.
   sub loadErrored(contentRoot as object)
     #if perfTiming
+      ' No contentRoot guard, deliberately: the flags below live on the CELL's `m`, not on
+      ' the content root, so their lifetime is independent of it — and `bump` already
+      ' guards the root. Guarding here would skip the clear when the root happens to be
+      ' invalid and leave a stale pop-in to resolve against the next valid one.
       state = cellLoad.cellState()
       state.loadPending = false
       ' A broken image is not pop-in and must not resolve one — see the header. It is
