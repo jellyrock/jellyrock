@@ -7,8 +7,7 @@
      Its OK button stays OUTSIDE the panel, unlike JRDialog's row. That is a
      recorded decision rather than a leftover: this panel is 1600x760 and
      dominates the screen, so a button below it still reads as attached — which
-     is not true at JRDialog's size. See overviewdialog-diverged-style in
-     docs/architecture/tech-debt.md. -->
+     is not true at JRDialog's size. -->
 <component name="OverviewDialog" extends="JRGroup">
   <children>
     <!-- Dimmed backdrop, panel, edge, title and accent rule — shared with the rest
