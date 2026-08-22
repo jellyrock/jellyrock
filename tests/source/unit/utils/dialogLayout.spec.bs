@@ -231,11 +231,26 @@ namespace tests
             footerInside: true
           })
 
+          m.assertEqual(layout.panel.x mod 3, 0, "panel.x off-grid at titleHeight " + titleHeight.toStr())
           m.assertEqual(layout.panel.y mod 3, 0, "panel.y off-grid at titleHeight " + titleHeight.toStr())
           m.assertEqual(layout.accent.y mod 3, 0, "accent.y off-grid at titleHeight " + titleHeight.toStr())
           m.assertEqual(layout.body.y mod 3, 0, "body.y off-grid at titleHeight " + titleHeight.toStr())
           m.assertEqual(layout.footer.y mod 3, 0, "footer.y off-grid at titleHeight " + titleHeight.toStr())
         end for
+      end for
+    end function
+
+    ' The right edge is panelX + panelWidth, so it needs the width on the 6px
+    ' scale too. Asserted as the general rule rather than against each caller's
+    ' constant, which is file-scoped in its own component and unreachable here.
+    @it("a width on the 6px scale puts BOTH vertical edges on the grid")
+    function _()
+      for each panelWidth in [762, 900, 1200, 1602]
+        layout = computeDialogLayout({ panelWidth: panelWidth, titleHeight: 50, bodyHeight: 120, footerHeight: 60, footerInside: true })
+
+        m.assertEqual(panelWidth mod 6, 0, "panel width off the 6px scale: " + panelWidth.toStr())
+        m.assertEqual(layout.panel.x mod 3, 0, "left edge off-grid at width " + panelWidth.toStr())
+        m.assertEqual((layout.panel.x + panelWidth) mod 3, 0, "right edge off-grid at width " + panelWidth.toStr())
       end for
     end function
 

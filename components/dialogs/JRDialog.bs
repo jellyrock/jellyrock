@@ -19,7 +19,11 @@ const MAX_BUTTONS = 3
 
 ' Width starts here and GROWS to fit the button row (long translations), up to
 ' PANEL_MAX_WIDTH. Past that the row stacks vertically instead of overflowing.
-const PANEL_WIDTH = 760
+'
+' Both on the 6px scale so the panel's left and right edges land on the 720p
+' output grid: (1920 - w) / 2 = 960 - w/2, so a width divisible by 6 gives a
+' panelX divisible by 3. 760 did not, which put both vertical edges off it.
+const PANEL_WIDTH = 762
 const PANEL_MAX_WIDTH = 1200
 
 ' The ONE piece of narration timing that cannot be event-driven.

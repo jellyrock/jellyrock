@@ -10,8 +10,12 @@ import "pkg:/source/utils/translate.bs"
 ' The panel is a FIXED size rather than content-derived: its body scrolls, so the
 ' content cannot decide the height. 1600 x 760 is what makes it read as the
 ' screen-dominating panel its outside OK button depends on.
-const DIALOG_WIDTH = 1600
-const DIALOG_HEIGHT = 760
+' Both on the 6px scale, which is what puts all four panel edges on the 720p
+' output grid: a width divisible by 6 makes the centred panelX divisible by 3
+' ((1920 - w) / 2 = 960 - w/2), and computeDialogLayout snaps panelY. 1600x760
+' put every edge off it — the most visible chrome in the app's largest panel.
+const DIALOG_WIDTH = 1602
+const DIALOG_HEIGHT = 762
 const SCROLL_STEP = 150
 const SCROLLBAR_THUMB_WIDTH = 12
 const SCROLLBAR_TRACK_WIDTH = 3

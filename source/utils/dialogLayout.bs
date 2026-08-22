@@ -173,15 +173,17 @@ function computeDialogLayout(spec as object) as object
   overflows = panelHeight > PANEL_MAX_HEIGHT
 
   ' --- place the panel, then resolve everything to screen coordinates --------
-  panelX = int((SCREEN_WIDTH - panelWidth) / 2)
-  ' The origin every vertical offset is measured from, so it decides whether any
-  ' of them land on the grid. Centring is derived from a snapped panelHeight but
-  ' halved, which re-introduces a 1.5px offset — hence snapping the result too.
+  ' Both origins snap to the grid, because every offset is measured from them —
+  ' they decide whether anything else lands on it. Centring halves a snapped
+  ' height, which re-introduces a 1.5px offset, hence snapping the result too.
   ' Moves the panel by at most 2px, which is invisible; the spec pins the drift.
   '
-  ' NOT applied to panelX: horizontal crispness would need panelWidth on the
-  ' grid as well, and width is the CALLER's policy (see the spec above), so the
-  ' snap would only sharpen one of the two vertical edges.
+  ' panelX only guarantees the LEFT edge. The right edge is panelX + panelWidth,
+  ' so it additionally needs a width on the 6px scale — which every caller now
+  ' uses, and which is why a width divisible by 6 lands panelX on the grid by
+  ' itself ((1920 - w) / 2 = 960 - w/2). The snap is the floor for a future
+  ' caller that picks a width off the scale: one crisp edge beats none.
+  panelX = floorToGrid(int((SCREEN_WIDTH - panelWidth) / 2))
   panelY = floorToGrid(int((SCREEN_HEIGHT - panelHeight) / 2))
 
   layout = {
