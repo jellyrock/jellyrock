@@ -289,14 +289,15 @@ re-entry warning below. It was never a measurement of re-entries at all.
 
 ⚠️ **The instrument's own footprint more than DOUBLED when this line was added, recorded
 rather than rounded away.** Same grid sweep, same device and session, app code the only
-difference: `instrumentUs` **`2710 µs` → `6685 µs`, +147% (2.47×)**. It is nonetheless not a
-perturbation of what it measures — 0.15% → 0.36% of the sweep, workload identical in both arms
-on every field (`binds` 28, `loadsStarted` 34, `loadsSucceeded` 34, `reloads` 7, `unloads` 6),
-and cells-quiet wall clock did not move (median 1842 → 1832 ms, the after arm marginally
-*faster*). `perfTiming` is forced off for release artifacts by `harden-prod-manifest.js`, so a
-shipped build pays none of it. **Consequence to know: `instrumentUs` is NOT comparable across
-this change** — there is a 2.47× step at this commit, and a series spanning it shows a jump
-that is the instrument, not the app. The relative figure surfaced only because a before-arm
+difference: `instrumentUs` **`2710 µs` → `7640 µs`, +182% (2.82×)** as shipped. It is
+nonetheless not a perturbation of what it measures — 0.15% → 0.41% of the sweep, workload
+identical in both arms on every field (`binds` 28, `loadsStarted` 34, `loadsSucceeded` 34,
+`reloads` 7, `unloads` 6), and cells-quiet wall clock moved from a median of 1842 ms to
+1847 ms, which is **+5 ms against the before-arm's own 1835–1865 ms spread** — inside its
+noise, not distinguishable from it. `perfTiming` is forced off for release artifacts by
+`harden-prod-manifest.js`, so a shipped build pays none of it. **Consequence to know:
+`instrumentUs` is NOT comparable across this change** — there is a 2.82× step here, and a
+series spanning it shows a jump that is the instrument, not the app. The relative figure surfaced only because a before-arm
 was taken; the "0.36% of wall clock" argument alone would have concluded there was nothing to
 see.
 
