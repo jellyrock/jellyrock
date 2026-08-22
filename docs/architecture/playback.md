@@ -7,6 +7,9 @@ related-files:
   - components/video/VideoPlayerView.bs
   - components/video/VideoPlayerView.xml
   - components/video/OSD.bs
+  - components/GetPlaybackInfoTask.bs
+  - source/utils/trackPickerOptions.bs
+  - source/utils/playbackInfo.bs
   - components/video/TrickplayCarousel.bs
   - components/video/VideoNotification.bs
   - components/mediaPlayers/AudioPlayer.bs
@@ -14,7 +17,7 @@ related-files:
   - components/ItemGrid/LoadVideoContentTask.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-08-21
+last-reviewed: 2026-08-22
 ---
 
 # Video & Audio Playback
@@ -151,8 +154,9 @@ option — a discriminator that existed only because the return channel was glob
 Only one of these can be open at a time (the OSD is unreachable behind a modal), so they
 share one node slot (`m.playbackDialog`). That slot is what teardown abandons: these
 overlays are appended to the **scene**, so `onDestroy` *and* `onPlayerStateChange` call
-`abandonDialog()` on it. `SceneManager.isDialogOpen()` cannot see them — it only knows
-about Roku's modal channel (`m.scene.dialog`).
+`abandonDialog()` on it. `SceneManager.isDialogOpen()` *can* see them (it folds in
+`isOverlayDialogOpen`), but `dismissDialog` only closes Roku's modal channel, so
+abandoning ours explicitly is still required.
 
 **Playback info** (`selectPlaybackInfoPressed`) takes the same route to a different
 member of the family: `GetPlaybackInfoTask` reports what the server is doing with the
