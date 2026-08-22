@@ -241,6 +241,59 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("returnFocusTo — passed vs derived")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A caller that KNOWS its opener passes it. Derivation walks focusedChild down
+    ' from the scene, which lands on the same node only incidentally — the opener
+    ' is whoever asked for the dialog, not whoever happened to hold focus.
+    @it("uses an explicitly passed node instead of deriving one")
+    function _()
+      scene = m.top.getScene()
+      opener = CreateObject("roSGNode", "Group")
+      scene.appendChild(opener)
+
+      dialog = CreateObject("roSGNode", "JRDialog")
+      dialog.buttons = ["OK"]
+      presented = presentOverlayDialog(dialog, "", opener)
+
+      m.assertTrue(presented.returnFocusTo.isSameNode(opener))
+
+      abandonDialog(presented)
+      scene.removeChild(opener)
+    end function
+
+    ' The omitted case is every existing caller, so it has to keep deriving.
+    @it("falls back to the derived node when none is passed")
+    function _()
+      dialog = CreateObject("roSGNode", "JRDialog")
+      dialog.buttons = ["OK"]
+      presented = presentOverlayDialog(dialog, "")
+
+      m.assertNotInvalid(presented.returnFocusTo)
+
+      abandonDialog(presented)
+    end function
+
+    ' FocusableOverview is the caller this exists for: it opens an OverviewDialog
+    ' for its own text and knows it is the node to come back to.
+    @it("showInfoDialog threads it through to the dialog")
+    function _()
+      scene = m.top.getScene()
+      opener = CreateObject("roSGNode", "Group")
+      scene.appendChild(opener)
+
+      presented = showInfoDialog("Overview", "A description.", "", opener)
+
+      m.assertTrue(presented.returnFocusTo.isSameNode(opener))
+      ' and it went through the standard path, so it carries the shared id
+      m.assertTrue(isOverlayDialogOpen())
+
+      abandonDialog(presented)
+      scene.removeChild(opener)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("abandonDialog drops PORT observers too")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

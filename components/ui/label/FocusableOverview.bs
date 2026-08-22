@@ -1,3 +1,4 @@
+import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/misc.bs"
 
 const LABEL_PADDING = 30
@@ -169,24 +170,20 @@ sub onFocusChanged()
   updateFocusBorderLayout()
 end sub
 
-' Opens an OverviewDialog as a full-screen overlay on the scene.
-' Passes tagline separately so the dialog can style it distinctly.
-' Appended directly to the scene; the dialog restores focus to us on close via returnFocusTo.
+' Opens an OverviewDialog as a full-screen overlay on the scene, through the
+' standard helper. Tagline goes separately so the dialog can style it distinctly.
+'
+' This used to hand-roll the append (createObject + appendChild + setFocus). The
+' helper does the same thing AND stamps the shared overlay id, which is what
+' isOverlayDialogOpen / isDialogOpen / cancelOpenDialog find an open dialog by —
+' so the hand-rolled version was invisible to all three, and OverviewDialog's own
+' cancelDialog() was unreachable on this path.
+'
+' We pass `returnFocusTo` explicitly rather than letting the helper derive it:
+' the opener is us, we know it, and a derived answer is only incidentally the
+' same node.
 sub openOverviewDialog()
-  dialog = createObject("roSGNode", "OverviewDialog")
-
-  if m.top.dialogTitle <> ""
-    dialog.title = m.top.dialogTitle
-  end if
-
-  if isValidAndNotEmpty(m.top.tagline)
-    dialog.tagline = m.top.tagline
-  end if
-
-  dialog.overview = m.label.text
-  dialog.returnFocusTo = m.top
-  m.top.getScene().appendChild(dialog)
-  dialog.setFocus(true)
+  showInfoDialog(m.top.dialogTitle, m.label.text, m.top.tagline, m.top)
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean

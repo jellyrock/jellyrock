@@ -98,14 +98,20 @@ end function
 
 ' Read-only long-form text (descriptions, biographies). Self-closing on OK/back;
 ' no result to observe. Wraps the existing OverviewDialog chrome.
-function showInfoDialog(title as string, overview as string, tagline = "" as string) as object
+'
+' `returnFocusTo` names the node to restore focus to on close. Pass it when the
+' OPENER is the right answer and you already hold it — a focusable element that
+' expands into this dialog. Omitted, focus returns to whatever was focused when
+' the dialog opened, which is the same node in most cases but is DERIVED rather
+' than known.
+function showInfoDialog(title as string, overview as string, tagline = "" as string, returnFocusTo = invalid as object) as object
   dialog = createObject("roSGNode", "OverviewDialog")
   if title <> "" then dialog.title = title
   if tagline <> "" then dialog.tagline = tagline
   dialog.overview = overview
   ' OverviewDialog has no `result` field — it self-closes on OK/back, so there is
   ' nothing to observe. Present it through the same path as the other overlays.
-  return presentOverlayDialog(dialog, "")
+  return presentOverlayDialog(dialog, "", returnFocusTo)
 end function
 
 ' Text entry via the OS keyboard (voice-capable, certification-compliant).
@@ -212,7 +218,7 @@ const OVERLAY_DIALOG_ID = "jrDialog"
 ' Append an overlay dialog to the scene, capture focus, wire the caller's
 ' result observer. onResult is resolved in the CALLER's scope because these
 ' helpers execute inside the importing component's script scope.
-function presentOverlayDialog(dialog as object, onResult as string) as object
+function presentOverlayDialog(dialog as object, onResult as string, returnFocusTo = invalid as object) as object
   scene = appScene()
 
   ' EXACTLY ONE overlay dialog is on screen at a time, and it is this one.
@@ -252,8 +258,13 @@ function presentOverlayDialog(dialog as object, onResult as string) as object
   ' to the deepest focused node, which with an incumbent still mounted resolves
   ' INSIDE the incumbent — so returnFocusTo would point at a node that is about
   ' to be detached, and closing this dialog would restore focus to a corpse.
+  ' A caller that KNOWS its opener passes it instead and skips the derivation.
   dialog.id = OVERLAY_DIALOG_ID
-  dialog.returnFocusTo = lastFocusedChild(scene)
+  if isValid(returnFocusTo)
+    dialog.returnFocusTo = returnFocusTo
+  else
+    dialog.returnFocusTo = lastFocusedChild(scene)
+  end if
   if onResult <> "" then dialog.observeFieldScoped("result", onResult)
   scene.appendChild(dialog)
   dialog.setFocus(true)

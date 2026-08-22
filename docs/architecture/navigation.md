@@ -282,7 +282,7 @@ end sub
 - **Overhang passthrough fields** — `updateUser`, `resetTime`.
 - **Reload-home signal** — `reloadHome` sets `reloadHomeRequested = true`; `main.bs` observes it and calls `JRScene.reloadRoutedHome`.
 
-> The long-overview overlay was the last `SceneManager.pushScene` user. It now appends directly to the scene: `FocusableOverview.openOverviewDialog` (`components/ui/label/FocusableOverview.bs:176`) sets `dialog.returnFocusTo = m.top` and `m.top.getScene().appendChild(dialog)`; `OverviewDialog` removes itself and restores focus on close (`OverviewDialog.bs:218-223`).
+> The long-overview overlay was the last `SceneManager.pushScene` user, and then the last hand-rolled scene append. `FocusableOverview.openOverviewDialog` now goes through `showInfoDialog` like every other overlay, passing itself as `returnFocusTo`; `OverviewDialog` removes itself and restores focus on close. The hand-rolled version worked, but it never stamped the shared overlay id — so `isOverlayDialogOpen` / `isDialogOpen` / `cancelOpenDialog` were all blind to it, and `OverviewDialog.cancelDialog()` was unreachable on that path.
 
 ### The standard dialog system (`source/utils/dialogs.bs`)
 
