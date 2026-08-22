@@ -14,10 +14,12 @@ const ROW_PADDING = 24
 const CHECK_ICON_SIZE = 35
 
 sub init()
+  m.selectedBackground = m.top.findNode("selectedBackground")
   m.checkIcon = m.top.findNode("checkIcon")
   m.rowLabel = m.top.findNode("rowLabel")
 
   constants = m.global.constants
+  m.selectedBackground.blendColor = constants.colorBackgroundSecondary
   ' Sized 1:1 with the source bitmap so it renders crisp at native resolution,
   ' the same way the app's other inline icons are declared.
   m.checkIcon.uri = constants.iconCheckWhite
@@ -40,7 +42,14 @@ sub onItemContentChanged()
 
   ' isSelected is added to the ContentNode by JRListDialog. Absent (a row built
   ' by anything else) reads as not selected rather than faulting.
-  m.checkIcon.visible = isValid(content.isSelected) and content.isSelected
+  '
+  ' Two signals for one state, on purpose. The check is the one that carries the
+  ' meaning — it is a SHAPE, so it survives a colour-blind viewer and a custom
+  ' palette that flattens the two background tones. The surface is what gives the
+  ' row presence in a thirty-row list where every other line is the same colour.
+  isSelected = isValid(content.isSelected) and content.isSelected
+  m.checkIcon.visible = isSelected
+  m.selectedBackground.visible = isSelected
 
   layoutRow()
 end sub
@@ -53,6 +62,9 @@ sub layoutRow()
   rowWidth = m.top.width
   rowHeight = m.top.height
   if rowWidth <= 0 or rowHeight <= 0 then return
+
+  m.selectedBackground.width = rowWidth
+  m.selectedBackground.height = rowHeight
 
   m.checkIcon.translation = [ROW_PADDING, int((rowHeight - CHECK_ICON_SIZE) / 2)]
 

@@ -128,6 +128,55 @@ namespace tests
       m.assertInvalid(m.dialog.findNode("cancelButton"))
     end function
 
+    ' Two signals for one state: the check carries the meaning (a shape survives
+    ' a colour-blind viewer and a palette that flattens the two background tones),
+    ' the surface gives the row presence in a long single-colour list.
+    @it("a row marks the current option with BOTH a check and a surface")
+    function _()
+      row = CreateObject("roSGNode", "JRListDialogRow")
+      row.width = 800
+      row.height = 60
+
+      content = CreateObject("roSGNode", "ContentNode")
+      content.title = "English 5.1"
+      content.addFields({ isSelected: true })
+      row.itemContent = content
+
+      m.assertTrue(row.findNode("checkIcon").visible)
+      m.assertTrue(row.findNode("selectedBackground").visible)
+    end function
+
+    @it("a row shows neither marker when it is not the current option")
+    function _()
+      row = CreateObject("roSGNode", "JRListDialogRow")
+      row.width = 800
+      row.height = 60
+
+      content = CreateObject("roSGNode", "ContentNode")
+      content.title = "Spanish"
+      content.addFields({ isSelected: false })
+      row.itemContent = content
+
+      m.assertFalse(row.findNode("checkIcon").visible)
+      m.assertFalse(row.findNode("selectedBackground").visible)
+    end function
+
+    ' A row built by anything that does not know about isSelected must render as
+    ' an ordinary option rather than faulting on the missing field.
+    @it("a row without the isSelected field renders unmarked")
+    function _()
+      row = CreateObject("roSGNode", "JRListDialogRow")
+      row.width = 800
+      row.height = 60
+
+      content = CreateObject("roSGNode", "ContentNode")
+      content.title = "Plain"
+      row.itemContent = content
+
+      m.assertFalse(row.findNode("checkIcon").visible)
+      m.assertFalse(row.findNode("selectedBackground").visible)
+    end function
+
     @it("renders rows through JRListDialogRow so they can carry the check")
     function _()
       m.dialog.items = ["one", "two"]

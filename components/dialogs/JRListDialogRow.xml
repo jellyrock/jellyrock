@@ -15,9 +15,22 @@
      follows that.
 
      The FOCUS indicator is still the list's own (focusBitmapUri), not drawn
-     here — see source/utils/listTheme.bs. This component only adds content. -->
+     here — see source/utils/listTheme.bs. This component only adds content.
+
+     The selected row also gets a colorBackgroundSecondary surface. That fill
+     means FOCUS elsewhere in the app (TextButton, JRDropdownItem), but not in
+     this list: focusFootprintBitmapUri — the fill Roku draws for focus — only
+     renders "when the list or grid itself does not have focus", and this list is
+     the only focusable thing in a modal, so it always has focus and that
+     footprint never appears. Focus here is the 6px colorPrimary border alone,
+     which the fill cannot be confused with. -->
 <component name="JRListDialogRow" extends="Group">
   <children>
+    <!-- Surface under the CURRENT option. Same 9-patch the app fills every other
+         surface with, tinted colorBackgroundSecondary. Declared first so it sits
+         behind the check and the label. -->
+    <Poster id="selectedBackground" uri="pkg:/images/9patch/filled-rounded.9.png" visible="false" />
+
     <!-- White source asset: blendColor MULTIPLIES, so a white glyph takes the
          tint exactly. check-black would stay black whatever colour we asked for. -->
     <Poster id="checkIcon" visible="false" />
