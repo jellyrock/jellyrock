@@ -690,11 +690,8 @@ export const CELL_QUIET_COUNTERS = Object.freeze([
   'LoadsFailed',
   'LoadsSucceeded',
   'Unloads',
-  // `Appearances` earns its place by the rule above rather than by being new: a cell that
-  // scrolls back into view with its texture ALREADY loaded increments this and nothing
-  // else — no bind, no load, no unload. That is not a corner case; on `cellSweepGrid` it is
-  // 12 of the 18 re-entries. Before this, a sweep could be declared quiet while cells were
-  // still re-appearing, which is exactly the window the pop-in line measures.
+  // Qualifies under the rule above rather than by being new — a returning cell moves this
+  // and nothing else. Reasoning and the emit sites it was checked against: `waitCellsQuiet`.
   'Appearances',
 ]);
 
@@ -735,12 +732,12 @@ export const formatCellCounts = (counts) =>
  * one of the three reasons they live there. Gating the measurement's end on the measured
  * quantity is the closest thing available to an exact boundary.
  *
- * ## Which counters it watches, and why exactly these four
+ * ## Which counters it watches, and why exactly these six
  *
  * `CELL_QUIET_COUNTERS` is minimal AND complete, and both halves are checked against the
  * emit sites in `source/utils/cellLoad.bs` rather than chosen by feel. A counter needs
  * watching only if it can move while `binds` and `loadsStarted` both sit still. Exactly
- * three can:
+ * four can:
  *
  *   - **`cellLoadLoadsFailed`** — `JRRowItem.onPosterLoadStatusChanged` / `GridItem`'s
  *     equivalent, an ASYNCHRONOUS completion callback. It is the whole reason this function
@@ -754,7 +751,13 @@ export const formatCellCounts = (counts) =>
  *     pairs a start with its success, and `loadsStarted - (loadsFailed + loadsSucceeded)`
  *     becomes a residual the caller can assert is zero rather than a gap it cannot see.
  *   - **`cellLoadUnloads`** — `unloadTexture` bumps nothing else, so an off-screen cell
- *     releasing its texture is invisible to the other three.
+ *     releasing its texture is invisible to the others.
+ *   - **`cellLoadAppearances`** — a cell that scrolls back into view with its texture still
+ *     loaded bumps this and NOTHING else: it was never rebound, the buffer held the image
+ *     so no load ran, and nothing unloaded. On `cellSweepGrid` that is 12 of the 18
+ *     re-entries, so a settle blind to it could declare quiet while cells were still
+ *     re-appearing and publish an `appearances` short by most of what the pop-in line
+ *     exists to count.
  *
  * Every remaining counter is structurally PINNED to one of those two and needs no watch of
  * its own: `bindsFromContent` / `bindsFromSize` / `bindsRedundant` increment inside
