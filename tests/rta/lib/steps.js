@@ -1069,10 +1069,10 @@ export async function waitRowsSettled(
           `${timeout} ms — last ${lastGood.rows} row(s), ${total(lastGood)} item(s). The sweep ` +
           'still ran, but it read its bounds off a screen that was still being built, so its ' +
           'counts are comparable only to other runs that also failed to settle.'
-      : `[nav] ${listId}: the list STOPPED ANSWERING mid-settle — it resolved at gate-open with ` +
-          `${lastGood.rows} row(s), ${total(lastGood)} item(s) and then read nothing for the rest ` +
+      : `[nav] ${listId}: the list STOPPED ANSWERING mid-settle — the last structure it read was ` +
+          `${lastGood.rows} row(s), ${total(lastGood)} item(s), and it read nothing for the rest ` +
           `of ${timeout} ms. The screen was replaced or unmounted underneath this call, so the ` +
-          'structure reported here is the one at gate-open and NOT the one the sweep travelled.',
+          'structure reported here is the LAST ONE OBSERVED and NOT the one the sweep travelled.',
   );
   return {
     settled: false,

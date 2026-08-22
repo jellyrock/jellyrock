@@ -985,6 +985,40 @@ describe('waitRowsSettled', () => {
     warn.mockRestore();
   });
 
+  it('reports the LAST structure it read, not the one it opened on', async () => {
+    // `lastGood` has to track the latest successful sample, and the shared `vanishingReader`
+    // cannot show that: it answers exactly ONE sample, so the last good read and the
+    // gate-open read are the same object and the two are indistinguishable. Deleting the
+    // `lastGood = next` update passes every other test in this file — found by mutation.
+    // A list that answers twice and THEN vanishes separates them, and it is also the honest
+    // case: a screen replaced two seconds in has been read several times by that point, so
+    // reporting its opening structure would describe a screen that had already moved on.
+    const shapes = [
+      [16, 16],
+      [16, 16, 16],
+    ];
+    let i = 0;
+    let readsThisSample = 0;
+    getValue.mockImplementation(async ({ keyPath }) => {
+      if (i >= shapes.length) return { found: false }; // gone for good
+      const shape = shapes[i];
+      if (keyPath.endsWith('content.getChildCount()')) {
+        readsThisSample = 0;
+        return { found: true, value: shape.length };
+      }
+      readsThisSample++;
+      if (readsThisSample >= shape.length) i++;
+      return { found: true, value: shape[readsThisSample - 1] };
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const res = await waitRowsSettled('#homeRows', { quietMs: 20, interval: 5, timeout: 150 });
+
+    expect(res).toMatchObject({ settled: false, resolved: true, rows: 3, items: 48 });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('3 row(s), 48 item(s)'));
+    warn.mockRestore();
+  });
+
   it('names the list going AWAY as its own finding, not as a screen still being built', async () => {
     // The two ways this gives up need two diagnoses, and the wrong one costs an operator the
     // whole investigation: "still being built" sends them at row-arrival timing, when the
