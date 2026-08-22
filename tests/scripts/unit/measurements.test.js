@@ -428,6 +428,44 @@ describe('the cell-load family', () => {
     expect(fields.wipesReload).toBe(103);
   });
 
+  // Built from the emit in `source/utils/cellLoad.bs` the same way `WORK` is, and asserted
+  // field-by-field for the same reason: this pattern is the seam between what the device
+  // prints and every figure the pop-in section publishes, and a regex is exactly the kind
+  // of thing that stays well-formed while it stops matching. The values are the 2026-08-22
+  // `cellSweepGrid` medians, so a reader can check them against the doc.
+  const POPIN =
+    'INFO file:///Users/dev/jellyrock/source/utils/cellLoad.bs:216 cell-load popin - component BaseGridView appearances 46 popIns 24 popInsCold 6 popInsReload 1 popInsFirst 17 loadMs 16416 loadMsCount 34 loadMsMax 877  ';
+
+  it('reads every field off the popin line', () => {
+    expect(matchLine(cells, POPIN).fields).toEqual({
+      component: 'BaseGridView',
+      appearances: 46,
+      popIns: 24,
+      popInsCold: 6,
+      popInsReload: 1,
+      popInsFirst: 17,
+      loadMs: 16416,
+      loadMsCount: 34,
+      loadMsMax: 877,
+    });
+  });
+
+  it('keeps the three pop-in buckets a PARTITION of popIns', () => {
+    // Emitted rather than derived precisely so this can be checked instead of assumed.
+    // If the buckets ever stop summing, one of them is being written on a path that does
+    // not own the pop-in, and every remedy the split steers toward is misaddressed.
+    const { fields } = matchLine(cells, POPIN);
+    expect(fields.popInsCold + fields.popInsReload + fields.popInsFirst).toBe(fields.popIns);
+  });
+
+  it('still assembles a record taken before the popin line existed', () => {
+    // `required: false` under test. Every cell-load record in the ledger before 2026-08-21
+    // carries `binds` and `work` only, and a required popin line would drop them all out of
+    // a comparison silently rather than failing.
+    expect(matchLine(cells, WORK).fields.loadsStarted).toBe(140);
+    expect(matchLine(cells, WORK).fields.appearances).toBeUndefined();
+  });
+
   it('publishes the in-flight residual the counter exists to expose', () => {
     // `loadsStarted - (loadsFailed + loadsSucceeded)` is the count still outstanding when
     // the session was emitted. It is the reason the counter was added: without it, those
@@ -643,6 +681,25 @@ describe('unitFor', () => {
     }
     expect(measurementById('cell-load').counts).toContain('popIns');
     expect(unitFor('popIns', measurementById('cell-load'))).toBe('');
+  });
+
+  it('names only fields the family actually emits in counts', () => {
+    // Without this, a typo in `counts` is a SILENT no-op: the two tests around it iterate
+    // `counts` and assert properties of whatever names are listed, so `popInsColdd` passes
+    // both while `unitFor` quietly goes on answering 'ms' for the real field. Checked
+    // against the patterns' own named groups, which is the only place the emitted field
+    // names actually exist.
+    for (const m of MEASUREMENTS) {
+      if (!m.counts) continue;
+      const emitted = new Set(
+        m.lines.flatMap((l) => [...l.pattern.source.matchAll(/\(\?<(\w+)>/g)].map((g) => g[1])),
+      );
+      for (const field of m.counts) {
+        expect(emitted.has(field), `${m.id}.counts names "${field}", which no line emits`).toBe(
+          true,
+        );
+      }
+    }
   });
 
   it('keeps counts out of workload, because only workload defines same-work', () => {
