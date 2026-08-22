@@ -144,6 +144,14 @@ namespace tests
 
       m.assertTrue(row.findNode("checkIcon").visible)
       m.assertTrue(row.findNode("selectedBackground").visible)
+      ' Hue, not just luminance — the surface is only ~10 levels in the default
+      ' palette, which a dim panel or low vision loses entirely.
+      '
+      ' Compared through a reference node, not against the constant directly: a
+      ' node's `color` field normalises "0x3B82F6" to the RGBA integer 0x3B82F6FF,
+      ' so asserting against the theme string compares an integer to a string and
+      ' fails on a correct implementation.
+      m.assertEqual(row.findNode("rowLabel").color, m.themeColor(m.global.constants.colorSecondary))
     end function
 
     @it("a row shows neither marker when it is not the current option")
@@ -159,6 +167,7 @@ namespace tests
 
       m.assertFalse(row.findNode("checkIcon").visible)
       m.assertFalse(row.findNode("selectedBackground").visible)
+      m.assertEqual(row.findNode("rowLabel").color, m.themeColor(m.global.constants.colorTextPrimary))
     end function
 
     ' A row built by anything that does not know about isSelected must render as
@@ -192,6 +201,16 @@ namespace tests
       ' The panel owns these now; a copy here would be the divergence returning
       m.assertInvalid(m.dialog.findNode("separator"))
       m.assertInvalid(m.dialog.findNode("dialogBackground"))
+    end function
+
+    ' A theme constant as the node field itself reports it. Node `color` fields
+    ' normalise a "0xRRGGBB" string to an RGBA integer, so this is the only way to
+    ' compare a rendered colour to the constant it came from.
+    ' Returns dynamic: BSC types a node's `color` field as 'integer or string'.
+    function themeColor(value as string) as dynamic
+      reference = CreateObject("roSGNode", "Label")
+      reference.color = value
+      return reference.color
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

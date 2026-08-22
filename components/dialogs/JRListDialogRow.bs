@@ -43,13 +43,25 @@ sub onItemContentChanged()
   ' isSelected is added to the ContentNode by JRListDialog. Absent (a row built
   ' by anything else) reads as not selected rather than faulting.
   '
-  ' Two signals for one state, on purpose. The check is the one that carries the
-  ' meaning — it is a SHAPE, so it survives a colour-blind viewer and a custom
-  ' palette that flattens the two background tones. The surface is what gives the
-  ' row presence in a thirty-row list where every other line is the same colour.
+  ' Three signals for one state, each covering the others' blind spot: the check
+  ' is a SHAPE (survives any palette and colour-blindness), the surface gives the
+  ' row weight, and the label's hue survives a dim or badly calibrated panel where
+  ' a ten-level luminance lift does not.
   isSelected = isValid(content.isSelected) and content.isSelected
   m.checkIcon.visible = isSelected
   m.selectedBackground.visible = isSelected
+
+  ' The label carries the state too, in the SAME colour as the check. The surface
+  ' alone is a luminance-only difference of about ten levels in the default
+  ' palette — below what many TVs resolve at viewing distance, and the first
+  ' thing to vanish for a low-vision viewer. Hue survives all of that.
+  ' JRDropdownItem marks its selected label the same way.
+  constants = m.global.constants
+  if isSelected
+    m.rowLabel.color = constants.colorSecondary
+  else
+    m.rowLabel.color = constants.colorTextPrimary
+  end if
 
   layoutRow()
 end sub
