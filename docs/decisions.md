@@ -1049,6 +1049,34 @@ Accepted cost: a committed generated artifact that can go stale, paid for by `di
 
 **The constraint worth re-evaluating is the failure population, and the first answer to it was wrong.** The suppressed retries ARE the failed loads, so on a library whose artwork fails transiently this would suppress real recoveries. Measured 2026-08-21 on a 1 GB Stick 4K across three commit-pinned arms at n=10 each, it suppresses ~97 retries per extras sweep and costs zero recovered images: `loadsSucceeded` reads exactly 1 on all 30 launches in every arm. That figure is only trustworthy because the same branch added the counter — the earlier inference `loadsStarted - loadsFailed` put successes near 23, and the gap was requests still outstanding at the emit boundary rather than images that had arrived. Unmeasured on any other library, so the tripwire is a library whose person artwork exists and fails intermittently.
 
+## decision-id: appearance-signal-gates-departure-only
+
+**date**: 2026-08-22
+**status**: accepted
+**related-files**: `source/utils/cellLoad.bs`, `components/ui/rowitem/JRRowItem.bs`, `components/ItemGrid/GridItem.bs`, `tests/rta/specs/cell-load.spec.js`
+
+The pop-in ledger scores an appearance off the compositor's `renderTracking`, not the app's own `getRowPosition()` + `isInHorizontalBuffer()`. The horizontal half of that model assumes the focused column is the leftmost visible one — an assumption the buffer arithmetic makes and that has never been verified — so scoring the buffer against its own coordinate system would bake an unverified premise into the number the buffer is judged by.
+
+**Only the DEPARTURE is gated on `textureManagerState = "active"`, and the asymmetry is the decision.** `evaluateTextureState` already refuses `renderTracking` in `init` (a layout recalculation) and `hidden` (`visible=false` propagating when a screen is pushed over), and `noteAppearance` has to refuse it in the same two states: closing an episode there re-arms the once-per-episode gate, so the screen's return scores appearances nobody saw. Measured on the demo server before the gate, backing out of one item detail with no scrolling — 18 appearances against 10 binds, 0 pop-ins. Because `hidden` deliberately freezes textures loaded, every one of those is a guaranteed non-pop-in, so the error is one-way: it inflates the denominator of `popIns / appearances` in the buffer's own favor.
+
+**What this closes off is gating `appeared()` as well, which is the symmetric-looking fix and is wrong.** An appearance is idempotent within its episode, so an ungated `appeared()` cannot double-count; and first paint legitimately happens while the manager is still `init`, because `activateTextureManager` runs only once initial content has loaded. Gating it would have silently deleted `popInsFirst` — 17 of the 24 pop-ins on a grid sweep. The constraint worth re-evaluating is that this rests on `textureManagerState` remaining the app's authority on whether a screen is really on screen; a fifth state means revisiting the gate, not extending it.
+
+**No sweep measurement can catch a regression here**, which is why the invariant is gated on device instead. `cellSweepGrid` reads identically with and without the gate — 46 appearances, 24 pop-ins, 6 cold, 1 reload, 17 first, on every one of 5 launches in both arms — because a sweep never suspends its screen. [`tests/rta/specs/cell-load.spec.js`](../tests/rta/specs/cell-load.spec.js) asserts `appearances <= binds` for a resume with no scrolling, which fails at 18 vs 10 when the gate is removed.
+
+## decision-id: settle-gate-kept-for-its-null
+
+**date**: 2026-08-22
+**status**: accepted
+**related-files**: `tests/rta/lib/steps.js`, `tests/rta/lib/nav.js`, `docs/dev/measuring-performance.md`
+
+`waitRowsSettled` was built to remove `cellSweepHome`'s bind variance and does not remove it. It is kept anyway, and the null result is the reason rather than a caveat attached to one. A 40-launch alternated campaign (n=20/arm, `.177`, build `ad944494`) put `binds` at 235–255 in BOTH arms, medians 242 and 242, |z| < 1.7 on every field — so the gate buys no dispersion at all, and the n=5 pilot that appeared to pin four fields was noise.
+
+**What it is kept for is the precondition it prints, which nothing else could certify.** On all 20 gated launches it reported Home's rows already stable at gate-open (`settled in 1983–2048 ms`, the `quietMs` floor plus one poll), which is what converts "the sweep might be reading a half-built screen" from an untested hypothesis into a fact on every run. The ledger's `items` cannot do this: `cell-load` counts it at EMIT time, so it certifies the structure the sweep ENDED on and reads identically whether the sweep traveled a whole screen or a half-built one. Cost is ~2 s per `cellSweepHome` launch, on a nav that also runs once per full `test:rta` pass.
+
+**This closes off two things.** Deleting the gate and keeping only the write-up: that leaves the strongest harness-side refutation resting on a paragraph, where the next session re-derives it — the campaign cost 40 launches and a printed line inherits it for free. And threading the settled sample into `sweepRowList` to save its re-read: the gate's one self-undetectable failure is firing early during a mid-build lull, and two independent observations are the only thing that can catch it. Made authoritative, the itinerary would agree with the settle BY CONSTRUCTION — reintroducing, one layer up, exactly the weakness that makes the ledger's `items` a poor certificate. The re-read costs two round trips against the ~2000 ms the gate already spends.
+
+**The constraint worth re-evaluating is the justification itself, not the gate's cost.** It rests entirely on the printed precondition being worth ~2 s per launch, which holds while Home's spread is unexplained. If Phase B finds the app-side mechanism in `HomeRows` / `JRRowItem`, that premise expires and the gate should be re-examined rather than kept by inertia — the null result stays true either way, but "we still don't know why" stops being the reason to keep paying for the check.
+
 ## decision-id: one-overlay-dialog-supersedes
 
 **date**: 2026-08-22
