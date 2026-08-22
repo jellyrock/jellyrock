@@ -247,8 +247,8 @@ end function
 
 ' onSelectAudioPressed: Display audio selection dialog
 sub onSelectAudioPressed()
-  m.log.debug("onSelectAudioPressed", "currentAudioIndex", m.view.audioIndex, "trackCount", m.view.fullAudioData.Count())
   options = buildAudioTrackOptions(m.view.fullAudioData, m.view.audioIndex)
+  m.log.debug("onSelectAudioPressed", "currentAudioIndex", m.view.audioIndex, "rows", options.labels.count(), "focus", options.defaultIndex)
   showTrackPicker(translate(translationKeys.LabelSelectAudio), options, "onAudioTrackSelected")
 end sub
 
@@ -264,6 +264,7 @@ end sub
 ' onSelectVideoSourcePressed: Display video source selection dialog
 sub onSelectVideoSourcePressed()
   options = buildVideoSourceOptions(m.view.fullVideoSourceData, m.view.mediaSourceId)
+  m.log.debug("onSelectVideoSourcePressed", "currentSourceId", m.view.mediaSourceId, "rows", options.labels.count(), "focus", options.defaultIndex)
   showTrackPicker(translate(translationKeys.LabelSelectVideoSource), options, "onVideoSourceSelected")
 end sub
 
@@ -273,12 +274,14 @@ sub onVideoSourceSelected()
   sourceId = resolvePickedValue()
   if not isValid(sourceId) then return
 
+  m.log.info("onVideoSourceSelected", "pickedSourceId", sourceId, "currentSourceId", m.view.mediaSourceId)
   if sourceId <> m.view.mediaSourceId then m.view.mediaSourceId = sourceId
 end sub
 
 ' User requested subtitle selection popup
 sub onSelectSubtitlePressed()
   options = buildSubtitleTrackOptions(m.view.fullSubtitleData, m.view.selectedSubtitle, m.view.subtitleTrack, m.view.availableSubtitleTracks)
+  m.log.debug("onSelectSubtitlePressed", "selectedSubtitle", m.view.selectedSubtitle, "rows", options.labels.count(), "focus", options.defaultIndex, "rokuTracks", m.view.availableSubtitleTracks.count())
   showTrackPicker(translate(translationKeys.LabelSelectSubtitles), options, "onSubtitleTrackSelected")
 end sub
 
@@ -289,6 +292,10 @@ end sub
 sub onSubtitleTrackSelected()
   selected = resolvePickedValue()
   if not isValid(selected) then return
+
+  ' Logged at INFO because this is the path a user reports as "the subtitle did
+  ' not load", and every branch below can end in nothing visibly happening.
+  m.log.info("onSubtitleTrackSelected", "pickedIndex", selected.index, "isEncoded", selected.isEncoded, "wasIndex", m.view.selectedSubtitle)
 
   ' Nothing changed — leave the stream (and the playbackData cache) alone.
   '
@@ -334,7 +341,12 @@ sub onSubtitleTrackSelected()
 
     ' Roku may rearrange subtitle tracks. Look up track based on name to ensure we get the correct index
     rokuIndex = availableSubtitleTrackIndex(m.view.availableSubtitleTracks, selected.trackName)
-    if rokuIndex = SubtitleSelection.NONE then return
+    if rokuIndex = SubtitleSelection.NONE
+      ' The one way this path ends with nothing on screen and no error: Roku
+      ' dropped the track we asked for, so there is nothing to switch TO.
+      m.log.warn("Subtitle not present in Roku's track list; nothing to select", "trackName", selected.trackName, "rokuTracks", m.view.availableSubtitleTracks.count())
+      return
+    end if
 
     m.view.subtitleTrack = m.view.availableSubtitleTracks[rokuIndex].TrackName
   end if

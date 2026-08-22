@@ -1,87 +1,53 @@
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/dialogNarration.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
-' Layout constants
+' This dialog's OWN geometry. The vertical flow (padding, title, accent rule,
+' gaps) is shared — see source/utils/dialogLayout.bs.
+'
+' The panel is a FIXED size rather than content-derived: its body scrolls, so the
+' content cannot decide the height. 1600 x 760 is what makes it read as the
+' screen-dominating panel its outside OK button depends on.
 const DIALOG_WIDTH = 1600
 const DIALOG_HEIGHT = 760
-const DIALOG_PADDING = 40
-const TITLE_HEIGHT = 50
-const SEPARATOR_Y = 80
-const TEXT_TOP = 115
-const BUTTON_TOP_MARGIN = 20
 const SCROLL_STEP = 150
 const SCROLLBAR_THUMB_WIDTH = 12
 const SCROLLBAR_TRACK_WIDTH = 3
 const SCROLLBAR_MARGIN = 8
+const OK_BUTTON_MIN_WIDTH = 200
 
 sub init()
   constants = m.global.constants
 
-  ' Dialog position (centered on screen)
-  dialogX = (1920 - DIALOG_WIDTH) / 2
-  dialogY = (1080 - DIALOG_HEIGHT) / 2
+  m.chrome = m.top.findNode("chrome")
+  m.chrome.contentWidth = DIALOG_WIDTH - (PANEL_PADDING * 2)
+  m.chrome.observeField("titleHeight", "onTitleMeasured")
 
-  ' Background
-  m.dialogBackground = m.top.findNode("dialogBackground")
-  m.dialogBackground.translation = [dialogX, dialogY]
-  m.dialogBackground.width = DIALOG_WIDTH
-  m.dialogBackground.height = DIALOG_HEIGHT
-  m.dialogBackground.blendColor = constants.colorBackgroundPrimary
-
-  ' Title
-  m.titleLabel = m.top.findNode("titleLabel")
-  m.titleLabel.translation = [dialogX + DIALOG_PADDING, dialogY + 25]
-  m.titleLabel.width = DIALOG_WIDTH - (DIALOG_PADDING * 2)
-  m.titleLabel.height = TITLE_HEIGHT
-
-  ' Separator
-  separator = m.top.findNode("separator")
-  separator.translation = [dialogX + DIALOG_PADDING, dialogY + SEPARATOR_Y]
-  separator.width = DIALOG_WIDTH - (DIALOG_PADDING * 2)
-  separator.color = constants.colorBackgroundSecondary
-
-  ' Calculate text area dimensions (button is now outside dialog)
-  m.textAreaHeight = DIALOG_HEIGHT - TEXT_TOP - DIALOG_PADDING
-  m.textAreaWidth = DIALOG_WIDTH - (DIALOG_PADDING * 2) - SCROLLBAR_THUMB_WIDTH - SCROLLBAR_MARGIN
-
-  ' Scrollable text area with clipping
   m.textClip = m.top.findNode("textClip")
-  m.textClip.translation = [dialogX + DIALOG_PADDING, dialogY + TEXT_TOP]
-  m.textClip.clippingRect = [0, 0, m.textAreaWidth, m.textAreaHeight]
-
   m.scrollContent = m.top.findNode("scrollContent")
   m.taglineText = invalid
 
   m.overviewText = m.top.findNode("overviewText")
-  m.overviewText.width = m.textAreaWidth
   m.overviewText.maxLines = 500
   ' Enable render tracking once - observer fires when text is set/changed
   m.overviewText.enableRenderTracking = true
   m.overviewText.observeField("renderTracking", "onTextRendered")
 
-  ' Scroll position indicator
-  scrollTrackX = dialogX + DIALOG_WIDTH - DIALOG_PADDING - SCROLLBAR_THUMB_WIDTH
-  scrollThumbX = scrollTrackX + (SCROLLBAR_THUMB_WIDTH - SCROLLBAR_TRACK_WIDTH) / 2
   m.scrollTrack = m.top.findNode("scrollTrack")
-  m.scrollTrack.translation = [scrollThumbX, dialogY + TEXT_TOP]
-  m.scrollTrack.height = m.textAreaHeight
   m.scrollTrack.width = SCROLLBAR_TRACK_WIDTH
   m.scrollTrack.color = constants.colorBackgroundSecondary
+  m.scrollTrack.visible = false
 
   m.scrollThumb = m.top.findNode("scrollThumb")
-  m.scrollThumb.translation = [scrollTrackX, dialogY + TEXT_TOP]
   m.scrollThumb.width = SCROLLBAR_THUMB_WIDTH
   m.scrollThumb.color = constants.colorBackgroundSecondary
   m.scrollThumb.visible = false
-  m.scrollTrack.visible = false
 
-  ' OK button (centered below dialog)
   m.okButton = m.top.findNode("okButton")
   m.okButton.text = translate(translationKeys.ButtonOk)
-  m.okButton.minWidth = 200
-  m.okButton.translation = [dialogX + (DIALOG_WIDTH / 2) - 100, dialogY + DIALOG_HEIGHT + BUTTON_TOP_MARGIN]
+  m.okButton.minWidth = OK_BUTTON_MIN_WIDTH
 
   ' Observe focus changes to show/hide scrollbar
   m.top.observeField("focusedChild", "onFocusChanged")
@@ -100,10 +66,50 @@ sub init()
   m.scrollPosition = 0
   m.maxScroll = 0
   m.scrollBoundsCalculated = false
+
+  applyLayout()
+end sub
+
+sub onTitleMeasured()
+  applyLayout()
+end sub
+
+' Position everything from the shared flow. The panel is fixed, so the body
+' height comes back derived — which is exactly what the scroll viewport needs.
+sub applyLayout()
+  layout = computeDialogLayout({
+    panelWidth: DIALOG_WIDTH,
+    panelHeight: DIALOG_HEIGHT,
+    titleHeight: m.chrome.titleHeight,
+    footerHeight: m.okButton.localBoundingRect().height,
+    footerInside: false
+  })
+
+  m.chrome.layout = layout
+
+  ' The scrollbar sits in the right-hand gutter, so the text column stops short of it.
+  m.textAreaWidth = layout.body.width - SCROLLBAR_THUMB_WIDTH - SCROLLBAR_MARGIN
+  m.textAreaHeight = layout.body.height
+
+  m.textClip.translation = [layout.body.x, layout.body.y]
+  m.textClip.clippingRect = [0, 0, m.textAreaWidth, m.textAreaHeight]
+  m.overviewText.width = m.textAreaWidth
+  if isValid(m.taglineText) then m.taglineText.width = m.textAreaWidth
+
+  scrollTrackX = layout.body.x + layout.body.width - SCROLLBAR_THUMB_WIDTH
+  m.scrollTrack.translation = [scrollTrackX + ((SCROLLBAR_THUMB_WIDTH - SCROLLBAR_TRACK_WIDTH) / 2), layout.body.y]
+  m.scrollTrack.height = m.textAreaHeight
+  m.scrollThumb.translation = [scrollTrackX, layout.body.y]
+
+  m.okButton.translation = [centreInRect(layout.footer, OK_BUTTON_MIN_WIDTH), layout.footer.y]
+
+  ' The text column may have changed width, so any measured scroll bounds are stale.
+  m.scrollBoundsCalculated = false
+  calculateScrollBounds()
 end sub
 
 sub onTitleChanged()
-  m.titleLabel.text = m.top.title
+  m.chrome.title = m.top.title
 end sub
 
 sub onOverviewChanged()

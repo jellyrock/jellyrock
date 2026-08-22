@@ -1,0 +1,187 @@
+' The ONE definition of how a JellyRock dialog is laid out.
+'
+' Every dialog in the family — JRDialog, JRListDialog, OverviewDialog — is the
+' same vertical flow with a different body:
+'
+'   padding | title | TITLE_GAP | accent | BODY_GAP | body | BODY_GAP | footer | padding
+'
+' The accent rule sits TIGHT under the title (TITLE_GAP) because the two are one
+' unit — it belongs to the title, it does not divide the card. Below it the body
+' is centred in its own space (BODY_GAP above and below), so the eye reads
+' title -> body -> options as three steps. Hierarchy comes from the accent, not
+' from unequal gaps.
+'
+' WHY THIS IS A MODULE AND NOT THREE COPIES. It was three copies. JRDialog was
+' restyled during the #757 review — buttons inside the panel, a 3px border, a
+' short accent rule instead of a full-width divider, a derived flow instead of
+' fixed offsets — and JRListDialog and OverviewDialog kept the OLD look, because
+' each carried its own private constants and its own layout code. Nothing caught
+' it: no gate asserted a single position, gap, colour or asset, so "the app has
+' one dialog language" stayed true only where someone had recently looked. These
+' functions are pure so that claim is a test instead of an opinion.
+'
+' Pure on purpose, in the second sense too: no node access, no m, no global
+' reads. Layout is the part that was impossible to check without a device, and
+' it is the part that drifted.
+import "pkg:/source/utils/misc.bs"
+
+' Screen geometry. The app renders at 1920x1080 and Roku OS downscales to 720p.
+const SCREEN_WIDTH = 1920
+const SCREEN_HEIGHT = 1080
+
+' Every spacing value is a multiple of 6, so it stays an INTEGER through the
+' Roku OS downscale to 720p (x2/3). 40 and 25 — the values the pre-#757 dialogs
+' used — do not. dialogLayout.spec.bs asserts this rather than trusting it.
+const PANEL_PADDING = 48
+const TITLE_GAP = 24
+const BODY_GAP = 36
+const SEPARATOR_HEIGHT = 3
+
+' A short accent rule under the title, not a full-width divider: at content width
+' it competed with the body instead of supporting the title.
+'
+' Rendered in colorSecondary, NOT colorPrimary — colorPrimary is the theme's
+' FOCUSABLE colour (it is the focus ring on the buttons in this same dialog) and
+' this rule can never take focus. See components/CLAUDE.md's theme-colour table.
+const SEPARATOR_ACCENT_WIDTH = 120
+
+' Gap between the panel's bottom edge and a footer that sits OUTSIDE it.
+const FOOTER_OUTSIDE_MARGIN = 24
+
+' Ceiling so a panel can never exceed the screen — at 1080 this leaves 60px top
+' and bottom. A dialog that reaches it is holding content that belongs in
+' showInfoDialog, so callers are expected to notice rather than silently clip.
+const PANEL_MAX_HEIGHT = SCREEN_HEIGHT - (PANEL_PADDING * 2) - 24
+
+' Compute every rect a dialog needs, from the heights it has measured.
+'
+' @param {object} spec
+'   panelWidth   - the panel's width; the caller owns width policy (JRDialog
+'                  grows to fit its button row, the others are fixed)
+'   titleHeight  - measured title height, 0 for a dialog with no title
+'   bodyHeight   - measured/derived body height, 0 for none
+'   footerHeight - measured footer height, 0 for none
+'   footerInside - true to flow the footer INSIDE the panel (JRDialog's buttons),
+'                  false to place it below the panel (OverviewDialog's OK — a
+'                  recorded exception: its panel dominates the screen, so a
+'                  button below still reads as attached, which is not true at
+'                  JRDialog's size)
+'   panelHeight  - OPTIONAL. 0 (default) derives the panel height from the
+'                  content. A value > 0 fixes the panel and derives `body.height`
+'                  from the space left over — which is what a dialog with a
+'                  SCROLLING body needs, since its content does not decide its
+'                  size (OverviewDialog).
+'
+' @returns {object} - { panel, title, accent, body, footer }, each { x, y, width, height },
+'                     plus `overflows` (true when a derived panel hit the ceiling)
+function computeDialogLayout(spec as object) as object
+  panelWidth = intOr(spec.panelWidth, 0)
+  titleHeight = intOr(spec.titleHeight, 0)
+  bodyHeight = intOr(spec.bodyHeight, 0)
+  footerHeight = intOr(spec.footerHeight, 0)
+  fixedPanelHeight = intOr(spec.panelHeight, 0)
+  footerInside = isValid(spec.footerInside) and spec.footerInside
+
+  hasTitle = titleHeight > 0
+  contentWidth = panelWidth - (PANEL_PADDING * 2)
+
+  ' --- flow, in panel-local coordinates -------------------------------------
+  y = PANEL_PADDING
+  titleY = y
+  accentY = y
+  if hasTitle
+    y += titleHeight + TITLE_GAP
+    accentY = y
+    y += SEPARATOR_HEIGHT + BODY_GAP
+  end if
+  bodyY = y
+
+  ' A fixed panel height means the BODY absorbs the slack, not the padding —
+  ' that is the whole point of fixing it (a scroll viewport needs to know how
+  ' tall it may be before it can decide whether it scrolls at all).
+  if fixedPanelHeight > 0
+    bottom = fixedPanelHeight - PANEL_PADDING
+    if footerInside and footerHeight > 0 then bottom -= footerHeight + BODY_GAP
+    bodyHeight = bottom - bodyY
+    if bodyHeight < 0 then bodyHeight = 0
+  end if
+
+  contentBottom = bodyY + bodyHeight
+
+  ' A gap only exists BETWEEN things. A dialog whose body is the last thing in
+  ' the panel (JRListDialog has no footer at all) gets padding under it and
+  ' nothing else — reserving a footer's gap for a footer that is not there left
+  ' 84px of dead space under the list, which is what this shape is guarding.
+  hasFooter = footerHeight > 0
+  if hasFooter and footerInside
+    footerY = contentBottom + BODY_GAP
+    panelHeight = footerY + footerHeight + PANEL_PADDING
+  else
+    footerY = contentBottom + BODY_GAP
+    panelHeight = contentBottom + PANEL_PADDING
+  end if
+  if fixedPanelHeight > 0 then panelHeight = fixedPanelHeight
+
+  overflows = panelHeight > PANEL_MAX_HEIGHT
+
+  ' --- place the panel, then resolve everything to screen coordinates --------
+  panelX = int((SCREEN_WIDTH - panelWidth) / 2)
+  panelY = int((SCREEN_HEIGHT - panelHeight) / 2)
+
+  layout = {
+    panel: layoutRect(panelX, panelY, panelWidth, panelHeight),
+    title: layoutRect(panelX + PANEL_PADDING, panelY + titleY, contentWidth, titleHeight),
+    accent: layoutRect(panelX + int((panelWidth - SEPARATOR_ACCENT_WIDTH) / 2), panelY + accentY, SEPARATOR_ACCENT_WIDTH, SEPARATOR_HEIGHT),
+    body: layoutRect(panelX + PANEL_PADDING, panelY + bodyY, contentWidth, bodyHeight),
+    hasTitle: hasTitle,
+    overflows: overflows
+  }
+
+  if footerInside
+    layout.footer = layoutRect(panelX + PANEL_PADDING, panelY + footerY, contentWidth, footerHeight)
+  else
+    layout.footer = layoutRect(panelX + PANEL_PADDING, panelY + panelHeight + FOOTER_OUTSIDE_MARGIN, contentWidth, footerHeight)
+  end if
+
+  return layout
+end function
+
+' Centre a block of `width` inside a rect — for a footer button that is narrower
+' than the content column it was allotted.
+function centreInRect(container as object, width as integer) as integer
+  return container.x + int((container.width - width) / 2)
+end function
+
+' ---- internals ----
+
+' Named layoutRect, not rect: source/ files auto-scope into every component that
+' imports them, and `rect` is a local variable name in half the layout code in
+' this app (it collided with JRDialog's on the first build).
+function layoutRect(x as integer, y as integer, width as integer, height as integer) as object
+  return { x: x, y: y, width: width, height: height }
+end function
+
+' Missing and non-numeric both mean "not supplied". Callers pass measured values
+' that are invalid until the node has rendered, and a layout computed from those
+' is discarded and recomputed — it must not fault on the way through.
+'
+' `roInteger` is in this list because BrightScript reports integers under THREE
+' names (roInt / roInteger / Integer) depending on how the value was boxed, and
+' an allowlist missing one silently returns the fallback for every value. Every
+' numeric type check in this repo carries all three for the same reason (see
+' misc.bs); omitting it here made a whole layout compute from zeros and read as
+' a dozen unrelated assertion failures.
+function intOr(value as dynamic, fallback as integer) as integer
+  if not isValid(value) then return fallback
+
+  valueType = LCase(type(value))
+  numericTypes = {
+    "roint": 1, "rointeger": 1, "integer": 1,
+    "rofloat": 1, "float": 1,
+    "rodouble": 1, "double": 1,
+    "rolonginteger": 1, "longinteger": 1
+  }
+  if numericTypes.doesExist(valueType) then return int(value)
+
+  return fallback
+end function

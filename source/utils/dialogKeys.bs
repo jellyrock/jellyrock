@@ -1,0 +1,48 @@
+' Key models for the dialog family, as pure decisions.
+'
+' WHY THIS IS NOT JUST `onKeyEvent`. JRListDialog's first version reached its
+' Cancel button by catching a `down` that BUBBLED OUT of the list — which works
+' only while the list declines to handle it. Above 8 rows the list switched to
+' `fixedFocusWrap`, wrapped forever, and never let a `down` past; Cancel became
+' unreachable and `up` died with it. Both halves were correct in isolation and
+' contradicted each other, and no test could see it because the decision lived
+' inside a component's onKeyEvent where nothing can call it.
+'
+' So the decision moved here, where a test can ask "what does DOWN do on the
+' last row of a 30-item list?" without a device, a scene, or a render.
+import "pkg:/source/utils/misc.bs"
+
+' What a key press means to a selection-list dialog.
+'
+' The model matches ItemDetails' TrackDropdown, which is the app's OTHER picker
+' for the same job (choosing an audio/subtitle track) and shipped this first:
+'
+'   DOWN past the last row  -> wraps to the top; the list never exits downward
+'   UP on the first row     -> dismisses without choosing
+'   BACK                    -> dismisses without choosing
+'   anything else           -> consumed (a modal lets nothing reach the screen behind it)
+'
+' The asymmetry is the point: wrapping is what makes a 30-track list navigable
+' with a remote, and UP-on-the-first-row is then the dPad escape that wrapping
+' would otherwise take away.
+'
+' `focusedIndex` is checked EXPLICITLY rather than inferred from the fact that
+' the key reached us. Inferring position from bubbling is precisely the
+' assumption that broke: it holds only for a list configuration nobody promised
+' would stay.
+'
+' @param {string} key - the key name from onKeyEvent
+' @param {integer} focusedIndex - the list's currently focused row
+' @param {integer} itemCount - number of rows in the list
+' @returns {string} - "dismiss" | "wrapToTop" | "consume"
+function listDialogKeyAction(key as string, focusedIndex as integer, itemCount as integer) as string
+  if key = "back" then return "dismiss"
+
+  if key = "up" and focusedIndex <= 0 then return "dismiss"
+
+  ' An empty or single-row list has nowhere to wrap to, so DOWN is inert rather
+  ' than a no-op jump back onto the row you are already on.
+  if key = "down" and itemCount > 1 and focusedIndex >= itemCount - 1 then return "wrapToTop"
+
+  return "consume"
+end function

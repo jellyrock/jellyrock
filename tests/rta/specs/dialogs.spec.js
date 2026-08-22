@@ -212,28 +212,39 @@ it('osd video-source button opens the list dialog; back cancels it', async () =>
 
   if (CAPTURE) await captureRawUI('videoSourceDialog');
 
-  // Focus opens ON the list, not on Cancel — the picker's job is picking.
+  // Focus opens ON the list — the picker's job is picking, and there is no
+  // footer button to compete for it.
   await waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes('#optionList'), {
     label: 'list focused on open',
     timeout: 5000,
   });
 
-  // Down off the end of the list lands on Cancel (JRListDialog.onKeyEvent) — the
-  // only way out of the list besides picking.
-  const cancelLabel = await getVal('#cancelButton.text');
-  await waitFocused((f) => f.node?.text === cancelLabel, {
+  // The gestures are TrackDropdown's (see the file header): DOWN past the last
+  // row wraps to the top and never exits, UP on the first row dismisses. This is
+  // the only place that combination is exercised against a real LabelList, whose
+  // own wrap mode would swallow both keys if it were ever re-enabled.
+  const rows = await getVal('#optionList.content.getChildCount()');
+  const startIndex = await getVal('#optionList.itemFocused');
+
+  for (let i = startIndex; i < rows - 1; i++) await press(ecp.Key.Down);
+  await waitFor('#optionList.itemFocused', (n) => n === rows - 1, {
+    label: 'focus walked to the last row',
     timeout: 8000,
-    action: async () => {
-      const focused = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
-      if (focused?.node?.text !== cancelLabel) await press(ecp.Key.Down);
-    },
-    label: 'cancel focused after walking off the list',
   });
 
-  // Back cancels: the overlay removes itself and hands focus back to the OSD.
-  await press(ecp.Key.Back);
+  await press(ecp.Key.Down); // past the end -> wraps
+  await waitFor('#optionList.itemFocused', (n) => n === 0, {
+    label: 'DOWN on the last row wrapped to the top',
+    timeout: 8000,
+  });
+  // ...and it must NOT have dismissed on the way
+  if ((await getVal('#jrDialog.id')) !== 'jrDialog')
+    throw new Error('DOWN past the last row dismissed the dialog instead of wrapping');
+
+  // UP on the first row is the dPad exit.
+  await press(ecp.Key.Up);
   await waitFor('#jrDialog.id', (v) => v === undefined, {
-    label: 'video-source dialog dismissed',
+    label: 'UP on the first row dismissed the dialog',
     timeout: 10000,
   });
   await waitFocused((f) => f.node?.id === 'showVideoSourceMenu', {

@@ -1,25 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- JRListDialog: the JellyRock modal for selecting one item from a longer list
+<!-- JRListDialog: the JellyRock modal for choosing one item from a longer list
      (audio tracks, subtitles, video sources — anything past JRDialog's 3-button
-     cap). Same "PC look" chrome as JRDialog: dimmed backdrop, centered panel with
-     title + separator, a scrollable themed list in the body, and a Cancel button
-     BELOW the panel. Appended to the scene by dialogs.bs; per-instance `result`
-     field, same contract as JRDialog (selection lands in result.optionIndex). -->
+     cap). Chrome comes from JRDialogPanel, so this component owns only the list.
+
+     There is no Cancel button, deliberately. The gestures match ItemDetails'
+     TrackDropdown — the app's other picker for the same job — so choosing a
+     track behaves the same way before and during playback:
+
+       OK on a row     commits
+       DOWN past last  wraps to the top
+       UP on the first dismisses
+       BACK            dismisses
+
+     The decision lives in listDialogKeyAction (source/utils/dialogKeys.bs) where
+     it can be tested; see that file for why it is not inline here.
+
+     Appended to the scene by dialogs.bs; per-instance `result` field, same
+     contract as JRDialog (the selection lands in result.optionIndex). -->
 <component name="JRListDialog" extends="JRGroup" focusable="true">
   <children>
-    <Rectangle id="dimBackground" width="1920" height="1080" color="0x000000" opacity="0.75" />
-    <Poster id="dialogBackground" uri="pkg:/images/9patch/filled-rounded.9.png" />
-    <LabelPrimaryLarge id="titleLabel" horizAlign="center" vertAlign="center" />
-    <Rectangle id="separator" height="6" />
+    <JRDialogPanel id="chrome" />
+
     <JRLabelList id="optionList">
       <ContentNode id="content" role="content" />
     </JRLabelList>
-    <TextButton id="cancelButton" />
 
     <!-- Delays ONLY the opening announcement; see OPENING_ANNOUNCEMENT_DELAY in
          JRDialog.bs. -->
     <Timer id="narrationTimer" repeat="false" />
-
   </children>
   <interface>
     <!-- Array of option label strings -->

@@ -1,0 +1,85 @@
+import "pkg:/source/utils/dialogKeys.bs"
+
+namespace tests
+
+  @suite("dialogKeys.bs - the list dialog key model")
+  class DialogKeysTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("dismissing")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("BACK dismisses from anywhere in the list")
+    function _()
+      m.assertEqual(listDialogKeyAction("back", 0, 30), "dismiss")
+      m.assertEqual(listDialogKeyAction("back", 15, 30), "dismiss")
+      m.assertEqual(listDialogKeyAction("back", 29, 30), "dismiss")
+    end function
+
+    @it("UP on the first row dismisses — the dPad escape")
+    function _()
+      m.assertEqual(listDialogKeyAction("up", 0, 30), "dismiss")
+    end function
+
+    @it("UP anywhere else belongs to the list")
+    function _()
+      m.assertEqual(listDialogKeyAction("up", 1, 30), "consume")
+      m.assertEqual(listDialogKeyAction("up", 29, 30), "consume")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("wrapping")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The regression this whole module exists for: above 8 rows the list used to
+    ' wrap internally and swallow DOWN forever, stranding everything below it.
+    @it("DOWN on the last row wraps to the top, at any list length")
+    function _()
+      m.assertEqual(listDialogKeyAction("down", 1, 2), "wrapToTop")
+      m.assertEqual(listDialogKeyAction("down", 7, 8), "wrapToTop")
+      m.assertEqual(listDialogKeyAction("down", 29, 30), "wrapToTop")
+    end function
+
+    ' Long lists are exactly the case that broke, so assert it at a length past
+    ' the 8-row visible cap rather than only on a list that fits.
+    @it("DOWN never dismisses — a list dialog has no downward exit")
+    function _()
+      for each index in [0, 1, 14, 28, 29]
+        m.assertNotEqual(listDialogKeyAction("down", index, 30), "dismiss")
+      end for
+    end function
+
+    @it("DOWN mid-list belongs to the list")
+    function _()
+      m.assertEqual(listDialogKeyAction("down", 0, 30), "consume")
+      m.assertEqual(listDialogKeyAction("down", 28, 30), "consume")
+    end function
+
+    @it("DOWN is inert when there is nowhere to wrap to")
+    function _()
+      m.assertEqual(listDialogKeyAction("down", 0, 1), "consume")
+      m.assertEqual(listDialogKeyAction("down", 0, 0), "consume")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("modal containment")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A dialog that let a key through would drive the screen behind it while the
+    ' user believes they are in the dialog.
+    @it("consumes every other key rather than letting it reach the screen behind")
+    function _()
+      for each key in ["left", "right", "options", "play", "rewind", "fastforward", "replay"]
+        m.assertEqual(listDialogKeyAction(key, 5, 30), "consume")
+      end for
+    end function
+
+    ' OK is the list's own business: it fires itemSelected, which is what resolves
+    ' the dialog. The key model must not claim it.
+    @it("does not claim OK")
+    function _()
+      m.assertEqual(listDialogKeyAction("OK", 5, 30), "consume")
+    end function
+
+  end class
+end namespace

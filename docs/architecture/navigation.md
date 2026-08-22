@@ -292,6 +292,43 @@ global to cross-fire (the failure mode of `SceneManager.returnData`).
 | `showInfoDialog` | `OverviewDialog` | Scene-appended overlay |
 | `showKeyboardDialog` | `JRKeyboardDialog` | Roku modal channel (`m.scene.dialog`) — the OS owns the keyboard |
 
+#### One chrome, one flow
+
+`JRDialog`, `JRListDialog` and `OverviewDialog` all draw the same chrome — dimmed backdrop,
+panel, 3px edge, title, and the short `colorSecondary` accent rule under it — from
+**`JRDialogPanel`**, and all three get their geometry from **`source/utils/dialogLayout.bs`**,
+which is pure and unit-tested.
+
+That is not tidiness. The three each owned a private copy of both, and when the #757 review
+restyled `JRDialog` the other two silently kept the old look, so the app shipped two dialog
+languages with every gate green — nothing asserted a position, gap, color or asset. The
+module exists so "one dialog language" is a test rather than a claim, including a gate on the
+multiples-of-6 spacing scale that keeps values integral through the 720p downscale.
+
+A dialog supplies its own body and footer and nothing else. `OverviewDialog`'s OK button
+stays **outside** the panel — a recorded exception, not a leftover: at 1600×760 the panel
+dominates the screen, so a button below it still reads as attached, which is untrue at
+`JRDialog`'s size. `computeDialogLayout` takes footer placement as a parameter for exactly
+that reason.
+
+#### The list dialog has no Cancel button
+
+`JRListDialog`'s gestures match `ItemDetails`' `TrackDropdown`, the app's other picker for the
+same job, so choosing a track behaves the same before and during playback:
+
+| Gesture | Effect |
+|---|---|
+| `OK` on a row | commits the selection |
+| `DOWN` past the last row | wraps to the top — the list never exits downward |
+| `UP` on the first row | dismisses without choosing |
+| `Back` | dismisses without choosing |
+
+The decision lives in `listDialogKeyAction` (`source/utils/dialogKeys.bs`), not in
+`onKeyEvent`, because the first version put it there and got it wrong in a way no test could
+reach: it found Cancel by catching a `down` that *bubbled out* of the list, which stopped
+happening above 8 rows when the list began wrapping internally. The list is now pinned to
+`floatingFocus` and the wrap is ours.
+
 From a component, pass `onResult` (a function name in your scope) and the helper wires the
 scoped observer. From main-thread code, omit it and observe with your message port. The
 result shape is identical either way:

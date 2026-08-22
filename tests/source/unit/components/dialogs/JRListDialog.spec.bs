@@ -5,13 +5,16 @@ namespace tests
 
     private dialog as object
 
-    protected override function setup()
-      super.setup()
+    ' beforeEach, not setup: every test MUTATES this node, so a per-suite one
+    ' would hand each test whatever the last left behind (tests/CLAUDE.md).
+    protected override function beforeEach()
+      super.beforeEach()
       m.dialog = CreateObject("roSGNode", "JRListDialog")
     end function
 
-    protected override function teardown()
+    protected override function afterEach()
       m.dialog = invalid
+      super.afterEach()
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -64,6 +67,44 @@ namespace tests
       m.assertEqual(optionList.numRows, 8)
     end function
 
+    ' THE REGRESSION. This dialog used to switch the list to `fixedFocusWrap`
+    ' once it exceeded the visible cap. Roku's wrap consumes UP and DOWN at both
+    ' ends, which silently took away the dialog's only two dPad gestures — above
+    ' 8 rows there was no way to leave except Back. Wrapping is ours now
+    ' (listDialogKeyAction), so the list must never be handed back to Roku's.
+    @it("keeps floatingFocus no matter how long the list is")
+    function _()
+      optionList = m.dialog.findNode("optionList")
+
+      ' Roku normalises this field to lowercase on read, so compare that way
+      ' rather than against the spelling we wrote.
+      m.dialog.items = ["one", "two"]
+      m.assertEqual(LCase(optionList.vertFocusAnimationStyle), "floatingfocus")
+
+      items = []
+      for i = 1 to 30
+        items.push("track " + i.toStr())
+      end for
+      m.dialog.items = items
+      m.assertEqual(LCase(optionList.vertFocusAnimationStyle), "floatingfocus")
+    end function
+
+    @it("has no footer button — the list is the only focusable thing in it")
+    function _()
+      m.dialog.items = ["one", "two"]
+      m.assertInvalid(m.dialog.findNode("cancelButton"))
+    end function
+
+    @it("takes its chrome from JRDialogPanel rather than its own nodes")
+    function _()
+      chrome = m.dialog.findNode("chrome")
+      m.assertNotInvalid(chrome)
+      m.assertEqual(chrome.subtype(), "JRDialogPanel")
+      ' The panel owns these now; a copy here would be the divergence returning
+      m.assertInvalid(m.dialog.findNode("separator"))
+      m.assertInvalid(m.dialog.findNode("dialogBackground"))
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Focus on open")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -77,8 +118,8 @@ namespace tests
       ' REFERENCES/scenegraph/node.md), so RSG leaves focus on the already-focused
       ' descendant instead of hoisting it to the group. If a future refactor sets
       ' `items` after appending, or makes the group genuinely take focus, the list
-      ' becomes unreachable (OK does nothing, down skips straight to Cancel) —
-      ' which is exactly what this test exists to catch.
+      ' becomes unreachable and OK does nothing — which is exactly what this
+      ' test exists to catch.
       scene = m.top.getScene()
       m.assertNotInvalid(scene)
 

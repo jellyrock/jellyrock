@@ -52,6 +52,8 @@ Roku Scene Graph (RSG) components — XML interface + paired BrighterScript back
 - The result arrives on the **dialog node's own `result` field**, shape `{ cancelled, confirmed, buttonIndex, buttonText, optionIndex, value }`. Pass `onResult` (a function name in *your* scope) and the helper wires the scoped observer; keep the returned node so the callback can read `.result`.
 - **Do NOT add new `m.global.sceneManager` dialog calls** (`userMessage` / `showConfirmationDialog` + the shared `returnData` / `isDataReturned` fields). That path is being retired — remaining consumers are tracked by [`dialog-returndata-shared-global`](../docs/architecture/tech-debt.md#dialog-returndata-shared-global).
 - Overlay dialogs are appended to the **scene**, not to your screen, so they survive your `onDestroy`. A screen that opens one owns tearing it down.
+- **Chrome and layout are shared — don't re-derive either.** The panel, edge, title and accent rule come from `JRDialogPanel`; the vertical flow comes from `source/utils/dialogLayout.bs` (pure, unit-tested). A dialog supplies its body and footer only. Three private copies of this is how the app ended up with two dialog looks that every gate passed.
+- **`showListDialog` has no Cancel button.** `OK` commits, `DOWN` past the last row wraps, `UP` on the first row dismisses, `Back` dismisses — matching `TrackDropdown`. The model is `listDialogKeyAction` in `source/utils/dialogKeys.bs`; don't re-implement it in `onKeyEvent`, and don't hand the list back to Roku's `fixedFocusWrap` (it consumes both keys the dialog needs).
 - Full contract: [navigation.md → The standard dialog system](../docs/architecture/navigation.md).
 
 ## Theme colors — which one means what

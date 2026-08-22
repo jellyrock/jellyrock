@@ -1,20 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- OverviewDialog: Custom full-screen overlay for reading long overview text.
-     Appended directly to the scene by FocusableOverview; dismisses itself via removeChild +
-     returnFocusTo. Supports vertical scrolling. -->
+<!-- OverviewDialog: the read-only long-form overlay (item descriptions, the
+     playback-info report). Appended to the scene by FocusableOverview or by
+     showInfoDialog; dismisses itself via removeChild + returnFocusTo. Supports
+     vertical scrolling.
+
+     Its OK button stays OUTSIDE the panel, unlike JRDialog's row. That is a
+     recorded decision rather than a leftover: this panel is 1600x760 and
+     dominates the screen, so a button below it still reads as attached — which
+     is not true at JRDialog's size. See overviewdialog-diverged-style in
+     docs/architecture/tech-debt.md. -->
 <component name="OverviewDialog" extends="JRGroup">
   <children>
-    <!-- Dimmed background overlay -->
-    <Rectangle id="dimBackground" width="1920" height="1080" color="0x000000" opacity="0.75" />
-
-    <!-- Dialog box -->
-    <Poster id="dialogBackground" uri="pkg:/images/9patch/filled-rounded.9.png" />
-
-    <!-- Title -->
-    <LabelPrimaryLarge id="titleLabel" horizAlign="center" vertAlign="center" />
-
-    <!-- Separator line below title -->
-    <Rectangle id="separator" height="6" />
+    <!-- Dimmed backdrop, panel, edge, title and accent rule — shared with the rest
+         of the dialog family. See JRDialogPanel.xml for the ordering contract. -->
+    <JRDialogPanel id="chrome" />
 
     <!-- Scrollable text area (clippingRect constrains visible area) -->
     <Group id="textClip" focusable="true">
