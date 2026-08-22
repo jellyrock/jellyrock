@@ -1,7 +1,34 @@
 namespace tests
 
+  ' Clear the per-cell instrument state the ledger actually writes to.
+  '
+  ' It CANNOT be done from a suite method. A class method's `m` is the class instance,
+  ' while `cellLoad.*` resolves `m` from the enclosing scope — the same rule that makes
+  ' `cellState()` land on the CELL in production. So `m.cellLoadState = invalid` inside the
+  ' suite clears a different AA and leaves the real one standing. A free function in this
+  ' namespace resolves `m` the way the module does, so it reaches the same one. Identical
+  ' mechanism, and identical comment, to `clearScreenLoadLedger` in screenReadiness.spec.bs.
+  sub clearCellLoadState()
+    m.cellLoadState = invalid
+    m.cellLoadProbe = invalid
+    m.cellLoadLoadTimer = invalid
+  end sub
+
   @suite("cellLoad.bs - Cell Load Ledger")
   class CellLoadTests extends tests.BaseTestSuite
+
+    ' Per TEST, never per suite. `cellLoad.cellState()` caches on the module's `m`, which
+    ' outlives a test, so a pop-in left pending by one test would resolve against the next
+    ' test's content root. Same hazard, and same fix, as the screenReadiness ledger.
+    protected override sub beforeEach()
+      super.beforeEach()
+      clearCellLoadState()
+    end sub
+
+    protected override sub afterEach()
+      clearCellLoadState()
+      super.afterEach()
+    end sub
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("attach()")
@@ -115,6 +142,242 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("appeared() / pop-in scoring")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("scores no pop-in when the image was already on screen")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.attach(root, "ExtrasRowList")
+      cellLoad.bind(root, cellLoad.FROM_CONTENT, false)
+      cellLoad.appeared(root, true, false)
+      ' A later "ready" with no request outstanding — Roku re-reporting a URI that was
+      ' never re-requested. It must not retroactively invent a pop-in.
+      cellLoad.loadSucceeded(root)
+      m.assertEqual(root.getField("cellLoadAppearances"), 1)
+      m.assertEqual(root.getField("cellLoadPopIns"), 0)
+    end function
+
+    @it("scores a pop-in only once the image actually arrives")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.attach(root, "ExtrasRowList")
+      cellLoad.bind(root, cellLoad.FROM_CONTENT, false)
+      cellLoad.loadStarted(root)
+      cellLoad.appeared(root, false, false)
+      m.assertEqual(root.getField("cellLoadPopIns"), 0)
+      cellLoad.loadSucceeded(root)
+      m.assertEqual(root.getField("cellLoadPopIns"), 1)
+    end function
+
+    @it("does NOT score a pop-in for an image that never arrives")
+    function _()
+      ' The load-bearing one. `ExtrasRowList` fails 117 of 140 loads against a real server
+      ' because the Person images are gone, so scoring at appearance time would report a
+      ' total buffer failure caused entirely by missing artwork. A broken image is already
+      ' counted as `loadsFailed`; the user sees a glyph, never a fade-in.
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.attach(root, "ExtrasRowList")
+      cellLoad.bind(root, cellLoad.FROM_CONTENT, false)
+      cellLoad.loadStarted(root)
+      cellLoad.appeared(root, false, false)
+      cellLoad.loadErrored(root)
+      m.assertEqual(root.getField("cellLoadAppearances"), 1)
+      m.assertEqual(root.getField("cellLoadLoadsFailed"), 1)
+      m.assertEqual(root.getField("cellLoadPopIns"), 0)
+
+      ' Asserting the count at the failure is VACUOUS on its own — a pop-in only ever
+      ' materialises on a later success, so `popIns` reads 0 there whether or not the
+      ' failure cleared the pending flag. Caught by mutation: deleting the clear in
+      ' loadErrored left this test green. The cell must be driven through the retry that
+      ' DOES succeed — scroll out, scroll back, reload — which is where an uncleared flag
+      ' would score the failed appearance as a pop-in it never was. The user saw a glyph in
+      ' between, not one continuous wait.
+      cellLoad.loadStarted(root)
+      cellLoad.loadSucceeded(root)
+      m.assertEqual(root.getField("cellLoadPopIns"), 0)
+    end function
+
+    @it("scores a pop-in when loadStatus still reads ready from the PREVIOUS item")
+    function _()
+      ' The recycled-cell trap. Roku leaves `loadStatus` at "ready" from the old URI until
+      ' the new request resolves, so a cell scrolling into view mid-load reports a texture
+      ' it does not have. An outstanding request is what settles it, not loadStatus.
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.attach(root, "HomeRows")
+      cellLoad.bind(root, cellLoad.FROM_CONTENT, false)
+      cellLoad.loadStarted(root)
+      cellLoad.appeared(root, true, false)
+      cellLoad.loadSucceeded(root)
+      m.assertEqual(root.getField("cellLoadPopIns"), 1)
+    end function
+
+    @it("partitions pop-ins three ways, emitting all of them")
+    function _()
+      ' The three buckets carry different remedies and must never be derived from each
+      ' other. Measured 2026-08-21 on cellSweepGrid: popIns 18 of 28 appearances with
+      ' popInsCold 0 — a number that reads as a two-thirds buffer failure and is nearly all
+      ' first paint, because a sweep that OPENS its screen binds every visible cell while
+      ' its data is still arriving.
+
+      ' FIRST — the cell's initial render was still loading. No buffer could have won.
+      first = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.attach(first, "BaseGridView")
+      cellLoad.bind(first, cellLoad.FROM_CONTENT, false)
+      cellLoad.loadStarted(first)
+      cellLoad.appeared(first, false, false)
+      cellLoad.loadSucceeded(first)
+      m.assertEqual(first.getField("cellLoadPopIns"), 1)
+      m.assertEqual(first.getField("cellLoadPopInsFirst"), 1)
+      m.assertEqual(first.getField("cellLoadPopInsReload"), 0)
+      m.assertEqual(first.getField("cellLoadPopInsCold"), 0)
+
+      ' RELOAD — a re-entry request was in flight and lost. This is the buffer's own race.
+      clearCellLoadState()
+      again = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.attach(again, "BaseGridView")
+      cellLoad.bind(again, cellLoad.FROM_CONTENT, false)
+      cellLoad.reload(again)
+      cellLoad.loadStarted(again, true)
+      cellLoad.appeared(again, false, false)
+      cellLoad.loadSucceeded(again)
+      m.assertEqual(again.getField("cellLoadPopIns"), 1)
+      m.assertEqual(again.getField("cellLoadPopInsReload"), 1)
+      m.assertEqual(again.getField("cellLoadPopInsFirst"), 0)
+
+      ' The three are mutually exclusive, so they sum to popIns and nothing is inferred.
+      m.assertEqual(again.getField("cellLoadPopInsCold") + again.getField("cellLoadPopInsReload") + again.getField("cellLoadPopInsFirst"), again.getField("cellLoadPopIns"))
+    end function
+
+    @it("classifies a plain load as first even on a cell that once reloaded")
+    function _()
+      ' The origin must be re-established by each load, not accumulated. If it ever went
+      ' sticky, a cell that reloaded once would report every LATER first-render pop-in as a
+      ' reload, quietly moving counts into the bucket that says "the buffer had a job here".
+      '
+      ' This started life asserting that `bind()` RESET the flag, and mutation testing
+      ' showed that assertion was vacuous — deleting the reset left it green, because
+      ' `loadStarted` assigns the origin unconditionally on every call and `popInFromReload`
+      ' is only read when a load is pending. The reset was unreachable-effect code and was
+      ' removed; what is left is the invariant that actually holds it up.
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.attach(root, "HomeRows")
+      cellLoad.bind(root, cellLoad.FROM_CONTENT, false)
+      cellLoad.loadStarted(root, true)
+      cellLoad.appeared(root, false, false)
+      cellLoad.loadSucceeded(root)
+      m.assertEqual(root.getField("cellLoadPopInsReload"), 1)
+
+      cellLoad.bind(root, cellLoad.FROM_CONTENT, false)
+      cellLoad.loadStarted(root)
+      cellLoad.appeared(root, false, false)
+      cellLoad.loadSucceeded(root)
+      m.assertEqual(root.getField("cellLoadPopInsReload"), 1)
+      m.assertEqual(root.getField("cellLoadPopInsFirst"), 1)
+    end function
+
+    @it("splits pop-ins by whether a request was in flight when the cell appeared")
+    function _()
+      ' Cold — nothing was loading, so the cell arrived from outside the managed range and
+      ' the user outran the buffer's DEPTH. More depth would help.
+      cold = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.attach(cold, "HomeRows")
+      cellLoad.bind(cold, cellLoad.FROM_CONTENT, false)
+      cellLoad.appeared(cold, false, true)
+      cellLoad.loadStarted(cold)
+      cellLoad.loadSucceeded(cold)
+      m.assertEqual(cold.getField("cellLoadPopIns"), 1)
+      m.assertEqual(cold.getField("cellLoadPopInsCold"), 1)
+
+      ' Warm — the buffer had already issued the request and the network was slower. Depth
+      ' cannot fix that, which is why the two must not share a counter.
+      clearCellLoadState()
+      warm = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.attach(warm, "HomeRows")
+      cellLoad.bind(warm, cellLoad.FROM_CONTENT, false)
+      cellLoad.loadStarted(warm)
+      cellLoad.appeared(warm, false, false)
+      cellLoad.loadSucceeded(warm)
+      m.assertEqual(warm.getField("cellLoadPopIns"), 1)
+      m.assertEqual(warm.getField("cellLoadPopInsCold"), 0)
+    end function
+
+    @it("counts one appearance per bind however often the compositor flips")
+    function _()
+      ' renderTracking can flip spuriously during a layout recalculation, and both
+      ' renderItem and onRenderTrackingChanged call in without an ordering guarantee. A
+      ' user sees an item pop in once, not once per compositor event.
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.attach(root, "HomeRows")
+      cellLoad.bind(root, cellLoad.FROM_CONTENT, false)
+      cellLoad.appeared(root, false, false)
+      cellLoad.appeared(root, false, false)
+      cellLoad.appeared(root, false, false)
+      m.assertEqual(root.getField("cellLoadAppearances"), 1)
+
+      ' A new bind is a new (cell, item) pairing, so the question re-opens.
+      cellLoad.bind(root, cellLoad.FROM_CONTENT, false)
+      cellLoad.appeared(root, false, false)
+      m.assertEqual(root.getField("cellLoadAppearances"), 2)
+    end function
+
+    @it("does not resolve a pop-in against the item that replaced it")
+    function _()
+      ' A load outstanding for the previous item can still report ready after the cell has
+      ' been recycled. Left uncleared, it would score a pop-in for an item this cell no
+      ' longer holds and that never appeared without its image.
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.attach(root, "HomeRows")
+      cellLoad.bind(root, cellLoad.FROM_CONTENT, false)
+      cellLoad.loadStarted(root)
+      cellLoad.appeared(root, false, false)
+      cellLoad.bind(root, cellLoad.FROM_CONTENT, false)
+      cellLoad.loadSucceeded(root)
+      m.assertEqual(root.getField("cellLoadPopIns"), 0)
+    end function
+
+    @it("is a no-op on a root that was never attached")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.appeared(root, false, false)
+      m.assertFalse(root.hasField("cellLoadAppearances"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("load timing")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("times only the loads it actually issued")
+    function _()
+      ' A "ready" with no matching issue is a real success with no interval to record.
+      ' Counting it would put a bogus reading — the time since some earlier, unrelated mark
+      ' — into the mean, which is exactly why loadMsCount exists rather than dividing by
+      ' loadsSucceeded.
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.attach(root, "HomeRows")
+      cellLoad.bind(root, cellLoad.FROM_CONTENT, false)
+      cellLoad.loadSucceeded(root)
+      m.assertEqual(root.getField("cellLoadLoadsSucceeded"), 1)
+      m.assertEqual(root.getField("cellLoadLoadMsCount"), 0)
+
+      cellLoad.loadStarted(root)
+      cellLoad.loadSucceeded(root)
+      m.assertEqual(root.getField("cellLoadLoadsSucceeded"), 2)
+      m.assertEqual(root.getField("cellLoadLoadMsCount"), 1)
+    end function
+
+    @it("does not time a load that failed")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.attach(root, "HomeRows")
+      cellLoad.bind(root, cellLoad.FROM_CONTENT, false)
+      cellLoad.loadStarted(root)
+      cellLoad.loadErrored(root)
+      cellLoad.loadSucceeded(root)
+      m.assertEqual(root.getField("cellLoadLoadMsCount"), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("emit()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -145,10 +408,21 @@ namespace tests
       cellLoad.attach(root, "HomeRows")
       cellLoad.bind(root, cellLoad.FROM_CONTENT, true)
       cellLoad.loadStarted(root)
-      cellLoad.loadErrored(root)
+      cellLoad.appeared(root, false, true)
       cellLoad.loadSucceeded(root)
+      cellLoad.loadErrored(root)
       cellLoad.reload(root)
       cellLoad.unload(root)
+
+      ' Assert the counters are actually SET before emitting. A reset test whose subject
+      ' was zero all along passes without testing anything, and `loadMsMax` reads a real
+      ' 0 ms on a run this fast — so it is deliberately not asserted here rather than
+      ' asserted vacuously. `loadMsCount` covers the timing group.
+      m.assertEqual(root.getField("cellLoadAppearances"), 1)
+      m.assertEqual(root.getField("cellLoadPopIns"), 1)
+      m.assertEqual(root.getField("cellLoadPopInsCold"), 1)
+      m.assertEqual(root.getField("cellLoadLoadMsCount"), 1)
+
       cellLoad.emit(root)
       m.assertEqual(root.getField("cellLoadBindsRedundant"), 0)
       m.assertEqual(root.getField("cellLoadLoadsStarted"), 0)
@@ -159,6 +433,14 @@ namespace tests
       m.assertEqual(root.getField("cellLoadLoadsSucceeded"), 0)
       m.assertEqual(root.getField("cellLoadReloads"), 0)
       m.assertEqual(root.getField("cellLoadUnloads"), 0)
+      ' The pop-in fields reset with the rest — a session that carried them forward would
+      ' publish a race the next screen never ran.
+      m.assertEqual(root.getField("cellLoadAppearances"), 0)
+      m.assertEqual(root.getField("cellLoadPopIns"), 0)
+      m.assertEqual(root.getField("cellLoadPopInsCold"), 0)
+      m.assertEqual(root.getField("cellLoadPopInsReload"), 0)
+      m.assertEqual(root.getField("cellLoadPopInsFirst"), 0)
+      m.assertEqual(root.getField("cellLoadLoadMsCount"), 0)
     end function
 
   end class

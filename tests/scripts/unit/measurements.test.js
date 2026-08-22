@@ -630,6 +630,33 @@ describe('unitFor', () => {
     expect(measurementById('item-grid').workload).toContain('items');
   });
 
+  it('gives a declared COUNT no unit at all, when the family is passed', () => {
+    // A count is not a duration, and `cell-load` is almost all counts: before `counts`
+    // existed, `unitFor('binds', cellLoad)` answered `'ms'`, so a bind count or a pop-in
+    // count headlined as milliseconds. Same wrong shape `--field items` had before
+    // workload took a family; different list, because these are outcomes rather than
+    // inputs.
+    for (const m of MEASUREMENTS) {
+      for (const field of m.counts ?? []) {
+        expect(unitFor(field, m), `${m.id}.${field}`).toBe('');
+      }
+    }
+    expect(measurementById('cell-load').counts).toContain('popIns');
+    expect(unitFor('popIns', measurementById('cell-load'))).toBe('');
+  });
+
+  it('keeps counts out of workload, because only workload defines same-work', () => {
+    // `workloadKey` builds a sample's same-work identity from its workload fields, and
+    // `measure:compare` warns when two samples disagree. An OUTCOME in that list would
+    // make every A/B report "the samples did not all do the same work" — the arms are
+    // supposed to differ on `popIns`, that is the experiment.
+    for (const m of MEASUREMENTS) {
+      for (const field of m.counts ?? []) {
+        expect(m.workload, `${m.id}.${field}`).not.toContain(field);
+      }
+    }
+  });
+
   it('still calls a TIMING milliseconds when the family is passed', () => {
     // The family narrows the answer; it must not change it for the fields it does not
     // list as workload.

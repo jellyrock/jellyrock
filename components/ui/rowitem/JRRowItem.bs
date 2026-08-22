@@ -140,6 +140,8 @@ sub renderItem()
   else
     renderStandardItem(item, slotWidth, posterHeight)
   end if
+
+  noteAppearance()
 end sub
 
 ' Renders a My Media library tile: themed backdrop + type icon + library name.
@@ -775,6 +777,7 @@ end function
 ' Fires when the cell scrolls in/out of the visible area.
 sub onRenderTrackingChanged()
   logTextureAction("renderTracking=" + m.top.renderTracking)
+  noteAppearance()
   evaluateTextureState()
 end sub
 
@@ -791,6 +794,27 @@ end sub
 ' Fires when the parent screen updates the per-row focused column (horizontal scroll).
 sub onFocusedColumnsChanged()
   evaluateTextureState()
+end sub
+
+' Records that this cell is on screen, for the pop-in half of the cell-load ledger.
+'
+' Called from BOTH renderItem (the cell was bound while already on screen — Home's first
+' paint) and onRenderTrackingChanged (it scrolled in), because for a recycled cell there is
+' no ordering guarantee between the two. `cellLoad.appeared()` counts at most once per bind,
+' so calling it from both is idempotent rather than double-counting.
+'
+' `renderTracking` is the appearance signal rather than getRowPosition() +
+' isInHorizontalBuffer(), deliberately. Those are the app's own model of what is on screen,
+' and the horizontal half assumes the focused column is the LEFTMOST visible one — an
+' assumption this file's buffer maths makes and that has never been verified. Scoring the
+' buffer against its own coordinate system would bake that unverified premise into the
+' number; renderTracking is the compositor's answer and carries no such premise.
+sub noteAppearance()
+  if m.top.renderTracking = "none" then return
+  ' No real image expected — a skeleton, a library tile with no artwork, or an item whose
+  ' poster URI is empty. There is nothing for the buffer to have raced.
+  if m.cachedPosterUri = "" then return
+  cellLoad.appeared(m.contentRoot, m.poster.loadStatus = "ready", m.isTextureUnloaded)
 end sub
 
 ' Skips the image request for a cell the texture manager is keeping off screen. The
@@ -847,7 +871,11 @@ sub reloadTexture()
   if shouldReloadTexture(m.isTextureUnloaded, m.cachedPosterUri)
     logTextureAction("reloadTexture")
     cellLoad.reload(m.contentRoot)
-    cellLoad.loadStarted(m.contentRoot)
+    ' `true` = this request came from a RE-ENTRY, which is the case the texture buffer
+    ' exists to win. A pop-in here means the buffer tried and the network was slower; one
+    ' on the initial-render path means the data had only just arrived and no buffer could
+    ' have helped. The ledger keeps them apart.
+    cellLoad.loadStarted(m.contentRoot, true)
     m.isTextureUnloaded = false
     m.poster.loadDisplayMode = m.cachedLoadDisplayMode
     m.poster.uri = m.cachedPosterUri

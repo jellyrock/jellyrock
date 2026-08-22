@@ -160,6 +160,8 @@ sub renderItem()
   else
     renderMediaItem(itemData, itemType)
   end if
+
+  noteAppearance()
 end sub
 
 ' Sizes and positions every child to the current cell dimensions. The focus slot is
@@ -537,15 +539,27 @@ end sub
 sub reloadGridTexture()
   if shouldReloadTexture(m.isTextureUnloaded, m.cachedPosterUri)
     cellLoad.reload(m.contentRoot)
-    cellLoad.loadStarted(m.contentRoot)
+    ' Re-entry request — see JRRowItem.reloadTexture for why the origin is tracked.
+    cellLoad.loadStarted(m.contentRoot, true)
     m.isTextureUnloaded = false
     m.itemPoster.loadDisplayMode = m.cachedLoadDisplayMode
     m.itemPoster.uri = m.cachedPosterUri
   end if
 end sub
 
+' Mirror of JRRowItem.noteAppearance — same pop-in question, same two call sites, same
+' reason for using renderTracking rather than getGridRowPosition(). See that function for
+' the full rationale; the grid keeps its own copy because the two cell components are
+' parallel by design and share no base.
+sub noteAppearance()
+  if m.top.renderTracking = "none" then return
+  if m.cachedPosterUri = "" then return
+  cellLoad.appeared(m.contentRoot, m.itemPoster.loadStatus = "ready", m.isTextureUnloaded)
+end sub
+
 ' Fires when the cell scrolls in/out of the visible area.
 sub onRenderTrackingChanged()
+  noteAppearance()
   evaluateGridTextureState()
 end sub
 

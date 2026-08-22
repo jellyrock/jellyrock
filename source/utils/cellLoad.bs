@@ -40,6 +40,42 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 '   - **Free live readout.** Node fields are readable over ODC, so a probe can watch the
 '     counters mid-scroll without waiting for an emit. There is no second mechanism.
 '
+' ## The pop-in half — a race, not a count
+'
+' `appearances` / `popIns` / `popInsCold` and the `loadMs` trio answer a different question
+' from the counters above, and it is the one the texture buffer exists for. The buffer
+' (±2 rows, ±1 column) loads a cell's image BEFORE the cell is on screen so the user never
+' watches a placeholder turn into a poster. Nothing observed whether it wins that race:
+' every counter above measures work DONE, none measures work done IN TIME.
+'
+' A pop-in is scored across two events, deliberately:
+'
+'   1. `appeared()` — the cell is on screen. If its image is already there, nothing is
+'      pending and the race was won. If not, a pop-in is PENDING.
+'   2. `loadSucceeded()` — the image arrived. A pending pop-in resolves HERE, which is why
+'      the pending flag exists rather than a counter bump at step 1.
+'
+' Resolving at step 2 is what keeps a broken image out of the number. An image that never
+' arrives is not pop-in — the user sees a glyph, not a fade-in — and `loadsFailed` already
+' counts it. Scoring at appearance time instead would make `ExtrasRowList`, where 117 of
+' 140 loads fail against a real server, read as a total buffer failure when the buffer had
+' nothing to do with it.
+'
+' `popInsCold` splits the pop-ins by whether a request was even in flight when the cell
+' appeared (`isTextureUnloaded`). Cold means the buffer never started the load — the cell
+' came from outside the managed range, so the user outran the buffer's DEPTH. Not-cold
+' means the buffer started in time and the network was slower, which more depth cannot fix.
+' Two different remedies, one counter apart.
+'
+' `loadMs` / `loadMsCount` / `loadMsMax` time each request from issue to ready. That is the
+' `image_load_time` term in the buffer's own adequacy condition —
+' `buffer_depth × time_per_scroll_step >= image_load_time` — and it is measured for EVERY
+' load, including buffer preloads that never became visible, which are exactly the ones a
+' depth decision needs. `loadMsCount` is carried rather than reusing `loadsSucceeded`
+' because the two differ: a "ready" with no matching issue (Roku re-reporting a URI that was
+' never re-requested) is a success with no interval to record. Dividing by the wrong count
+' would be the inference-by-subtraction this ledger already refuses once.
+'
 ' ## Lifecycle — no per-screen call sites
 '
 ' Bound to the texture-manager lifecycle, which all five cell-bearing screens already drive:
@@ -104,6 +140,14 @@ namespace cellLoad
         cellLoadUnloads: 0,
         cellLoadWipesBind: 0,
         cellLoadWipesReload: 0,
+        cellLoadAppearances: 0,
+        cellLoadPopIns: 0,
+        cellLoadPopInsCold: 0,
+        cellLoadPopInsReload: 0,
+        cellLoadPopInsFirst: 0,
+        cellLoadLoadMs: 0,
+        cellLoadLoadMsCount: 0,
+        cellLoadLoadMsMax: 0,
         cellLoadInstrumentUs: 0,
         cellLoadEmitted: false
       })
@@ -118,6 +162,16 @@ namespace cellLoad
       if not isValid(contentRoot) or not contentRoot.hasField("cellLoadBinds") then return
       probe = cellLoad.probe()
       probe.mark()
+
+      ' A bind is a new (cell, item) pairing, so the pop-in question re-opens for the new
+      ' item and closes for the old one: this cell has not appeared carrying THIS item yet,
+      ' and a load still outstanding for the previous item can no longer resolve into a
+      ' pop-in against it.
+      state = cellLoad.cellState()
+      state.appearCounted = false
+      state.popInPending = false
+      state.loadPending = false
+
       contentRoot.cellLoadBinds = contentRoot.cellLoadBinds + 1
       if trigger = cellLoad.FROM_SIZE
         contentRoot.cellLoadBindsSize = contentRoot.cellLoadBindsSize + 1
@@ -131,10 +185,53 @@ namespace cellLoad
     #end if
   end sub
 
-  ' An image request was issued (the poster URI was assigned a real URL).
-  sub loadStarted(contentRoot as object)
+  ' An image request was issued (the poster URI was assigned a real URL). Also starts this
+  ' cell's load clock — see the pop-in section of the header for why the interval matters
+  ' more than the count.
+  sub loadStarted(contentRoot as object, isReload = false as boolean)
     #if perfTiming
-      bump(contentRoot, "cellLoadLoadsStarted")
+      if not isValid(contentRoot) or not contentRoot.hasField("cellLoadLoadsStarted") then return
+      probe = cellLoad.probe()
+      probe.mark()
+      contentRoot.cellLoadLoadsStarted = contentRoot.cellLoadLoadsStarted + 1
+      state = cellLoad.cellState()
+      state.loadPending = true
+      ' Which PATH issued this request, kept so a pop-in can say whether the buffer had a
+      ' job to do at all — see the three-way split in `loadSucceeded`.
+      state.loadFromReload = isReload
+      cellLoad.loadTimer().mark()
+      contentRoot.cellLoadInstrumentUs = contentRoot.cellLoadInstrumentUs + probe.totalMicroseconds()
+    #end if
+  end sub
+
+  ' The cell is on screen. One half of the pop-in race; `loadSucceeded` is the other.
+  '
+  ' `hasTexture` is the caller's read of its own poster's `loadStatus`, and it is
+  ' deliberately NOT trusted alone. A request issued and not yet resolved means the texture
+  ' currently on screen belongs to the cell's PREVIOUS item while `loadStatus` still reads
+  ' "ready" from it — established behaviour, not supposition: `JRRowItem.renderItem`'s
+  ' same-URI shortcut exists precisely because Roku leaves `loadStatus` alone until a new
+  ' request resolves. Trusting it alone would under-count exactly the recycled-cell case
+  ' pop-in is about.
+  '
+  ' Counted at most ONCE per bind. The caller's appearance signal is the compositor's
+  ' `renderTracking`, which can flip spuriously during a layout recalculation — the app's
+  ' own texture code refuses to act on it for that reason. The gate turns a spurious flip
+  ' into a no-op rather than a fresh sample, and it matches what a user experiences: an item
+  ' pops in once, not once per compositor event.
+  sub appeared(contentRoot as object, hasTexture as boolean, isCold as boolean)
+    #if perfTiming
+      if not isValid(contentRoot) or not contentRoot.hasField("cellLoadAppearances") then return
+      state = cellLoad.cellState()
+      if state.appearCounted then return
+      probe = cellLoad.probe()
+      probe.mark()
+      state.appearCounted = true
+      contentRoot.cellLoadAppearances = contentRoot.cellLoadAppearances + 1
+      state.popInPending = not (hasTexture and not state.loadPending)
+      state.popInCold = isCold
+      state.popInFromReload = state.loadPending and state.loadFromReload = true
+      contentRoot.cellLoadInstrumentUs = contentRoot.cellLoadInstrumentUs + probe.totalMicroseconds()
     #end if
   end sub
 
@@ -151,6 +248,11 @@ namespace cellLoad
   ' scripts/measurements.js reads and it is unaffected by this rename.
   sub loadErrored(contentRoot as object)
     #if perfTiming
+      state = cellLoad.cellState()
+      state.loadPending = false
+      ' A broken image is not pop-in and must not resolve one — see the header. It is
+      ' already counted, on the very next line.
+      state.popInPending = false
       bump(contentRoot, "cellLoadLoadsFailed")
     #end if
   end sub
@@ -164,7 +266,43 @@ namespace cellLoad
   ' watches this counter for the same reason it watches `loadsFailed`.
   sub loadSucceeded(contentRoot as object)
     #if perfTiming
-      bump(contentRoot, "cellLoadLoadsSucceeded")
+      if not isValid(contentRoot) or not contentRoot.hasField("cellLoadLoadsSucceeded") then return
+      probe = cellLoad.probe()
+      probe.mark()
+      contentRoot.cellLoadLoadsSucceeded = contentRoot.cellLoadLoadsSucceeded + 1
+
+      state = cellLoad.cellState()
+      if state.loadPending
+        state.loadPending = false
+        ms = cellLoad.loadTimer().totalMilliseconds()
+        contentRoot.cellLoadLoadMs = contentRoot.cellLoadLoadMs + ms
+        contentRoot.cellLoadLoadMsCount = contentRoot.cellLoadLoadMsCount + 1
+        if ms > contentRoot.cellLoadLoadMsMax then contentRoot.cellLoadLoadMsMax = ms
+      end if
+
+      ' THREE mutually exclusive buckets, all emitted, none left to be derived. Subtracting
+      ' two counters to get the third is the inference this ledger already refuses once, and
+      ' the buckets carry different remedies:
+      '   cold   — no request in flight. The cell arrived from outside the managed range, so
+      '            the user outran the buffer's DEPTH. More depth would help.
+      '   reload — a re-entry request was in flight. The buffer had its job and the network
+      '            was slower than the scroll. Depth cannot fix this one.
+      '   first  — the cell's FIRST render was still loading. The data had only just arrived,
+      '            so no buffer could have won: this is first paint, not a buffer failure,
+      '            and it is the bucket that dominates a sweep which OPENS its screen.
+      if state.popInPending
+        state.popInPending = false
+        contentRoot.cellLoadPopIns = contentRoot.cellLoadPopIns + 1
+        if state.popInCold
+          contentRoot.cellLoadPopInsCold = contentRoot.cellLoadPopInsCold + 1
+        else if state.popInFromReload
+          contentRoot.cellLoadPopInsReload = contentRoot.cellLoadPopInsReload + 1
+        else
+          contentRoot.cellLoadPopInsFirst = contentRoot.cellLoadPopInsFirst + 1
+        end if
+      end if
+
+      contentRoot.cellLoadInstrumentUs = contentRoot.cellLoadInstrumentUs + probe.totalMicroseconds()
     #end if
   end sub
 
@@ -213,6 +351,7 @@ namespace cellLoad
       ' because `assembleSamples` splits a family on that identity.
       component = contentRoot.cellLoadComponent
       m.cellLoadLog.info("cell-load binds - component " + component + " binds " + contentRoot.cellLoadBinds.toStr() + " fromContent " + contentRoot.cellLoadBindsContent.toStr() + " fromSize " + contentRoot.cellLoadBindsSize.toStr() + " redundant " + contentRoot.cellLoadBindsRedundant.toStr() + " items " + countItems(contentRoot).toStr())
+      m.cellLoadLog.info("cell-load popin - component " + component + " appearances " + contentRoot.cellLoadAppearances.toStr() + " popIns " + contentRoot.cellLoadPopIns.toStr() + " popInsCold " + contentRoot.cellLoadPopInsCold.toStr() + " popInsReload " + contentRoot.cellLoadPopInsReload.toStr() + " popInsFirst " + contentRoot.cellLoadPopInsFirst.toStr() + " loadMs " + contentRoot.cellLoadLoadMs.toStr() + " loadMsCount " + contentRoot.cellLoadLoadMsCount.toStr() + " loadMsMax " + contentRoot.cellLoadLoadMsMax.toStr())
       m.cellLoadLog.info("cell-load work - component " + component + " loadsStarted " + contentRoot.cellLoadLoadsStarted.toStr() + " loadsFailed " + contentRoot.cellLoadLoadsFailed.toStr() + " loadsSucceeded " + contentRoot.cellLoadLoadsSucceeded.toStr() + " reloads " + contentRoot.cellLoadReloads.toStr() + " unloads " + contentRoot.cellLoadUnloads.toStr() + " wipesBind " + contentRoot.cellLoadWipesBind.toStr() + " wipesReload " + contentRoot.cellLoadWipesReload.toStr() + " instrumentUs " + contentRoot.cellLoadInstrumentUs.toStr())
 
       reset(contentRoot)
@@ -236,6 +375,14 @@ namespace cellLoad
         cellLoadUnloads: 0,
         cellLoadWipesBind: 0,
         cellLoadWipesReload: 0,
+        cellLoadAppearances: 0,
+        cellLoadPopIns: 0,
+        cellLoadPopInsCold: 0,
+        cellLoadPopInsReload: 0,
+        cellLoadPopInsFirst: 0,
+        cellLoadLoadMs: 0,
+        cellLoadLoadMsCount: 0,
+        cellLoadLoadMsMax: 0,
         cellLoadInstrumentUs: 0,
         cellLoadEmitted: false
       })
@@ -258,6 +405,34 @@ namespace cellLoad
   function probe() as object
     if not isValid(m.cellLoadProbe) then m.cellLoadProbe = CreateObject("roTimespan")
     return m.cellLoadProbe
+  end function
+
+  ' The cell's LOAD clock, distinct from `probe()` because it spans a network round trip
+  ' rather than a single call — one `roTimespan` cannot carry two marks.
+  function loadTimer() as object
+    if not isValid(m.cellLoadLoadTimer) then m.cellLoadLoadTimer = CreateObject("roTimespan")
+    return m.cellLoadLoadTimer
+  end function
+
+  ' Per-CELL instrument state, cached on the caller's `m` exactly as `probe()` is.
+  '
+  ' One AA rather than four bare `m` fields so every flag is a real boolean from its first
+  ' read. An unset `m.someFlag` is Invalid, and `if Invalid` is a &h18 type mismatch rather
+  ' than a falsy check — the fault class behind the `EnableFallbackFont` crash. Initialising
+  ' the whole set together makes that unreachable by construction instead of by every call
+  ' site remembering a guard.
+  function cellState() as object
+    if not isValid(m.cellLoadState)
+      m.cellLoadState = {
+        loadPending: false,
+        loadFromReload: false,
+        popInPending: false,
+        popInCold: false,
+        popInFromReload: false,
+        appearCounted: false
+      }
+    end if
+    return m.cellLoadState
   end function
 
   ' Total ITEMS under a content root, which is the denominator of the rebind rate and is

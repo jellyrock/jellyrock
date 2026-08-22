@@ -20,7 +20,7 @@ related-files:
   - scripts/data/roku-hardware.json
   - source/utils/screenReadiness.bs
   - tests/rta/screens.js
-last-reviewed: 2026-08-21
+last-reviewed: 2026-08-22
 ---
 
 # Measuring performance on device
@@ -158,6 +158,9 @@ Favorites, search results, `ItemDetails` extras and library grids — because th
 off the content root that `initTextureManager` already owns, so no screen has a call site of
 its own.
 
+It also answers the question the others cannot: **did the texture buffer win its race?** See
+[the pop-in line](#pop-in--did-the-buffer-win-its-race) below.
+
 ```bash
 npm run measure -- --measurement cell-load --nav cellSweepExtras --component ExtrasRowList -n 5
 ```
@@ -192,6 +195,111 @@ by child index — the fragility
 [`rta-home-active-list-hardcoded`](../architecture/tech-debt.md#rta-home-active-list-hardcoded)
 already tracks. Restoring the ids is an app change with its own device-test cost, so it is
 tracked as a followup rather than folded in here.
+
+#### Pop-in — did the buffer win its race?
+
+Every counter above measures work **done**. The `popin` line measures work done **in time**,
+which is the only thing the ±2-row / ±1-column texture buffer exists for: load a cell's image
+BEFORE the cell is on screen, so the user never watches a placeholder turn into a poster.
+Nothing in the app observed whether it succeeded until this line existed.
+
+| field | what it says |
+|---|---|
+| `appearances` | cells that came on screen expecting a real image. **The denominator** |
+| `popIns` | of those, how many appeared *before* their image did |
+| `popInsCold` | of those pop-ins, how many had no request even in flight yet |
+| `popInsReload` | of those pop-ins, how many had a RE-ENTRY request in flight — the buffer's own race |
+| `popInsFirst` | of those pop-ins, how many were the cell's FIRST render — first paint, not a buffer failure |
+| `loadMs` / `loadMsCount` | total and count of timed request→ready intervals; the mean is the quotient |
+| `loadMsMax` | the slowest single image load in the session |
+
+🚨 **Read `popIns` against `appearances`, never alone.** A raw count moves with how far the
+sweep traveled — the same trap that makes `binds` meaningless without `items`.
+
+**A pop-in is scored only when the image ACTUALLY ARRIVES, and that is load-bearing.** An
+image that never arrives is not pop-in — the user sees a glyph, not a fade-in — and
+`loadsFailed` already counts it. Scoring at appearance time instead would make
+`ExtrasRowList`, which fails 117 of 140 loads against a real server because the Person images
+are gone, report a total buffer failure caused entirely by missing artwork.
+
+🚨 **The same property makes `ExtrasRowList` UNABLE to validate this line, which is worth
+knowing before reaching for it as the reproducible screen.** Measured 2026-08-21 on `.177`,
+n=5, every sample identical: it issues 43 loads and exactly **1** of them succeeds. A pop-in
+scores only on arrival, so `popIns` there has a **ceiling of 1** and reading 0 says nothing
+about the buffer. Extras remains the right screen for the BIND counters — its sweep is bounded
+and reproducible where Home's is not — and the wrong one for the pop-in line. Use
+`cellSweepGrid`, whose 34 loads all succeed.
+
+**The three-way split is what decides what to do about a bad number**, and all three are
+emitted so none has to be derived by subtracting the others — the inference `loadsSucceeded`
+itself exists to stop. **Cold**: no request in flight when the cell appeared, so it arrived
+from outside the managed range and the user outran the buffer's DEPTH — more depth would help.
+**Reload**: a re-entry request was already running and the network was slower than the scroll —
+depth cannot fix that one. **First**: the cell's first render was still loading, so the data
+had only just arrived and no buffer could have won. Three different remedies, two counters
+apart.
+
+🚨 **`loadMs` is a SUM OVER CONCURRENT REQUESTS and is NOT a share of the wall clock.**
+Measured **16416 ms inside an ~1800 ms sweep — 9.1×** — because a grid has ~34 posters in
+flight at once. Same hazard `screen-load`'s `contentMs` carries, same rule: never render it as
+a percentage of anything. `loadMsMax` **is** bounded by the sweep and is the one to act on.
+First readings on `.177` against a LAN server: mean **483 ms** per poster, max **877 ms** — the
+first `image_load_time` figures this project has had.
+
+**`loadMs` is the term the buffer's own adequacy condition needs.** The buffer wins when
+`buffer_depth × time_per_scroll_step >= image_load_time`, and `image_load_time` had never been
+observed. It is timed for EVERY load, including images the buffer fetched ahead of time and the user never reached —
+exactly the ones a depth decision depends on. ⚠️ **Divide by `loadMsCount`, not by
+`loadsSucceeded`**: a "ready" with no matching issue (Roku re-reporting a URI that was never
+re-requested) is a real success with no interval to record, so the two counts legitimately
+differ. That is the same inference-by-subtraction `loadsSucceeded` itself exists to stop.
+
+⚠️ **The appearance signal is the compositor's `renderTracking`, not the app's own
+`getRowPosition()` + `isInHorizontalBuffer()`.** Deliberate: the horizontal half of the app's
+model assumes the focused column is the LEFTMOST visible one, an assumption the buffer arithmetic
+makes and that has never been verified. Scoring the buffer against its own coordinate system
+would bake that unverified premise into the number. `renderTracking` can flip spuriously
+during a layout recalculation — which is why the app refuses to *act* on it — so an appearance
+is counted at most once per bind, making a spurious flip a no-op rather than a fresh sample.
+
+🚨 **`popIns` does NOT filter by duration, and that changes how "near zero" can be read.**
+An image that fills 5 ms after its cell appears counts exactly the same as one that fills a
+second later, and the first is imperceptible. So on a warm HTTP cache at LAN speed the count
+can run high while a viewer sees nothing at all — `popIns` alone cannot be driven to zero and
+should not be treated as a target on its own. **Read the pair**: `popIns` says how often the
+buffer lost, `loadMsMax` and the `loadMs / loadMsCount` mean say whether losing mattered.
+
+No duration filter is applied because there is no measured perceptual figure in this repo to set one from,
+and inventing one is the specific mistake that had to be withdrawn on 2026-08-21 (a ~3 s
+first-paint target that existed nowhere). If a cutoff is wanted later it should come from a
+measurement, not from a plausible round number.
+
+🚨 **`popInsFirst` dominates any sweep that OPENS its screen, and the combined count cannot
+be read without it.** Measured 2026-08-21 on `cellSweepGrid` (`.177`, n=5, every
+sample identical): `popIns` **18** of **28** appearances — which reads as a two-thirds buffer
+failure and is nothing of the kind. Split: `popInsFirst` **17**, `popInsReload` **1**,
+`popInsCold` **0**. Seventeen were cells bound while their data was still arriving, where no
+buffer could have won. **One** was the buffer losing a re-entry race, out of 7 reloads — so on
+that sweep the buffer won **6 of 7**. Quote the split, or do not quote the number.
+
+⚠️ **The instrument's own footprint more than DOUBLED when this line was added, recorded
+rather than rounded away.** Same grid sweep, same device and session, app code the only
+difference: `instrumentUs` **`2710 µs` → `6685 µs`, +147% (2.47×)**. It is nonetheless not a
+perturbation of what it measures — 0.15% → 0.36% of the sweep, workload identical in both arms
+on every field (`binds` 28, `loadsStarted` 34, `loadsSucceeded` 34, `reloads` 7, `unloads` 6),
+and cells-quiet wall clock did not move (median 1842 → 1832 ms, the after arm marginally
+*faster*). `perfTiming` is forced off for release artifacts by `harden-prod-manifest.js`, so a
+shipped build pays none of it. **Consequence to know: `instrumentUs` is NOT comparable across
+this change** — there is a 2.47× step at this commit, and a series spanning it shows a jump
+that is the instrument, not the app. The relative figure surfaced only because a before-arm
+was taken; the "0.36% of wall clock" argument alone would have concluded there was nothing to
+see.
+
+⚠️ **The line is designed for a SCROLL sweep, and first paint is a different phenomenon.**
+Cells bound while a screen is still laying itself out appear with no image because the data
+has only just arrived, not because a buffer lost anything, and `renderTracking` is least
+reliable in exactly that window. Read Home's first-paint pop-ins with that caveat; the sweeps
+are where the number means what it says.
 
 **These figures do not compare ACROSS DEVICES, and `measure:devices` will not tell you so.**
 `cellSweepGrid` travels `rowTarget × numColumns` tiles, and `numColumns` is a property of the
