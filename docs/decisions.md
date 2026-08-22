@@ -1049,6 +1049,20 @@ Accepted cost: a committed generated artifact that can go stale, paid for by `di
 
 **The constraint worth re-evaluating is the failure population, and the first answer to it was wrong.** The suppressed retries ARE the failed loads, so on a library whose artwork fails transiently this would suppress real recoveries. Measured 2026-08-21 on a 1 GB Stick 4K across three commit-pinned arms at n=10 each, it suppresses ~97 retries per extras sweep and costs zero recovered images: `loadsSucceeded` reads exactly 1 on all 30 launches in every arm. That figure is only trustworthy because the same branch added the counter — the earlier inference `loadsStarted - loadsFailed` put successes near 23, and the gap was requests still outstanding at the emit boundary rather than images that had arrived. Unmeasured on any other library, so the tripwire is a library whose person artwork exists and fails intermittently.
 
+## decision-id: appearance-signal-gates-departure-only
+
+**date**: 2026-08-22
+**status**: accepted
+**related-files**: `source/utils/cellLoad.bs`, `components/ui/rowitem/JRRowItem.bs`, `components/ItemGrid/GridItem.bs`, `tests/rta/specs/cell-load.spec.js`
+
+The pop-in ledger scores an appearance off the compositor's `renderTracking`, not the app's own `getRowPosition()` + `isInHorizontalBuffer()`. The horizontal half of that model assumes the focused column is the leftmost visible one — an assumption the buffer arithmetic makes and that has never been verified — so scoring the buffer against its own coordinate system would bake an unverified premise into the number the buffer is judged by.
+
+**Only the DEPARTURE is gated on `textureManagerState = "active"`, and the asymmetry is the decision.** `evaluateTextureState` already refuses `renderTracking` in `init` (a layout recalculation) and `hidden` (`visible=false` propagating when a screen is pushed over), and `noteAppearance` has to refuse it in the same two states: closing an episode there re-arms the once-per-episode gate, so the screen's return scores appearances nobody saw. Measured on the demo server before the gate, backing out of one item detail with no scrolling — 18 appearances against 10 binds, 0 pop-ins. Because `hidden` deliberately freezes textures loaded, every one of those is a guaranteed non-pop-in, so the error is one-way: it inflates the denominator of `popIns / appearances` in the buffer's own favor.
+
+**What this closes off is gating `appeared()` as well, which is the symmetric-looking fix and is wrong.** An appearance is idempotent within its episode, so an ungated `appeared()` cannot double-count; and first paint legitimately happens while the manager is still `init`, because `activateTextureManager` runs only once initial content has loaded. Gating it would have silently deleted `popInsFirst` — 17 of the 24 pop-ins on a grid sweep. The constraint worth re-evaluating is that this rests on `textureManagerState` remaining the app's authority on whether a screen is really on screen; a fifth state means revisiting the gate, not extending it.
+
+**No sweep measurement can catch a regression here**, which is why the invariant is gated on device instead. `cellSweepGrid` reads identically with and without the gate — 46 appearances, 24 pop-ins, 6 cold, 1 reload, 17 first, on every one of 5 launches in both arms — because a sweep never suspends its screen. [`tests/rta/specs/cell-load.spec.js`](../tests/rta/specs/cell-load.spec.js) asserts `appearances <= binds` for a resume with no scrolling, which fails at 18 vs 10 when the gate is removed.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
