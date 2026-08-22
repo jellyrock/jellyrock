@@ -164,6 +164,18 @@ namespace tests
       m.assertEqual(layout.panel.y, int((1080 - layout.panel.height) / 2))
     end function
 
+    ' PINNED. Consolidating the three dialog copies into this module moved this
+    ' ceiling from 924 to 960 without meaning to, loosening JRDialog's message
+    ' truncation by 36px. Nothing caught it: the consolidation was verified by
+    ' comparing a rendered confirm dialog before and after, and the ceiling only
+    ' engages at roughly 600 characters of message.
+    @it("keeps the message ceiling where #757 set it")
+    function _()
+      m.assertEqual(PANEL_MAX_HEIGHT, 924)
+      ' ...which is a 78px margin above and below a full-height panel
+      m.assertEqual(int((1080 - PANEL_MAX_HEIGHT) / 2), 78)
+    end function
+
     @it("reports an overflowing panel rather than silently clipping it")
     function _()
       ok = computeDialogLayout({ panelWidth: 760, titleHeight: 50, bodyHeight: 200, footerHeight: 60, footerInside: true })

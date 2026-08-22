@@ -75,10 +75,16 @@ const SEPARATOR_ACCENT_WIDTH = 120
 ' Gap between the panel's bottom edge and a footer that sits OUTSIDE it.
 const FOOTER_OUTSIDE_MARGIN = 24
 
-' Ceiling so a panel can never exceed the screen — at 1080 this leaves 60px top
+' Ceiling so a panel can never exceed the screen — at 1080 this leaves 78px top
 ' and bottom. A dialog that reaches it is holding content that belongs in
 ' showInfoDialog, so callers are expected to notice rather than silently clip.
-const PANEL_MAX_HEIGHT = SCREEN_HEIGHT - (PANEL_PADDING * 2) - 24
+'
+' The 60 is the value #757 chose; consolidating the three copies into this
+' module briefly changed it to 24, which loosened JRDialog's message ceiling by
+' 36px. The spec pins it now, because the before/after render comparison that
+' verified the consolidation could not see it — the ceiling only engages at
+' roughly 600 characters of message, four times taller than anything captured.
+const PANEL_MAX_HEIGHT = SCREEN_HEIGHT - (PANEL_PADDING * 2) - 60
 
 ' Compute every rect a dialog needs, from the heights it has measured.
 '
