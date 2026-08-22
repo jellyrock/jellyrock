@@ -690,11 +690,29 @@ export const CELL_QUIET_COUNTERS = Object.freeze([
   'LoadsFailed',
   'LoadsSucceeded',
   'Unloads',
+  // `Appearances` earns its place by the rule above rather than by being new: a cell that
+  // scrolls back into view with its texture ALREADY loaded increments this and nothing
+  // else — no bind, no load, no unload. That is not a corner case; on `cellSweepGrid` it is
+  // 12 of the 18 re-entries. Before this, a sweep could be declared quiet while cells were
+  // still re-appearing, which is exactly the window the pop-in line measures.
+  'Appearances',
 ]);
 
-/** The watched counters as one `name=value` run, for a warning or a report line. */
+/**
+ * Counters the report LINE carries, which is a superset of the ones a settle watches.
+ *
+ * `PopIns` is here and NOT in `CELL_QUIET_COUNTERS`, by the same rule: it only ever
+ * increments inside `loadSucceeded`, so it cannot move while `LoadsSucceeded` sits still
+ * and adding it to the settle would buy nothing. It is on the line because it is the
+ * number a reader most needs to SEE — the run that shipped the blind spot this counter
+ * exists to close had `appearances` equal to `binds`, and nobody looked, because neither
+ * value was printed anywhere.
+ */
+export const CELL_REPORT_COUNTERS = Object.freeze([...CELL_QUIET_COUNTERS, 'PopIns']);
+
+/** The reported counters as one `name=value` run, for a warning or a report line. */
 export const formatCellCounts = (counts) =>
-  CELL_QUIET_COUNTERS.map((c) => `${c[0].toLowerCase()}${c.slice(1)}=${counts?.[c]}`).join(' ');
+  CELL_REPORT_COUNTERS.map((c) => `${c[0].toLowerCase()}${c.slice(1)}=${counts?.[c]}`).join(' ');
 
 /**
  * Wait until a texture-managed list's cell-load counters stop moving.
@@ -796,7 +814,9 @@ export async function waitCellsQuiet(
     // screen; a poll loop is explicitly carved out of it. It is also safe here for a reason
     // specific to these fields: the counters only ever increase, so a sample that straddles
     // an increment can delay quiescence but can never declare it early.
-    for (const c of CELL_QUIET_COUNTERS) out[c] = await read(`${listId}.content.cellLoad${c}`);
+    // Reads the REPORT set; the quiet comparison below uses only `CELL_QUIET_COUNTERS`.
+    // A report-only counter must not be able to hold a settle open.
+    for (const c of CELL_REPORT_COUNTERS) out[c] = await read(`${listId}.content.cellLoad${c}`);
     return out;
   };
 
