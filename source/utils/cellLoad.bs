@@ -219,6 +219,29 @@ namespace cellLoad
   ' own texture code refuses to act on it for that reason. The gate turns a spurious flip
   ' into a no-op rather than a fresh sample, and it matches what a user experiences: an item
   ' pops in once, not once per compositor event.
+  ' The cell LEFT the screen. Ends the appearance episode, so a later return counts as a
+  ' NEW appearance rather than being swallowed by the once-per-bind gate.
+  '
+  ' 🚨 This is what makes the re-entry race measurable at all, and its absence silently
+  ' hollowed out the metric. A RowList / MarkupGrid does NOT rebind a cell that scrolls off
+  ' and back onto the SAME item — `onItemContentChanged` never fires — so with the gate
+  ' re-arming only on bind, every scroll-back was skipped. Measured on `cellSweepGrid`:
+  ' `binds` 28 against 28 items, i.e. nothing was rebound all sweep, while 7 reloads
+  ' happened; all 7 re-entry races went unevaluated and the ledger still published a
+  ' confident-looking `popInsReload` 1. **The one thing the buffer exists to win was the
+  ' one thing not being counted.**
+  '
+  ' A pending pop-in is dropped here rather than carried: a cell that appeared without its
+  ' image and then went away was never watched fading in, so a late arrival is not a pop-in.
+  sub departed(contentRoot as object)
+    #if perfTiming
+      if not isValid(contentRoot) or not contentRoot.hasField("cellLoadAppearances") then return
+      state = cellLoad.cellState()
+      state.appearCounted = false
+      state.popInPending = false
+    #end if
+  end sub
+
   sub appeared(contentRoot as object, hasTexture as boolean, isCold as boolean)
     #if perfTiming
       if not isValid(contentRoot) or not contentRoot.hasField("cellLoadAppearances") then return

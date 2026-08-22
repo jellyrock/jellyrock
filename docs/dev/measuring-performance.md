@@ -207,7 +207,7 @@ Nothing in the app observed whether it succeeded until this line existed.
 |---|---|
 | `appearances` | cells that came on screen expecting a real image. **The denominator** |
 | `popIns` | of those, how many appeared *before* their image did |
-| `popInsCold` | of those pop-ins, how many had no request even in flight yet |
+| `popInsCold` | of those pop-ins, how many had no request even in flight yet — an EVICTED cell returning |
 | `popInsReload` | of those pop-ins, how many had a RE-ENTRY request in flight — the buffer's own race |
 | `popInsFirst` | of those pop-ins, how many were the cell's FIRST render — first paint, not a buffer failure |
 | `loadMs` / `loadMsCount` | total and count of timed request→ready intervals; the mean is the quotient |
@@ -275,12 +275,17 @@ first-paint target that existed nowhere). If a cutoff is wanted later it should 
 measurement, not from a plausible round number.
 
 🚨 **`popInsFirst` dominates any sweep that OPENS its screen, and the combined count cannot
-be read without it.** Measured 2026-08-21 on `cellSweepGrid` (`.177`, n=5, every
-sample identical): `popIns` **18** of **28** appearances — which reads as a two-thirds buffer
-failure and is nothing of the kind. Split: `popInsFirst` **17**, `popInsReload` **1**,
-`popInsCold` **0**. Seventeen were cells bound while their data was still arriving, where no
-buffer could have won. **One** was the buffer losing a re-entry race, out of 7 reloads — so on
-that sweep the buffer won **6 of 7**. Quote the split, or do not quote the number.
+be read without it.** Measured 2026-08-22 on `cellSweepGrid` (`.177`, n=5, every sample
+identical on every field): **46 appearances, `popIns` 24 = `popInsFirst` 17 + `popInsCold` 6 +
+`popInsReload` 1.** Seventeen were cells bound while their data was still arriving, where no
+buffer could have won. The remaining seven are re-entries, and they are the buffer's own
+scoreboard: 28 binds against 46 appearances means **18 re-entries**, of which **12 showed
+their image immediately** — the buffer held it — while **6 came back evicted and empty** and
+**1** lost a live reload race. Quote the split, or do not quote the number.
+
+⚠️ **An earlier revision of this section reported "`popInsCold` 0, so the buffer won 6 of 7
+re-entry races." That was WITHDRAWN on 2026-08-22 and its conclusion inverted** — see the
+re-entry warning below. It was never a measurement of re-entries at all.
 
 ⚠️ **The instrument's own footprint more than DOUBLED when this line was added, recorded
 rather than rounded away.** Same grid sweep, same device and session, app code the only
@@ -294,6 +299,27 @@ this change** — there is a 2.47× step at this commit, and a series spanning i
 that is the instrument, not the app. The relative figure surfaced only because a before-arm
 was taken; the "0.36% of wall clock" argument alone would have concluded there was nothing to
 see.
+
+🚨 **A re-entry is only counted because `departed()` ends the appearance episode — and
+without it the metric silently measured almost nothing it was built for.** An appearance is
+scored once per episode, and the episode has to close when the cell LEAVES. The first cut
+re-armed only on bind, and a `RowList` / `MarkupGrid` does **not** rebind a cell that scrolls
+off and back onto the same item (`onItemContentChanged` never fires) — so every scroll-back
+hit the once-per-episode gate and was skipped. **The evidence was sitting in the ledger and
+was walked straight past:** `binds` 28 against 28 `items` means nothing was rebound all sweep,
+while `reloads` read 7. All seven re-entry races went unmeasured, and the line still
+published a confident-looking `popInsReload` 1. Fixing it moved `appearances` 28 → 46 and
+`popInsCold` 0 → 6. **If you add a screen and see `appearances` equal to `binds`, suspect this
+before believing the number** — on a sweep that scrolls, they should differ.
+
+⚠️ **A prediction made before that re-measure was wrong in an instructive way.** The expected
+rise was 28 → ~34, reasoning that re-entries would be bounded by `unloads` (6). It came back
+**46**. The two are different **by design**: leaving the visible window is not eviction, and a
+cell sitting in the ±2-row buffer stays loaded. So 18 re-entries produced only 6 evictions —
+which is the buffer working, and is the distinction the whole `popInsCold` split rests on.
+The corroboration worth trusting is that **`popInsCold` equaled `unloads` exactly — 6 — on
+all five launches**: an evicted cell has nothing in flight when it returns, so two independent
+counters agree on what the code says must happen.
 
 ⚠️ **The line is designed for a SCROLL sweep, and first paint is a different phenomenon.**
 Cells bound while a screen is still laying itself out appear with no image because the data

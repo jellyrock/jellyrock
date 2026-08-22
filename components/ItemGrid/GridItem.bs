@@ -552,7 +552,13 @@ end sub
 ' the full rationale; the grid keeps its own copy because the two cell components are
 ' parallel by design and share no base.
 sub noteAppearance()
-  if m.top.renderTracking = "none" then return
+  ' Off screen: end the episode so a scroll-back counts as a new appearance. Without this
+  ' the once-per-bind gate swallows every re-entry, which is the race the buffer exists
+  ' to win — see cellLoad.departed().
+  if m.top.renderTracking = "none"
+    cellLoad.departed(m.contentRoot)
+    return
+  end if
   if m.cachedPosterUri = "" then return
   cellLoad.appeared(m.contentRoot, m.itemPoster.loadStatus = "ready", m.isTextureUnloaded)
 end sub

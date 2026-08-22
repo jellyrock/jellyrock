@@ -336,6 +336,54 @@ namespace tests
       m.assertEqual(root.getField("cellLoadPopIns"), 0)
     end function
 
+    @it("counts a cell that leaves the screen and comes back as a NEW appearance")
+    function _()
+      ' THE case the buffer exists for, and the one a per-bind gate alone cannot see. A
+      ' RowList/MarkupGrid does NOT rebind a cell that scrolls off and back onto the SAME
+      ' item — `onItemContentChanged` never fires — so the whole re-entry is invisible to a
+      ' gate that only re-arms on bind. Measured 2026-08-22 on cellSweepGrid: binds 28 for
+      ' 28 items (nothing was ever rebound) against 7 reloads, so every one of those
+      ' re-entry races went unevaluated while the ledger reported 1 reload pop-in.
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.attach(root, "BaseGridView")
+
+      ' First appearance: bound, loading, seen before its image. A real pop-in.
+      cellLoad.bind(root, cellLoad.FROM_CONTENT, false)
+      cellLoad.loadStarted(root)
+      cellLoad.appeared(root, false, false)
+      cellLoad.loadSucceeded(root)
+      m.assertEqual(root.getField("cellLoadAppearances"), 1)
+      m.assertEqual(root.getField("cellLoadPopIns"), 1)
+
+      ' Scrolls off — texture released, no rebind.
+      cellLoad.departed(root)
+      cellLoad.unload(root)
+
+      ' Scrolls back: the buffer re-issues, and the cell is on screen before it lands.
+      cellLoad.reload(root)
+      cellLoad.loadStarted(root, true)
+      cellLoad.appeared(root, false, false)
+      cellLoad.loadSucceeded(root)
+      m.assertEqual(root.getField("cellLoadAppearances"), 2)
+      m.assertEqual(root.getField("cellLoadPopIns"), 2)
+      m.assertEqual(root.getField("cellLoadPopInsReload"), 1)
+    end function
+
+    @it("does not score a pop-in for a cell that left before its image arrived")
+    function _()
+      ' It appeared without its image and then went away — the user never watched it fade
+      ' in, so there is no pop-in to score when the late image finally lands.
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.attach(root, "BaseGridView")
+      cellLoad.bind(root, cellLoad.FROM_CONTENT, false)
+      cellLoad.loadStarted(root)
+      cellLoad.appeared(root, false, false)
+      cellLoad.departed(root)
+      cellLoad.loadSucceeded(root)
+      m.assertEqual(root.getField("cellLoadAppearances"), 1)
+      m.assertEqual(root.getField("cellLoadPopIns"), 0)
+    end function
+
     @it("is a no-op on a root that was never attached")
     function _()
       root = CreateObject("roSGNode", "ContentNode") as dynamic
