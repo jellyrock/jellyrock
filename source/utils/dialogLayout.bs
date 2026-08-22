@@ -29,13 +29,29 @@ import "pkg:/source/utils/misc.bs"
 const SCREEN_WIDTH = 1920
 const SCREEN_HEIGHT = 1080
 
-' Every spacing value is a multiple of 6, so it stays an INTEGER through the
-' Roku OS downscale to 720p (x2/3). 40 and 25 — the values the pre-#757 dialogs
-' used — do not. dialogLayout.spec.bs asserts this rather than trusting it.
+' The spacing scale, on a 6px grid. Two separate things are going on here and
+' they were previously conflated:
+'
+'   The 6px RHYTHM is a design convention — it keeps the flow on one scale.
+'   That is all it is. It does NOT, by itself, buy anything at 720p.
+'
+'   CRISPNESS at 720p comes from where an edge finally LANDS. Roku renders the
+'   full 1920x1080 framebuffer and supersamples it (manifest, #419), so an edge
+'   whose ABSOLUTE y is divisible by 3 sits on an output-row boundary and stays
+'   sharp; one that is not spans three rows partially and goes soft.
+'
+' Divisible constants never delivered the second thing, because every offset is
+' added to a panel origin derived from a MEASURED text height. Absolute edges
+' landed on the grid about a third of the time — chance. snapToGrid() below is
+' what actually delivers it; the spec asserts the edges, not the constants.
 const PANEL_PADDING = 48
 const TITLE_GAP = 24
 const BODY_GAP = 36
 const SEPARATOR_HEIGHT = 3
+
+' The 720p output row. 1080 / 720 = 3 source rows per 2 output rows, so an
+' absolute coordinate divisible by 3 falls on an output-row boundary.
+const PIXEL_GRID = 3
 
 ' A short accent rule under the title, not a full-width divider: at content width
 ' it competed with the body instead of supporting the title.
@@ -82,6 +98,14 @@ function computeDialogLayout(spec as object) as object
   fixedPanelHeight = intOr(spec.panelHeight, 0)
   footerInside = isValid(spec.footerInside) and spec.footerInside
 
+  ' Snap the MEASURED heights up to the grid before anything is added to them.
+  ' A label's rendered height is whatever the font gave us, so without this one
+  ' arbitrary value knocks every edge below it off the grid. Up, not down, so a
+  ' block is never given less room than it measured; the cost is at most 2px.
+  titleHeight = snapToGrid(titleHeight)
+  bodyHeight = snapToGrid(bodyHeight)
+  footerHeight = snapToGrid(footerHeight)
+
   hasTitle = titleHeight > 0
   contentWidth = panelWidth - (PANEL_PADDING * 2)
 
@@ -104,6 +128,13 @@ function computeDialogLayout(spec as object) as object
     if footerInside and footerHeight > 0 then bottom -= footerHeight + BODY_GAP
     bodyHeight = bottom - bodyY
     if bodyHeight < 0 then bodyHeight = 0
+    ' Deliberately NOT snapped, unlike the measured heights above. This one is
+    ' an ALLOWANCE filling a fixed panel, so snapping it would leave a sliver of
+    ' dead space below the body and break the "body absorbs the slack" invariant
+    ' the spec asserts. It buys nothing either way: the only caller that fixes a
+    ' panel height (OverviewDialog, 760) is not on the grid to begin with, so
+    ' its bottom edge cannot be aligned from here — that is a caller-side
+    ' choice about DIALOG_HEIGHT, not something this function can fix.
   end if
 
   contentBottom = bodyY + bodyHeight
@@ -126,7 +157,15 @@ function computeDialogLayout(spec as object) as object
 
   ' --- place the panel, then resolve everything to screen coordinates --------
   panelX = int((SCREEN_WIDTH - panelWidth) / 2)
-  panelY = int((SCREEN_HEIGHT - panelHeight) / 2)
+  ' The origin every vertical offset is measured from, so it decides whether any
+  ' of them land on the grid. Centring is derived from a snapped panelHeight but
+  ' halved, which re-introduces a 1.5px offset — hence snapping the result too.
+  ' Moves the panel by at most 2px, which is invisible; the spec pins the drift.
+  '
+  ' NOT applied to panelX: horizontal crispness would need panelWidth on the
+  ' grid as well, and width is the CALLER's policy (see the spec above), so the
+  ' snap would only sharpen one of the two vertical edges.
+  panelY = floorToGrid(int((SCREEN_HEIGHT - panelHeight) / 2))
 
   layout = {
     panel: layoutRect(panelX, panelY, panelWidth, panelHeight),
@@ -153,6 +192,24 @@ function centreInRect(container as object, width as integer) as integer
 end function
 
 ' ---- internals ----
+
+' Round a measured height UP onto the output-row grid. 0 stays 0, so a block
+' that is absent stays absent rather than becoming 3px tall.
+function snapToGrid(value as integer) as integer
+  if value <= 0 then return 0
+
+  remainder = value mod PIXEL_GRID
+  if remainder = 0 then return value
+  return value + (PIXEL_GRID - remainder)
+end function
+
+' Round DOWN onto the grid, for values that are an allowance rather than a
+' measurement. Negatives clamp to 0: the only way to get one is a panel taller
+' than the screen, which the caller is already told about via `overflows`.
+function floorToGrid(value as integer) as integer
+  if value <= 0 then return 0
+  return value - (value mod PIXEL_GRID)
+end function
 
 ' Named layoutRect, not rect: source/ files auto-scope into every component that
 ' imports them, and `rect` is a local variable name in half the layout code in

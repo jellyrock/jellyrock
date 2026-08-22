@@ -191,6 +191,54 @@ namespace tests
       m.assertEqual(layout.panel.x, int((1920 - 900) / 2))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the 720p pixel grid")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' WHY THIS IS THE REAL GATE, and the multiples-of-6 one above is not.
+    '
+    ' Roku renders the full 1920x1080 framebuffer and SUPERSAMPLES it to 720p
+    ' (hardware-verified, see the manifest's ui_resolutions note and #419). A
+    ' hard edge whose absolute y is divisible by 3 lands exactly on an output
+    ' row boundary and stays crisp; one that is not spans three output rows
+    ' partially and loses contrast.
+    '
+    ' Divisible CONSTANTS were never enough to deliver that. Every offset is
+    ' added to `panelY`, which is derived from a MEASURED title/body height, so
+    ' the absolute positions were divisible by 3 about a third of the time —
+    ' i.e. by chance. This asserts the property the constants were chosen for.
+    @it("puts every hard edge on an output-row boundary, whatever the measured heights")
+    function _()
+      for titleHeight = 44 to 69
+        for bodyHeight = 0 to 180 step 7
+          layout = computeDialogLayout({
+            panelWidth: 760,
+            titleHeight: titleHeight,
+            bodyHeight: bodyHeight,
+            footerHeight: 71,
+            footerInside: true
+          })
+
+          m.assertEqual(layout.panel.y mod 3, 0, "panel.y off-grid at titleHeight " + titleHeight.toStr())
+          m.assertEqual(layout.accent.y mod 3, 0, "accent.y off-grid at titleHeight " + titleHeight.toStr())
+          m.assertEqual(layout.body.y mod 3, 0, "body.y off-grid at titleHeight " + titleHeight.toStr())
+          m.assertEqual(layout.footer.y mod 3, 0, "footer.y off-grid at titleHeight " + titleHeight.toStr())
+        end for
+      end for
+    end function
+
+    ' Snapping must not visibly move the panel: it buys crispness, not a new
+    ' position. Half a 3px step either way is the whole budget.
+    @it("stays centred to within one grid step after snapping")
+    function _()
+      layout = computeDialogLayout({ panelWidth: 900, titleHeight: 50, bodyHeight: 120, footerHeight: 60, footerInside: true })
+
+      ideal = int((1080 - layout.panel.height) / 2)
+      drift = layout.panel.y - ideal
+      if drift < 0 then drift = -drift
+      m.assertTrue(drift <= 3, "panel drifted " + drift.toStr() + "px from centre")
+    end function
+
     @it("centreInRect centres a narrower block in its column")
     function _()
       layout = computeDialogLayout({ panelWidth: 760, titleHeight: 50, bodyHeight: 120, footerHeight: 60, footerInside: true })
