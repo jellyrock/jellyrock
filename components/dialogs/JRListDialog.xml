@@ -1,32 +1,52 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- JRListDialog: the JellyRock modal for selecting one item from a longer list
+<!-- JRListDialog: the JellyRock modal for choosing one item from a longer list
      (audio tracks, subtitles, video sources — anything past JRDialog's 3-button
-     cap). Same "PC look" chrome as JRDialog: dimmed backdrop, centered panel with
-     title + separator, a scrollable themed list in the body, and a Cancel button
-     BELOW the panel. Appended to the scene by dialogs.bs; per-instance `result`
-     field, same contract as JRDialog (selection lands in result.optionIndex). -->
+     cap). Chrome comes from JRDialogPanel, so this component owns only the list.
+
+     There is no Cancel button, deliberately: the rows are the only focusable
+     thing in it, and Back is how a Roku dialog is dismissed. The list wraps in
+     both directions, which is what makes a thirty-track list cheap to navigate
+     with a remote:
+
+       OK on a row     commits
+       DOWN past last  wraps to the top
+       UP past first   wraps to the bottom
+       BACK            dismisses
+
+     The decision lives in listDialogKeyAction (source/utils/dialogKeys.bs) where
+     it can be tested; see that file for why it is not inline here.
+
+     Appended to the scene by dialogs.bs; per-instance `result` field, same
+     contract as JRDialog (the selection lands in result.optionIndex). -->
 <component name="JRListDialog" extends="JRGroup" focusable="true">
   <children>
-    <Rectangle id="dimBackground" width="1920" height="1080" color="0x000000" opacity="0.75" />
-    <Poster id="dialogBackground" uri="pkg:/images/9patch/filled-rounded.9.png" />
-    <LabelPrimaryLarge id="titleLabel" horizAlign="center" vertAlign="center" />
-    <Rectangle id="separator" height="6" />
-    <JRLabelList id="optionList">
+    <JRDialogPanel id="chrome" />
+
+    <!-- MarkupList, not JRLabelList: a LabelList row is text only, and this list
+         has to show which option is already the current one. The focus chrome is
+         still the list's own (applyListFocusChrome); JRListDialogRow adds the
+         label and the selected-check. -->
+    <MarkupList id="optionList" itemComponentName="JRListDialogRow">
       <ContentNode id="content" role="content" />
-    </JRLabelList>
-    <TextButton id="cancelButton" />
+    </MarkupList>
 
     <!-- Delays ONLY the opening announcement; see OPENING_ANNOUNCEMENT_DELAY in
          JRDialog.bs. -->
     <Timer id="narrationTimer" repeat="false" />
-
   </children>
   <interface>
     <!-- Array of option label strings -->
     <field id="items" type="array" onChange="onItemsChanged" />
     <field id="title" type="string" onChange="onTitleChanged" />
-    <!-- Item focused when the dialog opens (e.g. the currently active track) -->
+    <!-- Which row to FOCUS when the dialog opens. Falls back to 0. -->
     <field id="defaultIndex" type="integer" value="0" />
+    <!-- Which option is genuinely CURRENT — it gets the check, the surface and
+         the "currently selected" announcement. -1 means none is, which is the
+         right answer for a choice dialog (nothing is active yet) and for a
+         picker whose active track is not in the list. Deliberately separate
+         from defaultIndex: they coincide in the normal case, and collapsing
+         them made a focus fallback claim row 0 was playing. -->
+    <field id="selectedIndex" type="integer" value="-1" />
     <!-- Set exactly once when the dialog resolves, then the dialog closes itself.
          Shape: { cancelled, confirmed, buttonIndex, buttonText, optionIndex, value } -->
     <field id="result" type="assocarray" alwaysNotify="true" />

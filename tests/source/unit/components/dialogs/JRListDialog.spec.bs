@@ -5,13 +5,16 @@ namespace tests
 
     private dialog as object
 
-    protected override function setup()
-      super.setup()
+    ' beforeEach, not setup: every test MUTATES this node, so a per-suite one
+    ' would hand each test whatever the last left behind (tests/CLAUDE.md).
+    protected override function beforeEach()
+      super.beforeEach()
       m.dialog = CreateObject("roSGNode", "JRListDialog")
     end function
 
-    protected override function teardown()
+    protected override function afterEach()
       m.dialog = invalid
+      super.afterEach()
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -45,6 +48,58 @@ namespace tests
       m.assertEqual(content.getChild(2).title, "Spanish")
     end function
 
+    ' Focus says where you ARE; it cannot say which track is already playing once
+    ' you move off it. The row carries that, so it survives scrolling away.
+    @it("marks the current option on the row, not just by focusing it")
+    function _()
+      m.dialog.defaultIndex = 2
+      m.dialog.selectedIndex = 2
+      m.dialog.items = ["English 5.1", "English Stereo", "Spanish"]
+
+      content = m.dialog.findNode("content")
+      m.assertFalse(content.getChild(0).isSelected)
+      m.assertFalse(content.getChild(1).isSelected)
+      m.assertTrue(content.getChild(2).isSelected)
+    end function
+
+    ' THE DEFAULT IS "NOTHING IS CURRENT". A choice dialog reaches this component
+    ' through showChoiceDialog's fallback, where defaultIndex means "focus this
+    ' one" and nothing is active yet — marking the focused row would claim an
+    ' option was already in effect, which the button route it falls back FROM
+    ' never does.
+    @it("marks nothing when no option is current, even with a focus index set")
+    function _()
+      m.dialog.defaultIndex = 1
+      m.dialog.items = ["Keep both", "Replace"]
+
+      content = m.dialog.findNode("content")
+      m.assertFalse(content.getChild(0).isSelected)
+      m.assertFalse(content.getChild(1).isSelected)
+    end function
+
+    @it("marks only the current option, independent of which row is focused")
+    function _()
+      m.dialog.defaultIndex = 0
+      m.dialog.selectedIndex = 1
+      m.dialog.items = ["English 5.1", "Spanish"]
+
+      content = m.dialog.findNode("content")
+      m.assertFalse(content.getChild(0).isSelected)
+      m.assertTrue(content.getChild(1).isSelected)
+    end function
+
+    @it("re-marks correctly when the items are reassigned")
+    function _()
+      m.dialog.defaultIndex = 1
+      m.dialog.selectedIndex = 1
+      m.dialog.items = ["A", "B", "C"]
+      m.dialog.items = ["X", "Y", "Z"]
+
+      content = m.dialog.findNode("content")
+      m.assertFalse(content.getChild(0).isSelected)
+      m.assertTrue(content.getChild(1).isSelected)
+    end function
+
     @it("rebuilds rows on reassignment instead of appending")
     function _()
       m.dialog.items = ["A", "B", "C", "D"]
@@ -64,6 +119,138 @@ namespace tests
       m.assertEqual(optionList.numRows, 8)
     end function
 
+    ' THE REGRESSION. This dialog used to switch the list to `fixedFocusWrap`
+    ' once it exceeded the visible cap. Roku's wrap consumes UP and DOWN at both
+    ' ends, which silently took away the dialog's only two dPad gestures — above
+    ' 8 rows there was no way to leave except Back. Wrapping is ours now
+    ' (listDialogKeyAction), so the list must never be handed back to Roku's.
+    @it("keeps floatingFocus no matter how long the list is")
+    function _()
+      optionList = m.dialog.findNode("optionList")
+
+      ' Roku normalises this field to lowercase on read, so compare that way
+      ' rather than against the spelling we wrote.
+      m.dialog.items = ["one", "two"]
+      m.assertEqual(LCase(optionList.vertFocusAnimationStyle), "floatingfocus")
+
+      items = []
+      for i = 1 to 30
+        items.push("track " + i.toStr())
+      end for
+      m.dialog.items = items
+      m.assertEqual(LCase(optionList.vertFocusAnimationStyle), "floatingfocus")
+    end function
+
+    @it("has no footer button — the list is the only focusable thing in it")
+    function _()
+      m.dialog.items = ["one", "two"]
+      m.assertInvalid(m.dialog.findNode("cancelButton"))
+    end function
+
+    ' Two signals for one state: the check carries the meaning (a shape survives
+    ' a colour-blind viewer and a palette that flattens the two background tones),
+    ' the surface gives the row presence in a long single-colour list.
+    @it("a row marks the current option with BOTH a check and a surface")
+    function _()
+      row = CreateObject("roSGNode", "JRListDialogRow")
+      row.width = 800
+      row.height = 60
+
+      content = CreateObject("roSGNode", "ContentNode")
+      content.title = "English 5.1"
+      content.addFields({ isSelected: true })
+      row.itemContent = content
+
+      m.assertTrue(row.findNode("checkIcon").visible)
+      m.assertTrue(row.findNode("selectedBackground").visible)
+    end function
+
+    ' The label is NOT one of the signals, and this is the assertion that keeps
+    ' it that way. Recolouring it to match the check was tried and read as too
+    ' much contrast on device: with the surface already there, three treatments
+    ' on one row is louder than the state warrants.
+    '
+    ' Compared through a reference node, not against the constant directly: a
+    ' node's `color` field normalises "0x3B82F6" to the RGBA integer 0x3B82F6FF,
+    ' so asserting against the theme string compares an integer to a string and
+    ' fails on a correct implementation.
+    @it("a row's label colour does NOT change with selection")
+    function _()
+      expected = m.themeColor(m.global.constants.colorTextPrimary)
+
+      for each selected in [true, false]
+        row = CreateObject("roSGNode", "JRListDialogRow")
+        row.width = 800
+        row.height = 60
+
+        content = CreateObject("roSGNode", "ContentNode")
+        content.title = "English 5.1"
+        content.addFields({ isSelected: selected })
+        row.itemContent = content
+
+        m.assertEqual(row.findNode("rowLabel").color, expected)
+      end for
+    end function
+
+    @it("a row shows neither marker when it is not the current option")
+    function _()
+      row = CreateObject("roSGNode", "JRListDialogRow")
+      row.width = 800
+      row.height = 60
+
+      content = CreateObject("roSGNode", "ContentNode")
+      content.title = "Spanish"
+      content.addFields({ isSelected: false })
+      row.itemContent = content
+
+      m.assertFalse(row.findNode("checkIcon").visible)
+      m.assertFalse(row.findNode("selectedBackground").visible)
+      m.assertEqual(row.findNode("rowLabel").color, m.themeColor(m.global.constants.colorTextPrimary))
+    end function
+
+    ' A row built by anything that does not know about isSelected must render as
+    ' an ordinary option rather than faulting on the missing field.
+    @it("a row without the isSelected field renders unmarked")
+    function _()
+      row = CreateObject("roSGNode", "JRListDialogRow")
+      row.width = 800
+      row.height = 60
+
+      content = CreateObject("roSGNode", "ContentNode")
+      content.title = "Plain"
+      row.itemContent = content
+
+      m.assertFalse(row.findNode("checkIcon").visible)
+      m.assertFalse(row.findNode("selectedBackground").visible)
+    end function
+
+    @it("renders rows through JRListDialogRow so they can carry the check")
+    function _()
+      m.dialog.items = ["one", "two"]
+      optionList = m.dialog.findNode("optionList")
+      m.assertEqual(optionList.itemComponentName, "JRListDialogRow")
+    end function
+
+    @it("takes its chrome from JRDialogPanel rather than its own nodes")
+    function _()
+      chrome = m.dialog.findNode("chrome")
+      m.assertNotInvalid(chrome)
+      m.assertEqual(chrome.subtype(), "JRDialogPanel")
+      ' The panel owns these now; a copy here would be the divergence returning
+      m.assertInvalid(m.dialog.findNode("separator"))
+      m.assertInvalid(m.dialog.findNode("dialogBackground"))
+    end function
+
+    ' A theme constant as the node field itself reports it. Node `color` fields
+    ' normalise a "0xRRGGBB" string to an RGBA integer, so this is the only way to
+    ' compare a rendered colour to the constant it came from.
+    ' Returns dynamic: BSC types a node's `color` field as 'integer or string'.
+    function themeColor(value as string) as dynamic
+      reference = CreateObject("roSGNode", "Label")
+      reference.color = value
+      return reference.color
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Focus on open")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -77,8 +264,8 @@ namespace tests
       ' REFERENCES/scenegraph/node.md), so RSG leaves focus on the already-focused
       ' descendant instead of hoisting it to the group. If a future refactor sets
       ' `items` after appending, or makes the group genuinely take focus, the list
-      ' becomes unreachable (OK does nothing, down skips straight to Cancel) —
-      ' which is exactly what this test exists to catch.
+      ' becomes unreachable and OK does nothing — which is exactly what this
+      ' test exists to catch.
       scene = m.top.getScene()
       m.assertNotInvalid(scene)
 

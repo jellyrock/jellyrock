@@ -41,7 +41,10 @@ sub show()
     m.top.state = "showing"
     m.actionButton.visible = true
     m.fadeInAnimation.control = "start"
-    m.actionButton.setFocus(true)
+    ' Notifications appear on their own (next-episode countdown, media segments),
+    ' so this can fire while the user is inside a dialog. Show, but do not steal
+    ' input from a modal — it would leave the dialog visible and unresponsive.
+    if not m.global.sceneManager.callFunc("isDialogOpen") then m.actionButton.setFocus(true)
   end if
 
   ' Reposition in case text width changed

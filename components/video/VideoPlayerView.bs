@@ -331,13 +331,20 @@ end sub
 ' @param {boolean} resume - controls whether or not to resume video playback when sub is called
 '
 sub handleHideAction(resume as boolean)
+  ' Whether the OSD owns input right now decides whether it has any focus to hand
+  ' back. A dialog opened FROM the OSD holds focus while the OSD is still on
+  ' screen behind it, and taking focus here left that dialog visible but deaf:
+  ' Back then fell through to the player and exited playback without ever closing
+  ' it. Hiding yourself is not a licence to take focus off whatever replaced you.
+  osdHadFocus = m.osd.isInFocusChain()
+
   m.osd.visible = false
   m.chapterList.visible = false
   m.osd.shouldShowChapterList = false
   m.chapterList.setFocus(false)
   m.osd.hasFocus = false
   m.osd.setFocus(false)
-  m.top.setFocus(true)
+  if osdHadFocus then m.top.setFocus(true)
   if resume
     m.top.control = "resume"
   end if
@@ -949,7 +956,9 @@ sub onVideoContentLoaded()
   m.top.visible = true
 
   stopLoadingSpinner()
-  m.top.setFocus(true)
+  ' A reload during an open dialog (a queue advance, a DoVi retry) must not pull
+  ' focus out of it — same rule as handleHideAction.
+  if not m.global.sceneManager.callFunc("isDialogOpen") then m.top.setFocus(true)
   m.top.control = "play"
 end sub
 

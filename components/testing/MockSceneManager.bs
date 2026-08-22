@@ -26,12 +26,6 @@ end sub
 sub userMessage(_title as string, _message as string)
 end sub
 
-sub standardDialog(_title as string, _content as object)
-end sub
-
-sub radioDialog(_title as string, _content as object)
-end sub
-
 sub dismissDialog()
 end sub
 

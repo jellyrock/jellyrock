@@ -1,0 +1,83 @@
+import "pkg:/source/utils/dialogLayout.bs"
+import "pkg:/source/utils/misc.bs"
+
+' See JRListDialogRow.xml for why the check is a tinted Poster rather than a
+' RadioButtonList.
+
+' The gutter and padding live in dialogLayout.bs (LIST_ROW_CHECK_GUTTER /
+' LIST_ROW_PADDING) so the spacing gate covers them.
+'
+' CHECK_ICON_SIZE stays HERE and stays off the 6px scale on purpose: it is the
+' source bitmap's size, not a spacing choice. The $$RES$$ pipeline substitutes a
+' 23x23 _hd asset decoded at physical output size, so 35 design units is 1:1 on
+' both tiers — rounding it to 36 would break that and soften the glyph.
+const CHECK_ICON_SIZE = 35
+
+sub init()
+  m.selectedBackground = m.top.findNode("selectedBackground")
+  m.checkIcon = m.top.findNode("checkIcon")
+  m.rowLabel = m.top.findNode("rowLabel")
+
+  constants = m.global.constants
+  m.selectedBackground.blendColor = constants.colorBackgroundSecondary
+  ' Sized 1:1 with the source bitmap so it renders crisp at native resolution,
+  ' the same way the app's other inline icons are declared.
+  m.checkIcon.uri = constants.iconCheckWhite
+  m.checkIcon.width = CHECK_ICON_SIZE
+  m.checkIcon.height = CHECK_ICON_SIZE
+
+  ' colorSecondary, NOT colorPrimary. The theme table reserves colorPrimary for
+  ' things the user can focus or act on — it is the focus ring around this very
+  ' row — and defines colorSecondary as non-focusable emphasis, which is exactly
+  ' what "this is your current pick" is. JRDropdownItem marks its selected item
+  ' the same way.
+  m.checkIcon.blendColor = constants.colorSecondary
+end sub
+
+sub onItemContentChanged()
+  content = m.top.itemContent
+  if not isValid(content) then return
+
+  m.rowLabel.text = content.title
+
+  ' isSelected is added to the ContentNode by JRListDialog. Absent (a row built
+  ' by anything else) reads as not selected rather than faulting.
+  '
+  ' Two signals for one state, covering each other's blind spot: the check is a
+  ' SHAPE (survives any palette and colour-blindness), and the surface gives the
+  ' row weight in a long single-colour list.
+  isSelected = isValid(content.isSelected) and content.isSelected
+  m.checkIcon.visible = isSelected
+  m.selectedBackground.visible = isSelected
+
+  ' The LABEL stays colorTextPrimary either way. Recolouring it to match the
+  ' check was tried and read as too much contrast on device once the surface
+  ' landed: three simultaneous treatments on one row is louder than the state
+  ' warrants, and the row's job is to be readable first.
+  '
+  ' The accessibility argument that motivated the hue is carried by the CHECK,
+  ' which is a SHAPE — it survives colour-blindness and a dim or badly
+  ' calibrated panel, which is more than a hue swap ever did. The surface adds
+  ' weight for everyone else.
+
+  layoutRow()
+end sub
+
+sub onSizeChanged()
+  layoutRow()
+end sub
+
+sub layoutRow()
+  rowWidth = m.top.width
+  rowHeight = m.top.height
+  if rowWidth <= 0 or rowHeight <= 0 then return
+
+  m.selectedBackground.width = rowWidth
+  m.selectedBackground.height = rowHeight
+
+  m.checkIcon.translation = [LIST_ROW_PADDING, int((rowHeight - CHECK_ICON_SIZE) / 2)]
+
+  m.rowLabel.translation = [LIST_ROW_CHECK_GUTTER, 0]
+  m.rowLabel.width = rowWidth - LIST_ROW_CHECK_GUTTER - LIST_ROW_PADDING
+  m.rowLabel.height = rowHeight
+end sub

@@ -1,5 +1,6 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
@@ -54,52 +55,6 @@ sub userMessage(title as string, message as string)
   dialog.message = [message]
   dialog.buttons = [translate(translationKeys.ButtonOk)]
   dialog.observeField("buttonSelected", "dismissDialog")
-  m.scene.dialog = dialog
-end sub
-
-' Display dialog to user with an OK button
-sub standardDialog(title, message)
-  constants = m.global.constants
-
-  dialog = createObject("roSGNode", "StandardDialog")
-  dlgPalette = createObject("roSGNode", "RSGPalette")
-  dlgPalette.colors = {
-    DialogBackgroundColor: constants.colorBackgroundPrimary,
-    DialogFocusColor: constants.colorPrimary,
-    DialogFocusItemColor: constants.colorTextPrimary,
-    DialogSecondaryTextColor: constants.colorTextSecondary,
-    DialogSecondaryItemColor: constants.colorSecondary,
-    DialogTextColor: constants.colorTextPrimary
-  }
-  dialog.palette = dlgPalette
-  dialog.observeField("buttonSelected", "dismissDialog")
-  dialog.title = title
-  dialog.setField("contentData", message) ' setField: BSC cannot resolve custom fields on built-in dialog subtypes
-  dialog.setField("buttons", [translate(translationKeys.ButtonOk)])
-
-  m.scene.dialog = dialog
-end sub
-
-' Display dialog to user with an OK button
-sub radioDialog(title, message)
-  constants = m.global.constants
-
-  dialog = createObject("roSGNode", "RadioDialog")
-  dlgPalette = createObject("roSGNode", "RSGPalette")
-  dlgPalette.colors = {
-    DialogBackgroundColor: constants.colorBackgroundPrimary,
-    DialogFocusColor: constants.colorPrimary,
-    DialogFocusItemColor: constants.colorTextPrimary,
-    DialogSecondaryTextColor: constants.colorTextSecondary,
-    DialogSecondaryItemColor: constants.colorSecondary,
-    DialogTextColor: constants.colorTextPrimary
-  }
-  dialog.palette = dlgPalette
-  dialog.observeField("buttonSelected", "dismissDialog")
-  dialog.title = title
-  dialog.setField("contentData", message) ' setField: BSC cannot resolve custom fields on built-in dialog subtypes
-  dialog.setField("buttons", [translate(translationKeys.ButtonOk)])
-
   m.scene.dialog = dialog
 end sub
 
@@ -164,9 +119,18 @@ sub dismissDialog()
   m.scene.dialog.close = true
 end sub
 
-' Returns bool indicating if dialog is currently displayed
+' Is ANY dialog currently on screen? Callers use this to hold off on something
+' that would interfere — the OSD's inactivity auto-hide, the player's
+' end-of-playback teardown.
+'
+' There are TWO channels and this must answer for both. It used to check only
+' Roku's modal channel, so it began silently returning false for every dialog in
+' the app when the JRDialog family moved to scene-appended overlays. The OSD read
+' that false and hid itself out from under an open dialog, taking focus with it
+' — the dialog stayed on screen but deaf, and Back fell through to the player.
 function isDialogOpen() as boolean
-  return isValid(m.scene.dialog)
+  if isValid(m.scene.dialog) then return true
+  return isOverlayDialogOpen()
 end function
 
 ' Refresh theme colors on JRScene and overhang.

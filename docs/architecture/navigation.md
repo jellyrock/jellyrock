@@ -12,10 +12,15 @@ related-files:
   - components/dialogs/JRDialog.bs
   - components/dialogs/JRListDialog.bs
   - components/dialogs/JRKeyboardDialog.bs
+  - components/dialogs/JRDialogPanel.bs
+  - components/dialogs/JRListDialogRow.bs
+  - components/OverviewDialog.bs
   - source/utils/dialogs.bs
+  - source/utils/dialogLayout.bs
+  - source/utils/dialogKeys.bs
   - source/replayRoute.bs
   - source/loginRouter.bs
-last-reviewed: 2026-08-14
+last-reviewed: 2026-08-22
 ---
 
 # Navigation (sgRouter)
@@ -271,7 +276,7 @@ end sub
 
 `components/data/SceneManager.bs` no longer manages a navigation stack. The stack methods (`pushScene` / `popScene` / `getActiveScene` / `clearScenes` / `clearPreviousScene` / `deleteSceneAtIndex` / `settings`) and `SceneManager`'s own overhang-sync helpers were **deleted** in #550. It survives as a shared **service node** at `m.global.sceneManager`:
 
-- **Dialogs** — `userMessage`, `standardDialog`, `radioDialog`, `showConfirmationDialog`, `dismissDialog`, `isDialogOpen`, plus the selection-return contract (`returnData` / `isDataReturned`, `optionSelected` / `optionClosed`). **Do not add new call sites here.** New dialogs go through `source/utils/dialogs.bs` (see below); the remaining `SceneManager` consumers are tracked for migration by [`dialog-returndata-shared-global`](tech-debt.md#dialog-returndata-shared-global).
+- **Dialogs** — `userMessage`, `showConfirmationDialog`, `dismissDialog`, `isDialogOpen`, plus the selection-return contract (`returnData` / `isDataReturned`, `optionSelected` / `optionClosed`). **Do not add new call sites here.** New dialogs go through `source/utils/dialogs.bs` (see below); the remaining `SceneManager` consumers are tracked for migration by [`dialog-returndata-shared-global`](tech-debt.md#dialog-returndata-shared-global). (`standardDialog` / `radioDialog` and their `StandardDialog` / `RadioDialog` components are gone — `PlayerHostView`'s pickers, their only consumer, moved to `showListDialog` / `showInfoDialog`.) Note `isDialogOpen` answers for BOTH channels — Roku's modal channel (`m.scene.dialog`) and the scene-appended overlays (via `isOverlayDialogOpen`). `dismissDialog`, however, only closes the modal one, so a screen holding an overlay still abandons it itself.
 - **Backdrop** — `setBackgroundImage` (passthrough to `JRScene.setBackgroundImage`).
 - **Theme** — `refreshThemeColors` (walks the overhang tree, re-applies `m.global.constants`).
 - **Overhang passthrough fields** — `updateUser`, `resetTime`.
@@ -291,6 +296,50 @@ global to cross-fire (the failure mode of `SceneManager.returnData`).
 | `showListDialog` | `JRListDialog` | Scene-appended overlay |
 | `showInfoDialog` | `OverviewDialog` | Scene-appended overlay |
 | `showKeyboardDialog` | `JRKeyboardDialog` | Roku modal channel (`m.scene.dialog`) — the OS owns the keyboard |
+
+#### One chrome, one flow
+
+`JRDialog`, `JRListDialog` and `OverviewDialog` all draw the same chrome — dimmed backdrop,
+panel, 3px edge, title, and the short `colorSecondary` accent rule under it — from
+**`JRDialogPanel`**, and all three get their geometry from **`source/utils/dialogLayout.bs`**,
+which is pure and unit-tested.
+
+That is not tidiness. The three each owned a private copy of both, and when the #757 review
+restyled `JRDialog` the other two silently kept the old look, so the app shipped two dialog
+languages with every gate green — nothing asserted a position, gap, color or asset. The
+module exists so "one dialog language" is a test rather than a claim, including a gate on the
+multiples-of-6 spacing scale that keeps values integral through the 720p downscale.
+
+A dialog supplies its own body and footer and nothing else. `OverviewDialog`'s OK button
+stays **outside** the panel — a recorded exception, not a leftover: at 1600×760 the panel
+dominates the screen, so a button below it still reads as attached, which is untrue at
+`JRDialog`'s size. `computeDialogLayout` takes footer placement as a parameter for exactly
+that reason.
+
+#### The list dialog has no Cancel button
+
+The rows are the only focusable thing in it, so there is nothing for a button to add — and
+`Back` is how Roku documents dismissing a popup dialog. Its gestures otherwise follow
+`ItemDetails`' `TrackDropdown`, the app's other picker for the same job:
+
+| Gesture | Effect |
+|---|---|
+| `OK` on a row | commits the selection |
+| `DOWN` past the last row | wraps to the top |
+| `UP` past the first row | wraps to the bottom |
+| `Back` | dismisses without choosing |
+
+The wrap is **symmetric**, and that is the point of having it: one `UP` reaches the end of a
+thirty-track list. `TrackDropdown` dismisses on `UP`-at-top instead, which is right for a
+dropdown — `UP` returns you to the trigger you opened — but a centered modal has no trigger
+above it, so the gesture would be arbitrary here and would cost the only ergonomic win
+wrapping exists for.
+
+The decision lives in `listDialogKeyAction` (`source/utils/dialogKeys.bs`), not in
+`onKeyEvent`, because the first version put it there and got it wrong in a way no test could
+reach: it found Cancel by catching a `down` that *bubbled out* of the list, which stopped
+happening above 8 rows when the list began wrapping internally. The list is now pinned to
+`floatingFocus` and the wrap is ours.
 
 From a component, pass `onResult` (a function name in your scope) and the helper wires the
 scoped observer. From main-thread code, omit it and observe with your message port. The

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- JRListDialogRow: one option in a JRListDialog.
+
+     It exists for one reason: to show which option is ALREADY the current one.
+     Focus tells you where you are; it cannot tell you which track is playing
+     once you have moved off it, and a picker whose whole job is changing a
+     current value has to show that value.
+
+     The check is a Poster tinted with blendColor, NOT Roku's RadioButtonList.
+     RadioButtonList is the natural fit and was the first choice, but its
+     checkedIconUri is a plain bitmap with no tint field, and this app's colours
+     are user-set hex — so its mark would be the one thing on screen that could
+     not follow the theme. Every other icon here is a white asset tinted from a
+     theme constant (Toast, CommunityRating, FocusableOverview, JRTab); this
+     follows that.
+
+     The FOCUS indicator is still the list's own (focusBitmapUri), not drawn
+     here — see source/utils/listTheme.bs. This component only adds content.
+
+     The selected row also gets a colorBackgroundSecondary surface. That fill
+     means FOCUS elsewhere in the app (TextButton, JRDropdownItem), but not in
+     this list: focusFootprintBitmapUri — the fill Roku draws for focus — only
+     renders "when the list or grid itself does not have focus", and this list is
+     the only focusable thing in a modal, so it always has focus and that
+     footprint never appears. Focus here is the 6px colorPrimary border alone,
+     which the fill cannot be confused with. -->
+<component name="JRListDialogRow" extends="Group">
+  <children>
+    <!-- Surface under the CURRENT option. Same 9-patch the app fills every other
+         surface with, tinted colorBackgroundSecondary. Declared first so it sits
+         behind the check and the label. -->
+    <Poster id="selectedBackground" uri="pkg:/images/9patch/filled-rounded.9.png" visible="false" />
+
+    <!-- White source asset: blendColor MULTIPLIES, so a white glyph takes the
+         tint exactly. check-black would stay black whatever colour we asked for. -->
+    <Poster id="checkIcon" visible="false" />
+    <LabelPrimaryMedium id="rowLabel" horizAlign="left" vertAlign="center" />
+  </children>
+  <interface>
+    <!-- The MarkupList item-component contract (matches JRRowItem's). itemContent
+         carries `title` plus the `isSelected` flag JRListDialog adds to it. -->
+    <field id="itemContent" type="node" onChange="onItemContentChanged" />
+    <field id="width" type="float" value="0" onChange="onSizeChanged" />
+    <field id="height" type="float" value="0" onChange="onSizeChanged" />
+  </interface>
+</component>

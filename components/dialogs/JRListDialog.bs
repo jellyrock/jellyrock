@@ -1,46 +1,41 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/dialogKeys.bs"
+import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/dialogNarration.bs"
 import "pkg:/source/utils/dialogResult.bs"
+import "pkg:/source/utils/listTheme.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
-' Layout constants (shared chrome metrics with JRDialog / OverviewDialog)
+' See JRListDialog.xml for the interaction contract. Chrome and its arithmetic
+' live elsewhere (JRDialogPanel + source/utils/dialogLayout.bs); this file owns
+' the list, the key model's effects, and resolution.
+
+' Row height and spacing come from dialogLayout.bs (LIST_ROW_*), where the
+' spacing gate covers them. LIST_ROW_SPACING matches JRLabelList's own default
+' so the dialog's list has the same visual rhythm as every other list in the app.
 const PANEL_WIDTH = 900
-const PANEL_PADDING = 40
-const TITLE_HEIGHT = 50
-const SEPARATOR_Y = 80
-const LIST_TOP = 115
-const BUTTON_TOP_MARGIN = 20
-const BUTTON_MIN_WIDTH = 200
-const ITEM_HEIGHT = 60
-' Matches JRLabelList's own default spacing so the dialog's list has the same
-' visual rhythm as every other list in the app. 24 (not 20) also survives the
-' Roku OS downscale to 720p cleanly: it is divisible by 3, so x2/3 stays an
-' integer and the rows don't pick up sub-pixel drift.
-const ITEM_SPACING = 24
 const MAX_VISIBLE_ROWS = 8
-
-
 
 sub init()
   m.log = new log.Logger("JRListDialog")
-  constants = m.global.constants
 
-  m.panel = m.top.findNode("dialogBackground")
-  m.panel.blendColor = constants.colorBackgroundPrimary
-  m.panel.width = PANEL_WIDTH
-
-  m.titleLabel = m.top.findNode("titleLabel")
-  m.separator = m.top.findNode("separator")
-  m.separator.color = constants.colorBackgroundSecondary
+  m.chrome = m.top.findNode("chrome")
+  m.chrome.contentWidth = PANEL_WIDTH - (PANEL_PADDING * 2)
+  ' The chrome measures the title and publishes its height; layout can only be
+  ' computed once that exists.
+  m.chrome.observeField("titleHeight", "onTitleMeasured")
 
   m.optionList = m.top.findNode("optionList")
   m.optionList.observeField("itemSelected", "onItemSelected")
+  applyListFocusChrome(m.optionList)
 
-  m.cancelButton = m.top.findNode("cancelButton")
-  m.cancelButton.text = translate(translationKeys.ButtonCancel)
-  m.cancelButton.minWidth = BUTTON_MIN_WIDTH
+  ' floatingFocus, ALWAYS — never fixedFocusWrap. Roku's own wrap engages only
+  ' "as long as the list contains enough items to fill the list", so the dialog's
+  ' behaviour would change shape with its content. Wrapping is implemented here
+  ' instead (see onKeyEvent), where it is unconditional and unit-tested.
+  m.optionList.vertFocusAnimationStyle = "floatingFocus"
 
   m.resolved = false
 
@@ -55,7 +50,11 @@ sub init()
 end sub
 
 sub onTitleChanged()
-  m.titleLabel.text = m.top.title
+  m.chrome.title = m.top.title
+end sub
+
+sub onTitleMeasured()
+  applyLayout()
 end sub
 
 sub onItemsChanged()
@@ -67,13 +66,35 @@ sub onItemsChanged()
   while content.getChildCount() > 0
     content.removeChildIndex(0)
   end while
+  ' The CURRENT option is marked on the row itself, so it stays visible once the
+  ' user moves focus off it. selectedIndex — NOT defaultIndex, which is only
+  ' which row to focus and falls back to 0. -1 marks nothing, which is what a
+  ' choice dialog and a picker with no matching track both want.
+  selectedIndex = m.top.selectedIndex
+  index = 0
   for each item in items
     row = CreateObject("roSGNode", "ContentNode")
     row.title = toString(item)
+    row.addFields({ isSelected: index = selectedIndex })
+
+    ' The three visual markers (check glyph, surface, hue) are all sighted-only,
+    ' so the current option is also announced. AUDIO_GUIDE_SUFFIX is a PREDEFINED
+    ' ContentNode field that MarkupList speaks after the row title and the
+    ' platform's own "1 of 3" navigation hint — see the per-node table in
+    ' docs/DEVELOPER/media-playback/text-to-speech.md (rokudev/dev-doc).
+    '
+    ' setField, not dot access: the field is absent from BrighterScript's
+    ' roSGNodeContentNode type, so `row.AUDIO_GUIDE_SUFFIX = ...` fails
+    ' validation with cannot-find-name. Same reason as JRKeyboardDialog.bs:30.
+    if index = selectedIndex
+      row.setField("AUDIO_GUIDE_SUFFIX", translate(translationKeys.LabelCurrentlySelected))
+    end if
+
     content.appendChild(row)
+    index++
   end for
 
-  layout()
+  applyLayout()
 
   if m.top.defaultIndex > 0 and m.top.defaultIndex < items.count()
     m.optionList.jumpToItem = m.top.defaultIndex
@@ -81,20 +102,39 @@ sub onItemsChanged()
   m.optionList.setFocus(true)
 end sub
 
+sub applyLayout()
+  items = m.top.items
+  if not isValid(items) or items.count() = 0 then return
+
+  visibleRows = items.count()
+  if visibleRows > MAX_VISIBLE_ROWS then visibleRows = MAX_VISIBLE_ROWS
+
+  listHeight = (visibleRows * LIST_ROW_HEIGHT) + ((visibleRows - 1) * LIST_ROW_SPACING)
+
+  layout = computeDialogLayout({
+    panelWidth: PANEL_WIDTH,
+    titleHeight: m.chrome.titleHeight,
+    bodyHeight: listHeight,
+    footerHeight: 0,
+    footerInside: true
+  })
+
+  m.chrome.layout = layout
+
+  m.optionList.itemSize = [layout.body.width, LIST_ROW_HEIGHT]
+  m.optionList.itemSpacing = [0, LIST_ROW_SPACING]
+  m.optionList.numRows = visibleRows
+  m.optionList.translation = [layout.body.x, layout.body.y]
+end sub
+
 ' Screen-reader announcement, driven by the focus event itself rather than a
 ' guessed delay (see JRDialog.onButtonFocusChanged for the full reasoning).
 '
-' On open, announce the title plus the row focus starts on. Afterwards, only the
-' Cancel button needs announcing: the list is a real LabelList, which the
-' platform narrates itself (focused row title plus a navigation hint), whereas
-' the Cancel TextButton is a Group and gets nothing.
+' Only the opening announcement is ours. The list is a real LabelList, which the
+' platform narrates itself (focused row title plus a navigation hint), and there
+' is nothing else in this dialog to announce.
 sub onDialogFocusChanged()
-  if not m.hasNarrated
-    m.narrationTimer.control = "start"
-    return
-  end if
-
-  if m.cancelButton.hasFocus() then narrateFocusedElement(toString(m.cancelButton.text))
+  if not m.hasNarrated then m.narrationTimer.control = "start"
 end sub
 
 ' Announce the dialog once the platform's own focus announcement is out of the way.
@@ -107,54 +147,44 @@ sub onOpeningAnnouncementDue()
   index = m.top.defaultIndex
   if isValid(items) and index >= 0 and index < items.count()
     focusedText = toString(items[index])
+    ' If the row we open on is the current option, say so — otherwise the SAME
+    ' row gets described two different ways depending on how you arrived at it.
+    ' Measured on a Roku Ultra: opening said "Select video source. B&W 1080p
+    ' h264", but arrowing away and back said "B&W 1080p h264, 1 of 2, currently
+    ' selected". The platform's own row announcement carries the suffix; ours
+    ' bypassed it, because this composes from `items` rather than from the row's
+    ' ContentNode, and ours is the utterance that survives (see
+    ' narrateDialogOpening for why it has to be).
+    '
+    ' Conditional, because the two indexes DIVERGE: a choice dialog has nothing
+    ' current at all, and a picker whose active track is missing from the list
+    ' still focuses row 0. Announcing it unconditionally would tell a
+    ' screen-reader user something the check and the surface do not.
+    if index = m.top.selectedIndex
+      focusedText += ", " + translate(translationKeys.LabelCurrentlySelected)
+    end if
   end if
 
+  ' The platform's "1 of 2" navigation hint is deliberately NOT reproduced here.
+  ' It is unconditional for any ArrayGrid-derived list and not suppressible, so
+  ' the user hears it the moment they move — but its wording is Roku's and
+  ' localised by Roku, and a hand-rolled "{0} of {1}" would drift from it in
+  ' every locale but English. Saying less beats saying it differently.
+  '
   ' No `message` field on this dialog — the title carries the whole prompt
   narrateDialogOpening(m.top.title, "", focusedText)
-end sub
-
-sub layout()
-  itemCount = m.top.items.count()
-  visibleRows = itemCount
-  if visibleRows > MAX_VISIBLE_ROWS then visibleRows = MAX_VISIBLE_ROWS
-
-  m.optionList.itemSize = [PANEL_WIDTH - (PANEL_PADDING * 2), ITEM_HEIGHT]
-  m.optionList.itemSpacing = [0, ITEM_SPACING]
-  m.optionList.numRows = visibleRows
-  if itemCount > MAX_VISIBLE_ROWS
-    m.optionList.vertFocusAnimationStyle = "fixedFocusWrap"
-    m.optionList.wrapDividerHeight = 0
-  end if
-
-  listHeight = (visibleRows * ITEM_HEIGHT) + ((visibleRows - 1) * ITEM_SPACING)
-  panelHeight = LIST_TOP + listHeight + PANEL_PADDING
-  panelX = (1920 - PANEL_WIDTH) / 2
-  panelY = (1080 - panelHeight) / 2
-
-  m.panel.translation = [panelX, panelY]
-  m.panel.height = panelHeight
-
-  m.titleLabel.translation = [panelX + PANEL_PADDING, panelY + 25]
-  m.titleLabel.width = PANEL_WIDTH - (PANEL_PADDING * 2)
-  m.titleLabel.height = TITLE_HEIGHT
-  m.separator.translation = [panelX + PANEL_PADDING, panelY + SEPARATOR_Y]
-  m.separator.width = PANEL_WIDTH - (PANEL_PADDING * 2)
-
-  m.optionList.translation = [panelX + PANEL_PADDING, panelY + LIST_TOP]
-
-  m.cancelButton.translation = [(1920 - BUTTON_MIN_WIDTH) / 2, panelY + panelHeight + BUTTON_TOP_MARGIN]
 end sub
 
 sub onItemSelected()
   resolveDialog(m.optionList.itemSelected)
 end sub
 
-' Resolve exactly once, then close. index = -1 means cancelled (back / Cancel button).
+' Resolve exactly once, then close. index = -1 means dismissed without choosing.
 sub resolveDialog(index as integer)
   if m.resolved then return
   m.resolved = true
 
-  m.top.result = listDialogResult(index, translate(translationKeys.ButtonCancel))
+  m.top.result = listDialogResult(index)
 
   closeDialog()
 end sub
@@ -170,31 +200,26 @@ end sub
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 
-  if key = "back"
+  itemCount = 0
+  if isValid(m.top.items) then itemCount = int(m.top.items.count())
+
+  action = listDialogKeyAction(key, m.optionList.itemFocused, itemCount)
+
+  if action = "dismiss"
     resolveDialog(-1)
     return true
   end if
 
-  if key = "OK" and m.cancelButton.hasFocus()
-    resolveDialog(-1)
+  if action = "wrapToTop"
+    m.optionList.jumpToItem = 0
     return true
   end if
 
-  ' DOWN from the last list item moves to the Cancel button (the list consumes
-  ' downs while it can still move; only the bubbled-out ones land here)
-  if key = "down"
-    ' The focusedChild observer announces the Cancel button; the list's own rows
-    ' are narrated by the platform (LabelList has a documented rule).
-    if not m.cancelButton.hasFocus() then m.cancelButton.setFocus(true)
+  if action = "wrapToBottom"
+    m.optionList.jumpToItem = itemCount - 1
     return true
   end if
 
-  ' UP from the Cancel button returns to the list
-  if key = "up"
-    if m.cancelButton.hasFocus() then m.optionList.setFocus(true)
-    return true
-  end if
-
-  ' Modal containment: nothing else escapes to the scene behind us
+  ' "consume" — modal containment: nothing escapes to the scene behind us.
   return true
 end function

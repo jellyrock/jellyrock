@@ -1,0 +1,209 @@
+import "pkg:/source/enums/SubtitleSelection.bs"
+import "pkg:/source/utils/trackPickerOptions.bs"
+
+namespace tests
+
+  @suite("trackPickerOptions.bs - playback-time picker option sets")
+  class TrackPickerOptionsTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("buildAudioTrackOptions")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("labels and values stay index-aligned, so optionIndex maps back to a stream")
+    function _()
+      options = buildAudioTrackOptions(m.audioStreams(), 3)
+
+      m.assertEqual(options.labels.count(), 3)
+      m.assertEqual(options.values.count(), 3)
+      ' values are Jellyfin stream indexes, NOT positions in the list
+      m.assertEqual(options.values, [1, 3, 7])
+      m.assertEqual(options.labels[0], "English AAC 2.0")
+    end function
+
+    @it("focuses the track playing now")
+    function _()
+      options = buildAudioTrackOptions(m.audioStreams(), 3)
+      m.assertEqual(options.defaultIndex, 1)
+    end function
+
+    @it("focuses the first row when nothing matches the current index")
+    function _()
+      options = buildAudioTrackOptions(m.audioStreams(), 99)
+      m.assertEqual(options.defaultIndex, 0)
+    end function
+
+    ' The focus fallback must NOT double as "this one is playing". They are the
+    ' same number in the normal case, which is what let one field serve both
+    ' until the row began drawing a check from it — at which point a track that
+    ' simply was not in the list marked row 0 as the current one.
+    @it("reports NO current option when nothing matches, even though focus falls back to 0")
+    function _()
+      options = buildAudioTrackOptions(m.audioStreams(), 99)
+      m.assertEqual(options.defaultIndex, 0)
+      m.assertEqual(options.selectedIndex, -1)
+    end function
+
+    @it("reports the current option when one does match")
+    function _()
+      options = buildAudioTrackOptions(m.audioStreams(), 3)
+      m.assertEqual(options.selectedIndex, 1)
+      m.assertEqual(options.selectedIndex, options.defaultIndex)
+    end function
+
+    @it("a video source with no match reports no current option either")
+    function _()
+      m.assertEqual(buildVideoSourceOptions(m.videoSources(), "src-gone").selectedIndex, -1)
+      m.assertEqual(buildVideoSourceOptions(m.videoSources(), "src-b").selectedIndex, 1)
+    end function
+
+    ' Subtitles differ from the other two on purpose: showing NO subtitles is a
+    ' real current state, not an absence, so None starts marked.
+    @it("subtitles treat None as a genuine current option")
+    function _()
+      off = buildSubtitleTrackOptions(m.subtitleStreams(), SubtitleSelection.NOT_SET, "", [])
+      m.assertEqual(off.selectedIndex, 0)
+
+      onTrack = buildSubtitleTrackOptions(m.subtitleStreams(), 4, "", [])
+      m.assertEqual(onTrack.selectedIndex, 2)
+    end function
+
+    @it("skips streams with no index rather than emitting an unselectable row")
+    function _()
+      options = buildAudioTrackOptions([{ index: 1, Language: "eng", Codec: "aac", Channels: 2 }, { Language: "spa" }], 1)
+      m.assertEqual(options.values.count(), 1)
+      m.assertEqual(options.labels.count(), 1)
+    end function
+
+    @it("returns an empty option set for invalid input")
+    function _()
+      options = buildAudioTrackOptions(invalid, 0)
+      m.assertEqual(options.labels.count(), 0)
+      m.assertEqual(options.values.count(), 0)
+      m.assertEqual(options.defaultIndex, 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("buildVideoSourceOptions")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("values are MediaSource ids and the active source is focused")
+    function _()
+      options = buildVideoSourceOptions(m.videoSources(), "src-b")
+
+      m.assertEqual(options.values, ["src-a", "src-b"])
+      m.assertEqual(options.defaultIndex, 1)
+    end function
+
+    @it("names the versions apart only when there is more than one")
+    function _()
+      multiple = buildVideoSourceOptions(m.videoSources(), "src-a")
+      m.assertEqual(multiple.labels[0], "Remux 1080p H264")
+
+      single = buildVideoSourceOptions([m.videoSources()[0]], "src-a")
+      m.assertEqual(single.labels[0], "1080p H264")
+    end function
+
+    @it("returns an empty option set for invalid input")
+    function _()
+      options = buildVideoSourceOptions(invalid, "src-a")
+      m.assertEqual(options.values.count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("buildSubtitleTrackOptions")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("always offers None first, and it is translated rather than a literal")
+    function _()
+      options = buildSubtitleTrackOptions(m.subtitleStreams(), SubtitleSelection.NOT_SET, "", [])
+
+      m.assertEqual(options.values[0].index, SubtitleSelection.NONE)
+      m.assertEqual(options.labels[0], "None")
+      m.assertEqual(options.labels.count(), 3)
+    end function
+
+    @it("carries the encoded flag and track name the handler needs")
+    function _()
+      options = buildSubtitleTrackOptions(m.subtitleStreams(), SubtitleSelection.NOT_SET, "", [])
+
+      m.assertEqual(options.values[1].index, 2)
+      m.assertFalse(options.values[1].isEncoded)
+      m.assertEqual(options.values[1].trackName, "sub/eng.vtt")
+      m.assertTrue(options.values[2].isEncoded)
+    end function
+
+    @it("focuses an in-file track by its Jellyfin index")
+    function _()
+      options = buildSubtitleTrackOptions(m.subtitleStreams(), 4, "", [])
+      m.assertEqual(options.defaultIndex, 2)
+    end function
+
+    @it("focuses an EXTERNAL track by the Roku track name the player is showing")
+    function _()
+      ' External subtitles leave selectedSubtitle at NONE, so the index says
+      ' nothing — the active row can only be found through Roku's track list.
+      available = [{ TrackName: "urn:subtitle:sub/eng.vtt/1" }]
+      options = buildSubtitleTrackOptions(m.subtitleStreams(), SubtitleSelection.NONE, "urn:subtitle:sub/eng.vtt/1", available)
+
+      m.assertEqual(options.defaultIndex, 1)
+    end function
+
+    @it("falls back to None when an external track cannot be resolved")
+    function _()
+      options = buildSubtitleTrackOptions(m.subtitleStreams(), SubtitleSelection.NONE, "urn:subtitle:gone.vtt/1", [{ TrackName: "urn:subtitle:gone.vtt/1" }])
+      m.assertEqual(options.defaultIndex, 0)
+    end function
+
+    @it("offers None even when there are no subtitle streams at all")
+    function _()
+      options = buildSubtitleTrackOptions(invalid, SubtitleSelection.NOT_SET, "", [])
+      m.assertEqual(options.labels, ["None"])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("availableSubtitleTrackIndex")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("matches on substring because Roku mangles the name it was given")
+    function _()
+      available = [{ TrackName: "other" }, { TrackName: "urn:subtitle:sub/eng.vtt/2" }]
+      m.assertEqual(availableSubtitleTrackIndex(available, "sub/eng.vtt"), 1)
+    end function
+
+    @it("returns NONE when the track is absent, empty, or the list is invalid")
+    function _()
+      m.assertEqual(availableSubtitleTrackIndex([{ TrackName: "other" }], "sub/eng.vtt"), SubtitleSelection.NONE)
+      m.assertEqual(availableSubtitleTrackIndex([{ TrackName: "other" }], ""), SubtitleSelection.NONE)
+      m.assertEqual(availableSubtitleTrackIndex(invalid, "sub/eng.vtt"), SubtitleSelection.NONE)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    ' Fixtures. Built per call (not held on m) so no test can mutate
+    ' what the next one reads.
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    function audioStreams() as object
+      return [
+        { index: 1, Language: "eng", Codec: "aac", Channels: 2 },
+        { index: 3, Language: "eng", Codec: "eac3", Channels: 6 },
+        { index: 7, Language: "spa", Codec: "aac", Channels: 2 }
+      ]
+    end function
+
+    function videoSources() as object
+      return [
+        { Id: "src-a", Name: "Remux", mediaStreams: [{ Type: "Video", Width: 1920, Height: 1080, Codec: "h264" }] },
+        { Id: "src-b", Name: "SDTV", mediaStreams: [{ Type: "Video", Width: 720, Height: 480, Codec: "h264" }] }
+      ]
+    end function
+
+    function subtitleStreams() as object
+      return [
+        { index: 2, IsEncoded: false, track: { description: "English", TrackName: "sub/eng.vtt" } },
+        { index: 4, IsEncoded: true, track: { description: "Spanish (burned in)", TrackName: "sub/spa.vtt" } }
+      ]
+    end function
+
+  end class
+end namespace

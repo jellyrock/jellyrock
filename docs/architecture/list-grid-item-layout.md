@@ -6,6 +6,7 @@ related-files:
   - components/ItemGrid/GridItem.bs
   - components/ItemGrid/BaseGridView.xml
   - components/home/HomeRows.bs
+  - source/utils/listTheme.bs
 last-reviewed: 2026-08-09
 ---
 

@@ -23,6 +23,7 @@
 ' showKeyboardDialog uses Roku's modal channel (m.scene.dialog) because it wraps
 ' the OS keyboard. Callers don't need to care — the result contract is identical.
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/dialogNarration.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
@@ -64,15 +65,26 @@ function showChoiceDialog(title as string, message as string, choices as object,
     dialog.buttons = choices
     return presentOverlayDialog(dialog, onResult)
   end if
+  ' selectedIndex left at its -1 default on purpose: a choice dialog is asking
+  ' the user to pick, so NOTHING is current yet. Passing defaultIndex here would
+  ' mark whichever option we happened to focus as the one already in effect —
+  ' and the button route this falls back FROM shows no such marker, so the two
+  ' presentations would stop meaning the same thing.
   return showListDialog(title, choices, onResult, defaultIndex)
 end function
 
 ' Select one item from a longer list (audio/subtitle tracks, video sources).
 ' result.optionIndex is the selected index, -1 on cancel.
-function showListDialog(title as string, items as object, onResult = "" as string, defaultIndex = 0 as integer) as object
+'
+' `defaultIndex` is which row to FOCUS. `selectedIndex` is which option is
+' already CURRENT — it gets the check, the surface, and the "currently selected"
+' announcement — and defaults to -1, meaning none is. A picker passes both (they
+' normally coincide); anything offering a fresh choice passes only the first.
+function showListDialog(title as string, items as object, onResult = "" as string, defaultIndex = 0 as integer, selectedIndex = -1 as integer) as object
   dialog = createObject("roSGNode", "JRListDialog")
   dialog.title = title
   dialog.defaultIndex = defaultIndex
+  dialog.selectedIndex = selectedIndex
   dialog.items = items
   return presentOverlayDialog(dialog, onResult)
 end function
@@ -115,6 +127,19 @@ function showKeyboardDialog(title as string, onResult = "" as string, defaultTex
   return dialog
 end function
 
+' Is a scene-appended overlay dialog currently on screen?
+'
+' The JRDialog family does NOT use Roku's modal channel (m.scene.dialog), so
+' anything asking "is a dialog open?" via that channel alone has been answering
+' false for every dialog in the app since the family moved to scene overlays.
+' SceneManager.isDialogOpen() folds this in; prefer that if you have it, because
+' it covers the keyboard dialogs on the modal channel too.
+function isOverlayDialogOpen() as boolean
+  scene = appScene()
+  if not isValid(scene) then return false
+  return isValid(scene.findNode(OVERLAY_DIALOG_ID))
+end function
+
 ' Abandon a dialog this screen opened, delivering no result. Call from onDestroy
 ' for any dialog node you are still holding.
 '
@@ -141,6 +166,11 @@ end sub
 
 ' ---- internals ----
 
+' The id every overlay dialog is stamped with. One definition, because two things
+' now depend on being able to FIND an open dialog by it (the duplicate-overlay
+' warning below, and isOverlayDialogOpen above).
+const OVERLAY_DIALOG_ID = "jrDialog"
+
 ' Append an overlay dialog to the scene, capture focus, wire the caller's
 ' result observer. onResult is resolved in the CALLER's scope because these
 ' helpers execute inside the importing component's script scope.
@@ -152,11 +182,11 @@ function presentOverlayDialog(dialog as object, onResult as string) as object
   ' flow (session expiry, server switch) can still open one over a screen's own.
   ' Don't auto-dismiss the incumbent: its caller is waiting on a result that
   ' would then never arrive. Surface it instead.
-  if isValid(scene.findNode("jrDialog"))
+  if isValid(scene.findNode(OVERLAY_DIALOG_ID))
     print "WARNING - presentOverlayDialog: a dialog is already open; two overlays will overlap and share the id 'jrDialog'"
   end if
 
-  dialog.id = "jrDialog"
+  dialog.id = OVERLAY_DIALOG_ID
   dialog.returnFocusTo = lastFocusedChild(scene)
   if onResult <> "" then dialog.observeFieldScoped("result", onResult)
   scene.appendChild(dialog)
@@ -170,12 +200,21 @@ end function
 ' Mirrors JRDialog's MAX_BUTTONS design cap. Kept as its own constant because
 ' BrighterScript consts are file-scoped and the component's is not visible here.
 const MAX_BUTTON_ROW_CHOICES = 3
-' The row is centered UNDER the panel, so it should never be wider than the panel
-' it belongs to — a row spilling past both panel edges reads as detached chrome.
-' Mirrors JRDialog's PANEL_WIDTH (consts are file-scoped, so it can't be shared).
-' Three buttons at TextButton's 200 minWidth plus spacing is 648, so the cap only
-' bites on genuinely long labels — which is exactly when the list is the better
-' presentation anyway.
+' A deliberately CONSERVATIVE cap, not a mirror of any panel dimension.
+'
+' JRDialog flows its button row INSIDE the panel and grows the panel to fit,
+' up to PANEL_MAX_WIDTH (1200) — so 1104px of row would actually render. This
+' stops well short of that: past ~900 a three-button row reads as a wall of
+' chrome, and the scrollable list is the better presentation for that many
+' words regardless of whether it would fit.
+'
+' Erring low only routes to the list dialog, which is the safe direction. Three
+' buttons at TextButton's 200 minWidth plus spacing is 648, so the cap bites
+' only on genuinely long labels.
+'
+' (This previously claimed to mirror JRDialog's PANEL_WIDTH and to describe a
+' row centered UNDER the panel. Neither was true: PANEL_WIDTH is 760, and the
+' row moved inside the panel in #757.)
 const BUTTON_ROW_MAX_WIDTH = 900
 
 ' A choice set renders as JRDialog's horizontal button row only if it's short
@@ -199,7 +238,7 @@ function choicesFitAsButtons(choices as object) as boolean
   totalWidth = 0
   for each label in choices
     labelWidth = font.GetOneLineWidth(toString(label), 9999) + buttonPadding
-    if labelWidth < 200 then labelWidth = 200 ' TextButton minWidth used by JRDialog
+    if labelWidth < DIALOG_BUTTON_MIN_WIDTH then labelWidth = DIALOG_BUTTON_MIN_WIDTH
     totalWidth += labelWidth
   end for
   totalWidth += spacing * (choices.count() - 1)

@@ -35,13 +35,16 @@ function buttonDialogResult(index as integer, confirmIndex as integer, buttons a
   return makeDialogResult(index < 0, index >= 0 and index = confirmIndex, index, index, buttonText, "")
 end function
 
-' Result for a selection-list dialog (JRListDialog). index = -1 means cancelled.
-' A list has no affirmative button, so `confirmed` is always false — callers
-' branch on optionIndex / cancelled.
-function listDialogResult(index as integer, cancelText as string) as object
-  buttonText = ""
-  if index < 0 then buttonText = cancelText
-  return makeDialogResult(index < 0, false, -1, index, buttonText, "")
+' Result for a selection-list dialog (JRListDialog). index = -1 means dismissed
+' without choosing. A list dialog has NO buttons at all — its rows are the only
+' focusable thing in it and Back is the exit — so both button fields stay empty
+' and callers branch on optionIndex / cancelled.
+'
+' It used to take a `cancelText` and report it as buttonText on dismissal, from
+' when the dialog had a Cancel button. Keeping that would have meant a result
+' naming a control the user was never shown.
+function listDialogResult(index as integer) as object
+  return makeDialogResult(index < 0, false, -1, index, "", "")
 end function
 
 ' Result for a text-entry dialog (JRKeyboardDialog). `cancelled` distinguishes a

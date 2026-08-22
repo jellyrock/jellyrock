@@ -1,0 +1,169 @@
+' Playback-time track / source picker option sets.
+'
+' The OSD's three pickers (audio, subtitle, video source) all present the same
+' shape through showListDialog: a list of label strings, with the currently
+' active track focused on open. JRListDialog answers with an INDEX into that
+' list, so each builder returns the labels and a parallel `values` array the
+' caller indexes with `result.optionIndex`:
+'
+'   { labels: [string], values: [...], defaultIndex: integer, selectedIndex: integer }
+'
+' `defaultIndex` and `selectedIndex` are NOT the same question and must not be
+' collapsed back together. defaultIndex is which row to FOCUS on open and falls
+' back to 0; selectedIndex is which option is genuinely ACTIVE and is -1 when
+' none of them is. They coincide in the normal case, which is what made one
+' field look sufficient — until the row started drawing a check and announcing
+' "currently selected" from it, at which point a track that simply was not in
+' the list marked row 0 as playing.
+'
+' Keeping these as pure functions is what makes them testable — the old picker
+' path built its option set inline against `m.view`, so the mapping from
+' "Jellyfin stream list + current selection" to "what the user sees, and what
+' they picked" could only be exercised on a device with media playing.
+'
+' `values` holds the CHEAPEST representation each caller actually needs, not the
+' whole Jellyfin stream: an integer stream index for audio, a source id string
+' for video sources, and a small AA for subtitles (whose handler needs the
+' encoded flag and the Roku track name as well as the index).
+import "pkg:/source/enums/SubtitleSelection.bs"
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/mediaDisplayTitle.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+
+' Audio tracks. `values` are Jellyfin stream indexes, which is what
+' VideoPlayerView.audioIndex takes.
+'
+' @param {object} audioStreams - VideoPlayerView.fullAudioData (array of audio MediaStreams)
+' @param {integer} currentAudioIndex - the stream index playing now (VideoPlayerView.audioIndex)
+' @returns {object} - { labels, values, defaultIndex }
+function buildAudioTrackOptions(audioStreams as object, currentAudioIndex as integer) as object
+  options = { labels: [], values: [], defaultIndex: 0, selectedIndex: -1 }
+  if not isValid(audioStreams) then return options
+
+  for each stream in audioStreams
+    if isValid(stream) and isValid(stream.index)
+      if stream.index = currentAudioIndex
+        options.defaultIndex = options.values.count()
+        options.selectedIndex = options.defaultIndex
+      end if
+      options.labels.push(formatAudioDisplayTitle(stream))
+      options.values.push(stream.index)
+    end if
+  end for
+
+  return options
+end function
+
+' Video sources (alternate versions of the same item). `values` are MediaSource
+' ids, which is what VideoPlayerView.mediaSourceId takes.
+'
+' @param {object} videoSources - VideoPlayerView.fullVideoSourceData (array of MediaSources)
+' @param {string} currentMediaSourceId - the source playing now
+' @returns {object} - { labels, values, defaultIndex }
+function buildVideoSourceOptions(videoSources as object, currentMediaSourceId as string) as object
+  options = { labels: [], values: [], defaultIndex: 0, selectedIndex: -1 }
+  if not isValid(videoSources) then return options
+
+  ' The source Name is only meaningful as a disambiguator, so it is prepended
+  ' only when there is something to disambiguate (see formatVideoSourceTitle).
+  hasMultipleSources = videoSources.count() > 1
+
+  for each source in videoSources
+    if isValid(source) and isValid(source.Id)
+      if source.Id = currentMediaSourceId
+        options.defaultIndex = options.values.count()
+        options.selectedIndex = options.defaultIndex
+      end if
+      options.labels.push(formatVideoSourceTitle(source, hasMultipleSources))
+      options.values.push(source.Id)
+    end if
+  end for
+
+  return options
+end function
+
+' Subtitle tracks, with a "None" option always first.
+'
+' Each value is { index, isEncoded, trackName }:
+'   index     - Jellyfin stream index, or SubtitleSelection.NONE for the None row
+'   isEncoded - burned into the video by the transcoder, so Roku cannot toggle it
+'   trackName - the Jellyfin track name, matched against Roku's own mangled
+'               availableSubtitleTracks names (see availableSubtitleTrackIndex)
+'
+' Which row is active depends on where the current subtitle came from: an
+' in-file track is identified by its Jellyfin index, while an external one is
+' only identifiable by matching the Roku track name currently set on the player.
+'
+' @param {object} subtitleStreams - VideoPlayerView.fullSubtitleData
+' @param {integer} selectedSubtitleIndex - VideoPlayerView.selectedSubtitle
+' @param {string} currentTrackName - VideoPlayerView.subtitleTrack (Roku's name for the active track)
+' @param {object} availableSubtitleTracks - VideoPlayerView.availableSubtitleTracks
+' @returns {object} - { labels, values, defaultIndex }
+function buildSubtitleTrackOptions(subtitleStreams as object, selectedSubtitleIndex as integer, currentTrackName as string, availableSubtitleTracks as object) as object
+  options = {
+    labels: [translate(translationKeys.LabelNone)],
+    values: [{ index: SubtitleSelection.NONE, isEncoded: false, trackName: "" }],
+    defaultIndex: 0,
+    ' "None" is a genuine current state, not a fallback — a stream showing no
+    ' subtitles really is on the None row, so it starts marked and only moves
+    ' if a track turns out to be active.
+    selectedIndex: 0
+  }
+  if not isValid(subtitleStreams) then return options
+
+  for each stream in subtitleStreams
+    if isValid(stream) and isValid(stream.index) and isValid(stream.track)
+      if isSubtitleStreamActive(stream, selectedSubtitleIndex, currentTrackName, availableSubtitleTracks)
+        options.defaultIndex = options.values.count()
+        options.selectedIndex = options.defaultIndex
+      end if
+
+      options.labels.push(toString(stream.track.description))
+      options.values.push({
+        index: stream.index,
+        isEncoded: isValid(stream.IsEncoded) and stream.IsEncoded,
+        trackName: toString(stream.track.TrackName)
+      })
+    end if
+  end for
+
+  return options
+end function
+
+' Is this the subtitle stream currently showing? Split out because the two cases
+' answer completely different questions (see buildSubtitleTrackOptions).
+function isSubtitleStreamActive(stream as object, selectedSubtitleIndex as integer, currentTrackName as string, availableSubtitleTracks as object) as boolean
+  if selectedSubtitleIndex <> SubtitleSelection.NONE then return stream.index = selectedSubtitleIndex
+
+  ' External track: Roku holds its own (mangled) name for it, so resolve this
+  ' stream to Roku's track list and compare the names it actually reports.
+  if currentTrackName = "" then return false
+
+  rokuIndex = availableSubtitleTrackIndex(availableSubtitleTracks, toString(stream.track.TrackName))
+  if rokuIndex = SubtitleSelection.NONE then return false
+
+  return availableSubtitleTracks[rokuIndex].TrackName = currentTrackName
+end function
+
+' Roku translates the tracks we supply into availableSubtitleTracks, dropping any
+' it does not understand — so its indexing does not match Jellyfin's. This maps a
+' Jellyfin track name onto Roku's list.
+'
+' Substring rather than equality: Roku mangles the name it was given (our value
+' survives inside it), so an exact compare never matches.
+'
+' @returns {integer} - index into availableSubtitleTracks, or SubtitleSelection.NONE
+function availableSubtitleTrackIndex(availableSubtitleTracks as object, trackNameToFind as string) as integer
+  if not isValid(availableSubtitleTracks) or trackNameToFind = "" then return SubtitleSelection.NONE
+
+  index = 0
+  for each availableTrack in availableSubtitleTracks
+    if isValid(availableTrack) and isValid(availableTrack.TrackName)
+      if inStr(1, availableTrack.TrackName, trackNameToFind) > 0 then return index
+    end if
+    index++
+  end for
+
+  return SubtitleSelection.NONE
+end function

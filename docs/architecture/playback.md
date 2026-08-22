@@ -7,6 +7,9 @@ related-files:
   - components/video/VideoPlayerView.bs
   - components/video/VideoPlayerView.xml
   - components/video/OSD.bs
+  - components/GetPlaybackInfoTask.bs
+  - source/utils/trackPickerOptions.bs
+  - source/utils/playbackInfo.bs
   - components/video/TrickplayCarousel.bs
   - components/video/VideoNotification.bs
   - components/mediaPlayers/AudioPlayer.bs
@@ -14,7 +17,7 @@ related-files:
   - components/ItemGrid/LoadVideoContentTask.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-08-09
+last-reviewed: 2026-08-22
 ---
 
 # Video & Audio Playback
@@ -121,24 +124,49 @@ The **routed host** for video playback (route `/details/:type/:id/play`). `Video
 
 1. **Player mount**: `onScreenShown` → `mountPlayer()` instantiates `VideoPlayerView`, wires observers, kicks off `GetPlaybackInfoTask`, updates the backdrop, and appends the player as a child (player `visible=false` during loading to avoid a black flash over the backdrop). The queue is already populated *before* navigation (the launcher cleared + pushed, then navigated to `/play`), so the host just reads `getCurrentItem` — **the queue is the source of truth**.
 2. **Queue advancement** (host-internal): next-episode / Live TV restart / channel switch destroy + remount the player child (`playCurrentQueueItem()` = `destroyPlayer()` + `mountPlayer()`), rather than pop/push of scenes.
-3. **Playback-time track selection**: when the user opens the `OSD`'s track menus *during playback*, the player fires events (`selectSubtitlePressed`, `selectAudioPressed`, `selectVideoSourcePressed`, `selectPlaybackInfoPressed`) which `PlayerHostView` catches via observers and shows a `radioDialog` (these handlers were ported verbatim from `ViewCreator`). (Note: *pre-playback* track selection happens inline via `ItemDetails`'s `TrackDropdown` cluster — see `user-journey.md`. The two flows write to the same `VideoPlayerView` fields; they're parallel entry points, not duplicates.)
+3. **Playback-time track selection**: when the user opens the `OSD`'s track menus *during playback*, the player fires events (`selectSubtitlePressed`, `selectAudioPressed`, `selectVideoSourcePressed`, `selectPlaybackInfoPressed`) which `PlayerHostView` catches via observers and shows a dialog from the standard family (`source/utils/dialogs.bs`). (Note: *pre-playback* track selection happens inline via `ItemDetails`'s `TrackDropdown` cluster — see `user-journey.md`. The two flows write to the same `VideoPlayerView` fields; they're parallel entry points, not duplicates.)
 
 The dialog flow:
 
 ```brightscript
 User presses "audio tracks" on OSD
   → VideoPlayerView sets selectAudioPressed = true
-  → PlayerHostView.onSelectAudioPressed() builds an array of {index, isExternal, track, type, selected?}
-  → m.global.sceneManager.callFunc("radioDialog", "Select Audio", audioData)
-  → SceneManager presents the dialog
-  → user picks → SceneManager.returnData = chosen item
-  → PlayerHostView.onSelectionMade() reads returnData, dispatches by .type
-    ├── "subtitleselection" → processSubtitleSelection()
-    ├── "audioselection" → processAudioSelection()  → m.view.audioIndex = chosen.index
-    └── "videosourceselection" → processVideoSourceSelection()
+  → PlayerHostView.onSelectAudioPressed()
+      → buildAudioTrackOptions()  (source/utils/trackPickerOptions.bs)
+          returns { labels, values, defaultIndex }
+      → showTrackPicker() → showListDialog(title, labels, "onAudioTrackSelected", defaultIndex)
+  → user picks → the DIALOG NODE's own result.optionIndex
+  → PlayerHostView.onAudioTrackSelected() → m.view.audioIndex = values[optionIndex]
 ```
 
-The processing functions write back into `VideoPlayerView`'s fields (`audioIndex`, `selectedSubtitle`, `mediaSourceId`), which the player observes and reacts to (e.g., changing `audioIndex` triggers an audio stream switch on the underlying `Video` node).
+**The option set is what makes the result meaningful.** `JRListDialog` answers with an
+index into the labels it was given, so each picker holds the `{ labels, values }` pair it
+built until its result lands (`m.trackPickerOptions`). The builders are pure functions in
+`source/utils/trackPickerOptions.bs` — one per picker — which is what lets the
+"Jellyfin streams + current selection → what the user sees, and what they picked" mapping
+be unit-tested off-device.
+
+Each picker has its **own** result handler. The predecessor shared one
+`SceneManager.returnData` field across all three and told them apart by stamping a `type`
+string (`"audioselection"` / `"subtitleselection"` / `"videosourceselection"`) into every
+option — a discriminator that existed only because the return channel was global.
+
+Only one of these can be open at a time (the OSD is unreachable behind a modal), so they
+share one node slot (`m.playbackDialog`). That slot is what teardown abandons: these
+overlays are appended to the **scene**, so `onDestroy` *and* `onPlayerStateChange` call
+`abandonDialog()` on it. `SceneManager.isDialogOpen()` *can* see them (it folds in
+`isOverlayDialogOpen`), but `dismissDialog` only closes Roku's modal channel, so
+abandoning ours explicitly is still required.
+
+**Playback info** (`selectPlaybackInfoPressed`) takes the same route to a different
+member of the family: `GetPlaybackInfoTask` reports what the server is doing with the
+stream as structured sections (`{ sections: [{ heading, rows: [{ label, value }] }] }`),
+`source/utils/playbackInfo.bs` renders them, and `showInfoDialog` presents the result.
+The task used to emit markup strings it had already styled (`"<b>• Codec:</b> h264"`) that only
+the legacy `StandardDialog` could draw; rendering the sections with JellyRock's own label
+components — so headings read as headings again — is still outstanding.
+
+The result handlers write back into `VideoPlayerView`'s fields (`audioIndex`, `selectedSubtitle`, `mediaSourceId`), which the player observes and reacts to (e.g., changing `audioIndex` triggers an audio stream switch on the underlying `Video` node). They write only on an actual change: `mediaSourceId` triggers a video reload, and `SelectedSubtitle` is `alwaysNotify`, so re-writing the value it already holds still fires its observers.
 
 `onPlayerStateChange` (ported from `ViewCreator.onStateChange`) handles end-of-playback:
 

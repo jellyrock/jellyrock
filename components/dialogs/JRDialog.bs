@@ -1,4 +1,5 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/dialogNarration.bs"
 import "pkg:/source/utils/dialogResult.bs"
 import "pkg:/source/utils/misc.bs"
@@ -8,44 +9,21 @@ import "pkg:/source/utils/misc.bs"
 ' wraps to two lines, a message of any length, or a button row whose width
 ' depends on the translation.
 '
-' Vertical flow:
-'   padding | title | TITLE_GAP | accent | BODY_GAP | message | BODY_GAP | buttons | padding
-'
-' The accent rule sits TIGHT under the title (TITLE_GAP) because the two are one
-' unit — it belongs to the title, it does not divide the card. Below it the
-' message is centred in its own space (BODY_GAP above and below), so the eye
-' reads title -> message -> options as three steps.
-'
-' Hierarchy comes from the accent, not from unequal gaps: an earlier version
-' used a 24/48 split to force the break, which left the message crowding the
-' rule above it.
-'
-' Every value is a multiple of 6, so it stays an integer through the Roku OS
-' downscale to 720p (x2/3). The previous 40 and 25 did not.
-const PANEL_PADDING = 48
-const TITLE_GAP = 24
-const BODY_GAP = 36
-const SEPARATOR_HEIGHT = 3
-
-' A short accent rule under the title, not a full-width divider: at content
-' width it competed with the message instead of supporting the title.
-'
-' colorSecondary, NOT colorPrimary — colorPrimary is the theme's FOCUSABLE
-' colour (it is the focus ring on the buttons in this same dialog), and this
-' rule can never take focus. Using it here would blur that distinction.
-const SEPARATOR_ACCENT_WIDTH = 120
-const BUTTON_MIN_WIDTH = 200
+' The flow itself — the order of the blocks and the gaps between them — lives in
+' source/utils/dialogLayout.bs, shared with JRListDialog and OverviewDialog and
+' unit-tested there. What stays here is what is specific to THIS dialog: a panel
+' that grows to fit its button row, and the row that made it grow.
 const BUTTON_SPACING = 24
 const MAX_BUTTONS = 3
 
 ' Width starts here and GROWS to fit the button row (long translations), up to
 ' PANEL_MAX_WIDTH. Past that the row stacks vertically instead of overflowing.
-const PANEL_WIDTH = 760
+'
+' Both on the 6px scale so the panel's left and right edges land on the 720p
+' output grid: (1920 - w) / 2 = 960 - w/2, so a width divisible by 6 gives a
+' panelX divisible by 3. 760 did not, which put both vertical edges off it.
+const PANEL_WIDTH = 762
 const PANEL_MAX_WIDTH = 1200
-
-' Ceiling so the panel can never exceed the screen — at 1080 this leaves 100px
-' top and bottom. Reaching it takes roughly 600 characters of message, which is
-' not a translation but a wrong-component mistake, so it warns (see layout()).
 
 ' The ONE piece of narration timing that cannot be event-driven.
 '
@@ -72,20 +50,11 @@ const OPENING_ANNOUNCEMENT_DELAY = 0.15
 
 sub init()
   m.log = new log.Logger("JRDialog")
-  constants = m.global.constants
 
-  m.panel = m.top.findNode("dialogBackground")
-  m.panel.blendColor = constants.colorBackgroundPrimary
-  m.panelBorder = m.top.findNode("dialogBorder")
-  m.panelBorder.blendColor = constants.colorBackgroundSecondary
-
-  m.titleLabel = m.top.findNode("titleLabel")
-  m.separator = m.top.findNode("separator")
-  ' Height is applied HERE, not left to the XML: the XML hardcoded 6 while the
-  ' layout reserved SEPARATOR_HEIGHT, so it rendered at one size and was flowed
-  ' at another.
-  m.separator.height = SEPARATOR_HEIGHT
-  m.separator.color = constants.colorSecondary
+  m.chrome = m.top.findNode("chrome")
+  ' The chrome measures the title and publishes its height; the flow cannot be
+  ' computed until that exists.
+  m.chrome.observeField("titleHeight", "onTitleMeasured")
 
   m.messageText = m.top.findNode("messageText")
   m.panelWidth = PANEL_WIDTH
@@ -115,12 +84,16 @@ sub init()
   m.narrationTimer.observeField("fire", "onOpeningAnnouncementDue")
   m.hasNarrated = false
 
-  layout()
+  applyLayout()
 end sub
 
 sub onTitleChanged()
-  m.titleLabel.text = m.top.title
-  layout()
+  m.chrome.title = m.top.title
+  ' The chrome re-measures and publishes titleHeight; onTitleMeasured lays out.
+end sub
+
+sub onTitleMeasured()
+  applyLayout()
 end sub
 
 sub onMessageChanged()
@@ -129,7 +102,7 @@ sub onMessageChanged()
 end sub
 
 sub onMessageRendered()
-  layout()
+  applyLayout()
 end sub
 
 sub onButtonsChanged()
@@ -148,7 +121,7 @@ sub onButtonsChanged()
   for each label in labels
     btn = CreateObject("roSGNode", "TextButton")
     btn.text = label
-    btn.minWidth = BUTTON_MIN_WIDTH
+    btn.minWidth = DIALOG_BUTTON_MIN_WIDTH
     ' Re-layout once this button knows its own size; the panel's width, height
     ' and the row's position are all derived from it.
     btn.observeField("isReady", "onButtonReady")
@@ -158,7 +131,7 @@ sub onButtonsChanged()
 
   m.focusIndex = m.top.defaultButtonIndex
   if m.focusIndex < 0 or m.focusIndex >= m.buttonNodes.count() then m.focusIndex = 0
-  layout()
+  applyLayout()
 end sub
 
 ' Screen-reader announcement, driven by the focus event itself.
@@ -206,16 +179,15 @@ end sub
 ' from the buttons' real measurements. Laying out once from an estimate left the
 ' bottom padding short, and left a stacked row positioned off the panel.
 sub onButtonReady()
-  layout()
+  applyLayout()
 end sub
 
 ' Position the chrome. Called on any content change; safe to run repeatedly.
 '
 ' Everything is measured then flowed, so a two-line title, a long message and a
 ' wide button row each push what follows instead of colliding with it.
-sub layout()
+sub applyLayout()
   if not isValid(m.panelWidth) then m.panelWidth = PANEL_WIDTH
-  constants = m.global.constants
 
   ' --- width: grow to fit the buttons, then stack ---------------------------
   ' A single German confirm label can be wider than the default panel. Grow the
@@ -224,56 +196,50 @@ sub layout()
   rowWidth = naturalButtonRowWidth()
   wanted = PANEL_WIDTH
   if rowWidth + (PANEL_PADDING * 2) > wanted then wanted = rowWidth + (PANEL_PADDING * 2)
+  ' PANEL_WIDTH is on the 6px scale so its vertical edges land on the 720p grid,
+  ' but a GROWN width is derived from a measured button row and lands anywhere —
+  ' so the crispness that constant buys survives only if the growth is snapped
+  ' too. Before the max check, so the clamp still wins (PANEL_MAX_WIDTH is on
+  ' the scale itself).
+  wanted = snapPanelWidthToScale(wanted)
   m.stackButtons = wanted > PANEL_MAX_WIDTH
   if m.stackButtons then wanted = PANEL_MAX_WIDTH
   m.panelWidth = wanted
 
   contentWidth = m.panelWidth - (PANEL_PADDING * 2)
   applyButtonLayout(contentWidth)
-
-  m.panel.width = m.panelWidth
-  m.panelBorder.width = m.panelWidth
   m.messageText.width = contentWidth
-  m.titleLabel.width = contentWidth
+  ' The title cannot be measured until it knows how wide it may be.
+  m.chrome.contentWidth = contentWidth
 
-  ' --- measure each block ---------------------------------------------------
-  hasTitle = m.top.title.len() > 0
-  titleHeight = 0
-  if hasTitle
-    titleHeight = m.titleLabel.localBoundingRect().height
-    ' Not rendered yet — renderTracking re-runs layout() once it settles
-    if titleHeight = 0 then return
-  end if
+  ' --- measure the blocks this dialog owns ----------------------------------
+  ' The title is the chrome's to measure; a height of 0 means it has not
+  ' rendered yet, and its observer brings us back when it has.
+  titleHeight = m.chrome.titleHeight
+  if m.top.title.len() > 0 and titleHeight = 0 then return
 
   textHeight = 0
   if m.top.message.len() > 0
     textHeight = m.messageText.localBoundingRect().height
+    ' Not rendered yet — renderTracking re-runs layout() once it settles
     if textHeight = 0 then return
   end if
 
-  buttonsHeight = buttonRowHeight()
-
-  ' --- flow ------------------------------------------------------------------
-  y = PANEL_PADDING
-  titleY = y
-  separatorY = y
-  if hasTitle
-    y += titleHeight + TITLE_GAP
-    separatorY = y
-    y += SEPARATOR_HEIGHT + BODY_GAP
-  end if
-  textY = y
-  if textHeight > 0 then y += textHeight + BODY_GAP
-  buttonsY = y
-  panelHeight = y + buttonsHeight + PANEL_PADDING
+  layout = computeDialogLayout({
+    panelWidth: m.panelWidth,
+    titleHeight: titleHeight,
+    bodyHeight: textHeight,
+    footerHeight: buttonRowHeight(),
+    footerInside: true
+  })
 
   ' --- ceiling ---------------------------------------------------------------
   ' Never exceed the screen. Reaching this needs ~600 characters of message,
   ' which means the caller wants showInfoDialog, not a confirm — so say so
   ' rather than silently swallowing the text.
-  maxHeight = 1080 - (PANEL_PADDING * 2) - 60
-  if panelHeight > maxHeight
-    overflow = panelHeight - maxHeight
+  if layout.overflows
+    constants = m.global.constants
+    overflow = layout.panel.height - PANEL_MAX_HEIGHT
     lineHeight = int(constants.fontSizeMedium * 1.25)
     if lineHeight < 1 then lineHeight = 1
     keepLines = int((textHeight - overflow) / lineHeight)
@@ -284,27 +250,11 @@ sub layout()
     return
   end if
 
-  panelX = (1920 - m.panelWidth) / 2
-  panelY = (1080 - panelHeight) / 2
+  m.chrome.layout = layout
+  m.messageText.translation = [layout.body.x, layout.body.y]
 
-  m.panel.translation = [panelX, panelY]
-  m.panel.height = panelHeight
-  m.panelBorder.translation = [panelX, panelY]
-  m.panelBorder.height = panelHeight
-
-  m.titleLabel.visible = hasTitle
-  m.separator.visible = hasTitle
-  if hasTitle
-    m.titleLabel.translation = [panelX + PANEL_PADDING, panelY + titleY]
-    m.titleLabel.height = titleHeight
-    m.separator.width = SEPARATOR_ACCENT_WIDTH
-    m.separator.translation = [panelX + ((m.panelWidth - SEPARATOR_ACCENT_WIDTH) / 2), panelY + separatorY]
-  end if
-
-  m.messageText.translation = [panelX + PANEL_PADDING, panelY + textY]
-
-  m.buttonRowY = panelY + buttonsY
-  m.panelX = panelX
+  m.buttonRowY = layout.footer.y
+  m.panelX = layout.panel.x
   centerButtonRow()
   focusButton(m.focusIndex)
 end sub
@@ -315,7 +265,7 @@ function naturalButtonRowWidth() as integer
   total = 0
   for each btn in m.buttonNodes
     w = btn.localBoundingRect().width
-    if w < BUTTON_MIN_WIDTH then w = BUTTON_MIN_WIDTH
+    if w < DIALOG_BUTTON_MIN_WIDTH then w = DIALOG_BUTTON_MIN_WIDTH
     total += w
   end for
   return total + (BUTTON_SPACING * (m.buttonNodes.count() - 1))
@@ -339,7 +289,7 @@ sub applyButtonLayout(contentWidth as integer)
     m.buttonRow.horizAlignment = "left"
     m.buttonRow.itemSpacings = [BUTTON_SPACING]
     for each btn in m.buttonNodes
-      btn.minWidth = BUTTON_MIN_WIDTH
+      btn.minWidth = DIALOG_BUTTON_MIN_WIDTH
     end for
   end if
 end sub

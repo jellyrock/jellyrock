@@ -1,0 +1,83 @@
+' Presentation of the playback-info report (the OSD's "i" button).
+'
+' GetPlaybackInfoTask reports what the server is doing with this stream as
+' STRUCTURED sections — headings plus label/value rows:
+'
+'   { sections: [ { heading: string, rows: [ { label: string, value: string } ] } ] }
+'
+' A row with an empty label is a standalone sentence rather than a field (the
+' direct-play message); a section with an empty heading is an unsectioned block
+' (the error case). Both are rendered, just without their missing part.
+'
+' It did NOT always look like this: the task used to push pre-rendered markup
+' strings ("<header>Stream information</header>", "<b>• Codec:</b> h264") that
+' only the legacy StandardDialog could draw, which put font weight decisions on a
+' Task thread and made the report untestable — you can assert that a section
+' carries a "Codec" row, but not much about a blob of markup.
+'
+' This flattener is the INTERIM presentation: it renders those sections as plain
+' text for showInfoDialog, so the report reads correctly while the legacy dialog
+' components go away. Rendering the sections with JellyRock's own label
+' components (so headings read as headings again) is the follow-up — it changes
+' only this presentation step, not the data above it.
+import "pkg:/source/utils/misc.bs"
+
+' Render the report as plain text: sections separated by a blank line, headings
+' on their own line, fields as "• Label: value".
+'
+' @param {object} playbackInfo - the task's report ({ sections: [...] })
+' @returns {string} - the dialog body, "" when there is nothing to show
+function formatPlaybackInfoText(playbackInfo as object) as string
+  if not isValid(playbackInfo) or not isValid(playbackInfo.sections) then return ""
+
+  lines = []
+  for each section in playbackInfo.sections
+    if not isValid(section) then continue for
+
+    ' Render the rows FIRST, so a section that turns out to contribute nothing
+    ' can be dropped whole. A heading with nothing under it is noise, and that
+    ' is a presentation rule, so it belongs here rather than in the task: it
+    ' then holds for every section any producer sends, not just the two that
+    ' exist today.
+    sectionLines = []
+    if isValid(section.rows)
+      for each row in section.rows
+        if isValid(row)
+          value = toString(row.value)
+          if isValidAndNotEmpty(row.label)
+            sectionLines.push("• " + row.label + ": " + value)
+          else if value <> ""
+            sectionLines.push(value)
+          end if
+        end if
+      end for
+    end if
+    if sectionLines.count() = 0 then continue for
+
+    ' Blank line BETWEEN sections only — never a leading one.
+    if lines.count() > 0 then lines.push("")
+    if isValidAndNotEmpty(section.heading) then lines.push(section.heading)
+    lines.append(sectionLines)
+  end for
+
+  return lines.join(Chr(10))
+end function
+
+' Bitrate as the user reads it: whole Mbps above a megabit, whole Kbps below.
+'
+' TRIMMED, and that is the whole point of the trim: BrightScript's Str() prefixes
+' a SPACE for a non-negative number, so the untrimmed form rendered as
+' "Bit Rate:  4 Mbps" once the row separator added its own space. Caught in an RTA
+' capture rather than by any gate, hence the test beside it.
+'
+' @param {dynamic} bitrate - bits per second, from the session or the media stream
+' @returns {string} - e.g. "4 Mbps", "850 Kbps"
+function getDisplayBitrate(bitrate as dynamic) as string
+  if not isValid(bitrate) then return ""
+
+  if bitrate > 1000000
+    return Str(Fix(bitrate / 1000000)).trim() + " Mbps"
+  end if
+
+  return Str(Fix(bitrate / 1000)).trim() + " Kbps"
+end function

@@ -1,0 +1,92 @@
+import "pkg:/source/utils/dialogLayout.bs"
+import "pkg:/source/utils/misc.bs"
+
+' See JRDialogPanel.xml for the contract. This file measures and renders; it
+' decides nothing — every position comes from computeDialogLayout().
+
+sub init()
+  constants = m.global.constants
+
+  m.panel = m.top.findNode("panelBackground")
+  m.panel.blendColor = constants.colorBackgroundPrimary
+
+  m.panelBorder = m.top.findNode("panelBorder")
+  m.panelBorder.blendColor = constants.colorBackgroundSecondary
+
+  m.titleLabel = m.top.findNode("titleLabel")
+  ' Measuring the title is the one thing the chrome must do before anyone can lay
+  ' anything out, and a Label's height is not known until it has rendered.
+  m.titleLabel.enableRenderTracking = true
+  m.titleLabel.observeField("renderTracking", "onTitleRendered")
+
+  m.accentRule = m.top.findNode("accentRule")
+  m.accentRule.height = SEPARATOR_HEIGHT
+  ' colorSecondary, NOT colorPrimary: colorPrimary is the theme's FOCUSABLE
+  ' colour (it is the focus ring on the buttons in this same dialog) and this
+  ' rule can never take focus. Using it here would blur that distinction.
+  m.accentRule.color = constants.colorSecondary
+end sub
+
+sub onContentWidthChanged()
+  m.titleLabel.width = m.top.contentWidth
+  publishTitleHeight()
+end sub
+
+sub onTitleChanged()
+  m.titleLabel.text = m.top.title
+  ' A dialog with no title has no accent rule either — the rule belongs to the
+  ' title, it does not divide the card.
+  hasTitle = m.top.title.len() > 0
+  m.titleLabel.visible = hasTitle
+  m.accentRule.visible = hasTitle
+
+  publishTitleHeight()
+end sub
+
+' renderTracking fires once the new text has laid out, which is when a height
+' first exists to read.
+sub onTitleRendered()
+  publishTitleHeight()
+end sub
+
+sub publishTitleHeight()
+  if m.top.title.len() = 0
+    m.top.titleHeight = 0
+    return
+  end if
+
+  height = m.titleLabel.localBoundingRect().height
+  ' Not rendered yet — onTitleRendered will bring us back with a real height.
+  if height = 0 then return
+
+  m.top.titleHeight = height
+end sub
+
+' Position the chrome from a computed layout. Pure rendering: if a rect looks
+' wrong, the bug is in computeDialogLayout (which is unit-tested) or in what the
+' caller measured, not here.
+sub onLayoutChanged()
+  layout = m.top.layout
+  if not isValid(layout) or not isValid(layout.panel) then return
+
+  panel = layout.panel
+  m.panel.translation = [panel.x, panel.y]
+  m.panel.width = panel.width
+  m.panel.height = panel.height
+
+  m.panelBorder.translation = [panel.x, panel.y]
+  m.panelBorder.width = panel.width
+  m.panelBorder.height = panel.height
+
+  if isValid(layout.title)
+    m.titleLabel.translation = [layout.title.x, layout.title.y]
+    m.titleLabel.width = layout.title.width
+    m.titleLabel.height = layout.title.height
+  end if
+
+  if isValid(layout.accent)
+    m.accentRule.translation = [layout.accent.x, layout.accent.y]
+    m.accentRule.width = layout.accent.width
+    m.accentRule.height = layout.accent.height
+  end if
+end sub

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- JRDialogPanel: the chrome every JellyRock dialog shares — the dimmed
+     backdrop, the panel, its edge, the title, and the accent rule under it.
+     Everything a dialog does NOT have in common (a message, a list, a scroll
+     viewport, buttons) stays in the dialog itself.
+
+     It exists because this node set was copy-pasted three times and then only
+     one copy was restyled in the #757 review, so the app ended up with two
+     dialog looks and no gate that could see the difference.
+
+     USE (the ordering matters, and it is the only rule):
+       1. chrome.contentWidth = <panel width minus padding>
+       2. chrome.title = "..."          -> the chrome measures and publishes titleHeight
+       3. observe titleHeight, then:
+            layout = computeDialogLayout({ ..., titleHeight: chrome.titleHeight })
+            chrome.layout = layout       -> the chrome positions itself
+          and position YOUR body/footer from layout.body / layout.footer.
+
+     The chrome measures but never decides: all the arithmetic lives in
+     source/utils/dialogLayout.bs, which is pure and unit-tested. This component
+     only renders what it is handed. -->
+<component name="JRDialogPanel" extends="Group">
+  <children>
+    <!-- Dimmed backdrop. Full screen, behind everything the dialog draws. -->
+    <Rectangle id="dimBackground" width="1920" height="1080" color="0x000000" opacity="0.75" />
+
+    <!-- The panel and its edge, so the card reads as elevated against any backdrop.
+         border-3px is the STATIC panel-edge weight; 6px is reserved for focusable
+         things (see the border-weight convention in components/CLAUDE.md). -->
+    <Poster id="panelBackground" uri="pkg:/images/9patch/filled-rounded.9.png" />
+    <Poster id="panelBorder" uri="pkg:/images/9patch/border-3px.9.png" />
+
+    <!-- Title, and the short accent rule that belongs to it. Both hidden when the
+         dialog has no title. -->
+    <LabelPrimaryLarge id="titleLabel" horizAlign="center" vertAlign="center" />
+    <Rectangle id="accentRule" />
+  </children>
+  <interface>
+    <!-- Set BEFORE title: the title cannot be measured until it knows how wide it
+         may be, because that decides whether it wraps. -->
+    <field id="contentWidth" type="integer" value="0" onChange="onContentWidthChanged" />
+    <field id="title" type="string" onChange="onTitleChanged" />
+
+    <!-- Published once the title has rendered. alwaysNotify because a dialog
+         re-titled to the same height still needs its layout recomputed — the
+         body that prompted it may have changed. -->
+    <field id="titleHeight" type="integer" value="0" alwaysNotify="true" />
+
+    <!-- The result of computeDialogLayout(). Writing it positions the chrome. -->
+    <field id="layout" type="assocarray" onChange="onLayoutChanged" />
+  </interface>
+</component>

@@ -1,0 +1,54 @@
+' Key models for the dialog family, as pure decisions.
+'
+' WHY THIS IS NOT JUST `onKeyEvent`. JRListDialog's first version reached its
+' Cancel button by catching a `down` that BUBBLED OUT of the list — which works
+' only while the list declines to handle it. Above 8 rows the list switched to
+' `fixedFocusWrap`, wrapped forever, and never let a `down` past; Cancel became
+' unreachable and `up` died with it. Both halves were correct in isolation and
+' contradicted each other, and no test could see it because the decision lived
+' inside a component's onKeyEvent where nothing can call it.
+'
+' So the decision moved here, where a test can ask "what does DOWN do on the
+' last row of a 30-item list?" without a device, a scene, or a render.
+import "pkg:/source/utils/misc.bs"
+
+' What a key press means to a selection-list dialog.
+'
+' The list WRAPS IN BOTH DIRECTIONS and Back is the way out:
+'
+'   OK on a row             commits (the list's own business, not ours)
+'   DOWN past the last row  wraps to the top
+'   UP past the first row   wraps to the bottom
+'   BACK                    dismisses without choosing
+'   anything else           consumed (a modal lets nothing reach the screen behind it)
+'
+' Symmetric on purpose. Wrapping is only worth having because it makes a long
+' list cheap to navigate with a remote — one UP to reach the end of thirty
+' tracks — and an asymmetric wrap does not deliver that; it only cycles forward.
+'
+' ItemDetails' TrackDropdown, which this otherwise mirrors, dismisses on UP-at-top
+' instead. That is right for a dropdown: UP returns you to the trigger you opened
+' it from. A centred modal has no trigger above it, so the gesture would be
+' arbitrary here, and it would cost the one ergonomic win wrapping exists for.
+'
+' `focusedIndex` is checked EXPLICITLY rather than inferred from the fact that
+' the key reached us. Inferring position from bubbling is precisely the
+' assumption that broke: it holds only for a list configuration nobody promised
+' would stay.
+'
+' @param {string} key - the key name from onKeyEvent
+' @param {integer} focusedIndex - the list's currently focused row
+' @param {integer} itemCount - number of rows in the list
+' @returns {string} - "dismiss" | "wrapToTop" | "wrapToBottom" | "consume"
+function listDialogKeyAction(key as string, focusedIndex as integer, itemCount as integer) as string
+  if key = "back" then return "dismiss"
+
+  ' A list with fewer than two rows has nowhere to wrap to, so both directions
+  ' are inert rather than a no-op jump onto the row you are already on.
+  if itemCount > 1
+    if key = "down" and focusedIndex >= itemCount - 1 then return "wrapToTop"
+    if key = "up" and focusedIndex <= 0 then return "wrapToBottom"
+  end if
+
+  return "consume"
+end function

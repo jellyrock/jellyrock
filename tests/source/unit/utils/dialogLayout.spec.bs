@@ -1,0 +1,325 @@
+import "pkg:/source/utils/dialogLayout.bs"
+
+namespace tests
+
+  ' Inputs are written out per test rather than merged from a shared fixture.
+  ' A layout spec is six numbers; seeing them at the assertion is worth more than
+  ' the deduplication, and a fixture that silently drops a key produces a whole
+  ' suite of confidently-wrong numbers (which is how this file started).
+  @suite("dialogLayout.bs - the shared dialog flow")
+  class DialogLayoutTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the spacing scale")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Roku OS downscales the 1920x1080 UI to 720p by x2/3. A spacing value that
+    ' is not divisible by 3 lands on a fractional pixel there, which is what the
+    ' pre-#757 dialogs' 40 and 25 did. The convention says multiples of 6; this
+    ' is the gate for it, so the next value someone adds cannot quietly break it.
+    @it("every spacing constant survives the 720p downscale as an integer")
+    function _()
+      for each value in [PANEL_PADDING, TITLE_GAP, BODY_GAP, SEPARATOR_ACCENT_WIDTH, FOOTER_OUTSIDE_MARGIN, LIST_ROW_HEIGHT, LIST_ROW_SPACING, LIST_ROW_PADDING, LIST_ROW_CHECK_GUTTER, DIALOG_BUTTON_MIN_WIDTH]
+        m.assertEqual(value mod 6, 0)
+        m.assertEqual((value * 2) mod 3, 0)
+      end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("vertical flow")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("orders the blocks title -> accent -> body -> footer")
+    function _()
+      layout = computeDialogLayout({ panelWidth: 760, titleHeight: 50, bodyHeight: 120, footerHeight: 60, footerInside: true })
+
+      m.assertTrue(layout.hasTitle)
+      m.assertTrue(layout.title.y < layout.accent.y)
+      m.assertTrue(layout.accent.y < layout.body.y)
+      m.assertTrue(layout.body.y < layout.footer.y)
+    end function
+
+    @it("puts the accent TIGHT under the title, and a wider gap under the accent")
+    function _()
+      layout = computeDialogLayout({ panelWidth: 760, titleHeight: 50, bodyHeight: 120, footerHeight: 60, footerInside: true })
+
+      m.assertEqual(layout.accent.y - (layout.title.y + layout.title.height), TITLE_GAP)
+      m.assertEqual(layout.body.y - (layout.accent.y + layout.accent.height), BODY_GAP)
+      ' The accent belongs to the title, so its gap is the SMALLER of the two
+      m.assertTrue(TITLE_GAP < BODY_GAP)
+    end function
+
+    @it("pads the panel equally at the top and bottom")
+    function _()
+      layout = computeDialogLayout({ panelWidth: 760, titleHeight: 50, bodyHeight: 120, footerHeight: 60, footerInside: true })
+
+      m.assertEqual(layout.title.y - layout.panel.y, PANEL_PADDING)
+      m.assertEqual((layout.panel.y + layout.panel.height) - (layout.footer.y + layout.footer.height), PANEL_PADDING)
+    end function
+
+    @it("collapses the title AND the accent when there is no title")
+    function _()
+      titled = computeDialogLayout({ panelWidth: 760, titleHeight: 50, bodyHeight: 120, footerHeight: 60, footerInside: true })
+      untitled = computeDialogLayout({ panelWidth: 760, titleHeight: 0, bodyHeight: 120, footerHeight: 60, footerInside: true })
+
+      m.assertFalse(untitled.hasTitle)
+      ' Nothing is merely hidden — the body moves up by the whole title block
+      m.assertEqual(untitled.body.y - untitled.panel.y, PANEL_PADDING)
+      m.assertTrue(untitled.panel.height < titled.panel.height)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the accent rule")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is a short CENTRED rule, not a full-width divider")
+    function _()
+      layout = computeDialogLayout({ panelWidth: 900, titleHeight: 50, bodyHeight: 120, footerHeight: 0, footerInside: false })
+
+      m.assertEqual(layout.accent.width, SEPARATOR_ACCENT_WIDTH)
+      m.assertTrue(layout.accent.width < layout.body.width)
+      ' Centred on the PANEL, not on the content column
+      leftGap = layout.accent.x - layout.panel.x
+      rightGap = (layout.panel.x + layout.panel.width) - (layout.accent.x + layout.accent.width)
+      m.assertEqual(leftGap, rightGap)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("footer placement")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("flows an inside footer within the panel")
+    function _()
+      layout = computeDialogLayout({ panelWidth: 760, titleHeight: 50, bodyHeight: 120, footerHeight: 60, footerInside: true })
+
+      m.assertTrue(layout.footer.y + layout.footer.height <= layout.panel.y + layout.panel.height)
+    end function
+
+    ' OverviewDialog keeps its OK button below the panel — a recorded decision,
+    ' not a divergence: its panel dominates the screen, so a button below still
+    ' reads as attached.
+    @it("places an outside footer below the panel, and the panel does not reserve room for it")
+    function _()
+      inside = computeDialogLayout({ panelWidth: 760, titleHeight: 50, bodyHeight: 120, footerHeight: 60, footerInside: true })
+      outside = computeDialogLayout({ panelWidth: 760, titleHeight: 50, bodyHeight: 120, footerHeight: 60, footerInside: false })
+
+      m.assertEqual(outside.footer.y - (outside.panel.y + outside.panel.height), FOOTER_OUTSIDE_MARGIN)
+      m.assertTrue(outside.panel.height < inside.panel.height)
+    end function
+
+    ' Found in an on-device capture, not by a test: JRListDialog has no footer at
+    ' all, and the panel still reserved a footer's gap under the list — 84px of
+    ' dead space below the last row. A gap only exists BETWEEN things.
+    @it("adds no trailing gap when there is no footer")
+    function _()
+      layout = computeDialogLayout({ panelWidth: 900, titleHeight: 50, bodyHeight: 144, footerHeight: 0, footerInside: true })
+
+      bodyBottom = layout.body.y + layout.body.height
+      m.assertEqual((layout.panel.y + layout.panel.height) - bodyBottom, PANEL_PADDING)
+    end function
+
+    @it("a footerless panel is the same height whichever way footerInside is set")
+    function _()
+      inside = computeDialogLayout({ panelWidth: 900, titleHeight: 50, bodyHeight: 144, footerHeight: 0, footerInside: true })
+      outside = computeDialogLayout({ panelWidth: 900, titleHeight: 50, bodyHeight: 144, footerHeight: 0, footerInside: false })
+
+      m.assertEqual(inside.panel.height, outside.panel.height)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a fixed panel height")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A scrolling body cannot decide its own size, so the panel decides and the
+    ' body absorbs the slack. Without this a scroll viewport has no height to
+    ' compare its content against, which is how it knows whether to scroll.
+    @it("derives the body height from the panel instead of the other way round")
+    function _()
+      layout = computeDialogLayout({ panelWidth: 1600, panelHeight: 760, titleHeight: 50, bodyHeight: 0, footerHeight: 60, footerInside: false })
+
+      m.assertEqual(layout.panel.height, 760)
+      m.assertTrue(layout.body.height > 0)
+      ' Body fills everything between the accent block and the bottom padding
+      m.assertEqual((layout.panel.y + layout.panel.height) - (layout.body.y + layout.body.height), PANEL_PADDING)
+    end function
+
+    @it("leaves room for an inside footer when the panel height is fixed")
+    function _()
+      layout = computeDialogLayout({ panelWidth: 1600, panelHeight: 760, titleHeight: 50, bodyHeight: 0, footerHeight: 60, footerInside: true })
+
+      m.assertEqual(layout.panel.height, 760)
+      m.assertTrue(layout.body.y + layout.body.height <= layout.footer.y)
+      m.assertTrue(layout.footer.y + layout.footer.height <= layout.panel.y + layout.panel.height)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("centring and overflow")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("centres the panel on screen")
+    function _()
+      layout = computeDialogLayout({ panelWidth: 900, titleHeight: 50, bodyHeight: 120, footerHeight: 60, footerInside: true })
+
+      m.assertEqual(layout.panel.x, int((1920 - 900) / 2))
+      m.assertEqual(layout.panel.y, int((1080 - layout.panel.height) / 2))
+    end function
+
+    ' PINNED. Consolidating the three dialog copies into this module moved this
+    ' ceiling from 924 to 960 without meaning to, loosening JRDialog's message
+    ' truncation by 36px. Nothing caught it: the consolidation was verified by
+    ' comparing a rendered confirm dialog before and after, and the ceiling only
+    ' engages at roughly 600 characters of message.
+    @it("keeps the message ceiling where #757 set it")
+    function _()
+      m.assertEqual(PANEL_MAX_HEIGHT, 924)
+      ' ...which is a 78px margin above and below a full-height panel
+      m.assertEqual(int((1080 - PANEL_MAX_HEIGHT) / 2), 78)
+    end function
+
+    @it("reports an overflowing panel rather than silently clipping it")
+    function _()
+      ok = computeDialogLayout({ panelWidth: 760, titleHeight: 50, bodyHeight: 200, footerHeight: 60, footerInside: true })
+      tooTall = computeDialogLayout({ panelWidth: 760, titleHeight: 50, bodyHeight: 2000, footerHeight: 60, footerInside: true })
+
+      m.assertFalse(ok.overflows)
+      m.assertTrue(tooTall.overflows)
+    end function
+
+    ' PANEL_MAX_HEIGHT bounds the PANEL. With the footer OUTSIDE it, the button
+    ' sits below that bound and the panel ceiling stops being the whole answer —
+    ' a panel at exactly the ceiling put a 72px button 18px off the screen and
+    ' reported overflows = false. Ungated, the constant answers "will this fit"
+    ' correctly for one of the two footer placements and wrongly for the other.
+    @it("counts a footer placed OUTSIDE the panel against the ceiling")
+    function _()
+      spec = { panelWidth: 1602, panelHeight: PANEL_MAX_HEIGHT, titleHeight: 54, footerHeight: 72, footerInside: false }
+      atCeiling = computeDialogLayout(spec)
+
+      m.assertTrue(atCeiling.overflows, "a ceiling-height panel with an outside footer must report overflow")
+      m.assertTrue(atCeiling.footer.y + atCeiling.footer.height > 1080 - FOOTER_OUTSIDE_MARGIN)
+    end function
+
+    ' ...and the shipping case must NOT trip it, or the guard is just a ban on
+    ' outside footers.
+    @it("leaves OverviewDialog's actual geometry well inside the ceiling")
+    function _()
+      layout = computeDialogLayout({ panelWidth: 1602, panelHeight: 762, titleHeight: 54, footerHeight: 72, footerInside: false })
+
+      m.assertFalse(layout.overflows)
+      m.assertTrue(layout.footer.y + layout.footer.height <= 1080 - FOOTER_OUTSIDE_MARGIN)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("unmeasured input")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A caller passes heights straight off nodes that have not rendered yet, so
+    ' invalid arrives here routinely. It must produce a discardable layout, not
+    ' a crash on the render thread.
+    @it("treats missing or non-numeric heights as zero instead of faulting")
+    function _()
+      layout = computeDialogLayout({ panelWidth: 900, titleHeight: invalid, bodyHeight: "nope", footerHeight: invalid })
+
+      m.assertEqual(layout.title.height, 0)
+      m.assertEqual(layout.body.height, 0)
+      m.assertFalse(layout.hasTitle)
+      ' panelWidth still landed, so the panel is still centred correctly
+      m.assertEqual(layout.panel.x, int((1920 - 900) / 2))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the 720p pixel grid")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' WHY THIS IS THE REAL GATE, and the multiples-of-6 one above is not.
+    '
+    ' Roku renders the full 1920x1080 framebuffer and SUPERSAMPLES it to 720p
+    ' (hardware-verified, see the manifest's ui_resolutions note and #419). A
+    ' hard edge whose absolute y is divisible by 3 lands exactly on an output
+    ' row boundary and stays crisp; one that is not spans three output rows
+    ' partially and loses contrast.
+    '
+    ' Divisible CONSTANTS were never enough to deliver that. Every offset is
+    ' added to `panelY`, which is derived from a MEASURED title/body height, so
+    ' the absolute positions were divisible by 3 about a third of the time —
+    ' i.e. by chance. This asserts the property the constants were chosen for.
+    @it("puts every hard edge on an output-row boundary, whatever the measured heights")
+    function _()
+      for titleHeight = 44 to 69
+        for bodyHeight = 0 to 180 step 7
+          layout = computeDialogLayout({
+            panelWidth: 760,
+            titleHeight: titleHeight,
+            bodyHeight: bodyHeight,
+            footerHeight: 71,
+            footerInside: true
+          })
+
+          m.assertEqual(layout.panel.x mod 3, 0, "panel.x off-grid at titleHeight " + titleHeight.toStr())
+          m.assertEqual(layout.panel.y mod 3, 0, "panel.y off-grid at titleHeight " + titleHeight.toStr())
+          m.assertEqual(layout.accent.y mod 3, 0, "accent.y off-grid at titleHeight " + titleHeight.toStr())
+          m.assertEqual(layout.body.y mod 3, 0, "body.y off-grid at titleHeight " + titleHeight.toStr())
+          m.assertEqual(layout.footer.y mod 3, 0, "footer.y off-grid at titleHeight " + titleHeight.toStr())
+        end for
+      end for
+    end function
+
+    ' The right edge is panelX + panelWidth, so it needs the width on the 6px
+    ' scale too. Asserted as the general rule rather than against each caller's
+    ' constant, which is file-scoped in its own component and unreachable here.
+    @it("a width on the 6px scale puts BOTH vertical edges on the grid")
+    function _()
+      for each panelWidth in [762, 900, 1200, 1602]
+        layout = computeDialogLayout({ panelWidth: panelWidth, titleHeight: 50, bodyHeight: 120, footerHeight: 60, footerInside: true })
+
+        m.assertEqual(panelWidth mod 6, 0, "panel width off the 6px scale: " + panelWidth.toStr())
+        m.assertEqual(layout.panel.x mod 3, 0, "left edge off-grid at width " + panelWidth.toStr())
+        m.assertEqual((layout.panel.x + panelWidth) mod 3, 0, "right edge off-grid at width " + panelWidth.toStr())
+      end for
+    end function
+
+    ' A panel that GROWS to fit its content (JRDialog's button row) derives its
+    ' width from a measured row, so the constant being on the scale buys nothing
+    ' unless the growth is snapped too — the case the fixed widths were fixed for.
+    @it("snapPanelWidthToScale puts any grown width back on the scale")
+    function _()
+      for each width in [761, 762, 763, 800, 1043, 1199]
+        snapped = snapPanelWidthToScale(width)
+        m.assertEqual(snapped mod 6, 0, "off the 6px scale: " + snapped.toStr())
+        m.assertTrue(snapped >= width)
+        m.assertTrue(snapped - width < 6)
+
+        layout = computeDialogLayout({ panelWidth: snapped, titleHeight: 50, bodyHeight: 120, footerHeight: 60, footerInside: true })
+        m.assertEqual(layout.panel.x mod 3, 0, "left edge off-grid at width " + snapped.toStr())
+        m.assertEqual((layout.panel.x + snapped) mod 3, 0, "right edge off-grid at width " + snapped.toStr())
+      end for
+    end function
+
+    @it("snapPanelWidthToScale leaves a zero width alone")
+    function _()
+      m.assertEqual(snapPanelWidthToScale(0), 0)
+      m.assertEqual(snapPanelWidthToScale(-4), 0)
+    end function
+
+    ' Snapping must not visibly move the panel: it buys crispness, not a new
+    ' position. Half a 3px step either way is the whole budget.
+    @it("stays centred to within one grid step after snapping")
+    function _()
+      layout = computeDialogLayout({ panelWidth: 900, titleHeight: 50, bodyHeight: 120, footerHeight: 60, footerInside: true })
+
+      ideal = int((1080 - layout.panel.height) / 2)
+      drift = layout.panel.y - ideal
+      if drift < 0 then drift = -drift
+      m.assertTrue(drift <= 3, "panel drifted " + drift.toStr() + "px from centre")
+    end function
+
+    @it("centreInRect centres a narrower block in its column")
+    function _()
+      layout = computeDialogLayout({ panelWidth: 760, titleHeight: 50, bodyHeight: 120, footerHeight: 60, footerInside: true })
+      x = centreInRect(layout.footer, 200)
+
+      m.assertEqual(x - layout.footer.x, (layout.footer.x + layout.footer.width) - (x + 200))
+    end function
+
+  end class
+end namespace

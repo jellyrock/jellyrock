@@ -13,7 +13,7 @@ namespace tests
     function _()
       results = [
         buttonDialogResult(0, 1, ["Cancel", "Delete"]),
-        listDialogResult(2, "Cancel"),
+        listDialogResult(2),
         textDialogResult(false, "hello")
       ]
       for each result in results
@@ -97,7 +97,7 @@ namespace tests
 
     @it("a selection reports optionIndex and no button")
     function _()
-      picked = listDialogResult(3, "Cancel")
+      picked = listDialogResult(3)
       m.assertFalse(picked.cancelled)
       m.assertEqual(picked.optionIndex, 3)
       m.assertEqual(picked.buttonIndex, -1)
@@ -105,17 +105,19 @@ namespace tests
 
     @it("selecting the first row is a selection, not a cancel")
     function _()
-      first = listDialogResult(0, "Cancel")
+      first = listDialogResult(0)
       m.assertFalse(first.cancelled)
       m.assertEqual(first.optionIndex, 0)
     end function
 
-    @it("cancelling reports the cancel label")
+    @it("dismissing reports no button, because the dialog has none")
     function _()
-      cancelled = listDialogResult(-1, "Cancel")
+      cancelled = listDialogResult(-1)
       m.assertTrue(cancelled.cancelled)
       m.assertEqual(cancelled.optionIndex, -1)
-      m.assertEqual(cancelled.buttonText, "Cancel")
+      m.assertEqual(cancelled.buttonIndex, -1)
+      ' Naming a button the user was never shown is the lie this guards against
+      m.assertEqual(cancelled.buttonText, "")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
