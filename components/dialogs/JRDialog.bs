@@ -22,10 +22,6 @@ const MAX_BUTTONS = 3
 const PANEL_WIDTH = 760
 const PANEL_MAX_WIDTH = 1200
 
-' Ceiling so the panel can never exceed the screen — at 1080 this leaves 100px
-' top and bottom. Reaching it takes roughly 600 characters of message, which is
-' not a translation but a wrong-component mistake, so it warns (see applyLayout()).
-
 ' The ONE piece of narration timing that cannot be event-driven.
 '
 ' Established on-device, one behavior at a time:

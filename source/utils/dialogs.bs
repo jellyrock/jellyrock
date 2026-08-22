@@ -188,12 +188,21 @@ end function
 ' Mirrors JRDialog's MAX_BUTTONS design cap. Kept as its own constant because
 ' BrighterScript consts are file-scoped and the component's is not visible here.
 const MAX_BUTTON_ROW_CHOICES = 3
-' The row is centered UNDER the panel, so it should never be wider than the panel
-' it belongs to — a row spilling past both panel edges reads as detached chrome.
-' Mirrors JRDialog's PANEL_WIDTH (consts are file-scoped, so it can't be shared).
-' Three buttons at TextButton's 200 minWidth plus spacing is 648, so the cap only
-' bites on genuinely long labels — which is exactly when the list is the better
-' presentation anyway.
+' A deliberately CONSERVATIVE cap, not a mirror of any panel dimension.
+'
+' JRDialog flows its button row INSIDE the panel and grows the panel to fit,
+' up to PANEL_MAX_WIDTH (1200) — so 1104px of row would actually render. This
+' stops well short of that: past ~900 a three-button row reads as a wall of
+' chrome, and the scrollable list is the better presentation for that many
+' words regardless of whether it would fit.
+'
+' Erring low only routes to the list dialog, which is the safe direction. Three
+' buttons at TextButton's 200 minWidth plus spacing is 648, so the cap bites
+' only on genuinely long labels.
+'
+' (This previously claimed to mirror JRDialog's PANEL_WIDTH and to describe a
+' row centered UNDER the panel. Neither was true: PANEL_WIDTH is 760, and the
+' row moved inside the panel in #757.)
 const BUTTON_ROW_MAX_WIDTH = 900
 
 ' A choice set renders as JRDialog's horizontal button row only if it's short
