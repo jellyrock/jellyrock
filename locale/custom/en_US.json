@@ -117,6 +117,7 @@
   "LabelContainer": "Container",
   "LabelContinueWatching": "Continue Watching",
   "LabelCriticRating": "Critic Rating",
+  "LabelCurrentlySelected": "Currently selected",
   "LabelCustom": "Custom",
   "LabelCustomAudioLanguageCode": "Custom Audio Language Code",
   "LabelCustomSubtitleLanguageCode": "Custom Subtitle Language Code",
