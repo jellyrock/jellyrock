@@ -6,7 +6,15 @@
 ' list, so each builder returns the labels and a parallel `values` array the
 ' caller indexes with `result.optionIndex`:
 '
-'   { labels: [string], values: [...], defaultIndex: integer }
+'   { labels: [string], values: [...], defaultIndex: integer, selectedIndex: integer }
+'
+' `defaultIndex` and `selectedIndex` are NOT the same question and must not be
+' collapsed back together. defaultIndex is which row to FOCUS on open and falls
+' back to 0; selectedIndex is which option is genuinely ACTIVE and is -1 when
+' none of them is. They coincide in the normal case, which is what made one
+' field look sufficient — until the row started drawing a check and announcing
+' "currently selected" from it, at which point a track that simply was not in
+' the list marked row 0 as playing.
 '
 ' Keeping these as pure functions is what makes them testable — the old picker
 ' path built its option set inline against `m.view`, so the mapping from
@@ -30,12 +38,15 @@ import "pkg:/source/utils/translate.bs"
 ' @param {integer} currentAudioIndex - the stream index playing now (VideoPlayerView.audioIndex)
 ' @returns {object} - { labels, values, defaultIndex }
 function buildAudioTrackOptions(audioStreams as object, currentAudioIndex as integer) as object
-  options = { labels: [], values: [], defaultIndex: 0 }
+  options = { labels: [], values: [], defaultIndex: 0, selectedIndex: -1 }
   if not isValid(audioStreams) then return options
 
   for each stream in audioStreams
     if isValid(stream) and isValid(stream.index)
-      if stream.index = currentAudioIndex then options.defaultIndex = options.values.count()
+      if stream.index = currentAudioIndex
+        options.defaultIndex = options.values.count()
+        options.selectedIndex = options.defaultIndex
+      end if
       options.labels.push(formatAudioDisplayTitle(stream))
       options.values.push(stream.index)
     end if
@@ -51,7 +62,7 @@ end function
 ' @param {string} currentMediaSourceId - the source playing now
 ' @returns {object} - { labels, values, defaultIndex }
 function buildVideoSourceOptions(videoSources as object, currentMediaSourceId as string) as object
-  options = { labels: [], values: [], defaultIndex: 0 }
+  options = { labels: [], values: [], defaultIndex: 0, selectedIndex: -1 }
   if not isValid(videoSources) then return options
 
   ' The source Name is only meaningful as a disambiguator, so it is prepended
@@ -60,7 +71,10 @@ function buildVideoSourceOptions(videoSources as object, currentMediaSourceId as
 
   for each source in videoSources
     if isValid(source) and isValid(source.Id)
-      if source.Id = currentMediaSourceId then options.defaultIndex = options.values.count()
+      if source.Id = currentMediaSourceId
+        options.defaultIndex = options.values.count()
+        options.selectedIndex = options.defaultIndex
+      end if
       options.labels.push(formatVideoSourceTitle(source, hasMultipleSources))
       options.values.push(source.Id)
     end if
@@ -90,7 +104,11 @@ function buildSubtitleTrackOptions(subtitleStreams as object, selectedSubtitleIn
   options = {
     labels: [translate(translationKeys.LabelNone)],
     values: [{ index: SubtitleSelection.NONE, isEncoded: false, trackName: "" }],
-    defaultIndex: 0
+    defaultIndex: 0,
+    ' "None" is a genuine current state, not a fallback — a stream showing no
+    ' subtitles really is on the None row, so it starts marked and only moves
+    ' if a track turns out to be active.
+    selectedIndex: 0
   }
   if not isValid(subtitleStreams) then return options
 
@@ -98,6 +116,7 @@ function buildSubtitleTrackOptions(subtitleStreams as object, selectedSubtitleIn
     if isValid(stream) and isValid(stream.index) and isValid(stream.track)
       if isSubtitleStreamActive(stream, selectedSubtitleIndex, currentTrackName, availableSubtitleTracks)
         options.defaultIndex = options.values.count()
+        options.selectedIndex = options.defaultIndex
       end if
 
       options.labels.push(toString(stream.track.description))

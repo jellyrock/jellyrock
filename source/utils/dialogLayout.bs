@@ -53,6 +53,10 @@ const SEPARATOR_HEIGHT = 3
 ' absolute coordinate divisible by 3 falls on an output-row boundary.
 const PIXEL_GRID = 3
 
+' Panel widths step in 6, not 3: centring HALVES the width, so only a multiple
+' of 6 leaves the halved value on the 3px grid.
+const PANEL_WIDTH_SCALE = 6
+
 ' Row geometry for the list dialog's options. Here rather than in the components
 ' so the spacing gate below covers them: they asserted the 6px rhythm in their
 ' own comments with nothing enforcing it, which is how a scale drifts.
@@ -228,6 +232,22 @@ function snapToGrid(value as integer) as integer
   remainder = value mod PIXEL_GRID
   if remainder = 0 then return value
   return value + (PIXEL_GRID - remainder)
+end function
+
+' Round a panel width UP onto the 6px scale, so BOTH vertical edges land on the
+' output grid: a width divisible by 6 makes the centred panelX divisible by 3
+' ((1920 - w) / 2 = 960 - w/2), and the right edge is panelX + width.
+'
+' For a caller whose width GROWS to fit its content (JRDialog's button row), the
+' fixed constant being on the scale is not enough — the grown value is derived
+' from a measured row width and lands wherever it lands. Costs at most 5px of
+' width, which no layout here is tight enough to notice.
+function snapPanelWidthToScale(width as integer) as integer
+  if width <= 0 then return 0
+
+  remainder = width mod PANEL_WIDTH_SCALE
+  if remainder = 0 then return width
+  return width + (PANEL_WIDTH_SCALE - remainder)
 end function
 
 ' Round DOWN onto the grid, for values that are an allowance rather than a

@@ -227,7 +227,7 @@ sub showTrackPicker(title as string, options as object, onResult as string)
   if options.labels.count() = 0 then return
 
   m.trackPickerOptions = options
-  m.playbackDialog = showListDialog(title, options.labels, onResult, options.defaultIndex)
+  m.playbackDialog = showListDialog(title, options.labels, onResult, options.defaultIndex, options.selectedIndex)
 end sub
 
 ' The option the user picked, or invalid if they backed out. Clears the dialog

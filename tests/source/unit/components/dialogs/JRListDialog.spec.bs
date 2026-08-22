@@ -53,6 +53,7 @@ namespace tests
     @it("marks the current option on the row, not just by focusing it")
     function _()
       m.dialog.defaultIndex = 2
+      m.dialog.selectedIndex = 2
       m.dialog.items = ["English 5.1", "English Stereo", "Spanish"]
 
       content = m.dialog.findNode("content")
@@ -61,18 +62,36 @@ namespace tests
       m.assertTrue(content.getChild(2).isSelected)
     end function
 
-    @it("marks the first row when nothing else is current")
+    ' THE DEFAULT IS "NOTHING IS CURRENT". A choice dialog reaches this component
+    ' through showChoiceDialog's fallback, where defaultIndex means "focus this
+    ' one" and nothing is active yet — marking the focused row would claim an
+    ' option was already in effect, which the button route it falls back FROM
+    ' never does.
+    @it("marks nothing when no option is current, even with a focus index set")
     function _()
+      m.dialog.defaultIndex = 1
+      m.dialog.items = ["Keep both", "Replace"]
+
+      content = m.dialog.findNode("content")
+      m.assertFalse(content.getChild(0).isSelected)
+      m.assertFalse(content.getChild(1).isSelected)
+    end function
+
+    @it("marks only the current option, independent of which row is focused")
+    function _()
+      m.dialog.defaultIndex = 0
+      m.dialog.selectedIndex = 1
       m.dialog.items = ["English 5.1", "Spanish"]
 
       content = m.dialog.findNode("content")
-      m.assertTrue(content.getChild(0).isSelected)
-      m.assertFalse(content.getChild(1).isSelected)
+      m.assertFalse(content.getChild(0).isSelected)
+      m.assertTrue(content.getChild(1).isSelected)
     end function
 
     @it("re-marks correctly when the items are reassigned")
     function _()
       m.dialog.defaultIndex = 1
+      m.dialog.selectedIndex = 1
       m.dialog.items = ["A", "B", "C"]
       m.dialog.items = ["X", "Y", "Z"]
 

@@ -254,6 +254,29 @@ namespace tests
       end for
     end function
 
+    ' A panel that GROWS to fit its content (JRDialog's button row) derives its
+    ' width from a measured row, so the constant being on the scale buys nothing
+    ' unless the growth is snapped too — the case the fixed widths were fixed for.
+    @it("snapPanelWidthToScale puts any grown width back on the scale")
+    function _()
+      for each width in [761, 762, 763, 800, 1043, 1199]
+        snapped = snapPanelWidthToScale(width)
+        m.assertEqual(snapped mod 6, 0, "off the 6px scale: " + snapped.toStr())
+        m.assertTrue(snapped >= width)
+        m.assertTrue(snapped - width < 6)
+
+        layout = computeDialogLayout({ panelWidth: snapped, titleHeight: 50, bodyHeight: 120, footerHeight: 60, footerInside: true })
+        m.assertEqual(layout.panel.x mod 3, 0, "left edge off-grid at width " + snapped.toStr())
+        m.assertEqual((layout.panel.x + snapped) mod 3, 0, "right edge off-grid at width " + snapped.toStr())
+      end for
+    end function
+
+    @it("snapPanelWidthToScale leaves a zero width alone")
+    function _()
+      m.assertEqual(snapPanelWidthToScale(0), 0)
+      m.assertEqual(snapPanelWidthToScale(-4), 0)
+    end function
+
     ' Snapping must not visibly move the panel: it buys crispness, not a new
     ' position. Half a 3px step either way is the whole budget.
     @it("stays centred to within one grid step after snapping")

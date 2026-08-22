@@ -33,6 +33,41 @@ namespace tests
       m.assertEqual(options.defaultIndex, 0)
     end function
 
+    ' The focus fallback must NOT double as "this one is playing". They are the
+    ' same number in the normal case, which is what let one field serve both
+    ' until the row began drawing a check from it — at which point a track that
+    ' simply was not in the list marked row 0 as the current one.
+    @it("reports NO current option when nothing matches, even though focus falls back to 0")
+    function _()
+      options = buildAudioTrackOptions(m.audioStreams(), 99)
+      m.assertEqual(options.defaultIndex, 0)
+      m.assertEqual(options.selectedIndex, -1)
+    end function
+
+    @it("reports the current option when one does match")
+    function _()
+      options = buildAudioTrackOptions(m.audioStreams(), 3)
+      m.assertEqual(options.selectedIndex, 1)
+      m.assertEqual(options.selectedIndex, options.defaultIndex)
+    end function
+
+    @it("a video source with no match reports no current option either")
+    function _()
+      m.assertEqual(buildVideoSourceOptions(m.videoSources(), "src-gone").selectedIndex, -1)
+      m.assertEqual(buildVideoSourceOptions(m.videoSources(), "src-b").selectedIndex, 1)
+    end function
+
+    ' Subtitles differ from the other two on purpose: showing NO subtitles is a
+    ' real current state, not an absence, so None starts marked.
+    @it("subtitles treat None as a genuine current option")
+    function _()
+      off = buildSubtitleTrackOptions(m.subtitleStreams(), SubtitleSelection.NOT_SET, "", [])
+      m.assertEqual(off.selectedIndex, 0)
+
+      onTrack = buildSubtitleTrackOptions(m.subtitleStreams(), 4, "", [])
+      m.assertEqual(onTrack.selectedIndex, 2)
+    end function
+
     @it("skips streams with no index rather than emitting an unselectable row")
     function _()
       options = buildAudioTrackOptions([{ index: 1, Language: "eng", Codec: "aac", Channels: 2 }, { Language: "spa" }], 1)

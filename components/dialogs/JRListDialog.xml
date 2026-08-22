@@ -38,8 +38,15 @@
     <!-- Array of option label strings -->
     <field id="items" type="array" onChange="onItemsChanged" />
     <field id="title" type="string" onChange="onTitleChanged" />
-    <!-- Item focused when the dialog opens (e.g. the currently active track) -->
+    <!-- Which row to FOCUS when the dialog opens. Falls back to 0. -->
     <field id="defaultIndex" type="integer" value="0" />
+    <!-- Which option is genuinely CURRENT — it gets the check, the surface and
+         the "currently selected" announcement. -1 means none is, which is the
+         right answer for a choice dialog (nothing is active yet) and for a
+         picker whose active track is not in the list. Deliberately separate
+         from defaultIndex: they coincide in the normal case, and collapsing
+         them made a focus fallback claim row 0 was playing. -->
+    <field id="selectedIndex" type="integer" value="-1" />
     <!-- Set exactly once when the dialog resolves, then the dialog closes itself.
          Shape: { cancelled, confirmed, buttonIndex, buttonText, optionIndex, value } -->
     <field id="result" type="assocarray" alwaysNotify="true" />

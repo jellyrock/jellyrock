@@ -65,15 +65,26 @@ function showChoiceDialog(title as string, message as string, choices as object,
     dialog.buttons = choices
     return presentOverlayDialog(dialog, onResult)
   end if
+  ' selectedIndex left at its -1 default on purpose: a choice dialog is asking
+  ' the user to pick, so NOTHING is current yet. Passing defaultIndex here would
+  ' mark whichever option we happened to focus as the one already in effect —
+  ' and the button route this falls back FROM shows no such marker, so the two
+  ' presentations would stop meaning the same thing.
   return showListDialog(title, choices, onResult, defaultIndex)
 end function
 
 ' Select one item from a longer list (audio/subtitle tracks, video sources).
 ' result.optionIndex is the selected index, -1 on cancel.
-function showListDialog(title as string, items as object, onResult = "" as string, defaultIndex = 0 as integer) as object
+'
+' `defaultIndex` is which row to FOCUS. `selectedIndex` is which option is
+' already CURRENT — it gets the check, the surface, and the "currently selected"
+' announcement — and defaults to -1, meaning none is. A picker passes both (they
+' normally coincide); anything offering a fresh choice passes only the first.
+function showListDialog(title as string, items as object, onResult = "" as string, defaultIndex = 0 as integer, selectedIndex = -1 as integer) as object
   dialog = createObject("roSGNode", "JRListDialog")
   dialog.title = title
   dialog.defaultIndex = defaultIndex
+  dialog.selectedIndex = selectedIndex
   dialog.items = items
   return presentOverlayDialog(dialog, onResult)
 end function

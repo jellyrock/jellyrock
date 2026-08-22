@@ -196,6 +196,12 @@ sub applyLayout()
   rowWidth = naturalButtonRowWidth()
   wanted = PANEL_WIDTH
   if rowWidth + (PANEL_PADDING * 2) > wanted then wanted = rowWidth + (PANEL_PADDING * 2)
+  ' PANEL_WIDTH is on the 6px scale so its vertical edges land on the 720p grid,
+  ' but a GROWN width is derived from a measured button row and lands anywhere —
+  ' so the crispness that constant buys survives only if the growth is snapped
+  ' too. Before the max check, so the clamp still wins (PANEL_MAX_WIDTH is on
+  ' the scale itself).
+  wanted = snapPanelWidthToScale(wanted)
   m.stackButtons = wanted > PANEL_MAX_WIDTH
   if m.stackButtons then wanted = PANEL_MAX_WIDTH
   m.panelWidth = wanted

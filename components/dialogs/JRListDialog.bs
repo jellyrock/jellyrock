@@ -67,9 +67,10 @@ sub onItemsChanged()
     content.removeChildIndex(0)
   end while
   ' The CURRENT option is marked on the row itself, so it stays visible once the
-  ' user moves focus off it. defaultIndex is which option is active now — it is
-  ' set before `items` by showListDialog, so it is readable here.
-  selectedIndex = m.top.defaultIndex
+  ' user moves focus off it. selectedIndex — NOT defaultIndex, which is only
+  ' which row to focus and falls back to 0. -1 marks nothing, which is what a
+  ' choice dialog and a picker with no matching track both want.
+  selectedIndex = m.top.selectedIndex
   index = 0
   for each item in items
     row = CreateObject("roSGNode", "ContentNode")
@@ -146,15 +147,22 @@ sub onOpeningAnnouncementDue()
   index = m.top.defaultIndex
   if isValid(items) and index >= 0 and index < items.count()
     focusedText = toString(items[index])
-    ' The row we open on IS the current option, so say so — otherwise the SAME
-    ' row is described two different ways depending on how you arrived at it.
+    ' If the row we open on is the current option, say so — otherwise the SAME
+    ' row gets described two different ways depending on how you arrived at it.
     ' Measured on a Roku Ultra: opening said "Select video source. B&W 1080p
     ' h264", but arrowing away and back said "B&W 1080p h264, 1 of 2, currently
     ' selected". The platform's own row announcement carries the suffix; ours
     ' bypassed it, because this composes from `items` rather than from the row's
     ' ContentNode, and ours is the utterance that survives (see
     ' narrateDialogOpening for why it has to be).
-    focusedText += ", " + translate(translationKeys.LabelCurrentlySelected)
+    '
+    ' Conditional, because the two indexes DIVERGE: a choice dialog has nothing
+    ' current at all, and a picker whose active track is missing from the list
+    ' still focuses row 0. Announcing it unconditionally would tell a
+    ' screen-reader user something the check and the surface do not.
+    if index = m.top.selectedIndex
+      focusedText += ", " + translate(translationKeys.LabelCurrentlySelected)
+    end if
   end if
 
   ' The platform's "1 of 2" navigation hint is deliberately NOT reproduced here.
