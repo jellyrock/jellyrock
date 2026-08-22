@@ -1049,6 +1049,18 @@ Accepted cost: a committed generated artifact that can go stale, paid for by `di
 
 **The constraint worth re-evaluating is the failure population, and the first answer to it was wrong.** The suppressed retries ARE the failed loads, so on a library whose artwork fails transiently this would suppress real recoveries. Measured 2026-08-21 on a 1 GB Stick 4K across three commit-pinned arms at n=10 each, it suppresses ~97 retries per extras sweep and costs zero recovered images: `loadsSucceeded` reads exactly 1 on all 30 launches in every arm. That figure is only trustworthy because the same branch added the counter — the earlier inference `loadsStarted - loadsFailed` put successes near 23, and the gap was requests still outstanding at the emit boundary rather than images that had arrived. Unmeasured on any other library, so the tripwire is a library whose person artwork exists and fails intermittently.
 
+## decision-id: one-overlay-dialog-supersedes
+
+**date**: 2026-08-22
+**status**: accepted
+**related-files**: `source/utils/dialogs.bs`, `source/replayRoute.bs`, `components/dialogs/JRDialog.bs`, `components/dialogs/JRListDialog.bs`, `components/OverviewDialog.bs`
+
+`presentOverlayDialog` cancels an already-open overlay before appending a new one, so exactly one is ever on screen. Roku's modal channel (`m.scene.dialog`) is single-slot — the OS replaces the incumbent — and the #288 phase-3 migration moved the four main-thread flows off it without replacing that guarantee. Two overlays then stacked under the shared `jrDialog` id, leaving `findNode` resolving to the corpse and the lower dialog visible but deaf. Reachable via remote control, which is sender-driven rather than human-paced: two casts in flight, or a `DisplayMessage` landing while the server-switch prompt is up.
+
+**What this closes off is a per-caller guard.** The obvious fix — the guard `JRScene.showExitConfirmation` already carries — is wrong for the server-switch flow and would have to be written correctly at every future main-thread call site. `dispatchPlay` overwrites the stashed deep link *before* `promptServerSwitch` runs, so ignoring the second cast freezes a prompt naming item A over a stash holding item B. Superseding also means callers need no code at all: port delivery is asynchronous, so a superseded dialog's canceled result reaches `Main()` only after the flow has re-pointed at its new dialog, and the existing `isSameNode` guard rejects the stale one. The earlier choice — warn and stack — was correct only while there was no way to close someone else's dialog without stranding its owner; `cancelDialog()` is that missing primitive.
+
+**The constraint worth re-evaluating is that this covers the OVERLAY channel only.** `cancelOpenDialog()` reaches both channels; the supersede deliberately does not. Canceling an open keyboard dialog is action-safe — all ten `result.confirmed` consumers in app code gate positively — but it discards what the user has typed, a materially worse trade than closing a yes/no prompt. So both channels can still be open at once with nothing arbitrating between them; that gap is filed separately in `tech-debt.md`.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

@@ -347,6 +347,17 @@ end sub
 ' and it stays correct if a second main-thread flow ever observes `result` on the same port.
 ' The old path could not do this: every dialog wrote one shared SceneManager field, so it
 ' needed an isPendingServerSwitch flag to keep routed views' dialogs from cross-firing here.
+'
+' It is also what makes a SECOND cast arriving mid-prompt correct with no code here, and the
+' mechanism is worth stating because it rests on port delivery being ASYNCHRONOUS. Cast B
+' overwrites the stash and calls promptServerSwitch again; presentOverlayDialog supersedes
+' dialog A, which resolves as cancelled inside that call. But that result only reaches us at
+' Main()'s next wait(0, m.port) — by which time promptServerSwitch has already reassigned
+' m.serverSwitchDialog to dialog B. So A's event arrives and this guard rejects it: no toast,
+' no stash wipe, and the prompt on screen is the one whose state the stash actually matches.
+' Were delivery synchronous the guard would not save us: A's cancel would run while
+' m.serverSwitchDialog still POINTED at A, so it would be accepted as the live dialog and
+' wipe m.pendingSwitchServer and the stash — out from under the prompt B is about to show.
 sub onServerSwitchDialogResult(dialog as object)
   if not isValid(m.serverSwitchDialog) or not dialog.isSameNode(m.serverSwitchDialog) then return
 

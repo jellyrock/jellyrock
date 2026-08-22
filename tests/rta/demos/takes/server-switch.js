@@ -12,18 +12,24 @@
  */
 
 /**
- * Confirm the "Change Server" StandardMessageDialog (buttons [Cancel, Switch]). A scene `dialog` is
- * a Roku overlay whose focus is managed internally — getFocusedNode keeps reporting the underlying
- * view — so we gate on the dialog NODE, drive it with keypresses, and verify by OUTCOME: the pending
- * flag clears once it's answered, and on "Switch" (not "Cancel") the stashed cast survives to replay.
+ * Confirm the "Change Server" prompt (a JRDialog overlay, buttons [Cancel, Switch]).
+ *
+ * The prompt is a scene-appended overlay stamped `#jrDialog`, NOT Roku's modal channel — the
+ * main-thread flows moved off `m.scene.dialog` in the #288 phase-3 migration. So every gate here
+ * keys off the overlay: it is open while `#jrDialog.id` resolves, and answered once it stops.
+ *
+ * Buttons are identified by their RENDERED labels rather than by hardcoded translations, matching
+ * tests/rta/specs/dialogs.spec.js. (`#buttonRow` is a recursive child id, not a field — don't chain
+ * it off `#jrDialog`.) Selecting is then verified by OUTCOME: on "Switch" (not "Cancel") the stashed
+ * cast survives to replay.
  */
 async function confirmServerSwitch(ctx) {
   // A wait, so it goes through the shared `waitFor` rather than a hand-rolled poll:
   // that is what makes a dialog-never-appeared failure report the state the device was
-  // actually in (see the diagnosedError rule in tests/rta/CLAUDE.md). `getVal` yields
-  // the `dialog` node's value when the keyPath resolves, so the predicate reads its
-  // subtype directly.
-  await ctx.waitFor('dialog', (d) => d?.subtype === 'StandardMessageDialog', {
+  // actually in (see the diagnosedError rule in tests/rta/CLAUDE.md). Gating on the button
+  // COUNT rather than on `#jrDialog.id` waits for the row to finish building, so the label
+  // reads below cannot race an empty row.
+  await ctx.waitFor('#buttonRow.getChildCount()', (n) => n === 2, {
     timeout: 15000,
     interval: 500,
     label: 'server-switch: change-server dialog',
@@ -33,24 +39,48 @@ async function confirmServerSwitch(ctx) {
   // before the take answers — without this the prompt flashes by faster than a human can follow.
   await ctx.hold(4500, 'Change Server? dialog (read)');
 
-  // Buttons are [Cancel, Switch] (Switch = the last/affirmative). Clamp onto it — Down for a
-  // vertical button stack, Right for a horizontal one; each is a harmless no-op in the other
-  // orientation, and a 2-button list clamps at its end — then select.
-  await ctx.press(ctx.ecp.Key.Down);
+  // Read the labels off the rendered buttons instead of hardcoding translated strings, so the
+  // take survives a locale change. ODC can read a field off an indexed child, but not call a
+  // method on one, so focus is asserted via the focused NODE (waitFocused).
+  const cancelLabel = await ctx.getVal('#buttonRow.0.text');
+  const confirmLabel = await ctx.getVal('#buttonRow.1.text');
+  // Throw rather than assert vacuously (tests/rta/CLAUDE.md: "make it throw when it verified
+  // nothing"). An unresolved label leaves the focus predicates below comparing undefined to
+  // undefined, so they would match any node without a `text` field and the take would report
+  // green having checked nothing.
+  if (!cancelLabel || !confirmLabel) {
+    // eslint-disable-next-line no-restricted-syntax -- vacuity guard on a read, cause fully named
+    throw new Error(
+      `server-switch: could not read the dialog button labels (cancel=${cancelLabel}, confirm=${confirmLabel})`,
+    );
+  }
+
+  // showConfirmDialog focuses the SAFE side first — assert it, because the single Right below
+  // is only correct from Cancel.
+  await ctx.waitFocused((f) => f.node?.text === cancelLabel, {
+    label: 'server-switch: Cancel focused on open',
+    timeout: 5000,
+  });
+
+  // One Right lands on Switch. Asserted, not assumed: JRDialog.moveButtonFocus WRAPS
+  // ((index + delta + count) mod count) rather than clamping, so a second Right — or a third
+  // button — would land back on Cancel and this take would silently click the wrong thing.
+  // (The Down this replaces was an orientation hedge for a vertical stack. JRDialog.onKeyEvent
+  // handles only back/left/right/OK and swallows everything else, so it was always a no-op.)
   await ctx.press(ctx.ecp.Key.Right);
-  await ctx.sleep(500);
+  await ctx.waitFocused((f) => f.node?.text === confirmLabel, {
+    label: 'server-switch: Switch focused',
+    timeout: 5000,
+  });
   await ctx.press(ctx.ecp.Key.Ok);
 
-  // Self-gate on the dialog actually being answered (the pending flag clears), then confirm it was
-  // SWITCH not Cancel: on Switch the stash survives (replays post-login); on Cancel it's wiped.
-  const answered = async () => {
-    const p = await ctx.odc
-      .getValue({ base: 'global', keyPath: 'sceneManager.isPendingServerSwitch' })
-      .catch(() => null);
-    return p?.value === false;
-  };
-  const t0 = Date.now();
-  while (Date.now() - t0 < 8000 && !(await answered())) await ctx.sleep(400);
+  // Self-gate on the dialog actually being answered — the overlay removes itself from the scene —
+  // then confirm it was SWITCH not Cancel: on Switch the stash survives (replays post-login); on
+  // Cancel it's wiped.
+  await ctx.waitFor('#jrDialog.id', (v) => v === undefined, {
+    label: 'server-switch: change-server dialog dismissed',
+    timeout: 8000,
+  });
   const stash = await ctx.odc
     .getValue({ base: 'global', keyPath: 'AuthManager.stashedDeepLink' })
     .catch(() => null);

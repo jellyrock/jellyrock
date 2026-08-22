@@ -359,6 +359,33 @@ whether the dialog's OWNER is told:
 `PlayerHostView`'s end-of-playback teardown calls both, in that order, for exactly that
 reason: its own picker is abandoned, anything else on screen is canceled.
 
+### Exactly one overlay dialog
+
+Roku's modal channel (`m.scene.dialog`) is **single-slot** — the OS replaces whatever was
+there. The overlay channel is not, so when the main-thread flows moved off the modal channel
+in the #288 phase-3 migration that invariant had to be restored explicitly. Two overlays
+stacked would share the `jrDialog` id, leaving `findNode` resolving to the corpse and the
+lower dialog visible but deaf behind the upper one.
+
+`presentOverlayDialog` therefore **supersedes**: an incumbent overlay is canceled — through
+its own once-only resolve guard, so its owner receives the same `canceled` result the user
+pressing `Back` would have produced — before the newcomer is appended. Safe at every call
+site, because all ten `result.confirmed` consumers in app code gate positively: a superseded
+confirm is a no-op, never a half-action. The warning log stays, because two overlays racing
+is still a signal about something upstream (two casts in flight).
+
+Two consequences worth knowing:
+
+- **A main-thread owner needs no code of its own.** Port delivery is asynchronous, so the
+  superseded dialog's result reaches `Main()` only at the next `wait(0, m.port)` — after the
+  flow has re-pointed at its new dialog, so its identity check rejects the old one. Written
+  out at `replayRoute.onServerSwitchDialogResult`.
+- **The MODAL channel is deliberately not superseded.** `cancelOpenDialog()` covers both
+  channels; the supersede covers only the overlay. Canceling an open keyboard dialog is
+  action-safe but discards what the user has typed (`ConfigList` and `SetServerScreen` both
+  apply their value only on `confirmed`), which is a materially worse trade than closing a
+  yes/no prompt. The two channels can still be open at once; nothing arbitrates between them.
+
 ## Deferred deep links
 
 A deep link launched while signed out is stashed (by the guard, or by the cold-start / runtime handlers in `main.bs`) and replayed after login. The stash producer seeds the queue and sets `m.global.AuthManager.stashedRoute` to a play path; after login, `replayAfterLogin()` (`source/replayRoute.bs`) reads + clears the stash and hands the route chain from `buildReplayRoutes(stashed)` to `JRScene.replayRoutedDeepLink`:

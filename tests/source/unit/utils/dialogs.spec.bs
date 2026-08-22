@@ -145,6 +145,124 @@ namespace tests
       m.assertEqual(presented.result.optionIndex, -1)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("presentOverlayDialog supersedes the open dialog")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' EXACTLY ONE overlay at a time is the invariant Roku's modal channel used to
+    ' enforce for free, and that the main-thread flows lost when they moved onto
+    ' the overlay channel. Two stacked overlays share the id, so findNode starts
+    ' resolving to the corpse and the lower dialog is visible but deaf.
+    @it("detaches the incumbent, leaving only the newcomer")
+    function _()
+      first = CreateObject("roSGNode", "JRDialog")
+      first.buttons = ["Cancel", "Switch"]
+      first = presentOverlayDialog(first, "")
+
+      second = CreateObject("roSGNode", "JRDialog")
+      second.buttons = ["Cancel", "Delete"]
+      second = presentOverlayDialog(second, "")
+
+      m.assertInvalid(first.getParent())
+      m.assertNotInvalid(second.getParent())
+
+      ' Asserted by IDENTITY, not by id: both carry the shared overlay id by
+      ' construction, so comparing ids would pass even if findNode resolved to
+      ' the dialog that was just detached.
+      open = m.top.getScene().findNode("jrDialog")
+      m.assertNotInvalid(open)
+      m.assertTrue(open.isSameNode(second))
+
+      abandonDialog(second)
+    end function
+
+    ' Superseding must be indistinguishable from the user pressing Back, or an
+    ' owner holding state until its dialog answers is stranded. All ten
+    ' result.confirmed consumers in app code gate positively, so this is a no-op
+    ' at every call site rather than a half-action.
+    @it("delivers a cancelled result to the incumbent's owner")
+    function _()
+      first = CreateObject("roSGNode", "JRDialog")
+      first.confirmIndex = 1
+      first.buttons = ["Cancel", "Switch"]
+      first = presentOverlayDialog(first, "")
+
+      second = CreateObject("roSGNode", "JRDialog")
+      second.buttons = ["OK"]
+      second = presentOverlayDialog(second, "")
+
+      m.assertNotInvalid(first.result)
+      m.assertTrue(first.result.cancelled)
+      m.assertFalse(first.result.confirmed)
+
+      abandonDialog(second)
+    end function
+
+    ' THE ORDERING GATE. lastFocusedChild walks focusedChild down to the deepest
+    ' focused node, so computing returnFocusTo while the incumbent is still
+    ' mounted resolves INSIDE the incumbent — and closing the newcomer would then
+    ' restore focus to a detached node. Cancel first, measure second.
+    '
+    ' Asserted as REACHABILITY FROM THE SCENE, not as "not the superseded dialog".
+    ' That proxy was tried first and is vacuous: lastFocusedChild descends to a
+    ' BUTTON inside the dialog, so isSameNode(first) is false either way and the
+    ' test passed against a deliberately reverted ordering. Walking up to the
+    ' scene is the property that actually distinguishes them, because a node
+    ' inside the superseded dialog is detached along with it.
+    @it("leaves the newcomer's returnFocusTo attached to the scene")
+    function _()
+      scene = m.top.getScene()
+
+      first = CreateObject("roSGNode", "JRDialog")
+      first.buttons = ["Cancel", "Switch"]
+      first = presentOverlayDialog(first, "")
+      first.setFocus(true)
+
+      second = CreateObject("roSGNode", "JRDialog")
+      second.buttons = ["OK"]
+      second = presentOverlayDialog(second, "")
+
+      node = second.returnFocusTo
+      attached = false
+      ' Bounded so a cycle or an unexpectedly deep tree fails the assert rather
+      ' than hanging the suite.
+      for i = 0 to 30
+        if not isValid(node) then exit for
+        if node.isSameNode(scene)
+          attached = true
+          exit for
+        end if
+        node = node.getParent()
+      end for
+
+      m.assertTrue(attached, "returnFocusTo points into a tree detached from the scene")
+
+      abandonDialog(second)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("abandonDialog drops PORT observers too")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' abandonDialog used unobserveFieldScoped, which removes only the CALLING
+    ' component's connection — so it missed a main-thread dialog observed with
+    ' observeField("result", m.port). unobserveField drops every observer on the
+    ' field, which is what "abandon" means. Gated by writing `result` by hand
+    ' after the abandon: a surviving observer would put an event on the port.
+    @it("a port observer receives nothing after the dialog is abandoned")
+    function _()
+      port = CreateObject("roMessagePort")
+      dialog = CreateObject("roSGNode", "JRDialog")
+      dialog.buttons = ["OK"]
+      presented = presentOverlayDialog(dialog, "")
+      presented.observeField("result", port)
+
+      abandonDialog(presented)
+      presented.result = { cancelled: true, confirmed: false }
+
+      m.assertInvalid(wait(200, port))
+    end function
+
   end class
 
 end namespace
