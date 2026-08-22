@@ -1,10 +1,12 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/dialogKeys.bs"
 import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/dialogNarration.bs"
 import "pkg:/source/utils/dialogResult.bs"
 import "pkg:/source/utils/listTheme.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
 
 ' See JRListDialog.xml for the interaction contract. Chrome and its arithmetic
 ' live elsewhere (JRDialogPanel + source/utils/dialogLayout.bs); this file owns
@@ -73,6 +75,20 @@ sub onItemsChanged()
     row = CreateObject("roSGNode", "ContentNode")
     row.title = toString(item)
     row.addFields({ isSelected: index = selectedIndex })
+
+    ' The three visual markers (check glyph, surface, hue) are all sighted-only,
+    ' so the current option is also announced. AUDIO_GUIDE_SUFFIX is a PREDEFINED
+    ' ContentNode field that MarkupList speaks after the row title and the
+    ' platform's own "1 of 3" navigation hint — see the per-node table in
+    ' docs/DEVELOPER/media-playback/text-to-speech.md (rokudev/dev-doc).
+    '
+    ' setField, not dot access: the field is absent from BrighterScript's
+    ' roSGNodeContentNode type, so `row.AUDIO_GUIDE_SUFFIX = ...` fails
+    ' validation with cannot-find-name. Same reason as JRKeyboardDialog.bs:30.
+    if index = selectedIndex
+      row.setField("AUDIO_GUIDE_SUFFIX", translate(translationKeys.LabelCurrentlySelected))
+    end if
+
     content.appendChild(row)
     index++
   end for
@@ -130,8 +146,23 @@ sub onOpeningAnnouncementDue()
   index = m.top.defaultIndex
   if isValid(items) and index >= 0 and index < items.count()
     focusedText = toString(items[index])
+    ' The row we open on IS the current option, so say so — otherwise the SAME
+    ' row is described two different ways depending on how you arrived at it.
+    ' Measured on a Roku Ultra: opening said "Select video source. B&W 1080p
+    ' h264", but arrowing away and back said "B&W 1080p h264, 1 of 2, currently
+    ' selected". The platform's own row announcement carries the suffix; ours
+    ' bypassed it, because this composes from `items` rather than from the row's
+    ' ContentNode, and ours is the utterance that survives (see
+    ' narrateDialogOpening for why it has to be).
+    focusedText += ", " + translate(translationKeys.LabelCurrentlySelected)
   end if
 
+  ' The platform's "1 of 2" navigation hint is deliberately NOT reproduced here.
+  ' It is unconditional for any ArrayGrid-derived list and not suppressible, so
+  ' the user hears it the moment they move — but its wording is Roku's and
+  ' localised by Roku, and a hand-rolled "{0} of {1}" would drift from it in
+  ' every locale but English. Saying less beats saying it differently.
+  '
   ' No `message` field on this dialog — the title carries the whole prompt
   narrateDialogOpening(m.top.title, "", focusedText)
 end sub
