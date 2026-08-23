@@ -2,3 +2,8 @@
 # on Windows with `core.autocrlf=true` (which would otherwise rewrite to CRLF
 # and break `#!/usr/bin/env sh`).
 .husky/* text eol=lf
+
+# XML has no formatter in this repo (prettier has no XML parser), so line endings were
+# unenforced — components/data/SceneManager.xml drifted to CRLF and was normalized by hand.
+# .editorconfig already asks for LF; this is what makes it hold.
+*.xml text eol=lf

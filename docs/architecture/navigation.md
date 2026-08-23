@@ -220,7 +220,7 @@ if key = "back"
   return true
 ```
 
-`showExitConfirmation()` (`JRScene.bs:451`) reuses `SceneManager`'s `showConfirmationDialog` and sets `sceneManager.isPendingExitConfirmation = true`. `main.bs`'s `isDataReturned` handler reads that flag and sets `m.scene.exit = true` on confirm — unchanged from the old stack≤1 branch.
+`showExitConfirmation()` shows a standard `showConfirmDialog` and owns the whole exchange itself. `JRScene` is a component with its own script scope, so it reads the answer through a scoped observer (`onExitConfirmResult`) and sets `m.top.exit = true` on confirm; `main.bs` sees only the `exit` field it already observes. Routing the dialog through `main.bs`'s message port instead would cross the thread boundary for every field write and buy nothing.
 
 To distinguish the two reasons a back bubbles up — at history root (confirm exit) vs. a navigation still in flight (the settling nav owns the back) — the arbiter calls `isRouterNavigating()`, which reads the router's public `routerState.type` field **directly**. A non-terminal type means a nav is in flight (swallow the back); a terminal type (`NavigationEnd`/`NavigationError`/`NavigationCancel`), or no router yet, means idle (confirm exit). The field is **read**, never observed: a `routerState` observer *coalesces* rapid writes and reliably drops the terminal `NavigationEnd` (proven on device — a mirrored `navInProgress` flag wedged true and ate back→exit), but a field *read* never coalesces, so the field always holds the true latest state.
 
@@ -276,13 +276,13 @@ end sub
 
 `components/data/SceneManager.bs` no longer manages a navigation stack. The stack methods (`pushScene` / `popScene` / `getActiveScene` / `clearScenes` / `clearPreviousScene` / `deleteSceneAtIndex` / `settings`) and `SceneManager`'s own overhang-sync helpers were **deleted** in #550. It survives as a shared **service node** at `m.global.sceneManager`:
 
-- **Dialogs** — `userMessage`, `showConfirmationDialog`, `dismissDialog`, `isDialogOpen`, plus the selection-return contract (`returnData` / `isDataReturned`, `optionSelected` / `optionClosed`). **Do not add new call sites here.** New dialogs go through `source/utils/dialogs.bs` (see below); the remaining `SceneManager` consumers are tracked for migration by [`dialog-returndata-shared-global`](tech-debt.md#dialog-returndata-shared-global). (`standardDialog` / `radioDialog` and their `StandardDialog` / `RadioDialog` components are gone — `PlayerHostView`'s pickers, their only consumer, moved to `showListDialog` / `showInfoDialog`.) Note `isDialogOpen` answers for BOTH channels — Roku's modal channel (`m.scene.dialog`) and the scene-appended overlays (via `isOverlayDialogOpen`). `dismissDialog`, however, only closes the modal one, so a screen holding an overlay still abandons it itself.
+- **The one dialog QUERY** — `isDialogOpen`. `SceneManager` no longer *shows* dialogs at all: `userMessage`, `showConfirmationDialog`, `dismissDialog`, `standardDialog`, `radioDialog`, the shared `returnData` / `isDataReturned` fields and the `isPending*` flags are all **deleted**, along with the `StandardDialog` / `RadioDialog` components. Every dialog goes through `source/utils/dialogs.bs` (see below). What survives is the query, because it has to answer for BOTH channels at once — Roku's modal channel (`m.scene.dialog`) and the scene-appended overlays (via `isOverlayDialogOpen`) — which is what the OSD inactivity auto-hide and the player's end-of-playback teardown ask before acting.
 - **Backdrop** — `setBackgroundImage` (passthrough to `JRScene.setBackgroundImage`).
 - **Theme** — `refreshThemeColors` (walks the overhang tree, re-applies `m.global.constants`).
 - **Overhang passthrough fields** — `updateUser`, `resetTime`.
 - **Reload-home signal** — `reloadHome` sets `reloadHomeRequested = true`; `main.bs` observes it and calls `JRScene.reloadRoutedHome`.
 
-> The long-overview overlay was the last `SceneManager.pushScene` user. It now appends directly to the scene: `FocusableOverview.openOverviewDialog` (`components/ui/label/FocusableOverview.bs:176`) sets `dialog.returnFocusTo = m.top` and `m.top.getScene().appendChild(dialog)`; `OverviewDialog` removes itself and restores focus on close (`OverviewDialog.bs:218-223`).
+> The long-overview overlay was the last `SceneManager.pushScene` user, and then the last hand-rolled scene append. `FocusableOverview.openOverviewDialog` now goes through `showInfoDialog` like every other overlay, passing itself as `returnFocusTo`; `OverviewDialog` removes itself and restores focus on close. The hand-rolled version worked, but it never stamped the shared overlay id — so `isOverlayDialogOpen` / `isDialogOpen` / `cancelOpenDialog` were all blind to it, and `OverviewDialog.cancelDialog()` was unreachable on that path.
 
 ### The standard dialog system (`source/utils/dialogs.bs`)
 
@@ -348,7 +348,43 @@ result shape is identical either way:
 
 Overlay dialogs are appended to the **scene**, not to the opening screen, so they outlive a
 routed view that is destroyed while one is open — a screen that opens a dialog is
-responsible for its own teardown.
+responsible for its own teardown. Two verbs do that, and the difference between them is
+whether the dialog's OWNER is told:
+
+| Verb | Delivers | Use when |
+|---|---|---|
+| `abandonDialog(dialog)` | nothing | **You** own it and your scope is being torn down (`onDestroy`) — there is nobody left to receive a result |
+| `cancelOpenDialog()` | a canceled result | **Someone else** owns it and is still alive, holding state until it answers (a main-thread flow such as the deep-link server switch). Indistinguishable from the user pressing `Back` |
+
+`PlayerHostView`'s end-of-playback teardown calls both, in that order, for exactly that
+reason: its own picker is abandoned, anything else on screen is canceled.
+
+### Exactly one overlay dialog
+
+Roku's modal channel (`m.scene.dialog`) is **single-slot** — the OS replaces whatever was
+there. The overlay channel is not, so when the main-thread flows moved off the modal channel
+in the #288 phase-3 migration that invariant had to be restored explicitly. Two overlays
+stacked would share the `jrDialog` id, leaving `findNode` resolving to the corpse and the
+lower dialog visible but deaf behind the upper one.
+
+`presentOverlayDialog` therefore **supersedes**: an incumbent overlay is canceled — through
+its own once-only resolve guard, so its owner receives the same `canceled` result the user
+pressing `Back` would have produced — before the newcomer is appended. Safe at every call
+site, because all ten `result.confirmed` consumers in app code gate positively: a superseded
+confirm is a no-op, never a half-action. The warning log stays, because two overlays racing
+is still a signal about something upstream (two casts in flight).
+
+Two consequences worth knowing:
+
+- **A main-thread owner needs no code of its own.** Port delivery is asynchronous, so the
+  superseded dialog's result reaches `Main()` only at the next `wait(0, m.port)` — after the
+  flow has re-pointed at its new dialog, so its identity check rejects the old one. Written
+  out at `replayRoute.onServerSwitchDialogResult`.
+- **The MODAL channel is deliberately not superseded.** `cancelOpenDialog()` covers both
+  channels; the supersede covers only the overlay. Canceling an open keyboard dialog is
+  action-safe but discards what the user has typed (`ConfigList` and `SetServerScreen` both
+  apply their value only on `confirmed`), which is a materially worse trade than closing a
+  yes/no prompt. The two channels can still be open at once; nothing arbitrates between them.
 
 ## Deferred deep links
 

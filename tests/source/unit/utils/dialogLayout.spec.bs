@@ -19,7 +19,7 @@ namespace tests
     ' is the gate for it, so the next value someone adds cannot quietly break it.
     @it("every spacing constant survives the 720p downscale as an integer")
     function _()
-      for each value in [PANEL_PADDING, TITLE_GAP, BODY_GAP, SEPARATOR_ACCENT_WIDTH, FOOTER_OUTSIDE_MARGIN, LIST_ROW_HEIGHT, LIST_ROW_SPACING, LIST_ROW_PADDING, LIST_ROW_CHECK_GUTTER, DIALOG_BUTTON_MIN_WIDTH]
+      for each value in [PANEL_PADDING, TITLE_GAP, BODY_GAP, SUBHEADING_GAP, SEPARATOR_ACCENT_WIDTH, FOOTER_OUTSIDE_MARGIN, LIST_ROW_HEIGHT, LIST_ROW_SPACING, LIST_ROW_PADDING, LIST_ROW_CHECK_GUTTER, DIALOG_BUTTON_MIN_WIDTH]
         m.assertEqual(value mod 6, 0)
         m.assertEqual((value * 2) mod 3, 0)
       end for
@@ -66,6 +66,85 @@ namespace tests
       ' Nothing is merely hidden — the body moves up by the whole title block
       m.assertEqual(untitled.body.y - untitled.panel.y, PANEL_PADDING)
       m.assertTrue(untitled.panel.height < titled.panel.height)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the optional subheading")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A dialog that does not set one must lay out EXACTLY as it did before the
+    ' slot existed — not "near enough". Every other dialog in the family is a
+    ' caller that passes no subheadingHeight at all, so this is the regression
+    ' gate for all of them, and it is asserted against a layout computed without
+    ' the key rather than against copied numbers.
+    @it("takes no space at all when there is none")
+    function _()
+      without = computeDialogLayout({ panelWidth: 762, titleHeight: 50, bodyHeight: 120, footerHeight: 72, footerInside: true })
+      zero = computeDialogLayout({ panelWidth: 762, titleHeight: 50, subheadingHeight: 0, bodyHeight: 120, footerHeight: 72, footerInside: true })
+
+      m.assertFalse(without.hasSubheading)
+      m.assertEqual(without.subheading.height, 0)
+      m.assertEqual(zero.body.y, without.body.y)
+      m.assertEqual(zero.footer.y, without.footer.y)
+      m.assertEqual(zero.panel.height, without.panel.height)
+    end function
+
+    @it("flows between the accent and the body, in the same content column")
+    function _()
+      layout = computeDialogLayout({ panelWidth: 762, titleHeight: 50, subheadingHeight: 33, bodyHeight: 120, footerHeight: 72, footerInside: true })
+
+      m.assertTrue(layout.hasSubheading)
+      m.assertTrue(layout.accent.y < layout.subheading.y)
+      m.assertTrue(layout.subheading.y < layout.body.y)
+      m.assertEqual(layout.subheading.x, layout.body.x)
+      m.assertEqual(layout.subheading.width, layout.body.width)
+    end function
+
+    ' Tighter than BODY_GAP on purpose: the subheading leads the body, so the two
+    ' read as one block. At BODY_GAP it would look like a second title.
+    @it("sits TIGHT above the body, closer than the accent gap")
+    function _()
+      layout = computeDialogLayout({ panelWidth: 762, titleHeight: 50, subheadingHeight: 33, bodyHeight: 120, footerHeight: 72, footerInside: true })
+
+      m.assertEqual(layout.body.y - (layout.subheading.y + layout.subheading.height), SUBHEADING_GAP)
+      m.assertEqual(layout.subheading.y - (layout.accent.y + layout.accent.height), BODY_GAP)
+      m.assertTrue(SUBHEADING_GAP < BODY_GAP)
+    end function
+
+    @it("pushes the body down and grows the panel by exactly its own block")
+    function _()
+      without = computeDialogLayout({ panelWidth: 762, titleHeight: 50, bodyHeight: 120, footerHeight: 72, footerInside: true })
+      with_ = computeDialogLayout({ panelWidth: 762, titleHeight: 50, subheadingHeight: 33, bodyHeight: 120, footerHeight: 72, footerInside: true })
+
+      ' 33 snaps up to 33 (already on the grid); the block is that plus its gap
+      block = 33 + SUBHEADING_GAP
+      m.assertEqual(with_.panel.height - without.panel.height, block)
+      ' PANEL-RELATIVE, not absolute. Every rect is resolved to screen coordinates
+      ' against a panel that is CENTRED, so growing the panel by 57 also moves its
+      ' origin up by ~28 and the absolute body.y moves by the difference. Comparing
+      ' raw body.y across two layouts measures the centring, not the flow.
+      m.assertEqual((with_.body.y - with_.panel.y) - (without.body.y - without.panel.y), block)
+    end function
+
+    ' The measured-height snap applies here like everywhere else, or one
+    ' arbitrary label height knocks the body and the footer below it off-grid.
+    @it("snaps its measured height up onto the pixel grid")
+    function _()
+      layout = computeDialogLayout({ panelWidth: 762, titleHeight: 50, subheadingHeight: 34, bodyHeight: 120, footerHeight: 72, footerInside: true })
+
+      m.assertEqual(layout.subheading.height, 36)
+    end function
+
+    ' A fixed panel gives its slack to the BODY, so a subheading must come out of
+    ' the body's allowance rather than making the panel taller. Only
+    ' OverviewDialog fixes its panel today, but the rule belongs to the function.
+    @it("comes out of the body allowance when the panel height is fixed")
+    function _()
+      without = computeDialogLayout({ panelWidth: 1602, titleHeight: 50, bodyHeight: 0, footerHeight: 72, footerInside: false, panelHeight: 762 })
+      with_ = computeDialogLayout({ panelWidth: 1602, titleHeight: 50, subheadingHeight: 33, bodyHeight: 0, footerHeight: 72, footerInside: false, panelHeight: 762 })
+
+      m.assertEqual(with_.panel.height, without.panel.height)
+      m.assertEqual(without.body.height - with_.body.height, 33 + SUBHEADING_GAP)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -260,6 +339,32 @@ namespace tests
           m.assertEqual(layout.accent.y mod 3, 0, "accent.y off-grid at titleHeight " + titleHeight.toStr())
           m.assertEqual(layout.body.y mod 3, 0, "body.y off-grid at titleHeight " + titleHeight.toStr())
           m.assertEqual(layout.footer.y mod 3, 0, "footer.y off-grid at titleHeight " + titleHeight.toStr())
+        end for
+      end for
+    end function
+
+    ' The subheading sits between two things the sweep above already gates, so
+    ' its own arithmetic is the only new way for the body and footer to leave the
+    ' grid. Swept over measured heights for the same reason: a label's height is
+    ' whatever the font gave us, not a value anyone picked.
+    @it("keeps every edge on the grid with a subheading in the flow")
+    function _()
+      for titleHeight = 44 to 60
+        for subheadingHeight = 28 to 40
+          layout = computeDialogLayout({
+            panelWidth: 762,
+            titleHeight: titleHeight,
+            subheadingHeight: subheadingHeight,
+            bodyHeight: 121,
+            footerHeight: 71,
+            footerInside: true
+          })
+
+          suffix = " off-grid at titleHeight " + titleHeight.toStr() + " subheadingHeight " + subheadingHeight.toStr()
+          m.assertEqual(layout.panel.y mod 3, 0, "panel.y" + suffix)
+          m.assertEqual(layout.subheading.y mod 3, 0, "subheading.y" + suffix)
+          m.assertEqual(layout.body.y mod 3, 0, "body.y" + suffix)
+          m.assertEqual(layout.footer.y mod 3, 0, "footer.y" + suffix)
         end for
       end for
     end function

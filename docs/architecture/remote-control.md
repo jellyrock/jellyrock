@@ -14,7 +14,7 @@ related-files:
   - source/api/userAuth.bs
   - components/home/Home.bs
   - docs/architecture/remote-control-longpoll-contract.md
-last-reviewed: 2026-07-31
+last-reviewed: 2026-08-22
 ---
 
 # Remote control — "Cast to JellyRock"
@@ -253,9 +253,14 @@ behavior, not a JellyRock gap.
 Note on `DisplayMessage`: the payload has no priority field, so `TimeoutMs` is the sender's intent
 signal — **present** means "show briefly then dismiss" (a **toast**: `Header` — `Text`), **absent**
 means "leave this up until acknowledged" (a **dialog** the user dismisses with OK). The dialog uses a
-JR-supplied provenance title (`LabelCastMessage` = "Message from another device") with the sender's
-`Header` + `Text` as the body, so a bare message reads as an incoming cast message rather than a JR
-system prompt. `DisplayMessage` is **not** admin-only — the command endpoints require only
+JR-supplied provenance title (`LabelCastMessage` = "Message from another device"), so a bare message
+reads as an incoming cast message rather than a JR system prompt. Jellyfin's own contract is
+`Header` = title, `Text` = body, and the dialog honors that *role* without giving away the title
+slot: `Header` renders as the dialog's bold **subheading** above `Text`. Putting sender-supplied
+text in the title itself would make arbitrary LAN-supplied content indistinguishable from an
+app-native prompt. (A `Header` with no `Text` has nothing to lead, so it becomes the body —
+`remoteDispatch.castMessageParts`.) The toast is unchanged and still one line (`Header` — `Text`),
+because a toast is one line; the dialog has the room. `DisplayMessage` is **not** admin-only — the command endpoints require only
 `DefaultAuthorization` (any authenticated user with remote-control permission), so the sender could be
 you, a household member, or an admin; the static title avoids asserting otherwise. Resolving the
 actual sender name (`ControllingUserId` → username) is a followup. This is a trusted-LAN, authenticated

@@ -29,9 +29,16 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
 ' Simple message + OK button. result.buttonIndex = 0 (OK) or cancelled on back.
-function showAlertDialog(title as string, message as string, onResult = "" as string) as object
+'
+' `subheading` is an optional BOLD lead line above the message, for a message
+' that genuinely arrives in two parts — a heading and its text. Use it only when
+' the two parts come from different places (the cast notice: JellyRock owns the
+' provenance title, the sender owns the heading and the body). A message you
+' wrote yourself belongs in one string.
+function showAlertDialog(title as string, message as string, onResult = "" as string, subheading = "" as string) as object
   dialog = createObject("roSGNode", "JRDialog")
   dialog.title = title
+  if subheading <> "" then dialog.subheading = subheading
   dialog.message = message
   dialog.buttons = [translate(translationKeys.ButtonOk)]
   return presentOverlayDialog(dialog, onResult)
@@ -91,14 +98,20 @@ end function
 
 ' Read-only long-form text (descriptions, biographies). Self-closing on OK/back;
 ' no result to observe. Wraps the existing OverviewDialog chrome.
-function showInfoDialog(title as string, overview as string, tagline = "" as string) as object
+'
+' `returnFocusTo` names the node to restore focus to on close. Pass it when the
+' OPENER is the right answer and you already hold it — a focusable element that
+' expands into this dialog. Omitted, focus returns to whatever was focused when
+' the dialog opened, which is the same node in most cases but is DERIVED rather
+' than known.
+function showInfoDialog(title as string, overview as string, tagline = "" as string, returnFocusTo = invalid as object) as object
   dialog = createObject("roSGNode", "OverviewDialog")
   if title <> "" then dialog.title = title
   if tagline <> "" then dialog.tagline = tagline
   dialog.overview = overview
   ' OverviewDialog has no `result` field — it self-closes on OK/back, so there is
   ' nothing to observe. Present it through the same path as the other overlays.
-  return presentOverlayDialog(dialog, "")
+  return presentOverlayDialog(dialog, "", returnFocusTo)
 end function
 
 ' Text entry via the OS keyboard (voice-capable, certification-compliant).
@@ -152,7 +165,13 @@ end function
 sub abandonDialog(dialog as object)
   if not isValid(dialog) then return
 
-  dialog.unobserveFieldScoped("result")
+  ' unobserveField, NOT unobserveFieldScoped: the scoped form removes only the
+  ' CALLING component's connection, so it misses a main-thread dialog observed
+  ' with `observeField("result", m.port)`. The unscoped form drops every
+  ' observer on the field, scoped and port alike — which is what "abandon"
+  ' means. That is a WIDENING, and it is safe only because a dialog has exactly
+  ' one owner. Don't reuse abandonDialog() on a node several scopes observe.
+  dialog.unobserveField("result")
 
   if dialog.isSubtype("StandardKeyboardDialog")
     ' Roku modal channel — the OS owns presentation; writing `close` dismisses it
@@ -164,30 +183,92 @@ sub abandonDialog(dialog as object)
   if isValid(parent) then parent.removeChild(dialog)
 end sub
 
+' Close whatever dialog is open, delivering a CANCELLED result to whoever opened
+' it. The counterpart to abandonDialog(): use this when a THIRD PARTY needs the
+' screen clear while the dialog's owner is still alive and waiting on a result.
+'
+' The distinction matters. abandonDialog() delivers NOTHING, which is right in
+' onDestroy — the scope that would receive the result is being torn down. Here
+' the owner is a main-thread flow that holds state until its dialog answers (the
+' deep-link server switch holds the pending server and the stashed link), so
+' closing without an answer strands it. A cancelled result is the same thing the
+' user pressing Back would have produced.
+'
+' Covers BOTH channels, like isDialogOpen(): the scene-appended overlays cancel
+' through their own once-only resolve guard, and Roku's modal channel resolves as
+' cancelled on `close` (see JRKeyboardDialog.onWasClosed).
+sub cancelOpenDialog()
+  scene = appScene()
+  if not isValid(scene) then return
+
+  overlay = scene.findNode(OVERLAY_DIALOG_ID)
+  if isValid(overlay) then overlay.callFunc("cancelDialog")
+
+  if isValid(scene.dialog) then scene.dialog.close = true
+end sub
+
 ' ---- internals ----
 
-' The id every overlay dialog is stamped with. One definition, because two things
-' now depend on being able to FIND an open dialog by it (the duplicate-overlay
-' warning below, and isOverlayDialogOpen above).
+' The id every overlay dialog is stamped with. One definition, because three
+' things depend on being able to FIND the open dialog by it: isOverlayDialogOpen,
+' cancelOpenDialog, and presentOverlayDialog's supersede below. It identifies
+' exactly one node because presentOverlayDialog keeps it that way.
 const OVERLAY_DIALOG_ID = "jrDialog"
 
 ' Append an overlay dialog to the scene, capture focus, wire the caller's
 ' result observer. onResult is resolved in the CALLER's scope because these
 ' helpers execute inside the importing component's script scope.
-function presentOverlayDialog(dialog as object, onResult as string) as object
+function presentOverlayDialog(dialog as object, onResult as string, returnFocusTo = invalid as object) as object
   scene = appScene()
 
-  ' Stable id for RTA assertions / debugging. It assumes ONE overlay at a time,
-  ' which every dialog enforces by consuming all key presses — but a main-thread
-  ' flow (session expiry, server switch) can still open one over a screen's own.
-  ' Don't auto-dismiss the incumbent: its caller is waiting on a result that
-  ' would then never arrive. Surface it instead.
-  if isValid(scene.findNode(OVERLAY_DIALOG_ID))
-    print "WARNING - presentOverlayDialog: a dialog is already open; two overlays will overlap and share the id 'jrDialog'"
+  ' EXACTLY ONE overlay dialog is on screen at a time, and it is this one.
+  '
+  ' Roku's modal channel (m.scene.dialog) is single-slot: the OS replaces the
+  ' incumbent. The overlay channel is not, so when the main-thread flows moved
+  ' off the modal channel that invariant needed restoring here. Two overlays
+  ' stacked share this id, leaving findNode resolving to the corpse and the
+  ' lower dialog visible but deaf behind the upper one.
+  '
+  ' The incumbent is SUPERSEDED, not dropped: cancelDialog() routes through its
+  ' own once-only resolve guard, so its owner gets the same cancelled result the
+  ' user pressing Back would have produced. Safe at every call site — all ten
+  ' result.confirmed consumers in app code gate positively, so a superseded
+  ' confirm is a no-op, never a half-action. (This deliberately reverses an
+  ' earlier decision to warn and stack, which was correct only while there was
+  ' no way to close someone else's dialog WITHOUT stranding them.)
+  '
+  ' No call site needs a re-entrancy guard, main-thread ones included; the
+  ' ordering that makes that true is at replayRoute.onServerSwitchDialogResult.
+  '
+  ' The log line stays. Two overlays racing is still a signal about something
+  ' upstream — two casts in flight — and arbitrating silently would discard it.
+  incumbent = scene.findNode(OVERLAY_DIALOG_ID)
+  if isValid(incumbent)
+    print "WARNING - presentOverlayDialog: a dialog was already open; superseding it with a cancelled result"
+    ' Reusing the node we just found rather than calling cancelOpenDialog():
+    ' that would re-run findNode against a render-thread-owned tree, and on the
+    ' main-thread path every crossing is a rendezvous. It would also reach the
+    ' MODAL channel, which must not be superseded. That channel has THREE
+    ' writers and each is a different reason not to touch it: a keyboard dialog
+    ' (showKeyboardDialog) would lose what the user typed; QuickConnectDialog
+    ' owns its own close/isAuthenticated handshake; and the player's error
+    ' dialog (VideoPlayerView.showPlaybackErrorDialog) NAVIGATES on close, so
+    ' superseding it would fire a goBack from in here. See
+    ' docs/architecture/tech-debt.md#dialog-channels-unarbitrated.
+    incumbent.callFunc("cancelDialog")
   end if
 
+  ' AFTER the supersede, never before. lastFocusedChild walks focusedChild down
+  ' to the deepest focused node, which with an incumbent still mounted resolves
+  ' INSIDE the incumbent — so returnFocusTo would point at a node that is about
+  ' to be detached, and closing this dialog would restore focus to a corpse.
+  ' A caller that KNOWS its opener passes it instead and skips the derivation.
   dialog.id = OVERLAY_DIALOG_ID
-  dialog.returnFocusTo = lastFocusedChild(scene)
+  if isValid(returnFocusTo)
+    dialog.returnFocusTo = returnFocusTo
+  else
+    dialog.returnFocusTo = lastFocusedChild(scene)
+  end if
   if onResult <> "" then dialog.observeFieldScoped("result", onResult)
   scene.appendChild(dialog)
   dialog.setFocus(true)

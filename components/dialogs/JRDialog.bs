@@ -56,9 +56,12 @@ sub init()
   ' computed until that exists.
   m.chrome.observeField("titleHeight", "onTitleMeasured")
 
+  m.subheadingText = m.top.findNode("subheadingText")
   m.messageText = m.top.findNode("messageText")
   m.panelWidth = PANEL_WIDTH
-  ' Layout depends on the rendered message height — recompute when it settles
+  ' Layout depends on the rendered text heights — recompute when each settles
+  m.subheadingText.enableRenderTracking = true
+  m.subheadingText.observeField("renderTracking", "onSubheadingRendered")
   m.messageText.enableRenderTracking = true
   m.messageText.observeField("renderTracking", "onMessageRendered")
 
@@ -93,6 +96,21 @@ sub onTitleChanged()
 end sub
 
 sub onTitleMeasured()
+  applyLayout()
+end sub
+
+' SET THE TEXT FIELDS BEFORE PRESENTING, never after. `renderTracking` fires on
+' the none -> full transition and never again (the same property that made the
+' button row use TextButton's `isReady` instead), so once the dialog has rendered
+' no later text change re-runs applyLayout — the new text draws on top of the old
+' layout. True of `title` and `message` too; the helpers in source/utils/dialogs.bs
+' set every field before presentOverlayDialog for exactly this reason.
+sub onSubheadingChanged()
+  m.subheadingText.text = m.top.subheading
+  ' renderTracking fires once the new text lays out; layout() runs then
+end sub
+
+sub onSubheadingRendered()
   applyLayout()
 end sub
 
@@ -171,7 +189,14 @@ sub onOpeningAnnouncementDue()
   focused = m.buttonRow.focusedChild
   if isValid(focused) then focusedText = toString(focused.text)
 
-  narrateDialogOpening(m.top.title, m.top.message, focusedText)
+  ' The subheading is part of the BODY, not a second title, so it is joined into
+  ' the message rather than passed as its own block — the same shape
+  ' OverviewDialog uses for its tagline.
+  body = []
+  if isValidAndNotEmpty(m.top.subheading) then body.push(m.top.subheading)
+  if isValidAndNotEmpty(m.top.message) then body.push(m.top.message)
+
+  narrateDialogOpening(m.top.title, body.join(". "), focusedText)
 end sub
 
 ' A button finished sizing itself. Re-run the whole layout, not just the
@@ -208,6 +233,7 @@ sub applyLayout()
 
   contentWidth = m.panelWidth - (PANEL_PADDING * 2)
   applyButtonLayout(contentWidth)
+  m.subheadingText.width = contentWidth
   m.messageText.width = contentWidth
   ' The title cannot be measured until it knows how wide it may be.
   m.chrome.contentWidth = contentWidth
@@ -217,6 +243,13 @@ sub applyLayout()
   ' rendered yet, and its observer brings us back when it has.
   titleHeight = m.chrome.titleHeight
   if m.top.title.len() > 0 and titleHeight = 0 then return
+
+  subheadingHeight = 0
+  if m.top.subheading.len() > 0
+    subheadingHeight = m.subheadingText.localBoundingRect().height
+    ' Not rendered yet — renderTracking re-runs layout() once it settles
+    if subheadingHeight = 0 then return
+  end if
 
   textHeight = 0
   if m.top.message.len() > 0
@@ -228,6 +261,7 @@ sub applyLayout()
   layout = computeDialogLayout({
     panelWidth: m.panelWidth,
     titleHeight: titleHeight,
+    subheadingHeight: subheadingHeight,
     bodyHeight: textHeight,
     footerHeight: buttonRowHeight(),
     footerInside: true
@@ -251,6 +285,7 @@ sub applyLayout()
   end if
 
   m.chrome.layout = layout
+  m.subheadingText.translation = [layout.subheading.x, layout.subheading.y]
   m.messageText.translation = [layout.body.x, layout.body.y]
 
   m.buttonRowY = layout.footer.y
@@ -346,6 +381,14 @@ sub resolveDialog(index as integer)
   m.top.result = buttonDialogResult(index, m.top.confirmIndex, m.top.buttons)
 
   closeDialog()
+end sub
+
+' Cancel this dialog from OUTSIDE — see cancelOpenDialog() in source/utils/dialogs.bs.
+' Routed through resolveDialog so the once-only guard and the standard cancelled
+' result both apply: a third party clearing the screen must be indistinguishable
+' from the user pressing Back, or the owner waiting on the result is stranded.
+sub cancelDialog()
+  resolveDialog(-1)
 end sub
 
 ' Dismiss this overlay. Appended directly to the scene by dialogs.bs, so closing is a

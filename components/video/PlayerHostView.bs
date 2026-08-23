@@ -162,19 +162,30 @@ sub onPlayerStateChange()
   ' Don't advance mid-retry; the DoVi fallback calls stop which can fire "finished".
   if isValid(m.view.isRetrying) and m.view.isRetrying then return
 
-  sceneManager = m.global.sceneManager
   queueManager = m.global.queueManager
 
-  ' Close any open dialogs. Two channels to cover: our own scene-appended picker /
-  ' info overlay, and Roku's modal channel (m.scene.dialog). isDialogOpen now
-  ' reports both, but dismissDialog only closes the modal one, so abandoning ours
-  ' explicitly is still required.
+  ' Clear the screen before playback teardown navigates: a dialog left open would
+  ' end up over the incoming screen, having lost focus to it — visible but deaf.
+  '
+  ' Two calls because the two dialogs mean different things. Ours is ABANDONED —
+  ' this component owns it, and the scope that would receive its result is about
+  ' to be torn down. Anything else is CANCELLED — a main-thread flow (a cast
+  ' notice, the deep-link server-switch prompt) can open a dialog over the player,
+  ' and it holds state until that dialog answers, so it has to be told.
+  '
+  ' cancelOpenDialog() reaches BOTH channels, and the modal one is not empty
+  ' during playback: VideoPlayerView.showPlaybackErrorDialog puts a raw Dialog
+  ' there, and its close handler calls exitPlayback(). So on the stall path this
+  ' can fire a goBack() from inside this handler, which then continues on to
+  ' advance the queue or exit again. Pre-existing — the deleted
+  ' SceneManager.dismissDialog did exactly the same thing behind the same gate —
+  ' and tracked as playback-error-dialog-closed-by-teardown in tech-debt.md.
+  ' Don't "fix" it by narrowing this call: a stranded modal over the incoming
+  ' screen is the failure this line exists to prevent.
   abandonDialog(m.playbackDialog)
   m.playbackDialog = invalid
   m.trackPickerOptions = invalid
-  if sceneManager.callFunc("isDialogOpen")
-    sceneManager.callFunc("dismissDialog")
-  end if
+  cancelOpenDialog()
 
   ' Live TV channel that finished -> restart the same channel (same queue position)
   currentItem = queueManager.callFunc("getCurrentItem")

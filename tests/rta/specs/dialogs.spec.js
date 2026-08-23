@@ -24,7 +24,7 @@ import { RTA_CONFIG } from '../config.js';
 import { authenticate, getHero, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
 import { seedHome, seedLibraryLanding, assertSeedTookEffect } from '../lib/seed.js';
 import { relaunch, hardRelaunch, ecp, odc } from '../lib/driver.js';
-import { navSeriesDetails } from '../lib/nav.js';
+import { navSeriesDetails, navMovieDetails } from '../lib/nav.js';
 import {
   waitFor,
   waitFocused,
@@ -223,6 +223,57 @@ it('series watched button opens the standard confirm dialog; back cancels it', a
   await sleep(500);
   const afterCloseFocusId = await getVal('focusedChild.id');
   if (afterCloseFocusId === 'jrDialog') throw new Error('focus stuck on dismissed dialog');
+});
+
+// FocusableOverview used to hand-roll its append (createObject + appendChild +
+// setFocus) and never stamped the shared overlay id, so isOverlayDialogOpen /
+// isDialogOpen / cancelOpenDialog were all blind to it. It now goes through
+// showInfoDialog like every other overlay. Two things to prove: the overlay is
+// findable by the shared id, and passing `returnFocusTo` explicitly still lands
+// focus back on the opener rather than wherever derivation would have guessed.
+it('item description opens the overview overlay; back restores focus to it', async () => {
+  await seedHome(session, LOCALE);
+  await seedLibraryLanding(session, libraryIdFor(libraries, 'movies'), 'Movies');
+  await relaunch();
+  await navMovieDetails({ libraries });
+
+  // Guard the fixture before asserting on it: a movie with no overview leaves
+  // #itemDescription hidden and every check below would pass having driven
+  // nothing (tests/rta/CLAUDE.md — make it throw when it verified nothing).
+  const overview = await getVal('#itemDescription.text');
+  if (typeof overview !== 'string' || overview.length === 0)
+    throw new Error(
+      `hero movie has no overview on this fixture (#itemDescription.text = ${overview})`,
+    );
+
+  // Not a JRButtonGroup, so teleporting focus here sticks — no index to re-assert.
+  await odc.focusNode({ base: 'scene', keyPath: '#itemDescription' });
+  await waitFocused((f) => f.node?.id === 'itemDescription', {
+    label: 'item description focused',
+    timeout: 5000,
+  });
+
+  await press(ecp.Key.Ok);
+
+  // The SHARED id is the point: the hand-rolled path never set it.
+  await waitFor('#jrDialog.id', (v) => v === 'jrDialog', {
+    label: 'overview overlay mounted with the shared id',
+    timeout: 10000,
+  });
+
+  if (CAPTURE) await captureRawUI('overviewDialog');
+
+  await press(ecp.Key.Back);
+  await waitFor('#jrDialog.id', (v) => v === undefined, {
+    label: 'overview overlay dismissed',
+    timeout: 10000,
+  });
+
+  // returnFocusTo was passed explicitly as the FocusableOverview itself.
+  await waitFocused((f) => f.node?.id === 'itemDescription', {
+    label: 'focus restored to the item description',
+    timeout: 5000,
+  });
 });
 
 // The playback-time pickers moved off SceneManager's shared returnData onto

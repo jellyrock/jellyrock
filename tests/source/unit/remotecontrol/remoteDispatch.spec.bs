@@ -60,6 +60,38 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("castMessageParts() — DisplayMessage across the dialog slots")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Jellyfin's contract is Header = title, Text = body. JellyRock keeps the
+    ' dialog TITLE for its own provenance line ("Message from another device"),
+    ' because a sender-supplied title would be indistinguishable from an
+    ' app-native prompt — so the Header keeps its title ROLE as the bold
+    ' subheading instead.
+    @it("maps Header to the subheading and Text to the body")
+    function _()
+      parts = remoteDispatch.castMessageParts("Server maintenance", "Restarting in five minutes.")
+      m.assertEqual(parts.subheading, "Server maintenance")
+      m.assertEqual(parts.body, "Restarting in five minutes.")
+    end function
+
+    ' A bold lead line with nothing under it is not a heading, it is just a
+    ' message in the wrong slot.
+    @it("promotes a Header with no Text to the body")
+    function _()
+      parts = remoteDispatch.castMessageParts("Server maintenance", "")
+      m.assertEqual(parts.subheading, "")
+      m.assertEqual(parts.body, "Server maintenance")
+    end function
+
+    @it("leaves a Text with no Header as a plain body")
+    function _()
+      parts = remoteDispatch.castMessageParts("", "Restarting in five minutes.")
+      m.assertEqual(parts.subheading, "")
+      m.assertEqual(parts.body, "Restarting in five minutes.")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("toTransportEvt() — player handleTransport evt")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

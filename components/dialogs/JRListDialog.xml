@@ -51,5 +51,9 @@
          Shape: { cancelled, confirmed, buttonIndex, buttonText, optionIndex, value } -->
     <field id="result" type="assocarray" alwaysNotify="true" />
     <field id="returnFocusTo" type="node" />
+    <!-- Cancel this dialog from OUTSIDE (source/utils/dialogs.bs cancelOpenDialog).
+         A third party clearing the screen must look exactly like the user
+         pressing Back, so this routes through the same resolve path. -->
+    <function name="cancelDialog" />
   </interface>
 </component>

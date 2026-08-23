@@ -3,13 +3,16 @@
 ' Every dialog in the family — JRDialog, JRListDialog, OverviewDialog — is the
 ' same vertical flow with a different body:
 '
-'   padding | title | TITLE_GAP | accent | BODY_GAP | body | BODY_GAP | footer | padding
+'   padding | title | TITLE_GAP | accent | BODY_GAP | [subheading | SUBHEADING_GAP |] body | BODY_GAP | footer | padding
 '
 ' The accent rule sits TIGHT under the title (TITLE_GAP) because the two are one
 ' unit — it belongs to the title, it does not divide the card. Below it the body
 ' is centred in its own space (BODY_GAP above and below), so the eye reads
 ' title -> body -> options as three steps. Hierarchy comes from the accent, not
 ' from unequal gaps.
+'
+' The optional subheading is a lead line for the body, not a third step: it sits
+' inside the body's space at SUBHEADING_GAP, so the pair still reads as one block.
 '
 ' WHY THIS IS A MODULE AND NOT THREE COPIES. It was three copies. JRDialog was
 ' restyled during the #757 review — buttons inside the panel, a 3px border, a
@@ -48,6 +51,12 @@ const PANEL_PADDING = 48
 const TITLE_GAP = 24
 const BODY_GAP = 36
 const SEPARATOR_HEIGHT = 3
+
+' Gap between an optional subheading and the body it leads. Deliberately TIGHTER
+' than BODY_GAP and equal to TITLE_GAP, for the same reason: the subheading and
+' the body are one unit. At BODY_GAP the two would read as separate blocks and
+' the subheading would look like a second title.
+const SUBHEADING_GAP = 24
 
 ' The 720p output row. 1080 / 720 = 3 source rows per 2 output rows, so an
 ' absolute coordinate divisible by 3 falls on an output-row boundary.
@@ -104,6 +113,9 @@ const PANEL_MAX_HEIGHT = SCREEN_HEIGHT - (PANEL_PADDING * 2) - 60
 '   panelWidth   - the panel's width; the caller owns width policy (JRDialog
 '                  grows to fit its button row, the others are fixed)
 '   titleHeight  - measured title height, 0 for a dialog with no title
+'   subheadingHeight - measured height of an optional bold lead line above the
+'                  body, 0 for none. Its slot only exists when it is non-zero,
+'                  so a dialog without one is laid out exactly as before.
 '   bodyHeight   - measured/derived body height, 0 for none
 '   footerHeight - measured footer height, 0 for none
 '   footerInside - true to flow the footer INSIDE the panel (JRDialog's buttons),
@@ -117,11 +129,13 @@ const PANEL_MAX_HEIGHT = SCREEN_HEIGHT - (PANEL_PADDING * 2) - 60
 '                  SCROLLING body needs, since its content does not decide its
 '                  size (OverviewDialog).
 '
-' @returns {object} - { panel, title, accent, body, footer }, each { x, y, width, height },
-'                     plus `overflows` (true when a derived panel hit the ceiling)
+' @returns {object} - { panel, title, accent, subheading, body, footer }, each
+'                     { x, y, width, height }, plus `overflows` (true when a
+'                     derived panel hit the ceiling)
 function computeDialogLayout(spec as object) as object
   panelWidth = intOr(spec.panelWidth, 0)
   titleHeight = intOr(spec.titleHeight, 0)
+  subheadingHeight = intOr(spec.subheadingHeight, 0)
   bodyHeight = intOr(spec.bodyHeight, 0)
   footerHeight = intOr(spec.footerHeight, 0)
   fixedPanelHeight = intOr(spec.panelHeight, 0)
@@ -132,10 +146,12 @@ function computeDialogLayout(spec as object) as object
   ' arbitrary value knocks every edge below it off the grid. Up, not down, so a
   ' block is never given less room than it measured; the cost is at most 2px.
   titleHeight = snapToGrid(titleHeight)
+  subheadingHeight = snapToGrid(subheadingHeight)
   bodyHeight = snapToGrid(bodyHeight)
   footerHeight = snapToGrid(footerHeight)
 
   hasTitle = titleHeight > 0
+  hasSubheading = subheadingHeight > 0
   contentWidth = panelWidth - (PANEL_PADDING * 2)
 
   ' --- flow, in panel-local coordinates -------------------------------------
@@ -147,6 +163,8 @@ function computeDialogLayout(spec as object) as object
     accentY = y
     y += SEPARATOR_HEIGHT + BODY_GAP
   end if
+  subheadingY = y
+  if hasSubheading then y += subheadingHeight + SUBHEADING_GAP
   bodyY = y
 
   ' A fixed panel height means the BODY absorbs the slack, not the padding —
@@ -221,8 +239,10 @@ function computeDialogLayout(spec as object) as object
     panel: layoutRect(panelX, panelY, panelWidth, panelHeight),
     title: layoutRect(panelX + PANEL_PADDING, panelY + titleY, contentWidth, titleHeight),
     accent: layoutRect(panelX + int((panelWidth - SEPARATOR_ACCENT_WIDTH) / 2), panelY + accentY, SEPARATOR_ACCENT_WIDTH, SEPARATOR_HEIGHT),
+    subheading: layoutRect(panelX + PANEL_PADDING, panelY + subheadingY, contentWidth, subheadingHeight),
     body: layoutRect(panelX + PANEL_PADDING, panelY + bodyY, contentWidth, bodyHeight),
     hasTitle: hasTitle,
+    hasSubheading: hasSubheading,
     overflows: overflows
   }
 
