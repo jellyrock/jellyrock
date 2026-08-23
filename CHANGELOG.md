@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Retire `SceneManager`'s dialog machinery for the `JRDialog` family ([#844](https://github.com/jellyrock/jellyrock/pull/844))
 - Move `PlayerHostView` onto the standard dialogs and unify the chrome ([#842](https://github.com/jellyrock/jellyrock/pull/842))
 - Give `cell-load` rates a denominator with scripted RTA sweeps ([#838](https://github.com/jellyrock/jellyrock/pull/838))
 - Batch Home's row-size recompute across a latest-rows run ([#799](https://github.com/jellyrock/jellyrock/pull/799))
