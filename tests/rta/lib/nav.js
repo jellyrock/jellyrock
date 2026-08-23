@@ -498,6 +498,25 @@ async function openChildDetailByRowType(tileType) {
   // 35 screens passed.) The old fixed `sleep(1200)` was papering over exactly this — a
   // bounded poll replaces it, and returns as soon as the row exists rather than always
   // paying the full delay.
+  //
+  // THAT IS ONE OF TWO CAUSES, AND THE COMMENT ABOVE USED TO CLAIM IT WAS THE ONLY ONE.
+  // The same message also comes out when the nav opened the WRONG ITEM, and then no
+  // amount of waiting helps. Recurrence 2026-08-23, `seasonDetails`: rowTypes came back
+  // `[Chapter, Person]`, and `ExtrasRowList.loadParts` gives a Series the chain
+  // `Seasons -> People -> LikeThis` — a Series cannot emit a `Chapter` row at all, so the
+  // screen under the assertion was a Movie or an Episode, not the series the nav asked
+  // for. Reading `[Chapter, Person]` as "Season is still loading" costs an investigation
+  // every time, because the fix it points at (wait longer) is for the other cause.
+  //
+  // So the throw below reads the three fields that separate them outright, rather than
+  // leaving the next reader to know the row chains by heart:
+  //   type          what ItemDetails is actually showing — the whole question
+  //   contentReady  ExtrasRowList's own chain-complete marker (`markChainComplete`).
+  //                 True with the row absent means ABSENT, not late; the poll can stop
+  //                 being suspected.
+  //   parentId      which item, so it can be looked up on the server afterwards
+  // All three are one batched read on the failure path only, so the success path is
+  // unchanged — same principle as `diagnosedError` capturing device state at the throw.
   const rowsStart = Date.now();
   let targetRow = -1;
   let rowCount;
@@ -522,14 +541,23 @@ async function openChildDetailByRowType(tileType) {
     await sleep(DETAIL_ROW_POLL_MS);
   }
   if (targetRow < 0) {
+    const [shownType, contentReady, parentId] = await getActiveVals([
+      '#extrasGrid.type',
+      '#extrasGrid.contentReady',
+      '#extrasGrid.parentId',
+    ]);
+    // Named in the MESSAGE, not just the record: this one is read in a terminal
+    // before anyone opens failures.jsonl, and "wanted Season, showing Movie" is the
+    // difference between a two-minute triage and an afternoon of them.
     throw await diagnosedError(
       `detail row with tile type "${tileType}" not found after ` +
-        `${Math.round((Date.now() - rowsStart) / 1000)}s (${rowCount} row(s) present)`,
+        `${Math.round((Date.now() - rowsStart) / 1000)}s (${rowCount} row(s) present) — ` +
+        `detail is showing type="${shownType ?? '?'}", contentReady=${contentReady ?? '?'}`,
       {
         kind: FAILURE_KINDS.DETAIL_ROW_NOT_FOUND,
         label: `detail row "${tileType}"`,
         waitedMs: Date.now() - rowsStart,
-        observed: { wanted: tileType, rowTypes: seenTypes },
+        observed: { wanted: tileType, rowTypes: seenTypes, shownType, contentReady, parentId },
       },
     );
   }
