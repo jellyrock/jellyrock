@@ -1,0 +1,118 @@
+' Pure decisions for the Quick Connect poll loop.
+'
+' Quick Connect is a THREE-request flow and only one of the three is interesting
+' enough to need a decision table:
+'
+'   1. POST /QuickConnect/Initiate  -> { Secret, Code, ... }   (start)
+'   2. GET  /QuickConnect/Connect   -> polled until approved   (this file)
+'   3. POST /Users/AuthenticateWithQuickConnect -> AccessToken (finish)
+'
+' Step 2 is the one that used to be wrong, and it was wrong because the old
+' implementation could not SEE the difference it had to act on. It went through
+' the sync `getJson` helper, which returns `invalid` for anything it cannot parse
+' — so an expired secret and a code the user simply had not approved yet arrived
+' as the same value, and the dialog polled a dead code forever with no feedback.
+'
+' Measured against Jellyfin 10.11.11 (demo.jellyfin.org/stable, 2026-08-23):
+'
+'   live secret, not yet approved -> 200 { "Authenticated": false, ... }
+'   live secret, approved         -> 200 { "Authenticated": true,  ... }
+'   unknown / expired secret      -> 404 (an HTML error page through the demo's
+'                                         proxy, so the BODY is not even JSON)
+'
+' The status code is the whole signal, which is why this endpoint has to run
+' through the API pool (`res.statusCode`) rather than a JSON-only helper. These
+' functions are pure so the table above is a test rather than a comment.
+import "pkg:/source/utils/misc.bs"
+
+' Outcomes of one poll. Strings rather than an enum because they cross into a
+' component field and are read in log lines; the set is closed and asserted.
+const QC_POLL_APPROVED = "approved"
+const QC_POLL_PENDING = "pending"
+const QC_POLL_EXPIRED = "expired"
+const QC_POLL_FAILED = "failed"
+
+' How many CONSECUTIVE failed polls end the session.
+'
+' Not a deadline on the flow — a live-but-unapproved code polls indefinitely on
+' purpose, because the only thing that has to happen is the user walking to
+' another device, and the dialog's Cancel button is the way out of that. This is
+' the tolerance for a transient blip: one dropped request on Wi-Fi must not kill a
+' sign-in that is otherwise fine, and a server that has genuinely stopped
+' answering must not spin forever. At the 3s poll cadence this is ~9s of silence.
+const QC_MAX_CONSECUTIVE_FAILURES = 3
+
+' Classify one /QuickConnect/Connect response.
+'
+' `res` is the pool response AA — { ok, statusCode, json, text } — or invalid for
+' a transport failure / timeout (the `.catch` side of the promise contract), which
+' is a failure like any other non-answer.
+function quickConnectPollOutcome(res as dynamic) as string
+  if not isValid(res) then return QC_POLL_FAILED
+
+  ' 404 is the server saying it does not know this secret: expired, or already
+  ' consumed. Terminal, and the one outcome the user has to be told about.
+  if isValid(res.statusCode) and res.statusCode = 404 then return QC_POLL_EXPIRED
+
+  if not isValid(res.ok) or res.ok <> true then return QC_POLL_FAILED
+
+  ' A 2xx whose body did not parse is NOT "pending" — pending is a fact the
+  ' server stated, and this response stated nothing. Treating it as pending is
+  ' what turns a broken proxy into an infinite spinner.
+  json = res.json
+  if not isValid(json) then return QC_POLL_FAILED
+
+  if isValid(json.Authenticated) and json.Authenticated = true then return QC_POLL_APPROVED
+  return QC_POLL_PENDING
+end function
+
+' Should the dialog stop polling after this many consecutive failures?
+function quickConnectShouldGiveUp(consecutiveFailures as integer) as boolean
+  return consecutiveFailures >= QC_MAX_CONSECUTIVE_FAILURES
+end function
+
+' Pull the two fields the flow needs out of a /QuickConnect/Initiate response.
+'
+' Returns invalid unless BOTH are present and non-empty: the Secret is what every
+' later request is keyed on, and the Code is the only thing the user can act on,
+' so a response missing either cannot start a session. (The old sync path checked
+' only the Secret, and would have opened a dialog showing an empty code.)
+'
+' @param json - the parsed QuickConnectResult, or invalid
+' @returns an AA of { secret, code }, or invalid
+function quickConnectSession(json as dynamic) as dynamic
+  if not isValid(json) then return invalid
+  if not isValidAndNotEmpty(json.Secret) then return invalid
+  if not isValidAndNotEmpty(json.Code) then return invalid
+
+  return { secret: json.Secret, code: json.Code }
+end function
+
+' The code as the screen reader should SAY it: one digit at a time.
+'
+' A Quick Connect code is a string the listener has to transcribe onto another
+' device, and "523522" has two plausible pronunciations — six digits, or "five
+' hundred twenty-three thousand five hundred twenty-two". Only one of those is
+' usable, and a space-separated form has exactly that one on any engine, so this
+' is a choice about ambiguity rather than a guess about Roku's synthesiser. (The
+' unspaced rendering has not been listened to on device; it does not need to be,
+' because the spaced form is correct either way.)
+'
+' Only the SPOKEN form is spaced. The code stays intact on screen, where the user
+' is reading it rather than hearing it.
+function spokenQuickConnectCode(code as string) as string
+  if code = "" then return ""
+
+  ' roString.Mid(start, count) with a 0-based start — the established shape in
+  ' this repo (globals.bs's hex check). Deliberately NOT split(""): an empty
+  ' separator is undocumented behaviour on Roku, and this needs to be certain.
+  spoken = ""
+  for i = 0 to code.Len() - 1
+    character = code.Mid(i, 1)
+    if character.trim() <> ""
+      if spoken <> "" then spoken += " "
+      spoken += character
+    end if
+  end for
+  return spoken
+end function

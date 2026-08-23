@@ -15,7 +15,7 @@
  * (ENABLE_RTA) is independent. Prereq: an RTA-enabled build is already sideloaded (run
  * `npm run test:rta` once, or any deploy with injectTestingFiles). The runner only drives.
  */
-import { RTA_CONFIG } from '../config.js';
+import { PUBLIC_DEMO_SERVER, RTA_CONFIG } from '../config.js';
 import { authenticate, getHero, firstMovie } from '../lib/jellyfin.js';
 import { seedHome, seedHomeWithSavedServers } from '../lib/seed.js';
 import { snapshotRegistry, restoreRegistry, armRestoreOnInterrupt } from '../lib/registry.js';
@@ -46,7 +46,12 @@ const LOCALE = RTA_CONFIG.languages[0];
 // touch the home server" rule stops being something each take must remember.
 const DEMO_HOST = 'demo.jellyfin.org';
 const DEMO_SERVERS = {
-  stable: RTA_CONFIG.server, // https://demo.jellyfin.org/stable
+  // PUBLIC_DEMO_SERVER, not RTA_CONFIG.server: the functional suite's server is
+  // repointable via .env (RTA_SERVER_URL) so a contributor can run it
+  // against their own Jellyfin, and a demo recording must never follow it there.
+  // Reading the pinned constant keeps the guard below a guarantee rather than a
+  // default. https://demo.jellyfin.org/stable
+  stable: PUBLIC_DEMO_SERVER,
   unstable: {
     url: 'https://demo.jellyfin.org/unstable',
     username: 'demo',

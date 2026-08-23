@@ -1,99 +1,177 @@
+import "pkg:/source/utils/dialogLayout.bs"
+
 namespace tests
 
-  @suite("QuickConnectDialog - Node interface and waiting-phase behavior")
+  ' QuickConnectDialog after the #288 phase-4 migration: a VIEW, on the scene
+  ' overlay channel, with the standard `result` contract. It used to extend Roku's
+  ' StandardMessageDialog, live on the modal channel, spawn a QuickConnect Task
+  ' node every three seconds, and mutate itself into a second prompt — none of
+  ' which is true any more, so the old interface assertions were replaced wholesale
+  ' rather than edited.
+  @suite("QuickConnectDialog - interface, chrome and cancel contract")
   class QuickConnectDialogTests extends tests.BaseTestSuite
 
     private dialog as object
 
-    protected override function setup()
-      super.setup()
+    ' beforeEach, not setup: these tests read a laid-out node and one of them
+    ' resolves it, so a per-suite instance would hand the next test the corpse
+    ' (tests/CLAUDE.md).
+    protected override function beforeEach()
+      super.beforeEach()
       m.dialog = CreateObject("roSGNode", "QuickConnectDialog")
-      ' Stop the polling timer immediately so it cannot fire during the test
-      ' and spawn a QuickConnect Task that would reach the network.
-      timer = m.dialog.findNode("quickConnectTimer")
-      if isValid(timer)
-        timer.control = "stop"
-      end if
     end function
 
-    protected override function teardown()
+    protected override function afterEach()
       m.dialog = invalid
+      super.afterEach()
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("Interface fields")
+    @describe("interface")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("exposes quickConnectJson")
+    @it("exposes the three text fields the helper sets before presenting")
     function _()
-      m.assertTrue(m.dialog.doesExist("quickConnectJson"))
+      m.assertTrue(m.dialog.doesExist("title"))
+      m.assertTrue(m.dialog.doesExist("instruction"))
+      m.assertTrue(m.dialog.doesExist("code"))
     end function
 
-    @it("exposes isAuthenticated")
+    @it("exposes the standard dialog result contract")
     function _()
-      m.assertTrue(m.dialog.doesExist("isAuthenticated"))
+      m.assertTrue(m.dialog.doesExist("result"))
+      m.assertTrue(m.dialog.doesExist("returnFocusTo"))
     end function
 
-    @it("does not expose shouldSaveCredentials")
-    ' The save-credentials decision is now made inside the dialog itself
-    ' (post-auth Yes/No prompt), so callers must not pass it in.
+    @it("no longer carries the old handshake fields")
+    ' `quickConnectJson` / `isAuthenticated` / `close` were the bespoke protocol
+    ' main.bs observed on its port. The flow now reports through `result` like
+    ' every other dialog, and main.bs has no Quick Connect branch at all.
     function _()
-      m.assertFalse(m.dialog.doesExist("shouldSaveCredentials"))
+      m.assertFalse(m.dialog.doesExist("quickConnectJson"))
+      m.assertFalse(m.dialog.doesExist("isAuthenticated"))
+      m.assertFalse(m.dialog.doesExist("close"))
     end function
 
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("Default values")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("isAuthenticated defaults to false")
+    @it("owns no polling machinery")
+    ' The poll timer and the QuickConnect Task node it created every three
+    ' seconds are gone; UserSelect polls through the API pool instead.
     function _()
-      m.assertFalse(m.dialog.isAuthenticated)
-    end function
-
-    @it("close defaults to false")
-    function _()
-      m.assertFalse(m.dialog.close)
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("Polling timer")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("has quickConnectTimer child")
-    function _()
-      m.assertNotInvalid(m.dialog.findNode("quickConnectTimer"))
-    end function
-
-    @it("quickConnectTimer fires every 3 seconds")
-    function _()
-      timer = m.dialog.findNode("quickConnectTimer")
-      ' Cast to Integer — Roku returns the duration field as Double here
-      ' (not Float as the SceneGraph docs imply), and Rooibos's assertEqual
-      ' is type-strict between Float/Double.
-      m.assertEqual(int(timer.duration), 3)
-    end function
-
-    @it("quickConnectTimer does not auto-repeat")
-    ' The dialog re-arms the timer manually after each poll so it can stop
-    ' polling on auth success or cancel without racing the next tick.
-    function _()
-      timer = m.dialog.findNode("quickConnectTimer")
-      m.assertFalse(timer.repeat)
+      m.assertInvalid(m.dialog.findNode("quickConnectTimer"))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("Waiting-phase Cancel button")
+    @describe("chrome and layout")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("closes the dialog without authenticating")
-    ' init() leaves the dialog in waiting phase. The only button shown then
-    ' is Cancel (index 0); pressing it must close the dialog and leave
-    ' isAuthenticated unset so showScenes treats it as a cancel, not a login.
+    @it("takes its chrome from JRDialogPanel rather than its own nodes")
     function _()
-      m.dialog.buttonSelected = 0
+      chrome = m.dialog.findNode("chrome")
+      m.assertNotInvalid(chrome)
+      m.assertEqual(chrome.subtype(), "JRDialogPanel")
+    end function
 
-      m.assertTrue(m.dialog.close)
-      m.assertFalse(m.dialog.isAuthenticated)
+    ' THE GATE ON THE PANEL WIDTH.
+    '
+    ' This dialog picks 762 to be indistinguishable from a standard alert at a
+    ' glance, and JRDialog picks 762 for the 720p grid — two file-scoped constants
+    ' with no compiler relationship, so either could move without the other. Assert
+    ' the RENDERED panels against each other rather than either literal, so the
+    ' claim "it looks like an alert" is a red/green gate instead of an opinion.
+    @it("renders a panel the same width as JRDialog's")
+    function _()
+      standard = CreateObject("roSGNode", "JRDialog")
+      mine = m.dialog.findNode("panelBackground")
+      theirs = standard.findNode("panelBackground")
+
+      m.assertNotInvalid(mine)
+      m.assertNotInvalid(theirs)
+      m.assertTrue(theirs.width > 0, "JRDialog's panel has no width; this comparison would assert nothing")
+      m.assertEqual(int(mine.width), int(theirs.width))
+    end function
+
+    @it("keeps both vertical panel edges on the 720p output grid")
+    ' A width off the 6px scale puts the centred panel's edges between output
+    ' rows, which reads as a soft edge on a TV. Same check OverviewDialog carries.
+    function _()
+      panel = m.dialog.findNode("panelBackground")
+      left = int(panel.translation[0])
+      right = left + int(panel.width)
+      m.assertEqual(left mod 3, 0, "panel left edge off the output grid at x=" + left.toStr())
+      m.assertEqual(right mod 3, 0, "panel right edge off the output grid at x=" + right.toStr())
+    end function
+
+    @it("shows the code in its own label, not folded into a message")
+    ' The code is a string the user reads off a TV and types elsewhere, which is
+    ' the entire reason this component exists instead of a showAlertDialog.
+    function _()
+      m.dialog.code = "523522"
+      label = m.dialog.findNode("quickConnectCode")
+      m.assertNotInvalid(label)
+      m.assertEqual(label.text, "523522")
+    end function
+
+    @it("puts the instruction in its own label above the code")
+    function _()
+      m.dialog.instruction = "Enter this code"
+      m.assertEqual(m.dialog.findNode("instructionText").text, "Enter this code")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("footer")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("offers exactly one button")
+    ' One focusable class of thing, per the dialog-family convention — and one
+    ' button means no left/right navigation to get wrong (contrast
+    ' jrdialog-stacked-buttons-no-vertical-keys).
+    function _()
+      m.assertEqual(m.dialog.findNode("buttonRow").getChildCount(), 1)
+    end function
+
+    @it("labels that button Cancel")
+    function _()
+      button = m.dialog.findNode("buttonRow").getChild(0)
+      m.assertEqual(button.text, translate(translationKeys.ButtonCancel))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("cancelDialog — third-party dismissal")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("resolves cancelled and takes itself off the scene")
+    ' presentOverlayDialog supersedes an incumbent through this same entry point,
+    ' and a long-lived dialog like this one is the likeliest incumbent there is —
+    ' so it has to deliver a result its owner can act on, not just disappear.
+    function _()
+      scene = m.top.getScene()
+      m.dialog.code = "523522"
+      scene.appendChild(m.dialog)
+
+      m.dialog.callFunc("cancelDialog")
+
+      result = m.dialog.result
+      m.assertNotInvalid(result)
+      m.assertTrue(result.cancelled)
+      m.assertFalse(result.confirmed)
+      m.assertEqual(result.buttonIndex, -1)
+      m.assertInvalid(m.dialog.getParent())
+    end function
+
+    @it("is once-only, like every other route out of the dialog")
+    ' A supersede landing on a dialog the user just dismissed must not overwrite
+    ' the first result. (Same shape and same limits as JRDialog's own once-only
+    ' test: it pins the surviving VALUE, not the observer call count, which a
+    ' synchronous spec cannot see.)
+    function _()
+      scene = m.top.getScene()
+      scene.appendChild(m.dialog)
+
+      m.dialog.callFunc("cancelDialog")
+      m.dialog.callFunc("cancelDialog")
+
+      m.assertTrue(m.dialog.result.cancelled)
+      m.assertInvalid(m.dialog.getParent())
     end function
 
   end class

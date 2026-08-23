@@ -1,0 +1,177 @@
+namespace tests
+
+  ' The decision table in source/utils/quickConnect.bs, asserted against the
+  ' behaviour MEASURED on Jellyfin 10.11.11 (demo.jellyfin.org/stable, 2026-08-23)
+  ' rather than against what the endpoint is assumed to do:
+  '
+  '   live secret, not yet approved -> 200 { "Authenticated": false }
+  '   live secret, approved         -> 200 { "Authenticated": true  }
+  '   unknown / expired secret      -> 404, body not even JSON
+  '
+  ' The 404 is the case the old sync implementation could not see, and the reason
+  ' an expired code used to spin forever behind a dialog that looked healthy.
+  @suite("quickConnect - poll outcomes, give-up policy, session parsing, spoken code")
+  class QuickConnectTests extends tests.BaseTestSuite
+
+    ' Shape of one pool response AA, as apiPromise hands it to a .then callback.
+    private function poolResponse(statusCode as integer, json as dynamic) as object
+      return {
+        requestId: "quickConnectPoll-1",
+        ok: statusCode >= 200 and statusCode < 300,
+        statusCode: statusCode,
+        json: json,
+        text: ""
+      }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("quickConnectPollOutcome")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reports approved for a 200 whose Authenticated flag is true")
+    function _()
+      res = m.poolResponse(200, { Authenticated: true, Secret: "ABC", Code: "123456" })
+      m.assertEqual(quickConnectPollOutcome(res), QC_POLL_APPROVED)
+    end function
+
+    @it("reports pending for a 200 whose Authenticated flag is false")
+    function _()
+      res = m.poolResponse(200, { Authenticated: false, Secret: "ABC", Code: "123456" })
+      m.assertEqual(quickConnectPollOutcome(res), QC_POLL_PENDING)
+    end function
+
+    @it("reports pending for a 200 with no Authenticated flag at all")
+    ' A body that parsed but omitted the flag is a server that has not said yes.
+    function _()
+      res = m.poolResponse(200, { Secret: "ABC" })
+      m.assertEqual(quickConnectPollOutcome(res), QC_POLL_PENDING)
+    end function
+
+    @it("reports EXPIRED for a 404 - an unknown or expired secret")
+    ' The whole point of routing this endpoint through the pool: the status code
+    ' is the only thing separating a dead code from one nobody approved yet.
+    function _()
+      res = m.poolResponse(404, invalid)
+      m.assertEqual(quickConnectPollOutcome(res), QC_POLL_EXPIRED)
+    end function
+
+    @it("reports failed for a 401")
+    function _()
+      m.assertEqual(quickConnectPollOutcome(m.poolResponse(401, invalid)), QC_POLL_FAILED)
+    end function
+
+    @it("reports failed for a 500")
+    function _()
+      m.assertEqual(quickConnectPollOutcome(m.poolResponse(500, invalid)), QC_POLL_FAILED)
+    end function
+
+    @it("reports failed for a 200 whose body did not parse")
+    ' NOT pending: pending is a fact the server stated, and this response stated
+    ' nothing. Calling it pending is what turns a broken proxy into a spinner
+    ' that never resolves.
+    function _()
+      m.assertEqual(quickConnectPollOutcome(m.poolResponse(200, invalid)), QC_POLL_FAILED)
+    end function
+
+    @it("reports failed for invalid - the transport-failure / timeout path")
+    function _()
+      m.assertEqual(quickConnectPollOutcome(invalid), QC_POLL_FAILED)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("quickConnectShouldGiveUp")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("tolerates a single failure")
+    ' One dropped request on Wi-Fi must not kill a sign-in that is otherwise fine.
+    function _()
+      m.assertFalse(quickConnectShouldGiveUp(1))
+    end function
+
+    @it("gives up at the cap")
+    function _()
+      m.assertTrue(quickConnectShouldGiveUp(QC_MAX_CONSECUTIVE_FAILURES))
+    end function
+
+    @it("gives up past the cap")
+    function _()
+      m.assertTrue(quickConnectShouldGiveUp(QC_MAX_CONSECUTIVE_FAILURES + 1))
+    end function
+
+    @it("does not give up at zero")
+    function _()
+      m.assertFalse(quickConnectShouldGiveUp(0))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("quickConnectSession")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("extracts the secret and the code")
+    function _()
+      session = quickConnectSession({ Authenticated: false, Secret: "12B296D8", Code: "523522" })
+      m.assertNotInvalid(session)
+      m.assertEqual(session.secret, "12B296D8")
+      m.assertEqual(session.code, "523522")
+    end function
+
+    @it("rejects a response with no Code")
+    ' The old sync path checked only the Secret, which would have opened a dialog
+    ' whose whole purpose - showing the user something to type - was blank.
+    function _()
+      m.assertInvalid(quickConnectSession({ Secret: "12B296D8" }))
+    end function
+
+    @it("rejects a response with no Secret")
+    function _()
+      m.assertInvalid(quickConnectSession({ Code: "523522" }))
+    end function
+
+    @it("rejects an empty Code")
+    function _()
+      m.assertInvalid(quickConnectSession({ Secret: "12B296D8", Code: "" }))
+    end function
+
+    @it("rejects invalid")
+    function _()
+      m.assertInvalid(quickConnectSession(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("spokenQuickConnectCode")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("spaces the digits so the reader says them one at a time")
+    ' "523522" has two plausible pronunciations and only one of them is usable by
+    ' a listener transcribing it onto another device.
+    function _()
+      m.assertEqual(spokenQuickConnectCode("523522"), "5 2 3 5 2 2")
+    end function
+
+    @it("handles a single character")
+    function _()
+      m.assertEqual(spokenQuickConnectCode("7"), "7")
+    end function
+
+    @it("returns empty for an empty code")
+    function _()
+      m.assertEqual(spokenQuickConnectCode(""), "")
+    end function
+
+    @it("does not emit a leading or trailing space")
+    function _()
+      spoken = spokenQuickConnectCode("42")
+      m.assertEqual(spoken, "4 2")
+      m.assertEqual(spoken.trim(), spoken)
+    end function
+
+    @it("carries alphanumeric codes through unchanged apart from the spacing")
+    ' Jellyfin issues digits today, but the field is a string in the spec and the
+    ' function has no business assuming otherwise.
+    function _()
+      m.assertEqual(spokenQuickConnectCode("A1B2"), "A 1 B 2")
+    end function
+
+  end class
+
+end namespace

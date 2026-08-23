@@ -19,9 +19,10 @@
 ' From MAIN THREAD code (main.bs), omit onResult and observe with your port
 ' instead: dialog.observeField("result", m.port).
 '
-' JRDialog / JRListDialog are scene-appended overlays (OverviewDialog mechanics);
-' showKeyboardDialog uses Roku's modal channel (m.scene.dialog) because it wraps
-' the OS keyboard. Callers don't need to care — the result contract is identical.
+' JRDialog / JRListDialog / QuickConnectDialog are scene-appended overlays
+' (OverviewDialog mechanics); showKeyboardDialog uses Roku's modal channel
+' (m.scene.dialog) because it wraps the OS keyboard. Callers don't need to care —
+' the result contract is identical.
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/dialogNarration.bs"
@@ -112,6 +113,27 @@ function showInfoDialog(title as string, overview as string, tagline = "" as str
   ' OverviewDialog has no `result` field — it self-closes on OK/back, so there is
   ' nothing to observe. Present it through the same path as the other overlays.
   return presentOverlayDialog(dialog, "", returnFocusTo)
+end function
+
+' Show a Quick Connect code and wait for the user to approve it elsewhere.
+'
+' A VIEW ONLY: it displays `code` with a Cancel button and resolves cancelled if
+' the user backs out. It does not poll and does not sign anyone in — the caller
+' owns the flow (initiate, poll, exchange) because that is a chain of
+' `fetchAsync` promises and the promise registry lives on the CALLER's `m`.
+' UserSelect.startQuickConnect is the reference and the only caller.
+'
+' The caller closes it on the success path with abandonDialog(): approval comes
+' from the server, not from the user, so there is nothing to deliver back through
+' `result`.
+function showQuickConnectDialog(title as string, instruction as string, code as string, onResult = "" as string) as object
+  dialog = createObject("roSGNode", "QuickConnectDialog")
+  ' Order matters only in that ALL of them are set before presenting — this
+  ' dialog lays out once and never re-flows (see its XML field comments).
+  dialog.title = title
+  dialog.instruction = instruction
+  dialog.code = code
+  return presentOverlayDialog(dialog, onResult)
 end function
 
 ' Text entry via the OS keyboard (voice-capable, certification-compliant).
@@ -248,12 +270,12 @@ function presentOverlayDialog(dialog as object, onResult as string, returnFocusT
     ' Reusing the node we just found rather than calling cancelOpenDialog():
     ' that would re-run findNode against a render-thread-owned tree, and on the
     ' main-thread path every crossing is a rendezvous. It would also reach the
-    ' MODAL channel, which must not be superseded. That channel has THREE
-    ' writers and each is a different reason not to touch it: a keyboard dialog
-    ' (showKeyboardDialog) would lose what the user typed; QuickConnectDialog
-    ' owns its own close/isAuthenticated handshake; and the player's error
+    ' MODAL channel, which must not be superseded. That channel has TWO writers
+    ' and each is a different reason not to touch it: a keyboard dialog
+    ' (showKeyboardDialog) would lose what the user typed, and the player's error
     ' dialog (VideoPlayerView.showPlaybackErrorDialog) NAVIGATES on close, so
-    ' superseding it would fire a goBack from in here. See
+    ' superseding it would fire a goBack from in here. (It was THREE until
+    ' QuickConnectDialog moved onto this channel and joined the supersede.) See
     ' docs/architecture/tech-debt.md#dialog-channels-unarbitrated.
     incumbent.callFunc("cancelDialog")
   end if

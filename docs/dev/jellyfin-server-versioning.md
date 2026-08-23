@@ -139,21 +139,26 @@ Quick Connect.
 
 **Quick Connect:**
 
-The two QC dispatches operate on different version boundaries — the SDK
-handles them separately:
+The two QC dispatches operate on different version boundaries — the request
+builders handle them separately:
 
 | Concern | 10.7.x | 10.8.x | 10.9.0+ | Boundary |
 | ------- | ------ | ------ | ------- | -------- |
 | `AuthenticateWithQuickConnect` body | `{ "Token": secret }` | `{ "Secret": secret }` | `{ "Secret": secret }` | `versionChecker(version, "10.8.0")` |
-| `/QuickConnect/Initiate` HTTP method | `GET` | `GET` | `POST` | `getApiVersionFromGlobal() >= 2` |
+| `/QuickConnect/Initiate` HTTP method | `GET` | `GET` | `POST` | `m.getApiVersion() >= 2` |
 | `/QuickConnect/Connect` | `GET ?secret=` | same | same | n/a |
-| `/QuickConnect/Enabled` (gating probe) | missing | present | present | fail-open in `QuickConnectEnabledTask` |
+| `/QuickConnect/Enabled` (gating probe) | missing | present | present | fail-open in `UserSelect.probeQuickConnectAvailability` |
 
-`source/api/sdk.bs` dispatches both at call time, so callers
-(`source/api/userAuth.bs`, `components/quickConnect/*`) are version-agnostic.
-The Token→Secret split happens at 10.8.0 (a *finer* boundary than the
-`apiVersion` 1→2 split at 10.9.0), so it uses raw `versionChecker` rather than
-the `apiVersion` integer.
+`ApiClient`'s `BuildInitiateQuickConnectRequest` /
+`BuildAuthenticateWithQuickConnectRequest` dispatch at build time, so the caller
+(`components/login/UserSelect.bs`) is version-agnostic. The Token→Secret split
+happens at 10.8.0 (a *finer* boundary than the `apiVersion` 1→2 split at
+10.9.0), so it uses raw `versionChecker` rather than the `apiVersion` integer.
+
+All four endpoints run through the API pool. That matters for `/Connect` beyond
+tidiness: an unknown or expired secret answers **404** (measured against
+10.11.11), and the status code is the only signal separating it from a code
+nobody has approved yet — a helper that reads only the body sees `invalid` for both.
 
 Username/password authentication works identically across all versions.
 

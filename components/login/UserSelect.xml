@@ -9,6 +9,11 @@
       <TextButton id="quickConnect" minWidth="300" text="" />
       <TextButton id="manualLoginButton" minWidth="300" text="" />
     </JRButtonGroup>
+
+    <!-- Quick Connect approval poll. `repeat` is false on purpose: the handler
+         re-arms it only once a poll has SETTLED, so a slow response can never
+         overlap the next request. -->
+    <Timer id="quickConnectTimer" duration="3" repeat="false" />
   </children>
   <interface>
     <field id="itemSelected" type="string" alwaysNotify="true" />
@@ -17,5 +22,14 @@
          view emits the "userSelected" intent. -->
     <field id="selectedUserId" type="string" />
     <field id="selectedUserName" type="string" />
+    <!-- Quick Connect hand-off, read by the loginRouter coordinator (via
+         getActiveView) when this view emits "quickConnectAuthenticated". The
+         AuthenticationResult carries the AccessToken and the full UserDto, so the
+         coordinator needs no further request to establish the session.
+         `saveCredentials` mirrors LoginScene's field of the same name — the two
+         auth paths answer the same question and the coordinator reads it the same
+         way. -->
+    <field id="quickConnectAuth" type="assocarray" />
+    <field id="saveCredentials" type="boolean" value="false" />
   </interface>
 </component>

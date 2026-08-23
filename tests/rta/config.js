@@ -3,21 +3,68 @@
  * (tests/rta/specs) and the store-screenshot orchestrator
  * (scripts/capture-screenshots.js). Change a value once here and both paths pick
  * it up. The screenshot-only `outDir` lives in capture-screenshots.js.
+ *
+ * `import 'dotenv/config'` here rather than relying on an importer: this module
+ * reads the environment at evaluation time, and several entry points import it
+ * (rta-restore.js, capture-screenshots.js, measure.js) without loading .env
+ * first. Loading it here makes the overrides work regardless of import order.
  */
+import 'dotenv/config';
+
+/**
+ * The public Jellyfin demo, pinned and NEVER overridable.
+ *
+ * Separate from `RTA_CONFIG.server` on purpose. The video-capture demos
+ * (`tests/rta/demos/run.mjs`) refuse to run against anything that is not this
+ * host — that privacy guard is what stops a marketing recording from touching
+ * someone's real library, and an env var that could move it would remove the
+ * guarantee it exists to make.
+ */
+export const PUBLIC_DEMO_SERVER = Object.freeze({
+  url: 'https://demo.jellyfin.org/stable',
+  username: 'demo',
+  password: '',
+});
+
+/**
+ * The Jellyfin server the FUNCTIONAL tests drive against.
+ *
+ * Defaults to the public demo, and can be repointed with
+ * `RTA_SERVER_URL` / `RTA_SERVER_USER` / `RTA_SERVER_PASS` in `.env`
+ * (see `.env.example`). The public demo is shared infrastructure that resets
+ * hourly and will not be here forever; when JellyRock stands up its own demo
+ * server, that is a one-line `.env` change rather than a code edit — and in the
+ * meantime a contributor can point the suite at a local server without dirtying
+ * a tracked file.
+ *
+ * Content-dependent expectations (`heroMovie`, `trickplayMovie`, `searchQuery`)
+ * are NOT derived from this and still describe the public demo's library, so a
+ * repointed server needs those retuned too. The suite tells you which ones by
+ * failing on the fixture, not silently.
+ */
+const server = Object.freeze({
+  // `RTA_SERVER_*` rather than a second scheme of this branch's own: main shipped
+  // these names independently while this branch was in flight, and two competing
+  // override schemes for one value is worse than either. What this branch keeps is
+  // the part main's version lacks — the dotenv import above (so the variables work
+  // regardless of which entry point imports this first), `.env.example` documenting
+  // them, and `PUBLIC_DEMO_SERVER` below keeping the demos pinned.
+  //
+  // `??` throughout, not `||`: an empty password is the demo's REAL password, so it
+  // has to survive as an override rather than falling back.
+  url: process.env.RTA_SERVER_URL ?? PUBLIC_DEMO_SERVER.url,
+  username: process.env.RTA_SERVER_USER ?? PUBLIC_DEMO_SERVER.username,
+  password: process.env.RTA_SERVER_PASS ?? PUBLIC_DEMO_SERVER.password,
+});
+
 export const RTA_CONFIG = {
-  // Demo Jellyfin server the screens are driven against. License-clear content
-  // only (the screenshots ship in a public store listing). Easy to repoint.
-  // Overridable by env so a one-off measurement can run against a RICHER fixture
-  // without editing this shared default (the screenshot orchestrator reads it too,
-  // and a checked-in repoint would silently change what ships in the store listing).
+  // Jellyfin server the screens are driven against. License-clear content only
+  // (the screenshots ship in a public store listing). Repoint via `.env` — see
+  // `server` above, which reads the same `RTA_SERVER_*` variables main introduced.
+  //
   // The demo server is a CONTROL, not a substitute: ~3 libraries against a real
   // server's ~10, so anything that scales with library count reads LOW on it.
-  //   RTA_SERVER_URL=http://host:8096 RTA_SERVER_USER=me RTA_SERVER_PASS= npm run test:rta
-  server: {
-    url: process.env.RTA_SERVER_URL ?? 'https://demo.jellyfin.org/stable',
-    username: process.env.RTA_SERVER_USER ?? 'demo',
-    password: process.env.RTA_SERVER_PASS ?? '',
-  },
+  server,
   // The movie used for movieDetails + osd. Reached in the Movies grid by its
   // SortName tile index, looked up at runtime (see findMovie), so this name is
   // the only knob to change.

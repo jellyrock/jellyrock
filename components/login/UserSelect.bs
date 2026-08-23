@@ -3,7 +3,9 @@ import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/quickConnect.bs"
 import "pkg:/source/utils/translate.bs"
 
 sub init()
@@ -37,6 +39,11 @@ sub init()
   if m.global.server.isQuickConnectEnabled = false
     removeQuickConnectButton("server reports Quick Connect disabled (cached)")
   end if
+
+  ' Quick Connect poll cadence. Re-armed by hand after each poll settles rather
+  ' than repeating, so a slow response can never overlap the next request.
+  m.quickConnectTimer = m.top.findNode("quickConnectTimer")
+  m.quickConnectTimer.observeField("fire", "pollQuickConnect")
 
   m.buttons.callFunc("center")
 end sub
@@ -129,8 +136,240 @@ sub onButtonSelected(event as object)
   if btn.id = "manualLoginButton"
     m.top.getScene().preLoginIntent = "manualLogin"
   else if btn.id = "quickConnect"
-    m.top.getScene().preLoginIntent = "quickConnectRequested"
+    ' NOT an intent: Quick Connect's first three steps are network calls with no
+    ' navigation between them, so they belong on the render thread where
+    ' fetchAsync works. The coordinator is handed the finished session at the
+    ' end (quickConnectAuthenticated), which is the only step that needs it.
+    startQuickConnect()
   end if
+end sub
+
+' ===========================================================================
+' Quick Connect
+'
+' The whole render-thread half of the flow lives here, because all three of its
+' requests are `fetchAsync` promises and the promise registry lives on the `m` of
+' the component that called fetchAsync (see source/api/apiPromise.bs). Only the
+' last step — turning an AuthenticationResult into a signed-in session — needs
+' the main thread, and that is handed to the loginRouter coordinator as the
+' `quickConnectAuthenticated` intent.
+'
+'   press  -> startQuickConnect      POST /QuickConnect/Initiate
+'   wait   -> pollQuickConnect       GET  /QuickConnect/Connect   (every 3s)
+'   approve-> exchangeQuickConnect   POST /Users/AuthenticateWithQuickConnect
+'   finish -> askToSaveCredentials   -> intent -> loginRouter.user.Login()
+'
+' This replaces a QuickConnect Task NODE that was created fresh on every poll —
+' roughly one task thread every three seconds for as long as the user took to
+' walk to their phone, which is the fan-out shape source/api/CLAUDE.md forbids
+' and the &h29 "too many task threads" class from #728. It also ran user.Login()
+' on that task thread, which no other login path does.
+' ===========================================================================
+
+' Quick Connect pressed. Start a request and open the dialog once we have a code.
+sub startQuickConnect()
+  req = GetApi().BuildInitiateQuickConnectRequest()
+  if not isValid(req)
+    m.log.warn("Quick Connect could not start - server URL not configured")
+    showQuickConnectError(translationKeys.LabelQuickConnectNotAvailable)
+    return
+  end if
+
+  ' A blocking spinner, briefly: the user pressed a button and nothing can happen
+  ' until the server issues a code. This used to be a SYNCHRONOUS call on the
+  ' main thread (loginRouter.onQuickConnectRequested), which froze the whole
+  ' event loop — remote input included — for up to timeouts.HTTP_MS (10s) on an
+  ' unreachable server.
+  startLoadingSpinner()
+  m.log.info("Starting Quick Connect", "method:", req.method)
+
+  promises.chain(fetchAsync(req, "quickConnectInitiate")).then(sub(res as object)
+    stopLoadingSpinner()
+    if not res.ok
+      ' 401 here is the server saying Quick Connect is off, and on a 10.7 server
+      ' the endpoint is absent entirely. Both are "not available", not an error
+      ' the user can act on differently.
+      m.log.warn("Quick Connect initiate refused", "statusCode:", res.statusCode)
+      showQuickConnectError(translationKeys.LabelQuickConnectNotAvailable)
+      return
+    end if
+
+    session = quickConnectSession(res.json)
+    if not isValid(session)
+      m.log.warn("Quick Connect initiate returned no usable secret/code")
+      showQuickConnectError(translationKeys.LabelQuickConnectNotAvailable)
+      return
+    end if
+
+    openQuickConnectDialog(session)
+  end sub).catch(sub(err as object)
+    stopLoadingSpinner()
+    m.log.warn("Quick Connect initiate failed", err.reason)
+    showQuickConnectError(translationKeys.ErrorQuickConnectUnreachable)
+  end sub)
+end sub
+
+' Show the code and start polling for approval.
+sub openQuickConnectDialog(session as object)
+  m.quickConnectSecret = session.secret
+  m.quickConnectFailures = 0
+  m.quickConnectPolls = 0
+
+  m.quickConnectDialog = showQuickConnectDialog(translate(translationKeys.ButtonQuickConnect), translate(translationKeys.MessageQuickConnectEnterCode), session.code, "onQuickConnectDialogResult")
+  m.quickConnectTimer.control = "start"
+end sub
+
+' Ask the server whether the code has been approved yet. Fires on the timer, so
+' the request is never in flight twice.
+sub pollQuickConnect()
+  if not isValidAndNotEmpty(m.quickConnectSecret) then return
+
+  req = GetApi().BuildConnectQuickConnectRequest(m.quickConnectSecret)
+  if not isValid(req)
+    endQuickConnect()
+    showQuickConnectError(translationKeys.ErrorQuickConnectUnreachable)
+    return
+  end if
+
+  ' A fresh requestId per poll. They are never concurrent — the timer is re-armed
+  ' only after a poll settles — but reusing one across requests is the pool's
+  ' documented foot-gun, and a numbered id says which poll a log line is about.
+  m.quickConnectPolls++
+  promises.chain(fetchAsync(req, "quickConnectPoll-" + stri(m.quickConnectPolls).trim())).then(sub(res as object)
+    handleQuickConnectPoll(quickConnectPollOutcome(res))
+  end sub).catch(sub(err as object)
+    m.log.warn("Quick Connect poll failed", err.reason)
+    handleQuickConnectPoll(QC_POLL_FAILED)
+  end sub)
+end sub
+
+' Act on one poll outcome. The classification itself is pure and unit-tested —
+' see quickConnectPollOutcome in source/utils/quickConnect.bs for the measured
+' server behaviour behind it.
+sub handleQuickConnectPoll(outcome as string)
+  ' Cancelled while this poll was in flight: the dialog is already gone.
+  if not isValidAndNotEmpty(m.quickConnectSecret) then return
+
+  if outcome = QC_POLL_APPROVED
+    m.log.info("Quick Connect approved on server - exchanging secret for a token")
+    exchangeQuickConnect()
+    return
+  end if
+
+  if outcome = QC_POLL_EXPIRED
+    ' The one outcome the old implementation could not see. It arrives as a 404,
+    ' which the sync JSON path turned into "not approved yet" - so an expired
+    ' code polled forever behind a dialog the user had no reason to distrust.
+    m.log.info("Quick Connect code expired")
+    endQuickConnect()
+    showQuickConnectError(translationKeys.ErrorQuickConnectCodeExpired)
+    return
+  end if
+
+  if outcome = QC_POLL_FAILED
+    m.quickConnectFailures++
+    if quickConnectShouldGiveUp(m.quickConnectFailures)
+      m.log.warn("Quick Connect gave up after consecutive failures", m.quickConnectFailures)
+      endQuickConnect()
+      showQuickConnectError(translationKeys.ErrorQuickConnectUnreachable)
+      return
+    end if
+  else
+    ' A clean "not yet" clears the tolerance — the cap is for a run of failures,
+    ' not for a total across a session that is otherwise healthy.
+    m.quickConnectFailures = 0
+  end if
+
+  m.quickConnectTimer.control = "start"
+end sub
+
+' Approved: trade the secret for an access token.
+sub exchangeQuickConnect()
+  secret = m.quickConnectSecret
+  ' Stop polling and take the dialog down BEFORE the exchange: the code on it is
+  ' spent, and abandonDialog delivers no result, which is right here — the user
+  ' did not dismiss it, so onQuickConnectDialogResult must not run.
+  m.quickConnectTimer.control = "stop"
+  abandonDialog(m.quickConnectDialog)
+  m.quickConnectDialog = invalid
+
+  req = GetApi().BuildAuthenticateWithQuickConnectRequest(secret)
+  m.quickConnectSecret = ""
+  if not isValid(req)
+    showQuickConnectError(translationKeys.ErrorQuickConnectUnreachable)
+    return
+  end if
+
+  startLoadingSpinner()
+  promises.chain(fetchAsync(req, "quickConnectAuthenticate")).then(sub(res as object)
+    stopLoadingSpinner()
+    if not res.ok or not isValid(res.json)
+      ' 404 here means the server no longer holds the approval (it is consumed on
+      ' first use, and expires) - measured against 10.11.11, where an unapproved
+      ' secret answered 404 rather than 401. Nothing to retry with.
+      m.log.warn("Quick Connect token exchange refused", "statusCode:", res.statusCode)
+      showQuickConnectError(translationKeys.ErrorQuickConnectCodeExpired)
+      return
+    end if
+
+    m.quickConnectAuthResult = res.json
+    askToSaveQuickConnectCredentials()
+  end sub).catch(sub(err as object)
+    stopLoadingSpinner()
+    m.log.warn("Quick Connect token exchange failed", err.reason)
+    showQuickConnectError(translationKeys.ErrorQuickConnectUnreachable)
+  end sub)
+end sub
+
+' Signed in, but nothing is persisted yet. Ask the same question LoginScene asks
+' with its "save credentials" checkbox, in the standard confirm dialog — the app
+' is holding a live session either way, so a cancel is a legitimate "no", not a
+' failure.
+sub askToSaveQuickConnectCredentials()
+  m.saveCredentialsDialog = showConfirmDialog(translate(translationKeys.ButtonQuickConnect), translate(translationKeys.MessageQuickConnectAuthenticatedSaveCredentials), "onSaveQuickConnectCredentialsResult")
+end sub
+
+sub onSaveQuickConnectCredentialsResult()
+  dialog = m.saveCredentialsDialog
+  m.saveCredentialsDialog = invalid
+  auth = m.quickConnectAuthResult
+  m.quickConnectAuthResult = invalid
+  if not isValid(auth) then return
+
+  ' Back (cancelled) means the same thing as No: sign in, persist nothing. The
+  ' session is already live either way — this question is only about the registry.
+  m.top.saveCredentials = isValid(dialog) and isValid(dialog.result) and dialog.result.confirmed = true
+  m.top.quickConnectAuth = auth
+  m.log.info("Quick Connect complete", "saveCredentials:", m.top.saveCredentials)
+  m.top.getScene().preLoginIntent = "quickConnectAuthenticated"
+end sub
+
+' The user dismissed the code dialog. The only outcome it can produce on its own.
+sub onQuickConnectDialogResult()
+  m.log.info("Quick Connect cancelled by the user")
+  m.quickConnectDialog = invalid
+  endQuickConnect()
+end sub
+
+' Stop polling and drop the dialog + session state. Safe to call repeatedly, and
+' safe to call with no flow in progress.
+sub endQuickConnect()
+  if isValid(m.quickConnectTimer) then m.quickConnectTimer.control = "stop"
+  m.quickConnectSecret = ""
+  m.quickConnectFailures = 0
+  ' abandonDialog, not cancelOpenDialog: we ARE the owner, and a result delivered
+  ' back into this scope would re-enter the teardown we are in the middle of.
+  abandonDialog(m.quickConnectDialog)
+  m.quickConnectDialog = invalid
+end sub
+
+' Report a Quick Connect failure in the standard alert dialog.
+'
+' Presented AFTER endQuickConnect has taken the code dialog down, never over it:
+' presentOverlayDialog supersedes an incumbent overlay, so showing the alert first
+' would cancel the code dialog and re-enter onQuickConnectDialogResult.
+sub showQuickConnectError(messageKey as string)
+  showAlertDialog(translate(translationKeys.ButtonQuickConnect), translate(messageKey))
 end sub
 
 sub redraw()
@@ -283,12 +522,23 @@ sub onDestroy()
   ' (fetchAsync); any in-flight request is cancelled by the abandonApiPromises()
   ' call the auto-abandon BSC plugin injects as the first statement of onDestroy.
 
+  ' Any Quick Connect flow in progress: stop the poll timer and take the code
+  ' dialog down. Overlay dialogs are appended to the SCENE, not to this view, so
+  ' one left open here would strand a modal over whatever screen replaces us —
+  ' with a scoped observer pointing into a torn-down scope.
+  endQuickConnect()
+  abandonDialog(m.saveCredentialsDialog)
+  m.saveCredentialsDialog = invalid
+  m.quickConnectAuthResult = invalid
+
   ' Release the selection + button observers.
   if isValid(m.userRow) then m.userRow.unobserveField("userSelected")
   if isValid(m.buttons) then m.buttons.unobserveField("buttonSelected")
+  if isValid(m.quickConnectTimer) then m.quickConnectTimer.unobserveField("fire")
 
   ' Clear node references
   m.userRow = invalid
   m.quickConnectButton = invalid
+  m.quickConnectTimer = invalid
   m.buttons = invalid
 end sub
