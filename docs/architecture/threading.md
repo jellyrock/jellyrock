@@ -4,7 +4,7 @@ related-files:
   - source/main.bs
   - components/JRScene.bs
   - source/utils/tasks.bs
-last-reviewed: 2026-08-09
+last-reviewed: 2026-08-23
 ---
 
 # Threading
@@ -56,6 +56,36 @@ these can differ across hardware.
 | `CreateObject("roFontRegistry")` + `GetDefaultFont` + `GetOneLineWidth` | Render | **Works.** Registry valid, font valid, returned a sane width | Streaming Stick 4K, Roku OS 15.2.4, 2026-08-09 |
 | `CreateObject("roSGNode", "Timer")` | Main, **before** `m.screen.show()` | **Fails** — returns `Invalid`. This is why the log manager can't be stood up in `main.bs`; see [logging.md](logging.md) | Streaming Stick 4K, Roku OS 15.2.4 |
 | Nested `wait(0, port)` message-port loop | Render | **Hard-deadlocks the app.** The basis for the per-instance `result` field in the dialog system rather than a synchronous return; see [navigation.md](navigation.md#the-standard-dialog-system-sourceutilsdialogsbs) | Evidence on #287 |
+| Field read on a node the READING thread owns | any | **1.7 µs** (Stick 4K) / **1.1 µs** (Ultra) | Stick 4K + Ultra, Roku OS 15.3.4, 2026-08-23 |
+| Field read on a render-owned **Task node**, from a Task thread | Task | **91–118 µs** / **69 µs** — a rendezvous | same |
+| The same Task-node read, from the **Render** thread | Render | **7.1 µs** / **4.5 µs** — no rendezvous | same |
+| `m.global` field read, from a Task thread | Task | **93 µs** / **62 µs** — `m.global` is render-owned, so this rendezvouses | same |
+| `m.global` field read, from the **Render** thread | Render | **2.0 µs** / **1.3 µs** — indistinguishable from a local node | same |
+
+### What a crossing costs, and the half that surprises people
+
+Two rules fall out of the rows above. The second is the one that is easy to miss.
+
+**1. The price depends on WHO OWNS the node, not on how the code looks.** Nodes are render-owned by
+default — `m.global` and every Task node included — so render-thread code (`init()`, field
+observers, `onKeyEvent`, `callFunc` targets) touches them for free, while the identical read from a
+Task thread costs **~46×** more. `m.global` is the pair worth memorizing: **2.0 µs from the render
+thread, 93 µs from a Task thread** on a Stick 4K.
+
+**2. Removing the rendezvous does NOT make it free.** Moving a per-entry walk over Task nodes from a
+Task thread to the render thread took it from **132.6 µs to 20.1 µs per entry** — a 6.6× win, not
+the ~46× the read-cost ratio predicts. What remains is ordinary BrightScript interpreter work
+(`isValid`, `LCase`, string compares, rebuilding an array), and no amount of thread placement
+touches it. So "budget crossings, not bytes"
+([async.md](async.md#crossing-the-thread-boundary-costs-a-rendezvous--budget-crossings-not-bytes))
+is necessary but not sufficient: **an O(n) loop over nodes is expensive on the render thread too**,
+just less catastrophically. Budget the loop as well as the crossing.
+
+Apparatus: `components/testing/TaskLedgerBench.bs`, driven through `roku-test-automation`'s on-device
+component, whose `callFunc` runs on the render thread; mirrored function-for-function against
+`tests/source/unit/utils/taskLedgerCost.spec.bs`, which does not. Render-thread execution is proven
+from the data rather than from the architecture — a Task node is documented render-owned, so a cheap
+read of one is only possible on the render thread.
 
 ### A correction worth keeping
 

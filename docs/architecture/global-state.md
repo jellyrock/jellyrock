@@ -81,7 +81,6 @@ m.global  (the global roSGNode)
 │   ├── shouldForceFavoriteFail  bool
 │   └── shouldForceWatchedFail   bool
 │
-└── taskLedger        array of Task nodes                   ← ONLY in #if debug builds — every node launchTask() started; created on FIRST launch, not declared in setGlobalNodes (see debug-tools.md)
 ```
 
 "Phase 1" and "Phase 2" refer to `setGlobals()` (before `screen.show()`) and `setGlobalNodes()` (after) respectively — see `bootstrap.md`.
@@ -217,11 +216,15 @@ Code paths that check these flags are wrapped in `#if debug` so they have zero r
 
 ## Task-thread ledger — `m.global.taskLedger`
 
-Also debug-only. An `array` field holding a reference to every Task node `launchTask()` has started, so the live Task-thread count can be **derived** — by reading each node's `state` — instead of tracked with a counter that would need an `observeField("state")` per launch to decrement. Written only by `recordTaskLaunch()` (`source/utils/tasks.bs`), which prunes finished entries on each launch so the array stays bounded.
+**Changed 2026-08-23: it ships.** No longer `#if debug` — `launchTask()` now records every launch here and **refuses** above a watermark of 50 live threads. The count is still **derived** by reading each node's `state` rather than tracked by a counter, which is what avoids an `observeField("state")` per launch.
 
-Unlike every other field above, it is **not declared in `setGlobalNodes()`** — `recordTaskLaunch()` creates it on first use. That is required, not stylistic: `setGlobalNodes()` starts five Task threads (the three `ApiTask`s, `ApiQueueTask`, `SideEffectTask`) before it reaches its own `#if debug` block, and a write to an undeclared `roSGNode` field is a silent no-op, so declaring it there lost all five. Creating on demand also means the ordering cannot be broken again by adding a launch earlier in bootstrap.
+It costs **555.7 µs per launch** at a ledger depth of 10 on a Stick 4K, render thread (see [threading.md](threading.md#measured-findings)), and that is the cheapest **correct** home rather than the cheapest home. `GetGlobalAA()` is ~500× cheaper — an append there is below the measurement floor — and **cannot be used: it is scoped per COMPONENT, not per thread.** Measured after an earlier probe got this wrong by varying thread and component together: launching and counting inside one component reads 1, while two components on the *same render thread* read each other as 0. A per-component ledger counts only its own component's launches, which is not a thread budget. A node field is the only cross-component storage SceneGraph has, so the cost buys the one property nothing else offers.
 
-It is the only `m.global` field holding node references in an array rather than a single node. That the round-trip preserves identity and live `state` is verified on device by `tests/source/unit/utils/tasks.spec.bs`, not assumed. Read it with `printTaskThreads()`; see `debug-tools.md`.
+⚠️ **Reading a node's array field yields a COPY, so mutating it in place is a silent no-op.** `m.global.taskLedger.push(x)` measured a plausible-looking 58 µs and left the field at its original length — 200 pushes, zero growth. It was caught only because the bench asserted the resulting length. Anything that appears to mutate a node's array field without assigning back is doing nothing; same family as the undeclared-field silent no-op below.
+
+Unlike every other field above, it is **not declared in `setGlobalNodes()`** — it is created on first use. That is required, not stylistic: `setGlobalNodes()` starts five Task threads (the three `ApiTask`s, `ApiQueueTask`, `SideEffectTask`) before it would reach a declaration, and a write to an undeclared `roSGNode` field is a silent no-op, so declaring it there lost all five.
+
+It is the only `m.global` field holding node references in an array rather than a single node. `tests/source/unit/utils/tasks.spec.bs` pins the safety bound (watermark + untracked threads < Roku's 100-thread cap) so a future edit to either constant cannot quietly break it, and `tests/rta/specs/task-thread-peak.spec.js` gates the real peak on device (measured 9-11).
 
 ## Known cruft
 

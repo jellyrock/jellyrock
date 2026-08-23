@@ -31,24 +31,30 @@
 ' one way the derived count could have been silently wrong — `taskThreadIsLive`
 ' treats `"init"` as live — so `tests/source/unit/utils/tasks.spec.bs` pins it.
 '
-' ── The ledger is best-effort; the COUNT is exact ──────────────────────────
+' ── Where the ledger lives, and the cheap option that does NOT work ────────
 '
-' Recording a launch IS a read-modify-write of `m.global.taskLedger`, and the
-' launch sites are not all on one thread. Most are on the render thread, but
-' `setGlobalNodes()` (the API pool, the queue, the side-effect task), `main.bs`'s
-' two font tasks and `replayRoute.performServerSwitch` all run on the MAIN
-' thread. Two launches racing across those threads can lose an entry, and the
-' readout would then under-report by one.
+' It is an array field on `m.global`. That costs 555.7 us per launch at a ledger
+' depth of 10 on a Stick 4K (render thread), and it is the cheapest CORRECT option
+' available — not the cheapest option.
 '
-' That is accepted rather than fixed: there is no atomic read-modify-write on a
-' shared node field, the window is a few instructions wide, and the cost is a
-' debug-only readout that is low by one. What the ledger DOES guarantee is that
-' whatever it recorded is counted exactly — the count is a pure read of each
-' node's `state`, with no counter to drift out of sync.
+' `GetGlobalAA()` is ~500x cheaper: appending there is below the measurement floor,
+' against 555.7 us for the m.global round-trip. It cannot be used. GetGlobalAA is
+' scoped per COMPONENT, not per thread — measured, after an earlier probe got this
+' wrong by varying thread and component together: launching and counting inside ONE
+' component reads 1, while two components on the SAME render thread read each other
+' as 0 (tests/rta/specs/gaa-thread-scope.spec.js). A per-component ledger counts only
+' its own component's launches, which is not a thread budget.
 '
-' The one Task node started from a Task thread is the vendored `WebSocketClient`
-' that `RemoteControlTask` owns; `components/vendor/**` is outside the plugin's
-' reach and outside the ledger's.
+' So the cost buys the one property nothing else offers: every component shares it.
+' A node field is the only cross-component storage SceneGraph has, and reading one
+' returns a COPY — `m.global.taskLedger.push(x)` measured a plausible 58 us and left
+' the field at its original length after 200 pushes — so the read-modify-WRITE is
+' unavoidable. Full cost model: docs/architecture/threading.md.
+'
+' The count is exact rather than a lower bound: every thread's launches land in the
+' same shared field. The old cross-thread race is still possible in principle (there
+' is no atomic read-modify-write on a node field) and is still accepted: the window
+' is a few instructions and the effect is a readout low by one.
 '
 ' ── Pure core / debug shell split ──────────────────────────────────────────
 '
@@ -70,12 +76,37 @@
 ' as the DebugFlags precedent in globals.bs. The pure functions remain, but with
 ' nothing calling them they cost only their own bytes.
 '
+' ── The ceiling, and why these two numbers ─────────────────────────────────
+'
+' `launchTask()` REFUSES above TASK_THREAD_WATERMARK live threads. Roku's cap is
+' 100. Measured peak in real use is 11 (13-library server, Stick 4K, sampled
+' across a scripted journey — tests/rta/specs/task-thread-peak.spec.js), so a
+' watermark of 50 is ~4.5x the observed peak: it cannot fire in normal operation,
+' only when something is fanning out.
+'
+' THE BOUND, which is why refusal is safe rather than merely hopeful:
+'
+'     watermark (50) + main-thread floor (< 20) < Roku's cap (100)
+'
+' Every launch prunes, so the count is never stale and there is no audit interval
+' to overshoot. The main-thread floor is the only unseen term, it is a fixed
+' bootstrap set, and 50 leaves it 50 threads of room. `tasks.spec.bs` asserts the
+' inequality so a future edit to either constant cannot quietly break it.
+'
+' Refusal returns false and starts nothing. That is the SAME contract an invalid
+' node already had, so no call site learns a new failure mode — and a screen that
+' loses a row beats an app that dies at 100 threads. It is deliberately not a
+' crash: #728 is closed, so there is no live crash whose diagnostic value we would
+' be giving up.
+'
 ' ── What the readout is for ────────────────────────────────────────────────
 '
 ' Measuring on a sideloaded dev build, in the same port-8085 console workflow as
-' `m.global.debug.*` — see docs/dev/debug-flags.md. Phase 1's worker count K is
-' meant to come from these numbers rather than from a guess.
+' `m.global.debug.*` — see docs/dev/debug-flags.md.
 ' ============================================================================
+
+' Live Task threads at which `launchTask()` starts refusing. See the bound above.
+const TASK_THREAD_WATERMARK = 50
 
 ' Starts `node`'s Task thread through the accounted chokepoint.
 '
@@ -96,12 +127,82 @@ function launchTask(node as object) as boolean
     return false
   end if
 
-  #if debug
-    trackTaskLaunch(node)
-  #end if
+  if not admitTaskLaunch(node)
+    ' Loud in debug, silent in production — `m.log.*` is stripped and `#if debug` is
+    ' excluded in a store build, so there is no production channel to say this on.
+    ' That is exactly why the RTA peak gate exists: this must be caught before ship,
+    ' not diagnosed after it.
+    #if debug
+      print "[TASKS] REFUSED launch of "; node.subtype(); " — at or above the "; TASK_THREAD_WATERMARK; "-thread watermark"
+    #end if
+    return false
+  end if
 
   node.control = "RUN"
   return true
+end function
+
+' Records `node` and decides whether its launch may proceed.
+'
+' Returns false when the app is at or above the watermark, in which case the node is
+' NOT recorded — a refused launch starts no thread, so counting it would inflate the
+' ledger on exactly the path that must not spiral.
+function admitTaskLaunch(node as object) as boolean
+  ' `m.global` and NOT `GetGlobalAA()`. That is the whole design, and it was arrived
+  ' at the wrong way round: GetGlobalAA is ~500x cheaper (an append there is below the
+  ' measurement floor; the m.global round-trip is 555.7 us per launch at depth 10 on a
+  ' Stick 4K) and it CANNOT be used, because it is scoped per COMPONENT, not per
+  ' thread. Measured: launching and counting inside one component reads 1, while two
+  ' components on the same render thread read each other as 0
+  ' (tests/rta/specs/gaa-thread-scope.spec.js). A per-component ledger counts only its
+  ' own component's launches, which is not a thread budget.
+  '
+  ' So the ledger pays for the one property nothing else offers: being shared by every
+  ' component in the app. There is no cheaper shared home — a node field is the only
+  ' cross-component storage SceneGraph has, and reading one returns a COPY, so the
+  ' read-modify-WRITE is unavoidable.
+  store = m.global
+  ' Bootstrap launches before `m.global` exists must not be blocked — refusing there
+  ' would break startup to protect against a condition startup cannot be in.
+  if not isValid(store) then return true
+
+  #if perfTiming
+    ' Measures the ceiling's OWN cost on a real screen load, the way
+    ' `cellLoadInstrumentUs` does — so "what does this add to ItemDetails" is a
+    ' reading rather than a benchmark multiplied by a guessed launch count. Measured
+    ' 2026-08-23 on a Stick 4K: 7-8 launches, 2.6 ms. Stripped from dev and prod;
+    ' `perfTiming` is in harden-prod-manifest.js's FORCED_OFF list.
+    if not store.hasField("taskLedgerUs") then store.addField("taskLedgerUs", "float", false)
+    if not store.hasField("taskLedgerLaunches") then store.addField("taskLedgerLaunches", "integer", false)
+    ' Cached, never per-call: a fresh roTimespan costs ~22 us, five times the thing it
+    ' would be timing (measured — see cellLoad.bs).
+    if not isValid(m.taskLedgerProbe) then m.taskLedgerProbe = CreateObject("roTimespan")
+    m.taskLedgerProbe.mark()
+  #end if
+
+  candidate = recordTaskLaunch(store, node)
+
+  #if perfTiming
+    store["taskLedgerUs"] = store["taskLedgerUs"] + m.taskLedgerProbe.totalMicroseconds()
+    store["taskLedgerLaunches"] = store["taskLedgerLaunches"] + 1
+  #end if
+
+  if candidate.count() <= TASK_THREAD_WATERMARK then return true
+
+  ' Refused: drop the entry we just added, or every refusal would ratchet the count
+  ' permanently upward — a never-launched node reports `state = "init"`, which counts
+  ' as live, so it would never be pruned. It is always LAST because
+  ' `pruneTaskLedger` appends it after the liveness filter (also pinned in the spec).
+  candidate.pop()
+  store["taskLedger"] = candidate
+  return false
+end function
+
+' The live count this thread can see. Debug readout and the RTA peak gate both use
+' it; nothing in the hot path calls it, which is why it is not cached.
+function liveTaskThreadCount() as integer
+  if not isValid(m.global) then return 0
+  return countLiveTaskThreads(m.global["taskLedger"])
 end function
 
 ' ── Pure core ───────────────────────────────────────────────────────────────
@@ -170,23 +271,21 @@ end function
 ' `store` is passed in rather than read from `m.global` so this stays outside the
 ' `#if debug` shell and a Rooibos test can drive it — test builds compile with
 ' `debug=false`, so anything inside the gate is unreachable from Rooibos.
-sub recordTaskLaunch(store as object, node as object)
-  if not isValid(store) then return
+function recordTaskLaunch(store as object, node as object) as object
+  if not isValid(store) then return []
   if not store.hasField("taskLedger") then store.addField("taskLedger", "array", false)
   ' Bracket access: a dynamically-added field is invisible to the typed node
   ' interface, so dotted access would be a compile error.
-  store["taskLedger"] = pruneTaskLedger(store["taskLedger"], node)
-end sub
+  kept = pruneTaskLedger(store["taskLedger"], node)
+  store["taskLedger"] = kept
+  ' Returns the local rather than re-reading the field: reading a node's array field
+  ' marshals the whole array again, and the ceiling needs this value on every launch.
+  return kept
+end function
 
 ' ── Debug shell ─────────────────────────────────────────────────────────────
 
 #if debug
-
-  ' Records `node` in the ledger on m.global. All the logic lives in
-  ' `recordTaskLaunch` so that none of it is stranded behind this gate.
-  sub trackTaskLaunch(node as object)
-    recordTaskLaunch(m.global, node)
-  end sub
 
   ' Prints the ledger to the BrightScript console (telnet port 8085).
   '

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  GaaProbeTask — one half of the probe that establishes what GetGlobalAA() is scoped to.
+
+  It reads its own GetGlobalAA and reports what it found, so a render-thread component
+  and a Task thread can check each other in both directions. On its own that pair is
+  NOT conclusive — it varies thread and component together — which is exactly the
+  mistake tests/rta/specs/gaa-thread-scope.spec.js documents. The conclusive half is
+  `TaskLedgerBench.selfLaunchAndCount`, which holds both fixed.
+
+  Body is `#if ENABLE_RTA`, false in the committed manifest.
+-->
+<component name="GaaProbeTask" extends="Task">
+  <interface>
+    <!-- What this Task found in ITS GetGlobalAA() — empty means it did not see the
+         sentinel the render thread wrote. -->
+    <field id="seen" type="string" />
+  </interface>
+</component>

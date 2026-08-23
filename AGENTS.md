@@ -60,6 +60,10 @@ Soft prompt during work, hard gate before merge. The CI gate is architecture-onl
 
 **Crossing a thread boundary on Roku costs a rendezvous, and the count of crossings dominates the size of each.** A Task thread writing a field on — or appending a child to — a render-thread-owned node parks until that thread reaches a safe point, then marshals the payload. The same operation done thread-locally is orders of magnitude cheaper.
 
+**Which side of that you are on is decided by who OWNS the node, not by how the code looks.** Nodes are render-owned by default — `m.global` and every Task node included — so render-thread code (`init()`, observers, `onKeyEvent`, `callFunc` targets) pays nothing to touch them. Measured on a Stick 4K: an `m.global` field read is **2.0 µs from the render thread and 93 µs from a Task thread — ~46×**.
+
+**But thread-local is not free.** Moving a per-entry walk over Task nodes onto the render thread took it from 132.6 µs to **20.1 µs per entry** — a 6.6× win, not the 46× the read costs predict. The residue is plain interpreter work no thread placement can remove, so **budget the loop as well as the crossing**: an O(n) pass over nodes is still expensive on the render thread.
+
 This is the *why* behind several rules that are otherwise easy to read as style: cache `m.global.user` in a local rather than re-reading per item, prefer `node.setFields({…})` to a run of assignments, use `transformBaseItemArray` over per-item `transformBaseItem`. They are all "make fewer crossings".
 
 When designing any Task → UI handoff:

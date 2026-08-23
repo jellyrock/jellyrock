@@ -1,0 +1,450 @@
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/tasks.bs"
+
+' The render-thread half of the task-ledger cost model. See TaskLedgerBench.xml for
+' why this is a SceneGraph component rather than another Rooibos suite.
+'
+' Every function here is a deliberate mirror of the same-named one in
+' tests/source/unit/utils/taskLedgerCost.spec.bs — same iteration count, same
+' fixture, same apparatus floor subtracted — so the two tables differ in exactly
+' ONE variable: which thread the code ran on. Any other difference would make the
+' comparison a different experiment.
+#if ENABLE_RTA
+
+  sub init()
+    m.top.id = "taskLedgerBench"
+  end sub
+
+  ' Runs one cell of the bench grid and returns its mean microseconds.
+  '
+  ' @param args - { cell: string, depth: integer, iterations: integer }
+  ' @return an AA carrying the reading(s) for that cell, plus the floor it was
+  '         measured against so the caller never has to pair them up itself.
+  function runCell(args as object) as object
+    cell = "floor"
+    depth = 0
+    iterations = 200
+    if isValid(args)
+      if isValid(args.cell) then cell = args.cell
+      if isValid(args.depth) then depth = args.depth
+      if isValid(args.iterations) then iterations = args.iterations
+    end if
+
+    floor = benchFloor(iterations)
+
+    if cell = "floor" then return { cell: cell, depth: depth, iterations: iterations, floorUs: floor, us: 0 }
+    if cell = "reads" then return benchReads(iterations, floor)
+
+    us = 0
+    if cell = "recordGlobal"
+      us = benchRecord(m.global, depth, iterations)
+      ' Leave m.global as we found it — this writes a real field on the shared
+      ' global node and the app keeps running after the bench returns.
+      m.global["taskLedger"] = []
+    else if cell = "recordLocal"
+      us = benchRecord(CreateObject("roSGNode", "Node"), depth, iterations)
+    else if cell = "count"
+      us = benchCount(depth, iterations)
+    else if cell = "prune"
+      us = benchPrune(depth, iterations)
+    else if cell = "aaAppend"
+      us = benchAaAppend(depth, iterations)
+    else if cell = "counterOnly"
+      us = benchCounterOnly(m.global, iterations)
+    else if cell = "countNoLCase"
+      us = benchCountNoLCase(depth, iterations)
+    else if cell = "aaRecord"
+      us = benchAaRecord(depth, iterations, false)
+    else if cell = "aaRecordNoLCase"
+      us = benchAaRecord(depth, iterations, true)
+    else if cell = "aaAppendVerified"
+      return benchAaAppendVerified(depth, iterations, floor)
+    else if cell = "nodeArrayPush"
+      return benchNodeArrayPush(m.global, depth, iterations, floor)
+    else
+      return { cell: cell, error: "unknown cell" }
+    end if
+
+    return { cell: cell, depth: depth, iterations: iterations, floorUs: floor, us: us - floor }
+  end function
+
+  ' The live Task-thread count right now, derived from the ledger the temporary
+  ' ENABLE_RTA hook in `launchTask()` fills.
+  '
+  ' Returns `tracked` alongside `live` deliberately: if `tracked` is 0 the hook is
+  ' not in the build, and a `live` of 0 would otherwise read as "the app runs no
+  ' Task threads" rather than "nothing was recorded". Those are opposite findings
+  ' and the caller must be able to tell them apart.
+  function liveCount() as object
+    ' Reads the SHARED ledger on m.global — the same one `launchTask()` maintains for
+    ' every component. An earlier cut read GetGlobalAA and returned 0 here while the
+    ' app was plainly running Task threads, because GetGlobalAA is per COMPONENT.
+    ledger = []
+    if isValid(m.global) and isValid(m.global.taskLedger) then ledger = m.global.taskLedger
+    return { live: countLiveTaskThreads(ledger), tracked: ledger.count() }
+  end function
+
+  ' What the ceiling has cost so far, in real launches on real screens.
+  function ledgerCost() as object
+    us = 0
+    launches = 0
+    instrumented = false
+    if isValid(m.global) and m.global.hasField("taskLedgerUs")
+      instrumented = true
+      us = m.global["taskLedgerUs"]
+      launches = m.global["taskLedgerLaunches"]
+    end if
+    return { us: us, launches: launches, instrumented: instrumented }
+  end function
+
+  function resetLedgerCost() as boolean
+    if not isValid(m.global) then return false
+    if not m.global.hasField("taskLedgerUs") then return false
+    m.global["taskLedgerUs"] = 0
+    m.global["taskLedgerLaunches"] = 0
+    return true
+  end function
+
+  ' THE DISCRIMINATOR the earlier probe could not be.
+  '
+  ' gaa-thread-scope varied the THREAD and the COMPONENT at the same time, so an empty
+  ' result was equally explained by "GetGlobalAA is per thread" and by "GetGlobalAA is
+  ' per component" — and the ledger reading 0 across two render-thread components says
+  ' the second is what is happening. This holds the thread fixed (render) and the
+  ' component fixed (this one): launch through `launchTask` here, read the ledger here.
+  ' A non-zero count means the ledger works WITHIN a component and the earlier
+  ' conclusion was wrong.
+  function selfLaunchAndCount() as object
+    node = CreateObject("roSGNode", "ServerReachableTask")
+    node.baseUrl = "http://192.0.2.1:8096" ' RFC 5737 TEST-NET-1 — parks on connect
+    admitted = launchTask(node)
+    countHere = liveTaskThreadCount()
+    node.control = "STOP"
+    return { admitted: admitted, countInsideThisComponent: countHere }
+  end function
+
+  ' Writes this (render) thread's GetGlobalAA sentinel and starts the probe Task.
+  function gaaProbe() as boolean
+    gaa = GetGlobalAA()
+    gaa.gaaSentinelFromRender = "render-wrote-this"
+    gaa.gaaSentinelFromTask = invalid
+    if not isValid(m.gaaTask) then m.gaaTask = CreateObject("roSGNode", "GaaProbeTask")
+    m.gaaTask.seen = ""
+    return launchTask(m.gaaTask)
+  end function
+
+  ' Reads BOTH directions once the probe Task has finished.
+  function gaaProbeResult() as object
+    gaa = GetGlobalAA()
+    seenByTask = ""
+    taskState = "none"
+    if isValid(m.gaaTask)
+      seenByTask = m.gaaTask.seen
+      taskState = m.gaaTask.state
+    end if
+    renderSeesTaskSentinel = ""
+    if isValid(gaa.gaaSentinelFromTask) then renderSeesTaskSentinel = gaa.gaaSentinelFromTask
+    return {
+      taskState: taskState,
+      taskSawRenderSentinel: seenByTask,
+      renderSeesTaskSentinel: renderSeesTaskSentinel
+    }
+  end function
+
+  ' `ServerReachableTask`'s init() only sets functionName — no thread, no server.
+  ' A never-launched Task node reports `state = "init"`, which `taskThreadIsLive`
+  ' counts as live, so depth is built without starting a single thread.
+  function freshTask() as object
+    return CreateObject("roSGNode", "ServerReachableTask")
+  end function
+
+  function seedLedger(store as object, depth as integer) as void
+    seeded = []
+    for i = 1 to depth
+      seeded.push(freshTask())
+    end for
+    if not store.hasField("taskLedger") then store.addField("taskLedger", "array", false)
+    store["taskLedger"] = seeded
+  end function
+
+  function benchRecord(store as object, depth as integer, iterations as integer) as float
+    seedLedger(store, depth)
+    node = freshTask()
+    probe = CreateObject("roTimespan")
+    probe.mark()
+    for i = 1 to iterations
+      recordTaskLaunch(store, node)
+    end for
+    return probe.totalMicroseconds() / iterations
+  end function
+
+  function benchCount(depth as integer, iterations as integer) as float
+    ledger = []
+    for i = 1 to depth
+      ledger.push(freshTask())
+    end for
+    probe = CreateObject("roTimespan")
+    probe.mark()
+    for i = 1 to iterations
+      countLiveTaskThreads(ledger)
+    end for
+    return probe.totalMicroseconds() / iterations
+  end function
+
+  function benchPrune(depth as integer, iterations as integer) as float
+    ledger = []
+    for i = 1 to depth
+      ledger.push(freshTask())
+    end for
+    node = freshTask()
+    probe = CreateObject("roTimespan")
+    probe.mark()
+    for i = 1 to iterations
+      pruneTaskLedger(ledger, node)
+    end for
+    return probe.totalMicroseconds() / iterations
+  end function
+
+  ' CANDIDATE (b) — the ledger held in GetGlobalAA(), BrightScript thread-local
+  ' memory. No node field is touched at all, so this pays neither a rendezvous nor
+  ' the array-marshalling cost of writing an roSGNode array field. This is the
+  ' per-launch cost of an APPEND-ONLY ledger; the walk moves to the audit.
+  function benchAaAppend(depth as integer, iterations as integer) as float
+    gaa = GetGlobalAA()
+    gaa.benchLedger = []
+    for i = 1 to depth
+      gaa.benchLedger.push(freshTask())
+    end for
+    node = freshTask()
+    probe = CreateObject("roTimespan")
+    probe.mark()
+    for i = 1 to iterations
+      gaa.benchLedger.push(node)
+    end for
+    us = probe.totalMicroseconds() / iterations
+    gaa.benchLedger = invalid
+    return us
+  end function
+
+  ' The same append, but RETURNING THE RESULTING LENGTH so the caller can prove the
+  ' pushes actually happened. The first run of this cell read -0.84 us — i.e. below
+  ' the apparatus floor — and "too cheap to measure" and "optimised away entirely"
+  ' are indistinguishable from a negative number alone. `finalCount` decides it: it
+  ' must equal depth + iterations exactly.
+  function benchAaAppendVerified(depth as integer, iterations as integer, floor as float) as object
+    gaa = GetGlobalAA()
+    gaa.benchLedger = []
+    for i = 1 to depth
+      gaa.benchLedger.push(freshTask())
+    end for
+    node = freshTask()
+    probe = CreateObject("roTimespan")
+    probe.mark()
+    for i = 1 to iterations
+      gaa.benchLedger.push(node)
+    end for
+    us = probe.totalMicroseconds() / iterations
+    finalCount = gaa.benchLedger.count()
+    gaa.benchLedger = invalid
+    return {
+      cell: "aaAppendVerified",
+      depth: depth,
+      iterations: iterations,
+      floorUs: floor,
+      us: us - floor,
+      finalCount: finalCount,
+      expectedCount: depth + iterations
+    }
+  end function
+
+  ' CANDIDATE (e) — mutate the node's array field IN PLACE instead of rebuilding and
+  ' writing it back. `recordTaskLaunch` today does read + rebuild + WRITE, and the
+  ' write is what marshals. If reading an array field yields a reference rather than
+  ' a copy, `push` alone is enough and the ledger can stay on `m.global` — which
+  ' sidesteps GetGlobalAA's thread-scope question entirely.
+  '
+  ' `verifiedGrowth` is the whole point: if the field read returns a COPY, the pushes
+  ' land on a throwaway and the field never grows. Cheap AND wrong would otherwise
+  ' look exactly like cheap AND right.
+  function benchNodeArrayPush(store as object, depth as integer, iterations as integer, floor as float) as object
+    if not store.hasField("taskLedger") then store.addField("taskLedger", "array", false)
+    seeded = []
+    for i = 1 to depth
+      seeded.push(freshTask())
+    end for
+    store["taskLedger"] = seeded
+    node = freshTask()
+
+    probe = CreateObject("roTimespan")
+    probe.mark()
+    for i = 1 to iterations
+      store["taskLedger"].push(node)
+    end for
+    us = probe.totalMicroseconds() / iterations
+
+    finalCount = store["taskLedger"].count()
+    store["taskLedger"] = []
+    return {
+      cell: "nodeArrayPush",
+      depth: depth,
+      iterations: iterations,
+      floorUs: floor,
+      us: us - floor,
+      finalCount: finalCount,
+      expectedCount: depth + iterations
+    }
+  end function
+
+  ' THE COMBINED CANDIDATE — the ledger held in GetGlobalAA (free storage, no node
+  ' field read or write) but still pruned on EVERY launch.
+  '
+  ' Pruning every launch is not gold-plating: `pruneTaskLedger` is what de-duplicates
+  ' a relaunched node against the ledger, and a persistent Task node gets relaunched
+  ' many times (`ExtrasRowList` alone relaunches its nodes 38 times). Skip it and the
+  ' same live thread is counted 38 times, which would trip the watermark on an app
+  ' running 11 threads. So this measures the honest floor for a CORRECT ledger that
+  ' pays no node-field cost.
+  function benchAaRecord(depth as integer, iterations as integer, skipLCase as boolean) as float
+    gaa = GetGlobalAA()
+    ledger = []
+    for i = 1 to depth
+      ledger.push(freshTask())
+    end for
+    node = freshTask()
+    gaa.benchLedger = ledger
+
+    probe = CreateObject("roTimespan")
+    probe.mark()
+    for i = 1 to iterations
+      if skipLCase
+        gaa.benchLedger = pruneLedgerNoLCase(gaa.benchLedger, node)
+      else
+        gaa.benchLedger = pruneTaskLedger(gaa.benchLedger, node)
+      end if
+    end for
+    us = probe.totalMicroseconds() / iterations
+    gaa.benchLedger = invalid
+    return us
+  end function
+
+  ' `pruneTaskLedger` without the LCase() fold, to price that defence separately.
+  function pruneLedgerNoLCase(ledger as object, node as object) as object
+    kept = []
+    if isValid(ledger)
+      for each tracked in ledger
+        st = tracked.state
+        if st <> "run" and st <> "init" then continue for
+        if isValid(node) and tracked.isSameNode(node) then continue for
+        kept.push(tracked)
+      end for
+    end if
+    if isValid(node) then kept.push(node)
+    return kept
+  end function
+
+  ' CANDIDATE (a) — an O(1) monotonic counter on m.global. Needs no decrement
+  ' because it counts LAUNCHES SINCE THE LAST AUDIT, not live threads, which is
+  ' what killed the original counter design (it would have needed an
+  ' observeField("state") per launch to decrement).
+  function benchCounterOnly(store as object, iterations as integer) as float
+    if not store.hasField("benchCounter") then store.addField("benchCounter", "integer", false)
+    store["benchCounter"] = 0
+    probe = CreateObject("roTimespan")
+    probe.mark()
+    for i = 1 to iterations
+      store["benchCounter"] = store["benchCounter"] + 1
+    end for
+    return probe.totalMicroseconds() / iterations
+  end function
+
+  ' CANDIDATE (c) — the liveness walk without LCase(), which allocates a string per
+  ' entry per call. Roku documents the state values as lowercase; this measures what
+  ' dropping the defensive fold would actually buy before anyone trades correctness
+  ' for it.
+  function benchCountNoLCase(depth as integer, iterations as integer) as float
+    ledger = []
+    for i = 1 to depth
+      ledger.push(freshTask())
+    end for
+    probe = CreateObject("roTimespan")
+    probe.mark()
+    for i = 1 to iterations
+      live = 0
+      for each tracked in ledger
+        st = tracked.state
+        if st = "run" or st = "init" then live++
+      end for
+    end for
+    return probe.totalMicroseconds() / iterations
+  end function
+
+  ' The apparatus floor: the same loop doing the cheapest possible body. Whatever
+  ' this reads is measurement overhead present in every cell above, and it is
+  ' SUBTRACTED rather than argued to be negligible.
+  function benchFloor(iterations as integer) as float
+    node = freshTask()
+    total = 0
+    probe = CreateObject("roTimespan")
+    probe.mark()
+    for i = 1 to iterations
+      if isValid(node) then total++
+    end for
+    return probe.totalMicroseconds() / iterations
+  end function
+
+  ' THE DISCRIMINATOR, and the single number this whole component exists to take.
+  '
+  ' Off the render thread the spec measures 1.56 us for a node the reading thread
+  ' owns against 91-118 us for a render-owned Task node and 93 us for `m.global`
+  ' (Stick 4K). If those three collapse onto each other HERE, every node the ledger
+  ' touches is render-owned and the production hot path pays no rendezvous at all.
+  ' If `globalUs` stays high, `m.global` is NOT render-owned and a production ledger
+  ' pays a crossing per launch — which is the design fork this measurement decides.
+  function benchReads(iterations as integer, floor as float) as object
+    localNode = CreateObject("roSGNode", "Node")
+    localNode.id = "bench"
+    taskNode = freshTask()
+
+    ' One sink PER read, summed at the end. A single shared sink measured only the
+    ' LAST read, and `m.global.id` is legitimately the empty string — so the
+    ' "did these reads execute?" guard read 0 and failed a run whose numbers were
+    ' fine. That guard was testing whether the global node happens to have an id,
+    ' which is not what it claims to test. `taskNode.state` is never empty, so the
+    ' sum is a real execution signal.
+    sinkL = ""
+    sinkT = ""
+    sinkG = ""
+
+    probeL = CreateObject("roTimespan")
+    probeL.mark()
+    for i = 1 to iterations
+      sinkL = localNode.id
+    end for
+    localUs = probeL.totalMicroseconds() / iterations - floor
+
+    probeT = CreateObject("roTimespan")
+    probeT.mark()
+    for i = 1 to iterations
+      sinkT = taskNode.state
+    end for
+    taskUs = probeT.totalMicroseconds() / iterations - floor
+
+    probeG = CreateObject("roTimespan")
+    probeG.mark()
+    for i = 1 to iterations
+      sinkG = m.global.id
+    end for
+    globalUs = probeG.totalMicroseconds() / iterations - floor
+
+    return {
+      cell: "reads",
+      iterations: iterations,
+      floorUs: floor,
+      localNodeUs: localUs,
+      taskNodeUs: taskUs,
+      globalUs: globalUs,
+      sinkLen: Len(sinkL) + Len(sinkT) + Len(sinkG)
+    }
+  end function
+
+#end if

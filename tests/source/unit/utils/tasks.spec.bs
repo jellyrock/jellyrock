@@ -22,6 +22,23 @@ namespace tests
     ' A Task node that has never been launched. Its thread does not exist yet,
     ' but SceneGraph already reports a state — which is exactly what the
     ' liveness rule has to be correct about.
+    ' Seeds `m.global`'s ledger `depth` entries deep from never-launched Task nodes,
+    ' and leaves it that way — the suite shares the real global node, so every test
+    ' that seeds it must also reset it (depth 0) rather than leak into the next one.
+    protected function seedGlobalLedger(depth as integer) as void
+      if not m.global.hasField("taskLedger") then m.global.addField("taskLedger", "array", false)
+      m.global["taskLedger"] = m.ledgerOfDepth(depth)
+    end function
+
+    ' A ledger `depth` entries deep, built from never-launched Task nodes.
+    protected function ledgerOfDepth(depth as integer) as object
+      seeded = []
+      for i = 1 to depth
+        seeded.push(m.freshTask())
+      end for
+      return seeded
+    end function
+
     protected function freshTask() as object
       return CreateObject("roSGNode", "ServerReachableTask")
     end function
@@ -190,6 +207,108 @@ namespace tests
       kept = pruneTaskLedger([node], node)
       m.assertEqual(kept.count(), 1)
       m.assertEqual(countLiveTaskThreads(kept), 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the ceiling — admitTaskLaunch() and its safety bound")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' THE BOUND THAT MAKES REFUSAL SAFE RATHER THAN HOPEFUL.
+    '
+    ' The ledger is a shared field on `m.global`, so every thread's launches land in
+    ' it and the count is exact rather than a lower bound. The watermark still has to
+    ' leave room under Roku's 100-thread cap for the threads the app does not start
+    ' through `launchTask()` at all — the vendored `WebSocketClient` that
+    ' `RemoteControlTask` owns is outside both this ledger and the `no-raw-run` rule.
+    '
+    ' Asserted rather than left in a comment because the failure is silent: raise the
+    ' watermark to 95 and everything still passes, still counts, still refuses — and
+    ' the app crashes at 100 anyway with the untracked threads on top. A comment does
+    ' not fail; this does.
+    @it("keeps the watermark far enough below Roku's cap for the unseen main-thread floor")
+    function _()
+      ROKU_THREAD_CAP = 100
+      UNTRACKED_MAX = 20 ' generous bound on threads started outside launchTask()
+
+      m.assertTrue(TASK_THREAD_WATERMARK + UNTRACKED_MAX < ROKU_THREAD_CAP, "watermark " + TASK_THREAD_WATERMARK.toStr() + " + untracked threads leaves no room under Roku's " + ROKU_THREAD_CAP.toStr() + "-thread cap")
+      m.assertTrue(TASK_THREAD_WATERMARK > 11, "watermark must sit above the measured real-world peak of 11, or normal use trips it")
+    end function
+
+    ' THE FEATURE ITSELF: does it actually refuse?
+    '
+    ' Depth is built from NEVER-LAUNCHED Task nodes. A fresh node reports
+    ' `state = "init"`, which `taskThreadIsLive` counts as live, so a 51-deep ledger
+    ' exercises the ceiling while starting ZERO threads — the test cannot provoke the
+    ' `&h29` it exists to prevent. Same fixture trick the cost bench used.
+    @it("refuses a launch once the ledger is at the watermark")
+    function _()
+      m.seedGlobalLedger(TASK_THREAD_WATERMARK + 1)
+
+      admitted = launchTask(m.freshTask())
+
+      m.assertFalse(admitted, "a launch at the watermark must be refused")
+      m.seedGlobalLedger(0)
+    end function
+
+    ' REGRESSION: the first cut of the refusal path left the rejected node IN the
+    ' ledger. A never-launched node reports "init" — counted as live, never pruned —
+    ' so every refusal permanently raised the count by one and the app ratcheted
+    ' itself shut. The refusal is silent in production, so nothing would have
+    ' surfaced it; only the count moving proves the node was taken back out.
+    @it("does not grow the ledger when it refuses")
+    function _()
+      m.seedGlobalLedger(TASK_THREAD_WATERMARK + 1)
+      before = countLiveTaskThreads(m.global["taskLedger"])
+
+      launchTask(m.freshTask())
+      launchTask(m.freshTask())
+      launchTask(m.freshTask())
+
+      m.assertEqual(countLiveTaskThreads(m.global["taskLedger"]), before, "three refusals must leave the count exactly where it was")
+      m.seedGlobalLedger(0)
+    end function
+
+    @it("admits and records a launch below the watermark")
+    function _()
+      m.seedGlobalLedger(0)
+      node = m.freshTask()
+      ' Unroutable (RFC 5737 TEST-NET-1) so the thread parks on connect instead of
+      ' reaching a real server.
+      node.baseUrl = "http://192.0.2.1:8096"
+
+      admitted = launchTask(node)
+
+      m.assertTrue(admitted, "a launch well below the watermark must be admitted")
+      m.assertEqual(countLiveTaskThreads(m.global["taskLedger"]), 1)
+      node.control = "STOP"
+      m.seedGlobalLedger(0)
+    end function
+
+    ' `admitTaskLaunch` reads `.count()` as the live count instead of walking again.
+    ' That is only valid because pruning keeps live entries ONLY. If someone makes
+    ' pruning retain a finished node, the ceiling silently starts over-counting and
+    ' refuses early — with no test failing anywhere near the change.
+    @it("leaves a pruned ledger whose count IS its live count")
+    function _()
+      ledger = [m.runningTask(), m.stoppedTask(), m.runningTask(), m.stoppedTask()]
+
+      pruned = pruneTaskLedger(ledger, invalid)
+
+      m.assertEqual(pruned.count(), countLiveTaskThreads(pruned), "count() must equal the live count for the ceiling's O(1) check to be correct")
+      m.assertEqual(pruned.count(), 2)
+    end function
+
+    ' The refusal path pops the LAST entry to undo its own record. That is correct
+    ' only while pruning appends the recorded node last.
+    @it("appends the recorded node last, which is what the refusal path pops")
+    function _()
+      existing = m.runningTask()
+      node = m.freshTask()
+
+      kept = pruneTaskLedger([existing], node)
+
+      m.assertEqual(kept.count(), 2)
+      m.assertTrue(kept[kept.count() - 1].isSameNode(node), "the recorded node must be last")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

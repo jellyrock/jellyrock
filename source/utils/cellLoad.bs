@@ -32,9 +32,12 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 '     than assumed, on HomeRows' root specifically because a Task also writes that node:
 '     100 writes to a locally-created node took 351 us, 100 to the content root 379 us —
 '     ~3.8 us per write, a ratio of 1.08. A rendezvous would be orders of magnitude.
-'     `m.global` is main-thread-owned and WOULD cross, which is the one design that must
-'     not be used here: it would add a rendezvous per cell render to the very path being
-'     measured. See `docs/architecture/async.md`.
+'     ⚠️ An earlier version of this note said `m.global` is "main-thread-owned and WOULD
+'     cross". That is WRONG and was refuted by measurement 2026-08-23: `m.global` is
+'     RENDER-owned, so from a cell (render thread) it costs 2.0 us against a local node's
+'     1.7 us — no crossing at all. It is 93 us from a Task thread. The content root is still
+'     the right home, on the two grounds below plus per-screen scoping; only the threading
+'     rationale was false. See `docs/architecture/threading.md`.
 '   - **Race-free without any locking.** The render thread is single-threaded, so
 '     read-modify-write across cells cannot interleave.
 '   - **Free live readout.** Node fields are readable over ODC, so a probe can watch the

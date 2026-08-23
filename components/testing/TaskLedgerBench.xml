@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  TaskLedgerBench — the RENDER-THREAD counterpart to
+  tests/source/unit/utils/taskLedgerCost.spec.bs.
+
+  That spec measures what a production-resident task ledger costs, but Rooibos
+  does not run on the render thread (proved from its own data: at depth 0 the
+  identical operation costs 3.7x more against `m.global` than against a
+  locally-created node, a gap that can only exist if `m.global` is owned
+  elsewhere). Every figure it reports is therefore rendezvous-laden, and the app's
+  Task launches happen on the RENDER thread, where a node op on a render-owned
+  node does not rendezvous at all.
+
+  A `callFunc` invoked through roku-test-automation's on-device component runs on
+  the render thread — RTA's Task sets `renderThreadRequest` and the observer
+  callback for a field set from a Task thread executes on the Render thread
+  (rokudev/dev-doc v2.0, DEVELOPER/core-concepts/threads.md). So this component is
+  the measurement vehicle the spec could not be.
+
+  Body is `#if ENABLE_RTA`, which is false in the committed manifest and flipped
+  true only by the RTA deploy, so dev and prod builds compile it to nothing.
+-->
+<component name="TaskLedgerBench" extends="Node">
+  <interface>
+    <!-- Runs ONE bench cell and returns its mean microseconds. One cell per call
+         so a slow cell cannot block the render thread for the length of a whole
+         sweep; the driver spec loops over the grid. -->
+    <function name="runCell" />
+    <!-- Samples the LIVE task-thread count from m.global.taskLedger. Separate from
+         runCell because it is a read, not a benchmark: it must be as cheap as
+         possible so sampling does not itself change what is being sampled. -->
+    <function name="liveCount" />
+    <function name="ledgerCost" />
+    <function name="resetLedgerCost" />
+    <!-- Writes a sentinel into the RENDER thread's GetGlobalAA() and starts a Task
+         that reads its own. Paired with gaaProbeResult below. -->
+    <function name="gaaProbe" />
+    <function name="gaaProbeResult" />
+    <!-- Launches a Task from INSIDE this component and reads the ledger back from
+         inside the same component. Separates "per thread" from "per component". -->
+    <function name="selfLaunchAndCount" />
+  </interface>
+</component>

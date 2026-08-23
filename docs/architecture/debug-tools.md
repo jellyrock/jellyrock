@@ -151,9 +151,9 @@ Why key UP events: the JellyRock convention is for child components to return `f
 
 Roku OS caps an app instance at 100 concurrent threads and raises `&h29` past it — the crash class behind epic #728. The readout answers "how many Task threads are live right now?" on a real device, so that bound is measured rather than argued about.
 
-`launchTask()` (`source/utils/tasks.bs`) is the one place a Task thread starts; the `no-raw-run` BSC plugin makes a bare `control = "RUN"` anywhere else a build error. In a debug build each launch is recorded into `m.global.taskLedger`, and the count is **derived** on demand by reading each tracked node's `state` — a terminated thread stops counting toward Roku's cap even though the node stays valid, so `state` is the authoritative signal and a `control = "STOP"` needs no bookkeeping call of its own.
+`launchTask()` (`source/utils/tasks.bs`) is the one place a Task thread starts; the `no-raw-run` BSC plugin makes a bare `control = "RUN"` anywhere else a build error. Each launch is recorded into `m.global.taskLedger` (see [global-state.md](global-state.md#task-thread-ledger--mglobaltaskledger) for why that node field, and not the ~500× cheaper `GetGlobalAA()`), and the count is **derived** on demand by reading each tracked node's `state` — a terminated thread stops counting toward Roku's cap even though the node stays valid, so `state` is the authoritative signal and a `control = "STOP"` needs no bookkeeping call of its own.
 
-`m.global.taskLedger` is created by the first launch that records into it, not declared up front in `setGlobalNodes()`. That is deliberate and load-bearing: `setGlobalNodes()` starts five Task threads before it finishes, and a write to a field an `roSGNode` does not have yet is a **silent no-op** — declaring the field at the end of that sub dropped all five from the readout without a trace.
+The ledger ships now rather than being `#if debug`, and `launchTask()` **refuses** a launch above 50 live threads. `printTaskThreads()` reads whichever thread's ledger the console is paused on — usually the render thread, which is where every screen launch happens.
 
 From the BrightScript console (port 8085), with the app paused at a breakpoint:
 

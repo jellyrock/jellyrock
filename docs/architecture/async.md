@@ -133,6 +133,12 @@ performs a **rendezvous**: the caller parks until the owning thread reaches a sa
 data is marshaled across. It is priced by **how often you cross** first and how much you carry
 second, and both are far more expensive than the same operation done thread-locally.
 
+**Which side of the boundary you are on is decided by who OWNS the node.** Nodes are render-owned
+by default — `m.global` and every Task node included — so render-thread code pays nothing, and the
+identical read from a Task thread costs ~46× more. The measured per-operation table (and the
+corollary that removing a rendezvous still leaves ~20 µs/entry of interpreter cost) lives in
+[threading.md](threading.md#measured-findings).
+
 That is the reason behind rules stated elsewhere without their price tag: cache `m.global.user`
 in a local instead of re-reading it per item ([components/CLAUDE.md](../../components/CLAUDE.md)),
 prefer `node.setFields({...})` to a run of individual assignments, and use
