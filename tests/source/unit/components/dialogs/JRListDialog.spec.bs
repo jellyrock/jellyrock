@@ -284,6 +284,28 @@ namespace tests
       m.assertTrue(inChain)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("cancelDialog — third-party dismissal")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Cancelling from outside must be indistinguishable from Back — see
+    ' cancelOpenDialog() in source/utils/dialogs.bs. A list dialog has no buttons,
+    ' so a cancel is optionIndex -1.
+    @it("delivers a cancelled result and closes")
+    function _()
+      scene = m.top.getScene()
+      m.dialog.title = "Select audio"
+      m.dialog.items = ["English 5.1", "Spanish"]
+      scene.appendChild(m.dialog)
+
+      m.dialog.callFunc("cancelDialog")
+
+      m.assertNotInvalid(m.dialog.result)
+      m.assertTrue(m.dialog.result.cancelled)
+      m.assertEqual(m.dialog.result.optionIndex, -1)
+      m.assertInvalid(m.dialog.getParent())
+    end function
+
   end class
 
 end namespace

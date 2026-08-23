@@ -246,37 +246,13 @@ sub Main (args as dynamic) as void
           input.EventResponse({ id: info.id, status: transportStatus })
         end if
       end if
-    else if isNodeEvent(msg, "isDataReturned")
-      popupNode = msg.getRoSGNode()
-      sm = m.global.sceneManager
-      ' main.bs owns exactly two confirmation dialogs, each claimed by a pending flag set when
-      ' it is shown: the deep-link server-switch prompt and the exit prompt. The isDataReturned
-      ' field is shared — routed views observe the same field scoped. Without the flag gate this
-      ' handler would also fire for THEIR dialogs, cancelling the spinner they just started. So we
-      ' act only when one of our flags is set, and leave routed-view-owned confirmations untouched.
-      if isValid(popupNode) and isValid(popupNode.returnData) and (sm.isPendingServerSwitch or sm.isPendingExitConfirmation)
-        print "popupNode.returnData = ", popupNode.returnData
-        stopLoadingSpinner()
-        ' Deep-link server-switch confirmation. On "Switch", run the pre-flighted switch
-        ' (performServerSwitch); on cancel, discard the stashed deep link.
-        if sm.isPendingServerSwitch = true
-          sm.isPendingServerSwitch = false
-          if popupNode.returnData.buttonSelected = translate(translationKeys.ButtonSwitch)
-            performServerSwitch(m.pendingSwitchServer)
-          else
-            m.pendingSwitchServer = invalid
-            m.global.AuthManager.stashedDeepLink = invalid
-            displayToast(translate(translationKeys.MessageCastCanceled), "info")
-          end if
-          ' Exit confirmation dialog
-        else if sm.isPendingExitConfirmation = true
-          sm.isPendingExitConfirmation = false
-          if popupNode.returnData.indexSelected = 1 and popupNode.returnData.buttonSelected = translate(translationKeys.ButtonExit)
-            ' User confirmed exit
-            m.scene.exit = true
-          end if
-        end if
-      end if
+    else if isNodeEvent(msg, "result")
+      ' A dialog observed on THIS port resolved. Every dialog in the app delivers its result on
+      ' its OWN node's `result` field, and component-owned dialogs use scoped observers — so the
+      ' only events that reach here are from main-thread flows that explicitly observed on m.port.
+      ' There is exactly one today (the deep-link server-switch prompt), and its handler compares
+      ' node identity before acting, so adding a second one cannot cross-fire.
+      onServerSwitchDialogResult(msg.getRoSGNode())
     else if isNodeEvent(msg, "dispatchCommand")
       ' A ws:// remote-control command marshalled from RemoteControlTask. Dispatch on the MAIN thread —
       ' remoteDispatch reuses the deep-link (play/navigate) and shared transport seams.

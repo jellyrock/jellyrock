@@ -1077,6 +1077,18 @@ The pop-in ledger scores an appearance off the compositor's `renderTracking`, no
 
 **The constraint worth re-evaluating is the justification itself, not the gate's cost.** It rests entirely on the printed precondition being worth ~2 s per launch, which holds while Home's spread is unexplained. If Phase B finds the app-side mechanism in `HomeRows` / `JRRowItem`, that premise expires and the gate should be re-examined rather than kept by inertia — the null result stays true either way, but "we still don't know why" stops being the reason to keep paying for the check.
 
+## decision-id: one-overlay-dialog-supersedes
+
+**date**: 2026-08-22
+**status**: accepted
+**related-files**: `source/utils/dialogs.bs`, `source/replayRoute.bs`, `components/dialogs/JRDialog.bs`, `components/dialogs/JRListDialog.bs`, `components/OverviewDialog.bs`
+
+`presentOverlayDialog` cancels an already-open overlay before appending a new one, so exactly one is ever on screen. Roku's modal channel (`m.scene.dialog`) is single-slot — the OS replaces the incumbent — and the #288 phase-3 migration moved the four main-thread flows off it without replacing that guarantee. Two overlays then stacked under the shared `jrDialog` id, leaving `findNode` resolving to the corpse and the lower dialog visible but deaf. Reachable via remote control, which is sender-driven rather than human-paced: two casts in flight, or a `DisplayMessage` landing while the server-switch prompt is up.
+
+**What this closes off is a per-caller guard.** The obvious fix — the guard `JRScene.showExitConfirmation` already carries — is wrong for the server-switch flow and would have to be written correctly at every future main-thread call site. `dispatchPlay` overwrites the stashed deep link *before* `promptServerSwitch` runs, so ignoring the second cast freezes a prompt naming item A over a stash holding item B. Superseding also means callers need no code at all: port delivery is asynchronous, so a superseded dialog's canceled result reaches `Main()` only after the flow has re-pointed at its new dialog, and the existing `isSameNode` guard rejects the stale one. The earlier choice — warn and stack — was correct only while there was no way to close someone else's dialog without stranding its owner; `cancelDialog()` is that missing primitive.
+
+**The constraint worth re-evaluating is that this covers the OVERLAY channel only.** `cancelOpenDialog()` reaches both channels; the supersede deliberately does not. Canceling an open keyboard dialog is action-safe — all ten `result.confirmed` consumers in app code gate positively — but it discards what the user has typed, a materially worse trade than closing a yes/no prompt. So both channels can still be open at once with nothing arbitrating between them; that gap is filed separately in `tech-debt.md`.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

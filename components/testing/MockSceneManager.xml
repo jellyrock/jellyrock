@@ -15,14 +15,7 @@
     <field id="reloadHomeRequested" type="boolean" alwaysNotify="true" />
     <function name="resetTime" />
     <function name="setBackgroundImage" />
-    <function name="userMessage" />
-    <function name="dismissDialog" />
     <function name="isDialogOpen" />
-    <function name="showConfirmationDialog" />
     <field id="currentUser" type="string" />
-    <field id="returnData" type="assocarray" />
-    <field id="isDataReturned" type="boolean" />
-    <field id="isPendingExitConfirmation" type="boolean" value="false" />
-    <field id="isPendingServerSwitch" type="boolean" value="false" />
   </interface>
 </component>

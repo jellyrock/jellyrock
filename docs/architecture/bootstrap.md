@@ -7,7 +7,7 @@ related-files:
   - source/utils/globals.bs
   - components/JRScene.xml
   - components/JRScene.bs
-last-reviewed: 2026-08-02
+last-reviewed: 2026-08-22
 ---
 
 # Bootstrap & Lifecycle
@@ -101,7 +101,7 @@ Defined in `source/utils/globals.bs` (`setGlobalNodes` function). Creates and st
 - `m.global.apiPool0`, `apiPool1`, `apiPool2` — three `ApiTask` Task nodes, each `control = "RUN"` to enter their infinite work loop
 - `m.global.apiQueue` — `ApiQueueTask`, the FIFO coordinator that dispatches into the pool
 - `m.global.sideEffectTask` — `SideEffectTask`, `control = "RUN"` to enter its FIFO children-as-vehicle loop for fire-and-forget POST/DELETE
-- `m.global.sceneManager` — now a shared **service node** (dialogs, backdrop, theme, overhang passthrough fields — the scene-stack was removed in #550, see `navigation.md`); observed by `main.bs` for `isDataReturned` and `reloadHomeRequested` events
+- `m.global.sceneManager` — now a shared **service node** (backdrop, theme, overhang passthrough fields, and the `isDialogOpen` query — the scene-stack was removed in #550, see `navigation.md`); observed by `main.bs` for `reloadHomeRequested` events. It no longer *shows* dialogs: every dialog goes through `source/utils/dialogs.bs` and answers on its own node
 - `m.global.AuthManager` — the sgRouter `canActivate` auth guard, created **before** the router's `addRoutes` and registered by node reference on every post-login route (see `navigation.md`)
 - `m.global.activeRoutedView` — node field (default invalid); the currently-mounted router view. Published by `JRScreen`'s lifecycle bridge; read by `getActiveView()`, the overhang controller, and the playback/options/device branches of the event loop
 - `m.global.playbackLaunchRequest` / `m.global.photoLaunchRequest` — `assocarray` fields the queue/photo launchers set to request a route (`JRScene` observes them and navigates — see `playback.md` / `user-journey.md`)
@@ -178,19 +178,19 @@ while true
   else if isNodeEvent(msg, "userMenuAction")           ' routed Home user dropdown → handleMenuAction
   else if type(msg) = "roDeviceInfoEvent"              ' app lifecycle (see below)
   else if type(msg) = "roInputEvent"                   ' deep link OR voice transport
-  else if isNodeEvent(msg, "isDataReturned")           ' dialog result (exit confirm, resume prompt)
+  else if isNodeEvent(msg, "result")                   ' a main-thread dialog resolved (server-switch confirm)
   else if isNodeEvent(msg, "reloadHomeRequested")      ' theme/locale change → reloadRoutedHome
   ' ...
 end while
 ```
 
-The loop is the central hub for cross-screen, main-thread-only actions (things the render thread can't do: blocking bootstrap API calls, `roInput`/`roAppManager`, the `sgrouter`-namespace bridge). Events are wired by `setGlobalNodes()` (e.g. `sceneManager.observeField("isDataReturned", m.port)`), by the once-only scene-field observers set up in `Main()` (`preLoginIntent` / `userMenuAction` / `exit`), or by other code paths observing a node on the same port.
+The loop is the central hub for cross-screen, main-thread-only actions (things the render thread can't do: blocking bootstrap API calls, `roInput`/`roAppManager`, the `sgrouter`-namespace bridge). Events are wired by `setGlobalNodes()` (e.g. `sceneManager.observeField("reloadHomeRequested", m.port)`), by the once-only scene-field observers set up in `Main()` (`preLoginIntent` / `userMenuAction` / `exit`), or by other code paths observing a node on the same port (the server-switch confirm dialog does this per instance).
 
 What is **no longer here** (moved to per-view render-thread handlers in #550):
 
 - **`quickPlayNode`** — Play presses are no longer relayed through `main.bs`. Each routed view (`Home` / `BaseGridView` / `SearchResults` / `ItemDetails`) observes its *own* `quickPlayNode` and forwards it to `QueueManager.launchItem`; single-item plays navigate `/details/:type/:id/play` directly (see `user-journey.md`).
 - **`selectedItem`** — library/item selection is handled by each view's own `selectedItem` observer, which navigates the router via `routeForItem(item)` — not relayed to `main.bs`.
-- The favorite/watched toggles were migrated off this loop in #551 (`group.callFunc("toggleFavorite")` / `toggleWatched` run as render-thread `fetchAsync()` promises in `ItemDetails`). The Series "mark all watched" confirmation now routes through `ItemDetails`'s own scoped `isDataReturned` observer; the only confirmations `main.bs` still handles here are the **exit** dialog and the **resume/start-over** prompt. No raw `submitApiRequest` + `observeField("isDone")` consumer remains in app code — the `promise-ratchet` lint is a hard grep-zero guard.
+- The favorite/watched toggles were migrated off this loop in #551 (`group.callFunc("toggleFavorite")` / `toggleWatched` run as render-thread `fetchAsync()` promises in `ItemDetails`). Confirmation dialogs are no longer routed here at all: a component's dialog answers through a scoped observer in that component (`ItemDetails`, `settings`, and the **exit** confirm, which `JRScene` owns), and the one dialog `main.bs` still handles — the deep-link **server-switch** confirm — is observed per instance on `m.port` rather than through a shared field. No raw `submitApiRequest` + `observeField("isDone")` consumer remains in app code — the `promise-ratchet` lint is a hard grep-zero guard.
 
 Session-ending actions converge on `handleMenuAction(actionId)`: each tears down the routed Home (`m.scene.callFunc("resetRouter")` → `sgrouter.destroy`) and re-enters the login flow **in place** via `reenterLogin()` — no `goto appStart` (that path is gone).
 
@@ -222,7 +222,7 @@ There is no explicit "shutdown" function. The app exits when:
 1. The event loop sees `roSGScreenEvent` with `isScreenClosed()` returning true, **or**
 2. Any code sets `m.scene.exit = true` (the `JRScene` interface field)
 
-The second path is reached via the **router back arbiter**: when a back key reaches `JRScene` at the router root (history depth ≤ 1, i.e. `sgrouter.goBack` had nothing to pop), `showExitConfirmation()` shows the confirm dialog; on confirm, `main.bs`'s `isDataReturned` branch sets `m.scene.exit = true` (see `navigation.md`). The Roku OS handles the actual process teardown after `Main` returns.
+The second path is reached via the **router back arbiter**: when a back key reaches `JRScene` at the router root (history depth ≤ 1, i.e. `sgrouter.goBack` had nothing to pop), `showExitConfirmation()` shows the confirm dialog. `JRScene` owns that dialog end to end — it is a component with its own script scope, so it reads the result through a scoped observer and sets `m.top.exit = true` itself; `main.bs` only sees the `exit` field it already observes (see `navigation.md`). The Roku OS handles the actual process teardown after `Main` returns.
 
 ## Deep links
 

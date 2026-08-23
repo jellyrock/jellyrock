@@ -23,15 +23,6 @@ end sub
 sub setBackgroundImage(_url as string, _fade = false as boolean, _alwaysShow = false as boolean)
 end sub
 
-sub userMessage(_title as string, _message as string)
-end sub
-
-sub dismissDialog()
-end sub
-
 function isDialogOpen() as boolean
   return false
 end function
-
-sub showConfirmationDialog(_title as string, _message as string, _options as object)
-end sub

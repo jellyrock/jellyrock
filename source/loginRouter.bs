@@ -426,7 +426,9 @@ end sub
 sub onQuickConnectRequested()
   json = initQuickConnect()
   if not isValid(json)
-    m.global.sceneManager.callFunc("userMessage", translate(translationKeys.ButtonQuickConnect), translate(translationKeys.LabelQuickConnectNotAvailable))
+    ' A plain alert with an OK button and nothing to observe — it only tells the user the
+    ' server has Quick Connect disabled, then closes itself.
+    showAlertDialog(translate(translationKeys.ButtonQuickConnect), translate(translationKeys.LabelQuickConnectNotAvailable))
     return
   end if
   m.quickConnectDialog = createObject("roSGNode", "QuickConnectDialog")
