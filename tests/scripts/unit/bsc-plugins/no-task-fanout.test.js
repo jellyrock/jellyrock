@@ -368,6 +368,109 @@ describe('no-task-fanout', () => {
       ).toHaveLength(1);
     });
 
+    it('flags a rebind through a literal-AA setFields', () => {
+      // The third write spelling, and the one with real precedent —
+      // `globals.bs` parks Task nodes via addFields exactly this way.
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              m.view.setFields({ task: makeTask(lib) })
+              launchTask(m.view.task)
+            end for
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('flags a rebind through addFields', () => {
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              m.global.addFields({ loader: makeTask(lib) })
+              launchTask(m.global.loader)
+            end for
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('allows a setFields that writes a DIFFERENT field than the launched slot', () => {
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              m.view.setFields({ title: lib.name, visible: true })
+              launchTask(m.view.task)
+            end for
+          end sub
+        `),
+      ).toHaveLength(0);
+    });
+
+    it('allows a NON-literal setFields, whose keys are not knowable', () => {
+      // Same documented limitation as no-raw-run: flagging every non-literal
+      // setFields to chase soundness would false-positive across the codebase.
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              m.view.setFields(buildFields(lib))
+              launchTask(m.view.task)
+            end for
+          end sub
+        `),
+      ).toHaveLength(0);
+    });
+
+    it('matches an AA key case-insensitively, as BrightScript fields are', () => {
+      // `{ Task: … }` and `m.view.task` are one field. Without lowercasing the
+      // AA key, the rebind is not matched and the launch slips through.
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              m.view.setFields({ Task: makeTask(lib) })
+              launchTask(m.view.task)
+            end for
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('does not treat an ordinary method taking an AA as a field write', () => {
+      // Guards the setFields/addFields name filter. Without it ANY dotted call
+      // with a literal AA would mark its keys rebound, turning correct code
+      // into a false positive — the costlier direction for a build error.
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              m.view.configure({ task: lib.id })
+              launchTask(m.view.task)
+            end for
+          end sub
+        `),
+      ).toHaveLength(0);
+    });
+
+    it('does not treat a setFields on a NON-m target as rebinding an m. slot', () => {
+      // The write has to be rooted at `m` to touch an `m.` slot. Without that
+      // check, configuring any unrelated node in the loop would falsely flag
+      // the launch.
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              row.setFields({ loader: lib.id })
+              launchTask(m.loader)
+            end for
+          end sub
+        `),
+      ).toHaveLength(0);
+    });
+
     it('allows a rebind that sits OUTSIDE the loop', () => {
       // Built once, launched many times against the same node — the shape the
       // exemption exists for.

@@ -130,6 +130,7 @@ const DISABLE_LINE_MARKER = /'\s*bsc-disable-line\s+no-task-fanout\b/i;
 const DISABLE_NEXT_LINE_MARKER = /'\s*bsc-disable-next-line\s+no-task-fanout\b/i;
 
 const LAUNCH_FUNCTION = 'launchtask';
+const FIELD_WRITE_METHODS = new Set(['setfields', 'addfields']);
 const SELF_REFERENCE = 'm';
 
 /**
@@ -206,10 +207,19 @@ function stableSlotPath(expression) {
  * `m`), so this buys robustness rather than a caught bug; it costs a few lines
  * and, since a literal key is statically known, cannot false-positive.
  *
- * A COMPUTED key (`m[someVar] = ...`) is deliberately NOT collected: which
- * field it names is not knowable statically, so treating it as rebinding every
- * slot would flag correct code to guard a shape nobody writes. It stays an
- * accepted gap, on the same footing as the interprocedural ones.
+ * The third spelling is a literal-AA `setFields` / `addFields`
+ * (`m.global.addFields({ loader: <fresh> })`). That one has real precedent —
+ * `globals.bs:120` and `:163` park Task nodes exactly that way — so a loop doing
+ * it is the likeliest of the three to be written. Covering it also lines this
+ * plugin up with `no-raw-run.cjs`, which already inspects literal-AA
+ * `setFields`, so the two Task rules read the same set of write spellings.
+ *
+ * Two forms are deliberately NOT collected, both because the target is not
+ * knowable statically and treating them as rebinding every slot would flag
+ * correct code to guard a shape nobody writes: a COMPUTED key
+ * (`m[someVar] = ...`), and a non-literal `setFields(someVariable)` — the same
+ * limitation `no-raw-run` documents, for the same reason. They stay accepted
+ * gaps, on the same footing as the interprocedural ones.
  */
 function slotsAssignedIn(loop) {
   const assigned = new Set();
@@ -230,6 +240,23 @@ function slotsAssignedIn(loop) {
         const field = literalIndexKey(indexes[0]);
         if (base === undefined || field === undefined) return;
         assigned.add(`${base}.${field}`);
+      },
+      // m.view.setFields({ task: <value> }) / m.global.addFields({ ... }) —
+      // the same write through ifSGNodeField. Only a literal AA can be read;
+      // see the docblock on the non-literal form.
+      CallExpression: (call) => {
+        const callee = call?.callee;
+        if (!brighterscript.isDottedGetExpression(callee)) return;
+        if (!FIELD_WRITE_METHODS.has(callee.tokens?.name?.text?.toLowerCase())) return;
+        const args = call.args || [];
+        if (args.length !== 1 || !brighterscript.isAALiteralExpression(args[0])) return;
+        const base = mPath(callee.obj);
+        if (base === undefined) return;
+        for (const element of args[0].elements || []) {
+          const key = element?.tokens?.key?.text ?? element?.key?.text;
+          if (typeof key !== 'string') continue;
+          assigned.add(`${base}.${key.replace(/^"|"$/g, '').toLowerCase()}`);
+        }
       },
     }),
     { walkMode: brighterscript.WalkMode.visitAllRecursive },
