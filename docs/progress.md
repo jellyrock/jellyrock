@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-08-22
+last-updated: 2026-08-23
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-23 — Retire `SceneManager`'s dialog machinery for the `JRDialog` family
 - 2026-08-22 — ci(rta): pin `cellSweepHome`'s workload; Home's variance is app-side
 - 2026-08-22 — ci(rta): Instrument cell pop-in, and stop a screen suspend from inflating `appearances`
 - 2026-08-22 — Move `PlayerHostView` onto the standard dialogs and unify the chrome
@@ -71,9 +72,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-08-09 — fix(ui): render `Gradient` as a stretched tinted ramp poster
 - 2026-08-09 — test(rta): establish preconditions before driving or scanning UI state
 - 2026-08-09 — Draw the Genres view before its artwork has loaded
-- 2026-08-08 — Genres view item counter no longer reads "1 of 1" during the skeleton window — Roku's `RowList` counter is suppressed while rows hold placeholders and restored on fill (PR #779)
-- 2026-08-08 — **Pre-playback input window: closed, no app change needed.** A loading spinner IS shown during the window on both the 720p Stick `3600X` and the Ultra `4850X` (screenshots), so the player swallowing keys until `stateAllowsOSD()` passes is expected app behavior, not a defect. Measured press→playable at ~5-7 s on BOTH devices (stick 5.6/5.8 s, Ultra 7.2 s) — the window tracks stream start against the remote server, NOT device speed, which refuted the "slow devices stretch the window" theory that motivated the question. Deferring/replaying input was proposed and rejected (its benefit and its risk scale with the same variable).
-- 2026-08-08 — RTA harness hardening: `waitFor`/`waitFocused` count actions that throw and name them in the timeout message, so a dropped ECP key press no longer reads as "the screen never loaded"; precondition rule added to `tests/rta/CLAUDE.md` and load-window + power-cycle-first triage guidance to [rta-tests.md](dev/rta-tests.md). A proposed `logInput` debug flag was dropped as out-of-scope, not deferred.
 
 ## Open followups
 
