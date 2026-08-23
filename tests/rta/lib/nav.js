@@ -154,6 +154,11 @@ const DETAIL_ROW_POLL_MS = 300;
 // assumption rather than a slow screen — fail instead of looping.
 const HOME_TILE_VERIFY_ATTEMPTS = 3;
 
+// How many times a library nav will back out and retry when the grid that opened is
+// not the library that was asked for. Bounded for the same reason as the tile check:
+// a press that keeps landing wrong is a broken assumption, not a slow screen.
+const LIBRARY_OPEN_ATTEMPTS = 3;
+
 /**
  * Locate a library tile on the Home screen. The Home layout is server-side
  * user-configurable (the "My Media" row's position AND its tile order can be
@@ -298,8 +303,53 @@ async function findHomeLibraryTile(collectionType, libraryId = null) {
  * overshoot), independent of how the demo account has arranged its Home screen.
  */
 export async function navLibraryByType(collectionType, libraryId = null) {
-  await openLibraryByType(collectionType, libraryId);
-  await waitGridLoaded(`${collectionType} grid`);
+  // VERIFY WHAT OPENED, not just that something opened.
+  //
+  // Everything before the press is a claim about where focus IS, and the only
+  // field available to make that claim — `rowItemFocused` — is the one this repo
+  // documents as RETAINING its last value when the list is not focused. So a walk
+  // can report success at [0,3] while the row list still has [0,0] selected, and
+  // `HomeRows.itemSelected` then resolves `getItemAtIndices(m.top.rowItemSelected)`
+  // to whatever is really under the cursor and routes to THAT library.
+  //
+  // Measured on `.178` 2026-08-23, with the tile-content check already in place:
+  //   asked=tvshows/a656b907… -> grid=Movies(f137a2dd…) tile0=Movie:The Boy in the Plastic Bubble
+  // The Shows tile was verified present at the walked-to coordinates and the Movies
+  // grid opened anyway. Every downstream gate then passed — it is a real grid, it
+  // loads, its tile 0 opens a real detail — and the run failed several navs later
+  // asking for a `Season` row on a Movie.
+  //
+  // The grid's own `parentItem.id` is the one unambiguous answer, because it is what
+  // the app itself resolved. Checking it turns a silent wrong turn into either a
+  // retry or a named failure.
+  for (let attempt = 1; ; attempt++) {
+    await openLibraryByType(collectionType, libraryId);
+    await waitGridLoaded(`${collectionType} grid`);
+
+    const openedId = await getActiveVal('parentItem.id');
+    // No id to check against (an id-less caller) — nothing to verify, keep the
+    // previous behaviour rather than inventing a weaker check.
+    if (!libraryId || openedId === libraryId) break;
+
+    const openedName = await getActiveVal('parentItem.name');
+    if (attempt >= LIBRARY_OPEN_ATTEMPTS) {
+      throw await diagnosedError(
+        `opened the wrong library: asked for ${collectionType} id="${libraryId}" ` +
+          `but the grid that opened is "${openedName ?? '?'}" id="${openedId ?? '?'}" ` +
+          `(${attempt} attempts)`,
+        {
+          kind: FAILURE_KINDS.HOME_LIBRARY_TILE_NOT_FOUND,
+          label: `library grid identity (${collectionType})`,
+          observed: { collectionType, wanted: libraryId, openedId, openedName, attempts: attempt },
+        },
+      );
+    }
+    // Back out to Home and try the whole scan/walk/press again. The retry is what
+    // makes this a fix rather than a report: the press is cheap to repeat and the
+    // wrong grid is fully recoverable.
+    await press(ecp.Key.Back);
+    await waitHome();
+  }
   await sleep(1200); // let posters paint before capture
 }
 
