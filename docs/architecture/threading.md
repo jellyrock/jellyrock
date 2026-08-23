@@ -77,6 +77,13 @@ and the failure-cap behavior is genuinely better. Only the threading rationale w
 - **I/O goes on a Task.** Network, registry, large file reads — never the render thread. Start it
   with `launchTask(node)` (`source/utils/tasks.bs`), never a raw `control = "RUN"`; the `no-raw-run`
   BSC plugin makes the raw form a build error so the thread count stays bounded (#728).
+- **One Task per screen, never one per item.** `no-task-fanout` makes an in-loop `launchTask()` a
+  build error unless it names a fixed `m.<field>` slot the loop doesn't rebind. The two rules split
+  the job: `no-raw-run` bounds *where* a thread may start, `no-task-fanout` bounds *how many*. #728
+  needed both — its fan-out went through an ordinary launch site and already tore its tasks down
+  correctly, because the crash was concurrent launches inside one Home load rather than threads
+  leaked across navigation. Fan every item through one orchestrator Task instead
+  (`components/home/LoadLatestRowsTask.bs`).
 - **Don't assume a component is render-thread-forbidden because it sounds graphical.** Measure.
 - **Rendezvous is per-dot.** From a Task, `x.y.z` on a render-thread-owned node is three separate
   rendezvous. Use `getFields()` / `setFields()`, or build a whole tree and hand it over once.

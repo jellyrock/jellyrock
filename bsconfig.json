@@ -18,6 +18,7 @@
     "./scripts/bsc-plugins/auto-abandon-promises.cjs",
     "./scripts/bsc-plugins/no-direct-sdk.cjs",
     "./scripts/bsc-plugins/no-raw-run.cjs",
+    "./scripts/bsc-plugins/no-task-fanout.cjs",
     "./scripts/bsc-plugins/callfunc-interface.cjs"
   ],
   "lintConfig": "bslint.json",

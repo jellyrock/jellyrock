@@ -17,6 +17,7 @@ related-files:
   - scripts/bsc-plugins/observe-without-on-destroy.cjs
   - scripts/bsc-plugins/no-direct-sdk.cjs
   - scripts/bsc-plugins/no-raw-run.cjs
+  - scripts/bsc-plugins/no-task-fanout.cjs
   - scripts/bsc-plugins/callfunc-interface.cjs
   - scripts/lint/dictionary-audit.cjs
   - scripts/lint/docs-check.cjs
@@ -80,7 +81,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-08-19
+last-reviewed: 2026-08-22
 ---
 
 # Build & Tooling
@@ -222,7 +223,9 @@ The plugin uses `fs.watch` to detect en_US.json changes in language-server mode 
 
 ### Convention plugins
 
-Six plugins encode unwritten conventions documented in `components/CLAUDE.md` / `source/CLAUDE.md` so violations surface as IDE diagnostics + CI failures instead of bugs at runtime, and never crash the build on edge cases. The first four emit warnings (severity 2); `callfunc-interface` and `no-raw-run` emit an **error** (severity 1) — an undeclared `callFunc` target is a guaranteed silent no-op, and an unaccounted Task launch is the `&h29` crash class from epic #728, so neither is a style nit.
+Seven plugins encode unwritten conventions documented in `components/CLAUDE.md` / `source/CLAUDE.md` so violations surface as IDE diagnostics + CI failures instead of bugs at runtime, and never crash the build on edge cases. The first four emit warnings (severity 2); `callfunc-interface`, `no-raw-run` and `no-task-fanout` emit an **error** (severity 1) — an undeclared `callFunc` target is a guaranteed silent no-op, and both Task-launch rules guard the `&h29` crash class from epic #728, so none is a style nit.
+
+**The two Task rules are complementary, and neither subsumes the other.** `no-raw-run` bounds *where* a thread may start (only through `launchTask()`, so the count stays derivable); `no-task-fanout` bounds *how many* may start (not one per loop iteration, so the count cannot scale with server data). #728 needed both: the fan-out it came from went through a perfectly ordinary launch site, and — worth stating because it is the intuitive fix that would not have worked — it already tore its tasks down correctly. The crash was concurrent launches inside one screen load, not threads leaked across navigation.
 
 | Plugin | Flags | Smart filtering |
 |---|---|---|
@@ -231,6 +234,7 @@ Six plugins encode unwritten conventions documented in `components/CLAUDE.md` / 
 | `bsc-plugin-observe-without-on-destroy.cjs` | `observeField` calls with no matching `unobserveField` (same field name, alias-aware target) anywhere in the file | Only runs on `JRScreen` subclass codebehinds; alias resolution via union-find over assignment statements (so `m.foo = bar` makes `m.foo` and `bar` interchangeable for matching) |
 | `bsc-plugin-no-direct-sdk.cjs` | `sdk.<ns>.<fn>(...)` calls outside `source/api/ApiClient.bs` and `source/api/sdk.bs` | None — the only allowed callers are explicitly listed |
 | `bsc-plugin-no-raw-run.cjs` **(error)** | A `control` field written with `"RUN"` — `node.control = ...`, `node["control"] = ...`, `node.setField("control", ...)`, or a literal `node.setFields({ control: ... })` — or written with a value that cannot be resolved statically, outside `source/utils/tasks.bs`. I.e. a Task thread started without going through `launchTask()`, so it cannot be counted | Only `"RUN"` is a thread start: `control` is also Animation's `"start"/"pause"/"resume"` and Video's `"play"/"rewind"/"none"`, and ~95 such writes are left alone. `components/vendor/**` is excluded (the vendored `WebSocketClientTask` self-starts). `setField` is keyed on a **literal** `"control"` first argument, so a generic `setField(name, value)` helper never trips it; `setFields` is inspected when its argument is a literal AA. Known gap: `setFields(someVariable)` can't be inspected statically, and flagging every non-literal one to chase soundness would false-positive across the codebase |
+| `bsc-plugin-no-task-fanout.cjs` **(error)** | A `launchTask(...)` call lexically inside a `for` / `for each` / `while` body — one Task thread per iteration, so the concurrent count scales with server data. This is the shape epic #728 actually took (`HomeRows`' per-library latest-media fan-out, removed in PR #762) | The argument decides it, not the loop: a stable dotted path rooted at `m` (`m.LoadNextUpTask`, `m.view.loadLogoTask`) names ONE node however many times the loop turns and is allowed — that is the live shape in `HomeRows.startParallelLoads()`. A loop variable, a call result, or an indexed step (`m.tasks[i]`) is flagged; so is a stable path the loop body **rebinds** (`m.loader = createObject(…)` then `launchTask(m.loader)`), which is a fresh node per turn wearing a stable name — and the first thing someone reaches for to clear the diagnostic. All three write spellings count: `m.loader = …`, the literal-key `m["loader"] = …`, and a literal-AA `setFields` / `addFields` (the spelling `globals.bs` actually uses to park Task nodes). Rebinding a *parent* of the path counts; writing a *child* of it (configuring the node) does not. A dotted `callee` is matched on its final name (`tasks.launchTask(…)`) as well as the bare form written today — otherwise moving `tasks.bs` into a namespace would turn all 101 call sites dotted in one commit and this rule would flag nothing, silently, with CI still green. `source/utils/tasks.bs` and `components/vendor/**` are excluded. Known gaps, both interprocedural: a loop calling a helper that launches internally, and a local aliased to a stable slot before the loop (flagged though safe). Deliberate over-reporting: a literal key (`m["loader"]`) and a lazily-initialized singleton are flagged though stable — one suppression each, and neither occurs today |
 | `bsc-plugin-callfunc-interface.cjs` **(error)** | `callFunc("X")` where `X` is a method DEFINED in one of our component codebehinds but declared in NO component `<interface><function>` anywhere — the silent-no-op bug | Program-wide, case-insensitive membership: if ANY component exposes `X`, no site is flagged (errs toward false-negatives, away from false-positives). Skips `roku_modules`; ignores non-literal `callFunc` args |
 
 **Suppressing a false positive.** Each plugin honors these comment markers (case-insensitive, regex match against the source text):
@@ -252,6 +256,7 @@ Prefer the narrowest scope: line > next-line > file. Whole-file opt-outs should 
 | `callfunc-interface` | ✅ | ✅ | ✅ | Suppressing should be extremely rare — an undeclared target is normally a real bug |
 | `no-direct-sdk` | ✅ | ✅ | ❌ | |
 | `no-raw-run` | ✅ | ✅ | ❌ | **Deliberate.** A whole-file opt-out on an error-severity thread-budget guard would silently remove the bound from a whole file; suppress the one line and say why |
+| `no-task-fanout` | ✅ | ✅ | ❌ | **Deliberate**, same reasoning as `no-raw-run` — a file-wide opt-out would remove the fan-out bound from a whole file |
 | `jrscreen-on-destroy` | ❌ | ❌ | ✅ | The diagnostic lands on the XML component declaration, not a source line |
 | `auto-abandon-promises` | ❌ | ❌ | ✅ | |
 

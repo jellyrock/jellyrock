@@ -727,3 +727,6 @@
 (?:unattributable)\.
 (?:subprocess)\.
 (?:pre-registered)\.
+(?:lexically)\.
+(?:interprocedural)\.
+(?:closable)\.

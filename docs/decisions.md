@@ -1089,6 +1089,18 @@ The pop-in ledger scores an appearance off the compositor's `renderTracking`, no
 
 **The constraint worth re-evaluating is that this covers the OVERLAY channel only.** `cancelOpenDialog()` reaches both channels; the supersede deliberately does not. Canceling an open keyboard dialog is action-safe — all ten `result.confirmed` consumers in app code gate positively — but it discards what the user has typed, a materially worse trade than closing a yes/no prompt. So both channels can still be open at once with nothing arbitrating between them; that gap is filed separately in `tech-debt.md`.
 
+## decision-id: task-fanout-keys-on-argument
+
+**date**: 2026-08-22
+**status**: accepted
+**related-files**: `scripts/bsc-plugins/no-task-fanout.cjs`, `bsconfig.json`, `bsconfig-prod.json`, `docs/architecture/build-and-tooling.md`
+
+The `no-task-fanout` plugin keys on the launched ARGUMENT's stability, not on the presence of a loop. A `launchTask()` inside a `for` / `for each` / `while` body is an Error unless its argument is a stable dotted path rooted at `m` **that the loop body does not rebind** — such a path names ONE node however many times the loop turns, so the thread count is bounded by the number of distinct field paths written in source rather than by the collection being iterated. An indexed step (`m.tasks[i]`), a loop variable, or a call result is flagged. So is a stable path the body reassigns (`m.loader = createObject(…)` then `launchTask(m.loader)`): that is a fresh node per turn wearing a stable name, and it is the first thing someone reaches for to clear the diagnostic, so leaving it exempt would have left the rule one token away from being bypassed. All three write spellings are read — `m.loader = …`, the literal-key `m["loader"] = …`, and a literal-AA `setFields` / `addFields`, which is the spelling `globals.bs` actually uses to park a Task node — so the exemption cannot be recovered by changing how the assignment is written.
+
+**This closes off two rules that are more obvious and both wrong.** A blanket "no `launchTask` in a loop" would have failed the codebase on day one: `HomeRows.startParallelLoads()` legitimately loops over `m.sectionPlan` and launches four fixed singleton slots, each flag-guarded. A construction-site rule ("no `CreateObject(..Task)` inside a loop") is simpler to implement but guards the wrong event — construction costs nothing, the launch spends the thread — and misses a helper that builds the node outside the loop body. Validated against the real crash rather than a synthetic case: run over `HomeRows.bs` as it stood at `c59e96a1^` — with that file's raw `control = "RUN"` writes rewritten to the `launchTask()` form, since the `no-raw-run` migration came later — the rule reports exactly one diagnostic, the per-library `launchTask(loadLatest)` that caused `&h29`, and leaves the six in-loop `m.LoadXTask` launches in that same file alone.
+
+**The constraint worth re-evaluating is the two accepted interprocedural gaps**, neither closable without call-graph analysis: a loop calling a helper that launches internally, and a local aliased to a stable slot before the loop (flagged though safe — contrived, absent from the codebase, and covered by the escape hatch). Alias-awareness is what `observe-without-on-destroy` pays real complexity for; there its false positives are routine, here they are hypothetical. If either gap produces a real miss or a real false positive, that is the evidence to revisit — not the theoretical incompleteness.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
