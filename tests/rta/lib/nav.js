@@ -493,6 +493,22 @@ export async function navPlaylistsLibrary(ctx) {
  * every item type). Used by the per-type detail screens that just need ONE example.
  */
 async function openFirstGridTileDetail(label) {
+  // GATE FOCUS BEFORE PRESSING, via the same helper the indexed callers use.
+  //
+  // This function pressed OK bare. `focusGridTile`'s own comment already spells out
+  // why that is wrong — "grid LOADED is not grid FOCUSED", so an OK sent before focus
+  // arrives goes to whatever does hold it — and records that the gate was once nested
+  // under a `target <= 0` early return, "which left exactly the tile-0 callers
+  // ungated". That was fixed inside `focusGridTile`; this function never called it, so
+  // the three tile-0 navs went on pressing ungated. `focusGridTile(0)` is exactly the
+  // gate with no walk, which is what these callers want.
+  //
+  // Observed cost, `.178` 2026-08-23: `seasonDetails` opened `The Boy in the Plastic
+  // Bubble` — a MOVIE, from the Movies library — while navigating the Shows library,
+  // and failed three navs later as "Season row not found". The Home-tile guard in
+  // `openLibraryByType` had already confirmed the correct library tile was pressed, so
+  // the stray OK is downstream of it: the grid had loaded but focus had not landed.
+  await focusGridTile(0);
   await press(ecp.Key.Ok);
   await waitFor('#videoTitle.text', (t) => typeof t === 'string' && t.length > 0, {
     label: `${label} detail title`,
