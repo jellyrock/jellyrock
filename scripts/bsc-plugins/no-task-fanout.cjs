@@ -83,17 +83,20 @@
  *
  * ── Known residual gaps, stated rather than chased ─────────────────────────
  *
- * Two are interprocedural, and closing either needs call-graph analysis this
- * plugin family does not do:
+ * Two are interprocedural, and closing either needs the call-graph or aliasing
+ * analysis this plugin family does not do:
  *
  *  1. A loop that calls a helper which launches internally
  *     (`for each lib ... loadLibrary(lib)`, where `loadLibrary` launches).
- *  2. A local aliased to a stable slot before the loop
- *     (`task = m.LoadX` then `launchTask(task)` inside the loop) is flagged,
- *     though it is safe. Contrived, absent from the codebase, and the escape
- *     hatch covers it — `observe-without-on-destroy` pays real complexity for
- *     alias-awareness because its false positives are routine; here they are
- *     hypothetical.
+ *  2. A local aliased to a slot around the loop, in either direction. On the
+ *     READ side (`task = m.LoadX` then `launchTask(task)` inside the loop) the
+ *     launch is flagged though safe; on the WRITE side (`g = m.global` then
+ *     `g.addFields({ loader: ... })` inside the loop) the rebind of
+ *     `m.global.loader` is missed, because the write never names that path. One
+ *     limitation, two faces. Contrived, absent from the codebase, and the escape
+ *     hatch covers the false-positive face — `observe-without-on-destroy` pays
+ *     real complexity for alias-awareness because its false positives are
+ *     routine; here they are hypothetical.
  *
  * One is not interprocedural: a rebind through a COMPUTED index
  * (`m[someVar] = ...`) is not collected, because which field it names is not
@@ -279,10 +282,29 @@ function slotIsReboundIn(slotPath, assignedPaths) {
   return false;
 }
 
-/** True when `call` is a call to the `launchTask()` free function. */
+/**
+ * True when `call` is a call to `launchTask()`.
+ *
+ * A DOTTED callee is matched on its final name (`tasks.launchTask(node)`) as
+ * well as the bare one this codebase writes today. Not speculation about a
+ * plausible refactor — the failure has an exact shape: namespacing
+ * `source/utils/tasks.bs` turns all 101 call sites into dotted calls in one
+ * commit, and a bare-only match would then flag NOTHING while the plugin still
+ * loads and CI still passes. `no-raw-run` keys on the `control` write, so the
+ * chokepoint would hold and only the fan-out bound would evaporate, silently.
+ * Namespacing a `source/utils/` module is an active convention here (10 of 44
+ * files, three of them added in August 2026). Matching a dotted callee is also
+ * the family idiom: `no-raw-run` matches `node.setField(...)`, `no-direct-sdk`
+ * matches `sdk.<ns>.<fn>(...)`.
+ */
 function isLaunchTaskCall(call) {
   const callee = call?.callee;
-  if (!brighterscript.isVariableExpression(callee)) return false;
+  if (
+    !brighterscript.isVariableExpression(callee) &&
+    !brighterscript.isDottedGetExpression(callee)
+  ) {
+    return false;
+  }
   return callee.tokens?.name?.text?.toLowerCase() === LAUNCH_FUNCTION;
 }
 

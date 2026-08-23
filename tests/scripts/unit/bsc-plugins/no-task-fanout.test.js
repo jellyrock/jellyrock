@@ -32,7 +32,9 @@ function check(source, path = 'components/Foo.bs') {
 }
 
 describe('no-task-fanout', () => {
-  describe('the #728 shape', () => {
+  describe('the launch ARGUMENT is unstable — the #728 shape', () => {
+    // Half one of the rule: the thing being launched is a different node on
+    // every turn, whatever it is called.
     it('flags a node constructed and launched inside a for-each — the HomeRows fan-out', () => {
       // Reduced from HomeRows.bs as it stood before c59e96a1: one
       // LoadItemsTask per library, all launched in the same pass.
@@ -88,6 +90,40 @@ describe('no-task-fanout', () => {
       ).toHaveLength(1);
     });
 
+    it('flags an indexed step, which is a per-iteration node wearing an m. prefix', () => {
+      // The gap a naive "starts with m." check would leave open.
+      expect(
+        check(`
+          sub go()
+            for i = 0 to m.tasks.count() - 1
+              launchTask(m.tasks[i])
+            end for
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('flags a launch whose arity is not one, rather than assuming it safe', () => {
+      // Holds the "report rather than assume safe" posture for any launch
+      // shape the stability check cannot read.
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              launchTask()
+            end for
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+  });
+
+  describe('the loop REBINDS the slot — spelling 1, a dotted assignment', () => {
+    // Half two, and the half a first version of this rule got wrong. An `m.` path
+    // names one node only while the loop leaves it alone; hoisting a flagged local
+    // into an `m.` field is the first thing someone reaches for to clear the
+    // diagnostic, so exempting it would have taught the bypass. Each spelling of a
+    // write gets its own block below; this one is the plain dotted assignment.
     it('flags a fresh node parked in a stable m. slot each turn', () => {
       // The one-token escape from every other assertion in this block: hoist the
       // flagged local into an `m.` field and the stable-slot exemption applies,
@@ -154,17 +190,273 @@ describe('no-task-fanout', () => {
       ).toHaveLength(1);
     });
 
-    it('flags an indexed step, which is a per-iteration node wearing an m. prefix', () => {
-      // The gap a naive "starts with m." check would leave open.
+    it('flags a rebind in the OUTER loop when the launch sits in an inner one', () => {
+      // The inner loop's own body rebinds nothing, so only the outer pass can
+      // see this. Pinned because it depends on the walk reaching loops
+      // outermost-first, which is not obvious from reading the visitor.
       expect(
         check(`
           sub go()
-            for i = 0 to m.tasks.count() - 1
-              launchTask(m.tasks[i])
+            for each a in m.sections
+              m.loader = createObject("roSGNode", "LoadItemsTask")
+              for each b in a.items
+                launchTask(m.loader)
+              end for
             end for
           end sub
         `),
       ).toHaveLength(1);
+    });
+
+    it('flags a rebind in an INNER loop when the launch follows it', () => {
+      // The mirror case: the rebind is nested deeper than the launch. The
+      // assigned-path set is collected from the whole subtree, so it is seen.
+      expect(
+        check(`
+          sub go()
+            for each a in m.sections
+              for each b in a.items
+                m.loader = createObject("roSGNode", "LoadItemsTask")
+              end for
+              launchTask(m.loader)
+            end for
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('allows a sibling field write that is not the launched slot', () => {
+      // startParallelLoads() writes m.isLoadingResume in the same body it
+      // launches m.LoadContinueWatchingTask from. Matching too loosely here —
+      // "any m. write in the loop" — would fail the live codebase.
+      expect(
+        check(`
+          sub startParallelLoads()
+            for each section in m.sectionPlan
+              m.isLoadingResume = true
+              launchTask(m.LoadContinueWatchingTask)
+            end for
+          end sub
+        `),
+      ).toHaveLength(0);
+    });
+
+    it('allows a write to a CHILD of the launched slot', () => {
+      // Configuring the node (m.LoadNextUpTask.itemId = ...) is not rebinding
+      // it: the slot still holds the same node. Only the path itself or one of
+      // its parents counts.
+      expect(
+        check(`
+          sub go()
+            for each section in m.sectionPlan
+              m.LoadNextUpTask.itemId = section.id
+              launchTask(m.LoadNextUpTask)
+            end for
+          end sub
+        `),
+      ).toHaveLength(0);
+    });
+
+    it('allows a rebind that sits OUTSIDE the loop', () => {
+      // Built once, launched many times against the same node — the shape the
+      // exemption exists for.
+      expect(
+        check(`
+          sub go()
+            m.loader = createObject("roSGNode", "LoadItemsTask")
+            for each item in items
+              launchTask(m.loader)
+            end for
+          end sub
+        `),
+      ).toHaveLength(0);
+    });
+  });
+
+  describe('rebind spelling 2 — a literal-key index', () => {
+    // `m["loader"]` and `m.loader` are one field in BrightScript, so the check has
+    // to read both spellings or mixing them across the write and the launch slips
+    // it. A COMPUTED key names nothing knowable and is deliberately not collected.
+    it('flags a rebind spelled as a literal-key index, read back dotted', () => {
+      // The two spellings name the same field, so a write in one and a launch
+      // in the other is the same fan-out. Collected by `slotsAssignedIn`.
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              m["loader"] = createObject("roSGNode", "LoadItemsTask")
+              launchTask(m.loader)
+            end for
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('flags a literal-key rebind of a PARENT of the launched path', () => {
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              m["view"] = buildView(lib)
+              launchTask(m.view.task)
+            end for
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('matches a literal-key rebind case-insensitively, as BrightScript does', () => {
+      // AA keys are case-insensitive, so `m["Loader"]` and `m.loader` are one
+      // field. Without the lowercasing, this rebind slips the check.
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              m["Loader"] = createObject("roSGNode", "LoadItemsTask")
+              launchTask(m.loader)
+            end for
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('allows a literal-key write to a DIFFERENT field than the launched slot', () => {
+      // The literal-key collection must stay keyed on the field name, not
+      // degrade into "any bracket write rebinds everything".
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              m["pending"] = true
+              launchTask(m.loader)
+            end for
+          end sub
+        `),
+      ).toHaveLength(0);
+    });
+
+    it('allows a COMPUTED-index write, which names no knowable field', () => {
+      // Deliberate: treating an unknowable target as rebinding every slot
+      // would flag correct code to guard a shape nobody writes.
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              m[lib.key] = lib.name
+              launchTask(m.loader)
+            end for
+          end sub
+        `),
+      ).toHaveLength(0);
+    });
+  });
+
+  describe('rebind spelling 3 — a literal-AA setFields / addFields', () => {
+    // The spelling with real precedent: `globals.bs` parks Task nodes with
+    // `m.global.addFields({ ... })`. The negative cases here are the load-bearing
+    // ones — each guards the FALSE-POSITIVE direction, which is the costlier one
+    // for an Error-severity rule.
+    it('flags a rebind through a literal-AA setFields', () => {
+      // The third write spelling, and the one with real precedent —
+      // `globals.bs` parks Task nodes via addFields exactly this way.
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              m.view.setFields({ task: makeTask(lib) })
+              launchTask(m.view.task)
+            end for
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('flags a rebind through addFields', () => {
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              m.global.addFields({ loader: makeTask(lib) })
+              launchTask(m.global.loader)
+            end for
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('matches an AA key case-insensitively, as BrightScript fields are', () => {
+      // `{ Task: … }` and `m.view.task` are one field. Without lowercasing the
+      // AA key, the rebind is not matched and the launch slips through.
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              m.view.setFields({ Task: makeTask(lib) })
+              launchTask(m.view.task)
+            end for
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('allows a setFields that writes a DIFFERENT field than the launched slot', () => {
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              m.view.setFields({ title: lib.name, visible: true })
+              launchTask(m.view.task)
+            end for
+          end sub
+        `),
+      ).toHaveLength(0);
+    });
+
+    it('allows a NON-literal setFields, whose keys are not knowable', () => {
+      // Same documented limitation as no-raw-run: flagging every non-literal
+      // setFields to chase soundness would false-positive across the codebase.
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              m.view.setFields(buildFields(lib))
+              launchTask(m.view.task)
+            end for
+          end sub
+        `),
+      ).toHaveLength(0);
+    });
+
+    it('does not treat an ordinary method taking an AA as a field write', () => {
+      // Guards the setFields/addFields name filter. Without it ANY dotted call
+      // with a literal AA would mark its keys rebound, turning correct code
+      // into a false positive — the costlier direction for a build error.
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              m.view.configure({ task: lib.id })
+              launchTask(m.view.task)
+            end for
+          end sub
+        `),
+      ).toHaveLength(0);
+    });
+
+    it('does not treat a setFields on a NON-m target as rebinding an m. slot', () => {
+      // The write has to be rooted at `m` to touch an `m.` slot. Without that
+      // check, configuring any unrelated node in the loop would falsely flag
+      // the launch.
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              row.setFields({ loader: lib.id })
+              launchTask(m.loader)
+            end for
+          end sub
+        `),
+      ).toHaveLength(0);
     });
   });
 
@@ -217,6 +509,26 @@ describe('no-task-fanout', () => {
     });
   });
 
+  describe('what counts as a launch call', () => {
+    it('flags a DOTTED launch call, so namespacing tasks.bs cannot silently disable the rule', () => {
+      // `launchTask` is a free function today, so every call site is bare. If
+      // `source/utils/tasks.bs` is ever namespaced — an active convention here,
+      // 10 of 44 utils files — all 101 call sites become dotted in one commit.
+      // A bare-only match would then flag NOTHING, with the plugin still loading
+      // and CI still green. `no-raw-run` keys on the `control` write, so it would
+      // keep passing and only this bound would vanish.
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              tasks.launchTask(makeLoaderFor(lib))
+            end for
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+  });
+
   describe('what must NOT be flagged', () => {
     it('allows a fixed m.<field> slot in a loop — the live HomeRows shape', () => {
       // startParallelLoads() loops over m.sectionPlan and launches four
@@ -243,243 +555,6 @@ describe('no-task-fanout', () => {
           sub go()
             for each item in items
               launchTask(m.view.loadLogoTask)
-            end for
-          end sub
-        `),
-      ).toHaveLength(0);
-    });
-
-    it('allows a sibling field write that is not the launched slot', () => {
-      // startParallelLoads() writes m.isLoadingResume in the same body it
-      // launches m.LoadContinueWatchingTask from. Matching too loosely here —
-      // "any m. write in the loop" — would fail the live codebase.
-      expect(
-        check(`
-          sub startParallelLoads()
-            for each section in m.sectionPlan
-              m.isLoadingResume = true
-              launchTask(m.LoadContinueWatchingTask)
-            end for
-          end sub
-        `),
-      ).toHaveLength(0);
-    });
-
-    it('allows a write to a CHILD of the launched slot', () => {
-      // Configuring the node (m.LoadNextUpTask.itemId = ...) is not rebinding
-      // it: the slot still holds the same node. Only the path itself or one of
-      // its parents counts.
-      expect(
-        check(`
-          sub go()
-            for each section in m.sectionPlan
-              m.LoadNextUpTask.itemId = section.id
-              launchTask(m.LoadNextUpTask)
-            end for
-          end sub
-        `),
-      ).toHaveLength(0);
-    });
-
-    it('flags a rebind spelled as a literal-key index, read back dotted', () => {
-      // The two spellings name the same field, so a write in one and a launch
-      // in the other is the same fan-out. Collected by `slotsAssignedIn`.
-      expect(
-        check(`
-          sub go()
-            for each lib in m.libs
-              m["loader"] = createObject("roSGNode", "LoadItemsTask")
-              launchTask(m.loader)
-            end for
-          end sub
-        `),
-      ).toHaveLength(1);
-    });
-
-    it('flags a literal-key rebind of a PARENT of the launched path', () => {
-      expect(
-        check(`
-          sub go()
-            for each lib in m.libs
-              m["view"] = buildView(lib)
-              launchTask(m.view.task)
-            end for
-          end sub
-        `),
-      ).toHaveLength(1);
-    });
-
-    it('allows a literal-key write to a DIFFERENT field than the launched slot', () => {
-      // The literal-key collection must stay keyed on the field name, not
-      // degrade into "any bracket write rebinds everything".
-      expect(
-        check(`
-          sub go()
-            for each lib in m.libs
-              m["pending"] = true
-              launchTask(m.loader)
-            end for
-          end sub
-        `),
-      ).toHaveLength(0);
-    });
-
-    it('allows a COMPUTED-index write, which names no knowable field', () => {
-      // Deliberate: treating an unknowable target as rebinding every slot
-      // would flag correct code to guard a shape nobody writes.
-      expect(
-        check(`
-          sub go()
-            for each lib in m.libs
-              m[lib.key] = lib.name
-              launchTask(m.loader)
-            end for
-          end sub
-        `),
-      ).toHaveLength(0);
-    });
-
-    it('matches a literal-key rebind case-insensitively, as BrightScript does', () => {
-      // AA keys are case-insensitive, so `m["Loader"]` and `m.loader` are one
-      // field. Without the lowercasing, this rebind slips the check.
-      expect(
-        check(`
-          sub go()
-            for each lib in m.libs
-              m["Loader"] = createObject("roSGNode", "LoadItemsTask")
-              launchTask(m.loader)
-            end for
-          end sub
-        `),
-      ).toHaveLength(1);
-    });
-
-    it('flags a launch whose arity is not one, rather than assuming it safe', () => {
-      // Holds the "report rather than assume safe" posture for any launch
-      // shape the stability check cannot read.
-      expect(
-        check(`
-          sub go()
-            for each lib in m.libs
-              launchTask()
-            end for
-          end sub
-        `),
-      ).toHaveLength(1);
-    });
-
-    it('flags a rebind through a literal-AA setFields', () => {
-      // The third write spelling, and the one with real precedent —
-      // `globals.bs` parks Task nodes via addFields exactly this way.
-      expect(
-        check(`
-          sub go()
-            for each lib in m.libs
-              m.view.setFields({ task: makeTask(lib) })
-              launchTask(m.view.task)
-            end for
-          end sub
-        `),
-      ).toHaveLength(1);
-    });
-
-    it('flags a rebind through addFields', () => {
-      expect(
-        check(`
-          sub go()
-            for each lib in m.libs
-              m.global.addFields({ loader: makeTask(lib) })
-              launchTask(m.global.loader)
-            end for
-          end sub
-        `),
-      ).toHaveLength(1);
-    });
-
-    it('allows a setFields that writes a DIFFERENT field than the launched slot', () => {
-      expect(
-        check(`
-          sub go()
-            for each lib in m.libs
-              m.view.setFields({ title: lib.name, visible: true })
-              launchTask(m.view.task)
-            end for
-          end sub
-        `),
-      ).toHaveLength(0);
-    });
-
-    it('allows a NON-literal setFields, whose keys are not knowable', () => {
-      // Same documented limitation as no-raw-run: flagging every non-literal
-      // setFields to chase soundness would false-positive across the codebase.
-      expect(
-        check(`
-          sub go()
-            for each lib in m.libs
-              m.view.setFields(buildFields(lib))
-              launchTask(m.view.task)
-            end for
-          end sub
-        `),
-      ).toHaveLength(0);
-    });
-
-    it('matches an AA key case-insensitively, as BrightScript fields are', () => {
-      // `{ Task: … }` and `m.view.task` are one field. Without lowercasing the
-      // AA key, the rebind is not matched and the launch slips through.
-      expect(
-        check(`
-          sub go()
-            for each lib in m.libs
-              m.view.setFields({ Task: makeTask(lib) })
-              launchTask(m.view.task)
-            end for
-          end sub
-        `),
-      ).toHaveLength(1);
-    });
-
-    it('does not treat an ordinary method taking an AA as a field write', () => {
-      // Guards the setFields/addFields name filter. Without it ANY dotted call
-      // with a literal AA would mark its keys rebound, turning correct code
-      // into a false positive — the costlier direction for a build error.
-      expect(
-        check(`
-          sub go()
-            for each lib in m.libs
-              m.view.configure({ task: lib.id })
-              launchTask(m.view.task)
-            end for
-          end sub
-        `),
-      ).toHaveLength(0);
-    });
-
-    it('does not treat a setFields on a NON-m target as rebinding an m. slot', () => {
-      // The write has to be rooted at `m` to touch an `m.` slot. Without that
-      // check, configuring any unrelated node in the loop would falsely flag
-      // the launch.
-      expect(
-        check(`
-          sub go()
-            for each lib in m.libs
-              row.setFields({ loader: lib.id })
-              launchTask(m.loader)
-            end for
-          end sub
-        `),
-      ).toHaveLength(0);
-    });
-
-    it('allows a rebind that sits OUTSIDE the loop', () => {
-      // Built once, launched many times against the same node — the shape the
-      // exemption exists for.
-      expect(
-        check(`
-          sub go()
-            m.loader = createObject("roSGNode", "LoadItemsTask")
-            for each item in items
-              launchTask(m.loader)
             end for
           end sub
         `),
