@@ -29,24 +29,61 @@
  * ── What is flagged ────────────────────────────────────────────────────────
  *
  * A `launchTask(<arg>)` call lexically inside a `for` / `for each` / `while`
- * body, unless `<arg>` is a stable field path rooted at `m` — see below.
+ * body, unless `<arg>` is a stable field path rooted at `m` that the loop body
+ * does not rebind — see below.
  *
  * ── What is NOT flagged, and why ───────────────────────────────────────────
  *
  * `launchTask(m.SomeTask)` and `launchTask(m.view.someTask)` — a dotted path
- * rooted at `m` with no indexing. That names ONE node however many times the
- * loop turns, so the thread count is bounded by the number of distinct field
- * paths written in the source, not by the collection being iterated. This is
- * the live shape in `HomeRows.startParallelLoads()`, which loops over
- * `m.sectionPlan` and launches four fixed singleton slots, each additionally
- * guarded by an `m.isLoadingX` flag.
+ * rooted at `m`, with no indexing, that the loop does not rebind. That names ONE
+ * node however many times the loop turns, so the thread count is bounded by the
+ * number of distinct field paths written in the source, not by the collection
+ * being iterated. This is the live shape in `HomeRows.startParallelLoads()`,
+ * which loops over `m.sectionPlan` and launches four fixed singleton slots, each
+ * additionally guarded by an `m.isLoadingX` flag.
  *
- * An indexed step anywhere in the path (`m.tasks[i]`) IS flagged — that is a
- * per-iteration node wearing an `m.` prefix.
+ * An indexed step anywhere in the path (`m.tasks[i]`) IS flagged — a computed
+ * index is a per-iteration node wearing an `m.` prefix. A literal key
+ * (`m["loader"]`) is every bit as stable as `m.loader` but is flagged too: the
+ * rule reads dotted steps only, and that shape appears nowhere in the codebase.
+ * Suppress the one line if it ever does.
+ *
+ * Note the deliberate asymmetry with `slotsAssignedIn`, which DOES resolve a
+ * literal key. It is not an oversight — both halves err the same way, toward
+ * reporting. Resolving the key on the write side makes the rule stricter (one
+ * more way to catch a rebind); declining to resolve it on the launch side also
+ * makes it stricter (a stable slot loses its exemption). Were either reversed,
+ * a launch would slip through.
+ *
+ * ── An `m.` slot is only stable while the loop leaves it alone ──────────────
+ *
+ * Parking a freshly built node in an `m.` field does not make it one node:
+ *
+ *     for each lib in m.libs
+ *       m.loader = createObject("roSGNode", "LoadItemsTask")
+ *       launchTask(m.loader)              ' still one thread per library
+ *     end for
+ *
+ * Nothing STOPs the node the previous turn launched and the loop never waits, so
+ * N threads start inside one pass — #728's property exactly, wearing the shape
+ * that would otherwise earn the stable-slot exemption. That matters more than it
+ * looks: hoisting a flagged local into an `m.` field is the first thing someone
+ * reaches for to clear the diagnostic, it is idiomatic here (`QueueManager` and
+ * `JRScene` both build Task nodes straight into an `m.` slot at a call site),
+ * and it preserves the bug.
+ *
+ * So a stable slot loses its exemption when the loop body assigns that path — or
+ * any prefix of it, since `m.view = <fresh>` then `launchTask(m.view.task)` is
+ * the same trick one level up.
+ *
+ * Deliberate trade: a lazily-initialized singleton (`if not isValid(m.loader)
+ * then m.loader = ...` inside the loop) builds one node and is flagged anyway.
+ * Rare, absent from the codebase, and one suppression comment away — the rule
+ * would rather over-report a launch than reason about which branch ran.
  *
  * ── Known residual gaps, stated rather than chased ─────────────────────────
  *
- * Both are interprocedural, and closing either needs call-graph analysis this
+ * Two are interprocedural, and closing either needs call-graph analysis this
  * plugin family does not do:
  *
  *  1. A loop that calls a helper which launches internally
@@ -58,8 +95,14 @@
  *     alias-awareness because its false positives are routine; here they are
  *     hypothetical.
  *
- * Catching the direct form is still strictly better than catching nothing: it
- * is the shape #728 actually took.
+ * One is not interprocedural: a rebind through a COMPUTED index
+ * (`m[someVar] = ...`) is not collected, because which field it names is not
+ * knowable statically. Treating it as rebinding every slot would flag correct
+ * code to guard a shape nobody writes. (The *literal*-key form, `m["loader"] =
+ * ...`, IS collected — see `slotsAssignedIn`.)
+ *
+ * Catching the direct forms is still strictly better than catching nothing: they
+ * are the shape #728 actually took, and the one-token escape from it.
  *
  * ── The sanctioned fix ─────────────────────────────────────────────────────
  *
@@ -90,26 +133,123 @@ const LAUNCH_FUNCTION = 'launchtask';
 const SELF_REFERENCE = 'm';
 
 /**
- * True when `expression` names a stable field slot: a dotted path rooted at the
- * `m` variable, with no indexed step at any level (`m.A`, `m.a.b` — but not
- * `m.tasks[i]`, and not a bare local or a call result).
- *
- * Such a path resolves to the same node on every turn of a loop, so it cannot
- * be the per-iteration fan-out this plugin exists to stop.
+ * The lowercased dotted path `expression` names when it is rooted at the `m`
+ * scope object and every step is a plain dotted step — `"m"`, `"m.a"`,
+ * `"m.a.b"`. Returns undefined for anything else: an indexed step
+ * (`m.tasks[i]`), a bare local, a call result.
  */
-function isStableSlot(expression) {
+function mPath(expression) {
+  const steps = [];
   let current = expression;
   // Unwrap the dotted chain right-to-left; anything other than a dotted step
   // (an index, a call, a grouping) disqualifies the whole path.
   while (brighterscript.isDottedGetExpression(current)) {
+    const step = current.tokens?.name?.text;
+    if (!step) return undefined;
+    steps.unshift(step.toLowerCase());
     current = current.obj;
   }
-  return (
-    brighterscript.isVariableExpression(current) &&
-    current.tokens?.name?.text?.toLowerCase() === SELF_REFERENCE &&
-    // A bare `m` is not a task node; require at least one dotted step.
-    current !== expression
+  if (!brighterscript.isVariableExpression(current)) return undefined;
+  if (current.tokens?.name?.text?.toLowerCase() !== SELF_REFERENCE) return undefined;
+  return [SELF_REFERENCE, ...steps].join('.');
+}
+
+/**
+ * The lowercased key of a literal-string index — `"loader"` for `m["loader"]`.
+ * Returns undefined for a computed index (`m[key]`), whose target is not
+ * knowable statically, and for a non-string literal (`m[3]`).
+ *
+ * Lowercased because BrightScript AA keys are case-insensitive, so
+ * `m["Loader"]` and `m.loader` are the same field and must collide here.
+ *
+ * Two of the four checks here are redundant against today's AST, established by
+ * mutation rather than assumed — removing either alone leaves the suite green:
+ * a computed index is already rejected by the `typeof raw !== 'string'` check
+ * (its token carries `name`, not `value`), and a non-string literal like `m[3]`
+ * is rejected by the quote check AND, independently, by the length guard
+ * (`"3".slice(1, -1)` is empty). They are kept as type preconditions so the
+ * function is correct by construction rather than by that coincidence, and
+ * because this mirrors `no-raw-run.cjs`'s `stringLiteralValue` — a reader
+ * comparing the two plugins should find the same idiom, not a subtly pruned
+ * variant of it.
+ */
+function literalIndexKey(expression) {
+  if (!brighterscript.isLiteralExpression(expression)) return undefined;
+  const raw = expression.tokens?.value?.text;
+  if (typeof raw !== 'string') return undefined;
+  if (!raw.startsWith('"') || !raw.endsWith('"')) return undefined;
+  const key = raw.slice(1, -1);
+  return key.length > 0 ? key.toLowerCase() : undefined;
+}
+
+/**
+ * The path of a stable field slot — an `m.` path with at least one dotted step.
+ * A bare `m` is the scope object, not a task node, so it is not a slot.
+ *
+ * Such a path resolves to the same node on every turn of a loop *provided the
+ * loop does not rebind it* — see `slotIsReboundIn`.
+ */
+function stableSlotPath(expression) {
+  const path = mPath(expression);
+  return path === SELF_REFERENCE ? undefined : path;
+}
+
+/**
+ * Every `m.` path assigned anywhere inside `loop`'s subtree, e.g. `m.loader` for
+ * `m.loader = createObject(...)`.
+ *
+ * Both spellings of a write are collected — `m.loader = ...` and the
+ * literal-key indexed form `m["loader"] = ...` — because they name the same
+ * field and mixing them across the write and the launch would otherwise slip
+ * the check. That mixed form has no call site today (every one of the ~50
+ * bracket writes in the app targets a plain AA — `params`, `headers` — never
+ * `m`), so this buys robustness rather than a caught bug; it costs a few lines
+ * and, since a literal key is statically known, cannot false-positive.
+ *
+ * A COMPUTED key (`m[someVar] = ...`) is deliberately NOT collected: which
+ * field it names is not knowable statically, so treating it as rebinding every
+ * slot would flag correct code to guard a shape nobody writes. It stays an
+ * accepted gap, on the same footing as the interprocedural ones.
+ */
+function slotsAssignedIn(loop) {
+  const assigned = new Set();
+  loop.walk(
+    brighterscript.createVisitor({
+      // m.loader = <value>
+      DottedSetStatement: (statement) => {
+        const base = mPath(statement.obj);
+        const field = statement.tokens?.name?.text;
+        if (base === undefined || !field) return;
+        assigned.add(`${base}.${field.toLowerCase()}`);
+      },
+      // m["loader"] = <value> — the same field, spelled the other way.
+      IndexedSetStatement: (statement) => {
+        const indexes = statement.indexes || [];
+        if (indexes.length !== 1) return;
+        const base = mPath(statement.obj);
+        const field = literalIndexKey(indexes[0]);
+        if (base === undefined || field === undefined) return;
+        assigned.add(`${base}.${field}`);
+      },
+    }),
+    { walkMode: brighterscript.WalkMode.visitAllRecursive },
   );
+  return assigned;
+}
+
+/**
+ * True when the loop rebinds `slotPath` itself or any parent of it — `m.view =
+ * <fresh>` makes `m.view.task` a different node each turn just as surely as
+ * `m.task = <fresh>` does.
+ */
+function slotIsReboundIn(slotPath, assignedPaths) {
+  if (assignedPaths.size === 0) return false;
+  const steps = slotPath.split('.');
+  // Start at 2: `steps[0]` is the bare `m` root, which is never a slot.
+  for (let end = 2; end <= steps.length; end++) {
+    if (assignedPaths.has(steps.slice(0, end).join('.'))) return true;
+  }
+  return false;
 }
 
 /** True when `call` is a call to the `launchTask()` free function. */
@@ -165,7 +305,7 @@ class NoTaskFanoutPlugin {
           severity: 1, // Error
           source: this.name,
           message:
-            "Launching a Task from a loop spawns one thread per iteration, so the count scales with server data — this is the shape that caused epic #728 (`&h29` too many task threads). Launch a fixed `m.<field>` slot, or service every item from one orchestrator Task over `apiPipeline` (see `LoadLatestRowsTask`). Details: docs/architecture/tech-debt.md#task-thread-budget. Add ' bsc-disable-line no-task-fanout to suppress.",
+            "Launching a Task from a loop spawns one thread per iteration, so the count scales with server data — this is the shape that caused epic #728 (`&h29` too many task threads). Launch a fixed `m.<field>` slot the loop does not rebind, or service every item from one orchestrator Task over `apiPipeline` (see `LoadLatestRowsTask`). Details: docs/architecture/tech-debt.md#task-thread-budget. Add ' bsc-disable-line no-task-fanout to suppress.",
           location: call.location,
         });
       };
@@ -173,6 +313,15 @@ class NoTaskFanoutPlugin {
       // Walk the body of each loop for launch calls, rather than walking every
       // call and reconstructing its ancestry — the AST carries no parent links.
       const inspectLoopBody = (loop) => {
+        // Collected at most once per loop, and only once a stable-slot launch
+        // is actually found — the vast majority of loops contain no launch at
+        // all, and this hook runs per keystroke in the language server.
+        let reboundSlots;
+        const loopRebinds = (slot) => {
+          if (reboundSlots === undefined) reboundSlots = slotsAssignedIn(loop);
+          return slotIsReboundIn(slot, reboundSlots);
+        };
+
         loop.walk(
           brighterscript.createVisitor({
             CallExpression: (call) => {
@@ -180,7 +329,12 @@ class NoTaskFanoutPlugin {
               const args = call.args || [];
               // A launch with no argument, or a computed/multi-arg form, cannot
               // be shown stable — report rather than assume it is safe.
-              if (args.length === 1 && isStableSlot(args[0])) return;
+              if (args.length !== 1) {
+                report(call);
+                return;
+              }
+              const slot = stableSlotPath(args[0]);
+              if (slot !== undefined && !loopRebinds(slot)) return;
               report(call);
             },
           }),

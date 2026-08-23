@@ -11,9 +11,14 @@
 // The interesting edge is that NOT every in-loop launch is a fan-out. The live
 // `HomeRows.startParallelLoads()` loops over `m.sectionPlan` and launches four
 // fixed `m.<field>` slots — the same node however many times the loop turns —
-// so the discriminator is the ARGUMENT's stability, not the loop itself. Get
-// that wrong in either direction and the rule is useless: too loose and it
-// misses #728, too tight and it fails the codebase on day one.
+// so the discriminator is the ARGUMENT, not the loop itself. Get that wrong in
+// either direction and the rule is useless: too loose and it misses #728, too
+// tight and it fails the codebase on day one.
+//
+// An `m.` path is only that same node while the loop leaves it alone, so the
+// exemption has a second half: a slot the body REBINDS is a fresh node per turn
+// wearing a stable name. Those two halves are what the first two describe blocks
+// pull on from opposite sides.
 
 import { describe, it, expect } from 'vitest';
 import { runPluginOnSource, diagnosticsByCode } from '../_helpers/run-plugin.js';
@@ -69,14 +74,80 @@ describe('no-task-fanout', () => {
     });
 
     it('flags a bare `m` — the scope object is not a task slot', () => {
-      // Guards `isStableSlot`'s `current !== expression` check. Without it a
-      // bare `m` satisfies "variable named m" and the whole loop body goes
-      // unchecked. Found by mutation: the line had no test at all.
+      // Guards the `path === SELF_REFERENCE` rejection in `stableSlotPath`.
+      // Without it a bare `m` satisfies "dotted path rooted at m" and the whole
+      // loop body goes unchecked. Found by mutation: the line had no test at all.
       expect(
         check(`
           sub go()
             for each item in items
               launchTask(m)
+            end for
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('flags a fresh node parked in a stable m. slot each turn', () => {
+      // The one-token escape from every other assertion in this block: hoist the
+      // flagged local into an `m.` field and the stable-slot exemption applies,
+      // while the fan-out is untouched — nothing STOPs the previous node and the
+      // loop never waits. The shape is idiomatic here (QueueManager and JRScene
+      // both build Task nodes straight into an `m.` slot at a call site), which
+      // is why the exemption has to ask whether the loop rebinds the slot.
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              m.loader = createObject("roSGNode", "LoadItemsTask")
+              launchTask(m.loader)
+            end for
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('flags a rebind of a PARENT of the launched path', () => {
+      // `m.view = <fresh>` makes `m.view.task` a different node every turn just
+      // as surely as rebinding the leaf does, so the check walks prefixes.
+      expect(
+        check(`
+          sub go()
+            for each item in items
+              m.view = createObject("roSGNode", "RowView")
+              launchTask(m.view.task)
+            end for
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('flags a rebind that happens AFTER the launch in the body', () => {
+      // Source order does not matter — the second turn launches a node the first
+      // turn's tail rebound.
+      expect(
+        check(`
+          sub go()
+            for each item in items
+              launchTask(m.loader)
+              m.loader = createObject("roSGNode", "LoadItemsTask")
+            end for
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('flags a rebind nested inside an if', () => {
+      // The rebind is collected from the whole loop subtree, not just the body's
+      // top-level statements.
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              if lib.enabled
+                m.loader = createObject("roSGNode", "LoadItemsTask")
+              end if
+              launchTask(m.loader)
             end for
           end sub
         `),
@@ -178,6 +249,140 @@ describe('no-task-fanout', () => {
       ).toHaveLength(0);
     });
 
+    it('allows a sibling field write that is not the launched slot', () => {
+      // startParallelLoads() writes m.isLoadingResume in the same body it
+      // launches m.LoadContinueWatchingTask from. Matching too loosely here —
+      // "any m. write in the loop" — would fail the live codebase.
+      expect(
+        check(`
+          sub startParallelLoads()
+            for each section in m.sectionPlan
+              m.isLoadingResume = true
+              launchTask(m.LoadContinueWatchingTask)
+            end for
+          end sub
+        `),
+      ).toHaveLength(0);
+    });
+
+    it('allows a write to a CHILD of the launched slot', () => {
+      // Configuring the node (m.LoadNextUpTask.itemId = ...) is not rebinding
+      // it: the slot still holds the same node. Only the path itself or one of
+      // its parents counts.
+      expect(
+        check(`
+          sub go()
+            for each section in m.sectionPlan
+              m.LoadNextUpTask.itemId = section.id
+              launchTask(m.LoadNextUpTask)
+            end for
+          end sub
+        `),
+      ).toHaveLength(0);
+    });
+
+    it('flags a rebind spelled as a literal-key index, read back dotted', () => {
+      // The two spellings name the same field, so a write in one and a launch
+      // in the other is the same fan-out. Collected by `slotsAssignedIn`.
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              m["loader"] = createObject("roSGNode", "LoadItemsTask")
+              launchTask(m.loader)
+            end for
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('flags a literal-key rebind of a PARENT of the launched path', () => {
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              m["view"] = buildView(lib)
+              launchTask(m.view.task)
+            end for
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('allows a literal-key write to a DIFFERENT field than the launched slot', () => {
+      // The literal-key collection must stay keyed on the field name, not
+      // degrade into "any bracket write rebinds everything".
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              m["pending"] = true
+              launchTask(m.loader)
+            end for
+          end sub
+        `),
+      ).toHaveLength(0);
+    });
+
+    it('allows a COMPUTED-index write, which names no knowable field', () => {
+      // Deliberate: treating an unknowable target as rebinding every slot
+      // would flag correct code to guard a shape nobody writes.
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              m[lib.key] = lib.name
+              launchTask(m.loader)
+            end for
+          end sub
+        `),
+      ).toHaveLength(0);
+    });
+
+    it('matches a literal-key rebind case-insensitively, as BrightScript does', () => {
+      // AA keys are case-insensitive, so `m["Loader"]` and `m.loader` are one
+      // field. Without the lowercasing, this rebind slips the check.
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              m["Loader"] = createObject("roSGNode", "LoadItemsTask")
+              launchTask(m.loader)
+            end for
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('flags a launch whose arity is not one, rather than assuming it safe', () => {
+      // Holds the "report rather than assume safe" posture for any launch
+      // shape the stability check cannot read.
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              launchTask()
+            end for
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('allows a rebind that sits OUTSIDE the loop', () => {
+      // Built once, launched many times against the same node — the shape the
+      // exemption exists for.
+      expect(
+        check(`
+          sub go()
+            m.loader = createObject("roSGNode", "LoadItemsTask")
+            for each item in items
+              launchTask(m.loader)
+            end for
+          end sub
+        `),
+      ).toHaveLength(0);
+    });
+
     it('allows a launch outside any loop, whatever the argument', () => {
       expect(
         check(`
@@ -200,6 +405,27 @@ describe('no-task-fanout', () => {
           end sub
         `),
       ).toHaveLength(0);
+    });
+  });
+
+  describe('accepted over-reporting', () => {
+    it('flags a lazily-initialized singleton, which builds only one node', () => {
+      // Deliberate. The rule does not reason about which branch ran, so a guarded
+      // build inside the loop reads as a rebind. Absent from the codebase and one
+      // suppression comment away; over-reporting a launch beats under-reporting
+      // one on an Error-severity thread-budget guard.
+      expect(
+        check(`
+          sub go()
+            for each item in items
+              if not isValid(m.loader)
+                m.loader = createObject("roSGNode", "LoadItemsTask")
+              end if
+              launchTask(m.loader)
+            end for
+          end sub
+        `),
+      ).toHaveLength(1);
     });
   });
 
