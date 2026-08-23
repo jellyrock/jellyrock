@@ -147,6 +147,13 @@ const HOME_TILE_POLL_MS = 300;
 const DETAIL_ROW_WAIT_MS = 15000;
 const DETAIL_ROW_POLL_MS = 300;
 
+// How many times openLibraryByType will re-scan when the tile it walked to turns
+// out not to be the tile it scanned. Home mutates its own row list a bounded
+// number of times per load (one insert pass for latest-media, then removals for
+// the rows that came back empty), so a walk that keeps missing is a broken
+// assumption rather than a slow screen — fail instead of looping.
+const HOME_TILE_VERIFY_ATTEMPTS = 3;
+
 /**
  * Locate a library tile on the Home screen. The Home layout is server-side
  * user-configurable (the "My Media" row's position AND its tile order can be
@@ -303,7 +310,6 @@ export async function navLibraryByType(collectionType, libraryId = null) {
  */
 export async function openLibraryByType(collectionType, libraryId = null) {
   await waitHome();
-  const { row, col } = await findHomeLibraryTile(collectionType, libraryId);
   // Focus must be INSIDE the row list before walking it. `rowItemFocused` RETAINS its
   // last value when the RowList doesn't hold focus, so a walk started while focus is
   // still elsewhere reads a stale [0,0] forever, sends its presses to whatever does
@@ -312,7 +318,55 @@ export async function openLibraryByType(collectionType, libraryId = null) {
   // purpose: focus lands in the rows on its own once Home is up, and pressing keys at
   // a component we have not located yet is how the OSD navs got this wrong.
   await waitFocusInside('#homeRows');
-  // Vertical: step to the library row.
+
+  // SCAN, WALK, THEN CHECK WE ARE STILL ON THE THING WE SCANNED.
+  //
+  // `findHomeLibraryTile` returns row/column INDICES, and Home mutates its own child
+  // list after those indices become readable — `HomeRows.insertLatestMediaSkeletons`
+  // does `content.insertChild(row, insertIndex)` MID-LIST, one row per library, once
+  // `LoadLibrariesTask` returns, and `removeRowAtIndex` later drops the latest rows
+  // that came back empty. Either shifts every row beneath it. So a coordinate pair is
+  // only a claim about where the tile was WHEN IT WAS READ, and the press below is the
+  // moment it has to still be true.
+  //
+  // Without this check the walk reaches (row, col), the row list has moved, and OK
+  // opens whichever library now sits there — silently, because every gate still
+  // passes: focus IS where we asked, the grid that opens IS a real grid, and
+  // `waitGridLoaded` settles on it happily. The failure surfaces screens later as an
+  // assertion about content that was never going to be there. Recorded once as
+  // `seasonDetails` opening a Movie (`rowTypes=[Chapter, Person]` where a Series can
+  // only ever emit `[Season, People, LikeThis]`).
+  //
+  // This is the same rule as the north star in tests/rta/CLAUDE.md, applied to the
+  // press rather than to a read: establish the state that makes the action meaningful
+  // BEFORE taking it. Re-scanning rather than throwing on the first miss is deliberate
+  // — a shift is Home behaving normally, not a fault, and the next scan sees the new
+  // layout. The attempt cap is what turns a genuinely broken assumption into a failure.
+  let tile;
+  for (let attempt = 1; ; attempt++) {
+    tile = await findHomeLibraryTile(collectionType, libraryId);
+    await walkHomeRowsTo(tile, collectionType);
+    if (await homeTileStillMatches(tile, collectionType, libraryId)) break;
+
+    if (attempt >= HOME_TILE_VERIFY_ATTEMPTS) {
+      const landed = await readHomeTileIdentity(tile);
+      throw await diagnosedError(
+        `home library tile moved under the walk ${attempt}x — ` +
+          `walked to [${tile.row},${tile.col}] for ${libraryId ? `id="${libraryId}"` : `collectionType="${collectionType}"`} ` +
+          `but it now holds id="${landed.id ?? '?'}" collectionType="${landed.collectionType ?? '?'}"`,
+        {
+          kind: FAILURE_KINDS.HOME_LIBRARY_TILE_NOT_FOUND,
+          label: `home library tile (${collectionType}) stability`,
+          observed: { collectionType, libraryId, walkedTo: tile, landed, attempts: attempt },
+        },
+      );
+    }
+  }
+  await press(ecp.Key.Ok);
+}
+
+/** Step focus to `tile`, vertically then horizontally. Guarded against overshoot. */
+async function walkHomeRowsTo({ row, col }, collectionType) {
   await waitFor('#homeRows.rowItemFocused', (v) => Array.isArray(v) && v[0] === row, {
     timeout: 12000,
     interval: 350,
@@ -324,7 +378,6 @@ export async function openLibraryByType(collectionType, libraryId = null) {
     },
     label: `home library row ${row} (${collectionType})`,
   });
-  // Horizontal: step to the target tile within that row.
   await waitFor('#homeRows.rowItemFocused', (v) => Array.isArray(v) && v[1] === col, {
     timeout: 12000,
     interval: 350,
@@ -336,7 +389,35 @@ export async function openLibraryByType(collectionType, libraryId = null) {
     },
     label: `home library tile col ${col} (${collectionType})`,
   });
-  await press(ecp.Key.Ok);
+}
+
+/**
+ * What is at `tile` right now. Read on the FAILURE path only, so two round trips are
+ * fine — and it is scene-rooted `getVal` rather than the active-view batch, to match
+ * exactly how `scanHomeLibraryTiles` addressed the same nodes. Reading the check and
+ * the diagnostic through different scopes is how they would drift apart.
+ */
+async function readHomeTileIdentity({ row, col }) {
+  return {
+    id: await getVal(`#homeRows.content.${row}.${col}.id`),
+    collectionType: await getVal(`#homeRows.content.${row}.${col}.collectionType`),
+  };
+}
+
+/**
+ * Is the tile at these coordinates still the one the scan chose?
+ *
+ * Compared on `id` whenever the caller supplied one, because that is what
+ * `scanHomeLibraryTiles` matched on and it is exact. `collectionType` is the fallback
+ * for the id-less callers, and it is weaker by exactly the amount the scan's own
+ * ambiguity guard describes — on a server with two libraries of one type it cannot
+ * tell them apart. That is the same limit the scan already documents, not a new one.
+ */
+async function homeTileStillMatches({ row, col }, collectionType, libraryId) {
+  // ONE field, chosen by which mode the caller is in — there is no second value to
+  // race against, so this needs no batch and cannot observe a half-settled tile.
+  if (libraryId) return (await getVal(`#homeRows.content.${row}.${col}.id`)) === libraryId;
+  return (await getVal(`#homeRows.content.${row}.${col}.collectionType`)) === collectionType;
 }
 
 /**
