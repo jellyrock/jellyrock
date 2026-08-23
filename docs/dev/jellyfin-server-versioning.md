@@ -155,10 +155,33 @@ builders handle them separately:
 happens at 10.8.0 (a *finer* boundary than the `apiVersion` 1→2 split at
 10.9.0), so it uses raw `versionChecker` rather than the `apiVersion` integer.
 
-All four endpoints run through the API pool. That matters for `/Connect` beyond
-tidiness: an unknown or expired secret answers **404** (measured against
-10.11.11), and the status code is the only signal separating it from a code
-nobody has approved yet — a helper that reads only the body sees `invalid` for both.
+All four endpoints run through the API pool, which is what makes the STATUS CODE
+readable. That matters because three of Quick Connect's four failure signals are
+status codes and nothing else, and two of them are themselves version-dependent.
+Checked against every published spec from 10.7.0 to 10.11.8:
+
+| Endpoint | 10.7.0–10.10.7 | 10.11.0+ | Meaning |
+| -------- | -------------- | -------- | ------- |
+| `/QuickConnect/Connect` | `200`, `404` | `+ 503` | `404` = "Unknown quick connect secret" — the code is expired or was never issued |
+| `/QuickConnect/Initiate` | `200`, `401` | `+ 503` | `401` = "Quick connect is not active on this server" — the feature is off |
+| `AuthenticateWithQuickConnect` | `200`, `400` | `+ 503` | `400` = "Missing token"; a live 10.11.11 also answered an **undeclared** `404` for an unapproved secret |
+| `/QuickConnect/Enabled` | `200` (absent < 10.8) | `+ 503` | plain boolean body |
+
+Two consequences the app depends on:
+
+- **`503` is transient, not "disabled"** — "The server is currently starting or is
+  temporarily not available." It arrived at 10.11.0, so a client that lumps every
+  failure status into one bucket tells a user with a *booting* server that Quick Connect
+  is switched off. `quickConnectInitiateFailure` / `quickConnectExchangeFailure`
+  (`source/utils/quickConnect.bs`) keep it separate.
+- **`401` is the only "feature is off" signal**, and it is also what a *route
+  mismatch* returns — sending `GET` to a 10.9+ server, or `POST` to a 10.8 one.
+  The method dispatch above is what keeps that collision from ever surfacing.
+
+**One schema difference, on the floor server only.** 10.7.x's `QuickConnectResult`
+carries `Error` (and `Authentication`); 10.8.0 dropped both. A 10.7 server can
+therefore answer `200` with `Authenticated: false` *and* an error string, which a
+poll loop must not read as "not yet" — see `quickConnectPollOutcome`.
 
 Username/password authentication works identically across all versions.
 

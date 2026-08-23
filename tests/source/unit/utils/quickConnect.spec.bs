@@ -1,15 +1,20 @@
 namespace tests
 
-  ' The decision table in source/utils/quickConnect.bs, asserted against the
-  ' behaviour MEASURED on Jellyfin 10.11.11 (demo.jellyfin.org/stable, 2026-08-23)
-  ' rather than against what the endpoint is assumed to do:
+  ' The decision tables in source/utils/quickConnect.bs, asserted against the
+  ' behaviour the upstream OpenAPI specs DECLARE for every server version
+  ' JellyRock supports (10.7.0 through 10.11.8), not against one server's
+  ' observed behaviour:
   '
-  '   live secret, not yet approved -> 200 { "Authenticated": false }
-  '   live secret, approved         -> 200 { "Authenticated": true  }
-  '   unknown / expired secret      -> 404, body not even JSON
+  '   /QuickConnect/Connect   200 / 404 on every version; 503 added at 10.11.0
+  '   /QuickConnect/Initiate  200 / 401 on every version; 503 added at 10.11.0
+  '   AuthenticateWithQC      200 / 400 on every version; 503 added at 10.11.0
+  '   QuickConnectResult.Error exists ONLY on 10.7.x
   '
-  ' The 404 is the case the old sync implementation could not see, and the reason
-  ' an expired code used to spin forever behind a dialog that looked healthy.
+  ' Two of those codes therefore do not exist on every server, and one field
+  ' exists on only the oldest — so these are version-matrix tests, not
+  ' single-version ones. The original 404 finding came from probing one live
+  ' server, which is exactly how the infinite-poll bug this module fixes got
+  ' shipped; the spec sweep is what turned it into a claim about all of them.
   @suite("quickConnect - poll outcomes, give-up policy, session parsing, spoken code")
   class QuickConnectTests extends tests.BaseTestSuite
 
@@ -163,6 +168,110 @@ namespace tests
       spoken = spokenQuickConnectCode("42")
       m.assertEqual(spoken, "4 2")
       m.assertEqual(spoken.trim(), spoken)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("quickConnectPollOutcome - 10.7's Error field")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reports failed for a 200 that carries an Error string")
+    ' 10.7.x ONLY: its QuickConnectResult has an `Error` field that 10.8 dropped.
+    ' A server stating an error is not saying "not yet" — treating it as pending
+    ' leaves the oldest supported server with the infinite spinner this module
+    ' exists to remove.
+    function _()
+      res = m.poolResponse(200, { Authenticated: false, Error: "Quick connect is disabled" })
+      m.assertEqual(quickConnectPollOutcome(res), QC_POLL_FAILED)
+    end function
+
+    @it("still reports approved when Error is present but the request was authorized")
+    ' Order matters: an approval must never be discarded because a stale error
+    ' string rode along with it.
+    function _()
+      res = m.poolResponse(200, { Authenticated: true, Error: "something earlier" })
+      m.assertEqual(quickConnectPollOutcome(res), QC_POLL_APPROVED)
+    end function
+
+    @it("ignores an empty Error string")
+    ' The field is nullable, so an empty value is the server saying nothing.
+    function _()
+      res = m.poolResponse(200, { Authenticated: false, Error: "" })
+      m.assertEqual(quickConnectPollOutcome(res), QC_POLL_PENDING)
+    end function
+
+    @it("is unaffected on 10.8+ where the field does not exist")
+    function _()
+      res = m.poolResponse(200, { Authenticated: false, Secret: "ABC", Code: "123456" })
+      m.assertEqual(quickConnectPollOutcome(res), QC_POLL_PENDING)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("quickConnectInitiateFailure")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reports DISABLED for a 401 - the only code that means the feature is off")
+    ' "Quick connect is not active on this server", declared on every version
+    ' from 10.7.0 to 10.11.8.
+    function _()
+      m.assertEqual(quickConnectInitiateFailure(m.poolResponse(401, invalid)), QC_FAIL_DISABLED)
+    end function
+
+    @it("reports UNAVAILABLE for a 503 - the server is starting, not switched off")
+    ' Added at 10.11.0 and TRANSIENT. Reporting it as disabled would tell a user
+    ' whose server is still booting to give up on a feature that works.
+    function _()
+      m.assertEqual(quickConnectInitiateFailure(m.poolResponse(503, invalid)), QC_FAIL_UNAVAILABLE)
+    end function
+
+    @it("reports UNAVAILABLE for a 404 - no version declares one here")
+    function _()
+      m.assertEqual(quickConnectInitiateFailure(m.poolResponse(404, invalid)), QC_FAIL_UNAVAILABLE)
+    end function
+
+    @it("reports UNAVAILABLE for a 500")
+    function _()
+      m.assertEqual(quickConnectInitiateFailure(m.poolResponse(500, invalid)), QC_FAIL_UNAVAILABLE)
+    end function
+
+    @it("reports UNAVAILABLE for invalid - the transport-failure path")
+    function _()
+      m.assertEqual(quickConnectInitiateFailure(invalid), QC_FAIL_UNAVAILABLE)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("quickConnectExchangeFailure")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reports UNAVAILABLE for a 503 - nothing is wrong with the code")
+    function _()
+      m.assertEqual(quickConnectExchangeFailure(m.poolResponse(503, invalid)), QC_FAIL_UNAVAILABLE)
+    end function
+
+    @it("reports SPENT for the 404 a live server actually answers")
+    ' UNDECLARED by every spec, which declares only 400 here — and observed on
+    ' 10.11.11. The classifier does not enumerate codes for exactly that reason.
+    function _()
+      m.assertEqual(quickConnectExchangeFailure(m.poolResponse(404, invalid)), QC_FAIL_SPENT)
+    end function
+
+    @it("reports SPENT for the declared 400")
+    function _()
+      m.assertEqual(quickConnectExchangeFailure(m.poolResponse(400, invalid)), QC_FAIL_SPENT)
+    end function
+
+    @it("reports SPENT for invalid")
+    ' A dead transport still leaves the caller needing a fresh code, and the
+    ' retry path is the dialog reopening rather than a re-exchange.
+    function _()
+      m.assertEqual(quickConnectExchangeFailure(invalid), QC_FAIL_SPENT)
+    end function
+
+    @it("never reports DISABLED - the exchange has no such signal")
+    ' Only Initiate carries the 401 that means "not active on this server".
+    function _()
+      for each code in [400, 401, 403, 404, 500]
+        m.assertNotEqual(quickConnectExchangeFailure(m.poolResponse(code, invalid)), QC_FAIL_DISABLED)
+      end for
     end function
 
     @it("carries alphanumeric codes through unchanged apart from the spacing")

@@ -13,16 +13,26 @@
 ' — so an expired secret and a code the user simply had not approved yet arrived
 ' as the same value, and the dialog polled a dead code forever with no feedback.
 '
-' Measured against Jellyfin 10.11.11 (demo.jellyfin.org/stable, 2026-08-23):
+' The behaviour, checked against the upstream OpenAPI spec of EVERY server
+' version JellyRock supports (10.7.0, 10.7.7, 10.8.0, 10.8.13, 10.9.0, 10.9.11,
+' 10.10.0, 10.10.7, 10.11.0, 10.11.6, 10.11.7, 10.11.8) and corroborated by a
+' live probe of 10.11.11:
 '
 '   live secret, not yet approved -> 200 { "Authenticated": false, ... }
 '   live secret, approved         -> 200 { "Authenticated": true,  ... }
-'   unknown / expired secret      -> 404 (an HTML error page through the demo's
-'                                         proxy, so the BODY is not even JSON)
+'   unknown / expired secret      -> 404 "Unknown quick connect secret."
+'   server starting / down        -> 503, and ONLY on 10.11.0 and later
 '
 ' The status code is the whole signal, which is why this endpoint has to run
-' through the API pool (`res.statusCode`) rather than a JSON-only helper. These
-' functions are pure so the table above is a test rather than a comment.
+' through the API pool (`res.statusCode`) rather than a helper that reads only
+' the body. These functions are pure so the table above is a test rather than a
+' comment — and the test is a VERSION MATRIX, because two of these codes do not
+' exist on every server.
+'
+' The 404 is the load-bearing one and it is declared by all twelve specs, so the
+' expired-code fix is not something the newest server happens to do. Checking one
+' version and generalising is how the bug being fixed here got shipped in the
+' first place.
 import "pkg:/source/utils/misc.bs"
 
 ' Outcomes of one poll. Strings rather than an enum because they cross into a
@@ -63,7 +73,56 @@ function quickConnectPollOutcome(res as dynamic) as string
   if not isValid(json) then return QC_POLL_FAILED
 
   if isValid(json.Authenticated) and json.Authenticated = true then return QC_POLL_APPROVED
+
+  ' 10.7 ONLY: its QuickConnectResult carries an `Error` string that every later
+  ' schema dropped (10.7.0's fingerprint has it; 10.8.0's does not). A server
+  ' stating an error is not saying "not yet" — and calling it pending is the
+  ' infinite-spinner bug this whole module exists to remove, still open on the
+  ' oldest server we support. Checked AFTER Authenticated so an approval is never
+  ' discarded, and harmless on newer servers where the field cannot be present.
+  if isValidAndNotEmpty(json.Error) then return QC_POLL_FAILED
+
   return QC_POLL_PENDING
+end function
+
+' ---------------------------------------------------------------------------
+' The two NON-poll requests fail differently, and telling them apart matters:
+' one of these three messages tells the user to stop trying.
+' ---------------------------------------------------------------------------
+
+' The server says Quick Connect is switched off. Actionable: stop trying here.
+const QC_FAIL_DISABLED = "disabled"
+' The server is starting or temporarily down. Actionable: try again shortly.
+const QC_FAIL_UNAVAILABLE = "unavailable"
+' The secret is unknown, expired, or already spent. Actionable: get a new code.
+const QC_FAIL_SPENT = "spent"
+
+' Why did /QuickConnect/Initiate refuse?
+'
+' `401 Quick connect is not active on this server` is the ONLY code that means
+' the feature is off, and it means that on every version 10.7.0 -> 10.11.8.
+' `503 The server is currently starting or is temporarily not available` was
+' added at 10.11.0 and is TRANSIENT — reporting it as "disabled" would tell a
+' user whose server is still booting to give up on a feature that works.
+'
+' Everything else is treated as not-reachable rather than not-available, which is
+' the safe direction: it invites a retry instead of closing the door.
+function quickConnectInitiateFailure(res as dynamic) as string
+  if not isValid(res) or not isValid(res.statusCode) then return QC_FAIL_UNAVAILABLE
+  if res.statusCode = 401 then return QC_FAIL_DISABLED
+  return QC_FAIL_UNAVAILABLE
+end function
+
+' Why did /Users/AuthenticateWithQuickConnect refuse?
+'
+' The spec declares only `400 Missing token` (plus `503` from 10.11.0), but a
+' live 10.11.11 answered 404 for a secret it had not seen approved — an
+' UNDECLARED code. So this deliberately does not enumerate: anything that is not
+' the transient 503 means the secret cannot be exchanged, and the user needs a
+' new code rather than an explanation of which 4xx it was.
+function quickConnectExchangeFailure(res as dynamic) as string
+  if isValid(res) and isValid(res.statusCode) and res.statusCode = 503 then return QC_FAIL_UNAVAILABLE
+  return QC_FAIL_SPENT
 end function
 
 ' Should the dialog stop polling after this many consecutive failures?

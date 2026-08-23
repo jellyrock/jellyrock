@@ -539,12 +539,16 @@ class ApiClient
   ' The body's field name changed at 10.8.0 — a FINER boundary than the V1/V2
   ' apiVersion split, so it reads the server version directly rather than
   ' m.getApiVersion():
-  '   10.7.x:   { "Token": secret }
-  '   10.8.0+:  { "Secret": secret }
+  '   10.7.x:   { "Token": secret }   (QuickConnectDto.Token, required)
+  '   10.8.0+:  { "Secret": secret }  (QuickConnectDto.Secret, required)
+  ' Confirmed against every published spec from 10.7.0 to 10.11.8 — the rename
+  ' lands at exactly 10.8.0, with no version carrying both names.
   '
-  ' A secret the server has not seen approved answers 404, not 401 — verified
-  ' against Jellyfin 10.11.11. Callers must therefore treat a non-ok response as
-  ' "not usable", never as "wrong credentials".
+  ' DON'T BRANCH ON THE ERROR CODE HERE. The spec declares only 400 ("Missing
+  ' token") plus 503 from 10.11.0, but a live 10.11.11 answered 404 for a secret
+  ' it had not seen approved — an undeclared code. So a non-ok response means
+  ' "this secret cannot be exchanged" and nothing finer; quickConnectExchangeFailure
+  ' (source/utils/quickConnect.bs) owns the one distinction worth making.
   ' @param secret - The Quick Connect secret from Initiate
   ' @returns Request AA: { method, url, body, headers } or invalid if server URL not set
   function BuildAuthenticateWithQuickConnectRequest(secret as string) as dynamic
@@ -568,11 +572,16 @@ class ApiClient
   ' the Code the user types on their other device.
   '
   ' The HTTP METHOD moved at the same boundary as the apiVersion split:
-  '   apiVersion 1 (10.7.x - 10.8.x): GET
-  '   apiVersion 2 (10.9+):           POST
+  '   apiVersion 1 (10.7.0 - 10.8.13): GET   (no POST route exists)
+  '   apiVersion 2 (10.9.0+):          POST  (no GET route exists)
+  ' Confirmed against every published spec from 10.7.0 to 10.11.8: each version
+  ' declares exactly one of the two verbs, and the swap is at exactly 10.9.0.
+  '
   ' Sending the wrong method to a modern server yields 401 ("Quick connect is not
   ' active on this server"), which reads as a feature gate but is actually a route
-  ' mismatch — so the dispatch is load-bearing, not cosmetic.
+  ' mismatch — so the dispatch is load-bearing, not cosmetic. That collision is
+  ' also why quickConnectInitiateFailure treats 401 as "disabled": it is the same
+  ' code either way, and a route mismatch is our bug, not something to tell a user.
   ' @returns Request AA: { method, url } or invalid if server URL not set
   function BuildInitiateQuickConnectRequest() as dynamic
     if m.getApiVersion() >= 2
@@ -586,11 +595,12 @@ class ApiClient
   ' QuickConnectResult shape Initiate returned, its `Authenticated` flag now true
   ' once someone approved the code.
   '
-  ' An UNKNOWN or EXPIRED secret answers 404 — verified against Jellyfin 10.11.11,
-  ' where a bogus secret returned 404 and a live one returned 200. That is the only
-  ' signal separating "not approved yet" from "this code is dead", and it is
-  ' invisible to a caller that only parses the body, which is why this endpoint has
-  ' to go through the pool (res.statusCode) rather than a sync JSON helper.
+  ' An UNKNOWN or EXPIRED secret answers 404 ("Unknown quick connect secret"),
+  ' declared by EVERY published spec from 10.7.0 to 10.11.8 and corroborated by a
+  ' live 10.11.11. That is the only signal separating "not approved yet" from
+  ' "this code is dead", and it is invisible to a caller that only parses the
+  ' body — which is why this endpoint has to go through the pool (res.statusCode)
+  ' rather than a sync JSON helper.
   ' @param secret - The Quick Connect secret from Initiate
   ' @returns Request AA: { method, url } or invalid if server URL not set
   function BuildConnectQuickConnectRequest(secret as string) as dynamic

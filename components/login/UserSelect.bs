@@ -170,8 +170,10 @@ end sub
 sub startQuickConnect()
   req = GetApi().BuildInitiateQuickConnectRequest()
   if not isValid(req)
+    ' No server URL: nothing was asked, so nothing can be said about whether the
+    ' feature is on. Not-reachable is the honest report.
     m.log.warn("Quick Connect could not start - server URL not configured")
-    showQuickConnectError(translationKeys.LabelQuickConnectNotAvailable)
+    reportQuickConnectFailure(QC_FAIL_UNAVAILABLE)
     return
   end if
 
@@ -186,18 +188,20 @@ sub startQuickConnect()
   promises.chain(fetchAsync(req, "quickConnectInitiate")).then(sub(res as object)
     stopLoadingSpinner()
     if not res.ok
-      ' 401 here is the server saying Quick Connect is off, and on a 10.7 server
-      ' the endpoint is absent entirely. Both are "not available", not an error
-      ' the user can act on differently.
+      ' Only a 401 means the feature is off; a 10.11 server that is still
+      ' starting answers 503, and telling that user Quick Connect is disabled
+      ' would make them stop trying. See quickConnectInitiateFailure.
       m.log.warn("Quick Connect initiate refused", "statusCode:", res.statusCode)
-      showQuickConnectError(translationKeys.LabelQuickConnectNotAvailable)
+      reportQuickConnectFailure(quickConnectInitiateFailure(res))
       return
     end if
 
     session = quickConnectSession(res.json)
     if not isValid(session)
+      ' The server answered 200 with nothing usable in it. Not "disabled" — it
+      ' said the feature is on and then failed to issue a code.
       m.log.warn("Quick Connect initiate returned no usable secret/code")
-      showQuickConnectError(translationKeys.LabelQuickConnectNotAvailable)
+      reportQuickConnectFailure(QC_FAIL_UNAVAILABLE)
       return
     end if
 
@@ -205,7 +209,7 @@ sub startQuickConnect()
   end sub).catch(sub(err as object)
     stopLoadingSpinner()
     m.log.warn("Quick Connect initiate failed", err.reason)
-    showQuickConnectError(translationKeys.ErrorQuickConnectUnreachable)
+    reportQuickConnectFailure(QC_FAIL_UNAVAILABLE)
   end sub)
 end sub
 
@@ -227,7 +231,7 @@ sub pollQuickConnect()
   req = GetApi().BuildConnectQuickConnectRequest(m.quickConnectSecret)
   if not isValid(req)
     endQuickConnect()
-    showQuickConnectError(translationKeys.ErrorQuickConnectUnreachable)
+    reportQuickConnectFailure(QC_FAIL_UNAVAILABLE)
     return
   end if
 
@@ -262,7 +266,7 @@ sub handleQuickConnectPoll(outcome as string)
     ' code polled forever behind a dialog the user had no reason to distrust.
     m.log.info("Quick Connect code expired")
     endQuickConnect()
-    showQuickConnectError(translationKeys.ErrorQuickConnectCodeExpired)
+    reportQuickConnectFailure(QC_FAIL_SPENT)
     return
   end if
 
@@ -271,7 +275,7 @@ sub handleQuickConnectPoll(outcome as string)
     if quickConnectShouldGiveUp(m.quickConnectFailures)
       m.log.warn("Quick Connect gave up after consecutive failures", m.quickConnectFailures)
       endQuickConnect()
-      showQuickConnectError(translationKeys.ErrorQuickConnectUnreachable)
+      reportQuickConnectFailure(QC_FAIL_UNAVAILABLE)
       return
     end if
   else
@@ -296,7 +300,7 @@ sub exchangeQuickConnect()
   req = GetApi().BuildAuthenticateWithQuickConnectRequest(secret)
   m.quickConnectSecret = ""
   if not isValid(req)
-    showQuickConnectError(translationKeys.ErrorQuickConnectUnreachable)
+    reportQuickConnectFailure(QC_FAIL_UNAVAILABLE)
     return
   end if
 
@@ -304,11 +308,11 @@ sub exchangeQuickConnect()
   promises.chain(fetchAsync(req, "quickConnectAuthenticate")).then(sub(res as object)
     stopLoadingSpinner()
     if not res.ok or not isValid(res.json)
-      ' 404 here means the server no longer holds the approval (it is consumed on
-      ' first use, and expires) - measured against 10.11.11, where an unapproved
-      ' secret answered 404 rather than 401. Nothing to retry with.
+      ' Almost always the secret being spent — it is consumed on first use and
+      ' it expires. The exception is a 503, which is the server starting rather
+      ' than anything wrong with the code. See quickConnectExchangeFailure.
       m.log.warn("Quick Connect token exchange refused", "statusCode:", res.statusCode)
-      showQuickConnectError(translationKeys.ErrorQuickConnectCodeExpired)
+      reportQuickConnectFailure(quickConnectExchangeFailure(res))
       return
     end if
 
@@ -317,7 +321,7 @@ sub exchangeQuickConnect()
   end sub).catch(sub(err as object)
     stopLoadingSpinner()
     m.log.warn("Quick Connect token exchange failed", err.reason)
-    showQuickConnectError(translationKeys.ErrorQuickConnectUnreachable)
+    reportQuickConnectFailure(QC_FAIL_UNAVAILABLE)
   end sub)
 end sub
 
@@ -365,10 +369,23 @@ end sub
 
 ' Report a Quick Connect failure in the standard alert dialog.
 '
+' The three reasons get three different messages because only one of them tells
+' the user to stop: DISABLED means the server has the feature switched off, while
+' UNAVAILABLE means try again shortly and SPENT means get a fresh code. The
+' classification is pure and version-matrixed (source/utils/quickConnect.bs);
+' this function only maps it to a string.
+'
 ' Presented AFTER endQuickConnect has taken the code dialog down, never over it:
 ' presentOverlayDialog supersedes an incumbent overlay, so showing the alert first
 ' would cancel the code dialog and re-enter onQuickConnectDialogResult.
-sub showQuickConnectError(messageKey as string)
+sub reportQuickConnectFailure(reason as string)
+  if reason = QC_FAIL_DISABLED
+    messageKey = translationKeys.LabelQuickConnectNotAvailable
+  else if reason = QC_FAIL_SPENT
+    messageKey = translationKeys.ErrorQuickConnectCodeExpired
+  else
+    messageKey = translationKeys.ErrorQuickConnectUnreachable
+  end if
   showAlertDialog(translate(translationKeys.ButtonQuickConnect), translate(messageKey))
 end sub
 
