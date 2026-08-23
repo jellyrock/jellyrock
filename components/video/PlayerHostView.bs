@@ -172,6 +172,16 @@ sub onPlayerStateChange()
   ' to be torn down. Anything else is CANCELLED — a main-thread flow (a cast
   ' notice, the deep-link server-switch prompt) can open a dialog over the player,
   ' and it holds state until that dialog answers, so it has to be told.
+  '
+  ' cancelOpenDialog() reaches BOTH channels, and the modal one is not empty
+  ' during playback: VideoPlayerView.showPlaybackErrorDialog puts a raw Dialog
+  ' there, and its close handler calls exitPlayback(). So on the stall path this
+  ' can fire a goBack() from inside this handler, which then continues on to
+  ' advance the queue or exit again. Pre-existing — the deleted
+  ' SceneManager.dismissDialog did exactly the same thing behind the same gate —
+  ' and tracked as playback-error-dialog-closed-by-teardown in tech-debt.md.
+  ' Don't "fix" it by narrowing this call: a stranded modal over the incoming
+  ' screen is the failure this line exists to prevent.
   abandonDialog(m.playbackDialog)
   m.playbackDialog = invalid
   m.trackPickerOptions = invalid
