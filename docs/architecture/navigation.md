@@ -13,7 +13,7 @@ related-files:
   - source/utils/dialogs.bs
   - source/replayRoute.bs
   - source/loginRouter.bs
-last-reviewed: 2026-08-23
+last-reviewed: 2026-08-24
 ---
 
 # Navigation (sgRouter)

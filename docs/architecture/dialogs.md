@@ -114,8 +114,11 @@ about it is the caller's, and the two answers differ:
 |---|---|---|
 | `JRDialog` | `overflows` | truncates the message to `body.height` worth of lines — a confirm that scrolls should have been an info dialog |
 | `OverviewDialog` | `body.height` | scrolls its viewport at exactly that height |
+| `JRListDialog` | `overflows` | drops rows to what fits and lays out again — the list scrolls, so every option stays reachable |
 
-Both read the same fields. **Neither re-derives the ceiling.**
+All three read the same two fields. **None of them re-derives the ceiling** —
+that is the whole contract. A dialog asks for the body it measured and is told
+what it got; what to do about the difference is the only part that is local.
 
 ### 5. A dialog has exactly ONE class of focusable thing
 
@@ -133,7 +136,13 @@ a button row does not.
 | `JRDialog` | step the button row (wraps) | step the row **only when stacked**; otherwise swallowed | resolve with the focused button | canceled result |
 | `JRListDialog` | — | step rows, wrapping both ways | commit the row | dismiss (the only exit — there is no Cancel button) |
 | `OverviewDialog` | — | scroll the body; past the end, move to OK | dismiss (or move focus to OK) | dismiss |
-| `QuickConnectDialog` | step the single-button row | swallowed | cancel | canceled result |
+| `QuickConnectDialog` | no-ops — a one-button row steps back onto itself | swallowed | canceled result | canceled result |
+
+`QuickConnectDialog` runs the same `buttonDialogKeyAction` model as `JRDialog`;
+with one button, `cancel` and `resolve` are the same outcome and the two step
+actions have nowhere to step. It is on the shared model rather than two
+hand-rolled lines because swallowing up/down under modal containment is a
+decision worth making on purpose in one place — it was making it by accident.
 
 Two notes that keep being rediscovered:
 
