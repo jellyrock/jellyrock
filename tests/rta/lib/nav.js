@@ -1180,9 +1180,17 @@ const CELL_SWEEP = Object.freeze({ rows: 6, gridRows: 12, rowItems: 12 });
  * travelled: nine `cellSweepHome` launches read `items: 129` across a 222–253 bind spread.
  * Where a settle was taken, `settle` carries the structure as the sweep saw it at its START,
  * and whether it was still moving then — see `waitRowsSettled`, including the A/B in which
- * that turned out NOT to be Home's problem.
+ * that turned out NOT to be Home's problem. `atStart` is the counter reading at that same
+ * gate, and the two travel together in one options object rather than as a positional tail:
+ * three of the four sweeps pass neither today and are expected to grow an `atStart` without
+ * a `settle`, which positionally would mean each of them writing a `null` to skip a slot.
+ *
+ * Exported for `nav.test.js`. Its suppression rule is a decision table whose branches are
+ * exactly the ones a green device run cannot reach — a build with counters, a build without,
+ * and a keyPath that resolves to nothing all print a plausible line — so the device is the
+ * wrong instrument for it, the same argument that file's header already makes.
  */
-function reportSweep(name, legs, quiet, settle = null, atStart = null) {
+export function reportSweep(name, legs, quiet, { settle = null, atStart = null } = {}) {
   const path = legs
     .map((l) => `${l.axis} ${l.walk.from}->${l.walk.to} of ${l.available}`)
     .join(', ');
@@ -1212,6 +1220,22 @@ function reportSweep(name, legs, quiet, settle = null, atStart = null) {
         ? `, of which before the sweep (${formatCellCounts(atStart.counts)})`
         : ''),
   );
+  // A caller that took no baseline is the other three sweeps, and silence is right for them.
+  // A baseline that was ASKED for and came back empty against an instrumented end is not
+  // that, and not a production build either — dropping it silently would publish the exact
+  // failure this split exists to remove: a line that looks complete and is not.
+  if (atStart && !atStart.instrumented && quiet.instrumented) {
+    console.warn(
+      `[nav] ${name}: the at-gate baseline read ` +
+        (atStart.resolved
+          ? 'no cell-load counters, while the end-of-sweep read found them — the ledger ' +
+            'attached to this list AFTER the gate, so the counts below start from an ' +
+            'unknown point'
+          : 'nothing at all: the list did not resolve, so this baseline describes no list') +
+        '. The counts on this line are a TOTAL with no seam in it — do not attribute any ' +
+        'of them to the sweep.',
+    );
+  }
 }
 
 /**
@@ -1332,7 +1356,7 @@ export async function navCellSweepHome() {
   });
   legs.push({ axis: 'rows -> 0', walk: back, available: legs[0].available });
   const quiet = await waitCellsQuiet('#homeRows', { read: getActiveVal });
-  reportSweep('cellSweepHome', legs, quiet, settle, atStart);
+  reportSweep('cellSweepHome', legs, quiet, { settle, atStart });
   await navSettings();
 }
 

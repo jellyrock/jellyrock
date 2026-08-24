@@ -31,6 +31,8 @@ const waitFor = vi.fn();
 const waitFocusInside = vi.fn();
 const waitHome = vi.fn();
 const sleep = vi.fn();
+const formatCellCounts = vi.fn();
+const readCellCounts = vi.fn();
 
 vi.mock('./steps.js', () => ({
   press: (...a) => press(...a),
@@ -50,7 +52,8 @@ vi.mock('./steps.js', () => ({
   scrollFocus: vi.fn(),
   waitCellsQuiet: vi.fn(),
   waitRowsSettled: vi.fn(),
-  formatCellCounts: vi.fn(),
+  readCellCounts: (...a) => readCellCounts(...a),
+  formatCellCounts: (...a) => formatCellCounts(...a),
   axisEnd: vi.fn(),
   sweepBudget: vi.fn(),
   sleep: (...a) => sleep(...a),
@@ -83,7 +86,7 @@ vi.mock('./diagnostics.js', async () => {
   };
 });
 
-const { navLibraryByType } = await import('./nav.js');
+const { navLibraryByType, reportSweep } = await import('./nav.js');
 const { FAILURE_KINDS } = await import('../../../scripts/run-record.js');
 
 const MOVIES = 'f137a2dd';
@@ -218,5 +221,105 @@ describe('navLibraryByType — which library actually opened', () => {
     opensInOrder(MOVIES);
     await navLibraryByType('tvshows');
     expect(press.mock.calls.map(([k]) => k)).toEqual(['Ok']);
+  });
+});
+
+/**
+ * `reportSweep`'s suppression rule, which is a decision table and not a device property.
+ *
+ * Its branches are exactly the ones a green on-device run cannot tell apart: a build with
+ * counters, a build without, and a keyPath that resolves to nothing all end in a plausible
+ * console line and a passing test. The line is also the ONLY channel — `measure` records the
+ * nav's name, not its itinerary — so a wrong one is not caught later by anything.
+ */
+describe('reportSweep — the BEFORE segment, and when it must not print', () => {
+  const legs = [{ axis: 'rows -> 2', walk: { from: 0, to: 2, recovered: 0 }, available: 5 }];
+  const endInstrumented = {
+    quiet: true,
+    instrumented: true,
+    resolved: true,
+    counts: { Binds: 106 },
+    waitedMs: 1782,
+  };
+  let logged;
+  let warned;
+
+  beforeEach(() => {
+    logged = [];
+    warned = [];
+    vi.spyOn(console, 'log').mockImplementation((line) => logged.push(line));
+    console.warn.mockImplementation((line) => warned.push(line));
+    formatCellCounts.mockImplementation((counts) => `binds=${counts?.Binds}`);
+  });
+
+  it('prints the baseline as a READING when both ends are instrumented', () => {
+    reportSweep('cellSweepHome', legs, endInstrumented, {
+      atStart: { counts: { Binds: 104 }, instrumented: true, resolved: true },
+    });
+
+    // Both numbers on the line, neither subtracted for the reader: the totals are cumulative,
+    // so the split stays a subtraction someone can check.
+    expect(logged[0]).toContain('binds=106');
+    expect(logged[0]).toContain('of which before the sweep (binds=104)');
+    expect(warned).toEqual([]);
+  });
+
+  it('says nothing when no baseline was asked for — the other three sweeps pass none', () => {
+    reportSweep('cellSweepGrid', legs, endInstrumented);
+
+    expect(logged[0]).not.toContain('before the sweep');
+    expect(warned).toEqual([]);
+  });
+
+  it('WARNS when a baseline was asked for and came back empty against an instrumented end', () => {
+    // Not a production build — that one has no counters at EITHER end. This is the ledger
+    // attaching after the gate, or a reader swapped for the single-keyPath one next door.
+    reportSweep('cellSweepHome', legs, endInstrumented, {
+      atStart: { counts: {}, instrumented: false, resolved: true },
+    });
+
+    expect(logged[0]).not.toContain('before the sweep');
+    expect(warned[0]).toMatch(/no cell-load counters/);
+    expect(warned[0]).toMatch(/TOTAL with no seam/);
+  });
+
+  it('names a list that resolved to nothing differently from a build with no counters', () => {
+    // The distinction `readCellCounts` carries `resolved` for: one is a fact about the
+    // build, the other means the baseline described no list at all.
+    reportSweep('cellSweepHome', legs, endInstrumented, {
+      atStart: { counts: {}, instrumented: false, resolved: false },
+    });
+
+    expect(warned[0]).toMatch(/the list did not resolve/);
+    expect(warned[0]).not.toMatch(/no cell-load counters/);
+  });
+
+  it('stays silent on a production build, where NEITHER end has counters', () => {
+    // `perfTiming` off is the correct state for a release build, so there is nothing to
+    // report and nothing to warn about — a warning here would fire on every store build.
+    reportSweep(
+      'cellSweepHome',
+      legs,
+      { quiet: true, instrumented: false, resolved: true },
+      {
+        atStart: { counts: {}, instrumented: false, resolved: true },
+      },
+    );
+
+    expect(logged[0]).toContain('perfTiming off');
+    expect(logged[0]).not.toContain('before the sweep');
+    expect(warned).toEqual([]);
+  });
+
+  it('takes settle and atStart by NAME, so a caller with only one skips no slot', () => {
+    // The reason these are an options object: three sweeps are expected to grow an `atStart`
+    // without a `settle`, which positionally would mean each writing a `null` to skip one.
+    reportSweep('cellSweepHome', legs, endInstrumented, {
+      settle: { rows: 5, items: 22, settled: true, waitedMs: 1763 },
+    });
+
+    expect(logged[0]).toContain('over 5 row(s) / 22 item(s) at sweep start (settled in 1763 ms)');
+    expect(logged[0]).not.toContain('before the sweep');
+    expect(warned).toEqual([]);
   });
 });

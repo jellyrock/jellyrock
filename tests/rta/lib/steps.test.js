@@ -607,11 +607,19 @@ describe('scrollFocus', () => {
 
 /**
  * `readCellCounts` is the BEFORE half of every cell-load number this suite publishes. It has
- * one job — describe a single instant — and the two ways it can fail at that are silent: a
- * read spread across the settling screen, and a production build whose counters do not exist
- * being reported as a screen that bound nothing.
+ * one job — describe a single instant — and its failure modes are silent by construction: a
+ * read spread across the settling screen, a production build whose counters do not exist
+ * being reported as a screen that bound nothing, and a keyPath that names nothing being
+ * reported as that same production build.
  */
 describe('readCellCounts', () => {
+  /** `found: true` for every counter plus the content root that rides along with them. */
+  const allFound = (value) => ({
+    results: Object.fromEntries(
+      [...CELL_REPORT_COUNTERS, 'childCount'].map((_c, i) => [`k${i}`, { found: true, value }]),
+    ),
+  });
+
   beforeEach(() => {
     getValues.mockReset();
   });
@@ -622,7 +630,10 @@ describe('readCellCounts', () => {
     // with work that finished before it started.
     getValues.mockResolvedValue({
       results: Object.fromEntries(
-        CELL_REPORT_COUNTERS.map((_c, i) => [`k${i}`, { found: true, value: i }]),
+        [...CELL_REPORT_COUNTERS, 'childCount'].map((_c, i) => [
+          `k${i}`,
+          { found: true, value: i },
+        ]),
       ),
     });
 
@@ -630,36 +641,69 @@ describe('readCellCounts', () => {
 
     expect(getValues).toHaveBeenCalledTimes(1);
     const sent = Object.values(getValues.mock.calls[0][0].requests).map((r) => r.keyPath);
-    expect(sent).toEqual(
-      CELL_REPORT_COUNTERS.map((c) => `activeRoutedView.#homeRows.content.cellLoad${c}`),
-    );
+    expect(sent).toEqual([
+      ...CELL_REPORT_COUNTERS.map((c) => `activeRoutedView.#homeRows.content.cellLoad${c}`),
+      'activeRoutedView.#homeRows.content.getChildCount()',
+    ]);
     expect(res.counts).toEqual(Object.fromEntries(CELL_REPORT_COUNTERS.map((c, i) => [c, i])));
     expect(res.instrumented).toBe(true);
+    expect(res.resolved).toBe(true);
   });
 
-  it('reports a build with no counters as UNINSTRUMENTED rather than as zero work', async () => {
+  it('carries the content root in the SAME batch, so telling the two failures apart is free', async () => {
+    // The whole reason the resolve check lives here rather than in a second call: one round
+    // trip either way. `waitCellsQuiet` pays a sequential read for the same answer because
+    // its sample loop is sequential by design; this one has no such excuse.
+    getValues.mockResolvedValue(allFound(1));
+
+    await readCellCounts('#homeRows');
+
+    expect(getValues).toHaveBeenCalledTimes(1);
+    expect(Object.keys(getValues.mock.calls[0][0].requests)).toHaveLength(
+      CELL_REPORT_COUNTERS.length + 1,
+    );
+  });
+
+  it('reports a production build as UNINSTRUMENTED but RESOLVED, not as zero work', async () => {
     // `perfTiming` off is the correct state for a release build. Returning zeroes here would
     // publish "the sweep bound nothing before it started" as a measurement, and a subtraction
     // against it would credit the sweep with the whole page load.
     getValues.mockResolvedValue({
-      results: Object.fromEntries(CELL_REPORT_COUNTERS.map((_c, i) => [`k${i}`, { found: false }])),
+      results: {
+        ...Object.fromEntries(CELL_REPORT_COUNTERS.map((_c, i) => [`k${i}`, { found: false }])),
+        [`k${CELL_REPORT_COUNTERS.length}`]: { found: true, value: 12 },
+      },
+    });
+
+    const res = await readCellCounts('#homeRows');
+
+    expect(res.instrumented).toBe(false);
+    expect(res.resolved).toBe(true);
+    expect(res.counts.Binds).toBeUndefined();
+  });
+
+  it('separates a list that resolved to NOTHING from that production build', async () => {
+    // These are identical from the counter reads alone — both come back `undefined` — and
+    // collapsing them is what `waitCellsQuiet`'s header calls out: it would report
+    // "perfTiming off" at an operator whose keyPath was simply wrong. One is a fact about
+    // the build; the other means this reading describes no list and every delta is fiction.
+    getValues.mockResolvedValue({
+      results: Object.fromEntries(
+        [...CELL_REPORT_COUNTERS, 'childCount'].map((_c, i) => [`k${i}`, { found: false }]),
+      ),
     });
 
     const res = await readCellCounts('#nope');
 
     expect(res.instrumented).toBe(false);
-    expect(res.counts.Binds).toBeUndefined();
+    expect(res.resolved).toBe(false);
   });
 
   it('covers exactly the counters the report line formats, with no gaps', async () => {
     // The guard against the two drifting: `formatCellCounts` walks CELL_REPORT_COUNTERS, so a
     // counter added there and missed here formats as `binds=undefined` on a line that
     // otherwise looks complete.
-    getValues.mockResolvedValue({
-      results: Object.fromEntries(
-        CELL_REPORT_COUNTERS.map((_c, i) => [`k${i}`, { found: true, value: 7 }]),
-      ),
-    });
+    getValues.mockResolvedValue(allFound(7));
 
     const { counts } = await readCellCounts('#homeRows');
 
@@ -672,6 +716,21 @@ describe('readCellCounts', () => {
     getValues.mockRejectedValueOnce(new Error('odc timeout'));
 
     await expect(readCellCounts('#homeRows')).rejects.toThrow(/odc timeout/);
+  });
+
+  it('takes its reader by injection, and the reader is a BATCH one', async () => {
+    // `readMany`, not `read`: the neighbouring waits take a single-keyPath `read` and their
+    // call sites sit two lines from this one in `nav.js`. This asserts the shape the name is
+    // protecting — one call, an ARRAY of keyPaths in, an array out.
+    const readMany = vi.fn(async (keyPaths) => keyPaths.map((_k, i) => i));
+
+    const res = await readCellCounts('#homeRows', { readMany });
+
+    expect(getValues).not.toHaveBeenCalled();
+    expect(readMany).toHaveBeenCalledTimes(1);
+    expect(readMany.mock.calls[0][0]).toHaveLength(CELL_REPORT_COUNTERS.length + 1);
+    expect(res.counts.Binds).toBe(0);
+    expect(res.resolved).toBe(true);
   });
 });
 
