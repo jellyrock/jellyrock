@@ -4,11 +4,18 @@ import "pkg:/source/utils/tasks.bs"
 ' The render-thread half of the task-ledger cost model. See TaskLedgerBench.xml for
 ' why this is a SceneGraph component rather than another Rooibos suite.
 '
-' Every function here is a deliberate mirror of the same-named one in
-' tests/source/unit/utils/taskLedgerCost.spec.bs — same iteration count, same
-' fixture, same apparatus floor subtracted — so the two tables differ in exactly
-' ONE variable: which thread the code ran on. Any other difference would make the
+' Every function here was a deliberate mirror of the same-named one in the Rooibos
+' suite `tests/source/unit/utils/taskLedgerCost.spec.bs` — same iteration count, same
+' fixture, same apparatus floor subtracted — so the two tables differed in exactly
+' ONE variable: which thread the code ran on. Any other difference would have made the
 ' comparison a different experiment.
+'
+' ⚠️ That mirror is GONE (deleted 2026-08-23; its numbers are recorded in
+' docs/architecture/threading.md, and only its platform-premise gate survives, in
+' tests/source/unit/utils/tasks.spec.bs). So the off-thread column can no longer be
+' re-measured by re-running it. If you need that comparison again, restore the mirror
+' from git history rather than writing a fresh one — a re-derived apparatus would not
+' hold the other variables fixed, which is the entire basis of the comparison.
 #if ENABLE_RTA
 
   sub init()
@@ -68,13 +75,13 @@ import "pkg:/source/utils/tasks.bs"
     return { cell: cell, depth: depth, iterations: iterations, floorUs: floor, us: us - floor }
   end function
 
-  ' The live Task-thread count right now, derived from the ledger the temporary
-  ' ENABLE_RTA hook in `launchTask()` fills.
+  ' The live Task-thread count right now, derived from the ledger `launchTask()`
+  ' maintains in EVERY build — there is no conditional hook to be missing.
   '
-  ' Returns `tracked` alongside `live` deliberately: if `tracked` is 0 the hook is
-  ' not in the build, and a `live` of 0 would otherwise read as "the app runs no
-  ' Task threads" rather than "nothing was recorded". Those are opposite findings
-  ' and the caller must be able to tell them apart.
+  ' Returns `tracked` alongside `live` deliberately: a `tracked` of 0 means the ledger
+  ' recorded nothing, while a `live` of 0 with a non-zero `tracked` means the app
+  ' genuinely runs no Task threads right now. Those are opposite findings and a bare
+  ' `live` conflates them — the peak gate asserts on `tracked` for exactly that reason.
   function liveCount() as object
     ' Reads the SHARED ledger on m.global — the same one `launchTask()` maintains for
     ' every component. An earlier cut read GetGlobalAA and returned 0 here while the
@@ -118,7 +125,9 @@ import "pkg:/source/utils/tasks.bs"
     node = CreateObject("roSGNode", "ServerReachableTask")
     node.baseUrl = "http://192.0.2.1:8096" ' RFC 5737 TEST-NET-1 — parks on connect
     admitted = launchTask(node)
-    countHere = liveTaskThreadCount()
+    ledger = []
+    if isValid(m.global) and isValid(m.global.taskLedger) then ledger = m.global.taskLedger
+    countHere = countLiveTaskThreads(ledger)
     node.control = "STOP"
     return { admitted: admitted, countInsideThisComponent: countHere }
   end function

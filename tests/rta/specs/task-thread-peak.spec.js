@@ -1,27 +1,26 @@
 /**
  * How close does the app actually get to Roku's 100-thread cap?
  *
- * ## Why this number decides a design, not just a curiosity
+ * ## This is the PRIMARY defense against a Task-thread fan-out, not a measurement
  *
- * The charter's last open criterion is "a production build enforces a ceiling".
- * Every enforcing design (defer, refuse, crash-early) has to know the live count at
- * launch time, and session 28 measured what that costs on the render thread:
- * ~527 us per launch at depth 10 on a Stick 4K. Whether that price is worth paying
- * depends entirely on how much headroom the app actually has, and NOBODY HAS
- * MEASURED IT since the two fan-out mechanisms were removed.
+ * `launchTask()` refuses above 50 live threads, but a store build strips `roku-log`
+ * and excludes `#if debug`, so a refusal has no channel to report on — it can only
+ * degrade silently. A pre-ship gate names the culprit instead, which is why ADR 0031
+ * calls this the primary defense and the runtime ceiling the backstop.
  *
- * Before the fix the app clearly exceeded 100 — that is what `&h29` was. After it,
- * the peak is unknown. A peak of ~12 against a cap of 100 and a peak of ~70 point
- * at opposite decisions.
+ * ⚠️ It fires at RELEASE PREP, not per-PR. `rta-functional-tests.yml` triggers only on
+ * `push: release-*.*.*` and `workflow_dispatch`, because there is one physical device
+ * shared with Rooibos and manual work. So a fan-out regression is caught already-merged,
+ * and possibly stacked with other work. That is a deliberate trade, recorded in ADR 0031
+ * and open as a followup in docs/progress.md.
  *
- * ## What it needs, and why this spec cannot be left in the suite as-is
+ * ## What it reads
  *
- * It reads `m.global.taskLedger`, which is filled by a TEMPORARY `#if ENABLE_RTA`
- * hook in `launchTask()`. That hook costs ~527 us per launch and would perturb
- * every RTA `measure` run, so it is reverted after this measurement. `tracked` is
- * returned alongside `live` so a build without the hook is distinguishable from an
- * app that genuinely runs no Task threads — opposite findings that a bare 0 would
- * conflate.
+ * `m.global.taskLedger`, which `launchTask()` maintains in EVERY build — there is no
+ * conditional hook that could be missing. `tracked` is returned alongside `live`
+ * regardless, because "the ledger recorded nothing" and "the app runs no Task threads"
+ * are opposite findings that a bare `live` of 0 would conflate, and the bound below
+ * would pass on either.
  *
  * ## Sampling
  *

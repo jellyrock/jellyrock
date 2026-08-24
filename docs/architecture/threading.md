@@ -82,10 +82,16 @@ is necessary but not sufficient: **an O(n) loop over nodes is expensive on the r
 just less catastrophically. Budget the loop as well as the crossing.
 
 Apparatus: `components/testing/TaskLedgerBench.bs`, driven through `roku-test-automation`'s on-device
-component, whose `callFunc` runs on the render thread; mirrored function-for-function against
-`tests/source/unit/utils/taskLedgerCost.spec.bs`, which does not. Render-thread execution is proven
-from the data rather than from the architecture — a Task node is documented render-owned, so a cheap
-read of one is only possible on the render thread.
+component, whose `callFunc` runs on the render thread. The off-thread column came from a Rooibos
+mirror of it — `tests/source/unit/utils/taskLedgerCost.spec.bs`, function-for-function identical
+(same iteration count, same fixture, same apparatus floor subtracted) so the two tables differed in
+exactly ONE variable: which thread the code ran on. **That mirror has since been deleted** — its
+numbers are the ones in this table, and a benchmark that asserts nothing does not belong in a per-PR
+device suite; see the shipped entry dated 2026-08-23 in `docs/progress.md`. Only its gate survives,
+in `tests/source/unit/utils/tasks.spec.bs`, asserting that a thread-local field read stays cheap —
+the platform premise this whole table rests on. Render-thread execution is proven from the data
+rather than from the architecture — a Task node is documented render-owned, so a cheap read of one
+is only possible on the render thread.
 
 ### A correction worth keeping
 

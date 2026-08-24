@@ -9,7 +9,7 @@ related-files:
   - components/data/Constants.xml
   - components/data/jellyfin/AppInfo.xml
   - components/data/jellyfin/DeviceInfo.xml
-last-reviewed: 2026-08-03
+last-reviewed: 2026-08-23
 ---
 
 # Global State
@@ -81,6 +81,9 @@ m.global  (the global roSGNode)
 │   ├── shouldForceFavoriteFail  bool
 │   └── shouldForceWatchedFail   bool
 │
+├── taskLedger                array of Task nodes          ← SHIPS. Every node launchTask() started, pruned to the live set on each launch. Created on FIRST launch, never declared in setGlobalNodes (see below)
+├── taskLedgerRefusals        integer                      ← ONLY in #if perfTiming builds — how many launches the watermark has refused
+└── taskLedgerFirstRefused    string                       ← ONLY in #if perfTiming builds — subtype of the FIRST node refused, i.e. the one that names the fan-out
 ```
 
 "Phase 1" and "Phase 2" refer to `setGlobals()` (before `screen.show()`) and `setGlobalNodes()` (after) respectively — see `bootstrap.md`.
@@ -223,6 +226,21 @@ It costs **555.7 µs per launch** at a ledger depth of 10 on a Stick 4K, render 
 ⚠️ **Reading a node's array field yields a COPY, so mutating it in place is a silent no-op.** `m.global.taskLedger.push(x)` measured a plausible-looking 58 µs and left the field at its original length — 200 pushes, zero growth. It was caught only because the bench asserted the resulting length. Anything that appears to mutate a node's array field without assigning back is doing nothing; same family as the undeclared-field silent no-op below.
 
 Unlike every other field above, it is **not declared in `setGlobalNodes()`** — it is created on first use. That is required, not stylistic: `setGlobalNodes()` starts five Task threads (the three `ApiTask`s, `ApiQueueTask`, `SideEffectTask`) before it would reach a declaration, and a write to an undeclared `roSGNode` field is a silent no-op, so declaring it there lost all five.
+
+**A refusal leaves a durable trace only under `#if perfTiming`.** The `print` in `launchTask()` is
+`#if debug`, and the committed manifest ships `debug=false`, so seeing a refusal that way costs a
+const flip and a rebuild — by which point you are no longer in the state that produced it.
+`perfTiming` ships **true** in that same manifest and is in `harden-prod-manifest.js`'s `FORCED_OFF`
+list, so `taskLedgerRefusals` and `taskLedgerFirstRefused` are present in every dev sideload, absent
+from every store build, and readable from the port-8085 console with no rebuild:
+
+```brightscript
+?m.global.taskLedgerRefusals
+?m.global.taskLedgerFirstRefused
+```
+
+`FirstRefused` rather than most-recent on purpose: the node that tipped the app over the watermark
+names the fan-out, and every refusal after it is a consequence.
 
 It is the only `m.global` field holding node references in an array rather than a single node. `tests/source/unit/utils/tasks.spec.bs` pins the safety bound (watermark + untracked threads < Roku's 100-thread cap) so a future edit to either constant cannot quietly break it, and `tests/rta/specs/task-thread-peak.spec.js` gates the real peak on device (measured 9-11).
 

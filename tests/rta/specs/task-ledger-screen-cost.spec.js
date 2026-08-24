@@ -62,7 +62,30 @@ afterAll(async () => {
   await odc.removeNode({ base: 'scene', keyPath: BENCH }).catch(() => {});
 });
 
-it('reports what the ceiling costs a real ItemDetails open', async () => {
+/**
+ * OPT-IN. This is a measurement, not a gate — it reports numbers and asserts only that
+ * the apparatus ran, so it has nothing to catch on a normal run. It stays in the suite
+ * because re-deriving it costs a session, but it is not paid for on every `test:rta`:
+ *
+ *   RTA_BENCH=1 npm run test:rta
+ *
+ * Skipping the only `it` in the file skips its `beforeAll` too (verified on Vitest
+ * 4.1.10: a file whose every test is skipped runs no hooks at all), which is the point —
+ * this spec's `beforeAll` does a hardRelaunch + seedHome + waitHome, which is minutes
+ * of device time for a run that would report nothing.
+ */
+const BENCH_ENABLED = process.env.RTA_BENCH === '1';
+
+it.skipIf(!BENCH_ENABLED)('reports what the ceiling costs a real ItemDetails open', async () => {
+  // COLD-START COST FIRST, before any reset. The 7 launches in `setGlobalNodes()` and
+  // `main.bs` run on the MAIN thread, and `m.global` is render-owned — so those pay the
+  // OFF-thread price (~900 us at low depth) rather than the render-thread price the
+  // ItemDetails figure below reports. That is ~3x per launch, on the cold-start path,
+  // and nothing had measured it.
+  const bootCost = await call('ledgerCost');
+  const bootUs = field(bootCost, 'us');
+  const bootLaunches = field(bootCost, 'launches');
+
   // Zero AT the grid, so the window covers only the details screen and its extras
   // rows — not Home's bootstrap launches, which would otherwise be charged to it.
   const wasReset = await call('resetLedgerCost');
@@ -89,6 +112,12 @@ it('reports what the ceiling costs a real ItemDetails open', async () => {
         device: process.env.ROKU_IP ?? 'unknown',
         server: RTA_CONFIG.server.url,
         screen: 'ItemDetails (movie, incl. extras rows)',
+        coldStart: {
+          note: 'app launch -> Home ready; includes the 7 MAIN-thread bootstrap launches',
+          launches: bootLaunches,
+          totalMs: Math.round((bootUs / 1000) * 100) / 100,
+          perLaunchUs: bootLaunches > 0 ? Math.round((bootUs / bootLaunches) * 10) / 10 : 0,
+        },
         launches,
         totalUs: us,
         totalMs: Math.round((us / 1000) * 100) / 100,

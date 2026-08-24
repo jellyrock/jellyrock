@@ -52,9 +52,17 @@
 ' unavoidable. Full cost model: docs/architecture/threading.md.
 '
 ' The count is exact rather than a lower bound: every thread's launches land in the
-' same shared field. The old cross-thread race is still possible in principle (there
-' is no atomic read-modify-write on a node field) and is still accepted: the window
-' is a few instructions and the effect is a readout low by one.
+' same shared field. The cross-thread race is still possible in principle — there is
+' no atomic read-modify-write on a node field, so two launches racing across threads
+' read the same copy and one write wins.
+'
+' That consequence CHANGED when the count started gating behaviour. It used to mean a
+' readout low by one. It now also means OVER-ADMISSION: each racer sees a count that
+' does not include the other, so both are admitted and the live total can exceed the
+' watermark by up to the number of racers. Still accepted, and now for a stated reason
+' rather than by inheritance — the overshoot is bounded by concurrent launches (a
+' handful, and only bootstrap launches are off the render thread at all) against the
+' 50 threads the bound leaves spare below Roku's cap.
 '
 ' ── Pure core / debug shell split ──────────────────────────────────────────
 '
@@ -83,6 +91,16 @@
 ' across a scripted journey — tests/rta/specs/task-thread-peak.spec.js), so a
 ' watermark of 50 is ~4.5x the observed peak: it cannot fire in normal operation,
 ' only when something is fanning out.
+'
+' Three numbers, deliberately kept apart:
+'
+'     RTA gate 30  <  watermark 50  <  Roku's cap 100
+'
+' The gate fires in TESTING and names the culprit; the ceiling only ever fires in
+' PRODUCTION, where nothing can report. Tightening the watermark toward the gate
+' collapses that separation — a fixture slightly heavier than the test journey would
+' start refusing in production at the count the gate calls a regression. The gap is
+' the design. Full argument: docs/adr/0031-task-thread-ceiling.md.
 '
 ' THE BOUND, which is why refusal is safe rather than merely hopeful:
 '
@@ -193,16 +211,35 @@ function admitTaskLaunch(node as object) as boolean
   ' permanently upward — a never-launched node reports `state = "init"`, which counts
   ' as live, so it would never be pruned. It is always LAST because
   ' `pruneTaskLedger` appends it after the liveness filter (also pinned in the spec).
+  '
+  ' NOTE a RELAUNCH of an already-tracked live node is refused here too, even though it
+  ' adds no thread: `pruneTaskLedger` de-duplicates it out and re-appends it, so the
+  ' count is unchanged and still over. That is the right answer — the app is at the
+  ' watermark either way — but it is worth knowing before reading a refusal as "this
+  ' launch was the one too many".
   candidate.pop()
   store["taskLedger"] = candidate
-  return false
-end function
 
-' The live count this thread can see. Debug readout and the RTA peak gate both use
-' it; nothing in the hot path calls it, which is why it is not cached.
-function liveTaskThreadCount() as integer
-  if not isValid(m.global) then return 0
-  return countLiveTaskThreads(m.global["taskLedger"])
+  #if perfTiming
+    ' THE ONLY DURABLE TRACE A REFUSAL LEAVES. The print below is `#if debug`, and the
+    ' committed manifest ships `debug=false`, so seeing a refusal that way costs a const
+    ' flip and a rebuild — by which time you are no longer in the state that produced it.
+    ' `perfTiming` ships TRUE in that same manifest and is in harden-prod-manifest.js's
+    ' FORCED_OFF list, so these two fields are present in every dev sideload, absent from
+    ' every store build, and readable from the port-8085 console with no rebuild at all:
+    '
+    '   ?m.global.taskLedgerRefusals
+    '   ?m.global.taskLedgerFirstRefused
+    if not store.hasField("taskLedgerRefusals") then store.addField("taskLedgerRefusals", "integer", false)
+    if not store.hasField("taskLedgerFirstRefused") then store.addField("taskLedgerFirstRefused", "string", false)
+    store["taskLedgerRefusals"] = store["taskLedgerRefusals"] + 1
+    ' FIRST, not most recent. The node that tipped the app over the watermark is the one
+    ' that names the fan-out; every refusal after it is a consequence, so overwriting
+    ' would replace the culprit with its victims.
+    if store["taskLedgerFirstRefused"] = "" then store["taskLedgerFirstRefused"] = node.subtype()
+  #end if
+
+  return false
 end function
 
 ' ── Pure core ───────────────────────────────────────────────────────────────

@@ -3,7 +3,8 @@
  *
  * ## Why this spec exists at all
  *
- * `tests/source/unit/utils/taskLedgerCost.spec.bs` measured what `recordTaskLaunch`
+ * The Rooibos suite `tests/source/unit/utils/taskLedgerCost.spec.bs` (since deleted —
+ * see docs/architecture/threading.md) measured what `recordTaskLaunch`
  * costs and proved, from its own data, that it could not measure the case that
  * matters: at depth 0 the identical operation cost 909.9 us against `m.global` and
  * 245.6 us against a locally-created node — a 3.7x gap that can only exist if
@@ -106,7 +107,20 @@ afterAll(async () => {
   await odc.removeNode({ base: 'scene', keyPath: BENCH }).catch(() => {});
 });
 
-it('measures the task ledger on the render thread', async () => {
+/**
+ * OPT-IN. This is a measurement, not a gate — it reports numbers and asserts only that
+ * the apparatus ran, so it has nothing to catch on a normal run. It stays in the suite
+ * because re-deriving it costs a session, but it is not paid for on every `test:rta`:
+ *
+ *   RTA_BENCH=1 npm run test:rta
+ *
+ * Skipping the only `it` in the file skips its `beforeAll` too (verified on Vitest
+ * 4.1.10: a file whose every test is skipped runs no hooks at all), which is the point —
+ * the setup is what costs, not the assertions.
+ */
+const BENCH_ENABLED = process.env.RTA_BENCH === '1';
+
+it.skipIf(!BENCH_ENABLED)('measures the task ledger on the render thread', async () => {
   const reads = await runCell({ cell: 'reads', iterations: ITERATIONS });
 
   const rows = [];
