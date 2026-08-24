@@ -294,8 +294,7 @@ sub exchangeQuickConnect()
   ' spent, and abandonDialog delivers no result, which is right here — the user
   ' did not dismiss it, so onQuickConnectDialogResult must not run.
   m.quickConnectTimer.control = "stop"
-  abandonDialog(m.quickConnectDialog)
-  m.quickConnectDialog = invalid
+  abandonQuickConnectDialog()
 
   req = GetApi().BuildAuthenticateWithQuickConnectRequest(secret)
   m.quickConnectSecret = ""
@@ -313,6 +312,21 @@ sub exchangeQuickConnect()
       ' than anything wrong with the code. See quickConnectExchangeFailure.
       m.log.warn("Quick Connect token exchange refused", "statusCode:", res.statusCode)
       reportQuickConnectFailure(quickConnectExchangeFailure(res))
+      return
+    end if
+
+    ' A 200 that carries no usable session. Reported HERE because this is the last
+    ' step still on a screen that can say anything: once the intent drains, the
+    ' coordinator has no dialog and no view field to report through, and the user
+    ' would answer the save-credentials question and then get nothing at all.
+    '
+    ' UNAVAILABLE rather than SPENT — the same reading startQuickConnect gives an
+    ' initiate that answers 200 with nothing usable in it. The server did not
+    ' reject the code, it agreed and then failed to produce a session, so the
+    ' honest advice is to try again rather than to go and fetch a new code.
+    if not quickConnectHasSession(res.json)
+      m.log.warn("Quick Connect token exchange returned no usable session")
+      reportQuickConnectFailure(QC_FAIL_UNAVAILABLE)
       return
     end if
 
@@ -357,14 +371,42 @@ end sub
 
 ' Stop polling and drop the dialog + session state. Safe to call repeatedly, and
 ' safe to call with no flow in progress.
-sub endQuickConnect()
+'
+' `returnFocusToPicker` is false for exactly one caller — onDestroy. See
+' abandonQuickConnectDialog for why the two cases differ.
+sub endQuickConnect(returnFocusToPicker = true as boolean)
   if isValid(m.quickConnectTimer) then m.quickConnectTimer.control = "stop"
   m.quickConnectSecret = ""
   m.quickConnectFailures = 0
-  ' abandonDialog, not cancelOpenDialog: we ARE the owner, and a result delivered
-  ' back into this scope would re-enter the teardown we are in the middle of.
+  abandonQuickConnectDialog(returnFocusToPicker)
+end sub
+
+' Take the code dialog down WITHOUT delivering a result, and put focus back where
+' it came from.
+'
+' abandonDialog, not cancelOpenDialog: we ARE the owner, and a result delivered
+' back into this scope would re-enter the teardown we are in the middle of.
+'
+' The re-focus is the part that is easy to miss. abandonDialog() removes the node
+' and restores nothing — correct for its other callers, which are all onDestroy,
+' where the view is going away and there is no focus to hand back. This screen
+' STAYS ON THE AIR, and what comes next (the failure alert, or the
+' save-credentials confirm) DERIVES its returnFocusTo from whatever holds focus at
+' that instant. Measured on device: after an abandon that derivation collapses to
+' the scene root, so dismissing the next dialog would hand focus to nothing. See
+' the abandonDialog characterization in tests/source/unit/utils/dialogs.spec.bs.
+'
+' Safe when no dialog is open: focus is already on the button row, so this is a
+' no-op on the paths that fail before a dialog ever opens.
+'
+' `returnFocusToPicker` is FALSE from onDestroy, and that is not a nicety: this
+' view is being replaced, so re-focusing our own button row there could take focus
+' off the view that replaces us. A destroyed view has nothing to hand focus back
+' to, which is the case abandonDialog's no-restore behaviour is built for.
+sub abandonQuickConnectDialog(returnFocusToPicker = true as boolean)
   abandonDialog(m.quickConnectDialog)
   m.quickConnectDialog = invalid
+  if returnFocusToPicker and isValid(m.buttons) then m.buttons.setFocus(true)
 end sub
 
 ' Report a Quick Connect failure in the standard alert dialog.
@@ -543,7 +585,11 @@ sub onDestroy()
   ' dialog down. Overlay dialogs are appended to the SCENE, not to this view, so
   ' one left open here would strand a modal over whatever screen replaces us —
   ' with a scoped observer pointing into a torn-down scope.
-  endQuickConnect()
+  '
+  ' `false` = do NOT hand focus back to our button row. Every other caller wants
+  ' that; this one must not have it, because the view replacing us is the thing
+  ' that should end up focused.
+  endQuickConnect(false)
   abandonDialog(m.saveCredentialsDialog)
   m.saveCredentialsDialog = invalid
   m.quickConnectAuthResult = invalid

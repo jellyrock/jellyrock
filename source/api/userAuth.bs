@@ -18,6 +18,13 @@ end function
 ' (diffed against Jellyfin 10.11.11 — same 12 keys, differing only in LastLoginDate /
 ' LastActivityDate, neither of which this app reads).
 '
+' The Quick Connect flow guards the SAME payload one layer up, on the render thread
+' (quickConnectHasSession in source/utils/quickConnect.bs), because this side has
+' nowhere left to report a failure to. The two are deliberate duplicates rather
+' than one shared helper — they sit on opposite threads and answer different
+' questions ("can I build a node?" vs "can I tell the user?") — so if what counts
+' as a usable session ever changes, change both.
+'
 ' @param json - AuthenticationResult from AuthenticateByName / AuthenticateWithQuickConnect
 ' @returns a UserData node, or invalid when the response carries no usable session
 function userDataFromAuthResult(json as dynamic) as dynamic

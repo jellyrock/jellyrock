@@ -281,6 +281,55 @@ namespace tests
       m.assertEqual(spokenQuickConnectCode("A1B2"), "A 1 B 2")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("quickConnectHasSession")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A 200 is not a session. Before this gate, an exchange that answered OK with
+    ' an unusable body sailed past UserSelect, the user answered the
+    ' save-credentials question, and then the coordinator dropped it with nothing
+    ' on screen — no message, no navigation. These pin the exact payload shapes
+    ' the DOWNSTREAM chain needs, which is why User.Id is checked and not just User.
+
+    @it("accepts a complete AuthenticationResult")
+    function _()
+      m.assertTrue(quickConnectHasSession({ AccessToken: "tok", User: { Id: "abc123" } }))
+    end function
+
+    @it("rejects a body with no AccessToken")
+    function _()
+      m.assertFalse(quickConnectHasSession({ User: { Id: "abc123" } }))
+    end function
+
+    @it("rejects an empty AccessToken")
+    function _()
+      m.assertFalse(quickConnectHasSession({ AccessToken: "", User: { Id: "abc123" } }))
+    end function
+
+    @it("rejects a body with no User")
+    function _()
+      m.assertFalse(quickConnectHasSession({ AccessToken: "tok" }))
+    end function
+
+    @it("rejects a User carrying no Id")
+    ' The one that is easy to under-check. UserData.loadFromJSON reads json.User.id
+    ' and user.Login refuses a payload without it — but loginRouter calls
+    ' finishLogin() either way, so accepting this lands on Home with nobody signed
+    ' in. Worse than the failure it replaces, and silent.
+    function _()
+      m.assertFalse(quickConnectHasSession({ AccessToken: "tok", User: { Name: "charlie" } }))
+    end function
+
+    @it("rejects an empty User Id")
+    function _()
+      m.assertFalse(quickConnectHasSession({ AccessToken: "tok", User: { Id: "" } }))
+    end function
+
+    @it("rejects invalid")
+    function _()
+      m.assertFalse(quickConnectHasSession(invalid))
+    end function
+
   end class
 
 end namespace

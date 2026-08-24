@@ -49,7 +49,16 @@ const QC_POLL_FAILED = "failed"
 ' another device, and the dialog's Cancel button is the way out of that. This is
 ' the tolerance for a transient blip: one dropped request on Wi-Fi must not kill a
 ' sign-in that is otherwise fine, and a server that has genuinely stopped
-' answering must not spin forever. At the 3s poll cadence this is ~9s of silence.
+' answering must not spin forever.
+'
+' HOW LONG THAT IS DEPENDS ON HOW THE POLLS FAIL, and the two bounds are an order
+' of magnitude apart. Failures that come back immediately (connection refused)
+' give up in ~6s — three polls separated by two 3s timer gaps. Failures that are
+' TIMEOUTS give up in ~42s, because apiPromise allows each request
+' timeouts.API_WAIT_MS (12s) before it rejects. The second number is the one to
+' hold in mind: a server that has stopped answering rather than refusing is
+' exactly the case this cap exists for, and the user watches a code dialog with no
+' feedback for the whole of it.
 const QC_MAX_CONSECUTIVE_FAILURES = 3
 
 ' Classify one /QuickConnect/Connect response.
@@ -80,6 +89,15 @@ function quickConnectPollOutcome(res as dynamic) as string
   ' infinite-spinner bug this whole module exists to remove, still open on the
   ' oldest server we support. Checked AFTER Authenticated so an approval is never
   ' discarded, and harmless on newer servers where the field cannot be present.
+  '
+  ' SCHEMA-DERIVED, NOT PROBED. No 10.7 server was reachable, so what is known is
+  ' that the field EXISTS there — not when the server populates it. If 10.7 sets
+  ' it on an ordinary not-yet-approved poll, this ends the flow after three polls
+  ' with "try again shortly" instead of waiting for the user. That is bounded and
+  ' reported where the old behaviour was an unbounded silent spinner, so it is the
+  ' safer direction to be wrong in — but it is still wrong, and it is the thing to
+  ' check first if Quick Connect is reported broken on 10.7. Tracked as a followup
+  ' in docs/progress.md.
   if isValidAndNotEmpty(json.Error) then return QC_POLL_FAILED
 
   return QC_POLL_PENDING
@@ -145,6 +163,35 @@ function quickConnectSession(json as dynamic) as dynamic
   if not isValidAndNotEmpty(json.Code) then return invalid
 
   return { secret: json.Secret, code: json.Code }
+end function
+
+' Does an /Users/AuthenticateWithQuickConnect response carry a session the app can
+' actually finish signing in with?
+'
+' A 200 IS NOT A SESSION. The exchange can answer OK with a body naming neither a
+' token nor a user, and the coordinator that receives it has nowhere to report
+' that — by then the code dialog is gone and the intent has drained, so the user
+' answers the save-credentials question and then gets no screen and no message.
+' UserSelect is the last point in the flow still on a screen that can say
+' something, which is why this is checked there and not only downstream.
+'
+' The fields are the ones the DOWNSTREAM chain requires, not a plausible subset.
+' `User.Id` is load-bearing and easy to under-check: UserData.loadFromJSON reads
+' `json.User.id` directly, user.Login() refuses a payload whose User carries no Id
+' (session.bs `hasValidId`) — and loginRouter calls finishLogin() whether or not
+' Login took, so a missing Id lands on Home with nobody signed in. Guarding only
+' `AccessToken` + `User` would move that failure rather than close it.
+'
+' userDataFromAuthResult (source/api/userAuth.bs) guards the same payload one
+' layer down, on the main thread, for the node it builds. Keep the two in step.
+'
+' @param json - the parsed AuthenticationResult, or invalid
+' @returns true only when a sign-in can actually complete from this payload
+function quickConnectHasSession(json as dynamic) as boolean
+  if not isValid(json) then return false
+  if not isValidAndNotEmpty(json.AccessToken) then return false
+  if not isValid(json.User) then return false
+  return isValidAndNotEmpty(json.User.Id)
 end function
 
 ' The code as the screen reader should SAY it: one digit at a time.
