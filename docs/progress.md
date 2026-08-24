@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-08-23
+last-updated: 2026-08-24
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-24 — Enforce a production Task-thread ceiling in `launchTask()`
 - 2026-08-23 — Removed `tests/source/unit/utils/taskLedgerCost.spec.bs`, closing the `(sink len 0)` shared-sink followup by deleting the shape rather than splitting the sinks. Its benchmark cells were superseded by the render-thread apparatus in `components/testing/TaskLedgerBench.bs` (numbers now recorded in `docs/architecture/threading.md`), and a printout that asserts nothing does not belong in a per-PR device suite. The one real gate — a thread-local node field read staying under 10 µs, the premise the whole production ledger rests on — is folded into `tests/source/unit/utils/tasks.spec.bs`, where it now runs in `test:tdd` as well as `test:unit` and ASSERTS `Len(sink) > 0` so a loop that never executed cannot pass as a cheap measurement.
 - 2026-08-23 — Bound Task fan-out structurally with a `no-task-fanout` BSC plugin
 - 2026-08-23 — Retire `SceneManager`'s dialog machinery for the `JRDialog` family
@@ -70,10 +71,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-08-10 — **Ran a one-shot device-lock self-test (PR #801, closed unmerged) and removed it.** It answered the two questions no developer machine can: the repo's GitHub App CAN create and delete a git ref (201 then 422 on the compare-and-swap), and `secrets.ROKU_DEVICE_IP` resolves to a **third** Roku — a dedicated CI Streaming Stick 4K (`.200`), not the local dev device (`.177`) or the personal one (`.178`). That secret is org-level and unmodified since 2026-03-18, and both device workflows plus RTA read it, so CI has always been isolated on its own device. **Consequence:** a lock keyed on the ECP `device-id` cannot detect local-vs-CI contention, because the two parties never share a device — the cross-host contention story needs re-deriving before any doc repeats it.
 - 2026-08-10 — ci(rta): Restore the whole device registry after an RTA run, and survive a Ctrl-C
 - 2026-08-10 — Batch Home's latest-row item attach into one `appendChildren` call
-- 2026-08-09 — chore: Record evidence in commits and journals, not in code comments
-- 2026-08-09 — fix(ui): render `Gradient` as a stretched tinted ramp poster
-- 2026-08-09 — test(rta): establish preconditions before driving or scanning UI state
-- 2026-08-09 — Draw the Genres view before its artwork has loaded
 
 ## Open followups
 
