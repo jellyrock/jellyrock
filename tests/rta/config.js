@@ -42,20 +42,44 @@ export const PUBLIC_DEMO_SERVER = Object.freeze({
  * repointed server needs those retuned too. The suite tells you which ones by
  * failing on the fixture, not silently.
  */
-const server = Object.freeze({
-  // `RTA_SERVER_*` rather than a second scheme of this branch's own: main shipped
-  // these names independently while this branch was in flight, and two competing
-  // override schemes for one value is worse than either. What this branch keeps is
-  // the part main's version lacks — the dotenv import above (so the variables work
-  // regardless of which entry point imports this first), `.env.example` documenting
-  // them, and `PUBLIC_DEMO_SERVER` below keeping the demos pinned.
-  //
-  // `??` throughout, not `||`: an empty password is the demo's REAL password, so it
-  // has to survive as an override rather than falling back.
-  url: process.env.RTA_SERVER_URL ?? PUBLIC_DEMO_SERVER.url,
-  username: process.env.RTA_SERVER_USER ?? PUBLIC_DEMO_SERVER.username,
-  password: process.env.RTA_SERVER_PASS ?? PUBLIC_DEMO_SERVER.password,
-});
+/**
+ * Resolve the functional-test server from an environment.
+ *
+ * `RTA_SERVER_*` rather than a second scheme of this repo's own: those names
+ * arrived on `main` independently while this work was in flight, and two competing
+ * override schemes for one value is worse than either. What this side adds is the
+ * part `main`'s version lacked — the `dotenv` import above (so the variables work
+ * regardless of which entry point imports this first), `.env.example` documenting
+ * them, and `PUBLIC_DEMO_SERVER` keeping the video demos pinned.
+ *
+ * EMPTY IS NOT AN OVERRIDE for the url or the username. `.env.example` ships
+ * these keys, and dotenv turns a bare `RTA_SERVER_URL=` into the empty STRING —
+ * which `??` accepts, so a contributor who copied the example verbatim (the
+ * documented onboarding step) got `url: ''` and a suite that drove nothing.
+ * Neither field has a meaningful empty value, so empty reads as unset. Trimmed
+ * too, because a trailing space in a `.env` line is invisible in a diff.
+ *
+ * `password` deliberately keeps `??`: empty IS the public demo's real password,
+ * so it has to survive as an override rather than falling back.
+ *
+ * Exported and parameterised so the resolution is unit-testable as a pure
+ * function. Testing it through the module's own evaluation is not an option —
+ * this file imports `dotenv/config`, so such a test would read whatever is in
+ * the developer's own `.env` and pass or fail per machine.
+ *
+ * @param {Record<string, string | undefined>} env
+ * @param {{url: string, username: string, password: string}} fallback
+ */
+export function resolveServer(env = process.env, fallback = PUBLIC_DEMO_SERVER) {
+  const isSet = (value) => value !== undefined && value.trim() !== '';
+  return Object.freeze({
+    url: isSet(env.RTA_SERVER_URL) ? env.RTA_SERVER_URL : fallback.url,
+    username: isSet(env.RTA_SERVER_USER) ? env.RTA_SERVER_USER : fallback.username,
+    password: env.RTA_SERVER_PASS ?? fallback.password,
+  });
+}
+
+const server = resolveServer();
 
 export const RTA_CONFIG = {
   // Jellyfin server the screens are driven against. License-clear content only
