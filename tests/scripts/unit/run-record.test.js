@@ -204,19 +204,45 @@ describe('the run ledger lives outside the build output directory', () => {
   });
 
   it('scopes the per-run files by device, so two devices cannot share one record', async () => {
+    // Resolved through `beginRun`, because that is the branch that derives the durable
+    // path — a bare call has no run to record against and lands in a throwaway dir
+    // (see the test above). Two runs, two devices, two record directories: the whole
+    // point, since the device LOCK is per-device and lets them overlap.
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.resetModules();
     const mod = await import('../../../scripts/run-record.js');
-    const prev = process.env.RTA_DEVICE_KEY;
     const prevRecord = process.env.RTA_RECORD_DIR;
     delete process.env.RTA_RECORD_DIR;
     try {
-      process.env.RTA_DEVICE_KEY = 'device-a';
-      const a = mod.failuresPath();
-      process.env.RTA_DEVICE_KEY = 'device-b';
-      expect(mod.failuresPath()).not.toBe(a);
+      const a = mod.beginRun({ lock: { meta: { deviceKey: 'device-a' } }, run: 'test:rta' });
+      const aDir = a.recordDir;
+      a.close();
+      const b = mod.beginRun({ lock: { meta: { deviceKey: 'device-b' } }, run: 'test:rta' });
+      expect(b.recordDir).not.toBe(aDir);
+      expect(aDir).toContain('device-a');
+      b.close();
     } finally {
-      if (prev === undefined) delete process.env.RTA_DEVICE_KEY;
-      else process.env.RTA_DEVICE_KEY = prev;
       if (prevRecord !== undefined) process.env.RTA_RECORD_DIR = prevRecord;
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('writes NOWHERE durable when there is no run to record against', async () => {
+    // Records belong to a run. Before they moved out of `out/`, a stray write was
+    // swept by the next `npm run build`; moving them removed that sweep, and it bit
+    // at once — two intermediate states in one session left 124 stray directories
+    // under `.device-runs/`, named after test tmpdirs, that had to be hand-cleaned.
+    // A fresh module: `beginRun` sets `activeRecordDir` as module state, and a
+    // neighbouring test that opens a run would otherwise decide this one's answer.
+    vi.resetModules();
+    const mod = await import('../../../scripts/run-record.js');
+    const prev = process.env.RTA_RECORD_DIR;
+    delete process.env.RTA_RECORD_DIR;
+    try {
+      expect(mod.recordDir().startsWith(os.tmpdir())).toBe(true);
+      expect(mod.recordDir()).not.toContain('.device-runs');
+    } finally {
+      if (prev !== undefined) process.env.RTA_RECORD_DIR = prev;
     }
   });
 

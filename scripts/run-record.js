@@ -46,6 +46,7 @@
  * with `rimraf out/` — see `LEDGER_ROOT`.
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { writeRunMeta } from './device-lock.js';
@@ -137,6 +138,21 @@ function deviceScope() {
 let activeRecordDir;
 
 /**
+ * The durable location for a run that OWNS its records — `beginRun` resolves this
+ * once and hands it to the handle and the child.
+ *
+ * Split out from `recordDir` deliberately. `recordDir` answers "where do MY records
+ * go", and for a process with no run that answer is "nowhere durable"; this answers
+ * "where would a run's records go", which is a different question and the only one
+ * `beginRun` is asking. Folding them cost a real bug in review: `beginRun` derived
+ * its directory by calling `recordDir()`, so the moment that gained a no-run
+ * fallback, every real run's records went to the throwaway path instead.
+ */
+function derivedRecordDir() {
+  return path.join(LEDGER_ROOT, path.basename(getRunDir()), 'runs', deviceScope());
+}
+
+/**
  * Resolve this process's record directory, on the same three-source precedence
  * `getRunDir` uses and for the same reasons: `beginRun` sets it for an entry point
  * that owns a run, `RTA_RECORD_DIR` is the only channel a spawned child (or a test
@@ -149,11 +165,23 @@ let activeRecordDir;
  * "where this run's records go" and must not be under `out/` at all.
  */
 export function recordDir() {
-  return (
-    activeRecordDir ||
-    process.env.RTA_RECORD_DIR ||
-    path.join(LEDGER_ROOT, path.basename(getRunDir()), 'runs', deviceScope())
-  );
+  if (activeRecordDir) return activeRecordDir;
+  if (process.env.RTA_RECORD_DIR) return process.env.RTA_RECORD_DIR;
+  // NO RUN CONTEXT — so there is nothing to record against, and the write goes
+  // somewhere throwaway rather than into the durable tree.
+  //
+  // Records belong to a RUN. `beginRun` sets the first branch and hands the second to
+  // its child; a process with neither is a unit test, or someone poking at the module.
+  // Before the records moved out of `out/`, such a write was swept by the next
+  // `npm run build` and nobody noticed. Moving them here removed that sweep without
+  // replacing it, and it bit immediately: two intermediate states during the same
+  // session left 124 stray directories under `.device-runs/` — named after test
+  // tmpdirs, because the derivation reads `basename(getRunDir())` — which had to be
+  // hand-cleaned. That is the whole justification; it is not a hypothetical.
+  //
+  // A throwaway path rather than a refusal, so read/write stay symmetric: a caller
+  // that writes and reads back in the same process still works, and the OS clears it.
+  return path.join(os.tmpdir(), 'jellyrock-records-no-run', String(process.pid));
 }
 
 /** This run's failure records — one JSON line each, appended by the process that hit them. */
@@ -935,8 +963,7 @@ export function beginRun({ lock, run, cumulative = false }) {
   activeDeviceKey = lock?.meta?.deviceKey;
   // Resolved once, AFTER the two values it derives from, so the handle and the child
   // cannot disagree with this process about where the records went.
-  activeRecordDir = undefined;
-  activeRecordDir = recordDir();
+  activeRecordDir = derivedRecordDir();
   runMetaCache = undefined; // a new run means a new record to read back
   closedSummary = undefined; // ...and a close that has not happened yet
   // Written BEFORE the work so it survives a run that never reaches `endRun`.

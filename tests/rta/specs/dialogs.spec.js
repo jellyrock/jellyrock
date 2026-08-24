@@ -171,7 +171,21 @@ it('series watched button opens the standard confirm dialog; back cancels it', a
   if (typeof groupIndex !== 'number')
     throw new Error(`cannot read #buttons.buttonFocused (got ${groupIndex})`);
   for (let i = groupIndex; i < watchedIndex; i++) await press(ecp.Key.Right);
-  await waitFor('#buttons.buttonFocused', (n) => n === watchedIndex, {
+  // Gate on the BUTTON, not on its index. `watchedIndex` was resolved by scanning the
+  // group above, and `ItemDetails` mutates that group asynchronously as data lands —
+  // `m.buttonGrp.removeChild(loadingButton)` once the trailer check resolves through
+  // `fetchAsync().then()`, `removeChild(trailerButton)` when there is none,
+  // `removeChild(resumeButton)`. Every removal shifts the indices after it, so a gate
+  // on `buttonFocused === watchedIndex` can be satisfied by a DIFFERENT button, and the
+  // OK below then lands on it: no dialog opens, and by the time the wait gives up the
+  // group has settled and the failure dump looks innocent — focus on `#watchedButton`,
+  // no confirm. Recorded 4 times in 63 ledger runs, always `wait-for-timeout` on
+  // `#buttonRow.getChildCount()`.
+  //
+  // This is the same defect as the library-nav wrong-turn (`openLibraryByType`):
+  // commit to an index, act later, index means something else. `pressOsdButton` in this
+  // same file already gates by identity for the same reason; this walk did not.
+  await waitFocused((f) => f.node?.id === 'watchedButton', {
     label: 'watched button focused in group',
     timeout: 8000,
   });
