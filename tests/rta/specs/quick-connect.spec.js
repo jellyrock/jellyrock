@@ -136,9 +136,19 @@ it('shows a server-issued code, notices approval, and signs in', async (testCtx)
     timeout: 30000,
   });
 
-  // showConfirmDialog focuses the SAFE side first, which here means "No".
-  const safeLabel = await getVal('#buttonRow.0.text');
-  expect(typeof safeLabel).toBe('string');
+  // This next OK press is what makes the file header's "credentials are
+  // deliberately NOT saved" true, so it is PINNED rather than described. Asserting
+  // only that a label came back is what this did first, and it would have stayed
+  // green while silently writing an authToken into the device registry if the
+  // dialog's safe-side default ever moved.
+  //
+  // Two things have to hold, and neither implies the other: cancel is child 0
+  // (showConfirmDialog builds [cancelText, confirmText]) and child 0 is what has
+  // focus (defaultButtonIndex = 0, "focus the safe side").
+  // `No` is translationKeys.ButtonNo in en_US; LOCALE is pinned to
+  // RTA_CONFIG.languages[0], so this run is always en_US.
+  expect(await getVal('#buttonRow.0.text')).toBe('No');
+  expect(await getVal('#jrDialog.defaultButtonIndex')).toBe(0);
   await press(ecp.Key.Ok);
 
   await waitHome();
