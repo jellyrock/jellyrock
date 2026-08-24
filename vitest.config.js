@@ -15,6 +15,9 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     include: ['tests/scripts/**/*.test.js', 'tests/rta/**/*.test.js'],
+    // Fails the run if the suite wrote into `.device-runs/`, which belongs to
+    // real device runs. See that file for the leak it was written against.
+    globalSetup: ['tests/scripts/setup/no-durable-writes.js'],
     // Globals off — tests import { describe, it, expect } from 'vitest'
     // explicitly. Cleaner, plays nicer with ESLint's no-undef.
     globals: false,
