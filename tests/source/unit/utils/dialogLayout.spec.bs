@@ -19,7 +19,7 @@ namespace tests
     ' is the gate for it, so the next value someone adds cannot quietly break it.
     @it("every spacing constant survives the 720p downscale as an integer")
     function _()
-      for each value in [PANEL_PADDING, TITLE_GAP, BODY_GAP, SUBHEADING_GAP, SEPARATOR_ACCENT_WIDTH, LIST_ROW_HEIGHT, LIST_ROW_SPACING, LIST_ROW_PADDING, LIST_ROW_CHECK_GUTTER, DIALOG_BUTTON_MIN_WIDTH]
+      for each value in [PANEL_PADDING, TITLE_GAP, BODY_GAP, SUBHEADING_GAP, SEPARATOR_ACCENT_WIDTH, LIST_ROW_HEIGHT, LIST_ROW_SPACING, LIST_ROW_PADDING, LIST_ROW_CHECK_GUTTER, DIALOG_BUTTON_MIN_WIDTH, DIALOG_BUTTON_PADDING]
         m.assertEqual(value mod 6, 0)
         m.assertEqual((value * 2) mod 3, 0)
       end for
@@ -411,6 +411,33 @@ namespace tests
       drift = layout.panel.y - ideal
       if drift < 0 then drift = -drift
       m.assertTrue(drift <= 3, "panel drifted " + drift.toStr() + "px from centre")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the footer-button height fallback")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' It was three verbatim copies — JRDialog's row, QuickConnectDialog's row and
+    ' OverviewDialog's OK — each with its own literal 60, and each free to drift
+    ' from TextButton and from the other two. It is here because it is pure
+    ' arithmetic over one number, which is the same reason the rest of this
+    ' module is here.
+    @it("reproduces how a TextButton sizes itself: text height plus padding both sides")
+    function _()
+      ' TextButton: visibleTextHeight = font.size * 0.7, then + padding * 2.
+      m.assertEqual(dialogButtonFallbackHeight(40), int(40 * 0.7) + (DIALOG_BUTTON_PADDING * 2))
+      m.assertEqual(dialogButtonFallbackHeight(40), 28 + 60)
+    end function
+
+    ' The fallback exists so a dialog with nothing measured yet still lays out
+    ' rather than parking forever, so it has to produce a usable button at every
+    ' size the theme can hand it — never zero, and never smaller than its padding.
+    @it("is always taller than the padding it is built from")
+    function _()
+      for each fontSize in [24, 30, 40, 48, 60]
+        height = dialogButtonFallbackHeight(fontSize)
+        m.assertTrue(height > DIALOG_BUTTON_PADDING * 2, "no room for text at fontSize " + fontSize.toStr())
+      end for
     end function
 
     @it("centreInRect centres a narrower block in its column")

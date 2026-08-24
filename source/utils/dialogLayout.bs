@@ -86,6 +86,13 @@ const LIST_ROW_CHECK_GUTTER = 84
 ' 204, not 200: on the 6px scale so the button's own edges land on the 720p grid.
 const DIALOG_BUTTON_MIN_WIDTH = 204
 
+' How a TextButton sizes itself: `visibleTextHeight + padding * 2`, where
+' visibleTextHeight is `font.size * 0.7` and `padding` defaults to 30
+' (components/ui/button/TextButton.xml). Mirrored here so the FALLBACK below is
+' one definition rather than one per dialog.
+const DIALOG_BUTTON_TEXT_RATIO = 0.7
+const DIALOG_BUTTON_PADDING = 30
+
 ' A short accent rule under the title, not a full-width divider: at content width
 ' it competed with the body instead of supporting the title.
 '
@@ -196,11 +203,13 @@ function computeDialogLayout(spec as object) as object
 
   contentBottom = bodyY + bodyHeight
 
+  ' The footer's slot is always BODY_GAP below the body; what a missing footer
+  ' changes is only whether the panel reserves room for it. (`footer.height` is
+  ' 0 in that case, so the rect is empty wherever it nominally sits.)
+  footerY = contentBottom + BODY_GAP
   if hasFooter
-    footerY = contentBottom + BODY_GAP
     panelHeight = footerY + footerHeight + PANEL_PADDING
   else
-    footerY = contentBottom + BODY_GAP
     panelHeight = contentBottom + PANEL_PADDING
   end if
 
@@ -230,14 +239,33 @@ function computeDialogLayout(spec as object) as object
     accent: layoutRect(panelX + int((panelWidth - SEPARATOR_ACCENT_WIDTH) / 2), panelY + accentY, SEPARATOR_ACCENT_WIDTH, SEPARATOR_HEIGHT),
     subheading: layoutRect(panelX + PANEL_PADDING, panelY + subheadingY, contentWidth, subheadingHeight),
     body: layoutRect(panelX + PANEL_PADDING, panelY + bodyY, contentWidth, bodyHeight),
+    footer: layoutRect(panelX + PANEL_PADDING, panelY + footerY, contentWidth, footerHeight),
     hasTitle: hasTitle,
     hasSubheading: hasSubheading,
     overflows: overflows
   }
 
-  layout.footer = layoutRect(panelX + PANEL_PADDING, panelY + footerY, contentWidth, footerHeight)
-
   return layout
+end function
+
+' Height a dialog's footer button (or button row) will have once it has sized
+' itself, for the layout pass that runs BEFORE it has. `localBoundingRect()`
+' reports 0 until then.
+'
+' A fallback rather than an early return at the call site, and all three callers
+' need it for the same reason: a dialog with no title and no body is a legitimate
+' state — it is the one every spec constructs — and returning would park it with
+' an unlaid-out panel forever, since nothing else would fire to bring it back.
+'
+' One definition because there were three, verbatim, including the literal 60.
+' They were free to drift from TextButton and from each other, and the whole
+' point of this module is that geometry has one home.
+'
+' Takes the font size rather than reading `m.global.constants` itself: this
+' module is pure on purpose (no node access, no m, no global reads), and that is
+' what lets the spec above it run without a device.
+function dialogButtonFallbackHeight(fontSize as integer) as integer
+  return int(fontSize * DIALOG_BUTTON_TEXT_RATIO) + (DIALOG_BUTTON_PADDING * 2)
 end function
 
 ' Centre a block of `width` inside a rect — for a footer button that is narrower

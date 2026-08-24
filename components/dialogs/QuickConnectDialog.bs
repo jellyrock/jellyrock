@@ -1,5 +1,6 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/dialogKeys.bs"
 import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/dialogNarration.bs"
 import "pkg:/source/utils/dialogResult.bs"
@@ -154,8 +155,7 @@ function buttonRowHeight() as integer
     rect = m.buttonRow.localBoundingRect()
     if rect.height > 0 then return rect.height
   end if
-  ' TextButton: fontSize * 0.7 + padding * 2
-  return int(m.global.constants.fontSizeMedium * 0.7) + 60
+  return dialogButtonFallbackHeight(m.global.constants.fontSizeMedium)
 end function
 
 ' Centre the row on the PANEL, not the screen.
@@ -229,15 +229,26 @@ sub closeDialog()
   if isValid(returnFocusTo) then returnFocusTo.setFocus(true)
 end sub
 
+' The decision is buttonDialogKeyAction in source/utils/dialogKeys.bs, the same
+' model JRDialog uses. Everything here is the doing.
+'
+' This dialog has ONE button, so the model collapses: "cancel" and "resolve" are
+' the same outcome (resolveDialog takes no index — backing out is the only thing
+' the user can do from here), and stepping a one-button row lands back on the
+' button it started from, so the step actions are no-ops rather than a focus
+' call. `stacked` is false because a single short label never stacks.
+'
+' Sharing the model rather than hand-rolling two lines is the point: a horizontal
+' row swallowing up/down under modal containment is a decision this dialog was
+' making by accident, and it is now the same decision JRDialog makes on purpose.
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 
-  ' Back and OK are the same action here: the only button is Cancel.
-  if key = "back" or key = "OK"
-    resolveDialog()
-    return true
-  end if
+  action = buttonDialogKeyAction(key, false)
 
-  ' Modal containment: nothing else escapes to the scene behind us
+  if action = "cancel" or action = "resolve" then resolveDialog()
+
+  ' Modal containment: nothing escapes to the scene behind us, including the
+  ' "consume" action and the two steps this dialog has nowhere to step to.
   return true
 end function

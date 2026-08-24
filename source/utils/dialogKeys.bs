@@ -53,7 +53,8 @@ function listDialogKeyAction(key as string, focusedIndex as integer, itemCount a
   return "consume"
 end function
 
-' What a key press means to a BUTTON-ROW dialog (JRDialog, QuickConnectDialog).
+' What a key press means to a BUTTON-ROW dialog — JRDialog, and
+' QuickConnectDialog, whose row happens to hold exactly one button.
 '
 ' Here for the same reason listDialogKeyAction is: the decision was in a
 ' component's onKeyEvent, where nothing can call it, and it was wrong there.
