@@ -37,6 +37,7 @@ import {
   scrollFocus,
   waitCellsQuiet,
   waitRowsSettled,
+  readCellCounts,
   formatCellCounts,
   axisEnd,
   sweepBudget,
@@ -1181,7 +1182,7 @@ const CELL_SWEEP = Object.freeze({ rows: 6, gridRows: 12, rowItems: 12 });
  * and whether it was still moving then — see `waitRowsSettled`, including the A/B in which
  * that turned out NOT to be Home's problem.
  */
-function reportSweep(name, legs, quiet, settle = null) {
+function reportSweep(name, legs, quiet, settle = null, atStart = null) {
   const path = legs
     .map((l) => `${l.axis} ${l.walk.from}->${l.walk.to} of ${l.available}`)
     .join(', ');
@@ -1202,7 +1203,14 @@ function reportSweep(name, legs, quiet, settle = null) {
           `(${formatCellCounts(quiet.counts)})`
         : quiet.resolved
           ? '; no cell-load counters on this build (perfTiming off)'
-          : '; ⚠ the list did not resolve — nothing was settled'),
+          : '; ⚠ the list did not resolve — nothing was settled') +
+      // Printed as the BEFORE rather than as a computed delta, so the line carries a reading
+      // and not a conclusion: the totals above are cumulative, so any split a reader wants is
+      // a subtraction they can check. Suppressed unless BOTH ends are instrumented — half a
+      // subtraction is worse than none, because `binds=234` minus `undefined` still formats.
+      (atStart?.instrumented && quiet.instrumented
+        ? `, of which before the sweep (${formatCellCounts(atStart.counts)})`
+        : ''),
   );
 }
 
@@ -1307,6 +1315,11 @@ export async function navCellSweepHome() {
   // count and a widest row that another launch need not agree with. See `waitRowsSettled`
   // for what the gate can and cannot prove, and why only Home carries it.
   const settle = await waitRowsSettled('#homeRows', { read: getActiveVal });
+  // The subtrahend. Home's counters at the gate are everything the screen did loading ITSELF,
+  // so the sweep's own work is the difference and not the total the ledger emits. Taken here
+  // rather than inside `sweepRowList` because the settle above is what makes the instant
+  // meaningful: read before the structure stops moving and the baseline is a moving target.
+  const atStart = await readCellCounts('#homeRows');
   const legs = await sweepRowList('#homeRows', { label: 'cellSweepHome' });
   const back = await scrollFocus({
     keyPath: '#homeRows.rowItemFocused',
@@ -1319,7 +1332,7 @@ export async function navCellSweepHome() {
   });
   legs.push({ axis: 'rows -> 0', walk: back, available: legs[0].available });
   const quiet = await waitCellsQuiet('#homeRows', { read: getActiveVal });
-  reportSweep('cellSweepHome', legs, quiet, settle);
+  reportSweep('cellSweepHome', legs, quiet, settle, atStart);
   await navSettings();
 }
 

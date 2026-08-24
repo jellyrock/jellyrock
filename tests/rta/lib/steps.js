@@ -782,6 +782,34 @@ export const formatCellCounts = (counts) =>
   CELL_REPORT_COUNTERS.map((c) => `${c[0].toLowerCase()}${c.slice(1)}=${counts?.[c]}`).join(' ');
 
 /**
+ * One-shot read of the reported cell-load counters, for a caller that needs a BEFORE.
+ *
+ * `waitCellsQuiet` publishes what a sweep ENDS on, and the app's own emit is a single
+ * end-of-session total — so both describe one number covering two different workloads: what
+ * the screen did loading ITSELF, and what the sweep provoked. Nothing has ever separated
+ * them, which is why a bind count that differs between launches cannot be attributed to
+ * either half. Read at the gate, this is the subtrahend that can.
+ *
+ * Batched, where the settle loop deliberately reads sequentially, and the difference is the
+ * rule rather than a preference: `tests/rta/CLAUDE.md` carves poll loops OUT of the batch
+ * rule because a monotonic counter sampled across an increment can only delay quiescence,
+ * never declare it early. A one-shot baseline is the case that rule actually governs — every
+ * counter here has to describe the same instant, or the delta taken against it credits the
+ * sweep with work that finished before the first keypress.
+ *
+ * @param {string} listId - `#id` of the texture-managed list, e.g. `#homeRows`
+ * @returns {Promise<{counts: object, instrumented: boolean}>} `instrumented` is false on a
+ *   production build, where `perfTiming` is off and the counters do not exist. Reported
+ *   rather than thrown, for the reason `waitCellsQuiet` reports it: that is the CORRECT
+ *   state for a release build, not a fault.
+ */
+export async function readCellCounts(listId, { read = getActiveVals } = {}) {
+  const values = await read(CELL_REPORT_COUNTERS.map((c) => `${listId}.content.cellLoad${c}`));
+  const counts = Object.fromEntries(CELL_REPORT_COUNTERS.map((c, i) => [c, values[i]]));
+  return { counts, instrumented: typeof counts.Binds === 'number' };
+}
+
+/**
  * Wait until a texture-managed list's cell-load counters stop moving.
  *
  * ## Why the workload has to end at a quiet point

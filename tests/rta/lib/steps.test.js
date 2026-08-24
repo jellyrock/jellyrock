@@ -50,7 +50,9 @@ const {
   scrollFocus,
   waitCellsQuiet,
   waitRowsSettled,
+  readCellCounts,
   formatCellCounts,
+  CELL_REPORT_COUNTERS,
   axisEnd,
   sweepBudget,
 } = await import('./steps.js');
@@ -600,6 +602,76 @@ describe('scrollFocus', () => {
     });
 
     expect(reads).toBeGreaterThan(2);
+  });
+});
+
+/**
+ * `readCellCounts` is the BEFORE half of every cell-load number this suite publishes. It has
+ * one job — describe a single instant — and the two ways it can fail at that are silent: a
+ * read spread across the settling screen, and a production build whose counters do not exist
+ * being reported as a screen that bound nothing.
+ */
+describe('readCellCounts', () => {
+  beforeEach(() => {
+    getValues.mockReset();
+  });
+
+  it('reads every reported counter in ONE batch, keyed off the list content root', async () => {
+    // The batch is the correctness property, not a speed one (`tests/rta/CLAUDE.md`): the
+    // counters must describe ONE instant, or a delta taken against them credits the sweep
+    // with work that finished before it started.
+    getValues.mockResolvedValue({
+      results: Object.fromEntries(
+        CELL_REPORT_COUNTERS.map((_c, i) => [`k${i}`, { found: true, value: i }]),
+      ),
+    });
+
+    const res = await readCellCounts('#homeRows');
+
+    expect(getValues).toHaveBeenCalledTimes(1);
+    const sent = Object.values(getValues.mock.calls[0][0].requests).map((r) => r.keyPath);
+    expect(sent).toEqual(
+      CELL_REPORT_COUNTERS.map((c) => `activeRoutedView.#homeRows.content.cellLoad${c}`),
+    );
+    expect(res.counts).toEqual(Object.fromEntries(CELL_REPORT_COUNTERS.map((c, i) => [c, i])));
+    expect(res.instrumented).toBe(true);
+  });
+
+  it('reports a build with no counters as UNINSTRUMENTED rather than as zero work', async () => {
+    // `perfTiming` off is the correct state for a release build. Returning zeroes here would
+    // publish "the sweep bound nothing before it started" as a measurement, and a subtraction
+    // against it would credit the sweep with the whole page load.
+    getValues.mockResolvedValue({
+      results: Object.fromEntries(CELL_REPORT_COUNTERS.map((_c, i) => [`k${i}`, { found: false }])),
+    });
+
+    const res = await readCellCounts('#nope');
+
+    expect(res.instrumented).toBe(false);
+    expect(res.counts.Binds).toBeUndefined();
+  });
+
+  it('covers exactly the counters the report line formats, with no gaps', async () => {
+    // The guard against the two drifting: `formatCellCounts` walks CELL_REPORT_COUNTERS, so a
+    // counter added there and missed here formats as `binds=undefined` on a line that
+    // otherwise looks complete.
+    getValues.mockResolvedValue({
+      results: Object.fromEntries(
+        CELL_REPORT_COUNTERS.map((_c, i) => [`k${i}`, { found: true, value: 7 }]),
+      ),
+    });
+
+    const { counts } = await readCellCounts('#homeRows');
+
+    expect(formatCellCounts(counts)).not.toMatch(/undefined/);
+  });
+
+  it('propagates a failed batch instead of reporting a screen that bound nothing', async () => {
+    // Same rule as `getActiveVals`: a transport failure must not become a reading. A
+    // swallowed one here would silently rebase every delta on zero.
+    getValues.mockRejectedValueOnce(new Error('odc timeout'));
+
+    await expect(readCellCounts('#homeRows')).rejects.toThrow(/odc timeout/);
   });
 });
 
