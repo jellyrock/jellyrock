@@ -8,15 +8,21 @@ import "pkg:/source/utils/translate.bs"
 ' This dialog's OWN geometry. The vertical flow (padding, title, accent rule,
 ' gaps) is shared — see source/utils/dialogLayout.bs.
 '
-' The panel is a FIXED size rather than content-derived: its body scrolls, so the
-' content cannot decide the height. 1600 x 760 is what makes it read as the
-' screen-dominating panel its outside OK button depends on.
-' Both on the 6px scale, which is what puts all four panel edges on the 720p
-' output grid: a width divisible by 6 makes the centred panelX divisible by 3
-' ((1920 - w) / 2 = 960 - w/2), and computeDialogLayout snaps panelY. 1600x760
-' put every edge off it — the most visible chrome in the app's largest panel.
+' WIDTH is this dialog's to choose; HEIGHT is not, and used to be. The panel was
+' a fixed 1602x762 on the reasoning that a scrolling body cannot decide its own
+' size. That is half true and it was the wrong half: the WIDTH is what decides
+' where the text wraps, and the width is fixed, so the text's natural height is
+' fully known before any height decision. So the panel is content-derived like
+' every other dialog now, and the scroll viewport reads the body height the flow
+' hands back — clamped at PANEL_MAX_HEIGHT, which is the point at which it
+' scrolls. A short description gets a small panel instead of ~200px of dead
+' space; a long one gets 924px, which is 162px MORE than the old fixed height.
+'
+' 1602 rather than 1600 because a width divisible by 6 puts the centred panelX
+' on the 720p output grid ((1920 - w) / 2 = 960 - w/2); computeDialogLayout snaps
+' panelY. 1600 put every edge off it — the most visible chrome in the app's
+' largest panel.
 const DIALOG_WIDTH = 1602
-const DIALOG_HEIGHT = 762
 const SCROLL_STEP = 150
 const SCROLLBAR_THUMB_WIDTH = 12
 const SCROLLBAR_TRACK_WIDTH = 3
@@ -42,8 +48,15 @@ sub init()
   m.scrollContent = m.top.findNode("scrollContent")
   m.taglineText = invalid
 
+  ' The text column's width comes from the PANEL WIDTH alone, which is a
+  ' constant — so it is known before any layout pass, and setting it here is what
+  ' lets the text render (and be measured) before the panel height is decided.
+  ' That ordering is the whole reason this dialog can be content-sized at all.
+  m.textAreaWidth = DIALOG_WIDTH - (PANEL_PADDING * 2) - SCROLLBAR_THUMB_WIDTH - SCROLLBAR_MARGIN
+
   m.overviewText = m.top.findNode("overviewText")
   m.overviewText.maxLines = 500
+  m.overviewText.width = m.textAreaWidth
   ' Enable render tracking once - observer fires when text is set/changed
   m.overviewText.enableRenderTracking = true
   m.overviewText.observeField("renderTracking", "onTextRendered")
@@ -61,6 +74,12 @@ sub init()
   m.okButton = m.top.findNode("okButton")
   m.okButton.text = translate(translationKeys.ButtonOk)
   m.okButton.minWidth = DIALOG_BUTTON_MIN_WIDTH
+  ' The panel's height now includes the button, so the button's own height is an
+  ' input to the layout rather than something read opportunistically. `isReady`
+  ' is the signal TextButton publishes when it has sized itself — the same one
+  ' JRDialog's row uses, and not renderTracking, which reports render visibility
+  ' and fires once.
+  m.okButton.observeField("isReady", "onOkButtonReady")
 
   ' Observe focus changes to show/hide scrollbar
   m.top.observeField("focusedChild", "onFocusChanged")
@@ -78,7 +97,12 @@ sub init()
   ' Scroll state
   m.scrollPosition = 0
   m.maxScroll = 0
-  m.scrollBoundsCalculated = false
+  m.contentHeight = 0
+  m.textAreaHeight = 0
+  ' Focus is placed by the FIRST completed layout only. Later passes (a tagline
+  ' arriving, the button sizing) must not move it, or a re-layout would yank
+  ' focus out from under a user who has already scrolled.
+  m.initialFocusPlaced = false
 
   applyLayout()
 end sub
@@ -87,37 +111,45 @@ sub onTitleMeasured()
   applyLayout()
 end sub
 
-' Position everything from the shared flow. The panel is fixed, so the body
-' height comes back derived — which is exactly what the scroll viewport needs.
+sub onOkButtonReady()
+  applyLayout()
+end sub
+
+' Measure, then flow. Every input to the panel's height has to have settled
+' before the panel can be sized, so each one that has not returns early and comes
+' back through its own observer — the same measure-or-return shape JRDialog uses.
 sub applyLayout()
+  titleHeight = m.chrome.titleHeight
+  if isValidAndNotEmpty(m.top.title) and titleHeight = 0 then return
+
+  ' The button is INSIDE the panel now, so its height is part of the panel's.
+  ' onOkButtonReady brings us back with the real figure.
+  footerHeight = okButtonHeight()
+
+  ' The natural height of everything that scrolls — tagline plus overview. Zero
+  ' while the labels are still rendering; their renderTracking observers bring us
+  ' back. Measured on scrollContent rather than the labels so the LayoutGroup's
+  ' own spacing is included.
+  contentHeight = 0
+  if hasBodyText()
+    contentHeight = m.scrollContent.localBoundingRect().height
+    if contentHeight = 0 then return
+  end if
+
   layout = computeDialogLayout({
     panelWidth: DIALOG_WIDTH,
-    panelHeight: DIALOG_HEIGHT,
-    titleHeight: m.chrome.titleHeight,
-    footerHeight: m.okButton.localBoundingRect().height,
-    footerInside: false
+    titleHeight: titleHeight,
+    bodyHeight: contentHeight,
+    footerHeight: footerHeight
   })
-
-  ' The ceiling is only a safety claim if something acts on it. JRDialog reads
-  ' `overflows` and truncates; this dialog cannot — its panel is a fixed size and
-  ' its body scrolls — so the honest response is to say which constant is wrong.
-  ' Without this the flag has exactly one reader (JRDialog), which always places
-  ' its footer INSIDE the panel, so the outside-footer half of the guard would
-  ' report to nobody and the OK button would leave the screen silently.
-  if layout.overflows
-    m.log.warn("OverviewDialog does not fit the screen; reduce DIALOG_HEIGHT", "panelHeight", layout.panel.height, "footerBottom", layout.footer.y + layout.footer.height)
-  end if
 
   m.chrome.layout = layout
 
-  ' The scrollbar sits in the right-hand gutter, so the text column stops short of it.
-  m.textAreaWidth = layout.body.width - SCROLLBAR_THUMB_WIDTH - SCROLLBAR_MARGIN
   m.textAreaHeight = layout.body.height
+  m.contentHeight = contentHeight
 
   m.textClip.translation = [layout.body.x, layout.body.y]
   m.textClip.clippingRect = [0, 0, m.textAreaWidth, m.textAreaHeight]
-  m.overviewText.width = m.textAreaWidth
-  if isValid(m.taglineText) then m.taglineText.width = m.textAreaWidth
 
   scrollTrackX = layout.body.x + layout.body.width - SCROLLBAR_THUMB_WIDTH
   m.scrollTrack.translation = [scrollTrackX + SCROLLBAR_TRACK_INSET, layout.body.y]
@@ -126,9 +158,67 @@ sub applyLayout()
 
   m.okButton.translation = [centreInRect(layout.footer, DIALOG_BUTTON_MIN_WIDTH), layout.footer.y]
 
-  ' The text column may have changed width, so any measured scroll bounds are stale.
-  m.scrollBoundsCalculated = false
-  calculateScrollBounds()
+  applyScrollBounds()
+end sub
+
+' Rendered height of the OK button, or a computed fallback before it sizes
+' itself. A FALLBACK rather than an early return, mirroring JRDialog's
+' buttonRowHeight(): returning would leave a dialog with no title and no body —
+' which is a legitimate state, and the one every spec constructs — parked with an
+' unlaid-out panel forever, since nothing else would fire to bring us back.
+function okButtonHeight() as integer
+  if isValid(m.okButton)
+    rect = m.okButton.localBoundingRect()
+    if rect.height > 0 then return rect.height
+  end if
+  ' TextButton: fontSize * 0.7 + padding * 2
+  return int(m.global.constants.fontSizeMedium * 0.7) + 60
+end function
+
+' True when this dialog has anything to show in its scrolling body. Used to tell
+' "nothing to render" apart from "not rendered yet", which otherwise both read as
+' a measured height of zero and would park applyLayout forever.
+function hasBodyText() as boolean
+  return isValidAndNotEmpty(m.top.overview) or isValidAndNotEmpty(m.top.tagline)
+end function
+
+' Derive the scroll state from the two heights the layout just settled. The body
+' is clamped at PANEL_MAX_HEIGHT by computeDialogLayout, so `maxScroll > 0` is
+' exactly "the content did not fit" — this dialog never re-derives that ceiling.
+sub applyScrollBounds()
+  m.maxScroll = m.contentHeight - m.textAreaHeight
+  if m.maxScroll < 0 then m.maxScroll = 0
+
+  scrolls = m.maxScroll > 0
+  m.scrollTrack.visible = scrolls
+  m.scrollThumb.visible = scrolls
+
+  if scrolls
+    thumbRatio = m.textAreaHeight / m.contentHeight
+    m.scrollThumb.height = m.textAreaHeight * thumbRatio
+  else
+    ' A panel that grew, or content that shrank, can leave a stale offset behind
+    ' and scroll text out of a viewport that no longer scrolls.
+    m.scrollPosition = 0
+    m.scrollContent.translation = [0, 0]
+  end if
+
+  if m.scrollPosition > m.maxScroll
+    m.scrollPosition = m.maxScroll
+    m.scrollContent.translation = [0, -m.scrollPosition]
+  end if
+  updateScrollThumb()
+
+  ' Focus once, on the first completed layout — see m.initialFocusPlaced.
+  if not m.initialFocusPlaced
+    m.initialFocusPlaced = true
+    if scrolls
+      m.textClip.setFocus(true)
+    else
+      m.okButton.setFocus(true)
+    end if
+  end if
+  updateScrollbarFocus(m.textClip.hasFocus())
 end sub
 
 sub onTitleChanged()
@@ -160,64 +250,24 @@ sub onTaglineChanged()
     if isValid(m.taglineText)
       m.scrollContent.removeChild(m.taglineText)
       m.taglineText = invalid
-      ' Reset scroll state to recalculate without tagline
-      m.scrollBoundsCalculated = false
-      m.scrollPosition = 0
-      m.scrollContent.translation = [0, 0]
-      updateScrollThumb()
+      ' The body just got shorter, so the panel is now too tall for it.
+      applyLayout()
     end if
   end if
 end sub
 
-' Tagline has rendered, recalculate scroll bounds to include tagline height
+' Tagline has rendered — its height is part of the body, so the PANEL changes,
+' not just the scroll bounds.
 sub onTaglineRendered()
-  m.scrollBoundsCalculated = false
-  calculateScrollBounds()
+  applyLayout()
 end sub
 
-' Once the text has rendered, calculate scroll bounds and scrollbar
+' Once the text has rendered its height is known, which is the last input the
+' panel height was waiting on.
 sub onTextRendered()
-  ' Don't check for "full" - the observer may not fire again after "partial"
-  ' The textHeight=0 guard in calculateScrollBounds handles unrendered text
-  calculateScrollBounds()
-end sub
-
-sub calculateScrollBounds()
-  if m.scrollBoundsCalculated then return
-
-  overviewRect = m.overviewText.localBoundingRect()
-  overviewHeight = overviewRect.height
-
-  ' If overview height is 0, it hasn't rendered yet
-  if overviewHeight = 0 then return
-
-  ' Calculate total content height including tagline if present
-  textHeight = overviewHeight
-  if isValid(m.taglineText)
-    taglineRect = m.taglineText.localBoundingRect()
-    if taglineRect.height = 0 then return ' Tagline hasn't rendered yet
-    textHeight = m.scrollContent.localBoundingRect().height
-  end if
-
-  m.scrollBoundsCalculated = true
-
-  if textHeight > m.textAreaHeight
-    m.maxScroll = textHeight - m.textAreaHeight
-    thumbRatio = m.textAreaHeight / textHeight
-    m.scrollThumb.height = m.textAreaHeight * thumbRatio
-    ' Scrollable content: show scrollbar and focus text area
-    m.scrollTrack.visible = true
-    m.scrollThumb.visible = true
-    m.textClip.setFocus(true)
-    updateScrollbarFocus(true)
-  else
-    ' Non-scrollable content: hide scrollbar and focus OK button
-    m.maxScroll = 0
-    m.scrollTrack.visible = false
-    m.scrollThumb.visible = false
-    m.okButton.setFocus(true)
-    updateScrollbarFocus(false)
-  end if
+  ' Don't check for "full" - the observer may not fire again after "partial".
+  ' applyLayout's own measured-height guards handle unrendered text.
+  applyLayout()
 end sub
 
 ' Updates the scroll thumb position to reflect the current scroll position
@@ -231,16 +281,7 @@ sub updateScrollThumb()
 end sub
 
 sub onFocusChanged()
-  if m.textClip.hasFocus()
-    calculateScrollBounds()
-    if m.maxScroll > 0
-      m.scrollTrack.visible = true
-      m.scrollThumb.visible = true
-    end if
-    updateScrollbarFocus(true)
-  else
-    updateScrollbarFocus(false)
-  end if
+  updateScrollbarFocus(m.textClip.hasFocus())
 
   if not m.hasNarrated
     m.narrationTimer.control = "start"
@@ -317,8 +358,6 @@ function onKeyEvent(key as string, press as boolean) as boolean
   if key = "down"
     if m.okButton.hasFocus() then return true
 
-    calculateScrollBounds()
-
     if m.maxScroll > 0 and m.scrollPosition < m.maxScroll
       m.scrollPosition = m.scrollPosition + SCROLL_STEP
       if m.scrollPosition > m.maxScroll
@@ -343,8 +382,6 @@ function onKeyEvent(key as string, press as boolean) as boolean
       end if
       return true
     end if
-
-    calculateScrollBounds()
 
     if m.scrollPosition > 0
       m.scrollPosition = m.scrollPosition - SCROLL_STEP

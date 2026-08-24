@@ -1,4 +1,5 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/dialogKeys.bs"
 import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/dialogNarration.bs"
 import "pkg:/source/utils/dialogResult.bs"
@@ -263,21 +264,28 @@ sub applyLayout()
     titleHeight: titleHeight,
     subheadingHeight: subheadingHeight,
     bodyHeight: textHeight,
-    footerHeight: buttonRowHeight(),
-    footerInside: true
+    footerHeight: buttonRowHeight()
   })
 
   ' --- ceiling ---------------------------------------------------------------
   ' Never exceed the screen. Reaching this needs ~600 characters of message,
   ' which means the caller wants showInfoDialog, not a confirm — so say so
   ' rather than silently swallowing the text.
+  '
+  ' `body.height` is what the flow could actually give us, which is NOT what we
+  ' asked for when it overflowed. Truncate to that, rather than to a figure
+  ' re-derived from PANEL_MAX_HEIGHT here: the panel now comes back already
+  ' clamped, so panel.height - PANEL_MAX_HEIGHT is zero and this branch would
+  ' truncate to the full text and loop.
   if layout.overflows
     constants = m.global.constants
-    overflow = layout.panel.height - PANEL_MAX_HEIGHT
     lineHeight = int(constants.fontSizeMedium * 1.25)
     if lineHeight < 1 then lineHeight = 1
-    keepLines = int((textHeight - overflow) / lineHeight)
+    keepLines = int(layout.body.height / lineHeight)
     if keepLines < 1 then keepLines = 1
+    ' Nothing to gain from re-rendering the same text at the same cap, and
+    ' everything to lose: renderTracking would bring us straight back here.
+    if m.messageText.maxLines = keepLines then return
     m.log.warn("JRDialog message too long for a dialog; truncating to", keepLines, "lines - use showInfoDialog for long-form text")
     m.messageText.maxLines = keepLines
     ' The clamp changes the rendered height; renderTracking re-runs layout()
@@ -401,29 +409,24 @@ sub closeDialog()
   if isValid(returnFocusTo) then returnFocusTo.setFocus(true)
 end sub
 
+' The decision itself is buttonDialogKeyAction in source/utils/dialogKeys.bs,
+' which is pure and unit-tested. Everything here is the doing.
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 
-  if key = "back"
+  action = buttonDialogKeyAction(key, m.stackButtons = true)
+
+  if action = "cancel"
     resolveDialog(-1)
-    return true
-  end if
-
-  if key = "left"
-    moveButtonFocus(-1)
-    return true
-  end if
-
-  if key = "right"
-    moveButtonFocus(1)
-    return true
-  end if
-
-  if key = "OK"
+  else if action = "resolve"
     resolveDialog(m.focusIndex)
-    return true
+  else if action = "stepBack"
+    moveButtonFocus(-1)
+  else if action = "stepForward"
+    moveButtonFocus(1)
   end if
 
-  ' Modal containment: nothing else escapes to the scene behind us
+  ' Modal containment: nothing escapes to the scene behind us, including the
+  ' "consume" action itself.
   return true
 end function

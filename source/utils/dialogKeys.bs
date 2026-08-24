@@ -52,3 +52,47 @@ function listDialogKeyAction(key as string, focusedIndex as integer, itemCount a
 
   return "consume"
 end function
+
+' What a key press means to a BUTTON-ROW dialog (JRDialog, QuickConnectDialog).
+'
+' Here for the same reason listDialogKeyAction is: the decision was in a
+' component's onKeyEvent, where nothing can call it, and it was wrong there.
+' `applyButtonLayout` stacks the row vertically when the labels are too wide to
+' fit across the panel, and onKeyEvent moved focus only on left/right — so a row
+' the user could SEE was stacked ignored up/down entirely and was navigated along
+' an axis that was not on screen. Nothing caught it: the only evidence was a
+' `Down` press in an RTA take that had been a silent no-op since it was written.
+'
+' The model:
+'
+'   BACK                    cancels
+'   OK                      resolves with the focused button
+'   LEFT / RIGHT            step the row, in BOTH orientations
+'   UP / DOWN               step the row ONLY when it is stacked
+'   anything else           consumed (a modal lets nothing reach the screen behind it)
+'
+' left/right work in both orientations deliberately, so no caller has to know
+' which layout its translations produced. up/down are GATED on `stacked` just as
+' deliberately: moving focus along an axis the user cannot see is its own bug, so
+' a horizontal row consumes them under modal containment rather than acting.
+'
+' Stepping WRAPS at the ends rather than clamping — matching JRButtonGroup, the
+' app's other horizontal row. A dialog that dead-ends feels broken. The caller
+' owns the wrap arithmetic; this function only says which direction to step.
+'
+' @param {string} key - the key name from onKeyEvent
+' @param {boolean} stacked - true when the row is laid out vertically
+' @returns {string} - "cancel" | "resolve" | "stepBack" | "stepForward" | "consume"
+function buttonDialogKeyAction(key as string, stacked as boolean) as string
+  if key = "back" then return "cancel"
+  if key = "OK" then return "resolve"
+  if key = "left" then return "stepBack"
+  if key = "right" then return "stepForward"
+
+  if stacked
+    if key = "up" then return "stepBack"
+    if key = "down" then return "stepForward"
+  end if
+
+  return "consume"
+end function

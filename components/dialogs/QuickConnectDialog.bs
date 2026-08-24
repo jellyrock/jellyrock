@@ -129,8 +129,7 @@ sub applyLayout()
     titleHeight: titleHeight,
     subheadingHeight: instructionHeight,
     bodyHeight: codeHeight,
-    footerHeight: buttonRowHeight(),
-    footerInside: true
+    footerHeight: buttonRowHeight()
   })
 
   ' No overflow branch, unlike JRDialog: every string here is app-authored and

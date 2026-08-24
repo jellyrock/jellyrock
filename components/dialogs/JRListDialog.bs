@@ -115,8 +115,7 @@ sub applyLayout()
     panelWidth: PANEL_WIDTH,
     titleHeight: m.chrome.titleHeight,
     bodyHeight: listHeight,
-    footerHeight: 0,
-    footerInside: true
+    footerHeight: 0
   })
 
   m.chrome.layout = layout

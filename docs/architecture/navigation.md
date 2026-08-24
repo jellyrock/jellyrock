@@ -9,16 +9,8 @@ related-files:
   - components/auth/AuthManager.bs
   - components/auth/AuthManager.xml
   - components/data/SceneManager.bs
-  - components/dialogs/JRDialog.bs
-  - components/dialogs/JRListDialog.bs
-  - components/dialogs/JRKeyboardDialog.bs
-  - components/dialogs/JRDialogPanel.bs
-  - components/dialogs/JRListDialogRow.bs
-  - components/dialogs/QuickConnectDialog.bs
   - components/OverviewDialog.bs
   - source/utils/dialogs.bs
-  - source/utils/dialogLayout.bs
-  - source/utils/dialogKeys.bs
   - source/replayRoute.bs
   - source/loginRouter.bs
 last-reviewed: 2026-08-23
@@ -312,42 +304,17 @@ languages with every gate green — nothing asserted a position, gap, color or a
 module exists so "one dialog language" is a test rather than a claim, including a gate on the
 multiples-of-6 spacing scale that keeps values integral through the 720p downscale.
 
-A dialog supplies its own body and footer and nothing else. `QuickConnectDialog` is the
-cheapest illustration: the only thing it needs that no family member has is a code rendered
-at `fontSizeLargest`, and it gets it by putting its instruction in `computeDialogLayout`'s
-**subheading slot** (defined as "a lead line inside the body's space", which is exactly the
-relationship between "enter this code" and the code) and the code itself in the body slot.
-It computes no offsets of its own, and a spec pins its rendered panel against a rendered
-`JRDialog`'s so the two widths cannot drift apart. `OverviewDialog`'s OK button
-stays **outside** the panel — a recorded exception, not a leftover: at 1600×760 the panel
-dominates the screen, so a button below it still reads as attached, which is untrue at
-`JRDialog`'s size. `computeDialogLayout` takes footer placement as a parameter for exactly
-that reason.
+A dialog supplies its own body and footer and nothing else, and there is exactly ONE layout
+shape: the footer flows inside the panel and the panel is derived from its content. The
+fixed-panel and outside-footer modes both existed for `OverviewDialog` alone and are both
+gone — see [`dialogs.md`](./dialogs.md#3-the-footer-flows-inside-the-panel) for the capture
+that settled it and for the second ceiling the outside footer used to need.
 
-#### The list dialog has no Cancel button
-
-The rows are the only focusable thing in it, so there is nothing for a button to add — and
-`Back` is how Roku documents dismissing a popup dialog. Its gestures otherwise follow
-`ItemDetails`' `TrackDropdown`, the app's other picker for the same job:
-
-| Gesture | Effect |
-|---|---|
-| `OK` on a row | commits the selection |
-| `DOWN` past the last row | wraps to the top |
-| `UP` past the first row | wraps to the bottom |
-| `Back` | dismisses without choosing |
-
-The wrap is **symmetric**, and that is the point of having it: one `UP` reaches the end of a
-thirty-track list. `TrackDropdown` dismisses on `UP`-at-top instead, which is right for a
-dropdown — `UP` returns you to the trigger you opened — but a centered modal has no trigger
-above it, so the gesture would be arbitrary here and would cost the only ergonomic win
-wrapping exists for.
-
-The decision lives in `listDialogKeyAction` (`source/utils/dialogKeys.bs`), not in
-`onKeyEvent`, because the first version put it there and got it wrong in a way no test could
-reach: it found Cancel by catching a `down` that *bubbled out* of the list, which stopped
-happening above 8 rows when the list began wrapping internally. The list is now pinned to
-`floatingFocus` and the wrap is ours.
+**The full dialog standard — footer placement, per-type key models, when a bespoke dialog is
+legitimate, spacing and color rules, narration — lives in
+[`dialogs.md`](./dialogs.md).** What stays here is how dialogs relate to navigation: the
+helper table above, the result contract, teardown across a routed view's destruction, and
+the one-overlay invariant below.
 
 From a component, pass `onResult` (a function name in your scope) and the helper wires the
 scoped observer. From main-thread code, omit it and observe with your message port. The

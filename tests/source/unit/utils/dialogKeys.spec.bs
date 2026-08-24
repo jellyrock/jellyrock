@@ -2,7 +2,7 @@ import "pkg:/source/utils/dialogKeys.bs"
 
 namespace tests
 
-  @suite("dialogKeys.bs - the list dialog key model")
+  @suite("dialogKeys.bs - the dialog key models")
   class DialogKeysTests extends tests.BaseTestSuite
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -81,6 +81,56 @@ namespace tests
     @it("does not claim OK")
     function _()
       m.assertEqual(listDialogKeyAction("OK", 5, 30), "consume")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("buttonDialogKeyAction — a button row, horizontal or stacked")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("steps the row on left and right in BOTH orientations")
+    ' So no caller has to know which layout applyButtonLayout chose for its labels.
+    function _()
+      for each stacked in [true, false]
+        m.assertEqual(buttonDialogKeyAction("left", stacked), "stepBack")
+        m.assertEqual(buttonDialogKeyAction("right", stacked), "stepForward")
+      end for
+    end function
+
+    ' THE BUG this function was extracted to fix. applyButtonLayout stacks the row
+    ' vertically when the labels are too wide, and up/down were swallowed — so a row
+    ' the user could see was stacked navigated sideways and ignored the axis it was
+    ' actually laid out on.
+    @it("steps the row on up and down when it is STACKED")
+    function _()
+      m.assertEqual(buttonDialogKeyAction("up", true), "stepBack")
+      m.assertEqual(buttonDialogKeyAction("down", true), "stepForward")
+    end function
+
+    ' The other half of the contract, and the reason up/down are gated rather than
+    ' mapped unconditionally: moving focus along an axis the user cannot see is its
+    ' own bug, so a horizontal row consumes them under modal containment.
+    @it("consumes up and down when the row is HORIZONTAL")
+    function _()
+      m.assertEqual(buttonDialogKeyAction("up", false), "consume")
+      m.assertEqual(buttonDialogKeyAction("down", false), "consume")
+    end function
+
+    @it("cancels on back and resolves on OK, in both orientations")
+    function _()
+      for each stacked in [true, false]
+        m.assertEqual(buttonDialogKeyAction("back", stacked), "cancel")
+        m.assertEqual(buttonDialogKeyAction("OK", stacked), "resolve")
+      end for
+    end function
+
+    ' A modal lets nothing reach the screen behind it, so an unhandled key is
+    ' consumed rather than bubbled.
+    @it("consumes anything it does not handle")
+    function _()
+      for each stacked in [true, false]
+        m.assertEqual(buttonDialogKeyAction("replay", stacked), "consume")
+        m.assertEqual(buttonDialogKeyAction("options", stacked), "consume")
+      end for
     end function
 
   end class
