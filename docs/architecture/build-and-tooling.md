@@ -81,7 +81,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-08-22
+last-reviewed: 2026-08-24
 ---
 
 # Build & Tooling
@@ -459,6 +459,7 @@ Rule for new scripts: net-new top-level CLI scripts go ESM `.js`; plugins and sh
 - **[`.prettierrc.json`](../../.prettierrc.json)** — anchored to bsfmt style: 2-space indent, single quotes, semis, trailing commas (all), 100-col print width. JSONC parser for `.vscode/*.json` (they have comments).
 - **[`.prettierignore`](../../.prettierignore)** — excludes `package-lock.json` (npm-owned), `locale/` (translation tooling owns), `tasks/jellyfin-server-openapi/` (vendor), `CHANGELOG.md` (CI-controlled), and the formats other tools own (`.bs`/`.brs`/`.xml`/`.md`).
 - **[`vitest.config.js`](../../vitest.config.js)** — picks up `tests/scripts/**/*.test.js` plus `tests/rta/**/*.test.js` (the RTA harness's hardware-free parts, e.g. the registry restore planner). The `.test.js` / `.spec.js` split is load-bearing: `tests/rta/specs/**/*.spec.js` drives a real device and belongs to `vitest.rta.config.js`, so it must never be picked up here. Test files are ESM regardless of source module system (Vitest handles cross-module-system imports).
+  - It also carries a **`globalSetup` guard**, [`tests/scripts/setup/no-durable-writes.js`](../../tests/scripts/setup/no-durable-writes.js): the suite is hardware-free, so it must leave `.device-runs/` — the durable ledger of real device runs — untouched, and the run fails with a diff if it didn't. The invariant binds every file this config picks up, `tests/rta/**/*.test.js` included. It exists because `run-record.js` reaches the ledger through a **relative** root, so a test that opens a run without `chdir`'ing into a tmpdir writes into the real checkout. Authoring rules and the wrong fix to avoid are in [scripts-development.md](../dev/scripts-development.md#a-test-must-not-write-into-device-runs).
 
 ### Surface ownership for JS/JSON
 

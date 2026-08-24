@@ -167,6 +167,20 @@ describe('the run ledger lives outside the build output directory', () => {
   // `npm run test:rta` builds first, so the file was deleted immediately before
   // each run that was meant to append to it — the documented N-run baseline would
   // have ended with exactly one line, and nothing would have said so.
+
+  // `LEDGER_ROOT` is the RELATIVE path `.device-runs`, so anything in here that
+  // opens a run resolves it against `process.cwd()` and writes into the real
+  // checkout's ledger. Any block that calls `beginRun` needs its own cwd — the
+  // lifecycle describe below chdir's for the same reason. Not optional even
+  // where a case looks read-only: `close()` is what appends, and it is easy to
+  // add a case that opens a run to reach the path it wants to assert on.
+  let cwd;
+  beforeEach(() => {
+    cwd = process.cwd();
+    process.chdir(tmpDir);
+  });
+  afterEach(() => process.chdir(cwd));
+
   const buildScriptsWipeOut = () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
     return Object.entries(pkg.scripts)

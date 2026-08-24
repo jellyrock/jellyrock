@@ -6,7 +6,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-05-02
+last-reviewed: 2026-08-24
 ---
 
 # Working in `scripts/`
@@ -158,6 +158,42 @@ The Tier 1 harness is synchronous (`program.validate()` is sync). The Tier 2
 transpile harness is `async` because `getTranspiledFileContents` is. The
 Tier 2 virtual-file harness is sync but uses `beforeEach`/`afterEach` for
 tmpdir setup/cleanup.
+
+### A test must not write into `.device-runs/`
+
+`.device-runs/` is the durable home of real device runs — the per-run-kind
+ledger an N-run baseline reads across, plus one record directory per device.
+`npm run test:scripts` is hardware-free and has no business touching it.
+
+The trap is that [`scripts/run-record.js`](../../scripts/run-record.js) reaches
+it through a **relative** `LEDGER_ROOT`, so it resolves against `process.cwd()`.
+A test that calls `beginRun` / `endRun` (or anything reaching `runsLedgerPath`)
+from the default working directory writes into the real checkout's ledger,
+silently and on every run. Anything exercising that lifecycle needs its own:
+
+```js
+let cwd;
+beforeEach(() => {
+  cwd = process.cwd();
+  process.chdir(tmpDir);
+});
+afterEach(() => process.chdir(cwd));
+```
+
+Do **not** reach for `RTA_RECORD_DIR` pointed at a tmpdir instead. Several of
+those tests exist to verify the path derivation *when that variable is absent*,
+so setting it makes them vacuous — green, and checking nothing.
+
+A `globalSetup` guard,
+[`tests/scripts/setup/no-durable-writes.js`](../../tests/scripts/setup/no-durable-writes.js),
+fails the suite if `.device-runs/` changed across the run and prints what
+appeared. It runs once around the whole suite rather than per file, so it names
+*what* was written, not *who* wrote it — the leaked record usually says, since it
+carries the fixture's own `deviceKey` and `run`.
+
+Under `test:scripts:tdd` (watch) the verdict lands when you **quit**, not between
+reruns: Vitest tears a `globalSetup` down only from `Vitest.close()`. The snapshot
+is still taken at session start, so nothing escapes — it just arrives late.
 
 ## Common gotchas
 
