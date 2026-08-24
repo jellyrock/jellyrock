@@ -191,6 +191,10 @@ appeared. It runs once around the whole suite rather than per file, so it names
 *what* was written, not *who* wrote it — the leaked record usually says, since it
 carries the fixture's own `deviceKey` and `run`.
 
+Under `test:scripts:tdd` (watch) the verdict lands when you **quit**, not between
+reruns: Vitest tears a `globalSetup` down only from `Vitest.close()`. The snapshot
+is still taken at session start, so nothing escapes — it just arrives late.
+
 ## Common gotchas
 
 - **`fs-extra` is not a dep.** Use `node:fs` (`ropm-hook.cjs` used to require
