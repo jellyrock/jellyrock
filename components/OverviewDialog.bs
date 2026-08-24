@@ -99,10 +99,10 @@ sub init()
   m.maxScroll = 0
   m.contentHeight = 0
   m.textAreaHeight = 0
-  ' Focus is placed by the FIRST completed layout only. Later passes (a tagline
-  ' arriving, the button sizing) must not move it, or a re-layout would yank
-  ' focus out from under a user who has already scrolled.
-  m.initialFocusPlaced = false
+  ' Set the moment the user scrolls or moves focus themselves — see
+  ' applyScrollBounds, which re-places the OPENING focus on every layout pass
+  ' until this is true.
+  m.userHasNavigated = false
 
   applyLayout()
 end sub
@@ -129,9 +129,13 @@ sub applyLayout()
   ' The natural height of everything that scrolls — tagline plus overview. Zero
   ' while the labels are still rendering; their renderTracking observers bring us
   ' back. Measured on scrollContent rather than the labels so the LayoutGroup's
-  ' own spacing is included.
+  ' own spacing is included — but GUARDED per label, because the group reports a
+  ' non-zero height as soon as EITHER child has rendered. Measuring the group
+  ' alone let a tagline-plus-overview dialog settle on a height short by the
+  ' whole tagline, and nothing downstream could tell that apart from a real one.
   contentHeight = 0
   if hasBodyText()
+    if not bodyLabelsMeasured() then return
     contentHeight = m.scrollContent.localBoundingRect().height
     if contentHeight = 0 then return
   end if
@@ -161,18 +165,15 @@ sub applyLayout()
   applyScrollBounds()
 end sub
 
-' Rendered height of the OK button, or a computed fallback before it sizes
-' itself. A FALLBACK rather than an early return, mirroring JRDialog's
-' buttonRowHeight(): returning would leave a dialog with no title and no body —
-' which is a legitimate state, and the one every spec constructs — parked with an
-' unlaid-out panel forever, since nothing else would fire to bring us back.
+' Rendered height of the OK button, or the shared fallback before it sizes
+' itself. The fallback and the reasoning for it live in dialogLayout.bs, where
+' JRDialog's row and QuickConnectDialog's row read the same one.
 function okButtonHeight() as integer
   if isValid(m.okButton)
     rect = m.okButton.localBoundingRect()
     if rect.height > 0 then return rect.height
   end if
-  ' TextButton: fontSize * 0.7 + padding * 2
-  return int(m.global.constants.fontSizeMedium * 0.7) + 60
+  return dialogButtonFallbackHeight(m.global.constants.fontSizeMedium)
 end function
 
 ' True when this dialog has anything to show in its scrolling body. Used to tell
@@ -180,6 +181,23 @@ end function
 ' a measured height of zero and would park applyLayout forever.
 function hasBodyText() as boolean
   return isValidAndNotEmpty(m.top.overview) or isValidAndNotEmpty(m.top.tagline)
+end function
+
+' True once EVERY label this dialog expects to show reports a rendered height.
+' Each label carries its own renderTracking observer, so each brings us back at
+' least once — this only decides whether the pass we are in may be trusted, not
+' whether another one is coming.
+function bodyLabelsMeasured() as boolean
+  if isValidAndNotEmpty(m.top.tagline)
+    if not isValid(m.taglineText) then return false
+    if m.taglineText.localBoundingRect().height = 0 then return false
+  end if
+
+  if isValidAndNotEmpty(m.top.overview)
+    if m.overviewText.localBoundingRect().height = 0 then return false
+  end if
+
+  return true
 end function
 
 ' Derive the scroll state from the two heights the layout just settled. The body
@@ -209,9 +227,28 @@ sub applyScrollBounds()
   end if
   updateScrollThumb()
 
-  ' Focus once, on the first completed layout — see m.initialFocusPlaced.
-  if not m.initialFocusPlaced
-    m.initialFocusPlaced = true
+  ' Place the opening focus on EVERY pass until the user takes over, not once.
+  '
+  ' Once was the obvious shape and it was wrong, because the first completed pass
+  ' is not the one that knows anything. `init()` runs a layout before a single
+  ' field is set, so a latch armed there sent every scrolling dialog to the OK
+  ' button — where `down` is swallowed (see onKeyEvent) and the user has to press
+  ' UP to reach text they are looking straight at. Confirmed on a Stick 4K: the
+  ' OK button held focus immediately after createObject, with no content.
+  '
+  ' Deferring the latch to the first pass WITH content is not enough either. A
+  ' wrapped label reports a partial height before it finishes, so a pass can
+  ' carry real-but-short content and derive `scrolls` from it; measured on the
+  ' same device, the panel settled at 450px for a body that wanted far more.
+  ' Anything that latches on a single pass is betting on which pass it is in.
+  '
+  ' So: re-derive it every time, and stop only when the answer stops being ours
+  ' to give. That is what the old calculateScrollBounds did — it re-placed focus
+  ' on every recalculation — plus the guard it lacked, which is the real concern
+  ' behind the latch: a late pass must not yank focus from a user who has already
+  ' scrolled. setFocus on the already-focused node is a no-op, so the repeats
+  ' cost nothing.
+  if not m.userHasNavigated
     if scrolls
       m.textClip.setFocus(true)
     else
@@ -344,6 +381,14 @@ function onKeyEvent(key as string, press as boolean) as boolean
     closeDialog()
     return true
   end if
+
+  ' The three keys this dialog acts on all either scroll or move focus, so from
+  ' the first one the placement is the USER's and a late layout pass must not
+  ' redo it (see applyScrollBounds). The ones that look like no-ops — `down` on
+  ' the OK button, `up` at the top of the scroll — count too: the user is still
+  ' saying where they are. Keys we do NOT handle deliberately do not count, or a
+  ' stray `right` before the text renders would freeze the opening placement.
+  if key = "OK" or key = "down" or key = "up" then m.userHasNavigated = true
 
   if key = "OK"
     if m.okButton.hasFocus()

@@ -85,6 +85,25 @@ namespace tests
       m.assertTrue(int(panel.height) < 762, "panel is not smaller than the old fixed height for a short body")
     end function
 
+    ' ...and the assertion above is nearly free on an EMPTY dialog (it lays out
+    ' at ~216px, a third of the old fixed height), so on its own it says almost
+    ' nothing about content-sizing. This is the half that does: the panel has to
+    ' RESPOND to what it is given. A title is the one input a spec can settle
+    ' synchronously — the chrome measures and publishes titleHeight without
+    ' waiting on a render pass, where a wrapped body label does not (see the
+    ' opening-focus note in OverviewDialog.applyScrollBounds).
+    @it("grows the panel when it is given a title")
+    function _()
+      bare = int(m.dialog.findNode("panelBackground").height)
+      m.assertTrue(bare > 0, "panel has not been laid out; the rest of this test would assert nothing")
+
+      titled = CreateObject("roSGNode", "OverviewDialog")
+      titled.title = "A description"
+      titledHeight = int(titled.findNode("panelBackground").height)
+
+      m.assertTrue(titledHeight > bare, "the panel did not grow for a title; it is not deriving its height from content")
+    end function
+
     @it("centres its panel on screen and keeps it on the 720p grid")
     function _()
       panel = m.dialog.findNode("panelBackground")
