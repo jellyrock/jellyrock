@@ -109,14 +109,30 @@ sub applyLayout()
   visibleRows = items.count()
   if visibleRows > MAX_VISIBLE_ROWS then visibleRows = MAX_VISIBLE_ROWS
 
-  listHeight = (visibleRows * LIST_ROW_HEIGHT) + ((visibleRows - 1) * LIST_ROW_SPACING)
-
   layout = computeDialogLayout({
     panelWidth: PANEL_WIDTH,
     titleHeight: m.chrome.titleHeight,
-    bodyHeight: listHeight,
+    bodyHeight: listHeightFor(visibleRows),
     footerHeight: 0
   })
+
+  ' The flow CLAMPS the body at the ceiling, so a body that did not fit comes
+  ' back shorter than it asked for — and a list drawn at the height it wanted
+  ' would then run past the panel's bottom padding. MAX_VISIBLE_ROWS keeps this
+  ' out of reach for a one-line title (8 rows = 648 against ~705 available), but
+  ' a title that wraps to two lines eats the margin. Drop rows to what the panel
+  ' can hold and lay out again; the list scrolls, so every option stays
+  ' reachable. Reading `body.height` back rather than re-deriving the ceiling is
+  ' the contract every dialog in the family follows.
+  if layout.overflows
+    visibleRows = rowsThatFit(layout.body.height)
+    layout = computeDialogLayout({
+      panelWidth: PANEL_WIDTH,
+      titleHeight: m.chrome.titleHeight,
+      bodyHeight: listHeightFor(visibleRows),
+      footerHeight: 0
+    })
+  end if
 
   m.chrome.layout = layout
 
@@ -125,6 +141,24 @@ sub applyLayout()
   m.optionList.numRows = visibleRows
   m.optionList.translation = [layout.body.x, layout.body.y]
 end sub
+
+' A row is LIST_ROW_HEIGHT tall and the gaps sit BETWEEN rows, so n rows occupy
+' n * height + (n - 1) * spacing. The two helpers below are inverses of each
+' other; keeping them adjacent is what stops the pair drifting.
+function listHeightFor(rows as integer) as integer
+  if rows < 1 then return 0
+  return (rows * LIST_ROW_HEIGHT) + ((rows - 1) * LIST_ROW_SPACING)
+end function
+
+' Most rows that fit in `available`. Add one spacing back before dividing,
+' because the last row does not carry one. Never returns 0: a dialog with no
+' visible rows is worse than one row over budget, and the caller has already
+' established there is at least one option.
+function rowsThatFit(available as integer) as integer
+  rows = int((available + LIST_ROW_SPACING) / (LIST_ROW_HEIGHT + LIST_ROW_SPACING))
+  if rows < 1 then return 1
+  return rows
+end function
 
 ' Screen-reader announcement, driven by the focus event itself rather than a
 ' guessed delay (see JRDialog.onButtonFocusChanged for the full reasoning).

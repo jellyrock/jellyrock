@@ -283,13 +283,24 @@ sub applyLayout()
     if lineHeight < 1 then lineHeight = 1
     keepLines = int(layout.body.height / lineHeight)
     if keepLines < 1 then keepLines = 1
-    ' Nothing to gain from re-rendering the same text at the same cap, and
-    ' everything to lose: renderTracking would bring us straight back here.
-    if m.messageText.maxLines = keepLines then return
-    m.log.warn("JRDialog message too long for a dialog; truncating to", keepLines, "lines - use showInfoDialog for long-form text")
-    m.messageText.maxLines = keepLines
-    ' The clamp changes the rendered height; renderTracking re-runs layout()
-    return
+
+    if m.messageText.maxLines <> keepLines
+      m.log.warn("JRDialog message too long for a dialog; truncating to", keepLines, "lines - use showInfoDialog for long-form text")
+      m.messageText.maxLines = keepLines
+      ' The clamp changes the rendered height; renderTracking re-runs layout()
+      return
+    end if
+
+    ' Already capped at exactly this many lines and STILL over. `lineHeight` is
+    ' an ESTIMATE (fontSizeMedium * 1.25), so a font whose real line box is
+    ' taller re-derives the same cap forever — and a title tall enough to blow
+    ' the ceiling on its own leaves body.height at 0, which pins keepLines at 1
+    ' whatever the message says. Returning again would be the quiet failure:
+    ' `m.chrome.layout` never gets written, so the dialog draws with unpositioned
+    ' chrome and nothing says why. Fall through and place it. A panel a few
+    ' pixels over the ceiling is visible and recoverable; one that was never laid
+    ' out is neither.
+    m.log.warn("JRDialog still over the ceiling at", keepLines, "lines; laying it out anyway")
   end if
 
   m.chrome.layout = layout
@@ -344,8 +355,7 @@ function buttonRowHeight() as integer
     rect = m.buttonRow.localBoundingRect()
     if rect.height > 0 then return rect.height
   end if
-  ' TextButton: fontSize * 0.7 + padding * 2
-  return int(m.global.constants.fontSizeMedium * 0.7) + 60
+  return dialogButtonFallbackHeight(m.global.constants.fontSizeMedium)
 end function
 
 ' Centre the row on the PANEL, not the screen — they only coincided while the
