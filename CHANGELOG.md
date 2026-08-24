@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Enforce a production Task-thread ceiling in `launchTask()` ([#849](https://github.com/jellyrock/jellyrock/pull/849))
 - Bound Task fan-out structurally with a `no-task-fanout` BSC plugin ([#846](https://github.com/jellyrock/jellyrock/pull/846))
 - Retire `SceneManager`'s dialog machinery for the `JRDialog` family ([#844](https://github.com/jellyrock/jellyrock/pull/844))
 - Move `PlayerHostView` onto the standard dialogs and unify the chrome ([#842](https://github.com/jellyrock/jellyrock/pull/842))
