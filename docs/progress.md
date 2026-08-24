@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-24 — Rebuild Quick Connect on the `JRDialog` family and the API pool
 - 2026-08-24 — ci(rta): stop a library nav opening the wrong library, and record it when it recovers
 - 2026-08-24 — Enforce a production Task-thread ceiling in `launchTask()`
 - 2026-08-23 — Removed `tests/source/unit/utils/taskLedgerCost.spec.bs`, closing the `(sink len 0)` shared-sink followup by deleting the shape rather than splitting the sinks. Its benchmark cells were superseded by the render-thread apparatus in `components/testing/TaskLedgerBench.bs` (numbers now recorded in `docs/architecture/threading.md`), and a printout that asserts nothing does not belong in a per-PR device suite. The one real gate — a thread-local node field read staying under 10 µs, the premise the whole production ledger rests on — is folded into `tests/source/unit/utils/tasks.spec.bs`, where it now runs in `test:tdd` as well as `test:unit` and ASSERTS `Len(sink) > 0` so a loop that never executed cannot pass as a cheap measurement.
