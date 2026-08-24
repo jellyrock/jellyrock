@@ -20,7 +20,7 @@ related-files:
   - scripts/data/roku-hardware.json
   - source/utils/screenReadiness.bs
   - tests/rta/screens.js
-last-reviewed: 2026-08-22
+last-reviewed: 2026-08-24
 ---
 
 # Measuring performance on device
@@ -380,6 +380,58 @@ beside the one you asked for, never folded into it.
 A clamp line means the *fixture* was shallower than the itinerary. Reaching the end of an
 axis whose length is a structural bound — a grid row is exactly `numColumns` wide — is the
 itinerary working and is deliberately silent, so a clamp line always carries news.
+
+#### The totals are cumulative — on Home, most of them are not the sweep's
+
+`cellSweepHome` prints a second count set, and it exists because the first one answers a
+different question than it appears to:
+
+```text
+[nav] cellSweepHome: over 12 row(s) / 128 item(s) at sweep start (settled in 1977 ms), swept …;
+  cells quiet after 1843 ms (binds=234 loadsStarted=164 … appearances=100 popIns=40),
+  of which before the sweep (binds=218 loadsStarted=91 … appearances=25 popIns=12)
+```
+
+The ledger emits **one end-of-session total per component**, so the headline counts cover the
+screen loading ITSELF plus whatever the sweep provoked, with no seam between them.
+`readCellCounts` reads the counters at the settle gate so the seam exists; the line prints
+that reading rather than a computed delta, so any split is a subtraction you can check.
+
+**Measured on `.177`, BATCAVE, n=40 (2026-08-24): the sweep is the small half, and it is
+DETERMINISTIC.** Its contribution was `binds` **+16** and `appearances` **+75** on *every one
+of the 40 launches* — zero variance — with `loadsStarted` +72–74, `unloads` +56–57 and
+`popIns` +28–29. Over those same launches the published total `binds` spanned **222–251**.
+**All 29 of that spread happens before the sweep; the sweep contributes none of it.**
+
+So a `cellSweepHome` figure that moves between launches is telling you about Home's PAGE
+LOAD. Reading it as a property of scrolling is the mistake this line exists to stop — and it
+is a mistake this project made for several sessions, attributing a bimodal `binds` count to
+buffer depth and row recycling when the sweep had been a constant the whole time.
+
+Home's load is bimodal (~20–30% of launches), and the split locates it precisely. The two
+modes are disjoint on the counters read BEFORE the sweep — `loadsStarted` **90–91** low against
+**100–102** high — and *indistinguishable* during the sweep, which contributes 16 binds and
+75 appearances in both:
+
+| | before sweep, low | before sweep, high | during sweep, low | during sweep, high |
+|---|---|---|---|---|
+| `binds` | 219 | **235** | 16 | 16 |
+| `loadsStarted` | 91 | **102** | 74 | 74 |
+| `appearances` | 25 | **34** | 75 | 75 |
+
+**A related fact the same reading exposed: `waitRowsSettled` does not mean the cells are
+done.** It gates on row STRUCTURE going quiet, and at that instant Home had `loadsStarted` 91
+against `loadsSucceeded` 66 — **24–25 image loads still in flight** on a low-mode launch, and
+30–35 on a high-mode one. That is correct behavior for the gate (it was never a cell gate)
+but it is not what "settled in 1977 ms" reads like, and a sweep that starts there is
+overlapping the tail of the page load.
+
+**The at-gate read was checked for perturbation rather than assumed harmless**, because it
+adds an ODC round trip at a moment the app is demonstrably still working. The first probe arm
+produced 1/20 high-mode launches against the no-probe baseline's 6/20, which looks like
+suppression; a replication arm produced 7/20, pooling to **8/40 against 6/20, Fisher exact
+two-sided p = 0.52**. No suppression — the first arm was chance. Do not re-derive this from
+the first arm alone.
 
 That second line is the only record of the distance traveled — `measure` writes down the
 `nav`'s NAME, not its itinerary — so keep it beside any figure you publish. The travel
