@@ -264,12 +264,19 @@ namespace user
 
     ' Check for valid user ID in either location (direct or nested)
     ' Note: Jellyfin API returns "Id" (capital I) in JSON, but we normalize to lowercase "id" on ContentNode
+    '
+    ' All three branches test the id is PRESENT AND NON-EMPTY. The nested one used
+    ' to test only `isValid`, which is `input <> invalid` — so an `Id` of "" passed
+    ' the guard and this sub ran to completion on a payload it should have refused.
+    ' That is worse now than it was: `isLoaded` below is the app's authoritative
+    ' "somebody is signed in" signal, so an empty id did not just sign in emptily,
+    ' it made user.IsAuthenticated() answer true about it.
     hasValidId = false
     if isValid(userData.id) and userData.id <> ""
       hasValidId = true
     else if isValid(userData.Id) and userData.Id <> ""
       hasValidId = true
-    else if isValid(userData.json) and isValid(userData.json.User) and isValid(userData.json.User.Id)
+    else if isValid(userData.json) and isValid(userData.json.User) and isValidAndNotEmpty(userData.json.User.Id)
       hasValidId = true
     end if
 
