@@ -40,7 +40,9 @@ vi.mock('roku-test-automation', () => ({
 
 const {
   getActiveVals,
+  getVals,
   resendIfSwallowed,
+  resendUntilFocusInside,
   walkHomeToFirstRow,
   overhangWalkKey,
   waitHome,
@@ -1057,5 +1059,111 @@ describe('waitRowsSettled', () => {
     expect(res).toMatchObject({ settled: false, resolved: true, rows: 2 });
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('never held still'));
     warn.mockRestore();
+  });
+});
+
+describe('getVals', () => {
+  beforeEach(() => getValues.mockReset().mockResolvedValue({ results: {} }));
+
+  it('reads scene-rooted keyPaths verbatim, with no activeRoutedView prefix', async () => {
+    // The prefix is the ONLY difference from `getActiveVals`, and it is the whole point:
+    // `#homeRows` is deliberately scene-rooted because Home is not the active view once a
+    // drill-down opens. A prefix leaking in here would silently read nothing.
+    getValues.mockResolvedValue({
+      results: { k0: { found: true, value: [0, 3] }, k1: { found: true, value: 4 } },
+    });
+    await expect(
+      getVals(['#homeRows.rowItemFocused', '#homeRows.content.0.getChildCount()']),
+    ).resolves.toEqual([[0, 3], 4]);
+    const { requests } = getValues.mock.calls[0][0];
+    expect(requests.k0).toEqual({ base: 'scene', keyPath: '#homeRows.rowItemFocused' });
+    expect(requests.k1.keyPath).not.toContain('activeRoutedView');
+  });
+
+  it('reads a NOT-FOUND keyPath as undefined, matching its active-view twin', async () => {
+    getValues.mockResolvedValue({ results: { k0: { found: false } } });
+    await expect(getVals(['#homeRows.missing'])).resolves.toEqual([undefined]);
+  });
+
+  it('THROWS when the batch itself fails, rather than reporting a screen of missing fields', async () => {
+    // Same defect this guards against in `getActiveVals`: a dead batch that degrades to
+    // `undefined` everywhere becomes a confident false statement about the app.
+    getValues.mockRejectedValueOnce(new Error('odc down'));
+    await expect(getVals(['#homeRows.rowItemFocused'])).rejects.toThrow();
+  });
+
+  it('costs no device call for an empty read', async () => {
+    await expect(getVals([])).resolves.toEqual([]);
+    expect(getValues).not.toHaveBeenCalled();
+  });
+});
+
+describe('resendUntilFocusInside', () => {
+  beforeEach(() => {
+    getFocusedNode.mockReset();
+    sendKeypress.mockReset();
+  });
+
+  const focusedAt = (keyPath) => getFocusedNode.mockResolvedValue({ keyPath });
+
+  it('does not press on the first tick — the caller just pressed', async () => {
+    focusedAt('scene.#itemGrid.0');
+    const action = resendUntilFocusInside('back', '#homeRows');
+    await action();
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+
+  it('resends while focus has not yet ARRIVED in the destination', async () => {
+    focusedAt('scene.#itemGrid.0');
+    const action = resendUntilFocusInside('back', '#homeRows');
+    await action(); // first tick, sits out
+    await action();
+    await action();
+    expect(sendKeypress).toHaveBeenCalledTimes(2);
+    expect(sendKeypress).toHaveBeenCalledWith('back');
+  });
+
+  it('stops the moment focus arrives — over-pressing Back on Home raises the exit dialog', async () => {
+    focusedAt('scene.#itemGrid.0');
+    const action = resendUntilFocusInside('back', '#homeRows');
+    await action();
+    await action();
+    expect(sendKeypress).toHaveBeenCalledTimes(1);
+    focusedAt('scene.#homeRows.2'); // arrived
+    await action();
+    await action();
+    expect(sendKeypress).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not press when the focus read fails — an unknown state is not a swallow', async () => {
+    getFocusedNode.mockRejectedValue(new Error('odc down'));
+    const action = resendUntilFocusInside('back', '#homeRows');
+    await action();
+    await action();
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+
+  it('is the INVERSE of resendIfSwallowed on the same reading', async () => {
+    // The pair must never both press, or a caller that picked the wrong one would still
+    // appear to work while pressing at the wrong end of the move.
+    focusedAt('scene.#homeRows.2');
+    const leaving = resendIfSwallowed('back', '#itemGrid');
+    const arriving = resendUntilFocusInside('back', '#homeRows');
+    await leaving();
+    await arriving();
+    await leaving();
+    await arriving();
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+
+  it('gives each wait its own first-tick budget', async () => {
+    focusedAt('scene.#itemGrid.0');
+    const first = resendUntilFocusInside('back', '#homeRows');
+    await first();
+    await first();
+    expect(sendKeypress).toHaveBeenCalledTimes(1);
+    const second = resendUntilFocusInside('back', '#homeRows');
+    await second();
+    expect(sendKeypress).toHaveBeenCalledTimes(1);
   });
 });

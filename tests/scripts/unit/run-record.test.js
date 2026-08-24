@@ -187,11 +187,51 @@ describe('the run ledger lives outside the build output directory', () => {
     expect(buildScriptsWipeOut()).toContain('build');
   });
 
-  it('keeps the per-run files in out/, where a wipe is harmless', async () => {
-    // They are truncated at open anyway, so nothing is lost — and keeping them
-    // beside the build output is what makes `out/rta/` one place to look.
+  it('keeps the per-run files OUT of out/, because a concurrent wipe is not harmless', async () => {
+    // This asserted the opposite until 2026-08-23, on the reasoning that the per-run
+    // files "are truncated at open anyway, so a preceding wipe costs nothing". True of
+    // ONE run at a time, and false the moment two overlap — which the locking model
+    // permits, because the device lock is keyed per DEVICE and two runs from one
+    // checkout against two Rokus both acquire cleanly.
+    //
+    // What that cost, both arms visible in the ledger: a `.177` run (21:04→21:24) and a
+    // `.178` run (21:18→21:37) overlapped, the `.178` run hit a real failure at 21:19,
+    // the `.177` run closed first and folded that failure into ITS summary, and the run
+    // that actually failed closed with `failures: []` — a passing row carrying someone
+    // else's failure, and a failed run with no device dump at all.
     const { failuresPath: fp } = await import('../../../scripts/run-record.js');
-    expect(fp().startsWith(`out${path.sep}`)).toBe(true);
+    expect(fp().startsWith(`out${path.sep}`)).toBe(false);
+  });
+
+  it('scopes the per-run files by device, so two devices cannot share one record', async () => {
+    const mod = await import('../../../scripts/run-record.js');
+    const prev = process.env.RTA_DEVICE_KEY;
+    const prevRecord = process.env.RTA_RECORD_DIR;
+    delete process.env.RTA_RECORD_DIR;
+    try {
+      process.env.RTA_DEVICE_KEY = 'device-a';
+      const a = mod.failuresPath();
+      process.env.RTA_DEVICE_KEY = 'device-b';
+      expect(mod.failuresPath()).not.toBe(a);
+    } finally {
+      if (prev === undefined) delete process.env.RTA_DEVICE_KEY;
+      else process.env.RTA_DEVICE_KEY = prev;
+      if (prevRecord !== undefined) process.env.RTA_RECORD_DIR = prevRecord;
+    }
+  });
+
+  it('keeps ONE ledger per run kind, not one per device — a baseline reads across them', async () => {
+    const mod = await import('../../../scripts/run-record.js');
+    const prev = process.env.RTA_DEVICE_KEY;
+    try {
+      process.env.RTA_DEVICE_KEY = 'device-a';
+      const a = mod.runsLedgerPath();
+      process.env.RTA_DEVICE_KEY = 'device-b';
+      expect(mod.runsLedgerPath()).toBe(a);
+    } finally {
+      if (prev === undefined) delete process.env.RTA_DEVICE_KEY;
+      else process.env.RTA_DEVICE_KEY = prev;
+    }
   });
 });
 
@@ -360,7 +400,7 @@ describe('the run lifecycle — where a run s records actually land', () => {
       const { beginRun, runIsCumulative } = await fresh();
       const run = beginRun({ lock: LOCK, run: 'test:rta:tdd', cumulative: true });
       expect(runIsCumulative()).toBe(true);
-      const meta = JSON.parse(fs.readFileSync(path.join(run.dir, 'run-meta.json'), 'utf8'));
+      const meta = JSON.parse(fs.readFileSync(path.join(run.recordDir, 'run-meta.json'), 'utf8'));
       expect(meta.cumulative).toBe(true);
       run.close();
     });
@@ -371,7 +411,7 @@ describe('the run lifecycle — where a run s records actually land', () => {
       const { beginRun, runIsCumulative } = await fresh();
       const run = beginRun({ lock: LOCK, run: 'test:rta' });
       expect(runIsCumulative()).toBe(false);
-      const meta = JSON.parse(fs.readFileSync(path.join(run.dir, 'run-meta.json'), 'utf8'));
+      const meta = JSON.parse(fs.readFileSync(path.join(run.recordDir, 'run-meta.json'), 'utf8'));
       expect(meta).not.toHaveProperty('cumulative');
       run.close();
     });
@@ -399,7 +439,7 @@ describe('the run lifecycle — where a run s records actually land', () => {
       vi.restoreAllMocks();
 
       expect(summary.failures).toHaveLength(1);
-      const meta = JSON.parse(fs.readFileSync(path.join(run.dir, 'run-meta.json'), 'utf8'));
+      const meta = JSON.parse(fs.readFileSync(path.join(run.recordDir, 'run-meta.json'), 'utf8'));
       expect(meta.failures).toHaveLength(1);
       expect(meta.locked).toBe(true); // lock provenance survives the fold
       expect(ledger(runsLedgerPath())).toHaveLength(1);
