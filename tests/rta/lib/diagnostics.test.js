@@ -69,7 +69,7 @@ describe('diagnosedError — the message a human reads and the record a baseline
    *
    * `roku-test-automation` is mocked because the ODC round trip is the ONE part that
    * genuinely needs a Roku — faking it is what lets the formatting and record shape
-   * around it be gated at all. `RTA_RUN_DIR` points the record at a temp directory,
+   * around it be gated at all. `RTA_RECORD_DIR` points the record at a temp directory,
    * the same channel a spawned Vitest child uses in production.
    */
   const diagnose = async (message, opts = {}, { results = HEALTHY, focused, meta } = {}) => {
@@ -80,7 +80,7 @@ describe('diagnosedError — the message a human reads and the record a baseline
         getValues: async () => (results instanceof Error ? Promise.reject(results) : { results }),
       },
     }));
-    process.env.RTA_RUN_DIR = tmpDir;
+    process.env.RTA_RECORD_DIR = tmpDir;
     if (meta) fs.writeFileSync(path.join(tmpDir, 'run-meta.json'), JSON.stringify(meta));
     try {
       const mod = await import('./diagnostics.js');
@@ -101,7 +101,7 @@ describe('diagnosedError — the message a human reads and the record a baseline
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rta-diagnostics-'));
   });
   afterEach(() => {
-    delete process.env.RTA_RUN_DIR;
+    delete process.env.RTA_RECORD_DIR;
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 

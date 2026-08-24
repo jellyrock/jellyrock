@@ -80,20 +80,37 @@ export async function getActiveVal(keyPath) {
  * So this THROWS when the batch itself fails, and reports `undefined` only for a
  * keyPath the device answered about and did not find. Those are genuinely different
  * on the wire: `processGetValueRequest` returns `found: false` for an unresolved
- * keyPath and only errors on an unresolvable `base` — and every request here shares
- * one `base: 'global'`, so a per-key miss cannot masquerade as a batch failure or
- * vice versa.
+ * keyPath and only errors on an unresolvable `base` — and every request in a single
+ * call shares one `base`, so a per-key miss cannot masquerade as a batch failure or
+ * vice versa. That holds for the scene-rooted `getVals` below on the same reasoning.
  */
 export async function getActiveVals(keyPaths) {
+  return batchRead(keyPaths, (keyPath) => ({
+    base: 'global',
+    keyPath: `activeRoutedView.${keyPath}`,
+  }));
+}
+
+/**
+ * `getVal` for MANY keyPaths in one device round trip — the SCENE-ROOTED twin of
+ * `getActiveVals`, with identical failure semantics.
+ *
+ * Exists because the observation-window argument above is not about which base a read
+ * uses. `#homeRows` is deliberately scene-rooted (Home is not the active view once a
+ * drill-down opens), and the fields worth reading off it — a row's child count and the
+ * list's focused index — are exactly the pair that a mid-flight `populateRowFromData`
+ * changes together. Read sequentially, the two can straddle that mutation and describe
+ * different frames, which is the failure the reader would be trying to diagnose.
+ */
+export async function getVals(keyPaths) {
+  return batchRead(keyPaths, (keyPath) => ({ base: 'scene', keyPath }));
+}
+
+async function batchRead(keyPaths, toRequest) {
   if (!keyPaths.length) return [];
   // Positional keys rather than the keyPaths themselves: a keyPath is not a safe AA
   // key (dots, `#`, indices) and duplicates in the input would silently collapse.
-  const requests = Object.fromEntries(
-    keyPaths.map((keyPath, i) => [
-      `k${i}`,
-      { base: 'global', keyPath: `activeRoutedView.${keyPath}` },
-    ]),
-  );
+  const requests = Object.fromEntries(keyPaths.map((keyPath, i) => [`k${i}`, toRequest(keyPath)]));
   const batch = await odc.getValues({ requests });
   const results = batch?.results;
   if (!results) {
@@ -124,7 +141,7 @@ export async function getActiveVals(keyPaths) {
 export async function waitFor(
   keyPath,
   predicate,
-  { timeout = 30000, interval = 500, action, label, read = getVal } = {},
+  { timeout = 30000, interval = 500, action, label, read = getVal, observed } = {},
 ) {
   const start = Date.now();
   let last;
@@ -142,9 +159,30 @@ export async function waitFor(
       kind: FAILURE_KINDS.WAIT_FOR_TIMEOUT,
       label: label || keyPath,
       waitedMs: Date.now() - start,
-      observed: { keyPath, last, actionErrors },
+      // The caller's own context, merged over the loop's. `tests/rta/CLAUDE.md` already
+      // prefers "passing state the loop ALREADY read as `observed`" — this is the same
+      // idea for state only the CALLER has: what it was standing on when it acted, or a
+      // reading that only makes sense to take once the wait has given up.
+      //
+      // A function is awaited HERE, on the failure path, so a caller can attach a device
+      // read without paying for it on every successful wait — the same rule
+      // `diagnosedError` follows for its own dump. It must not be able to replace the
+      // failure with its own: a throwing or slow reader loses its contribution and the
+      // timeout still reports.
+      observed: { keyPath, last, actionErrors, ...(await resolveObserved(observed)) },
     },
   );
+}
+
+/** Resolve a caller-supplied `observed`, never letting it replace the failure it describes. */
+async function resolveObserved(observed) {
+  if (!observed) return {};
+  if (typeof observed !== 'function') return observed;
+  try {
+    return (await observed()) ?? {};
+  } catch {
+    return { observedReadFailed: true };
+  }
 }
 
 /**
@@ -247,6 +285,38 @@ export function resendIfSwallowed(key, containerId) {
     if (typeof focused?.keyPath === 'string' && focused.keyPath.includes(containerId)) {
       await press(key);
     }
+  };
+}
+
+/**
+ * `resendIfSwallowed` inverted: re-send `key` until focus ARRIVES inside `containerId`.
+ *
+ * Same failure, same first-tick skip, same overshoot guard — the difference is only which
+ * end of the move is nameable. `resendIfSwallowed` needs to know the container being left,
+ * which a caller returning to a KNOWN screen from an unknown one cannot supply: a wrong
+ * library grid may be an `#itemGrid` or the Genres `RowList`, and naming the wrong one
+ * turns the guard into a no-op that presses every tick. The destination is the fixed end,
+ * so gate on that.
+ *
+ * The overshoot guard still holds and matters more here, because over-pressing Back on
+ * Home raises the exit-confirm dialog: once focus is inside `containerId` this stops
+ * pressing, and an ABSENT keyPath sends nothing rather than guessing — the same rule
+ * `walkHomeToFirstRow` follows, for the same reason.
+ *
+ * @param {string} key - an `ecp.Key` value to re-send
+ * @param {string} containerId - `#id` of the container focus should arrive INSIDE
+ * @returns {() => Promise<void>} a fresh, single-use action (it carries per-wait state)
+ */
+export function resendUntilFocusInside(key, containerId) {
+  let ticked = false;
+  return async () => {
+    if (!ticked) {
+      ticked = true;
+      return;
+    }
+    const focused = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+    if (typeof focused?.keyPath !== 'string') return;
+    if (!focused.keyPath.includes(containerId)) await press(key);
   };
 }
 

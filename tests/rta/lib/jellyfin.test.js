@@ -58,10 +58,10 @@ let runDir;
 beforeEach(() => {
   routes = {};
   runDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jellyfin-test-'));
-  process.env.RTA_RUN_DIR = runDir;
+  process.env.RTA_RECORD_DIR = runDir;
 });
 afterEach(() => {
-  delete process.env.RTA_RUN_DIR;
+  delete process.env.RTA_RECORD_DIR;
   fs.rmSync(runDir, { recursive: true, force: true });
 });
 

@@ -46,6 +46,7 @@
  * with `rimraf out/` — see `LEDGER_ROOT`.
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { writeRunMeta } from './device-lock.js';
@@ -95,9 +96,97 @@ export function getRunDir() {
   return activeRunDir || process.env.RTA_RUN_DIR || path.join('out', 'rta');
 }
 
+let activeDeviceKey;
+
+/**
+ * WHERE this run's own records live — outside `out/`, and scoped to the DEVICE.
+ *
+ * ## Why not `out/<kind>/`, which is where these used to be
+ *
+ * The reasoning that put them there was "they are truncated at open anyway, so a
+ * preceding wipe costs nothing". That is true of ONE run at a time and false the
+ * moment two overlap, which the locking model explicitly permits: the device lock
+ * is keyed per DEVICE, so two runs from one checkout against two Rokus both acquire
+ * cleanly — and then each one's `npm run build` opens with `rimraf out/` and deletes
+ * the OTHER's in-flight `failures.jsonl`, while both append to the same file in
+ * between.
+ *
+ * Observed 2026-08-23, both arms in the ledger: a `.177` run (21:04→21:24) and a
+ * `.178` run (21:18→21:37) overlapped; the `.178` run hit a real failure at 21:19,
+ * the `.177` run closed first and folded that failure into ITS summary, and the run
+ * that actually failed closed with `failures: []`. Net result was a `passed` ledger
+ * row carrying someone else's failure and a failed run with no device dump at all —
+ * the exact artifact every `diagnosedError` call site exists to guarantee.
+ *
+ * So the per-run files move next to the ledger, which is already outside `out/` for
+ * a version of this same reason, and gain a device segment. The LEDGER itself stays
+ * one file per run kind (`ledgerPath` below is deliberately not device-scoped): an
+ * N-run baseline reads across devices, and fragmenting it per device would make the
+ * accumulator unreadable to answer the question it exists for.
+ *
+ * `RTA_DEVICE_KEY` is already carried to child processes — `beginRun` puts it there
+ * so `sessionDeviceId` can keep two devices from authenticating as one client. That
+ * is the same concurrency this fixes, one layer down, so the channel is reused
+ * rather than duplicated. `shared` is the honest label when there is no key (the
+ * degraded-lock path): one run without a device identity cannot collide with
+ * another that also lacks one any worse than it already did.
+ */
+function deviceScope() {
+  return activeDeviceKey || process.env.RTA_DEVICE_KEY || 'shared';
+}
+
+let activeRecordDir;
+
+/**
+ * The durable location for a run that OWNS its records — `beginRun` resolves this
+ * once and hands it to the handle and the child.
+ *
+ * Split out from `recordDir` deliberately. `recordDir` answers "where do MY records
+ * go", and for a process with no run that answer is "nowhere durable"; this answers
+ * "where would a run's records go", which is a different question and the only one
+ * `beginRun` is asking. Folding them cost a real bug in review: `beginRun` derived
+ * its directory by calling `recordDir()`, so the moment that gained a no-run
+ * fallback, every real run's records went to the throwaway path instead.
+ */
+function derivedRecordDir() {
+  return path.join(LEDGER_ROOT, path.basename(getRunDir()), 'runs', deviceScope());
+}
+
+/**
+ * Resolve this process's record directory, on the same three-source precedence
+ * `getRunDir` uses and for the same reasons: `beginRun` sets it for an entry point
+ * that owns a run, `RTA_RECORD_DIR` is the only channel a spawned child (or a test
+ * redirecting records into a tmpdir) has, and the derived default keeps a bare read
+ * honest.
+ *
+ * It is a SEPARATE channel from `RTA_RUN_DIR` rather than a reuse of it, because
+ * the two now answer different questions: `getRunDir()` is still "this run's
+ * directory under `out/`", which the ledger reads for the run KIND, while this is
+ * "where this run's records go" and must not be under `out/` at all.
+ */
+export function recordDir() {
+  if (activeRecordDir) return activeRecordDir;
+  if (process.env.RTA_RECORD_DIR) return process.env.RTA_RECORD_DIR;
+  // NO RUN CONTEXT — so there is nothing to record against, and the write goes
+  // somewhere throwaway rather than into the durable tree.
+  //
+  // Records belong to a RUN. `beginRun` sets the first branch and hands the second to
+  // its child; a process with neither is a unit test, or someone poking at the module.
+  // Before the records moved out of `out/`, such a write was swept by the next
+  // `npm run build` and nobody noticed. Moving them here removed that sweep without
+  // replacing it, and it bit immediately: two intermediate states during the same
+  // session left 124 stray directories under `.device-runs/` — named after test
+  // tmpdirs, because the derivation reads `basename(getRunDir())` — which had to be
+  // hand-cleaned. That is the whole justification; it is not a hypothetical.
+  //
+  // A throwaway path rather than a refusal, so read/write stay symmetric: a caller
+  // that writes and reads back in the same process still works, and the OS clears it.
+  return path.join(os.tmpdir(), 'jellyrock-records-no-run', String(process.pid));
+}
+
 /** This run's failure records — one JSON line each, appended by the process that hit them. */
-export const failuresPath = () => path.join(getRunDir(), 'failures.jsonl');
-const runMetaPath = () => path.join(getRunDir(), 'run-meta.json');
+export const failuresPath = () => path.join(recordDir(), 'failures.jsonl');
+const runMetaPath = () => path.join(recordDir(), 'run-meta.json');
 
 /**
  * Root for the ACCUMULATING record — deliberately NOT under `out/`.
@@ -241,7 +330,7 @@ export function readFailures(file = failuresPath()) {
  * provenance, in the same spirit as the measurement guard's tier 2: assert identity,
  * record everything else.
  */
-export const assertionsPath = () => path.join(getRunDir(), 'assertions.jsonl');
+export const assertionsPath = () => path.join(recordDir(), 'assertions.jsonl');
 
 /** Append one assertion record. Same never-throws contract as `recordFailure`. */
 export function recordAssertion(entry, file = assertionsPath()) {
@@ -255,6 +344,51 @@ export function resetAssertions(file = assertionsPath()) {
   } catch {
     // Nothing to clear, or the directory does not exist yet.
   }
+}
+
+/**
+ * This run's RECOVERY records — a step the harness silently worked around.
+ *
+ * A third stream, and the split is the same one `assertionsPath` argues for: these
+ * come from a step that SUCCEEDED, so folding them into a file named for failures
+ * would make both harder to read, and they are not a measure of assertion strength
+ * either.
+ *
+ * ## Why a recovery has to be recorded at all
+ *
+ * `navLibraryByType` backs out and retries when the wrong library opens. That retry
+ * makes the suite reliable and, by the same act, makes the underlying event
+ * invisible: a green run is then indistinguishable from one where nothing went
+ * wrong, so "does this ever fire, and how often" cannot be answered — which is the
+ * only question that decides whether the retry is a fix or a plaster over an app
+ * bug. `tests/rta/CLAUDE.md` already states the principle for `focusOverhangIcon`
+ * ("a silently recovered escape tells you nothing the next time").
+ *
+ * A `console.warn` is not enough for that question and this repo has already said
+ * so: `tests/rta/lib/registry.js` — "A `console.warn` dies with the scrollback".
+ * Answering "how often" needs accumulation ACROSS runs, which is what folding these
+ * into the never-reset ledger buys; the summary line is what makes the operator
+ * notice one at the time.
+ */
+export const recoveriesPath = () => path.join(recordDir(), 'recoveries.jsonl');
+
+/** Append one recovery record. Same never-throws contract as `recordFailure`. */
+export function recordRecovery(entry, file = recoveriesPath()) {
+  appendJsonLine(file, entry);
+}
+
+/** Drop the previous run's recovery records. */
+export function resetRecoveries(file = recoveriesPath()) {
+  try {
+    fs.rmSync(file, { force: true });
+  } catch {
+    // Nothing to clear, or the directory does not exist yet.
+  }
+}
+
+/** Read back this run's recovery records. */
+export function readRecoveries(file = recoveriesPath()) {
+  return readJsonLines(file);
 }
 
 /** Read back this run's assertion records. */
@@ -395,6 +529,13 @@ export const FAILURE_KINDS = Object.freeze({
   WAIT_FOR_TIMEOUT: 'wait-for-timeout',
   WAIT_FOCUSED_TIMEOUT: 'wait-focused-timeout',
   HOME_LIBRARY_TILE_NOT_FOUND: 'home-library-tile-not-found',
+  /**
+   * A library tile WAS found and pressed, and a different library's grid opened.
+   * Deliberately not folded into `home-library-tile-not-found`: the tile was located
+   * fine, so the two have different causes and different fixes, and a shared slug
+   * would merge them in the flake baseline this registry keys.
+   */
+  LIBRARY_OPENED_MISMATCH: 'library-opened-mismatch',
   GRID_LOAD_TIMEOUT: 'grid-load-timeout',
   DETAIL_ROW_NOT_FOUND: 'detail-row-not-found',
   MEDIA_PLAYER_NOT_STARTED: 'media-player-not-started',
@@ -541,6 +682,7 @@ export function summarizeRun({
   endedAt,
   failures = [],
   assertions = {},
+  recoveries = [],
   run,
   what,
   variant,
@@ -602,6 +744,11 @@ export function summarizeRun({
     // Omitted entirely when nothing recorded one, so an ordinary line is unchanged
     // and older ledger entries stay comparable.
     assertions: Object.keys(assertions).length ? assertions : undefined,
+    // Steps the harness worked around. Omitted when empty, on the same grounds as
+    // `assertions` above: an ordinary line stays unchanged and older ledger entries
+    // stay comparable. Present, it is what makes "how often does the retry fire"
+    // a read over the ledger rather than a question nobody can answer.
+    recoveries: recoveries.length ? recoveries : undefined,
     failures,
   };
 }
@@ -621,6 +768,7 @@ const clock = (iso) => (Number.isFinite(Date.parse(iso)) ? iso.slice(11, 16) : '
 export function formatRunSummary(summary, file = failuresPath()) {
   const { failures = [], startedAt, endedAt, crossedHourBoundary, cumulative, outcome } = summary;
   const unknownKinds = summary.unknownKinds || [];
+  const recoveries = summary.recoveries || [];
   // Suppressed for a cumulative window — see `summarizeRun`.
   const flagHour = crossedHourBoundary && !cumulative;
   // A run that died before it could run anything has no failures to report, which
@@ -628,7 +776,8 @@ export function formatRunSummary(summary, file = failuresPath()) {
   // is the right output for a clean run only.
   const flagOutcome = outcome && outcome !== RUN_OUTCOMES.PASSED;
   const flagUnknownOutcome = Boolean(summary.outcomeUnknown);
-  if (!failures.length && !flagHour && !unknownKinds.length && !flagOutcome) return [];
+  if (!failures.length && !flagHour && !unknownKinds.length && !flagOutcome && !recoveries.length)
+    return [];
   const tag = `[${path.basename(runDir(summary.run))}]`;
   const window = `${clock(startedAt)}→${clock(endedAt)} UTC`;
   const lines = [];
@@ -689,6 +838,22 @@ export function formatRunSummary(summary, file = failuresPath()) {
         'changing its own content and any state this run created through the app, so a ' +
         'mid-run failure here may be the fixture, not the app.',
     );
+  }
+  if (recoveries.length) {
+    // Printed even on a PASSING run — that is the whole point. A recovery leaves no
+    // other trace at the time it happens: the step succeeded, the suite is green, and
+    // without this line the operator's only signal is a ledger file nobody is prompted
+    // to open. It deliberately does not change the outcome; a run that recovered did
+    // reach a verdict about the app, and reddening it would trade one wrong reading
+    // for another.
+    lines.push(
+      `${tag} ${recoveries.length} step(s) recovered after going wrong in ${
+        cumulative ? `this watch session (${window})` : 'this run'
+      } — the suite worked around it, so this is the only notice you get.`,
+    );
+    for (const r of recoveries) {
+      lines.push(`${tag}   ${clock(r.at)} ${r.what ?? r.kind ?? 'recovery'} — ${r.detail ?? ''}`);
+    }
   }
   if (failures.length) {
     const scope = cumulative ? `this watch session (${window})` : 'this run';
@@ -791,6 +956,14 @@ function codeState() {
  */
 export function beginRun({ lock, run, cumulative = false }) {
   activeRunDir = runDir(run);
+  // Resolved here rather than read from the environment inside `recordDir`, for the
+  // same reason `activeRunDir` is: this process OWNS the run, and the lock already
+  // paid the ECP lookup the key comes from. A child gets it via `RTA_DEVICE_KEY`
+  // below, which was already being carried for `sessionDeviceId`.
+  activeDeviceKey = lock?.meta?.deviceKey;
+  // Resolved once, AFTER the two values it derives from, so the handle and the child
+  // cannot disagree with this process about where the records went.
+  activeRecordDir = derivedRecordDir();
   runMetaCache = undefined; // a new run means a new record to read back
   closedSummary = undefined; // ...and a close that has not happened yet
   // Written BEFORE the work so it survives a run that never reaches `endRun`.
@@ -812,13 +985,17 @@ export function beginRun({ lock, run, cumulative = false }) {
   writeRunMeta(
     lock.meta,
     { run, startedAt, variant, commit, dirty, ...(cumulative ? { cumulative: true } : {}) },
-    activeRunDir,
+    activeRecordDir,
   );
   // Read it straight back, so THIS PROCESS holds the record in memory for the rest of
   // the run.
   //
-  // `run-meta.json` lives under `out/`, and `measure --deploy` spawns `npm run build`
-  // AFTER this point — which opens with `rimraf build/ out/` and takes the file with it.
+  // `run-meta.json` USED TO live under `out/`, and `measure --deploy` spawns `npm run
+  // build` AFTER this point — which opens with `rimraf build/ out/` and took the file
+  // with it. It now lives beside the ledger (see `recordDir`), so that particular
+  // delete can no longer reach it; the cache is kept anyway, because it is also what
+  // makes every later read free and because `out/` is not the only way a directory
+  // goes away mid-run.
   // Every later `runProvenance()` then read a path that no longer existed, caught, and
   // degraded to nulls, so a `--deploy` series published no commit, no dirty flag, no
   // deviceKey and no startedAt: exactly the attribution the ledger exists to carry. It
@@ -839,6 +1016,7 @@ export function beginRun({ lock, run, cumulative = false }) {
   resetFailures();
   // Same contract as the failure records: a fold may only ever see THIS run's.
   resetAssertions();
+  resetRecoveries();
   // Closed over rather than re-read at close time, so a handle always folds the run
   // it was handed. Note the LIMIT of that: `activeRunDir` and the `closedSummary`
   // guard below are module state, so this makes a handle carry the right VALUES —
@@ -851,6 +1029,10 @@ export function beginRun({ lock, run, cumulative = false }) {
   return {
     startedAt,
     dir: activeRunDir,
+    // WHERE this run's records went. Exposed rather than left to be re-derived: the
+    // handle already carries `dir`, and a caller that reached for it to find
+    // `run-meta.json` would now be quietly wrong — see `recordDir`.
+    recordDir: activeRecordDir,
     // `RTA_DEVICE_KEY` rides along because the CHILD needs the device's identity and
     // cannot cheaply resolve it: the key comes from an ECP lookup the lock already
     // paid for, in this process. `tests/rta/lib/jellyfin.js` folds it into the
@@ -860,6 +1042,10 @@ export function beginRun({ lock, run, cumulative = false }) {
     // `ROKU_IP`, and an absent var picks that up where the string "null" would not.
     env: {
       RTA_RUN_DIR: activeRunDir,
+      // Carried explicitly rather than left for the child to re-derive: the child
+      // would compute the same path today, and would silently diverge the day the
+      // derivation changes on one side only. Same reasoning as `RTA_RUN_DIR` itself.
+      RTA_RECORD_DIR: activeRecordDir,
       ...(lock.meta?.deviceKey ? { RTA_DEVICE_KEY: lock.meta.deviceKey } : {}),
     },
     // The outcome is passed at CLOSE, not at open: it is the one thing about a run
@@ -939,10 +1125,11 @@ export function endRun({
     endedAt: new Date().toISOString(),
     failures: readFailures(),
     assertions: foldAssertions(readAssertions()),
+    recoveries: readRecoveries(),
     cumulative,
   });
   closedSummary = summary;
-  writeRunMeta(lock?.meta, { run, startedAt, ...summary }, getRunDir());
+  writeRunMeta(lock?.meta, { run, startedAt, ...summary }, recordDir());
   appendJsonLine(runsLedgerPath(), summary);
   for (const line of formatRunSummary(summary)) console.log(line);
   return summary;

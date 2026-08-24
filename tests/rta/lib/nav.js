@@ -18,9 +18,11 @@ import { ecp, odc } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
 import { libraryIdFor } from './jellyfin.js';
 import { diagnosedError, FAILURE_KINDS } from './diagnostics.js';
+import { recordRecovery } from '../../../scripts/run-record.js';
 import {
   press,
   getVal,
+  getVals,
   getActiveVal,
   getActiveVals,
   waitFor,
@@ -31,6 +33,7 @@ import {
   overhangWalkKey,
   hasChildren,
   resendIfSwallowed,
+  resendUntilFocusInside,
   scrollFocus,
   waitCellsQuiet,
   waitRowsSettled,
@@ -146,6 +149,12 @@ const HOME_TILE_WAIT_MS = 15000;
 const HOME_TILE_POLL_MS = 300;
 const DETAIL_ROW_WAIT_MS = 15000;
 const DETAIL_ROW_POLL_MS = 300;
+
+// How many times a library nav will back out and retry when the grid that opened is
+// not the library that was asked for. Bounded because a press that keeps landing wrong
+// is a broken assumption rather than a slow screen — and because the retry's ability to
+// recover is unproven, so an unbounded loop could spend a whole run learning nothing.
+const LIBRARY_OPEN_ATTEMPTS = 3;
 
 /**
  * Locate a library tile on the Home screen. The Home layout is server-side
@@ -291,10 +300,196 @@ async function findHomeLibraryTile(collectionType, libraryId = null) {
  * overshoot), independent of how the demo account has arranged its Home screen.
  */
 export async function navLibraryByType(collectionType, libraryId = null) {
-  await openLibraryByType(collectionType, libraryId);
-  await waitGridLoaded(`${collectionType} grid`);
+  // VERIFY WHAT OPENED, not just that something opened.
+  //
+  // Everything before the press is a claim about where focus IS. The grid's own
+  // `parentItem.id` is the app's answer to "which library is this" — the one reading
+  // that cannot be argued with, because `HomeRows.itemSelected` resolves the pressed
+  // item as `getItemAtIndices(m.top.rowItemSelected)` and hands that NODE to the route.
+  //
+  // Measured on `.178` 2026-08-23:
+  //   asked=tvshows/a656b907… -> grid=Movies(f137a2dd…) tile0=Movie:The Boy in the Plastic Bubble
+  // Every downstream gate passed — a real grid, it loads, its tile 0 opens a real
+  // detail — and the run failed several navs later asking for a `Season` row on a Movie.
+  //
+  // WHY the press landed wrong is NOT established; see `pressProbe` for the leading
+  // hypothesis and the reading that would confirm it. This check does not depend on
+  // knowing: it compares outcomes, so it holds whatever the cause turns out to be.
+  //
+  // One reading per attempt, accumulated across them: which attempt saw a mid-flight
+  // row is the whole question, so a single attempt's reading would not answer it.
+  const probes = [];
+  for (let attempt = 1; ; attempt++) {
+    probes.push(await openLibraryByType(collectionType, libraryId));
+    await waitGridLoaded(`${collectionType} grid`);
+
+    const openedId = await getActiveVal('parentItem.id');
+    // No id to check against (an id-less caller) — nothing to verify, keep the
+    // previous behaviour rather than inventing a weaker check.
+    if (!libraryId) break;
+    if (openedId === libraryId) {
+      // A recovered wrong turn must ANNOUNCE itself. `focusOverhangIcon` warns on its
+      // re-press for the stated reason that a harness which quietly recovers can mask
+      // the very regression a run exists to catch — and the same applies here twice
+      // over, because the retry's efficacy is itself unproven. A silent success is
+      // indistinguishable in the record from the event never happening, so we would
+      // never learn either how often this fires or whether backing out actually helps.
+      if (attempt > 1) {
+        const detail =
+          `${collectionType}: opened the wrong library on attempt ${attempt - 1} and ` +
+          `recovered on attempt ${attempt} (asked for id="${libraryId}"). ` +
+          `Pre-press readings per attempt: ${probes.map(formatPressProbe).join(' | ')}`;
+        // RECORDED, not just printed. The warn is for whoever is watching the run;
+        // the record is what makes "does this ever fire, and how often" answerable
+        // across runs — it is folded into the never-reset ledger at close, and
+        // surfaces as its own end-of-run summary line. A `console.warn` alone dies
+        // with the scrollback (`tests/rta/lib/registry.js` says so in as many
+        // words), and this event leaves no other trace: the step SUCCEEDED.
+        recordRecovery({
+          at: new Date().toISOString(),
+          what: `library nav (${collectionType})`,
+          detail,
+          observed: { collectionType, wanted: libraryId, attempts: attempt, probe: probes },
+        });
+        console.warn(
+          `[nav] ${detail}. This is the recovery path in \`navLibraryByType\` — worth ` +
+            'investigating why the press landed wrong (see `pressProbe`).',
+        );
+      }
+      break;
+    }
+
+    // The field did not resolve at all. That is a harness/app-shape problem, not a wrong
+    // library, and retrying it three times would report the app as having opened
+    // something it did not. Distinguish "genuinely wrong" from "not there yet" — the
+    // rule `tests/rta/CLAUDE.md` states for the scan, applied to the outcome check.
+    if (openedId === undefined) {
+      throw await diagnosedError(
+        `library grid identity unreadable: asked for ${collectionType} id="${libraryId}" ` +
+          'and the opened view did not answer `parentItem.id` at all. Every library grid ' +
+          'is a BaseGridView, which declares `parentItem` — so this is a view that is not ' +
+          'one, or a keyPath that has moved, rather than the wrong library.',
+        {
+          kind: FAILURE_KINDS.LIBRARY_OPENED_MISMATCH,
+          label: `library grid identity (${collectionType})`,
+          observed: { collectionType, wanted: libraryId, openedId: null, probe: probes },
+        },
+      );
+    }
+
+    const openedName = await getActiveVal('parentItem.name');
+    if (attempt >= LIBRARY_OPEN_ATTEMPTS) {
+      throw await diagnosedError(
+        `opened the wrong library: asked for ${collectionType} id="${libraryId}" ` +
+          `but the grid that opened is "${openedName ?? '?'}" id="${openedId ?? '?'}" ` +
+          `(${attempt} attempts) — pre-press readings per attempt: ` +
+          `${probes.map(formatPressProbe).join(' | ')}`,
+        {
+          kind: FAILURE_KINDS.LIBRARY_OPENED_MISMATCH,
+          label: `library grid identity (${collectionType})`,
+          observed: {
+            collectionType,
+            wanted: libraryId,
+            openedId,
+            openedName,
+            attempts: attempt,
+            probe: probes,
+          },
+        },
+      );
+    }
+    // Back out to Home and try the whole scan/walk/press again. DETECTION is proven
+    // (forcing the walk onto another tile makes this fire); RECOVERY is not — the
+    // forcing experiment pinned the wrong column on every attempt, so it could only
+    // ever fall through to the throw, and no organic recurrence has been observed
+    // either way. The warning above is what will settle it.
+    await backToHome(`${collectionType} retry`);
+  }
   await sleep(1200); // let posters paint before capture
 }
+
+/**
+ * Leave the current view for Home, and confirm we actually got there.
+ *
+ * A bare `press(Back)` is not enough and `waitHome()` cannot catch the shortfall.
+ * `sgrouter_showView`'s `finally` restores focus BEFORE dispatching `NavigationEnd`, so
+ * a key sent in that window is rejected by `_goBack` and swallowed — measured twice on
+ * `.178` (see `resendIfSwallowed`, which exists for exactly this). And `waitHome()`
+ * cannot tell: its first gate is `activeRoutedView.subtype()` being non-empty, which a
+ * grid satisfies, and its second is scene-rooted `#homeRows.content.getChildCount()`,
+ * which passes because Home stays in the scene tree under sgRouter's default
+ * `suspendMode: "hide"`. So a lost Back sails through both and the caller's next step
+ * times out blaming focus.
+ *
+ * Gating on the ACTIVE view being Home is the reading that separates them, and
+ * `resendUntilFocusInside` re-sends the key actually owed. It gates on the DESTINATION
+ * rather than the origin because the origin is not knowable here — the whole reason we
+ * are backing out is that an unexpected library opened, and it may be an `#itemGrid` or
+ * the Genres `RowList`. Once focus is back inside Home's rows it stops pressing, which
+ * is what keeps a re-press off the exit-confirm dialog.
+ */
+async function backToHome(label) {
+  await press(ecp.Key.Back);
+  await waitFor('subtype()', (v) => v === 'Home', {
+    read: getActiveVal,
+    timeout: 12000,
+    interval: 350,
+    action: resendUntilFocusInside(ecp.Key.Back, '#homeRows'),
+    label: `back to Home (${label})`,
+  });
+  await waitHome();
+}
+
+/**
+ * What the device reported in the instant before the OK press, kept so a wrong turn can
+ * say what it was standing on.
+ *
+ * ## The hypothesis this exists to settle
+ *
+ * `HomeRows.populateRowFromData` updates a row's children IN PLACE — `appendChildren`
+ * the new tiles, then `removeChildIndex` down over the old ones — and its own comment
+ * concedes the shape is a mitigation for RowList focus movement ("Append new items
+ * BEFORE removing old ones to avoid a momentary empty-row state that would cause the
+ * RowList to shift focus"). It runs for the library row via `populateLibraryRow`, on
+ * Home refresh and not only on first load.
+ *
+ * During that window the row briefly holds `oldCount + n` children and the focused index
+ * still points into the OLD range, which the removal loop then deletes. That fits every
+ * observation: intermittent, and invisible to a content-by-index check, because once the
+ * swap completes index N holds the same library it held before — which is exactly why
+ * the tile-index guard this branch first shipped could pass and the press still land
+ * wrong. It is NOT demonstrated. Two readings would settle it:
+ *
+ *   childCount  `2n` (or anything but the steady-state count) means the swap was mid-flight
+ *   focused     a value that differs from the index the walk gated on means focus moved
+ *
+ * Both are read scene-rooted, in ONE batch, because they are the pair the swap changes
+ * together — read sequentially they can straddle the very mutation being diagnosed.
+ * Cost is one round trip per attempt (~5 ms), on the success path, which buys the only
+ * chance of catching an intermittent event that no one can reproduce on demand.
+ */
+async function pressProbe(row) {
+  // NEVER let the reading fail the nav it is observing. `getVals` throws when the
+  // batch itself fails — deliberately, because for an ASSERTION a half-answered
+  // screen must not read as a screen of missing fields. This is not an assertion:
+  // it is instrumentation on the SUCCESS path of every library nav, so the same
+  // throw would turn a transient ODC hiccup into a failed nav that was otherwise
+  // fine. Diagnostics may not break the thing they diagnose; an absent reading
+  // costs a `?` in a message that only prints when something else already went
+  // wrong.
+  try {
+    const [focused, childCount] = await getVals([
+      '#homeRows.rowItemFocused',
+      `#homeRows.content.${row}.getChildCount()`,
+    ]);
+    return { focused, childCount };
+  } catch {
+    return { focused: undefined, childCount: undefined };
+  }
+}
+
+const formatPressProbe = (p, i) =>
+  `#${i + 1} focused=${JSON.stringify(p.focused ?? null)} rowChildCount=${p.childCount ?? '?'}`;
 
 /**
  * The press-into-the-library half of navLibraryByType, WITHOUT the loaded wait.
@@ -303,7 +498,6 @@ export async function navLibraryByType(collectionType, libraryId = null) {
  */
 export async function openLibraryByType(collectionType, libraryId = null) {
   await waitHome();
-  const { row, col } = await findHomeLibraryTile(collectionType, libraryId);
   // Focus must be INSIDE the row list before walking it. `rowItemFocused` RETAINS its
   // last value when the RowList doesn't hold focus, so a walk started while focus is
   // still elsewhere reads a stale [0,0] forever, sends its presses to whatever does
@@ -312,7 +506,24 @@ export async function openLibraryByType(collectionType, libraryId = null) {
   // purpose: focus lands in the rows on its own once Home is up, and pressing keys at
   // a component we have not located yet is how the OSD navs got this wrong.
   await waitFocusInside('#homeRows');
-  // Vertical: step to the library row.
+
+  // Scan for the tile, walk focus to it, read what we are standing on, then press.
+  //
+  // The probe is the ONLY thing between the walk's last read and the press, and it is
+  // deliberately not a gate: an earlier revision of this branch DID gate here, on the
+  // tile's content matching at the walked-to coordinates, and that guard passed while
+  // the press still opened Movies. Content-by-index cannot see this — after a row swap
+  // completes, index N holds the same library it held before. So the reading is kept
+  // and the judgement is made on the OUTCOME instead, by `navLibraryByType`.
+  const tile = await findHomeLibraryTile(collectionType, libraryId);
+  await walkHomeRowsTo(tile, collectionType);
+  const probe = await pressProbe(tile.row);
+  await press(ecp.Key.Ok);
+  return probe;
+}
+
+/** Step focus to `tile`, vertically then horizontally. Guarded against overshoot. */
+async function walkHomeRowsTo({ row, col }, collectionType) {
   await waitFor('#homeRows.rowItemFocused', (v) => Array.isArray(v) && v[0] === row, {
     timeout: 12000,
     interval: 350,
@@ -324,7 +535,6 @@ export async function openLibraryByType(collectionType, libraryId = null) {
     },
     label: `home library row ${row} (${collectionType})`,
   });
-  // Horizontal: step to the target tile within that row.
   await waitFor('#homeRows.rowItemFocused', (v) => Array.isArray(v) && v[1] === col, {
     timeout: 12000,
     interval: 350,
@@ -336,7 +546,6 @@ export async function openLibraryByType(collectionType, libraryId = null) {
     },
     label: `home library tile col ${col} (${collectionType})`,
   });
-  await press(ecp.Key.Ok);
 }
 
 /**
@@ -412,6 +621,22 @@ export async function navPlaylistsLibrary(ctx) {
  * every item type). Used by the per-type detail screens that just need ONE example.
  */
 async function openFirstGridTileDetail(label) {
+  // GATE FOCUS BEFORE PRESSING, via the same helper the indexed callers use.
+  //
+  // This function pressed OK bare. `focusGridTile`'s own comment already spells out
+  // why that is wrong — "grid LOADED is not grid FOCUSED", so an OK sent before focus
+  // arrives goes to whatever does hold it — and records that the gate was once nested
+  // under a `target <= 0` early return, "which left exactly the tile-0 callers
+  // ungated". That was fixed inside `focusGridTile`; this function never called it, so
+  // the three tile-0 navs went on pressing ungated. `focusGridTile(0)` is exactly the
+  // gate with no walk, which is what these callers want.
+  //
+  // Observed cost, `.178` 2026-08-23: `seasonDetails` opened `The Boy in the Plastic
+  // Bubble` — a MOVIE, from the Movies library — while navigating the Shows library,
+  // and failed three navs later as "Season row not found". The Home-tile guard in
+  // `openLibraryByType` had already confirmed the correct library tile was pressed, so
+  // the stray OK is downstream of it: the grid had loaded but focus had not landed.
+  await focusGridTile(0);
   await press(ecp.Key.Ok);
   await waitFor('#videoTitle.text', (t) => typeof t === 'string' && t.length > 0, {
     label: `${label} detail title`,
@@ -498,6 +723,25 @@ async function openChildDetailByRowType(tileType) {
   // 35 screens passed.) The old fixed `sleep(1200)` was papering over exactly this — a
   // bounded poll replaces it, and returns as soon as the row exists rather than always
   // paying the full delay.
+  //
+  // THAT IS ONE OF TWO CAUSES, AND THE COMMENT ABOVE USED TO CLAIM IT WAS THE ONLY ONE.
+  // The same message also comes out when the nav opened the WRONG ITEM, and then no
+  // amount of waiting helps. Recurrence 2026-08-23, `seasonDetails`: rowTypes came back
+  // `[Chapter, Person]`, and `ExtrasRowList.loadParts` gives a Series the chain
+  // `Seasons -> People -> LikeThis` — a Series cannot emit a `Chapter` row at all, so the
+  // screen under the assertion was a Movie or an Episode, not the series the nav asked
+  // for. Reading `[Chapter, Person]` as "Season is still loading" costs an investigation
+  // every time, because the fix it points at (wait longer) is for the other cause.
+  //
+  // So the throw below reads the three fields that separate them outright, rather than
+  // leaving the next reader to know the row chains by heart:
+  //   type          what ItemDetails is actually showing — the whole question
+  //   contentReady  ExtrasRowList's own chain-complete marker (`markChainComplete`).
+  //                 True with the row absent means ABSENT, not late; the poll can stop
+  //                 being suspected.
+  //   parentId      which item, so it can be looked up on the server afterwards
+  // All three are one batched read on the failure path only, so the success path is
+  // unchanged — same principle as `diagnosedError` capturing device state at the throw.
   const rowsStart = Date.now();
   let targetRow = -1;
   let rowCount;
@@ -522,14 +766,23 @@ async function openChildDetailByRowType(tileType) {
     await sleep(DETAIL_ROW_POLL_MS);
   }
   if (targetRow < 0) {
+    const [shownType, contentReady, parentId] = await getActiveVals([
+      '#extrasGrid.type',
+      '#extrasGrid.contentReady',
+      '#extrasGrid.parentId',
+    ]);
+    // Named in the MESSAGE, not just the record: this one is read in a terminal
+    // before anyone opens failures.jsonl, and "wanted Season, showing Movie" is the
+    // difference between a two-minute triage and an afternoon of them.
     throw await diagnosedError(
       `detail row with tile type "${tileType}" not found after ` +
-        `${Math.round((Date.now() - rowsStart) / 1000)}s (${rowCount} row(s) present)`,
+        `${Math.round((Date.now() - rowsStart) / 1000)}s (${rowCount} row(s) present) — ` +
+        `detail is showing type="${shownType ?? '?'}", contentReady=${contentReady ?? '?'}`,
       {
         kind: FAILURE_KINDS.DETAIL_ROW_NOT_FOUND,
         label: `detail row "${tileType}"`,
         waitedMs: Date.now() - rowsStart,
-        observed: { wanted: tileType, rowTypes: seenTypes },
+        observed: { wanted: tileType, rowTypes: seenTypes, shownType, contentReady, parentId },
       },
     );
   }

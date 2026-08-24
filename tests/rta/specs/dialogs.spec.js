@@ -33,6 +33,7 @@ import {
   stopPlayback,
   PLAYING_STATES,
   getVal,
+  getActiveVals,
   press,
   sleep,
 } from '../lib/steps.js';
@@ -171,10 +172,31 @@ it('series watched button opens the standard confirm dialog; back cancels it', a
   if (typeof groupIndex !== 'number')
     throw new Error(`cannot read #buttons.buttonFocused (got ${groupIndex})`);
   for (let i = groupIndex; i < watchedIndex; i++) await press(ecp.Key.Right);
-  await waitFor('#buttons.buttonFocused', (n) => n === watchedIndex, {
+  // Gate on the BUTTON, not on its index. `watchedIndex` was resolved by scanning the
+  // group above, and `ItemDetails` mutates that group asynchronously as data lands —
+  // `m.buttonGrp.removeChild(loadingButton)` once the trailer check resolves through
+  // `fetchAsync().then()`, `removeChild(trailerButton)` when there is none,
+  // `removeChild(resumeButton)`. Every removal shifts the indices after it, so a gate
+  // on `buttonFocused === watchedIndex` can be satisfied by a DIFFERENT button, and the
+  // OK below then lands on it: no dialog opens, and by the time the wait gives up the
+  // group has settled and the failure dump looks innocent — focus on `#watchedButton`,
+  // no confirm. Recorded 4 times in 63 ledger runs, always `wait-for-timeout` on
+  // `#buttonRow.getChildCount()`.
+  //
+  // This is the same defect as the library-nav wrong-turn (`openLibraryByType`):
+  // commit to an index, act later, index means something else. `pressOsdButton` in this
+  // same file already gates by identity for the same reason; this walk did not.
+  await waitFocused((f) => f.node?.id === 'watchedButton', {
     label: 'watched button focused in group',
     timeout: 8000,
   });
+  // What we were standing on WHEN WE PRESSED. The throw-time dump cannot answer this:
+  // it is taken 10s later, by which point the button group has settled and focus reads
+  // `#watchedButton` whether or not that is where the press landed — which is exactly
+  // the dump every occurrence of this failure has produced, and why two different
+  // explanations both fitted it.
+  const pressedOn = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+  const pressedIndex = await getVal('#buttons.buttonFocused');
   await press(ecp.Key.Ok);
 
   // The JRDialog overlay mounts on the scene with two TextButtons under the panel.
@@ -182,6 +204,29 @@ it('series watched button opens the standard confirm dialog; back cancels it', a
   await waitFor('#buttonRow.getChildCount()', (n) => n === 2, {
     label: 'confirm dialog button row',
     timeout: 10000,
+    // No confirm appeared. `onWatchedButtonPressed` opens one for ANY `item.type =
+    // "Series"`, so there are only two ways here: the press did not land on
+    // `watchedButton`, or this detail is not a Series and `toggleWatched()` ran
+    // silently. Both produce an identical dump, and a Movie detail has a
+    // `#watchedButton` too — so read the TYPE, which separates them outright.
+    // `#extrasGrid` carries it (`ExtrasRowList.loadParts` sets `m.top.type`), scoped to
+    // the active view because every ItemDetails has one.
+    observed: async () => {
+      const [type, parentId, title] = await getActiveVals([
+        '#extrasGrid.type',
+        '#extrasGrid.parentId',
+        '#videoTitle.text',
+      ]);
+      return {
+        detailType: type,
+        detailId: parentId,
+        detailTitle: title,
+        pressedOnId: pressedOn?.node?.id,
+        pressedOnSubtype: pressedOn?.node?.subtype,
+        pressedIndex,
+        wantedIndex: watchedIndex,
+      };
+    },
   });
 
   if (CAPTURE) await captureRawUI('confirmDialog');
