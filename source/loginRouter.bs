@@ -499,7 +499,62 @@ end sub
 ' Login complete — run the post-login bootstrap (per-user font processing) and bring up
 ' Home. loadHomeScreen()/createAndShowHomeGroup() (main.bs) navigate the router to "/",
 ' deferring until font download completes when UI fallback fonts are enabled.
+' The single transition into the app. EVERY login path converges here — password,
+' no-password, saved-token and Quick Connect — either directly or through
+' enterDecision's `status = "success"` branch, which is where the two bootstrap
+' paths (validateSavedToken, the no-password retry in resolveUser) land.
+'
+' That convergence is why the authentication check belongs HERE and nowhere else.
+' `user.Login()` is a `sub`: it silently returns when the payload carries no
+' usable id (session.bs `hasValidId`), and having no return value it cannot say
+' so. Before this guard, all five call sites answered that by re-implementing a
+' WEAKER check of their own — `isValid(<node>)` alone — and then booting the app
+' regardless. A payload that satisfied the caller but not Login left
+' `m.global.user` holding its setGlobals() defaults and put the user on Home with
+' nobody signed in: no message, no recovery, and every request going out with an
+' empty `Token=`.
+'
+' One guard at the one choke point, rather than five copies of Login's own
+' precondition — so a sixth login path inherits it instead of having to remember
+' it. See user.IsAuthenticated() for why this reads `isLoaded` rather than the
+' `id`/`authToken` rule JellyfinUser.xml states (those are written speculatively
+' before auth, so they answer "yes" after a failed attempt).
 sub finishLogin()
+  if not user.IsAuthenticated()
+    ' Not reachable from a healthy server — it needs a 200 whose AccessToken is
+    ' present but whose User carries no usable Id — so this is the honest report
+    ' of a should-not-happen, not a routine branch. It still has to be a report:
+    ' silently returning here leaves the blocking login spinner up forever.
+    print "Login did not establish a session - returning to the picker"
+    stopLoadingSpinner()
+    ' Clears the SPECULATIVE id/authToken this attempt left on the node. Without
+    ' it the next screen still reads a half-populated user, which is the state
+    ' this whole guard exists to stop anyone acting on. Purely local — Logout
+    ' resets the node and the theme; it makes no request.
+    user.Logout()
+    ' A toast, NOT showAlertDialog: this branch navigates immediately, and an
+    ' overlay dialog is appended to the SCENE, so it would outlive the navigation
+    ' and land on top of the incoming screen while contending with it for focus.
+    ' Toasts take no focus. Same main-thread reporting replayRoute.bs uses.
+    displayToast(translate(translationKeys.ErrorLoginAttemptFailed), "error")
+    ' Deliberately NOT onLoginBack(), though it makes the same picker-vs-fallback
+    ' choice: its fallback branch runs `server.Delete()` + `unsetSetting("server")`.
+    ' That is right for the case it was written for — the user pressed Back from
+    ' sign-in because they want a DIFFERENT server — and wrong here, where nobody
+    ' asked to forget anything. On a private server with no public users it would
+    ' destroy a working server config over a failed sign-in.
+    '
+    ' So: the picker when this server has public users to pick from, and manual
+    ' sign-in when it does not, which is the same fallback onUserSelected reaches
+    ' for when a no-password login is refused. The server is left alone either way.
+    if isValid(m.loginCtx) and m.loginCtx.hasPublicUsers = true
+      routerNav("/users", { users: buildPublicUserList() })
+    else
+      routerNav("/login", { username: "" })
+    end if
+    return
+  end if
+
   initializeFallbackFont()
   loadHomeScreen()
 end sub

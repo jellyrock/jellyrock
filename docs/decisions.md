@@ -1137,6 +1137,20 @@ The RTA suite tests Quick Connect end to end by approving its own code: `POST /Q
 
 **Two constraints ride along.** The spec skips rather than fails when the server reports Quick Connect disabled, because that is a fact about the fixture — which matters more now that `RTA_CONFIG.server` can be aimed at another server via `RTA_SERVER_URL`. And it answers the save-credentials prompt "No", so a run signs in without writing an `authToken` into the device registry; `scripts/rta-run.js` would restore it either way, but the test does not lean on that.
 
+## decision-id: session-established-is-its-own-signal
+
+**date**: 2026-08-24
+**status**: accepted
+**related-files**: `source/utils/session.bs`, `source/loginRouter.bs`, `components/data/jellyfin/JellyfinUser.xml`
+
+"Is a user signed in?" is answered by one field that ONLY a completed `user.Login()` sets — `JellyfinUser.isLoaded`, read through `user.IsAuthenticated()` — and it is checked in exactly one place, `finishLogin()`, which every login path converges on.
+
+**The alternative this closes off is the obvious one, and it does not work.** `user.Login()` is a `sub`, so it cannot report that it refused; the natural fix is to make it `function ... as boolean` and branch at all five call sites, which is what the `userlogin-failure-unreportable` tech-debt entry proposed. That fixes who-can-ask but not what-they-can-ask-about: `m.global.user` is written **speculatively** before any authentication — `onUserSelected` sets `id` off the picker, and `validateSavedToken` sets `authToken` as its first statement — and neither is rolled back on failure, because the failure path clears the registry rather than the node. So after a rejected token the node still carries both fields, and the rule `JellyfinUser.xml` states ("if `user.id <> ""`, user IS authenticated") is false in practice. A boolean return would have left every later reader — Home, `buildAuthHeader()` — still unable to tell.
+
+**The speculative writes are the constraint worth re-evaluating, and they are not sloppiness.** `validateSavedToken`'s is load-bearing: `AboutMe()` reads the token straight back off the node through `buildAuthHeader()`, so removing it means threading the token explicitly through the bootstrap path both cold start and user-pick depend on. That was judged too much risk for the same user-visible outcome, so the decision is a signal only a *completed* login sets, rather than an attempt to stop the node from ever lying. If that path is refactored for another reason, dropping the speculative writes would let `IsAuthenticated()` fall back to the simpler rule.
+
+**Guarding at the choke point rather than at the five call sites is the other half.** All five converge on `finishLogin()` — the two bootstrap paths via `enterDecision`'s `status = "success"` branch — so one guard covers every path and a sixth login path inherits it instead of having to remember it. A return value nobody is forced to check is weaker than a guard nobody can bypass.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

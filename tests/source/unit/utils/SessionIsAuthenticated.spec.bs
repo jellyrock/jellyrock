@@ -1,0 +1,132 @@
+namespace tests
+
+  ' `user.IsAuthenticated()` — the one authoritative answer to "is somebody
+  ' signed in right now?"
+  '
+  ' The reason it cannot just read `id` / `authToken` is the point of the whole
+  ' suite, so it is asserted rather than described: two login paths populate
+  ' `m.global.user` SPECULATIVELY before anything has been authenticated
+  ' (onUserSelected writes `id` from the picker; validateSavedToken writes
+  ' `authToken` before validating it), and neither rolls back on failure. So a
+  ' node carrying both fields is NOT evidence of a session, and the rule stated in
+  ' JellyfinUser.xml ("if user.id <> \"\", user IS authenticated") is false in
+  ' practice. `isLoaded` is set only as the last act of a completed user.Login().
+  @suite("session.bs - user.IsAuthenticated")
+  class SessionIsAuthenticatedTests extends tests.BaseTestSuite
+
+    ' beforeEach, not setup: every test here mutates m.global.user, so a per-suite
+    ' fixture would hand the next test the previous one's leftovers (tests/CLAUDE.md).
+    protected override function beforeEach()
+      super.beforeEach()
+      globalUser = m.global.user
+      globalUser.isLoaded = false
+      globalUser.id = ""
+      globalUser.authToken = ""
+    end function
+
+    protected override function afterEach()
+      globalUser = m.global.user
+      globalUser.isLoaded = false
+      globalUser.id = ""
+      globalUser.authToken = ""
+      super.afterEach()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the signal itself")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is false on a freshly bootstrapped user node")
+    ' setGlobals() builds the node with isLoaded = false; nothing has signed in.
+    function _()
+      m.assertFalse(user.IsAuthenticated())
+    end function
+
+    @it("is true once isLoaded is set")
+    function _()
+      m.global.user.isLoaded = true
+      m.assertTrue(user.IsAuthenticated())
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the speculative-write cases it exists for")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("stays false when only the id is set - the onUserSelected shape")
+    ' onUserSelected writes `id` off the picker BEFORE attempting any auth. A
+    ' predicate keyed on `id` (which is what JellyfinUser.xml's stated rule says)
+    ' would answer "authenticated" here, with nothing authenticated at all.
+    function _()
+      m.global.user.id = "abc123"
+      m.assertFalse(user.IsAuthenticated())
+    end function
+
+    @it("stays false when only the token is set - the validateSavedToken shape")
+    ' validateSavedToken assigns the saved token to the node as its FIRST
+    ' statement, because AboutMe() reads it straight back off the node via
+    ' buildAuthHeader(). The token being present means it is about to be TRIED,
+    ' not that it worked.
+    function _()
+      m.global.user.authToken = "stale-token"
+      m.assertFalse(user.IsAuthenticated())
+    end function
+
+    @it("stays false with BOTH set - the state after a REJECTED saved token")
+    ' The case that makes this more than pedantry. onUserSelected has set the id,
+    ' validateSavedToken has set the token, the server rejected it, and the
+    ' failure path clears the REGISTRY without touching the node. Anything reading
+    ' id/authToken at this moment concludes the user is signed in.
+    function _()
+      globalUser = m.global.user
+      globalUser.id = "abc123"
+      globalUser.authToken = "rejected-token"
+      m.assertFalse(user.IsAuthenticated())
+    end function
+
+    @it("is false again after Logout, even with id and token still assigned")
+    ' Logout resets the node to XML defaults via resetNodeToDefaults, which clears
+    ' isLoaded for free — so the guard needs no teardown of its own.
+    function _()
+      globalUser = m.global.user
+      globalUser.isLoaded = true
+      globalUser.id = "abc123"
+      globalUser.authToken = "tok"
+
+      user.Logout()
+
+      m.assertFalse(user.IsAuthenticated())
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the guard that decides whether Login sets it at all")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' `isLoaded` is only ever as honest as the guard in front of it. hasValidId's
+    ' nested branch used to test `isValid(json.User.Id)` alone — and isValid is
+    ' `input <> invalid` — so an EMPTY Id passed a guard whose other two branches
+    ' both require non-empty. Login then ran to completion and set isLoaded, and
+    ' this predicate answered TRUE about a session carrying no user id. Making
+    ' Login report whether it took (the tech-debt entry this PR removes) would NOT
+    ' have caught it: the boolean would have said "took".
+    '
+    ' These assert through IsAuthenticated() rather than reaching for hasValidId,
+    ' which is a local inside a sub — the observable contract is what a caller can
+    ' ask, and that is the predicate.
+
+    @it("stays false when Login is handed a nested Id that is empty")
+    function _()
+      user.Login({ AccessToken: "tok", json: { User: { Id: "" } } })
+      m.assertFalse(user.IsAuthenticated(), "an empty User.Id must not establish a session")
+    end function
+
+    @it("stays false when the nested Id is whitespace only")
+    ' isValidAndNotEmpty trims before testing, so " " is refused too. Pinned
+    ' because a plain `<> \"\"` would accept it and read as equivalent at a glance.
+    function _()
+      user.Login({ AccessToken: "tok", json: { User: { Id: "   " } } })
+      m.assertFalse(user.IsAuthenticated(), "a whitespace-only User.Id must not establish a session")
+    end function
+
+  end class
+
+end namespace
