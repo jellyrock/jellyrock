@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Give the app one authoritative "a session is established" signal ([#850](https://github.com/jellyrock/jellyrock/pull/850))
 - Rebuild Quick Connect on the `JRDialog` family and the API pool ([#847](https://github.com/jellyrock/jellyrock/pull/847))
 - Enforce a production Task-thread ceiling in `launchTask()` ([#849](https://github.com/jellyrock/jellyrock/pull/849))
 - Bound Task fan-out structurally with a `no-task-fanout` BSC plugin ([#846](https://github.com/jellyrock/jellyrock/pull/846))
