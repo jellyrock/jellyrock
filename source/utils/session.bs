@@ -462,7 +462,44 @@ namespace user
     ' Apply user's theme color settings to Constants and refresh scene
     applyThemeColorOverrides(userNode.settings)
     m.global.sceneManager.callFunc("refreshThemeColors")
+
+    ' THE AUTHORITATIVE "a session is established" SIGNAL, and the last thing
+    ' this sub does — so it is set only once every guard above has been cleared
+    ' and the node is fully populated. Every `return` before this point leaves it
+    ' false, which is the whole point: this sub has no return value, so this
+    ' field IS how it reports that it took. See user.IsAuthenticated().
+    userNode.isLoaded = true
+    userNode.loadedAt = CreateObject("roDateTime").AsSeconds()
   end sub
+
+  ' Is a user actually signed in RIGHT NOW?
+  '
+  ' Reads `isLoaded`, NOT `id` / `authToken`, and that distinction is the whole
+  ' reason this exists. JellyfinUser.xml states the rule as "if user.id is not
+  ' empty, user IS authenticated" — and that is false in practice, because two
+  ' paths populate the node SPECULATIVELY before anything has been authenticated:
+  '
+  '   onUserSelected      writes `id` from the picker, before any auth
+  '   validateSavedToken  writes `authToken`, before validating it
+  '
+  ' Neither is rolled back when the attempt fails (the failure path clears the
+  ' REGISTRY, not the node), so after a rejected token `m.global.user` still
+  ' carries both fields and answers "authenticated" to anyone who asks it that
+  ' way. Those writes are not sloppiness — validateSavedToken's is load-bearing,
+  ' because AboutMe() reads the token straight back off the node through
+  ' buildAuthHeader() — so the fix is a signal that only a COMPLETED login sets,
+  ' rather than an attempt to stop the speculative writes.
+  '
+  ' `isLoaded` is that signal. It was already declared for exactly this ("tracks
+  ' whether full user data has been fetched from server") and was dead: written
+  ' only by SessionDataTransformer.transformUser, which builds a throwaway node
+  ' the login flow never touches, and read by nobody. Logout() clears it for free
+  ' via resetNodeToDefaults.
+  function IsAuthenticated() as boolean
+    globalUser = m.global.user
+    if not isValid(globalUser) then return false
+    return globalUser.isLoaded = true
+  end function
 
   ' Logout and reset to defaults
   sub Logout()
