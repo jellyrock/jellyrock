@@ -782,6 +782,58 @@ export const formatCellCounts = (counts) =>
   CELL_REPORT_COUNTERS.map((c) => `${c[0].toLowerCase()}${c.slice(1)}=${counts?.[c]}`).join(' ');
 
 /**
+ * One-shot read of the reported cell-load counters, for a caller that needs a BEFORE.
+ *
+ * `waitCellsQuiet` publishes what a sweep ENDS on, and the app's own emit is a single
+ * end-of-session total — so both describe one number covering two different workloads: what
+ * the screen did loading ITSELF, and what the sweep provoked. Nothing has ever separated
+ * them, which is why a bind count that differs between launches cannot be attributed to
+ * either half. Read at the gate, this is the subtrahend that can.
+ *
+ * Batched, where the settle loop deliberately reads sequentially, and the difference is the
+ * rule rather than a preference: `tests/rta/CLAUDE.md` carves poll loops OUT of the batch
+ * rule because a monotonic counter sampled across an increment can only delay quiescence,
+ * never declare it early. A one-shot baseline is the case that rule actually governs — every
+ * counter here has to describe the same instant, or the delta taken against it credits the
+ * sweep with work that finished before the first keypress.
+ *
+ * **`instrumented` and `resolved` are separate answers, for the reason `waitCellsQuiet`
+ * separates them.** A production build carries no counters; a keyPath that names nothing
+ * carries no counters either; from the counter reads alone the two are identical. The first
+ * is a fact about the BUILD and the correct state for a release, while the second means this
+ * reading describes no list at all and every delta taken against it is fiction. Here the
+ * content root rides along IN THE SAME BATCH, so telling them apart costs no extra round
+ * trip — where the settle loop pays a second sequential read for the same answer.
+ *
+ * @param {string} listId - `#id` of the texture-managed list, e.g. `#homeRows`
+ * @param {object} [opts]
+ * @param {(keyPaths: string[]) => Promise<any[]>} [opts.readMany] batch reader, defaulting
+ *   to `getActiveVals`. Named `readMany` and NOT `read` because the neighbouring waits take
+ *   a SINGLE-keyPath `read` and their call sites sit two lines from this one: `getActiveVal`
+ *   passed here returns a scalar, and the indexing below throws `Cannot read properties of
+ *   undefined` — eleven minutes into a device run, naming nothing that points back at the
+ *   swap. The name is the guard; an error message would only describe the crash better.
+ * @returns {Promise<{counts: object, instrumented: boolean, resolved: boolean}>}
+ *   `instrumented` is false on a production build, where `perfTiming` is off and the
+ *   counters do not exist. Reported rather than thrown, for the reason `waitCellsQuiet`
+ *   reports it: that is the CORRECT state for a release build, not a fault.
+ */
+export async function readCellCounts(listId, { readMany = getActiveVals } = {}) {
+  // The content root rides along as the LAST keyPath, so `resolved` describes the same
+  // instant as the counters and not just the same call.
+  const values = await readMany([
+    ...CELL_REPORT_COUNTERS.map((c) => `${listId}.content.cellLoad${c}`),
+    `${listId}.content.getChildCount()`,
+  ]);
+  const counts = Object.fromEntries(CELL_REPORT_COUNTERS.map((c, i) => [c, values[i]]));
+  return {
+    counts,
+    instrumented: typeof counts.Binds === 'number',
+    resolved: typeof values[CELL_REPORT_COUNTERS.length] === 'number',
+  };
+}
+
+/**
  * Wait until a texture-managed list's cell-load counters stop moving.
  *
  * ## Why the workload has to end at a quiet point
@@ -976,9 +1028,16 @@ export async function waitCellsQuiet(
  * launches, zero corrective presses), `items` 128 on all 40, `unloads` 59 on all 40 and
  * `popInsCold` 29 on all 40, that pins the harness side of `cellSweepHome` completely — and
  * `binds` still spans 235–255. **The remaining variance is the app binding a different
- * number of cells over an identical, settled workload**, which is an app question and the
- * one Phase B should be spending itself on. A gate beats an eyeball: this is the durable
- * form of that refutation, so the next session inherits the null instead of re-deriving it.
+ * number of cells over an identical ITINERARY**, which is an app question and the one Phase B
+ * should be spending itself on. A gate beats an eyeball: this is the durable form of that
+ * refutation, so the next session inherits the null instead of re-deriving it.
+ *
+ * ⚠️ **This said "an identical, settled WORKLOAD" until 2026-08-24, and that was wrong in a
+ * way worth keeping visible.** What this gate settles is row structure; `readCellCounts` at
+ * the same instant showed the cell-load state there is itself bimodal (`loadsStarted` 90–91
+ * low against 100–102 high, disjoint) with 24–35 image loads still in flight. So the sweep
+ * starts on a screen that is structurally still but not finished, and the divergence this
+ * function was built to hunt has already happened by the time it opens.
  *
  * ⚠️ **More dwell is not the answer either** — inserting `waitCellsQuiet` BEFORE the sweep
  * as well (roughly doubling the wait) made things worse at n=5, not better: `binds` range 17

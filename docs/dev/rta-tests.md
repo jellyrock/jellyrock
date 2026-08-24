@@ -25,7 +25,7 @@ related-files:
   - scripts/flake-baseline.js
   - tests/rta/demos/run.mjs
   - .github/workflows/rta-functional-tests.yml
-last-reviewed: 2026-08-23
+last-reviewed: 2026-08-24
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -695,11 +695,21 @@ Two consequences for writing one:
   mean "the screen did not load". A sweep that wants 12 steps and finds 4 rows takes 3 and
   says so on the console. Where the content is settled before the sweep reads it, that clamp
   is deterministic — content, not timing, decided it.
-- **Home is the exception, and it is why Home's counts move.** `waitHome()` gates on the row
-  list having SOME rows, not all of them, so a sweep that reads its row count and picks its
-  widest row at that moment can get a different itinerary on a later-arriving row. Every
-  other sweep reads a list that is complete before it starts. Do not describe a sweep as
+- **Home is the exception, and it needs a gate the others do not.** `waitHome()` is satisfied
+  by SKELETON rows, so a sweep that reads its row count and picks its widest row at that
+  moment could get a different itinerary on a later-arriving row. `navCellSweepHome` therefore
+  gates on [`waitRowsSettled`](../../tests/rta/lib/steps.js) before it reads its own bounds;
+  every other sweep reads a list that is complete before it starts. Do not describe a sweep as
   deterministic without checking that its content stopped arriving first.
+- 🚨 **That gate is NOT why Home's counts move, and an earlier version of this bullet said it
+  was.** Two measurements refute it. The itinerary was byte-identical on all 40 launches of
+  the 2026-08-22 campaign, gated and ungated arms alike, and the gate moved no field's
+  dispersion. Then the 2026-08-24 before/after split showed the sweep's own contribution is
+  exactly constant (`binds` +16, `appearances` +75 on every launch) while the published total
+  spans 222–251 — so **all** of Home's run-to-run spread happens during PAGE LOAD, before the
+  first key press, and none of it is the sweep. See
+  [measuring-performance.md](measuring-performance.md#the-totals-are-cumulative--on-home-most-of-them-are-not-the-sweeps).
+  A `cellSweepHome` figure that moves is telling you about Home's load, not about scrolling.
 - **The console line is the only record of the distance.** `measure` writes down the `nav`'s
   NAME, not its itinerary, so the travel constants are effectively frozen once a series
   exists; changing one forks the series silently. Add a `nav` instead.

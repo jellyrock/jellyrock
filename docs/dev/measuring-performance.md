@@ -20,7 +20,7 @@ related-files:
   - scripts/data/roku-hardware.json
   - source/utils/screenReadiness.bs
   - tests/rta/screens.js
-last-reviewed: 2026-08-22
+last-reviewed: 2026-08-24
 ---
 
 # Measuring performance on device
@@ -381,6 +381,99 @@ A clamp line means the *fixture* was shallower than the itinerary. Reaching the 
 axis whose length is a structural bound — a grid row is exactly `numColumns` wide — is the
 itinerary working and is deliberately silent, so a clamp line always carries news.
 
+#### The totals are cumulative — on Home, most of them are not the sweep's
+
+`cellSweepHome` prints a second count set, and it exists because the first one answers a
+different question than it appears to:
+
+```text
+[nav] cellSweepHome: over 12 row(s) / 128 item(s) at sweep start (settled in 1977 ms), swept …;
+  cells quiet after 1843 ms (binds=234 loadsStarted=164 … appearances=100 popIns=40),
+  of which before the sweep (binds=218 loadsStarted=91 … appearances=25 popIns=12)
+```
+
+That is **ONE launch** — launch 0 of the first probe arm, a low-mode one — with the itinerary
+and three counters elided (`…`) and wrapped for the page. The real thing is a single
+unwrapped line of ~420 characters, deliberately: `grep '\[nav\]'` over a run has to return one
+row per sweep, and a reader comparing two runs is diffing lines, not paragraphs. Do not read
+the numbers below off this example — a single launch is not the campaign, which is the whole
+point of the table further down.
+
+The ledger emits **one end-of-session total per component**, so the headline counts cover the
+screen loading ITSELF plus whatever the sweep provoked, with no seam between them.
+`readCellCounts` reads the counters at the settle gate so the seam exists; the line prints
+that reading rather than a computed delta, so any split is a subtraction you can check.
+
+**Measured on `.177` against the 13-library real server, n=40 (2026-08-24): the sweep is the
+small half, and on the two fields that carry the argument it is EXACTLY CONSTANT.** Its
+contribution was `binds` **+16** and `appearances` **+75** on *every one of the 40 launches* —
+zero variance, both modes. Over those same launches the published total `binds` spanned
+**222–251**. **All 29 of that spread happens before the sweep; the sweep contributes none of
+it.**
+
+⚠️ **Three counters are NOT constant, and the mechanism is unresolved** —
+`loadsStarted` +72–74, `unloads` +56–57, `popIns` +28–29. State it as ±1–2 rather than as
+determinism; an earlier draft of this section applied "DETERMINISTIC" to the whole set,
+which is a stronger claim than the same paragraph's own numbers. The obvious explanation —
+the page-load tail crossing the gate, since 24–35 image loads are still in flight there (see
+below) — was **measured and rejected**: `corr(in-flight at gate, sweep loadsStarted) = 0.275`,
+and at an *identical* in-flight of 25 the sweep's `loadsStarted` still reads 72, 73 and 74.
+What the data does show is that the whole residue sits in the LOW arm (all 8 high-mode
+launches read 74 / 57 / 28–29), but `P(74)` among low launches is 0.625, so 8-for-8 is
+**p ≈ 0.023 framed after seeing the data** — suggestive, not established, and not a finding
+to build on without a pre-registered arm.
+
+So a `cellSweepHome` figure that moves between launches is telling you about Home's PAGE
+LOAD. Reading it as a property of scrolling is the mistake this line exists to stop — and it
+is a mistake this project made for several sessions, attributing a bimodal `binds` count to
+buffer depth and row recycling when the sweep had been a constant the whole time.
+
+Home's load is bimodal (~20–30% of launches), and the split locates it precisely. The two
+modes are disjoint on the counters read BEFORE the sweep — `loadsStarted` **90–91** low against
+**100–102** high — and *indistinguishable* after it, contributing 16 binds and 75
+appearances in both:
+
+**Every cell below is a MEDIAN of its mode**, over the n=40 campaign split 32 low / 8 high.
+They are not launch values and not ranges, and the three read differently: the `binds` median
+before the sweep is 219, the one launch quoted at the top of this section read 218, and the
+full before-sweep spread is 206–235. All three are correct. A table of medians is the right
+summary for a bimodal quantity and the wrong thing to quote as a bound.
+
+| median per mode (n=40: 32 low, 8 high) | before sweep, low | before sweep, high | after the gate, low | after the gate, high |
+|---|---|---|---|---|
+| `binds` | 219 | **235** | 16 | 16 |
+| `loadsStarted` | 91 | **102** | 74 | 74 |
+| `appearances` | 25 | **34** | 75 | 75 |
+
+The right-hand columns say **after the gate**, not "during the sweep", and the difference is
+not pedantry: the gate opens with image loads still in flight, so those two columns hold the
+sweep's own work *plus* whatever tail crossed the seam. For `binds` and `appearances` that
+tail contributes nothing measurable — both are exactly constant across all 40 — which is why
+those two fields carry the argument and the others do not.
+
+**A related fact the same reading exposed: `waitRowsSettled` does not mean the cells are
+done.** It gates on row STRUCTURE going quiet, and at that instant Home had `loadsStarted` 91
+against `loadsSucceeded` 66 — **24–25 image loads still in flight** on a low-mode launch, and
+30–35 on a high-mode one. That is correct behavior for the gate (it was never a cell gate)
+but it is not what "settled in 1977 ms" reads like, and a sweep that starts there is
+overlapping the tail of the page load.
+
+**The at-gate read was checked for perturbation rather than assumed harmless**, because it
+adds an ODC round trip at a moment the app is demonstrably still working. The first probe arm
+produced 1/20 high-mode launches against the no-probe baseline's 6/20, which looks like
+suppression; a replication arm produced 7/20, pooling to **8/40 against 6/20, Fisher exact
+two-sided p = 0.52**. No evidence of suppression — do not re-derive this from the first arm
+alone.
+
+⚠️ **But read that as "no evidence", not as "no effect", because the two probe arms disagree
+with each other more than either disagrees with the baseline**: 1/20 against 7/20 is Fisher
+two-sided **p = 0.044**, where each arm against the baseline is p = 0.09 and p = 1.00. "The
+first arm was chance" is one reading; "the high-mode RATE drifts between blocks" fits at
+least as well, and it is the less comfortable one — the rate claims on this page (~20–30% of
+launches; 8/40 = 20% here against the baseline's 6/20 = 30%) are exactly what an unstable
+rate would undermine. Settling it needs arms interleaved within a block rather than run as
+blocks, which no campaign here has done.
+
 That second line is the only record of the distance traveled — `measure` writes down the
 `nav`'s NAME, not its itinerary — so keep it beside any figure you publish. The travel
 distances live in `CELL_SWEEP` in [`tests/rta/lib/nav.js`](../../tests/rta/lib/nav.js) and
@@ -528,8 +621,13 @@ one real 12-row / 128-item server, one build) pinned every harness-side quantity
 [`waitRowsSettled`](../../tests/rta/lib/steps.js) gate, the row structure measured already
 stable before the first key press (`settled in 1983–2048 ms`, the `quietMs` floor plus one
 poll). `binds` still spans **235–255**. So Home binds a different number of cells over an
-identical, settled workload, and the question belongs to `HomeRows` / `JRRowItem`, not to
-`tests/rta/`. Two harness fixes were tried and neither moved the dispersion: the settle gate
+identical ITINERARY, and the question belongs to `HomeRows` / `JRRowItem`, not to
+`tests/rta/`. ⚠️ **An earlier draft said "identical, settled workload" and that is now known
+to be wrong** — [the before/after split](#the-totals-are-cumulative--on-home-most-of-them-are-not-the-sweeps)
+shows the state at gate-open is itself bimodal (`loadsStarted` 90–91 low against 100–102
+high, disjoint), so what the settle gate pins is the row STRUCTURE and the walk, not the
+workload. The conclusion above survives intact; the reason it is an app question is that the
+divergence happens during PAGE LOAD, before the first key press. Two harness fixes were tried and neither moved the dispersion: the settle gate
 (|z| < 1.7 on every field, medians 242 vs 242) and a doubled wait before the sweep (worse —
 `binds` range 17 against 7 at n=5). ⚠️ **A pilot at n=5 made the settle gate look like a clean win**
 (`appearances` 105×5, `popIns` 42×5) and n=20 erased it; on a discrete, clustered
