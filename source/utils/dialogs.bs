@@ -316,7 +316,7 @@ const MAX_BUTTON_ROW_CHOICES = 3
 ' only on genuinely long labels.
 '
 ' (This previously claimed to mirror JRDialog's PANEL_WIDTH and to describe a
-' row centered UNDER the panel. Neither was true: PANEL_WIDTH is 760, and the
+' row centered UNDER the panel. Neither was true: PANEL_WIDTH is 762, and the
 ' row moved inside the panel in #757.)
 const BUTTON_ROW_MAX_WIDTH = 900
 

@@ -1105,7 +1105,7 @@ The `no-task-fanout` plugin keys on the launched ARGUMENT's stability, not on th
 
 **date**: 2026-08-23
 **status**: accepted
-**related-files**: `components/login/UserSelect.bs`, `components/quickConnect/QuickConnectDialog.bs`, `source/utils/dialogs.bs`, `source/utils/quickConnect.bs`
+**related-files**: `components/login/UserSelect.bs`, `components/dialogs/QuickConnectDialog.bs`, `source/utils/dialogs.bs`, `source/utils/quickConnect.bs`
 
 Quick Connect's three requests — initiate, poll for approval, exchange the secret — run in `UserSelect`, and `QuickConnectDialog` is a pure view that shows a code and a Cancel button. The dialog used to own all of it, plus a `QuickConnect` Task node it re-created on every 3-second poll and a `user.Login()` call on that task thread.
 
@@ -1135,7 +1135,7 @@ The RTA suite tests Quick Connect end to end by approving its own code: `POST /Q
 
 **The move that generalizes is to ask what the missing actor actually needs to be.** "Needs a second device" was really "needs a second authenticated API caller", and the suite had been one since it started seeding registries. Verified against the live server before the test was written (initiate → authorize → connect reports `Authenticated` → exchange returns an `AccessToken`), per the `tests/rta/CLAUDE.md` rule about checking a capability-dependent assertion against the real server first; an unknown code answers 404, so the helper throws rather than returning false.
 
-**Two constraints ride along.** The spec skips rather than fails when the server reports Quick Connect disabled, because that is a fact about the fixture — which matters more now that `RTA_CONFIG.server` can be aimed at another server via `JELLYFIN_SERVER_URL`. And it answers the save-credentials prompt "No", so a run signs in without writing an `authToken` into the device registry; `scripts/rta-run.js` would restore it either way, but the test does not lean on that.
+**Two constraints ride along.** The spec skips rather than fails when the server reports Quick Connect disabled, because that is a fact about the fixture — which matters more now that `RTA_CONFIG.server` can be aimed at another server via `RTA_SERVER_URL`. And it answers the save-credentials prompt "No", so a run signs in without writing an `authToken` into the device registry; `scripts/rta-run.js` would restore it either way, but the test does not lean on that.
 
 ## Migrated to ADRs
 
