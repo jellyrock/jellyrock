@@ -1,0 +1,20 @@
+import "pkg:/source/utils/misc.bs"
+
+#if ENABLE_RTA
+
+  sub init()
+    m.top.functionName = "probeGaa"
+  end sub
+
+  ' Reads the render thread's sentinel out of this thread's GetGlobalAA(), reports what
+  ' it found, and leaves one of its own so the check runs in both directions. A
+  ' one-directional result could be explained by write ordering; two cannot.
+  sub probeGaa()
+    gaa = GetGlobalAA()
+    seen = ""
+    if isValid(gaa.gaaSentinelFromRender) then seen = gaa.gaaSentinelFromRender
+    m.top.seen = seen
+    gaa.gaaSentinelFromTask = "task-wrote-this"
+  end sub
+
+#end if

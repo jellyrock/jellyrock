@@ -730,3 +730,9 @@
 (?:lexically)\.
 (?:interprocedural)\.
 (?:closable)\.
+(?:de-duplicates)\.
+(?:dev-only)\.
+(?:postcondition)\.
+(?:postconditions)\.
+(?:pre-ship)\.
+(?:µs)\.

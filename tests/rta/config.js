@@ -7,10 +7,16 @@
 export const RTA_CONFIG = {
   // Demo Jellyfin server the screens are driven against. License-clear content
   // only (the screenshots ship in a public store listing). Easy to repoint.
+  // Overridable by env so a one-off measurement can run against a RICHER fixture
+  // without editing this shared default (the screenshot orchestrator reads it too,
+  // and a checked-in repoint would silently change what ships in the store listing).
+  // The demo server is a CONTROL, not a substitute: ~3 libraries against a real
+  // server's ~10, so anything that scales with library count reads LOW on it.
+  //   RTA_SERVER_URL=http://host:8096 RTA_SERVER_USER=me RTA_SERVER_PASS= npm run test:rta
   server: {
-    url: 'https://demo.jellyfin.org/stable',
-    username: 'demo',
-    password: '',
+    url: process.env.RTA_SERVER_URL ?? 'https://demo.jellyfin.org/stable',
+    username: process.env.RTA_SERVER_USER ?? 'demo',
+    password: process.env.RTA_SERVER_PASS ?? '',
   },
   // The movie used for movieDetails + osd. Reached in the Movies grid by its
   // SortName tile index, looked up at runtime (see findMovie), so this name is

@@ -42,3 +42,4 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0028](0028-mount-identity-component-and-variant.md) | A mount's identity is component AND variant; one selection rule serves every reader (partially supersedes 0027) | Accepted | 2026-08-14 |
 | [0029](0029-destroy-routed-screens-on-pop.md) | Routed screens suspend while covered and are destroyed on pop; never `keepAlive` | Accepted | 2026-08-14 |
 | [0030](0030-non-odc-arm-identity-by-enclosure.md) | A measurement arm with no ODC asserts its identity by enclosure, and records that it did | Accepted (unimplemented) | 2026-08-16 |
+| [0031](0031-task-thread-ceiling.md) | A production Task-thread ceiling that refuses, backed by a pre-ship peak gate | Accepted | 2026-08-23 |

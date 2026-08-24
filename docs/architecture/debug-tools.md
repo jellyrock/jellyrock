@@ -6,7 +6,7 @@ related-files:
   - components/JRScene.xml
   - source/utils/globals.bs
   - source/utils/tasks.bs
-last-reviewed: 2026-08-03
+last-reviewed: 2026-08-23
 ---
 
 # Debug Tools
@@ -151,9 +151,18 @@ Why key UP events: the JellyRock convention is for child components to return `f
 
 Roku OS caps an app instance at 100 concurrent threads and raises `&h29` past it — the crash class behind epic #728. The readout answers "how many Task threads are live right now?" on a real device, so that bound is measured rather than argued about.
 
-`launchTask()` (`source/utils/tasks.bs`) is the one place a Task thread starts; the `no-raw-run` BSC plugin makes a bare `control = "RUN"` anywhere else a build error. In a debug build each launch is recorded into `m.global.taskLedger`, and the count is **derived** on demand by reading each tracked node's `state` — a terminated thread stops counting toward Roku's cap even though the node stays valid, so `state` is the authoritative signal and a `control = "STOP"` needs no bookkeeping call of its own.
+`launchTask()` (`source/utils/tasks.bs`) is the one place a Task thread starts; the `no-raw-run` BSC plugin makes a bare `control = "RUN"` anywhere else a build error. Each launch is recorded into `m.global.taskLedger` (see [global-state.md](global-state.md#task-thread-ledger--mglobaltaskledger) for why that node field, and not the ~500× cheaper `GetGlobalAA()`), and the count is **derived** on demand by reading each tracked node's `state` — a terminated thread stops counting toward Roku's cap even though the node stays valid, so `state` is the authoritative signal and a `control = "STOP"` needs no bookkeeping call of its own.
 
-`m.global.taskLedger` is created by the first launch that records into it, not declared up front in `setGlobalNodes()`. That is deliberate and load-bearing: `setGlobalNodes()` starts five Task threads before it finishes, and a write to a field an `roSGNode` does not have yet is a **silent no-op** — declaring the field at the end of that sub dropped all five from the readout without a trace.
+The ledger ships now rather than being `#if debug`, and `launchTask()` **refuses** a launch above 50 live threads. `printTaskThreads()` reads whichever thread's ledger the console is paused on — usually the render thread, which is where every screen launch happens.
+
+⚠️ **`printTaskThreads()` is `#if debug`, and the committed manifest ships `debug=false`** — so it, and the `[TASKS] REFUSED` print, are compiled out of a default dev sideload. Seeing either costs a const flip and a rebuild. What does NOT is the refusal record under `#if perfTiming`, which ships **true** by default and is forced off for production:
+
+```brightscript
+?m.global.taskLedgerRefusals      ' how many launches the watermark has refused
+?m.global.taskLedgerFirstRefused  ' subtype of the FIRST one, i.e. the node that names the fan-out
+```
+
+Reach for those first when asking "did the ceiling fire?" — they need no rebuild, and they survive the whole session rather than scrolling past in a console.
 
 From the BrightScript console (port 8085), with the app paused at a breakpoint:
 

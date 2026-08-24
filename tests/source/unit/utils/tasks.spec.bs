@@ -5,10 +5,15 @@ namespace tests
   ' Covers the accounted launch chokepoint and the ledger arithmetic behind the
   ' derived thread count (epic #728, Phase 1).
   '
-  ' Only the PURE core is reachable here: the ledger's `m.global` shell is inside
-  ' `#if debug`, and test builds compile against the same `manifest`, where
-  ' `bs_const=debug=false`. So `launchTask()` under test does NOT record into the
-  ' ledger — the arithmetic is driven directly, which is the point of the split.
+  ' `launchTask()` records into `m.global.taskLedger` in EVERY build, so the ceiling
+  ' tests below drive the real thing rather than the arithmetic alone. Only the
+  ' `printTaskThreads()` readout is still `#if debug`, and test builds compile against
+  ' the same `manifest` (`bs_const=debug=false`), so that one is unreachable here —
+  ' which is why the arithmetic lives outside the gate and takes its store as a
+  ' parameter.
+  '
+  ' ⚠️ These tests write the SHARED global node. Every one that seeds the ledger must
+  ' reset it to depth 0 before it returns, or the next test inherits the seed.
   '
   ' `ServerReachableTask` is the fixture because its `init()` only sets
   ' `functionName` — creating one starts no thread and touches no server.
@@ -19,11 +24,42 @@ namespace tests
       super.setup()
     end function
 
+    ' Seeds `m.global`'s ledger `depth` entries deep from never-launched Task nodes,
+    ' and leaves it that way — the suite shares the real global node, so every test
+    ' that seeds it must also reset it (depth 0) rather than leak into the next one.
+    protected function seedGlobalLedger(depth as integer) as void
+      if not m.global.hasField("taskLedger") then m.global.addField("taskLedger", "array", false)
+      m.global["taskLedger"] = m.ledgerOfDepth(depth)
+    end function
+
+    ' A ledger `depth` entries deep, built from never-launched Task nodes.
+    protected function ledgerOfDepth(depth as integer) as object
+      seeded = []
+      for i = 1 to depth
+        seeded.push(m.freshTask())
+      end for
+      return seeded
+    end function
+
     ' A Task node that has never been launched. Its thread does not exist yet,
     ' but SceneGraph already reports a state — which is exactly what the
     ' liveness rule has to be correct about.
     protected function freshTask() as object
       return CreateObject("roSGNode", "ServerReachableTask")
+    end function
+
+    ' The apparatus floor: the same loop doing the cheapest possible body. Whatever this
+    ' reads is measurement overhead present in the timed cell, and it is SUBTRACTED
+    ' rather than argued to be negligible.
+    protected function benchFloor(iterations as integer) as float
+      node = m.freshTask()
+      total = 0
+      probe = CreateObject("roTimespan")
+      probe.mark()
+      for i = 1 to iterations
+        if isValid(node) then total++
+      end for
+      return probe.totalMicroseconds() / iterations
     end function
 
     ' A Task node driven to a terminated state. Session-2 measurement on device
@@ -193,6 +229,228 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the ceiling — admitTaskLaunch() and its safety bound")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' THE BOUND THAT MAKES REFUSAL SAFE RATHER THAN HOPEFUL.
+    '
+    ' The ledger is a shared field on `m.global`, so every thread's launches land in
+    ' it and the count is exact rather than a lower bound. The watermark still has to
+    ' leave room under Roku's 100-thread cap for the threads the app does not start
+    ' through `launchTask()` at all — the vendored `WebSocketClient` that
+    ' `RemoteControlTask` owns is outside both this ledger and the `no-raw-run` rule.
+    '
+    ' Asserted rather than left in a comment because the failure is silent: raise the
+    ' watermark to 95 and everything still passes, still counts, still refuses — and
+    ' the app crashes at 100 anyway with the untracked threads on top. A comment does
+    ' not fail; this does.
+    @it("keeps the watermark far enough below Roku's cap for the unseen main-thread floor")
+    function _()
+      ROKU_THREAD_CAP = 100
+      UNTRACKED_MAX = 20 ' generous bound on threads started outside launchTask()
+
+      m.assertTrue(TASK_THREAD_WATERMARK + UNTRACKED_MAX < ROKU_THREAD_CAP, "watermark " + TASK_THREAD_WATERMARK.toStr() + " + untracked threads leaves no room under Roku's " + ROKU_THREAD_CAP.toStr() + "-thread cap")
+      m.assertTrue(TASK_THREAD_WATERMARK > 11, "watermark must sit above the measured real-world peak of 11, or normal use trips it")
+    end function
+
+    ' THE FEATURE ITSELF: does it actually refuse?
+    '
+    ' Depth is built from NEVER-LAUNCHED Task nodes. A fresh node reports
+    ' `state = "init"`, which `taskThreadIsLive` counts as live, so a 51-deep ledger
+    ' exercises the ceiling while starting ZERO threads — the test cannot provoke the
+    ' `&h29` it exists to prevent.
+    @it("refuses a launch when the ledger is already well above the watermark")
+    function _()
+      m.seedGlobalLedger(TASK_THREAD_WATERMARK + 1)
+
+      admitted = launchTask(m.freshTask())
+
+      m.assertFalse(admitted, "a launch at the watermark must be refused")
+      m.seedGlobalLedger(0)
+    end function
+
+    ' REGRESSION: the first cut of the refusal path left the rejected node IN the
+    ' ledger. A never-launched node reports "init" — counted as live, never pruned —
+    ' so every refusal permanently raised the count by one and the app ratcheted
+    ' itself shut. The refusal is silent in production, so nothing would have
+    ' surfaced it; only the count moving proves the node was taken back out.
+    @it("does not grow the ledger when it refuses")
+    function _()
+      m.seedGlobalLedger(TASK_THREAD_WATERMARK + 1)
+      before = countLiveTaskThreads(m.global["taskLedger"])
+
+      launchTask(m.freshTask())
+      launchTask(m.freshTask())
+      launchTask(m.freshTask())
+
+      m.assertEqual(countLiveTaskThreads(m.global["taskLedger"]), before, "three refusals must leave the count exactly where it was")
+      m.seedGlobalLedger(0)
+    end function
+
+    ' ══ THE BOUNDARY. The one line the whole feature reduces to. ══
+    '
+    ' `admitTaskLaunch` admits while `candidate.count() <= TASK_THREAD_WATERMARK`, and
+    ' `count` is the seeded depth PLUS the node being launched. So the only input that
+    ' discriminates the correct comparison from an off-by-one is count == WATERMARK,
+    ' reached by seeding WATERMARK - 1.
+    '
+    ' PROVEN, not assumed: with only the depth-51 test below, mutating `<=` to `<` left
+    ' the entire 28-test suite green — a silent change of the effective ceiling from 50
+    ' to 49. A control mutation (deleting the refusal path's `pop()`) went red in the
+    ' same harness, so the survival was a real gap and not an unapplied edit. This test
+    ' is the ONLY one that goes red on that mutation — including the refusal test right
+    ' below it, which passes under both spellings.
+    @it("admits the launch that lands exactly ON the watermark")
+    function _()
+      m.seedGlobalLedger(TASK_THREAD_WATERMARK - 1)
+      node = m.freshTask()
+      ' Unroutable (RFC 5737 TEST-NET-1): this launch is ADMITTED, so it starts a real
+      ' thread. The seeded depth starts none — never-launched nodes report "init" — so
+      ' the whole test costs exactly one parked thread.
+      node.baseUrl = "http://192.0.2.1:8096"
+
+      admitted = launchTask(node)
+
+      m.assertTrue(admitted, "a launch bringing the count to exactly the watermark must be ADMITTED — refusing here means the effective ceiling is one lower than TASK_THREAD_WATERMARK says")
+      m.assertEqual(countLiveTaskThreads(m.global["taskLedger"]), TASK_THREAD_WATERMARK)
+      node.control = "STOP"
+      m.seedGlobalLedger(0)
+    end function
+
+    ' The other side of the same line, and the boundary the header prose actually
+    ' states ("REFUSES above TASK_THREAD_WATERMARK live threads"). It survives the
+    ' `<=`/`<` mutation — both spellings refuse here — so it pins the documented
+    ' contract rather than the comparison. Both tests are needed; they do different jobs.
+    @it("refuses the launch that would carry the count past the watermark")
+    function _()
+      m.seedGlobalLedger(TASK_THREAD_WATERMARK)
+
+      admitted = launchTask(m.freshTask())
+
+      m.assertFalse(admitted, "a launch that would take the count above the watermark must be refused")
+      m.assertEqual(countLiveTaskThreads(m.global["taskLedger"]), TASK_THREAD_WATERMARK, "a refusal must leave the ledger exactly at the watermark")
+      m.seedGlobalLedger(0)
+    end function
+
+    @it("admits and records a launch below the watermark")
+    function _()
+      m.seedGlobalLedger(0)
+      node = m.freshTask()
+      ' Unroutable (RFC 5737 TEST-NET-1) so the thread parks on connect instead of
+      ' reaching a real server.
+      node.baseUrl = "http://192.0.2.1:8096"
+
+      admitted = launchTask(node)
+
+      m.assertTrue(admitted, "a launch well below the watermark must be admitted")
+      m.assertEqual(countLiveTaskThreads(m.global["taskLedger"]), 1)
+      node.control = "STOP"
+      m.seedGlobalLedger(0)
+    end function
+
+    ' `m` REVERTS TO THE COMPONENT-GLOBAL AA ACROSS A PLAIN FUNCTION CALL, which is
+    ' what makes the ceiling reachable from a class at all.
+    '
+    ' `admitTaskLaunch` resolves the ledger through `m.global`, and inside a
+    ' BrighterScript class `m` is the INSTANCE — writing `m.global` in a class body is
+    ' a compile error (`cannot-find-name: Cannot find name 'global'`). So a launch from
+    ' `MoviePresenter.loadLogo()` looks like it should hit the bootstrap guard, be
+    ' admitted WITHOUT being recorded, and silently bypass the watermark.
+    '
+    ' It does not. `launchTask(node)` is a plain function call rather than a method
+    ' call, so `m` inside it is the component-global AA, not the caller's instance.
+    ' Verified on device rather than reasoned about — the mechanism is invisible in
+    ' review and the failure it would cause is silent (a correct-looking app whose
+    ' ledger quietly under-reports).
+    '
+    ' Kept as a regression guard: this holds because of HOW the chokepoint is invoked.
+    ' Making `admitTaskLaunch` a method, or resolving the store from a caller-supplied
+    ' `m`, would reintroduce the hole with nothing else to catch it.
+    @it("records a launch made from inside a class")
+    function _()
+      m.seedGlobalLedger(0)
+
+      frame = new tests.ClassFrameLauncher()
+      frame.go(m.freshTask())
+
+      m.assertEqual(countLiveTaskThreads(m.global["taskLedger"]), 1, "a launch from a class frame must still reach the shared ledger; m.global is Invalid inside a class, so resolving it must fall back to GetGlobalAA().global")
+      m.seedGlobalLedger(0)
+    end function
+
+    ' `admitTaskLaunch` reads `.count()` as the live count instead of walking again.
+    ' That is only valid because pruning keeps live entries ONLY. If someone makes
+    ' pruning retain a finished node, the ceiling silently starts over-counting and
+    ' refuses early — with no test failing anywhere near the change.
+    @it("leaves a pruned ledger whose count IS its live count")
+    function _()
+      ledger = [m.runningTask(), m.stoppedTask(), m.runningTask(), m.stoppedTask()]
+
+      pruned = pruneTaskLedger(ledger, invalid)
+
+      m.assertEqual(pruned.count(), countLiveTaskThreads(pruned), "count() must equal the live count for the ceiling's O(1) check to be correct")
+      m.assertEqual(pruned.count(), 2)
+    end function
+
+    ' The refusal path pops the LAST entry to undo its own record. That is correct
+    ' only while pruning appends the recorded node last.
+    @it("appends the recorded node last, which is what the refusal path pops")
+    function _()
+      existing = m.runningTask()
+      node = m.freshTask()
+
+      kept = pruneTaskLedger([existing], node)
+
+      m.assertEqual(kept.count(), 2)
+      m.assertTrue(kept[kept.count() - 1].isSameNode(node), "the recorded node must be last")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the platform premise the whole ledger rests on")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A GATE, not a perf test — and the only survivor of what used to be
+    ' `taskLedgerCost.spec.bs`. The rest of that file was a benchmark table, now
+    ' superseded by the render-thread apparatus in `components/testing/TaskLedgerBench.bs`
+    ' and recorded in docs/architecture/threading.md; a printout that asserts nothing does
+    ' not belong in a per-PR device suite.
+    '
+    ' What has to stay is the premise. The entire case for a PRODUCTION-resident ledger is
+    ' that a field read on a node the READING thread owns is cheap — every launch pays one,
+    ' on the render thread, where `m.global` is local. Measured 2026-08-23: 1.57 us on a
+    ' Stick 4K and 0.625 us on an Ultra, against 63-118 us for the same read of a
+    ' render-owned node from a Task thread.
+    '
+    ' 10 us is ~6x the slowest measured value, so this is a tripwire for the COST MODEL
+    ' BEING WRONG, not a tight assertion that will flake. If a future Roku OS makes even
+    ' same-thread node access expensive, the ledger stops being affordable anywhere — and
+    ' this fails loudly instead of the conclusion rotting quietly in a doc.
+    @it("keeps a thread-local node field read cheap")
+    function _()
+      ITERATIONS = 200
+      floor = m.benchFloor(ITERATIONS)
+
+      localNode = CreateObject("roSGNode", "Node")
+      localNode.id = "premise"
+
+      sink = ""
+      probe = CreateObject("roTimespan")
+      probe.mark()
+      for i = 1 to ITERATIONS
+        sink = localNode.id
+      end for
+      localUs = probe.totalMicroseconds() / ITERATIONS - floor
+
+      ' THE POSTCONDITION, asserted rather than printed. A reading at or below the
+      ' apparatus floor is indistinguishable from a loop that never ran, and this branch
+      ' has already been bitten twice by exactly that — `GetGlobalAA()` measuring "free"
+      ' and `m.global.taskLedger.push()` measuring 58 us while doing nothing. The old
+      ' version of this cell printed `(sink len 0)` because it shared one sink across
+      ' three reads and the last was legitimately empty.
+      m.assertTrue(Len(sink) > 0, "the timed reads did not execute, so the timing below measures nothing")
+      m.assertTrue(localUs < 10, "a thread-local node field read cost " + localUs.toStr() + " us; the production-ledger cost model assumes this is cheap")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("recordTaskLaunch() — the ledger's storage")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -307,6 +565,15 @@ namespace tests
       m.assertEqual(countLiveTaskThreads(readBack), 1)
     end function
 
+  end class
+
+
+  ' Stands in for `MoviePresenter.loadLogo()` — a launch made from inside a class, where
+  ' `m` is the instance and `m.global` is therefore not the global node.
+  class ClassFrameLauncher
+    public function go(node as object) as boolean
+      return launchTask(node)
+    end function
   end class
 
 end namespace
