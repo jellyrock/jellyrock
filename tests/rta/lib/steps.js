@@ -141,7 +141,7 @@ async function batchRead(keyPaths, toRequest) {
 export async function waitFor(
   keyPath,
   predicate,
-  { timeout = 30000, interval = 500, action, label, read = getVal } = {},
+  { timeout = 30000, interval = 500, action, label, read = getVal, observed } = {},
 ) {
   const start = Date.now();
   let last;
@@ -159,9 +159,30 @@ export async function waitFor(
       kind: FAILURE_KINDS.WAIT_FOR_TIMEOUT,
       label: label || keyPath,
       waitedMs: Date.now() - start,
-      observed: { keyPath, last, actionErrors },
+      // The caller's own context, merged over the loop's. `tests/rta/CLAUDE.md` already
+      // prefers "passing state the loop ALREADY read as `observed`" — this is the same
+      // idea for state only the CALLER has: what it was standing on when it acted, or a
+      // reading that only makes sense to take once the wait has given up.
+      //
+      // A function is awaited HERE, on the failure path, so a caller can attach a device
+      // read without paying for it on every successful wait — the same rule
+      // `diagnosedError` follows for its own dump. It must not be able to replace the
+      // failure with its own: a throwing or slow reader loses its contribution and the
+      // timeout still reports.
+      observed: { keyPath, last, actionErrors, ...(await resolveObserved(observed)) },
     },
   );
+}
+
+/** Resolve a caller-supplied `observed`, never letting it replace the failure it describes. */
+async function resolveObserved(observed) {
+  if (!observed) return {};
+  if (typeof observed !== 'function') return observed;
+  try {
+    return (await observed()) ?? {};
+  } catch {
+    return { observedReadFailed: true };
+  }
 }
 
 /**

@@ -41,6 +41,7 @@ vi.mock('roku-test-automation', () => ({
 const {
   getActiveVals,
   getVals,
+  waitFor,
   resendIfSwallowed,
   resendUntilFocusInside,
   walkHomeToFirstRow,
@@ -1059,6 +1060,51 @@ describe('waitRowsSettled', () => {
     expect(res).toMatchObject({ settled: false, resolved: true, rows: 2 });
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('never held still'));
     warn.mockRestore();
+  });
+});
+
+describe("waitFor's caller-supplied observed", () => {
+  // The failure that motivated it: a confirm dialog that never appeared, where the
+  // throw-time dump was taken 10s late and could not say what the press had landed on.
+  // Only the CALLER knows that, so it needs a way to attach it.
+  it('merges a plain object into the record', async () => {
+    getValue.mockResolvedValue({ found: true, value: 0 });
+    const err = await waitFor('#x', (v) => v === 99, {
+      timeout: 1,
+      observed: { pressedOnId: 'watchedButton' },
+    }).catch((e) => e);
+    // `diagnosedError` returns a plain Error and renders `observed` INTO the message —
+    // that is the artifact a human reads in the terminal, so it is what to assert on.
+    expect(err.message).toContain('pressedOnId="watchedButton"');
+  });
+
+  it('awaits a FUNCTION, so a device read is paid for only when the wait fails', async () => {
+    getValue.mockResolvedValue({ found: true, value: 0 });
+    const reader = vi.fn(async () => ({ detailType: 'Movie' }));
+    const err = await waitFor('#x', (v) => v === 99, { timeout: 1, observed: reader }).catch(
+      (e) => e,
+    );
+    expect(reader).toHaveBeenCalledTimes(1);
+    expect(err.message).toContain('detailType="Movie"');
+  });
+
+  it('never runs the reader on a wait that SUCCEEDS', async () => {
+    getValue.mockResolvedValue({ found: true, value: 7 });
+    const reader = vi.fn(async () => ({}));
+    await waitFor('#x', (v) => v === 7, { timeout: 500, observed: reader });
+    expect(reader).not.toHaveBeenCalled();
+  });
+
+  it('still reports the timeout when the reader throws — a diagnostic may not replace the failure', async () => {
+    getValue.mockResolvedValue({ found: true, value: 0 });
+    const err = await waitFor('#x', (v) => v === 99, {
+      timeout: 1,
+      observed: async () => {
+        throw new Error('device stopped answering');
+      },
+    }).catch((e) => e);
+    expect(err.message).toContain('timed out');
+    expect(err.message).toContain('observedReadFailed');
   });
 });
 

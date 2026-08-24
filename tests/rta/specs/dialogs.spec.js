@@ -33,6 +33,7 @@ import {
   stopPlayback,
   PLAYING_STATES,
   getVal,
+  getActiveVals,
   press,
   sleep,
 } from '../lib/steps.js';
@@ -189,6 +190,13 @@ it('series watched button opens the standard confirm dialog; back cancels it', a
     label: 'watched button focused in group',
     timeout: 8000,
   });
+  // What we were standing on WHEN WE PRESSED. The throw-time dump cannot answer this:
+  // it is taken 10s later, by which point the button group has settled and focus reads
+  // `#watchedButton` whether or not that is where the press landed — which is exactly
+  // the dump every occurrence of this failure has produced, and why two different
+  // explanations both fitted it.
+  const pressedOn = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+  const pressedIndex = await getVal('#buttons.buttonFocused');
   await press(ecp.Key.Ok);
 
   // The JRDialog overlay mounts on the scene with two TextButtons under the panel.
@@ -196,6 +204,29 @@ it('series watched button opens the standard confirm dialog; back cancels it', a
   await waitFor('#buttonRow.getChildCount()', (n) => n === 2, {
     label: 'confirm dialog button row',
     timeout: 10000,
+    // No confirm appeared. `onWatchedButtonPressed` opens one for ANY `item.type =
+    // "Series"`, so there are only two ways here: the press did not land on
+    // `watchedButton`, or this detail is not a Series and `toggleWatched()` ran
+    // silently. Both produce an identical dump, and a Movie detail has a
+    // `#watchedButton` too — so read the TYPE, which separates them outright.
+    // `#extrasGrid` carries it (`ExtrasRowList.loadParts` sets `m.top.type`), scoped to
+    // the active view because every ItemDetails has one.
+    observed: async () => {
+      const [type, parentId, title] = await getActiveVals([
+        '#extrasGrid.type',
+        '#extrasGrid.parentId',
+        '#videoTitle.text',
+      ]);
+      return {
+        detailType: type,
+        detailId: parentId,
+        detailTitle: title,
+        pressedOnId: pressedOn?.node?.id,
+        pressedOnSubtype: pressedOn?.node?.subtype,
+        pressedIndex,
+        wantedIndex: watchedIndex,
+      };
+    },
   });
 
   if (CAPTURE) await captureRawUI('confirmDialog');
