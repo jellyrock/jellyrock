@@ -63,6 +63,26 @@ describe('resolveServer', () => {
     expect(resolveServer({}).password).toBe(PUBLIC_DEMO_SERVER.password);
   });
 
+  // dotenv strips whitespace around an UNQUOTED value but preserves it inside a
+  // QUOTED one, so `RTA_SERVER_URL="  http://x  "` is the shape that actually
+  // arrives here still padded — and a padded url reaches the driver as a broken
+  // one. Trimming the emptiness TEST without trimming the VALUE would leave that.
+  it('trims a padded url and username rather than passing the padding through', () => {
+    const resolved = resolveServer({
+      RTA_SERVER_URL: '  http://jellyfin.test:8096  ',
+      RTA_SERVER_USER: '  charlie  ',
+    });
+    expect(resolved.url).toBe('http://jellyfin.test:8096');
+    expect(resolved.username).toBe('charlie');
+  });
+
+  // The other half of that asymmetry: surrounding spaces can be part of a real
+  // password, so this field takes its value verbatim. Pinned so a later tidy-up
+  // that "consistently" trims all three cannot quietly corrupt a credential.
+  it('does NOT trim the password', () => {
+    expect(resolveServer({ RTA_SERVER_PASS: '  s p a c e d  ' }).password).toBe('  s p a c e d  ');
+  });
+
   // Callers hold this for a whole run (and `demos/run.mjs` compares against
   // PUBLIC_DEMO_SERVER for its privacy guard), so it must not be mutable.
   it('returns a frozen object', () => {

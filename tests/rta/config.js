@@ -56,8 +56,10 @@ export const PUBLIC_DEMO_SERVER = Object.freeze({
  * these keys, and dotenv turns a bare `RTA_SERVER_URL=` into the empty STRING —
  * which `??` accepts, so a contributor who copied the example verbatim (the
  * documented onboarding step) got `url: ''` and a suite that drove nothing.
- * Neither field has a meaningful empty value, so empty reads as unset. Trimmed
- * too, because a trailing space in a `.env` line is invisible in a diff.
+ * Neither field has a meaningful empty value, so empty reads as unset. The VALUE
+ * is trimmed as well as the test: dotenv strips whitespace around an unquoted
+ * value but preserves it inside a quoted one, so `RTA_SERVER_URL="  http://x  "`
+ * would otherwise reach the driver with its padding still attached.
  *
  * `password` deliberately keeps `??`: empty IS the public demo's real password,
  * so it has to survive as an override rather than falling back.
@@ -71,10 +73,18 @@ export const PUBLIC_DEMO_SERVER = Object.freeze({
  * @param {{url: string, username: string, password: string}} fallback
  */
 export function resolveServer(env = process.env, fallback = PUBLIC_DEMO_SERVER) {
-  const isSet = (value) => value !== undefined && value.trim() !== '';
+  // undefined for "not overridden", so `??` below does the falling back. Trims the
+  // value it returns, not just the emptiness test — see the header.
+  const override = (value) => {
+    if (value === undefined) return undefined;
+    const trimmed = value.trim();
+    return trimmed === '' ? undefined : trimmed;
+  };
   return Object.freeze({
-    url: isSet(env.RTA_SERVER_URL) ? env.RTA_SERVER_URL : fallback.url,
-    username: isSet(env.RTA_SERVER_USER) ? env.RTA_SERVER_USER : fallback.username,
+    url: override(env.RTA_SERVER_URL) ?? fallback.url,
+    username: override(env.RTA_SERVER_USER) ?? fallback.username,
+    // NOT `override`: empty is the public demo's real password, and surrounding
+    // spaces can be part of a real one. This field takes the value verbatim.
     password: env.RTA_SERVER_PASS ?? fallback.password,
   });
 }
