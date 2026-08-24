@@ -9,7 +9,7 @@ related-files:
   - components/manager/QueueManager.bs
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
-last-reviewed: 2026-08-14
+last-reviewed: 2026-08-23
 ---
 
 # The User Journey
@@ -73,13 +73,15 @@ On submit, the view sets `preLoginIntent = "serverSubmitted"` (URL on `view.ente
 
 When there's no active user, `buildPublicUserList()` merges public users (`GetPublicUsers` → `/Users/Public`) with saved users for this server id into `PublicUserData` nodes, and navigates `/users`. `UserSelect` is a grid of avatars plus a **Quick Connect** button (gated on `m.global.server.isQuickConnectEnabled`). Components in `components/login/`: `UserSelect`, `UserRow`, `UserItem`.
 
-Intents from this view: `userSelected` (→ `onUserSelected`: tries saved token, then no-password login, else navigates `/login` with the username populated), `userBack` (→ delete server, navigate `/server`), `quickConnectRequested` (→ `onQuickConnectRequested` shows the self-contained `QuickConnectDialog`, which signals `isAuthenticated` on success → `quickConnectComplete` intent → `finishLogin`).
+Intents from this view: `userSelected` (→ `onUserSelected`: tries saved token, then no-password login, else navigates `/login` with the username populated), `userBack` (→ delete server, navigate `/server`), `quickConnectAuthenticated` (→ `onQuickConnectAuthenticated`: `user.Login` on the handed-over `AuthenticationResult`, then `finishLogin`).
+
+**Quick Connect emits no intent when the button is pressed.** Its first three steps — initiate, poll for approval, exchange the secret — are network calls with no navigation between them, so they run on the render thread in `UserSelect` as `fetchAsync` promises, and only the finished session crosses to the coordinator. `QuickConnectDialog` is a pure view on the scene overlay channel: it shows the code and a Cancel button, and `UserSelect` owns the poll timer, the `showConfirmDialog` that asks whether to save credentials, and the teardown.
 
 ### `2c`. Authentication — `/login` (`LoginScene`)
 
 `LoginScene` presents the password keyboard (username populated when arriving from `/users`). On submit it sets `preLoginIntent = "credentialsSubmitted"` (username/password/`saveCredentials` on the view); `onCredentialsSubmitted` calls `getToken` and, on success, `user.Login` + persists per-user credentials (when "save credentials" is checked), then `finishLogin`. `loginBack` returns to `/users` if there were public users, else to `/server`.
 
-Across all paths, the four auth modes are unchanged: **token** (validate saved `authToken` via `AboutMe`), **no-password** (empty password for public users), **password** (keyboard), and **Quick Connect** (server returns an `AccessToken` for whichever user approved the code; bypasses user-pick + password). The Quick Connect endpoint is version-dispatched: `GET /QuickConnect/Initiate` on Jellyfin 10.7–10.8, `POST` on 10.9+ (routed by `ApiClient`).
+Across all paths, the four auth modes are unchanged: **token** (validate saved `authToken` via `AboutMe`), **no-password** (empty password for public users), **password** (keyboard), and **Quick Connect** (server returns an `AccessToken` for whichever user approved the code; bypasses user-pick + password). The Quick Connect endpoint is version-dispatched: `GET /QuickConnect/Initiate` on Jellyfin 10.7–10.8, `POST` on 10.9+ (routed by `ApiClient.BuildInitiateQuickConnectRequest`). All three Quick Connect requests go through the API pool, so the poll can read `res.statusCode` — a `404` from `/QuickConnect/Connect` is an expired or unknown secret, and is the only thing distinguishing a dead code from one nobody has approved yet.
 
 Successful login writes:
 

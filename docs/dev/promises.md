@@ -7,7 +7,7 @@ related-files:
   - components/JRGroup.bs
   - scripts/bsc-plugins/auto-abandon-promises.cjs
   - tests/source/unit/api/apiPromise.spec.bs
-last-reviewed: 2026-06-06
+last-reviewed: 2026-08-23
 ---
 
 # Promises How-To & Style Guide
@@ -184,10 +184,14 @@ shapes you'll hit:
 | `3a` | **Collapse a pure-fetch Task** | [`VideoPlayerView.fetchNextEpisode`](../../components/video/VideoPlayerView.bs) | A whole `.xml`+`.bs` Task (`GetNextEpisodeTask`) deleted; one `fetchRes` becomes a render-thread `fetchAsync().then().catch()`. The biggest DX win. |
 | `3b` | **Render-thread `submitApiRequest`+`observeField` → promise** | [`ItemDetails.checkTrailerAvailability`](../../components/ItemDetails.bs) | Swaps a named-observer result node for `fetchAsync().then()`. Uses the **`context`** AA to drop a result that lands after the user navigated away (no closures in BS). |
 | `3c` | **Main-thread caller → render-thread promise via `callFunc`** | [`ItemDetails.toggleFavorite`](../../components/ItemDetails.bs), invoked from [`main.bs`](../../source/main.bs)'s button router | The favorite toggle moves off `main.bs`'s god-loop. `main.bs` (main thread) calls `group.callFunc("toggleFavorite")`; the method runs on the render thread where `fetchAsync` works. Exercises the **error contract** (revert button + toast when `res.ok` is false or on reject). |
+| `3d` | **A dependent SEQUENCE on the render thread** | [`UserSelect.startQuickConnect`](../../components/login/UserSelect.bs) | Three requests where each depends on the last (initiate → poll until approved → exchange the secret), driven by a `Timer` between the polls rather than a loop. Replaced a Task node that was `CreateObject`ed **per poll**. The classification of each poll is extracted to a pure module ([`source/utils/quickConnect.bs`](../../source/utils/quickConnect.bs)) so the decision table is unit-testable without a pool. |
 
-> **Why no "two dependent calls" example?** Dependent fetch *sequences* in this codebase live
-> inside the Task orchestrators (`QuickPlayTask`, `LoadItemsTask`, …) that decision #3 deliberately
-> **keeps** as blocking `fetchRes`. Render-thread components almost always fire a single request, so
-> there's no honest render-thread chain to migrate. For the chaining + error-propagation pattern,
-> see the sequential-chain example under "Parallel requests" above and the library's README
-> (`auth → profile → image`).
+> **The "two dependent calls" case, and why it stayed rare.** Dependent fetch *sequences* mostly
+> live inside the Task orchestrators (`QuickPlayTask`, `LoadItemsTask`, …) that decision #3
+> deliberately **keeps** as blocking `fetchRes`, and render-thread components almost always fire a
+> single request — which is why this table had no such example until `3d`. What made Quick Connect
+> the exception is that its middle step is a *wait on a human*, so it cannot block a thread at all:
+> the second request repeats on a timer for as long as the user takes to walk to another device.
+> A blocking orchestrator would have to hold a Task thread open for minutes. For the plain
+> chaining + error-propagation pattern, see the sequential-chain example under "Parallel requests"
+> above and the library's README (`auth → profile → image`).

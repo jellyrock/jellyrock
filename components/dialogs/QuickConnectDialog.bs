@@ -1,0 +1,244 @@
+import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/dialogLayout.bs"
+import "pkg:/source/utils/dialogNarration.bs"
+import "pkg:/source/utils/dialogResult.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/quickConnect.bs"
+import "pkg:/source/utils/translate.bs"
+
+' Layout is DERIVED and computed exactly ONCE, from the two blocks this dialog
+' owns: the instruction and the code below it. Both are laid out through the
+' shared flow in source/utils/dialogLayout.bs — the instruction goes in the
+' SUBHEADING slot, because that slot's whole definition is "a lead line that sits
+' inside the body's space, so the pair reads as one block", which is precisely
+' the relationship between "enter this code" and the code. Using it means this
+' component does no layout arithmetic of its own.
+'
+' Width matches JRDialog's 762 deliberately: this dialog carries about as much
+' text as an alert and should be indistinguishable from one at a glance. That is
+' asserted rather than trusted — see the panel-width spec, which compares this
+' component's rendered panel against a rendered JRDialog rather than against the
+' literal below, so the two cannot drift apart silently.
+const PANEL_WIDTH = 762
+
+' Mirrors JRDialog's OPENING_ANNOUNCEMENT_DELAY. Duplicated rather than shared
+' because BrighterScript consts are file-scoped and JRDialog's is not visible
+' here; the value is one number with one reason, documented in full at its
+' original (the platform's own focus announcement FLUSHES ours, and SceneGraph
+' exposes no event for "the platform has finished speaking").
+const OPENING_ANNOUNCEMENT_DELAY = 0.15
+
+sub init()
+  m.log = new log.Logger("QuickConnectDialog")
+
+  m.chrome = m.top.findNode("chrome")
+  ' The chrome measures the title and publishes its height; the flow cannot be
+  ' computed until that exists.
+  m.chrome.observeField("titleHeight", "onTitleMeasured")
+
+  m.instructionText = m.top.findNode("instructionText")
+  m.codeLabel = m.top.findNode("quickConnectCode")
+  ' Layout depends on the rendered text heights — recompute when each settles.
+  m.instructionText.enableRenderTracking = true
+  m.instructionText.observeField("renderTracking", "onInstructionRendered")
+  m.codeLabel.enableRenderTracking = true
+  m.codeLabel.observeField("renderTracking", "onCodeRendered")
+
+  m.buttonRow = m.top.findNode("buttonRow")
+  m.cancelButton = createObject("roSGNode", "TextButton")
+  m.cancelButton.text = translate(translationKeys.ButtonCancel)
+  m.cancelButton.minWidth = DIALOG_BUTTON_MIN_WIDTH
+  ' Re-layout once the button knows its own size: the row's position and the
+  ' panel's height are both derived from it. (TextButton's `isReady`, not
+  ' renderTracking — see JRDialog.init for why those are not interchangeable.)
+  m.cancelButton.observeField("isReady", "onButtonReady")
+  m.buttonRow.appendChild(m.cancelButton)
+
+  m.buttonRow.observeField("focusedChild", "onButtonFocusChanged")
+  m.narrationTimer = m.top.findNode("narrationTimer")
+  m.narrationTimer.duration = OPENING_ANNOUNCEMENT_DELAY
+  m.narrationTimer.observeField("fire", "onOpeningAnnouncementDue")
+  m.hasNarrated = false
+
+  m.panelX = 0
+  m.resolved = false
+
+  applyLayout()
+end sub
+
+' SET THE TEXT FIELDS BEFORE PRESENTING, never after — see the field comments in
+' the XML. Each change handler only writes the label; `renderTracking` brings us
+' back to applyLayout() once the new text has actually laid out.
+sub onTitleChanged()
+  m.chrome.title = m.top.title
+end sub
+
+sub onTitleMeasured()
+  applyLayout()
+end sub
+
+sub onInstructionChanged()
+  m.instructionText.text = m.top.instruction
+end sub
+
+sub onInstructionRendered()
+  applyLayout()
+end sub
+
+sub onCodeChanged()
+  m.codeLabel.text = m.top.code
+end sub
+
+sub onCodeRendered()
+  applyLayout()
+end sub
+
+sub onButtonReady()
+  applyLayout()
+end sub
+
+' Position the chrome and the two body blocks. Safe to run repeatedly; it returns
+' early until every block it needs has actually been measured.
+sub applyLayout()
+  contentWidth = PANEL_WIDTH - (PANEL_PADDING * 2)
+  m.instructionText.width = contentWidth
+  m.codeLabel.width = contentWidth
+  ' The title cannot be measured until it knows how wide it may be.
+  m.chrome.contentWidth = contentWidth
+
+  ' A height of 0 means the block has not rendered yet, and its observer brings
+  ' us back when it has.
+  titleHeight = m.chrome.titleHeight
+  if m.top.title.len() > 0 and titleHeight = 0 then return
+
+  instructionHeight = 0
+  if m.top.instruction.len() > 0
+    instructionHeight = m.instructionText.localBoundingRect().height
+    if instructionHeight = 0 then return
+  end if
+
+  codeHeight = 0
+  if m.top.code.len() > 0
+    codeHeight = m.codeLabel.localBoundingRect().height
+    if codeHeight = 0 then return
+  end if
+
+  layout = computeDialogLayout({
+    panelWidth: PANEL_WIDTH,
+    titleHeight: titleHeight,
+    subheadingHeight: instructionHeight,
+    bodyHeight: codeHeight,
+    footerHeight: buttonRowHeight(),
+    footerInside: true
+  })
+
+  ' No overflow branch, unlike JRDialog: every string here is app-authored and
+  ' short (one instruction sentence and a server-issued code), so the ~600
+  ' characters it takes to reach PANEL_MAX_HEIGHT is not a shape a translation
+  ' can produce. If that ever stops being true the panel grows past the screen
+  ' visibly rather than silently, which is the direction that gets noticed.
+  m.chrome.layout = layout
+  m.instructionText.translation = [layout.subheading.x, layout.subheading.y]
+  m.codeLabel.translation = [layout.body.x, layout.body.y]
+
+  m.buttonRowY = layout.footer.y
+  m.panelX = layout.panel.x
+  centerButtonRow()
+  m.cancelButton.setFocus(true)
+end sub
+
+' Rendered height of the button row, or a computed fallback before it lays out
+' (localBoundingRect is 0 until the TextButton sizes itself).
+function buttonRowHeight() as integer
+  if isValid(m.buttonRow)
+    rect = m.buttonRow.localBoundingRect()
+    if rect.height > 0 then return rect.height
+  end if
+  ' TextButton: fontSize * 0.7 + padding * 2
+  return int(m.global.constants.fontSizeMedium * 0.7) + 60
+end function
+
+' Centre the row on the PANEL, not the screen.
+sub centerButtonRow()
+  if not isValid(m.buttonRowY) then return
+  rect = m.buttonRow.localBoundingRect()
+  rowWidth = rect.width
+  if rowWidth = 0 then return
+  m.buttonRow.translation = [m.panelX + ((PANEL_WIDTH - rowWidth) / 2), m.buttonRowY]
+end sub
+
+' Announce the whole dialog once the platform's own focus announcement is out of
+' the way — the timing is JRDialog's, measured on device.
+'
+' The code is spoken DIGIT BY DIGIT (see spokenQuickConnectCode): it is a string
+' the listener has to transcribe onto another device, and a spaced digit string
+' has exactly one pronunciation where a six-digit number has two.
+sub onButtonFocusChanged()
+  focused = m.buttonRow.focusedChild
+  if not isValid(focused) then return
+  if not m.hasNarrated
+    m.narrationTimer.control = "start"
+    return
+  end if
+  narrateFocusedElement(toString(focused.text))
+end sub
+
+sub onOpeningAnnouncementDue()
+  if m.hasNarrated then return
+  m.hasNarrated = true
+
+  focusedText = ""
+  focused = m.buttonRow.focusedChild
+  if isValid(focused) then focusedText = toString(focused.text)
+
+  body = []
+  if isValidAndNotEmpty(m.top.instruction) then body.push(m.top.instruction)
+  if isValidAndNotEmpty(m.top.code) then body.push(spokenQuickConnectCode(m.top.code))
+
+  narrateDialogOpening(m.top.title, body.join(". "), focusedText)
+end sub
+
+' Resolve exactly once, then close. This dialog has only one outcome of its own —
+' the user backing out — so there is no index to pass: approval arrives at the
+' OWNER from the server, which closes this dialog with abandonDialog() rather
+' than through here.
+sub resolveDialog()
+  if m.resolved then return
+  m.resolved = true
+
+  ' index -1 = cancelled, and there is no confirm index. The empty `buttons`
+  ' array is honest rather than lazy: buttonText is only ever read for a button
+  ' the user SELECTED, and no path here selects one.
+  m.top.result = buttonDialogResult(-1, -1, [])
+  closeDialog()
+end sub
+
+' Cancel from OUTSIDE — cancelOpenDialog() and presentOverlayDialog's supersede.
+' Routed through resolveDialog so the once-only guard and the standard cancelled
+' result both apply.
+sub cancelDialog()
+  resolveDialog()
+end sub
+
+' Dismiss this overlay: appended directly to the scene by dialogs.bs, so closing
+' is a removeChild from our parent plus restoring focus to the opener.
+sub closeDialog()
+  returnFocusTo = m.top.returnFocusTo
+  parent = m.top.getParent()
+  if isValid(parent) then parent.removeChild(m.top)
+  if isValid(returnFocusTo) then returnFocusTo.setFocus(true)
+end sub
+
+function onKeyEvent(key as string, press as boolean) as boolean
+  if not press then return false
+
+  ' Back and OK are the same action here: the only button is Cancel.
+  if key = "back" or key = "OK"
+    resolveDialog()
+    return true
+  end if
+
+  ' Modal containment: nothing else escapes to the scene behind us
+  return true
+end function

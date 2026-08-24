@@ -288,12 +288,8 @@ sub handlePreLoginIntent(action as string)
     routerNav("/login", { username: "" })
   else if action = "userBack"
     onUserBack()
-  else if action = "quickConnectRequested"
-    onQuickConnectRequested()
-  else if action = "quickConnectComplete"
-    ' Quick Connect completed the sign-in in-flow (user state already on m.global.user).
-    onQuickConnectDialogClosed()
-    finishLogin()
+  else if action = "quickConnectAuthenticated"
+    onQuickConnectAuthenticated()
   else if action = "credentialsSubmitted"
     onCredentialsSubmitted()
   else if action = "loginBack"
@@ -417,42 +413,41 @@ sub onUserBack()
   routerNav("/server", {})
 end sub
 
-' Quick Connect button pressed in UserSelect. initQuickConnect() is sync HTTP, so it
-' runs here on the main thread (not in the render-thread view). On success, create the
-' self-contained QuickConnectDialog (it polls + authenticates + prompts to save creds
-' on the render thread) and show it; it sets isAuthenticated=true on success, which the
-' main loop turns into the quickConnectComplete intent. Mirrors CreateUserSelectGroup
-' 471-491.
-sub onQuickConnectRequested()
-  json = initQuickConnect()
-  if not isValid(json)
-    ' A plain alert with an OK button and nothing to observe — it only tells the user the
-    ' server has Quick Connect disabled, then closes itself.
-    showAlertDialog(translate(translationKeys.ButtonQuickConnect), translate(translationKeys.LabelQuickConnectNotAvailable))
+' Quick Connect produced a session. UserSelect owns everything before this point
+' — it initiates, polls for approval, exchanges the secret and asks whether to
+' save credentials, all as render-thread promises — and hands over the finished
+' AuthenticationResult. What is left is the one step that must NOT run on the
+' render thread: user.Login() reads and writes the registry.
+'
+' Deliberately the same two lines the password path ends on, because it IS the
+' same thing: an AuthenticationResult carrying an AccessToken and a UserDto. The
+' old Quick Connect ran its own login on a TASK thread, then re-fetched the user
+' with AboutMe() and re-loaded preferences that user.Login() had already loaded —
+' three round trips where the password path makes one.
+sub onQuickConnectAuthenticated()
+  view = getActiveView()
+  if not isValid(view) then return
+
+  auth = view.quickConnectAuth
+  saveCreds = view.saveCredentials
+  ' Stale-intent guard (as in onCredentialsSubmitted): if the active view is no
+  ' longer UserSelect when this drains, the field reads invalid. Ignore it.
+  if not isValid(auth) then return
+
+  startLoadingSpinner()
+  activeUser = userDataFromAuthResult(auth)
+  if not isValid(activeUser)
+    stopLoadingSpinner()
+    print "Quick Connect returned no usable session"
     return
   end if
-  m.quickConnectDialog = createObject("roSGNode", "QuickConnectDialog")
-  m.quickConnectDialog.quickConnectJson = json
-  m.quickConnectDialog.title = translate(translationKeys.ButtonQuickConnect)
-  m.quickConnectDialog.message = [translate(translationKeys.MessageHereIsYourQuickConnectCode, [json.Code])]
-  m.quickConnectDialog.buttons = [translate(translationKeys.ButtonCancel)]
-  ' isAuthenticated only ever fires =true (after the post-auth save-credentials prompt).
-  ' main.bs observes it and dispatches the quickConnectComplete intent.
-  m.quickConnectDialog.observeField("isAuthenticated", m.port)
-  ' close fires on BOTH success and cancel; main.bs routes it to onQuickConnectDialogClosed so a
-  ' user cancel (which never sets isAuthenticated) still releases the observer + ref.
-  m.quickConnectDialog.observeField("close", m.port)
-  m.scene.dialog = m.quickConnectDialog
-end sub
 
-' Release the Quick Connect dialog observer once it has signalled success or been cancelled.
-' The dialog closed itself (close=true); we just drop our reference + observers.
-sub onQuickConnectDialogClosed()
-  if isValid(m.quickConnectDialog)
-    m.quickConnectDialog.unobserveField("isAuthenticated")
-    m.quickConnectDialog.unobserveField("close")
-    m.quickConnectDialog = invalid
-  end if
+  user.Login(activeUser, saveCreds)
+  ' user.Login persists authToken + primaryImageTag when saveCredentials is set,
+  ' but not the username — the same gap onCredentialsSubmitted fills by hand, and
+  ' the saved-user picker reads it (UserData.loadFromRegistry).
+  if saveCreds then setUserSetting("username", activeUser.username)
+  finishLogin()
 end sub
 
 ' Credentials submitted from LoginScene. Mirrors CreateSigninGroup's submit handler.

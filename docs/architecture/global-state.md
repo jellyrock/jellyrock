@@ -45,7 +45,7 @@ m.global  (the global roSGNode)
 │
 ├── server            JellyfinServer node                   ← phase 1
 │   ├── serverUrl, name, version, id, apiVersion, isConnected
-│   ├── isQuickConnectEnabled bool                          ← fail-open default true; QuickConnectEnabledTask sets false
+│   ├── isQuickConnectEnabled bool                          ← fail-open default true; UserSelect's probe sets false
 │   └── ...
 │
 ├── user              JellyfinUser node                     ← phase 1

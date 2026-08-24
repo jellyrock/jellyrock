@@ -1101,6 +1101,42 @@ The `no-task-fanout` plugin keys on the launched ARGUMENT's stability, not on th
 
 **The constraint worth re-evaluating is the two accepted interprocedural gaps**, neither closable without call-graph analysis: a loop calling a helper that launches internally, and a local aliased to a stable slot before the loop (flagged though safe — contrived, absent from the codebase, and covered by the escape hatch). Alias-awareness is what `observe-without-on-destroy` pays real complexity for; there its false positives are routine, here they are hypothetical. If either gap produces a real miss or a real false positive, that is the evidence to revisit — not the theoretical incompleteness.
 
+## decision-id: quickconnect-flow-owned-by-the-screen
+
+**date**: 2026-08-23
+**status**: accepted
+**related-files**: `components/login/UserSelect.bs`, `components/dialogs/QuickConnectDialog.bs`, `source/utils/dialogs.bs`, `source/utils/quickConnect.bs`
+
+Quick Connect's three requests — initiate, poll for approval, exchange the secret — run in `UserSelect`, and `QuickConnectDialog` is a pure view that shows a code and a Cancel button. The dialog used to own all of it, plus a `QuickConnect` Task node it re-created on every 3-second poll and a `user.Login()` call on that task thread.
+
+**This split is forced, not stylistic, and that is the part worth keeping.** `fetchAsync` bridges the pool to a promise through a *named* render-thread `observeField`, which has no closure — so the pending-request registry lives on the `m` of the component that called it (`m.__apiPromisePending`, see `source/api/apiPromise.bs`). A dialog therefore cannot own a promise chain whose results a screen must act on: the callbacks would run in the dialog's `m`, and the dialog is a node the flow deletes halfway through. The same property is what makes `abandonApiPromises()` correct in the owner's `onDestroy` and nowhere else. So the general rule this closes off is "make the dialog self-contained": for any dialog-driven async flow, the SCREEN owns the chain and the dialog owns presentation and a `result`.
+
+**The constraint worth re-evaluating is the main-thread hand-off at the end.** `user.Login()` reads and writes the registry, so it cannot move to the render thread, and `fetchAsync` cannot move to the main thread — the flow is split across both by construction, joined by one `preLoginIntent`. If BrighterScript ever ships `await`, or the registry gains an async read path, that seam is the thing to revisit; nothing else here would change.
+
+## decision-id: prelogin-sync-is-a-call-site-constraint
+
+**date**: 2026-08-23
+**status**: accepted
+**related-files**: `source/api/ApiClient.bs`, `source/loginRouter.bs`, `docs/architecture/tech-debt.md`, `docs/architecture/api.md`
+
+The remaining synchronous `sdk.*` calls on the bootstrap path stay synchronous because of where they are CALLED, not because the API pool is unavailable. Both `api.md` and the `apiclient-sync-pool-coexistence` tech-debt entry said the opposite — "the persistent task pool isn't available pre-login" — and it was measurably wrong: `setGlobalNodes()` starts the three `ApiTask` slots and `ApiQueueTask` inside `Main()` *before* `reenterLogin()`, and `UserSelect` has issued pre-login `fetchAsync` calls since #551.
+
+The real constraint is narrower. `fetchAsync` registers a named render-thread observer, which Roku dispatches only inside a SceneGraph component; `main.bs` and `source/loginRouter.bs` run on the main thread, where named observers never fire. **So migrating one of the survivors is a call-site move, not a plumbing change** — push the request down into the render-thread component that wants the answer and hand the coordinator only the finished result. That closes off the direction the entry used to imply (make the pool reachable from the main thread, or wire `promises.setMessagePort`/`wait2` into `Main()`'s loop), which would have been real work aimed at a problem that does not exist. Quick Connect is the worked example: three endpoints moved to `Build*Request()` builders driven from `UserSelect`, while `user.Login()` stayed on the main thread because it touches the registry.
+
+The premise survived this long because it is plausible and nothing could contradict it — no gate reads a prose claim. Worth re-checking the same way if another "the pool can't do X" statement turns up.
+
+## decision-id: rta-approves-its-own-quickconnect-code
+
+**date**: 2026-08-23
+**status**: accepted
+**related-files**: `tests/rta/specs/quick-connect.spec.js`, `tests/rta/lib/jellyfin.js`
+
+The RTA suite tests Quick Connect end to end by approving its own code: `POST /QuickConnect/Authorize?code=` with the authenticated session the suite already holds. Quick Connect had shipped for years with no functional coverage because approval is, by design, a human on a second device — and there is no second device in the harness.
+
+**The move that generalizes is to ask what the missing actor actually needs to be.** "Needs a second device" was really "needs a second authenticated API caller", and the suite had been one since it started seeding registries. Verified against the live server before the test was written (initiate → authorize → connect reports `Authenticated` → exchange returns an `AccessToken`), per the `tests/rta/CLAUDE.md` rule about checking a capability-dependent assertion against the real server first; an unknown code answers 404, so the helper throws rather than returning false.
+
+**Two constraints ride along.** The spec skips rather than fails when the server reports Quick Connect disabled, because that is a fact about the fixture — which matters more now that `RTA_CONFIG.server` can be aimed at another server via `RTA_SERVER_URL`. And it answers the save-credentials prompt "No", so a run signs in without writing an `authToken` into the device registry; `scripts/rta-run.js` would restore it either way, but the test does not lean on that.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

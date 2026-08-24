@@ -83,9 +83,12 @@ endpoints:
       type: graceful-degradation
       note: >-
         Unguarded probe; intentional fail-open. On 10.7 (endpoint missing) the
-        404 is caught by `if not res.ok` in QuickConnectEnabledTask, which leaves
+        404 is caught by `if not res.ok` in
+        UserSelect.probeQuickConnectAvailability, which leaves
         m.global.server.isQuickConnectEnabled at its default true — the button
-        stays visible (documented in components/login/UserSelect.bs).
+        stays visible (documented in components/login/UserSelect.bs). The former
+        QuickConnectEnabledTask this note used to name was replaced by that
+        render-thread promise.
 
   - path: /quickconnect/initiate
     method: GET,POST
@@ -93,10 +96,15 @@ endpoints:
     handling:
       type: sdk-dispatch
       note: >-
-        sdk.bs Initiate() dispatches the HTTP method by version (GET on 10.7/10.8,
-        POST on 10.9+ via getApiVersionFromGlobal() >= 2). On 10.7 the endpoint is
-        absent entirely; the request returns invalid and initQuickConnect()
-        (source/api/userAuth.bs) surfaces a "Quick Connect not available" dialog.
+        ApiClient.BuildInitiateQuickConnectRequest() dispatches the HTTP method by
+        version (GET on 10.7.0-10.8.13, POST on 10.9.0+ via m.getApiVersion() >= 2);
+        each spec declares exactly one of the two verbs. The endpoint itself is
+        present on every supported version - it is /quickconnect/enabled that is
+        absent below 10.8, which is why this row exists. A server with the feature
+        switched off answers 401 ("Quick connect is not active on this server") on
+        every version, and UserSelect.startQuickConnect surfaces the "disabled"
+        message for that code specifically; 503 (10.11.0+) is transient and gets a
+        try-again message instead.
 
   - path: /items
     method: GET

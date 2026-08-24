@@ -7,7 +7,7 @@ related-files:
   - source/utils/globals.bs
   - components/JRScene.xml
   - components/JRScene.bs
-last-reviewed: 2026-08-22
+last-reviewed: 2026-08-23
 ---
 
 # Bootstrap & Lifecycle
@@ -169,7 +169,6 @@ while true
   else if isNodeEvent(msg, "exit")
     return
   else if isNodeEvent(msg, "preLoginIntent")           ' routed pre-login view emitted an intent
-  else if isNodeEvent(msg, "isAuthenticated")          ' QuickConnectDialog signalled success
   else if isNodeEvent(msg, "closeSidePanel")           ' options panel closed → restore focus
   else if isNodeEvent(msg, "isFontDownloadCompleted")  ' fallback font finished downloading
   else if isNodeEvent(msg, "playItem")                 ' AlbumTrackList row → play audio

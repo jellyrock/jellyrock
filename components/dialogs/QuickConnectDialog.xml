@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- QuickConnectDialog: the JellyRock modal that shows a Quick Connect code while
+     the user approves it on another device.
+
+     A VIEW, and only a view. It shows a code and a Cancel button; it does not
+     poll, does not talk to the server, and holds no session state. The screen
+     that opened it (UserSelect) owns the whole flow — initiate, poll, exchange —
+     because that work is a chain of `fetchAsync` promises and belongs with the
+     component whose `m` the promise registry lives on. Before this it was the
+     other way round: the dialog created a Task node every 3 seconds, ran
+     `user.Login()` on that Task thread, and mutated itself into a second prompt.
+
+     Chrome comes from JRDialogPanel and the vertical flow from
+     source/utils/dialogLayout.bs, like every other dialog in the family — this
+     component owns only its body (an instruction and the code) and its footer.
+
+     It is BESPOKE rather than a showAlertDialog because the code is the whole
+     point of the screen: it is a string the user has to read off a TV and type
+     somewhere else, so it gets its own weight (fontSizeLargest) instead of being
+     a sentence fragment in a message. Everything else Quick Connect has to say —
+     "that code expired", "the server has it turned off", "save these
+     credentials?" — is an ordinary dialog from source/utils/dialogs.bs.
+
+     Appended to the scene by showQuickConnectDialog(); per-instance `result`
+     field, same contract as JRDialog (Cancel / Back -> result.cancelled). -->
+<component name="QuickConnectDialog" extends="JRGroup" focusable="true">
+  <children>
+    <!-- Dimmed backdrop, panel, edge, title and accent rule — shared with every
+         other dialog. See JRDialogPanel.xml for the ordering contract. -->
+    <JRDialogPanel id="chrome" />
+
+    <!-- "Enter this code on your other device" — the lead-in to the code. -->
+    <LabelPrimaryMedium id="instructionText" horizAlign="center" wrap="true" />
+
+    <!-- The code itself. Not wrapped on purpose: a Quick Connect code is one
+         short token, and a wrapped one would read as two. -->
+    <LabelPrimaryLargest id="quickConnectCode" horizAlign="center" isBold="true" />
+
+    <!-- Single Cancel button, flowed inside the panel like JRDialog's row. -->
+    <LayoutGroup id="buttonRow" layoutDirection="horiz" itemSpacings="[24]" />
+
+    <!-- Delays ONLY the opening announcement, so it lands after the platform's
+         own focus announcement instead of being flushed by it. See
+         OPENING_ANNOUNCEMENT_DELAY in JRDialog.bs, which measured it. -->
+    <Timer id="narrationTimer" repeat="false" />
+  </children>
+  <interface>
+    <!-- Set ALL THREE before presenting, never after: this dialog lays out once,
+         off the labels' `renderTracking`, which fires on the none -> full
+         transition and never again. Text changed on an open dialog draws on top
+         of the old layout (measured on device — tech-debt
+         `jrdialog-no-relayout-on-post-mount-change`). showQuickConnectDialog()
+         is the only caller and sets them in the right order. -->
+    <field id="title" type="string" onChange="onTitleChanged" />
+    <field id="instruction" type="string" onChange="onInstructionChanged" />
+    <field id="code" type="string" onChange="onCodeChanged" />
+
+    <!-- Set exactly once when the dialog resolves, then it closes itself.
+         Shape: { cancelled, confirmed, buttonIndex, buttonText, optionIndex, value }.
+         This dialog only ever resolves CANCELLED — the user backing out is the
+         only outcome it can produce on its own; approval arrives at the owner
+         from the server, not from here. -->
+    <field id="result" type="assocarray" alwaysNotify="true" />
+    <!-- Node to restore remote focus to on close. Set by the dialogs.bs helper. -->
+    <field id="returnFocusTo" type="node" />
+    <!-- Cancel this dialog from OUTSIDE (source/utils/dialogs.bs cancelOpenDialog,
+         and presentOverlayDialog's supersede). Routes through the same resolve
+         path as Back so a third party clearing the screen is indistinguishable
+         from the user dismissing it. -->
+    <function name="cancelDialog" />
+  </interface>
+</component>

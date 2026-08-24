@@ -1,0 +1,130 @@
+namespace tests
+
+  ' The three Quick Connect request builders on ApiClient. They replaced three
+  ' SYNCHRONOUS sdk.* methods, so the two version boundaries they carry moved with
+  ' them — and those boundaries are load-bearing, not cosmetic:
+  '
+  '   /QuickConnect/Initiate        GET on 10.7-10.8, POST on 10.9+.  Sending the
+  '     wrong method to a modern server answers 401 ("Quick connect is not active
+  '     on this server"), which reads as a feature gate but is a route mismatch.
+  '   AuthenticateWithQuickConnect  body field renamed at 10.8.0 — a FINER
+  '     boundary than the apiVersion split, so it reads the server VERSION.
+  @suite("ApiClient - Quick Connect request builders")
+  class QuickConnectRequestTests extends tests.BaseTestSuite
+
+    protected override function beforeEach()
+      super.beforeEach()
+      m.global.server.serverUrl = "http://jellyfin.test:8096"
+      m.global.server.apiVersion = 2
+      m.global.server.version = "10.11.11"
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("BuildInitiateQuickConnectRequest - method dispatch")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses POST on apiVersion 2")
+    function _()
+      req = GetApi().BuildInitiateQuickConnectRequest()
+      m.assertNotInvalid(req)
+      m.assertEqual(req.method, "POST")
+    end function
+
+    @it("uses GET on apiVersion 1")
+    function _()
+      m.global.server.apiVersion = 1
+      req = GetApi().BuildInitiateQuickConnectRequest()
+      m.assertNotInvalid(req)
+      m.assertEqual(req.method, "GET")
+    end function
+
+    @it("targets /quickconnect/initiate on both versions")
+    function _()
+      v2 = GetApi().BuildInitiateQuickConnectRequest()
+      m.global.server.apiVersion = 1
+      v1 = GetApi().BuildInitiateQuickConnectRequest()
+      m.assertTrue(v2.url.inStr("/quickconnect/initiate") >= 0, "V2 URL should target /quickconnect/initiate")
+      m.assertTrue(v1.url.inStr("/quickconnect/initiate") >= 0, "V1 URL should target /quickconnect/initiate")
+    end function
+
+    @it("returns invalid when the server URL is not set")
+    function _()
+      m.global.server.serverUrl = ""
+      m.assertInvalid(GetApi().BuildInitiateQuickConnectRequest())
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("BuildConnectQuickConnectRequest")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is a GET carrying the secret as a query parameter")
+    function _()
+      req = GetApi().BuildConnectQuickConnectRequest("12B296D84CA24384")
+      m.assertNotInvalid(req)
+      m.assertEqual(req.method, "GET")
+      m.assertTrue(req.url.inStr("/quickconnect/connect") >= 0, "URL should target /quickconnect/connect")
+      m.assertTrue(req.url.inStr("12B296D84CA24384") >= 0, "URL should carry the secret")
+    end function
+
+    @it("does not change shape between api versions")
+    ' /QuickConnect/Connect is identical on every supported server; a builder that
+    ' quietly grew a branch would be a bug this pins.
+    function _()
+      v2 = GetApi().BuildConnectQuickConnectRequest("SECRET")
+      m.global.server.apiVersion = 1
+      v1 = GetApi().BuildConnectQuickConnectRequest("SECRET")
+      m.assertEqual(v1.method, v2.method)
+      m.assertEqual(v1.url, v2.url)
+    end function
+
+    @it("returns invalid when the server URL is not set")
+    function _()
+      m.global.server.serverUrl = ""
+      m.assertInvalid(GetApi().BuildConnectQuickConnectRequest("SECRET"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("BuildAuthenticateWithQuickConnectRequest - body field boundary")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("posts { Secret } on 10.8.0 and later")
+    function _()
+      req = GetApi().BuildAuthenticateWithQuickConnectRequest("SECRET")
+      m.assertNotInvalid(req)
+      m.assertEqual(req.method, "POST")
+      body = ParseJson(req.body)
+      m.assertEqual(body.Secret, "SECRET")
+      m.assertInvalid(body.Token)
+    end function
+
+    @it("posts { Token } on 10.7.x")
+    function _()
+      m.global.server.version = "10.7.7"
+      body = ParseJson(GetApi().BuildAuthenticateWithQuickConnectRequest("SECRET").body)
+      m.assertEqual(body.Token, "SECRET")
+      m.assertInvalid(body.Secret)
+    end function
+
+    @it("switches at exactly 10.8.0")
+    ' The boundary itself, not a version safely either side of it.
+    function _()
+      m.global.server.version = "10.8.0"
+      body = ParseJson(GetApi().BuildAuthenticateWithQuickConnectRequest("SECRET").body)
+      m.assertEqual(body.Secret, "SECRET")
+    end function
+
+    @it("declares a JSON content type")
+    function _()
+      req = GetApi().BuildAuthenticateWithQuickConnectRequest("SECRET")
+      m.assertEqual(req.headers["Content-Type"], "application/json")
+    end function
+
+    @it("returns invalid when the server URL is not set")
+    function _()
+      m.global.server.serverUrl = ""
+      m.assertInvalid(GetApi().BuildAuthenticateWithQuickConnectRequest("SECRET"))
+    end function
+
+  end class
+
+end namespace

@@ -1,0 +1,224 @@
+' Pure decisions for the Quick Connect poll loop.
+'
+' Quick Connect is a THREE-request flow and only one of the three is interesting
+' enough to need a decision table:
+'
+'   1. POST /QuickConnect/Initiate  -> { Secret, Code, ... }   (start)
+'   2. GET  /QuickConnect/Connect   -> polled until approved   (this file)
+'   3. POST /Users/AuthenticateWithQuickConnect -> AccessToken (finish)
+'
+' Step 2 is the one that used to be wrong, and it was wrong because the old
+' implementation could not SEE the difference it had to act on. It went through
+' the sync `getJson` helper, which returns `invalid` for anything it cannot parse
+' — so an expired secret and a code the user simply had not approved yet arrived
+' as the same value, and the dialog polled a dead code forever with no feedback.
+'
+' The behaviour, checked against the upstream OpenAPI spec of EVERY server
+' version JellyRock supports (10.7.0, 10.7.7, 10.8.0, 10.8.13, 10.9.0, 10.9.11,
+' 10.10.0, 10.10.7, 10.11.0, 10.11.6, 10.11.7, 10.11.8) and corroborated by a
+' live probe of 10.11.11:
+'
+'   live secret, not yet approved -> 200 { "Authenticated": false, ... }
+'   live secret, approved         -> 200 { "Authenticated": true,  ... }
+'   unknown / expired secret      -> 404 "Unknown quick connect secret."
+'   server starting / down        -> 503, and ONLY on 10.11.0 and later
+'
+' The status code is the whole signal, which is why this endpoint has to run
+' through the API pool (`res.statusCode`) rather than a helper that reads only
+' the body. These functions are pure so the table above is a test rather than a
+' comment — and the test is a VERSION MATRIX, because two of these codes do not
+' exist on every server.
+'
+' The 404 is the load-bearing one and it is declared by all twelve specs, so the
+' expired-code fix is not something the newest server happens to do. Checking one
+' version and generalising is how the bug being fixed here got shipped in the
+' first place.
+import "pkg:/source/utils/misc.bs"
+
+' Outcomes of one poll. Strings rather than an enum because they cross into a
+' component field and are read in log lines; the set is closed and asserted.
+const QC_POLL_APPROVED = "approved"
+const QC_POLL_PENDING = "pending"
+const QC_POLL_EXPIRED = "expired"
+const QC_POLL_FAILED = "failed"
+
+' How many CONSECUTIVE failed polls end the session.
+'
+' Not a deadline on the flow — a live-but-unapproved code polls indefinitely on
+' purpose, because the only thing that has to happen is the user walking to
+' another device, and the dialog's Cancel button is the way out of that. This is
+' the tolerance for a transient blip: one dropped request on Wi-Fi must not kill a
+' sign-in that is otherwise fine, and a server that has genuinely stopped
+' answering must not spin forever.
+'
+' HOW LONG THAT IS DEPENDS ON HOW THE POLLS FAIL, and the two bounds are an order
+' of magnitude apart. Failures that come back immediately (connection refused)
+' give up in ~6s — three polls separated by two 3s timer gaps. Failures that are
+' TIMEOUTS give up in ~42s, because apiPromise allows each request
+' timeouts.API_WAIT_MS (12s) before it rejects. The second number is the one to
+' hold in mind: a server that has stopped answering rather than refusing is
+' exactly the case this cap exists for, and the user watches a code dialog with no
+' feedback for the whole of it.
+const QC_MAX_CONSECUTIVE_FAILURES = 3
+
+' Classify one /QuickConnect/Connect response.
+'
+' `res` is the pool response AA — { ok, statusCode, json, text } — or invalid for
+' a transport failure / timeout (the `.catch` side of the promise contract), which
+' is a failure like any other non-answer.
+function quickConnectPollOutcome(res as dynamic) as string
+  if not isValid(res) then return QC_POLL_FAILED
+
+  ' 404 is the server saying it does not know this secret: expired, or already
+  ' consumed. Terminal, and the one outcome the user has to be told about.
+  if isValid(res.statusCode) and res.statusCode = 404 then return QC_POLL_EXPIRED
+
+  if not isValid(res.ok) or res.ok <> true then return QC_POLL_FAILED
+
+  ' A 2xx whose body did not parse is NOT "pending" — pending is a fact the
+  ' server stated, and this response stated nothing. Treating it as pending is
+  ' what turns a broken proxy into an infinite spinner.
+  json = res.json
+  if not isValid(json) then return QC_POLL_FAILED
+
+  if isValid(json.Authenticated) and json.Authenticated = true then return QC_POLL_APPROVED
+
+  ' 10.7 ONLY: its QuickConnectResult carries an `Error` string that every later
+  ' schema dropped (10.7.0's fingerprint has it; 10.8.0's does not). A server
+  ' stating an error is not saying "not yet" — and calling it pending is the
+  ' infinite-spinner bug this whole module exists to remove, still open on the
+  ' oldest server we support. Checked AFTER Authenticated so an approval is never
+  ' discarded, and harmless on newer servers where the field cannot be present.
+  '
+  ' SCHEMA-DERIVED, NOT PROBED. No 10.7 server was reachable, so what is known is
+  ' that the field EXISTS there — not when the server populates it. If 10.7 sets
+  ' it on an ordinary not-yet-approved poll, this ends the flow after three polls
+  ' with "try again shortly" instead of waiting for the user. That is bounded and
+  ' reported where the old behaviour was an unbounded silent spinner, so it is the
+  ' safer direction to be wrong in — but it is still wrong, and it is the thing to
+  ' check first if Quick Connect is reported broken on 10.7. Tracked as a followup
+  ' in docs/progress.md.
+  if isValidAndNotEmpty(json.Error) then return QC_POLL_FAILED
+
+  return QC_POLL_PENDING
+end function
+
+' ---------------------------------------------------------------------------
+' The two NON-poll requests fail differently, and telling them apart matters:
+' one of these three messages tells the user to stop trying.
+' ---------------------------------------------------------------------------
+
+' The server says Quick Connect is switched off. Actionable: stop trying here.
+const QC_FAIL_DISABLED = "disabled"
+' The server is starting or temporarily down. Actionable: try again shortly.
+const QC_FAIL_UNAVAILABLE = "unavailable"
+' The secret is unknown, expired, or already spent. Actionable: get a new code.
+const QC_FAIL_SPENT = "spent"
+
+' Why did /QuickConnect/Initiate refuse?
+'
+' `401 Quick connect is not active on this server` is the ONLY code that means
+' the feature is off, and it means that on every version 10.7.0 -> 10.11.8.
+' `503 The server is currently starting or is temporarily not available` was
+' added at 10.11.0 and is TRANSIENT — reporting it as "disabled" would tell a
+' user whose server is still booting to give up on a feature that works.
+'
+' Everything else is treated as not-reachable rather than not-available, which is
+' the safe direction: it invites a retry instead of closing the door.
+function quickConnectInitiateFailure(res as dynamic) as string
+  if not isValid(res) or not isValid(res.statusCode) then return QC_FAIL_UNAVAILABLE
+  if res.statusCode = 401 then return QC_FAIL_DISABLED
+  return QC_FAIL_UNAVAILABLE
+end function
+
+' Why did /Users/AuthenticateWithQuickConnect refuse?
+'
+' The spec declares only `400 Missing token` (plus `503` from 10.11.0), but a
+' live 10.11.11 answered 404 for a secret it had not seen approved — an
+' UNDECLARED code. So this deliberately does not enumerate: anything that is not
+' the transient 503 means the secret cannot be exchanged, and the user needs a
+' new code rather than an explanation of which 4xx it was.
+function quickConnectExchangeFailure(res as dynamic) as string
+  if isValid(res) and isValid(res.statusCode) and res.statusCode = 503 then return QC_FAIL_UNAVAILABLE
+  return QC_FAIL_SPENT
+end function
+
+' Should the dialog stop polling after this many consecutive failures?
+function quickConnectShouldGiveUp(consecutiveFailures as integer) as boolean
+  return consecutiveFailures >= QC_MAX_CONSECUTIVE_FAILURES
+end function
+
+' Pull the two fields the flow needs out of a /QuickConnect/Initiate response.
+'
+' Returns invalid unless BOTH are present and non-empty: the Secret is what every
+' later request is keyed on, and the Code is the only thing the user can act on,
+' so a response missing either cannot start a session. (The old sync path checked
+' only the Secret, and would have opened a dialog showing an empty code.)
+'
+' @param json - the parsed QuickConnectResult, or invalid
+' @returns an AA of { secret, code }, or invalid
+function quickConnectSession(json as dynamic) as dynamic
+  if not isValid(json) then return invalid
+  if not isValidAndNotEmpty(json.Secret) then return invalid
+  if not isValidAndNotEmpty(json.Code) then return invalid
+
+  return { secret: json.Secret, code: json.Code }
+end function
+
+' Does an /Users/AuthenticateWithQuickConnect response carry a session the app can
+' actually finish signing in with?
+'
+' A 200 IS NOT A SESSION. The exchange can answer OK with a body naming neither a
+' token nor a user, and the coordinator that receives it has nowhere to report
+' that — by then the code dialog is gone and the intent has drained, so the user
+' answers the save-credentials question and then gets no screen and no message.
+' UserSelect is the last point in the flow still on a screen that can say
+' something, which is why this is checked there and not only downstream.
+'
+' The fields are the ones the DOWNSTREAM chain requires, not a plausible subset.
+' `User.Id` is load-bearing and easy to under-check: UserData.loadFromJSON reads
+' `json.User.id` directly, user.Login() refuses a payload whose User carries no Id
+' (session.bs `hasValidId`) — and loginRouter calls finishLogin() whether or not
+' Login took, so a missing Id lands on Home with nobody signed in. Guarding only
+' `AccessToken` + `User` would move that failure rather than close it.
+'
+' userDataFromAuthResult (source/api/userAuth.bs) guards the same payload one
+' layer down, on the main thread, for the node it builds. Keep the two in step.
+'
+' @param json - the parsed AuthenticationResult, or invalid
+' @returns true only when a sign-in can actually complete from this payload
+function quickConnectHasSession(json as dynamic) as boolean
+  if not isValid(json) then return false
+  if not isValidAndNotEmpty(json.AccessToken) then return false
+  if not isValid(json.User) then return false
+  return isValidAndNotEmpty(json.User.Id)
+end function
+
+' The code as the screen reader should SAY it: one digit at a time.
+'
+' A Quick Connect code is a string the listener has to transcribe onto another
+' device, and "523522" has two plausible pronunciations — six digits, or "five
+' hundred twenty-three thousand five hundred twenty-two". Only one of those is
+' usable, and a space-separated form has exactly that one on any engine, so this
+' is a choice about ambiguity rather than a guess about Roku's synthesiser. (The
+' unspaced rendering has not been listened to on device; it does not need to be,
+' because the spaced form is correct either way.)
+'
+' Only the SPOKEN form is spaced. The code stays intact on screen, where the user
+' is reading it rather than hearing it.
+function spokenQuickConnectCode(code as string) as string
+  if code = "" then return ""
+
+  ' roString.Mid(start, count) with a 0-based start — the established shape in
+  ' this repo (globals.bs's hex check). Deliberately NOT split(""): an empty
+  ' separator is undocumented behaviour on Roku, and this needs to be certain.
+  spoken = ""
+  for i = 0 to code.Len() - 1
+    character = code.Mid(i, 1)
+    if character.trim() <> ""
+      if spoken <> "" then spoken += " "
+      spoken += character
+    end if
+  end for
+  return spoken
+end function

@@ -128,16 +128,6 @@ sub Main (args as dynamic) as void
       ' A routed pre-login view emitted an intent. The coordinator runs the blocking
       ' bootstrap API call(s) and drives the next navigation.
       handlePreLoginIntent(msg.getData())
-    else if isNodeEvent(msg, "isAuthenticated")
-      ' The QuickConnectDialog (started by the coordinator) signalled a successful in-flow
-      ' sign-in. Complete the login.
-      handlePreLoginIntent("quickConnectComplete")
-    else if isNodeEvent(msg, "close")
-      ' The QuickConnectDialog closed. On SUCCESS this fires right after isAuthenticated (the
-      ' branch above already drove quickConnectComplete -> onQuickConnectDialogClosed, so this is
-      ' a guarded no-op); on CANCEL it is the only signal, and releases the observer + node ref
-      ' that would otherwise leak. Only the QuickConnectDialog is observed for "close" on m.port.
-      onQuickConnectDialogClosed()
     else if isNodeEvent(msg, "isFontDownloadCompleted")
       ' Handle font download completion
       fontDownloadTask = msg.getRoSGNode()

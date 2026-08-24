@@ -403,3 +403,46 @@ export async function firstItemId(session, includeItemTypes) {
   const data = await getJson(url, tokenHeader(session.token));
   return data?.Items?.[0]?.Id || '';
 }
+
+/**
+ * Is Quick Connect switched on for this server?
+ *
+ * `GET /QuickConnect/Enabled` returns a bare JSON boolean, and 404s on servers
+ * older than 10.8. Both are facts about the fixture that the caller acts on by
+ * SKIPPING, so a 404 must not throw the way every other helper here does —
+ * hence the narrow status check rather than a blanket catch. Any OTHER failure
+ * (401, 500, transport) still propagates, because those say nothing about
+ * whether the feature exists and must not be read as "off".
+ */
+export async function quickConnectEnabled(session) {
+  try {
+    return (await getJson(`${session.serverUrl}/QuickConnect/Enabled`, {})) === true;
+  } catch (e) {
+    if (isRequestError(e) && e.status === 404) return false;
+    throw e;
+  }
+}
+
+/**
+ * Approve a Quick Connect code on the server, as this session's user.
+ *
+ * THE REASON QUICK CONNECT IS TESTABLE AT ALL. Approval is normally a human on a
+ * second device, which is why this flow shipped for years with no functional
+ * coverage; `POST /QuickConnect/Authorize?code=` is that human, and the suite
+ * already holds an authenticated session to be them with.
+ *
+ * Verified end to end against Jellyfin 10.11.11 before the test was written
+ * (initiate -> authorize -> connect reports Authenticated -> exchange returns an
+ * AccessToken), per the tests/rta/CLAUDE.md rule about checking a
+ * content/capability-dependent assertion against the real server first.
+ *
+ * An UNKNOWN code answers 404, so this THROWS rather than returning false —
+ * measured, not assumed (probed against 10.11.11 while writing the helper; the
+ * first draft of this comment claimed the opposite). That is the right shape for
+ * the caller: a code the app displayed and the server does not recognise is a
+ * real failure, not a fixture quirk to tolerate.
+ */
+export async function authorizeQuickConnect(session, code) {
+  const url = `${session.serverUrl}/QuickConnect/Authorize?code=${encodeURIComponent(code)}`;
+  return (await postJson(url, tokenHeader(session.token), {})) === true;
+}

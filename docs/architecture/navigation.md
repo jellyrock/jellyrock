@@ -14,13 +14,14 @@ related-files:
   - components/dialogs/JRKeyboardDialog.bs
   - components/dialogs/JRDialogPanel.bs
   - components/dialogs/JRListDialogRow.bs
+  - components/dialogs/QuickConnectDialog.bs
   - components/OverviewDialog.bs
   - source/utils/dialogs.bs
   - source/utils/dialogLayout.bs
   - source/utils/dialogKeys.bs
   - source/replayRoute.bs
   - source/loginRouter.bs
-last-reviewed: 2026-08-22
+last-reviewed: 2026-08-23
 ---
 
 # Navigation (sgRouter)
@@ -295,14 +296,15 @@ global to cross-fire (the failure mode of `SceneManager.returnData`).
 | `showAlertDialog` / `showConfirmDialog` / `showChoiceDialog` | `JRDialog` | Scene-appended overlay (`OverviewDialog` mechanics) |
 | `showListDialog` | `JRListDialog` | Scene-appended overlay |
 | `showInfoDialog` | `OverviewDialog` | Scene-appended overlay |
+| `showQuickConnectDialog` | `QuickConnectDialog` | Scene-appended overlay |
 | `showKeyboardDialog` | `JRKeyboardDialog` | Roku modal channel (`m.scene.dialog`) — the OS owns the keyboard |
 
 #### One chrome, one flow
 
-`JRDialog`, `JRListDialog` and `OverviewDialog` all draw the same chrome — dimmed backdrop,
-panel, 3px edge, title, and the short `colorSecondary` accent rule under it — from
-**`JRDialogPanel`**, and all three get their geometry from **`source/utils/dialogLayout.bs`**,
-which is pure and unit-tested.
+`JRDialog`, `JRListDialog`, `OverviewDialog` and `QuickConnectDialog` all draw the same
+chrome — dimmed backdrop, panel, 3px edge, title, and the short `colorSecondary` accent rule
+under it — from **`JRDialogPanel`**, and all four get their geometry from
+**`source/utils/dialogLayout.bs`**, which is pure and unit-tested.
 
 That is not tidiness. The three each owned a private copy of both, and when the #757 review
 restyled `JRDialog` the other two silently kept the old look, so the app shipped two dialog
@@ -310,7 +312,13 @@ languages with every gate green — nothing asserted a position, gap, color or a
 module exists so "one dialog language" is a test rather than a claim, including a gate on the
 multiples-of-6 spacing scale that keeps values integral through the 720p downscale.
 
-A dialog supplies its own body and footer and nothing else. `OverviewDialog`'s OK button
+A dialog supplies its own body and footer and nothing else. `QuickConnectDialog` is the
+cheapest illustration: the only thing it needs that no family member has is a code rendered
+at `fontSizeLargest`, and it gets it by putting its instruction in `computeDialogLayout`'s
+**subheading slot** (defined as "a lead line inside the body's space", which is exactly the
+relationship between "enter this code" and the code) and the code itself in the body slot.
+It computes no offsets of its own, and a spec pins its rendered panel against a rendered
+`JRDialog`'s so the two widths cannot drift apart. `OverviewDialog`'s OK button
 stays **outside** the panel — a recorded exception, not a leftover: at 1600×760 the panel
 dominates the screen, so a button below it still reads as attached, which is untrue at
 `JRDialog`'s size. `computeDialogLayout` takes footer placement as a parameter for exactly

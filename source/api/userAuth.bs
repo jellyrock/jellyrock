@@ -5,8 +5,32 @@ import "pkg:/source/utils/session.bs"
 
 function getToken(username as string, password as string)
   json = GetApi().AuthenticateByName(username, password)
+  return userDataFromAuthResult(json)
+end function
 
+' Turn a Jellyfin AuthenticationResult into the UserData node user.Login() expects,
+' registering the user in `available_users` on the way.
+'
+' Shared by the two flows that mint a token — password sign-in (getToken above) and
+' Quick Connect (loginRouter.onQuickConnectAuthenticated). Quick Connect used to build its
+' own node AND then re-fetch the user via AboutMe(); the re-fetch was redundant,
+' because AuthenticationResult.User and GET /Users/{id} return the identical UserDto
+' (diffed against Jellyfin 10.11.11 — same 12 keys, differing only in LastLoginDate /
+' LastActivityDate, neither of which this app reads).
+'
+' The Quick Connect flow guards the SAME payload one layer up, on the render thread
+' (quickConnectHasSession in source/utils/quickConnect.bs), because this side has
+' nowhere left to report a failure to. The two are deliberate duplicates rather
+' than one shared helper — they sit on opposite threads and answer different
+' questions ("can I build a node?" vs "can I tell the user?") — so if what counts
+' as a usable session ever changes, change both.
+'
+' @param json - AuthenticationResult from AuthenticateByName / AuthenticateWithQuickConnect
+' @returns a UserData node, or invalid when the response carries no usable session
+function userDataFromAuthResult(json as dynamic) as dynamic
   if not isValid(json) then return invalid
+  if not isValidAndNotEmpty(json.AccessToken) then return invalid
+  if not isValid(json.User) then return invalid
 
   userdata = CreateObject("roSGNode", "UserData")
   userdata.json = json
@@ -83,44 +107,3 @@ function GetPublicUsers()
   return GetApi().GetPublicUsers()
 end function
 
-function initQuickConnect()
-  jsonResponse = GetApi().InitiateQuickConnect()
-  if not isValid(jsonResponse)
-    return invalid
-  end if
-
-  if not isValid(jsonResponse.Secret)
-    return invalid
-  end if
-
-  return jsonResponse
-end function
-
-function checkQuickConnect(secret)
-  jsonResponse = GetApi().ConnectQuickConnect(secret)
-  if not isValid(jsonResponse)
-    return false
-  end if
-
-  if isValid(jsonResponse.Authenticated) and jsonResponse.Authenticated = true
-    return true
-  end if
-
-  return false
-end function
-
-function AuthenticateViaQuickConnect(secret)
-  jsonResponse = GetApi().AuthenticateWithQuickConnect(secret)
-  if isValid(jsonResponse) and isValid(jsonResponse.AccessToken) and isValid(jsonResponse.User)
-    globalUser = m.global.user
-    userdata = CreateObject("roSGNode", "UserData")
-    userdata.json = jsonResponse
-    globalUser.id = jsonResponse.User.Id
-    globalUser.authToken = jsonResponse.AccessToken
-    userdata.callFunc("saveToRegistry")
-
-    return true
-  end if
-
-  return false
-end function

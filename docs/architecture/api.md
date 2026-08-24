@@ -12,7 +12,7 @@ related-files:
   - components/api/ApiResultNode.xml
   - components/api/SideEffectTask.bs
   - components/home/LoadLatestRowsTask.bs
-last-reviewed: 2026-08-03
+last-reviewed: 2026-08-23
 ---
 
 # API Layer & Task Pool
@@ -87,7 +87,11 @@ function BuildGetItemRequest(itemId as string, params = {} as object) as dynamic
 end function
 ```
 
-**Legacy synchronous methods** (`Get*` without `Build`) execute the HTTP synchronously on the calling thread. They exist for the bootstrap path (login, server discovery) where the pool isn't running yet, and for pre-pool legacy code that hasn't been migrated. **Don't add new sync calls.**
+**Legacy synchronous methods** (`Get*` without `Build`) execute the HTTP synchronously on the calling thread. Five remain, all on the bootstrap path (login, server discovery). **Don't add new sync calls.**
+
+Their reason is narrower than "the pool isn't running yet", which is what this section used to say and is not true: `setGlobalNodes()` starts the pool in `Main()` *before* the login flow, and `UserSelect` has been issuing pre-login `fetchAsync` calls since #551. The real constraint is that `fetchAsync` registers a **named render-thread observer**, which Roku dispatches only inside a SceneGraph component — and `main.bs` / `source/loginRouter.bs` run on the MAIN thread, where named observers never fire.
+
+So migrating one of the survivors is not a pool problem, it is a **call-site** problem: move the request into the render-thread component that wants the answer, and hand the coordinator only the finished result. Quick Connect is the worked example (#288 phase 4) — its three endpoints became `Build*Request` builders driven from `UserSelect` as promises, while `user.Login()` stayed on the main thread because it reads and writes the registry. See [`apiclient-sync-pool-coexistence`](tech-debt.md#apiclient-sync-pool-coexistence).
 
 ### Layer 2 — Business logic (`image.bs`, `userAuth.bs`, `items.bs`)
 

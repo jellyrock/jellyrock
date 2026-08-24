@@ -1,0 +1,335 @@
+namespace tests
+
+  ' The decision tables in source/utils/quickConnect.bs, asserted against the
+  ' behaviour the upstream OpenAPI specs DECLARE for every server version
+  ' JellyRock supports (10.7.0 through 10.11.8), not against one server's
+  ' observed behaviour:
+  '
+  '   /QuickConnect/Connect   200 / 404 on every version; 503 added at 10.11.0
+  '   /QuickConnect/Initiate  200 / 401 on every version; 503 added at 10.11.0
+  '   AuthenticateWithQC      200 / 400 on every version; 503 added at 10.11.0
+  '   QuickConnectResult.Error exists ONLY on 10.7.x
+  '
+  ' Two of those codes therefore do not exist on every server, and one field
+  ' exists on only the oldest — so these are version-matrix tests, not
+  ' single-version ones. The original 404 finding came from probing one live
+  ' server, which is exactly how the infinite-poll bug this module fixes got
+  ' shipped; the spec sweep is what turned it into a claim about all of them.
+  @suite("quickConnect - poll outcomes, give-up policy, session parsing, spoken code")
+  class QuickConnectTests extends tests.BaseTestSuite
+
+    ' Shape of one pool response AA, as apiPromise hands it to a .then callback.
+    private function poolResponse(statusCode as integer, json as dynamic) as object
+      return {
+        requestId: "quickConnectPoll-1",
+        ok: statusCode >= 200 and statusCode < 300,
+        statusCode: statusCode,
+        json: json,
+        text: ""
+      }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("quickConnectPollOutcome")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reports approved for a 200 whose Authenticated flag is true")
+    function _()
+      res = m.poolResponse(200, { Authenticated: true, Secret: "ABC", Code: "123456" })
+      m.assertEqual(quickConnectPollOutcome(res), QC_POLL_APPROVED)
+    end function
+
+    @it("reports pending for a 200 whose Authenticated flag is false")
+    function _()
+      res = m.poolResponse(200, { Authenticated: false, Secret: "ABC", Code: "123456" })
+      m.assertEqual(quickConnectPollOutcome(res), QC_POLL_PENDING)
+    end function
+
+    @it("reports pending for a 200 with no Authenticated flag at all")
+    ' A body that parsed but omitted the flag is a server that has not said yes.
+    function _()
+      res = m.poolResponse(200, { Secret: "ABC" })
+      m.assertEqual(quickConnectPollOutcome(res), QC_POLL_PENDING)
+    end function
+
+    @it("reports EXPIRED for a 404 - an unknown or expired secret")
+    ' The whole point of routing this endpoint through the pool: the status code
+    ' is the only thing separating a dead code from one nobody approved yet.
+    function _()
+      res = m.poolResponse(404, invalid)
+      m.assertEqual(quickConnectPollOutcome(res), QC_POLL_EXPIRED)
+    end function
+
+    @it("reports failed for a 401")
+    function _()
+      m.assertEqual(quickConnectPollOutcome(m.poolResponse(401, invalid)), QC_POLL_FAILED)
+    end function
+
+    @it("reports failed for a 500")
+    function _()
+      m.assertEqual(quickConnectPollOutcome(m.poolResponse(500, invalid)), QC_POLL_FAILED)
+    end function
+
+    @it("reports failed for a 200 whose body did not parse")
+    ' NOT pending: pending is a fact the server stated, and this response stated
+    ' nothing. Calling it pending is what turns a broken proxy into a spinner
+    ' that never resolves.
+    function _()
+      m.assertEqual(quickConnectPollOutcome(m.poolResponse(200, invalid)), QC_POLL_FAILED)
+    end function
+
+    @it("reports failed for invalid - the transport-failure / timeout path")
+    function _()
+      m.assertEqual(quickConnectPollOutcome(invalid), QC_POLL_FAILED)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("quickConnectShouldGiveUp")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("tolerates a single failure")
+    ' One dropped request on Wi-Fi must not kill a sign-in that is otherwise fine.
+    function _()
+      m.assertFalse(quickConnectShouldGiveUp(1))
+    end function
+
+    @it("gives up at the cap")
+    function _()
+      m.assertTrue(quickConnectShouldGiveUp(QC_MAX_CONSECUTIVE_FAILURES))
+    end function
+
+    @it("gives up past the cap")
+    function _()
+      m.assertTrue(quickConnectShouldGiveUp(QC_MAX_CONSECUTIVE_FAILURES + 1))
+    end function
+
+    @it("does not give up at zero")
+    function _()
+      m.assertFalse(quickConnectShouldGiveUp(0))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("quickConnectSession")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("extracts the secret and the code")
+    function _()
+      session = quickConnectSession({ Authenticated: false, Secret: "12B296D8", Code: "523522" })
+      m.assertNotInvalid(session)
+      m.assertEqual(session.secret, "12B296D8")
+      m.assertEqual(session.code, "523522")
+    end function
+
+    @it("rejects a response with no Code")
+    ' The old sync path checked only the Secret, which would have opened a dialog
+    ' whose whole purpose - showing the user something to type - was blank.
+    function _()
+      m.assertInvalid(quickConnectSession({ Secret: "12B296D8" }))
+    end function
+
+    @it("rejects a response with no Secret")
+    function _()
+      m.assertInvalid(quickConnectSession({ Code: "523522" }))
+    end function
+
+    @it("rejects an empty Code")
+    function _()
+      m.assertInvalid(quickConnectSession({ Secret: "12B296D8", Code: "" }))
+    end function
+
+    @it("rejects invalid")
+    function _()
+      m.assertInvalid(quickConnectSession(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("spokenQuickConnectCode")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("spaces the digits so the reader says them one at a time")
+    ' "523522" has two plausible pronunciations and only one of them is usable by
+    ' a listener transcribing it onto another device.
+    function _()
+      m.assertEqual(spokenQuickConnectCode("523522"), "5 2 3 5 2 2")
+    end function
+
+    @it("handles a single character")
+    function _()
+      m.assertEqual(spokenQuickConnectCode("7"), "7")
+    end function
+
+    @it("returns empty for an empty code")
+    function _()
+      m.assertEqual(spokenQuickConnectCode(""), "")
+    end function
+
+    @it("does not emit a leading or trailing space")
+    function _()
+      spoken = spokenQuickConnectCode("42")
+      m.assertEqual(spoken, "4 2")
+      m.assertEqual(spoken.trim(), spoken)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("quickConnectPollOutcome - 10.7's Error field")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reports failed for a 200 that carries an Error string")
+    ' 10.7.x ONLY: its QuickConnectResult has an `Error` field that 10.8 dropped.
+    ' A server stating an error is not saying "not yet" — treating it as pending
+    ' leaves the oldest supported server with the infinite spinner this module
+    ' exists to remove.
+    function _()
+      res = m.poolResponse(200, { Authenticated: false, Error: "Quick connect is disabled" })
+      m.assertEqual(quickConnectPollOutcome(res), QC_POLL_FAILED)
+    end function
+
+    @it("still reports approved when Error is present but the request was authorized")
+    ' Order matters: an approval must never be discarded because a stale error
+    ' string rode along with it.
+    function _()
+      res = m.poolResponse(200, { Authenticated: true, Error: "something earlier" })
+      m.assertEqual(quickConnectPollOutcome(res), QC_POLL_APPROVED)
+    end function
+
+    @it("ignores an empty Error string")
+    ' The field is nullable, so an empty value is the server saying nothing.
+    function _()
+      res = m.poolResponse(200, { Authenticated: false, Error: "" })
+      m.assertEqual(quickConnectPollOutcome(res), QC_POLL_PENDING)
+    end function
+
+    @it("is unaffected on 10.8+ where the field does not exist")
+    function _()
+      res = m.poolResponse(200, { Authenticated: false, Secret: "ABC", Code: "123456" })
+      m.assertEqual(quickConnectPollOutcome(res), QC_POLL_PENDING)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("quickConnectInitiateFailure")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reports DISABLED for a 401 - the only code that means the feature is off")
+    ' "Quick connect is not active on this server", declared on every version
+    ' from 10.7.0 to 10.11.8.
+    function _()
+      m.assertEqual(quickConnectInitiateFailure(m.poolResponse(401, invalid)), QC_FAIL_DISABLED)
+    end function
+
+    @it("reports UNAVAILABLE for a 503 - the server is starting, not switched off")
+    ' Added at 10.11.0 and TRANSIENT. Reporting it as disabled would tell a user
+    ' whose server is still booting to give up on a feature that works.
+    function _()
+      m.assertEqual(quickConnectInitiateFailure(m.poolResponse(503, invalid)), QC_FAIL_UNAVAILABLE)
+    end function
+
+    @it("reports UNAVAILABLE for a 404 - no version declares one here")
+    function _()
+      m.assertEqual(quickConnectInitiateFailure(m.poolResponse(404, invalid)), QC_FAIL_UNAVAILABLE)
+    end function
+
+    @it("reports UNAVAILABLE for a 500")
+    function _()
+      m.assertEqual(quickConnectInitiateFailure(m.poolResponse(500, invalid)), QC_FAIL_UNAVAILABLE)
+    end function
+
+    @it("reports UNAVAILABLE for invalid - the transport-failure path")
+    function _()
+      m.assertEqual(quickConnectInitiateFailure(invalid), QC_FAIL_UNAVAILABLE)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("quickConnectExchangeFailure")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reports UNAVAILABLE for a 503 - nothing is wrong with the code")
+    function _()
+      m.assertEqual(quickConnectExchangeFailure(m.poolResponse(503, invalid)), QC_FAIL_UNAVAILABLE)
+    end function
+
+    @it("reports SPENT for the 404 a live server actually answers")
+    ' UNDECLARED by every spec, which declares only 400 here — and observed on
+    ' 10.11.11. The classifier does not enumerate codes for exactly that reason.
+    function _()
+      m.assertEqual(quickConnectExchangeFailure(m.poolResponse(404, invalid)), QC_FAIL_SPENT)
+    end function
+
+    @it("reports SPENT for the declared 400")
+    function _()
+      m.assertEqual(quickConnectExchangeFailure(m.poolResponse(400, invalid)), QC_FAIL_SPENT)
+    end function
+
+    @it("reports SPENT for invalid")
+    ' A dead transport still leaves the caller needing a fresh code, and the
+    ' retry path is the dialog reopening rather than a re-exchange.
+    function _()
+      m.assertEqual(quickConnectExchangeFailure(invalid), QC_FAIL_SPENT)
+    end function
+
+    @it("never reports DISABLED - the exchange has no such signal")
+    ' Only Initiate carries the 401 that means "not active on this server".
+    function _()
+      for each code in [400, 401, 403, 404, 500]
+        m.assertNotEqual(quickConnectExchangeFailure(m.poolResponse(code, invalid)), QC_FAIL_DISABLED)
+      end for
+    end function
+
+    @it("carries alphanumeric codes through unchanged apart from the spacing")
+    ' Jellyfin issues digits today, but the field is a string in the spec and the
+    ' function has no business assuming otherwise.
+    function _()
+      m.assertEqual(spokenQuickConnectCode("A1B2"), "A 1 B 2")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("quickConnectHasSession")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A 200 is not a session. Before this gate, an exchange that answered OK with
+    ' an unusable body sailed past UserSelect, the user answered the
+    ' save-credentials question, and then the coordinator dropped it with nothing
+    ' on screen — no message, no navigation. These pin the exact payload shapes
+    ' the DOWNSTREAM chain needs, which is why User.Id is checked and not just User.
+
+    @it("accepts a complete AuthenticationResult")
+    function _()
+      m.assertTrue(quickConnectHasSession({ AccessToken: "tok", User: { Id: "abc123" } }))
+    end function
+
+    @it("rejects a body with no AccessToken")
+    function _()
+      m.assertFalse(quickConnectHasSession({ User: { Id: "abc123" } }))
+    end function
+
+    @it("rejects an empty AccessToken")
+    function _()
+      m.assertFalse(quickConnectHasSession({ AccessToken: "", User: { Id: "abc123" } }))
+    end function
+
+    @it("rejects a body with no User")
+    function _()
+      m.assertFalse(quickConnectHasSession({ AccessToken: "tok" }))
+    end function
+
+    @it("rejects a User carrying no Id")
+    ' The one that is easy to under-check. UserData.loadFromJSON reads json.User.id
+    ' and user.Login refuses a payload without it — but loginRouter calls
+    ' finishLogin() either way, so accepting this lands on Home with nobody signed
+    ' in. Worse than the failure it replaces, and silent.
+    function _()
+      m.assertFalse(quickConnectHasSession({ AccessToken: "tok", User: { Name: "charlie" } }))
+    end function
+
+    @it("rejects an empty User Id")
+    function _()
+      m.assertFalse(quickConnectHasSession({ AccessToken: "tok", User: { Id: "" } }))
+    end function
+
+    @it("rejects invalid")
+    function _()
+      m.assertFalse(quickConnectHasSession(invalid))
+    end function
+
+  end class
+
+end namespace

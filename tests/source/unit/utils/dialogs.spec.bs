@@ -293,6 +293,58 @@ namespace tests
       scene.removeChild(opener)
     end function
 
+    ' abandonDialog() DOES NOT RESTORE FOCUS, and the next derived returnFocusTo
+    ' collapses to the scene. Measured on device, not assumed.
+    '
+    ' That is correct for the verb: every abandonDialog() caller but one is an
+    ' onDestroy, where the view is going away and there is no focus to return to
+    ' — restoring it there would point at a node about to be detached. The dialog
+    ' family's OTHER exit, closeDialog(), does restore focus, and the asymmetry
+    ' stayed invisible while the two never met on a live screen.
+    '
+    ' It becomes a trap the moment a screen abandons a dialog and STAYS ON THE
+    ' AIR, because presentOverlayDialog derives returnFocusTo from whatever holds
+    ' focus at that instant — so the next dialog inherits the scene root and hands
+    ' focus back to nothing on close. UserSelect.abandonQuickConnectDialog() is
+    ' the one caller in that position and re-focuses its button row itself.
+    '
+    ' Pinned as CHARACTERIZATION rather than as a defect: if abandonDialog ever
+    ' does start restoring focus, this fails and points at the call site whose
+    ' extra line has become redundant.
+    @it("does not restore focus, so the next dialog derives the scene as its returnFocusTo")
+    function _()
+      scene = m.top.getScene()
+
+      ' A REAL focusable node, asserted to actually hold focus before the
+      ' measurement begins. Without that precondition this would pass on a model
+      ' where nothing was ever focused, measuring nothing — the vacuous-proxy
+      ' failure recorded on the supersede test above.
+      opener = CreateObject("roSGNode", "Button")
+      opener.text = "opener"
+      scene.appendChild(opener)
+      opener.setFocus(true)
+      m.assertTrue(lastFocusedChild(scene).isSameNode(opener), "precondition failed: the opener never took focus, so this test would measure nothing")
+
+      dialog = CreateObject("roSGNode", "JRDialog")
+      dialog.buttons = ["Cancel"]
+      presented = presentOverlayDialog(dialog, "")
+      abandonDialog(presented)
+
+      ' 1. The focus the dialog held is not handed back.
+      orphaned = lastFocusedChild(scene)
+      m.assertTrue(orphaned.isSameNode(scene), "expected focus to fall back to the scene root; got " + orphaned.subtype())
+
+      ' 2. The consequence a live screen actually feels: the NEXT dialog derives
+      '    the scene root, so dismissing it restores focus to nothing.
+      follower = CreateObject("roSGNode", "JRDialog")
+      follower.buttons = ["OK"]
+      follower = presentOverlayDialog(follower, "")
+      m.assertTrue(follower.returnFocusTo.isSameNode(scene), "expected the derived returnFocusTo to be the scene root; got " + follower.returnFocusTo.subtype())
+
+      abandonDialog(follower)
+      scene.removeChild(opener)
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("abandonDialog drops PORT observers too")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
