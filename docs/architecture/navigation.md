@@ -14,6 +14,7 @@ related-files:
   - components/dialogs/JRKeyboardDialog.bs
   - components/dialogs/JRDialogPanel.bs
   - components/dialogs/JRListDialogRow.bs
+  - components/dialogs/QuickConnectDialog.bs
   - components/OverviewDialog.bs
   - source/utils/dialogs.bs
   - source/utils/dialogLayout.bs
