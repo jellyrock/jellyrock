@@ -73,6 +73,22 @@ describe('no-hand-rolled-dialog', () => {
         }),
       ).toHaveLength(0);
     });
+
+    // XML allows either quote style and the vendored components under
+    // components/roku_modules/ are written in single quotes. A rule that only
+    // saw width="1920" was one keystroke from being unenforceable.
+    it('flags the same backdrop written with single-quoted attributes', () => {
+      expect(
+        check({
+          'components/MyPanel.xml': `<?xml version='1.0' encoding='utf-8'?>
+            <component name='MyPanel' extends='Group'>
+              <children>
+                <Rectangle width='1920' height='1080' color='#000000' opacity='0.75' />
+              </children>
+            </component>`,
+        }),
+      ).toHaveLength(1);
+    });
   });
 
   describe('the generic 9-patch assets are NOT a dialog marker', () => {
@@ -150,6 +166,57 @@ describe('no-hand-rolled-dialog', () => {
       ).toHaveLength(1);
     });
 
+    it('flags appendChild onto m.scene', () => {
+      expect(
+        check({
+          'components/MyScreen.bs': `
+            sub showThing()
+              m.scene.appendChild(createObject("roSGNode", "MyPanel"))
+            end sub
+          `,
+        }),
+      ).toHaveLength(1);
+    });
+
+    // THE SHAPE THAT MATTERS. presentOverlayDialog is itself written this way
+    // (`scene = appScene()`, then `scene.appendChild(dialog)`), so it is what a
+    // developer copying the sanctioned reference produces. A rule that only saw
+    // the direct call would wave through every realistic violation and catch
+    // only the naive one.
+    it('flags an append onto a LOCAL bound to the scene', () => {
+      expect(
+        check({
+          'components/MyScreen.bs': `
+            sub showThing()
+              scene = appScene()
+              node = createObject("roSGNode", "MyPanel")
+              scene.appendChild(node)
+            end sub
+          `,
+        }),
+      ).toHaveLength(1);
+    });
+
+    // The binding does NOT leak between functions — a local named `scene` that
+    // was never assigned a scene is just a node like any other.
+    it('does not carry a scene binding into another function', () => {
+      expect(
+        check({
+          'components/MyScreen.bs': `
+            sub mountOverlay()
+              scene = appScene()
+              scene.appendChild(m.overlay)
+            end sub
+
+            sub buildRow()
+              scene = m.top.findNode("sceneryGroup")
+              scene.appendChild(createObject("roSGNode", "TextButton"))
+            end sub
+          `,
+        }),
+      ).toHaveLength(1);
+    });
+
     // appendChild is ubiquitous and legitimate — every LayoutGroup fills itself
     // this way. Only the SCENE target is the dialog-mounting shape.
     it('leaves appendChild onto an ordinary node alone', () => {
@@ -179,14 +246,32 @@ describe('no-hand-rolled-dialog', () => {
       ).toHaveLength(0);
     });
 
+    // Written in the real shape — a local bound to the scene — because that is
+    // the one the local-binding rule above now catches everywhere else.
     it('leaves the mounting helpers alone — they ARE the sanctioned path', () => {
       expect(
         check({
           'source/utils/dialogs.bs': `
             sub presentOverlayDialog(dialog as object)
-              appScene().appendChild(dialog)
+              scene = appScene()
+              scene.appendChild(dialog)
             end sub
           `,
+        }),
+      ).toHaveLength(0);
+    });
+
+    // Vendored code lives under BOTH roku_modules trees, and we cannot edit it
+    // to add a suppression.
+    it('leaves vendored components under components/roku_modules alone', () => {
+      expect(
+        check({
+          'components/roku_modules/log/ScreenTransport.xml': `<?xml version='1.0' encoding='utf-8'?>
+            <component name='ScreenTransport' extends='Group'>
+              <children>
+                <Rectangle id='background' color='#000000' opacity='0.8' width='1920' height='1080' />
+              </children>
+            </component>`,
         }),
       ).toHaveLength(0);
     });

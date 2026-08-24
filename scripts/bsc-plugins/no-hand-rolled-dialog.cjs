@@ -19,8 +19,11 @@
  *
  *   2. `appendChild` / `insertChild` onto a SCENE reference (`m.scene`,
  *      `appScene()`, `getScene()`), which is how an overlay used to be mounted
- *      by hand. The helpers in `source/utils/dialogs.bs` are the only path that
- *      stamps the shared overlay id, so a hand-rolled append is invisible to
+ *      by hand — including via a LOCAL bound to one (`scene = appScene()` then
+ *      `scene.appendChild(x)`), which is the shape `presentOverlayDialog` itself
+ *      is written in and therefore the shape a copy of it will take. The helpers
+ *      in `source/utils/dialogs.bs` are the only path that stamps the shared
+ *      overlay id, so a hand-rolled append is invisible to
  *      `isOverlayDialogOpen` / `isDialogOpen` / `cancelOpenDialog` — it cannot
  *      be superseded, queried or cancelled, and nothing about it looks wrong at
  *      the call site.
@@ -40,7 +43,14 @@
  *     — there is no way to tell those apart statically, which is why the check
  *     requires an `opacity` (a DIMMING rectangle) and why the escape hatch below
  *     exists.
- *   - Vendored third-party code.
+ *   - Vendored third-party code, in BOTH trees (`components/roku_modules/`,
+ *     `source/roku_modules/`, `components/vendor/`).
+ *
+ * Known gap, stated rather than papered over: a backdrop whose size is set in
+ * BrightScript (`m.dim.width = 1920`) rather than in the XML is not caught. The
+ * XML half reads the markup on purpose — that is where every dialog in this app
+ * declares its chrome — and chasing the code-set case would mean tracking field
+ * writes on arbitrary nodes for a shape nothing in the tree uses.
  *
  * Escape hatch:
  *   - `' bsc-disable-line no-hand-rolled-dialog` on the offending line, or
@@ -71,6 +81,10 @@ const ALLOWED_DEST_PATHS = new Set([
 
 const EXCLUDED_DEST_PREFIXES = [
   'components/vendor/',
+  // BOTH vendored trees. `source/roku_modules/` alone left
+  // `components/roku_modules/` (log, promises, sgrouter) inside the rule, which
+  // is third-party code we cannot edit and would have to suppress line by line.
+  'components/roku_modules/',
   'source/roku_modules/',
   'source/tests/',
   'tests/',
@@ -182,39 +196,94 @@ class NoHandRolledDialogPlugin {
     // A full-screen Rectangle that ALSO dims (carries an opacity) is a dialog
     // backdrop. Both conditions are required: full-screen alone is a background,
     // and an opacity alone is any translucent decoration.
+    //
+    // Attribute values are matched in EITHER quote style. XML allows both, the
+    // vendored components under `components/roku_modules/` are written in single
+    // quotes, and a rule that only sees `width="1920"` is one keystroke from
+    // being silently unenforceable.
+    const attrValue = (name, value) => new RegExp(`${name}\\s*=\\s*(?:"${value}"|'${value}')`, 'i');
+    const isFullScreen = (attrs) =>
+      attrValue('width', SCREEN_WIDTH).test(attrs) &&
+      attrValue('height', SCREEN_HEIGHT).test(attrs);
+    const dims = (attrs) => attrValue('opacity', '[^"\']*').test(attrs);
+
     const elementPattern = /<Rectangle\b([^>]*)>/gi;
     let match;
     while ((match = elementPattern.exec(contents)) !== null) {
       const attrs = match[1];
-      const isFullScreen =
-        new RegExp(`width\\s*=\\s*"${SCREEN_WIDTH}"`, 'i').test(attrs) &&
-        new RegExp(`height\\s*=\\s*"${SCREEN_HEIGHT}"`, 'i').test(attrs);
-      if (!isFullScreen) continue;
-      if (!/opacity\s*=\s*"/i.test(attrs)) continue;
+      if (!isFullScreen(attrs)) continue;
+      if (!dims(attrs)) continue;
       report(locate(match.index), 'This is a hand-rolled dimmed dialog backdrop.');
     }
   }
 
-  /** The mounting half — an overlay appended to the scene outside the helpers. */
+  /**
+   * The mounting half — an overlay appended to the scene outside the helpers.
+   *
+   * Two passes PER FUNCTION, not one over the file. A direct
+   * `appScene().appendChild(x)` is the easy shape; the one that actually
+   * matters is `scene = appScene()` on one line and `scene.appendChild(x)` two
+   * lines later, because that is the shape `presentOverlayDialog` itself is
+   * written in — so it is what a developer copying the sanctioned reference
+   * produces, and a rule blind to it would wave through every realistic
+   * violation while catching only the naive one.
+   *
+   * Per function rather than per file so a local named `scene` in some
+   * unrelated function cannot inherit the binding.
+   */
   checkBrs(event, file) {
     const lines = (file.fileContents || '').split(/\r?\n/);
     const report = this.makeReporter(event, file, lines);
+    const walkAll = { walkMode: brighterscript.WalkMode.visitAllRecursive };
 
-    const visitor = brighterscript.createVisitor({
-      CallExpression: (call) => {
-        const callee = call?.callee;
-        if (!brighterscript.isDottedGetExpression(callee)) return;
-        const method = callee.tokens?.name?.text?.toLowerCase();
-        if (!CHILD_APPENDERS.has(method)) return;
-        if (!isSceneExpression(callee.obj)) return;
-        report(
-          call.location,
-          'This appends a node directly to the scene, which is how an overlay dialog is mounted by hand.',
-        );
-      },
-    });
+    const checkFunctionBody = (body) => {
+      if (!body?.walk) return;
 
-    file.parser.ast.walk(visitor, { walkMode: brighterscript.WalkMode.visitAllRecursive });
+      // Pass 1 — locals bound to the scene.
+      const sceneLocals = new Set();
+      body.walk(
+        brighterscript.createVisitor({
+          AssignmentStatement: (stmt) => {
+            const name = stmt?.tokens?.name?.text;
+            if (typeof name !== 'string') return;
+            if (!isSceneExpression(stmt.value)) return;
+            sceneLocals.add(name.toLowerCase());
+          },
+        }),
+        walkAll,
+      );
+
+      // Pass 2 — appends onto the scene, however it was reached.
+      body.walk(
+        brighterscript.createVisitor({
+          CallExpression: (call) => {
+            const callee = call?.callee;
+            if (!brighterscript.isDottedGetExpression(callee)) return;
+            const method = callee.tokens?.name?.text?.toLowerCase();
+            if (!CHILD_APPENDERS.has(method)) return;
+
+            const target = callee.obj;
+            const viaLocal =
+              brighterscript.isVariableExpression(target) &&
+              sceneLocals.has(target.tokens?.name?.text?.toLowerCase());
+            if (!isSceneExpression(target) && !viaLocal) return;
+
+            report(
+              call.location,
+              'This appends a node directly to the scene, which is how an overlay dialog is mounted by hand.',
+            );
+          },
+        }),
+        walkAll,
+      );
+    };
+
+    file.parser.ast.walk(
+      brighterscript.createVisitor({
+        FunctionExpression: (func) => checkFunctionBody(func?.body),
+      }),
+      walkAll,
+    );
   }
 }
 
