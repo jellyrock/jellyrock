@@ -132,6 +132,16 @@ sub applyLayout()
       bodyHeight: listHeightFor(visibleRows),
       footerHeight: 0
     })
+
+    ' Dropping rows fixes a body that was too tall; it cannot fix a TITLE that
+    ' blows the ceiling on its own, which leaves the flow no body to give back
+    ' and pins rowsThatFit at its floor of one row. Lay it out anyway — a panel
+    ' slightly over is visible and recoverable — but SAY SO, because JRDialog
+    ' warns in exactly this position and a silent list is the harder of the two
+    ' to notice.
+    if layout.overflows
+      m.log.warn("JRListDialog still over the ceiling at", visibleRows, "row(s); laying it out anyway")
+    end if
   end if
 
   m.chrome.layout = layout

@@ -286,8 +286,23 @@ sub applyLayout()
 
     if m.messageText.maxLines <> keepLines
       m.log.warn("JRDialog message too long for a dialog; truncating to", keepLines, "lines - use showInfoDialog for long-form text")
+
+      ' PLACE THE PANEL BEFORE RETURNING. The clamped layout is already valid —
+      ' it is what the flow could give us — so writing it here means the dialog
+      ' is positioned whether or not anything re-enters, and a later pass simply
+      ' refines it.
+      '
+      ' The old shape returned first and relied on the truncation re-running
+      ' layout(). It does re-run today, but NOT by the route the comment claimed:
+      ' `renderTracking` reports render VISIBILITY, so it fires once on
+      ' none -> full and never again (tech-debt
+      ' jrdialog-no-relayout-on-post-mount-change) and a maxLines change does not
+      ' bring it back. What actually re-enters is a TextButton's `isReady`, which
+      ' lands after this only because both helpers in source/utils/dialogs.bs set
+      ' `buttons` AFTER `message`. That is an ordering accident, not a mechanism,
+      ' and it is one helper edit away from leaving the panel unplaced.
+      m.chrome.layout = layout
       m.messageText.maxLines = keepLines
-      ' The clamp changes the rendered height; renderTracking re-runs layout()
       return
     end if
 
