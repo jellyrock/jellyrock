@@ -1,4 +1,5 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/dialogKeys.bs"
 import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/dialogNarration.bs"
 import "pkg:/source/utils/dialogResult.bs"
@@ -263,25 +264,58 @@ sub applyLayout()
     titleHeight: titleHeight,
     subheadingHeight: subheadingHeight,
     bodyHeight: textHeight,
-    footerHeight: buttonRowHeight(),
-    footerInside: true
+    footerHeight: buttonRowHeight()
   })
 
   ' --- ceiling ---------------------------------------------------------------
   ' Never exceed the screen. Reaching this needs ~600 characters of message,
   ' which means the caller wants showInfoDialog, not a confirm — so say so
   ' rather than silently swallowing the text.
+  '
+  ' `body.height` is what the flow could actually give us, which is NOT what we
+  ' asked for when it overflowed. Truncate to that, rather than to a figure
+  ' re-derived from PANEL_MAX_HEIGHT here: the panel now comes back already
+  ' clamped, so panel.height - PANEL_MAX_HEIGHT is zero and this branch would
+  ' truncate to the full text and loop.
   if layout.overflows
     constants = m.global.constants
-    overflow = layout.panel.height - PANEL_MAX_HEIGHT
     lineHeight = int(constants.fontSizeMedium * 1.25)
     if lineHeight < 1 then lineHeight = 1
-    keepLines = int((textHeight - overflow) / lineHeight)
+    keepLines = int(layout.body.height / lineHeight)
     if keepLines < 1 then keepLines = 1
-    m.log.warn("JRDialog message too long for a dialog; truncating to", keepLines, "lines - use showInfoDialog for long-form text")
-    m.messageText.maxLines = keepLines
-    ' The clamp changes the rendered height; renderTracking re-runs layout()
-    return
+
+    if m.messageText.maxLines <> keepLines
+      m.log.warn("JRDialog message too long for a dialog; truncating to", keepLines, "lines - use showInfoDialog for long-form text")
+
+      ' PLACE THE PANEL BEFORE RETURNING. The clamped layout is already valid —
+      ' it is what the flow could give us — so writing it here means the dialog
+      ' is positioned whether or not anything re-enters, and a later pass simply
+      ' refines it.
+      '
+      ' The old shape returned first and relied on the truncation re-running
+      ' layout(). It does re-run today, but NOT by the route the comment claimed:
+      ' `renderTracking` reports render VISIBILITY, so it fires once on
+      ' none -> full and never again (tech-debt
+      ' jrdialog-no-relayout-on-post-mount-change) and a maxLines change does not
+      ' bring it back. What actually re-enters is a TextButton's `isReady`, which
+      ' lands after this only because both helpers in source/utils/dialogs.bs set
+      ' `buttons` AFTER `message`. That is an ordering accident, not a mechanism,
+      ' and it is one helper edit away from leaving the panel unplaced.
+      m.chrome.layout = layout
+      m.messageText.maxLines = keepLines
+      return
+    end if
+
+    ' Already capped at exactly this many lines and STILL over. `lineHeight` is
+    ' an ESTIMATE (fontSizeMedium * 1.25), so a font whose real line box is
+    ' taller re-derives the same cap forever — and a title tall enough to blow
+    ' the ceiling on its own leaves body.height at 0, which pins keepLines at 1
+    ' whatever the message says. Returning again would be the quiet failure:
+    ' `m.chrome.layout` never gets written, so the dialog draws with unpositioned
+    ' chrome and nothing says why. Fall through and place it. A panel a few
+    ' pixels over the ceiling is visible and recoverable; one that was never laid
+    ' out is neither.
+    m.log.warn("JRDialog still over the ceiling at", keepLines, "lines; laying it out anyway")
   end if
 
   m.chrome.layout = layout
@@ -336,8 +370,7 @@ function buttonRowHeight() as integer
     rect = m.buttonRow.localBoundingRect()
     if rect.height > 0 then return rect.height
   end if
-  ' TextButton: fontSize * 0.7 + padding * 2
-  return int(m.global.constants.fontSizeMedium * 0.7) + 60
+  return dialogButtonFallbackHeight(m.global.constants.fontSizeMedium)
 end function
 
 ' Centre the row on the PANEL, not the screen — they only coincided while the
@@ -401,29 +434,24 @@ sub closeDialog()
   if isValid(returnFocusTo) then returnFocusTo.setFocus(true)
 end sub
 
+' The decision itself is buttonDialogKeyAction in source/utils/dialogKeys.bs,
+' which is pure and unit-tested. Everything here is the doing.
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 
-  if key = "back"
+  action = buttonDialogKeyAction(key, m.stackButtons = true)
+
+  if action = "cancel"
     resolveDialog(-1)
-    return true
-  end if
-
-  if key = "left"
-    moveButtonFocus(-1)
-    return true
-  end if
-
-  if key = "right"
-    moveButtonFocus(1)
-    return true
-  end if
-
-  if key = "OK"
+  else if action = "resolve"
     resolveDialog(m.focusIndex)
-    return true
+  else if action = "stepBack"
+    moveButtonFocus(-1)
+  else if action = "stepForward"
+    moveButtonFocus(1)
   end if
 
-  ' Modal containment: nothing else escapes to the scene behind us
+  ' Modal containment: nothing escapes to the scene behind us, including the
+  ' "consume" action itself.
   return true
 end function

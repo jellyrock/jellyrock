@@ -123,8 +123,7 @@ namespace tests
 
     @it("offers exactly one button")
     ' One focusable class of thing, per the dialog-family convention — and one
-    ' button means no left/right navigation to get wrong (contrast
-    ' jrdialog-stacked-buttons-no-vertical-keys).
+    ' button means there is no row navigation to get wrong at all.
     function _()
       m.assertEqual(m.dialog.findNode("buttonRow").getChildCount(), 1)
     end function

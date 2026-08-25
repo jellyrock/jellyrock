@@ -321,6 +321,79 @@ it('item description opens the overview overlay; back restores focus to it', asy
   });
 });
 
+// THE OPENING FOCUS, on a body that actually scrolls — the one property no unit
+// spec in this repo can reach.
+//
+// A rooibos spec cannot see it: `m.wait()` blocks the render thread, so a wrapped
+// label never finishes laying out and the dialog is still measuring when the
+// assertions run. Measured on a Stick 4K — a 5000-character overview still
+// reported a 218px label and `scrollTrack.visible = false` after 3s of waiting.
+// So this is the only place the question can be asked.
+//
+// It is worth asking because the answer was wrong and everything stayed green:
+// OverviewDialog latched its opening focus on the layout pass that runs inside
+// init(), before a single field is set, which sent every scrolling dialog to the
+// OK button. `down` on the OK button is swallowed, so the description the user
+// is looking straight at would not scroll until they pressed UP first.
+//
+// The overview is FORCED rather than taken from the fixture: no item on the demo
+// server has a description long enough to scroll (the hero's fits with ~350px to
+// spare), so a content-dependent version of this test would silently assert the
+// non-scrolling branch — which is the branch that passes either way.
+it('a scrolling overview overlay opens focused on the text, not on OK', async () => {
+  await seedHome(session, LOCALE);
+  await seedLibraryLanding(session, libraryIdFor(libraries, 'movies'), 'Movies');
+  await relaunch();
+  await navMovieDetails({ libraries });
+
+  const overview = await getVal('#itemDescription.text');
+  if (typeof overview !== 'string' || overview.length === 0)
+    throw new Error(
+      `hero movie has no overview on this fixture (#itemDescription.text = ${overview})`,
+    );
+
+  // App-memory only — the next relaunch resets it, so no restore step is needed.
+  const long = `${overview} `.repeat(40);
+  await odc.setValue({ base: 'scene', keyPath: '#itemDescription.text', value: long });
+
+  await odc.focusNode({ base: 'scene', keyPath: '#itemDescription' });
+  await waitFocused((f) => f.node?.id === 'itemDescription', {
+    label: 'item description focused',
+    timeout: 5000,
+  });
+  await press(ecp.Key.Ok);
+
+  await waitFor('#jrDialog.id', (v) => v === 'jrDialog', {
+    label: 'overview overlay mounted',
+    timeout: 10000,
+  });
+
+  // Guard the premise before asserting on it: if this body did not scroll, the
+  // focus assertion below would be asserting the wrong branch (tests/rta/CLAUDE.md).
+  await waitFor('#scrollTrack.visible', (v) => v === true, {
+    label: 'overview body scrolls',
+    timeout: 10000,
+  });
+
+  await waitFocused((f) => f.node?.id === 'textClip', {
+    label: 'opening focus on the scroll area',
+    timeout: 5000,
+  });
+
+  // And it holds: `down` scrolls rather than being swallowed by a focused OK.
+  await press(ecp.Key.Down);
+  await waitFor('#scrollContent.translation', (t) => Array.isArray(t) && t[1] < 0, {
+    label: 'down scrolled the body',
+    timeout: 5000,
+  });
+
+  await press(ecp.Key.Back);
+  await waitFor('#jrDialog.id', (v) => v === undefined, {
+    label: 'overview overlay dismissed',
+    timeout: 10000,
+  });
+});
+
 // The playback-time pickers moved off SceneManager's shared returnData onto
 // JRListDialog, whose result is per-instance. This drives the one picker the demo
 // server can populate and proves the overlay opens over the player, lists the real
