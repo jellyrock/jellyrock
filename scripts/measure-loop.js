@@ -200,8 +200,8 @@ export async function runSeries(
         timings,
         // What the app said this sample WAS — its screen, and which variant of it. Empty
         // for a sample carrying only numbers, which is every `item-grid` one and every
-        // `home-latest-rows` one from a build without the recompute attribution. This is the only
-        // thing that can tell two samples from the same launch apart: a chained
+        // `home-latest-rows` one from a build without the recompute attribution. This is
+        // the only thing that can tell two samples from the same launch apart: a chained
         // navigation mounts one screen several times (a Season is reached through its
         // Series), so `indexInLaunch` orders them but cannot say which is which.
         dimensions,

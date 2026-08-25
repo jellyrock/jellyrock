@@ -905,16 +905,16 @@ sub populateRowFromData(sectionId as string, itemData as dynamic)
 
     insertIndex = findInsertIndexForSection(sectionId)
     m.top.content.insertChild(row, insertIndex)
-    ' Recompute NOW even mid-run. An insertion makes the row list longer than the geometry
-    ' arrays, which is the same wrong-size-per-row defect deferring removals avoids, only
-    ' in the other direction. Removals are what there are many of (one per empty library,
-    ' every load); this branch fires only when a library that was empty last load has data
-    ' again, so flushing it eagerly costs a recompute that is rare rather than N of them.
     #if perfTiming
       m.popSizeInsert++
       if m.popSizeAt <> "" then m.popSizeAt += ","
       m.popSizeAt += "insert:" + sectionId
     #end if
+    ' Recompute NOW even mid-run. An insertion makes the row list longer than the geometry
+    ' arrays, which is the same wrong-size-per-row defect deferring removals avoids, only
+    ' in the other direction. Removals are what there are many of (one per empty library,
+    ' every load); this branch fires only when a library that was empty last load has data
+    ' again, so flushing it eagerly costs a recompute that is rare rather than N of them.
     rowStructureChanged(true)
   end if
 
