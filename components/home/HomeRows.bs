@@ -101,13 +101,27 @@ sub init()
     '   remove - a NON-latest section returned nothing and its row was dropped mid-run
     '            (latestRows.removalIsDeferrable refuses to defer anything else), so this
     '            counts a RACE: the section's task landing inside the run's window rather
-    '            than before it. The same removal on a different launch costs nothing here.
+    '            than outside it. The same removal on a different launch costs nothing here.
     '   insert - a section that had no row gained one (populateRowFromData's else branch).
     '
     ' The pair is a CHECKABLE decomposition, not decoration: `calls - remove - insert` is
-    ' the end-of-run flush and must be 0 or 1 on every sample. Anything else means a
-    ' recompute reached setRowItemSize() by a path neither of these counts, which is the
-    ' one way this instrument can be quietly wrong.
+    ' the end-of-run flush and must be 0 or 1 on every sample. It can break in BOTH
+    ' directions and they have opposite causes, which is worth knowing because NOTHING
+    ' COMPUTES IT TODAY - it is a subtraction over the ledger that an analyst has to run
+    ' (`measurement-invariants-ungated` in tech-debt.md is the gap, and the harness is where
+    ' it gets closed):
+    '
+    '   > 1  a recompute reached setRowItemSize() by a path neither counter tags.
+    '   < 0  a counted call site did NOT reach it - setRowItemSize() returns early when
+    '        m.top.content is invalid, and that return is BEFORE it increments `calls`.
+    '        Unreachable today, since both sites dereference m.top.content first and an
+    '        invalid one would already have faulted - but it is the direction a predicate
+    '        written only against the case above would miss.
+    '
+    ' The window is the RUN, so `remove` sees only a removal landing between the run's start
+    ' and its completion; one landing before OR after it is invisible here. That is a
+    ' property of the instrument rather than of the app, and it is the blind spot the
+    ' successor hypothesis in `home-first-paint-performance.md` turns on.
     m.popSizeRemove = 0
     m.popSizeInsert = 0
     ' The sectionIds behind those two counts, in the order they fired ("remove:livetv"),
