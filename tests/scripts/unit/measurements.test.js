@@ -141,6 +141,45 @@ describe('the Home pattern against captured device lines', () => {
     });
   });
 
+  it('reads the recompute ATTRIBUTION line, and leaves its `at` tail uncaptured', () => {
+    // Same provenance caveat as the line above: written from the call site, not captured.
+    //
+    // The `at` tail is the point of the second assertion. It is a per-launch string, so
+    // capturing it would put it in `dimensions` — "which run was this" — where a row id
+    // does not belong. It stays on the console for a reader, and the pattern stops before
+    // it. A future edit that "completes" the pattern by adding the group reintroduces
+    // exactly that, and this is what says so.
+    const line =
+      'INFO file:///Users/dev/jellyrock/components/home/HomeRows.bs:535 latest-rows size recompute by remove 1 insert 0 at remove:livetv  ';
+    expect(matchLine(home, line).fields).toEqual({ sizeRemove: 1, sizeInsert: 0 });
+  });
+
+  it('keeps the two recompute lines from matching each other', () => {
+    // `matchLine` returns the FIRST pattern that matches, and the two messages share the
+    // prefix `latest-rows size recompute`. If the older pattern's `\s+calls` were ever
+    // loosened, the attribution line would be read as a `sizeCalls` sample carrying none
+    // of its numbers — a silently half-parsed sample rather than an error.
+    const counts =
+      'INFO file:///Users/dev/jellyrock/components/home/HomeRows.bs:471 latest-rows size recompute calls 2 drains 10 ms 127  ';
+    const by =
+      'INFO file:///Users/dev/jellyrock/components/home/HomeRows.bs:535 latest-rows size recompute by remove 1 insert 0 at remove:livetv  ';
+    expect(matchLine(home, counts).key).toBe('sizeRecompute');
+    expect(matchLine(home, by).key).toBe('sizeRecomputeBy');
+  });
+
+  it('decomposes sizeCalls into the end-of-run flush plus the attributed mid-run ones', () => {
+    // The invariant the attribution exists to make checkable, asserted here so it is a
+    // gate rather than something an analyst remembers to eyeball: the end-of-run flush is
+    // `calls - remove - insert` and can only be 0 or 1. Any other value means a recompute
+    // reached `setRowItemSize()` by a path neither counter tags.
+    const sample = assembleSamples(home, [
+      ...CAPTURED.slice(0, 4),
+      'INFO file:///Users/dev/jellyrock/components/home/HomeRows.bs:471 latest-rows size recompute calls 2 drains 10 ms 127  ',
+      'INFO file:///Users/dev/jellyrock/components/home/HomeRows.bs:535 latest-rows size recompute by remove 1 insert 0 at remove:livetv  ',
+    ])[0].fields;
+    expect(sample.sizeCalls - sample.sizeRemove - sample.sizeInsert).toBe(1);
+  });
+
   it('still assembles a sample from a build that emits no size-recompute line', () => {
     // The gate under `required: false`. The BASELINE arm of any batching comparison is a
     // build without this line, so a required group here would drop exactly the samples

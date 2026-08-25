@@ -93,6 +93,27 @@ sub init()
     m.popDrains = 0
     m.popSizeMs = 0
     m.sizeClock = CreateObject("roTimespan")
+    ' WHICH of the two mid-run recomputes ran, because `calls` alone cannot say and the
+    ' two have different fixes. `calls` is 1 on most launches — the end-of-run flush that
+    ' applyPendingRowRemovals triggers — and 2 on a minority, and only these attribute
+    ' that second call:
+    '
+    '   remove - a NON-latest section returned nothing and its row was dropped mid-run
+    '            (latestRows.removalIsDeferrable refuses to defer anything else), so this
+    '            counts a RACE: the section's task landing inside the run's window rather
+    '            than before it. The same removal on a different launch costs nothing here.
+    '   insert - a section that had no row gained one (populateRowFromData's else branch).
+    '
+    ' The pair is a CHECKABLE decomposition, not decoration: `calls - remove - insert` is
+    ' the end-of-run flush and must be 0 or 1 on every sample. Anything else means a
+    ' recompute reached setRowItemSize() by a path neither of these counts, which is the
+    ' one way this instrument can be quietly wrong.
+    m.popSizeRemove = 0
+    m.popSizeInsert = 0
+    ' The sectionIds behind those two counts, in the order they fired ("remove:livetv").
+    ' Console only — a rare-event detail rather than a series field, so it is deliberately
+    ' outside what `measurements.js` parses. Read it out of the run log when a count moves.
+    m.popSizeAt = ""
   #end if
 
   ' Track loading state for persistent tasks to prevent duplicate observers/requests
@@ -436,6 +457,9 @@ sub startLatestMediaLoads()
     m.popSizeCalls = 0
     m.popDrains = 0
     m.popSizeMs = 0
+    m.popSizeRemove = 0
+    m.popSizeInsert = 0
+    m.popSizeAt = ""
   #end if
   ' Hold the row-size recompute for the whole run, so a load pays one instead of one per
   ' library that returned nothing.
@@ -506,6 +530,12 @@ sub onLatestRowsReady()
       ' Separate line, not more arguments on the one above: m.log.* faults at RUNTIME past
       ' nine call-site arguments and drops the app into the BrightScript debugger.
       m.log.info("latest-rows size recompute", "calls", m.popSizeCalls, "drains", m.popDrains, "ms", m.popSizeMs)
+      ' Same nine-argument ceiling, so the attribution is its own line rather than four
+      ' more arguments above. `at` is printed for a reader and deliberately NOT captured
+      ' by the measurement pattern — see m.popSizeAt.
+      sizeAt = m.popSizeAt
+      if sizeAt = "" then sizeAt = "-"
+      m.log.info("latest-rows size recompute by", "remove", m.popSizeRemove, "insert", m.popSizeInsert, "at", sizeAt)
     #end if
   end if
 end sub
@@ -775,6 +805,11 @@ sub populateRowFromData(sectionId as string, itemData as dynamic)
       if latestRows.removalIsDeferrable(sectionId, m.rowSizesBatching)
         m.pendingRowRemovals.push(sectionId)
       else
+        #if perfTiming
+          m.popSizeRemove++
+          if m.popSizeAt <> "" then m.popSizeAt += ","
+          m.popSizeAt += "remove:" + sectionId
+        #end if
         removeRowAtIndex(result.index)
       end if
     end if
@@ -873,6 +908,11 @@ sub populateRowFromData(sectionId as string, itemData as dynamic)
     ' in the other direction. Removals are what there are many of (one per empty library,
     ' every load); this branch fires only when a library that was empty last load has data
     ' again, so flushing it eagerly costs a recompute that is rare rather than N of them.
+    #if perfTiming
+      m.popSizeInsert++
+      if m.popSizeAt <> "" then m.popSizeAt += ","
+      m.popSizeAt += "insert:" + sectionId
+    #end if
     rowStructureChanged(true)
   end if
 

@@ -183,7 +183,7 @@ export const MEASUREMENTS = Object.freeze([
     // `unitFor('sizeCalls', family)` answered `'ms'`, so `measure:report --field sizeCalls`
     // headlined a call count as milliseconds — the identical defect `counts` was added to
     // fix for `cell-load`, sitting undetected in a second family the whole time.
-    counts: Object.freeze(['sizeCalls', 'sizeDrains']),
+    counts: Object.freeze(['sizeCalls', 'sizeDrains', 'sizeRemove', 'sizeInsert']),
     lines: Object.freeze([
       Object.freeze({
         key: 'total',
@@ -229,6 +229,26 @@ export const MEASUREMENTS = Object.freeze([
         // `docs/dev/home-first-paint-performance.md` ("size recompute").
         pattern:
           /latest-rows size recompute\s+calls\s+(?<sizeCalls>\d+)\s+drains\s+(?<sizeDrains>\d+)\s+ms\s+(?<sizeMs>\d+)/,
+      }),
+      Object.freeze({
+        // WHICH call site spent the mid-run recomputes `sizeCalls` counts. Its own line
+        // rather than four more groups above for the same reason that one is separate
+        // from `populate split`: nine call-site arguments is the `m.log.*` ceiling.
+        //
+        // OPTIONAL for the same reason as `sizeRecompute` — only a build carrying the
+        // attribution emits it, and the baseline arm a comparison needs is exactly the
+        // build that does not.
+        //
+        // ⚠️ The line also carries an `at <sectionId,…>` tail that this pattern does NOT
+        // capture, and that omission is deliberate rather than an oversight. It is a
+        // rare-event diagnostic read off the console, not a series field: it varies per
+        // launch, so `splitWorkload` would file it under `dimensions` — the bucket that
+        // says WHICH RUN a sample was — and two samples differing only in which row was
+        // dropped are the same run. Read it out of the run log.
+        key: 'sizeRecomputeBy',
+        required: false,
+        pattern:
+          /latest-rows size recompute by\s+remove\s+(?<sizeRemove>\d+)\s+insert\s+(?<sizeInsert>\d+)/,
       }),
     ]),
   }),
