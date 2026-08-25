@@ -27,6 +27,7 @@ import {
   unitFor,
   withUnit,
   declaredFields,
+  fieldsByKind,
   instrumentShare,
 } from '../../../scripts/measurements.js';
 
@@ -702,8 +703,14 @@ describe('unitFor', () => {
     //
     // WORKLOAD fields are excluded here rather than asserted as `ms`: they are counts,
     // and the case below is the one that owns them.
+    //
+    // DIMENSIONS are excluded for a stronger reason than exclusion: asserting one is
+    // `ms` is asserting something FALSE. Walked over `declaredFields`, this case used to
+    // sweep up `slowestContent` and `sizeAt` and pass — `unitFor` answers `'ms'` for any
+    // name it cannot place, so the case whose whole job is "no field defaults to
+    // milliseconds" was certifying two strings as durations.
     const fields = MEASUREMENTS.flatMap((m) =>
-      declaredFields(m).filter((f) => !m.workload.includes(f)),
+      fieldsByKind(m).numeric.filter((f) => !m.workload.includes(f)),
     );
     for (const field of fields) {
       expect(['ms', 'µs']).toContain(unitFor(field));
@@ -749,7 +756,11 @@ describe('unitFor', () => {
     //
     // Decidable statically because the patterns say which is which: a numeric group is
     // captured with `\d+` and a dimension with `\S+`. So this needs no per-family
-    // allowlist and cannot drift out of step with the registry.
+    // allowlist and cannot drift out of step with the registry. That rule now lives in
+    // `fieldsByKind` rather than in a regex here, because `measure:report --field` has to
+    // apply the SAME split and two copies would drift — and the copy that used to live
+    // here required a bare `\d+`, so it silently skipped `item-grid`'s signed
+    // `(?<firstPaintMs>-?\d+)`.
     //
     // `counts` is consulted BEFORE the name heuristic, and the heuristic matches `Ms`/`Us`
     // followed by a capital or end-of-name — not anchored at the end. Both details are
@@ -758,10 +769,7 @@ describe('unitFor', () => {
     // contains `Ms`, so only the counts-first order classifies it correctly. A name alone
     // cannot separate those two, which is the same reason `counts` has to be declared.
     for (const m of MEASUREMENTS) {
-      const numeric = m.lines
-        .flatMap((l) => [...l.pattern.source.matchAll(/\(\?<(\w+)>\\d\+\)/g)])
-        .map((g) => g[1]);
-      for (const field of new Set(numeric)) {
+      for (const field of fieldsByKind(m).numeric) {
         const classified =
           m.workload.includes(field) ||
           (m.counts ?? []).includes(field) ||
@@ -831,6 +839,55 @@ describe('declaredFields', () => {
     const fields = declaredFields(measurementById('screen-load'));
     expect(fields).toEqual(expect.arrayContaining(['paintMs', 'settledMs', 'instrumentUs']));
     expect(declaredFields(measurementById('home-latest-rows'))).not.toContain('instrumentUs');
+  });
+});
+
+describe('fieldsByKind', () => {
+  it('partitions every declared field, so a third capture shape cannot be guessed at', () => {
+    // The property that lets `--field` and the unit rules trust this: numeric ∪ dimensions
+    // is exactly `declaredFields`, with nothing in both. A future pattern written with,
+    // say, `(?<ratio>[\d.]+)` would land in `dimensions` — which is the SAFE side (it gets
+    // rejected as a headline rather than published as `ms`) — and this case is what makes
+    // that a decision someone took rather than a default nobody noticed.
+    for (const m of MEASUREMENTS) {
+      const { numeric, dimensions } = fieldsByKind(m);
+      expect([...numeric, ...dimensions].sort(), m.id).toEqual([...declaredFields(m)].sort());
+      expect(
+        numeric.filter((f) => dimensions.includes(f)),
+        m.id,
+      ).toEqual([]);
+    }
+  });
+
+  it('files the `\\S+` groups as dimensions and the signed `\\d+` ones as numeric', () => {
+    // Named explicitly rather than left to the partition above, because these are the
+    // fields the split exists for. `firstPaintMs` is the signed one — `item-grid`
+    // initialises it to -1 — and a bare `\d+` rule silently dropped it.
+    const home = fieldsByKind(measurementById('home-latest-rows'));
+    expect(home.dimensions).toEqual(['sizeAt']);
+    expect(home.numeric).toEqual(expect.arrayContaining(['sizeCalls', 'sizeRemove', 'sizeMs']));
+
+    const load = fieldsByKind(measurementById('screen-load'));
+    expect(load.dimensions).toEqual(
+      expect.arrayContaining(['component', 'variant', 'slowestContent', 'slowestTexture']),
+    );
+    expect(load.numeric).not.toContain('slowestContent');
+
+    expect(fieldsByKind(measurementById('item-grid')).numeric).toContain('firstPaintMs');
+  });
+
+  it('keeps every dimension out of the ms/µs unit rule', () => {
+    // The defect this whole split closes, stated as its own case so it cannot regress
+    // quietly: `unitFor` cannot place a dimension and falls back to `'ms'`, so nothing
+    // downstream may treat one as headlineable. Asserting the FALLBACK here rather than
+    // fixing `unitFor` is deliberate — the fallback is documented and load-bearing for
+    // callers that omit the family; what has to hold is that no dimension reaches it.
+    for (const m of MEASUREMENTS) {
+      for (const field of fieldsByKind(m).dimensions) {
+        expect(unitFor(field, m), `${m.id}.${field} must never be headlined`).toBe('ms');
+      }
+    }
+    expect(fieldsByKind(measurementById('screen-load')).dimensions).toContain('slowestContent');
   });
 });
 

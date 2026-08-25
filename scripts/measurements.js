@@ -775,6 +775,51 @@ export function declaredFields(measurement) {
 }
 
 /**
+ * A capture group whose matcher is a NUMBER — `\d+`, optionally signed.
+ *
+ * Written against the pattern SOURCE, so `item-grid`'s `(?<firstPaintMs>-?\d+)` counts.
+ * An earlier copy of this rule (inline in `measurements.test.js`) required a bare `\d+`
+ * and therefore skipped that field silently — it stayed classified only because its NAME
+ * ends `Ms`, which is the fallback the test exists to stop anyone relying on.
+ */
+const NUMERIC_GROUP = /\(\?<(\w+)>(?:-\?)?\\d\+\)/g;
+
+/**
+ * Every declared field split by what the family emits it AS — a quantity, or a label.
+ *
+ * Distinct from `splitWorkload`, and the difference is which question is being asked and
+ * WHEN. `splitWorkload` classifies a captured VALUE at runtime (`typeof v !== 'number'`),
+ * which is decidable only once a sample exists. This classifies the PATTERN, statically,
+ * which is what a caller needs BEFORE any device has run — `measure:report --field` has to
+ * accept or reject a name with no ledger in hand.
+ *
+ * The two agree because the patterns say which is which: a quantity is captured with
+ * `\d+` and a dimension with `\S+`. That is not a convention someone has to remember —
+ * `measurements.test.js` asserts the partition is exhaustive, so a third capture shape
+ * fails the suite rather than being bucketed by a guess.
+ *
+ * Why it is worth a helper rather than a filter at each call site: reporting a dimension
+ * as though it were a timing is the well-formed-but-wrong shape this file keeps removing.
+ * `unitFor` answers `'ms'` for any name it cannot place, so a dimension reaching a
+ * headline prints `median — ms` for a row id; and `buildArm` reads only `timings` /
+ * `workload`, so such a field resolves on no sample and the cell renders as though the
+ * app never reached a milestone. `--field slowestContent` did exactly that, silently,
+ * for as long as it has existed.
+ */
+export function fieldsByKind(measurement) {
+  const numeric = new Set(
+    measurement.lines.flatMap((line) =>
+      [...line.pattern.source.matchAll(NUMERIC_GROUP)].map(([, group]) => group),
+    ),
+  );
+  const declared = declaredFields(measurement);
+  return {
+    numeric: declared.filter((f) => numeric.has(f)),
+    dimensions: declared.filter((f) => !numeric.has(f)),
+  };
+}
+
+/**
  * What fraction of a run's wall clock the ledger itself accounts for.
  *
  * `settledMs` is the denominator rather than the family primary, and that is not a
