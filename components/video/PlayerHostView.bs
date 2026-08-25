@@ -18,8 +18,28 @@ import "pkg:/source/utils/translate.bs"
 ' is a cache TTL on an always-open overlay while this is a dialog someone opened
 ' deliberately, usually because something looked wrong. The figure that matters —
 ' transcode speed — is a level to be confirmed, and halving the wait for the first
-' confirmation is the whole benefit. One extra request per 10 seconds against an
-' endpoint the app already polls for progress reporting.
+' confirmation is the whole benefit.
+'
+' TWO GATES keep that from becoming an open-ended poll, and neither invents a
+' number:
+'
+'   1. The timer only STARTS when the report has live rows — i.e. a transcode is
+'      running. On direct play nothing in the report can change, so it never polls
+'      at all, which is most sessions.
+'   2. A tick makes no request once the device has been idle longer than the
+'      screensaver timeout THE USER CONFIGURED. That is their own statement about
+'      how long counts as away; a device with the screensaver switched off has said
+'      the opposite, and is never suspended.
+'
+' Gate 2 is an IDLE threshold, not a claim about what is on screen. Roku suppresses
+' the screensaver during video playback, so it may never actually appear here — the
+' reason to lean on that number anyway is that the user picked it, not that the
+' screen is covered.
+'
+' Being wrong is cheap in exactly one direction, which is why the threshold can be
+' loose: TimeSinceLastKeypress resets itself, so the first tick after any keypress
+' fetches again — at most 5s of staleness, no state, no resume path, no key
+' handling. Polling forever has no such recovery.
 const PLAYBACK_INFO_REFRESH_SECONDS = 5
 
 ' Routed host for video playback. See PlayerHostView.xml header.
@@ -420,12 +440,15 @@ sub onPlaybackInfoLoaded()
     ' refresh exists to prevent.
     m.playbackDialog.tagline = report.status
     m.playbackDialog.sections = report.sections
+    ' A transcode can END while the report is open (a DoVi buffer-overflow
+    ' fallback does exactly that), and once it has there is nothing left to poll.
+    if not reportHasLiveRows(report) then stopPlaybackInfoRefresh()
     return
   end if
 
   m.playbackDialog = showReportDialog(translate(translationKeys.LabelPlaybackInfo), report.status, report.sections)
   m.playbackDialog.observeField("parentNode", "onPlaybackInfoDialogClosed")
-  startPlaybackInfoRefresh()
+  if reportHasLiveRows(report) then startPlaybackInfoRefresh()
 end sub
 
 ' Everything the pure report builder needs, gathered on the RENDER thread where
@@ -464,7 +487,38 @@ end function
 '
 ' The timer drives the same task the button does, so there is one fetch path and
 ' one composition path rather than a second copy for refreshes.
+' True when the report contains something that can change while it is open.
+'
+' Only the transcode section is live (speed, progress, output bitrate); every
+' other row is fixed for the session and would re-resolve to identical text. A
+' direct-play report therefore has nothing to poll FOR, which is the honest
+' reason not to poll rather than a budget someone picked.
+function reportHasLiveRows(report as object) as boolean
+  for each section in report.sections
+    if section.id = "transcode" then return true
+  end for
+  return false
+end function
+
 sub startPlaybackInfoRefresh()
+  ' The idle threshold is the screensaver timeout the USER configured, read once.
+  ' Preferred over a constant of ours because it is the one duration they have
+  ' already told the device counts as away — someone who set two minutes wants
+  ' aggressive idling and someone who set an hour does not, and a single number
+  ' here would be wrong for one of them. Zero means they switched the screensaver
+  ' off, which is the opposite instruction, so nothing suspends.
+  '
+  ' roAppManager is NOT creatable on the render thread, which is why this goes
+  ' through the existing LoadScreenSaverTimeoutTask rather than being read inline.
+  ' AudioPlayerView already pairs that same task with TimeSinceLastKeypress for its
+  ' own screensaver; this is that pattern reused, not a second one.
+  if not isValid(m.screenSaverTimeout)
+    m.screenSaverTimeout = 0
+    m.screenSaverTimeoutTask = CreateObject("roSGNode", "LoadScreenSaverTimeoutTask")
+    m.screenSaverTimeoutTask.observeField("content", "onScreensaverTimeoutLoaded")
+    launchTask(m.screenSaverTimeoutTask)
+  end if
+
   if not isValid(m.playbackInfoTimer)
     m.playbackInfoTimer = CreateObject("roSGNode", "Timer")
     m.playbackInfoTimer.repeat = true
@@ -489,6 +543,20 @@ sub releasePlaybackInfoRefresh()
   m.playbackInfoTimer.unobserveField("fire")
   m.top.removeChild(m.playbackInfoTimer)
   m.playbackInfoTimer = invalid
+
+  if isValid(m.screenSaverTimeoutTask)
+    m.screenSaverTimeoutTask.control = "STOP"
+    m.screenSaverTimeoutTask.unobserveField("content")
+    m.screenSaverTimeoutTask = invalid
+  end if
+end sub
+
+sub onScreensaverTimeoutLoaded()
+  timeout = m.screenSaverTimeoutTask.content
+  if isValid(timeout) then m.screenSaverTimeout = timeout
+
+  m.screenSaverTimeoutTask.unobserveField("content")
+  m.screenSaverTimeoutTask = invalid
 end sub
 
 sub onPlaybackInfoRefreshDue()
@@ -497,6 +565,15 @@ sub onPlaybackInfoRefreshDue()
   if not isValid(m.playbackDialog) or not isValid(m.playbackDialog.getParent())
     stopPlaybackInfoRefresh()
     return
+  end if
+
+  ' Idle longer than the user's own screensaver timeout: stop making requests. The
+  ' timer keeps ticking, which costs nothing and is what removes the need for any
+  ' resume path — TimeSinceLastKeypress resets the moment the remote is touched,
+  ' so the very next tick fetches again. A timeout of 0 means the screensaver is
+  ' switched off, and that is an instruction not to idle at all.
+  if m.screenSaverTimeout > 0
+    if CreateObject("roDeviceInfo").TimeSinceLastKeypress() >= m.screenSaverTimeout then return
   end if
 
   launchTask(m.getPlaybackInfoTask)

@@ -60,6 +60,10 @@ namespace tests
       return invalid
     end function
 
+    private function hasSection(report as object, id as string) as boolean
+      return isValid(m.sectionById(report, id))
+    end function
+
     private function rowValue(report as object, rowId as string) as string
       for each section in report.sections
         for each row in section.rows
@@ -292,6 +296,30 @@ namespace tests
       ' version check anywhere, because presence IS the check.
       m.input.session.TranscodingInfo.delete("HardwareAccelerationType")
       m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.acceleration"), "<missing>")
+    end function
+
+    @it("carries a transcode section ONLY while something is live")
+    function _()
+      ' PlayerHostView gates its refresh timer on this section existing: the live
+      ' rows are the only thing a poll could change, so a direct-play report has
+      ' nothing to poll FOR and must never start one.
+      m.assertTrue(m.hasSection(buildPlaybackReport(m.input), "transcode"), "a transcode has live rows")
+
+      m.input.session = invalid
+      m.assertFalse(m.hasSection(buildPlaybackReport(m.input), "transcode"), "direct play has nothing live")
+    end function
+
+    @it("drops the live section when a remux copies both streams")
+    function _()
+      ' A remux re-wraps the container without re-encoding, so there is no encode
+      ' speed to report and nothing worth refreshing.
+      m.input.session.TranscodingInfo.IsVideoDirect = true
+      m.input.session.TranscodingInfo.IsAudioDirect = true
+      m.input.session.TranscodingInfo.delete("Framerate")
+      m.input.session.TranscodingInfo.delete("CompletionPercentage")
+      m.input.session.TranscodingInfo.delete("Bitrate")
+      m.input.session.TranscodingInfo.delete("HardwareAccelerationType")
+      m.assertFalse(m.hasSection(buildPlaybackReport(m.input), "transcode"))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
