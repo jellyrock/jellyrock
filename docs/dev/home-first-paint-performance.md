@@ -351,7 +351,19 @@ latest-rows size recompute by remove 1 insert 0 at remove:activeRecordings
 **`calls - remove - insert` is the end-of-run flush, and it can only be 0 or 1.** That is the
 decomposition's own check, and it is why the attribution is two counters rather than a label:
 a recompute arriving by a path neither counter tags shows up as a violated invariant instead
-of a sample quietly credited to the wrong call site. Assert it before reading anything else.
+of a sample quietly credited to the wrong call site.
+
+⚠️ **Nothing computes it for you — check it yourself, first, on every arm.** The counters are
+captured into the ledger, but no gate evaluates the subtraction, so a violated invariant is
+silent until someone looks. It held **40/40** on the 2026-08-25 arms; that is a reading, not a
+guarantee for the next one. Over `.device-runs/measure/measurements.jsonl`:
+
+```js
+s.timings.sizeCalls - s.timings.sizeRemove - s.timings.sizeInsert  // must be 0 or 1
+```
+
+Closing the gap is tracked as
+[`measurement-invariants-ungated`](../architecture/tech-debt.md#measurement-invariants-ungated).
 
 `at` is a string, so it lands in the sample's `dimensions` rather than its `timings` — the
 same bucket, and for the same reason, as `screen-load`'s `slowestContent`. Do NOT move it: a
@@ -374,11 +386,19 @@ dimension is anything that is not a QUANTITY, and subtracting two row ids means 
   the 2026-08-23 arms — **14 of 14 across 80 launches**, Fisher p = 1.8e-5 on this campaign's
   40 alone.
 
-🚨 **It is NOT the cause of the extra binds, and the same instrument is what says so.** Four
+🚨 **It is NOT NECESSARY for the extra binds, and the same instrument is what says so.** Four
 of the 11 high-mode launches ran `calls = 1` — no extra recompute at all — and their `binds`
 median is **232**, against **233** for the seven that had one. Identical excess, one with the
 recompute and one without. So the recompute is a *rider* on whatever makes a launch high, not
 its mechanism, and closing it would not be expected to move `binds`.
+
+⚠️ **Read that as "not necessary", not as "contributes nothing"** — the two are different
+claims and only the first is established. Necessity is refuted outright by the four
+exceptions: a launch reaches the high mode without the recompute, so the recompute cannot be
+what puts it there. *Contribution* rests only on the 232-vs-233 medians at **n=4 against
+n=7**, which is far too small to exclude a real effect of a few binds. The operational
+conclusion is unchanged and is the part that matters — **do not sell closing this as a bind
+fix** — but do not cite it as proof the recompute costs zero binds either.
 
 **The hypothesis that follows, unmeasured and recorded as such:** the removal SHIFTS every row
 below it up one slot, so a removal landing after cells have begun binding re-binds the rows

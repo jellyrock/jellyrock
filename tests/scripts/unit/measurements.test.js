@@ -184,10 +184,17 @@ describe('the Home pattern against captured device lines', () => {
   });
 
   it('decomposes sizeCalls into the end-of-run flush plus the attributed mid-run ones', () => {
-    // The invariant the attribution exists to make checkable, asserted here so it is a
-    // gate rather than something an analyst remembers to eyeball: the end-of-run flush is
+    // The invariant the attribution exists to make checkable: the end-of-run flush is
     // `calls - remove - insert` and can only be 0 or 1. Any other value means a recompute
     // reached `setRowItemSize()` by a path neither counter tags.
+    //
+    // ⚠️ WHAT THIS CASE DOES AND DOES NOT COVER. It proves the two lines ASSEMBLE into one
+    // sample whose three counters can be subtracted — the plumbing. It does NOT gate the
+    // invariant on device data, because the line below is hand-written: nothing in the
+    // pipeline evaluates the subtraction against a real ledger, so on a real run the check
+    // is still an analyst remembering to do it. Do not read a green suite here as "the
+    // attribution was verified on the arm you just took".
+    // Tracked: tech-debt.md#measurement-invariants-ungated.
     const sample = assembleSamples(home, [
       ...CAPTURED.slice(0, 4),
       'INFO file:///Users/dev/jellyrock/components/home/HomeRows.bs:471 latest-rows size recompute calls 2 drains 10 ms 127  ',
