@@ -183,7 +183,7 @@ export const MEASUREMENTS = Object.freeze([
     // `unitFor('sizeCalls', family)` answered `'ms'`, so `measure:report --field sizeCalls`
     // headlined a call count as milliseconds — the identical defect `counts` was added to
     // fix for `cell-load`, sitting undetected in a second family the whole time.
-    counts: Object.freeze(['sizeCalls', 'sizeDrains']),
+    counts: Object.freeze(['sizeCalls', 'sizeDrains', 'sizeRemove', 'sizeInsert']),
     lines: Object.freeze([
       Object.freeze({
         key: 'total',
@@ -229,6 +229,32 @@ export const MEASUREMENTS = Object.freeze([
         // `docs/dev/home-first-paint-performance.md` ("size recompute").
         pattern:
           /latest-rows size recompute\s+calls\s+(?<sizeCalls>\d+)\s+drains\s+(?<sizeDrains>\d+)\s+ms\s+(?<sizeMs>\d+)/,
+      }),
+      Object.freeze({
+        // WHICH call site spent the mid-run recomputes `sizeCalls` counts. Its own line
+        // rather than four more groups above for the same reason that one is separate
+        // from `populate split`: nine call-site arguments is the `m.log.*` ceiling.
+        //
+        // OPTIONAL for the same reason as `sizeRecompute` — only a build carrying the
+        // attribution emits it, and the baseline arm a comparison needs is exactly the
+        // build that does not.
+        //
+        // `sizeAt` names the SECTIONS behind those two counts, and it is captured rather
+        // than left on the console because the console does not survive: `measure.js`
+        // writes `console-window.log` only when NOTHING matched, so on a healthy run the
+        // device lines are dropped, and they never reach stdout to be redirected either.
+        // A first cut of this pattern stopped before the tail on the grounds that a reader
+        // could recover it from the run log. A reader cannot.
+        //
+        // It is a string, so `splitWorkload` files it under `dimensions` — correctly, and
+        // by the same rule that puts `screen-load`'s `slowestContent` there. A dimension
+        // is anything that is not a QUANTITY: `remove` and `insert` are counts a
+        // comparison can subtract, while "which row was dropped" is not a number and
+        // subtracting two of them means nothing.
+        key: 'sizeRecomputeBy',
+        required: false,
+        pattern:
+          /latest-rows size recompute by\s+remove\s+(?<sizeRemove>\d+)\s+insert\s+(?<sizeInsert>\d+)\s+at\s+(?<sizeAt>\S+)/,
       }),
     ]),
   }),
@@ -746,6 +772,51 @@ export function declaredFields(measurement) {
       ),
     ),
   ];
+}
+
+/**
+ * A capture group whose matcher is a NUMBER — `\d+`, optionally signed.
+ *
+ * Written against the pattern SOURCE, so `item-grid`'s `(?<firstPaintMs>-?\d+)` counts.
+ * An earlier copy of this rule (inline in `measurements.test.js`) required a bare `\d+`
+ * and therefore skipped that field silently — it stayed classified only because its NAME
+ * ends `Ms`, which is the fallback the test exists to stop anyone relying on.
+ */
+const NUMERIC_GROUP = /\(\?<(\w+)>(?:-\?)?\\d\+\)/g;
+
+/**
+ * Every declared field split by what the family emits it AS — a quantity, or a label.
+ *
+ * Distinct from `splitWorkload`, and the difference is which question is being asked and
+ * WHEN. `splitWorkload` classifies a captured VALUE at runtime (`typeof v !== 'number'`),
+ * which is decidable only once a sample exists. This classifies the PATTERN, statically,
+ * which is what a caller needs BEFORE any device has run — `measure:report --field` has to
+ * accept or reject a name with no ledger in hand.
+ *
+ * The two agree because the patterns say which is which: a quantity is captured with
+ * `\d+` and a dimension with `\S+`. That is not a convention someone has to remember —
+ * `measurements.test.js` asserts the partition is exhaustive, so a third capture shape
+ * fails the suite rather than being bucketed by a guess.
+ *
+ * Why it is worth a helper rather than a filter at each call site: reporting a dimension
+ * as though it were a timing is the well-formed-but-wrong shape this file keeps removing.
+ * `unitFor` answers `'ms'` for any name it cannot place, so a dimension reaching a
+ * headline prints `median — ms` for a row id; and `buildArm` reads only `timings` /
+ * `workload`, so such a field resolves on no sample and the cell renders as though the
+ * app never reached a milestone. `--field slowestContent` did exactly that, silently,
+ * for as long as it has existed.
+ */
+export function fieldsByKind(measurement) {
+  const numeric = new Set(
+    measurement.lines.flatMap((line) =>
+      [...line.pattern.source.matchAll(NUMERIC_GROUP)].map(([, group]) => group),
+    ),
+  );
+  const declared = declaredFields(measurement);
+  return {
+    numeric: declared.filter((f) => numeric.has(f)),
+    dimensions: declared.filter((f) => !numeric.has(f)),
+  };
 }
 
 /**

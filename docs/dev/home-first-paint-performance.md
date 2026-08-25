@@ -10,7 +10,7 @@ related-files:
   - scripts/harden-prod-manifest.js
   - scripts/measurements.js
   - manifest
-last-reviewed: 2026-08-19
+last-reviewed: 2026-08-24
 ---
 
 # Measuring orchestrator wait-vs-emit on device
@@ -332,6 +332,91 @@ the RTA deploy path so ODC is injected, cold-start via ECP, and poll until the r
 So read `calls` as the thing that grows with library count, and `ms` as what it cost this
 particular run. Full write-up:
 [`home-row-size-recompute-per-row`](../architecture/tech-debt.md#home-row-size-recompute-per-row).
+
+#### `size recompute by` — WHICH call site spent them
+
+`calls` counts recomputes and cannot say who asked for one, and the two mid-run callers have
+different fixes. A second line attributes them:
+
+```text
+latest-rows size recompute by remove 1 insert 0 at remove:activeRecordings
+```
+
+| Column | What it covers |
+|---|---|
+| `remove` | recomputes from `removeRowAtIndex` — a non-latest section returned nothing and its row was dropped mid-run |
+| `insert` | recomputes from `populateRowFromData`'s insert branch — a section that had no row gained one |
+| `at` | the section ids behind those counts, in the order they fired; `-` when only the end-of-run flush ran |
+
+**`calls - remove - insert` is the end-of-run flush, and it can only be 0 or 1.** That is the
+decomposition's own check, and it is why the attribution is two counters rather than a label:
+a recompute arriving by a path neither counter tags shows up as a violated invariant instead
+of a sample quietly credited to the wrong call site.
+
+⚠️ **Nothing computes it for you — check it yourself, first, on every arm.** The counters are
+captured into the ledger, but no gate evaluates the subtraction, so a violated invariant is
+silent until someone looks. It held **40/40** on the 2026-08-25 arms; that is a reading, not a
+guarantee for the next one. Over `.device-runs/measure/measurements.jsonl`:
+
+```js
+s.timings.sizeCalls - s.timings.sizeRemove - s.timings.sizeInsert  // must be 0 or 1
+```
+
+Closing the gap is tracked as
+[`measurement-invariants-ungated`](../architecture/tech-debt.md#measurement-invariants-ungated).
+
+`at` is a string, so it lands in the sample's `dimensions` rather than its `timings` — the
+same bucket, and for the same reason, as `screen-load`'s `slowestContent`. Do NOT move it: a
+dimension is anything that is not a QUANTITY, and subtracting two row ids means nothing.
+
+##### What it read on `.177`, 2026-08-24 (n=40, two arms, BATCAVE, 12 rows / 128 items)
+
+- **`insert` was 0 on 40 of 40 launches, and the reason is structural rather than lucky.**
+  On a COLD launch `createSkeletonRows()` plus `insertLatestMediaSkeletons()` give every
+  planned section a row before any data arrives, so `findRowBySectionId` always finds one and
+  `populateRowFromData` takes the in-place branch — the insert branch is **unreachable**, not
+  merely unused by chance. ⚠️ **That is a claim about cold launches only.** The branch becomes
+  reachable on a REFRESH, where `initialLoadComplete` suppresses skeleton creation and a
+  section removed on a previous load has no row to update: `Home.refresh()` re-running the
+  load is exactly that case. These arms measured cold launches, so they say nothing about
+  what `insert` costs there.
+- **Every mid-run recompute was a `remove`, and every one of them was
+  `remove:activeRecordings`** — 7 of 7 on `remove`, and 4 of 4 unanimous on the section
+  (the earlier arm did not yet capture `at`). Active Recordings returns nothing on this
+  server, so its skeleton row is dropped every load; `removalIsDeferrable` refuses to defer
+  it because it is not a `latest_` row, so it recomputes on the spot. **Whether that lands
+  inside the run's window is a race between independent network tasks** — which is how an
+  identical final structure still produces a bimodal `calls`. The extra recompute costs
+  ~24 ms (`sizeMs` median 125 against 101), i.e. an EARLY one, while rows are still
+  skeletons.
+- **`calls = 2` implies the high bind mode, with no false positives**: 7 of 7 here, 7 of 7 in
+  the 2026-08-23 arms — **14 of 14 across 80 launches**, Fisher p = 1.8e-5 on this campaign's
+  40 alone.
+
+🚨 **It is NOT NECESSARY for the extra binds, and the same instrument is what says so.** Four
+of the 11 high-mode launches ran `calls = 1` — no extra recompute at all — and their `binds`
+median is **232**, against **233** for the seven that had one. Identical excess, one with the
+recompute and one without. So the recompute is a *rider* on whatever makes a launch high, not
+its mechanism, and closing it would not be expected to move `binds`.
+
+⚠️ **Read that as "not necessary", not as "contributes nothing"** — the two are different
+claims and only the first is established. Necessity is refuted outright by the four
+exceptions: a launch reaches the high mode without the recompute, so the recompute cannot be
+what puts it there. *Contribution* rests only on the 232-vs-233 medians at **n=4 against
+n=7**, which is far too small to exclude a real effect of a few binds. The operational
+conclusion is unchanged and is the part that matters — **do not sell closing this as a bind
+fix** — but do not cite it as proof the recompute costs zero binds either.
+
+**The hypothesis that follows, unmeasured and recorded as such:** the removal SHIFTS every row
+below it up one slot, so a removal landing after cells have begun binding re-binds the rows
+that moved, while an early one has nothing to re-bind. That would explain both the correlation
+and the four exceptions — a removal landing after the run ENDS is outside what these counters
+cover, so it would shift rows without incrementing anything. Testing it needs a lifetime
+counter readable at the sweep gate (the `cellLoad*` fields are the pattern), not a bigger arm.
+
+⚠️ **The high mode is not a single level.** Two launches read at-gate `loadsStarted` 112
+(`binds` 238) and 122 (`binds` 255), above the 100–102 band. Both had `calls = 2`. Recorded,
+not explained.
 
 ## How to run it
 

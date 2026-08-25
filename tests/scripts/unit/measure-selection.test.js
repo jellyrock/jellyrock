@@ -180,8 +180,10 @@ describe('refusing to publish a median', () => {
   });
 
   it('ignores a family that stamps no variant at all', () => {
-    // `home-latest-rows` and `item-grid` emit purely numeric lines by design. An
-    // unstamped series is one population by definition, not a mixed one.
+    // An unstamped series is one population by definition, not a mixed one. ⚠️ "Unstamped"
+    // means no `component`/`variant` — NOT "carries no dimensions at all": `home-latest-rows`
+    // now emits a non-identity dimension (`sizeAt`), and the case below pins that the two
+    // are different questions.
     const unstamped = [s(0, 0), s(1, 0), s(2, 0)];
     expect(selectionRefusalFor(unstamped, {})).toBeNull();
     // Same for a component that stamps no variant.
@@ -257,10 +259,36 @@ describe('naming the mounts a launch produced but did not publish', () => {
   });
 
   it('falls back to the sample index when the family stamps no identity', () => {
-    // `home-latest-rows` and `item-grid` emit purely numeric lines by design, so there is no
-    // mount id to print and the position is all there is to say.
+    // No `component`/`variant` means no mount id to print, so position is all there is.
     const launch = [s(0, 0), s(0, 1)];
     expect(otherMountsIn(launch, launch[0])).toEqual(['#1']);
+  });
+
+  it('a NON-IDENTITY dimension must not arm mount selection', () => {
+    // The regression this exists to catch, and it is a live hazard rather than a theoretical
+    // one. `selectColdSamples` gates named selection on `stamped`, which is
+    // `mountIdOf(dimensions)` — deliberately only `component` + `variant`. Several comments
+    // used to justify that by saying `home-latest-rows` emits purely numeric lines and
+    // stamps nothing; since the row-size recompute attribution landed, that family DOES
+    // carry a dimension (`sizeAt`, which row was dropped). The behaviour is unchanged
+    // because `mountIdOf` ignores it — but anyone "simplifying" `stamped` to
+    // `Object.keys(dimensions).length > 0` would arm named selection on a family that
+    // cannot answer it, and a `--variant` would then silently empty the series, which is
+    // precisely the failure the gate was added to prevent.
+    const withNonIdentityDim = [
+      {
+        launch: 0,
+        indexInLaunch: 0,
+        complete: true,
+        dimensions: { sizeAt: 'remove:activeRecordings' },
+      },
+      { launch: 0, indexInLaunch: 1, complete: true, dimensions: { sizeAt: '-' } },
+    ];
+    expect(mountIdOf(withNonIdentityDim[0].dimensions)).toBe('');
+    // Still positional, and — the part that matters — NOT empty.
+    const picked = selectColdSamples(withNonIdentityDim, { variant: 'Movie' });
+    expect(picked).toHaveLength(1);
+    expect(picked[0].indexInLaunch).toBe(0);
   });
 });
 

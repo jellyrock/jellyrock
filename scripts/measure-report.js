@@ -84,7 +84,7 @@ import {
   workloadTally,
 } from './measure-compare.js';
 import {
-  declaredFields,
+  fieldsByKind,
   MEASUREMENTS,
   measurementById,
   measurementIds,
@@ -751,12 +751,26 @@ export function parseReportArgs(argv = []) {
   // against what the registry DECLARES rather than what the ledger happens to hold: a
   // family that declares `instrumentUs` and has never observed one must still be
   // reportable as absent, which is `declaredFields`' own stated contract.
+  //
+  // A DIMENSION is rejected separately, and by name, because it fails the same way a typo
+  // does while being spelled correctly: `buildArm` reads `timings` / `workload` and never
+  // `dimensions`, so `--field slowestContent` resolved on no sample and published a cell
+  // that reads as a milestone the app failed to reach. Declared-but-unheadlinable is a
+  // third state, so it gets a third message rather than being folded into "unknown".
   if (args.field) {
     const families = args.measurement ? [measurementById(args.measurement)] : MEASUREMENTS;
-    if (!families.some((m) => declaredFields(m).includes(args.field))) {
+    const kinds = families.map((m) => [m, fieldsByKind(m)]);
+    if (!kinds.some(([, k]) => k.numeric.includes(args.field))) {
+      const asDimension = kinds.filter(([, k]) => k.dimensions.includes(args.field));
       throw new MeasureArgError(
-        `unknown field ${JSON.stringify(args.field)}. Fields the registry declares:\n` +
-          families.map((m) => `  ${m.id}: ${declaredFields(m).join(' ')}`).join('\n'),
+        asDimension.length
+          ? `${JSON.stringify(args.field)} is a DIMENSION of ` +
+              `${asDimension.map(([m]) => m.id).join(', ')}, not a timing — it labels which ` +
+              'sample this was, and a median of labels means nothing. Headline a numeric ' +
+              'field and read the dimension off the sample.\n' +
+              kinds.map(([m, k]) => `  ${m.id}: ${k.numeric.join(' ')}`).join('\n')
+          : `unknown field ${JSON.stringify(args.field)}. Fields the registry declares:\n` +
+              kinds.map(([m, k]) => `  ${m.id}: ${k.numeric.join(' ')}`).join('\n'),
       );
     }
   }

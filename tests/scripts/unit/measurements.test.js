@@ -27,6 +27,7 @@ import {
   unitFor,
   withUnit,
   declaredFields,
+  fieldsByKind,
   instrumentShare,
 } from '../../../scripts/measurements.js';
 
@@ -139,6 +140,67 @@ describe('the Home pattern against captured device lines', () => {
       sizeDrains: 11,
       sizeMs: 91,
     });
+  });
+
+  it('reads the recompute ATTRIBUTION line, tail included', () => {
+    // Same provenance caveat as the line above: written from the call site, not captured.
+    //
+    // `sizeAt` is captured rather than left on the console, and that is the assertion
+    // worth keeping: `measure.js` writes its console dump ONLY when nothing matched, so a
+    // healthy run discards the device lines and no redirect can recover them. A field
+    // documented as "read it off the console" would be a field nobody can read.
+    const line =
+      'INFO file:///Users/dev/jellyrock/components/home/HomeRows.bs:535 latest-rows size recompute by remove 1 insert 0 at remove:livetv  ';
+    expect(matchLine(home, line).fields).toEqual({
+      sizeRemove: 1,
+      sizeInsert: 0,
+      sizeAt: 'remove:livetv',
+    });
+  });
+
+  it('files the recompute tail under dimensions, out of the numeric halves', () => {
+    // `remove` and `insert` are quantities a comparison subtracts; "which row was dropped"
+    // is not, and `splitWorkload` has to keep them apart — the same split that keeps
+    // `screen-load`'s `slowestContent` out of `timings`. A dimension that leaked into
+    // `timings` would hand `measure:compare` a string operand for a Mann-Whitney.
+    const line =
+      'INFO file:///Users/dev/jellyrock/components/home/HomeRows.bs:535 latest-rows size recompute by remove 1 insert 0 at remove:livetv  ';
+    const { timings, dimensions } = splitWorkload(home, matchLine(home, line).fields);
+    expect(dimensions).toEqual({ sizeAt: 'remove:livetv' });
+    expect(timings).toEqual({ sizeRemove: 1, sizeInsert: 0 });
+  });
+
+  it('keeps the two recompute lines from matching each other', () => {
+    // `matchLine` returns the FIRST pattern that matches, and the two messages share the
+    // prefix `latest-rows size recompute`. If the older pattern's `\s+calls` were ever
+    // loosened, the attribution line would be read as a `sizeCalls` sample carrying none
+    // of its numbers — a silently half-parsed sample rather than an error.
+    const counts =
+      'INFO file:///Users/dev/jellyrock/components/home/HomeRows.bs:471 latest-rows size recompute calls 2 drains 10 ms 127  ';
+    const by =
+      'INFO file:///Users/dev/jellyrock/components/home/HomeRows.bs:535 latest-rows size recompute by remove 1 insert 0 at remove:livetv  ';
+    expect(matchLine(home, counts).key).toBe('sizeRecompute');
+    expect(matchLine(home, by).key).toBe('sizeRecomputeBy');
+  });
+
+  it('decomposes sizeCalls into the end-of-run flush plus the attributed mid-run ones', () => {
+    // The invariant the attribution exists to make checkable: the end-of-run flush is
+    // `calls - remove - insert` and can only be 0 or 1. Any other value means a recompute
+    // reached `setRowItemSize()` by a path neither counter tags.
+    //
+    // ⚠️ WHAT THIS CASE DOES AND DOES NOT COVER. It proves the two lines ASSEMBLE into one
+    // sample whose three counters can be subtracted — the plumbing. It does NOT gate the
+    // invariant on device data, because the line below is hand-written: nothing in the
+    // pipeline evaluates the subtraction against a real ledger, so on a real run the check
+    // is still an analyst remembering to do it. Do not read a green suite here as "the
+    // attribution was verified on the arm you just took".
+    // Tracked: tech-debt.md#measurement-invariants-ungated.
+    const sample = assembleSamples(home, [
+      ...CAPTURED.slice(0, 4),
+      'INFO file:///Users/dev/jellyrock/components/home/HomeRows.bs:471 latest-rows size recompute calls 2 drains 10 ms 127  ',
+      'INFO file:///Users/dev/jellyrock/components/home/HomeRows.bs:535 latest-rows size recompute by remove 1 insert 0 at remove:livetv  ',
+    ])[0].fields;
+    expect(sample.sizeCalls - sample.sizeRemove - sample.sizeInsert).toBe(1);
   });
 
   it('still assembles a sample from a build that emits no size-recompute line', () => {
@@ -487,7 +549,9 @@ describe('splitWorkload', () => {
     expect(timings).not.toHaveProperty('rows');
   });
 
-  it('leaves a family that emits only numbers with no dimensions', () => {
+  it('leaves a sample that carries only numbers with no dimensions', () => {
+    // `CAPTURED` predates the attribution line, so it carries no `sizeAt` — which is also
+    // the baseline-build case the optional line exists for.
     const [first] = assembleSamples(home, CAPTURED);
     expect(splitWorkload(home, first.fields).dimensions).toEqual({});
   });
@@ -646,8 +710,14 @@ describe('unitFor', () => {
     //
     // WORKLOAD fields are excluded here rather than asserted as `ms`: they are counts,
     // and the case below is the one that owns them.
+    //
+    // DIMENSIONS are excluded for a stronger reason than exclusion: asserting one is
+    // `ms` is asserting something FALSE. Walked over `declaredFields`, this case used to
+    // sweep up `slowestContent` and `sizeAt` and pass — `unitFor` answers `'ms'` for any
+    // name it cannot place, so the case whose whole job is "no field defaults to
+    // milliseconds" was certifying two strings as durations.
     const fields = MEASUREMENTS.flatMap((m) =>
-      declaredFields(m).filter((f) => !m.workload.includes(f)),
+      fieldsByKind(m).numeric.filter((f) => !m.workload.includes(f)),
     );
     for (const field of fields) {
       expect(['ms', 'µs']).toContain(unitFor(field));
@@ -693,7 +763,11 @@ describe('unitFor', () => {
     //
     // Decidable statically because the patterns say which is which: a numeric group is
     // captured with `\d+` and a dimension with `\S+`. So this needs no per-family
-    // allowlist and cannot drift out of step with the registry.
+    // allowlist and cannot drift out of step with the registry. That rule now lives in
+    // `fieldsByKind` rather than in a regex here, because `measure:report --field` has to
+    // apply the SAME split and two copies would drift — and the copy that used to live
+    // here required a bare `\d+`, so it silently skipped `item-grid`'s signed
+    // `(?<firstPaintMs>-?\d+)`.
     //
     // `counts` is consulted BEFORE the name heuristic, and the heuristic matches `Ms`/`Us`
     // followed by a capital or end-of-name — not anchored at the end. Both details are
@@ -702,10 +776,7 @@ describe('unitFor', () => {
     // contains `Ms`, so only the counts-first order classifies it correctly. A name alone
     // cannot separate those two, which is the same reason `counts` has to be declared.
     for (const m of MEASUREMENTS) {
-      const numeric = m.lines
-        .flatMap((l) => [...l.pattern.source.matchAll(/\(\?<(\w+)>\\d\+\)/g)])
-        .map((g) => g[1]);
-      for (const field of new Set(numeric)) {
+      for (const field of fieldsByKind(m).numeric) {
         const classified =
           m.workload.includes(field) ||
           (m.counts ?? []).includes(field) ||
@@ -775,6 +846,55 @@ describe('declaredFields', () => {
     const fields = declaredFields(measurementById('screen-load'));
     expect(fields).toEqual(expect.arrayContaining(['paintMs', 'settledMs', 'instrumentUs']));
     expect(declaredFields(measurementById('home-latest-rows'))).not.toContain('instrumentUs');
+  });
+});
+
+describe('fieldsByKind', () => {
+  it('partitions every declared field, so a third capture shape cannot be guessed at', () => {
+    // The property that lets `--field` and the unit rules trust this: numeric ∪ dimensions
+    // is exactly `declaredFields`, with nothing in both. A future pattern written with,
+    // say, `(?<ratio>[\d.]+)` would land in `dimensions` — which is the SAFE side (it gets
+    // rejected as a headline rather than published as `ms`) — and this case is what makes
+    // that a decision someone took rather than a default nobody noticed.
+    for (const m of MEASUREMENTS) {
+      const { numeric, dimensions } = fieldsByKind(m);
+      expect([...numeric, ...dimensions].sort(), m.id).toEqual([...declaredFields(m)].sort());
+      expect(
+        numeric.filter((f) => dimensions.includes(f)),
+        m.id,
+      ).toEqual([]);
+    }
+  });
+
+  it('files the `\\S+` groups as dimensions and the signed `\\d+` ones as numeric', () => {
+    // Named explicitly rather than left to the partition above, because these are the
+    // fields the split exists for. `firstPaintMs` is the signed one — `item-grid`
+    // initialises it to -1 — and a bare `\d+` rule silently dropped it.
+    const home = fieldsByKind(measurementById('home-latest-rows'));
+    expect(home.dimensions).toEqual(['sizeAt']);
+    expect(home.numeric).toEqual(expect.arrayContaining(['sizeCalls', 'sizeRemove', 'sizeMs']));
+
+    const load = fieldsByKind(measurementById('screen-load'));
+    expect(load.dimensions).toEqual(
+      expect.arrayContaining(['component', 'variant', 'slowestContent', 'slowestTexture']),
+    );
+    expect(load.numeric).not.toContain('slowestContent');
+
+    expect(fieldsByKind(measurementById('item-grid')).numeric).toContain('firstPaintMs');
+  });
+
+  it('keeps every dimension out of the ms/µs unit rule', () => {
+    // The defect this whole split closes, stated as its own case so it cannot regress
+    // quietly: `unitFor` cannot place a dimension and falls back to `'ms'`, so nothing
+    // downstream may treat one as headlineable. Asserting the FALLBACK here rather than
+    // fixing `unitFor` is deliberate — the fallback is documented and load-bearing for
+    // callers that omit the family; what has to hold is that no dimension reaches it.
+    for (const m of MEASUREMENTS) {
+      for (const field of fieldsByKind(m).dimensions) {
+        expect(unitFor(field, m), `${m.id}.${field} must never be headlined`).toBe('ms');
+      }
+    }
+    expect(fieldsByKind(measurementById('screen-load')).dimensions).toContain('slowestContent');
   });
 });
 

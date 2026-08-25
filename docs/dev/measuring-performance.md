@@ -622,7 +622,10 @@ one real 12-row / 128-item server, one build) pinned every harness-side quantity
 stable before the first key press (`settled in 1983–2048 ms`, the `quietMs` floor plus one
 poll). `binds` still spans **235–255**. So Home binds a different number of cells over an
 identical ITINERARY, and the question belongs to `HomeRows` / `JRRowItem`, not to
-`tests/rta/`. ⚠️ **An earlier draft said "identical, settled workload" and that is now known
+`tests/rta/`. **Part of that has since been attributed app-side** — see
+[`size recompute by`](home-first-paint-performance.md#size-recompute-by--which-call-site-spent-them),
+which names what fires on the high launches and, more usefully, shows it is a rider rather
+than the cause. Read it before opening this question again. ⚠️ **An earlier draft said "identical, settled workload" and that is now known
 to be wrong** — [the before/after split](#the-totals-are-cumulative--on-home-most-of-them-are-not-the-sweeps)
 shows the state at gate-open is itself bimodal (`loadsStarted` 90–91 low against 100–102
 high, disjoint), so what the settle gate pins is the row STRUCTURE and the walk, not the

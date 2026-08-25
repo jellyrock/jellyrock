@@ -215,20 +215,25 @@ export function selectionRefusalFor(samples = [], selector = {}, analysis = null
  * The cold sample of each launch — the FIRST complete one matching whatever was named.
  *
  * With nothing named, the first mount, which is what every single-mount screen has always
- * meant and what the two dimension-less legacy families still mean. The later runs in a
+ * meant and what the two IDENTITY-less legacy families still mean. The later runs in a
  * launch are real (Home's `refresh()` re-runs the load) and are recorded, but they are a
  * different measurement — a warm re-render, not a first paint — and pooling them would
  * undo the refusal to average them.
  */
 export function selectColdSamples(samples = [], selector = {}) {
   // A selector only APPLIES if the samples can answer it, and this is about which FAMILY
-  // emitted them rather than about old records. `splitWorkload` classifies any non-numeric
-  // field as a dimension, so `home-latest-rows` (what bare `npm run measure` samples) and
-  // `item-grid` emit purely numeric lines and stamp nothing — by design, now and onward.
-  // Matching a named mount against samples that stamped nothing selects zero of them and
-  // reads as "this series is empty", so a `--variant` on a record of either family would
-  // silently empty it. Nothing stamped means position is all there is, which is what those
-  // two families have always meant.
+  // emitted them rather than about old records. `home-latest-rows` (what bare
+  // `npm run measure` samples) and `item-grid` stamp no mount IDENTITY, so matching a named
+  // mount against them selects zero samples and reads as "this series is empty" — a
+  // `--variant` on a record of either family would silently empty it. No identity means
+  // position is all there is, which is what those two families have always meant.
+  //
+  // ⚠️ "Stamps no identity" is NOT "carries no dimensions", and the two were the same thing
+  // until they weren't: `home-latest-rows` now emits `sizeAt` (which Home row was dropped
+  // mid-load), so the family DOES have a dimension. This still works because `mountIdOf`
+  // reads only `component` + `variant`, which is the narrower guarantee this line depends
+  // on — do NOT relax it to "has any dimension", or a `--variant` empties the series again.
+  // `measure-selection.test.js` pins that.
   const stamped = samples.some((s) => mountIdOf(s?.dimensions));
   const named = stamped && Boolean(selector.component || selector.variant);
   const launches = [...new Set(samples.map((s) => s.launch))];
