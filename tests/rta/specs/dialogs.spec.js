@@ -498,6 +498,29 @@ it('osd info button opens the playback-info report; back dismisses it', async ()
   expect(typeof status).toBe('string');
   expect(status.length).toBeGreaterThan(0);
 
+  // REGRESSION. A scrolling report opens with focus on the SCROLL AREA, and the
+  // OK button must not merely lack focus — it must not LOOK focused either.
+  //
+  // Both halves are needed because the bug had them apart: focus was correctly on
+  // #textClip while the OK button rendered its `focusBorder` ring, so the dialog
+  // opened appearing to have two focused things and read as unresponsive. It came
+  // from init()'s layout pass, which runs before any field is set, deriving
+  // `scrolls = false` from an empty body and focusing OK on the strength of it.
+  // Every other gate passed on this — nothing asserted opening focus APPEARANCE.
+  const focused = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+  expect(focused?.keyPath, 'a scrolling report opens focused on the scroll area').toBe(
+    '#jrDialog.#textClip',
+  );
+
+  // Compare against the button's OWN colour fields rather than a literal — the
+  // theme is user-overridable, so a hard-coded colour would assert the default
+  // palette rather than the focus state.
+  const ring = await getVal('#jrDialog.#okButton.#buttonBorder.blendColor');
+  const focusBorder = await getVal('#jrDialog.#okButton.focusBorder');
+  const idleBorder = await getVal('#jrDialog.#okButton.border');
+  expect(ring, 'the unfocused OK button must not paint its focus ring').not.toBe(focusBorder);
+  expect(ring, 'the unfocused OK button paints its idle border').toBe(idleBorder);
+
   if (CAPTURE) await captureRawUI('playbackInfoDialog');
 
   await press(ecp.Key.Back);
@@ -570,6 +593,76 @@ it('a user-capped bitrate transcodes, and the report says which setting did it',
   await press(ecp.Key.Back);
   await waitFor('#jrDialog.id', (v) => v === undefined, {
     label: 'playback info dismissed',
+    timeout: 10000,
+  });
+
+  await stopPlayback();
+}, 240000);
+
+// The report's KEY MODEL, driven for real rather than inspected. The focus-ring
+// fix above is about appearance; this asserts the dialog actually WORKS — that it
+// scrolls, that focus reaches the button, and that OK does not close the dialog
+// from the scroll area. None of that was covered, which is how a dialog that
+// looked broken shipped through every gate.
+it('the playback report scrolls, hands focus to OK, and only closes from the button', async () => {
+  await pausedOsd({ playbackBitrateMaxLimited: 'true', playbackBitrateLimit: '1' });
+  await pressOsdButton('showVideoInfoPopup');
+
+  await waitFor('#jrDialog.sections', (v) => Array.isArray(v) && v.length > 0, {
+    label: 'playback info report reached the dialog',
+    timeout: 25000,
+  });
+
+  // Only meaningful on a body that actually overflows.
+  expect(await getVal('#jrDialog.#scrollThumb.visible'), 'this report must scroll').toBe(true);
+  expect(await getVal('#jrDialog.#scrollContent.translation')).toEqual([0, 0]);
+
+  // 1. DOWN scrolls the body.
+  await press(ecp.Key.Down);
+  await waitFor('#jrDialog.#scrollContent.translation', (t) => Array.isArray(t) && t[1] < 0, {
+    label: 'down scrolled the body',
+    timeout: 8000,
+  });
+
+  // Resolve both colours ONCE, up front. They must not be read inside a waitFor
+  // predicate: an async predicate returns a Promise, which is always truthy, and
+  // the assertion passes vacuously — the exact trap tests/rta/CLAUDE.md names.
+  const focusColor = await getVal('#jrDialog.#okButton.focusBorder');
+  const idleColor = await getVal('#jrDialog.#okButton.border');
+  expect(focusColor, 'focus and idle colours must differ or nothing below is meaningful').not.toBe(
+    idleColor,
+  );
+
+  // 2. OK from the SCROLL AREA moves focus to the button and does NOT close.
+  await press(ecp.Key.Ok);
+  await waitFor('#jrDialog.#okButton.#buttonBorder.blendColor', (c) => c === focusColor, {
+    label: 'OK moved focus to the button',
+    timeout: 8000,
+  });
+  expect(await getVal('#jrDialog.id'), 'OK from the scroll area must NOT close the dialog').toBe(
+    'jrDialog',
+  );
+  const focusedOnButton = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+  expect(focusedOnButton?.keyPath).toBe('#jrDialog.#okButton');
+
+  // 3. UP hands focus back to the scroll area (only because this body scrolls).
+  await press(ecp.Key.Up);
+  await waitFor('#jrDialog.#okButton.#buttonBorder.blendColor', (c) => c === idleColor, {
+    label: 'up returned focus to the scroll area',
+    timeout: 8000,
+  });
+
+  // 4. OK twice from the scroll area: first focuses the button, second closes.
+  await press(ecp.Key.Ok);
+  await waitFor('#jrDialog.#okButton.#buttonBorder.blendColor', (c) => c === focusColor, {
+    label: 'first OK re-focused the button',
+    timeout: 8000,
+  });
+  expect(await getVal('#jrDialog.id'), 'still open after the focusing press').toBe('jrDialog');
+
+  await press(ecp.Key.Ok);
+  await waitFor('#jrDialog.id', (v) => v === undefined, {
+    label: 'OK from the button closed the dialog',
     timeout: 10000,
   });
 

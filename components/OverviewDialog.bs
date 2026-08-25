@@ -279,7 +279,23 @@ sub applyScrollBounds()
   ' behind the latch: a late pass must not yank focus from a user who has already
   ' scrolled. setFocus on the already-focused node is a no-op, so the repeats
   ' cost nothing.
-  if not m.userHasNavigated
+  ' hasBodyText() is the second half of the same rule, and it is load-bearing:
+  ' init() runs a layout BEFORE a single field is set, and a body of nothing
+  ' cannot scroll — so that pass derives `scrolls = false` and, without this
+  ' guard, focused the OK button on the strength of it. The focus then moved to
+  ' the scroll area on the first pass that had real content, which is correct,
+  ' but the BUTTON had already painted itself focused and never repainted:
+  ' TextButton applies its focus colours when it gains focus and reverts them on
+  ' a focusedChild change that this sequence never delivers. Net effect, measured
+  ' on a Stick 4K: the scroll area held focus while the OK button rendered a
+  ' `focusBorder` ring, so the dialog opened looking like two things were focused
+  ' at once and read as unresponsive.
+  '
+  ' Everything above re-derives happily from a contentless pass; only the focus
+  ' placement must not. applyLayout guarantees the body has been MEASURED
+  ' whenever hasBodyText() is true, so this is exactly "wait for a pass that
+  ' knows something".
+  if not m.userHasNavigated and hasBodyText()
     if scrolls
       m.textClip.setFocus(true)
     else
