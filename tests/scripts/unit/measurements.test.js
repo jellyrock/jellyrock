@@ -213,6 +213,107 @@ describe('the Home pattern against captured device lines', () => {
     expect(samples[0].fields.sizeCalls).toBeUndefined();
   });
 
+  it('reads the row-removal probe, both composed pairs split back apart', () => {
+    // Same provenance caveat as the two recompute lines: written from the call site.
+    //
+    // The composition is the part worth pinning. Four numbers ride in two `a/b` pairs
+    // because the app stays a pair clear of roku-log's nine-argument ceiling, so a reader
+    // of the console sees `cells 0/41` — and every one of the four still has to arrive as
+    // its OWN numeric field, or `unitFor` places one half and defaults the other.
+    const line =
+      'INFO file:///Users/dev/jellyrock/components/home/HomeRows.bs:641 latest-rows row removed at activeRecordings#1 cells 0/41 run 0/0  ';
+    expect(matchLine(home, line).key).toBe('rowRemoved');
+    expect(matchLine(home, line).fields).toEqual({
+      rowRemoveAt: 'activeRecordings',
+      rowRemoveSeq: 1,
+      rowRemoveLoads: 0,
+      rowRemoveBinds: 41,
+      rowRemoveProcessed: 0,
+      rowRemoveExpected: 0,
+    });
+  });
+
+  it("keeps the app's `-1` no-counters reading instead of dropping the line", () => {
+    // `cells -1/-1` is what the app prints when the content root carries no `cellLoad*`
+    // fields, and it is the single most important line in the set: `loadsStarted 0` is
+    // ALSO what a genuinely early removal prints, so without a distinct reading for "the
+    // probe read nothing" the two are the same sample. A `\d+` matcher would drop the
+    // whole line in exactly that case, and a dropped line reads as "no removal happened".
+    const line = 'latest-rows row removed at activeRecordings#1 cells -1/-1 run 0/0';
+    expect(matchLine(home, line).fields.rowRemoveLoads).toBe(-1);
+    expect(matchLine(home, line).fields.rowRemoveBinds).toBe(-1);
+  });
+
+  it('files the removal SECTION under dimensions and its four counts under timings', () => {
+    const line = 'latest-rows row removed at activeRecordings#1 cells 88/231 run 10/10';
+    const { timings, dimensions } = splitWorkload(home, matchLine(home, line).fields);
+    expect(dimensions).toEqual({ rowRemoveAt: 'activeRecordings' });
+    expect(timings).toEqual({
+      rowRemoveSeq: 1,
+      rowRemoveLoads: 88,
+      rowRemoveBinds: 231,
+      rowRemoveProcessed: 10,
+      rowRemoveExpected: 10,
+    });
+  });
+
+  it('absorbs the removal whether it lands BEFORE the run or AFTER it', () => {
+    // The property the probe exists for, and the reason it is a line rather than a column
+    // on `size recompute`: the removals that matter are the ones OUTSIDE the run window,
+    // and `sizeRemove` is zeroed at run start and read at run end. A sample opens on the
+    // first matching line whichever end it arrives at, and `assembleSamples` flushes what
+    // is still open at end of window — so the late case, which no other Home field can
+    // see, lands in the same sample as the run it followed.
+    const early = assembleSamples(home, [
+      'latest-rows row removed at activeRecordings#1 cells 0/41 run 0/0',
+      ...CAPTURED.slice(0, 4),
+    ]);
+    expect(early).toHaveLength(1);
+    expect(early[0].complete).toBe(true);
+    expect(early[0].fields.rowRemoveLoads).toBe(0);
+
+    const late = assembleSamples(home, [
+      ...CAPTURED.slice(0, 4),
+      'latest-rows row removed at activeRecordings#1 cells 88/231 run 10/10',
+    ]);
+    expect(late).toHaveLength(1);
+    expect(late[0].complete).toBe(true);
+    expect(late[0].fields.rowRemoveLoads).toBe(88);
+  });
+
+  it('makes a SECOND removal in one launch visible as an ordinal, not a short read', () => {
+    // The known limit, gated so nobody rediscovers it mid-analysis. A repeated line closes
+    // the sample, so a launch that drops two rows is filed as two samples — the first
+    // complete and carrying only removal #1, the second holding nothing but the probe.
+    // The ordinal is the whole defence: without it the analyst sees 20 complete samples
+    // for 20 launches and no sign that any launch had a second removal at all.
+    const samples = assembleSamples(home, [
+      'latest-rows row removed at activeRecordings#1 cells 0/41 run 0/0',
+      ...CAPTURED.slice(0, 4),
+      'latest-rows row removed at livetv#2 cells 90/240 run 10/10',
+    ]);
+    expect(samples).toHaveLength(2);
+    expect(samples[0].complete).toBe(true);
+    expect(samples[0].fields.rowRemoveSeq).toBe(1);
+    expect(samples[1].complete).toBe(false);
+    expect(samples[1].fields.rowRemoveSeq).toBe(2);
+    expect(samples[1].fields.rowRemoveAt).toBe('livetv');
+  });
+
+  it('does not let the removal line match either recompute pattern, or they it', () => {
+    // All three messages start `latest-rows`, and `matchLine` returns the first pattern
+    // that matches. The live risk is the FIRST assertion: `size recompute by` is declared
+    // ahead of this line and also carries an `at` group, so dropping its `remove N insert N`
+    // middle makes it swallow every removal line — verified, not supposed (that mutation
+    // takes this case and ten others red). The second assertion is weaker and says so:
+    // nothing this pattern can do reaches the `by` line, so it guards a REORDERING of the
+    // family rather than a loosening of this pattern.
+    const removed = 'latest-rows row removed at activeRecordings#1 cells 0/41 run 0/0';
+    const by = 'latest-rows size recompute by remove 1 insert 0 at remove:livetv';
+    expect(matchLine(home, removed).key).toBe('rowRemoved');
+    expect(matchLine(home, by).key).toBe('sizeRecomputeBy');
+  });
+
   it('ignores console traffic that is not a measurement', () => {
     for (const line of NOISE) expect(matchLine(home, line)).toBeNull();
   });
@@ -871,7 +972,7 @@ describe('fieldsByKind', () => {
     // fields the split exists for. `firstPaintMs` is the signed one — `item-grid`
     // initialises it to -1 — and a bare `\d+` rule silently dropped it.
     const home = fieldsByKind(measurementById('home-latest-rows'));
-    expect(home.dimensions).toEqual(['sizeAt']);
+    expect(home.dimensions).toEqual(['sizeAt', 'rowRemoveAt']);
     expect(home.numeric).toEqual(expect.arrayContaining(['sizeCalls', 'sizeRemove', 'sizeMs']));
 
     const load = fieldsByKind(measurementById('screen-load'));

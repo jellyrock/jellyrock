@@ -183,7 +183,20 @@ export const MEASUREMENTS = Object.freeze([
     // `unitFor('sizeCalls', family)` answered `'ms'`, so `measure:report --field sizeCalls`
     // headlined a call count as milliseconds — the identical defect `counts` was added to
     // fix for `cell-load`, sitting undetected in a second family the whole time.
-    counts: Object.freeze(['sizeCalls', 'sizeDrains', 'sizeRemove', 'sizeInsert']),
+    counts: Object.freeze([
+      'sizeCalls',
+      'sizeDrains',
+      'sizeRemove',
+      'sizeInsert',
+      // `rowRemove*` are counts for the same reason `sizeRemove` is, and the two `/`-composed
+      // pairs are counts on BOTH sides — `unitFor` is keyed on the field, not on the line, so
+      // omitting one half would headline it as milliseconds while its twin read as a count.
+      'rowRemoveSeq',
+      'rowRemoveLoads',
+      'rowRemoveBinds',
+      'rowRemoveProcessed',
+      'rowRemoveExpected',
+    ]),
     lines: Object.freeze([
       Object.freeze({
         key: 'total',
@@ -255,6 +268,38 @@ export const MEASUREMENTS = Object.freeze([
         required: false,
         pattern:
           /latest-rows size recompute by\s+remove\s+(?<sizeRemove>\d+)\s+insert\s+(?<sizeInsert>\d+)\s+at\s+(?<sizeAt>\S+)/,
+      }),
+      Object.freeze({
+        // ONE immediate row removal, stamped at the instant it happened rather than
+        // summarised at run end — which is the whole point of it, and why it is a line of
+        // its own instead of more columns on `size recompute by`.
+        //
+        // `sizeRemove` above counts only removals landing INSIDE the run's window, because
+        // its counters are zeroed at run start and read at run end. On this server the
+        // removal itself is unconditional (`logRowRemoved` in `HomeRows.bs` has the chain),
+        // so `sizeRemove` is a race outcome, not an occurrence count, and a launch reading
+        // `sizeRemove 0` had the SAME removal somewhere outside the window. This line is
+        // what says where.
+        //
+        // It can therefore arrive BEFORE the required lines or AFTER all of them, and
+        // `assembleSamples` handles both: a sample opens on the first matching line
+        // whichever it is, and whatever is still open at end of window is flushed. What it
+        // does NOT survive is the line REPEATING — that closes the sample — which is why the
+        // app numbers each removal, so a split launch is visible as an ordinal above 1
+        // rather than as a short read.
+        //
+        // OPTIONAL for the same reason as the two lines above: the baseline arm of any
+        // comparison is the build that does not carry this.
+        //
+        // GROUNDED on `.177` 2026-08-25 — 40 of 40 samples across two n=20 arms carried this
+        // line and every field parsed. `cells -1/-1` is the app's own "the content root
+        // carried no counters" reading and is why both halves are signed; a `\d+` here would
+        // drop the whole line in exactly the case worth seeing. (No arm has yet produced a
+        // -1, so that branch is covered by unit test only.)
+        key: 'rowRemoved',
+        required: false,
+        pattern:
+          /latest-rows row removed\s+at\s+(?<rowRemoveAt>[^#\s]+)#(?<rowRemoveSeq>\d+)\s+cells\s+(?<rowRemoveLoads>-?\d+)\/(?<rowRemoveBinds>-?\d+)\s+run\s+(?<rowRemoveProcessed>\d+)\/(?<rowRemoveExpected>\d+)/,
       }),
     ]),
   }),

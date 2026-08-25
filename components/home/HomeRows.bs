@@ -131,6 +131,10 @@ sub init()
     ' console — `measure.js` keeps console lines only when nothing matched, so on a healthy
     ' run they are discarded.
     m.popSizeAt = ""
+    ' How many immediate row removals this HomeRows has made. Per INSTANCE, deliberately,
+    ' and not per run: the counters above are the ones scoped to a run, and this exists to
+    ' number the removals they cannot see. See logRowRemoved for what the number is for.
+    m.popRemoveSeq = 0
   #end if
 
   ' Track loading state for persistent tasks to prevent duplicate observers/requests
@@ -635,6 +639,58 @@ sub removeRowAtIndex(index as integer)
   rowStructureChanged(true)
 end sub
 
+' logRowRemoved: Publish an immediate row removal AT THE INSTANT IT HAPPENS.
+'
+' Its own line and its own moment, because `sizeRemove` cannot answer the question it was
+' built for. Those counters are zeroed at run start and read at run end, so a removal
+' landing before or after that window increments nothing anybody reports — and that window
+' is not where the interesting removals are. Every cold launch on a server with no
+' in-progress recordings drops this row exactly once: the section plan is
+' server-authoritative and identical launch to launch (session.bs SaveUserHomeSections),
+' createSkeletonRow builds the row unconditionally, startParallelLoads fires the task
+' unconditionally, and removalIsDeferrable refuses to defer a non-`latest_` row. So
+' `sizeRemove` is not measuring WHETHER the removal happened. It is measuring whether it
+' happened to land inside the run.
+'
+' The columns:
+'
+'   at    - <sectionId>#<ordinal>. The ordinal is per HomeRows INSTANCE. It is here because
+'           `assembleSamples` closes a sample when a line it already holds repeats: a second
+'           immediate removal in one launch splits that launch across two samples, and the
+'           ordinal is what makes that visible in the record instead of a silent short read.
+'           Expect 1 on every sample; a 2 means the analysis has to account for a split.
+'   cells - loadsStarted/binds on the content root at that instant. `loadsStarted` is the
+'           discriminator: a skeleton placeholder BINDS as soon as it is attached
+'           (JRRowItem.onItemContentChanged) but starts no image load, so `binds` is already
+'           well above zero before any real content exists while `loadsStarted` stays 0
+'           until a real poster URL is assigned. `binds` rides along as the POSTCONDITION —
+'           a genuinely early removal and a probe reading a root with no counters on it both
+'           print `loadsStarted 0`, and only `binds` separates them.
+'   run   - latestRowsProcessedIndex/latestRowsExpectedCount, which places the removal in the
+'           run's lifetime without a clock: 0/0 before the run starts, k/N inside it, N/N
+'           once it has completed.
+'
+' Three label/value pairs rather than four, with two values composed: roku-log faults at
+' RUNTIME (&hf1, straight into the debugger) past nine call-site arguments once the BSC
+' plugin has spent one on the injected pkg path. Nine is legal and this line would fit, but
+' a probe whose overflow costs a whole device run is not worth writing at the ceiling.
+'
+' @param {string} sectionId - the sectionId of the row being removed
+sub logRowRemoved(sectionId as string)
+  #if perfTiming
+    m.popRemoveSeq++
+
+    loads = -1
+    binds = -1
+    if isValid(m.top.content) and m.top.content.hasField("cellLoadBinds")
+      loads = m.top.content.cellLoadLoadsStarted
+      binds = m.top.content.cellLoadBinds
+    end if
+
+    m.log.info("latest-rows row removed", "at", sectionId + "#" + m.popRemoveSeq.toStr(), "cells", loads.toStr() + "/" + binds.toStr(), "run", m.latestRowsProcessedIndex.toStr() + "/" + m.latestRowsExpectedCount.toStr())
+  #end if
+end sub
+
 ' getRowConfigForSection: Returns title and slotSize for a sectionId.
 ' Used when inserting a row that was previously removed (no skeleton exists).
 '
@@ -825,6 +881,7 @@ sub populateRowFromData(sectionId as string, itemData as dynamic)
           m.popSizeRemove++
           if m.popSizeAt <> "" then m.popSizeAt += ","
           m.popSizeAt += "remove:" + sectionId
+          logRowRemoved(sectionId)
         #end if
         removeRowAtIndex(result.index)
       end if
