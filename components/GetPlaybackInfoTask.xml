@@ -3,7 +3,10 @@
 <component name="GetPlaybackInfoTask" extends="Task">
   <interface>
     <field id="videoID" type="string" />
-    <field id="cachedPlaybackInfo" type="assocarray" />
-    <field id="data" type="assocarray" />
+    <!-- alwaysNotify: the report refreshes on a timer while the dialog is open,
+         and a poll that returns an unchanged session must still deliver, or the
+         live rows (transcode speed, progress) would freeze as soon as the figures
+         settled. -->
+    <field id="data" type="assocarray" alwaysNotify="true" />
   </interface>
 </component>

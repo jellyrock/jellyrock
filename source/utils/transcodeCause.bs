@@ -1,0 +1,232 @@
+' Why THIS transcode is happening, when the answer is JellyRock's own doing.
+'
+' Jellyfin returns machine reason codes ("VideoRangeTypeNotSupported") describing
+' what the SERVER decided. They are accurate, and they are useless to a user when
+' the constraint that produced them is one JellyRock injected into the device
+' profile on that user's behalf. Nobody who switched on "Preserve DoVi" expects to
+' read "VideoRangeTypeNotSupported", and nothing on screen connects the two.
+'
+' So this module answers exactly one question: does a JellyRock SETTING provably
+' account for this reason? The server's vocabulary stays the server's — we do not
+' translate, gloss or re-word its codes, because it already maintains them and we
+' would only drift. We speak solely about ourselves.
+'
+' EVERY PREDICATE MIRRORS ITS INJECTION SITE. A `yes` means the same inputs that
+' produced the profile condition are still true of this stream — not that the
+' setting is merely switched on. That distinction is the whole design: a setting
+' that is on but not BINDING (Preserve DoVi on an h264 mp4, a bitrate cap above
+' the source's bitrate) did not cause anything, and saying it did would send the
+' user to change a setting that will not help. When a predicate cannot be
+' established, this returns "" and the report shows the bare server code.
+'
+' Pure by contract — no nodes, no `m`, no globals. The caller gathers the inputs.
+' That is what makes every branch below testable without hardware, which matters
+' more here than anywhere else in the report: these are the claims that can be
+' WRONG rather than merely missing.
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+
+' The height the resolution cap falls back to when the user has not lowered it.
+' Mirrors getResolutionConditions()'s own default in deviceCapabilities.bs.
+const TRANSCODE_CAUSE_DEFAULT_MAX_HEIGHT = 1080
+
+' Codecs whose decode path JellyRock caps at 2 channels when the user turns
+' "Decode Multichannel Audio" off. Mirrors `stereoOutputCodecs` in
+' deviceCapabilities.bs getCodecProfiles() — and the list is the reason this
+' predicate needs the source CODEC and not just its channel count: an EAC3 5.1
+' source hitting AudioChannelsNotSupported was not capped by us, because EAC3 is
+' not on this list.
+const TRANSCODE_CAUSE_STEREO_CAPPED_CODECS = "aac,flac,alac,pcm,lpcm,wav,opus,vorbis"
+
+' The JellyRock setting that provably caused a transcode reason, as the
+' translationKey of that setting's title.
+'
+' Returning the setting's OWN title key — the one settings.json already carries —
+' rather than a bespoke phrase is deliberate: the report then names the setting
+' exactly as the Settings screen spells it, which is where the user has to go
+' next. It also means this feature adds one translation string in total instead
+' of a parallel vocabulary that can drift out of sync with the settings UI.
+'
+' @param {string} reason - a Jellyfin TranscodeReason code, verbatim
+' @param {object} ctx - see transcodeCauseContext() for the shape and why each field is needed
+' @returns {string} - a translationKey, or "" when no setting can be proven responsible
+function transcodeCauseSettingKey(reason as string, ctx as object) as string
+  if not isValidAndNotEmpty(reason) or not isValid(ctx) then return ""
+
+  settings = ctx.settings
+  if not isValid(settings) then return ""
+
+  if reason = "VideoRangeTypeNotSupported"
+    if causedByPreserveDovi(ctx, settings) then return translationKeys.LabelPreserveDovi
+    return ""
+  end if
+
+  if reason = "AnamorphicVideoNotSupported"
+    if causedByForceTranscodeAnamorphic(ctx, settings) then return translationKeys.LabelForceTranscodeAnamorphicVideo
+    return ""
+  end if
+
+  if reason = "AudioChannelsNotSupported"
+    if causedByMultichannelDecodeOff(ctx, settings) then return translationKeys.LabelDecodeMultichannelAudio
+    return ""
+  end if
+
+  if reason = "VideoBitrateNotSupported"
+    if causedByBitrateLimit(ctx, settings) then return translationKeys.LabelMaximumBitrate
+    return ""
+  end if
+
+  if reason = "VideoResolutionNotSupported"
+    if causedByResolutionCap(ctx, settings) then return translationKeys.LabelMaximumResolution
+    return ""
+  end if
+
+  ' ContainerBitrateExceedsLimit is deliberately absent. It compares the source's
+  ' total bitrate against DeviceProfile.MaxStreamingBitrate, and the only thing
+  ' that ever lowers ours is the transcoding-buffer calculation in
+  ' ItemPostPlaybackInfo — which explicitly refuses to go below the source's own
+  ' bitrate plus 10% headroom. So our cap cannot produce this reason, and the
+  ' user's "Maximum Bitrate" setting does not write that field at all (it writes a
+  ' per-codec VideoBitrate condition, which surfaces as VideoBitrateNotSupported).
+  ' Attributing it here would be a guess wearing a predicate's clothes.
+  return ""
+end function
+
+' Mirrors the DoVi container-profile injection in ItemPostPlaybackInfo
+' (source/api/items.bs). Every conjunct there is reproduced here, because each one
+' is a way the constraint is NOT injected and therefore a way this reason belongs
+' to someone else:
+'   - the setting off, or the caller bypassing it on a buffer-overflow retry
+'   - a device that cannot do DoVi (the injection is skipped entirely)
+'   - a server below apiVersion 2, where VideoRangeType does not exist
+'   - a non-mkv container, or an AV1 stream, both explicitly exempted there
+function causedByPreserveDovi(ctx as object, settings as object) as boolean
+  if not isTrue(settings.playbackPreserveDovi) then return false
+  if isTrue(ctx.doviPreservationBypassed) then return false
+  if not isTrue(ctx.deviceSupportsDovi) then return false
+
+  apiVersion = mediaNumber(ctx.apiVersion)
+  if apiVersion < 2 then return false
+
+  if LCase(textOrEmpty(ctx.container)) <> "mkv" then return false
+
+  stream = ctx.videoStream
+  if not isValid(stream) then return false
+  if not isValidAndNotEmpty(stream.Codec) then return false
+  if LCase(stream.Codec) = "av1" then return false
+  if not isValidAndNotEmpty(stream.VideoRangeType) then return false
+  return inStr(1, LCase(stream.VideoRangeType), "dovi") > 0
+end function
+
+' Mirrors getAnamorphicCondition() in deviceCapabilities.bs, which emits its
+' condition ONLY when this setting is on — so the setting being off means the
+' constraint was never sent and something else produced the reason. The source
+' being anamorphic is the second half: the condition cannot bind on a stream it
+' does not describe.
+function causedByForceTranscodeAnamorphic(ctx as object, settings as object) as boolean
+  if not isTrue(settings.playbackForceTranscodeAnamorphic) then return false
+
+  stream = ctx.videoStream
+  if not isValid(stream) then return false
+  return isTrue(stream.IsAnamorphic)
+end function
+
+' Mirrors the 2-channel cap in getCodecProfiles() (deviceCapabilities.bs), which
+' applies when playbackDecodeMultichannelAudio is FALSE — note the inversion; the
+' setting reads as "let the Roku decode it", so turning it OFF is what adds a
+' constraint.
+'
+' The cap only touches TRANSCODE_CAUSE_STEREO_CAPPED_CODECS, so the source codec
+' has to be on that list. This is the predicate most likely to be got wrong by
+' reading the setting name alone: a 5.1 EAC3 source that transcodes for channels
+' was capped by the device's real capabilities, not by this setting.
+function causedByMultichannelDecodeOff(ctx as object, settings as object) as boolean
+  ' Absent means the default (true = let the Roku decode), which adds no cap.
+  if not isValid(settings.playbackDecodeMultichannelAudio) then return false
+  if isTrue(settings.playbackDecodeMultichannelAudio) then return false
+
+  stream = ctx.audioStream
+  if not isValid(stream) then return false
+  if not isValidAndNotEmpty(stream.Codec) then return false
+  if mediaNumber(stream.Channels) <= 2 then return false
+
+  cappedCodecs = TRANSCODE_CAUSE_STEREO_CAPPED_CODECS.split(",")
+  return arrayHasValue(cappedCodecs, LCase(stream.Codec))
+end function
+
+' Mirrors GetBitRateLimit() in deviceCapabilities.bs — and mirrors it through the
+' SAME `mediaNumber` coercion, deliberately. That function emits the user's value
+' only when the limit is enabled and the stored value reads as a positive number;
+' otherwise it falls through to Roku's per-codec HARDWARE ceilings, which are not
+' the user's doing and must not be reported as such. If the two ever disagree
+' about what counts as a usable limit, this module would name a setting that did
+' not constrain anything.
+'
+' The last conjunct — the source actually exceeding the limit — is what turns
+' "the setting is on" into "the setting is why". A 5 Mbps stream under a 20 Mbps
+' cap transcoded for some other reason entirely.
+function causedByBitrateLimit(ctx as object, settings as object) as boolean
+  if not isTrue(settings.playbackBitrateMaxLimited) then return false
+
+  limitMbps = mediaNumber(settings.playbackBitrateLimit)
+  if limitMbps <= 0 then return false
+
+  stream = ctx.videoStream
+  if not isValid(stream) then return false
+
+  sourceBitrate = mediaNumber(stream.BitRate)
+  if sourceBitrate <= 0 then return false
+  return sourceBitrate > (limitMbps * 1000000)
+end function
+
+' Mirrors getResolutionConditions() in deviceCapabilities.bs, which is subtler
+' than it looks — three of its four branches produce a cap that is NOT the user's
+' choice:
+'   "off"            -> no conditions at all
+'   "auto"           -> the device's own height; following the TV is not a choice
+'   numeric >= 1080  -> collapses to the same 1080 default any device would get
+' Only a numeric value that lands BELOW what the device would otherwise allow is
+' the user actively giving something up, and only then is naming the setting
+' useful — it is the one case where changing it would change the outcome.
+'
+' The h264 exclusion is the ambiguity guard. ItemPostPlaybackInfo caps h264 at the
+' 1080p hardware ceiling independently of any setting, so a 4K h264 source would
+' transcode with this setting at its default. Two candidate causes, no way to tell
+' them apart from the reason code, so we claim neither.
+function causedByResolutionCap(ctx as object, settings as object) as boolean
+  userMax = settings.playbackResolutionMax
+  if not isValidAndNotEmpty(userMax) then return false
+
+  userMax = LCase(textOrEmpty(userMax).trim())
+  if userMax = "off" or userMax = "auto" then return false
+
+  cap = userMax.toInt()
+  if cap <= 0 or cap >= TRANSCODE_CAUSE_DEFAULT_MAX_HEIGHT then return false
+
+  stream = ctx.videoStream
+  if not isValid(stream) then return false
+
+  sourceHeight = mediaNumber(stream.Height)
+  sourceWidth = mediaNumber(stream.Width)
+  if sourceHeight <= cap then return false
+
+  ' The h264 hardware ceiling would have forced this regardless of the setting.
+  if isValidAndNotEmpty(stream.Codec) and LCase(stream.Codec) = "h264"
+    if sourceHeight > TRANSCODE_CAUSE_DEFAULT_MAX_HEIGHT or sourceWidth > 1920 then return false
+  end if
+
+  ' A device that cannot exceed the user's cap anyway makes the setting moot.
+  deviceMaxHeight = mediaNumber(ctx.deviceMaxHeight)
+  if deviceMaxHeight > 0 and deviceMaxHeight <= cap then return false
+
+  return true
+end function
+
+' True only for a real boolean true, the way settings and stream flags arrive.
+' A field the server omitted dereferences to Invalid, and `not Invalid` faults
+' &h18 — so the type is established before the comparison, matching the guard
+' shape already used in fallbackFont.bs.
+function isTrue(value as dynamic) as boolean
+  valueType = LCase(type(value))
+  return (valueType = "boolean" or valueType = "roboolean") and value = true
+end function

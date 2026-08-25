@@ -1,14 +1,26 @@
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
-import "pkg:/source/utils/playbackInfo.bs"
+import "pkg:/source/utils/playbackReport.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
+import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/trackPickerOptions.bs"
 import "pkg:/source/utils/translate.bs"
+
+' How often the playback report re-reads the session while it is open.
+'
+' 5s rather than the 10s Jellyfin's web client uses, because that client's panel
+' is a cache TTL on an always-open overlay while this is a dialog someone opened
+' deliberately, usually because something looked wrong. The figure that matters —
+' transcode speed — is a level to be confirmed, and halving the wait for the first
+' confirmation is the whole benefit. One extra request per 10 seconds against an
+' endpoint the app already polls for progress reporting.
+const PLAYBACK_INFO_REFRESH_SECONDS = 5
 
 ' Routed host for video playback. See PlayerHostView.xml header.
 '
@@ -145,6 +157,7 @@ sub onDestroy()
   ' view — anything that navigates without the user closing the dialog first
   ' (deep link, session expiry, voice "stop") would strand one over the incoming
   ' screen. See abandonDialog in source/utils/dialogs.bs.
+  stopPlaybackInfoRefresh()
   abandonDialog(m.playbackDialog)
   m.playbackDialog = invalid
   m.trackPickerOptions = invalid
@@ -182,6 +195,7 @@ sub onPlayerStateChange()
   ' and tracked as playback-error-dialog-closed-by-teardown in tech-debt.md.
   ' Don't "fix" it by narrowing this call: a stranded modal over the incoming
   ' screen is the failure this line exists to prevent.
+  stopPlaybackInfoRefresh()
   abandonDialog(m.playbackDialog)
   m.playbackDialog = invalid
   m.trackPickerOptions = invalid
@@ -366,34 +380,106 @@ sub onSubtitleTrackSelected()
   m.view.selectedSubtitle = selected.index
 end sub
 
-' User requested playback info
+' User requested playback info.
+'
+' Always re-fetches. The report used to be built once by the task and cached for
+' the life of the player, which meant a DoVi buffer-overflow fallback
+' (transcode -> direct play) left the "i" button confidently describing a
+' transcode that had already stopped. Composition is cheap now that it happens
+' here rather than on the Task thread, so a fresh answer costs one request.
 sub onSelectPlaybackInfoPressed()
-  ' Check if we already have playback info and show it in a popup
-  if isValid(m.playbackData) and isValid(m.playbackData.playbackinfo)
-    showPlaybackInfo()
-    return
-  end if
-
-  ' Set cached playback info right before running (when it's actually available)
-  m.getPlaybackInfoTask.cachedPlaybackInfo = m.view.cachedPlaybackInfo
   launchTask(m.getPlaybackInfoTask)
 end sub
 
-' The playback info task has returned data
+' The session arrived. Compose the report and either open it or refresh the one
+' already open.
 sub onPlaybackInfoLoaded()
-  m.playbackData = m.getPlaybackInfoTask.data
+  data = m.getPlaybackInfoTask.data
+  session = invalid
+  if isValid(data) then session = data.session
 
-  ' Check if we have playback info and show it in a popup
-  if isValid(m.playbackData) and isValid(m.playbackData.playbackinfo)
-    showPlaybackInfo()
+  report = buildPlaybackReport(playbackReportInputs(session))
+  if report.sections.count() = 0 then return
+
+  if isValid(m.playbackDialog)
+    ' Open already: hand it the new model. OverviewDialog reconciles row by row,
+    ' so the live figures change and the scroll position does not.
+    m.playbackDialog.sections = report.sections
+    return
   end if
+
+  m.playbackDialog = showReportDialog(translate(translationKeys.LabelPlaybackInfo), report.status, report.sections)
+  m.playbackDialog.observeField("parentNode", "onPlaybackInfoDialogClosed")
+  startPlaybackInfoRefresh()
 end sub
 
-' Read-only report, so it self-closes and there is no result to observe — but it
-' still has to be held, because teardown has to be able to abandon it.
-sub showPlaybackInfo()
-  body = formatPlaybackInfoText(m.playbackData.playbackinfo)
-  if body = "" then return
+' Everything the pure report builder needs, gathered on the RENDER thread where
+' an m.global read costs ~2 µs rather than the ~93 µs it cost inside the task.
+function playbackReportInputs(session as dynamic) as object
+  cached = m.view.cachedPlaybackInfo
+  mediaSource = invalid
+  if isValid(cached) and isValidAndNotEmpty(cached.MediaSources) then mediaSource = cached.MediaSources[0]
 
-  m.playbackDialog = showInfoDialog(translate(translationKeys.LabelPlaybackInfo), body)
+  ' supportsDolbyVision here is the SAME predicate ItemPostPlaybackInfo uses to
+  ' decide whether to inject the DoVi container profile at all
+  ' (canPlay4k() and the display reporting DolbyVision). Attribution is only
+  ' honest if both sides ask the identical question.
+  capabilities = getDeviceVideoCapabilities()
+
+  return {
+    session: session,
+    mediaSource: mediaSource,
+    audioStreamIndex: m.view.audioIndex,
+    subtitleStreamIndex: m.view.selectedSubtitle,
+    settings: m.global.user.settings,
+    apiVersion: getApiVersionFromGlobal(),
+    deviceSupportsDovi: capabilities.supportsDolbyVision,
+    deviceMaxHeight: capabilities.maxHeight,
+    doviPreservationBypassed: m.view.isDoviPreservationBypassed
+  }
+end function
+
+' Keep the live rows live.
+'
+' Transcode speed is the one figure in the report that is only meaningful RIGHT
+' NOW — it says whether the server is keeping ahead of playback, and a value from
+' four minutes ago answers nothing. Progress and output bitrate move with it.
+' Everything else in the report is fixed for the session and simply re-resolves to
+' the same text, which the dialog then skips.
+'
+' The timer drives the same task the button does, so there is one fetch path and
+' one composition path rather than a second copy for refreshes.
+sub startPlaybackInfoRefresh()
+  if not isValid(m.playbackInfoTimer)
+    m.playbackInfoTimer = CreateObject("roSGNode", "Timer")
+    m.playbackInfoTimer.repeat = true
+    m.playbackInfoTimer.duration = PLAYBACK_INFO_REFRESH_SECONDS
+    m.playbackInfoTimer.observeField("fire", "onPlaybackInfoRefreshDue")
+    m.top.appendChild(m.playbackInfoTimer)
+  end if
+  m.playbackInfoTimer.control = "start"
+end sub
+
+sub stopPlaybackInfoRefresh()
+  if isValid(m.playbackInfoTimer) then m.playbackInfoTimer.control = "stop"
+end sub
+
+sub onPlaybackInfoRefreshDue()
+  ' The dialog can be gone without our close observer having run — a supersede by
+  ' another overlay detaches it. Stop rather than poll into nothing.
+  if not isValid(m.playbackDialog) or not isValid(m.playbackDialog.getParent())
+    stopPlaybackInfoRefresh()
+    return
+  end if
+
+  launchTask(m.getPlaybackInfoTask)
+end sub
+
+' The dialog dismisses itself by removing itself from the scene, so a detached
+' parentNode is the close signal — this overlay has no `result` field to observe.
+sub onPlaybackInfoDialogClosed()
+  if isValid(m.playbackDialog) and isValid(m.playbackDialog.getParent()) then return
+
+  stopPlaybackInfoRefresh()
+  m.playbackDialog = invalid
 end sub

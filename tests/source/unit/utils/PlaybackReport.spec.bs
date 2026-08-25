@@ -1,0 +1,335 @@
+import "pkg:/source/utils/playbackReport.bs"
+
+namespace tests
+
+  @suite("playbackReport.bs - the playback-info report model")
+  class PlaybackReportTests extends tests.BaseTestSuite
+
+    protected input as object
+
+    protected override sub beforeEach()
+      super.beforeEach()
+
+      ' A 4K DoVi HEVC / 5.1 EAC3 mkv, transcoded to 1080p H264 / stereo AAC.
+      ' Built per TEST because most cases mutate one field of it to isolate a rule.
+      m.input = {
+        session: {
+          TranscodingInfo: {
+            VideoCodec: "h264",
+            AudioCodec: "aac",
+            Container: "ts",
+            AudioChannels: 2,
+            Width: 1920,
+            Height: 1080,
+            Bitrate: 8000000,
+            Framerate: 52.0,
+            CompletionPercentage: 31.4,
+            HardwareAccelerationType: "qsv",
+            IsVideoDirect: false,
+            IsAudioDirect: false,
+            TranscodeReasons: ["VideoRangeTypeNotSupported"]
+          }
+        },
+        mediaSource: {
+          Container: "mkv",
+          Size: 26000000000.0,
+          Bitrate: 26800000,
+          Path: "/media/movies/Dune (2021)/Dune.2021.2160p.mkv",
+          TranscodingUrl: "/videos/x/master.m3u8?VideoCodec=h264&AudioCodec=aac&AudioBitrate=192000&AudioSampleRate=48000&SubtitleMethod=Encode&h264-rangetype=SDR&h264-videobitdepth=8&TranscodeReasons=VideoRangeTypeNotSupported",
+          MediaStreams: [
+            { Type: "Video", Index: 0, Codec: "hevc", Width: 3840, Height: 2160, BitRate: 25400000, BitDepth: 10, VideoRange: "HDR", VideoRangeType: "DOVIWithHDR10", DvProfile: 8, DvBlSignalCompatibilityId: 1, Profile: "Main 10", Level: 51, PixelFormat: "yuv420p10le", AverageFrameRate: 23.976 },
+            { Type: "Audio", Index: 1, Codec: "aac", Channels: 2, Language: "eng" },
+            { Type: "Audio", Index: 2, Codec: "eac3", Channels: 6, ChannelLayout: "5.1", BitRate: 768000, SampleRate: 48000, Language: "eng" },
+            { Type: "Subtitle", Index: 3, Codec: "subrip", Language: "eng" }
+          ]
+        },
+        audioStreamIndex: 2,
+        subtitleStreamIndex: 3,
+        settings: { playbackPreserveDovi: true },
+        apiVersion: 2,
+        deviceSupportsDovi: true,
+        deviceMaxHeight: 2160,
+        doviPreservationBypassed: false
+      }
+    end sub
+
+    private function sectionById(report as object, id as string) as dynamic
+      for each section in report.sections
+        if section.id = id then return section
+      end for
+      return invalid
+    end function
+
+    private function rowValue(report as object, rowId as string) as string
+      for each section in report.sections
+        for each row in section.rows
+          if row.id = rowId then return row.value
+        end for
+      end for
+      return "<missing>"
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("what the server is doing")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("says transcoding when a stream is being re-encoded")
+    function _()
+      m.assertEqual(buildPlaybackReport(m.input).status, "Transcoding")
+    end function
+
+    @it("says direct streaming when both streams are copies")
+    function _()
+      ' Both direct means the container was rewrapped and not one frame
+      ' re-encoded, which Jellyfin itself labels remuxing / direct streaming.
+      m.input.session.TranscodingInfo.IsVideoDirect = true
+      m.input.session.TranscodingInfo.IsAudioDirect = true
+      m.assertEqual(buildPlaybackReport(m.input).status, "Direct streaming")
+    end function
+
+    @it("says direct playing when there is no transcode session at all")
+    function _()
+      m.input.session = invalid
+      m.assertEqual(buildPlaybackReport(m.input).status, "Direct playing")
+    end function
+
+    @it("treats an empty TranscodingInfo as no transcode rather than an empty section")
+    function _()
+      m.input.session = { TranscodingInfo: {} }
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(report.status, "Direct playing")
+      m.assertInvalid(m.sectionById(report, "transcode"))
+      m.assertInvalid(m.sectionById(report, "reasons"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("source → target pairing")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("pairs each aspect against what the session actually produced")
+    function _()
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "video.codec"), "HEVC" + PLAYBACK_INFO_ARROW + "H264")
+      m.assertEqual(m.rowValue(report, "video.resolution"), "3840x2160" + PLAYBACK_INFO_ARROW + "1920x1080")
+      m.assertEqual(m.rowValue(report, "audio.codec"), "EAC3" + PLAYBACK_INFO_ARROW + "AAC")
+      m.assertEqual(m.rowValue(report, "audio.channels"), "5.1" + PLAYBACK_INFO_ARROW + "2.0")
+      m.assertEqual(m.rowValue(report, "file.container"), "MKV" + PLAYBACK_INFO_ARROW + "TS")
+    end function
+
+    @it("drops the arrow for a stream that is being copied")
+    function _()
+      ' The absence of an arrow is how the report says "untouched". A remux must
+      ' not render "EAC3 → EAC3" just because a transcode session exists.
+      m.input.session.TranscodingInfo.IsAudioDirect = true
+      m.input.session.TranscodingInfo.AudioCodec = "eac3"
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "audio.codec"), "EAC3")
+      m.assertEqual(m.rowValue(report, "audio.channels"), "5.1")
+    end function
+
+    @it("pairs video bitrate against the URL's video target, not the session total")
+    function _()
+      ' TranscodingInfo.Bitrate is the TOTAL across streams; pairing a video-only
+      ' source figure against it would compare two different quantities. The total
+      ' has its own row in the Transcode section.
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.bitrate"), "25.4 Mbps")
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.bitrate"), "8.0 Mbps")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("only claiming a target the server actually declared")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("names the target range when the server declared exactly one")
+    function _()
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.range"), "DV 8.1" + PLAYBACK_INFO_ARROW + "SDR")
+    end function
+
+    @it("shows source-only when rangetype is a list of ALLOWED values")
+    function _()
+      ' StreamBuilder writes a comma-joined permitted set here, and in one branch
+      ' the complement of a set. A list is a constraint, not an outcome — reading
+      ' it as the target would be the most convincing wrong thing this report
+      ' could say.
+      m.input.mediaSource.TranscodingUrl = Substitute("{0}", m.input.mediaSource.TranscodingUrl.replace("h264-rangetype=SDR", "h264-rangetype=SDR,HDR10,HLG"))
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.range"), "DV 8.1")
+    end function
+
+    @it("shows source-only when the server declared no range at all")
+    function _()
+      m.input.mediaSource.TranscodingUrl = m.input.mediaSource.TranscodingUrl.replace("&h264-rangetype=SDR", "")
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.range"), "DV 8.1")
+    end function
+
+    @it("converts bit depth only when the source exceeds the declared ceiling")
+    function _()
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.bitdepth"), "10-bit" + PLAYBACK_INFO_ARROW + "8-bit")
+    end function
+
+    @it("leaves bit depth alone when the source already fits under the ceiling")
+    function _()
+      ' videobitdepth is a MAXIMUM. An 8-bit source under an 8-bit ceiling is
+      ' untouched, and "8-bit → 8-bit" would imply a conversion that never ran.
+      m.input.mediaSource.MediaStreams[0].BitDepth = 8
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.bitdepth"), "8-bit")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("transcode reasons")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows the server's code verbatim and explains only our own doing")
+    function _()
+      section = m.sectionById(buildPlaybackReport(m.input), "reasons")
+      m.assertEqual(section.rows[0].label, "VideoRangeTypeNotSupported", "the server's vocabulary passes through untranslated")
+      m.assertEqual(section.rows[0].value, "Caused by the Preserve DoVi setting")
+    end function
+
+    @it("leaves a reason unexplained when no setting of ours caused it")
+    function _()
+      m.input.session.TranscodingInfo.TranscodeReasons = ["AudioCodecNotSupported"]
+      section = m.sectionById(buildPlaybackReport(m.input), "reasons")
+      m.assertEqual(section.rows[0].label, "AudioCodecNotSupported")
+      m.assertEqual(section.rows[0].value, "", "a reason we cannot prove is the server's to explain")
+    end function
+
+    @it("pairs each code with its own explanation across several reasons")
+    function _()
+      ' Three reasons at once is the common case and the one that breaks any
+      ' format relying on line order to pair them.
+      m.input.settings.playbackDecodeMultichannelAudio = false
+      m.input.mediaSource.MediaStreams[2].Codec = "aac"
+      m.input.session.TranscodingInfo.TranscodeReasons = ["VideoRangeTypeNotSupported", "AudioCodecNotSupported", "AudioChannelsNotSupported"]
+
+      rows = m.sectionById(buildPlaybackReport(m.input), "reasons").rows
+      m.assertEqual(rows.count(), 3)
+      m.assertEqual(rows[0].value, "Caused by the Preserve DoVi setting")
+      m.assertEqual(rows[1].value, "")
+      m.assertEqual(rows[2].value, "Caused by the Decode Multichannel Audio setting")
+    end function
+
+    @it("gives the reasons section a wide label column for the codes")
+    function _()
+      m.assertTrue(m.sectionById(buildPlaybackReport(m.input), "reasons").wideLabels)
+      m.assertFalse(m.sectionById(buildPlaybackReport(m.input), "video").wideLabels)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the stream the user is actually hearing")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("describes the SELECTED audio stream, not the first one in the array")
+    function _()
+      ' MediaStreams is a mixed list and index 1 is a different track. Reading
+      ' streams[0] is how a report ends up describing something nobody is playing.
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "audio.channels"), "5.1" + PLAYBACK_INFO_ARROW + "2.0")
+
+      m.input.audioStreamIndex = 1
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "audio.codec"), "AAC")
+    end function
+
+    @it("omits the subtitle section entirely when no subtitle is selected")
+    function _()
+      ' -1 is Jellyfin's "none", and a heading with nothing under it is noise.
+      m.input.subtitleStreamIndex = -1
+      m.assertInvalid(m.sectionById(buildPlaybackReport(m.input), "subtitles"))
+    end function
+
+    @it("reports burned-in subtitles, which explain a video transcode nothing else does")
+    function _()
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "subtitle.delivery"), "Burned in")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the live rows")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reports transcode speed as a real-time multiplier")
+    function _()
+      ' 52 fps encoded against a 23.976 fps source is 2.2x real time. Below 1.0x
+      ' the server cannot keep up — the single most actionable figure here.
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.speed"), "52.0 fps (2.2x)")
+    end function
+
+    @it("reports speed without a multiplier when the source frame rate is unknown")
+    function _()
+      m.input.mediaSource.MediaStreams[0].delete("AverageFrameRate")
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.speed"), "52.0 fps")
+    end function
+
+    @it("reports progress and hardware acceleration")
+    function _()
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "transcode.progress"), "31.4%")
+      m.assertEqual(m.rowValue(report, "transcode.acceleration"), "qsv")
+    end function
+
+    @it("drops the acceleration row on a server too old to report it")
+    function _()
+      ' HardwareAccelerationType arrives from 10.8. Absent means no row — no
+      ' version check anywhere, because presence IS the check.
+      m.input.session.TranscodingInfo.delete("HardwareAccelerationType")
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.acceleration"), "<missing>")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the file")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("puts the path last, below the fold of a scrolling report")
+    function _()
+      ' Deliberate: the path is useful for telling duplicate entries apart and it
+      ' also exposes the server's filesystem layout in any screenshot. Last row of
+      ' the last section keeps it out of a shot of the transcode detail on top.
+      report = buildPlaybackReport(m.input)
+      lastSection = report.sections[report.sections.count() - 1]
+      m.assertEqual(lastSection.id, "file")
+      m.assertEqual(lastSection.rows[lastSection.rows.count() - 1].id, "file.path")
+    end function
+
+    @it("formats a real movie's size, which overflows a 32-bit integer")
+    function _()
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "file.size"), "24.2 GiB")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("missing data")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("omits a row rather than showing a placeholder")
+    function _()
+      m.input.mediaSource.MediaStreams[0].delete("PixelFormat")
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.pixelformat"), "<missing>")
+    end function
+
+    @it("survives a report with nothing to build from")
+    function _()
+      m.assertEqual(buildPlaybackReport(invalid).sections.count(), 0)
+      m.assertEqual(buildPlaybackReport({}).sections.count(), 0)
+      m.assertEqual(buildPlaybackReport({ mediaSource: {} }).sections.count(), 0)
+    end function
+
+    @it("gives every row a stable id, which is what lets a refresh reconcile")
+    function _()
+      ' The dialog matches rows between two builds by id to rewrite live figures
+      ' in place. Duplicate ids would make one row shadow another.
+      seen = {}
+      for each section in buildPlaybackReport(m.input).sections
+        for each row in section.rows
+          m.assertFalse(seen.doesExist(row.id), "duplicate row id: " + row.id)
+          seen[row.id] = true
+        end for
+      end for
+      m.assertTrue(seen.count() > 10, "expected a populated report")
+    end function
+
+    @it("produces the identical model twice, so an unchanged refresh changes nothing")
+    function _()
+      first = buildPlaybackReport(m.input)
+      second = buildPlaybackReport(m.input)
+      m.assertEqual(formatJson(first), formatJson(second))
+    end function
+
+  end class
+end namespace

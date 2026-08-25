@@ -1,69 +1,29 @@
-' Presentation of the playback-info report (the OSD's "i" button).
+' Display primitives for the playback-info report (the OSD's "i" button).
 '
-' GetPlaybackInfoTask reports what the server is doing with this stream as
-' STRUCTURED sections — headings plus label/value rows:
+' The report's SHAPE lives in playbackReport.bs; this file holds the small
+' formatters it composes from, kept separate because they are the pieces most
+' likely to be wanted elsewhere and the pieces most worth pinning with cheap
+' tests.
 '
-'   { sections: [ { heading: string, rows: [ { label: string, value: string } ] } ] }
-'
-' A row with an empty label is a standalone sentence rather than a field (the
-' direct-play message); a section with an empty heading is an unsectioned block
-' (the error case). Both are rendered, just without their missing part.
-'
-' It did NOT always look like this: the task used to push pre-rendered markup
-' strings ("<header>Stream information</header>", "<b>• Codec:</b> h264") that
-' only the legacy StandardDialog could draw, which put font weight decisions on a
-' Task thread and made the report untestable — you can assert that a section
-' carries a "Codec" row, but not much about a blob of markup.
-'
-' This flattener is the INTERIM presentation: it renders those sections as plain
-' text for showInfoDialog, so the report reads correctly while the legacy dialog
-' components go away. Rendering the sections with JellyRock's own label
-' components (so headings read as headings again) is the follow-up — it changes
-' only this presentation step, not the data above it.
+' The report used to be flattened to a single blob of plain text here, which is
+' what the legacy StandardDialog could draw. Before that the Task thread pushed
+' pre-rendered markup ("<b>• Codec:</b> h264"), which put font-weight decisions on
+' a Task thread and made the report untestable. Both are gone: the task fetches,
+' playbackReport.bs models, and the dialog renders.
 import "pkg:/source/utils/misc.bs"
 
-' Render the report as plain text: sections separated by a blank line, headings
-' on their own line, fields as "• Label: value".
+' The source → target separator.
 '
-' @param {object} playbackInfo - the task's report ({ sections: [...] })
-' @returns {string} - the dialog body, "" when there is nothing to show
-function formatPlaybackInfoText(playbackInfo as object) as string
-  if not isValid(playbackInfo) or not isValid(playbackInfo.sections) then return ""
+' ONE constant because the glyph is a bet on the system font: U+2192 is in the
+' Arrows block, which is further out than the U+2022 bullet the app already ships
+' in JellyfinDataTransformer. It was checked on a real screen rather than assumed,
+' and if it ever renders as .notdef on some device this is the single line to
+' change to "->".
+const PLAYBACK_INFO_ARROW = " → "
 
-  lines = []
-  for each section in playbackInfo.sections
-    if not isValid(section) then continue for
-
-    ' Render the rows FIRST, so a section that turns out to contribute nothing
-    ' can be dropped whole. A heading with nothing under it is noise, and that
-    ' is a presentation rule, so it belongs here rather than in the task: it
-    ' then holds for every section any producer sends, not just the two that
-    ' exist today.
-    sectionLines = []
-    if isValid(section.rows)
-      for each row in section.rows
-        if isValid(row)
-          value = toString(row.value)
-          if isValidAndNotEmpty(row.label)
-            sectionLines.push("• " + row.label + ": " + value)
-          else if value <> ""
-            sectionLines.push(value)
-          end if
-        end if
-      end for
-    end if
-    if sectionLines.count() = 0 then continue for
-
-    ' Blank line BETWEEN sections only — never a leading one.
-    if lines.count() > 0 then lines.push("")
-    if isValidAndNotEmpty(section.heading) then lines.push(section.heading)
-    lines.append(sectionLines)
-  end for
-
-  return lines.join(Chr(10))
-end function
-
-' Bitrate as the user reads it: whole Mbps above a megabit, whole Kbps below.
+' Bitrate as the user reads it: one decimal of Mbps above a megabit, whole Kbps
+' below. Matches Jellyfin's own web client, so the same stream reads the same in
+' both places.
 '
 ' TRIMMED, and that is the whole point of the trim: BrightScript's Str() prefixes
 ' a SPACE for a non-negative number, so the untrimmed form rendered as
@@ -71,13 +31,93 @@ end function
 ' capture rather than by any gate, hence the test beside it.
 '
 ' @param {dynamic} bitrate - bits per second, from the session or the media stream
-' @returns {string} - e.g. "4 Mbps", "850 Kbps"
+' @returns {string} - e.g. "25.4 Mbps", "850 Kbps", "" when there is no figure
 function getDisplayBitrate(bitrate as dynamic) as string
   if not isValid(bitrate) then return ""
 
-  if bitrate > 1000000
-    return Str(Fix(bitrate / 1000000)).trim() + " Mbps"
+  bits = mediaNumber(bitrate)
+  if bits <= 0 then return ""
+
+  if bits > 1000000
+    return formatOneDecimal(bits / 1000000.0) + " Mbps"
   end if
 
-  return Str(Fix(bitrate / 1000)).trim() + " Kbps"
+  return Str(Fix(bits / 1000)).trim() + " Kbps"
+end function
+
+' A byte count as a human-readable size — binary units with one decimal
+' ("24.3 GiB"), matching Jellyfin's own web client so a file reads identically in
+' both. Binary rather than decimal units is that client's choice, not ours; the
+' value is the one a user can cross-check against their server.
+'
+' Takes the RAW value rather than an integer, because a byte count passes 32 bits
+' at ~2.1 GB and mediaNumber would overflow on any file worth reporting. The
+' arithmetic is done in floating point throughout for the same reason.
+'
+' @param {dynamic} bytes - MediaSourceInfo.Size, as the server sent it
+' @returns {string} - e.g. "24.3 GiB", "812.0 MiB", "" when there is no figure
+function getReadableSize(bytes as dynamic) as string
+  if not isValid(bytes) then return ""
+
+  valueType = LCase(type(bytes))
+  if valueType = "string" or valueType = "rostring"
+    size! = Val(bytes)
+  else if valueType = "roassociativearray" or valueType = "roarray" or valueType = "boolean" or valueType = "roboolean"
+    return ""
+  else
+    size! = bytes
+  end if
+
+  if size! <= 0 then return ""
+  if size! < 1024 then return Str(Fix(size!)).trim() + " B"
+
+  units = ["KiB", "MiB", "GiB", "TiB", "PiB"]
+  unitIndex = -1
+  while size! >= 1024 and unitIndex < units.count() - 1
+    size! = size! / 1024.0
+    unitIndex++
+  end while
+
+  return formatOneDecimal(size!) + " " + units[unitIndex]
+end function
+
+' Compose one value cell as "source → target", or just the source when nothing
+' changed.
+'
+' The ABSENCE of an arrow is load-bearing: it is how the report says "this aspect
+' passed through untouched", which is the question a viewer opening the report is
+' usually asking. So a target that is empty, or identical to the source, must
+' produce a bare source rather than an arrow pointing at a repeat of itself.
+' Comparison is case-insensitive because the two sides come from different places
+' — a source codec is "hevc" off the media stream and a target codec is "HEVC"
+' off the session.
+'
+' @param {string} source - the value as the file holds it, already display-formatted
+' @param {string} target - the value as the server is delivering it, or "" when unknown
+' @returns {string} - the composed cell, "" when there is nothing to show at all
+function pairedValue(source as string, target as string) as string
+  if not isValidAndNotEmpty(source)
+    if isValidAndNotEmpty(target) then return target
+    return ""
+  end if
+
+  if not isValidAndNotEmpty(target) then return source
+  if LCase(source.trim()) = LCase(target.trim()) then return source
+
+  return source + PLAYBACK_INFO_ARROW + target
+end function
+
+' One decimal place, rounded, without Str()'s leading space.
+'
+' BrightScript has no toFixed, and Str() on a float renders a platform-chosen
+' number of digits — enough to turn "24.3" into "24.2999992". Doing the rounding
+' in integer arithmetic is what keeps the output stable across devices.
+'
+' @param {float} value - a non-negative number
+' @returns {string} - e.g. "24.3", "8.0"
+function formatOneDecimal(value as float) as string
+  tenths = Int(value * 10.0 + 0.5)
+  whole = Int(tenths / 10)
+  remainder = tenths - (whole * 10)
+  return whole.toStr().trim() + "." + remainder.toStr().trim()
 end function

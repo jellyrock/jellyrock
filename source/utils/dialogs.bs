@@ -115,6 +115,33 @@ function showInfoDialog(title as string, overview as string, tagline = "" as str
   return presentOverlayDialog(dialog, "", returnFocusTo)
 end function
 
+' Show a structured read-only report — the same overlay as showInfoDialog, with a
+' body of label/value rows instead of a paragraph.
+'
+' Returns the dialog so the caller can keep reporting into it: assigning
+' `sections` again RECONCILES rather than rebuilds, which is how the playback
+' report refreshes its live figures without disturbing the scroll position. The
+' caller owns stopping that, and owns abandonDialog() in its onDestroy.
+'
+' `status` is the one-line verdict above the sections ("Transcoding"), carried in
+' the tagline slot because that slot is already defined as a bold lead line and
+' already read first by the opening announcement.
+'
+' @param {string} title - dialog title
+' @param {string} status - a short lead line, or ""
+' @param {object} sections - [ { id, heading, wideLabels, rows: [ { id, label, value } ] } ]
+' @param {object} returnFocusTo - node to restore focus to on close
+function showReportDialog(title as string, status as string, sections as object, returnFocusTo = invalid as object) as object
+  dialog = createObject("roSGNode", "OverviewDialog")
+  if title <> "" then dialog.title = title
+  if status <> "" then dialog.tagline = status
+  ' Set BEFORE presenting, like every other dialog in the family — the panel is
+  ' sized from the body, so a body arriving after mount would draw over a layout
+  ' computed for nothing.
+  dialog.sections = sections
+  return presentOverlayDialog(dialog, "", returnFocusTo)
+end function
+
 ' Show a Quick Connect code and wait for the user to approve it elsewhere.
 '
 ' A VIEW ONLY: it displays `code` with a Cancel button and resolves cancelled if

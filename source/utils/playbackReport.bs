@@ -1,0 +1,514 @@
+' The playback-info report: what this stream IS, and what the server is doing to it.
+'
+' Shape: a status line plus sections of label/value rows.
+'
+'   { status: "Transcoding",
+'     sections: [ { id, heading, wideLabels, rows: [ { id, label, value } ] } ] }
+'
+' Two design rules run through the whole file.
+'
+' EVERY ROW IS SOURCE → TARGET, AND THE ARROW ONLY APPEARS WHEN SOMETHING
+' CHANGED. Jellyfin's own web client prints the source and the target as two
+' separate lists you diff by eye; pairing them per aspect answers the actual
+' question ("what is being altered?") in one glance, and the ABSENCE of an arrow
+' says "untouched" without needing a word for it.
+'
+' A TARGET IS ONLY RENDERED WHERE THE SERVER TOLD US ONE. There are three tiers of
+' evidence and they are not interchangeable:
+'
+'   1. TranscodingInfo, off the live session — the ACTUAL output. Codec, channels,
+'      container, width/height, bitrate. Authoritative; available since 10.7.
+'   2. Exact values declared in the TranscodingUrl — &AudioBitrate, &AudioSampleRate,
+'      &SubtitleMethod. The server states these outright.
+'   3. CONSTRAINTS declared in the TranscodingUrl — `<codec>-rangetype` can be a
+'      comma-joined list of allowed values (or the complement of one), and
+'      `<codec>-videobitdepth` is a ceiling rather than an output. These are read
+'      only where they collapse to a single unambiguous answer.
+'
+' Anything outside those tiers is rendered source-only. Inventing "→ SDR" because
+' a transcode is happening would be the most convincing wrong thing this report
+' could say.
+'
+' Pure by contract — no nodes, no `m`, no globals beyond translations. The caller
+' gathers the inputs, which is what lets the whole model be tested without
+' hardware and, since composition moved off the Task thread, rebuilt on every
+' press cheaply enough to stay honest about a stream that changed underneath it.
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/fallbackFont.bs"
+import "pkg:/source/utils/mediaDisplayTitle.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/playbackInfo.bs"
+import "pkg:/source/utils/transcodeCause.bs"
+import "pkg:/source/utils/translate.bs"
+
+' Build the report model.
+'
+' @param {object} input - see the field list below; every one is optional and a
+'                         missing one costs its rows, never the report
+' @returns {object} - { status, sections }
+function buildPlaybackReport(input as object) as object
+  report = { status: "", sections: [] }
+  if not isValid(input) then return report
+
+  mediaSource = input.mediaSource
+  if not isValid(mediaSource) then mediaSource = {}
+
+  streams = mediaSource.MediaStreams
+  videoStream = getFirstVideoStream(streams)
+  selectedAudio = findStreamByIndex(streams, input.audioStreamIndex, "audio")
+  subtitleStream = findStreamByIndex(streams, input.subtitleStreamIndex, "subtitle")
+
+  transcoding = invalid
+  if isValid(input.session) then transcoding = input.session.TranscodingInfo
+  ' An empty TranscodingInfo AA is not a transcode. The server sends one only
+  ' while an ffmpeg job exists, but a defensive read of `.Count()` costs nothing
+  ' and a zero-key AA would otherwise render an entire empty Transcode section.
+  if isValid(transcoding) and transcoding.Count() = 0 then transcoding = invalid
+
+  urlParams = parseTranscodeUrlParams(mediaSource.TranscodingUrl)
+
+  videoIsCopy = not isValid(transcoding) or isBooleanTrue(transcoding.IsVideoDirect)
+  audioIsCopy = not isValid(transcoding) or isBooleanTrue(transcoding.IsAudioDirect)
+
+  report.status = playbackStatusLabel(transcoding, videoIsCopy, audioIsCopy)
+
+  reportAppend(report, reasonsSection(transcoding, videoStream, selectedAudio, mediaSource, input))
+  reportAppend(report, videoSection(videoStream, transcoding, urlParams, videoIsCopy))
+  reportAppend(report, audioSection(selectedAudio, transcoding, urlParams, audioIsCopy))
+  reportAppend(report, subtitleSection(subtitleStream, urlParams))
+  reportAppend(report, transcodeSection(transcoding, videoStream))
+  reportAppend(report, fileSection(mediaSource, transcoding))
+
+  return report
+end function
+
+' Direct play / direct stream / transcoding.
+'
+' The three-way split is Jellyfin's own — its web client swaps its panel heading
+' between "Transcoding Info", "Remuxing Info" and "Direct Streaming Info" on
+' exactly this test. `IsVideoDirect` and `IsAudioDirect` are literally
+' `IsCopyCodec(outputCodec)` in the server, so both being true means the container
+' was rewrapped and not one frame re-encoded.
+function playbackStatusLabel(transcoding as dynamic, videoIsCopy as boolean, audioIsCopy as boolean) as string
+  if not isValid(transcoding) then return translate(translationKeys.LabelDirectPlaying)
+  if videoIsCopy and audioIsCopy then return translate(translationKeys.LabelDirectStreaming)
+  return translate(translationKeys.LabelTranscoding)
+end function
+
+' The server's reason codes, verbatim, each with our own explanation beside it —
+' but ONLY where a JellyRock setting provably caused it.
+'
+' The codes are not translated and not re-worded. Jellyfin already maintains that
+' vocabulary and a parallel copy here would drift; more to the point, a code we
+' cannot explain is the server's to explain, and inventing a gloss would add
+' nothing a user could act on. What IS worth saying is the part no server can
+' know: that the constraint came from a switch in OUR settings screen. See
+' transcodeCause.bs for how narrowly that is decided.
+function reasonsSection(transcoding as dynamic, videoStream as dynamic, selectedAudio as dynamic, source as object, input as object) as object
+  if not isValid(transcoding) then return invalid
+
+  reasons = transcoding.TranscodeReasons
+  if not isValidAndNotEmpty(reasons) then return invalid
+
+  causeCtx = {
+    settings: input.settings,
+    videoStream: videoStream,
+    audioStream: selectedAudio,
+    container: source.Container,
+    apiVersion: input.apiVersion,
+    deviceSupportsDovi: input.deviceSupportsDovi,
+    deviceMaxHeight: input.deviceMaxHeight,
+    doviPreservationBypassed: input.doviPreservationBypassed
+  }
+
+  rows = []
+  for each reason in reasons
+    code = textOrEmpty(reason)
+    if code = "" then continue for
+
+    cause = ""
+    settingKey = transcodeCauseSettingKey(code, causeCtx)
+    if settingKey <> ""
+      cause = Substitute(translate(translationKeys.MessageCausedByTheSetting), translate(settingKey))
+    end if
+
+    ' The CODE is the label and our sentence is the value, so the two columns pair
+    ' unambiguously however many reasons there are. Stacking them on alternating
+    ' lines reads fine at one reason and becomes unparseable at three, which is
+    ' the common case (4K DoVi HEVC + TrueHD on a stereo setup returns exactly
+    ' three).
+    rows.push({ id: "reason." + code, label: code, value: cause })
+  end for
+
+  ' wideLabels: these labels are reason codes, several times longer than "Codec".
+  return reportSection("reasons", translate(translationKeys.LabelReasons), rows, true)
+end function
+
+function videoSection(stream as dynamic, transcoding as dynamic, urlParams as object, isCopy as boolean) as object
+  if not isValid(stream) then return invalid
+
+  rows = []
+  targetCodec = ""
+  if isValid(transcoding) and not isCopy then targetCodec = upperOrEmpty(transcoding.VideoCodec)
+  reportRow(rows, "video.codec", translationKeys.LabelCodec, pairedValue(upperOrEmpty(stream.Codec), targetCodec))
+
+  ' Width/Height off the SESSION are the real output, not the &MaxWidth/&MaxHeight
+  ' caps in the URL — a cap tells you what was allowed, not what came out.
+  targetResolution = ""
+  if isValid(transcoding) and not isCopy then targetResolution = dimensionsLabel(transcoding.Width, transcoding.Height)
+  reportRow(rows, "video.resolution", translationKeys.LabelResolution, pairedValue(dimensionsLabel(stream.Width, stream.Height), targetResolution))
+
+  reportRow(rows, "video.range", translationKeys.LabelRange, pairedValue(formatVideoRangeLabel(stream), targetVideoRange(urlParams, transcoding, isCopy)))
+  reportRow(rows, "video.bitdepth", translationKeys.LabelBitDepth, pairedValue(bitDepthLabel(stream.BitDepth), targetBitDepth(stream, urlParams, transcoding, isCopy)))
+
+  ' &VideoBitrate is the video target specifically. TranscodingInfo.Bitrate is the
+  ' TOTAL output bitrate across streams, so pairing it against a video-only source
+  ' figure would compare two different quantities — it belongs in the Transcode
+  ' section, where it is labelled as the total.
+  targetVideoBitrate = ""
+  if not isCopy then targetVideoBitrate = getDisplayBitrate(urlParams["videobitrate"])
+  reportRow(rows, "video.bitrate", translationKeys.LabelBitRate, pairedValue(getDisplayBitrate(stream.BitRate), targetVideoBitrate))
+
+  reportRow(rows, "video.framerate", translationKeys.LabelFramerate, framerateLabel(sourceFramerate(stream)))
+  reportRow(rows, "video.profile", translationKeys.LabelProfile, profileAndLevel(stream))
+  reportRow(rows, "video.pixelformat", translationKeys.LabelPixelFormat, textOrEmpty(stream.PixelFormat))
+
+  ' Flags only worth a row when they are true — both are transcode reasons, and
+  ' both are invisible anywhere else in the app.
+  if isBooleanTrue(stream.IsAnamorphic) then reportRow(rows, "video.anamorphic", translationKeys.LabelAnamorphic, translate(translationKeys.LabelYes))
+  if isBooleanTrue(stream.IsInterlaced) then reportRow(rows, "video.interlaced", translationKeys.LabelInterlaced, translate(translationKeys.LabelYes))
+
+  return reportSection("video", translate(translationKeys.LabelVideo), rows, false)
+end function
+
+function audioSection(stream as dynamic, transcoding as dynamic, urlParams as object, isCopy as boolean) as object
+  if not isValid(stream) then return invalid
+
+  rows = []
+  targetCodec = ""
+  targetChannels = ""
+  if isValid(transcoding) and not isCopy
+    targetCodec = upperOrEmpty(transcoding.AudioCodec)
+    targetChannels = formatAudioChannels(mediaNumber(transcoding.AudioChannels))
+  end if
+
+  reportRow(rows, "audio.codec", translationKeys.LabelCodec, pairedValue(upperOrEmpty(stream.Codec), targetCodec))
+  reportRow(rows, "audio.channels", translationKeys.LabelAudioChannels, pairedValue(sourceChannels(stream), targetChannels))
+
+  targetAudioBitrate = ""
+  targetSampleRate = ""
+  if not isCopy
+    targetAudioBitrate = getDisplayBitrate(urlParams["audiobitrate"])
+    targetSampleRate = sampleRateLabel(urlParams["audiosamplerate"])
+  end if
+  reportRow(rows, "audio.bitrate", translationKeys.LabelBitRate, pairedValue(getDisplayBitrate(stream.BitRate), targetAudioBitrate))
+  reportRow(rows, "audio.samplerate", translationKeys.LabelSampleRate, pairedValue(sampleRateLabel(stream.SampleRate), targetSampleRate))
+
+  reportRow(rows, "audio.bitdepth", translationKeys.LabelBitDepth, bitDepthLabel(stream.BitDepth))
+  reportRow(rows, "audio.language", translationKeys.LabelLanguage, resolveLanguageName(textOrEmpty(stream.Language)))
+
+  ' AudioSpatialFormat is 10.9+, and reports "None" for most tracks. Presence AND
+  ' meaning are both checked, so it appears only when there is Atmos / DTS:X to
+  ' report — this is exactly why the report gates on data rather than on server
+  ' version: a 10.11 server still sends "None" for an ordinary track.
+  spatial = textOrEmpty(stream.AudioSpatialFormat)
+  if spatial <> "" and LCase(spatial) <> "none"
+    reportRow(rows, "audio.spatial", translationKeys.LabelSpatialAudio, spatial)
+  end if
+
+  return reportSection("audio", translate(translationKeys.LabelAudio), rows, false)
+end function
+
+' What is happening to subtitles, which no other row can explain.
+'
+' &SubtitleMethod is an EXACT declaration, not a constraint — and "Encode" is the
+' one that matters most, because burning subtitles in forces a full video
+' re-encode. Without this row a viewer sees the video being transcoded with no
+' video-shaped reason for it.
+function subtitleSection(stream as dynamic, urlParams as object) as object
+  if not isValid(stream) then return invalid
+
+  rows = []
+  reportRow(rows, "subtitle.track", translationKeys.LabelSubtitles, formatSubtitleDisplayTitle(stream))
+  reportRow(rows, "subtitle.delivery", translationKeys.LabelDelivery, subtitleDelivery(stream, urlParams))
+
+  return reportSection("subtitles", translate(translationKeys.LabelSubtitles), rows, false)
+end function
+
+' The live half of the report — every row here changes while you read it.
+'
+' Speed is the most actionable figure in the whole report and nothing else in the
+' app surfaces it: TranscodingInfo.Framerate is how many frames per second the
+' server is ENCODING (not the output frame rate), so dividing by the source frame
+' rate gives a real-time multiplier. Below 1.0x the server cannot keep up and
+' playback will stall. Jellyfin's web client shows the same ratio.
+function transcodeSection(transcoding as dynamic, videoStream as dynamic) as object
+  if not isValid(transcoding) then return invalid
+
+  rows = []
+  reportRow(rows, "transcode.speed", translationKeys.LabelSpeed, transcodeSpeed(transcoding, videoStream))
+  reportRow(rows, "transcode.progress", translationKeys.LabelProgress, percentageLabel(transcoding.CompletionPercentage))
+  reportRow(rows, "transcode.bitrate", translationKeys.LabelTotalBitrate, getDisplayBitrate(transcoding.Bitrate))
+
+  ' HardwareAccelerationType arrives from 10.8 onward and is absent on the floor
+  ' server. No version check — an absent field yields an empty value and addRow
+  ' drops the row, which is the same outcome a version gate would produce with one
+  ' more thing to keep in sync.
+  reportRow(rows, "transcode.acceleration", translationKeys.LabelHardwareAcceleration, textOrEmpty(transcoding.HardwareAccelerationType))
+
+  return reportSection("transcode", translate(translationKeys.LabelTranscode), rows, false)
+end function
+
+' The file itself. PATH IS DELIBERATELY THE LAST ROW OF THE LAST SECTION: it is
+' genuinely useful for telling duplicate library entries apart, and it also puts
+' the server's filesystem layout into any screenshot that reaches it. Sitting
+' below the fold of a scrolling report means the transcode information at the top
+' can be shared without it.
+function fileSection(source as object, transcoding as dynamic) as object
+  rows = []
+
+  targetContainer = ""
+  if isValid(transcoding) then targetContainer = upperOrEmpty(transcoding.Container)
+  reportRow(rows, "file.container", translationKeys.LabelContainer, pairedValue(upperOrEmpty(source.Container), targetContainer))
+
+  reportRow(rows, "file.size", translationKeys.LabelSize, getReadableSize(source.Size))
+  reportRow(rows, "file.bitrate", translationKeys.LabelTotalBitrate, getDisplayBitrate(source.Bitrate))
+  reportRow(rows, "file.path", translationKeys.LabelPath, textOrEmpty(source.Path))
+
+  return reportSection("file", translate(translationKeys.LabelFile), rows, false)
+end function
+
+'
+' ── value formatters ───────────────────────────────────────────────────────────
+'
+
+' The target dynamic range, but only when the server named exactly one.
+'
+' `<codec>-rangetype` is a CONSTRAINT: StreamBuilder writes a comma-joined list of
+' permitted values there, and in one branch the complement of a list. A single
+' value is the only case where the constraint and the outcome coincide.
+function targetVideoRange(urlParams as object, transcoding as dynamic, isCopy as boolean) as string
+  if isCopy or not isValid(transcoding) then return ""
+
+  declared = codecOption(urlParams, transcoding.VideoCodec, "rangetype")
+  if declared = "" then return ""
+  if inStr(1, declared, ",") > 0 then return ""
+
+  return formatVideoRangeLabel({ VideoRangeType: declared, VideoRange: declared })
+end function
+
+' The target bit depth, but only when the source actually exceeds the ceiling.
+'
+' `<codec>-videobitdepth` is a maximum, not an output. A 10-bit source under an
+' 8-bit ceiling will come out at 8; an 8-bit source under the same ceiling is
+' untouched, and rendering "8-bit → 8-bit" there would imply a conversion that
+' never happened.
+function targetBitDepth(stream as object, urlParams as object, transcoding as dynamic, isCopy as boolean) as string
+  if isCopy or not isValid(transcoding) then return ""
+
+  ceiling = mediaNumber(codecOption(urlParams, transcoding.VideoCodec, "videobitdepth"))
+  if ceiling <= 0 then return ""
+
+  sourceDepth = mediaNumber(stream.BitDepth)
+  if sourceDepth <= 0 or sourceDepth <= ceiling then return ""
+
+  return bitDepthLabel(ceiling)
+end function
+
+function subtitleDelivery(stream as object, urlParams as object) as string
+  method = LCase(textOrEmpty(urlParams["subtitlemethod"]))
+  if method = "encode" then return translate(translationKeys.LabelBurnedIn)
+  if method = "embed" then return translate(translationKeys.LabelEmbedded)
+  if method = "external" then return translate(translationKeys.LabelExternalSubtitle)
+
+  ' No declaration in the URL — fall back to what the stream itself reports.
+  if isBooleanTrue(stream.IsExternal) then return translate(translationKeys.LabelExternalSubtitle)
+  if isValidAndNotEmpty(stream.DeliveryMethod) then return textOrEmpty(stream.DeliveryMethod)
+  return translate(translationKeys.LabelEmbedded)
+end function
+
+function transcodeSpeed(transcoding as object, videoStream as dynamic) as string
+  encodeFps = decimalOrZero(transcoding.Framerate)
+  if encodeFps <= 0 then return ""
+
+  speed = formatOneDecimal(encodeFps) + " fps"
+
+  sourceFps = sourceFramerate(videoStream)
+  if sourceFps > 0
+    speed = speed + " (" + formatMultiplier(encodeFps / sourceFps) + ")"
+  end if
+
+  return speed
+end function
+
+' AverageFrameRate first, RealFrameRate as the fallback — matching how Jellyfin's
+' own web client resolves it, so the speed multiplier is computed against the same
+' denominator both clients use.
+function sourceFramerate(stream as dynamic) as float
+  if not isValid(stream) then return 0.0
+
+  rate = decimalOrZero(stream.AverageFrameRate)
+  if rate > 0 then return rate
+  return decimalOrZero(stream.RealFrameRate)
+end function
+
+function profileAndLevel(stream as object) as string
+  profile = textOrEmpty(stream.Profile)
+  level = mediaNumber(stream.Level)
+
+  if profile = "" and level <= 0 then return ""
+  if level <= 0 then return profile
+
+  ' Levels arrive as an integer scaled by ten (41 = 4.1), which is how ffmpeg and
+  ' the Jellyfin web client both report them.
+  levelLabel = "L" + formatOneDecimal(level / 10.0)
+  if profile = "" then return levelLabel
+  return profile + " @ " + levelLabel
+end function
+
+function sourceChannels(stream as object) as string
+  ' ChannelLayout is the server's own words ("5.1", "stereo"); it is preferred
+  ' when present so the report and the audio picker agree, since
+  ' formatAudioDisplayTitle makes the same choice.
+  layout = textOrEmpty(stream.ChannelLayout)
+  if layout <> "" then return layout
+  return formatAudioChannels(mediaNumber(stream.Channels))
+end function
+
+function dimensionsLabel(width as dynamic, height as dynamic) as string
+  w = mediaNumber(width)
+  h = mediaNumber(height)
+  if w <= 0 or h <= 0 then return ""
+  return w.toStr().trim() + "x" + h.toStr().trim()
+end function
+
+function bitDepthLabel(depth as dynamic) as string
+  bits = mediaNumber(depth)
+  if bits <= 0 then return ""
+  return bits.toStr().trim() + "-bit"
+end function
+
+function sampleRateLabel(rate as dynamic) as string
+  hz = mediaNumber(rate)
+  if hz <= 0 then return ""
+  if hz < 1000 then return hz.toStr().trim() + " Hz"
+  return formatOneDecimal(hz / 1000.0) + " kHz"
+end function
+
+function framerateLabel(fps as float) as string
+  if fps <= 0 then return ""
+  return formatOneDecimal(fps) + " fps"
+end function
+
+function percentageLabel(value as dynamic) as string
+  pct = decimalOrZero(value)
+  if pct <= 0 then return ""
+  return formatOneDecimal(pct) + "%"
+end function
+
+function formatMultiplier(value as float) as string
+  return formatOneDecimal(value) + "x"
+end function
+
+function upperOrEmpty(value as dynamic) as string
+  text = textOrEmpty(value)
+  if text = "" then return ""
+  return UCase(text)
+end function
+
+'
+' ── plumbing ───────────────────────────────────────────────────────────────────
+'
+
+' Parse the TranscodingUrl's query string into lowercase-keyed values.
+'
+' JellyRock already reads this URL for TranscodeReasons; the rest of it is the
+' server's own declaration of what it was asked to produce, and it is the only
+' target-side evidence available on every supported server version. Keys are
+' lowercased because per-codec options are written as `<codec>-<name>` with the
+' codec's own casing, which differs between the profile and the session.
+function parseTranscodeUrlParams(url as dynamic) as object
+  params = {}
+  if not isValidAndNotEmpty(url) then return params
+
+  queryStart = inStr(1, url, "?")
+  query = url
+  if queryStart > 0 then query = Mid(url, queryStart + 1)
+
+  for each pair in query.split("&")
+    if pair = "" then continue for
+    separator = inStr(1, pair, "=")
+    if separator <= 1 then continue for
+    key = LCase(Left(pair, separator - 1))
+    params[key] = Mid(pair, separator + 1)
+  end for
+
+  return params
+end function
+
+' A per-codec stream option, e.g. `h264-rangetype`. StreamInfo.GetOption falls
+' back to the unqualified name when the qualified one is absent, so this does too.
+function codecOption(urlParams as object, codec as dynamic, name as string) as string
+  codecName = LCase(textOrEmpty(codec))
+  if codecName <> ""
+    qualified = urlParams[codecName + "-" + name]
+    if isValidAndNotEmpty(qualified) then return textOrEmpty(qualified)
+  end if
+
+  bare = urlParams[name]
+  if isValidAndNotEmpty(bare) then return textOrEmpty(bare)
+  return ""
+end function
+
+' The stream Jellyfin is actually using, found by its own index rather than by
+' position. MediaStreams is a mixed list and the selected audio track is very
+' often not the first one — reading streams[0] is how the old report ended up
+' describing a track nobody was listening to.
+function findStreamByIndex(streams as dynamic, index as dynamic, streamType as string) as dynamic
+  if not isValidAndNotEmpty(streams) then return invalid
+
+  wanted = mediaNumber(index)
+  ' -1 is Jellyfin's "no stream selected", which is a real answer for subtitles.
+  if not isValid(index) or wanted < 0 then return invalid
+
+  for each stream in streams
+    if isValid(stream) and isValid(stream.Type) and LCase(stream.Type) = streamType
+      if mediaNumber(stream.Index) = wanted then return stream
+    end if
+  end for
+
+  return invalid
+end function
+
+' Append a row only when it has something to say. Every field the report reads is
+' optional on some server or some file, so "the row is absent" is the normal way
+' this report handles missing data — never a placeholder, and never a heading with
+' nothing beneath it.
+sub reportRow(rows as object, id as string, labelKey as string, value as string)
+  if not isValidAndNotEmpty(value) then return
+  rows.push({ id: id, label: translate(labelKey), value: value })
+end sub
+
+function reportSection(id as string, heading as string, rows as object, wideLabels as boolean) as object
+  if rows.count() = 0 then return invalid
+  return { id: id, heading: heading, wideLabels: wideLabels, rows: rows }
+end function
+
+sub reportAppend(report as object, section as dynamic)
+  if isValid(section) then report.sections.push(section)
+end sub
+
+' A number from a field that may be a float, an integer, a string, or absent —
+' float-preserving, unlike mediaNumber, because frame rates and completion
+' percentages are fractional and truncating them would destroy the figure.
+function decimalOrZero(value as dynamic) as float
+  if not isValid(value) then return 0.0
+
+  valueType = LCase(type(value))
+  if valueType = "string" or valueType = "rostring" then return Val(value)
+  if valueType = "roassociativearray" or valueType = "roarray" then return 0.0
+  if valueType = "boolean" or valueType = "roboolean" then return 0.0
+
+  return value
+end function
+

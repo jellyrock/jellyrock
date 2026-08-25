@@ -17,7 +17,7 @@ related-files:
   - components/ItemGrid/LoadVideoContentTask.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-08-22
+last-reviewed: 2026-08-25
 ---
 
 # Video & Audio Playback
@@ -165,12 +165,45 @@ is **canceled** (its owner is alive and has to be told, exactly as if the user h
 the incoming screen takes focus, and the dialog is left on screen but deaf.
 
 **Playback info** (`selectPlaybackInfoPressed`) takes the same route to a different
-member of the family: `GetPlaybackInfoTask` reports what the server is doing with the
-stream as structured sections (`{ sections: [{ heading, rows: [{ label, value }] }] }`),
-`source/utils/playbackInfo.bs` renders them, and `showInfoDialog` presents the result.
-The task used to emit markup strings it had already styled (`"<b>• Codec:</b> h264"`) that only
-the legacy `StandardDialog` could draw; rendering the sections with JellyRock's own label
-components — so headings read as headings again — is still outstanding.
+member of the family, and the split is deliberate at every step:
+
+| Step | Where | Why there |
+|---|---|---|
+| fetch the live session | `GetPlaybackInfoTask` | the only I/O; nothing else on that thread |
+| model the report | [`source/utils/playbackReport.bs`](../../source/utils/playbackReport.bs) | pure — testable without hardware, and cheap enough on the render thread to rebuild per press |
+| attribute a reason to a setting | [`source/utils/transcodeCause.bs`](../../source/utils/transcodeCause.bs) | pure, and the only part that can be *wrong* rather than merely missing |
+| present it | `showReportDialog` → `OverviewDialog` | one read-only overlay for the family |
+
+The task used to do all four. That was wrong three times over: the work needed no Task
+thread, every `m.global` read it made cost ~93 µs against ~2 µs from the render thread, and
+the built report was cached for the life of the player — so a DoVi buffer-overflow fallback
+(transcode → direct play) left the "i" button confidently describing a transcode that had
+already stopped. Composing per press is what makes it honest.
+
+**Every row is `source → target`, and the arrow appears only where the server told us the
+target.** Three tiers of evidence, and they are not interchangeable: `TranscodingInfo` off
+the live session is the actual output; a handful of `TranscodingUrl` parameters
+(`&AudioBitrate`, `&AudioSampleRate`, `&SubtitleMethod`) are exact declarations; and the
+per-codec stream options are *constraints* — `<codec>-rangetype` can be a comma-joined
+permitted set and `<codec>-videobitdepth` is a ceiling, so they are read only where they
+collapse to one unambiguous answer. Anything else renders source-only. Inventing "→ SDR"
+because a transcode is happening would be the most convincing wrong thing this report
+could say.
+
+**Reason codes pass through untranslated.** Jellyfin maintains that vocabulary; a parallel
+copy here would drift, and a code we cannot explain is the server's to explain. What the
+report adds is the part no server can know — that the constraint came from a switch in
+*our* settings screen — and it says so only where the same predicate that injected the
+profile condition still holds for this stream. A setting that is on but not *binding*
+caused nothing.
+
+**Three rows are live** (transcode speed, progress, output bitrate) and the dialog polls
+every `PLAYBACK_INFO_REFRESH_SECONDS`. Speed is the actionable one: `TranscodingInfo.Framerate`
+is frames *encoded* per second, so dividing by the source frame rate gives a real-time
+multiplier, and below 1.0x the server cannot keep up. Refreshing assigns `sections` again;
+`OverviewDialog` reconciles by row `id` and rewrites text in place, so nothing is added or
+removed and the scroll position does not move. Volatility is a property of the *model*,
+not a list in the refresh code — a future live field updates because its text changed.
 
 The result handlers write back into `VideoPlayerView`'s fields (`audioIndex`, `selectedSubtitle`, `mediaSourceId`), which the player observes and reacts to (e.g., changing `audioIndex` triggers an audio stream switch on the underlying `Video` node). They write only on an actual change: `mediaSourceId` triggers a video reload, and `SelectedSubtitle` is `alwaysNotify`, so re-writing the value it already holds still fires its observers.
 

@@ -1,162 +1,44 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
-import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
-import "pkg:/source/utils/playbackInfo.bs"
-import "pkg:/source/utils/translate.bs"
 
 sub init()
   m.log = new log.Logger("GetPlaybackInfoTask")
   m.top.functionName = "getPlaybackInfoTask"
 end sub
 
-' Report what the server is doing with this stream, as STRUCTURED sections:
+' Fetch this device's live session. That is ALL this task does.
 '
-'   { sections: [ { heading, rows: [ { label, value } ] } ] }
+' It used to build the whole report here — reading user settings, choosing
+' labels, calling translate() — which was the wrong split three times over. The
+' work is pure computation that needed no Task thread; every `m.global` read it
+' made cost ~93 µs from here against ~2 µs from the render thread; and the built
+' report was then cached for the life of the player, so a DoVi buffer-overflow
+' fallback (transcode -> direct play) left the "i" button still reporting a
+' transcode that had stopped.
 '
-' The report used to be an array of pre-rendered markup strings ("<b>• Codec:</b>
-' h264") that only the legacy StandardDialog could draw. Deciding font weight on a
-' Task thread was the wrong split — presentation belongs to whatever renders the
-' report, and structured rows are assertable in a test where markup was not.
-' source/utils/playbackInfo.bs turns these sections into what the user sees.
+' Now the network call is the only thing on this thread and PlayerHostView
+' composes the report per press from this plus the cached PlaybackInfo. Rebuilding
+' is cheap enough to do every time, which is what makes the report honest about a
+' stream that changed underneath it.
+'
+' `session` is left invalid when the server returns nothing — that is a real
+' state (the server has not registered playback yet), and the renderer says so
+' rather than the task inventing an error section.
 sub getPlaybackInfoTask()
   sessions = fetchJson(GetApi().BuildGetSessionsRequest({ "deviceId": m.global.device.serverDeviceName }), "sessions")
 
-  ' Use cached playback info instead of making redundant API call
-  if isValid(m.top.cachedPlaybackInfo)
-    m.playbackInfo = m.top.cachedPlaybackInfo
-  else
-    ' No cached data available - this represents an unexpected error condition
-    m.log.warn("cachedPlaybackInfo is invalid - Stream Information will not be displayed", {
-      videoID: m.top.videoID
-    })
-    m.playbackInfo = invalid
+  session = invalid
+  if isValidAndNotEmpty(sessions) then session = sessions[0]
+
+  if not isValid(session)
+    m.log.warn("No session returned for this device; the playback report will have no transcode detail")
   end if
 
-  if isValid(sessions) and sessions.Count() > 0
-    m.top.data = { playbackInfo: GetTranscodingStats(sessions[0]) }
-  else
-    ' Same shape as the success path — an unsectioned block holding the message.
-    ' (It previously returned a BARE ARRAY here, which the renderer then indexed
-    ' as if it were the stats object.)
-    m.top.data = { playbackInfo: { sections: [{ heading: "", rows: [{ label: "", value: translate(translationKeys.ErrorUnableToGetPlaybackInformation) }] }] } }
-  end if
+  ' alwaysNotify on `data` — the observer has to fire on a refresh that returns
+  ' an identical session, or the live rows would stop updating the moment the
+  ' transcode settled into a steady state.
+  m.top.data = { session: session }
 end sub
-
-function GetTranscodingStats(deviceSession)
-  sessionStats = { sections: [] }
-
-  if isValid(deviceSession.TranscodingInfo) and deviceSession.TranscodingInfo.Count() > 0
-    transcodingSection = { heading: translate(translationKeys.LabelTranscodingInformation), rows: [] }
-
-    transcodingReasons = deviceSession.TranscodingInfo.TranscodeReasons
-    if isValid(transcodingReasons)
-      for each item in transcodingReasons
-        transcodingSection.rows.push({ label: translate(translationKeys.LabelReason), value: toString(item) })
-      end for
-    end if
-
-    videoCodec = deviceSession.TranscodingInfo.VideoCodec
-    if isValid(videoCodec)
-      value = toString(videoCodec)
-      if deviceSession.TranscodingInfo.IsVideoDirect then value += " (" + translate(translationKeys.LabelDirect) + ")"
-      transcodingSection.rows.push({ label: translate(translationKeys.LabelVideoCodec), value: value })
-    end if
-
-    audioCodec = deviceSession.TranscodingInfo.AudioCodec
-    if isValid(audioCodec)
-      value = toString(audioCodec)
-      if deviceSession.TranscodingInfo.IsAudioDirect then value += " (" + translate(translationKeys.LabelDirect) + ")"
-      transcodingSection.rows.push({ label: translate(translationKeys.LabelAudioCodec), value: value })
-    end if
-
-    totalBitrate = deviceSession.TranscodingInfo.Bitrate
-    if isValid(totalBitrate)
-      transcodingSection.rows.push({ label: translate(translationKeys.LabelTotalBitrate), value: getDisplayBitrate(totalBitrate) })
-    end if
-
-    audioChannels = deviceSession.TranscodingInfo.AudioChannels
-    if isValid(audioChannels)
-      transcodingSection.rows.push({ label: translate(translationKeys.LabelAudioChannels), value: toString(audioChannels).trim() })
-    end if
-
-    ' Pushed unconditionally: whether an empty section is worth rendering is a
-    ' presentation question, and formatPlaybackInfoText drops heading-only
-    ' sections for every producer rather than each producer guarding itself.
-    sessionStats.sections.push(transcodingSection)
-  else
-    sessionStats.sections.push({
-      heading: translate(translationKeys.LabelDirectPlaying),
-      ' No label — this is a sentence about the stream, not a field of it.
-      rows: [{ label: "", value: translate(translationKeys.MessageTheSourceFileIsEntirelyCompatible) }]
-    })
-  end if
-
-  if havePlaybackInfo()
-    ' Find the first video stream (MediaStreams[0] might be subtitle/audio)
-    stream = getFirstVideoStream(m.playbackInfo.mediaSources[0].MediaStreams)
-    if not isValid(stream)
-      ' No video stream found - skip Stream Information section
-      return sessionStats
-    end if
-
-    streamSection = { heading: translate(translationKeys.LabelStreamInformation), rows: [] }
-    if isValid(stream.Container)
-      streamSection.rows.push({ label: translate(translationKeys.LabelContainer), value: toString(stream.Container) })
-    end if
-    if isValid(stream.Size)
-      streamSection.rows.push({ label: translate(translationKeys.LabelSize), value: toString(stream.Size) })
-    end if
-    if isValid(stream.BitRate)
-      streamSection.rows.push({ label: translate(translationKeys.LabelBitRate), value: getDisplayBitrate(stream.BitRate) })
-    end if
-    if isValid(stream.Codec)
-      streamSection.rows.push({ label: translate(translationKeys.LabelCodec), value: toString(stream.Codec) })
-    end if
-    if isValid(stream.CodecTag)
-      streamSection.rows.push({ label: translate(translationKeys.LabelCodecTag), value: toString(stream.CodecTag) })
-    end if
-    if isValid(stream.VideoRangeType)
-      streamSection.rows.push({ label: translate(translationKeys.LabelVideoRangeType), value: toString(stream.VideoRangeType) })
-    end if
-    if isValid(stream.PixelFormat)
-      streamSection.rows.push({ label: translate(translationKeys.LabelPixelFormat), value: toString(stream.PixelFormat) })
-    end if
-    if isValid(stream.Width) and isValid(stream.Height)
-      streamSection.rows.push({ label: translate(translationKeys.LabelWxh), value: toString(stream.Width).trim() + " x " + toString(stream.Height).trim() })
-    end if
-    if isValid(stream.Level)
-      streamSection.rows.push({ label: translate(translationKeys.LabelLevel), value: toString(stream.Level).trim() })
-    end if
-
-    sessionStats.sections.push(streamSection)
-  end if
-
-  return sessionStats
-end function
-
-function havePlaybackInfo()
-  if not isValid(m.playbackInfo)
-    return false
-  end if
-
-  if not isValid(m.playbackInfo.mediaSources)
-    return false
-  end if
-
-  if m.playbackInfo.mediaSources.Count() <= 0
-    return false
-  end if
-
-  if not isValid(m.playbackInfo.mediaSources[0].MediaStreams)
-    return false
-  end if
-
-  if m.playbackInfo.mediaSources[0].MediaStreams.Count() <= 0
-    return false
-  end if
-
-  return true
-end function

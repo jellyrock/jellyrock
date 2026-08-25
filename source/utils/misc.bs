@@ -643,6 +643,21 @@ function toString(input) as string
   return str(input)
 end function
 
+' Text from a field that may simply not exist.
+'
+' toString() faults with a Type Mismatch on Invalid, because it falls through to
+' Str(), so it can only be used where the value is known to be present. Optional
+' fields — most of a Jellyfin MediaStream, every field a newer server added — need
+' this instead: absent reads as "", which is what a caller building display text
+' out of them wants anyway.
+'
+' @param {dynamic} input - any value, including Invalid
+' @returns {string} - the text, or "" when there is nothing there
+function textOrEmpty(input as dynamic) as string
+  if not isValid(input) then return ""
+  return toString(input)
+end function
+
 ' The app's Scene node, cached on first use.
 '
 ' Reaching the scene means walking up from m.top, so every caller that needed it
