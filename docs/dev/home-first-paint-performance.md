@@ -371,8 +371,15 @@ dimension is anything that is not a QUANTITY, and subtracting two row ids means 
 
 ##### What it read on `.177`, 2026-08-24 (n=40, two arms, BATCAVE, 12 rows / 128 items)
 
-- **`insert` was 0 on 40 of 40 launches.** The insert branch needs a library that was empty
-  last load to have data again; on a stable server it never fires. Route excluded.
+- **`insert` was 0 on 40 of 40 launches, and the reason is structural rather than lucky.**
+  On a COLD launch `createSkeletonRows()` plus `insertLatestMediaSkeletons()` give every
+  planned section a row before any data arrives, so `findRowBySectionId` always finds one and
+  `populateRowFromData` takes the in-place branch — the insert branch is **unreachable**, not
+  merely unused by chance. ⚠️ **That is a claim about cold launches only.** The branch becomes
+  reachable on a REFRESH, where `initialLoadComplete` suppresses skeleton creation and a
+  section removed on a previous load has no row to update: `Home.refresh()` re-running the
+  load is exactly that case. These arms measured cold launches, so they say nothing about
+  what `insert` costs there.
 - **Every mid-run recompute was a `remove`, and every one of them was
   `remove:activeRecordings`** — 7 of 7 on `remove`, and 4 of 4 unanimous on the section
   (the earlier arm did not yet capture `at`). Active Recordings returns nothing on this
