@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-08-24
+last-updated: 2026-08-25
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-25 — Collapse the dialog family onto one `computeDialogLayout` shape
 - 2026-08-24 — ci(rta): Stop `test:scripts` writing into the real device-run ledger
 - 2026-08-24 — ci(rta): Separate page-load work from sweep work in `cellSweepHome`
 - 2026-08-24 — Give the app one authoritative "a session is established" signal
@@ -71,11 +72,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-08-11 — fix(rta): compare re-minted credentials by presence so the restore converges
 - 2026-08-11 — **The registry restore can converge again**, closing the "`restoreRegistry` cannot converge when the app re-mints `authToken`" followup. `compareRegistries` now compares session credentials the app mints for ITSELF (`authToken`, `primaryImageTag`) on **presence** rather than value, because `resolveUser()` re-authenticates on the restore's own verify cold boot and persists a new token — so the byte-compare could never match, all 3 attempts failed, and the kept snapshot then wedged every subsequent device run with a documented recovery that re-ran the same loop. Both directions still fail: a session DESTROYED (snapshot had one, device has none) and a credential LEFT BEHIND (device has one the snapshot never did). The restore still writes the user's own value back — an interim cut skipped the write when the device already had a credential, and the hardware reproduction refuted it by leaving a deliberately-invalid planted token in place and calling that converged. Also adds `npm run rta:restore -- --accept`, so a residual that will never converge can be recorded and cleared instead of blocking every later run — the previous only way out was `rm` on the device's sole backup. Verified on `.177`: plant an invalid token, cold boot (app logs `Auth token is no longer valid - attempting no-password login` / `login success!` and mints its own), restore converges, no stranded snapshot.
 - 2026-08-11 — fix(rta): report device state on timeout; keep records across builds
-- 2026-08-10 — **`out/rta/run-meta.json` finally has a reader**, closing the "written by four entry points and read by nothing" followup. `scripts/rta-run.js` now folds the RTA suite's failure records (`out/rta/failures.jsonl`, one JSON line per timed-out wait, carrying the device state captured at the throw site) into it after the Vitest child exits, then prints a summary naming each failure plus the run's wall-clock window and whether it crossed the top of the hour. The parent stays the file's sole writer; the child only appends to the JSONL. Shipped as part of rta-reliability Phase 2.
-- 2026-08-10 — ci: serialize local device runs with a `device-lock` git ref
-- 2026-08-10 — **Ran a one-shot device-lock self-test (PR #801, closed unmerged) and removed it.** It answered the two questions no developer machine can: the repo's GitHub App CAN create and delete a git ref (201 then 422 on the compare-and-swap), and `secrets.ROKU_DEVICE_IP` resolves to a **third** Roku — a dedicated CI Streaming Stick 4K (`.200`), not the local dev device (`.177`) or the personal one (`.178`). That secret is org-level and unmodified since 2026-03-18, and both device workflows plus RTA read it, so CI has always been isolated on its own device. **Consequence:** a lock keyed on the ECP `device-id` cannot detect local-vs-CI contention, because the two parties never share a device — the cross-host contention story needs re-deriving before any doc repeats it.
-- 2026-08-10 — ci(rta): Restore the whole device registry after an RTA run, and survive a Ctrl-C
-- 2026-08-10 — Batch Home's latest-row item attach into one `appendChildren` call
 
 ## Open followups
 
