@@ -1295,13 +1295,19 @@ function GetBitRateLimit(codec as string) as object
   globalUserSettings = m.global.user.settings
 
   if globalUserSettings.playbackBitrateMaxLimited
-    userSetLimit = globalUserSettings.playbackBitrateLimit
-    if isValid(userSetLimit) and type(userSetLimit) = "Integer" and userSetLimit > 0
-      userSetLimit *= 1000000
+    ' mediaNumber, not `type(x) = "Integer"`. This is a SceneGraph node field, and
+    ' a node integer field reports its type as "roInt" — measured on a Stick 4K —
+    ' so the old exact-string comparison was false for every value a user could
+    ' possibly set. The branch never ran: turning the limit on quietly applied
+    ' Roku's per-codec hardware ceilings below instead, and the number chosen in
+    ' Settings was discarded. A 4 Mbps cap and a 40 Mbps cap produced the same
+    ' 10 Mbps request for h264.
+    userSetLimitMbps = mediaNumber(globalUserSettings.playbackBitrateLimit)
+    if userSetLimitMbps > 0
       return {
         "Condition": "LessThanEqual",
         "Property": "VideoBitrate",
-        "Value": userSetLimit.ToStr(),
+        "Value": (userSetLimitMbps * 1000000).ToStr(),
         "IsRequired": true
       }
     else

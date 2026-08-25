@@ -451,6 +451,67 @@ namespace tests
       m.assertEqual(result.codec, "hevc")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("mediaNumber(value)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The first three tests are the whole point of this function: the SAME integer
+    ' reports three different type names depending on where it was read from, and
+    ' code that enumerated only the obvious one shipped a silently-disabled user
+    ' setting. Each source is exercised through its real container rather than a
+    ' convenient one, because the AA case is exactly the case that passed while
+    ' the node case was broken.
+
+    @it("reads an integer out of an assocarray, where type() says roInteger")
+    function _()
+      m.assertEqual(mediaNumber({ v: 2160 }.v), 2160)
+    end function
+
+    @it("reads an integer off a node field, where type() says roInt")
+    function _()
+      node = CreateObject("roSGNode", "JellyfinUserSettings")
+      node.playbackBitrateLimit = 12
+      m.assertEqual(mediaNumber(node.playbackBitrateLimit), 12)
+    end function
+
+    @it("reads an unboxed literal, where type() says Integer")
+    function _()
+      m.assertEqual(mediaNumber(1080), 1080)
+    end function
+
+    @it("parses a numeric string, since the registry round-trips settings as strings")
+    function _()
+      m.assertEqual(mediaNumber("720"), 720)
+      m.assertEqual(mediaNumber("0"), 0)
+    end function
+
+    @it("truncates a float rather than rounding it")
+    function _()
+      ' Framerates arrive as floats and are compared against integers.
+      m.assertEqual(mediaNumber(23.976), 23)
+      m.assertEqual(mediaNumber({ v: 59.94 }.v), 59)
+    end function
+
+    @it("reads a longinteger that fits in the 32-bit return")
+    function _()
+      ' Bitrates can arrive as longintegers. Byte counts also do, and those do NOT
+      ' belong here — a 32-bit return overflows past ~2.1 GB, so file sizes are
+      ' formatted from the raw value instead. See the function's own note.
+      m.assertEqual(mediaNumber(96000000&), 96000000)
+    end function
+
+    @it("returns 0 for anything missing or non-numeric instead of faulting")
+    function _()
+      ' Callers compare the result directly, so a stream that reports no height
+      ' has to read as 0 rather than blow up the report that was describing it.
+      m.assertEqual(mediaNumber(invalid), 0)
+      m.assertEqual(mediaNumber(""), 0)
+      m.assertEqual(mediaNumber("not a number"), 0)
+      m.assertEqual(mediaNumber(true), 0)
+      m.assertEqual(mediaNumber({}), 0)
+      m.assertEqual(mediaNumber([]), 0)
+    end function
+
   end class
 
 end namespace
