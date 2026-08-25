@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="ItemGridOptions" extends="Group">
   <children>
+    <!-- KNOWN un-migrated hand-rolled dialog. This panel predates the JRDialog
+         family and was never in the #288 migration's charter: it draws its own
+         dimmed backdrop and its own 1720x880 panel, positions every child from
+         fixed offsets, and uses raw Roku RadiobuttonList / CheckList / Button
+         rather than the app's own components. Suppressed rather than migrated
+         because a three-mode options/sort/filter panel is its own piece of work,
+         not a dialog reskin — see tech-debt `itemgridoptions-hand-rolled-dialog`.
+         bsc-disable-next-line no-hand-rolled-dialog -->
     <Rectangle width="1920" height="1080" color="#000000" opacity="0.75" />
     <Group translation="[100,100]">
       <Poster id="dialogBackground" width="1720" height="880" uri="pkg:/images/9patch/filled-rounded.9.png" />

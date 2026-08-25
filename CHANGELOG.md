@@ -7,8 +7,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [2.26.0](https://github.com/jellyrock/jellyrock/compare/v2.25.1...v2.26.0) - 2026-08-25
+
 ### Changed
 
+- Collapse the dialog family onto one `computeDialogLayout` shape ([#852](https://github.com/jellyrock/jellyrock/pull/852))
 - Give the app one authoritative "a session is established" signal ([#850](https://github.com/jellyrock/jellyrock/pull/850))
 - Rebuild Quick Connect on the `JRDialog` family and the API pool ([#847](https://github.com/jellyrock/jellyrock/pull/847))
 - Enforce a production Task-thread ceiling in `launchTask()` ([#849](https://github.com/jellyrock/jellyrock/pull/849))

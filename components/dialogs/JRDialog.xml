@@ -6,7 +6,13 @@
      returnFocusTo. Result delivery is per-instance through the `result` field —
      observe it (observeFieldScoped from components, message port from main.bs).
      Covers alert (1 button), confirm (2 buttons), and choice (2-3 buttons) shapes;
-     longer option sets belong in JRListDialog (the helpers route automatically). -->
+     longer option sets belong in JRListDialog (the helpers route automatically).
+
+     KEYS: left/right always step the row. up/down step it too, but ONLY when
+     applyButtonLayout has stacked it vertically — a horizontal row swallows
+     them under modal containment rather than moving focus along an axis the
+     user cannot see. Either way a caller never has to know which layout the
+     labels produced. -->
 <component name="JRDialog" extends="JRGroup" focusable="true">
   <children>
     <!-- Dimmed backdrop, panel, edge, title and accent rule — shared with every

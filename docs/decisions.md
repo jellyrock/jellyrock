@@ -1151,6 +1151,22 @@ The RTA suite tests Quick Connect end to end by approving its own code: `POST /Q
 
 **Guarding at the choke point rather than at the five call sites is the other half.** All five converge on `finishLogin()` — the two bootstrap paths via `enterDecision`'s `status = "success"` branch — so one guard covers every path and a sixth login path inherits it instead of having to remember it. A return value nobody is forced to check is weaker than a guard nobody can bypass.
 
+## decision-id: dialog-family-has-one-layout-shape
+
+**date**: 2026-08-24
+**status**: accepted
+**related-files**: `source/utils/dialogLayout.bs`, `components/OverviewDialog.bs`, `components/dialogs/JRDialog.bs`, `scripts/bsc-plugins/no-hand-rolled-dialog.cjs`, `docs/architecture/dialogs.md`
+
+`computeDialogLayout` has exactly one shape: the footer flows INSIDE the panel, and the panel is derived from its content. The `footerInside` and `panelHeight` parameters are deleted, not deprecated — both existed for `OverviewDialog` alone, and a dialog that does not fit is now answered by clamping the body at the ceiling rather than by adding a third mode.
+
+**Both exceptions were recorded decisions, and neither survived a render.** The outside footer was justified on the grounds that a panel this large still reads as owning a button beneath it; a before/after capture on device showed the opposite — the button read as floating on the dimmed backdrop, with roughly 350 pixels of dead panel above it, which is the space it now occupies. It also cost a SECOND ceiling: a footer below the panel is not part of `panelHeight`, so `PANEL_MAX_HEIGHT` said nothing about it, and a panel at exactly the ceiling put a 72-pixel button 18 pixels off screen while reporting no overflow. One footer placement means one ceiling covers both.
+
+**The fixed panel was half-true reasoning, and it was the wrong half.** "A scrolling body cannot decide its own size" is correct about height and irrelevant to the decision: the panel WIDTH is what decides where text wraps, and the width is fixed, so the text's natural height is fully known before any height decision. `JRDialog` had been sizing itself this way all along. What the scroll viewport actually needs is a body height it can compare content against, and the clamp supplies exactly that — so `overflows` now means "the body did not fit", and the two answers to it stay with the callers who differ: `JRDialog` truncates to `body.height` worth of lines, `OverviewDialog` scrolls at that height. Neither re-derives the ceiling.
+
+**What this closes off is the cheap answer, not a considered one.** The next dialog that does not fit the flow will be tempting to serve with another parameter, which is how the two deleted modes arrived. The rule is that a bespoke dialog may bring its own BODY (`QuickConnectDialog`'s code at `fontSizeLargest` is the worked example) and never its own geometry. Convention already failed here once — three components each held a private copy of the chrome, and restyling one silently left two behind with every gate green — so the rule is backed by the `no-hand-rolled-dialog` BSC plugin rather than by agreement. The plugin catches structure (a hand-rolled backdrop, a hand-rolled scene append) and cannot catch a bad interaction design; `docs/architecture/dialogs.md` carries that judgment.
+
+**The constraint worth re-evaluating is the clamp's silence.** A body that gets clamped is told only through `overflows`, and a caller that ignores the flag gets a quietly shortened body rather than an error. That is the right default for the two callers that exist, both of which read it. A third caller that wants neither truncation nor scrolling would need a real answer rather than a third mode.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

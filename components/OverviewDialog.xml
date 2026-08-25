@@ -4,10 +4,17 @@
      showInfoDialog; dismisses itself via removeChild + returnFocusTo. Supports
      vertical scrolling.
 
-     Its OK button stays OUTSIDE the panel, unlike JRDialog's row. That is a
-     recorded decision rather than a leftover: this panel is 1600x760 and
-     dominates the screen, so a button below it still reads as attached — which
-     is not true at JRDialog's size. -->
+     Its OK button flows INSIDE the panel, like every other dialog in the family
+     — there is no other placement, and computeDialogLayout no longer takes one
+     as a parameter. It used to sit below the panel on the
+     reasoning that a panel this large still reads as owning a button beneath it;
+     a before/after capture on device did not support that — the outside button
+     read as floating on the dimmed backdrop while the panel above it carried
+     several hundred pixels of dead space. One footer placement, family-wide.
+
+     Its KEY MODEL is still its own, and that part is not drift: a scrolling body
+     needs up/down for the scroll, so focus moves between the text area and OK
+     rather than along a button row. See onKeyEvent below. -->
 <component name="OverviewDialog" extends="JRGroup">
   <children>
     <!-- Dimmed backdrop, panel, edge, title and accent rule — shared with the rest
