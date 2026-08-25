@@ -239,16 +239,22 @@ export const MEASUREMENTS = Object.freeze([
         // attribution emits it, and the baseline arm a comparison needs is exactly the
         // build that does not.
         //
-        // ⚠️ The line also carries an `at <sectionId,…>` tail that this pattern does NOT
-        // capture, and that omission is deliberate rather than an oversight. It is a
-        // rare-event diagnostic read off the console, not a series field: it varies per
-        // launch, so `splitWorkload` would file it under `dimensions` — the bucket that
-        // says WHICH RUN a sample was — and two samples differing only in which row was
-        // dropped are the same run. Read it out of the run log.
+        // `sizeAt` names the SECTIONS behind those two counts, and it is captured rather
+        // than left on the console because the console does not survive: `measure.js`
+        // writes `console-window.log` only when NOTHING matched, so on a healthy run the
+        // device lines are dropped, and they never reach stdout to be redirected either.
+        // A first cut of this pattern stopped before the tail on the grounds that a reader
+        // could recover it from the run log. A reader cannot.
+        //
+        // It is a string, so `splitWorkload` files it under `dimensions` — correctly, and
+        // by the same rule that puts `screen-load`'s `slowestContent` there. A dimension
+        // is anything that is not a QUANTITY: `remove` and `insert` are counts a
+        // comparison can subtract, while "which row was dropped" is not a number and
+        // subtracting two of them means nothing.
         key: 'sizeRecomputeBy',
         required: false,
         pattern:
-          /latest-rows size recompute by\s+remove\s+(?<sizeRemove>\d+)\s+insert\s+(?<sizeInsert>\d+)/,
+          /latest-rows size recompute by\s+remove\s+(?<sizeRemove>\d+)\s+insert\s+(?<sizeInsert>\d+)\s+at\s+(?<sizeAt>\S+)/,
       }),
     ]),
   }),

@@ -141,17 +141,32 @@ describe('the Home pattern against captured device lines', () => {
     });
   });
 
-  it('reads the recompute ATTRIBUTION line, and leaves its `at` tail uncaptured', () => {
+  it('reads the recompute ATTRIBUTION line, tail included', () => {
     // Same provenance caveat as the line above: written from the call site, not captured.
     //
-    // The `at` tail is the point of the second assertion. It is a per-launch string, so
-    // capturing it would put it in `dimensions` — "which run was this" — where a row id
-    // does not belong. It stays on the console for a reader, and the pattern stops before
-    // it. A future edit that "completes" the pattern by adding the group reintroduces
-    // exactly that, and this is what says so.
+    // `sizeAt` is captured rather than left on the console, and that is the assertion
+    // worth keeping: `measure.js` writes its console dump ONLY when nothing matched, so a
+    // healthy run discards the device lines and no redirect can recover them. A field
+    // documented as "read it off the console" would be a field nobody can read.
     const line =
       'INFO file:///Users/dev/jellyrock/components/home/HomeRows.bs:535 latest-rows size recompute by remove 1 insert 0 at remove:livetv  ';
-    expect(matchLine(home, line).fields).toEqual({ sizeRemove: 1, sizeInsert: 0 });
+    expect(matchLine(home, line).fields).toEqual({
+      sizeRemove: 1,
+      sizeInsert: 0,
+      sizeAt: 'remove:livetv',
+    });
+  });
+
+  it('files the recompute tail under dimensions, out of the numeric halves', () => {
+    // `remove` and `insert` are quantities a comparison subtracts; "which row was dropped"
+    // is not, and `splitWorkload` has to keep them apart — the same split that keeps
+    // `screen-load`'s `slowestContent` out of `timings`. A dimension that leaked into
+    // `timings` would hand `measure:compare` a string operand for a Mann-Whitney.
+    const line =
+      'INFO file:///Users/dev/jellyrock/components/home/HomeRows.bs:535 latest-rows size recompute by remove 1 insert 0 at remove:livetv  ';
+    const { timings, dimensions } = splitWorkload(home, matchLine(home, line).fields);
+    expect(dimensions).toEqual({ sizeAt: 'remove:livetv' });
+    expect(timings).toEqual({ sizeRemove: 1, sizeInsert: 0 });
   });
 
   it('keeps the two recompute lines from matching each other', () => {
@@ -526,7 +541,9 @@ describe('splitWorkload', () => {
     expect(timings).not.toHaveProperty('rows');
   });
 
-  it('leaves a family that emits only numbers with no dimensions', () => {
+  it('leaves a sample that carries only numbers with no dimensions', () => {
+    // `CAPTURED` predates the attribution line, so it carries no `sizeAt` — which is also
+    // the baseline-build case the optional line exists for.
     const [first] = assembleSamples(home, CAPTURED);
     expect(splitWorkload(home, first.fields).dimensions).toEqual({});
   });

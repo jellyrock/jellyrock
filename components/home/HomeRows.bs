@@ -110,9 +110,12 @@ sub init()
     ' one way this instrument can be quietly wrong.
     m.popSizeRemove = 0
     m.popSizeInsert = 0
-    ' The sectionIds behind those two counts, in the order they fired ("remove:livetv").
-    ' Console only — a rare-event detail rather than a series field, so it is deliberately
-    ' outside what `measurements.js` parses. Read it out of the run log when a count moves.
+    ' The sectionIds behind those two counts, in the order they fired ("remove:livetv"),
+    ' or "-" when only the end-of-run flush ran. `remove` and `insert` say a race happened;
+    ' this says WHICH section lost it, which is the half a fix needs. Captured by
+    ' `measurements.js` into the sample rather than left for a reader to find on the
+    ' console — `measure.js` keeps console lines only when nothing matched, so on a healthy
+    ' run they are discarded.
     m.popSizeAt = ""
   #end if
 
@@ -531,8 +534,7 @@ sub onLatestRowsReady()
       ' nine call-site arguments and drops the app into the BrightScript debugger.
       m.log.info("latest-rows size recompute", "calls", m.popSizeCalls, "drains", m.popDrains, "ms", m.popSizeMs)
       ' Same nine-argument ceiling, so the attribution is its own line rather than four
-      ' more arguments above. `at` is printed for a reader and deliberately NOT captured
-      ' by the measurement pattern — see m.popSizeAt.
+      ' more arguments above.
       sizeAt = m.popSizeAt
       if sizeAt = "" then sizeAt = "-"
       m.log.info("latest-rows size recompute by", "remove", m.popSizeRemove, "insert", m.popSizeInsert, "at", sizeAt)
