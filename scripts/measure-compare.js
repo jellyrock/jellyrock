@@ -208,9 +208,9 @@ export function selectSeries(records, selector = {}) {
  * `variant` of its own). Normalising here is what keeps the shared module ignorant of
  * both shapes.
  *
- * A record with neither field set — the two dimension-less legacy families, or a run
- * whose selection was refused — falls back to first-mount, which is what every
- * single-mount series has always meant.
+ * A record with neither field set — the two legacy families, which stamp no mount identity
+ * (they may still carry other dimensions), or a run whose selection was refused — falls
+ * back to first-mount, which is what every single-mount series has always meant.
  */
 export function coldSamples(record) {
   return selectColdSamples(record?.samples || [], {

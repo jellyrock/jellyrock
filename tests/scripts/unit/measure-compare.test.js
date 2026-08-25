@@ -207,10 +207,11 @@ describe('selecting an arm', () => {
     expect(buildArm('before', [record], { arm: 'before' }).values).toEqual([2811, 3471]);
   });
 
-  it('still selects by position for a family that stamps no dimensions', () => {
-    // `home-latest-rows` (bare `npm run measure`) and `item-grid` emit purely numeric
-    // lines, so `splitWorkload` gives them no dimensions to match on. Honouring a record
-    // field against unstamped samples would select none and read as an empty series.
+  it('still selects by position for a family that stamps no mount identity', () => {
+    // `home-latest-rows` (bare `npm run measure`) and `item-grid` stamp no `component` /
+    // `variant`, so there is no mount identity to match on — carrying some OTHER dimension
+    // (`home-latest-rows` emits `sizeAt`) does not change that. Honouring a record field
+    // against identity-less samples would select none and read as an empty series.
     const record = series({ screenVariant: 'Movie' });
     expect(coldSamples(record)).toHaveLength(3);
   });
