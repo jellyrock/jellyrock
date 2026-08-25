@@ -295,6 +295,8 @@ end sub
 
 sub onOverviewChanged()
   m.overviewText.text = m.top.overview
+  ' Re-attach if a structured body had taken it out of the flow.
+  if not isValid(m.overviewText.getParent()) then m.scrollContent.appendChild(m.overviewText)
 end sub
 
 ' Dynamically creates or removes the tagline label based on tagline text
@@ -406,6 +408,14 @@ end sub
 
 sub buildReportNodes(sections as object)
   clearReportNodes()
+
+  ' REMOVED from the group, not hidden. The XML-declared paragraph label is unused
+  ' in this mode, and a LayoutGroup positions every child by its bounding rect —
+  ' visibility is not part of that, so an empty hidden Label still reserved a line
+  ' and left a visible gap under the status. Verified on a Stick 4K: setting
+  ' visible = false changed nothing. onOverviewChanged puts it back if a plain
+  ' description is ever set on this same dialog.
+  if isValid(m.overviewText.getParent()) then m.scrollContent.removeChild(m.overviewText)
 
   ' Sections are spaced further apart than the rows inside them; the bold heading
   ' plus that gap is what separates one block from the next without a rule.

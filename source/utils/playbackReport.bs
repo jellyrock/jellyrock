@@ -193,7 +193,7 @@ function audioSection(stream as dynamic, transcoding as dynamic, urlParams as ob
   end if
 
   reportRow(rows, "audio.codec", translationKeys.LabelCodec, pairedValue(upperOrEmpty(stream.Codec), targetCodec))
-  reportRow(rows, "audio.channels", translationKeys.LabelAudioChannels, pairedValue(sourceChannels(stream), targetChannels))
+  reportRow(rows, "audio.channels", translationKeys.LabelChannels, pairedValue(sourceChannels(stream), targetChannels))
 
   targetAudioBitrate = ""
   targetSampleRate = ""
@@ -366,13 +366,18 @@ function profileAndLevel(stream as object) as string
   return profile + " @ " + levelLabel
 end function
 
+' Channel count in the SAME vocabulary as the target, which is the whole point.
+'
+' ChannelLayout is the server's own words and reads better on its own ("stereo"),
+' and preferring it here was a real bug: the target side can only come from
+' TranscodingInfo.AudioChannels, which is a number, so an unchanged stereo track
+' rendered "stereo → 2.0" — an arrow claiming a conversion that never happened.
+' Both sides go through formatAudioChannels so the comparison is meaningful, and
+' ChannelLayout is the fallback only when the count itself is missing.
 function sourceChannels(stream as object) as string
-  ' ChannelLayout is the server's own words ("5.1", "stereo"); it is preferred
-  ' when present so the report and the audio picker agree, since
-  ' formatAudioDisplayTitle makes the same choice.
-  layout = textOrEmpty(stream.ChannelLayout)
-  if layout <> "" then return layout
-  return formatAudioChannels(mediaNumber(stream.Channels))
+  channels = formatAudioChannels(mediaNumber(stream.Channels))
+  if channels <> "" then return channels
+  return textOrEmpty(stream.ChannelLayout)
 end function
 
 function dimensionsLabel(width as dynamic, height as dynamic) as string

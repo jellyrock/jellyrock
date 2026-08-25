@@ -157,7 +157,12 @@ sub onDestroy()
   ' view — anything that navigates without the user closing the dialog first
   ' (deep link, session expiry, voice "stop") would strand one over the incoming
   ' screen. See abandonDialog in source/utils/dialogs.bs.
-  stopPlaybackInfoRefresh()
+  ' Both observers this view owns for the report have to be released here — the
+  ' timer's `fire` and the dialog's `parentNode`. The dialog outlives this view
+  ' (it is appended to the SCENE), so an unreleased observer on it would keep
+  ' calling into a dead scope.
+  releasePlaybackInfoRefresh()
+  if isValid(m.playbackDialog) then m.playbackDialog.unobserveField("parentNode")
   abandonDialog(m.playbackDialog)
   m.playbackDialog = invalid
   m.trackPickerOptions = invalid
@@ -195,7 +200,10 @@ sub onPlayerStateChange()
   ' and tracked as playback-error-dialog-closed-by-teardown in tech-debt.md.
   ' Don't "fix" it by narrowing this call: a stranded modal over the incoming
   ' screen is the failure this line exists to prevent.
-  stopPlaybackInfoRefresh()
+  ' Same two observers as onDestroy: we are dropping the reference to a dialog
+  ' that lives on the SCENE, so the poll and its close observer go with it.
+  releasePlaybackInfoRefresh()
+  if isValid(m.playbackDialog) then m.playbackDialog.unobserveField("parentNode")
   abandonDialog(m.playbackDialog)
   m.playbackDialog = invalid
   m.trackPickerOptions = invalid
@@ -404,6 +412,13 @@ sub onPlaybackInfoLoaded()
   if isValid(m.playbackDialog)
     ' Open already: hand it the new model. OverviewDialog reconciles row by row,
     ' so the live figures change and the scroll position does not.
+    '
+    ' The status line is refreshed too. It is nearly always the same word, but a
+    ' transcode can END while the report is open — a DoVi buffer-overflow fallback
+    ' does exactly that — and leaving "Transcoding" above a body that has just
+    ' rebuilt itself into a direct-play report is the stale answer this whole
+    ' refresh exists to prevent.
+    m.playbackDialog.tagline = report.status
     m.playbackDialog.sections = report.sections
     return
   end if
@@ -464,6 +479,18 @@ sub stopPlaybackInfoRefresh()
   if isValid(m.playbackInfoTimer) then m.playbackInfoTimer.control = "stop"
 end sub
 
+' Stop the timer AND let it go. Kept distinct from stopPlaybackInfoRefresh
+' because closing the dialog only pauses polling — the same timer is reused the
+' next time the report is opened — while onDestroy has to release the observer.
+sub releasePlaybackInfoRefresh()
+  if not isValid(m.playbackInfoTimer) then return
+
+  m.playbackInfoTimer.control = "stop"
+  m.playbackInfoTimer.unobserveField("fire")
+  m.top.removeChild(m.playbackInfoTimer)
+  m.playbackInfoTimer = invalid
+end sub
+
 sub onPlaybackInfoRefreshDue()
   ' The dialog can be gone without our close observer having run — a supersede by
   ' another overlay detaches it. Stop rather than poll into nothing.
@@ -481,5 +508,6 @@ sub onPlaybackInfoDialogClosed()
   if isValid(m.playbackDialog) and isValid(m.playbackDialog.getParent()) then return
 
   stopPlaybackInfoRefresh()
+  if isValid(m.playbackDialog) then m.playbackDialog.unobserveField("parentNode")
   m.playbackDialog = invalid
 end sub

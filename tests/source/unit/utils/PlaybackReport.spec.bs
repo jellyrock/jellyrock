@@ -127,6 +127,27 @@ namespace tests
       m.assertEqual(m.rowValue(report, "audio.channels"), "5.1")
     end function
 
+    @it("draws no channel arrow when the count did not change, whatever the layout is called")
+    function _()
+      ' REGRESSION. Source channels used to come from ChannelLayout ("stereo")
+      ' while the target could only come from TranscodingInfo.AudioChannels (a
+      ' number), so an unchanged stereo track rendered "stereo -> 2.0" — an arrow
+      ' claiming a conversion that never happened. Caught in a device capture, not
+      ' by any gate. Both sides go through formatAudioChannels now.
+      m.input.audioStreamIndex = 1
+      m.input.mediaSource.MediaStreams[1].ChannelLayout = "stereo"
+      m.input.session.TranscodingInfo.AudioChannels = 2
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "audio.channels"), "2.0")
+    end function
+
+    @it("falls back to the server's layout wording when the count is missing")
+    function _()
+      ' Still paired against the real 2-channel target — the fallback replaces the
+      ' SOURCE half only, and this fixture genuinely downmixes 6ch to 2ch.
+      m.input.mediaSource.MediaStreams[2].delete("Channels")
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "audio.channels"), "5.1" + PLAYBACK_INFO_ARROW + "2.0")
+    end function
+
     @it("pairs video bitrate against the URL's video target, not the session total")
     function _()
       ' TranscodingInfo.Bitrate is the TOTAL across streams; pairing a video-only

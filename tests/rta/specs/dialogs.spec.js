@@ -19,7 +19,7 @@
  * per-picker option builders, which are unit-tested instead
  * (tests/source/unit/utils/trackPickerOptions.spec.bs).
  */
-import { beforeAll, it } from 'vitest';
+import { beforeAll, it, expect } from 'vitest';
 import { RTA_CONFIG } from '../config.js';
 import { authenticate, getHero, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
 import { seedHome, seedLibraryLanding, assertSeedTookEffect } from '../lib/seed.js';
@@ -63,8 +63,9 @@ beforeAll(async () => {
  * OPENS the OSD (it is not a toggle), so it has to be hidden again before Play
  * can reach the player and pause it.
  */
-async function pausedOsd() {
+async function pausedOsd(userSettings = null) {
   const expectedServer = await seedHome(session, LOCALE);
+  if (userSettings) await odc.writeRegistry({ values: { [session.userId]: userSettings } });
   await hardRelaunch(); // a plain relaunch lets the running app re-persist over the seed
   await assertSeedTookEffect(expectedServer, 'pausedOsd');
   await waitHome();
@@ -460,19 +461,111 @@ it('osd video-source button opens the list dialog; back cancels it', async () =>
   await stopPlayback();
 }, 240000);
 
-// Playback info left the legacy StandardDialog for showInfoDialog. Its body is
-// built from a live /Sessions round-trip, so a rendered non-empty report also
-// proves the task's structured sections survived the trip into the dialog.
+// The playback-info report is built from a live /Sessions round-trip merged with
+// the cached PlaybackInfo, so a rendered non-empty report proves the whole chain:
+// task fetch -> render-thread composition -> structured body -> laid-out rows.
+//
+// It asserts the MODEL on the dialog rather than a blob of text. The old report
+// was one string in #overviewText; this one is `sections`, and checking that the
+// rows actually arrived is the part a screenshot cannot tell you.
 it('osd info button opens the playback-info report; back dismisses it', async () => {
   await pausedOsd();
   await pressOsdButton('showVideoInfoPopup');
 
-  await waitFor('#overviewText.text', (t) => typeof t === 'string' && t.length > 0, {
-    label: 'playback info rendered',
+  await waitFor('#jrDialog.sections', (v) => Array.isArray(v) && v.length > 0, {
+    label: 'playback info report reached the dialog',
     timeout: 25000,
   });
 
+  const sections = await getVal('#jrDialog.sections');
+  const rows = sections.flatMap((s) => s.rows ?? []);
+
+  // Every row carries a stable id — that is what lets a refresh rewrite the live
+  // figures in place instead of rebuilding the body under the user's scroll.
+  const ids = rows.map((r) => r.id);
+  expect(ids.length).toBeGreaterThan(3);
+  expect(new Set(ids).size).toBe(ids.length);
+
+  // Presence-based rendering: no row is ever a placeholder for missing data.
+  for (const row of rows) {
+    expect(row.value, `row ${row.id} rendered an empty value`).toBeTruthy();
+  }
+
+  // The status line ("Direct playing" / "Direct streaming" / "Transcoding") goes
+  // in the tagline slot, and is what the opening screen-reader announcement reads
+  // first.
+  const status = await getVal('#jrDialog.tagline');
+  expect(typeof status).toBe('string');
+  expect(status.length).toBeGreaterThan(0);
+
   if (CAPTURE) await captureRawUI('playbackInfoDialog');
+
+  await press(ecp.Key.Back);
+  await waitFor('#jrDialog.id', (v) => v === undefined, {
+    label: 'playback info dismissed',
+    timeout: 10000,
+  });
+
+  await stopPlayback();
+}, 240000);
+
+// The TRANSCODING half of the report, which is the half that exists for a reason —
+// arrows, a Reasons section, and the one thing no server can tell you: that the
+// constraint came from a switch in our own settings screen.
+//
+// A 1 Mbps cap forces it. That doubles as the only functional coverage of the
+// Maximum Bitrate setting actually reaching the device profile: until it was
+// fixed, the user's number was discarded and this would have direct-played.
+it('a user-capped bitrate transcodes, and the report says which setting did it', async () => {
+  await pausedOsd({ playbackBitrateMaxLimited: 'true', playbackBitrateLimit: '1' });
+  await pressOsdButton('showVideoInfoPopup');
+
+  await waitFor('#jrDialog.sections', (v) => Array.isArray(v) && v.length > 0, {
+    label: 'playback info report reached the dialog',
+    timeout: 25000,
+  });
+
+  const status = await getVal('#jrDialog.tagline');
+  expect(status, 'a 1 Mbps cap must not direct play').not.toBe('Direct playing');
+
+  const sections = await getVal('#jrDialog.sections');
+  const reasons = sections.find((sec) => sec.id === 'reasons');
+  expect(reasons, 'a transcode must report why').toBeTruthy();
+
+  // The server's code passes through verbatim — we do not maintain its vocabulary.
+  const codes = reasons.rows.map((r) => r.label);
+  expect(codes.some((c) => c.includes('Bitrate') || c.includes('BitRate'))).toBe(true);
+
+  // ...and the row for the bitrate reason names the setting responsible, spelled
+  // exactly as the Settings screen spells it.
+  const bitrateRow = reasons.rows.find((r) => r.label === 'VideoBitrateNotSupported');
+  if (bitrateRow) {
+    expect(bitrateRow.value).toContain('Maximum Bitrate');
+  }
+
+  // An arrow appears only where something actually changed, so a transcode must
+  // produce at least one.
+  const values = sections.flatMap((sec) => sec.rows).map((r) => r.value);
+  expect(
+    values.some((v) => v.includes('\u2192')),
+    'a transcode must show a source -> target arrow',
+  ).toBe(true);
+
+  // The live section only exists during a real transcode, so this is the only
+  // place its rows can be proven to render at all.
+  const rowIds = sections.flatMap((sec) => sec.rows).map((r) => r.id);
+  expect(rowIds).toContain('transcode.speed');
+  expect(rowIds).toContain('transcode.progress');
+
+  if (CAPTURE) await captureRawUI('playbackInfoTranscoding');
+
+  // Let at least one refresh land. Reconciliation must rewrite values in place —
+  // if it rebuilt instead, the row set would churn under the user's scroll.
+  await sleep(7000);
+  const refreshed = await getVal('#jrDialog.sections');
+  const refreshedIds = refreshed.flatMap((sec) => sec.rows).map((r) => r.id);
+  expect(refreshedIds, "a refresh must not change the report's shape").toEqual(rowIds);
+  expect(await getVal('#jrDialog.id'), 'the dialog must survive its own refresh').toBe('jrDialog');
 
   await press(ecp.Key.Back);
   await waitFor('#jrDialog.id', (v) => v === undefined, {
@@ -494,7 +587,9 @@ it('a dialog keeps focus when the osd auto-hides underneath it', async () => {
   await playingOsd();
   await pressOsdButton('showVideoInfoPopup');
 
-  await waitFor('#overviewText.text', (t) => typeof t === 'string' && t.length > 0, {
+  // The report's body is `sections`, not the string label it used to be — this
+  // only needs the dialog to be UP and populated before the auto-hide window.
+  await waitFor('#jrDialog.sections', (v) => Array.isArray(v) && v.length > 0, {
     label: 'playback info rendered',
     timeout: 25000,
   });

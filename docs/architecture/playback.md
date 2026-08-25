@@ -54,7 +54,9 @@ components/mediaPlayers/                       ← AUDIO playback ENGINE
 components/ItemGrid/
   └── LoadVideoContentTask.bs                  ← computes transcode params, builds video URL
                                                  (called by VideoPlayerView before playback starts)
-components/GetPlaybackInfoTask.bs/.xml         ← fetches PlaybackInfo from Jellyfin
+components/GetPlaybackInfoTask.bs/.xml         ← fetches THIS DEVICE'S LIVE SESSION (/Sessions)
+                                                 for the playback-info report; fetch only,
+                                                 the report is composed render-side
 components/GetShuffleItemsTask.bs/.xml         ← fetches items when shuffle is enabled
 (next-episode availability is not a Task — VideoPlayerView.fetchNextEpisode()
  is a render-thread fetchAsync() promise; issue #551 Phase-3a collapse)
@@ -241,6 +243,8 @@ The canonical video player and the largest single component in the playback subs
     <field id="transcodeReasons" />
     <field id="isDoviDirectPlayFallbackAvailable" />
     <field id="isRetrying" />                <!-- prevents premature scene pop during DoVi retry -->
+    <field id="isDoviPreservationBypassed" /><!-- a retry re-asked WITHOUT the DoVi profile, so the
+                                                  report must not blame the Preserve DoVi setting -->
     <field id="videoId" />
     <field id="mediaSourceId" />
     <field id="fullSubtitleData" />
