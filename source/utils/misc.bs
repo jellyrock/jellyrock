@@ -805,6 +805,57 @@ function findParentOfType(node as object, typeName as string) as object
   return invalid
 end function
 
+' A numeric field from a Jellyfin media object, as an integer.
+'
+' Jellyfin's numeric fields (Height, Width, Channels, BitRate, Level) arrive as
+' integers from ParseJson, but the app has always handled them arriving as strings
+' too — isWithinH264HardwareCeiling, ItemPostPlaybackInfo's channel count and
+' getDeviceProfile's MaxAudioChannels each carry their own inline copy of this
+' coercion. This is that coercion, once.
+'
+' Returns 0 for anything missing or non-numeric, so callers can compare without a
+' validity check first — a stream that does not report a height has no height,
+' and 0 is the honest reading of that for every comparison the report makes.
+'
+' @param {dynamic} value - a field off a MediaStream / MediaSourceInfo / TranscodingInfo
+' @returns {integer} - the numeric value, or 0
+' THE TYPE NAMES BELOW WERE MEASURED, NOT REASONED, and the same integer reports
+' three different names depending on where it came from. On a Stick 4K
+' (Roku OS 15.3.4):
+'
+'   type(2)                  -> "Integer"    an unboxed literal
+'   type(aa.someInt)         -> "roInteger"  boxed, read out of an AA
+'   type(node.someIntField)  -> "roInt"      read off a SceneGraph node field
+'
+' All three are listed because this function is handed all three: MediaStream
+' fields arrive in AAs from ParseJson, user settings arrive from a
+' JellyfinUserSettings node, and callers pass literals. Enumerating only the
+' plausible-looking names is what produced the bug this function was extracted to
+' fix — `type(x) = "Integer"` against a node field is ALWAYS false, so
+' GetBitRateLimit discarded every user-set bitrate limit and silently substituted
+' Roku's hardware ceiling.
+'
+' NOT FOR BYTE COUNTS. The return type is a 32-bit Integer, so anything above
+' 2,147,483,647 overflows — and MediaSourceInfo.Size is a byte count, which passes
+' that at ~2.1 GB. Every other numeric media field (Height, Width, Channels,
+' BitRate, Level, SampleRate, BitDepth) is comfortably inside the range. Format
+' sizes from the raw value in floating point instead.
+'
+' @param {dynamic} value - a numeric field off a media object, a settings node, or a literal
+' @returns {integer} - the numeric value, or 0 for anything missing or non-numeric
+function mediaNumber(value as dynamic) as integer
+  if not isValid(value) then return 0
+
+  valueType = LCase(type(value))
+  if valueType = "string" or valueType = "rostring" then return Int(Val(value))
+  if valueType = "integer" or valueType = "rointeger" or valueType = "roint" then return value
+  if valueType = "float" or valueType = "rofloat" then return Int(value)
+  if valueType = "double" or valueType = "rodouble" then return Int(value)
+  if valueType = "longinteger" or valueType = "rolonginteger" then return Int(value)
+
+  return 0
+end function
+
 ' getFirstVideoStream: Finds the first video stream in MediaStreams array
 ' MediaStreams[0] is not always a video stream - it could be subtitle or audio
 '

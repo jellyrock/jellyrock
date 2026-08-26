@@ -779,6 +779,64 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("GetBitRateLimit()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' These read through m.global.user.settings on purpose rather than a plain AA.
+    ' The bug they exist for was invisible to an AA: settings live on a
+    ' JellyfinUserSettings NODE, and a node integer field reports its type as
+    ' "roInt" while the same number in an AA reports "roInteger". The old guard
+    ' compared against the literal "Integer", so it was false for every value a
+    ' user could set and the limit silently became Roku's hardware ceiling. A test
+    ' built on an AA fixture would have passed against the broken code.
+
+    @it("uses the user's own limit rather than the hardware ceiling")
+    function _()
+      m.global.user.settings.playbackBitrateMaxLimited = true
+      m.global.user.settings.playbackBitrateLimit = 4
+
+      result = GetBitRateLimit("h264")
+
+      m.assertEqual(result.Property, "VideoBitrate")
+      m.assertEqual(result.Condition, "LessThanEqual")
+      ' 4000000, not the 10000000 h264 ceiling the fallback branch supplies.
+      m.assertEqual(result.Value, "4000000", "the user asked for 4 Mbps and must get 4 Mbps")
+      m.assertTrue(result.IsRequired)
+    end function
+
+    @it("applies the user's limit identically across codecs")
+    function _()
+      ' The fallback ceilings differ per codec (10 Mbps h264, 40 Mbps the rest),
+      ' so asserting one codec alone cannot tell a working limit from a ceiling
+      ' that happens to match.
+      m.global.user.settings.playbackBitrateMaxLimited = true
+      m.global.user.settings.playbackBitrateLimit = 12
+
+      for each codec in ["h264", "h265", "av1", "vp9"]
+        m.assertEqual(GetBitRateLimit(codec).Value, "12000000", codec + " must honour the user's limit")
+      end for
+    end function
+
+    @it("falls back to the per-codec hardware ceiling when no limit is set")
+    function _()
+      ' Enabling the limit without a usable value is the one case the ceiling
+      ' branch is FOR — it must keep working.
+      m.global.user.settings.playbackBitrateMaxLimited = true
+      m.global.user.settings.playbackBitrateLimit = 0
+
+      m.assertEqual(GetBitRateLimit("h264").Value, "10000000")
+      m.assertEqual(GetBitRateLimit("h265").Value, "40000000")
+    end function
+
+    @it("returns no condition at all when the limit is switched off")
+    function _()
+      m.global.user.settings.playbackBitrateMaxLimited = false
+      m.global.user.settings.playbackBitrateLimit = 4
+
+      m.assertEqual(GetBitRateLimit("h264").count(), 0, "a disabled limit must not constrain anything")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("getAnamorphicCondition()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
