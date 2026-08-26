@@ -332,6 +332,42 @@ namespace tests
       m.assertInvalid(m.sectionById(buildPlaybackReport(m.input), "subtitles"))
     end function
 
+    @it("never claims a delivery method the server did not state")
+    ' REGRESSION. This used to return "Embedded" unconditionally when nothing
+    ' said otherwise — a guess presented as a fact, which is the same shape as
+    ' the status line claiming "Direct playing" on a failed fetch. An absent row
+    ' is the honest answer and matches every other unknown in this report.
+    function _()
+      m.input.mediaSource.TranscodingUrl = m.input.mediaSource.TranscodingUrl.replace("&SubtitleMethod=Encode", "")
+      m.input.mediaSource.MediaStreams[3].delete("DeliveryMethod")
+      m.input.mediaSource.MediaStreams[3].delete("IsExternal")
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "subtitle.delivery"), "<missing>")
+    end function
+
+    @it("earns Embedded when the server says the track is NOT external")
+    function _()
+      ' `false` is a real assertion, unlike an absent field.
+      m.input.mediaSource.TranscodingUrl = m.input.mediaSource.TranscodingUrl.replace("&SubtitleMethod=Encode", "")
+      m.input.mediaSource.MediaStreams[3].IsExternal = false
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "subtitle.delivery"), "Embedded")
+    end function
+
+    @it("prefers the stream's own DeliveryMethod over inferring from IsExternal")
+    function _()
+      ' DeliveryMethod describes the DELIVERY; IsExternal describes the source file.
+      m.input.mediaSource.TranscodingUrl = m.input.mediaSource.TranscodingUrl.replace("&SubtitleMethod=Encode", "")
+      m.input.mediaSource.MediaStreams[3].IsExternal = false
+      m.input.mediaSource.MediaStreams[3].DeliveryMethod = "External"
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "subtitle.delivery"), "External")
+    end function
+
+    @it("passes through a delivery method it has no label for, rather than inventing one")
+    function _()
+      m.input.mediaSource.TranscodingUrl = m.input.mediaSource.TranscodingUrl.replace("&SubtitleMethod=Encode", "")
+      m.input.mediaSource.MediaStreams[3].DeliveryMethod = "Hls"
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "subtitle.delivery"), "hls")
+    end function
+
     @it("reports burned-in subtitles, which explain a video transcode nothing else does")
     function _()
       m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "subtitle.delivery"), "Burned in")

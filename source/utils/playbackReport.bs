@@ -399,15 +399,40 @@ function targetBitDepth(stream as object, urlParams as object, transcoding as dy
 end function
 
 function subtitleDelivery(stream as object, urlParams as object) as string
+  ' 1. The transcode URL states the delivery outright. Exact, and the only source
+  '    that can report a burn-in, which is the one that costs a video re-encode.
   method = LCase(textOrEmpty(urlParams["subtitlemethod"]))
+  if method <> "" then return subtitleDeliveryLabel(method)
+
+  ' 2. The stream's own DeliveryMethod — the server saying how it intends to
+  '    deliver this track. Preferred over IsExternal because it describes the
+  '    DELIVERY rather than the source file.
+  declared = textOrEmpty(stream.DeliveryMethod)
+  if declared <> "" then return subtitleDeliveryLabel(LCase(declared))
+
+  ' 3. IsExternal, and ONLY when the server actually sent it. `false` is a real
+  '    assertion — a subtitle stream that is not external is in the container —
+  '    so Embedded is earned there rather than assumed.
+  if isValid(stream.IsExternal)
+    if isBooleanTrue(stream.IsExternal) then return translate(translationKeys.LabelExternalSubtitle)
+    return translate(translationKeys.LabelEmbedded)
+  end if
+
+  ' 4. Nothing told us anything. This used to return "Embedded" regardless, which
+  '    is the one place in this module where a guess wore the costume of a fact —
+  '    the same shape as the status line claiming "Direct playing" when /Sessions
+  '    had returned nothing. An absent row is the honest answer, and it is the way
+  '    every other unknown in this report is already handled.
+  return ""
+end function
+
+' A delivery method as the user reads it, or the server's own word when it is one
+' we do not have a label for (Hls, Drop). Never invents one.
+function subtitleDeliveryLabel(method as string) as string
   if method = "encode" then return translate(translationKeys.LabelBurnedIn)
   if method = "embed" then return translate(translationKeys.LabelEmbedded)
   if method = "external" then return translate(translationKeys.LabelExternalSubtitle)
-
-  ' No declaration in the URL — fall back to what the stream itself reports.
-  if isBooleanTrue(stream.IsExternal) then return translate(translationKeys.LabelExternalSubtitle)
-  if isValidAndNotEmpty(stream.DeliveryMethod) then return textOrEmpty(stream.DeliveryMethod)
-  return translate(translationKeys.LabelEmbedded)
+  return method
 end function
 
 function transcodeSpeed(transcoding as object, videoStream as dynamic) as string
