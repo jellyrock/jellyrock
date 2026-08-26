@@ -72,13 +72,21 @@ describe('diagnosedError — the message a human reads and the record a baseline
    * around it be gated at all. `RTA_RECORD_DIR` points the record at a temp directory,
    * the same channel a spawned Vitest child uses in production.
    */
-  const diagnose = async (message, opts = {}, { results = HEALTHY, focused, meta } = {}) => {
+  const diagnose = async (
+    message,
+    opts = {},
+    { results = HEALTHY, focused, meta, mediaPlayer = null } = {},
+  ) => {
     vi.resetModules();
     vi.doMock('roku-test-automation', () => ({
       odc: {
         getFocusedNode: async () => focused ?? null,
         getValues: async () => (results instanceof Error ? Promise.reject(results) : { results }),
       },
+      // The OS media player is read from ECP, not ODC. Defaulting to null keeps
+      // every existing case describing a run with no playback, which is what they
+      // were written against.
+      ecp: { getMediaPlayer: async () => mediaPlayer },
     }));
     process.env.RTA_RECORD_DIR = tmpDir;
     if (meta) fs.writeFileSync(path.join(tmpDir, 'run-meta.json'), JSON.stringify(meta));
@@ -106,6 +114,42 @@ describe('diagnosedError — the message a human reads and the record a baseline
   });
 
   const BASE = { kind: FAILURE_KINDS.WAIT_FOR_TIMEOUT, label: 'home rows', waitedMs: 20000 };
+
+  it('names a stalled stream, which every other field in the record hides', async () => {
+    // REGRESSION. A run whose video never left `buffer` reported only
+    // "osd visible (last=false)": the app's stateAllowsOSD() swallows the keypress
+    // until its Video node reaches playing/paused/stopped, so the OSD never opens
+    // and no other captured field says why. Three investigations read that as a
+    // dialog fault. `buffer` is the value worth spotting — PLAYING_STATES counts it
+    // as playing, the app does not.
+    const { error, record } = await diagnose(
+      'nav timed out waiting for osd visible',
+      { kind: 'wait-for-timeout', label: 'osd visible' },
+      { mediaPlayer: { state: 'buffer' } },
+    );
+    expect(error.message).toContain('player=buffer');
+    expect(record.state.player).toEqual({ state: 'buffer' });
+  });
+
+  it('records a player error flag alongside the state', async () => {
+    const { error, record } = await diagnose(
+      'nav timed out',
+      { kind: 'wait-for-timeout', label: 'x' },
+      { mediaPlayer: { state: 'error', error: true } },
+    );
+    expect(error.message).toContain('playerError=true');
+    expect(record.state.player.error).toBe(true);
+  });
+
+  it('says nothing about the player when nothing is playing', async () => {
+    // Most failures have no playback at all; a line about it would be noise.
+    const { error, record } = await diagnose('nav timed out', {
+      kind: 'wait-for-timeout',
+      label: 'x',
+    });
+    expect(error.message).not.toContain('player=');
+    expect(record.state.player).toBeUndefined();
+  });
 
   it('keeps the human-written message as the first line', async () => {
     const { error } = await diagnose('nav timed out waiting for home rows', BASE);

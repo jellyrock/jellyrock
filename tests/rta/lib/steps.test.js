@@ -34,6 +34,9 @@ vi.mock('roku-test-automation', () => ({
   // actually receive, or the test agrees with a typo.
   ecp: {
     sendKeypress: (...a) => sendKeypress(...a),
+    // captureFailureState reads the OS media player, so the mock has to answer it
+    // or every diagnosed failure throws instead of reporting.
+    getMediaPlayer: async () => null,
     Key: { Up: 'Up', Down: 'Down', Left: 'Left', Right: 'Right' },
   },
 }));
