@@ -40,12 +40,37 @@ const SCROLLBAR_TRACK_INSET = 6
 ' measuring the widest label needs a rendered pass, and this dialog already
 ' learned the hard way that nothing may depend on which pass it is in. Both are
 ' multiples of 6 so the value column's left edge lands on the 720p output grid.
-const REPORT_LABEL_WIDTH = 300
+' Wide enough that no known label has to wrap, because wrapping is the expensive
+' fix here: a wrapping label must be render-tracked (it could be the tallest thing
+' in its row), and tracked nodes are quadratic — see trackReportNode.
+'
+' MEASURED on a Stick 4K, not estimated from character counts, which got this
+' wrong in both directions — the longest string is not the widest one:
+'
+'     Total Bitrate           179px   the longest ENGLISH row label
+'     Taxa de bits total      250px   pt_BR
+'     Formato dos pixeis      271px   pt / gl / es_AR
+'     Format slikovnih pik    285px   sl — the longest by CHARACTERS (20), fits
+'     Formatu-edukiontzia     302px   eu — the only real translation over 300
+'     Hardware Acceleration   329px   not a value we ship, but the shape of one
+'
+' 300 clipped `eu` by two pixels. 360 clears every string above with room to
+' spare, stays a multiple of 6 so the value column's left edge lands on the 720p
+' output grid, and costs the value column 60px it does not need — the longest
+' value is a file path, which wraps to maxLines = 6 either way.
+const REPORT_LABEL_WIDTH = 360
 ' Reason rows carry a Jellyfin reason code in the label column
 ' ("VideoRangeTypeNotSupported"), which needs roughly twice the room a "Codec"
-' does.
+' does. Measured on a Stick 4K, the widest code in Jellyfin's vocabulary renders
+' at 449px ("VideoRangeTypeNotSupported"; "ContainerBitrateExceedsLimit" is
+' longer in characters but narrower at 437px), so this carries ~100px of headroom
+' for a code the server adds later. Reason codes are never translated, so unlike
+' the column above that measurement holds in every locale.
 const REPORT_WIDE_LABEL_WIDTH = 552
 const REPORT_SECTION_SPACING = 24
+' The itemSpacings the XML declares on #scrollContent, named here because
+' clearReportNodes has to restore it after a structured body widened it.
+const DEFAULT_BODY_SPACING = 20
 const REPORT_ROW_SPACING = 6
 
 sub init()
@@ -420,6 +445,11 @@ sub clearReportNodes()
   for each child in m.scrollContent.getChildren(-1, 0)
     if child.id = "reportSection" then m.scrollContent.removeChild(child)
   end for
+
+  ' Put the spacing back too. buildReportNodes widens it for section blocks; a
+  ' dialog reused for a plain description afterwards would otherwise keep the
+  ' report's gaps between a tagline and a paragraph that are not sections.
+  m.scrollContent.itemSpacings = [DEFAULT_BODY_SPACING]
 end sub
 
 sub buildReportNodes(sections as object)
@@ -476,6 +506,8 @@ function buildReportRow(row as object, labelWidth as integer) as object
   rowGroup.layoutDirection = "horiz"
   rowGroup.itemSpacings = [0]
 
+  ' ONE LINE, and deliberately NOT render-tracked — see REPORT_LABEL_WIDTH for why
+  ' the column is wide enough that it does not need to wrap.
   label = CreateObject("roSGNode", "LabelSecondaryMedium")
   label.text = row.label
   label.width = labelWidth
@@ -498,8 +530,13 @@ end function
 
 ' Every label whose rendered height feeds the panel gets a renderTracking
 ' observer, for the same reason the overview label has one: the panel cannot be
-' sized until they have all reported. Only wrapping labels are tracked — a
-' single-line label column cannot change the row height.
+' sized until they have all reported. Only WRAPPING labels are tracked — a
+' single-line label column cannot change the row height, and each tracked node is
+' expensive twice over: it adds a settle signal AND a member to the set every
+' other settle signal re-measures. Measured on a Stick 4K, one
+' localBoundingRect() read costs 23.05 µs, so that set is quadratic in real time —
+' 26 tracked nodes is ~15.6 ms of render-thread work per open and 46 would be
+' ~48.8 ms. Do not track a node whose height cannot vary.
 sub trackReportNode(node as object)
   node.enableRenderTracking = true
   node.observeField("renderTracking", "onTextRendered")
