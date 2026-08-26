@@ -32,6 +32,7 @@ namespace tests
         },
         mediaSource: {
           Container: "mkv",
+          RunTimeTicks: 108000000000&,
           Size: 26000000000.0,
           Bitrate: 26800000,
           Path: "/media/movies/Dune (2021)/Dune.2021.2160p.mkv",
@@ -43,6 +44,8 @@ namespace tests
             { Type: "Subtitle", Index: 3, Codec: "subrip", Language: "eng" }
           ]
         },
+        playheadSeconds: 300,
+        previousCompletion: invalid,
         audioStreamIndex: 2,
         subtitleStreamIndex: 3,
         settings: { playbackPreserveDovi: true },
@@ -281,6 +284,50 @@ namespace tests
     function _()
       m.input.mediaSource.MediaStreams[0].delete("AverageFrameRate")
       m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.speed"), "52.0 fps")
+    end function
+
+    @it("reports how far the encoder is AHEAD of the playhead")
+    ' The number that explains a frozen progress figure. 31.4% of a 3-hour
+    ' runtime is ~3391s of encoded video; the viewer is 300s in, so the encoder
+    ' leads by ~3091s = 51:31.
+    function _()
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.ahead"), "51:31")
+    end function
+
+    @it("clamps a negative lead to zero rather than reporting nonsense")
+    function _()
+      ' Seeking past the encoder restarts the transcode, so the playhead really can
+      ' sit ahead of it for a moment.
+      m.input.playheadSeconds = 9999
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.ahead"), "00:00")
+    end function
+
+    @it("omits the lead when there is no runtime to compute it from")
+    function _()
+      ' Live TV has no RunTimeTicks. Presence is the check, as everywhere else.
+      m.input.mediaSource.delete("RunTimeTicks")
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.ahead"), "<missing>")
+    end function
+
+    @it("says the encoder is idle when progress has not moved since the last poll")
+    function _()
+      ' Framerate keeps its last value when ffmpeg parks, so the speed row would
+      ' otherwise assert a rate that is not happening. Safe at a 5s interval: the
+      ' server moves CompletionPercentage on every ~1.2s sample while encoding.
+      m.input.previousCompletion = 31.4
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.speed"), "Idle")
+    end function
+
+    @it("shows the real speed while the encoder is still advancing")
+    function _()
+      m.input.previousCompletion = 30.9
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.speed"), "52.0 fps (2.2x)")
+    end function
+
+    @it("never claims idle on the first poll, when there is nothing to compare")
+    function _()
+      m.input.previousCompletion = invalid
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.speed"), "52.0 fps (2.2x)")
     end function
 
     @it("reports progress and hardware acceleration")

@@ -76,7 +76,7 @@ function buildPlaybackReport(input as object) as object
   reportAppend(report, videoSection(videoStream, transcoding, urlParams, videoIsCopy))
   reportAppend(report, audioSection(selectedAudio, transcoding, urlParams, audioIsCopy))
   reportAppend(report, subtitleSection(subtitleStream, urlParams))
-  reportAppend(report, transcodeSection(transcoding, videoStream))
+  reportAppend(report, transcodeSection(transcoding, videoStream, mediaSource, input))
   reportAppend(report, fileSection(mediaSource, transcoding))
 
   return report
@@ -242,16 +242,34 @@ end function
 ' server is ENCODING (not the output frame rate), so dividing by the source frame
 ' rate gives a real-time multiplier. Below 1.0x the server cannot keep up and
 ' playback will stall. Jellyfin's web client shows the same ratio.
-function transcodeSection(transcoding as dynamic, videoStream as dynamic) as object
+function transcodeSection(transcoding as dynamic, videoStream as dynamic, source as object, input as object) as object
   if not isValid(transcoding) then return invalid
 
+  idle = encoderIsIdle(transcoding, input.previousCompletion)
+
   rows = []
-  reportRow(rows, "transcode.speed", translationKeys.LabelSpeed, transcodeSpeed(transcoding, videoStream))
+  ' When the encoder has parked, Framerate keeps its LAST reported value — the
+  ' server only updates it on an ffmpeg progress report, and a parked ffmpeg sends
+  ' none. Rendering that stale figure is worse than rendering nothing: a frozen
+  ' percentage is a true cumulative number, but "34.0 fps (1.4x)" is a false claim
+  ' about the present tense. So the row says what is actually happening.
+  if idle
+    reportRow(rows, "transcode.speed", translationKeys.LabelSpeed, translate(translationKeys.LabelIdle))
+  else
+    reportRow(rows, "transcode.speed", translationKeys.LabelSpeed, transcodeSpeed(transcoding, videoStream))
+  end if
+
+  ' How far the encoder is ahead of the playhead — the number that EXPLAINS a
+  ' frozen progress figure. A server that has raced ahead and hit its throttle
+  ' stops reporting progress, which reads as broken until you can see it is
+  ' twenty minutes in front of you. Computable from a single poll, unlike idle.
+  reportRow(rows, "transcode.ahead", translationKeys.LabelAhead, transcodeRunway(transcoding, source, input.playheadSeconds))
+
   reportRow(rows, "transcode.progress", translationKeys.LabelProgress, percentageLabel(transcoding.CompletionPercentage))
   reportRow(rows, "transcode.bitrate", translationKeys.LabelTotalBitrate, getDisplayBitrate(transcoding.Bitrate))
 
   ' HardwareAccelerationType arrives from 10.8 onward and is absent on the floor
-  ' server. No version check — an absent field yields an empty value and addRow
+  ' server. No version check — an absent field yields an empty value and reportRow
   ' drops the row, which is the same outcome a version gate would produce with one
   ' more thing to keep in sync.
   reportRow(rows, "transcode.acceleration", translationKeys.LabelHardwareAcceleration, textOrEmpty(transcoding.HardwareAccelerationType))
@@ -339,6 +357,47 @@ function transcodeSpeed(transcoding as object, videoStream as dynamic) as string
   end if
 
   return speed
+end function
+
+' True when the encoder is not advancing.
+'
+' The test is one comparison of the RAW CompletionPercentage against the previous
+' poll, and it is safe at a 5-second interval because the server moves that value
+' far faster: measured against a live transcode, 26 consecutive samples at ~1.2s
+' spacing were all distinct and monotonically increasing, with no repeat. So an
+' unchanged value across 5s cannot happen while ffmpeg is running.
+'
+' `previousCompletion` invalid means this is the first sample and nothing can be
+' concluded — the answer is "not idle" rather than a guess, so the row shows the
+' last real speed until a comparison exists (about 5s after the dialog opens).
+function encoderIsIdle(transcoding as object, previousCompletion as dynamic) as boolean
+  if not isValid(previousCompletion) then return false
+
+  current = decimalOrZero(transcoding.CompletionPercentage)
+  if current <= 0 then return false
+
+  return current = decimalOrZero(previousCompletion)
+end function
+
+' The encoder's lead over the playhead, as a timestamp in the same format the OSD
+' progress bar uses.
+'
+' RunTimeTicks is deliberately NOT read through mediaNumber: a three-hour runtime
+' is ~1.08e11 ticks, which overflows a 32-bit integer. The arithmetic stays in
+' floating point throughout for the same reason getReadableSize does.
+function transcodeRunway(transcoding as object, source as object, playheadSeconds as dynamic) as string
+  runtimeSeconds = decimalOrZero(source.RunTimeTicks) / 10000000.0
+  if runtimeSeconds <= 0 then return ""
+
+  completion = decimalOrZero(transcoding.CompletionPercentage)
+  if completion <= 0 then return ""
+
+  runway = ((completion / 100.0) * runtimeSeconds) - decimalOrZero(playheadSeconds)
+  ' A seek past the encoder restarts the transcode, so a negative lead is a real
+  ' transient rather than a bug. Zero is the honest reading of it.
+  if runway < 0 then runway = 0
+
+  return secondsToTimestamp(Int(runway), true)
 end function
 
 ' AverageFrameRate first, RealFrameRate as the fallback — matching how Jellyfin's

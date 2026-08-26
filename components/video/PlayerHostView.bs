@@ -426,8 +426,23 @@ sub onPlaybackInfoLoaded()
   session = invalid
   if isValid(data) then session = data.session
 
+  ' A FAILED fetch is not "the transcode ended", and telling them apart matters:
+  ' an invalid session builds a report with no transcode section, which would trip
+  ' the live-rows check below and stop the refresh permanently — one dropped
+  ' request killing the dialog's updates for as long as it stays open. Skip the
+  ' rebuild entirely and let the next tick try again; the dialog keeps showing the
+  ' last good figures, which is what it would show anyway.
+  if not isValid(session) and isValid(m.playbackDialog) then return
+
   report = buildPlaybackReport(playbackReportInputs(session))
   if report.sections.count() = 0 then return
+
+  ' Remembered AFTER the build, so the build compares against the previous poll
+  ' rather than against itself.
+  m.lastCompletionPercentage = invalid
+  if isValid(session) and isValid(session.TranscodingInfo)
+    m.lastCompletionPercentage = session.TranscodingInfo.CompletionPercentage
+  end if
 
   if isValid(m.playbackDialog)
     ' Open already: hand it the new model. OverviewDialog reconciles row by row,
@@ -467,6 +482,13 @@ function playbackReportInputs(session as dynamic) as object
   return {
     session: session,
     mediaSource: mediaSource,
+    ' The playhead and the previous poll's completion figure are what turn the
+    ' transcode section from a set of raw numbers into an explanation: the first
+    ' gives the encoder's LEAD over the viewer, the second says whether it is
+    ' still moving. Both live here rather than in the pure model because only this
+    ' scope can see the player and the previous poll.
+    playheadSeconds: m.view.position,
+    previousCompletion: m.lastCompletionPercentage,
     audioStreamIndex: m.view.audioIndex,
     subtitleStreamIndex: m.view.selectedSubtitle,
     settings: m.global.user.settings,

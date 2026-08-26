@@ -127,8 +127,9 @@ async function pressOsdButton(buttonId) {
  * is exactly why the auto-hide focus-theft bug was invisible to this suite: the
  * helper avoided the only state that reproduces it.
  */
-async function playingOsd() {
+async function playingOsd(userSettings = null) {
   const expectedServer = await seedHome(session, LOCALE);
+  if (userSettings) await odc.writeRegistry({ values: { [session.userId]: userSettings } });
   await hardRelaunch();
   await assertSeedTookEffect(expectedServer, 'playingOsd');
   await waitHome();
@@ -579,6 +580,9 @@ it('a user-capped bitrate transcodes, and the report says which setting did it',
   const rowIds = sections.flatMap((sec) => sec.rows).map((r) => r.id);
   expect(rowIds).toContain('transcode.speed');
   expect(rowIds).toContain('transcode.progress');
+  // The encoder's lead over the playhead — what explains a frozen progress figure
+  // when the server races ahead and its throttle parks ffmpeg.
+  expect(rowIds).toContain('transcode.ahead');
 
   if (CAPTURE) await captureRawUI('playbackInfoTranscoding');
 
