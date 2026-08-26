@@ -499,8 +499,10 @@ postcondition that says the counters were attached and the probe was live.
 ⚠️ **Its DECOMPOSITION is not established, and an earlier version of this section asserted one
 the row arithmetic contradicts.** At that instant only `createSkeletonRows`' rows exist, and on
 this fixture there are **three** of them, not four: the sweep reports **12 rows on screen**
-against **10 latest libraries requested** (`workload.rows` on 40/40), so two non-latest rows
-survive and `activeRecordings` is the third. Three rows carrying one placeholder each predicts
+against **10 latest libraries requested**, so two non-latest rows survive and
+`activeRecordings` is the third. ⚠️ **Half that arithmetic is re-derivable and half is not** —
+`workload.rows` = 10 is in the ledger on 40/40; the 12 is `reportSweep` console output and falls
+under the retention caveat below. Three rows carrying one placeholder each predicts
 **3** binds. So at least one extra bind happens at skeleton time and its source is
 unidentified. A `FROM_SIZE` bind from the `rowStructureChanged()` that ends
 `createSkeletonRows()` would explain it and would be worth knowing — `bindsFromSize` is
