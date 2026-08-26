@@ -113,6 +113,21 @@ namespace cellLoad
   const WIPE_BIND = "bind"
   const WIPE_RELOAD = "reload"
 
+  ' Which mechanism evicted a resident texture. The texture manager has TWO, they answer
+  ' to different dials, and the total cannot tell them apart:
+  '   `range`  - the cell fell outside the managed vertical range (loadedRowRange +/- 2
+  '              rows) and renderTracking decided. Driven by how far the user scrolled
+  '              DOWN, and it fires on every screen including grids.
+  '   `window` - the horizontal item window inside a VISIBLE row evicted the cell, which
+  '              only happens on a RowList row holding more than TEXTURE_BUFFER_THRESHOLD
+  '              items. This is the ONLY signal that horizontal windowing ran at all.
+  ' The split exists because the total is dominated by `range` — Home reads ~57 unloads on
+  ' a cell sweep with `Limit: 16`, where no row is long enough for `window` to be reachable
+  ' — so "did raising the per-row limit engage windowing?" is unanswerable from `unloads`.
+  ' Both are emitted rather than one plus the total, so neither is derived by subtraction.
+  const UNLOAD_RANGE = "range"
+  const UNLOAD_WINDOW = "window"
+
   ' Attach counters to a content root. Called by initTextureManager, so every screen that
   ' uses the texture manager is instrumented without its own call site.
   '
@@ -141,6 +156,8 @@ namespace cellLoad
         cellLoadLoadsSucceeded: 0,
         cellLoadReloads: 0,
         cellLoadUnloads: 0,
+        cellLoadUnloadsRange: 0,
+        cellLoadUnloadsWindow: 0,
         cellLoadWipesBind: 0,
         cellLoadWipesReload: 0,
         cellLoadAppearances: 0,
@@ -363,9 +380,22 @@ namespace cellLoad
     #end if
   end sub
 
-  sub unload(contentRoot as object)
+  ' A resident texture was released. `reason` says which mechanism did it — see UNLOAD_*
+  ' for why the split is the whole point of this counter.
+  sub unload(contentRoot as object, reason as string)
     #if perfTiming
-      bump(contentRoot, "cellLoadUnloads")
+      ' Inline rather than two `bump` calls, matching `bind`: a total plus its split is one
+      ' event, and bumping twice would clock the instrument's own probe twice for it.
+      if not isValid(contentRoot) or not contentRoot.hasField("cellLoadUnloads") then return
+      probe = cellLoad.probe()
+      probe.mark()
+      contentRoot.cellLoadUnloads = contentRoot.cellLoadUnloads + 1
+      if reason = cellLoad.UNLOAD_WINDOW
+        contentRoot.cellLoadUnloadsWindow = contentRoot.cellLoadUnloadsWindow + 1
+      else
+        contentRoot.cellLoadUnloadsRange = contentRoot.cellLoadUnloadsRange + 1
+      end if
+      contentRoot.cellLoadInstrumentUs = contentRoot.cellLoadInstrumentUs + probe.totalMicroseconds()
     #end if
   end sub
 
@@ -403,7 +433,7 @@ namespace cellLoad
       component = contentRoot.cellLoadComponent
       m.cellLoadLog.info("cell-load binds - component " + component + " binds " + contentRoot.cellLoadBinds.toStr() + " fromContent " + contentRoot.cellLoadBindsContent.toStr() + " fromSize " + contentRoot.cellLoadBindsSize.toStr() + " redundant " + contentRoot.cellLoadBindsRedundant.toStr() + " items " + countItems(contentRoot).toStr())
       m.cellLoadLog.info("cell-load popin - component " + component + " appearances " + contentRoot.cellLoadAppearances.toStr() + " popIns " + contentRoot.cellLoadPopIns.toStr() + " popInsCold " + contentRoot.cellLoadPopInsCold.toStr() + " popInsReload " + contentRoot.cellLoadPopInsReload.toStr() + " popInsFirst " + contentRoot.cellLoadPopInsFirst.toStr() + " loadMs " + contentRoot.cellLoadLoadMs.toStr() + " loadMsCount " + contentRoot.cellLoadLoadMsCount.toStr() + " loadMsMax " + contentRoot.cellLoadLoadMsMax.toStr())
-      m.cellLoadLog.info("cell-load work - component " + component + " loadsStarted " + contentRoot.cellLoadLoadsStarted.toStr() + " loadsFailed " + contentRoot.cellLoadLoadsFailed.toStr() + " loadsSucceeded " + contentRoot.cellLoadLoadsSucceeded.toStr() + " reloads " + contentRoot.cellLoadReloads.toStr() + " unloads " + contentRoot.cellLoadUnloads.toStr() + " wipesBind " + contentRoot.cellLoadWipesBind.toStr() + " wipesReload " + contentRoot.cellLoadWipesReload.toStr() + " instrumentUs " + contentRoot.cellLoadInstrumentUs.toStr())
+      m.cellLoadLog.info("cell-load work - component " + component + " loadsStarted " + contentRoot.cellLoadLoadsStarted.toStr() + " loadsFailed " + contentRoot.cellLoadLoadsFailed.toStr() + " loadsSucceeded " + contentRoot.cellLoadLoadsSucceeded.toStr() + " reloads " + contentRoot.cellLoadReloads.toStr() + " unloads " + contentRoot.cellLoadUnloads.toStr() + " unloadsRange " + contentRoot.cellLoadUnloadsRange.toStr() + " unloadsWindow " + contentRoot.cellLoadUnloadsWindow.toStr() + " wipesBind " + contentRoot.cellLoadWipesBind.toStr() + " wipesReload " + contentRoot.cellLoadWipesReload.toStr() + " instrumentUs " + contentRoot.cellLoadInstrumentUs.toStr())
 
       reset(contentRoot)
     #end if
@@ -424,6 +454,8 @@ namespace cellLoad
         cellLoadLoadsSucceeded: 0,
         cellLoadReloads: 0,
         cellLoadUnloads: 0,
+        cellLoadUnloadsRange: 0,
+        cellLoadUnloadsWindow: 0,
         cellLoadWipesBind: 0,
         cellLoadWipesReload: 0,
         cellLoadAppearances: 0,
@@ -509,9 +541,13 @@ namespace cellLoad
     return total
   end function
 
-  ' Increment one counter. Extracted so the nine single-counter call sites above do not
-  ' each repeat the guard, and so the instrument's own cost is accumulated in exactly one
-  ' place rather than nine that can drift.
+  ' Increment one counter. Extracted so the single-counter call sites above do not each
+  ' repeat the guard, and so the instrument's own cost is accumulated in one place rather
+  ' than in each of them, where it could drift. A counter that bumps a TOTAL and a SPLIT
+  ' together (`bind`, `unload`) does it inline instead — one event should clock the probe
+  ' once, not twice. Deliberately no call-site COUNT here: the number this comment used to
+  ' carry said nine against an actual four, which is what a hand-maintained enumeration
+  ' does. `grep -n 'bump(contentRoot' source/utils/cellLoad.bs` answers it.
   sub bump(contentRoot as object, field as string)
     #if perfTiming
       if not isValid(contentRoot) or not contentRoot.hasField(field) then return

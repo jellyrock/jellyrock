@@ -20,7 +20,7 @@ related-files:
   - scripts/data/roku-hardware.json
   - source/utils/screenReadiness.bs
   - tests/rta/screens.js
-last-reviewed: 2026-08-24
+last-reviewed: 2026-08-26
 ---
 
 # Measuring performance on device
@@ -195,6 +195,33 @@ by child index — the fragility
 [`rta-home-active-list-hardcoded`](../architecture/tech-debt.md#rta-home-active-list-hardcoded)
 already tracks. Restoring the ids is an app change with its own device-test cost, so it is
 tracked as a followup rather than folded in here.
+
+#### Which mechanism evicted a texture — `unloadsRange` vs `unloadsWindow`
+
+`unloads` counts released textures, and the texture manager has **two** mechanisms that
+release them. They answer to different dials, and the total cannot tell them apart:
+
+| field | what it says |
+|---|---|
+| `unloadsRange` | the cell fell outside the managed vertical range (`loadedRowRange`, visible rows ±2) and `renderTracking` decided. Driven by how far the sweep scrolled **down**, and it fires on every texture-managed screen including grids |
+| `unloadsWindow` | the horizontal item window inside a **visible** row evicted the cell. Reachable only on a `RowList` row holding more than `TEXTURE_BUFFER_THRESHOLD` (20) items — so it is the **only** signal that horizontal windowing ran at all |
+
+They **partition** `unloads` — [`JRRowItem.bs`](../../components/ui/rowitem/JRRowItem.bs)'s
+two eviction branches are the only call sites, so the halves sum to the total by
+construction. Both are emitted rather than one plus the total, so neither is derived by
+subtraction, the same rule the pop-in buckets follow.
+
+🚨 **Read the split, never the total, when the question is about windowing.** On Home at the
+shipped `Limit: 16`, `unloads` reads **56–57** across a `cellSweepHome` — and *none* of it can
+be `unloadsWindow`, because no Home row reaches 20 items at that limit, so the horizontal
+branch is unreachable. All of it is `unloadsRange`. A campaign that raises the per-row limit
+and watches the **total** for a rise is therefore watching a number dominated by vertical
+scrolling; it can move for reasons that have nothing to do with the layer under test. This is
+not hypothetical — it was the postcondition a phase-C plan proposed before the split existed.
+
+That also makes `unloadsWindow` a **falsifiable check on the instrument itself**: at a per-row
+limit where no row can exceed the threshold it must read **0**, and a non-zero reading means a
+call site is tagged with the wrong reason rather than that windowing engaged.
 
 #### Pop-in — did the buffer win its race?
 

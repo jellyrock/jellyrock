@@ -775,7 +775,20 @@ export const CELL_QUIET_COUNTERS = Object.freeze([
  * exists to close had `appearances` equal to `binds`, and nobody looked, because neither
  * value was printed anywhere.
  */
-export const CELL_REPORT_COUNTERS = Object.freeze([...CELL_QUIET_COUNTERS, 'PopIns']);
+export const CELL_REPORT_COUNTERS = Object.freeze([
+  ...CELL_QUIET_COUNTERS,
+  'PopIns',
+  // The two halves of `Unloads`, on the LINE but deliberately not in the settle above:
+  // both are bumped in the same straight-line block as `Unloads` itself, so neither can
+  // move while it sits still and watching them would buy nothing. They are here because
+  // the total answers the wrong question — `Range` (a row left the vertical buffer) is
+  // driven by how far the sweep scrolled DOWN and dominates every reading, while `Window`
+  // is the only evidence that horizontal windowing engaged at all. A campaign varying the
+  // per-row item limit reads `Window` at the gate and after the sweep; the total is blind
+  // to it. See the UNLOAD_* constants in `source/utils/cellLoad.bs`.
+  'UnloadsRange',
+  'UnloadsWindow',
+]);
 
 /** The reported counters as one `name=value` run, for a warning or a report line. */
 export const formatCellCounts = (counts) =>

@@ -727,7 +727,7 @@ sub evaluateTextureState()
       if isInHorizontalBuffer()
         reloadTexture()
       else
-        unloadTexture()
+        unloadTexture(cellLoad.UNLOAD_WINDOW)
       end if
     else
       reloadTexture()
@@ -739,7 +739,7 @@ sub evaluateTextureState()
   if m.top.renderTracking <> "none"
     reloadTexture()
   else
-    unloadTexture()
+    unloadTexture(cellLoad.UNLOAD_RANGE)
   end if
 end sub
 
@@ -858,11 +858,16 @@ end sub
 ' Clears poster/icon URIs to release texture memory when the cell is off-screen.
 ' Items with no real image (cachedPosterUri = "") are skipped — they already show
 ' a lightweight local placeholder that costs negligible texture memory.
-sub unloadTexture()
+'
+' @param reason - which mechanism evicted this cell, cellLoad.UNLOAD_RANGE or
+'                 cellLoad.UNLOAD_WINDOW. Required rather than defaulted: the two call
+'                 sites below are the ONLY eviction paths, and a default would let a third
+'                 one be added that silently scores as the wrong mechanism.
+sub unloadTexture(reason as string)
   if m.cachedPosterUri = "" or m.isTextureUnloaded then return
 
-  logTextureAction("unloadTexture")
-  cellLoad.unload(m.contentRoot)
+  logTextureAction("unloadTexture " + reason)
+  cellLoad.unload(m.contentRoot, reason)
   m.isTextureUnloaded = true
   m.poster.uri = ""
   m.placeholder.visible = true
