@@ -1180,6 +1180,7 @@ The RTA suite tests Quick Connect end to end by approving its own code: `POST /Q
 **The rationale is not cost, and that matters for re-evaluation.** Measured 2026-08-26 on a Stick 4K against a 13-library server, `attachMs` is FLAT across a 7.4x change in item count (248 ms at 177 items, 271 ms at 1308) because only `TEXTURE_BUFFER_THRESHOLD` textures per row are ever resident and `RowList` virtualizes attach — so an uncapped worklist is not expensive to render, and the marginal cost is 0.76 ms/item of task-thread transform plus server wait. Uncapping Next Up was affordable; it is kept uncapped because capping a worklist is wrong, not because it is cheap. If the cost model ever inverts, that is a reason to revisit the NUMBER, not this rule.
 
 **The constraint worth re-evaluating is the unmeasured tail.** Nobody has measured what Next Up returns on a very large library now that it sends no limit — `disableFirstEpisode: false` may mean it approaches one episode per series rather than only series the user has started, and the cached spec fingerprint carries parameter names without defaults so it cannot answer it. Tracked as an open followup in `docs/progress.md` with the reading that would close it. If it comes back in the hundreds, the answer is a generous cap on a row nobody can scroll to the end of — which is a different decision from this one.
+
 ## decision-id: playback-report-target-evidence-tiers
 
 **date**: 2026-08-25
