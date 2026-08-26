@@ -189,12 +189,21 @@ screen records nothing at all.
 | `cellSweepExtras` | `ItemDetails` extras rows | `--component ExtrasRowList` |
 | `cellSweepSearch` | grouped search results | `--component SearchRow` |
 
-`Favorites` is the one cell-bearing screen with no sweep. `Home.onTabChanged` re-creates
-both row lists with `CreateObject` and assigns no id, so RTA can only address the active one
-by child index — the fragility
+`Favorites` is the one cell-bearing screen with no sweep, and the app-side blocker is now
+gone. `Home.onTabChanged` re-creates both row lists with `CreateObject`, which used to drop
+the id declared in `Home.xml` and leave `FavoritesRows` with none at all — so `#homeRows`
+resolved to nothing after a tab switch and `#favoritesRows` never resolved. Both ids are now
+assigned at creation, so either list is addressable by `#id` like the other four sweeps.
+What is left is writing `navCellSweepFavorites` itself; it is tracked as a followup in
+[`docs/progress.md`](../progress.md).
+
+The related fragility
 [`rta-home-active-list-hardcoded`](../architecture/tech-debt.md#rta-home-active-list-hardcoded)
-already tracks. Restoring the ids is an app change with its own device-test cost, so it is
-tracked as a followup rather than folded in here.
+is only **half** retired by that. The by-name content reads it covers now resolve; the focus
+walks still poll `#homeRows` by name rather than reading off the focused node, so they read a
+frozen `rowItemFocused` if a walk ever runs with Favorites selected. Nothing in the suite
+selects a non-default tab before a nav, so it is still unreachable — see the entry for the
+directions that close it.
 
 #### Which mechanism evicted a texture — `unloadsRange` vs `unloadsWindow`
 
@@ -212,9 +221,10 @@ construction. Both are emitted rather than one plus the total, so neither is der
 subtraction, the same rule the pop-in buckets follow.
 
 🚨 **Read the split, never the total, when the question is about windowing.** On Home at the
-shipped `Limit: 16`, `unloads` reads **56–57** across a `cellSweepHome` — and *none* of it can
-be `unloadsWindow`, because no Home row reaches 20 items at that limit, so the horizontal
-branch is unreachable. All of it is `unloadsRange`. A campaign that raises the per-row limit
+old shipped `Limit: 16`, `unloads` reads **56–57** across a `cellSweepHome` — and *none* of it
+can be `unloadsWindow`, because no Home row reaches 20 items at that limit, so the horizontal
+branch is unreachable. (That limit is now the `uiHomeRowLimit` setting, default 32, so a
+default install DOES reach the branch on its longer rows — read the split, not the total.) All of it is `unloadsRange`. A campaign that raises the per-row limit
 and watches the **total** for a rise is therefore watching a number dominated by vertical
 scrolling; it can move for reasons that have nothing to do with the layer under test. This is
 not hypothetical — it was the postcondition a phase-C plan proposed before the split existed.
