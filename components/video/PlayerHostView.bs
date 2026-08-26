@@ -173,7 +173,7 @@ sub onDestroy()
   ' (it is appended to the SCENE), so an unreleased observer on it would keep
   ' calling into a dead scope.
   releasePlaybackInfoRefresh()
-  if isValid(m.playbackDialog) then m.playbackDialog.unobserveField("parentNode")
+  if isValid(m.playbackDialog) then m.playbackDialog.unobserveField("closed")
   abandonDialog(m.playbackDialog)
   m.playbackDialog = invalid
   m.trackPickerOptions = invalid
@@ -214,7 +214,7 @@ sub onPlayerStateChange()
   ' Same two observers as onDestroy: we are dropping the reference to a dialog
   ' that lives on the SCENE, so the poll and its close observer go with it.
   releasePlaybackInfoRefresh()
-  if isValid(m.playbackDialog) then m.playbackDialog.unobserveField("parentNode")
+  if isValid(m.playbackDialog) then m.playbackDialog.unobserveField("closed")
   abandonDialog(m.playbackDialog)
   m.playbackDialog = invalid
   m.trackPickerOptions = invalid
@@ -463,7 +463,7 @@ sub onPlaybackInfoLoaded()
   end if
 
   m.playbackDialog = showReportDialog(translate(translationKeys.LabelPlaybackInfo), report.status, report.sections)
-  m.playbackDialog.observeField("parentNode", "onPlaybackInfoDialogClosed")
+  m.playbackDialog.observeField("closed", "onPlaybackInfoDialogClosed")
   if reportNeedsPolling(report, session) then startPlaybackInfoRefresh()
 end sub
 
@@ -507,11 +507,31 @@ function playbackReportInputs(session as dynamic) as object
     audioStreamIndex: m.view.audioIndex,
     subtitleStreamIndex: m.view.selectedSubtitle,
     settings: m.global.user.settings,
+    ' Gates the Path row, which is admin-only. Read defensively rather than
+    ' assumed present: `policy` is server-authoritative and only populated from a
+    ' real session, so it can legitimately be absent — and absent must mean NOT an
+    ' administrator, never the other way round.
+    isAdministrator: userIsAdministrator(),
     apiVersion: getApiVersionFromGlobal(),
     deviceSupportsDovi: capabilities.supportsDolbyVision,
     deviceMaxHeight: capabilities.maxHeight,
     doviPreservationBypassed: m.view.isDoviPreservationBypassed
   }
+end function
+
+' True only when the signed-in user is a Jellyfin administrator.
+'
+' Every hop is checked because this decides whether a filesystem path is shown:
+' the failure mode of a wrong `true` is disclosing something, and the failure mode
+' of a wrong `false` is one missing row.
+function userIsAdministrator() as boolean
+  user = m.global.user
+  if not isValid(user) then return false
+
+  policy = user.policy
+  if not isValid(policy) then return false
+
+  return isBooleanTrue(policy.isAdministrator)
 end function
 
 ' Keep the live rows live.
@@ -638,12 +658,18 @@ sub onPlaybackInfoRefreshDue()
   launchTask(m.getPlaybackInfoTask)
 end sub
 
-' The dialog dismisses itself by removing itself from the scene, so a detached
-' parentNode is the close signal — this overlay has no `result` field to observe.
+' The dialog closed — stop polling into it and let it go.
+'
+' It reports that on its own `closed` field. It USED to be observed through
+' `parentNode`, on the reasoning that a dialog which dismisses itself by removing
+' itself from the scene has a detached parent — but `parentNode` is not a field
+' on Node (its observable fields are id, focusable, focusedChild and change), so
+' that observer never fired even once. Nothing cleared m.playbackDialog, so the
+' NEXT press of the "i" button found a dialog it believed was still open and
+' quietly refreshed a node that was no longer in the scene: the report opened the
+' first time and never again.
 sub onPlaybackInfoDialogClosed()
-  if isValid(m.playbackDialog) and isValid(m.playbackDialog.getParent()) then return
-
   stopPlaybackInfoRefresh()
-  if isValid(m.playbackDialog) then m.playbackDialog.unobserveField("parentNode")
+  if isValid(m.playbackDialog) then m.playbackDialog.unobserveField("closed")
   m.playbackDialog = invalid
 end sub

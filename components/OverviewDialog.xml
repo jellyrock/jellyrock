@@ -58,6 +58,14 @@
     <!-- Node to restore remote focus to when this overlay closes (the FocusableOverview that
          opened it). Set by the opener before appendChild. -->
     <field id="returnFocusTo" type="node" />
+    <!-- Set true when this dialog closes, by EITHER route (the user pressing
+         OK/back, or cancelDialog superseding it from outside).
+         A caller that keeps a reference to this dialog — the playback report polls
+         into it — has to know when it goes away, and there is no platform signal
+         for that: `parentNode` is not a Node field, so observing it silently
+         never fires. Node's observable fields are id / focusable / focusedChild /
+         change, and none of them says "I was removed". -->
+    <field id="closed" type="boolean" value="false" alwaysNotify="true" />
     <!-- Cancel this dialog from OUTSIDE (source/utils/dialogs.bs cancelOpenDialog).
          This dialog has no result to deliver, so cancelling is just closing. -->
     <!-- Called by presentOverlayDialog while the dialog is still hidden, to lay it

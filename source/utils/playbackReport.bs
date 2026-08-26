@@ -40,6 +40,10 @@ import "pkg:/source/utils/playbackInfo.bs"
 import "pkg:/source/utils/transcodeCause.bs"
 import "pkg:/source/utils/translate.bs"
 
+' Above this, a reported frame rate is a container timebase rather than a frame
+' rate. See sourceFramerate.
+const MAX_PLAUSIBLE_FRAMERATE = 1000.0
+
 ' Build the report model.
 '
 ' @param {object} input - see the field list below; every one is optional and a
@@ -76,7 +80,7 @@ function buildPlaybackReport(input as object) as object
   reportAppend(report, audioSection(selectedAudio, transcoding, urlParams, audioIsCopy))
   reportAppend(report, subtitleSection(subtitleStream, urlParams))
   reportAppend(report, transcodeSection(transcoding, videoStream, mediaSource, input))
-  reportAppend(report, fileSection(mediaSource, transcoding))
+  reportAppend(report, fileSection(mediaSource, transcoding, input))
 
   return report
 end function
@@ -291,12 +295,25 @@ function transcodeSection(transcoding as dynamic, videoStream as dynamic, source
   return reportSection("transcode", translate(translationKeys.LabelTranscode), rows, false)
 end function
 
-' The file itself. PATH IS DELIBERATELY THE LAST ROW OF THE LAST SECTION: it is
-' genuinely useful for telling duplicate library entries apart, and it also puts
-' the server's filesystem layout into any screenshot that reaches it. Sitting
-' below the fold of a scrolling report means the transcode information at the top
-' can be shared without it.
-function fileSection(source as object, transcoding as dynamic) as object
+' The file itself.
+'
+' PATH IS ADMIN-ONLY, and that is a privacy decision rather than a permissions
+' one. A library path is the server's filesystem laid bare — it routinely carries
+' a person's name in a home directory, a mount point that names a NAS, or a
+' folder structure someone did not choose to publish, and the report is the one
+' screen users are asked to photograph when they file a bug. An administrator is
+' already able to see every path in the Jellyfin dashboard, so showing it to them
+' reveals nothing new; showing it to a shared-server guest can.
+'
+' Absent policy reads as NOT an administrator. The field is server-authoritative
+' and only populated from a real session, so the safe default is the one that
+' withholds — a report missing one row is a smaller failure than a report that
+' leaks a path because a session had not loaded yet.
+'
+' It is still the last row of the last section for the admins who do see it: the
+' report scrolls, so a screenshot of the transcode detail at the top cannot
+' include it without deliberately scrolling down first.
+function fileSection(source as object, transcoding as dynamic, input as object) as object
   rows = []
 
   targetContainer = ""
@@ -305,7 +322,9 @@ function fileSection(source as object, transcoding as dynamic) as object
 
   reportRow(rows, "file.size", translationKeys.LabelSize, getReadableSize(source.Size))
   reportRow(rows, "file.bitrate", translationKeys.LabelTotalBitrate, getDisplayBitrate(source.Bitrate))
-  reportRow(rows, "file.path", translationKeys.LabelPath, textOrEmpty(source.Path))
+  if isBooleanTrue(input.isAdministrator)
+    reportRow(rows, "file.path", translationKeys.LabelPath, textOrEmpty(source.Path))
+  end if
 
   return reportSection("file", translate(translationKeys.LabelFile), rows, false)
 end function
@@ -417,12 +436,32 @@ end function
 ' AverageFrameRate first, RealFrameRate as the fallback — matching how Jellyfin's
 ' own web client resolves it, so the speed multiplier is computed against the same
 ' denominator both clients use.
+'
+' BOTH ARE SANITY-CHECKED, because on an HLS live stream the server can report the
+' container's 90 kHz MPEG-TS clock where a frame rate belongs. Seen on device
+' against a Live TV channel: "Frame Rate 90000.0 fps". That figure is not merely
+' ugly — it is also the denominator of the transcode speed multiplier, so it would
+' turn a healthy encoder into a confident "0.0x", which reads as "the server
+' cannot keep up".
+'
+' A value we cannot believe is treated as no answer at all, so the row is omitted
+' rather than wrong — the same rule the rest of this file follows. The ceiling is
+' deliberately far above any real content (high-frame-rate capture tops out in the
+' hundreds) and far below the 90000 it exists to reject, so it cannot start
+' discarding a rate somebody actually shot.
 function sourceFramerate(stream as dynamic) as float
   if not isValid(stream) then return 0.0
 
-  rate = decimalOrZero(stream.AverageFrameRate)
+  rate = plausibleFramerate(stream.AverageFrameRate)
   if rate > 0 then return rate
-  return decimalOrZero(stream.RealFrameRate)
+  return plausibleFramerate(stream.RealFrameRate)
+end function
+
+' A frame rate, or 0.0 when the value cannot be one.
+function plausibleFramerate(value as dynamic) as float
+  rate = decimalOrZero(value)
+  if rate <= 0 or rate > MAX_PLAUSIBLE_FRAMERATE then return 0.0
+  return rate
 end function
 
 function profileAndLevel(stream as object) as string

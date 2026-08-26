@@ -667,6 +667,11 @@ sub closeDialog()
   parent = m.top.getParent()
   if isValid(parent) then parent.removeChild(m.top)
   if isValid(returnFocusTo) then returnFocusTo.setFocus(true)
+
+  ' LAST, so an observer sees a dialog that is already detached and has already
+  ' handed focus back. cancelDialog routes through here too, so this is the one
+  ' place both close routes pass.
+  m.top.closed = true
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean

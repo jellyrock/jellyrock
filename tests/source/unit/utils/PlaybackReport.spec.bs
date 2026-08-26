@@ -54,7 +54,9 @@ namespace tests
         apiVersion: 2,
         deviceSupportsDovi: true,
         deviceMaxHeight: 2160,
-        doviPreservationBypassed: false
+        doviPreservationBypassed: false,
+        ' Admin, so the Path row renders; the gate has its own tests below.
+        isAdministrator: true
       }
     end sub
 
@@ -310,6 +312,36 @@ namespace tests
       m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.speed"), "52.0 fps (2.2x)")
     end function
 
+    @it("omits a frame rate that is really a container clock, not a rate")
+    function _()
+      ' Seen on device against an HLS Live TV channel: the server reported the
+      ' 90 kHz MPEG-TS timebase where a frame rate belongs, and the report rendered
+      ' "90000.0 fps".
+      m.input.mediaSource.MediaStreams[0].AverageFrameRate = 90000
+      m.input.mediaSource.MediaStreams[0].RealFrameRate = 90000
+
+      for each row in m.sectionById(buildPlaybackReport(m.input), "video").rows
+        m.assertNotEqual(row.id, "video.framerate", "rendered a container clock as a frame rate")
+      end for
+    end function
+
+    @it("still reports a high but real frame rate")
+    function _()
+      ' The guard must not start discarding rates somebody actually shot.
+      m.input.mediaSource.MediaStreams[0].AverageFrameRate = 120
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.framerate"), "120.0 fps")
+    end function
+
+    @it("does not divide the speed multiplier by a container clock")
+    function _()
+      ' The bad frame rate is also the DENOMINATOR of the transcode multiplier, so
+      ' left alone it turns a healthy encoder into a confident "0.0x".
+      m.input.mediaSource.MediaStreams[0].AverageFrameRate = 90000
+      m.input.mediaSource.MediaStreams[0].RealFrameRate = 90000
+
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.speed"), "52.0 fps", "a multiplier was computed against a timebase")
+    end function
+
     @it("reports speed without a multiplier when the source frame rate is unknown")
     function _()
       m.input.mediaSource.MediaStreams[0].delete("AverageFrameRate")
@@ -412,6 +444,31 @@ namespace tests
       lastSection = report.sections[report.sections.count() - 1]
       m.assertEqual(lastSection.id, "file")
       m.assertEqual(lastSection.rows[lastSection.rows.count() - 1].id, "file.path")
+    end function
+
+    @it("hides the file path from a non-administrator")
+    function _()
+      ' A library path is the server's filesystem laid bare, and the report is the
+      ' screen users are asked to photograph for a bug report.
+      m.input.isAdministrator = false
+      report = buildPlaybackReport(m.input)
+
+      file = m.sectionById(report, "file")
+      m.assertNotInvalid(file, "the rest of the File section must survive the gate")
+      for each row in file.rows
+        m.assertNotEqual(row.id, "file.path", "the path was shown to a non-administrator")
+      end for
+    end function
+
+    @it("withholds the path when we do not know who is watching")
+    function _()
+      ' Policy is server-authoritative and can legitimately be absent. Absent must
+      ' read as NOT an administrator — the safe direction is the one that withholds.
+      m.input.isAdministrator = invalid
+      report = buildPlaybackReport(m.input)
+      for each row in m.sectionById(report, "file").rows
+        m.assertNotEqual(row.id, "file.path", "an unknown viewer was shown the path")
+      end for
     end function
 
     @it("formats a real movie's size, which overflows a 32-bit integer")
