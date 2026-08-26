@@ -54,6 +54,42 @@ beforeAll(async () => {
 });
 
 /**
+ * Playback settings a spec in this file seeds to force a particular server
+ * decision. Listed here because they have to be CLEARED again: seedHome resets
+ * only the sticky `display.*` keys, so anything else written into the user's
+ * section survives into every later test in the run.
+ *
+ * That matters more than it looks. `rta-run.js` snapshots and restores the whole
+ * registry around the RUN, so nothing leaks between runs — but within one run a
+ * leaked 1 Mbps cap reaches `screens.spec.js`, whose `osd` and `trickplay`
+ * entries are `store: true` capture screens. A forced transcode underneath the
+ * screenshots that ship to the Roku store listing is not a test-only problem.
+ */
+const PLAYBACK_SETTING_KEYS = ['playbackBitrateMaxLimited', 'playbackBitrateLimit'];
+
+/** Seed the given playback settings, clearing any this file left behind. */
+async function seedPlaybackSettings(userSettings) {
+  const values = {};
+  for (const key of PLAYBACK_SETTING_KEYS) values[key] = null; // null = delete the key
+  Object.assign(values, userSettings ?? {});
+  await odc.writeRegistry({ values: { [session.userId]: values } });
+
+  // READ BACK when we asked for a clean slate. Without this the clearing half is
+  // untested — a test seeding a cap runs first and leaves it behind, and every
+  // later test inherits it while still passing, which is exactly how this got
+  // shipped the first time. Asserting the absence is what makes the reset real.
+  if (userSettings) return;
+  const reg = await odc.readRegistry();
+  const section = reg?.values?.[session.userId] ?? {};
+  for (const key of PLAYBACK_SETTING_KEYS) {
+    expect(
+      section[key],
+      `${key} survived the reset and will leak into later specs`,
+    ).toBeUndefined();
+  }
+}
+
+/**
  * The state both OSD dialog tests start from: the hero movie playing, PAUSED,
  * with the OSD up and focus in its footer button group.
  *
@@ -65,7 +101,7 @@ beforeAll(async () => {
  */
 async function pausedOsd(userSettings = null) {
   const expectedServer = await seedHome(session, LOCALE);
-  if (userSettings) await odc.writeRegistry({ values: { [session.userId]: userSettings } });
+  await seedPlaybackSettings(userSettings);
   await hardRelaunch(); // a plain relaunch lets the running app re-persist over the seed
   await assertSeedTookEffect(expectedServer, 'pausedOsd');
   await waitHome();
@@ -129,7 +165,7 @@ async function pressOsdButton(buttonId) {
  */
 async function playingOsd(userSettings = null) {
   const expectedServer = await seedHome(session, LOCALE);
-  if (userSettings) await odc.writeRegistry({ values: { [session.userId]: userSettings } });
+  await seedPlaybackSettings(userSettings);
   await hardRelaunch();
   await assertSeedTookEffect(expectedServer, 'playingOsd');
   await waitHome();
@@ -495,9 +531,16 @@ it('osd info button opens the playback-info report; back dismisses it', async ()
   // The status line ("Direct playing" / "Direct streaming" / "Transcoding") goes
   // in the tagline slot, and is what the opening screen-reader announcement reads
   // first.
+  // An EMPTY status is now meaningful rather than merely absent: the report leaves
+  // it blank when the /Sessions fetch returned nothing, precisely so a dropped
+  // request can never render as "Direct playing". So this assertion doubles as a
+  // gate that the session actually arrived.
   const status = await getVal('#jrDialog.tagline');
   expect(typeof status).toBe('string');
-  expect(status.length).toBeGreaterThan(0);
+  expect(
+    status.length,
+    'blank status line — the report never received a session from /Sessions',
+  ).toBeGreaterThan(0);
 
   // REGRESSION. A scrolling report opens with focus on the SCROLL AREA, and the
   // OK button must not merely lack focus — it must not LOOK focused either.
