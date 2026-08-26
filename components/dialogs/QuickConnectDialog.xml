@@ -67,6 +67,9 @@
          and presentOverlayDialog's supersede). Routes through the same resolve
          path as Back so a third party clearing the screen is indistinguishable
          from the user dismissing it. -->
+    <!-- Called by presentOverlayDialog while the dialog is still hidden, to lay it
+         out before it is shown. See source/utils/dialogReveal.bs. -->
+    <function name="settleLayout" />
     <function name="cancelDialog" />
   </interface>
 </component>

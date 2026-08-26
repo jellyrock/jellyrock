@@ -1,0 +1,133 @@
+import "pkg:/source/utils/dialogReveal.bs"
+
+namespace tests
+
+  @suite("dialogReveal.bs - hiding a dialog until it has laid itself out")
+  class DialogRevealTests extends tests.BaseTestSuite
+
+    private dialog as object
+
+    ' beforeEach, not setup: every test mutates the node (tests/CLAUDE.md).
+    protected override function beforeEach()
+      super.beforeEach()
+      m.dialog = CreateObject("roSGNode", "OverviewDialog")
+    end function
+
+    protected override function afterEach()
+      m.dialog = invalid
+      super.afterEach()
+    end function
+
+    ' A body big enough that the panel has to grow for it, so "did it lay out"
+    ' is a question with a visible answer rather than a default.
+    private function reportSections() as object
+      rows = []
+      for i = 0 to 14
+        rows.push({ id: "r" + i.toStr(), label: "Label " + i.toStr(), value: "A value long enough to be real " + i.toStr() })
+      end for
+      return [{ id: "s1", heading: "Video", wideLabels: false, rows: rows }]
+    end function
+
+    private function panelHeight(dialog as object) as integer
+      return int(dialog.findNode("panelBackground").height)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("measuring while hidden")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' THE claim the whole approach rests on, and the one that is easy to assume
+    ' backwards: Roku stops `renderTracking` firing for a node whose `visible` is
+    ' false, so it is tempting to conclude a hidden dialog can never lay out. It
+    ' can. renderTracking is only the wake-up signal; the heights come from
+    ' localBoundingRect(), which answers while hidden — the same property
+    ' FontScalingTask has always relied on to measure two `visible="false"`
+    ' labels in JRScene.
+    @it("lays out to the SAME panel height hidden as it does visible")
+    function _()
+      shown = CreateObject("roSGNode", "OverviewDialog")
+      shown.title = "Playback info"
+      shown.sections = m.reportSections()
+
+      hidden = CreateObject("roSGNode", "OverviewDialog")
+      hideDialogUntilLaidOut(hidden)
+      hidden.title = "Playback info"
+      hidden.sections = m.reportSections()
+
+      m.assertTrue(m.panelHeight(shown) > 0, "the visible dialog did not lay out; the comparison below would be vacuous")
+      m.assertEqual(m.panelHeight(hidden), m.panelHeight(shown), "a hidden dialog measured differently, so hiding it costs the layout")
+    end function
+
+    ' Single-line font metrics are the easy case. This is the one the existing
+    ' comments doubted: a wrapped label needing a real text layout to know it
+    ' occupies two lines.
+    @it("measures a WRAPPED label's multi-line height while it is hidden")
+    function _()
+      label = CreateObject("roSGNode", "LabelSecondaryMedium")
+      label.visible = false
+      label.width = 300
+      label.wrap = true
+      label.maxLines = 2
+      label.text = "AudioCodecNotSupported"
+
+      oneLine = CreateObject("roSGNode", "LabelSecondaryMedium")
+      oneLine.visible = false
+      oneLine.text = "Codec"
+
+      m.assertTrue(int(oneLine.localBoundingRect().height) > 0, "a hidden label measured zero; the rest of this test would assert nothing")
+      m.assertTrue(int(label.localBoundingRect().height) > int(oneLine.localBoundingRect().height), "a hidden wrapped label did not report its second line")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("hiding and showing")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("hides the dialog outright, backdrop included")
+    function _()
+      hideDialogUntilLaidOut(m.dialog)
+      m.assertFalse(m.dialog.visible, "the dialog is still visible, so its unlaid-out frame still paints")
+    end function
+
+    @it("shows it again")
+    function _()
+      hideDialogUntilLaidOut(m.dialog)
+      revealDialog(m.dialog)
+      m.assertTrue(m.dialog.visible)
+    end function
+
+    ' Called from the settle path AND from the 0.15s announcement failsafe, so
+    ' every call after the first has to be a no-op rather than an error.
+    @it("is idempotent, and safe on a dialog that was never hidden")
+    function _()
+      revealDialog(m.dialog) ' never hidden
+      m.assertTrue(m.dialog.visible)
+
+      revealDialog(m.dialog)
+      m.assertTrue(m.dialog.visible)
+    end function
+
+    ' settleLayout has to be reachable through the component interface or the
+    ' callFunc is a silent no-op — the failure the callfunc-interface plugin
+    ' exists for. Asserting the OUTCOME rather than the call: a dialog whose
+    ' fields were set while detached still ends up laid out.
+    @it("settles the layout and shows the dialog in one step")
+    function _()
+      hideDialogUntilLaidOut(m.dialog)
+      m.dialog.title = "Playback info"
+      m.dialog.sections = m.reportSections()
+
+      settleAndRevealDialog(m.dialog)
+
+      m.assertTrue(m.dialog.visible, "settleAndRevealDialog left the dialog hidden")
+      m.assertTrue(m.panelHeight(m.dialog) > 0, "settleLayout did not reach applyLayout — check the <function> interface line")
+    end function
+
+    @it("survives being handed nothing")
+    function _()
+      hideDialogUntilLaidOut(invalid)
+      settleAndRevealDialog(invalid)
+      revealDialog(invalid)
+    end function
+
+  end class
+end namespace

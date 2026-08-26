@@ -60,6 +60,9 @@
     <field id="returnFocusTo" type="node" />
     <!-- Cancel this dialog from OUTSIDE (source/utils/dialogs.bs cancelOpenDialog).
          This dialog has no result to deliver, so cancelling is just closing. -->
+    <!-- Called by presentOverlayDialog while the dialog is still hidden, to lay it
+         out before it is shown. See source/utils/dialogReveal.bs. -->
+    <function name="settleLayout" />
     <function name="cancelDialog" />
   </interface>
 </component>

@@ -26,6 +26,7 @@
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/dialogNarration.bs"
+import "pkg:/source/utils/dialogReveal.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
@@ -319,7 +320,12 @@ function presentOverlayDialog(dialog as object, onResult as string, returnFocusT
     dialog.returnFocusTo = lastFocusedChild(scene)
   end if
   if onResult <> "" then dialog.observeFieldScoped("result", onResult)
+  ' A dialog cannot place anything until it has measured its own content, so it
+  ' is hidden across the append and shown once it has. Measuring does not need
+  ' visibility — see dialogReveal.bs.
+  hideDialogUntilLaidOut(dialog)
   scene.appendChild(dialog)
+  settleAndRevealDialog(dialog)
   dialog.setFocus(true)
   ' Screen-reader narration is NOT done here: it has to happen after focus
   ' settles or the platform's own announcement flushes it, so each dialog

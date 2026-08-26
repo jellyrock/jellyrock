@@ -1,0 +1,69 @@
+' Keeping a dialog's unlaid-out first frame off the screen.
+'
+' THE PROBLEM. Every dialog in this family is content-sized: it cannot place its
+' panel until it knows how tall its title and body measure. No dialog XML in the
+' family declares a single `translation`, so until `applyLayout` has run, every
+' child sits at [0, 0] — title, body text and the OK button stacked in the
+' top-left corner over a panel still sized 0x0. Append the dialog to the scene
+' before that has happened and the platform paints exactly that.
+'
+' MEASURING DOES NOT NEED VISIBILITY, which is the fact this is built on and the
+' one worth stating plainly, because the opposite is easy to assume. Roku sets
+' `renderTracking` to "none" for a node whose `visible` is false — but
+' `renderTracking` is only the WAKE-UP signal these dialogs use; the heights come
+' from `localBoundingRect()`, which is font metrics and answers while hidden.
+' JellyRock already depends on this elsewhere: the two labels
+' `FontScalingTask` measures to derive `m.global.user.fontScaleFactor` are
+' declared `visible="false"` in JRScene.xml, and that measurement validates its
+' own result, so a zero there would have been caught years ago.
+'
+' Measured on a Streaming Stick 4K to be sure it holds for a real dialog rather
+' than a bare label: an OverviewDialog given a title and a 15-row report body
+' lays out to a 924px panel with `visible = true`, and to a 924px panel with
+' `visible = false`. Identical. An invisible WRAPPED label reports its two-line
+' height (80px) as well, so this is not limited to single-line metrics.
+'
+' So the dialog is hidden outright rather than covered by anything. Nothing of it
+' paints — including its own dimmed backdrop, so there is no flash of a darker
+' screen either. It simply is not there, and then it is, fully formed.
+'
+' THE REVEAL IS DRIVEN, NOT WAITED FOR. With `visible = false` there is no
+' `renderTracking` to call back, so `presentOverlayDialog` forces one final
+' `applyLayout` through `settleLayout` once the dialog is attached, and shows it.
+' That is deterministic: the dialog appears on the same turn it is appended, not
+' a frame or a timer later.
+'
+' AND IT CANNOT STICK HIDDEN. `revealDialog` is called again from
+' `onOpeningAnnouncementDue`, the 0.15s one-shot every dialog here already arms
+' when it takes focus. A dialog whose layout somehow never completes is shown
+' anyway — at which point `renderTracking` starts working again and it lays out
+' the old way. The worst case is the pre-existing bad frame, never an invisible
+' dialog still holding the remote.
+import "pkg:/source/utils/misc.bs"
+
+' Hide the dialog. Call BEFORE appending it to the scene — after that it is too
+' late, because the frame this exists to suppress has already been painted.
+sub hideDialogUntilLaidOut(dialog as object)
+  if not isValid(dialog) then return
+  dialog.visible = false
+end sub
+
+' Lay the dialog out now that it is attached, then show it.
+'
+' The forced `settleLayout` is what makes this immediate rather than eventual. It
+' is also harmless when the dialog already laid itself out while its fields were
+' being set (the common case): `applyLayout` is idempotent, and re-running it
+' against measurements that have not changed produces the same geometry.
+sub settleAndRevealDialog(dialog as object)
+  if not isValid(dialog) then return
+
+  dialog.callFunc("settleLayout")
+  revealDialog(dialog)
+end sub
+
+' Show the dialog. Idempotent, and safe on one that was never hidden — both
+' matter, because the failsafe path calls this on every dialog regardless.
+sub revealDialog(dialog as object)
+  if not isValid(dialog) then return
+  dialog.visible = true
+end sub
