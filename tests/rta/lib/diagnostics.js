@@ -171,6 +171,13 @@ export async function captureFailureState() {
           // `onKeyEvent` releases focus upward only from row 0. Free: `getFocusedNode`
           // already returns the whole field set, so this adds no device call.
           rowItemFocused: focused.node.rowItemFocused ?? undefined,
+          // The APP's own playback state, which is not the OS player's and is the
+          // one the app gates on: VideoPlayerView.stateAllowsOSD() accepts only
+          // playing/paused/stopped, so `buffering` or `error` here means the OSD is
+          // being refused ON PURPOSE. Free — getFocusedNode already returns the
+          // whole field set, and when the focused node is the player this is the
+          // field that explains an OSD that never opens.
+          state: focused.node.state ?? undefined,
         }
       : null,
     view: {
@@ -290,6 +297,9 @@ function formatState(state, observed) {
     // line says why. `buffer` is the value worth spotting — PLAYING_STATES counts
     // it as playing, the app does not.
     player.state ? `player=${player.state}` : null,
+    // The app's Video node state, printed beside the OS player's because the two
+    // disagreeing IS the finding.
+    state.focus?.state ? `videoNode=${state.focus.state}` : null,
     player.error ? 'playerError=true' : null,
   ].filter(Boolean);
   lines.push(
