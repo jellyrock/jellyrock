@@ -4,6 +4,7 @@ import "pkg:/source/api/items.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -40,7 +41,13 @@ sub loadItems()
     params["SortOrder"] = "Descending"
     params["EnableRewatching"] = userSettings.uiDetailsEnableRewatchingNextUp
     params["DisableFirstEpisode"] = false
-    params["limit"] = 69
+    ' DELIBERATELY NO `limit`. Next Up is a WORKLIST — the user is trying to get through it,
+    ' so any cap hides episodes they are part-way into a series on, and no number is the right
+    ' one to hide at. It sent 69 for a long time, which was arbitrary rather than derived.
+    ' `uiHomeRowLimit` deliberately does NOT reach here: that setting sizes the browse FEEDS
+    ' (Recently Added / On Now / Active Recordings), where a limit chooses how much of a
+    ' larger set to sample. Continue Watching, the other worklist, sends no limit either and
+    ' has shipped that way — the two now match on purpose rather than by omission.
     params["EnableTotalRecordCount"] = false
     params["EnableResumable"] = false
 
@@ -67,6 +74,10 @@ sub loadItems()
   else if m.top.itemsToLoad = "continue"
     activeUser = globalUser.id
     if isValid(activeUser)
+      ' DELIBERATELY NO `limit`, and now stated rather than merely absent — the silence here
+      ' was previously indistinguishable from nobody having got round to it. Continue Watching
+      ' is a WORKLIST: capping it can only hide something the user is mid-way through. Next Up
+      ' is uncapped for the same reason; `uiHomeRowLimit` sizes the browse feeds only.
       params = {}
       params["EnableTotalRecordCount"] = false
 
@@ -126,7 +137,9 @@ sub loadItems()
     params = {}
     params["userId"] = globalUser.id
     params["isAiring"] = true
-    params["limit"] = 16 ' 16 to be consistent with "Latest In"
+    ' The comment this replaces read "16 to be consistent with Latest In" — a parity three
+    ' files asserted by hand and nothing enforced. Reading the same setting makes it hold.
+    params["limit"] = resolveHomeRowLimit(globalUser.settings.uiHomeRowLimit)
     params["imageTypeLimit"] = 1
     params["enableImageTypes"] = "Primary,Thumb,Backdrop"
     params["enableTotalRecordCount"] = false
@@ -143,7 +156,7 @@ sub loadItems()
     params = {}
     params["userId"] = globalUser.id
     params["isInProgress"] = true
-    params["limit"] = 16 ' parity with onNow
+    params["limit"] = resolveHomeRowLimit(globalUser.settings.uiHomeRowLimit)
     params["imageTypeLimit"] = 1
     params["enableImageTypes"] = "Primary,Thumb,Backdrop"
     params["enableTotalRecordCount"] = false

@@ -109,6 +109,40 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("unload()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("routes each reason to its own counter and keeps the total")
+    function _()
+      ' The reason is the whole point. `range` is driven by vertical scrolling and fires on
+      ' every screen; `window` fires only inside a row longer than TEXTURE_BUFFER_THRESHOLD
+      ' and is the ONLY evidence that horizontal windowing engaged. A campaign that raises
+      ' the per-row item limit reads `window`; the total is dominated by `range` and cannot
+      ' answer the question.
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.attach(root, "HomeRows")
+      cellLoad.unload(root, cellLoad.UNLOAD_RANGE)
+      cellLoad.unload(root, cellLoad.UNLOAD_WINDOW)
+      cellLoad.unload(root, cellLoad.UNLOAD_WINDOW)
+      m.assertEqual(root.getField("cellLoadUnloadsRange"), 1)
+      m.assertEqual(root.getField("cellLoadUnloadsWindow"), 2)
+      ' The invariant every reader of the split relies on: the halves PARTITION the total,
+      ' so a sample where they do not sum to it has lost a call site rather than found a
+      ' third mechanism. Asserted here because the two call sites in JRRowItem are the only
+      ' ones, and a third added later would break this rather than score silently.
+      m.assertEqual(root.getField("cellLoadUnloads"), 3)
+    end function
+
+    @it("is a no-op on a root that was never attached")
+    function _()
+      ' Same guard every other counter carries: a screen whose content root predates the
+      ' ledger must not fault, it must simply not score.
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      cellLoad.unload(root, cellLoad.UNLOAD_WINDOW)
+      m.assertFalse(root.hasField("cellLoadUnloads"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("countItems()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -357,7 +391,7 @@ namespace tests
 
       ' Scrolls off — texture released, no rebind.
       cellLoad.departed(root)
-      cellLoad.unload(root)
+      cellLoad.unload(root, cellLoad.UNLOAD_RANGE)
 
       ' Scrolls back: the buffer re-issues, and the cell is on screen before it lands.
       cellLoad.reload(root)
@@ -460,7 +494,8 @@ namespace tests
       cellLoad.loadSucceeded(root)
       cellLoad.loadErrored(root)
       cellLoad.reload(root)
-      cellLoad.unload(root)
+      cellLoad.unload(root, cellLoad.UNLOAD_RANGE)
+      cellLoad.unload(root, cellLoad.UNLOAD_WINDOW)
 
       ' Assert the counters are actually SET before emitting. A reset test whose subject
       ' was zero all along passes without testing anything, and `loadMsMax` reads a real
@@ -470,6 +505,8 @@ namespace tests
       m.assertEqual(root.getField("cellLoadPopIns"), 1)
       m.assertEqual(root.getField("cellLoadPopInsCold"), 1)
       m.assertEqual(root.getField("cellLoadLoadMsCount"), 1)
+      m.assertEqual(root.getField("cellLoadUnloadsRange"), 1)
+      m.assertEqual(root.getField("cellLoadUnloadsWindow"), 1)
 
       cellLoad.emit(root)
       m.assertEqual(root.getField("cellLoadBindsRedundant"), 0)
@@ -481,6 +518,11 @@ namespace tests
       m.assertEqual(root.getField("cellLoadLoadsSucceeded"), 0)
       m.assertEqual(root.getField("cellLoadReloads"), 0)
       m.assertEqual(root.getField("cellLoadUnloads"), 0)
+      ' Both halves reset too. Asserted separately from the total because they are
+      ' separate fields: a reset that zeroed only the total would leave the next session
+      ' reporting a split that does not add up to it.
+      m.assertEqual(root.getField("cellLoadUnloadsRange"), 0)
+      m.assertEqual(root.getField("cellLoadUnloadsWindow"), 0)
       ' The pop-in fields reset with the rest — a session that carried them forward would
       ' publish a race the next screen never ran.
       m.assertEqual(root.getField("cellLoadAppearances"), 0)

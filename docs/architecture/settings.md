@@ -7,7 +7,7 @@ related-files:
   - source/data/SessionDataTransformer.bs
   - components/data/jellyfin/JellyfinUserSettings.xml
   - components/data/jellyfin/JellyfinUserSettings.bs
-last-reviewed: 2026-06-07
+last-reviewed: 2026-08-26
 ---
 
 # Settings
@@ -76,6 +76,47 @@ Every setting node has:
 - **`default`** — the default value (always a string in JSON, coerced to type at load)
 - **`titleKey` / `descriptionKey`** — translation keys (so the Settings screen shows localized text)
 - **`options`** (radio only) — selectable values
+- **`min` / `max`** (optional, integer only) — a declared range, enforced when the value is **saved**
+
+### Declared ranges are enforced at SAVE, not at use
+
+An `integer` entry may declare `min` and `max`. The Settings screen (`onKeyGridSubmit` in
+[`components/settings/settings.bs`](../../components/settings/settings.bs)) parses the typed
+value, clamps it with `clampToSettingRange`, and — if clamping changed it — raises a confirm
+dialog naming both the range and what will be stored instead. Declining returns focus to the
+keypad; confirming saves the clamped value and updates the displayed text. An in-range value
+is stored **normalized** (`"016"` → `"16"`), so what the user sees next time is what is held.
+
+The alternative — let any number be stored and guard where it is read — is what
+`playbackBitrateLimit` does, and it is why that setting can show a number the app is not
+using. Enforcing once at the boundary keeps the stored value and the applied value the same
+thing, and tells the user when they differ instead of silently diverging.
+
+**Both bounds, and both as numbers.** `settingRangeBounds` returns `invalid` for anything
+else. This is not tidiness — it is the only thing standing between a JSON typo and a crashed
+Settings screen, because `Int()` faults on both alternatives and the fault fires when the
+user *opens* the setting. Two ways in, both measured on device:
+
+| malformed entry | what `Int()` gets | measured |
+|---|---|---|
+| `"min": 1` with no `max` | `Int(invalid)` | Type Mismatch |
+| `"min": "1", "max": "100"` | `Int("1")` | Type Mismatch |
+
+The second is the likelier typo, because `default` in the same entry **is** a string by
+convention (`"32"`) — so `"min": "1"` reads as consistent with its neighbor. BrighterScript
+cannot catch it: `settingRangeBounds` takes the entry `as object`, so the bounds are `dynamic`.
+
+A malformed entry therefore degrades to *declares no range* — the setting still saves, it is
+just unbounded — rather than taking the screen down. That is a floor, not enforcement: it
+makes the bad entry silent. [`tests/scripts/unit/settings-schema.test.js`](../../tests/scripts/unit/settings-schema.test.js)
+is what makes it loud, failing the PR on a half-declared range, a string bound, `min > max`,
+a default outside its own range, or a range declared on a non-`integer` entry. It runs in
+`npm run test:scripts`, so it gates every push without needing hardware.
+
+An entry declaring no range takes the pre-existing path untouched, raw text and all. This is
+a capability entries opt into; it did not change any setting that existed before it.
+`npm run docs:settings` prints a **Range** row for entries that declare one, so the bound is
+discoverable without typing an out-of-range value to find it.
 
 Categories nest arbitrarily (e.g., Playback → Bitrate Limit → Enable Limit + Maximum Bitrate). The Settings UI walks this tree to render itself, so adding a new setting means editing one JSON file.
 

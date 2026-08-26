@@ -495,6 +495,7 @@ Settings relating to how the application looks.
   - [Episode Images Next Up](#uiGeneralEpisodeImages)
   - [Fallback Fonts](#uiFontFallback)
   - [Hide Clock](#uiDesignHideClock)
+  - [Home Row Size](#uiHomeRowLimit)
   - [Max Days Next Up](#uiDetailsMaxDaysNextUp)
   - [Rewatching Next Up](#uiDetailsEnableRewatchingNextUp)
   - [Row Layout](#uiRowLayout)
@@ -590,6 +591,19 @@ Hide all clocks in JellyRock. JellyRock will need to be closed and reopened for 
 | Setting Name | `uiDesignHideClock` |
 | Type | `bool` |
 | Default | `false` |
+
+<h4 id="uiHomeRowLimit">Home Row Size</h4>
+
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#uiHomeRowLimit">Home Row Size</a>
+
+Sets how many items the Recently Added, On Now and Active Recordings rows load; Continue Watching and Next Up always show your full list. Higher values load more slowly, especially on older devices or with many libraries. Applies next time Home loads.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `uiHomeRowLimit` |
+| Type | `integer` |
+| Default | `32` |
+| Range | `1` to `100` |
 
 <h4 id="uiDetailsMaxDaysNextUp">Max Days Next Up</h4>
 

@@ -180,6 +180,9 @@ class SessionDataTransformer
     settingsNode.uiRowLayout = settingsData["uiRowLayout"] ?? ""
     settingsNode.uiShowBackdrop = settingsData["uiShowBackdrop"] ?? ""
     settingsNode.uiHomeSplashBackground = toBoolean(settingsData["uiHomeSplashBackground"])
+    if settingsData.DoesExist("uiHomeRowLimit")
+      settingsNode.uiHomeRowLimit = Val(settingsData["uiHomeRowLimit"])
+    end if
     settingsNode.uiHomeUseWebArrangement = toBoolean(settingsData["uiHomeUseWebArrangement"])
     settingsNode.uiDetailsHideTagline = toBoolean(settingsData["uiDetailsHideTagline"])
     settingsNode.uiMoviesShowRatings = toBoolean(settingsData["uiMoviesShowRatings"])

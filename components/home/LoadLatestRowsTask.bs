@@ -2,6 +2,7 @@ import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPipeline.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -22,13 +23,25 @@ sub loadLatestRows()
 
   m.transformer = JellyfinDataTransformer()
 
+  ' Read the per-row limit ONCE, outside the loop. This is a Task thread and `m.global` is
+  ' render-owned, so each read of it costs a rendezvous — measured on a Stick 4K at ~93 us
+  ' from a Task thread against ~2 us from the render thread. Per-library it would be one
+  ' crossing per row for a value that cannot change mid-run. See the cost model in
+  ' docs/architecture/async.md.
+  '
+  ' This row is the one that multiplies: the limit is sent ONCE PER LIBRARY, where every other
+  ' row sharing the setting sends it once. So `uiHomeRowLimit` x libraries is the total this
+  ' screen pays, and it is why the ceiling in settings.json bounds the limit rather than the
+  ' total — see resolveHomeRowLimit.
+  itemLimit = resolveHomeRowLimit(m.global.user.settings.uiHomeRowLimit)
+
   ' Entry order is row order, so on-screen-first rows are submitted first.
   entries = []
   for each lib in libs
     entries.push({
       requestId: "latestRow-" + lib.id,
       req: GetApi().BuildGetLatestMediaRequest({
-        "Limit": 16,
+        "Limit": itemLimit,
         "ParentId": lib.id,
         "EnableImageTypes": "Primary,Backdrop,Thumb",
         "ImageTypeLimit": 1,

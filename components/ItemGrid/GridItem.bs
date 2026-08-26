@@ -520,7 +520,9 @@ end sub
 sub unloadGridTexture()
   if m.cachedPosterUri = "" or m.isTextureUnloaded then return
 
-  cellLoad.unload(m.contentRoot)
+  ' Always UNLOAD_RANGE: a MarkupGrid has no horizontal window (every column is on
+  ' screen), so `getGridRowPosition` = "outside" is the only path that reaches here.
+  cellLoad.unload(m.contentRoot, cellLoad.UNLOAD_RANGE)
   m.isTextureUnloaded = true
   m.itemPoster.uri = ""
   resetPlaceholderToLoading()

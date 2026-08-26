@@ -1,0 +1,168 @@
+import "pkg:/source/utils/config.bs"
+
+namespace tests
+
+  ' The declared-range helpers behind the save-time check in the Settings screen
+  ' (components/settings/settings.bs, onKeyGridSubmit).
+  '
+  ' They live in config.bs rather than in the screen so they can be driven without the
+  ' component — the screen's own path needs a focused menu index, a keypad and a dialog
+  ' round trip, none of which say anything about whether the arithmetic is right.
+  @suite("config.bs - settings.json declared ranges")
+  class SettingRangeTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("settingRangeBounds()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads both bounds off an entry that declares them")
+    function _()
+      bounds = settingRangeBounds({ settingName: "x", min: 1, max: 200 })
+      m.assertNotInvalid(bounds)
+      m.assertEqual(bounds.min, 1)
+      m.assertEqual(bounds.max, 200)
+    end function
+
+    @it("returns invalid for an entry with no range")
+    function _()
+      ' The pre-existing shape of every integer setting. Such a setting must take the old
+      ' path untouched — this is a capability entries opt into, not a change to all of them.
+      m.assertInvalid(settingRangeBounds({ settingName: "playbackBitrateLimit", type: "integer" }))
+    end function
+
+    @it("refuses a HALF-declared range rather than applying one end")
+    function _()
+      ' Not a message-quality test. Mutating the guard to `and` — honor whichever bound is
+      ' present — takes this case to CRASH, not FAIL: `Int(invalid)` is a Type Mismatch, and
+      ' it fires when the user opens the setting. A half-declared entry is a typo someone
+      ' will make, and this is what stops it reaching the screen.
+      m.assertInvalid(settingRangeBounds({ min: 1 }))
+      m.assertInvalid(settingRangeBounds({ max: 200 }))
+    end function
+
+    @it("refuses STRING bounds, the typo the neighboring `default` invites")
+    function _()
+      ' Measured on a Stick 4K before this guard existed: `Int("1")` is a Type Mismatch that
+      ' CRASHES the settings screen when the setting is opened — the same failure as a
+      ' half-declared range, and likelier to be written. `default` in the same entry is a
+      ' string by convention ("16"), so `"min": "1"` looks consistent with its neighbor.
+      ' BrighterScript cannot catch it: `entry` is typed `as object`, so `entry.min` is
+      ' dynamic and the mismatch only surfaces at runtime.
+      m.assertInvalid(settingRangeBounds({ min: "1", max: "200" }))
+      m.assertInvalid(settingRangeBounds({ min: 1, max: "200" }))
+      m.assertInvalid(settingRangeBounds({ min: "1", max: 200 }))
+    end function
+
+    @it("accepts a float bound rather than only an integer one")
+    function _()
+      ' ParseJSON types a bare `1` and a `1.0` differently, and the entry author does not
+      ' choose which. Both are safe for Int(), so neither is refused.
+      bounds = settingRangeBounds({ min: 1.0, max: 200.0 })
+      m.assertNotInvalid(bounds)
+      m.assertEqual(bounds.min, 1)
+      m.assertEqual(bounds.max, 200)
+    end function
+
+    @it("is safe on an invalid entry")
+    function _()
+      m.assertInvalid(settingRangeBounds(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("clampToSettingRange()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves a value that already fits alone")
+    function _()
+      ' Load-bearing: the caller decides whether to interrupt the user by comparing the
+      ' result against its input, so a clamp that "helpfully" normalized an in-range value
+      ' would raise a confirmation dialog over nothing.
+      bounds = { min: 1, max: 200 }
+      m.assertEqual(clampToSettingRange(16, bounds), 16)
+      m.assertEqual(clampToSettingRange(1, bounds), 1)
+      m.assertEqual(clampToSettingRange(200, bounds), 200)
+    end function
+
+    @it("pulls a value inside each end")
+    function _()
+      bounds = { min: 1, max: 200 }
+      m.assertEqual(clampToSettingRange(0, bounds), 1)
+      m.assertEqual(clampToSettingRange(-40, bounds), 1)
+      m.assertEqual(clampToSettingRange(201, bounds), 200)
+      m.assertEqual(clampToSettingRange(99999, bounds), 200)
+    end function
+
+    @it("passes the value through when there are no bounds")
+    function _()
+      ' Mirrors settingRangeBounds returning invalid, so the two compose without the caller
+      ' needing a second branch.
+      m.assertEqual(clampToSettingRange(400, invalid), 400)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("resolveHomeRowLimit() - the shared Home row limit and its fallback")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses the user setting when it holds a usable number")
+    function _()
+      m.assertEqual(resolveHomeRowLimit(64), 64)
+      m.assertEqual(resolveHomeRowLimit(1), 1)
+    end function
+
+    @it("falls back when the setting is missing")
+    function _()
+      ' Scope worth being exact about: this covers the FIELD reading invalid, not the
+      ' settings NODE being absent. If m.global.user or .settings were themselves invalid,
+      ' the caller's read faults on the dot before this helper runs — every call site dots
+      ' straight through, matching the pre-existing shape at
+      ' components/ItemGrid/LoadItemsTask2.bs. All four run only from a screen that exists
+      ' after auth, which is what makes that read safe; this fallback is not what makes it safe.
+      m.assertEqual(resolveHomeRowLimit(invalid), HOME_ROW_LIMIT_DEFAULT)
+    end function
+
+    @it("refuses a value Int() would fault on, the same guard the bounds carry")
+    function _()
+      ' Not reachable from any live call site — all three read a field declared `integer` in
+      ' JellyfinUserSettings.xml. It is here so this helper and `settingRangeBounds` cannot
+      ' drift into disagreeing about what is safe to hand to `Int()`: they share `isIntSafe`,
+      ' and all three call sites run on a Task thread, where a Type Mismatch is the failure
+      ' class this project exists to remove.
+      m.assertEqual(resolveHomeRowLimit("64"), HOME_ROW_LIMIT_DEFAULT)
+      m.assertEqual(resolveHomeRowLimit("not a number"), HOME_ROW_LIMIT_DEFAULT)
+      m.assertEqual(resolveHomeRowLimit([32]), HOME_ROW_LIMIT_DEFAULT)
+    end function
+
+    @it("refuses 0, which is what an unpopulated integer field reads")
+    function _()
+      ' The case that makes this more than an isValid() check. A node integer field is 0
+      ' before SaveDefaults() runs, and 0 is a LEGAL value to send — Jellyfin answers
+      ' Limit=0 with an empty list — so every bounded Home row would come back empty and
+      ' nothing would report an error.
+      m.assertEqual(resolveHomeRowLimit(0), HOME_ROW_LIMIT_DEFAULT)
+      m.assertEqual(resolveHomeRowLimit(-5), HOME_ROW_LIMIT_DEFAULT)
+    end function
+
+    @it("keeps the fallback pinned to the shipped default in settings.json")
+    function _()
+      ' The constant and the JSON are two copies of one number, and only this test stops
+      ' them drifting: changing the default in settings.json without this would leave a
+      ' user whose settings failed to load on the OLD default, silently.
+      entry = findConfigTreeKey("uiHomeRowLimit", GetConfigTree())
+      m.assertNotInvalid(entry, "the setting must exist in settings.json")
+      m.assertEqual(Int(Val(entry.default)), HOME_ROW_LIMIT_DEFAULT)
+    end function
+
+    @it("keeps the shipped default inside the range the settings screen enforces")
+    function _()
+      ' A default outside its own declared range would be unsavable from the UI: the user
+      ' would open the setting, submit the value already shown, and be asked to confirm a
+      ' different one.
+      entry = findConfigTreeKey("uiHomeRowLimit", GetConfigTree())
+      bounds = settingRangeBounds(entry)
+      m.assertNotInvalid(bounds, "the entry must declare both bounds")
+      m.assertEqual(clampToSettingRange(HOME_ROW_LIMIT_DEFAULT, bounds), HOME_ROW_LIMIT_DEFAULT)
+    end function
+
+  end class
+
+end namespace

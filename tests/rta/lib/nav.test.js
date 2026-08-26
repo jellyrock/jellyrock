@@ -264,6 +264,28 @@ describe('reportSweep — the BEFORE segment, and when it must not print', () =>
     expect(warned).toEqual([]);
   });
 
+  it('prints the per-row widths, which rows and items together cannot express', () => {
+    // 128 items over 12 rows is the same total whether one row holds 64 or every row holds
+    // 11 — and only the first makes the horizontal texture window reachable. A per-row-limit
+    // campaign reads this vector to know how many rows are even in scope.
+    reportSweep('cellSweepHome', legs, endInstrumented, {
+      settle: { rows: 4, items: 128, widths: [64, 33, 16, 15], settled: true, waitedMs: 1977 },
+    });
+
+    expect(logged[0]).toContain('over 4 row(s) / 128 item(s) widths [64,33,16,15] at sweep start');
+  });
+
+  it('omits the widths segment rather than printing an empty one', () => {
+    // A settle that did not resolve returns `widths: []`. `widths []` on the line would read
+    // as "every row is gone" instead of "this was not measured".
+    reportSweep('cellSweepHome', legs, endInstrumented, {
+      settle: { rows: undefined, items: undefined, widths: [], settled: false, waitedMs: 0 },
+    });
+
+    expect(logged[0]).not.toContain('widths');
+    expect(logged[0]).toContain('NEVER SETTLED');
+  });
+
   it('says nothing when no baseline was asked for — the other three sweeps pass none', () => {
     reportSweep('cellSweepGrid', legs, endInstrumented);
 

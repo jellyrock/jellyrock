@@ -368,6 +368,13 @@ sub onTabChanged()
   if tabId = "home"
     ' Create HomeRows, add to scene, load data
     m.homeRows = CreateObject("roSGNode", "HomeRows")
+    ' The id is DECLARED in Home.xml, and a tab switch replaces that declared node with a
+    ' fresh one — so without this, `#homeRows` resolves to nothing for the rest of the
+    ' session and every by-name read of it returns undefined. Favorites never had an id at
+    ' all, which is why it is the one cell-bearing screen with no `cell-load` sweep. Set
+    ' here rather than taught to each consumer: see `rta-home-active-list-hardcoded` in
+    ' docs/architecture/tech-debt.md.
+    m.homeRows.id = "homeRows"
     m.activeContent = m.homeRows
     m.top.insertChild(m.homeRows, 0)
 
@@ -380,6 +387,7 @@ sub onTabChanged()
   else if tabId = "favorites"
     ' Create FavoritesRows, add to scene, load data
     m.favoritesRows = CreateObject("roSGNode", "FavoritesRows")
+    m.favoritesRows.id = "favoritesRows"
     m.activeContent = m.favoritesRows
     m.top.insertChild(m.favoritesRows, 0)
 

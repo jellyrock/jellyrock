@@ -185,6 +185,11 @@ function emitSetting(parts, node, pathTitles, depth) {
   const type = sanitizeText(node.type || '');
   const def = node.default !== undefined ? String(node.default) : '';
   const options = Array.isArray(node.options) ? node.options : [];
+  // A settings.json entry may declare `min` / `max`. They are enforced when the value is
+  // SAVED (components/settings/settings.bs), so a reader of this page who does not see the
+  // range has no way to learn it short of typing an out-of-range value and being told.
+  const min = node.min;
+  const max = node.max;
 
   // Force heading id to equal settingName via raw HTML heading
   const hTag = `h${Math.max(3, depth)}`; // settings start at least at <h3>
@@ -218,6 +223,11 @@ function emitSetting(parts, node, pathTitles, depth) {
   parts.push(`| Setting Name | \`${mdEscape(name)}\` |`);
   parts.push(`| Type | \`${mdEscape(type)}\` |`);
   parts.push(`| Default | \`${mdEscape(def)}\` |`);
+  // Both ends together or neither — a half-declared range is not enforced either, so
+  // printing one bound would describe a rule the app does not apply.
+  if (min !== undefined && max !== undefined) {
+    parts.push(`| Range | \`${mdEscape(String(min))}\` to \`${mdEscape(String(max))}\` |`);
+  }
 
   // Options nested under details table for radio types (HTML table for alignment within the row)
   if (type.toLowerCase() === 'radio' && options.length) {

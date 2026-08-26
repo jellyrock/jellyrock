@@ -598,6 +598,50 @@ describe('the cell-load family', () => {
     expect(fields.wipesReload).toBe(103);
   });
 
+  // The same line once the unload REASON split is emitted. Kept as a second fixture rather
+  // than folded into `WORK`, because `WORK` is now also the legacy shape — a build without
+  // the split, and every record already in the ledger — and both have to keep parsing.
+  const WORK_SPLIT =
+    'INFO file:///Users/dev/jellyrock/source/utils/cellLoad.bs:216 cell-load work - component HomeRows loadsStarted 164 loadsFailed 0 loadsSucceeded 140 reloads 61 unloads 57 unloadsRange 45 unloadsWindow 12 wipesBind 20 wipesReload 0 instrumentUs 7640  ';
+
+  it('reads the unload reason split off the work line', () => {
+    expect(matchLine(cells, WORK_SPLIT).fields).toEqual({
+      component: 'HomeRows',
+      loadsStarted: 164,
+      loadsFailed: 0,
+      loadsSucceeded: 140,
+      reloads: 61,
+      unloads: 57,
+      unloadsRange: 45,
+      unloadsWindow: 12,
+      wipesBind: 20,
+      wipesReload: 0,
+      instrumentUs: 7640,
+    });
+  });
+
+  it('keeps the two unload reasons a PARTITION of unloads', () => {
+    // Emitted rather than derived so this can be checked instead of assumed, exactly as
+    // the pop-in buckets are. `JRRowItem`'s two eviction branches are the only call sites,
+    // so the halves sum to the total by construction — and a third branch added later
+    // without a reason would break this test rather than score silently as `range`.
+    const { fields } = matchLine(cells, WORK_SPLIT);
+    expect(fields.unloadsRange + fields.unloadsWindow).toBe(fields.unloads);
+  });
+
+  it('still parses a work line emitted before the unload split existed', () => {
+    // `WORK` above IS that shape. Asserted here by name so the reason is on the record:
+    // every cell-load sample in the ledger predates the split, and a required group would
+    // drop all of them out of a comparison silently rather than failing.
+    const { fields } = matchLine(cells, WORK);
+    expect(fields.unloads).toBe(8);
+    expect(fields.unloadsRange).toBeUndefined();
+    expect(fields.unloadsWindow).toBeUndefined();
+    // The fields AFTER the optional group still land, which is what a bad insertion breaks.
+    expect(fields.wipesBind).toBe(33);
+    expect(fields.instrumentUs).toBe(13256);
+  });
+
   // Built from the emit in `source/utils/cellLoad.bs` the same way `WORK` is, and asserted
   // field-by-field for the same reason: this pattern is the seam between what the device
   // prints and every figure the pop-in section publishes, and a regex is exactly the kind

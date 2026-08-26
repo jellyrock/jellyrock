@@ -710,6 +710,17 @@ describe('readCellCounts', () => {
     expect(formatCellCounts(counts)).not.toMatch(/undefined/);
   });
 
+  it('carries the unload REASON split, which the total cannot substitute for', async () => {
+    // Pinned by name rather than left to `CELL_REPORT_COUNTERS`'s length, because these two
+    // are the only at-gate evidence that horizontal windowing engaged. `Unloads` is
+    // dominated by vertical eviction — Home reads ~57 of it on a sweep where no row is even
+    // long enough for the window to be reachable — so dropping the split would leave a
+    // report line that still looks complete while answering a different question.
+    expect(CELL_REPORT_COUNTERS).toContain('UnloadsWindow');
+    expect(CELL_REPORT_COUNTERS).toContain('UnloadsRange');
+    expect(formatCellCounts({ UnloadsWindow: 12, UnloadsRange: 45 })).toContain('unloadsWindow=12');
+  });
+
   it('propagates a failed batch instead of reporting a screen that bound nothing', async () => {
     // Same rule as `getActiveVals`: a transport failure must not become a reading. A
     // swallowed one here would silently rebase every delta on zero.

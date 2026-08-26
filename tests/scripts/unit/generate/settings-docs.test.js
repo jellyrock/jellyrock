@@ -54,6 +54,43 @@ describe('settings-docs', () => {
     expect(out).toMatch(/\| Default \| `true` \|/);
   });
 
+  it('emits the declared range for a bounded setting', () => {
+    // The range is enforced at SAVE time in the app, so this page is the only place a user
+    // can learn it without typing an out-of-range value and being told.
+    dir = setupTemp([
+      {
+        title: 'User Interface',
+        children: [
+          {
+            title: 'Home Row Size',
+            settingName: 'uiHomeRowLimit',
+            type: 'integer',
+            default: '16',
+            min: 1,
+            max: 200,
+          },
+        ],
+      },
+    ]);
+    spawnScript(SCRIPT, [], { cwd: dir });
+    const out = readFileSync(join(dir, 'docs', 'user', 'app-settings.md'), 'utf8');
+    expect(out).toMatch(/\| Range \| `1` to `200` \|/);
+  });
+
+  it('omits the range row when only one bound is declared', () => {
+    // Half a range is not enforced by the app either — settingRangeBounds() requires both —
+    // so printing one bound would document a rule that does not exist.
+    dir = setupTemp([
+      {
+        title: 'User Interface',
+        children: [{ title: 'Half Bounded', settingName: 'halfBounded', type: 'integer', min: 1 }],
+      },
+    ]);
+    spawnScript(SCRIPT, [], { cwd: dir });
+    const out = readFileSync(join(dir, 'docs', 'user', 'app-settings.md'), 'utf8');
+    expect(out).not.toMatch(/\| Range \|/);
+  });
+
   it('emits a radio-type options table', () => {
     dir = setupTemp([
       {

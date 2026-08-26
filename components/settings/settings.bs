@@ -117,9 +117,76 @@ sub onKeyGridSubmit()
   selectedSetting = m.userLocation.peek().filteredChildren[m.settingsMenu.itemFocused]
   newValue = m.integerSetting.text
 
+  ' A settings.json entry MAY declare `min` / `max`. One that does is range-checked here,
+  ' at SAVE, rather than clamped where the value is read.
+  '
+  ' Clamping at use time is invisible: the number in Settings keeps saying what was typed
+  ' while the app quietly behaves as though it said something else, and the next reader of
+  ' either half has no way to tell. `playbackBitrateLimit` is the standing example — it
+  ' takes any number and the consumer guards, so a user who types 400 sees 400 forever.
+  ' Refusing outright is the other extreme and is worse for a keypad: the user has already
+  ' committed the value and would have to retype it to learn what is allowed. So the range
+  ' is enforced once, at the boundary, and the user is TOLD what will be stored instead and
+  ' gets to decline.
+  '
+  ' A setting with no declared range takes the pre-existing path untouched, raw text and
+  ' all — this is a capability entries opt into, not a change to every integer setting.
+  bounds = settingRangeBounds(selectedSetting)
+  if isValid(bounds)
+    typed = Int(Val(newValue))
+    inRange = clampToSettingRange(typed, bounds)
+
+    if inRange <> typed
+      ' Carried on `m` rather than re-read in the response handler: the handler runs after
+      ' a round trip through a dialog, and re-deriving the setting from the focused menu
+      ' index would save against whatever is focused THEN.
+      m.rangeConfirmSettingName = selectedSetting.settingName
+      m.rangeConfirmValue = inRange.ToStr()
+      m.rangeConfirmDialog = showConfirmDialog(translate(translationKeys.ErrorValueOutOfRange), translate(translationKeys.MessageValueOutsideSupportedRange, [typed.ToStr(), bounds.min.ToStr(), bounds.max.ToStr(), m.rangeConfirmValue]), "onIntegerRangeDialogResponse", translate(translationKeys.ButtonSave), translate(translationKeys.ButtonCancel))
+      return
+    end if
+
+    ' In range, so store the NORMALIZED number rather than the raw text: the keypad happily
+    ' produces "016", which round-trips through Val() to the right value but shows the user
+    ' their leading zeros forever. Scoped to entries that declare a range so no existing
+    ' setting changes shape.
+    user.settings.Save(selectedSetting.settingName, typed.ToStr())
+    m.integerSetting.text = typed.ToStr()
+    m.settingsMenu.setFocus(true)
+    return
+  end if
+
   ' Update node field - observer handles registry persistence
   user.settings.Save(selectedSetting.settingName, newValue)
 
+  m.settingsMenu.setFocus(true)
+end sub
+
+' Handle the user's answer to "that value is out of range — save the clamped one instead?"
+sub onIntegerRangeDialogResponse()
+  ' The dialog and the two values it was raised over are ONE carried decision, so they are
+  ' read into locals and cleared together, before any early return. Clearing only the dialog
+  ' would leave `m` describing a confirmation that is no longer pending — a stale setting
+  ' name outliving its dialog is exactly the mismatch this handler carries them to avoid.
+  dialog = m.rangeConfirmDialog
+  settingName = m.rangeConfirmSettingName
+  clampedValue = m.rangeConfirmValue
+  m.rangeConfirmDialog = invalid
+  m.rangeConfirmSettingName = invalid
+  m.rangeConfirmValue = invalid
+  if not isValid(dialog) or not isValid(dialog.result) then return
+
+  ' Declined, or dismissed. Focus goes back to the KEYPAD, not the menu: the user was told
+  ' the value they typed is not storable, so the useful next action is typing another one.
+  if not dialog.result.confirmed
+    m.integerSetting.setFocus(true)
+    return
+  end if
+
+  user.settings.Save(settingName, clampedValue)
+  ' Show what was actually stored. Leaving the typed value on screen after saving a
+  ' different one is the same invisible divergence the save-time check exists to remove.
+  m.integerSetting.text = clampedValue
   m.settingsMenu.setFocus(true)
 end sub
 
@@ -886,8 +953,13 @@ sub onDestroy()
   ' otherwise outlive this view (see abandonDialog in source/utils/dialogs.bs)
   abandonDialog(m.resetConfirmDialog)
   abandonDialog(m.exitConfirmDialog)
+  abandonDialog(m.rangeConfirmDialog)
   m.resetConfirmDialog = invalid
   m.exitConfirmDialog = invalid
+  m.rangeConfirmDialog = invalid
+  ' Cleared with their dialog, not just alongside it — see onIntegerRangeDialogResponse.
+  m.rangeConfirmSettingName = invalid
+  m.rangeConfirmValue = invalid
 
   ' Clear node references
   m.settingsMenu = invalid

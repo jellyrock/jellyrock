@@ -486,6 +486,8 @@ export const MEASUREMENTS = Object.freeze([
       'loadsSucceeded',
       'reloads',
       'unloads',
+      'unloadsRange',
+      'unloadsWindow',
       'wipesBind',
       'wipesReload',
       'appearances',
@@ -536,8 +538,17 @@ export const MEASUREMENTS = Object.freeze([
         // should report as zero. Before this counter, "successful loads" could only be
         // inferred as `loadsStarted - loadsFailed`, which silently counts a request that
         // never came back as a success.
+        //
+        // `unloadsRange` / `unloadsWindow` are optional for the same reason and partition
+        // `unloads` exactly — the two are the only eviction call sites, so their sum is the
+        // total by construction and a sample where it is not has lost a line. They are
+        // carried because the total cannot answer the question a per-row-limit campaign
+        // asks: `range` (the cell left the managed vertical range) dominates every sweep
+        // and moves with how far it scrolled, while `window` is the ONLY signal that the
+        // horizontal item window inside a long row ran at all. See the UNLOAD_* constants
+        // in `source/utils/cellLoad.bs`.
         pattern:
-          /cell-load work - component (?<component>\S+) loadsStarted (?<loadsStarted>\d+) loadsFailed (?<loadsFailed>\d+)(?: loadsSucceeded (?<loadsSucceeded>\d+))? reloads (?<reloads>\d+) unloads (?<unloads>\d+) wipesBind (?<wipesBind>\d+) wipesReload (?<wipesReload>\d+)(?: instrumentUs (?<instrumentUs>\d+))?/,
+          /cell-load work - component (?<component>\S+) loadsStarted (?<loadsStarted>\d+) loadsFailed (?<loadsFailed>\d+)(?: loadsSucceeded (?<loadsSucceeded>\d+))? reloads (?<reloads>\d+) unloads (?<unloads>\d+)(?: unloadsRange (?<unloadsRange>\d+) unloadsWindow (?<unloadsWindow>\d+))? wipesBind (?<wipesBind>\d+) wipesReload (?<wipesReload>\d+)(?: instrumentUs (?<instrumentUs>\d+))?/,
       }),
       Object.freeze({
         // The RACE, where `binds` and `work` are the WORK. The buffer exists to load a
