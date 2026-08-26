@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-08-25
+last-updated: 2026-08-26
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-26 — ci(rta): Stamp the phase of Home's immediate row removal
 - 2026-08-25 — fix: apply the user's Maximum Bitrate limit instead of discarding it
 - 2026-08-25 — ci(rta): Attribute Home's mid-run row-size recompute to its call site
 - 2026-08-25 — Collapse the dialog family onto one `computeDialogLayout` shape
@@ -71,9 +72,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-08-13 — ci(rta): Measure on-device performance with its own provenance (`npm run measure`)
 - 2026-08-12 — ci(rta): Stop laundering failed fixture requests into fixture facts
 - 2026-08-12 — fix(rta): record what became of a run, and read the baseline
-- 2026-08-11 — fix(rta): compare re-minted credentials by presence so the restore converges
-- 2026-08-11 — **The registry restore can converge again**, closing the "`restoreRegistry` cannot converge when the app re-mints `authToken`" followup. `compareRegistries` now compares session credentials the app mints for ITSELF (`authToken`, `primaryImageTag`) on **presence** rather than value, because `resolveUser()` re-authenticates on the restore's own verify cold boot and persists a new token — so the byte-compare could never match, all 3 attempts failed, and the kept snapshot then wedged every subsequent device run with a documented recovery that re-ran the same loop. Both directions still fail: a session DESTROYED (snapshot had one, device has none) and a credential LEFT BEHIND (device has one the snapshot never did). The restore still writes the user's own value back — an interim cut skipped the write when the device already had a credential, and the hardware reproduction refuted it by leaving a deliberately-invalid planted token in place and calling that converged. Also adds `npm run rta:restore -- --accept`, so a residual that will never converge can be recorded and cleared instead of blocking every later run — the previous only way out was `rm` on the device's sole backup. Verified on `.177`: plant an invalid token, cold boot (app logs `Auth token is no longer valid - attempting no-password login` / `login success!` and mints its own), restore converges, no stranded snapshot.
-- 2026-08-11 — fix(rta): report device state on timeout; keep records across builds
 
 ## Open followups
 
