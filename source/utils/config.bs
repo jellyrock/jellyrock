@@ -206,18 +206,23 @@ end function
 ' component, alongside findConfigTreeKey which reads the same tree.
 function settingRangeBounds(entry as object) as object
   if not isValid(entry) then return invalid
-  if not isNumericSettingBound(entry.min) or not isNumericSettingBound(entry.max) then return invalid
+  if not isIntSafe(entry.min) or not isIntSafe(entry.max) then return invalid
   return { min: Int(entry.min), max: Int(entry.max) }
 end function
 
-' Is a declared bound safe to hand to `Int()`?
+' Is this value safe to hand to `Int()`?
 '
-' Checked by TYPE rather than coerced. Accepting "1" would legitimize two spellings of one
-' field and leave the JSON free to drift between them; the schema test forces the right one
-' at PR time, so the runtime only has to refuse the wrong one without faulting. An absent
-' bound reports its type as invalid and lands here too, which is why there is no separate
-' isValid() check above.
-function isNumericSettingBound(value as dynamic) as boolean
+' `Int()` faults with a Type Mismatch on anything that is not a number — measured on a Stick
+' 4K — and BrighterScript cannot catch it, because every caller here holds the value as
+' `dynamic`. So the check is by TYPE rather than by coercion: accepting "1" would legitimize
+' two spellings of one field and let the JSON drift between them, and the schema test forces
+' the right one at PR time. An absent value reports its type as invalid and lands here too,
+' which is why callers need no separate isValid() check.
+'
+' Named for the question rather than for either caller: it guards `settingRangeBounds`
+' (authored JSON) and `resolveHomeRowLimit` (a node field), which share nothing except that
+' both would fault on the same input.
+function isIntSafe(value as dynamic) as boolean
   valueType = type(value)
   return valueType = "roInt" or valueType = "roInteger" or valueType = "Integer" or valueType = "roFloat" or valueType = "Float" or valueType = "roDouble" or valueType = "Double" or valueType = "roLongInteger" or valueType = "LongInteger"
 end function
@@ -263,7 +268,14 @@ const HOME_ROW_LIMIT_DEFAULT = 32
 ' @param settingValue - the raw uiHomeRowLimit field, possibly unset
 ' @return the item limit to send, never below 1
 function resolveHomeRowLimit(settingValue as dynamic) as integer
-  if not isValid(settingValue) then return HOME_ROW_LIMIT_DEFAULT
+  ' `isIntSafe` rather than `isValid`, for the reason its own docblock gives: `Int()` faults
+  ' on a non-number, and this parameter is `dynamic`. Every caller today reads a field
+  ' declared `integer` in JellyfinUserSettings.xml, so no live path can reach that fault —
+  ' this is the same guard `settingRangeBounds` carries, held to the same standard, so the
+  ' two cannot drift into disagreeing about what is safe to hand to `Int()`. A Task thread is
+  ' where all three call sites run, and a fault there is the failure class this project
+  ' exists to remove.
+  if not isIntSafe(settingValue) then return HOME_ROW_LIMIT_DEFAULT
   limit = Int(settingValue)
   if limit < 1 then return HOME_ROW_LIMIT_DEFAULT
   return limit

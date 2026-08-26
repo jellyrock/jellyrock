@@ -10,7 +10,7 @@ related-files:
   - scripts/harden-prod-manifest.js
   - scripts/measurements.js
   - manifest
-last-reviewed: 2026-08-25
+last-reviewed: 2026-08-26
 ---
 
 # Measuring orchestrator wait-vs-emit on device
@@ -703,6 +703,69 @@ result it cannot distinguish, so a small delta is read against what the method c
 **Moved to [`measuring-performance.md`](measuring-performance.md#comparing-two-arms)** —
 alternating the arms, what `npm run measure:compare` refuses, and why. The floor above is
 what that tool prints beside a delta it cannot distinguish.
+
+## How high the per-row limit can go (2026-08-26)
+
+`uiHomeRowLimit` sizes Home's browse feeds. This is the sweep that says where its ceiling
+actually is, taken on `.177` (Stick 4K, 1 GB) against a 13-library server, `home-latest-rows`
+with `--nav cellSweepHome` so each launch reports its per-row width vector alongside the
+split. n=3 per arm, medians, one build throughout — the limit was driven from the registry,
+not from a rebuild, so no arm differs in anything else. **Probed past the setting's declared
+max of 200 deliberately: a ceiling nobody has crossed has not been measured.**
+
+| limit | items | `totalMs` | `waitMs` | `emitMs` | `attachMs` | `xformMs` | `notifyMs` |
+|---|---|---|---|---|---|---|---|
+| 32 | 177 | 1686 | 458 | 782 | **248** | 276 | 434 |
+| 100 | 313 | 1719 | 431 | 842 | **280** | 355 | 436 |
+| 200 | 513 | 2351 | 427 | 1039 | **273** | 467 | 441 |
+| 400 | 908 | 3315 | 1724 | 1451 | **288** | 941 | 440 |
+| 800 | 1308 | 4637 | 2711 | 1676 | **271** | 1139 | 427 |
+
+🚨 **`attachMs` is FLAT across a 7.4× change in item count** — 248 / 280 / 273 / 288 / 271.
+Render-side cost does not scale with items at all, because only `TEXTURE_BUFFER_THRESHOLD`
+(20) textures per row are ever resident and `RowList` virtualizes attach. This is the
+measurement behind "raising the limit is close to free", and it now spans 7.4× where the
+2026-08-21 sweep spanned 3.2×. `notifyMs` is flat for a different reason: it is a per-ROW
+rendezvous over 10 rows, not a per-item cost.
+
+🚨 **The ~1.6 ms/item figure this repo has carried since 2026-08-21 is 2× too pessimistic.**
+Marginal `xform` here is **0.76 ms/item** — (1139 − 276) / (1308 − 177). The older number was
+fitted over a narrower range with `emit`'s fixed overhead folded in, which is also why
+`emit/item` *appears* to fall from 4.42 ms at 177 items to 1.28 ms at 1308: that is a fixed
+cost being amortized, not a per-item cost that shrinks.
+
+**Nothing degraded anywhere in this range.** 10 of 10 rows delivered on every launch of every
+arm; no stalls, no `outlived its budget`, no `NEVER SETTLED`, no dropped rows. At the top of
+the sweep `totalMs` 4637 sits against `PIPELINE_RUN_MS` 20000 — **4.3× headroom**.
+
+### The ceiling is TOTAL ITEMS, and the failure mode is silent
+
+`apiPipeline` yields every undelivered entry with `res = invalid` when `PIPELINE_RUN_MS`
+(20 s) expires, and `HomeRows` leaves a failed row standing rather than emptying it. So past
+the ceiling Home does not error — **rows are just missing**. Extrapolating `taskMs`
+(4534 ms at 1308 items, wait + emit) linearly puts that near **~5,000–6,000 total items**,
+which converts to a per-row limit only once you know how many libraries are deep enough to
+saturate it:
+
+| limit | saturated libraries to reach ~5,800 items |
+|---|---|
+| 32 | ~180 |
+| 100 | ~58 |
+| 200 | **~29** |
+| 400 | ~14 |
+
+So the shipped **default of 32 has a very large margin**, and the **declared max of 200 is the
+number whose safety is user-dependent** — a user with ~29 libraries deep enough to saturate it
+would sit near the budget. That is the argument for expressing any enforced ceiling in TOTAL
+items rather than per row.
+
+⚠️ **Two limits on the extrapolation, both of which cut against over-trusting it.** `waitMs`
+is the term that actually explodes (458 / 431 / 427 / **1724** / **2711**) and it is the
+server answering larger requests, not app work — so the ceiling is partly a property of the
+operator's Jellyfin box and network. And the fixture saturates: widths at limit 800 read
+`[13,2,5,395,14,18,4,18,800,6,3,30]`, so only **two** libraries follow the limit up past 200
+and everything above it rests on those two. The per-item constant generalizes across servers;
+a total does not.
 
 ## Why this costs production nothing
 

@@ -120,6 +120,18 @@ namespace tests
       m.assertEqual(resolveHomeRowLimit(invalid), HOME_ROW_LIMIT_DEFAULT)
     end function
 
+    @it("refuses a value Int() would fault on, the same guard the bounds carry")
+    function _()
+      ' Not reachable from any live call site — all three read a field declared `integer` in
+      ' JellyfinUserSettings.xml. It is here so this helper and `settingRangeBounds` cannot
+      ' drift into disagreeing about what is safe to hand to `Int()`: they share `isIntSafe`,
+      ' and all three call sites run on a Task thread, where a Type Mismatch is the failure
+      ' class this project exists to remove.
+      m.assertEqual(resolveHomeRowLimit("64"), HOME_ROW_LIMIT_DEFAULT)
+      m.assertEqual(resolveHomeRowLimit("not a number"), HOME_ROW_LIMIT_DEFAULT)
+      m.assertEqual(resolveHomeRowLimit([32]), HOME_ROW_LIMIT_DEFAULT)
+    end function
+
     @it("refuses 0, which is what an unpopulated integer field reads")
     function _()
       ' The case that makes this more than an isValid() check. A node integer field is 0
