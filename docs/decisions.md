@@ -1167,6 +1167,20 @@ The RTA suite tests Quick Connect end to end by approving its own code: `POST /Q
 
 **The constraint worth re-evaluating is the clamp's silence.** A body that gets clamped is told only through `overflows`, and a caller that ignores the flag gets a quietly shortened body rather than an error. That is the right default for the two callers that exist, both of which read it. A third caller that wants neither truncation nor scrolling would need a real answer rather than a third mode.
 
+## decision-id: home-feeds-are-sized-worklists-are-not
+
+**date**: 2026-08-26
+**status**: accepted
+**related-files**: `components/home/LoadItemsTask.bs`, `components/home/LoadLatestRowsTask.bs`, `source/utils/config.bs`, `settings/settings.json`
+
+`uiHomeRowLimit` sizes Home's browse FEEDS — Recently Added, On Now, Active Recordings — and deliberately does not reach Continue Watching or Next Up. The line is feed vs worklist. A feed is a SAMPLE of a larger set, so a limit picks how much of the sample to show and raising it hides nothing. A worklist is a set the user is trying to get THROUGH, where any cap hides something they have already started and no number is the right one to hide at. Next Up's `limit = 69` is therefore REMOVED rather than folded into the setting; Continue Watching has always sent none, and that silence is now an explicit comment on both rather than an omission a reader has to guess at.
+
+**What this closes off is the tidy answer.** The three feeds previously agreed on 16 only because three files said so in comments (*"16 to be consistent with Latest In"*, *"parity with `onNow`"*), and the obvious cleanup is to sweep every Home row onto the one setting so nothing is special-cased. That would be a regression in two directions at once: it would put a cap on Continue Watching where none has ever existed, and it would re-cap Next Up at whatever the user picked. The Favorites tab is out on a different ground — `itemsToLoad = "favorites"` is loaded by `FavoritesRows` and is not a Home row at all, so capping it would truncate the user's whole favorites list.
+
+**The rationale is not cost, and that matters for re-evaluation.** Measured 2026-08-26 on a Stick 4K against a 13-library server, `attachMs` is FLAT across a 7.4x change in item count (248 ms at 177 items, 271 ms at 1308) because only `TEXTURE_BUFFER_THRESHOLD` textures per row are ever resident and `RowList` virtualizes attach — so an uncapped worklist is not expensive to render, and the marginal cost is 0.76 ms/item of task-thread transform plus server wait. Uncapping Next Up was affordable; it is kept uncapped because capping a worklist is wrong, not because it is cheap. If the cost model ever inverts, that is a reason to revisit the NUMBER, not this rule.
+
+**The constraint worth re-evaluating is the unmeasured tail.** Nobody has measured what Next Up returns on a very large library now that it sends no limit — `disableFirstEpisode: false` may mean it approaches one episode per series rather than only series the user has started, and the cached spec fingerprint carries parameter names without defaults so it cannot answer it. Tracked as an open followup in `docs/progress.md` with the reading that would close it. If it comes back in the hundreds, the answer is a generous cap on a row nobody can scroll to the end of — which is a different decision from this one.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
