@@ -10,7 +10,7 @@ related-files:
   - scripts/harden-prod-manifest.js
   - scripts/measurements.js
   - manifest
-last-reviewed: 2026-08-24
+last-reviewed: 2026-08-25
 ---
 
 # Measuring orchestrator wait-vs-emit on device
@@ -407,12 +407,177 @@ n=7**, which is far too small to exclude a real effect of a few binds. The opera
 conclusion is unchanged and is the part that matters — **do not sell closing this as a bind
 fix** — but do not cite it as proof the recompute costs zero binds either.
 
-**The hypothesis that follows, unmeasured and recorded as such:** the removal SHIFTS every row
-below it up one slot, so a removal landing after cells have begun binding re-binds the rows
-that moved, while an early one has nothing to re-bind. That would explain both the correlation
-and the four exceptions — a removal landing after the run ENDS is outside what these counters
-cover, so it would shift rows without incrementing anything. Testing it needs a lifetime
-counter readable at the sweep gate (the `cellLoad*` fields are the pattern), not a bigger arm.
+**The hypothesis that follows:** the removal SHIFTS every row below it up one slot, so a
+removal landing after cells have begun binding re-binds the rows that moved, while an early one
+has nothing to re-bind. That would explain both the correlation and the four exceptions.
+Testing it needs the removal's PHASE, not a bigger arm — and **not** a lifetime removal
+counter, which the section below shows would read 1 on every launch and separate nothing. The
+`row removed` line is the instrument, and
+[what it read](#what-row-removed-read-on-177-2026-08-25-n40-two-arms) is below.
+
+##### `row removed` — WHERE the removal landed, which the run's own counters cannot see
+
+`size recompute by` counts only the removals landing INSIDE the run's window, because
+`sizeRemove` is zeroed when a run starts and read when it ends. That window is not where the
+interesting removals are, and a code read says why.
+
+**The removal is unconditional.** Every cold launch on this server drops the Active Recordings
+row exactly once, and no branch on the path can skip it:
+
+- `homeSection0-6` are **server-authoritative** — the Jellyfin server's `DisplayPreferences`,
+  fetched fresh on each sign-in and deliberately never cached in the registry
+  (`session.SaveUserHomeSections`). The section plan is identical launch to launch.
+- `createSkeletonRows()` builds the row unconditionally for a planned section, and
+  `startParallelLoads()` fires `LoadActiveRecordingsTask` unconditionally.
+- `LoadItemsTask` pushes only `data.Items`, so a server with no in-progress recordings
+  yields `[]`.
+- `populateRowFromData` finds the row, `removalIsDeferrable` refuses to defer a non-`latest_`
+  row, and it goes on the spot.
+
+So **`sizeRemove` is not measuring whether the removal happened** — it is measuring whether it
+happened to land inside the run, and a launch reading `sizeRemove 0` had the same removal
+somewhere outside it. A lifetime COUNT would therefore discriminate nothing; it is 1 on every
+launch. What separates the launches is *when*.
+
+A third line answers that, emitted at the instant of the removal rather than at run end:
+
+```text
+latest-rows row removed at activeRecordings#1 cells 0/41 run 0/0
+```
+
+| Column | What it covers |
+|---|---|
+| `at` | `<sectionId>#<ordinal>`; the ordinal is per `HomeRows` instance — see the split warning below |
+| `cells` | `cellLoadLoadsStarted`/`cellLoadBinds` on the content root at that instant, or `-1/-1` when the root carries no counters |
+| `run` | `latestRowsProcessedIndex`/`latestRowsExpectedCount` — `0/0` before the run starts, `k/N` inside it, `N/N` once it has completed |
+
+**`loadsStarted` is the discriminator and `binds` is the guard on it.** A skeleton placeholder
+binds the moment it is attached (`JRRowItem.onItemContentChanged`) but starts no image load,
+so `binds` is already in the tens before any real content exists while `loadsStarted` stays 0
+until a real poster URL is assigned. That makes `loadsStarted 0` mean "no real content had
+begun arriving" — which is also exactly what a probe reading a root with no counters on it
+would print, and `binds` beside it is what tells those two apart.
+
+**`-1/-1` is a guard against a shape that cannot occur in `HomeRows`, not a live reading — say
+so rather than "not yet observed".** `HomeRows.init()` creates `m.top.content` once and hands
+that same node to `initTextureManager` in the same `init()`, which calls `cellLoad.attach` under the
+same `perfTiming` gate as the probe; the node is never reassigned, and `findRowBySectionId` has
+already returned non-`invalid` before `logRowRemoved` runs. So the counters are attached
+whenever the probe can fire. The signed capture stays because it is nearly free and a `\d+`
+pattern would drop the WHOLE line if the guard ever did fire — and a dropped line reads as "no
+removal happened", which is the one wrong answer. Do not read it as a discriminator this
+component exercises; the ledger's 40/40 with no `-1` is what the code already predicts, not
+independent confirmation of anything.
+
+**It needs no join, and that is why it is a log line rather than a read at the sweep gate.**
+The at-gate `binds` / `loadsStarted` are console-only, so pairing them with a sample costs an
+explicit join that a silent misalignment can pass. This line lands in `measurements.jsonl` per
+sample like every other Home field, because `assembleSamples` opens a sample on the FIRST
+matching line whichever end it arrives at and flushes whatever is still open at the end of the
+window — so a removal before the run and a removal after it both file against the run they
+bracket.
+
+⚠️ **A second immediate removal in one launch SPLITS that launch across two samples.** A
+sample closes when a line it already holds repeats, so removal #2 opens a fresh one carrying
+nothing else. The ordinal is the defense: without it the record shows the expected number of
+complete samples and no sign that any launch dropped two rows. **Expect `#1` on every sample;
+a `#2` means the analysis has to account for a split.**
+
+###### What `row removed` read on `.177`, 2026-08-25 (n=40, two arms)
+
+Arms `remove-phase` and `remove-phase-b`, n=20 each, BATCAVE, both `VERIFIED CLEAN`. **Both
+arms were built from an uncommitted checkout, so both series stamp `dirty: true`** over base
+commit `739caef1` — the probe is the uncommitted change.
+
+**The code read is now measured, not inferred.** A `row removed` line on **40 of 40** samples,
+`at activeRecordings` on 40/40, ordinal `#1` on 40/40, no `-1/-1` reading, and
+`calls - remove - insert = 1` on 40/40. The removal really is unconditional.
+
+**`binds` at the removal read exactly 4 on all 32 early launches** — perfectly stable, and the
+postcondition that says the counters were attached and the probe was live.
+
+⚠️ **Its DECOMPOSITION is not established, and an earlier version of this section asserted one
+the row arithmetic contradicts.** At that instant only `createSkeletonRows`' rows exist, and on
+this fixture there are **three** of them, not four: the sweep reports **12 rows on screen**
+against **10 latest libraries requested**, so two non-latest rows survive and
+`activeRecordings` is the third. ⚠️ **Half that arithmetic is re-derivable and half is not** —
+`workload.rows` = 10 is in the ledger on 40/40; the 12 is `reportSweep` console output and falls
+under the retention caveat below. Three rows carrying one placeholder each predicts
+**3** binds. So at least one extra bind happens at skeleton time and its source is
+unidentified. A `FROM_SIZE` bind from the `rowStructureChanged()` that ends
+`createSkeletonRows()` would explain it and would be worth knowing — `bindsFromSize` is
+documented as expected-zero — but nothing here measured it, and `bindsFromSize` is only
+published at end of session, not at this instant. **Read the 4 as a stable postcondition, never
+as a validated prediction.**
+
+⚠️ **THE PROBE SEES IMMEDIATE REMOVALS ONLY, and that scope is not obvious from the line.** A
+`latest_` row whose library returned nothing is queued and dropped by `applyPendingRowRemovals`
+at run end, which calls `m.top.content.removeChildIndex()` directly rather than
+`removeRowAtIndex` — so it shifts every row below it and emits nothing. On this fixture that is
+not a variance source, and that was checked rather than assumed: `sizeDrains` is 10 on 40/40 and
+the sweep reports 12 rows against 10 latest libraries, so every latest row was delivered and
+none was removed. **On a fixture where a library does return empty, a batch of shifts at run end
+is invisible to this line.** ⚠️ Extending it there is NOT a matter of adding the same call: the
+batch drops N rows, and N lines would repeat the key `assembleSamples` closes a sample on,
+splitting one launch into N samples. It needs one line carrying a count, not one line per row.
+
+**The relationship is GRADED, not bimodal** — which is why a gap-finding classifier is the
+wrong reader for it:
+
+| `loadsStarted` at the removal | n | at-gate `binds` |
+|---|---|---|
+| 0 | 32 | 215–222 |
+| 4 | 2 | 222, 229 |
+| 18–31 | 6 | 231–255 |
+
+⚠️ **Only the LEFT column can be re-checked; the right one is gone.** `loadsStarted`-at-removal
+comes off the `row removed` line and is in `measurements.jsonl`, so every figure computed from
+it alone is re-derivable from the ledger for as long as that file survives. The at-gate values
+are `reportSweep`'s console output, and `measure.js` writes `console-window.log` only when
+NOTHING matched — both arms were `VERIFIED CLEAN`, so both console windows were discarded at
+the end of their runs. **So every figure below that is stated against at-gate `binds` or
+at-gate `loadsStarted` rests on data that no longer exists** — which is all of them, every
+Spearman value in this section included. They are recorded here because this prose IS the
+archive, not because anyone can re-run them. Two open followups in [`progress.md`](../progress.md) are exactly this defect —
+one to stop discarding the console on a healthy run, one to carry the at-gate counters into the
+ledger as a declared measurement line so no join (and no console) is needed at all.
+
+Spearman on `loadsStarted`-at-removal against at-gate `binds`: **+0.737** in the first arm
+(exploratory), **+0.637** in the second (pre-registered, p = 2.5e-3), **+0.685 pooled**
+(p = 1.1e-6). Against at-gate `loadsStarted` the pooled figure is **+0.740** (p = 4.7e-8).
+Within just the 8 launches whose removal was not earliest it is **+0.767**, so the ordering is
+real inside the tail and not only a zero-versus-nonzero step — though at n=8 that half is
+suggestive, not established.
+
+**A late removal is not merely a marker for a slow launch, and that was measured rather than
+assumed.** `loadsStarted`-at-removal has effectively no rank association with the orchestrator's
+own timings — `waitMs` **+0.031**, `taskMs` **-0.049** — and neither of those relates to at-gate
+binds either (**-0.114**, **-0.154**). `totalMs` reaches only +0.190 / +0.248, far under the
++0.685 of interest.
+
+**Where the cost turns on, mechanistically:** a removal at `loadsStarted` 4 does NOT reliably
+elevate anything (one such launch sat at 222, inside the low band). Elevation appears from ~18
+onward. That is the point at which the libraries have returned and the latest rows exist, so
+the shift moves REAL rows rather than four skeletons — which is what the hypothesis predicts.
+
+🚨 **The kickoff's specific sub-claim is UNSUPPORTED at n=40 and must not be repeated.** It held
+that the exceptional launches were removals landing *after the run ENDS*. **Zero removals landed
+after run end.** The only two phases observed across 40 launches are `0/0` (before the run
+started) and `0/10` (after it started, before any row was delivered). The graded association
+supports the shift MECHANISM; it says nothing about post-run removals, because none occurred.
+
+⚠️ **This is observational and cannot settle causation.** Ruling out the slow-launch confound is
+not the same as establishing that the removal CAUSES the extra binds — the same
+sufficient-but-not-necessary shape retired `bindsFromSize` and the recompute itself. The
+decisive test is an intervention: take the Active Recordings section out of the user's
+`DisplayPreferences` so no such row exists, and see whether the elevated launches disappear.
+
+⚠️ **An unexplained band shift, recorded rather than smoothed.** Both arms sat at an at-gate
+`loadsStarted` low band of **90–91** (29 of 40), against the **100–102** band published from the
+previous campaign. The earlier campaign's at-gate values were console-only and never reached
+the ledger, so there is nothing to compare against directly. Both arms carry the probe, so this
+does not separate "the probe's own emit perturbs the race" from "the app version differs"
+(2.26.0 here against 2.25.x then). Open.
 
 ⚠️ **The high mode is not a single level.** Two launches read at-gate `loadsStarted` 112
 (`binds` 238) and 122 (`binds` 255), above the 100–102 band. Both had `calls = 2`. Recorded,
@@ -693,7 +858,7 @@ generalizes, and it strengthens rather than weakens off this bench: genre count 
 number of serial fetches, so a library with 25 genres is worse, and a distant server is worse
 again. Re-measure before sizing anything.
 
-### Trap: `m.log` silently caps at 10 arguments
+### Trap: `m.log` FAULTS past nine call-site arguments — it does not cap, and it is not silent
 
 `Logger.info` is `function(message, value, value2 … value9)` — **ten parameters**, and the
 roku-log BSC plugin spends the first on the injected pkg path, leaving **nine** for the call

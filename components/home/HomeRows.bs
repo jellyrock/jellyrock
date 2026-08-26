@@ -131,6 +131,10 @@ sub init()
     ' console — `measure.js` keeps console lines only when nothing matched, so on a healthy
     ' run they are discarded.
     m.popSizeAt = ""
+    ' How many immediate row removals this HomeRows has made. Per INSTANCE, deliberately,
+    ' and not per run: the counters above are the ones scoped to a run, and this exists to
+    ' number the removals they cannot see. See logRowRemoved for what the number is for.
+    m.popRemoveSeq = 0
   #end if
 
   ' Track loading state for persistent tasks to prevent duplicate observers/requests
@@ -635,6 +639,51 @@ sub removeRowAtIndex(index as integer)
   rowStructureChanged(true)
 end sub
 
+' logRowRemoved: Publish an immediate row removal AT THE INSTANT IT HAPPENS.
+'
+' Its own line and its own moment, because `sizeRemove` cannot answer the question it was
+' built for: those counters are zeroed at run start and read at run end, so a removal
+' landing outside that window increments nothing anybody reports — and on this server the
+' removal is unconditional, which makes `sizeRemove` a race outcome rather than an
+' occurrence count. Why it is unconditional is a four-step chain through session.bs,
+' createSkeletonRow, startParallelLoads and removalIsDeferrable; it is written out once, in
+' `docs/dev/home-first-paint-performance.md` ("`row removed`"), rather than twice.
+'
+' What a change to this function has to preserve:
+'
+'   - The ORDINAL on `at`, and that it is per HomeRows INSTANCE. `assembleSamples` closes a
+'     sample when a line it already holds repeats, so a second immediate removal in one
+'     launch splits that launch across two samples. The ordinal is what makes the split
+'     visible in the record instead of a silent short read.
+'   - BOTH halves of `cells`, and that both are signed. `loadsStarted` is the discriminator
+'     and `binds` is the postcondition on it — `loadsStarted 0` is what a genuinely early
+'     removal prints AND what a probe reading a counter-less root would print, so dropping
+'     `binds` makes those one reading. The `-1` guard cannot fire in HomeRows today (init
+'     creates `m.top.content` and attaches the counters to that same node in the same init),
+'     but it is nearly free and the alternative to printing it is dropping the line, which
+'     reads as "no removal happened" — the one wrong answer.
+'   - The argument COUNT. roku-log faults at RUNTIME (&hf1, straight into the debugger) past
+'     nine call-site arguments once the BSC plugin has spent one on the injected pkg path.
+'     Three label/value pairs with two composed values sits a pair clear of that; nine is
+'     legal and this line would fit, but a probe whose overflow costs a whole device run is
+'     not worth writing at the ceiling.
+'
+' @param {string} sectionId - the sectionId of the row being removed
+sub logRowRemoved(sectionId as string)
+  #if perfTiming
+    m.popRemoveSeq++
+
+    loads = -1
+    binds = -1
+    if isValid(m.top.content) and m.top.content.hasField("cellLoadBinds")
+      loads = m.top.content.cellLoadLoadsStarted
+      binds = m.top.content.cellLoadBinds
+    end if
+
+    m.log.info("latest-rows row removed", "at", sectionId + "#" + m.popRemoveSeq.toStr(), "cells", loads.toStr() + "/" + binds.toStr(), "run", m.latestRowsProcessedIndex.toStr() + "/" + m.latestRowsExpectedCount.toStr())
+  #end if
+end sub
+
 ' getRowConfigForSection: Returns title and slotSize for a sectionId.
 ' Used when inserting a row that was previously removed (no skeleton exists).
 '
@@ -825,6 +874,7 @@ sub populateRowFromData(sectionId as string, itemData as dynamic)
           m.popSizeRemove++
           if m.popSizeAt <> "" then m.popSizeAt += ","
           m.popSizeAt += "remove:" + sectionId
+          logRowRemoved(sectionId)
         #end if
         removeRowAtIndex(result.index)
       end if

@@ -516,6 +516,8 @@
 (?:socio-economic)\.
 (?:solo-ish)\.
 (?:sortable)\.
+(?:Spearman)\.
+(?:Spearman's)\.
 (?:splashscreen)\.
 (?:SRT)\.
 (?:SSDP)\.

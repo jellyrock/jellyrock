@@ -183,7 +183,20 @@ export const MEASUREMENTS = Object.freeze([
     // `unitFor('sizeCalls', family)` answered `'ms'`, so `measure:report --field sizeCalls`
     // headlined a call count as milliseconds — the identical defect `counts` was added to
     // fix for `cell-load`, sitting undetected in a second family the whole time.
-    counts: Object.freeze(['sizeCalls', 'sizeDrains', 'sizeRemove', 'sizeInsert']),
+    counts: Object.freeze([
+      'sizeCalls',
+      'sizeDrains',
+      'sizeRemove',
+      'sizeInsert',
+      // `rowRemove*` are counts for the same reason `sizeRemove` is, and the two `/`-composed
+      // pairs are counts on BOTH sides — `unitFor` is keyed on the field, not on the line, so
+      // omitting one half would headline it as milliseconds while its twin read as a count.
+      'rowRemoveSeq',
+      'rowRemoveLoads',
+      'rowRemoveBinds',
+      'rowRemoveProcessed',
+      'rowRemoveExpected',
+    ]),
     lines: Object.freeze([
       Object.freeze({
         key: 'total',
@@ -255,6 +268,46 @@ export const MEASUREMENTS = Object.freeze([
         required: false,
         pattern:
           /latest-rows size recompute by\s+remove\s+(?<sizeRemove>\d+)\s+insert\s+(?<sizeInsert>\d+)\s+at\s+(?<sizeAt>\S+)/,
+      }),
+      Object.freeze({
+        // ONE immediate row removal, stamped at the instant it happened rather than
+        // summarised at run end — which is the whole point of it, and why it is a line of
+        // its own instead of more columns on `size recompute by`.
+        //
+        // `sizeRemove` above counts only removals landing INSIDE the run's window, because
+        // its counters are zeroed at run start and read at run end. On this server the
+        // removal itself is unconditional (`logRowRemoved` in `HomeRows.bs` has the chain),
+        // so `sizeRemove` is a race outcome, not an occurrence count, and a launch reading
+        // `sizeRemove 0` had the SAME removal somewhere outside the window. This line is
+        // what says where.
+        //
+        // It can therefore arrive BEFORE the required lines or AFTER all of them, and
+        // `assembleSamples` handles both: a sample opens on the first matching line
+        // whichever it is, and whatever is still open at end of window is flushed. What it
+        // does NOT survive is the line REPEATING — that closes the sample — which is why the
+        // app numbers each removal, so a split launch is visible as an ordinal above 1
+        // rather than as a short read.
+        //
+        // OPTIONAL for the same reason as the two lines above: the baseline arm of any
+        // comparison is the build that does not carry this.
+        //
+        // GROUNDED on `.177` 2026-08-25 — 40 of 40 samples across two n=20 arms carried this
+        // line and every field parsed. Columns and what they read are documented in
+        // `docs/dev/home-first-paint-performance.md` ("`row removed`"), the same place
+        // `size recompute` above points at.
+        //
+        // `cells -1/-1` is the app's own "the content root carried no counters" reading, and
+        // both halves are signed so it survives the parse. That guard cannot fire in
+        // `HomeRows` today — init creates the content root and attaches the counters to that
+        // same node before returning — so treat the signed capture as insurance against a call
+        // site, NOT as a case this family exercises. It is still worth having: a `\d+` here
+        // would drop the WHOLE line rather than one field, and a dropped line reads as "no
+        // removal happened", which is the one wrong answer. Covered by unit test only, and
+        // that is expected rather than a coverage gap.
+        key: 'rowRemoved',
+        required: false,
+        pattern:
+          /latest-rows row removed\s+at\s+(?<rowRemoveAt>[^#\s]+)#(?<rowRemoveSeq>\d+)\s+cells\s+(?<rowRemoveLoads>-?\d+)\/(?<rowRemoveBinds>-?\d+)\s+run\s+(?<rowRemoveProcessed>\d+)\/(?<rowRemoveExpected>\d+)/,
       }),
     ]),
   }),
@@ -794,9 +847,14 @@ const NUMERIC_GROUP = /\(\?<(\w+)>(?:-\?)?\\d\+\)/g;
  * accept or reject a name with no ledger in hand.
  *
  * The two agree because the patterns say which is which: a quantity is captured with
- * `\d+` and a dimension with `\S+`. That is not a convention someone has to remember —
- * `measurements.test.js` asserts the partition is exhaustive, so a third capture shape
- * fails the suite rather than being bucketed by a guess.
+ * `\d+` (optionally signed), and ANY other shape is a dimension. That is deliberately a
+ * default-deny rather than an `\S+` allowlist — `home-latest-rows` already ships a third
+ * shape, `(?<rowRemoveAt>[^#\s]+)`, because that field is followed by a `#` the pattern has
+ * to stop at. It lands in `dimensions`, which is the SAFE side: a dimension is rejected as a
+ * headline, where a mis-filed quantity would be published as milliseconds. That is not a
+ * convention someone has to remember — `measurements.test.js` asserts the partition is
+ * exhaustive and disjoint, so a new capture shape is bucketed by the stated rule rather than
+ * by a guess, and the test names the choice so it stays one someone took.
  *
  * Why it is worth a helper rather than a filter at each call site: reporting a dimension
  * as though it were a timing is the well-formed-but-wrong shape this file keeps removing.
