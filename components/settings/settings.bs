@@ -164,8 +164,16 @@ end sub
 
 ' Handle the user's answer to "that value is out of range — save the clamped one instead?"
 sub onIntegerRangeDialogResponse()
+  ' The dialog and the two values it was raised over are ONE carried decision, so they are
+  ' read into locals and cleared together, before any early return. Clearing only the dialog
+  ' would leave `m` describing a confirmation that is no longer pending — a stale setting
+  ' name outliving its dialog is exactly the mismatch this handler carries them to avoid.
   dialog = m.rangeConfirmDialog
+  settingName = m.rangeConfirmSettingName
+  clampedValue = m.rangeConfirmValue
   m.rangeConfirmDialog = invalid
+  m.rangeConfirmSettingName = invalid
+  m.rangeConfirmValue = invalid
   if not isValid(dialog) or not isValid(dialog.result) then return
 
   ' Declined, or dismissed. Focus goes back to the KEYPAD, not the menu: the user was told
@@ -175,10 +183,10 @@ sub onIntegerRangeDialogResponse()
     return
   end if
 
-  user.settings.Save(m.rangeConfirmSettingName, m.rangeConfirmValue)
+  user.settings.Save(settingName, clampedValue)
   ' Show what was actually stored. Leaving the typed value on screen after saving a
   ' different one is the same invisible divergence the save-time check exists to remove.
-  m.integerSetting.text = m.rangeConfirmValue
+  m.integerSetting.text = clampedValue
   m.settingsMenu.setFocus(true)
 end sub
 
@@ -949,6 +957,9 @@ sub onDestroy()
   m.resetConfirmDialog = invalid
   m.exitConfirmDialog = invalid
   m.rangeConfirmDialog = invalid
+  ' Cleared with their dialog, not just alongside it — see onIntegerRangeDialogResponse.
+  m.rangeConfirmSettingName = invalid
+  m.rangeConfirmValue = invalid
 
   ' Clear node references
   m.settingsMenu = invalid

@@ -10,12 +10,6 @@ import "pkg:/source/utils/misc.bs"
 ' the component and the rules under test. Same move as source/remotecontrol/remoteCommand.bs.
 namespace latestRows
 
-  ' Mirrors the `uiHomeRecentlyAddedLimit` default in settings/settings.json, and is reached
-  ' only when that setting is missing or unusable. Pinned to the JSON by a unit test rather
-  ' than by this comment, because a comment cannot fail.
-  const DEFAULT_ITEM_LIMIT = 16
-
-
   ' Walks LoadLatestRowsTask's result children from `startIndex` and returns the ones the UI
   ' should populate, plus the new cursor. One wake can cover several results — wake events
   ' coalesce, appended children don't — so the caller always drains to the end.
@@ -97,26 +91,5 @@ namespace latestRows
     return elapsedMs > timeouts.PIPELINE_RUN_MS + timeouts.API_WAIT_MS
   end function
 
-
-  ' How many items each "Recently Added in ..." row asks the server for.
-  '
-  ' The number is the `uiHomeRecentlyAddedLimit` user setting; this is the guard for the
-  ' setting not being there. Not a second copy of the range enforced when the value is SAVED
-  ' — components/settings/settings.bs reads `min`/`max` straight off the settings.json entry,
-  ' so the range has one source of truth and it is not this function.
-  '
-  ' Zero is the case worth naming. It is what an integer node field reads before
-  ' SaveDefaults() has populated it, and it is a legal value to send: Jellyfin would answer a
-  ' `Limit=0` with an empty list, so every Recently Added row would silently come back empty
-  ' rather than fail. A fallback that only checked `isValid` would let that through.
-  '
-  ' @param settingValue - the raw uiHomeRecentlyAddedLimit field, possibly unset
-  ' @return the item limit to send, never below 1
-  function resolveItemLimit(settingValue as dynamic) as integer
-    if not isValid(settingValue) then return DEFAULT_ITEM_LIMIT
-    limit = Int(settingValue)
-    if limit < 1 then return DEFAULT_ITEM_LIMIT
-    return limit
-  end function
 
 end namespace

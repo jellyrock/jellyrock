@@ -72,7 +72,7 @@
     <field id="uiRowLayout" type="string" alwaysNotify="true" />
     <field id="uiShowBackdrop" type="string" alwaysNotify="true" />
     <field id="uiHomeSplashBackground" type="boolean" alwaysNotify="true" />
-    <field id="uiHomeRecentlyAddedLimit" type="integer" alwaysNotify="true" />
+    <field id="uiHomeRowLimit" type="integer" alwaysNotify="true" />
     <field id="uiHomeUseWebArrangement" type="boolean" alwaysNotify="true" />
     <field id="uiDetailsHideTagline" type="boolean" alwaysNotify="true" />
     <field id="uiMoviesShowRatings" type="boolean" alwaysNotify="true" />

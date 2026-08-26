@@ -495,8 +495,8 @@ Settings relating to how the application looks.
   - [Episode Images Next Up](#uiGeneralEpisodeImages)
   - [Fallback Fonts](#uiFontFallback)
   - [Hide Clock](#uiDesignHideClock)
+  - [Home Row Size](#uiHomeRowLimit)
   - [Max Days Next Up](#uiDetailsMaxDaysNextUp)
-  - [Recently Added Row Size](#uiHomeRecentlyAddedLimit)
   - [Rewatching Next Up](#uiDetailsEnableRewatchingNextUp)
   - [Row Layout](#uiRowLayout)
   - [Theme](#uiTheme)
@@ -592,6 +592,19 @@ Hide all clocks in JellyRock. JellyRock will need to be closed and reopened for 
 | Type | `bool` |
 | Default | `false` |
 
+<h4 id="uiHomeRowLimit">Home Row Size</h4>
+
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#uiHomeRowLimit">Home Row Size</a>
+
+How many items the Recently Added, On Now and Active Recordings rows on Home ask the server for. Continue Watching and Next Up are not affected — those always show your full list. Only items near what is on screen keep their artwork loaded, so larger values mostly cost a little extra time on each Home load rather than memory. Takes effect the next time Home loads.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `uiHomeRowLimit` |
+| Type | `integer` |
+| Default | `32` |
+| Range | `1` to `200` |
+
 <h4 id="uiDetailsMaxDaysNextUp">Max Days Next Up</h4>
 
 <a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#uiDetailsMaxDaysNextUp">Max Days Next Up</a>
@@ -603,19 +616,6 @@ Set the maximum amount of days a show should stay in the 'Next Up' list without 
 | Setting Name | `uiDetailsMaxDaysNextUp` |
 | Type | `integer` |
 | Default | `0` |
-
-<h4 id="uiHomeRecentlyAddedLimit">Recently Added Row Size</h4>
-
-<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#uiHomeRecentlyAddedLimit">Recently Added Row Size</a>
-
-How many items each 'Recently Added in...' row on Home asks the server for. Higher values fill the row further before it repeats, and cost a little more time on each Home load. Takes effect the next time Home loads.
-
-| Property | Value |
-| --- | --- |
-| Setting Name | `uiHomeRecentlyAddedLimit` |
-| Type | `integer` |
-| Default | `16` |
-| Range | `1` to `200` |
 
 <h4 id="uiDetailsEnableRewatchingNextUp">Rewatching Next Up</h4>
 

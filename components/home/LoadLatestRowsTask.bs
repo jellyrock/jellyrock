@@ -1,8 +1,8 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPipeline.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
-import "pkg:/source/home/latestRows.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
@@ -28,7 +28,12 @@ sub loadLatestRows()
   ' from a Task thread against ~2 us from the render thread. Per-library it would be one
   ' crossing per row for a value that cannot change mid-run. See the cost model in
   ' docs/architecture/async.md.
-  itemLimit = latestRows.resolveItemLimit(m.global.user.settings.uiHomeRecentlyAddedLimit)
+  '
+  ' This row is the one that multiplies: the limit is sent ONCE PER LIBRARY, where every other
+  ' row sharing the setting sends it once. So `uiHomeRowLimit` x libraries is the total this
+  ' screen pays, and it is why the ceiling in settings.json bounds the limit rather than the
+  ' total — see resolveHomeRowLimit.
+  itemLimit = resolveHomeRowLimit(m.global.user.settings.uiHomeRowLimit)
 
   ' Entry order is row order, so on-screen-first rows are submitted first.
   entries = []

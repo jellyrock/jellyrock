@@ -185,19 +185,88 @@ end function
 
 ' The range a settings.json entry declares, or invalid when it declares none.
 '
-' Both bounds are required together, and requiring BOTH is load-bearing rather than tidy.
-' Relaxing this to `and` — honor whichever bound is present — was mutation-tested and does
-' not merely degrade the message, it CRASHES: `Int(invalid)` is a Type Mismatch, raised the
-' moment a user opens a setting whose entry declares one bound. The weaker reason (the text
-' shown names both ends, so one bound alone would read "the supported range of 1 to invalid")
-' is true, and is not the one that matters.
+' Every rejection below exists because `Int()` on the alternative is a Type Mismatch that
+' takes down the Settings screen the moment the user OPENS that setting. Both shapes were
+' measured on a Stick 4K rather than reasoned about, and neither is exotic:
+'
+'   - ONE bound declared. Relaxing this to "honor whichever bound is present" makes the
+'     other one `Int(invalid)`. (The weaker reason — the dialog text names both ends, so one
+'     bound alone would read "the supported range of 1 to invalid" — is true, and is not the
+'     one that matters.)
+'   - A bound written as a STRING. `Int("1")` faults the same way, and it is the likelier
+'     typo of the two: `default` in the SAME entry is conventionally a string ("16"), so
+'     `"min": "1"` reads as consistent while being the one spelling that crashes.
+'
+' A malformed entry therefore degrades to "declares no range" — the setting still saves, it
+' is just unbounded — rather than taking the screen down. It does not pass silently either:
+' tests/scripts/unit/settings-schema.test.js fails the PR on every shape rejected here, so
+' this guard is the runtime floor and the schema test is the enforcement.
 '
 ' Lives here rather than in the settings screen so it can be unit-tested without the
 ' component, alongside findConfigTreeKey which reads the same tree.
 function settingRangeBounds(entry as object) as object
   if not isValid(entry) then return invalid
-  if not isValid(entry.min) or not isValid(entry.max) then return invalid
+  if not isNumericSettingBound(entry.min) or not isNumericSettingBound(entry.max) then return invalid
   return { min: Int(entry.min), max: Int(entry.max) }
+end function
+
+' Is a declared bound safe to hand to `Int()`?
+'
+' Checked by TYPE rather than coerced. Accepting "1" would legitimize two spellings of one
+' field and leave the JSON free to drift between them; the schema test forces the right one
+' at PR time, so the runtime only has to refuse the wrong one without faulting. An absent
+' bound reports its type as invalid and lands here too, which is why there is no separate
+' isValid() check above.
+function isNumericSettingBound(value as dynamic) as boolean
+  valueType = type(value)
+  return valueType = "roInt" or valueType = "roInteger" or valueType = "Integer" or valueType = "roFloat" or valueType = "Float" or valueType = "roDouble" or valueType = "Double" or valueType = "roLongInteger" or valueType = "LongInteger"
+end function
+
+' Mirrors the `uiHomeRowLimit` default in settings/settings.json, and is reached only when
+' that setting is missing or unusable. Pinned to the JSON by a unit test rather than by this
+' comment, because a comment cannot fail.
+const HOME_ROW_LIMIT_DEFAULT = 32
+
+' How many items a Home browse FEED asks the server for.
+'
+' ONE number for all three feeds — Recently Added, On Now, Active Recordings — because they
+' had no reason to differ. All three sent 16, and they were tied to each other only by comment
+' ("16 to be consistent with Latest In", "parity with onNow"). Sharing the setting makes that
+' parity a fact instead of a claim three files have to keep agreeing on by hand.
+'
+' The line this setting does NOT cross is feed vs worklist:
+'
+'   FEED     - a sample of a larger set (these three). A limit chooses how much of the sample
+'              to show, so it is a real user preference and nothing is hidden by raising it.
+'   WORKLIST - a set the user is trying to get THROUGH. Continue Watching and Next Up send no
+'              limit at all, deliberately: any cap hides something already started, and no
+'              number is the right one to hide at. Next Up sent an arbitrary 69 until this
+'              change removed it; Continue Watching has always sent none.
+'
+' The Favorites TAB (`itemsToLoad = "favorites"`, loaded by FavoritesRows) is not a Home row
+' at all, so it is out of scope on identity rather than on this rule.
+'
+' The number is the `uiHomeRowLimit` user setting; this is the guard for the setting not
+' being there. NOT a second copy of the range enforced when the value is SAVED —
+' components/settings/settings.bs reads `min`/`max` straight off the settings.json entry, so
+' the range has one source of truth and it is not this function.
+'
+' Zero is the case worth naming. It is what an integer node field reads before SaveDefaults()
+' has populated it, and it is a legal value to send: Jellyfin would answer a `Limit=0` with an
+' empty list, so every affected row would silently come back EMPTY rather than fail. A
+' fallback that only checked `isValid` would let that through.
+'
+' Pure — the caller passes the field rather than this reading `m.global` — so it is unit
+' testable without a global, and so a Task thread pays one rendezvous at its own call site
+' instead of one hidden in here.
+'
+' @param settingValue - the raw uiHomeRowLimit field, possibly unset
+' @return the item limit to send, never below 1
+function resolveHomeRowLimit(settingValue as dynamic) as integer
+  if not isValid(settingValue) then return HOME_ROW_LIMIT_DEFAULT
+  limit = Int(settingValue)
+  if limit < 1 then return HOME_ROW_LIMIT_DEFAULT
+  return limit
 end function
 
 ' Bring a typed integer inside a declared range.

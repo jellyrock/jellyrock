@@ -701,6 +701,17 @@
             "descriptionKey": "MessageHideAllClocksInJellyrockJellyrock"
           },
           {
+            "title": "Home Row Size",
+            "description": "How many items the Recently Added, On Now and Active Recordings rows on Home ask the server for. Continue Watching and Next Up are not affected \u2014 those always show your full list. Only items near what is on screen keep their artwork loaded, so larger values mostly cost a little extra time on each Home load rather than memory. Takes effect the next time Home loads.",
+            "settingName": "uiHomeRowLimit",
+            "type": "integer",
+            "default": "32",
+            "min": 1,
+            "max": 200,
+            "titleKey": "SettingHomeRowSize",
+            "descriptionKey": "SettingDescHomeRowSize"
+          },
+          {
             "title": "Max Days Next Up",
             "description": "Set the maximum amount of days a show should stay in the 'Next Up' list without watching it.",
             "settingName": "uiDetailsMaxDaysNextUp",
@@ -708,17 +719,6 @@
             "default": "0",
             "titleKey": "LabelMaxDaysNextUp",
             "descriptionKey": "MessageSetTheMaximumAmountOfDays"
-          },
-          {
-            "title": "Recently Added Row Size",
-            "description": "How many items each 'Recently Added in...' row on Home asks the server for. Higher values fill the row further before it repeats, and cost a little more time on each Home load. Takes effect the next time Home loads.",
-            "settingName": "uiHomeRecentlyAddedLimit",
-            "type": "integer",
-            "default": "16",
-            "min": 1,
-            "max": 200,
-            "titleKey": "SettingRecentlyAddedRowSize",
-            "descriptionKey": "SettingDescRecentlyAddedRowSize"
           },
           {
             "title": "Rewatching Next Up",

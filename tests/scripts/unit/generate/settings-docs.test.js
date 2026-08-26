@@ -62,8 +62,8 @@ describe('settings-docs', () => {
         title: 'User Interface',
         children: [
           {
-            title: 'Recently Added Row Size',
-            settingName: 'uiHomeRecentlyAddedLimit',
+            title: 'Home Row Size',
+            settingName: 'uiHomeRowLimit',
             type: 'integer',
             default: '16',
             min: 1,

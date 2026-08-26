@@ -92,10 +92,26 @@ The alternative — let any number be stored and guard where it is read — is w
 using. Enforcing once at the boundary keeps the stored value and the applied value the same
 thing, and tells the user when they differ instead of silently diverging.
 
-**Both bounds or neither.** `settingRangeBounds` returns `invalid` unless both are present.
-This is not tidiness: honoring whichever bound exists makes `Int(invalid)` a Type Mismatch
-that crashes the screen when the setting is opened — mutation-tested, and the reason the
-guard is an `or` and not an `and`.
+**Both bounds, and both as numbers.** `settingRangeBounds` returns `invalid` for anything
+else. This is not tidiness — it is the only thing standing between a JSON typo and a crashed
+Settings screen, because `Int()` faults on both alternatives and the fault fires when the
+user *opens* the setting. Two ways in, both measured on device:
+
+| malformed entry | what `Int()` gets | measured |
+|---|---|---|
+| `"min": 1` with no `max` | `Int(invalid)` | Type Mismatch |
+| `"min": "1", "max": "200"` | `Int("1")` | Type Mismatch |
+
+The second is the likelier typo, because `default` in the same entry **is** a string by
+convention (`"16"`) — so `"min": "1"` reads as consistent with its neighbor. BrighterScript
+cannot catch it: `settingRangeBounds` takes the entry `as object`, so the bounds are `dynamic`.
+
+A malformed entry therefore degrades to *declares no range* — the setting still saves, it is
+just unbounded — rather than taking the screen down. That is a floor, not enforcement: it
+makes the bad entry silent. [`tests/scripts/unit/settings-schema.test.js`](../../tests/scripts/unit/settings-schema.test.js)
+is what makes it loud, failing the PR on a half-declared range, a string bound, `min > max`,
+a default outside its own range, or a range declared on a non-`integer` entry. It runs in
+`npm run test:scripts`, so it gates every push without needing hardware.
 
 An entry declaring no range takes the pre-existing path untouched, raw text and all. This is
 a capability entries opt into; it did not change any setting that existed before it.
