@@ -40,9 +40,9 @@ namespace tests
           Path: "/media/movies/Dune (2021)/Dune.2021.2160p.mkv",
           TranscodingUrl: "/videos/x/master.m3u8?VideoCodec=h264&AudioCodec=aac&AudioBitrate=192000&AudioSampleRate=48000&SubtitleMethod=Encode&h264-rangetype=SDR&h264-videobitdepth=8&TranscodeReasons=VideoRangeTypeNotSupported",
           MediaStreams: [
-            { Type: "Video", Index: 0, Codec: "hevc", Width: 3840, Height: 2160, BitRate: 25400000, BitDepth: 10, VideoRange: "HDR", VideoRangeType: "DOVIWithHDR10", DvProfile: 8, DvBlSignalCompatibilityId: 1, Profile: "Main 10", Level: 51, PixelFormat: "yuv420p10le", AverageFrameRate: 23.976 },
+            { Type: "Video", Index: 0, Codec: "hevc", CodecTag: "hvc1", RefFrames: 4, Width: 3840, Height: 2160, BitRate: 25400000, BitDepth: 10, VideoRange: "HDR", VideoRangeType: "DOVIWithHDR10", DvProfile: 8, DvBlSignalCompatibilityId: 1, Profile: "Main 10", Level: 51, PixelFormat: "yuv420p10le", AverageFrameRate: 23.976 },
             { Type: "Audio", Index: 1, Codec: "aac", Channels: 2, Language: "eng" },
-            { Type: "Audio", Index: 2, Codec: "eac3", Channels: 6, ChannelLayout: "5.1", BitRate: 768000, SampleRate: 48000, Language: "eng" },
+            { Type: "Audio", Index: 2, Codec: "eac3", Channels: 6, ChannelLayout: "5.1", BitRate: 768000, SampleRate: 48000, Profile: "LC", Language: "eng" },
             { Type: "Subtitle", Index: 3, Codec: "subrip", Language: "eng" }
           ]
         },
@@ -275,6 +275,42 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("every reason the server can give has a row that shows it")
+
+    ' AudioProfileNotSupported was the one reason in Jellyfin's 27-value
+    ' vocabulary naming a property this report did not render — found on device
+    ' by a user watching an AAC -> MP3 transcode with no audio profile in sight.
+    @it("shows the audio profile, which AudioProfileNotSupported is about")
+    function _()
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "audio.profile"), "LC")
+    end function
+
+    ' hvc1 vs hev1 is the same HEVC bitstream in two container flavours, one of
+    ' which a device can refuse. The pre-rebuild report showed this and the
+    ' rebuild dropped it.
+    @it("shows the codec tag, which VideoCodecTagNotSupported is about")
+    function _()
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.codectag"), "hvc1")
+    end function
+
+    @it("shows reference frames, which RefFramesNotSupported is about")
+    function _()
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.refframes"), "4")
+    end function
+
+    @it("omits all three when the server did not send them")
+    function _()
+      m.input.mediaSource.MediaStreams[0].CodecTag = invalid
+      m.input.mediaSource.MediaStreams[0].RefFrames = 0
+      m.input.mediaSource.MediaStreams[2].Profile = invalid
+      report = buildPlaybackReport(m.input)
+
+      m.assertEqual(m.rowValue(report, "video.codectag"), "<missing>")
+      m.assertEqual(m.rowValue(report, "video.refframes"), "<missing>")
+      m.assertEqual(m.rowValue(report, "audio.profile"), "<missing>")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("the stream the user is actually hearing")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -469,6 +505,33 @@ namespace tests
       for each row in m.sectionById(report, "file").rows
         m.assertNotEqual(row.id, "file.path", "an unknown viewer was shown the path")
       end for
+    end function
+
+    @it("omits size on a live stream, which has no file to have one")
+    function _()
+      ' A live channel still reports a Size — of its HLS playlist, not its
+      ' content. Measured against a real server: a channel's PlaybackInfo comes
+      ' back with IsInfiniteStream true, and the figure rendered as "27.5 KiB"
+      ' beside a film's "24.2 GiB".
+      m.input.mediaSource.IsInfiniteStream = true
+      report = buildPlaybackReport(m.input)
+
+      file = m.sectionById(report, "file")
+      m.assertNotInvalid(file, "the rest of the File section must survive the gate")
+      for each row in file.rows
+        m.assertNotEqual(row.id, "file.size", "reported a playlist's size as the stream's size")
+      end for
+    end function
+
+    @it("keeps size for anything that is not an infinite stream")
+    function _()
+      ' Absent must read as "not live" — an older server that never sends the flag
+      ' has to keep behaving as it does today.
+      m.input.mediaSource.IsInfiniteStream = invalid
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "file.size"), "24.2 GiB")
+
+      m.input.mediaSource.IsInfiniteStream = false
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "file.size"), "24.2 GiB")
     end function
 
     @it("formats a real movie's size, which overflows a 32-bit integer")

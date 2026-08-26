@@ -170,6 +170,13 @@ function videoSection(stream as dynamic, transcoding as dynamic, urlParams as ob
   if isValid(transcoding) and not isCopy then targetCodec = upperOrEmpty(transcoding.VideoCodec)
   reportRow(rows, "video.codec", translationKeys.LabelCodec, pairedValue(upperOrEmpty(stream.Codec), targetCodec))
 
+  ' The codec TAG, not a second codec. It is what distinguishes hvc1 from hev1 —
+  ' the same HEVC bitstream in two container flavours, one of which a device can
+  ' refuse — and it is the only thing VideoCodecTagNotSupported can point at.
+  ' (This row existed in the pre-rebuild report and was dropped with the markup
+  ' renderer; nothing replaced it.)
+  reportRow(rows, "video.codectag", translationKeys.LabelCodecTag, textOrEmpty(stream.CodecTag))
+
   ' Width/Height off the SESSION are the real output, not the &MaxWidth/&MaxHeight
   ' caps in the URL — a cap tells you what was allowed, not what came out.
   targetResolution = ""
@@ -189,6 +196,11 @@ function videoSection(stream as dynamic, transcoding as dynamic, urlParams as ob
 
   reportRow(rows, "video.framerate", translationKeys.LabelFramerate, framerateLabel(sourceFramerate(stream)))
   reportRow(rows, "video.profile", translationKeys.LabelProfile, profileAndLevel(stream))
+  ' Reference frames. Niche until it is the whole story: a high count is a
+  ' well-known way to exceed a hardware decoder's budget, and RefFramesNotSupported
+  ' has nothing else in this report to point at.
+  reportRow(rows, "video.refframes", translationKeys.LabelRefFrames, positiveCount(stream.RefFrames))
+
   reportRow(rows, "video.pixelformat", translationKeys.LabelPixelFormat, textOrEmpty(stream.PixelFormat))
 
   ' Flags only worth a row when they are true — both are transcode reasons, and
@@ -223,6 +235,14 @@ function audioSection(stream as dynamic, transcoding as dynamic, urlParams as ob
   reportRow(rows, "audio.samplerate", translationKeys.LabelSampleRate, pairedValue(sampleRateLabel(stream.SampleRate), targetSampleRate))
 
   reportRow(rows, "audio.bitdepth", translationKeys.LabelBitDepth, bitDepthLabel(stream.BitDepth))
+
+  ' The audio profile — "LC", "HE-AAC", "DTS-HD MA". The video side has had a
+  ' profile row since the rebuild and the audio side did not, which left
+  ' AudioProfileNotSupported as the one reason in Jellyfin's vocabulary that named
+  ' a property this report did not show. Plain text rather than profileAndLevel:
+  ' Level is a video concept, and an audio stream that carries one would render a
+  ' meaningless "@ L0.0".
+  reportRow(rows, "audio.profile", translationKeys.LabelProfile, textOrEmpty(stream.Profile))
   reportRow(rows, "audio.language", translationKeys.LabelLanguage, resolveLanguageName(textOrEmpty(stream.Language)))
 
   ' AudioSpatialFormat is 10.9+, and reports "None" for most tracks. Presence AND
@@ -320,7 +340,19 @@ function fileSection(source as object, transcoding as dynamic, input as object) 
   if isValid(transcoding) then targetContainer = upperOrEmpty(transcoding.Container)
   reportRow(rows, "file.container", translationKeys.LabelContainer, pairedValue(upperOrEmpty(source.Container), targetContainer))
 
-  reportRow(rows, "file.size", translationKeys.LabelSize, getReadableSize(source.Size))
+  ' NO SIZE ON A LIVE STREAM. A channel has no file to have a size, so whatever
+  ' the server puts here is a byte count of something else — on an HLS channel it
+  ' is the playlist, which rendered as "27.5 KiB" next to a film's "24.2 GiB" and
+  ' invited exactly the wrong reading.
+  '
+  ' Gated on the server SAYING SO rather than on inferring it from a missing
+  ' runtime, which is the same rule the target columns follow: IsInfiniteStream is
+  ' MediaSourceInfo's own declaration and has existed since well before the 10.7
+  ' floor. Absent reads as false, so an older or unusual server shows the row
+  ' exactly as it does today.
+  if not isBooleanTrue(source.IsInfiniteStream)
+    reportRow(rows, "file.size", translationKeys.LabelSize, getReadableSize(source.Size))
+  end if
   reportRow(rows, "file.bitrate", translationKeys.LabelTotalBitrate, getDisplayBitrate(source.Bitrate))
   if isBooleanTrue(input.isAdministrator)
     reportRow(rows, "file.path", translationKeys.LabelPath, textOrEmpty(source.Path))
@@ -497,6 +529,13 @@ function dimensionsLabel(width as dynamic, height as dynamic) as string
   h = mediaNumber(height)
   if w <= 0 or h <= 0 then return ""
   return w.toStr().trim() + "x" + h.toStr().trim()
+end function
+
+' A count worth printing, or "" — zero and absent are the same non-answer.
+function positiveCount(value as dynamic) as string
+  count = mediaNumber(value)
+  if count <= 0 then return ""
+  return count.toStr().trim()
 end function
 
 function bitDepthLabel(depth as dynamic) as string
