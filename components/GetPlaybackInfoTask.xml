@@ -2,7 +2,6 @@
 
 <component name="GetPlaybackInfoTask" extends="Task">
   <interface>
-    <field id="videoID" type="string" />
     <!-- alwaysNotify: the report refreshes on a timer while the dialog is open,
          and a poll that returns an unchanged session must still deliver, or the
          live rows (transcode speed, progress) would freeze as soon as the figures

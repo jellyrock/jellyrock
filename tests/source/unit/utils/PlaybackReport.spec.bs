@@ -1,4 +1,6 @@
 import "pkg:/source/utils/playbackReport.bs"
+' PLAYBACK_INFO_ARROW lives here; BrighterScript consts are file-scoped.
+import "pkg:/source/utils/playbackInfo.bs"
 
 namespace tests
 
@@ -94,9 +96,37 @@ namespace tests
       m.assertEqual(buildPlaybackReport(m.input).status, "Direct streaming")
     end function
 
-    @it("says direct playing when there is no transcode session at all")
+    ' This test used to assert "Direct playing" here, which PINNED the defect: a
+    ' session we never received is not a session that told us anything. The two
+    ' cases below are the ones that must not be conflated — an absent session and
+    ' a present session with no TranscodingInfo both leave `transcoding` invalid,
+    ' and only the second is a direct play.
+    @it("claims nothing about a session it never received")
     function _()
       m.input.session = invalid
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(report.status, "", "a dropped /Sessions request must not be reported as direct play")
+      m.assertInvalid(m.sectionById(report, "transcode"))
+      m.assertInvalid(m.sectionById(report, "reasons"))
+    end function
+
+    @it("still describes the FILE when the session is missing, source-only")
+    function _()
+      ' The static half comes from cached PlaybackInfo and is not in doubt, so the
+      ' report is still worth opening — every row just renders without a target,
+      ' which is the honest rendering of "nothing known about the output".
+      m.input.session = invalid
+      report = buildPlaybackReport(m.input)
+      video = m.sectionById(report, "video")
+      m.assertNotInvalid(video, "the file half must still render without a session")
+      for each row in video.rows
+        m.assertEqual(inStr(1, row.value, PLAYBACK_INFO_ARROW), 0, "row " + row.id + " claimed a target with no session to prove it")
+      end for
+    end function
+
+    @it("says direct playing when the session is present and reports no transcode")
+    function _()
+      m.input.session = {}
       m.assertEqual(buildPlaybackReport(m.input).status, "Direct playing")
     end function
 

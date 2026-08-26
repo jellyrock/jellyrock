@@ -50,24 +50,14 @@ end function
 ' both. Binary rather than decimal units is that client's choice, not ours; the
 ' value is the one a user can cross-check against their server.
 '
-' Takes the RAW value rather than an integer, because a byte count passes 32 bits
-' at ~2.1 GB and mediaNumber would overflow on any file worth reporting. The
-' arithmetic is done in floating point throughout for the same reason.
+' Coerced through decimalOrZero rather than mediaNumber, because a byte count
+' passes 32 bits at ~2.1 GB and mediaNumber would overflow on any file worth
+' reporting. The arithmetic stays in floating point for the same reason.
 '
 ' @param {dynamic} bytes - MediaSourceInfo.Size, as the server sent it
-' @returns {string} - e.g. "24.3 GiB", "812.0 MiB", "" when there is no figure
+' @returns {string} - e.g. "24.2 GiB", "812.0 MiB", "" when there is no figure
 function getReadableSize(bytes as dynamic) as string
-  if not isValid(bytes) then return ""
-
-  valueType = LCase(type(bytes))
-  if valueType = "string" or valueType = "rostring"
-    size! = Val(bytes)
-  else if valueType = "roassociativearray" or valueType = "roarray" or valueType = "boolean" or valueType = "roboolean"
-    return ""
-  else
-    size! = bytes
-  end if
-
+  size! = decimalOrZero(bytes)
   if size! <= 0 then return ""
   if size! < 1024 then return Str(Fix(size!)).trim() + " B"
 

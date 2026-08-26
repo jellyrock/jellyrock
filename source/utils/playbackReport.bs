@@ -34,7 +34,6 @@
 ' hardware and, since composition moved off the Task thread, rebuilt on every
 ' press cheaply enough to stay honest about a stream that changed underneath it.
 import "pkg:/source/translationKeys.bs"
-import "pkg:/source/utils/fallbackFont.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/playbackInfo.bs"
@@ -70,7 +69,7 @@ function buildPlaybackReport(input as object) as object
   videoIsCopy = not isValid(transcoding) or isBooleanTrue(transcoding.IsVideoDirect)
   audioIsCopy = not isValid(transcoding) or isBooleanTrue(transcoding.IsAudioDirect)
 
-  report.status = playbackStatusLabel(transcoding, videoIsCopy, audioIsCopy)
+  report.status = playbackStatusLabel(input.session, transcoding, videoIsCopy, audioIsCopy)
 
   reportAppend(report, reasonsSection(transcoding, videoStream, selectedAudio, mediaSource, input))
   reportAppend(report, videoSection(videoStream, transcoding, urlParams, videoIsCopy))
@@ -82,14 +81,29 @@ function buildPlaybackReport(input as object) as object
   return report
 end function
 
-' Direct play / direct stream / transcoding.
+' Direct play / direct stream / transcoding — or nothing, when we do not know.
+'
+' A SESSION WE NEVER GOT IS NOT A SESSION THAT SAYS DIRECT PLAY, and conflating
+' the two is the worst thing this report can do. `TranscodingInfo` is absent in
+' both cases: on a genuine direct play, and on a dropped /Sessions request or a
+' server that has not registered playback yet. Reading only `transcoding` made
+' every one of those say "Direct playing" — the report's most consequential claim,
+' asserted from an answer nobody gave. The distinction is the SESSION's presence,
+' so that is what this takes.
+'
+' Empty is deliberately silent rather than a "status unknown" line: the sections
+' below are all source-only in this state (no target evidence exists without a
+' session), so the report already reads as "here is the file, nothing claimed
+' about what the server is doing with it". The caller keeps polling and the line
+' fills itself in.
 '
 ' The three-way split is Jellyfin's own — its web client swaps its panel heading
 ' between "Transcoding Info", "Remuxing Info" and "Direct Streaming Info" on
 ' exactly this test. `IsVideoDirect` and `IsAudioDirect` are literally
 ' `IsCopyCodec(outputCodec)` in the server, so both being true means the container
 ' was rewrapped and not one frame re-encoded.
-function playbackStatusLabel(transcoding as dynamic, videoIsCopy as boolean, audioIsCopy as boolean) as string
+function playbackStatusLabel(session as dynamic, transcoding as dynamic, videoIsCopy as boolean, audioIsCopy as boolean) as string
+  if not isValid(session) then return ""
   if not isValid(transcoding) then return translate(translationKeys.LabelDirectPlaying)
   if videoIsCopy and audioIsCopy then return translate(translationKeys.LabelDirectStreaming)
   return translate(translationKeys.LabelTranscoding)
@@ -561,18 +575,4 @@ end function
 sub reportAppend(report as object, section as dynamic)
   if isValid(section) then report.sections.push(section)
 end sub
-
-' A number from a field that may be a float, an integer, a string, or absent —
-' float-preserving, unlike mediaNumber, because frame rates and completion
-' percentages are fractional and truncating them would destroy the figure.
-function decimalOrZero(value as dynamic) as float
-  if not isValid(value) then return 0.0
-
-  valueType = LCase(type(value))
-  if valueType = "string" or valueType = "rostring" then return Val(value)
-  if valueType = "roassociativearray" or valueType = "roarray" then return 0.0
-  if valueType = "boolean" or valueType = "roboolean" then return 0.0
-
-  return value
-end function
 

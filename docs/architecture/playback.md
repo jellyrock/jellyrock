@@ -10,6 +10,8 @@ related-files:
   - components/GetPlaybackInfoTask.bs
   - source/utils/trackPickerOptions.bs
   - source/utils/playbackInfo.bs
+  - source/utils/playbackReport.bs
+  - source/utils/transcodeCause.bs
   - components/video/TrickplayCarousel.bs
   - components/video/VideoNotification.bs
   - components/mediaPlayers/AudioPlayer.bs

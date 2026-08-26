@@ -101,9 +101,9 @@ end function
 '   - a server below apiVersion 2, where VideoRangeType does not exist
 '   - a non-mkv container, or an AV1 stream, both explicitly exempted there
 function causedByPreserveDovi(ctx as object, settings as object) as boolean
-  if not isTrue(settings.playbackPreserveDovi) then return false
-  if isTrue(ctx.doviPreservationBypassed) then return false
-  if not isTrue(ctx.deviceSupportsDovi) then return false
+  if not isBooleanTrue(settings.playbackPreserveDovi) then return false
+  if isBooleanTrue(ctx.doviPreservationBypassed) then return false
+  if not isBooleanTrue(ctx.deviceSupportsDovi) then return false
 
   apiVersion = mediaNumber(ctx.apiVersion)
   if apiVersion < 2 then return false
@@ -124,11 +124,11 @@ end function
 ' being anamorphic is the second half: the condition cannot bind on a stream it
 ' does not describe.
 function causedByForceTranscodeAnamorphic(ctx as object, settings as object) as boolean
-  if not isTrue(settings.playbackForceTranscodeAnamorphic) then return false
+  if not isBooleanTrue(settings.playbackForceTranscodeAnamorphic) then return false
 
   stream = ctx.videoStream
   if not isValid(stream) then return false
-  return isTrue(stream.IsAnamorphic)
+  return isBooleanTrue(stream.IsAnamorphic)
 end function
 
 ' Mirrors the 2-channel cap in getCodecProfiles() (deviceCapabilities.bs), which
@@ -143,7 +143,7 @@ end function
 function causedByMultichannelDecodeOff(ctx as object, settings as object) as boolean
   ' Absent means the default (true = let the Roku decode), which adds no cap.
   if not isValid(settings.playbackDecodeMultichannelAudio) then return false
-  if isTrue(settings.playbackDecodeMultichannelAudio) then return false
+  if isBooleanTrue(settings.playbackDecodeMultichannelAudio) then return false
 
   stream = ctx.audioStream
   if not isValid(stream) then return false
@@ -166,7 +166,7 @@ end function
 ' "the setting is on" into "the setting is why". A 5 Mbps stream under a 20 Mbps
 ' cap transcoded for some other reason entirely.
 function causedByBitrateLimit(ctx as object, settings as object) as boolean
-  if not isTrue(settings.playbackBitrateMaxLimited) then return false
+  if not isBooleanTrue(settings.playbackBitrateMaxLimited) then return false
 
   limitMbps = mediaNumber(settings.playbackBitrateLimit)
   if limitMbps <= 0 then return false
@@ -208,6 +208,14 @@ function causedByResolutionCap(ctx as object, settings as object) as boolean
 
   sourceHeight = mediaNumber(stream.Height)
   sourceWidth = mediaNumber(stream.Width)
+  ' HEIGHT ONLY, deliberately. getResolutionConditions emits a paired Height AND
+  ' Width condition, so an unusually wide source can violate the width cap while
+  ' sitting under the height one — and this returns false for it. That is a false
+  ' NEGATIVE (the report shows the bare server code), which is the direction this
+  ' whole module errs in. Mirroring the width half would mean copying that
+  ' function's heightToWidth table, and a stale copy of it would produce a false
+  ' POSITIVE: naming a setting that did not cause this. Silence is the cheaper
+  ' mistake.
   if sourceHeight <= cap then return false
 
   ' The h264 hardware ceiling would have forced this regardless of the setting.
@@ -220,13 +228,4 @@ function causedByResolutionCap(ctx as object, settings as object) as boolean
   if deviceMaxHeight > 0 and deviceMaxHeight <= cap then return false
 
   return true
-end function
-
-' True only for a real boolean true, the way settings and stream flags arrive.
-' A field the server omitted dereferences to Invalid, and `not Invalid` faults
-' &h18 — so the type is established before the comparison, matching the guard
-' shape already used in fallbackFont.bs.
-function isTrue(value as dynamic) as boolean
-  valueType = LCase(type(value))
-  return (valueType = "boolean" or valueType = "roboolean") and value = true
 end function

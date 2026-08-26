@@ -85,8 +85,6 @@ end function
 ' ViewCreator.CreateVideoPlayerView; the only behavioral change is appendChild to
 ' the host instead of SceneManager.pushScene.
 sub mountPlayer()
-  m.playbackData = {}
-
   m.view = CreateObject("roSGNode", "VideoPlayerView")
   ' Keep video player invisible during loading to prevent black background from covering backdrop
   m.view.visible = false
@@ -96,14 +94,7 @@ sub mountPlayer()
   m.view.observeField("selectAudioPressed", "onSelectAudioPressed")
   m.view.observeField("selectVideoSourcePressed", "onSelectVideoSourcePressed")
 
-  mediaSourceId = m.global.queueManager.callFunc("getCurrentItem").mediaSourceId
-
-  if not isValid(mediaSourceId) or mediaSourceId = ""
-    mediaSourceId = m.global.queueManager.callFunc("getCurrentItem").id
-  end if
-
   m.getPlaybackInfoTask = createObject("roSGNode", "GetPlaybackInfoTask")
-  m.getPlaybackInfoTask.videoID = mediaSourceId
   m.getPlaybackInfoTask.observeField("data", "onPlaybackInfoLoaded")
 
   ' Update backdrop for current queue item (handles first item, shuffle, library play, etc.)
@@ -351,7 +342,7 @@ sub onSubtitleTrackSelected()
   ' not load", and every branch below can end in nothing visibly happening.
   m.log.info("onSubtitleTrackSelected", "pickedIndex", selected.index, "isEncoded", selected.isEncoded, "wasIndex", m.view.selectedSubtitle)
 
-  ' Nothing changed — leave the stream (and the playbackData cache) alone.
+  ' Nothing changed — leave the stream alone.
   '
   ' Both-NONE is deliberately NOT treated as "no change": an EXTERNAL subtitle
   ' track leaves selectedSubtitle at NONE (only in-file tracks are tracked by
@@ -361,9 +352,6 @@ sub onSubtitleTrackSelected()
   if m.view.selectedSubtitle <> SubtitleSelection.NONE or selected.index <> SubtitleSelection.NONE
     if m.view.selectedSubtitle = selected.index then return
   end if
-
-  ' The playbackData is now outdated and must be refreshed
-  m.playbackData = invalid
 
   ' Find previously selected subtitle and identify if it was encoded
   for each item in m.view.fullSubtitleData
@@ -435,7 +423,18 @@ sub onPlaybackInfoLoaded()
   if not isValid(session) and isValid(m.playbackDialog) then return
 
   report = buildPlaybackReport(playbackReportInputs(session))
-  if report.sections.count() = 0 then return
+  if report.sections.count() = 0
+    ' Nothing at all to show — no session AND no cached PlaybackInfo to build the
+    ' static half from. Pressing a button and having literally nothing happen
+    ' reads as a broken button, so say so; that silence is what the old flow's
+    ' "Unable to get playback information" used to cover.
+    '
+    ' Only when the dialog is NOT already open. Behind an open one the same rule
+    ' as a failed refresh applies: keep showing the last good report rather than
+    ' throwing a toast over it, and let the next tick try again.
+    if not isValid(m.playbackDialog) then displayToast(translate(translationKeys.ErrorUnableToGetPlaybackInformation), "error")
+    return
+  end if
 
   ' Remembered AFTER the build, so the build compares against the previous poll
   ' rather than against itself.
@@ -455,15 +454,17 @@ sub onPlaybackInfoLoaded()
     ' refresh exists to prevent.
     m.playbackDialog.tagline = report.status
     m.playbackDialog.sections = report.sections
-    ' A transcode can END while the report is open (a DoVi buffer-overflow
-    ' fallback does exactly that), and once it has there is nothing left to poll.
-    if not reportHasLiveRows(report) then stopPlaybackInfoRefresh()
+    ' The SAME predicate that started the timer decides when to stop it, so the
+    ' two can never drift apart. Two ways to arrive here: a transcode ENDED while
+    ' the report was open (a DoVi buffer-overflow fallback does exactly that), or
+    ' the session we were missing has arrived and turned out to be a direct play.
+    if not reportNeedsPolling(report, session) then stopPlaybackInfoRefresh()
     return
   end if
 
   m.playbackDialog = showReportDialog(translate(translationKeys.LabelPlaybackInfo), report.status, report.sections)
   m.playbackDialog.observeField("parentNode", "onPlaybackInfoDialogClosed")
-  if reportHasLiveRows(report) then startPlaybackInfoRefresh()
+  if reportNeedsPolling(report, session) then startPlaybackInfoRefresh()
 end sub
 
 ' Everything the pure report builder needs, gathered on the RENDER thread where
@@ -477,7 +478,21 @@ function playbackReportInputs(session as dynamic) as object
   ' decide whether to inject the DoVi container profile at all
   ' (canPlay4k() and the display reporting DolbyVision). Attribution is only
   ' honest if both sides ask the identical question.
-  capabilities = getDeviceVideoCapabilities()
+  '
+  ' READ ONCE PER MOUNT, not per call. This is not a field read: canPlay4k()
+  ' builds an roDeviceInfo AND an roHdmiStatus and then asks the hardware two
+  ' questions (IsHdcpActive, CanDecodeVideo), and getDeviceVideoCapabilities adds
+  ' GetDisplayProperties on top. Re-running that every 5 seconds on the RENDER
+  ' thread, underneath playing video, is exactly the cost this feature moved off
+  ' the Task thread to avoid.
+  '
+  ' Caching is also the more CORRECT answer, not merely the cheaper one. The
+  ' figure being mirrored is the one ItemPostPlaybackInfo used when it built the
+  ' profile for THIS playback; re-querying could return something else (a
+  ' receiver renegotiating HDCP mid-stream) and attribute the transcode against a
+  ' capability that was never the one asked about.
+  if not isValid(m.deviceVideoCapabilities) then m.deviceVideoCapabilities = getDeviceVideoCapabilities()
+  capabilities = m.deviceVideoCapabilities
 
   return {
     session: session,
@@ -509,6 +524,7 @@ end function
 '
 ' The timer drives the same task the button does, so there is one fetch path and
 ' one composition path rather than a second copy for refreshes.
+
 ' True when the report contains something that can change while it is open.
 '
 ' Only the transcode section is live (speed, progress, output bitrate); every
@@ -520,6 +536,24 @@ function reportHasLiveRows(report as object) as boolean
     if section.id = "transcode" then return true
   end for
   return false
+end function
+
+' True when the report still has an unanswered question — either something that
+' changes while you watch it, or something we have not been told yet.
+'
+' Two ways to qualify, and the second is what makes a failed first fetch
+' recoverable. Live rows exist only during a transcode. A MISSING SESSION means
+' the whole transcode half of the report is unknown rather than absent, so the
+' dialog is showing a provisional answer and has to keep asking; the first tick
+' that returns a session fills in the status line and the transcode section, and
+' if that session turns out to be a direct play this same gate then stops the
+' timer on the next pass.
+'
+' A direct play with a session in hand qualifies as neither, which is the case
+' that must never poll — and it is most sessions.
+function reportNeedsPolling(report as object, session as dynamic) as boolean
+  if not isValid(session) then return true
+  return reportHasLiveRows(report)
 end function
 
 sub startPlaybackInfoRefresh()
@@ -595,7 +629,10 @@ sub onPlaybackInfoRefreshDue()
   ' so the very next tick fetches again. A timeout of 0 means the screensaver is
   ' switched off, and that is an instruction not to idle at all.
   if m.screenSaverTimeout > 0
-    if CreateObject("roDeviceInfo").TimeSinceLastKeypress() >= m.screenSaverTimeout then return
+    ' The handle is cached rather than rebuilt each tick — CreateObject is not
+    ' free and this runs on the render thread while video is playing.
+    if not isValid(m.deviceInfo) then m.deviceInfo = CreateObject("roDeviceInfo")
+    if m.deviceInfo.TimeSinceLastKeypress() >= m.screenSaverTimeout then return
   end if
 
   launchTask(m.getPlaybackInfoTask)
