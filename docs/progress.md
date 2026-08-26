@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-26 — Size Home's browse feeds with one setting and measure its ceiling
 - 2026-08-26 — ci(rta): Stamp the phase of Home's immediate row removal
 - 2026-08-25 — fix: apply the user's Maximum Bitrate limit instead of discarding it
 - 2026-08-25 — ci(rta): Attribute Home's mid-run row-size recompute to its call site
