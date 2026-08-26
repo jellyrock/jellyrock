@@ -642,38 +642,31 @@ end sub
 ' logRowRemoved: Publish an immediate row removal AT THE INSTANT IT HAPPENS.
 '
 ' Its own line and its own moment, because `sizeRemove` cannot answer the question it was
-' built for. Those counters are zeroed at run start and read at run end, so a removal
-' landing before or after that window increments nothing anybody reports — and that window
-' is not where the interesting removals are. Every cold launch on a server with no
-' in-progress recordings drops this row exactly once: the section plan is
-' server-authoritative and identical launch to launch (session.bs SaveUserHomeSections),
-' createSkeletonRow builds the row unconditionally, startParallelLoads fires the task
-' unconditionally, and removalIsDeferrable refuses to defer a non-`latest_` row. So
-' `sizeRemove` is not measuring WHETHER the removal happened. It is measuring whether it
-' happened to land inside the run.
+' built for: those counters are zeroed at run start and read at run end, so a removal
+' landing outside that window increments nothing anybody reports — and on this server the
+' removal is unconditional, which makes `sizeRemove` a race outcome rather than an
+' occurrence count. Why it is unconditional is a four-step chain through session.bs,
+' createSkeletonRow, startParallelLoads and removalIsDeferrable; it is written out once, in
+' `docs/dev/home-first-paint-performance.md` ("`row removed`"), rather than twice.
 '
-' The columns:
+' What a change to this function has to preserve:
 '
-'   at    - <sectionId>#<ordinal>. The ordinal is per HomeRows INSTANCE. It is here because
-'           `assembleSamples` closes a sample when a line it already holds repeats: a second
-'           immediate removal in one launch splits that launch across two samples, and the
-'           ordinal is what makes that visible in the record instead of a silent short read.
-'           Expect 1 on every sample; a 2 means the analysis has to account for a split.
-'   cells - loadsStarted/binds on the content root at that instant. `loadsStarted` is the
-'           discriminator: a skeleton placeholder BINDS as soon as it is attached
-'           (JRRowItem.onItemContentChanged) but starts no image load, so `binds` is already
-'           well above zero before any real content exists while `loadsStarted` stays 0
-'           until a real poster URL is assigned. `binds` rides along as the POSTCONDITION —
-'           a genuinely early removal and a probe reading a root with no counters on it both
-'           print `loadsStarted 0`, and only `binds` separates them.
-'   run   - latestRowsProcessedIndex/latestRowsExpectedCount, which places the removal in the
-'           run's lifetime without a clock: 0/0 before the run starts, k/N inside it, N/N
-'           once it has completed.
-'
-' Three label/value pairs rather than four, with two values composed: roku-log faults at
-' RUNTIME (&hf1, straight into the debugger) past nine call-site arguments once the BSC
-' plugin has spent one on the injected pkg path. Nine is legal and this line would fit, but
-' a probe whose overflow costs a whole device run is not worth writing at the ceiling.
+'   - The ORDINAL on `at`, and that it is per HomeRows INSTANCE. `assembleSamples` closes a
+'     sample when a line it already holds repeats, so a second immediate removal in one
+'     launch splits that launch across two samples. The ordinal is what makes the split
+'     visible in the record instead of a silent short read.
+'   - BOTH halves of `cells`, and that both are signed. `loadsStarted` is the discriminator
+'     and `binds` is the postcondition on it — `loadsStarted 0` is what a genuinely early
+'     removal prints AND what a probe reading a counter-less root would print, so dropping
+'     `binds` makes those one reading. The `-1` guard cannot fire in HomeRows today (init
+'     creates `m.top.content` and attaches the counters to that same node in the same init),
+'     but it is nearly free and the alternative to printing it is dropping the line, which
+'     reads as "no removal happened" — the one wrong answer.
+'   - The argument COUNT. roku-log faults at RUNTIME (&hf1, straight into the debugger) past
+'     nine call-site arguments once the BSC plugin has spent one on the injected pkg path.
+'     Three label/value pairs with two composed values sits a pair clear of that; nine is
+'     legal and this line would fit, but a probe whose overflow costs a whole device run is
+'     not worth writing at the ceiling.
 '
 ' @param {string} sectionId - the sectionId of the row being removed
 sub logRowRemoved(sectionId as string)
