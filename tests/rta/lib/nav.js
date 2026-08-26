@@ -1199,8 +1199,18 @@ export function reportSweep(name, legs, quiet, { settle = null, atStart = null }
   // at emit time, and on the 2026-08-22 campaign both read 128 — so the two are separable on
   // the line only if the line says which one it is. A reader comparing a settle pair against a
   // ledger pair is comparing the screen the sweep STARTED on against the one it ENDED on.
+  // The PER-ROW widths, not just their total. `waitRowsSettled` already walks every row to
+  // decide it has stopped changing, so this costs nothing extra — and without it the line
+  // cannot answer the question a per-row limit campaign asks: HOW MANY rows are long enough
+  // for the horizontal texture window to be reachable (> TEXTURE_BUFFER_THRESHOLD items).
+  // `rows` and `items` cannot: 128 items over 12 rows is the same total whether one row
+  // holds 64 or every row holds 11, and those are completely different workloads for the
+  // layer under test. This is also the standing "nothing logs the populated-row count" gap
+  // — a row that received no items is a 0 here, where `rows` counts it the same as any
+  // other and two arms differing only in empty rows read as comparable.
+  const widths = settle?.widths?.length ? ` widths [${settle.widths.join(',')}]` : '';
   const over = settle
-    ? `over ${settle.rows} row(s) / ${settle.items} item(s) at sweep start` +
+    ? `over ${settle.rows} row(s) / ${settle.items} item(s)${widths} at sweep start` +
       (settle.settled ? ` (settled in ${settle.waitedMs} ms), ` : ' (NEVER SETTLED), ')
     : '';
   console.log(
