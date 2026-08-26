@@ -7,7 +7,7 @@ related-files:
   - source/data/SessionDataTransformer.bs
   - components/data/jellyfin/JellyfinUserSettings.xml
   - components/data/jellyfin/JellyfinUserSettings.bs
-last-reviewed: 2026-06-07
+last-reviewed: 2026-08-26
 ---
 
 # Settings
@@ -76,6 +76,31 @@ Every setting node has:
 - **`default`** — the default value (always a string in JSON, coerced to type at load)
 - **`titleKey` / `descriptionKey`** — translation keys (so the Settings screen shows localized text)
 - **`options`** (radio only) — selectable values
+- **`min` / `max`** (optional, integer only) — a declared range, enforced when the value is **saved**
+
+### Declared ranges are enforced at SAVE, not at use
+
+An `integer` entry may declare `min` and `max`. The Settings screen (`onKeyGridSubmit` in
+[`components/settings/settings.bs`](../../components/settings/settings.bs)) parses the typed
+value, clamps it with `clampToSettingRange`, and — if clamping changed it — raises a confirm
+dialog naming both the range and what will be stored instead. Declining returns focus to the
+keypad; confirming saves the clamped value and updates the displayed text. An in-range value
+is stored **normalized** (`"016"` → `"16"`), so what the user sees next time is what is held.
+
+The alternative — let any number be stored and guard where it is read — is what
+`playbackBitrateLimit` does, and it is why that setting can show a number the app is not
+using. Enforcing once at the boundary keeps the stored value and the applied value the same
+thing, and tells the user when they differ instead of silently diverging.
+
+**Both bounds or neither.** `settingRangeBounds` returns `invalid` unless both are present.
+This is not tidiness: honoring whichever bound exists makes `Int(invalid)` a Type Mismatch
+that crashes the screen when the setting is opened — mutation-tested, and the reason the
+guard is an `or` and not an `and`.
+
+An entry declaring no range takes the pre-existing path untouched, raw text and all. This is
+a capability entries opt into; it did not change any setting that existed before it.
+`npm run docs:settings` prints a **Range** row for entries that declare one, so the bound is
+discoverable without typing an out-of-range value to find it.
 
 Categories nest arbitrarily (e.g., Playback → Bitrate Limit → Enable Limit + Maximum Bitrate). The Settings UI walks this tree to render itself, so adding a new setting means editing one JSON file.
 

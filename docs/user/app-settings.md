@@ -496,6 +496,7 @@ Settings relating to how the application looks.
   - [Fallback Fonts](#uiFontFallback)
   - [Hide Clock](#uiDesignHideClock)
   - [Max Days Next Up](#uiDetailsMaxDaysNextUp)
+  - [Recently Added Row Size](#uiHomeRecentlyAddedLimit)
   - [Rewatching Next Up](#uiDetailsEnableRewatchingNextUp)
   - [Row Layout](#uiRowLayout)
   - [Theme](#uiTheme)
@@ -602,6 +603,19 @@ Set the maximum amount of days a show should stay in the 'Next Up' list without 
 | Setting Name | `uiDetailsMaxDaysNextUp` |
 | Type | `integer` |
 | Default | `0` |
+
+<h4 id="uiHomeRecentlyAddedLimit">Recently Added Row Size</h4>
+
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#uiHomeRecentlyAddedLimit">Recently Added Row Size</a>
+
+How many items each 'Recently Added in...' row on Home asks the server for. Higher values fill the row further before it repeats, and cost a little more time on each Home load. Takes effect the next time Home loads.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `uiHomeRecentlyAddedLimit` |
+| Type | `integer` |
+| Default | `16` |
+| Range | `1` to `200` |
 
 <h4 id="uiDetailsEnableRewatchingNextUp">Rewatching Next Up</h4>
 

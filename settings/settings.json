@@ -710,6 +710,17 @@
             "descriptionKey": "MessageSetTheMaximumAmountOfDays"
           },
           {
+            "title": "Recently Added Row Size",
+            "description": "How many items each 'Recently Added in...' row on Home asks the server for. Higher values fill the row further before it repeats, and cost a little more time on each Home load. Takes effect the next time Home loads.",
+            "settingName": "uiHomeRecentlyAddedLimit",
+            "type": "integer",
+            "default": "16",
+            "min": 1,
+            "max": 200,
+            "titleKey": "SettingRecentlyAddedRowSize",
+            "descriptionKey": "SettingDescRecentlyAddedRowSize"
+          },
+          {
             "title": "Rewatching Next Up",
             "description": "Show already watched episodes in 'Next Up' sections.",
             "settingName": "uiDetailsEnableRewatchingNextUp",

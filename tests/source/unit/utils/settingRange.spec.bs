@@ -1,0 +1,81 @@
+import "pkg:/source/utils/config.bs"
+
+namespace tests
+
+  ' The declared-range helpers behind the save-time check in the Settings screen
+  ' (components/settings/settings.bs, onKeyGridSubmit).
+  '
+  ' They live in config.bs rather than in the screen so they can be driven without the
+  ' component — the screen's own path needs a focused menu index, a keypad and a dialog
+  ' round trip, none of which say anything about whether the arithmetic is right.
+  @suite("config.bs - settings.json declared ranges")
+  class SettingRangeTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("settingRangeBounds()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads both bounds off an entry that declares them")
+    function _()
+      bounds = settingRangeBounds({ settingName: "x", min: 1, max: 200 })
+      m.assertNotInvalid(bounds)
+      m.assertEqual(bounds.min, 1)
+      m.assertEqual(bounds.max, 200)
+    end function
+
+    @it("returns invalid for an entry with no range")
+    function _()
+      ' The pre-existing shape of every integer setting. Such a setting must take the old
+      ' path untouched — this is a capability entries opt into, not a change to all of them.
+      m.assertInvalid(settingRangeBounds({ settingName: "playbackBitrateLimit", type: "integer" }))
+    end function
+
+    @it("refuses a HALF-declared range rather than applying one end")
+    function _()
+      ' Not a message-quality test. Mutating the guard to `and` — honor whichever bound is
+      ' present — takes this case to CRASH, not FAIL: `Int(invalid)` is a Type Mismatch, and
+      ' it fires when the user opens the setting. A half-declared entry is a typo someone
+      ' will make, and this is what stops it reaching the screen.
+      m.assertInvalid(settingRangeBounds({ min: 1 }))
+      m.assertInvalid(settingRangeBounds({ max: 200 }))
+    end function
+
+    @it("is safe on an invalid entry")
+    function _()
+      m.assertInvalid(settingRangeBounds(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("clampToSettingRange()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves a value that already fits alone")
+    function _()
+      ' Load-bearing: the caller decides whether to interrupt the user by comparing the
+      ' result against its input, so a clamp that "helpfully" normalized an in-range value
+      ' would raise a confirmation dialog over nothing.
+      bounds = { min: 1, max: 200 }
+      m.assertEqual(clampToSettingRange(16, bounds), 16)
+      m.assertEqual(clampToSettingRange(1, bounds), 1)
+      m.assertEqual(clampToSettingRange(200, bounds), 200)
+    end function
+
+    @it("pulls a value inside each end")
+    function _()
+      bounds = { min: 1, max: 200 }
+      m.assertEqual(clampToSettingRange(0, bounds), 1)
+      m.assertEqual(clampToSettingRange(-40, bounds), 1)
+      m.assertEqual(clampToSettingRange(201, bounds), 200)
+      m.assertEqual(clampToSettingRange(99999, bounds), 200)
+    end function
+
+    @it("passes the value through when there are no bounds")
+    function _()
+      ' Mirrors settingRangeBounds returning invalid, so the two compose without the caller
+      ' needing a second branch.
+      m.assertEqual(clampToSettingRange(400, invalid), 400)
+    end function
+
+  end class
+
+end namespace

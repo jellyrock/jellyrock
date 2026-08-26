@@ -183,6 +183,35 @@ function findConfigTreeKey(key as string, tree)
   return invalid
 end function
 
+' The range a settings.json entry declares, or invalid when it declares none.
+'
+' Both bounds are required together, and requiring BOTH is load-bearing rather than tidy.
+' Relaxing this to `and` — honor whichever bound is present — was mutation-tested and does
+' not merely degrade the message, it CRASHES: `Int(invalid)` is a Type Mismatch, raised the
+' moment a user opens a setting whose entry declares one bound. The weaker reason (the text
+' shown names both ends, so one bound alone would read "the supported range of 1 to invalid")
+' is true, and is not the one that matters.
+'
+' Lives here rather than in the settings screen so it can be unit-tested without the
+' component, alongside findConfigTreeKey which reads the same tree.
+function settingRangeBounds(entry as object) as object
+  if not isValid(entry) then return invalid
+  if not isValid(entry.min) or not isValid(entry.max) then return invalid
+  return { min: Int(entry.min), max: Int(entry.max) }
+end function
+
+' Bring a typed integer inside a declared range.
+'
+' Returns the value unchanged when it already fits, so a caller can compare against its input
+' to decide whether the user needs telling. Kept separate from `settingRangeBounds` for that
+' reason — the SCREEN needs to know that a change happened, not just what to store.
+function clampToSettingRange(value as integer, bounds as object) as integer
+  if not isValid(bounds) then return value
+  if value < bounds.min then return bounds.min
+  if value > bounds.max then return bounds.max
+  return value
+end function
+
 ' Returns an array of saved users from the registry
 ' that belong to the active server
 function getSavedUsers() as object

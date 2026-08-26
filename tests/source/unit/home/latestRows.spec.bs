@@ -1,5 +1,6 @@
 import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/home/latestRows.bs"
+import "pkg:/source/utils/config.bs"
 
 namespace tests
 
@@ -217,6 +218,54 @@ namespace tests
     @it("matches on the latest_ prefix, not on a section that merely contains it")
     function _()
       m.assertFalse(latestRows.removalIsDeferrable("mylatest_abc", true))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("resolveItemLimit - the per-row item limit and its fallback")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses the user setting when it holds a usable number")
+    function _()
+      m.assertEqual(latestRows.resolveItemLimit(64), 64)
+      m.assertEqual(latestRows.resolveItemLimit(1), 1)
+    end function
+
+    @it("falls back when the setting is missing")
+    function _()
+      ' Reachable on any path where the settings node has not been populated — the task
+      ' reads m.global.user.settings, which a Task thread cannot assume is there.
+      m.assertEqual(latestRows.resolveItemLimit(invalid), latestRows.DEFAULT_ITEM_LIMIT)
+    end function
+
+    @it("refuses 0, which is what an unpopulated integer field reads")
+    function _()
+      ' The case that makes this more than an isValid() check. A node integer field is 0
+      ' before SaveDefaults() runs, and 0 is a LEGAL value to send — Jellyfin answers
+      ' Limit=0 with an empty list — so every Recently Added row would come back empty and
+      ' nothing would report an error.
+      m.assertEqual(latestRows.resolveItemLimit(0), latestRows.DEFAULT_ITEM_LIMIT)
+      m.assertEqual(latestRows.resolveItemLimit(-5), latestRows.DEFAULT_ITEM_LIMIT)
+    end function
+
+    @it("keeps the fallback pinned to the shipped default in settings.json")
+    function _()
+      ' The constant and the JSON are two copies of one number, and only this test stops
+      ' them drifting: changing the default in settings.json without this would leave a
+      ' user whose settings failed to load on the OLD default, silently.
+      entry = findConfigTreeKey("uiHomeRecentlyAddedLimit", GetConfigTree())
+      m.assertNotInvalid(entry, "the setting must exist in settings.json")
+      m.assertEqual(Int(Val(entry.default)), latestRows.DEFAULT_ITEM_LIMIT)
+    end function
+
+    @it("keeps the shipped default inside the range the settings screen enforces")
+    function _()
+      ' A default outside its own declared range would be unsavable from the UI: the user
+      ' would open the setting, submit the value already shown, and be asked to confirm a
+      ' different one.
+      entry = findConfigTreeKey("uiHomeRecentlyAddedLimit", GetConfigTree())
+      bounds = settingRangeBounds(entry)
+      m.assertNotInvalid(bounds, "the entry must declare both bounds")
+      m.assertEqual(clampToSettingRange(Int(Val(entry.default)), bounds), Int(Val(entry.default)))
     end function
 
   end class
