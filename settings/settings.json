@@ -702,12 +702,12 @@
           },
           {
             "title": "Home Row Size",
-            "description": "How many items the Recently Added, On Now and Active Recordings rows on Home ask the server for. Continue Watching and Next Up are not affected \u2014 those always show your full list. Only items near what is on screen keep their artwork loaded, so larger values mostly cost a little extra time on each Home load rather than memory. Takes effect the next time Home loads.",
+            "description": "Sets how many items the Recently Added, On Now and Active Recordings rows load; Continue Watching and Next Up always show your full list. Higher values load more slowly, especially on older devices or with many libraries. Applies next time Home loads.",
             "settingName": "uiHomeRowLimit",
             "type": "integer",
             "default": "32",
             "min": 1,
-            "max": 200,
+            "max": 100,
             "titleKey": "SettingHomeRowSize",
             "descriptionKey": "SettingDescHomeRowSize"
           },

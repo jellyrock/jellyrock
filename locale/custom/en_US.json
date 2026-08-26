@@ -554,7 +554,7 @@
   "MessageYouCanSearchForTitlesPeople": "You can search for Titles, People, Live TV Channels and more",
   "MessageYourCustomColorsWillBeReplaced": "Your custom colors will be replaced by the selected theme. Continue?",
   "SettingDescDisplayLanguage": "Choose the language for all app text. 'Automatic' uses your Jellyfin server or Roku device language. Changes take effect after leaving Settings.",
-  "SettingDescHomeRowSize": "How many items the Recently Added, On Now and Active Recordings rows on Home ask the server for. Continue Watching and Next Up are not affected — those always show your full list. Only items near what is on screen keep their artwork loaded, so larger values mostly cost a little extra time on each Home load rather than memory. Takes effect the next time Home loads.",
+  "SettingDescHomeRowSize": "Sets how many items the Recently Added, On Now and Active Recordings rows load; Continue Watching and Next Up always show your full list. Higher values load more slowly, especially on older devices or with many libraries. Applies next time Home loads.",
   "SettingDescSigninScreenLanguage": "Language for the sign-in screens, shown before anyone logs in. 'Automatic' uses the Roku device language. Takes effect next time you sign in.",
   "SettingDisplayLanguage": "Display Language",
   "SettingHomeRowSize": "Home Row Size",

@@ -710,8 +710,9 @@ what that tool prints beside a delta it cannot distinguish.
 actually is, taken on `.177` (Stick 4K, 1 GB) against a 13-library server, `home-latest-rows`
 with `--nav cellSweepHome` so each launch reports its per-row width vector alongside the
 split. n=3 per arm, medians, one build throughout — the limit was driven from the registry,
-not from a rebuild, so no arm differs in anything else. **Probed past the setting's declared
-max of 200 deliberately: a ceiling nobody has crossed has not been measured.**
+not from a rebuild, so no arm differs in anything else. **Probed far past the setting's declared
+max deliberately: a ceiling nobody has crossed has not been measured.** (That max is **100**;
+the sweep runs to 800, so every value a user can choose sits well inside measured-safe range.)
 
 | limit | items | `totalMs` | `waitMs` | `emitMs` | `attachMs` | `xformMs` | `notifyMs` |
 |---|---|---|---|---|---|---|---|
@@ -754,16 +755,17 @@ saturate it:
 | 200 | **~29** |
 | 400 | ~14 |
 
-So the shipped **default of 32 has a very large margin**, and the **declared max of 200 is the
-number whose safety is user-dependent** — a user with ~29 libraries deep enough to saturate it
-would sit near the budget. That is the argument for expressing any enforced ceiling in TOTAL
-items rather than per row.
+The shipped **default of 32 has a very large margin**. The max was set to **100** rather than
+to the highest value measured, precisely because a per-row number cannot express this
+constraint: at 100 a user needs ~58 saturated libraries to approach the budget, where at 200
+it was ~29. Neither is a cliff the app detects — which is the argument for expressing any
+*enforced* ceiling in TOTAL items rather than per row, if one is ever enforced.
 
 ⚠️ **Two limits on the extrapolation, both of which cut against over-trusting it.** `waitMs`
 is the term that actually explodes (458 / 431 / 427 / **1724** / **2711**) and it is the
 server answering larger requests, not app work — so the ceiling is partly a property of the
 operator's Jellyfin box and network. And the fixture saturates: widths at limit 800 read
-`[13,2,5,395,14,18,4,18,800,6,3,30]`, so only **two** libraries follow the limit up past 200
+`[13,2,5,395,14,18,4,18,800,6,3,30]`, so only **two** libraries follow the limit up past 200 (well above the shipped max of 100)
 and everything above it rests on those two. The per-item constant generalizes across servers;
 a total does not.
 

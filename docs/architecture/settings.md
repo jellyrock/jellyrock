@@ -100,10 +100,10 @@ user *opens* the setting. Two ways in, both measured on device:
 | malformed entry | what `Int()` gets | measured |
 |---|---|---|
 | `"min": 1` with no `max` | `Int(invalid)` | Type Mismatch |
-| `"min": "1", "max": "200"` | `Int("1")` | Type Mismatch |
+| `"min": "1", "max": "100"` | `Int("1")` | Type Mismatch |
 
 The second is the likelier typo, because `default` in the same entry **is** a string by
-convention (`"16"`) — so `"min": "1"` reads as consistent with its neighbor. BrighterScript
+convention (`"32"`) — so `"min": "1"` reads as consistent with its neighbor. BrighterScript
 cannot catch it: `settingRangeBounds` takes the entry `as object`, so the bounds are `dynamic`.
 
 A malformed entry therefore degrades to *declares no range* — the setting still saves, it is

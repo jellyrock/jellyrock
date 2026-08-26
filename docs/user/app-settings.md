@@ -596,14 +596,14 @@ Hide all clocks in JellyRock. JellyRock will need to be closed and reopened for 
 
 <a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#uiHomeRowLimit">Home Row Size</a>
 
-How many items the Recently Added, On Now and Active Recordings rows on Home ask the server for. Continue Watching and Next Up are not affected — those always show your full list. Only items near what is on screen keep their artwork loaded, so larger values mostly cost a little extra time on each Home load rather than memory. Takes effect the next time Home loads.
+Sets how many items the Recently Added, On Now and Active Recordings rows load; Continue Watching and Next Up always show your full list. Higher values load more slowly, especially on older devices or with many libraries. Applies next time Home loads.
 
 | Property | Value |
 | --- | --- |
 | Setting Name | `uiHomeRowLimit` |
 | Type | `integer` |
 | Default | `32` |
-| Range | `1` to `200` |
+| Range | `1` to `100` |
 
 <h4 id="uiDetailsMaxDaysNextUp">Max Days Next Up</h4>
 
