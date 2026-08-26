@@ -493,9 +493,31 @@ commit `739caef1` — the probe is the uncommitted change.
 `at activeRecordings` on 40/40, ordinal `#1` on 40/40, no `-1/-1` reading, and
 `calls - remove - insert = 1` on 40/40. The removal really is unconditional.
 
-**`binds` at the removal was exactly 4 on every early launch**, which is the number the code
-predicts and is worth keeping as the probe's own sanity check: before the libraries return
-there are exactly four non-latest skeleton rows, one placeholder cell each.
+**`binds` at the removal read exactly 4 on all 32 early launches** — perfectly stable, and the
+postcondition that says the counters were attached and the probe was live.
+
+⚠️ **Its DECOMPOSITION is not established, and an earlier version of this section asserted one
+the row arithmetic contradicts.** At that instant only `createSkeletonRows`' rows exist, and on
+this fixture there are **three** of them, not four: the sweep reports **12 rows on screen**
+against **10 latest libraries requested** (`workload.rows` on 40/40), so two non-latest rows
+survive and `activeRecordings` is the third. Three rows carrying one placeholder each predicts
+**3** binds. So at least one extra bind happens at skeleton time and its source is
+unidentified. A `FROM_SIZE` bind from the `rowStructureChanged()` that ends
+`createSkeletonRows()` would explain it and would be worth knowing — `bindsFromSize` is
+documented as expected-zero — but nothing here measured it, and `bindsFromSize` is only
+published at end of session, not at this instant. **Read the 4 as a stable postcondition, never
+as a validated prediction.**
+
+⚠️ **THE PROBE SEES IMMEDIATE REMOVALS ONLY, and that scope is not obvious from the line.** A
+`latest_` row whose library returned nothing is queued and dropped by `applyPendingRowRemovals`
+at run end, which calls `m.top.content.removeChildIndex()` directly rather than
+`removeRowAtIndex` — so it shifts every row below it and emits nothing. On this fixture that is
+not a variance source, and that was checked rather than assumed: `sizeDrains` is 10 on 40/40 and
+the sweep reports 12 rows against 10 latest libraries, so every latest row was delivered and
+none was removed. **On a fixture where a library does return empty, a batch of shifts at run end
+is invisible to this line.** ⚠️ Extending it there is NOT a matter of adding the same call: the
+batch drops N rows, and N lines would repeat the key `assembleSamples` closes a sample on,
+splitting one launch into N samples. It needs one line carrying a count, not one line per row.
 
 **The relationship is GRADED, not bimodal** — which is why a gap-finding classifier is the
 wrong reader for it:
