@@ -458,6 +458,17 @@ until a real poster URL is assigned. That makes `loadsStarted 0` mean "no real c
 begun arriving" — which is also exactly what a probe reading a root with no counters on it
 would print, and `binds` beside it is what tells those two apart.
 
+**`-1/-1` is a guard against a shape that cannot occur in `HomeRows`, not a live reading — say
+so rather than "not yet observed".** `HomeRows.init()` creates `m.top.content` once and hands
+that same node to `initTextureManager` in the same `init()`, which calls `cellLoad.attach` under the
+same `perfTiming` gate as the probe; the node is never reassigned, and `findRowBySectionId` has
+already returned non-`invalid` before `logRowRemoved` runs. So the counters are attached
+whenever the probe can fire. The signed capture stays because it is nearly free and a `\d+`
+pattern would drop the WHOLE line if the guard ever did fire — and a dropped line reads as "no
+removal happened", which is the one wrong answer. Do not read it as a discriminator this
+component exercises; the ledger's 40/40 with no `-1` is what the code already predicts, not
+independent confirmation of anything.
+
 **It needs no join, and that is why it is a log line rather than a read at the sweep gate.**
 The at-gate `binds` / `loadsStarted` are console-only, so pairing them with a sample costs an
 explicit join that a silent misalignment can pass. This line lands in `measurements.jsonl` per
@@ -494,6 +505,18 @@ wrong reader for it:
 | 0 | 32 | 215–222 |
 | 4 | 2 | 222, 229 |
 | 18–31 | 6 | 231–255 |
+
+⚠️ **Only the LEFT column can be re-checked; the right one is gone.** `loadsStarted`-at-removal
+comes off the `row removed` line and is in `measurements.jsonl`, so every figure computed from
+it alone is re-derivable from the ledger for as long as that file survives. The at-gate values
+are `reportSweep`'s console output, and `measure.js` writes `console-window.log` only when
+NOTHING matched — both arms were `VERIFIED CLEAN`, so both console windows were discarded at
+the end of their runs. **So every figure below that is stated against at-gate `binds` or
+at-gate `loadsStarted` rests on data that no longer exists** — which is all of them, every
+Spearman value in this section included. They are recorded here because this prose IS the
+archive, not because anyone can re-run them. Two open followups in [`progress.md`](../progress.md) are exactly this defect —
+one to stop discarding the console on a healthy run, one to carry the at-gate counters into the
+ledger as a declared measurement line so no join (and no console) is needed at all.
 
 Spearman on `loadsStarted`-at-removal against at-gate `binds`: **+0.737** in the first arm
 (exploratory), **+0.637** in the second (pre-registered, p = 2.5e-3), **+0.685 pooled**
@@ -811,7 +834,7 @@ generalizes, and it strengthens rather than weakens off this bench: genre count 
 number of serial fetches, so a library with 25 genres is worse, and a distant server is worse
 again. Re-measure before sizing anything.
 
-### Trap: `m.log` silently caps at 10 arguments
+### Trap: `m.log` FAULTS past nine call-site arguments — it does not cap, and it is not silent
 
 `Logger.info` is `function(message, value, value2 … value9)` — **ten parameters**, and the
 roku-log BSC plugin spends the first on the injected pkg path, leaving **nine** for the call
