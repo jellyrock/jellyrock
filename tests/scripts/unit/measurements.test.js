@@ -235,10 +235,17 @@ describe('the Home pattern against captured device lines', () => {
 
   it("keeps the app's `-1` no-counters reading instead of dropping the line", () => {
     // `cells -1/-1` is what the app prints when the content root carries no `cellLoad*`
-    // fields, and it is the single most important line in the set: `loadsStarted 0` is
-    // ALSO what a genuinely early removal prints, so without a distinct reading for "the
-    // probe read nothing" the two are the same sample. A `\d+` matcher would drop the
-    // whole line in exactly that case, and a dropped line reads as "no removal happened".
+    // fields. ⚠️ It cannot happen in `HomeRows` today — `init` creates `m.top.content` and
+    // hands that same node to `initTextureManager` before returning, under the same
+    // `perfTiming` gate as the probe — so this is a guard on the PARSER against a future
+    // call site, not a case the Home family exercises. Do not read a clean arm's "no -1"
+    // as evidence of anything; the code already predicts it.
+    //
+    // Pinned anyway, and cheaply, because the failure mode is asymmetric: a `\d+` matcher
+    // drops the WHOLE line rather than one field, and a dropped line reads as "no removal
+    // happened" — which is the one wrong answer this instrument can give. Keeping the
+    // reading distinct also keeps it separable from `loadsStarted 0`, which is what a
+    // genuinely early removal prints.
     const line = 'latest-rows row removed at activeRecordings#1 cells -1/-1 run 0/0';
     expect(matchLine(home, line).fields.rowRemoveLoads).toBe(-1);
     expect(matchLine(home, line).fields.rowRemoveBinds).toBe(-1);
@@ -953,10 +960,15 @@ describe('declaredFields', () => {
 describe('fieldsByKind', () => {
   it('partitions every declared field, so a third capture shape cannot be guessed at', () => {
     // The property that lets `--field` and the unit rules trust this: numeric ∪ dimensions
-    // is exactly `declaredFields`, with nothing in both. A future pattern written with,
-    // say, `(?<ratio>[\d.]+)` would land in `dimensions` — which is the SAFE side (it gets
-    // rejected as a headline rather than published as `ms`) — and this case is what makes
-    // that a decision someone took rather than a default nobody noticed.
+    // is exactly `declaredFields`, with nothing in both. Anything not captured as `\d+`
+    // (optionally signed) lands in `dimensions` — the SAFE side, since a dimension is
+    // rejected as a headline rather than published as `ms`.
+    //
+    // That is no longer hypothetical: `home-latest-rows` ships `(?<rowRemoveAt>[^#\s]+)`,
+    // a third shape neither `\d+` nor `\S+`, because the field is followed by a `#` the
+    // pattern has to stop at. It is asserted by name in the case below. This case is what
+    // makes the fallback a decision someone took rather than a default nobody noticed —
+    // a future `(?<ratio>[\d.]+)` gets the same treatment.
     for (const m of MEASUREMENTS) {
       const { numeric, dimensions } = fieldsByKind(m);
       expect([...numeric, ...dimensions].sort(), m.id).toEqual([...declaredFields(m)].sort());

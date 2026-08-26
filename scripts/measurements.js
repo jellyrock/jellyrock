@@ -292,10 +292,18 @@ export const MEASUREMENTS = Object.freeze([
         // comparison is the build that does not carry this.
         //
         // GROUNDED on `.177` 2026-08-25 — 40 of 40 samples across two n=20 arms carried this
-        // line and every field parsed. `cells -1/-1` is the app's own "the content root
-        // carried no counters" reading and is why both halves are signed; a `\d+` here would
-        // drop the whole line in exactly the case worth seeing. (No arm has yet produced a
-        // -1, so that branch is covered by unit test only.)
+        // line and every field parsed. Columns and what they read are documented in
+        // `docs/dev/home-first-paint-performance.md` ("`row removed`"), the same place
+        // `size recompute` above points at.
+        //
+        // `cells -1/-1` is the app's own "the content root carried no counters" reading, and
+        // both halves are signed so it survives the parse. That guard cannot fire in
+        // `HomeRows` today — init creates the content root and attaches the counters to that
+        // same node before returning — so treat the signed capture as insurance against a call
+        // site, NOT as a case this family exercises. It is still worth having: a `\d+` here
+        // would drop the WHOLE line rather than one field, and a dropped line reads as "no
+        // removal happened", which is the one wrong answer. Covered by unit test only, and
+        // that is expected rather than a coverage gap.
         key: 'rowRemoved',
         required: false,
         pattern:
@@ -839,9 +847,14 @@ const NUMERIC_GROUP = /\(\?<(\w+)>(?:-\?)?\\d\+\)/g;
  * accept or reject a name with no ledger in hand.
  *
  * The two agree because the patterns say which is which: a quantity is captured with
- * `\d+` and a dimension with `\S+`. That is not a convention someone has to remember —
- * `measurements.test.js` asserts the partition is exhaustive, so a third capture shape
- * fails the suite rather than being bucketed by a guess.
+ * `\d+` (optionally signed), and ANY other shape is a dimension. That is deliberately a
+ * default-deny rather than an `\S+` allowlist — `home-latest-rows` already ships a third
+ * shape, `(?<rowRemoveAt>[^#\s]+)`, because that field is followed by a `#` the pattern has
+ * to stop at. It lands in `dimensions`, which is the SAFE side: a dimension is rejected as a
+ * headline, where a mis-filed quantity would be published as milliseconds. That is not a
+ * convention someone has to remember — `measurements.test.js` asserts the partition is
+ * exhaustive and disjoint, so a new capture shape is bucketed by the stated rule rather than
+ * by a guess, and the test names the choice so it stays one someone took.
  *
  * Why it is worth a helper rather than a filter at each call site: reporting a dimension
  * as though it were a timing is the well-formed-but-wrong shape this file keeps removing.
