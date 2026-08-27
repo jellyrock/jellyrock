@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-27 — fix(setting): Honor a non-default Maximum Resolution instead of capping at 1080p
 - 2026-08-26 — Size Home's browse feeds with one setting and measure its ceiling
 - 2026-08-26 — ci(rta): Stamp the phase of Home's immediate row removal
 - 2026-08-25 — fix: apply the user's Maximum Bitrate limit instead of discarding it
@@ -71,8 +72,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-08-14 — **Root-caused and fixed: `npm run measure -- --deploy` deployed a build it never built.** `deployRtaBuild()` sideloads the `build/` DIRECTORY, and every bsconfig in the repo writes to that same directory — so `--deploy` shipped whatever npm script ran last. Every sibling pairs the deploy with a build in its npm script (`test:rta` = `npm run build && …`, `screenshots:capture` = `npm run build:prod && …`); `measure` was the only entry point offering `--deploy` without one. It cost four device runs across two sessions: once it shipped a build predating the instrumentation being grounded (zero samples, blamed on the pattern), and once — straight after `npm run test:unit` — it shipped the Rooibos TEST build, whose ODC refusal then advised re-running with the `--deploy` that had just caused it. `--deploy` now builds this checkout first and refuses to deploy a stale `build/` if that build fails.
 - 2026-08-13 — ci(rta): Compare two measurement arms with `measure:compare`
 - 2026-08-13 — ci(rta): Measure on-device performance with its own provenance (`npm run measure`)
-- 2026-08-12 — ci(rta): Stop laundering failed fixture requests into fixture facts
-- 2026-08-12 — fix(rta): record what became of a run, and read the baseline
 
 ## Open followups
 
