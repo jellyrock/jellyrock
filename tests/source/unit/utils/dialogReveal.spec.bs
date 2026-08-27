@@ -106,20 +106,46 @@ namespace tests
       m.assertTrue(m.dialog.visible)
     end function
 
+    ' presentOverlayDialog calls dialog.callFunc("settleLayout") on all FOUR
+    ' dialog types. A fifth added later without the <function> line on its .xml
+    ' fails silently - callFunc no-ops and the dialog stays hidden until the
+    ' 0.15s onOpeningAnnouncementDue failsafe - so this covers every type
+    ' presentOverlayDialog actually dispatches to, not just the one that
+    ' happened to be under test when settleLayout was added.
+    '
     ' settleLayout has to be reachable through the component interface or the
     ' callFunc is a silent no-op — the failure the callfunc-interface plugin
     ' exists for. Asserting the OUTCOME rather than the call: a dialog whose
     ' fields were set while detached still ends up laid out.
     @it("settles the layout and shows the dialog in one step")
-    function _()
-      hideDialogUntilLaidOut(m.dialog)
-      m.dialog.title = "Playback info"
-      m.dialog.sections = m.reportSections()
+    @params("JRDialog")
+    @params("JRListDialog")
+    @params("QuickConnectDialog")
+    @params("OverviewDialog")
+    function _(dialogType as string)
+      ' Bracket notation throughout this test: `dialogType` is a runtime value, so
+      ' bsc can only see these as roSGNodeNode, which has none of the per-dialog
+      ' fields set below.
+      dialog = CreateObject("roSGNode", dialogType)
+      hideDialogUntilLaidOut(dialog)
+      dialog["title"] = "Playback info"
 
-      settleAndRevealDialog(m.dialog)
+      if dialogType = "JRDialog"
+        dialog["message"] = "A message long enough to make the panel grow"
+        dialog["buttons"] = ["Cancel", "OK"]
+      else if dialogType = "JRListDialog"
+        dialog["items"] = ["Option A", "Option B", "Option C"]
+      else if dialogType = "QuickConnectDialog"
+        dialog["instruction"] = "Enter this code on jellyfin.org/quickconnect"
+        dialog["code"] = "ABCD"
+      else if dialogType = "OverviewDialog"
+        dialog["sections"] = m.reportSections()
+      end if
 
-      m.assertTrue(m.dialog.visible, "settleAndRevealDialog left the dialog hidden")
-      m.assertTrue(m.panelHeight(m.dialog) > 0, "settleLayout did not reach applyLayout — check the <function> interface line")
+      settleAndRevealDialog(dialog)
+
+      m.assertTrue(dialog["visible"], "settleAndRevealDialog left the dialog hidden")
+      m.assertTrue(m.panelHeight(dialog) > 0, "settleLayout did not reach applyLayout — check the <function> interface line")
     end function
 
     @it("survives being handed nothing")

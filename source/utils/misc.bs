@@ -691,7 +691,10 @@ end function
 '     three-hour film is ~1.08e11 — where truncating overflows.
 '
 ' @param {dynamic} value - a numeric field off a media object, a settings node, or a literal
-' @returns {float} - the numeric value, or 0.0 for anything missing or non-numeric
+' @returns {float} - the numeric value, or 0.0 for invalid / AA / array / boolean input.
+'   Every caller today passes a media field, so this covers what actually reaches
+'   it in practice — an unhandled type (roSGNode, roDateTime, a function) would
+'   still fault on `return value as float` rather than fall back to 0.0.
 function decimalOrZero(value as dynamic) as float
   if not isValid(value) then return 0.0
 

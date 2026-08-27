@@ -481,7 +481,6 @@ sub buildReportNodes(sections as object)
       heading.isBold = true
       heading.text = section.heading
       heading.width = m.textAreaWidth
-      trackReportNode(heading)
       group.appendChild(heading)
     end if
 
@@ -584,15 +583,6 @@ end sub
 ' Announce the dialog once the platform's own focus announcement is out of the
 ' way. The overview text IS the announcement here: this dialog exists to be read,
 ' so a screen-reader user opening it wants its contents, not just its title.
-' Lay out NOW, called by presentOverlayDialog once this dialog is attached.
-'
-' The dialog is hidden until this returns, so there is no renderTracking to wait
-' on — and none is needed, because localBoundingRect() answers while hidden. See
-' dialogReveal.bs.
-sub settleLayout()
-  applyLayout()
-end sub
-
 sub onOpeningAnnouncementDue()
   ' FAILSAFE for the layout cover, riding a timer that already exists and already
   ' means "this dialog has been open for 0.15s". A dialog that never completes a
@@ -612,6 +602,15 @@ sub onOpeningAnnouncementDue()
   if m.okButton.hasFocus() then focusedText = toString(m.okButton.text)
 
   narrateDialogOpening(m.top.title, body.join(". "), focusedText)
+end sub
+
+' Lay out NOW, called by presentOverlayDialog once this dialog is attached.
+'
+' The dialog is hidden until this returns, so there is no renderTracking to wait
+' on — and none is needed, because localBoundingRect() answers while hidden. See
+' dialogReveal.bs.
+sub settleLayout()
+  applyLayout()
 end sub
 
 ' The structured body, spoken.

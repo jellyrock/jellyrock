@@ -60,9 +60,9 @@
     <!-- Cancel this dialog from OUTSIDE (source/utils/dialogs.bs cancelOpenDialog).
          A third party clearing the screen must look exactly like the user
          pressing Back, so this routes through the same resolve path. -->
+    <function name="cancelDialog" />
     <!-- Called by presentOverlayDialog while the dialog is still hidden, to lay it
          out before it is shown. See source/utils/dialogReveal.bs. -->
     <function name="settleLayout" />
-    <function name="cancelDialog" />
   </interface>
 </component>

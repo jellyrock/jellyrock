@@ -132,6 +132,11 @@ sub destroyPlayer()
     m.getPlaybackInfoTask.unobserveField("data")
     m.getPlaybackInfoTask = invalid
   end if
+
+  ' Otherwise the first report opened on the NEXT queue item compares its
+  ' completion percentage against the previous item's last figure, silently
+  ' rendering "Idle" over a healthy encoder.
+  m.lastCompletionPercentage = invalid
 end sub
 
 ' Host-internal advancement: remount the player for the CURRENT queue position.
@@ -211,6 +216,7 @@ sub onPlayerStateChange()
   ' and tracked as playback-error-dialog-closed-by-teardown in tech-debt.md.
   ' Don't "fix" it by narrowing this call: a stranded modal over the incoming
   ' screen is the failure this line exists to prevent.
+
   ' Same two observers as onDestroy: we are dropping the reference to a dialog
   ' that lives on the SCENE, so the poll and its close observer go with it.
   releasePlaybackInfoRefresh()
@@ -479,7 +485,9 @@ function playbackReportInputs(session as dynamic) as object
   ' (canPlay4k() and the display reporting DolbyVision). Attribution is only
   ' honest if both sides ask the identical question.
   '
-  ' READ ONCE PER MOUNT, not per call. This is not a field read: canPlay4k()
+  ' READ ONCE PER HOST, not per call — `m.deviceVideoCapabilities` is never
+  ' cleared, so it spans every item across the whole `mountPlayer()` lifetime of
+  ' this host, not just one mount. This is not a field read: canPlay4k()
   ' builds an roDeviceInfo AND an roHdmiStatus and then asks the hardware two
   ' questions (IsHdcpActive, CanDecodeVideo), and getDeviceVideoCapabilities adds
   ' GetDisplayProperties on top. Re-running that every 5 seconds on the RENDER
@@ -636,8 +644,11 @@ sub onScreensaverTimeoutLoaded()
 end sub
 
 sub onPlaybackInfoRefreshDue()
-  ' The dialog can be gone without our close observer having run — a supersede by
-  ' another overlay detaches it. Stop rather than poll into nothing.
+  ' Defense in depth, not the primary close path: a supersede by another overlay
+  ' calls cancelDialog() -> closeDialog(), which sets `closed` and fires
+  ' onPlaybackInfoDialogClosed() same as any other close. This guard is here for
+  ' any OTHER way the dialog could leave the scene without that field ever being
+  ' set — stop rather than poll into nothing.
   if not isValid(m.playbackDialog) or not isValid(m.playbackDialog.getParent())
     stopPlaybackInfoRefresh()
     return

@@ -183,15 +183,6 @@ end sub
 ' Announce the whole dialog, once the platform's own focus announcement is out of
 ' the way. Folds in the focused button so this is a single utterance in the
 ' built-in order: title, message, button.
-' Lay out NOW, called by presentOverlayDialog once this dialog is attached.
-'
-' The dialog is hidden until this returns, so there is no renderTracking to wait
-' on — and none is needed, because localBoundingRect() answers while hidden. See
-' dialogReveal.bs.
-sub settleLayout()
-  applyLayout()
-end sub
-
 sub onOpeningAnnouncementDue()
   ' FAILSAFE for the layout cover, riding a timer that already exists and already
   ' means "this dialog has been open for 0.15s". A dialog that never completes a
@@ -214,6 +205,15 @@ sub onOpeningAnnouncementDue()
   if isValidAndNotEmpty(m.top.message) then body.push(m.top.message)
 
   narrateDialogOpening(m.top.title, body.join(". "), focusedText)
+end sub
+
+' Lay out NOW, called by presentOverlayDialog once this dialog is attached.
+'
+' The dialog is hidden until this returns, so there is no renderTracking to wait
+' on — and none is needed, because localBoundingRect() answers while hidden. See
+' dialogReveal.bs.
+sub settleLayout()
+  applyLayout()
 end sub
 
 ' A button finished sizing itself. Re-run the whole layout, not just the

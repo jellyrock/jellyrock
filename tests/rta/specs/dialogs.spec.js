@@ -19,7 +19,7 @@
  * per-picker option builders, which are unit-tested instead
  * (tests/source/unit/utils/trackPickerOptions.spec.bs).
  */
-import { beforeAll, it, expect } from 'vitest';
+import { beforeAll, afterAll, it, expect } from 'vitest';
 import { RTA_CONFIG } from '../config.js';
 import { authenticate, getHero, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
 import { seedHome, seedLibraryLanding, assertSeedTookEffect } from '../lib/seed.js';
@@ -51,6 +51,21 @@ beforeAll(async () => {
   libraries = await getLibraries(session);
   heroId = (await getHero(session)).id;
   if (!heroId) throw new Error('dialogs spec setup: could not resolve the hero movie on the demo');
+});
+
+// Cleanup does not depend on a later spec in this file happening to call
+// pausedOsd() again. Without this, the 1 Mbps cap seeded by the two transcode
+// specs below only gets cleared as a side effect of the next test's own setup —
+// and if this file's last test is one of the transcode specs, the cap survives
+// into screens.spec.js's store: true capture screens.
+afterAll(async () => {
+  // A failed beforeAll still runs this. `session` is undefined until authenticate()
+  // resolves, and seedPlaybackSettings reads session.userId — so without this guard a
+  // server that refused the connection reports "Cannot read properties of undefined"
+  // from the hook, burying the real setup error. Nothing was seeded in that case
+  // either, so there is nothing to clean up.
+  if (!session) return;
+  await seedPlaybackSettings(null);
 });
 
 /**

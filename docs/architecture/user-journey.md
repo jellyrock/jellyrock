@@ -9,7 +9,7 @@ related-files:
   - components/manager/QueueManager.bs
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
-last-reviewed: 2026-08-23
+last-reviewed: 2026-08-27
 ---
 
 # The User Journey
@@ -279,7 +279,7 @@ end sub
 
 `JRScene.onPlaybackLaunchRequested` (`JRScene.bs:375`) observes `playbackLaunchRequest` and turns it into a route on the render thread: audio → `/audio` (the routed `AudioPlayerView`), every video-family type → `/details/<type>/<id>/play` (the `PlayerHostView`).
 
-`PlayerHostView` is the **routed host** for video: `VideoPlayerView` extends Roku's native `Video` node and can't itself be a router view, so this thin `JRScreen` wrapper mounts it as a runtime child. On `onScreenShown` → `mountPlayer()` it instantiates `VideoPlayerView` (visible=false during loading to avoid a black flash), wires observers, kicks off `GetPlaybackInfoTask`, updates the backdrop, and `appendChild`s the player. It reads the already-built queue (`getCurrentItem`) — the queue is the source of truth. The `VideoPlayerView` itself fetches media metadata, builds the URL, and starts the underlying `Video` node. See `playback.md` for the full picture.
+`PlayerHostView` is the **routed host** for video: `VideoPlayerView` extends Roku's native `Video` node and can't itself be a router view, so this thin `JRScreen` wrapper mounts it as a runtime child. On `onScreenShown` → `mountPlayer()` it instantiates `VideoPlayerView` (visible=false during loading to avoid a black flash), wires observers (including one that creates `GetPlaybackInfoTask` and observes its `data` field, without launching it), updates the backdrop, and `appendChild`s the player. The task itself is only launched later, on `onSelectPlaybackInfoPressed`, when the user actually opens the playback report. It reads the already-built queue (`getCurrentItem`) — the queue is the source of truth. The `VideoPlayerView` itself fetches media metadata, builds the URL, and starts the underlying `Video` node. See `playback.md` for the full picture.
 
 ## 10. Playback running
 
