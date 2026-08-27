@@ -528,11 +528,49 @@ function profileAndLevel(stream as object) as string
   if profile = "" and level <= 0 then return ""
   if level <= 0 then return profile
 
-  ' Levels arrive as an integer scaled by ten (41 = 4.1), which is how ffmpeg and
-  ' the Jellyfin web client both report them.
-  levelLabel = "L" + formatOneDecimal(level / 10.0)
+  levelLabel = videoLevelLabel(textOrEmpty(stream.Codec), level)
+  if levelLabel = "" then return profile
   if profile = "" then return levelLabel
   return profile + " @ " + levelLabel
+end function
+
+' A codec's level as people write it, or "" when we cannot say.
+'
+' THERE IS NO SINGLE SCALE, which is the thing that makes this worth a function.
+' The report shipped dividing everything by ten and rendered an HEVC Main 10
+' stream at level 150 as "L15.0" — a level that does not exist in the spec, whose
+' maximum is 6.2. Read off Jellyfin's own device profile
+' (jellyfin-web src/scripts/browserDeviceProfile.js), the three scales are:
+'
+'   h264   maxH264Level = 42   -> 4.2      level x 10
+'   hevc   maxHevcLevel = 153  -> 5.1      level x 30
+'   av1    maxAv1Level  = 15   -> 5.3      seq_level_idx, neither
+'
+' AV1 is an INDEX, not a multiple: idx = (major - 2) * 4 + minor, which their own
+' `// level 5.3` comment on 15 confirms and their 16/17/18/19 -> 6.0/6.1/6.2/6.3
+' run corroborates. JellyRock already encodes the h264 and hevc halves in
+' deviceCapabilities.bs (`convertHevcLevelToString` multiplies by 30; the h264
+' path strips the decimal point) — this is the same knowledge read backwards, and
+' the two must not be allowed to disagree.
+'
+' ANYTHING ELSE RENDERS NO LEVEL AT ALL. vp9 gets no level condition in Jellyfin's
+' own profile and mpeg2's scale is not established here, so there is no number to
+' divide by and a guess would be the "convincing wrong thing" this file's header
+' warns about. The profile still renders; only the level is withheld.
+function videoLevelLabel(codec as string, level as integer) as string
+  name = LCase(codec)
+
+  if name = "h264" or name = "avc" then return "L" + formatOneDecimal(level / 10.0)
+  if name = "hevc" or name = "h265" then return "L" + formatOneDecimal(level / 30.0)
+
+  ' seq_level_idx, so the two halves are extracted rather than divided.
+  if name = "av1"
+    major = 2 + (level \ 4)
+    minor = level mod 4
+    return "L" + major.toStr().trim() + "." + minor.toStr().trim()
+  end if
+
+  return ""
 end function
 
 ' Channel count in the SAME vocabulary as the target, which is the whole point.

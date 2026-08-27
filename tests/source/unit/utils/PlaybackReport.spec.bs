@@ -40,7 +40,7 @@ namespace tests
           Path: "/media/movies/Dune (2021)/Dune.2021.2160p.mkv",
           TranscodingUrl: "/videos/x/master.m3u8?VideoCodec=h264&AudioCodec=aac&AudioBitrate=192000&AudioSampleRate=48000&SubtitleMethod=Encode&h264-rangetype=SDR&h264-videobitdepth=8&TranscodeReasons=VideoRangeTypeNotSupported",
           MediaStreams: [
-            { Type: "Video", Index: 0, Codec: "hevc", CodecTag: "hvc1", RefFrames: 4, Width: 3840, Height: 2160, BitRate: 25400000, BitDepth: 10, VideoRange: "HDR", VideoRangeType: "DOVIWithHDR10", DvProfile: 8, DvBlSignalCompatibilityId: 1, Profile: "Main 10", Level: 51, PixelFormat: "yuv420p10le", AverageFrameRate: 23.976 },
+            { Type: "Video", Index: 0, Codec: "hevc", CodecTag: "hvc1", RefFrames: 4, Width: 3840, Height: 2160, BitRate: 25400000, BitDepth: 10, VideoRange: "HDR", VideoRangeType: "DOVIWithHDR10", DvProfile: 8, DvBlSignalCompatibilityId: 1, Profile: "Main 10", Level: 153, PixelFormat: "yuv420p10le", AverageFrameRate: 23.976 },
             { Type: "Audio", Index: 1, Codec: "aac", Channels: 2, Language: "eng" },
             { Type: "Audio", Index: 2, Codec: "eac3", Channels: 6, ChannelLayout: "5.1", BitRate: 768000, SampleRate: 48000, Profile: "LC", Language: "eng" },
             { Type: "Subtitle", Index: 3, Codec: "subrip", Language: "eng" }
@@ -611,6 +611,69 @@ namespace tests
       first = buildPlaybackReport(m.input)
       second = buildPlaybackReport(m.input)
       m.assertEqual(formatJson(first), formatJson(second))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("video level scales")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' REGRESSION. The report divided every level by ten, so an HEVC stream at
+    ' level 153 rendered "Main 10 @ L15.3" — and the device capture that caught it
+    ' showed "L15.0" for a level-150 stream. HEVC's maximum defined level is 6.2,
+    ' so those are not levels that exist.
+    '
+    ' The scales are Jellyfin's, read off jellyfin-web's own browserDeviceProfile.js
+    ' (maxH264Level = 42 -> 4.2; maxHevcLevel = 153 -> 5.1; maxAv1Level = 15 ->
+    ' "level 5.3" per its own comment). JellyRock already encodes the h264 and hevc
+    ' halves in deviceCapabilities.bs, so these assertions are the same numbers read
+    ' back the other way and will fail if the two ever drift apart.
+
+    @it("reads an HEVC level on the x30 scale")
+    function _()
+      ' 153 = 5.1. The fixture carries this, so it also covers the default path.
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.profile"), "Main 10 @ L5.1")
+    end function
+
+    @it("reads an h264 level on the x10 scale")
+    function _()
+      m.input.mediaSource.MediaStreams[0].Codec = "h264"
+      m.input.mediaSource.MediaStreams[0].Profile = "High"
+      m.input.mediaSource.MediaStreams[0].Level = 41
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.profile"), "High @ L4.1")
+    end function
+
+    @it("reads an AV1 level as a seq_level_idx rather than a multiple")
+    function _()
+      ' idx = (major - 2) * 4 + minor, so 15 -> 5.3 and 16 -> 6.0. Dividing by
+      ' either 10 or 30 would render both as fractions of a level.
+      m.input.mediaSource.MediaStreams[0].Codec = "av1"
+      m.input.mediaSource.MediaStreams[0].Profile = "Main"
+      m.input.mediaSource.MediaStreams[0].Level = 15
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.profile"), "Main @ L5.3")
+
+      m.input.mediaSource.MediaStreams[0].Level = 16
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.profile"), "Main @ L6.0")
+    end function
+
+    @it("renders the profile alone for a codec whose level scale we do not know")
+    function _()
+      ' vp9 gets no level condition in Jellyfin's own profile and mpeg2's scale is
+      ' not established here. A number divided by a guessed constant would be the
+      ' most convincing wrong thing this row could say, so no level is shown.
+      for each codec in ["vp9", "mpeg2video"]
+        m.input.mediaSource.MediaStreams[0].Codec = codec
+        m.input.mediaSource.MediaStreams[0].Profile = "Profile 0"
+        m.input.mediaSource.MediaStreams[0].Level = 51
+        m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.profile"), "Profile 0", codec + " must not render a guessed level")
+      end for
+    end function
+
+    @it("drops the row entirely when an unknown codec has no profile either")
+    function _()
+      m.input.mediaSource.MediaStreams[0].Codec = "vp9"
+      m.input.mediaSource.MediaStreams[0].Profile = ""
+      m.input.mediaSource.MediaStreams[0].Level = 51
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.profile"), "<missing>")
     end function
 
   end class
