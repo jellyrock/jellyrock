@@ -26,9 +26,11 @@
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
 
-' The height the resolution cap falls back to when the user has not lowered it.
-' Mirrors getResolutionConditions()'s own default in deviceCapabilities.bs.
-const TRANSCODE_CAUSE_DEFAULT_MAX_HEIGHT = 1080
+' The 1080p hardware ceiling ItemPostPlaybackInfo clamps h264 to, independently of
+' any setting. Renamed from TRANSCODE_CAUSE_DEFAULT_MAX_HEIGHT when the resolution
+' predicate stopped treating 1080 as a cap the user could not beat: this is now the
+' ONLY thing 1080 means in this file, and the old name claimed the other one.
+const TRANSCODE_CAUSE_H264_CEILING_HEIGHT = 1080
 
 ' Codecs whose decode path JellyRock caps at 2 channels when the user turns
 ' "Decode Multichannel Audio" off. Mirrors `stereoOutputCodecs` in
@@ -179,15 +181,22 @@ function causedByBitrateLimit(ctx as object, settings as object) as boolean
   return sourceBitrate > (limitMbps * 1000000)
 end function
 
-' Mirrors getResolutionConditions() in deviceCapabilities.bs, which is subtler
-' than it looks — three of its four branches produce a cap that is NOT the user's
-' choice:
-'   "off"            -> no conditions at all
-'   "auto"           -> the device's own height; following the TV is not a choice
-'   numeric >= 1080  -> collapses to the same 1080 default any device would get
-' Only a numeric value that lands BELOW what the device would otherwise allow is
-' the user actively giving something up, and only then is naming the setting
-' useful — it is the one case where changing it would change the outcome.
+' Mirrors getResolutionConditions() in deviceCapabilities.bs, where two of the
+' three branches produce a cap that is NOT the user's choice:
+'   "off"   -> no conditions at all
+'   "auto"  -> the device's own height; following the TV is not a choice
+' Any NUMERIC value is the user actively giving something up, and is attributable
+' whenever the source actually exceeds it and the device could have done better.
+'
+' This used to carry a third exemption — `cap >= 1080 -> collapses to the default
+' every device gets` — which mirrored a REGRESSION rather than a design. Until
+' jellyrock#866, getResolutionConditions compared the user's height against its own
+' 1080 failure-fallback, so "4k" and "8k" silently became a 1080 cap and there was
+' genuinely nothing to attribute. Now the chosen height is honoured, so a 1080 cap
+' on a 4K device IS the user's doing — auto would have given them 2160 — and
+' staying silent about it would be the false negative this module tries to avoid.
+' The `deviceMaxHeight <= cap` guard below already expresses "the setting is moot"
+' correctly, which is why removing the exemption needed no replacement for it.
 '
 ' The h264 exclusion is the ambiguity guard. ItemPostPlaybackInfo caps h264 at the
 ' 1080p hardware ceiling independently of any setting, so a 4K h264 source would
@@ -201,7 +210,7 @@ function causedByResolutionCap(ctx as object, settings as object) as boolean
   if userMax = "off" or userMax = "auto" then return false
 
   cap = userMax.toInt()
-  if cap <= 0 or cap >= TRANSCODE_CAUSE_DEFAULT_MAX_HEIGHT then return false
+  if cap <= 0 then return false
 
   stream = ctx.videoStream
   if not isValid(stream) then return false
@@ -220,7 +229,7 @@ function causedByResolutionCap(ctx as object, settings as object) as boolean
 
   ' The h264 hardware ceiling would have forced this regardless of the setting.
   if isValidAndNotEmpty(stream.Codec) and LCase(stream.Codec) = "h264"
-    if sourceHeight > TRANSCODE_CAUSE_DEFAULT_MAX_HEIGHT or sourceWidth > 1920 then return false
+    if sourceHeight > TRANSCODE_CAUSE_H264_CEILING_HEIGHT or sourceWidth > 1920 then return false
   end if
 
   ' A device that cannot exceed the user's cap anyway makes the setting moot.

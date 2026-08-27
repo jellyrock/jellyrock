@@ -241,11 +241,42 @@ namespace tests
       m.assertEqual(transcodeCauseSettingKey("VideoResolutionNotSupported", m.resolutionCtx), "")
     end function
 
-    @it("says nothing at 1080 or above, which collapses to the default every device gets")
+    ' REGRESSION GUARD. This block used to assert the OPPOSITE — that 1080/1440/2160
+    ' never attribute — because getResolutionConditions collapsed any value at or
+    ' above 1080 to a 1080 cap, so nothing was genuinely the user's doing. That was a
+    ' bug (jellyrock#866), and the old assertion mirrored it. Worth knowing: those old
+    ' cases would still PASS against the fixed code, because the fixture's source is
+    ' 1080p and so fits under every one of those caps — they had gone vacuous rather
+    ' than red, which is exactly why they are replaced rather than deleted.
+    @it("names the setting for a cap at or above 1080 that the source still exceeds")
     function _()
+      ' A 4K device, a 4K source, and the user asking for 1080. `auto` would have
+      ' given them 2160, so the cap is theirs and changing it would change the
+      ' outcome — the definition this module attributes on.
+      m.resolutionCtx.settings.playbackResolutionMax = "1080"
+      m.resolutionCtx.deviceMaxHeight = 2160
+      m.resolutionCtx.videoStream = { Codec: "hevc", Height: 2160, Width: 3840 }
+      m.assertEqual(transcodeCauseSettingKey("VideoResolutionNotSupported", m.resolutionCtx), translationKeys.LabelMaximumResolution)
+    end function
+
+    @it("names the setting for a 4k cap an 8k source exceeds")
+    function _()
+      ' The rung above: honouring "4k" means a 2160 cap is now real, so an 8K source
+      ' hitting it is attributable for the same reason.
+      m.resolutionCtx.settings.playbackResolutionMax = "2160"
+      m.resolutionCtx.deviceMaxHeight = 4320
+      m.resolutionCtx.videoStream = { Codec: "hevc", Height: 4320, Width: 7680 }
+      m.assertEqual(transcodeCauseSettingKey("VideoResolutionNotSupported", m.resolutionCtx), translationKeys.LabelMaximumResolution)
+    end function
+
+    @it("still says nothing when a high cap is one the source fits under")
+    function _()
+      ' The case the replaced assertions were accidentally testing. Kept explicitly,
+      ' so the reason it returns "" is pinned as "the source fits" rather than left
+      ' to coincide with a rule that no longer exists.
       for each value in ["1080", "1440", "2160"]
         m.resolutionCtx.settings.playbackResolutionMax = value
-        m.assertEqual(transcodeCauseSettingKey("VideoResolutionNotSupported", m.resolutionCtx), "", value + " should not attribute")
+        m.assertEqual(transcodeCauseSettingKey("VideoResolutionNotSupported", m.resolutionCtx), "", value + " should not attribute for a 1080p source")
       end for
     end function
 
