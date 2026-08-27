@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Size Home's browse feeds with one setting and measure its ceiling ([#864](https://github.com/jellyrock/jellyrock/pull/864))
 
+### Fixed
+
+- (setting) Honor a non-default Maximum Resolution instead of capping at 1080p ([#866](https://github.com/jellyrock/jellyrock/pull/866))
+
 ## [2.26.1](https://github.com/jellyrock/jellyrock/compare/v2.26.0...v2.26.1) - 2026-08-26
 
 ### Fixed
