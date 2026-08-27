@@ -6,8 +6,30 @@ namespace tests
   @suite("deviceCapabilities.bs - Codec Support Detection")
   class DeviceCapabilitiesTests extends tests.BaseTestSuite
 
+    ' Saved-and-restored around EVERY test in this suite, not just the resolution
+    ' block that needs them: `m.global.device` is a shared DeviceInfo node and
+    ' `m.global.user.settings` a shared settings node, so a test that leaves a
+    ' resolution behind silently reshapes whatever suite runs next.
+    protected savedVideoHeight as dynamic
+    protected savedVideoWidth as dynamic
+    protected savedResolutionMax as dynamic
+
     protected override function setup()
       super.setup()
+    end function
+
+    protected override function beforeEach()
+      super.beforeEach()
+      m.savedVideoHeight = m.global.device.videoHeight
+      m.savedVideoWidth = m.global.device.videoWidth
+      m.savedResolutionMax = m.global.user.settings.playbackResolutionMax
+    end function
+
+    protected override function afterEach()
+      m.global.device.videoHeight = m.savedVideoHeight
+      m.global.device.videoWidth = m.savedVideoWidth
+      m.global.user.settings.playbackResolutionMax = m.savedResolutionMax
+      super.afterEach()
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -996,6 +1018,136 @@ namespace tests
       result = calculateOptimalTranscodingParams(20000000&, 7200, 31616000&)
       m.assertEqual(result.segmentLength, 4, "Should reduce segment length to 4 for medium bitrate")
       m.assertEqual(result.maxBitrate, 0&, "Should not reduce bitrate")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getResolutionConditions()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' This function had NO coverage at all, and the gap is what let a regression
+    ' live in it: the user branch compared the chosen height against
+    ' `maxVideoHeight`, which at that point is the 1080 FAILURE fallback rather
+    ' than any kind of ceiling. So "4k" and "8k" — both offered in settings.json —
+    ' collapsed to a 1080 cap, and on a 4K device the explicit choice came out
+    ' MORE restrictive than the "auto" default it overrides.
+    '
+    ' Driven through the real `m.global` nodes for the same reason the
+    ' GetBitRateLimit block above is: `playbackResolutionMax` is a node string
+    ' field and `videoHeight` a node integer, and a plain-AA fixture would not
+    ' exercise the coercions this reads them through.
+
+    ' Height first, Width second — both are emitted and callers read them by
+    ' Property, so this helper keeps the tests about VALUES rather than ordering.
+    private function capFor(setting as string, deviceHeight as integer, deviceWidth = 3840 as integer) as object
+      m.global.user.settings.playbackResolutionMax = setting
+      m.global.device.videoHeight = deviceHeight
+      m.global.device.videoWidth = deviceWidth
+
+      cap = { height: 0, width: 0, count: 0 }
+      for each condition in getResolutionConditions()
+        cap.count++
+        if condition.Property = "Height" then cap.height = condition.Value.toInt()
+        if condition.Property = "Width" then cap.width = condition.Value.toInt()
+      end for
+      return cap
+    end function
+
+    @it("sends no condition at all when the cap is switched off")
+    function _()
+      m.assertEqual(m.capFor("off", 2160).count, 0, "off must not constrain anything")
+    end function
+
+    @it("follows the device's own video mode on auto")
+    function _()
+      m.assertEqual(m.capFor("auto", 2160).height, 2160)
+      m.assertEqual(m.capFor("auto", 2160).width, 3840)
+    end function
+
+    @it("floors auto at 1080 when the device reports something smaller")
+    function _()
+      ' A 720p output mode must not lower the cap below the 1080 default — auto
+      ' follows the device UP, never down.
+      m.assertEqual(m.capFor("auto", 720, 1280).height, 1080)
+      m.assertEqual(m.capFor("auto", 720, 1280).width, 1920)
+    end function
+
+    @it("honours a chosen height BELOW the default")
+    function _()
+      m.assertEqual(m.capFor("720", 2160).height, 720)
+      m.assertEqual(m.capFor("720", 2160).width, 1280, "the paired width comes from the standard table")
+    end function
+
+    ' "360" is the ONE rung settings.json offers that `heightToWidth` has no row
+    ' for, so it is the only case that reaches the 16:9 derivation. Asserted here
+    ' because the ladder cases below check heights only.
+    @it("derives the paired width for a height the table has no row for")
+    function _()
+      m.assertEqual(m.capFor("360", 2160).width, 640, "360p falls through to the 16:9 derivation")
+    end function
+
+    ' REGRESSION, and the whole reason this block exists. Both of these used to
+    ' return 1080.
+    @it("honours 4k rather than collapsing it to the 1080 fallback")
+    function _()
+      cap = m.capFor("2160", 2160)
+      m.assertEqual(cap.height, 2160, "choosing 4k must not cap at 1080p")
+      m.assertEqual(cap.width, 3840)
+    end function
+
+    @it("honours 8k rather than collapsing it to the 1080 fallback")
+    function _()
+      cap = m.capFor("4320", 2160)
+      m.assertEqual(cap.height, 4320, "choosing 8k must not cap at 1080p")
+      m.assertEqual(cap.width, 7680)
+    end function
+
+    ' THE DELIBERATE HALF. Roku exposes no API for the attached display's maximum
+    ' video resolution, so a 4K TV left on a 1080p Display Type is
+    ' indistinguishable from a 1080p panel. Clamping here would leave that user no
+    ' way to say otherwise, and "off" already ships as a MORE permissive rung.
+    @it("honours a choice ABOVE the device's current video mode")
+    function _()
+      cap = m.capFor("2160", 1080, 1920)
+      m.assertEqual(cap.height, 2160, "the user's explicit choice is not clamped to the output mode")
+      m.assertEqual(cap.width, 3840)
+    end function
+
+    @it("falls back to 1080 for a value it cannot parse")
+    function _()
+      m.assertEqual(m.capFor("banana", 2160).height, 1080, "an unreadable setting takes the safe default")
+    end function
+
+    ' THE INVARIANTS, stated across the whole ladder so an option added to
+    ' settings.json later cannot quietly break one in a way the per-value cases
+    ' above would miss.
+    '
+    ' NOT written as "non-decreasing", which was the first attempt and was
+    ' VACUOUS: the broken function returned 360/480/720/1080/1080/1080, which is
+    ' non-decreasing, so that assertion passed against the very bug it named. The
+    ' two below both fail against it.
+    @it("caps at exactly the height selected, on every rung of the ladder")
+    function _()
+      for each setting in ["360", "480", "720", "1080", "2160", "4320"]
+        height = m.capFor(setting, 2160).height
+        m.assertEqual(height, setting.toInt(), setting + "p selected but capped at " + height.toStr())
+      end for
+    end function
+
+    @it("never makes an explicit choice more restrictive than auto")
+    function _()
+      ' The user-visible shape of the regression: on a 4K device, "auto" gave 2160
+      ' while the explicit "4k" gave 1080, so choosing the higher option produced
+      ' the worse result. Any rung at or above what auto resolves to must be at
+      ' least as permissive as auto.
+      autoHeight = m.capFor("auto", 2160).height
+
+      for each setting in ["2160", "4320"]
+        height = m.capFor(setting, 2160).height
+        m.assertTrue(height >= autoHeight, setting + "p capped at " + height.toStr() + ", below auto's " + autoHeight.toStr())
+      end for
+
+      ' ...and "off" stays the most permissive rung of all.
+      m.assertEqual(m.capFor("off", 2160).count, 0, "off must not constrain anything")
     end function
 
   end class

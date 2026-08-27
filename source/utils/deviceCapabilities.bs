@@ -1415,9 +1415,28 @@ function getResolutionConditions(isRequired = false as boolean) as object
       maxVideoWidth = globalDevice.videoWidth ' paired width for device's native video mode
     end if
   else
-    userMaxHeight = userMaxHeight.ToInt()
-    if isValid(userMaxHeight) and userMaxHeight > 0 and userMaxHeight < maxVideoHeight
-      maxVideoHeight = userMaxHeight
+    ' THE USER'S NUMBER IS TAKEN AS GIVEN, and is deliberately NOT clamped —
+    ' neither against `maxVideoHeight` above (a FAILURE fallback, not a ceiling)
+    ' nor against the device's own video mode.
+    '
+    ' Not clamping to the device is the half that needs a why. Roku exposes no API
+    ' for the ATTACHED DISPLAY's maximum video resolution: GetVideoMode() reports
+    ' the current OUTPUT mode (the Roku's own Display Type setting) and
+    ' GetDisplayProperties() reports physical centimetres and HDR flags, nothing
+    ' in pixels. So a 4K TV left on a 1080p Display Type is indistinguishable from
+    ' a genuine 1080p panel, and a clamp would leave that user no way to say
+    ' otherwise. This setting is how they say it.
+    '
+    ' Safe because the ladder already carries a MORE permissive rung: "off"
+    ' returns [] above, sending no height or width condition at all — so honouring
+    ' "4k" is strictly narrower than an option that already ships.
+    '
+    ' Rationale and the rejected alternatives (clamping to the device height;
+    ' falling back on CanDecodeVideo) are recorded in docs/decisions.md under
+    ' decision-id: resolution-cap-honors-user-choice.
+    requestedHeight = userMaxHeight.ToInt()
+    if requestedHeight > 0
+      maxVideoHeight = requestedHeight
       ' Settings only stores height, so derive the paired 16:9 width
       ' (same standard resolution pairs as SaveDeviceToGlobal in globals.bs)
       heightToWidth = {
