@@ -15,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - (setting) Honor a non-default Maximum Resolution instead of capping at 1080p ([#866](https://github.com/jellyrock/jellyrock/pull/866))
 
+### Dependencies
+
+- Update sharp from v0.35.3 to v0.35.4 ([#863](https://github.com/jellyrock/jellyrock/pull/863))
+
 ## [2.26.1](https://github.com/jellyrock/jellyrock/compare/v2.26.0...v2.26.1) - 2026-08-26
 
 ### Fixed
