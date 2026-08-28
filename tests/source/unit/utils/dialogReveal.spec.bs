@@ -1,4 +1,5 @@
 import "pkg:/source/utils/dialogReveal.bs"
+import "pkg:/source/utils/dialogs.bs"
 
 namespace tests
 
@@ -31,6 +32,27 @@ namespace tests
     private function panelHeight(dialog as object) as integer
       return int(dialog.findNode("panelBackground").height)
     end function
+
+    private function panelWidth(dialog as object) as integer
+      return int(dialog.findNode("panelBackground").width)
+    end function
+
+    ' Yield the render thread long enough for a render pass, then come back.
+    '
+    ' `wait` on a port is the only way a Rooibos test can let the renderer run —
+    ' the test body IS render-thread work, so without this nothing between two
+    ' reads can ever have rendered. Observing the button's `isReady` makes it
+    ' return as soon as the thing we care about happens, with the timeout as the
+    ' floor rather than the expected cost. Same mechanism dialogs.spec.bs uses to
+    ' prove a port observer was dropped.
+    private sub letARenderPassHappen(dialog as object)
+      row = dialog.findNode("buttonRow")
+      port = CreateObject("roMessagePort")
+      if isValid(row) and row.getChildCount() > 0
+        row.getChild(0).observeField("isReady", port)
+      end if
+      wait(1500, port)
+    end sub
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("measuring while hidden")
@@ -153,6 +175,92 @@ namespace tests
       hideDialogUntilLaidOut(invalid)
       settleAndRevealDialog(invalid)
       revealDialog(invalid)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("revealed fully formed")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' THE PROPERTY THE WHOLE APPROACH PROMISES: "it simply is not there, and then
+    ' it is, fully formed". Everything above proves the dialog is LAID OUT while
+    ' hidden; none of it proves the geometry does not move again once shown.
+    '
+    ' That gap is not hypothetical. TextButton sizes itself only when its own
+    ' `renderTracking` reads "full" (TextButton.bs onTextChanged / onRenderComplete),
+    ' and dialogReveal.bs's own premise is that Roku reports "none" for a hidden
+    ' node — so across the hidden window the buttons may not have sized, and
+    ' JRDialog derives the PANEL WIDTH from `naturalButtonRowWidth()`. If that
+    ' measured short, the panel would be placed at the default width and then grow
+    ' when `isReady` finally fires, one pass after the dialog became visible.
+    '
+    ' A long label is what makes the question answerable: with an English
+    ' two-button row the panel never grows past PANEL_WIDTH, so a re-flow and a
+    ' correct layout are indistinguishable. This label is wide enough to force the
+    ' grow-or-stack path that exists for long translations.
+    '
+    ' Asserted as WIDTH EQUALITY across a render pass rather than by watching for
+    ' a flash, because a one-frame artifact is not observable from a test — but a
+    ' geometry change across the boundary is, and it is the same defect.
+    '
+    ' THE ANSWER, measured rather than argued: the panel is 1140 wide at reveal and
+    ' 1140 after, against a 762 default. The buttons ARE measurable while hidden,
+    ' because naturalButtonRowWidth() reads the TextButton group's bounding rect
+    ' and that includes its `buttonText` Label — which reports font metrics with no
+    ' render pass, the same property this whole file rests on. TextButton not
+    ' having applied its background size yet never entered into the width. So this
+    ' is a guard against a regression, not a fix for a live defect.
+    @it("does not re-flow the panel after it becomes visible")
+    function _()
+      dialog = CreateObject("roSGNode", "JRDialog")
+      dialog.title = "Delete this recording?"
+      dialog.message = "A message long enough that the panel has real content to size around."
+      dialog.buttons = ["Aufnahme dauerhaft entfernen", "Abbrechen und zurueckkehren"]
+
+      presented = presentOverlayDialog(dialog, "")
+      widthAtReveal = m.panelWidth(presented)
+      heightAtReveal = m.panelHeight(presented)
+
+      m.letARenderPassHappen(presented)
+
+      widthAfterRender = m.panelWidth(presented)
+      heightAfterRender = m.panelHeight(presented)
+      visible = presented.visible
+      abandonDialog(presented)
+
+      m.assertTrue(visible, "the dialog was left hidden")
+      ' ANTI-VACUITY GATE, and it is the whole reason this test means anything.
+      ' JRDialog's PANEL_WIDTH default is 762 (file-scoped, so not referenceable
+      ' from here). If the row fit inside that, the panel would sit at the default
+      ' whether or not the buttons had sized, and a re-flow would be
+      ' indistinguishable from a correct layout. Measured 1140 on a Stick 4K with
+      ' the labels above — comfortably grown, and under PANEL_MAX_WIDTH's 1200 so
+      ' it grows rather than stacking.
+      m.assertTrue(widthAtReveal > 762, "the button row did not exceed the default panel width, so this test cannot tell a re-flow from a no-op")
+      m.assertEqual(widthAtReveal, widthAfterRender, "the panel width changed AFTER the dialog was shown, so it was revealed before it was fully formed")
+      m.assertEqual(heightAtReveal, heightAfterRender, "the panel height changed after the dialog was shown")
+    end function
+
+    ' The same question for the body shape this branch adds. A report body is
+    ' built from wrapping value labels, which DO carry renderTracking observers,
+    ' so this is the case most likely to settle late.
+    @it("does not re-flow a structured report body after it becomes visible")
+    function _()
+      dialog = CreateObject("roSGNode", "OverviewDialog")
+      dialog.title = "Playback info"
+      dialog.sections = m.reportSections()
+
+      presented = presentOverlayDialog(dialog, "")
+      heightAtReveal = m.panelHeight(presented)
+
+      m.letARenderPassHappen(presented)
+
+      heightAfterRender = m.panelHeight(presented)
+      visible = presented.visible
+      abandonDialog(presented)
+
+      m.assertTrue(visible, "the dialog was left hidden")
+      m.assertTrue(heightAtReveal > 0, "no panel height at reveal; the comparison below would be vacuous")
+      m.assertEqual(heightAtReveal, heightAfterRender, "the report panel resized after it was shown")
     end function
 
   end class
