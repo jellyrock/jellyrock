@@ -208,10 +208,53 @@ namespace tests
     @it("shows source-only when rangetype is a list of ALLOWED values")
     function _()
       ' StreamBuilder writes a comma-joined permitted set here, and in one branch
-      ' the complement of a set. A list is a constraint, not an outcome — reading
-      ' it as the target would be the most convincing wrong thing this report
-      ' could say.
+      ' the complement of a set. A list of genuinely different outcomes is a
+      ' constraint, not an outcome — reading it as the target would be the most
+      ' convincing wrong thing this report could say. SDR and HDR10 are both
+      ' reachable by an encode, so which one comes out is the server's business.
       m.input.mediaSource.TranscodingUrl = Substitute("{0}", m.input.mediaSource.TranscodingUrl.replace("h264-rangetype=SDR", "h264-rangetype=SDR,HDR10,HLG"))
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.range"), "DV 8.1")
+    end function
+
+    ' REGRESSION, and the single most likely real case rather than a constructed
+    ' one. JellyRock sends `EqualsAny` with "SDR|DOVIWithSDR" for h264, and
+    ' StreamBuilder's EqualsAny branch re-joins that permitted set into the URL as
+    ' `h264-rangetype=SDR,DOVIWithSDR`. The old guard rejected anything with a
+    ' comma, so an HDR10 source tone-mapped to h264 rendered "HDR10" with NO
+    ' ARROW — which by this report's own rule means untouched, the opposite of
+    ' what was happening.
+    @it("names SDR when the only non-DoVi member of the permitted set is SDR")
+    function _()
+      m.input.mediaSource.MediaStreams[0].VideoRange = "HDR"
+      m.input.mediaSource.MediaStreams[0].VideoRangeType = "HDR10"
+      m.input.mediaSource.TranscodingUrl = m.input.mediaSource.TranscodingUrl.replace("h264-rangetype=SDR", "h264-rangetype=SDR,DOVIWithSDR")
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.range"), "HDR10" + PLAYBACK_INFO_ARROW + "SDR")
+    end function
+
+    @it("stays silent when two REACHABLE outcomes remain after dropping DoVi")
+    function _()
+      ' An hevc profile on an HDR10-capable display permits both. Dropping the
+      ' DoVi members is not enough to make this one answer, so it claims none.
+      m.input.mediaSource.TranscodingUrl = m.input.mediaSource.TranscodingUrl.replace("h264-rangetype=SDR", "h264-rangetype=SDR,HDR10,DOVIWithHDR10")
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.range"), "DV 8.1")
+    end function
+
+    @it("claims nothing when every permitted value is a DoVi variant")
+    function _()
+      ' An encode cannot author Dolby Vision — DoVi survives only by copy, and a
+      ' copy would have suppressed the target already. So a set with nothing else
+      ' in it describes an outcome that cannot happen, and silence is the answer.
+      m.input.mediaSource.TranscodingUrl = m.input.mediaSource.TranscodingUrl.replace("h264-rangetype=SDR", "h264-rangetype=DOVIWithSDR,DOVIWithHDR10")
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.range"), "DV 8.1")
+    end function
+
+    @it("still draws no arrow for a copied video stream, whatever the set says")
+    function _()
+      ' The isCopy guard runs first, and it has to: a remuxed DoVi stream keeps
+      ' its range, and the permitted set describes what was ALLOWED, not what the
+      ' untouched stream is.
+      m.input.session.TranscodingInfo.IsVideoDirect = true
+      m.input.mediaSource.TranscodingUrl = m.input.mediaSource.TranscodingUrl.replace("h264-rangetype=SDR", "h264-rangetype=SDR,DOVIWithSDR")
       m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.range"), "DV 8.1")
     end function
 

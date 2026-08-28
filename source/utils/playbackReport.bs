@@ -375,9 +375,41 @@ function targetVideoRange(urlParams as object, transcoding as dynamic, isCopy as
 
   declared = codecOption(urlParams, transcoding.VideoCodec, "rangetype")
   if declared = "" then return ""
-  if inStr(1, declared, ",") > 0 then return ""
 
-  return formatVideoRangeLabel({ VideoRangeType: declared, VideoRange: declared })
+  ' A LIST IS NOT AUTOMATICALLY AMBIGUOUS, which is the correction here. This
+  ' returned "" for anything containing a comma, and the single most common real
+  ' case is a comma list: JellyRock sends `EqualsAny` with "SDR|DOVIWithSDR" for
+  ' h264, and StreamBuilder's EqualsAny branch re-joins the permitted set as
+  ' `h264-rangetype=SDR,DOVIWithSDR` (StreamBuilder.cs, ProfileConditionValue
+  ' .VideoRangeType). So an HDR10 source tone-mapped to h264 — the case a viewer
+  ' is most likely to open this report to understand — rendered "HDR10" with no
+  ' arrow, which by this report's own rule reads as UNTOUCHED. It was being
+  ' changed. That is the report stating the opposite of the truth, not merely
+  ' withholding.
+  '
+  ' DOLBY VISION VARIANTS ARE UNREACHABLE ON A RE-ENCODE, and dropping them is
+  ' what lets the set collapse. Jellyfin's EncodingHelper only ever REMOVES DoVi
+  ' metadata (DynamicHdrMetadataRemovalPlan.RemoveDovi); nothing in it authors
+  ' DoVi, and tone-mapping is by definition an HDR-to-SDR filter. DoVi output
+  ' therefore survives only by COPY — and a copy sets IsVideoDirect, which the
+  ' isCopy guard above already turned into no target at all. So by the time we
+  ' are here, every DoVi member of the set is describing an outcome that cannot
+  ' happen.
+  '
+  ' Still silent whenever what remains is genuinely more than one answer: an hevc
+  ' profile on an HDR10-capable display permits SDR and HDR10 both, and which one
+  ' comes out is the server's business, not something to guess from a set.
+  candidates = []
+  for each value in declared.split(",")
+    candidate = value.trim()
+    if candidate = "" then continue for
+    if inStr(1, LCase(candidate), "dovi") > 0 then continue for
+    if not arrayHasValue(candidates, candidate) then candidates.push(candidate)
+  end for
+
+  if candidates.count() <> 1 then return ""
+
+  return formatVideoRangeLabel({ VideoRangeType: candidates[0], VideoRange: candidates[0] })
 end function
 
 ' The target bit depth, but only when the source actually exceeds the ceiling.
