@@ -374,6 +374,7 @@
 (?:markdownlint)\.
 (?:marshalling)\.
 (?:Marshalling)\.
+(?:Mbps)\.
 (?:mixin)\.
 (?:Mixin)\.
 (?:MKV)\.
@@ -436,6 +437,7 @@
 (?:PDF)\.
 (?:PDFs)\.
 (?:PDIF)\.
+(?:per-codec)\.
 (?:per-dev)\.
 (?:per-worktree)\.
 (?:perf)\.
@@ -571,6 +573,7 @@
 (?:scrollbar)\.
 (?:sdk)\.
 (?:SDK)\.
+(?:SDR)\.
 (?:selectable)\.
 (?:sgRouter)\.
 (?:sgrouter)\.
