@@ -50,7 +50,6 @@
   "LabelHome": "ホーム",
   "LabelInstantMix": "インスタントミックス",
   "LabelKids": "子供",
-  "LabelLevel": "レベル",
   "LabelLibraries": "ライブラリ",
   "LabelLive": "ライブ",
   "LabelMoreLikeThis": "これに似たもの",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "未再生",
   "LabelUsername": "ユーザー名",
   "LabelVideo": "動画",
-  "LabelVideoRangeType": "動画のレンジタイプ",
   "LabelVideos": "ビデオ",
   "LabelWatched": "視聴済み",
   "LabelYears": "年",
@@ -194,6 +192,5 @@
   "MessageDisc1": "ディスク {0}",
   "MessageEndsAt1": "{0}に終了",
   "MessageMoreFrom1": "もっと詳しく {0}",
-  "MessageSetTheMaximumAmountOfDays": "視聴されないまま「まずは…」に表示を続ける最大日数を設定します。",
-  "MessageTheSourceFileIsEntirelyCompatible": "元のファイルはこのクライアントと完全に互換性があり、セッションは変更なしでファイルを受信しています。"
+  "MessageSetTheMaximumAmountOfDays": "視聴されないまま「まずは…」に表示を続ける最大日数を設定します。"
 }

@@ -50,7 +50,6 @@
   "LabelHome": "Ana Ekran",
   "LabelInstantMix": "Anlık Mix",
   "LabelKids": "Çocuklar",
-  "LabelLevel": "Düzey",
   "LabelLibraries": "Kütüphaneler",
   "LabelLive": "Canlı",
   "LabelMoreLikeThis": "Benzerleri",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "Oynatılmamış",
   "LabelUsername": "Kullanıcı Adı",
   "LabelVideo": "Video",
-  "LabelVideoRangeType": "Video aralık türü",
   "LabelVideos": "Videolar",
   "LabelWatch": "İzle",
   "LabelWatched": "İzlendi",
@@ -193,6 +191,5 @@
   "MessageDisc1": "Disk {0}",
   "MessageEndsAt1": "Bitiş saati: {0}",
   "MessageMoreFrom1": "{0} bölümleri",
-  "MessageSetTheMaximumAmountOfDays": "Bir dizinin izlenmeden 'Sıradaki Bölümler' listesinde kalması gereken maksimum gün sayısını ayarlayın.",
-  "MessageTheSourceFileIsEntirelyCompatible": "Kaynak dosya bu iştemci ile tamamen uyumlu ve oturum dosyayı değişiklik yapmadan alıyor."
+  "MessageSetTheMaximumAmountOfDays": "Bir dizinin izlenmeden 'Sıradaki Bölümler' listesinde kalması gereken maksimum gün sayısını ayarlayın."
 }

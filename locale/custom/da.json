@@ -50,7 +50,6 @@
   "LabelHome": "Hjem",
   "LabelInstantMix": "Øjeblikkelig Mix",
   "LabelKids": "Børn",
-  "LabelLevel": "Niveau",
   "LabelLibraries": "Biblioteker",
   "LabelLive": "Direkte",
   "LabelMoreLikeThis": "Mere som dette",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "Uafspillet",
   "LabelUsername": "Brugernavn",
   "LabelVideo": "Video",
-  "LabelVideoRangeType": "Video rækkevidde type",
   "LabelVideos": "Videoer",
   "LabelWatched": "Set",
   "LabelYears": "År",
@@ -194,6 +192,5 @@
   "MessageDisc1": "Disk {0}",
   "MessageEndsAt1": "Slutter {0}",
   "MessageMoreFrom1": "Mere fra {0}",
-  "MessageSetTheMaximumAmountOfDays": "Indstil maks. dage, et program forbliver i køen uden at blive set.",
-  "MessageTheSourceFileIsEntirelyCompatible": "Kildefilen er kompatibel med denne klient og modtages uden brug af omkodning."
+  "MessageSetTheMaximumAmountOfDays": "Indstil maks. dage, et program forbliver i køen uden at blive set."
 }

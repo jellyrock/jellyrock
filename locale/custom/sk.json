@@ -61,7 +61,6 @@
   "LabelEndsAt": "Končí o",
   "LabelEnterAPassword": "Zadajte heslo",
   "LabelEnterAUsername": "Zadajte používateľské meno",
-  "LabelEnterConfiguration": "Zadať konfiguráciu",
   "LabelEpisodes": "Epizódy",
   "LabelFavorite": "Obľúbené",
   "LabelFavorites": "Obľúbené",
@@ -74,7 +73,6 @@
   "LabelInstantMix": "Okamžitý mix",
   "LabelItemCount": "Počet položiek",
   "LabelKids": "Detské",
-  "LabelLevel": "Úroveň",
   "LabelLibraries": "Knižnice",
   "LabelLive": "Naživo",
   "LabelMoreLikeThis": "Navrhované",
@@ -140,7 +138,6 @@
   "LabelUserInterface": "Použivateľské rozhranie",
   "LabelUsername": "Používateľské meno",
   "LabelVideo": "Video",
-  "LabelVideoRangeType": "Typ rozsahu videa",
   "LabelVideos": "Videá",
   "LabelWatched": "Pozreté",
   "LabelYears": "Roky",
@@ -240,8 +237,6 @@
   "MessageServerNotFoundIsItOnline": "Server nebol nájdený, je online?",
   "MessageSetTheMaximumAmountOfDays": "Určuje maximálny počet dní, po ktoré zostane seriál v sekcií \"Nasleduje\" bez pozretia.",
   "MessageShowItemCountInTheLibrary": "Zobraziť počet položiek v knižnici a poradnie zvolenej položky.",
-  "MessageSupportDirectPlayOfMpeg2Content": "Podpora Priameho prehrávania MPEG-2 materiálu (napr., Live TV). Toto neumožní transkódovanie MPEG-2 materiálov ale použiva drasticky viac šírky pásma.",
   "MessageSupportDirectPlayOfMpeg4Content": "Podpora Priameho prehrávania MPEG-4 obsahu. Toto by malo byť zakázané pri prehrávaní videa s DIVX enkódovaním.",
-  "MessageTheSourceFileIsEntirelyCompatible": "Zdrojový súbor je úplne kompatibilný s týmto klientom a relácia prijíma súbor bez úprav.",
   "MessageYouCanSearchForTitlesPeople": "Vyhľadávanie pomocou Názvu, Osoby, Kanálov a iných"
 }

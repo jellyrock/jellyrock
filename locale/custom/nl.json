@@ -50,7 +50,6 @@
   "LabelHome": "Startscherm",
   "LabelInstantMix": "Instant mix",
   "LabelKids": "Kinderen",
-  "LabelLevel": "Niveau",
   "LabelLibraries": "Bibliotheken",
   "LabelLive": "Live",
   "LabelMoreLikeThis": "Meer zoals dit",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "Niet afgespeeld",
   "LabelUsername": "Gebruikersnaam",
   "LabelVideo": "Beeld",
-  "LabelVideoRangeType": "Bereiktype beeld",
   "LabelVideos": "Video's",
   "LabelWatch": "Volgen",
   "LabelWatched": "Gekeken",
@@ -179,6 +177,5 @@
   "MessageDisc1": "Schijf {0}",
   "MessageEndsAt1": "Afgelopen om {0}",
   "MessageMoreFrom1": "Meer van {0}",
-  "MessageSetTheMaximumAmountOfDays": "Stel het maximaal aantal dagen in dat een serie in de 'Als volgende'-lijst staat zonder deze te kijken.",
-  "MessageTheSourceFileIsEntirelyCompatible": "Het bronbestand is volledig compatibel met deze speler en de sessie ontvangt het bestand zonder wijzigingen."
+  "MessageSetTheMaximumAmountOfDays": "Stel het maximaal aantal dagen in dat een serie in de 'Als volgende'-lijst staat zonder deze te kijken."
 }

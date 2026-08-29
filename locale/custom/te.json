@@ -50,7 +50,6 @@
   "LabelHome": "హోమ్",
   "LabelInstantMix": "తక్షణ మిక్స్",
   "LabelKids": "పిల్లలు",
-  "LabelLevel": "స్థాయి",
   "LabelLibraries": "గ్రంథాలయాలు",
   "LabelLive": "లైవ్",
   "LabelMoreLikeThis": "మోర్ లైక్ దిస్",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "ప్రదర్శించబడలేదు",
   "LabelUsername": "వినియోగదారు పేరు",
   "LabelVideo": "వీడియో",
-  "LabelVideoRangeType": "వీడియో పరిధి రకం",
   "LabelVideos": "వీడియోలు",
   "LabelWatched": "చూశారు",
   "LabelYears": "సంవత్సరాలు",
@@ -194,6 +192,5 @@
   "MessageDisc1": "డిస్క్ {0}",
   "MessageEndsAt1": "{0} వద్ద ముగుస్తుంది",
   "MessageMoreFrom1": "{0} నుండి మరిన్ని",
-  "MessageSetTheMaximumAmountOfDays": "ఒక షో చూడకుండా 'తదుపరిది' జాబితాలో గరిష్టంగా ఎన్ని రోజులు ఉండాలో సెట్ చేయండి.",
-  "MessageTheSourceFileIsEntirelyCompatible": "సోర్స్ ఫైల్ ఈ క్లయింట్‌తో పూర్తిగా అనుకూలంగా ఉంది మరియు సెషన్ ఎటువంటి మార్పులు లేకుండా ఫైల్‌ను స్వీకరిస్తోంది."
+  "MessageSetTheMaximumAmountOfDays": "ఒక షో చూడకుండా 'తదుపరిది' జాబితాలో గరిష్టంగా ఎన్ని రోజులు ఉండాలో సెట్ చేయండి."
 }

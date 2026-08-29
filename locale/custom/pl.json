@@ -50,7 +50,6 @@
   "LabelHome": "Start",
   "LabelInstantMix": "Szybki miks",
   "LabelKids": "Dla dzieci",
-  "LabelLevel": "Poziom",
   "LabelLibraries": "Biblioteki",
   "LabelLive": "Na żywo",
   "LabelMoreLikeThis": "Więcej podobnych",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "Nieodtwarzane",
   "LabelUsername": "Nazwa użytkownika",
   "LabelVideo": "Wideo",
-  "LabelVideoRangeType": "Typ zakresu wideo",
   "LabelVideos": "Wideo",
   "LabelWatch": "Obejrzyj",
   "LabelWatched": "Obejrzany",
@@ -195,6 +193,5 @@
   "MessageDisc1": "Dysk {0}",
   "MessageEndsAt1": "Koniec o {0}",
   "MessageMoreFrom1": "Więcej od {0}",
-  "MessageSetTheMaximumAmountOfDays": "Ustaw maksymalną liczbę dni, przez które program powinien pozostać na liście 'Następny w kolejności' bez oglądania go.",
-  "MessageTheSourceFileIsEntirelyCompatible": "Plik źródłowy jest całkowicie zgodny z tym klientem, a sesja otrzymuje plik bez modyfikacji."
+  "MessageSetTheMaximumAmountOfDays": "Ustaw maksymalną liczbę dni, przez które program powinien pozostać na liście 'Następny w kolejności' bez oglądania go."
 }

@@ -50,7 +50,6 @@
   "LabelHome": "Accueil",
   "LabelInstantMix": "Instant Mix",
   "LabelKids": "Kanner",
-  "LabelLevel": "Niveau",
   "LabelLibraries": "Bibliothéiken",
   "LabelLive": "Live",
   "LabelMoreLikeThis": "Méi wéi dëst",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "Net gekuckt",
   "LabelUsername": "Benotzernumm",
   "LabelVideo": "Video",
-  "LabelVideoRangeType": "Video-Gamme-Typ",
   "LabelVideos": "Videoen",
   "LabelWatched": "Gekuckt",
   "LabelYears": "Joer",
@@ -179,6 +177,5 @@
   "LanguageZh": "Chinesesch",
   "MessageDirectedBy1": "Réaliséiert vum {0}",
   "MessageMoreFrom1": "Méi vu {0}",
-  "MessageSetTheMaximumAmountOfDays": "Hëllef zum Max Deeg für Next Up",
-  "MessageTheSourceFileIsEntirelyCompatible": "D’Quell-Datei ass komplett kompatibel mat dësem Client an d’Sessioun kritt d’Datei ouni Ännerungen."
+  "MessageSetTheMaximumAmountOfDays": "Hëllef zum Max Deeg für Next Up"
 }

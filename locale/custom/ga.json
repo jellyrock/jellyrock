@@ -50,7 +50,6 @@
   "LabelHome": "Baile",
   "LabelInstantMix": "Meascán Meandarach",
   "LabelKids": "Páistí",
-  "LabelLevel": "Leibhéal",
   "LabelLibraries": "Leabharlanna",
   "LabelLive": "Beo",
   "LabelMoreLikeThis": "Níos mó cosúil leis seo",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "Gan seoladh",
   "LabelUsername": "Ainm Úsáideora",
   "LabelVideo": "Físeán",
-  "LabelVideoRangeType": "Cineál raon físe",
   "LabelVideos": "Físeáin",
   "LabelWatched": "Faire",
   "LabelYears": "Blianta",
@@ -192,6 +190,5 @@
   "MessageDisc1": "Diosca {0}",
   "MessageEndsAt1": "Críoch ag {0}",
   "MessageMoreFrom1": "Tuilleadh ó {0}",
-  "MessageSetTheMaximumAmountOfDays": "Socraigh an t-uasmhéid laethanta ba chóir do thaispeántas fanacht ar an liosta 'Next Up' gan féachaint air.",
-  "MessageTheSourceFileIsEntirelyCompatible": "Tá an comhad foinse comhoiriúnach go hiomlán leis an gcliant seo agus tá an seisiún ag fáil an chomhaid gan modhnuithe."
+  "MessageSetTheMaximumAmountOfDays": "Socraigh an t-uasmhéid laethanta ba chóir do thaispeántas fanacht ar an liosta 'Next Up' gan féachaint air."
 }

@@ -50,7 +50,6 @@
   "LabelHome": "首頁",
   "LabelInstantMix": "即時混音",
   "LabelKids": "兒童",
-  "LabelLevel": "等級",
   "LabelLibraries": "媒體庫",
   "LabelLive": "直播",
   "LabelMoreLikeThis": "更多類似的",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "尚未播放",
   "LabelUsername": "使用者名稱",
   "LabelVideo": "影片",
-  "LabelVideoRangeType": "影片範圍類型",
   "LabelVideos": "影片",
   "LabelWatched": "已看過",
   "LabelYears": "年份",
@@ -194,6 +192,5 @@
   "MessageDisc1": "光碟#{0}",
   "MessageEndsAt1": "於 {0} 結束",
   "MessageMoreFrom1": "更多來自 {0}",
-  "MessageSetTheMaximumAmountOfDays": "設定一個節目在未被觀看的情況下應保留在「接下來」列表中的最大天數。",
-  "MessageTheSourceFileIsEntirelyCompatible": "原始檔完全相容於此用戶端，並正在直接接收原始檔案。"
+  "MessageSetTheMaximumAmountOfDays": "設定一個節目在未被觀看的情況下應保留在「接下來」列表中的最大天數。"
 }

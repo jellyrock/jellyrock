@@ -50,7 +50,6 @@
   "LabelHome": "Главная",
   "LabelInstantMix": "Автомикс",
   "LabelKids": "Детям",
-  "LabelLevel": "Уровень",
   "LabelLibraries": "Медиатеки",
   "LabelLive": "Трансляция",
   "LabelMoreLikeThis": "Похожее",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "Невоспроизведённое",
   "LabelUsername": "Имя пользователя",
   "LabelVideo": "Видео",
-  "LabelVideoRangeType": "Тип диапазона видео",
   "LabelVideos": "Видео",
   "LabelWatch": "Отслеживать",
   "LabelWatched": "Просмотрено",
@@ -195,6 +193,5 @@
   "MessageDisc1": "Диск {0}",
   "MessageEndsAt1": "Конец в {0}",
   "MessageMoreFrom1": "Ещё в {0}",
-  "MessageSetTheMaximumAmountOfDays": "Задать максимальное количество дней, в течение которых сериал должен оставаться в списке «Следующих серий» без его просмотра .",
-  "MessageTheSourceFileIsEntirelyCompatible": "Исходный файл полностью совместим с этим клиентом, а сеанс получает файл без изменений."
+  "MessageSetTheMaximumAmountOfDays": "Задать максимальное количество дней, в течение которых сериал должен оставаться в списке «Следующих серий» без его просмотра ."
 }

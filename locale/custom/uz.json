@@ -137,6 +137,5 @@
   "LanguageVi": "vyetnam",
   "LanguageZh": "xitoy",
   "LanguageZu": "zulu",
-  "MessageEndsAt1": "Tugash vaqti: {0}",
-  "MessageTheSourceFileIsEntirelyCompatible": "Manba fayli ushbu mijoz bilan to'liq mos keladi va seans faylni o'zgarmagan holda qabul qiladi."
+  "MessageEndsAt1": "Tugash vaqti: {0}"
 }

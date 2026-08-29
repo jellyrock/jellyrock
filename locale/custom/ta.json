@@ -50,7 +50,6 @@
   "LabelHome": "முகப்பு",
   "LabelInstantMix": "உடனடி கலவை",
   "LabelKids": "குழந்தைகள்",
-  "LabelLevel": "நிலை",
   "LabelLibraries": "நூலகங்கள்",
   "LabelLive": "நேரலை",
   "LabelMoreLikeThis": "இது போன்றது",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "காட்டப்படாதது",
   "LabelUsername": "பயனர்பெயர்",
   "LabelVideo": "காணொளி",
-  "LabelVideoRangeType": "வீடியோ வரம்பு வகை",
   "LabelVideos": "காணொளிகள்",
   "LabelWatched": "ஏற்கனவே பார்த்தேன்",
   "LabelYears": "ஆண்டுகள்",
@@ -194,6 +192,5 @@
   "MessageDisc1": "வட்டு {0}",
   "MessageEndsAt1": "{0} இல் முடிகிறது",
   "MessageMoreFrom1": "{0} இலிருந்து மேலும்",
-  "MessageSetTheMaximumAmountOfDays": "ஒரு நிகழ்ச்சியைப் பார்க்காமலேயே 'அடுத்து வரும்' பட்டியலில் இருக்க வேண்டிய அதிகபட்ச நாட்களை அமைக்கவும்.",
-  "MessageTheSourceFileIsEntirelyCompatible": "மூல கோப்பு இந்த கிளையண்டுடன் முற்றிலும் இணக்கமானது மற்றும் அமர்வு மாற்றங்கள் இல்லாமல் கோப்பைப் பெறுகிறது."
+  "MessageSetTheMaximumAmountOfDays": "ஒரு நிகழ்ச்சியைப் பார்க்காமலேயே 'அடுத்து வரும்' பட்டியலில் இருக்க வேண்டிய அதிகபட்ச நாட்களை அமைக்கவும்."
 }

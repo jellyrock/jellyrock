@@ -50,7 +50,6 @@
   "LabelHome": "Головна",
   "LabelInstantMix": "Миттєвий мікс",
   "LabelKids": "Діти",
-  "LabelLevel": "Рівень",
   "LabelLibraries": "Медіатеки",
   "LabelLive": "Наживо",
   "LabelMoreLikeThis": "Подібні до цього",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "Непереглянуто",
   "LabelUsername": "Ім’я користувача",
   "LabelVideo": "Відео",
-  "LabelVideoRangeType": "Тип діапазону відео",
   "LabelVideos": "Фільм",
   "LabelWatched": "Переглянуто",
   "LabelYears": "Роки",
@@ -194,6 +192,5 @@
   "MessageDisc1": "Диск {0}",
   "MessageEndsAt1": "Завершиться о {0}",
   "MessageMoreFrom1": "Більше від {0}",
-  "MessageSetTheMaximumAmountOfDays": "Встановлює максимальну кількість днів, протягом яких серіал має залишатися в списку «Далі» без перегляду.",
-  "MessageTheSourceFileIsEntirelyCompatible": "Вихідний файл повністю сумісний з цим клієнтом і сеанс отримує файл без модифікацій."
+  "MessageSetTheMaximumAmountOfDays": "Встановлює максимальну кількість днів, протягом яких серіал має залишатися в списку «Далі» без перегляду."
 }

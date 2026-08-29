@@ -50,7 +50,6 @@
   "LabelHome": "Галоўная",
   "LabelInstantMix": "Імгненны мікс",
   "LabelKids": "Дзеці",
-  "LabelLevel": "Узровень",
   "LabelLibraries": "Медыятэкі",
   "LabelLive": "Трансляцыя",
   "LabelMoreLikeThis": "Больш падобнага",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "Непрайгранае",
   "LabelUsername": "Імя карыстальніка",
   "LabelVideo": "Відэа",
-  "LabelVideoRangeType": "Тып дыяпазону відэа",
   "LabelVideos": "Відэа",
   "LabelWatched": "Прагледжана",
   "LabelYears": "Гады",
@@ -194,6 +192,5 @@
   "MessageDisc1": "Дыск {0}",
   "MessageEndsAt1": "Заканчваецца ў {0}",
   "MessageMoreFrom1": "Больш ад {0}",
-  "MessageSetTheMaximumAmountOfDays": "Усталюйце максімальную колькасць дзён, на працягу якіх серыя павінна заставацца ў спісе \"Наступны\", без прагляду.",
-  "MessageTheSourceFileIsEntirelyCompatible": "Зыходны файл цалкам сумяшчальны з гэтым кліентам і сеанс атрымлівае файл без мадыфікацый."
+  "MessageSetTheMaximumAmountOfDays": "Усталюйце максімальную колькасць дзён, на працягу якіх серыя павінна заставацца ў спісе \"Наступны\", без прагляду."
 }

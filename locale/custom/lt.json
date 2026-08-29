@@ -50,7 +50,6 @@
   "LabelHome": "Pradinis",
   "LabelInstantMix": "Maišyti",
   "LabelKids": "Vaikams",
-  "LabelLevel": "Lygis",
   "LabelLibraries": "Bibliotekos",
   "LabelLive": "Tiesiogiai",
   "LabelMoreLikeThis": "Daugiau panašių",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "Nerodytas",
   "LabelUsername": "Prisijungimo vardas",
   "LabelVideo": "Vaizdo įrašas",
-  "LabelVideoRangeType": "Vaizdo diapazono tipas",
   "LabelVideos": "Vaizdo įrašai",
   "LabelWatch": "Žiurėti",
   "LabelWatched": "Žiūrėta",
@@ -195,6 +193,5 @@
   "MessageDisc1": "Diskas {0}",
   "MessageEndsAt1": "Baigiasi {0}",
   "MessageMoreFrom1": "Daugiau iš {0}",
-  "MessageSetTheMaximumAmountOfDays": "Nustatyti maksimalų dienų kiekį kiek TV Laida liks \"Toliau\" eilėje jos neperžiūrėjus.",
-  "MessageTheSourceFileIsEntirelyCompatible": "Šaltinio failas yra visiškai suderinamas su šiuo klientu, o sesija gauna failą be pakeitimų."
+  "MessageSetTheMaximumAmountOfDays": "Nustatyti maksimalų dienų kiekį kiek TV Laida liks \"Toliau\" eilėje jos neperžiūrėjus."
 }

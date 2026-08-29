@@ -50,7 +50,6 @@
   "LabelHome": "Trang chủ",
   "LabelInstantMix": "Trộn Lẫn Nhanh",
   "LabelKids": "Trẻ Em",
-  "LabelLevel": "Cấp độ",
   "LabelLibraries": "Thư viện",
   "LabelLive": "Trực tiếp",
   "LabelMoreLikeThis": "Nội Dung Tương Tự",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "Chưa Phát",
   "LabelUsername": "Tên đăng nhập",
   "LabelVideo": "Video",
-  "LabelVideoRangeType": "Loại dải động video",
   "LabelVideos": "Videos",
   "LabelWatched": "Đã xem",
   "LabelYears": "Năm",
@@ -194,6 +192,5 @@
   "MessageDisc1": "Đĩa {0}",
   "MessageEndsAt1": "Kết thúc lúc {0}",
   "MessageMoreFrom1": "Thêm từ {0}",
-  "MessageSetTheMaximumAmountOfDays": "Đặt số ngày tối đa mà một chương trình sẽ ở trong danh sách 'Tiếp Theo' mà không cần xem nó.",
-  "MessageTheSourceFileIsEntirelyCompatible": "Tệp nguồn hoàn toàn tương thích với ứng dụng khách này và phiên đang nhận tệp mà không cần sửa đổi."
+  "MessageSetTheMaximumAmountOfDays": "Đặt số ngày tối đa mà một chương trình sẽ ở trong danh sách 'Tiếp Theo' mà không cần xem nó."
 }

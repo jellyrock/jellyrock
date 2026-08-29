@@ -49,7 +49,6 @@
   "LabelHome": "Početna",
   "LabelInstantMix": "Trenutno miješanje",
   "LabelKids": "Djeca",
-  "LabelLevel": "Nivo",
   "LabelLibraries": "Biblioteke",
   "LabelLive": "Uživo",
   "LabelMoreLikeThis": "Više ovakvih",
@@ -92,7 +91,6 @@
   "LabelTheme": "Tema",
   "LabelUsername": "Korisničko ime",
   "LabelVideo": "Video",
-  "LabelVideoRangeType": "Vrsta raspona videa",
   "LabelVideos": "Videi",
   "LabelYears": "Godine",
   "LanguageAf": "afrikaans",
@@ -185,6 +183,5 @@
   "MessageDisc1": "Disk {0}",
   "MessageEndsAt1": "Završava u {0}",
   "MessageMoreFrom1": "Više od {0}",
-  "MessageSetTheMaximumAmountOfDays": "Postavite najveći broj dana koliko serija treba ostati na popisu 'Sljedeće' bez gledanja.",
-  "MessageTheSourceFileIsEntirelyCompatible": "Izvorna mapa je u potpunosti kompatibilna sa klijentom i sesija prihvaća datoteku bez modifikacija."
+  "MessageSetTheMaximumAmountOfDays": "Postavite najveći broj dana koliko serija treba ostati na popisu 'Sljedeće' bez gledanja."
 }
