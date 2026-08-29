@@ -14,3 +14,20 @@ sub printRegistry()
     end for
   #end if
 end sub
+
+' Print the DeviceProfile we advertise to Jellyfin.
+'
+' The profile is otherwise INVISIBLE at runtime — it is built, POSTed and
+' forgotten — so "why did this transcode?" begins with a value nobody can read
+' back. Three video-level bugs lived in it for months, and confirming the fix
+' still required writing a test to recover the emitted numbers, because no code
+' path surfaced them.
+'
+' Takes the already-built profile rather than calling getDeviceCapabilities():
+' building one runs dozens of CanDecodeVideo probes, and this must stay free in
+' the builds where the body compiles away.
+sub printDeviceProfile(deviceProfile as object)
+  #if debug
+    print "DeviceProfile advertised to Jellyfin:"; FormatJson(deviceProfile)
+  #end if
+end sub
