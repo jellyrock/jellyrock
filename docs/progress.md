@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-29 — feat: rebuild the playback-info report as a `source → target` readout
 - 2026-08-29 — fix: MPEG-2 transcoded despite its setting; AV1 ignored its level cap
 - 2026-08-27 — fix(setting): Honor a non-default Maximum Resolution instead of capping at 1080p
 - 2026-08-26 — Size Home's browse feeds with one setting and measure its ceiling
