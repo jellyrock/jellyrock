@@ -1199,6 +1199,18 @@ The Maximum Resolution setting caps at exactly the height the user picked, and i
 
 **What it does to the transcode path — the one the setting is actually named for.** The setting's own description is *"the maximum resolution when transcoding"*, so the direct-play measurement above does not on its own settle it. Read against Jellyfin `master`: a `LessThanEqual` `Height` condition becomes `item.MaxHeight = Math.Min(...)` in `StreamBuilder.cs`, ships as `&MaxHeight=N` on the transcode URL from `StreamInfo.cs`, and is applied by a resize that only ever SHRINKS — `if (maxHeight > 0 && maxHeight < newHeight)` in `DrawingUtils.cs`. It is a ceiling, never a target, so a 1080p source still transcodes at 1080p under a `2160` cap and nothing is scaled up. The change makes the common case CHEAPER rather than costlier: a failed `Height` condition raises `VideoResolutionNotSupported`, so under the old 1080 collapse the 4K file measured above carried that reason ALONGSIDE `AudioCodecNotSupported` and was forced into a real 4K→1080p video transcode; honoring `4k` lets the video stream be copied and only the audio transcoded. The one case that gets more expensive is a source above 1080 that must transcode video for a NON-resolution reason (unsupported codec, profile, or level) — previously downscaled to 1080, now transcoded at its native height. That is precisely what picking `4k` asks for, and `off` already does the same.
 
+## decision-id: device-profile-omits-unscaled-video-level
+
+**date**: 2026-08-28
+**status**: accepted
+**related-files**: `source/utils/deviceCapabilities.bs`
+
+A codec whose `VideoLevel` scale is not established in `jellyfinVideoLevel()` ships NO `VideoLevel` condition, rather than a number derived from a plausible-looking guess. The asymmetry is the whole decision, and it rests on how Jellyfin evaluates the field: `ConditionProcessor.IsConditionSatisfied` returns `!condition.IsRequired` when the stream's level is unknown, and our conditions are `IsRequired: false` — so an OMITTED level costs at most one avoidable transcode decision, while a WRONG level silently decides direct play versus transcode for every stream of that codec, in the direction nobody checks. Verified against `ConditionProcessor.cs` at both ends of the server range JellyRock supports (`v10.7.0` and `master`); both read `VideoLevel` as `int?` through `int.TryParse`.
+
+**What this closes off is the MPEG-2 mapping.** Roku names MPEG-2's levels `"main"` / `"high"` and we shipped them straight into a numeric field, so every MPEG-2 stream carrying a level failed the condition and transcoded. The obvious repair — map the words onto MPEG-2's real numeric level scale — is rejected: that scale runs BACKWARDS (High = 4, Main = 8), so a `LessThanEqual` over it asserts the opposite of how it reads, and nobody here has established which of the values `ffprobe` reports Jellyfin would see. Jellyfin's own reference client ships no `mpeg2video` codec profile at all. We keep ours for the resolution, bitrate and `IsAnamorphic` conditions and drop only the level.
+
+**The constraint worth re-evaluating** is that the scale table is an allowlist: `h264` (x10), `hevc` (x30) and `av1` (`seq_level_idx`) have scales, and `vp9`, `vp8`, `mpeg4` and `mpeg2` deliberately do not. A codec added to the device profile later inherits "no level" by default, which is the safe direction but is silent — the gate in `tests/source/unit/utils/DeviceCapabilities.spec.bs` is what makes it visible, by failing any codec that ships a level without a scale.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
