@@ -26,6 +26,11 @@
     <field id="isDoviDirectPlayFallbackAvailable" type="boolean" value="false" />
     <!-- Prevents ViewCreator from popping the scene during a DoVi fallback retry. -->
     <field id="isRetrying" type="boolean" value="false" />
+    <!-- True once a retry re-asked the server WITHOUT the DoVi container profile.
+         Read by the playback-info report: with the profile bypassed, a
+         VideoRangeTypeNotSupported on this pass cannot be the Preserve DoVi
+         setting's doing, so the report must not name that setting. -->
+    <field id="isDoviPreservationBypassed" type="boolean" value="false" />
 
     <field id="videoId" type="string" />
     <field id="mediaSourceId" type="string" />

@@ -2,6 +2,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/dialogNarration.bs"
+import "pkg:/source/utils/dialogReveal.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
@@ -36,6 +37,43 @@ const SCROLLBAR_MARGIN = 12
 ' instead, which nothing can see and the output grid can.
 const SCROLLBAR_TRACK_INSET = 6
 
+' Structured-body geometry. Both label columns are fixed rather than measured:
+' measuring the widest label needs a rendered pass, and this dialog already
+' learned the hard way that nothing may depend on which pass it is in. Both are
+' multiples of 6 so the value column's left edge lands on the 720p output grid.
+' Wide enough that no known label has to wrap, because wrapping is the expensive
+' fix here: a wrapping label must be render-tracked (it could be the tallest thing
+' in its row), and tracked nodes are quadratic — see trackReportNode.
+'
+' MEASURED on a Stick 4K, not estimated from character counts, which got this
+' wrong in both directions — the longest string is not the widest one:
+'
+'     Total Bitrate           179px   the longest ENGLISH row label
+'     Taxa de bits total      250px   pt_BR
+'     Formato dos pixeis      271px   pt / gl / es_AR
+'     Format slikovnih pik    285px   sl — the longest by CHARACTERS (20), fits
+'     Formatu-edukiontzia     302px   eu — the only real translation over 300
+'     Hardware Acceleration   329px   not a value we ship, but the shape of one
+'
+' 300 clipped `eu` by two pixels. 360 clears every string above with room to
+' spare, stays a multiple of 6 so the value column's left edge lands on the 720p
+' output grid, and costs the value column 60px it does not need — the longest
+' value is a file path, which wraps to maxLines = 6 either way.
+const REPORT_LABEL_WIDTH = 360
+' Reason rows carry a Jellyfin reason code in the label column
+' ("VideoRangeTypeNotSupported"), which needs roughly twice the room a "Codec"
+' does. Measured on a Stick 4K, the widest code in Jellyfin's vocabulary renders
+' at 449px ("VideoRangeTypeNotSupported"; "ContainerBitrateExceedsLimit" is
+' longer in characters but narrower at 437px), so this carries ~100px of headroom
+' for a code the server adds later. Reason codes are never translated, so unlike
+' the column above that measurement holds in every locale.
+const REPORT_WIDE_LABEL_WIDTH = 552
+const REPORT_SECTION_SPACING = 24
+' The itemSpacings the XML declares on #scrollContent, named here because
+' clearReportNodes has to restore it after a structured body widened it.
+const DEFAULT_BODY_SPACING = 20
+const REPORT_ROW_SPACING = 6
+
 sub init()
   m.log = new log.Logger("OverviewDialog")
   constants = m.global.constants
@@ -53,6 +91,13 @@ sub init()
   ' lets the text render (and be measured) before the panel height is decided.
   ' That ordering is the whole reason this dialog can be content-sized at all.
   m.textAreaWidth = DIALOG_WIDTH - (PANEL_PADDING * 2) - SCROLLBAR_THUMB_WIDTH - SCROLLBAR_MARGIN
+
+  ' Structured-body state. m.reportValueNodes maps a row id to the label node
+  ' showing its value, which is what lets a refresh rewrite one figure in place
+  ' instead of rebuilding the body and throwing away the scroll position.
+  m.reportValueNodes = {}
+  m.reportRowOrder = []
+  m.reportNodes = []
 
   m.overviewText = m.top.findNode("overviewText")
   m.overviewText.maxLines = 500
@@ -180,6 +225,7 @@ end function
 ' "nothing to render" apart from "not rendered yet", which otherwise both read as
 ' a measured height of zero and would park applyLayout forever.
 function hasBodyText() as boolean
+  if isValidAndNotEmpty(m.top.sections) then return true
   return isValidAndNotEmpty(m.top.overview) or isValidAndNotEmpty(m.top.tagline)
 end function
 
@@ -188,6 +234,17 @@ end function
 ' least once — this only decides whether the pass we are in may be trusted, not
 ' whether another one is coming.
 function bodyLabelsMeasured() as boolean
+  ' Structured body: the same rule as the string body, generalised from two named
+  ' labels to however many rows were built. The group reports a non-zero height as
+  ' soon as ANY child has rendered, so trusting the group alone would settle the
+  ' panel on a fraction of the report.
+  if isValidAndNotEmpty(m.top.sections)
+    for each node in m.reportNodes
+      if node.localBoundingRect().height = 0 then return false
+    end for
+    return m.reportNodes.count() > 0
+  end if
+
   if isValidAndNotEmpty(m.top.tagline)
     if not isValid(m.taglineText) then return false
     if m.taglineText.localBoundingRect().height = 0 then return false
@@ -248,7 +305,23 @@ sub applyScrollBounds()
   ' behind the latch: a late pass must not yank focus from a user who has already
   ' scrolled. setFocus on the already-focused node is a no-op, so the repeats
   ' cost nothing.
-  if not m.userHasNavigated
+  ' hasBodyText() is the second half of the same rule, and it is load-bearing:
+  ' init() runs a layout BEFORE a single field is set, and a body of nothing
+  ' cannot scroll — so that pass derives `scrolls = false` and, without this
+  ' guard, focused the OK button on the strength of it. The focus then moved to
+  ' the scroll area on the first pass that had real content, which is correct,
+  ' but the BUTTON had already painted itself focused and never repainted:
+  ' TextButton applies its focus colours when it gains focus and reverts them on
+  ' a focusedChild change that this sequence never delivers. Net effect, measured
+  ' on a Stick 4K: the scroll area held focus while the OK button rendered a
+  ' `focusBorder` ring, so the dialog opened looking like two things were focused
+  ' at once and read as unresponsive.
+  '
+  ' Everything above re-derives happily from a contentless pass; only the focus
+  ' placement must not. applyLayout guarantees the body has been MEASURED
+  ' whenever hasBodyText() is true, so this is exactly "wait for a pass that
+  ' knows something".
+  if not m.userHasNavigated and hasBodyText()
     if scrolls
       m.textClip.setFocus(true)
     else
@@ -264,6 +337,8 @@ end sub
 
 sub onOverviewChanged()
   m.overviewText.text = m.top.overview
+  ' Re-attach if a structured body had taken it out of the flow.
+  if not isValid(m.overviewText.getParent()) then m.scrollContent.appendChild(m.overviewText)
 end sub
 
 ' Dynamically creates or removes the tagline label based on tagline text
@@ -291,6 +366,181 @@ sub onTaglineChanged()
       applyLayout()
     end if
   end if
+end sub
+
+' The structured body arrived, or was refreshed.
+'
+' Two paths, and choosing between them is the whole reason this dialog can carry a
+' LIVE report. When the row ids are unchanged — the ordinary case, because a
+' refresh re-reads the same stream — only the text of the value labels is
+' rewritten. No node is created or destroyed, the body's height does not move, and
+' neither does the user's scroll position or focus. When the shape genuinely
+' differs (a transcode started, a section appeared), everything is rebuilt and the
+' panel re-flows.
+'
+' The in-place path deliberately does NOT call applyLayout(). A refreshed figure
+' occupies the same single line as the one it replaces, so re-flowing would be a
+' no-op that risks yanking the panel out from under someone mid-read.
+sub onSectionsChanged()
+  sections = m.top.sections
+
+  if not isValidAndNotEmpty(sections)
+    clearReportNodes()
+    applyLayout()
+    return
+  end if
+
+  if reportShapeMatches(sections)
+    updateReportValues(sections)
+    return
+  end if
+
+  buildReportNodes(sections)
+  applyLayout()
+end sub
+
+' True when the incoming sections carry exactly the row ids already on screen, in
+' the same order. Order is part of it: two reports with the same ids in a
+' different order are a different document, and reusing nodes across that would
+' silently reorder the labels.
+function reportShapeMatches(sections as object) as boolean
+  if m.reportRowOrder.count() = 0 then return false
+
+  index = 0
+  for each section in sections
+    if not isValid(section) or not isValid(section.rows) then return false
+    for each row in section.rows
+      if index >= m.reportRowOrder.count() then return false
+      if m.reportRowOrder[index] <> row.id then return false
+      index++
+    end for
+  end for
+
+  return index = m.reportRowOrder.count()
+end function
+
+' Rewrite the values whose text actually changed. Skipping the unchanged ones is
+' not just a saving: assigning to a Label's text re-renders it, and doing that to
+' every row five seconds apart would repaint the whole report to update two
+' numbers.
+sub updateReportValues(sections as object)
+  for each section in sections
+    if not isValid(section) or not isValid(section.rows) then continue for
+    for each row in section.rows
+      node = m.reportValueNodes[row.id]
+      if isValid(node) and node.text <> row.value then node.text = row.value
+    end for
+  end for
+end sub
+
+sub clearReportNodes()
+  for each node in m.reportNodes
+    node.unobserveField("renderTracking")
+  end for
+  m.reportNodes = []
+  m.reportValueNodes = {}
+  m.reportRowOrder = []
+
+  ' Remove every child this dialog added, leaving the XML-declared overviewText
+  ' (and any tagline) alone — the same node can serve a plain description later.
+  for each child in m.scrollContent.getChildren(-1, 0)
+    if child.id = "reportSection" then m.scrollContent.removeChild(child)
+  end for
+
+  ' Put the spacing back too. buildReportNodes widens it for section blocks; a
+  ' dialog reused for a plain description afterwards would otherwise keep the
+  ' report's gaps between a tagline and a paragraph that are not sections.
+  m.scrollContent.itemSpacings = [DEFAULT_BODY_SPACING]
+end sub
+
+sub buildReportNodes(sections as object)
+  clearReportNodes()
+
+  ' REMOVED from the group, not hidden. The XML-declared paragraph label is unused
+  ' in this mode, and a LayoutGroup positions every child by its bounding rect —
+  ' visibility is not part of that, so an empty hidden Label still reserved a line
+  ' and left a visible gap under the status. Verified on a Stick 4K: setting
+  ' visible = false changed nothing. onOverviewChanged puts it back if a plain
+  ' description is ever set on this same dialog.
+  if isValid(m.overviewText.getParent()) then m.scrollContent.removeChild(m.overviewText)
+
+  ' Sections are spaced further apart than the rows inside them; the bold heading
+  ' plus that gap is what separates one block from the next without a rule.
+  m.scrollContent.itemSpacings = [REPORT_SECTION_SPACING]
+
+  for each section in sections
+    if not isValid(section) or not isValidAndNotEmpty(section.rows) then continue for
+
+    group = CreateObject("roSGNode", "LayoutGroup")
+    group.id = "reportSection"
+    group.layoutDirection = "vert"
+    group.itemSpacings = [REPORT_ROW_SPACING]
+
+    if isValidAndNotEmpty(section.heading)
+      heading = CreateObject("roSGNode", "LabelPrimaryMedium")
+      heading.isBold = true
+      heading.text = section.heading
+      heading.width = m.textAreaWidth
+      group.appendChild(heading)
+    end if
+
+    labelWidth = REPORT_LABEL_WIDTH
+    if isValid(section.wideLabels) and section.wideLabels = true then labelWidth = REPORT_WIDE_LABEL_WIDTH
+
+    for each row in section.rows
+      group.appendChild(buildReportRow(row, labelWidth))
+    end for
+
+    m.scrollContent.appendChild(group)
+  end for
+end sub
+
+' One label/value row.
+'
+' The label column is LabelSecondary and the value LabelPrimary, so the eye lands
+' on the data rather than on the field names — the same emphasis split the theme
+' table describes for text. The value wraps (a file path needs two or three
+' lines); the label never does, which is what keeps the columns aligned.
+function buildReportRow(row as object, labelWidth as integer) as object
+  rowGroup = CreateObject("roSGNode", "LayoutGroup")
+  rowGroup.layoutDirection = "horiz"
+  rowGroup.itemSpacings = [0]
+
+  ' ONE LINE, and deliberately NOT render-tracked — see REPORT_LABEL_WIDTH for why
+  ' the column is wide enough that it does not need to wrap.
+  label = CreateObject("roSGNode", "LabelSecondaryMedium")
+  label.text = row.label
+  label.width = labelWidth
+  label.maxLines = 1
+  rowGroup.appendChild(label)
+
+  value = CreateObject("roSGNode", "LabelPrimaryMedium")
+  value.text = row.value
+  value.width = m.textAreaWidth - labelWidth
+  value.wrap = true
+  value.maxLines = 6
+  trackReportNode(value)
+  rowGroup.appendChild(value)
+
+  m.reportValueNodes[row.id] = value
+  m.reportRowOrder.push(row.id)
+
+  return rowGroup
+end function
+
+' Every label whose rendered height feeds the panel gets a renderTracking
+' observer, for the same reason the overview label has one: the panel cannot be
+' sized until they have all reported. Only WRAPPING labels are tracked — a
+' single-line label column cannot change the row height, and each tracked node is
+' expensive twice over: it adds a settle signal AND a member to the set every
+' other settle signal re-measures. Measured on a Stick 4K, one
+' localBoundingRect() read costs 23.05 µs, so that set is quadratic in real time —
+' 26 tracked nodes is ~15.6 ms of render-thread work per open and 46 would be
+' ~48.8 ms. Do not track a node whose height cannot vary.
+sub trackReportNode(node as object)
+  node.enableRenderTracking = true
+  node.observeField("renderTracking", "onTextRendered")
+  m.reportNodes.push(node)
 end sub
 
 ' Tagline has rendered — its height is part of the body, so the PANEL changes,
@@ -334,18 +584,62 @@ end sub
 ' way. The overview text IS the announcement here: this dialog exists to be read,
 ' so a screen-reader user opening it wants its contents, not just its title.
 sub onOpeningAnnouncementDue()
+  ' FAILSAFE for the layout cover, riding a timer that already exists and already
+  ' means "this dialog has been open for 0.15s". A dialog that never completes a
+  ' layout would otherwise stay covered — i.e. invisible while still holding the
+  ' remote. Uncovering it here means the worst case is the pre-existing broken
+  ' paint, not a black screen. See dialogReveal.bs.
+  revealDialog(m.top)
   if m.hasNarrated then return
   m.hasNarrated = true
 
   body = []
   if isValidAndNotEmpty(m.top.tagline) then body.push(m.top.tagline)
   if isValidAndNotEmpty(m.top.overview) then body.push(m.top.overview)
+  body.append(reportNarrationLines())
 
   focusedText = ""
   if m.okButton.hasFocus() then focusedText = toString(m.okButton.text)
 
   narrateDialogOpening(m.top.title, body.join(". "), focusedText)
 end sub
+
+' Lay out NOW, called by presentOverlayDialog once this dialog is attached.
+'
+' The dialog is hidden until this returns, so there is no renderTracking to wait
+' on — and none is needed, because localBoundingRect() answers while hidden. See
+' dialogReveal.bs.
+sub settleLayout()
+  applyLayout()
+end sub
+
+' The structured body, spoken.
+'
+' Without this a report dialog announces its title and then falls silent, because
+' the opening announcement reads `overview` and a report sets `sections` instead.
+' Each row is read as "label, value" so the pairing survives being spoken — the
+' two-column alignment that carries it visually is worth nothing to a listener.
+function reportNarrationLines() as object
+  lines = []
+  if not isValidAndNotEmpty(m.top.sections) then return lines
+
+  for each section in m.top.sections
+    if not isValid(section) or not isValidAndNotEmpty(section.rows) then continue for
+    if isValidAndNotEmpty(section.heading) then lines.push(section.heading)
+
+    for each row in section.rows
+      if isValidAndNotEmpty(row.value)
+        if isValidAndNotEmpty(row.label)
+          lines.push(row.label + ", " + row.value)
+        else
+          lines.push(row.value)
+        end if
+      end if
+    end for
+  end for
+
+  return lines
+end function
 
 ' Updates scrollbar thumb color based on focus state
 sub updateScrollbarFocus(isFocused as boolean)
@@ -372,6 +666,11 @@ sub closeDialog()
   parent = m.top.getParent()
   if isValid(parent) then parent.removeChild(m.top)
   if isValid(returnFocusTo) then returnFocusTo.setFocus(true)
+
+  ' LAST, so an observer sees a dialog that is already detached and has already
+  ' handed focus back. cancelDialog routes through here too, so this is the one
+  ' place both close routes pass.
+  m.top.closed = true
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean

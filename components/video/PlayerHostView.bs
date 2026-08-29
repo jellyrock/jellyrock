@@ -1,14 +1,46 @@
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
-import "pkg:/source/utils/playbackInfo.bs"
+import "pkg:/source/utils/playbackReport.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
+import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/trackPickerOptions.bs"
 import "pkg:/source/utils/translate.bs"
+
+' How often the playback report re-reads the session while it is open.
+'
+' 5s rather than the 10s Jellyfin's web client uses, because that client's panel
+' is a cache TTL on an always-open overlay while this is a dialog someone opened
+' deliberately, usually because something looked wrong. The figure that matters —
+' transcode speed — is a level to be confirmed, and halving the wait for the first
+' confirmation is the whole benefit.
+'
+' TWO GATES keep that from becoming an open-ended poll, and neither invents a
+' number:
+'
+'   1. The timer only STARTS when the report has live rows — i.e. a transcode is
+'      running. On direct play nothing in the report can change, so it never polls
+'      at all, which is most sessions.
+'   2. A tick makes no request once the device has been idle longer than the
+'      screensaver timeout THE USER CONFIGURED. That is their own statement about
+'      how long counts as away; a device with the screensaver switched off has said
+'      the opposite, and is never suspended.
+'
+' Gate 2 is an IDLE threshold, not a claim about what is on screen. Roku suppresses
+' the screensaver during video playback, so it may never actually appear here — the
+' reason to lean on that number anyway is that the user picked it, not that the
+' screen is covered.
+'
+' Being wrong is cheap in exactly one direction, which is why the threshold can be
+' loose: TimeSinceLastKeypress resets itself, so the first tick after any keypress
+' fetches again — at most 5s of staleness, no state, no resume path, no key
+' handling. Polling forever has no such recovery.
+const PLAYBACK_INFO_REFRESH_SECONDS = 5
 
 ' Routed host for video playback. See PlayerHostView.xml header.
 '
@@ -53,8 +85,6 @@ end function
 ' ViewCreator.CreateVideoPlayerView; the only behavioral change is appendChild to
 ' the host instead of SceneManager.pushScene.
 sub mountPlayer()
-  m.playbackData = {}
-
   m.view = CreateObject("roSGNode", "VideoPlayerView")
   ' Keep video player invisible during loading to prevent black background from covering backdrop
   m.view.visible = false
@@ -64,14 +94,7 @@ sub mountPlayer()
   m.view.observeField("selectAudioPressed", "onSelectAudioPressed")
   m.view.observeField("selectVideoSourcePressed", "onSelectVideoSourcePressed")
 
-  mediaSourceId = m.global.queueManager.callFunc("getCurrentItem").mediaSourceId
-
-  if not isValid(mediaSourceId) or mediaSourceId = ""
-    mediaSourceId = m.global.queueManager.callFunc("getCurrentItem").id
-  end if
-
   m.getPlaybackInfoTask = createObject("roSGNode", "GetPlaybackInfoTask")
-  m.getPlaybackInfoTask.videoID = mediaSourceId
   m.getPlaybackInfoTask.observeField("data", "onPlaybackInfoLoaded")
 
   ' Update backdrop for current queue item (handles first item, shuffle, library play, etc.)
@@ -109,6 +132,11 @@ sub destroyPlayer()
     m.getPlaybackInfoTask.unobserveField("data")
     m.getPlaybackInfoTask = invalid
   end if
+
+  ' Otherwise the first report opened on the NEXT queue item compares its
+  ' completion percentage against the previous item's last figure, silently
+  ' rendering "Idle" over a healthy encoder.
+  m.lastCompletionPercentage = invalid
 end sub
 
 ' Host-internal advancement: remount the player for the CURRENT queue position.
@@ -145,6 +173,12 @@ sub onDestroy()
   ' view — anything that navigates without the user closing the dialog first
   ' (deep link, session expiry, voice "stop") would strand one over the incoming
   ' screen. See abandonDialog in source/utils/dialogs.bs.
+  ' Both observers this view owns for the report have to be released here — the
+  ' timer's `fire` and the dialog's `parentNode`. The dialog outlives this view
+  ' (it is appended to the SCENE), so an unreleased observer on it would keep
+  ' calling into a dead scope.
+  releasePlaybackInfoRefresh()
+  if isValid(m.playbackDialog) then m.playbackDialog.unobserveField("closed")
   abandonDialog(m.playbackDialog)
   m.playbackDialog = invalid
   m.trackPickerOptions = invalid
@@ -182,6 +216,11 @@ sub onPlayerStateChange()
   ' and tracked as playback-error-dialog-closed-by-teardown in tech-debt.md.
   ' Don't "fix" it by narrowing this call: a stranded modal over the incoming
   ' screen is the failure this line exists to prevent.
+
+  ' Same two observers as onDestroy: we are dropping the reference to a dialog
+  ' that lives on the SCENE, so the poll and its close observer go with it.
+  releasePlaybackInfoRefresh()
+  if isValid(m.playbackDialog) then m.playbackDialog.unobserveField("closed")
   abandonDialog(m.playbackDialog)
   m.playbackDialog = invalid
   m.trackPickerOptions = invalid
@@ -309,7 +348,7 @@ sub onSubtitleTrackSelected()
   ' not load", and every branch below can end in nothing visibly happening.
   m.log.info("onSubtitleTrackSelected", "pickedIndex", selected.index, "isEncoded", selected.isEncoded, "wasIndex", m.view.selectedSubtitle)
 
-  ' Nothing changed — leave the stream (and the playbackData cache) alone.
+  ' Nothing changed — leave the stream alone.
   '
   ' Both-NONE is deliberately NOT treated as "no change": an EXTERNAL subtitle
   ' track leaves selectedSubtitle at NONE (only in-file tracks are tracked by
@@ -319,9 +358,6 @@ sub onSubtitleTrackSelected()
   if m.view.selectedSubtitle <> SubtitleSelection.NONE or selected.index <> SubtitleSelection.NONE
     if m.view.selectedSubtitle = selected.index then return
   end if
-
-  ' The playbackData is now outdated and must be refreshed
-  m.playbackData = invalid
 
   ' Find previously selected subtitle and identify if it was encoded
   for each item in m.view.fullSubtitleData
@@ -366,34 +402,285 @@ sub onSubtitleTrackSelected()
   m.view.selectedSubtitle = selected.index
 end sub
 
-' User requested playback info
+' User requested playback info.
+'
+' Always re-fetches. The report used to be built once by the task and cached for
+' the life of the player, which meant a DoVi buffer-overflow fallback
+' (transcode -> direct play) left the "i" button confidently describing a
+' transcode that had already stopped. Composition is cheap now that it happens
+' here rather than on the Task thread, so a fresh answer costs one request.
 sub onSelectPlaybackInfoPressed()
-  ' Check if we already have playback info and show it in a popup
-  if isValid(m.playbackData) and isValid(m.playbackData.playbackinfo)
-    showPlaybackInfo()
-    return
-  end if
-
-  ' Set cached playback info right before running (when it's actually available)
-  m.getPlaybackInfoTask.cachedPlaybackInfo = m.view.cachedPlaybackInfo
   launchTask(m.getPlaybackInfoTask)
 end sub
 
-' The playback info task has returned data
+' The session arrived. Compose the report and either open it or refresh the one
+' already open.
 sub onPlaybackInfoLoaded()
-  m.playbackData = m.getPlaybackInfoTask.data
+  data = m.getPlaybackInfoTask.data
+  session = invalid
+  if isValid(data) then session = data.session
 
-  ' Check if we have playback info and show it in a popup
-  if isValid(m.playbackData) and isValid(m.playbackData.playbackinfo)
-    showPlaybackInfo()
+  ' A FAILED fetch is not "the transcode ended", and telling them apart matters:
+  ' an invalid session builds a report with no transcode section, which would trip
+  ' the live-rows check below and stop the refresh permanently — one dropped
+  ' request killing the dialog's updates for as long as it stays open. Skip the
+  ' rebuild entirely and let the next tick try again; the dialog keeps showing the
+  ' last good figures, which is what it would show anyway.
+  if not isValid(session) and isValid(m.playbackDialog) then return
+
+  report = buildPlaybackReport(playbackReportInputs(session))
+  if report.sections.count() = 0
+    ' Nothing at all to show — no session AND no cached PlaybackInfo to build the
+    ' static half from. Pressing a button and having literally nothing happen
+    ' reads as a broken button, so say so; that silence is what the old flow's
+    ' "Unable to get playback information" used to cover.
+    '
+    ' Only when the dialog is NOT already open. Behind an open one the same rule
+    ' as a failed refresh applies: keep showing the last good report rather than
+    ' throwing a toast over it, and let the next tick try again.
+    if not isValid(m.playbackDialog) then displayToast(translate(translationKeys.ErrorUnableToGetPlaybackInformation), "error")
+    return
+  end if
+
+  ' Remembered AFTER the build, so the build compares against the previous poll
+  ' rather than against itself.
+  m.lastCompletionPercentage = invalid
+  if isValid(session) and isValid(session.TranscodingInfo)
+    m.lastCompletionPercentage = session.TranscodingInfo.CompletionPercentage
+  end if
+
+  if isValid(m.playbackDialog)
+    ' Open already: hand it the new model. OverviewDialog reconciles row by row,
+    ' so the live figures change and the scroll position does not.
+    '
+    ' The status line is refreshed too. It is nearly always the same word, but a
+    ' transcode can END while the report is open — a DoVi buffer-overflow fallback
+    ' does exactly that — and leaving "Transcoding" above a body that has just
+    ' rebuilt itself into a direct-play report is the stale answer this whole
+    ' refresh exists to prevent.
+    m.playbackDialog.tagline = report.status
+    m.playbackDialog.sections = report.sections
+    ' The SAME predicate that started the timer decides when to stop it, so the
+    ' two can never drift apart. Two ways to arrive here: a transcode ENDED while
+    ' the report was open (a DoVi buffer-overflow fallback does exactly that), or
+    ' the session we were missing has arrived and turned out to be a direct play.
+    if not reportNeedsPolling(report, session) then stopPlaybackInfoRefresh()
+    return
+  end if
+
+  m.playbackDialog = showReportDialog(translate(translationKeys.LabelPlaybackInfo), report.status, report.sections)
+  m.playbackDialog.observeField("closed", "onPlaybackInfoDialogClosed")
+  if reportNeedsPolling(report, session) then startPlaybackInfoRefresh()
+end sub
+
+' Everything the pure report builder needs, gathered on the RENDER thread where
+' an m.global read costs ~2 µs rather than the ~93 µs it cost inside the task.
+function playbackReportInputs(session as dynamic) as object
+  cached = m.view.cachedPlaybackInfo
+  mediaSource = invalid
+  if isValid(cached) and isValidAndNotEmpty(cached.MediaSources) then mediaSource = cached.MediaSources[0]
+
+  ' supportsDolbyVision here is the SAME predicate ItemPostPlaybackInfo uses to
+  ' decide whether to inject the DoVi container profile at all
+  ' (canPlay4k() and the display reporting DolbyVision). Attribution is only
+  ' honest if both sides ask the identical question.
+  '
+  ' READ ONCE PER HOST, not per call — `m.deviceVideoCapabilities` is never
+  ' cleared, so it spans every item across the whole `mountPlayer()` lifetime of
+  ' this host, not just one mount. This is not a field read: canPlay4k()
+  ' builds an roDeviceInfo AND an roHdmiStatus and then asks the hardware two
+  ' questions (IsHdcpActive, CanDecodeVideo), and getDeviceVideoCapabilities adds
+  ' GetDisplayProperties on top. Re-running that every 5 seconds on the RENDER
+  ' thread, underneath playing video, is exactly the cost this feature moved off
+  ' the Task thread to avoid.
+  '
+  ' Caching is also the more CORRECT answer, not merely the cheaper one. The
+  ' figure being mirrored is the one ItemPostPlaybackInfo used when it built the
+  ' profile for THIS playback; re-querying could return something else (a
+  ' receiver renegotiating HDCP mid-stream) and attribute the transcode against a
+  ' capability that was never the one asked about.
+  if not isValid(m.deviceVideoCapabilities) then m.deviceVideoCapabilities = getDeviceVideoCapabilities()
+  capabilities = m.deviceVideoCapabilities
+
+  return {
+    session: session,
+    mediaSource: mediaSource,
+    ' The playhead and the previous poll's completion figure are what turn the
+    ' transcode section from a set of raw numbers into an explanation: the first
+    ' gives the encoder's LEAD over the viewer, the second says whether it is
+    ' still moving. Both live here rather than in the pure model because only this
+    ' scope can see the player and the previous poll.
+    playheadSeconds: m.view.position,
+    previousCompletion: m.lastCompletionPercentage,
+    audioStreamIndex: m.view.audioIndex,
+    subtitleStreamIndex: m.view.selectedSubtitle,
+    settings: m.global.user.settings,
+    ' Gates the Path row, which is admin-only. Read defensively rather than
+    ' assumed present: `policy` is server-authoritative and only populated from a
+    ' real session, so it can legitimately be absent — and absent must mean NOT an
+    ' administrator, never the other way round.
+    isAdministrator: userIsAdministrator(),
+    apiVersion: getApiVersionFromGlobal(),
+    deviceSupportsDovi: capabilities.supportsDolbyVision,
+    deviceMaxHeight: capabilities.maxHeight,
+    doviPreservationBypassed: m.view.isDoviPreservationBypassed
+  }
+end function
+
+' True only when the signed-in user is a Jellyfin administrator.
+'
+' Every hop is checked because this decides whether a filesystem path is shown:
+' the failure mode of a wrong `true` is disclosing something, and the failure mode
+' of a wrong `false` is one missing row.
+function userIsAdministrator() as boolean
+  user = m.global.user
+  if not isValid(user) then return false
+
+  policy = user.policy
+  if not isValid(policy) then return false
+
+  return isBooleanTrue(policy.isAdministrator)
+end function
+
+' Keep the live rows live.
+'
+' Transcode speed is the one figure in the report that is only meaningful RIGHT
+' NOW — it says whether the server is keeping ahead of playback, and a value from
+' four minutes ago answers nothing. Progress and output bitrate move with it.
+' Everything else in the report is fixed for the session and simply re-resolves to
+' the same text, which the dialog then skips.
+'
+' The timer drives the same task the button does, so there is one fetch path and
+' one composition path rather than a second copy for refreshes.
+
+' True when the report contains something that can change while it is open.
+'
+' Only the transcode section is live (speed, progress, output bitrate); every
+' other row is fixed for the session and would re-resolve to identical text. A
+' direct-play report therefore has nothing to poll FOR, which is the honest
+' reason not to poll rather than a budget someone picked.
+function reportHasLiveRows(report as object) as boolean
+  for each section in report.sections
+    if section.id = "transcode" then return true
+  end for
+  return false
+end function
+
+' True when the report still has an unanswered question — either something that
+' changes while you watch it, or something we have not been told yet.
+'
+' Two ways to qualify, and the second is what makes a failed first fetch
+' recoverable. Live rows exist only during a transcode. A MISSING SESSION means
+' the whole transcode half of the report is unknown rather than absent, so the
+' dialog is showing a provisional answer and has to keep asking; the first tick
+' that returns a session fills in the status line and the transcode section, and
+' if that session turns out to be a direct play this same gate then stops the
+' timer on the next pass.
+'
+' A direct play with a session in hand qualifies as neither, which is the case
+' that must never poll — and it is most sessions.
+function reportNeedsPolling(report as object, session as dynamic) as boolean
+  if not isValid(session) then return true
+  return reportHasLiveRows(report)
+end function
+
+sub startPlaybackInfoRefresh()
+  ' The idle threshold is the screensaver timeout the USER configured, read once.
+  ' Preferred over a constant of ours because it is the one duration they have
+  ' already told the device counts as away — someone who set two minutes wants
+  ' aggressive idling and someone who set an hour does not, and a single number
+  ' here would be wrong for one of them. Zero means they switched the screensaver
+  ' off, which is the opposite instruction, so nothing suspends.
+  '
+  ' roAppManager is NOT creatable on the render thread, which is why this goes
+  ' through the existing LoadScreenSaverTimeoutTask rather than being read inline.
+  ' AudioPlayerView already pairs that same task with TimeSinceLastKeypress for its
+  ' own screensaver; this is that pattern reused, not a second one.
+  if not isValid(m.screenSaverTimeout)
+    m.screenSaverTimeout = 0
+    m.screenSaverTimeoutTask = CreateObject("roSGNode", "LoadScreenSaverTimeoutTask")
+    m.screenSaverTimeoutTask.observeField("content", "onScreensaverTimeoutLoaded")
+    launchTask(m.screenSaverTimeoutTask)
+  end if
+
+  if not isValid(m.playbackInfoTimer)
+    m.playbackInfoTimer = CreateObject("roSGNode", "Timer")
+    m.playbackInfoTimer.repeat = true
+    m.playbackInfoTimer.duration = PLAYBACK_INFO_REFRESH_SECONDS
+    m.playbackInfoTimer.observeField("fire", "onPlaybackInfoRefreshDue")
+    m.top.appendChild(m.playbackInfoTimer)
+  end if
+  m.playbackInfoTimer.control = "start"
+end sub
+
+sub stopPlaybackInfoRefresh()
+  if isValid(m.playbackInfoTimer) then m.playbackInfoTimer.control = "stop"
+end sub
+
+' Stop the timer AND let it go. Kept distinct from stopPlaybackInfoRefresh
+' because closing the dialog only pauses polling — the same timer is reused the
+' next time the report is opened — while onDestroy has to release the observer.
+sub releasePlaybackInfoRefresh()
+  if not isValid(m.playbackInfoTimer) then return
+
+  m.playbackInfoTimer.control = "stop"
+  m.playbackInfoTimer.unobserveField("fire")
+  m.top.removeChild(m.playbackInfoTimer)
+  m.playbackInfoTimer = invalid
+
+  if isValid(m.screenSaverTimeoutTask)
+    m.screenSaverTimeoutTask.control = "STOP"
+    m.screenSaverTimeoutTask.unobserveField("content")
+    m.screenSaverTimeoutTask = invalid
   end if
 end sub
 
-' Read-only report, so it self-closes and there is no result to observe — but it
-' still has to be held, because teardown has to be able to abandon it.
-sub showPlaybackInfo()
-  body = formatPlaybackInfoText(m.playbackData.playbackinfo)
-  if body = "" then return
+sub onScreensaverTimeoutLoaded()
+  timeout = m.screenSaverTimeoutTask.content
+  if isValid(timeout) then m.screenSaverTimeout = timeout
 
-  m.playbackDialog = showInfoDialog(translate(translationKeys.LabelPlaybackInfo), body)
+  m.screenSaverTimeoutTask.unobserveField("content")
+  m.screenSaverTimeoutTask = invalid
+end sub
+
+sub onPlaybackInfoRefreshDue()
+  ' Defense in depth, not the primary close path: a supersede by another overlay
+  ' calls cancelDialog() -> closeDialog(), which sets `closed` and fires
+  ' onPlaybackInfoDialogClosed() same as any other close. This guard is here for
+  ' any OTHER way the dialog could leave the scene without that field ever being
+  ' set — stop rather than poll into nothing.
+  if not isValid(m.playbackDialog) or not isValid(m.playbackDialog.getParent())
+    stopPlaybackInfoRefresh()
+    return
+  end if
+
+  ' Idle longer than the user's own screensaver timeout: stop making requests. The
+  ' timer keeps ticking, which costs nothing and is what removes the need for any
+  ' resume path — TimeSinceLastKeypress resets the moment the remote is touched,
+  ' so the very next tick fetches again. A timeout of 0 means the screensaver is
+  ' switched off, and that is an instruction not to idle at all.
+  if m.screenSaverTimeout > 0
+    ' The handle is cached rather than rebuilt each tick — CreateObject is not
+    ' free and this runs on the render thread while video is playing.
+    if not isValid(m.deviceInfo) then m.deviceInfo = CreateObject("roDeviceInfo")
+    if m.deviceInfo.TimeSinceLastKeypress() >= m.screenSaverTimeout then return
+  end if
+
+  launchTask(m.getPlaybackInfoTask)
+end sub
+
+' The dialog closed — stop polling into it and let it go.
+'
+' It reports that on its own `closed` field. It USED to be observed through
+' `parentNode`, on the reasoning that a dialog which dismisses itself by removing
+' itself from the scene has a detached parent — but `parentNode` is not a field
+' on Node (its observable fields are id, focusable, focusedChild and change), so
+' that observer never fired even once. Nothing cleared m.playbackDialog, so the
+' NEXT press of the "i" button found a dialog it believed was still open and
+' quietly refreshed a node that was no longer in the scene: the report opened the
+' first time and never again.
+sub onPlaybackInfoDialogClosed()
+  stopPlaybackInfoRefresh()
+  if isValid(m.playbackDialog) then m.playbackDialog.unobserveField("closed")
+  m.playbackDialog = invalid
 end sub

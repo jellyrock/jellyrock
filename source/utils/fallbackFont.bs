@@ -16,14 +16,3 @@ function serverSupportsFallbackFont(response as dynamic) as boolean
   return isBooleanTrue(response.json.EnableFallbackFont)
 end function
 
-' True only for a real boolean true. `value = true` faults `&h18` on a
-' non-boolean operand, so the type is established before the comparison.
-' ParseJson yields an unboxed "Boolean" and an AA literal a boxed "roBoolean" —
-' both are genuine booleans, so both have to pass.
-'
-' @param value - any value, including Invalid
-' @return true when value is boolean true; false for every other type or value
-function isBooleanTrue(value as dynamic) as boolean
-  valueType = LCase(type(value))
-  return (valueType = "boolean" or valueType = "roboolean") and value = true
-end function

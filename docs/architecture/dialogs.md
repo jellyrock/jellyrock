@@ -18,7 +18,7 @@ related-files:
   - source/utils/dialogKeys.bs
   - source/utils/dialogResult.bs
   - source/utils/dialogNarration.bs
-last-reviewed: 2026-08-24
+last-reviewed: 2026-08-25
 ---
 
 # The dialog family
@@ -119,6 +119,33 @@ about it is the caller's, and the two answers differ:
 All three read the same two fields. **None of them re-derives the ceiling** —
 that is the whole contract. A dialog asks for the body it measured and is told
 what it got; what to do about the difference is the only part that is local.
+
+#### A read-only body may be a paragraph OR structured rows
+
+`OverviewDialog` takes either `overview` (a string) or `sections` (an array of
+`{ id, heading, wideLabels, rows: [{ id, label, value }] }`). Both flow through the
+same scroll viewport, the same key model and the same narration path — the second
+is a body shape, not a second dialog.
+
+This is the test in "When a bespoke dialog is legitimate" coming out the other way:
+a two-column technical readout *is* a body the family did not have, but it needed
+nothing else the family owns, so it became a field rather than a component. Adding
+a `JRPlaybackInfoDialog` would have duplicated the scroll machinery and the
+narration — the exact drift this family exists to prevent.
+
+Two things follow from it:
+
+- **`sections` is re-settable, and reconciles.** Setting it again rewrites the text
+  of rows matched by `id` and creates or destroys nothing, so the panel height,
+  scroll position and focus are untouched. A structurally different array rebuilds.
+  This is what lets the playback report refresh live figures behind an open dialog
+  without violating "set every text field BEFORE presenting" — that rule exists
+  because a dialog never re-lays-out after mount, and rewriting a single-line value
+  changes no height.
+- **The label columns are fixed widths, not measured.** Measuring the widest label
+  needs a rendered pass, and this dialog already learned that nothing may depend on
+  which pass it is in. `wideLabels` picks the wider of two constants for rows whose
+  labels are Jellyfin reason codes.
 
 ### 5. A dialog has exactly ONE class of focusable thing
 

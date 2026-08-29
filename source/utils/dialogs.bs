@@ -26,6 +26,7 @@
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/dialogNarration.bs"
+import "pkg:/source/utils/dialogReveal.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
@@ -112,6 +113,33 @@ function showInfoDialog(title as string, overview as string, tagline = "" as str
   dialog.overview = overview
   ' OverviewDialog has no `result` field — it self-closes on OK/back, so there is
   ' nothing to observe. Present it through the same path as the other overlays.
+  return presentOverlayDialog(dialog, "", returnFocusTo)
+end function
+
+' Show a structured read-only report — the same overlay as showInfoDialog, with a
+' body of label/value rows instead of a paragraph.
+'
+' Returns the dialog so the caller can keep reporting into it: assigning
+' `sections` again RECONCILES rather than rebuilds, which is how the playback
+' report refreshes its live figures without disturbing the scroll position. The
+' caller owns stopping that, and owns abandonDialog() in its onDestroy.
+'
+' `status` is the one-line verdict above the sections ("Transcoding"), carried in
+' the tagline slot because that slot is already defined as a bold lead line and
+' already read first by the opening announcement.
+'
+' @param {string} title - dialog title
+' @param {string} status - a short lead line, or ""
+' @param {object} sections - [ { id, heading, wideLabels, rows: [ { id, label, value } ] } ]
+' @param {object} returnFocusTo - node to restore focus to on close
+function showReportDialog(title as string, status as string, sections as object, returnFocusTo = invalid as object) as object
+  dialog = createObject("roSGNode", "OverviewDialog")
+  if title <> "" then dialog.title = title
+  if status <> "" then dialog.tagline = status
+  ' Set BEFORE presenting, like every other dialog in the family — the panel is
+  ' sized from the body, so a body arriving after mount would draw over a layout
+  ' computed for nothing.
+  dialog.sections = sections
   return presentOverlayDialog(dialog, "", returnFocusTo)
 end function
 
@@ -292,7 +320,12 @@ function presentOverlayDialog(dialog as object, onResult as string, returnFocusT
     dialog.returnFocusTo = lastFocusedChild(scene)
   end if
   if onResult <> "" then dialog.observeFieldScoped("result", onResult)
+  ' A dialog cannot place anything until it has measured its own content, so it
+  ' is hidden across the append and shown once it has. Measuring does not need
+  ' visibility — see dialogReveal.bs.
+  hideDialogUntilLaidOut(dialog)
   scene.appendChild(dialog)
+  settleAndRevealDialog(dialog)
   dialog.setFocus(true)
   ' Screen-reader narration is NOT done here: it has to happen after focus
   ' settles or the platform's own announcement flushes it, so each dialog

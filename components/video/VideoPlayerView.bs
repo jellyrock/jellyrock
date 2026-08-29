@@ -814,6 +814,7 @@ sub onVideoContentLoaded()
 
   ' Reset retry flags so subsequent reloads (audio/subtitle changes) use fresh evaluation.
   m.LoadMetaDataTask.shouldBypassDoviPreservation = false
+  m.top.isDoviPreservationBypassed = false
   m.LoadMetaDataTask.shouldForceTranscoding = false
 
   ' Pass JellyfinBaseItem node to OSD for typed field access
@@ -1438,6 +1439,9 @@ sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
   m.top.isRetrying = true
   m.top.control = "stop"
   m.LoadMetaDataTask.shouldBypassDoviPreservation = bypassDovi
+  ' Surfaced so the playback report does not attribute a range transcode to the
+  ' Preserve DoVi setting on a pass where that profile was not sent.
+  m.top.isDoviPreservationBypassed = bypassDovi
   m.LoadMetaDataTask.shouldForceTranscoding = forceTranscode
   m.LoadMetaDataTask.selectedSubtitleIndex = m.top.SelectedSubtitle
   m.LoadMetaDataTask.selectedAudioStreamIndex = m.top.audioIndex

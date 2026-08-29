@@ -25,7 +25,7 @@ related-files:
   - scripts/flake-baseline.js
   - tests/rta/demos/run.mjs
   - .github/workflows/rta-functional-tests.yml
-last-reviewed: 2026-08-24
+last-reviewed: 2026-08-27
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -188,6 +188,9 @@ shell's, read from the scene root:
 |---|---|---|
 | `spinner=on("…")` | `isLoading` / `loadingText` | the app was still blocked on a fetch, and which one |
 | `input=BLOCKED` | `isRemoteDisabled` | **the app was swallowing our key presses** |
+| `player=<state>` | the OS media player's own state (`ecp.getMediaPlayer()`) | what the Roku video player thinks is happening, independent of the app. `buffer` counts as playing to `PLAYING_STATES` while the app still refuses to open the OSD — the gap between the two is the signal |
+| `videoNode=<state>` | the app's own Video node state | the app's side of the same story, so a `player`/`videoNode` mismatch narrows an OSD that never opened to one side or the other |
+| `playerError=true` | the OS media player reported an error | the player itself faulted, distinct from an app-level error |
 
 `input=BLOCKED` is the highest-value field in the dump.
 [`JRScene.onKeyEvent`](../../components/JRScene.bs) does `if m.top.isRemoteDisabled
@@ -201,13 +204,21 @@ short as the samples above and the flag keeps its signal value.
   has given up, at the throw site, never inside a tick — deliberately, because
   [#785](https://github.com/jellyrock/jellyrock/issues/785) may replace those loops
   with `onFieldChangeOnce` and diagnostics must not entrench a shape it might
-  delete. At the boundary it is two round-trips issued in parallel (`getFocusedNode`
-  has no batch form; everything else rides one `getValues` of 11 key paths) —
-  **median 21 ms, 18–30 ms typical** on `.177` (n=20 on `ItemDetails`), with occasional
-  spikes to ~70 ms when the render thread is busy. Adding the three shell fields did
-  not move that: it is still one round trip, and
+  delete. At the boundary it is three round-trips issued in parallel
+  (`getFocusedNode` and `getMediaPlayer()` each have no batch form; everything else
+  rides one `getValues` of 11 key paths).
+  **Measured at TWO round-trips: median 21 ms, 18–30 ms typical** on `.177` (n=20 on
+  `ItemDetails`), with occasional spikes to ~70 ms when the render thread is busy.
+  **That figure predates `getMediaPlayer()` and has not been re-taken** — the three
+  shell fields it does cover were genuinely free (they ride the existing `getValues`),
+  but the third round-trip is unmeasured. The calls go out in parallel, so the
+  expectation is that the slowest one still sets the floor; that is an expectation,
+  not a reading. And it is the reading that matters here, because
   [the platform cost model](../architecture/async.md#crossing-the-thread-boundary-costs-a-rendezvous--budget-crossings-not-bytes)
-  says the count of crossings dominates the size of each.
+  says the COUNT of crossings dominates the size of each — which makes going from two
+  to three exactly the kind of change that can move the number, not the kind that can
+  be waved through. Re-take it the way the original was taken (n=20 at a real throw
+  site) before quoting a figure for the current shape.
 - **The `observed` fields come free.** `rowTypes` / `rows` are retained from reads
   the loop was already making, so "2 row(s) present" becomes "the two that landed
   were Chapter and Person" — which is the difference between *Season is late* and

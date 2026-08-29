@@ -3,6 +3,7 @@ import "pkg:/source/utils/dialogKeys.bs"
 import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/dialogNarration.bs"
 import "pkg:/source/utils/dialogResult.bs"
+import "pkg:/source/utils/dialogReveal.bs"
 import "pkg:/source/utils/misc.bs"
 
 ' Layout is DERIVED, not a stack of fixed offsets: every block is measured and
@@ -183,6 +184,12 @@ end sub
 ' the way. Folds in the focused button so this is a single utterance in the
 ' built-in order: title, message, button.
 sub onOpeningAnnouncementDue()
+  ' FAILSAFE for the layout cover, riding a timer that already exists and already
+  ' means "this dialog has been open for 0.15s". A dialog that never completes a
+  ' layout would otherwise stay covered — i.e. invisible while still holding the
+  ' remote. Uncovering it here means the worst case is the pre-existing broken
+  ' paint, not a black screen. See dialogReveal.bs.
+  revealDialog(m.top)
   if m.hasNarrated then return
   m.hasNarrated = true
 
@@ -198,6 +205,15 @@ sub onOpeningAnnouncementDue()
   if isValidAndNotEmpty(m.top.message) then body.push(m.top.message)
 
   narrateDialogOpening(m.top.title, body.join(". "), focusedText)
+end sub
+
+' Lay out NOW, called by presentOverlayDialog once this dialog is attached.
+'
+' The dialog is hidden until this returns, so there is no renderTracking to wait
+' on — and none is needed, because localBoundingRect() answers while hidden. See
+' dialogReveal.bs.
+sub settleLayout()
+  applyLayout()
 end sub
 
 ' A button finished sizing itself. Re-run the whole layout, not just the

@@ -4,6 +4,7 @@ import "pkg:/source/utils/dialogKeys.bs"
 import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/dialogNarration.bs"
 import "pkg:/source/utils/dialogResult.bs"
+import "pkg:/source/utils/dialogReveal.bs"
 import "pkg:/source/utils/listTheme.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
@@ -182,6 +183,12 @@ end sub
 
 ' Announce the dialog once the platform's own focus announcement is out of the way.
 sub onOpeningAnnouncementDue()
+  ' FAILSAFE for the layout cover, riding a timer that already exists and already
+  ' means "this dialog has been open for 0.15s". A dialog that never completes a
+  ' layout would otherwise stay covered — i.e. invisible while still holding the
+  ' remote. Uncovering it here means the worst case is the pre-existing broken
+  ' paint, not a black screen. See dialogReveal.bs.
+  revealDialog(m.top)
   if m.hasNarrated then return
   m.hasNarrated = true
 
@@ -216,6 +223,15 @@ sub onOpeningAnnouncementDue()
   '
   ' No `message` field on this dialog — the title carries the whole prompt
   narrateDialogOpening(m.top.title, "", focusedText)
+end sub
+
+' Lay out NOW, called by presentOverlayDialog once this dialog is attached.
+'
+' The dialog is hidden until this returns, so there is no renderTracking to wait
+' on — and none is needed, because localBoundingRect() answers while hidden. See
+' dialogReveal.bs.
+sub settleLayout()
+  applyLayout()
 end sub
 
 sub onItemSelected()

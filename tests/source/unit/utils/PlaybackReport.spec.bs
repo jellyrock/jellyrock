@@ -1,0 +1,734 @@
+import "pkg:/source/utils/playbackReport.bs"
+' PLAYBACK_INFO_ARROW lives here; BrighterScript consts are file-scoped.
+import "pkg:/source/utils/playbackInfo.bs"
+
+namespace tests
+
+  @suite("playbackReport.bs - the playback-info report model")
+  class PlaybackReportTests extends tests.BaseTestSuite
+
+    protected input as object
+
+    protected override sub beforeEach()
+      super.beforeEach()
+
+      ' A 4K DoVi HEVC / 5.1 EAC3 mkv, transcoded to 1080p H264 / stereo AAC.
+      ' Built per TEST because most cases mutate one field of it to isolate a rule.
+      m.input = {
+        session: {
+          TranscodingInfo: {
+            VideoCodec: "h264",
+            AudioCodec: "aac",
+            Container: "ts",
+            AudioChannels: 2,
+            Width: 1920,
+            Height: 1080,
+            Bitrate: 8000000,
+            Framerate: 52.0,
+            CompletionPercentage: 31.4,
+            HardwareAccelerationType: "qsv",
+            IsVideoDirect: false,
+            IsAudioDirect: false,
+            TranscodeReasons: ["VideoRangeTypeNotSupported"]
+          }
+        },
+        mediaSource: {
+          Container: "mkv",
+          RunTimeTicks: 108000000000&,
+          Size: 26000000000.0,
+          Bitrate: 26800000,
+          Path: "/media/movies/Dune (2021)/Dune.2021.2160p.mkv",
+          TranscodingUrl: "/videos/x/master.m3u8?VideoCodec=h264&AudioCodec=aac&AudioBitrate=192000&AudioSampleRate=48000&SubtitleMethod=Encode&h264-rangetype=SDR&h264-videobitdepth=8&TranscodeReasons=VideoRangeTypeNotSupported",
+          MediaStreams: [
+            { Type: "Video", Index: 0, Codec: "hevc", CodecTag: "hvc1", RefFrames: 4, Width: 3840, Height: 2160, BitRate: 25400000, BitDepth: 10, VideoRange: "HDR", VideoRangeType: "DOVIWithHDR10", DvProfile: 8, DvBlSignalCompatibilityId: 1, Profile: "Main 10", Level: 153, PixelFormat: "yuv420p10le", AverageFrameRate: 23.976 },
+            { Type: "Audio", Index: 1, Codec: "aac", Channels: 2, Language: "eng" },
+            { Type: "Audio", Index: 2, Codec: "eac3", Channels: 6, ChannelLayout: "5.1", BitRate: 768000, SampleRate: 48000, Profile: "LC", Language: "eng" },
+            { Type: "Subtitle", Index: 3, Codec: "subrip", Language: "eng" }
+          ]
+        },
+        playheadSeconds: 300,
+        previousCompletion: invalid,
+        audioStreamIndex: 2,
+        subtitleStreamIndex: 3,
+        settings: { playbackPreserveDovi: true },
+        apiVersion: 2,
+        deviceSupportsDovi: true,
+        deviceMaxHeight: 2160,
+        doviPreservationBypassed: false,
+        ' Admin, so the Path row renders; the gate has its own tests below.
+        isAdministrator: true
+      }
+    end sub
+
+    private function sectionById(report as object, id as string) as dynamic
+      for each section in report.sections
+        if section.id = id then return section
+      end for
+      return invalid
+    end function
+
+    private function hasSection(report as object, id as string) as boolean
+      return isValid(m.sectionById(report, id))
+    end function
+
+    private function rowValue(report as object, rowId as string) as string
+      for each section in report.sections
+        for each row in section.rows
+          if row.id = rowId then return row.value
+        end for
+      end for
+      return "<missing>"
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("what the server is doing")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("says transcoding when a stream is being re-encoded")
+    function _()
+      m.assertEqual(buildPlaybackReport(m.input).status, "Transcoding")
+    end function
+
+    @it("says direct streaming when both streams are copies")
+    function _()
+      ' Both direct means the container was rewrapped and not one frame
+      ' re-encoded, which Jellyfin itself labels remuxing / direct streaming.
+      m.input.session.TranscodingInfo.IsVideoDirect = true
+      m.input.session.TranscodingInfo.IsAudioDirect = true
+      m.assertEqual(buildPlaybackReport(m.input).status, "Direct streaming")
+    end function
+
+    ' This test used to assert "Direct playing" here, which PINNED the defect: a
+    ' session we never received is not a session that told us anything. The two
+    ' cases below are the ones that must not be conflated — an absent session and
+    ' a present session with no TranscodingInfo both leave `transcoding` invalid,
+    ' and only the second is a direct play.
+    @it("claims nothing about a session it never received")
+    function _()
+      m.input.session = invalid
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(report.status, "", "a dropped /Sessions request must not be reported as direct play")
+      m.assertInvalid(m.sectionById(report, "transcode"))
+      m.assertInvalid(m.sectionById(report, "reasons"))
+    end function
+
+    @it("still describes the FILE when the session is missing, source-only")
+    function _()
+      ' The static half comes from cached PlaybackInfo and is not in doubt, so the
+      ' report is still worth opening — every row just renders without a target,
+      ' which is the honest rendering of "nothing known about the output".
+      m.input.session = invalid
+      report = buildPlaybackReport(m.input)
+      video = m.sectionById(report, "video")
+      m.assertNotInvalid(video, "the file half must still render without a session")
+      for each row in video.rows
+        m.assertEqual(inStr(1, row.value, PLAYBACK_INFO_ARROW), 0, "row " + row.id + " claimed a target with no session to prove it")
+      end for
+    end function
+
+    @it("says direct playing when the session is present and reports no transcode")
+    function _()
+      m.input.session = {}
+      m.assertEqual(buildPlaybackReport(m.input).status, "Direct playing")
+    end function
+
+    @it("treats an empty TranscodingInfo as no transcode rather than an empty section")
+    function _()
+      m.input.session = { TranscodingInfo: {} }
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(report.status, "Direct playing")
+      m.assertInvalid(m.sectionById(report, "transcode"))
+      m.assertInvalid(m.sectionById(report, "reasons"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("source → target pairing")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("pairs each aspect against what the session actually produced")
+    function _()
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "video.codec"), "HEVC" + PLAYBACK_INFO_ARROW + "H264")
+      m.assertEqual(m.rowValue(report, "video.resolution"), "3840x2160" + PLAYBACK_INFO_ARROW + "1920x1080")
+      m.assertEqual(m.rowValue(report, "audio.codec"), "EAC3" + PLAYBACK_INFO_ARROW + "AAC")
+      m.assertEqual(m.rowValue(report, "audio.channels"), "5.1" + PLAYBACK_INFO_ARROW + "2.0")
+      m.assertEqual(m.rowValue(report, "file.container"), "MKV" + PLAYBACK_INFO_ARROW + "TS")
+    end function
+
+    @it("drops the arrow for a stream that is being copied")
+    function _()
+      ' The absence of an arrow is how the report says "untouched". A remux must
+      ' not render "EAC3 → EAC3" just because a transcode session exists.
+      m.input.session.TranscodingInfo.IsAudioDirect = true
+      m.input.session.TranscodingInfo.AudioCodec = "eac3"
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "audio.codec"), "EAC3")
+      m.assertEqual(m.rowValue(report, "audio.channels"), "5.1")
+    end function
+
+    @it("draws no channel arrow when the count did not change, whatever the layout is called")
+    function _()
+      ' REGRESSION. Source channels used to come from ChannelLayout ("stereo")
+      ' while the target could only come from TranscodingInfo.AudioChannels (a
+      ' number), so an unchanged stereo track rendered "stereo -> 2.0" — an arrow
+      ' claiming a conversion that never happened. Caught in a device capture, not
+      ' by any gate. Both sides go through formatAudioChannels now.
+      m.input.audioStreamIndex = 1
+      m.input.mediaSource.MediaStreams[1].ChannelLayout = "stereo"
+      m.input.session.TranscodingInfo.AudioChannels = 2
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "audio.channels"), "2.0")
+    end function
+
+    @it("falls back to the server's layout wording when the count is missing")
+    function _()
+      ' Still paired against the real 2-channel target — the fallback replaces the
+      ' SOURCE half only, and this fixture genuinely downmixes 6ch to 2ch.
+      m.input.mediaSource.MediaStreams[2].delete("Channels")
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "audio.channels"), "5.1" + PLAYBACK_INFO_ARROW + "2.0")
+    end function
+
+    @it("keeps the video bitrate row clear of the session's total")
+    function _()
+      ' TranscodingInfo.Bitrate is the TOTAL across streams; pairing a video-only
+      ' source figure against it would compare two different quantities. The total
+      ' has its own row in the Transcode section.
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.bitrate"), "25.4 Mbps")
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.bitrate"), "8.0 Mbps")
+    end function
+
+    @it("does not pass the URL's video bitrate ceiling off as an encode target")
+    function _()
+      ' &VideoBitrate is our own MaxStreamingBitrate less the audio allowance, so
+      ' it is very nearly the same figure on every transcode and sits ABOVE the
+      ' source bitrate on all but the largest files. Pairing it as a target says
+      ' the encode INFLATES the bitrate, which is never what happens. Same rule as
+      ' resolution: a cap says what was allowed, not what came out.
+      m.input.mediaSource.TranscodingUrl = "/videos/x/master.m3u8?VideoCodec=h264&VideoBitrate=139616000&AudioBitrate=384000"
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.bitrate"), "25.4 Mbps")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("only claiming a target the server actually declared")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("names the target range when the server declared exactly one")
+    function _()
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.range"), "DV 8.1" + PLAYBACK_INFO_ARROW + "SDR")
+    end function
+
+    @it("shows source-only when rangetype is a list of ALLOWED values")
+    function _()
+      ' StreamBuilder writes a comma-joined permitted set here, and in one branch
+      ' the complement of a set. A list of genuinely different outcomes is a
+      ' constraint, not an outcome — reading it as the target would be the most
+      ' convincing wrong thing this report could say. SDR and HDR10 are both
+      ' reachable by an encode, so which one comes out is the server's business.
+      m.input.mediaSource.TranscodingUrl = Substitute("{0}", m.input.mediaSource.TranscodingUrl.replace("h264-rangetype=SDR", "h264-rangetype=SDR,HDR10,HLG"))
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.range"), "DV 8.1")
+    end function
+
+    ' REGRESSION, and the single most likely real case rather than a constructed
+    ' one. JellyRock sends `EqualsAny` with "SDR|DOVIWithSDR" for h264, and
+    ' StreamBuilder's EqualsAny branch re-joins that permitted set into the URL as
+    ' `h264-rangetype=SDR,DOVIWithSDR`. The old guard rejected anything with a
+    ' comma, so an HDR10 source tone-mapped to h264 rendered "HDR10" with NO
+    ' ARROW — which by this report's own rule means untouched, the opposite of
+    ' what was happening.
+    @it("names SDR when the only non-DoVi member of the permitted set is SDR")
+    function _()
+      m.input.mediaSource.MediaStreams[0].VideoRange = "HDR"
+      m.input.mediaSource.MediaStreams[0].VideoRangeType = "HDR10"
+      m.input.mediaSource.TranscodingUrl = m.input.mediaSource.TranscodingUrl.replace("h264-rangetype=SDR", "h264-rangetype=SDR,DOVIWithSDR")
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.range"), "HDR10" + PLAYBACK_INFO_ARROW + "SDR")
+    end function
+
+    @it("stays silent when two REACHABLE outcomes remain after dropping DoVi")
+    function _()
+      ' An hevc profile on an HDR10-capable display permits both. Dropping the
+      ' DoVi members is not enough to make this one answer, so it claims none.
+      m.input.mediaSource.TranscodingUrl = m.input.mediaSource.TranscodingUrl.replace("h264-rangetype=SDR", "h264-rangetype=SDR,HDR10,DOVIWithHDR10")
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.range"), "DV 8.1")
+    end function
+
+    @it("claims nothing when every permitted value is a DoVi variant")
+    function _()
+      ' An encode cannot author Dolby Vision — DoVi survives only by copy, and a
+      ' copy would have suppressed the target already. So a set with nothing else
+      ' in it describes an outcome that cannot happen, and silence is the answer.
+      m.input.mediaSource.TranscodingUrl = m.input.mediaSource.TranscodingUrl.replace("h264-rangetype=SDR", "h264-rangetype=DOVIWithSDR,DOVIWithHDR10")
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.range"), "DV 8.1")
+    end function
+
+    @it("still draws no arrow for a copied video stream, whatever the set says")
+    function _()
+      ' The isCopy guard runs first, and it has to: a remuxed DoVi stream keeps
+      ' its range, and the permitted set describes what was ALLOWED, not what the
+      ' untouched stream is.
+      m.input.session.TranscodingInfo.IsVideoDirect = true
+      m.input.mediaSource.TranscodingUrl = m.input.mediaSource.TranscodingUrl.replace("h264-rangetype=SDR", "h264-rangetype=SDR,DOVIWithSDR")
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.range"), "DV 8.1")
+    end function
+
+    @it("shows source-only when the server declared no range at all")
+    function _()
+      m.input.mediaSource.TranscodingUrl = m.input.mediaSource.TranscodingUrl.replace("&h264-rangetype=SDR", "")
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.range"), "DV 8.1")
+    end function
+
+    @it("converts bit depth only when the source exceeds the declared ceiling")
+    function _()
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.bitdepth"), "10-bit" + PLAYBACK_INFO_ARROW + "8-bit")
+    end function
+
+    @it("leaves bit depth alone when the source already fits under the ceiling")
+    function _()
+      ' videobitdepth is a MAXIMUM. An 8-bit source under an 8-bit ceiling is
+      ' untouched, and "8-bit → 8-bit" would imply a conversion that never ran.
+      m.input.mediaSource.MediaStreams[0].BitDepth = 8
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.bitdepth"), "8-bit")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("transcode reasons")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows the server's code verbatim and explains only our own doing")
+    function _()
+      section = m.sectionById(buildPlaybackReport(m.input), "reasons")
+      m.assertEqual(section.rows[0].label, "VideoRangeTypeNotSupported", "the server's vocabulary passes through untranslated")
+      m.assertEqual(section.rows[0].value, "Caused by the Preserve DoVi setting")
+    end function
+
+    @it("leaves a reason unexplained when no setting of ours caused it")
+    function _()
+      m.input.session.TranscodingInfo.TranscodeReasons = ["AudioCodecNotSupported"]
+      section = m.sectionById(buildPlaybackReport(m.input), "reasons")
+      m.assertEqual(section.rows[0].label, "AudioCodecNotSupported")
+      m.assertEqual(section.rows[0].value, "", "a reason we cannot prove is the server's to explain")
+    end function
+
+    @it("pairs each code with its own explanation across several reasons")
+    function _()
+      ' Three reasons at once is the common case and the one that breaks any
+      ' format relying on line order to pair them.
+      m.input.settings.playbackDecodeMultichannelAudio = false
+      m.input.mediaSource.MediaStreams[2].Codec = "aac"
+      m.input.session.TranscodingInfo.TranscodeReasons = ["VideoRangeTypeNotSupported", "AudioCodecNotSupported", "AudioChannelsNotSupported"]
+
+      rows = m.sectionById(buildPlaybackReport(m.input), "reasons").rows
+      m.assertEqual(rows.count(), 3)
+      m.assertEqual(rows[0].value, "Caused by the Preserve DoVi setting")
+      m.assertEqual(rows[1].value, "")
+      m.assertEqual(rows[2].value, "Caused by the Decode Multichannel Audio setting")
+    end function
+
+    @it("gives the reasons section a wide label column for the codes")
+    function _()
+      m.assertTrue(m.sectionById(buildPlaybackReport(m.input), "reasons").wideLabels)
+      m.assertFalse(m.sectionById(buildPlaybackReport(m.input), "video").wideLabels)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("every reason the server can give has a row that shows it")
+
+    ' AudioProfileNotSupported was the one reason in Jellyfin's 27-value
+    ' vocabulary naming a property this report did not render — found on device
+    ' by a user watching an AAC -> MP3 transcode with no audio profile in sight.
+    @it("shows the audio profile, which AudioProfileNotSupported is about")
+    function _()
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "audio.profile"), "LC")
+    end function
+
+    ' hvc1 vs hev1 is the same HEVC bitstream in two container flavours, one of
+    ' which a device can refuse. The pre-rebuild report showed this and the
+    ' rebuild dropped it.
+    @it("shows the codec tag, which VideoCodecTagNotSupported is about")
+    function _()
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.codectag"), "hvc1")
+    end function
+
+    @it("shows reference frames, which RefFramesNotSupported is about")
+    function _()
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.refframes"), "4")
+    end function
+
+    @it("omits all three when the server did not send them")
+    function _()
+      m.input.mediaSource.MediaStreams[0].CodecTag = invalid
+      m.input.mediaSource.MediaStreams[0].RefFrames = 0
+      m.input.mediaSource.MediaStreams[2].Profile = invalid
+      report = buildPlaybackReport(m.input)
+
+      m.assertEqual(m.rowValue(report, "video.codectag"), "<missing>")
+      m.assertEqual(m.rowValue(report, "video.refframes"), "<missing>")
+      m.assertEqual(m.rowValue(report, "audio.profile"), "<missing>")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the stream the user is actually hearing")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("describes the SELECTED audio stream, not the first one in the array")
+    function _()
+      ' MediaStreams is a mixed list and index 1 is a different track. Reading
+      ' streams[0] is how a report ends up describing something nobody is playing.
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "audio.channels"), "5.1" + PLAYBACK_INFO_ARROW + "2.0")
+
+      m.input.audioStreamIndex = 1
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "audio.codec"), "AAC")
+    end function
+
+    @it("omits the subtitle section entirely when no subtitle is selected")
+    function _()
+      ' -1 is Jellyfin's "none", and a heading with nothing under it is noise.
+      m.input.subtitleStreamIndex = -1
+      m.assertInvalid(m.sectionById(buildPlaybackReport(m.input), "subtitles"))
+    end function
+
+    @it("never claims a delivery method the server did not state")
+    ' REGRESSION. This used to return "Embedded" unconditionally when nothing
+    ' said otherwise — a guess presented as a fact, which is the same shape as
+    ' the status line claiming "Direct playing" on a failed fetch. An absent row
+    ' is the honest answer and matches every other unknown in this report.
+    function _()
+      m.input.mediaSource.TranscodingUrl = m.input.mediaSource.TranscodingUrl.replace("&SubtitleMethod=Encode", "")
+      m.input.mediaSource.MediaStreams[3].delete("DeliveryMethod")
+      m.input.mediaSource.MediaStreams[3].delete("IsExternal")
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "subtitle.delivery"), "<missing>")
+    end function
+
+    @it("earns Embedded when the server says the track is NOT external")
+    function _()
+      ' `false` is a real assertion, unlike an absent field.
+      m.input.mediaSource.TranscodingUrl = m.input.mediaSource.TranscodingUrl.replace("&SubtitleMethod=Encode", "")
+      m.input.mediaSource.MediaStreams[3].IsExternal = false
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "subtitle.delivery"), "Embedded")
+    end function
+
+    @it("prefers the stream's own DeliveryMethod over inferring from IsExternal")
+    function _()
+      ' DeliveryMethod describes the DELIVERY; IsExternal describes the source file.
+      m.input.mediaSource.TranscodingUrl = m.input.mediaSource.TranscodingUrl.replace("&SubtitleMethod=Encode", "")
+      m.input.mediaSource.MediaStreams[3].IsExternal = false
+      m.input.mediaSource.MediaStreams[3].DeliveryMethod = "External"
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "subtitle.delivery"), "External")
+    end function
+
+    @it("passes through a delivery method it has no label for, rather than inventing one")
+    function _()
+      m.input.mediaSource.TranscodingUrl = m.input.mediaSource.TranscodingUrl.replace("&SubtitleMethod=Encode", "")
+      m.input.mediaSource.MediaStreams[3].DeliveryMethod = "Hls"
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "subtitle.delivery"), "hls")
+    end function
+
+    @it("reports burned-in subtitles, which explain a video transcode nothing else does")
+    function _()
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "subtitle.delivery"), "Burned in")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the live rows")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reports transcode speed as a real-time multiplier")
+    function _()
+      ' 52 fps encoded against a 23.976 fps source is 2.2x real time. Below 1.0x
+      ' the server cannot keep up — the single most actionable figure here.
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.speed"), "52.0 fps (2.2x)")
+    end function
+
+    @it("omits a frame rate that is really a container clock, not a rate")
+    function _()
+      ' Seen on device against an HLS Live TV channel: the server reported the
+      ' 90 kHz MPEG-TS timebase where a frame rate belongs, and the report rendered
+      ' "90000.0 fps".
+      m.input.mediaSource.MediaStreams[0].AverageFrameRate = 90000
+      m.input.mediaSource.MediaStreams[0].RealFrameRate = 90000
+
+      for each row in m.sectionById(buildPlaybackReport(m.input), "video").rows
+        m.assertNotEqual(row.id, "video.framerate", "rendered a container clock as a frame rate")
+      end for
+    end function
+
+    @it("still reports a high but real frame rate")
+    function _()
+      ' The guard must not start discarding rates somebody actually shot.
+      m.input.mediaSource.MediaStreams[0].AverageFrameRate = 120
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.framerate"), "120.0 fps")
+    end function
+
+    @it("does not divide the speed multiplier by a container clock")
+    function _()
+      ' The bad frame rate is also the DENOMINATOR of the transcode multiplier, so
+      ' left alone it turns a healthy encoder into a confident "0.0x".
+      m.input.mediaSource.MediaStreams[0].AverageFrameRate = 90000
+      m.input.mediaSource.MediaStreams[0].RealFrameRate = 90000
+
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.speed"), "52.0 fps", "a multiplier was computed against a timebase")
+    end function
+
+    @it("reports speed without a multiplier when the source frame rate is unknown")
+    function _()
+      m.input.mediaSource.MediaStreams[0].delete("AverageFrameRate")
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.speed"), "52.0 fps")
+    end function
+
+    @it("reports how far the encoder is AHEAD of the playhead")
+    ' The number that explains a frozen progress figure. 31.4% of a 3-hour
+    ' runtime is ~3391s of encoded video; the viewer is 300s in, so the encoder
+    ' leads by ~3091s = 51:31.
+    function _()
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.ahead"), "51:31")
+    end function
+
+    @it("clamps a negative lead to zero rather than reporting nonsense")
+    function _()
+      ' Seeking past the encoder restarts the transcode, so the playhead really can
+      ' sit ahead of it for a moment.
+      m.input.playheadSeconds = 9999
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.ahead"), "00:00")
+    end function
+
+    @it("omits the lead when there is no runtime to compute it from")
+    function _()
+      ' Live TV has no RunTimeTicks. Presence is the check, as everywhere else.
+      m.input.mediaSource.delete("RunTimeTicks")
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.ahead"), "<missing>")
+    end function
+
+    @it("says the encoder is idle when progress has not moved since the last poll")
+    function _()
+      ' Framerate keeps its last value when ffmpeg parks, so the speed row would
+      ' otherwise assert a rate that is not happening. Safe at a 5s interval: the
+      ' server moves CompletionPercentage on every ~1.2s sample while encoding.
+      m.input.previousCompletion = 31.4
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.speed"), "Idle")
+    end function
+
+    @it("shows the real speed while the encoder is still advancing")
+    function _()
+      m.input.previousCompletion = 30.9
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.speed"), "52.0 fps (2.2x)")
+    end function
+
+    @it("never claims idle on the first poll, when there is nothing to compare")
+    function _()
+      m.input.previousCompletion = invalid
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.speed"), "52.0 fps (2.2x)")
+    end function
+
+    @it("reports progress and hardware acceleration")
+    function _()
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "transcode.progress"), "31.4%")
+      m.assertEqual(m.rowValue(report, "transcode.acceleration"), "qsv")
+    end function
+
+    @it("drops the acceleration row on a server too old to report it")
+    function _()
+      ' HardwareAccelerationType arrives from 10.8. Absent means no row — no
+      ' version check anywhere, because presence IS the check.
+      m.input.session.TranscodingInfo.delete("HardwareAccelerationType")
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.acceleration"), "<missing>")
+    end function
+
+    @it("carries a transcode section ONLY while something is live")
+    function _()
+      ' PlayerHostView gates its refresh timer on this section existing: the live
+      ' rows are the only thing a poll could change, so a direct-play report has
+      ' nothing to poll FOR and must never start one.
+      m.assertTrue(m.hasSection(buildPlaybackReport(m.input), "transcode"), "a transcode has live rows")
+
+      m.input.session = invalid
+      m.assertFalse(m.hasSection(buildPlaybackReport(m.input), "transcode"), "direct play has nothing live")
+    end function
+
+    @it("drops the live section when a remux copies both streams")
+    function _()
+      ' A remux re-wraps the container without re-encoding, so there is no encode
+      ' speed to report and nothing worth refreshing.
+      m.input.session.TranscodingInfo.IsVideoDirect = true
+      m.input.session.TranscodingInfo.IsAudioDirect = true
+      m.input.session.TranscodingInfo.delete("Framerate")
+      m.input.session.TranscodingInfo.delete("CompletionPercentage")
+      m.input.session.TranscodingInfo.delete("Bitrate")
+      m.input.session.TranscodingInfo.delete("HardwareAccelerationType")
+      m.assertFalse(m.hasSection(buildPlaybackReport(m.input), "transcode"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the file")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("puts the path last, below the fold of a scrolling report")
+    function _()
+      ' Deliberate: the path is useful for telling duplicate entries apart and it
+      ' also exposes the server's filesystem layout in any screenshot. Last row of
+      ' the last section keeps it out of a shot of the transcode detail on top.
+      report = buildPlaybackReport(m.input)
+      lastSection = report.sections[report.sections.count() - 1]
+      m.assertEqual(lastSection.id, "file")
+      m.assertEqual(lastSection.rows[lastSection.rows.count() - 1].id, "file.path")
+    end function
+
+    @it("hides the file path from a non-administrator")
+    function _()
+      ' A library path is the server's filesystem laid bare, and the report is the
+      ' screen users are asked to photograph for a bug report.
+      m.input.isAdministrator = false
+      report = buildPlaybackReport(m.input)
+
+      file = m.sectionById(report, "file")
+      m.assertNotInvalid(file, "the rest of the File section must survive the gate")
+      for each row in file.rows
+        m.assertNotEqual(row.id, "file.path", "the path was shown to a non-administrator")
+      end for
+    end function
+
+    @it("withholds the path when we do not know who is watching")
+    function _()
+      ' Policy is server-authoritative and can legitimately be absent. Absent must
+      ' read as NOT an administrator — the safe direction is the one that withholds.
+      m.input.isAdministrator = invalid
+      report = buildPlaybackReport(m.input)
+      for each row in m.sectionById(report, "file").rows
+        m.assertNotEqual(row.id, "file.path", "an unknown viewer was shown the path")
+      end for
+    end function
+
+    @it("omits size on a live stream, which has no file to have one")
+    function _()
+      ' A live channel still reports a Size — of its HLS playlist, not its
+      ' content. Measured against a real server: a channel's PlaybackInfo comes
+      ' back with IsInfiniteStream true, and the figure rendered as "27.5 KiB"
+      ' beside a film's "24.2 GiB".
+      m.input.mediaSource.IsInfiniteStream = true
+      report = buildPlaybackReport(m.input)
+
+      file = m.sectionById(report, "file")
+      m.assertNotInvalid(file, "the rest of the File section must survive the gate")
+      for each row in file.rows
+        m.assertNotEqual(row.id, "file.size", "reported a playlist's size as the stream's size")
+      end for
+    end function
+
+    @it("keeps size for anything that is not an infinite stream")
+    function _()
+      ' Absent must read as "not live" — an older server that never sends the flag
+      ' has to keep behaving as it does today.
+      m.input.mediaSource.IsInfiniteStream = invalid
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "file.size"), "24.2 GiB")
+
+      m.input.mediaSource.IsInfiniteStream = false
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "file.size"), "24.2 GiB")
+    end function
+
+    @it("formats a real movie's size, which overflows a 32-bit integer")
+    function _()
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "file.size"), "24.2 GiB")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("missing data")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("omits a row rather than showing a placeholder")
+    function _()
+      m.input.mediaSource.MediaStreams[0].delete("PixelFormat")
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.pixelformat"), "<missing>")
+    end function
+
+    @it("survives a report with nothing to build from")
+    function _()
+      m.assertEqual(buildPlaybackReport(invalid).sections.count(), 0)
+      m.assertEqual(buildPlaybackReport({}).sections.count(), 0)
+      m.assertEqual(buildPlaybackReport({ mediaSource: {} }).sections.count(), 0)
+    end function
+
+    @it("gives every row a stable id, which is what lets a refresh reconcile")
+    function _()
+      ' The dialog matches rows between two builds by id to rewrite live figures
+      ' in place. Duplicate ids would make one row shadow another.
+      seen = {}
+      for each section in buildPlaybackReport(m.input).sections
+        for each row in section.rows
+          m.assertFalse(seen.doesExist(row.id), "duplicate row id: " + row.id)
+          seen[row.id] = true
+        end for
+      end for
+      m.assertTrue(seen.count() > 10, "expected a populated report")
+    end function
+
+    @it("produces the identical model twice, so an unchanged refresh changes nothing")
+    function _()
+      first = buildPlaybackReport(m.input)
+      second = buildPlaybackReport(m.input)
+      m.assertEqual(formatJson(first), formatJson(second))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("video level scales")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' REGRESSION. The report divided every level by ten, so an HEVC stream at
+    ' level 153 rendered "Main 10 @ L15.3" — and the device capture that caught it
+    ' showed "L15.0" for a level-150 stream. HEVC's maximum defined level is 6.2,
+    ' so those are not levels that exist.
+    '
+    ' The scales are Jellyfin's, read off jellyfin-web's own browserDeviceProfile.js
+    ' (maxH264Level = 42 -> 4.2; maxHevcLevel = 153 -> 5.1; maxAv1Level = 15 ->
+    ' "level 5.3" per its own comment). JellyRock already encodes the h264 and hevc
+    ' halves in deviceCapabilities.bs, so these assertions are the same numbers read
+    ' back the other way and will fail if the two ever drift apart.
+
+    @it("reads an HEVC level on the x30 scale")
+    function _()
+      ' 153 = 5.1. The fixture carries this, so it also covers the default path.
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.profile"), "Main 10 @ L5.1")
+    end function
+
+    @it("reads an h264 level on the x10 scale")
+    function _()
+      m.input.mediaSource.MediaStreams[0].Codec = "h264"
+      m.input.mediaSource.MediaStreams[0].Profile = "High"
+      m.input.mediaSource.MediaStreams[0].Level = 41
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.profile"), "High @ L4.1")
+    end function
+
+    @it("reads an AV1 level as a seq_level_idx rather than a multiple")
+    function _()
+      ' idx = (major - 2) * 4 + minor, so 15 -> 5.3 and 16 -> 6.0. Dividing by
+      ' either 10 or 30 would render both as fractions of a level.
+      m.input.mediaSource.MediaStreams[0].Codec = "av1"
+      m.input.mediaSource.MediaStreams[0].Profile = "Main"
+      m.input.mediaSource.MediaStreams[0].Level = 15
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.profile"), "Main @ L5.3")
+
+      m.input.mediaSource.MediaStreams[0].Level = 16
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.profile"), "Main @ L6.0")
+    end function
+
+    @it("renders the profile alone for a codec whose level scale we do not know")
+    function _()
+      ' vp9 gets no level condition in Jellyfin's own profile and mpeg2's scale is
+      ' not established here. A number divided by a guessed constant would be the
+      ' most convincing wrong thing this row could say, so no level is shown.
+      for each codec in ["vp9", "mpeg2video"]
+        m.input.mediaSource.MediaStreams[0].Codec = codec
+        m.input.mediaSource.MediaStreams[0].Profile = "Profile 0"
+        m.input.mediaSource.MediaStreams[0].Level = 51
+        m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.profile"), "Profile 0", codec + " must not render a guessed level")
+      end for
+    end function
+
+    @it("drops the row entirely when an unknown codec has no profile either")
+    function _()
+      m.input.mediaSource.MediaStreams[0].Codec = "vp9"
+      m.input.mediaSource.MediaStreams[0].Profile = ""
+      m.input.mediaSource.MediaStreams[0].Level = 51
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.profile"), "<missing>")
+    end function
+
+  end class
+end namespace

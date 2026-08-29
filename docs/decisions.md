@@ -1181,6 +1181,20 @@ The RTA suite tests Quick Connect end to end by approving its own code: `POST /Q
 
 **The constraint worth re-evaluating is the unmeasured tail.** Nobody has measured what Next Up returns on a very large library now that it sends no limit — `disableFirstEpisode: false` may mean it approaches one episode per series rather than only series the user has started, and the cached spec fingerprint carries parameter names without defaults so it cannot answer it. Tracked as an open followup in `docs/progress.md` with the reading that would close it. If it comes back in the hundreds, the answer is a generous cap on a row nobody can scroll to the end of — which is a different decision from this one.
 
+## decision-id: playback-report-target-evidence-tiers
+
+**date**: 2026-08-25
+**status**: accepted
+**related-files**: `source/utils/playbackReport.bs`, `source/utils/transcodeCause.bs`, `docs/architecture/playback.md`
+
+The playback-info report renders a `source → target` pair for an aspect ONLY where the server declared the target. Where it did not, the row shows the source alone and no arrow. The arrow is a claim that something changed, and the report has no business making that claim from inference.
+
+**Three tiers of evidence, and they are not interchangeable.** `TranscodingInfo` off the live session is the actual output — codec, channels, container, width/height, bitrate — and is authoritative. A handful of `TranscodingUrl` parameters (`&AudioBitrate`, `&AudioSampleRate`, `&SubtitleMethod`) are exact declarations. The per-codec stream options are CONSTRAINTS, and read as targets only where they collapse to one unambiguous answer: Jellyfin's `StreamBuilder` writes `<codec>-rangetype` as a comma-joined permitted set — in one branch the complement of a set — and `<codec>-videobitdepth` as a ceiling rather than an output. So a single-valued `rangetype` is a target, a list is not, and a bit-depth ceiling is a target only when the source exceeds it.
+
+**What this closes off is the cheap answer.** The obvious alternative is to infer the target from the fact that a transcode is running: it is transcoding, therefore Dolby Vision became SDR. That is usually right and occasionally a confident lie, and it is the single most convincing wrong thing this report could say — a viewer opens it precisely because they do not trust what is happening. The next row added here will be tempting to fill the same way.
+
+**The trade-off worth re-evaluating is the silence.** When the evidence is missing the report says nothing rather than guessing, so a user sees a bare source value and cannot tell "unchanged" from "unknown" — the two render identically. That is the right default while the alternative is fabrication, but if Jellyfin ever declares output range and bit depth exactly, those move to tier 1 and the ambiguity disappears rather than needing a new convention.
+
 ## decision-id: resolution-cap-honors-user-choice
 
 **date**: 2026-08-27

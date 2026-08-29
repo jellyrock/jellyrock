@@ -73,7 +73,7 @@
  * the Rooibos runner and knows nothing about devices. This module only supplies
  * the RTA-specific capture that goes INTO it.
  */
-import { odc } from 'roku-test-automation';
+import { odc, ecp } from 'roku-test-automation';
 import {
   crossesHourBoundary,
   FAILURE_KINDS,
@@ -138,13 +138,22 @@ const CAPTURE_TIMEOUT_MS = 5000;
 export async function captureFailureState() {
   const started = Date.now();
   const opts = { timeout: CAPTURE_TIMEOUT_MS };
-  const [focused, batch] = await Promise.all([
+  const [focused, batch, mediaPlayer] = await Promise.all([
     // `includeNode` already defaults to true; we need the node for its subtype.
     // Only the four fields below are kept — the rest never reaches a record.
     odc.getFocusedNode({}, opts).catch(() => null),
     odc
       .getValues({ requests: CORE_REQUESTS }, opts)
       .catch((e) => ({ error: e?.message || String(e) })),
+    // ECP, not ODC — the OS media player is the only place playback state is
+    // readable, and NO failure record carried it until now. That gap is not
+    // theoretical: a run whose video never left `buffer` reported only
+    // "osd visible (last=false)", because the app's own `stateAllowsOSD()` gate
+    // swallows the keypress until the SceneGraph Video node reaches
+    // playing/paused/stopped. Three separate investigations read that as a dialog
+    // fault and had to be settled by a control run. One field ends that: a stalled
+    // stream now says so in the record.
+    ecp.getMediaPlayer().catch(() => null),
   ]);
 
   const results = batch?.results;
@@ -162,6 +171,13 @@ export async function captureFailureState() {
           // `onKeyEvent` releases focus upward only from row 0. Free: `getFocusedNode`
           // already returns the whole field set, so this adds no device call.
           rowItemFocused: focused.node.rowItemFocused ?? undefined,
+          // The APP's own playback state, which is not the OS player's and is the
+          // one the app gates on: VideoPlayerView.stateAllowsOSD() accepts only
+          // playing/paused/stopped, so `buffering` or `error` here means the OSD is
+          // being refused ON PURPOSE. Free — getFocusedNode already returns the
+          // whole field set, and when the focused node is the player this is the
+          // field that explains an OSD that never opens.
+          state: focused.node.state ?? undefined,
         }
       : null,
     view: {
@@ -185,6 +201,16 @@ export async function captureFailureState() {
       serverUrl: unwrap(results, 'serverUrl'),
       userId: unwrap(results, 'userId'),
     },
+    // `state` is the OS player's, which is NOT the same vocabulary as the app's
+    // Video node — notably `buffer` here reads as playing to PLAYING_STATES while
+    // the app refuses to open the OSD. Recorded verbatim so a record greps back to
+    // what Roku actually said.
+    player: mediaPlayer
+      ? {
+          state: mediaPlayer.state,
+          error: mediaPlayer.error || undefined,
+        }
+      : undefined,
     unreachable: batch?.error,
     captureMs: Date.now() - started,
   };
@@ -258,12 +284,23 @@ function formatState(state, observed) {
       (state.focus.rowItemFocused ? ` rowItemFocused=[${state.focus.rowItemFocused}]` : '')
     : 'none';
   const shell = state.shell || {};
+  const player = state.player || {};
   const shellBits = [
     // The app was returning true for every key we sent (JRScene.onKeyEvent).
     shell.isRemoteDisabled === true ? 'input=BLOCKED' : null,
     shell.isLoading === true
       ? `spinner=on${shell.loadingText ? `("${shell.loadingText}")` : ''}`
       : null,
+    // Printed whenever playback is up, because a stalled stream looks like a UI
+    // fault from every other field here: the app swallows keys until its Video
+    // node leaves `buffer`, so the OSD simply never opens and nothing else in this
+    // line says why. `buffer` is the value worth spotting — PLAYING_STATES counts
+    // it as playing, the app does not.
+    player.state ? `player=${player.state}` : null,
+    // The app's Video node state, printed beside the OS player's because the two
+    // disagreeing IS the finding.
+    state.focus?.state ? `videoNode=${state.focus.state}` : null,
+    player.error ? 'playerError=true' : null,
   ].filter(Boolean);
   lines.push(
     // A routed view's id is the item GUID, so it is truncated here for the same

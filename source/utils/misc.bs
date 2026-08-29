@@ -643,6 +643,69 @@ function toString(input) as string
   return str(input)
 end function
 
+' Text from a field that may simply not exist.
+'
+' toString() faults with a Type Mismatch on Invalid, because it falls through to
+' Str(), so it can only be used where the value is known to be present. Optional
+' fields — most of a Jellyfin MediaStream, every field a newer server added — need
+' this instead: absent reads as "", which is what a caller building display text
+' out of them wants anyway.
+'
+' @param {dynamic} input - any value, including Invalid
+' @returns {string} - the text, or "" when there is nothing there
+function textOrEmpty(input as dynamic) as string
+  if not isValid(input) then return ""
+  return toString(input)
+end function
+
+' True only for a real boolean true.
+'
+' `value = true` faults &h18 on a non-boolean operand, so the TYPE has to be
+' established before the comparison. A field the server omitted dereferences to
+' Invalid, which is exactly the case a bare `if stream.IsAnamorphic` would fault on.
+' ParseJson yields an unboxed "Boolean" and an AA literal a boxed "roBoolean" —
+' both are genuine booleans, so both have to pass.
+'
+' Lives here, beside isValid / mediaNumber / textOrEmpty, because it is the same
+' kind of thing: a coercion for a field that may not be there. It used to live in
+' fallbackFont.bs, which meant reaching it from anywhere else imported a module
+' about FONTS to get a boolean guard — enough friction that the playback report
+' grew a byte-identical private copy rather than pay it.
+'
+' @param {dynamic} value - any value, including Invalid
+' @returns {boolean} - true when value is boolean true; false for every other type or value
+function isBooleanTrue(value as dynamic) as boolean
+  valueType = LCase(type(value))
+  return (valueType = "boolean" or valueType = "roboolean") and value = true
+end function
+
+' A number from a field that may be a float, an integer, a string, or absent.
+'
+' The FLOAT-PRESERVING counterpart to mediaNumber, and the distinction matters in
+' both directions. mediaNumber truncates to a 32-bit Integer, which is right for
+' Height / Channels / SampleRate and wrong for two kinds of field:
+'
+'   - FRACTIONAL ones — frame rates, completion percentages — where truncating
+'     destroys the figure outright.
+'   - LARGE ones — a byte count passes 2^31 at ~2.1 GB, and RunTimeTicks for a
+'     three-hour film is ~1.08e11 — where truncating overflows.
+'
+' @param {dynamic} value - a numeric field off a media object, a settings node, or a literal
+' @returns {float} - the numeric value, or 0.0 for invalid / AA / array / boolean input.
+'   Every caller today passes a media field, so this covers what actually reaches
+'   it in practice — an unhandled type (roSGNode, roDateTime, a function) would
+'   still fault on `return value as float` rather than fall back to 0.0.
+function decimalOrZero(value as dynamic) as float
+  if not isValid(value) then return 0.0
+
+  valueType = LCase(type(value))
+  if valueType = "string" or valueType = "rostring" then return Val(value)
+  if valueType = "roassociativearray" or valueType = "roarray" then return 0.0
+  if valueType = "boolean" or valueType = "roboolean" then return 0.0
+
+  return value
+end function
+
 ' The app's Scene node, cached on first use.
 '
 ' Reaching the scene means walking up from m.top, so every caller that needed it

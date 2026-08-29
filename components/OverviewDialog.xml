@@ -44,11 +44,33 @@
     <field id="title" type="string" onChange="onTitleChanged" />
     <field id="tagline" type="string" onChange="onTaglineChanged" />
     <field id="overview" type="string" onChange="onOverviewChanged" />
+    <!-- Structured body, as an alternative to `overview`'s plain string: an array
+         of { id, heading, wideLabels, rows: [ { id, label, value } ] }. Built by
+         source/utils/playbackReport.bs.
+
+         RE-SETTABLE, and that is a contract rather than an accident: the playback
+         report refreshes on a timer while it is open, and setting this again
+         RECONCILES — rows matched by `id` have their text rewritten in place and
+         nothing is added or removed. That keeps the panel height and the user's
+         scroll position exactly where they were. A structurally different array
+         rebuilds from scratch instead. -->
+    <field id="sections" type="array" onChange="onSectionsChanged" />
     <!-- Node to restore remote focus to when this overlay closes (the FocusableOverview that
          opened it). Set by the opener before appendChild. -->
     <field id="returnFocusTo" type="node" />
+    <!-- Set true when this dialog closes, by EITHER route (the user pressing
+         OK/back, or cancelDialog superseding it from outside).
+         A caller that keeps a reference to this dialog — the playback report polls
+         into it — has to know when it goes away, and there is no platform signal
+         for that: `parentNode` is not a Node field, so observing it silently
+         never fires. Node's observable fields are id / focusable / focusedChild /
+         change, and none of them says "I was removed". -->
+    <field id="closed" type="boolean" value="false" alwaysNotify="true" />
     <!-- Cancel this dialog from OUTSIDE (source/utils/dialogs.bs cancelOpenDialog).
          This dialog has no result to deliver, so cancelling is just closing. -->
     <function name="cancelDialog" />
+    <!-- Called by presentOverlayDialog while the dialog is still hidden, to lay it
+         out before it is shown. See source/utils/dialogReveal.bs. -->
+    <function name="settleLayout" />
   </interface>
 </component>

@@ -1,0 +1,349 @@
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/transcodeCause.bs"
+
+namespace tests
+
+  ' Every predicate is tested in BOTH directions, and the negatives are the point.
+  ' A false positive here sends a user to a Settings screen to change something
+  ' that will not help, which is worse than showing them the bare server code —
+  ' so each conjunct of each predicate gets a test that removes only that conjunct
+  ' and asserts the attribution disappears.
+  @suite("transcodeCause.bs - attributing a transcode to a JellyRock setting")
+  class TranscodeCauseTests extends tests.BaseTestSuite
+
+    protected doviCtx as object
+    protected anamorphicCtx as object
+    protected channelsCtx as object
+    protected bitrateCtx as object
+    protected resolutionCtx as object
+
+    protected override sub beforeEach()
+      super.beforeEach()
+
+      ' Built per TEST, not per suite — every case below mutates its own copy.
+      m.doviCtx = {
+        settings: { playbackPreserveDovi: true },
+        doviPreservationBypassed: false,
+        deviceSupportsDovi: true,
+        apiVersion: 2,
+        container: "mkv",
+        videoStream: { Codec: "hevc", VideoRangeType: "DOVIWithHDR10" }
+      }
+
+      m.anamorphicCtx = {
+        settings: { playbackForceTranscodeAnamorphic: true },
+        videoStream: { Codec: "h264", IsAnamorphic: true }
+      }
+
+      m.channelsCtx = {
+        settings: { playbackDecodeMultichannelAudio: false },
+        audioStream: { Codec: "aac", Channels: 6 }
+      }
+
+      m.bitrateCtx = {
+        settings: { playbackBitrateMaxLimited: true, playbackBitrateLimit: 8 },
+        videoStream: { Codec: "hevc", BitRate: 25000000 }
+      }
+
+      m.resolutionCtx = {
+        settings: { playbackResolutionMax: "720" },
+        deviceMaxHeight: 2160,
+        videoStream: { Codec: "hevc", Height: 1080, Width: 1920 }
+      }
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Preserve DoVi")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("names the setting when every condition of the container-profile injection still holds")
+    function _()
+      m.assertEqual(transcodeCauseSettingKey("VideoRangeTypeNotSupported", m.doviCtx), translationKeys.LabelPreserveDovi)
+    end function
+
+    @it("says nothing when the setting is off")
+    function _()
+      m.doviCtx.settings.playbackPreserveDovi = false
+      m.assertEqual(transcodeCauseSettingKey("VideoRangeTypeNotSupported", m.doviCtx), "")
+    end function
+
+    @it("says nothing after a buffer-overflow retry bypassed DoVi preservation")
+    function _()
+      ' The retry re-asks the server WITHOUT the container profile, so whatever
+      ' the reason is on that pass, it is not this constraint.
+      m.doviCtx.doviPreservationBypassed = true
+      m.assertEqual(transcodeCauseSettingKey("VideoRangeTypeNotSupported", m.doviCtx), "")
+    end function
+
+    @it("says nothing on a device that cannot do Dolby Vision")
+    function _()
+      ' ItemPostPlaybackInfo skips the injection entirely in this case.
+      m.doviCtx.deviceSupportsDovi = false
+      m.assertEqual(transcodeCauseSettingKey("VideoRangeTypeNotSupported", m.doviCtx), "")
+    end function
+
+    @it("says nothing below apiVersion 2, where VideoRangeType does not exist")
+    function _()
+      m.doviCtx.apiVersion = 1
+      m.assertEqual(transcodeCauseSettingKey("VideoRangeTypeNotSupported", m.doviCtx), "")
+    end function
+
+    @it("says nothing for a non-mkv container")
+    function _()
+      ' The injected condition is scoped to the mkv container profile.
+      m.doviCtx.container = "mp4"
+      m.assertEqual(transcodeCauseSettingKey("VideoRangeTypeNotSupported", m.doviCtx), "")
+    end function
+
+    @it("says nothing for an AV1 stream, which the injection explicitly exempts")
+    function _()
+      m.doviCtx.videoStream.Codec = "av1"
+      m.assertEqual(transcodeCauseSettingKey("VideoRangeTypeNotSupported", m.doviCtx), "")
+    end function
+
+    @it("says nothing when the source is HDR10 rather than Dolby Vision")
+    function _()
+      m.doviCtx.videoStream.VideoRangeType = "HDR10"
+      m.assertEqual(transcodeCauseSettingKey("VideoRangeTypeNotSupported", m.doviCtx), "")
+    end function
+
+    @it("matches every Dolby Vision variant, not just the bare DOVI value")
+    function _()
+      for each rangeType in ["DOVI", "DOVIWithHDR10", "DOVIWithSDR", "DOVIWithHLG", "doviwithhdr10plus"]
+        m.doviCtx.videoStream.VideoRangeType = rangeType
+        m.assertEqual(transcodeCauseSettingKey("VideoRangeTypeNotSupported", m.doviCtx), translationKeys.LabelPreserveDovi, rangeType + " should attribute")
+      end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Force Transcode Anamorphic Video")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("names the setting when it is on and the source really is anamorphic")
+    function _()
+      m.assertEqual(transcodeCauseSettingKey("AnamorphicVideoNotSupported", m.anamorphicCtx), translationKeys.LabelForceTranscodeAnamorphicVideo)
+    end function
+
+    @it("says nothing when the setting is off")
+    function _()
+      m.anamorphicCtx.settings.playbackForceTranscodeAnamorphic = false
+      m.assertEqual(transcodeCauseSettingKey("AnamorphicVideoNotSupported", m.anamorphicCtx), "")
+    end function
+
+    @it("says nothing when the source is not anamorphic")
+    function _()
+      ' The condition cannot bind on a stream it does not describe.
+      m.anamorphicCtx.videoStream.IsAnamorphic = false
+      m.assertEqual(transcodeCauseSettingKey("AnamorphicVideoNotSupported", m.anamorphicCtx), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Decode Multichannel Audio")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("names the setting when it is OFF and a capped codec carries more than 2 channels")
+    function _()
+      m.assertEqual(transcodeCauseSettingKey("AudioChannelsNotSupported", m.channelsCtx), translationKeys.LabelDecodeMultichannelAudio)
+    end function
+
+    @it("says nothing when the setting is on")
+    function _()
+      m.channelsCtx.settings.playbackDecodeMultichannelAudio = true
+      m.assertEqual(transcodeCauseSettingKey("AudioChannelsNotSupported", m.channelsCtx), "")
+    end function
+
+    @it("says nothing when the setting is absent, since the default adds no cap")
+    function _()
+      m.channelsCtx.settings.delete("playbackDecodeMultichannelAudio")
+      m.assertEqual(transcodeCauseSettingKey("AudioChannelsNotSupported", m.channelsCtx), "")
+    end function
+
+    @it("says nothing for a codec the 2-channel cap never touches")
+    function _()
+      ' The cap lists aac/flac/alac/pcm/lpcm/wav/opus/vorbis. A 5.1 EAC3 source
+      ' transcoding for channels was limited by the device, not by this setting —
+      ' this is the case the setting NAME alone would get wrong.
+      m.channelsCtx.audioStream.Codec = "eac3"
+      m.assertEqual(transcodeCauseSettingKey("AudioChannelsNotSupported", m.channelsCtx), "")
+    end function
+
+    @it("says nothing for a stereo source, which the cap cannot bind on")
+    function _()
+      m.channelsCtx.audioStream.Channels = 2
+      m.assertEqual(transcodeCauseSettingKey("AudioChannelsNotSupported", m.channelsCtx), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Maximum Bitrate")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("names the setting when the limit is enabled and the source exceeds it")
+    function _()
+      m.assertEqual(transcodeCauseSettingKey("VideoBitrateNotSupported", m.bitrateCtx), translationKeys.LabelMaximumBitrate)
+    end function
+
+    @it("says nothing when the limit is not enabled")
+    function _()
+      m.bitrateCtx.settings.playbackBitrateMaxLimited = false
+      m.assertEqual(transcodeCauseSettingKey("VideoBitrateNotSupported", m.bitrateCtx), "")
+    end function
+
+    @it("says nothing when there is no usable limit stored")
+    function _()
+      ' GetBitRateLimit falls through to Roku's per-codec HARDWARE ceilings in
+      ' each of these, and a hardware ceiling is not the user's doing.
+      for each junk in [{ v: 0, why: "zero" }, { v: -1, why: "negative" }, { v: invalid, why: "absent" }, { v: "", why: "empty" }]
+        m.bitrateCtx.settings.playbackBitrateLimit = junk.v
+        m.assertEqual(transcodeCauseSettingKey("VideoBitrateNotSupported", m.bitrateCtx), "", "a " + junk.why + " limit should not attribute")
+      end for
+    end function
+
+    @it("reads a limit the registry round-tripped into a string")
+    function _()
+      ' Settings persist as strings, and GetBitRateLimit accepts that through the
+      ' same mediaNumber coercion. If this module were stricter than the profile
+      ' builder it would stay silent about a limit that really did constrain.
+      m.bitrateCtx.settings.playbackBitrateLimit = "8"
+      m.assertEqual(transcodeCauseSettingKey("VideoBitrateNotSupported", m.bitrateCtx), translationKeys.LabelMaximumBitrate)
+    end function
+
+    @it("says nothing when the source bitrate is under the limit")
+    function _()
+      ' The setting is on but not BINDING — something else caused this transcode.
+      m.bitrateCtx.videoStream.BitRate = 4000000
+      m.assertEqual(transcodeCauseSettingKey("VideoBitrateNotSupported", m.bitrateCtx), "")
+    end function
+
+    @it("says nothing when the source does not report a bitrate to compare")
+    function _()
+      m.bitrateCtx.videoStream.delete("BitRate")
+      m.assertEqual(transcodeCauseSettingKey("VideoBitrateNotSupported", m.bitrateCtx), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Maximum Resolution")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("names the setting when the user lowered the cap below the source and the device")
+    function _()
+      m.assertEqual(transcodeCauseSettingKey("VideoResolutionNotSupported", m.resolutionCtx), translationKeys.LabelMaximumResolution)
+    end function
+
+    @it("says nothing on auto, which follows the TV rather than a choice")
+    function _()
+      m.resolutionCtx.settings.playbackResolutionMax = "auto"
+      m.assertEqual(transcodeCauseSettingKey("VideoResolutionNotSupported", m.resolutionCtx), "")
+    end function
+
+    @it("says nothing on off, which sends no resolution conditions at all")
+    function _()
+      m.resolutionCtx.settings.playbackResolutionMax = "off"
+      m.assertEqual(transcodeCauseSettingKey("VideoResolutionNotSupported", m.resolutionCtx), "")
+    end function
+
+    ' REGRESSION GUARD. This block used to assert the OPPOSITE — that 1080/1440/2160
+    ' never attribute — because getResolutionConditions collapsed any value at or
+    ' above 1080 to a 1080 cap, so nothing was genuinely the user's doing. That was a
+    ' bug (jellyrock#866), and the old assertion mirrored it. Worth knowing: those old
+    ' cases would still PASS against the fixed code, because the fixture's source is
+    ' 1080p and so fits under every one of those caps — they had gone vacuous rather
+    ' than red, which is exactly why they are replaced rather than deleted.
+    @it("names the setting for a cap at or above 1080 that the source still exceeds")
+    function _()
+      ' A 4K device, a 4K source, and the user asking for 1080. `auto` would have
+      ' given them 2160, so the cap is theirs and changing it would change the
+      ' outcome — the definition this module attributes on.
+      m.resolutionCtx.settings.playbackResolutionMax = "1080"
+      m.resolutionCtx.deviceMaxHeight = 2160
+      m.resolutionCtx.videoStream = { Codec: "hevc", Height: 2160, Width: 3840 }
+      m.assertEqual(transcodeCauseSettingKey("VideoResolutionNotSupported", m.resolutionCtx), translationKeys.LabelMaximumResolution)
+    end function
+
+    @it("names the setting for a 4k cap an 8k source exceeds")
+    function _()
+      ' The rung above: honouring "4k" means a 2160 cap is now real, so an 8K source
+      ' hitting it is attributable for the same reason.
+      m.resolutionCtx.settings.playbackResolutionMax = "2160"
+      m.resolutionCtx.deviceMaxHeight = 4320
+      m.resolutionCtx.videoStream = { Codec: "hevc", Height: 4320, Width: 7680 }
+      m.assertEqual(transcodeCauseSettingKey("VideoResolutionNotSupported", m.resolutionCtx), translationKeys.LabelMaximumResolution)
+    end function
+
+    @it("still says nothing when a high cap is one the source fits under")
+    function _()
+      ' The case the replaced assertions were accidentally testing. Kept explicitly,
+      ' so the reason it returns "" is pinned as "the source fits" rather than left
+      ' to coincide with a rule that no longer exists.
+      for each value in ["1080", "1440", "2160"]
+        m.resolutionCtx.settings.playbackResolutionMax = value
+        m.assertEqual(transcodeCauseSettingKey("VideoResolutionNotSupported", m.resolutionCtx), "", value + " should not attribute for a 1080p source")
+      end for
+    end function
+
+    @it("says nothing when the source already fits under the cap")
+    function _()
+      m.resolutionCtx.videoStream.Height = 720
+      m.assertEqual(transcodeCauseSettingKey("VideoResolutionNotSupported", m.resolutionCtx), "")
+    end function
+
+    @it("says nothing for h264 above 1080p, where the hardware ceiling is an equal suspect")
+    function _()
+      ' ItemPostPlaybackInfo caps h264 at 1920x1080 regardless of any setting, so
+      ' this transcode would have happened with the setting at its default. Two
+      ' candidate causes and no way to tell them apart — so we claim neither.
+      m.resolutionCtx.videoStream = { Codec: "h264", Height: 2160, Width: 3840 }
+      m.assertEqual(transcodeCauseSettingKey("VideoResolutionNotSupported", m.resolutionCtx), "")
+    end function
+
+    @it("still names the setting for h264 within the hardware ceiling")
+    function _()
+      ' 1080p h264 is inside the ceiling, so the only thing capping it is the user.
+      m.resolutionCtx.videoStream = { Codec: "h264", Height: 1080, Width: 1920 }
+      m.assertEqual(transcodeCauseSettingKey("VideoResolutionNotSupported", m.resolutionCtx), translationKeys.LabelMaximumResolution)
+    end function
+
+    @it("says nothing when the device could not exceed the cap anyway")
+    function _()
+      ' A 720p device with a 720 cap gives up nothing, so pointing at the setting
+      ' would send the user to change something that changes no outcome.
+      m.resolutionCtx.deviceMaxHeight = 720
+      m.assertEqual(transcodeCauseSettingKey("VideoResolutionNotSupported", m.resolutionCtx), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("reasons we deliberately never attribute")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("never attributes ContainerBitrateExceedsLimit, which our caps cannot produce")
+    function _()
+      ' MaxStreamingBitrate is the only field that reason compares against, and
+      ' ItemPostPlaybackInfo refuses to set it below the source's own bitrate plus
+      ' 10% headroom. The user's Maximum Bitrate setting writes a per-codec
+      ' VideoBitrate condition instead, which surfaces as VideoBitrateNotSupported.
+      ctx = m.bitrateCtx
+      m.assertEqual(transcodeCauseSettingKey("ContainerBitrateExceedsLimit", ctx), "")
+    end function
+
+    @it("says nothing for a server reason no setting of ours can reach")
+    function _()
+      for each reason in ["AudioCodecNotSupported", "VideoCodecNotSupported", "SubtitleCodecNotSupported", "ContainerNotSupported", "DirectPlayError"]
+        m.assertEqual(transcodeCauseSettingKey(reason, m.doviCtx), "", reason + " should not attribute")
+      end for
+    end function
+
+    @it("says nothing for a reason code it has never heard of")
+    function _()
+      ' A newer server can add codes. An unknown one is the server's to explain.
+      m.assertEqual(transcodeCauseSettingKey("SomeFutureReasonNotSupported", m.doviCtx), "")
+    end function
+
+    @it("survives missing inputs rather than faulting")
+    function _()
+      m.assertEqual(transcodeCauseSettingKey("", m.doviCtx), "")
+      m.assertEqual(transcodeCauseSettingKey("VideoRangeTypeNotSupported", invalid), "")
+      m.assertEqual(transcodeCauseSettingKey("VideoRangeTypeNotSupported", {}), "")
+      m.assertEqual(transcodeCauseSettingKey("VideoRangeTypeNotSupported", { settings: {} }), "")
+    end function
+
+  end class
+end namespace

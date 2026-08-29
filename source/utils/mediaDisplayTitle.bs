@@ -134,47 +134,74 @@ function formatVideoDisplayTitle(stream as object) as string
 
   ' 3. HDR info - only when VideoRange = "HDR" (case-insensitive)
   if isValid(stream.VideoRange) and LCase(stream.VideoRange) = "hdr"
-    hdrLabel = "HDR"
-
-    if isValid(stream.VideoRangeType) and stream.VideoRangeType <> "" and LCase(stream.VideoRangeType) <> "unknown"
-      rangeTypeLower = LCase(stream.VideoRangeType)
-
-      if rangeTypeLower = "hdr10"
-        hdrLabel = "HDR10"
-      else if rangeTypeLower = "hdr10plus"
-        hdrLabel = "HDR10+"
-      else if rangeTypeLower = "hlg"
-        hdrLabel = "HLG"
-      else if rangeTypeLower.left(4) = "dovi"
-        ' All Dolby Vision variants: DOVI, DOVIWithSDR, DOVIWithHDR10, DOVIWithHLG, etc.
-        hdrLabel = "DV"
-
-        if isValid(stream.DvProfile)
-          doviProfile = stream.DvProfile.toStr().trim()
-          if doviProfile <> "" and doviProfile <> "0"
-            hdrLabel = hdrLabel + " " + doviProfile
-
-            if isValid(stream.DvBlSignalCompatibilityId)
-              doviCompatId = stream.DvBlSignalCompatibilityId.toStr().trim()
-              if doviCompatId <> "" and doviCompatId <> "0"
-                hdrLabel = hdrLabel + "." + doviCompatId
-              end if
-            end if
-          end if
-        end if
-      else
-        ' Unrecognized HDR type - show raw value as-is
-        hdrLabel = stream.VideoRangeType
-      end if
-    end if
-
-    parts.push(hdrLabel)
+    parts.push(formatVideoRangeLabel(stream))
   end if
 
   ' If no parts could be assembled, return "N/A"
   if parts.count() = 0 then return "N/A"
 
   return parts.join(" ")
+end function
+
+' formatVideoRangeLabel: The dynamic-range label for a video stream.
+'
+' Extracted from formatVideoDisplayTitle so the playback-info report can name the
+' same range the track pickers do, rather than growing a second copy of the Dolby
+' Vision profile/compatibility formatting.
+'
+' Callers differ in one way, and it is deliberate that this function does NOT
+' decide it: formatVideoDisplayTitle only asks for a label when VideoRange is
+' "HDR", because "1080p H264 SDR" is noise in a picker row. The report asks
+' unconditionally, because "SDR" is exactly what it needs to render on the target
+' side of a tone-mapping transcode.
+'
+' VideoRangeType is a 10.8+ field, so on the floor server this falls back to the
+' coarse VideoRange ("SDR" / "HDR") that has existed throughout.
+'
+' @param {object} stream - Video MediaStream object from Jellyfin API
+' @returns {string} - e.g. "DV 8.1", "HDR10+", "HLG", "SDR", or "" with nothing to go on
+function formatVideoRangeLabel(stream as object) as string
+  if not isValid(stream) then return ""
+
+  isHdr = isValid(stream.VideoRange) and LCase(stream.VideoRange) = "hdr"
+
+  if not isValid(stream.VideoRangeType) or stream.VideoRangeType = "" or LCase(stream.VideoRangeType) = "unknown"
+    ' Pre-10.8, or a stream the server could not classify.
+    if isHdr then return "HDR"
+    if isValidAndNotEmpty(stream.VideoRange) then return UCase(stream.VideoRange)
+    return ""
+  end if
+
+  rangeTypeLower = LCase(stream.VideoRangeType)
+
+  if rangeTypeLower = "sdr" then return "SDR"
+  if rangeTypeLower = "hdr10" then return "HDR10"
+  if rangeTypeLower = "hdr10plus" then return "HDR10+"
+  if rangeTypeLower = "hlg" then return "HLG"
+
+  if rangeTypeLower.left(4) = "dovi"
+    ' All Dolby Vision variants: DOVI, DOVIWithSDR, DOVIWithHDR10, DOVIWithHLG, etc.
+    hdrLabel = "DV"
+
+    if isValid(stream.DvProfile)
+      doviProfile = stream.DvProfile.toStr().trim()
+      if doviProfile <> "" and doviProfile <> "0"
+        hdrLabel = hdrLabel + " " + doviProfile
+
+        if isValid(stream.DvBlSignalCompatibilityId)
+          doviCompatId = stream.DvBlSignalCompatibilityId.toStr().trim()
+          if doviCompatId <> "" and doviCompatId <> "0"
+            hdrLabel = hdrLabel + "." + doviCompatId
+          end if
+        end if
+      end if
+    end if
+
+    return hdrLabel
+  end if
+
+  ' Unrecognized range type - show raw value as-is rather than dropping it.
+  return stream.VideoRangeType
 end function
 
 ' formatVideoSourceTitle: Build a display title for a video source (MediaSource)

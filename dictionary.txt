@@ -383,6 +383,7 @@ Makefile
 markdownlint
 marshalling
 Marshalling
+Mbps
 mixin
 Mixin
 MKV
@@ -445,6 +446,7 @@ PD-textlogo
 PDF
 PDFs
 PDIF
+per-codec
 per-dev
 per-worktree
 perf
@@ -580,6 +582,7 @@ scrollback
 scrollbar
 sdk
 SDK
+SDR
 selectable
 sgRouter
 sgrouter

@@ -2,124 +2,107 @@ import "pkg:/source/utils/playbackInfo.bs"
 
 namespace tests
 
-  @suite("playbackInfo.bs - rendering the playback-info report")
+  @suite("playbackInfo.bs - display primitives for the playback report")
   class PlaybackInfoTests extends tests.BaseTestSuite
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("formatPlaybackInfoText")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("renders a heading on its own line and fields as bulleted label/value pairs")
-    function _()
-      text = formatPlaybackInfoText({
-        sections: [{
-          heading: "Stream information",
-          rows: [{ label: "Codec", value: "h264" }, { label: "Bit rate", value: "12 Mbps" }]
-        }]
-      })
-
-      m.assertEqual(text, "Stream information" + Chr(10) + "• Codec: h264" + Chr(10) + "• Bit rate: 12 Mbps")
-    end function
-
-    @it("separates sections with a blank line, and never leads with one")
-    function _()
-      text = formatPlaybackInfoText({
-        sections: [
-          { heading: "A", rows: [{ label: "x", value: "1" }] },
-          { heading: "B", rows: [{ label: "y", value: "2" }] }
-        ]
-      })
-
-      lines = text.split(Chr(10))
-      m.assertEqual(lines, ["A", "• x: 1", "", "B", "• y: 2"])
-    end function
-
-    @it("renders a label-less row as a standalone sentence")
-    function _()
-      ' The direct-play message is a statement about the stream, not a field.
-      text = formatPlaybackInfoText({
-        sections: [{ heading: "Direct playing", rows: [{ label: "", value: "The source file is compatible." }] }]
-      })
-
-      m.assertEqual(text, "Direct playing" + Chr(10) + "The source file is compatible.")
-    end function
-
-    @it("renders an unsectioned block (the error case) with no heading line")
-    function _()
-      text = formatPlaybackInfoText({
-        sections: [{ heading: "", rows: [{ label: "", value: "Unable to get playback information" }] }]
-      })
-
-      m.assertEqual(text, "Unable to get playback information")
-    end function
-
-    @it("drops a row that carries neither a label nor a value")
-    function _()
-      text = formatPlaybackInfoText({
-        sections: [{ heading: "A", rows: [{ label: "", value: "" }, { label: "x", value: "1" }] }]
-      })
-
-      m.assertEqual(text, "A" + Chr(10) + "• x: 1")
-    end function
-
-    @it("returns an empty string when there is nothing to show")
-    function _()
-      m.assertEqual(formatPlaybackInfoText(invalid), "")
-      m.assertEqual(formatPlaybackInfoText({}), "")
-      m.assertEqual(formatPlaybackInfoText({ sections: [] }), "")
-    end function
-
-    ' Was "survives a section with no rows array", asserting that a bare heading
-    ' rendered. It no longer does — dropping a heading with nothing under it is
-    ' now this function's job rather than each producer's (GetPlaybackInfoTask
-    ' guarded its transcoding section and not its stream section, so the rule
-    ' held in one branch of one producer). The crash-safety half of the original
-    ' test is kept, and is the first assertion below.
-    @it("drops a section with no rows array instead of leaving a bare heading")
-    function _()
-      text = formatPlaybackInfoText({ sections: [{ heading: "A" }, { heading: "B", rows: [{ label: "y", value: "2" }] }] })
-      m.assertEqual(text, "B" + Chr(10) + "• y: 2")
-    end function
-
-    ' The same rule, but where the rows EXIST and all render to nothing — the
-    ' shape a producer actually reaches when the server answers with a stream it
-    ' knows no properties of.
-    @it("drops a section whose rows all render empty")
-    function _()
-      text = formatPlaybackInfoText({
-        sections: [{ heading: "Stream Information", rows: [{ label: "", value: "" }] }, { heading: "B", rows: [{ label: "y", value: "2" }] }]
-      })
-
-      m.assertEqual(text, "B" + Chr(10) + "• y: 2")
-    end function
-
-    @it("still returns an empty string when every section is empty")
-    function _()
-      m.assertEqual(formatPlaybackInfoText({ sections: [{ heading: "A" }, { heading: "B", rows: [] }] }), "")
-    end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("getDisplayBitrate")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("carries NO leading space — Str() adds one, and the row separator adds another")
+    @it("renders Mbps to one decimal, matching Jellyfin's own web client")
     function _()
-      ' The bug this exists for rendered as "Bit Rate:  4 Mbps" on device.
-      rate = getDisplayBitrate(4000000)
-      m.assertEqual(rate, "4 Mbps")
-      m.assertEqual(rate.trim(), rate)
+      m.assertEqual(getDisplayBitrate(25400000), "25.4 Mbps")
+      m.assertEqual(getDisplayBitrate(4000000), "4.0 Mbps")
+      m.assertEqual(getDisplayBitrate(1500000), "1.5 Mbps")
     end function
 
-    @it("switches to Kbps at or below a megabit, truncating rather than rounding")
+    @it("never leaks Str()'s leading space")
+    function _()
+      ' The untrimmed form rendered as "Bit Rate:  4 Mbps" once a row separator
+      ' added its own space. Found in an RTA capture, not by any gate.
+      rate = getDisplayBitrate(4000000)
+      m.assertEqual(rate.left(1), "4", "must not start with a space")
+    end function
+
+    @it("drops to whole Kbps at or below a megabit")
     function _()
       m.assertEqual(getDisplayBitrate(1000000), "1000 Kbps")
       m.assertEqual(getDisplayBitrate(850500), "850 Kbps")
-      m.assertEqual(getDisplayBitrate(1500000), "1 Mbps")
     end function
 
-    @it("returns an empty string for an absent bitrate")
+    @it("reads a bitrate out of a node field or a string, not just a literal")
+    function _()
+      m.assertEqual(getDisplayBitrate({ v: 25400000 }.v), "25.4 Mbps")
+      m.assertEqual(getDisplayBitrate("25400000"), "25.4 Mbps")
+    end function
+
+    @it("returns empty rather than a bogus figure when there is nothing to show")
     function _()
       m.assertEqual(getDisplayBitrate(invalid), "")
+      m.assertEqual(getDisplayBitrate(0), "")
+      m.assertEqual(getDisplayBitrate(-1), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getReadableSize")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("renders binary units to one decimal, as the Jellyfin web client does")
+    function _()
+      m.assertEqual(getReadableSize(1024), "1.0 KiB")
+      m.assertEqual(getReadableSize(1048576), "1.0 MiB")
+      m.assertEqual(getReadableSize(1073741824), "1.0 GiB")
+    end function
+
+    @it("handles a real movie, which is past what a 32-bit integer holds")
+    function _()
+      ' ~24 GiB. This is the case that rules out routing sizes through
+      ' mediaNumber: 2.1 GB already overflows its return.
+      m.assertEqual(getReadableSize(26000000000.0), "24.2 GiB")
+    end function
+
+    @it("reports raw bytes below a kibibyte")
+    function _()
+      m.assertEqual(getReadableSize(512), "512 B")
+    end function
+
+    @it("returns empty rather than a bogus figure when there is nothing to show")
+    function _()
+      m.assertEqual(getReadableSize(invalid), "")
+      m.assertEqual(getReadableSize(0), "")
+      m.assertEqual(getReadableSize(-1), "")
+      m.assertEqual(getReadableSize({}), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("pairedValue")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("draws an arrow only when the value actually changed")
+    function _()
+      m.assertEqual(pairedValue("HEVC", "H264"), "HEVC" + PLAYBACK_INFO_ARROW + "H264")
+    end function
+
+    @it("omits the arrow when the stream passed through untouched")
+    function _()
+      ' The ABSENCE of an arrow is how the report says "this was not re-encoded",
+      ' which is the question most viewers open the report to answer.
+      m.assertEqual(pairedValue("HEVC", ""), "HEVC")
+      m.assertEqual(pairedValue("HEVC", "HEVC"), "HEVC")
+    end function
+
+    @it("treats a case-different target as unchanged")
+    function _()
+      ' Source codecs come off the media stream lowercase ("hevc"); target codecs
+      ' come off the session uppercase. An arrow between those would be a lie.
+      m.assertEqual(pairedValue("HEVC", "hevc"), "HEVC")
+      m.assertEqual(pairedValue("5.1", " 5.1 "), "5.1")
+    end function
+
+    @it("falls back to whichever side it has")
+    function _()
+      m.assertEqual(pairedValue("", "H264"), "H264")
+      m.assertEqual(pairedValue("", ""), "")
     end function
 
   end class

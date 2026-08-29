@@ -13,7 +13,7 @@ related-files:
   - source/utils/dialogs.bs
   - source/replayRoute.bs
   - source/loginRouter.bs
-last-reviewed: 2026-08-24
+last-reviewed: 2026-08-25
 ---
 
 # Navigation (sgRouter)
@@ -288,10 +288,19 @@ global to cross-fire (the failure mode of `SceneManager.returnData`).
 | `showAlertDialog` / `showConfirmDialog` / `showChoiceDialog` | `JRDialog` | Scene-appended overlay (`OverviewDialog` mechanics) |
 | `showListDialog` | `JRListDialog` | Scene-appended overlay |
 | `showInfoDialog` | `OverviewDialog` | Scene-appended overlay |
+| `showReportDialog` | `OverviewDialog` | Scene-appended overlay; structured label/value body instead of a paragraph, and **re-settable** — see below |
 | `showQuickConnectDialog` | `QuickConnectDialog` | Scene-appended overlay |
 | `showKeyboardDialog` | `JRKeyboardDialog` | Roku modal channel (`m.scene.dialog`) — the OS owns the keyboard |
 
 #### One chrome, one flow
+
+`showReportDialog` is the one helper whose dialog keeps being written to after it opens.
+Assigning `sections` again **reconciles**: rows matched by `id` have their text rewritten in
+place, and nothing is created or destroyed, so the panel height, the scroll position and
+focus all stay put. A structurally different array rebuilds instead. That is what lets the
+playback report refresh its live figures without the "set every text field BEFORE
+presenting" rule biting — the rule exists because a dialog never re-*lays out* after mount,
+and an in-place rewrite of a single-line value does not change any height.
 
 `JRDialog`, `JRListDialog`, `OverviewDialog` and `QuickConnectDialog` all draw the same
 chrome — dimmed backdrop, panel, 3px edge, title, and the short `colorSecondary` accent rule

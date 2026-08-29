@@ -19,7 +19,7 @@
  * per-picker option builders, which are unit-tested instead
  * (tests/source/unit/utils/trackPickerOptions.spec.bs).
  */
-import { beforeAll, it } from 'vitest';
+import { beforeAll, afterAll, it, expect } from 'vitest';
 import { RTA_CONFIG } from '../config.js';
 import { authenticate, getHero, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
 import { seedHome, seedLibraryLanding, assertSeedTookEffect } from '../lib/seed.js';
@@ -53,6 +53,57 @@ beforeAll(async () => {
   if (!heroId) throw new Error('dialogs spec setup: could not resolve the hero movie on the demo');
 });
 
+// Cleanup does not depend on a later spec in this file happening to call
+// pausedOsd() again. Without this, the 1 Mbps cap seeded by the two transcode
+// specs below only gets cleared as a side effect of the next test's own setup —
+// and if this file's last test is one of the transcode specs, the cap survives
+// into screens.spec.js's store: true capture screens.
+afterAll(async () => {
+  // A failed beforeAll still runs this. `session` is undefined until authenticate()
+  // resolves, and seedPlaybackSettings reads session.userId — so without this guard a
+  // server that refused the connection reports "Cannot read properties of undefined"
+  // from the hook, burying the real setup error. Nothing was seeded in that case
+  // either, so there is nothing to clean up.
+  if (!session) return;
+  await seedPlaybackSettings(null);
+});
+
+/**
+ * Playback settings a spec in this file seeds to force a particular server
+ * decision. Listed here because they have to be CLEARED again: seedHome resets
+ * only the sticky `display.*` keys, so anything else written into the user's
+ * section survives into every later test in the run.
+ *
+ * That matters more than it looks. `rta-run.js` snapshots and restores the whole
+ * registry around the RUN, so nothing leaks between runs — but within one run a
+ * leaked 1 Mbps cap reaches `screens.spec.js`, whose `osd` and `trickplay`
+ * entries are `store: true` capture screens. A forced transcode underneath the
+ * screenshots that ship to the Roku store listing is not a test-only problem.
+ */
+const PLAYBACK_SETTING_KEYS = ['playbackBitrateMaxLimited', 'playbackBitrateLimit'];
+
+/** Seed the given playback settings, clearing any this file left behind. */
+async function seedPlaybackSettings(userSettings) {
+  const values = {};
+  for (const key of PLAYBACK_SETTING_KEYS) values[key] = null; // null = delete the key
+  Object.assign(values, userSettings ?? {});
+  await odc.writeRegistry({ values: { [session.userId]: values } });
+
+  // READ BACK when we asked for a clean slate. Without this the clearing half is
+  // untested — a test seeding a cap runs first and leaves it behind, and every
+  // later test inherits it while still passing, which is exactly how this got
+  // shipped the first time. Asserting the absence is what makes the reset real.
+  if (userSettings) return;
+  const reg = await odc.readRegistry();
+  const section = reg?.values?.[session.userId] ?? {};
+  for (const key of PLAYBACK_SETTING_KEYS) {
+    expect(
+      section[key],
+      `${key} survived the reset and will leak into later specs`,
+    ).toBeUndefined();
+  }
+}
+
 /**
  * The state both OSD dialog tests start from: the hero movie playing, PAUSED,
  * with the OSD up and focus in its footer button group.
@@ -63,8 +114,9 @@ beforeAll(async () => {
  * OPENS the OSD (it is not a toggle), so it has to be hidden again before Play
  * can reach the player and pause it.
  */
-async function pausedOsd() {
+async function pausedOsd(userSettings = null) {
   const expectedServer = await seedHome(session, LOCALE);
+  await seedPlaybackSettings(userSettings);
   await hardRelaunch(); // a plain relaunch lets the running app re-persist over the seed
   await assertSeedTookEffect(expectedServer, 'pausedOsd');
   await waitHome();
@@ -126,8 +178,9 @@ async function pressOsdButton(buttonId) {
  * is exactly why the auto-hide focus-theft bug was invisible to this suite: the
  * helper avoided the only state that reproduces it.
  */
-async function playingOsd() {
+async function playingOsd(userSettings = null) {
   const expectedServer = await seedHome(session, LOCALE);
+  await seedPlaybackSettings(userSettings);
   await hardRelaunch();
   await assertSeedTookEffect(expectedServer, 'playingOsd');
   await waitHome();
@@ -460,23 +513,218 @@ it('osd video-source button opens the list dialog; back cancels it', async () =>
   await stopPlayback();
 }, 240000);
 
-// Playback info left the legacy StandardDialog for showInfoDialog. Its body is
-// built from a live /Sessions round-trip, so a rendered non-empty report also
-// proves the task's structured sections survived the trip into the dialog.
+// The playback-info report is built from a live /Sessions round-trip merged with
+// the cached PlaybackInfo, so a rendered non-empty report proves the whole chain:
+// task fetch -> render-thread composition -> structured body -> laid-out rows.
+//
+// It asserts the MODEL on the dialog rather than a blob of text. The old report
+// was one string in #overviewText; this one is `sections`, and checking that the
+// rows actually arrived is the part a screenshot cannot tell you.
 it('osd info button opens the playback-info report; back dismisses it', async () => {
   await pausedOsd();
   await pressOsdButton('showVideoInfoPopup');
 
-  await waitFor('#overviewText.text', (t) => typeof t === 'string' && t.length > 0, {
-    label: 'playback info rendered',
+  await waitFor('#jrDialog.sections', (v) => Array.isArray(v) && v.length > 0, {
+    label: 'playback info report reached the dialog',
     timeout: 25000,
   });
+
+  const sections = await getVal('#jrDialog.sections');
+  const rows = sections.flatMap((s) => s.rows ?? []);
+
+  // Every row carries a stable id — that is what lets a refresh rewrite the live
+  // figures in place instead of rebuilding the body under the user's scroll.
+  const ids = rows.map((r) => r.id);
+  expect(ids.length).toBeGreaterThan(3);
+  expect(new Set(ids).size).toBe(ids.length);
+
+  // Presence-based rendering: no row is ever a placeholder for missing data.
+  for (const row of rows) {
+    expect(row.value, `row ${row.id} rendered an empty value`).toBeTruthy();
+  }
+
+  // The status line ("Direct playing" / "Direct streaming" / "Transcoding") goes
+  // in the tagline slot, and is what the opening screen-reader announcement reads
+  // first.
+  // An EMPTY status is now meaningful rather than merely absent: the report leaves
+  // it blank when the /Sessions fetch returned nothing, precisely so a dropped
+  // request can never render as "Direct playing". So this assertion doubles as a
+  // gate that the session actually arrived.
+  const status = await getVal('#jrDialog.tagline');
+  expect(typeof status).toBe('string');
+  expect(
+    status.length,
+    'blank status line — the report never received a session from /Sessions',
+  ).toBeGreaterThan(0);
+
+  // REGRESSION. A scrolling report opens with focus on the SCROLL AREA, and the
+  // OK button must not merely lack focus — it must not LOOK focused either.
+  //
+  // Both halves are needed because the bug had them apart: focus was correctly on
+  // #textClip while the OK button rendered its `focusBorder` ring, so the dialog
+  // opened appearing to have two focused things and read as unresponsive. It came
+  // from init()'s layout pass, which runs before any field is set, deriving
+  // `scrolls = false` from an empty body and focusing OK on the strength of it.
+  // Every other gate passed on this — nothing asserted opening focus APPEARANCE.
+  const focused = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+  expect(focused?.keyPath, 'a scrolling report opens focused on the scroll area').toBe(
+    '#jrDialog.#textClip',
+  );
+
+  // Compare against the button's OWN colour fields rather than a literal — the
+  // theme is user-overridable, so a hard-coded colour would assert the default
+  // palette rather than the focus state.
+  const ring = await getVal('#jrDialog.#okButton.#buttonBorder.blendColor');
+  const focusBorder = await getVal('#jrDialog.#okButton.focusBorder');
+  const idleBorder = await getVal('#jrDialog.#okButton.border');
+  expect(ring, 'the unfocused OK button must not paint its focus ring').not.toBe(focusBorder);
+  expect(ring, 'the unfocused OK button paints its idle border').toBe(idleBorder);
 
   if (CAPTURE) await captureRawUI('playbackInfoDialog');
 
   await press(ecp.Key.Back);
   await waitFor('#jrDialog.id', (v) => v === undefined, {
     label: 'playback info dismissed',
+    timeout: 10000,
+  });
+
+  await stopPlayback();
+}, 240000);
+
+// The TRANSCODING half of the report, which is the half that exists for a reason —
+// arrows, a Reasons section, and the one thing no server can tell you: that the
+// constraint came from a switch in our own settings screen.
+//
+// A 1 Mbps cap forces it. That doubles as the only functional coverage of the
+// Maximum Bitrate setting actually reaching the device profile: until it was
+// fixed, the user's number was discarded and this would have direct-played.
+it('a user-capped bitrate transcodes, and the report says which setting did it', async () => {
+  await pausedOsd({ playbackBitrateMaxLimited: 'true', playbackBitrateLimit: '1' });
+  await pressOsdButton('showVideoInfoPopup');
+
+  await waitFor('#jrDialog.sections', (v) => Array.isArray(v) && v.length > 0, {
+    label: 'playback info report reached the dialog',
+    timeout: 25000,
+  });
+
+  const status = await getVal('#jrDialog.tagline');
+  expect(status, 'a 1 Mbps cap must not direct play').not.toBe('Direct playing');
+
+  const sections = await getVal('#jrDialog.sections');
+  const reasons = sections.find((sec) => sec.id === 'reasons');
+  expect(reasons, 'a transcode must report why').toBeTruthy();
+
+  // The server's code passes through verbatim — we do not maintain its vocabulary.
+  const codes = reasons.rows.map((r) => r.label);
+  expect(codes.some((c) => c.includes('Bitrate') || c.includes('BitRate'))).toBe(true);
+
+  // ...and the row for the bitrate reason names the setting responsible, spelled
+  // exactly as the Settings screen spells it.
+  const bitrateRow = reasons.rows.find((r) => r.label === 'VideoBitrateNotSupported');
+  if (bitrateRow) {
+    expect(bitrateRow.value).toContain('Maximum Bitrate');
+  }
+
+  // An arrow appears only where something actually changed, so a transcode must
+  // produce at least one.
+  const values = sections.flatMap((sec) => sec.rows).map((r) => r.value);
+  expect(
+    values.some((v) => v.includes('\u2192')),
+    'a transcode must show a source -> target arrow',
+  ).toBe(true);
+
+  // The live section only exists during a real transcode, so this is the only
+  // place its rows can be proven to render at all.
+  const rowIds = sections.flatMap((sec) => sec.rows).map((r) => r.id);
+  expect(rowIds).toContain('transcode.speed');
+  expect(rowIds).toContain('transcode.progress');
+  // The encoder's lead over the playhead — what explains a frozen progress figure
+  // when the server races ahead and its throttle parks ffmpeg.
+  expect(rowIds).toContain('transcode.ahead');
+
+  if (CAPTURE) await captureRawUI('playbackInfoTranscoding');
+
+  // Let at least one refresh land. Reconciliation must rewrite values in place —
+  // if it rebuilt instead, the row set would churn under the user's scroll.
+  await sleep(7000);
+  const refreshed = await getVal('#jrDialog.sections');
+  const refreshedIds = refreshed.flatMap((sec) => sec.rows).map((r) => r.id);
+  expect(refreshedIds, "a refresh must not change the report's shape").toEqual(rowIds);
+  expect(await getVal('#jrDialog.id'), 'the dialog must survive its own refresh').toBe('jrDialog');
+
+  await press(ecp.Key.Back);
+  await waitFor('#jrDialog.id', (v) => v === undefined, {
+    label: 'playback info dismissed',
+    timeout: 10000,
+  });
+
+  await stopPlayback();
+}, 240000);
+
+// The report's KEY MODEL, driven for real rather than inspected. The focus-ring
+// fix above is about appearance; this asserts the dialog actually WORKS — that it
+// scrolls, that focus reaches the button, and that OK does not close the dialog
+// from the scroll area. None of that was covered, which is how a dialog that
+// looked broken shipped through every gate.
+it('the playback report scrolls, hands focus to OK, and only closes from the button', async () => {
+  await pausedOsd({ playbackBitrateMaxLimited: 'true', playbackBitrateLimit: '1' });
+  await pressOsdButton('showVideoInfoPopup');
+
+  await waitFor('#jrDialog.sections', (v) => Array.isArray(v) && v.length > 0, {
+    label: 'playback info report reached the dialog',
+    timeout: 25000,
+  });
+
+  // Only meaningful on a body that actually overflows.
+  expect(await getVal('#jrDialog.#scrollThumb.visible'), 'this report must scroll').toBe(true);
+  expect(await getVal('#jrDialog.#scrollContent.translation')).toEqual([0, 0]);
+
+  // 1. DOWN scrolls the body.
+  await press(ecp.Key.Down);
+  await waitFor('#jrDialog.#scrollContent.translation', (t) => Array.isArray(t) && t[1] < 0, {
+    label: 'down scrolled the body',
+    timeout: 8000,
+  });
+
+  // Resolve both colours ONCE, up front. They must not be read inside a waitFor
+  // predicate: an async predicate returns a Promise, which is always truthy, and
+  // the assertion passes vacuously — the exact trap tests/rta/CLAUDE.md names.
+  const focusColor = await getVal('#jrDialog.#okButton.focusBorder');
+  const idleColor = await getVal('#jrDialog.#okButton.border');
+  expect(focusColor, 'focus and idle colours must differ or nothing below is meaningful').not.toBe(
+    idleColor,
+  );
+
+  // 2. OK from the SCROLL AREA moves focus to the button and does NOT close.
+  await press(ecp.Key.Ok);
+  await waitFor('#jrDialog.#okButton.#buttonBorder.blendColor', (c) => c === focusColor, {
+    label: 'OK moved focus to the button',
+    timeout: 8000,
+  });
+  expect(await getVal('#jrDialog.id'), 'OK from the scroll area must NOT close the dialog').toBe(
+    'jrDialog',
+  );
+  const focusedOnButton = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+  expect(focusedOnButton?.keyPath).toBe('#jrDialog.#okButton');
+
+  // 3. UP hands focus back to the scroll area (only because this body scrolls).
+  await press(ecp.Key.Up);
+  await waitFor('#jrDialog.#okButton.#buttonBorder.blendColor', (c) => c === idleColor, {
+    label: 'up returned focus to the scroll area',
+    timeout: 8000,
+  });
+
+  // 4. OK twice from the scroll area: first focuses the button, second closes.
+  await press(ecp.Key.Ok);
+  await waitFor('#jrDialog.#okButton.#buttonBorder.blendColor', (c) => c === focusColor, {
+    label: 'first OK re-focused the button',
+    timeout: 8000,
+  });
+  expect(await getVal('#jrDialog.id'), 'still open after the focusing press').toBe('jrDialog');
+
+  await press(ecp.Key.Ok);
+  await waitFor('#jrDialog.id', (v) => v === undefined, {
+    label: 'OK from the button closed the dialog',
     timeout: 10000,
   });
 
@@ -494,7 +742,9 @@ it('a dialog keeps focus when the osd auto-hides underneath it', async () => {
   await playingOsd();
   await pressOsdButton('showVideoInfoPopup');
 
-  await waitFor('#overviewText.text', (t) => typeof t === 'string' && t.length > 0, {
+  // The report's body is `sections`, not the string label it used to be — this
+  // only needs the dialog to be UP and populated before the auto-hide window.
+  await waitFor('#jrDialog.sections', (v) => Array.isArray(v) && v.length > 0, {
     label: 'playback info rendered',
     timeout: 25000,
   });
