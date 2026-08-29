@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- rebuild the playback-info report as a `source → target` readout ([#859](https://github.com/jellyrock/jellyrock/pull/859))
+
 ### Changed
 
 - Size Home's browse feeds with one setting and measure its ceiling ([#864](https://github.com/jellyrock/jellyrock/pull/864))
