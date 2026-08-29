@@ -186,13 +186,22 @@ function videoSection(stream as dynamic, transcoding as dynamic, urlParams as ob
   reportRow(rows, "video.range", translationKeys.LabelRange, pairedValue(formatVideoRangeLabel(stream), targetVideoRange(urlParams, transcoding, isCopy)))
   reportRow(rows, "video.bitdepth", translationKeys.LabelBitDepth, pairedValue(bitDepthLabel(stream.BitDepth), targetBitDepth(stream, urlParams, transcoding, isCopy)))
 
-  ' &VideoBitrate is the video target specifically. TranscodingInfo.Bitrate is the
-  ' TOTAL output bitrate across streams, so pairing it against a video-only source
-  ' figure would compare two different quantities — it belongs in the Transcode
-  ' section, where it is labelled as the total.
-  targetVideoBitrate = ""
-  if not isCopy then targetVideoBitrate = getDisplayBitrate(urlParams["videobitrate"])
-  reportRow(rows, "video.bitrate", translationKeys.LabelBitRate, pairedValue(getDisplayBitrate(stream.BitRate), targetVideoBitrate))
+  ' SOURCE ONLY — no trustworthy video target exists to pair against.
+  '
+  ' &VideoBitrate reads like the video target and is not one. It is our own
+  ' MaxStreamingBitrate less the audio allowance, and that constant is a "no
+  ' meaningful ceiling" sentinel rather than a real limit, so it is very nearly
+  ' the same figure on every transcode and sits ABOVE the source bitrate on all
+  ' but the largest files. Rendering it as a target claims the encode INFLATES
+  ' the bitrate, which is not a thing that happens. Same rule as resolution
+  ' above: a cap says what was ALLOWED, not what came out, and only the session
+  ' knows the latter.
+  '
+  ' TranscodingInfo.Bitrate cannot stand in for it either — that is the TOTAL
+  ' across streams, so pairing it against a video-only source figure would
+  ' compare two different quantities. It has its own row, labelled as the total,
+  ' in the Transcode section.
+  reportRow(rows, "video.bitrate", translationKeys.LabelBitRate, getDisplayBitrate(stream.BitRate))
 
   reportRow(rows, "video.framerate", translationKeys.LabelFramerate, framerateLabel(sourceFramerate(stream)))
   reportRow(rows, "video.profile", translationKeys.LabelProfile, profileAndLevel(stream))

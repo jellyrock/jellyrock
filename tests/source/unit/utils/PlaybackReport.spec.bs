@@ -187,13 +187,24 @@ namespace tests
       m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "audio.channels"), "5.1" + PLAYBACK_INFO_ARROW + "2.0")
     end function
 
-    @it("pairs video bitrate against the URL's video target, not the session total")
+    @it("keeps the video bitrate row clear of the session's total")
     function _()
       ' TranscodingInfo.Bitrate is the TOTAL across streams; pairing a video-only
       ' source figure against it would compare two different quantities. The total
       ' has its own row in the Transcode section.
       m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.bitrate"), "25.4 Mbps")
       m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "transcode.bitrate"), "8.0 Mbps")
+    end function
+
+    @it("does not pass the URL's video bitrate ceiling off as an encode target")
+    function _()
+      ' &VideoBitrate is our own MaxStreamingBitrate less the audio allowance, so
+      ' it is very nearly the same figure on every transcode and sits ABOVE the
+      ' source bitrate on all but the largest files. Pairing it as a target says
+      ' the encode INFLATES the bitrate, which is never what happens. Same rule as
+      ' resolution: a cap says what was allowed, not what came out.
+      m.input.mediaSource.TranscodingUrl = "/videos/x/master.m3u8?VideoCodec=h264&VideoBitrate=139616000&AudioBitrate=384000"
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "video.bitrate"), "25.4 Mbps")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
