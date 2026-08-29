@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- MPEG-2 transcoded despite its setting; AV1 ignored its level cap ([#868](https://github.com/jellyrock/jellyrock/pull/868))
 - (setting) Honor a non-default Maximum Resolution instead of capping at 1080p ([#866](https://github.com/jellyrock/jellyrock/pull/866))
 
 ### Dependencies
