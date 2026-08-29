@@ -972,16 +972,24 @@ function getCodecProfiles() as object
   '
   ' NO VideoLevel CONDITION. Roku names mpeg2's levels "main" / "high"
   ' (CanDecodeVideo takes them under `Level`, mpeg2 having no profiles), but
-  ' Jellyfin reads VideoLevel as int? and runs int.TryParse over the value.
-  ' Neither word parses, so the condition evaluated to FALSE for every mpeg2
-  ' stream that carries a level and the server transcoded all of them. Sending
-  ' "main|high" was not a loose constraint, it was an impossible one.
+  ' Jellyfin parses VideoLevel as a NUMBER — ConditionProcessor dispatches it to
+  ' the double? overload and runs double.TryParse over the condition value, at
+  ' both ends of the server range we support (v10.7.0 and master). Neither word
+  ' parses, so the condition evaluated to FALSE for every mpeg2 stream carrying a
+  ' level and the server transcoded all of them. Sending "main|high" was not a
+  ' loose constraint, it was an impossible one.
   '
-  ' There is a numeric mpeg2 level scale, but it runs BACKWARDS (High = 4,
-  ' Main = 8), so a LessThanEqual over it would mean the opposite of what it
-  ' reads as. Jellyfin's own reference client ships no mpeg2video codec profile
-  ' at all; we keep ours for the resolution / bitrate / anamorphic conditions and
-  ' drop only the level.
+  ' Not mapped onto mpeg2's numeric level scale either, and the blocking reason is
+  ' that nobody here has established which value ffprobe reports for it. The scale
+  ' also runs BACKWARDS (High = 4, Main = 8), so it would need GreaterThanEqual
+  ' rather than the LessThanEqual every other codec here uses — expressible, but
+  ' one more thing to get wrong. Jellyfin's own reference client ships no
+  ' mpeg2video codec profile at all.
+  '
+  ' Dropping the level is SAFE and not merely permissive: mpeg2's level tiers are
+  ' essentially resolution tiers (Main <= 720x576, High <= 1920x1152), and we keep
+  ' sending Height / Width, bitrate and IsAnamorphic. The gap is a user who sets
+  ' Maximum Resolution to "off", which sends no height condition either.
   if globalUserSettings.playbackMpeg2
     mpeg2ProfileArray = {
       "Type": "Video",
@@ -1579,10 +1587,15 @@ end function
 ' maxHevcLevel = 153 and maxAv1Level = 15 carrying its own `// level 5.3` comment.
 '
 ' A codec that is absent here gets NO condition rather than a guessed number.
-' That asymmetry is deliberate: Jellyfin treats a condition it cannot evaluate as
-' SATISFIED, so an omitted level costs at most one avoidable transcode decision,
-' while a wrong level silently decides direct-play-vs-transcode for every stream
-' of that codec. mpeg2 is the worked example — see getCodecProfiles().
+' The asymmetry is deliberate, and it is about WHICH WAY each choice can fail.
+' Omitting can only fail one way — permissively, since a condition we never send
+' constrains nothing — and that direction is still bounded by the resolution,
+' bitrate and profile conditions the codec profile keeps sending. A wrong number
+' fails EITHER way, silently, for every stream of that codec: too high permits a
+' direct play the device cannot decode (av1 shipped 612), too low forces a
+' transcode that was never needed (mpeg2 shipped "main|high", which parses as
+' nothing, so the condition could never be satisfied). mpeg2 is the worked
+' example — see getCodecProfiles().
 function jellyfinVideoLevel(codec as string, level as string) as integer
   parts = level.split(".")
   if parts.count() <> 2 then return NO_VIDEO_LEVEL
@@ -1593,7 +1606,9 @@ function jellyfinVideoLevel(codec as string, level as string) as integer
   ' so this rejects a garbage string as well as an out-of-range one.
   if major < 1 or minor < 0 then return NO_VIDEO_LEVEL
 
-  ' The aliases mirror videoLevelLabel(), which reads these same scales backwards.
+  ' Both spellings of each codec are accepted, so a caller can pass either the
+  ' Jellyfin codec name or the alias the codec profile advertises next to it
+  ' ("h264,avc", "h265,hevc"). Every call site here passes the first form.
   name = LCase(codec)
   if name = "h264" or name = "avc" then return major * 10 + minor
   if name = "hevc" or name = "h265" then return (major * 10 + minor) * 3

@@ -633,6 +633,15 @@ namespace tests
       codecProfiles = getCodecProfiles()
       m.assertNotEmpty(codecProfiles)
 
+      ' mpeg2video ships NO level BY DESIGN, so the walk below says nothing about
+      ' it if the whole block is ever dropped. Same class of guard as `found > 0`
+      ' at the end: assert the thing we expect to be levelless is actually here.
+      mpeg2Present = false
+      for each profile in codecProfiles
+        if profile.Codec = "mpeg2video" then mpeg2Present = true
+      end for
+      m.assertTrue(mpeg2Present, "mpeg2video codec profile is absent with playbackMpeg2 enabled — the level walk below cannot see a codec that ships no profile")
+
       digits = CreateObject("roRegex", "^[0-9]+$", "")
 
       ' Only these three codecs have a scale, so only these three may ship a level.
