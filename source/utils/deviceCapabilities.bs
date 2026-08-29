@@ -1,4 +1,5 @@
 import "pkg:/source/api/baseRequest.bs"
+import "pkg:/source/utils/conditional.bs"
 import "pkg:/source/utils/misc.bs"
 
 ' ========================================
@@ -28,6 +29,12 @@ const BUFFER_SEGMENT_COUNT = 2
 ' Tune this value based on testing if "mpr playlist file is too large" errors occur.
 const MAX_HLS_PLAYLIST_ENTRIES = 5000
 
+' Sentinel for jellyfinVideoLevel(): this codec has no VideoLevel scale established
+' here, so the caller must OMIT the condition rather than send a number.
+' Negative because every real level maps to a non-negative integer (AV1's
+' seq_level_idx starts at 0 for level 2.0).
+const NO_VIDEO_LEVEL = -1
+
 ' Translate Jellyfin codec names to Roku API codec names where they differ.
 ' Covers both audio and video codecs.
 '   "h264"      → "mpeg4 avc" (Jellyfin uses "h264"; Roku API uses "mpeg4 avc" with a space)
@@ -41,7 +48,7 @@ function jellyfinToRokuCodecName(codec as string) as string
 end function
 
 ' Returns the Device Capabilities for Roku.
-' Also prints out the device profile for debugging
+' Debug builds also dump the generated profile — see printDeviceProfile().
 function getDeviceCapabilities() as object
   ' Advertise media control only on http:// servers, where we can open the ws:// session socket —
   ' Roku can't wss://, so don't advertise control we can't deliver. Mirrors remoteProtocol.isHttpServer
@@ -67,6 +74,8 @@ function getDeviceCapabilities() as object
     "DeviceProfile": getDeviceProfile(),
     "AppStoreUrl": "https://channelstore.roku.com/details/232f9e82db11ce628e3fe7e01382a330:a85d6e9e520567806e8dae1c0cabadd5/jellyrock"
   }
+
+  printDeviceProfile(deviceProfile)
 
   return deviceProfile
 end function
@@ -353,8 +362,10 @@ function GetDirectPlayProfiles() as object
     for each audioCodec in audioCodecs
       rokuCodec = jellyfinToRokuCodecName(audioCodec)
       if rokuCodec = "mat"
-        ' mat does not accept the Container parameter; TrueHD is only valid in mkv and ts
-        if (container = "mkv" or container = "ts") and di.CanDecodeAudio({ Codec: rokuCodec }).Result
+        ' mat does not accept the Container parameter. TrueHD is only valid in mkv
+        ' and ts, and ts is deliberately absent from supportedContainers above — so
+        ' mkv is the whole of it here, and testing for "ts" only looked like cover.
+        if container = "mkv" and di.CanDecodeAudio({ Codec: rokuCodec }).Result
           supportedContainers[container]["audio"].push(audioCodec)
         end if
       else if rokuCodec = "dtshd"
@@ -371,9 +382,9 @@ function GetDirectPlayProfiles() as object
     end for
   end for
 
-  ' remove audio codecs not supported as standalone audio files (opus)
-  ' also add aac back to the list so it gets added to the direct play profile
-  audioCodecs = ["aac", "mp3", "mp2", "pcm", "lpcm", "wav", "ac3", "ac4", "aiff", "wma", "flac", "alac", "aac", "dts", "wmapro", "vorbis", "eac3", "truehd", "dtshd", "mpg123"]
+  ' Same list as above minus opus, which Roku cannot play as a standalone audio
+  ' file even where it decodes inside a video container.
+  audioCodecs = ["mp3", "mp2", "pcm", "lpcm", "wav", "ac3", "ac4", "aiff", "wma", "flac", "alac", "aac", "dts", "wmapro", "vorbis", "eac3", "truehd", "dtshd", "mpg123"]
 
   ' check audio codecs with no container
   ' translate Jellyfin names to Roku API names for the detection call
@@ -510,6 +521,15 @@ function getTranscodingProfiles() as object
       end if
     end if
 
+    ' KEEP THIS, even though Jellyfin discards it on every server we mostly meet.
+    ' StreamBuilder filters HLS video codecs against _supportedHlsVideoCodecs, and
+    ' mpeg2video is not in it: 10.8 ships ["h264","hevc"], 10.9 adds av1, 10.10+
+    ' adds vp9. So from 10.8 on, an mpeg2video HLS transcode target is dropped and
+    ' MPEG-2 is always re-encoded. **10.7.0 has no such allowlist** — it splits
+    ' TranscodingProfile.VideoCodec straight into playlistItem.VideoCodecs — so on
+    ' the oldest servers we support this entry is live and removing it would take a
+    ' capability away. Verified by reading StreamBuilder.cs at v10.7.0, v10.8.13,
+    ' v10.9.11, v10.10.0 and master.
     if globalUserSettings.playbackMpeg2
       if di.CanDecodeVideo({ Codec: "mpeg2", Container: container }).Result
         videoCodecList.push("mpeg2video")
@@ -659,11 +679,13 @@ function getCodecProfiles() as object
   globalUserSettings = m.global.user.settings
 
   codecProfiles = []
+  ' mpeg2 has no entry: Roku names its levels "main" / "high" and Jellyfin cannot
+  ' consume those as a VideoLevel, so probing them produced nothing we could send.
+  ' See the MPEG2 codec profile below.
   profileSupport = {
     "h264": {},
     "hevc": {},
     "vp9": {},
-    "mpeg2": {},
     "av1": {}
   }
   di = CreateObject("roDeviceInfo")
@@ -840,16 +862,6 @@ function getCodecProfiles() as object
     end if
   end for
 
-  ' MPEG2
-  ' mpeg2 uses levels with no profiles. see https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifdeviceinfo.md#candecodevideovideo_format-as-object-as-object
-  ' NOTE: the mpeg2 levels are being saved in the profileSupport array as if they were profiles
-  mpeg2Levels = ["main", "high"]
-  for each level in mpeg2Levels
-    if di.CanDecodeVideo({ Codec: "mpeg2", Level: level }).Result
-      profileSupport = updateProfileArray(profileSupport, "mpeg2", level)
-    end if
-  end for
-
   ' AV1
   av1Profiles = ["main", "main 10"]
   av1Levels = ["4.1", "5.0", "5.1"]
@@ -897,7 +909,7 @@ function getCodecProfiles() as object
   end if
 
   ' H264
-  h264LevelSupported = 0.0
+  h264LevelSupported = NO_VIDEO_LEVEL
   h264AssProfiles = {
     "Baseline": true,
     "Constrained Baseline": true,
@@ -906,17 +918,12 @@ function getCodecProfiles() as object
   for each profile in profileSupport["h264"]
     h264AssProfiles.AddReplace(profile, true)
     for each level in profileSupport["h264"][profile]
-      levelFloat = level.ToFloat()
-      if levelFloat > h264LevelSupported
-        h264LevelSupported = levelFloat
+      jellyfinLevel = jellyfinVideoLevel("h264", level)
+      if jellyfinLevel > h264LevelSupported
+        h264LevelSupported = jellyfinLevel
       end if
     end for
   end for
-
-  ' convert to string
-  h264LevelString = h264LevelSupported.ToStr()
-  ' remove decimals
-  h264LevelString = removeDecimals(h264LevelString)
 
   h264ProfileArray = {
     "Type": "Video",
@@ -938,16 +945,21 @@ function getCodecProfiles() as object
     ]
   }
 
-  ' Always send VideoLevel so the server produces compatible transcodes.
+  ' Send VideoLevel so the server produces compatible transcodes.
   ' The playbackTryDirectH264ProfileLevel setting is handled client-side in
   ' LoadVideoContentTask — if the only transcode reason is VideoLevelNotSupported,
   ' the client will attempt direct play with a transcode fallback.
-  h264ProfileArray.Conditions.push({
-    "Condition": "LessThanEqual",
-    "Property": "VideoLevel",
-    "Value": h264LevelString,
-    "IsRequired": false
-  })
+  '
+  ' Omitted when no probe succeeded: "LessThanEqual 0" is not "unconstrained", it
+  ' rejects every real stream.
+  if h264LevelSupported <> NO_VIDEO_LEVEL
+    h264ProfileArray.Conditions.push({
+      "Condition": "LessThanEqual",
+      "Property": "VideoLevel",
+      "Value": h264LevelSupported.toStr(),
+      "IsRequired": false
+    })
+  end if
 
   anamorphicCondition = getAnamorphicCondition()
   if anamorphicCondition.count() > 0
@@ -966,26 +978,38 @@ function getCodecProfiles() as object
   codecProfiles.push(h264ProfileArray)
 
   ' MPEG2
-  ' NOTE: the mpeg2 levels are being saved in the profileSupport array as if they were profiles
+  '
+  ' NO VideoLevel CONDITION. Roku names mpeg2's levels "main" / "high"
+  ' (CanDecodeVideo takes them under `Level`, mpeg2 having no profiles), but
+  ' Jellyfin parses VideoLevel as a NUMBER — ConditionProcessor dispatches it to
+  ' the double? overload and runs double.TryParse over the condition value, at
+  ' both ends of the server range we support (v10.7.0 and master). Neither word
+  ' parses, so the condition evaluated to FALSE for every mpeg2 stream carrying a
+  ' level and the server transcoded all of them. Sending "main|high" was not a
+  ' loose constraint, it was an impossible one.
+  '
+  ' Not mapped onto mpeg2's numeric level scale either, and the blocking reason is
+  ' that nobody here has established which value ffprobe reports for it. The scale
+  ' also runs BACKWARDS (High = 4, Main = 8), so it would need GreaterThanEqual
+  ' rather than the LessThanEqual every other codec here uses — expressible, but
+  ' one more thing to get wrong. Jellyfin's own reference client ships no
+  ' mpeg2video codec profile at all.
+  '
+  ' Dropping the level is SAFE and not merely permissive: mpeg2's level tiers are
+  ' essentially resolution tiers (Main <= 720x576, High <= 1920x1152), and we keep
+  ' sending Height / Width, bitrate and IsAnamorphic. The gap is a user who sets
+  ' Maximum Resolution to "off", which sends no height condition either.
+  '
+  ' This only ever reaches MPEG-2 in a container we direct play. Live TV and every
+  ' other MPEG-TS source is excluded from DirectPlayProfiles (see GetDirectPlayProfiles)
+  ' and mpeg2video is not a legal HLS transcode target from 10.8 on, so those are
+  ' re-encoded no matter what this profile says — which is why the setting's
+  ' description no longer offers Live TV as an example.
   if globalUserSettings.playbackMpeg2
-    mpeg2Levels = []
-    for each level in profileSupport["mpeg2"]
-      if not arrayHasValue(mpeg2Levels, level)
-        mpeg2Levels.push(level)
-      end if
-    end for
-
     mpeg2ProfileArray = {
       "Type": "Video",
       "Codec": "mpeg2video",
-      "Conditions": [
-        {
-          "Condition": "EqualsAny",
-          "Property": "VideoLevel",
-          "Value": mpeg2Levels.join("|"),
-          "IsRequired": false
-        }
-      ]
+      "Conditions": []
     }
 
     ' set max resolution
@@ -1032,14 +1056,14 @@ function getCodecProfiles() as object
   end if
 
   if di.CanDecodeVideo({ Codec: "av1" }).Result
-    av1LevelSupported = 0.0
+    av1LevelSupported = NO_VIDEO_LEVEL
     av1AssProfiles = {}
     for each profile in profileSupport["av1"]
       av1AssProfiles.AddReplace(profile, true)
       for each level in profileSupport["av1"][profile]
-        levelFloat = level.ToFloat()
-        if levelFloat > av1LevelSupported
-          av1LevelSupported = levelFloat
+        jellyfinLevel = jellyfinVideoLevel("av1", level)
+        if jellyfinLevel > av1LevelSupported
+          av1LevelSupported = jellyfinLevel
         end if
       end for
     end for
@@ -1059,15 +1083,19 @@ function getCodecProfiles() as object
           "Property": "VideoRangeType",
           "Value": av1VideoRangeTypes,
           "IsRequired": false
-        },
-        {
-          "Condition": "LessThanEqual",
-          "Property": "VideoLevel",
-          "Value": (120 * av1LevelSupported).ToStr(),
-          "IsRequired": false
         }
       ]
     }
+
+    ' Omitted when no probe succeeded — see the h264 note above.
+    if av1LevelSupported <> NO_VIDEO_LEVEL
+      av1ProfileArray.Conditions.push({
+        "Condition": "LessThanEqual",
+        "Property": "VideoLevel",
+        "Value": av1LevelSupported.toStr(),
+        "IsRequired": false
+      })
+    end if
 
     ' set max resolution
     av1ProfileArray.Conditions.Append(resolutionConditions)
@@ -1087,20 +1115,18 @@ function getCodecProfiles() as object
   end if
 
   if di.CanDecodeVideo({ Codec: "hevc" }).Result
-    hevcLevelSupported = 0.0
+    hevcLevelSupported = NO_VIDEO_LEVEL
     hevcAssProfiles = {}
 
     for each profile in profileSupport["hevc"]
       hevcAssProfiles.AddReplace(profile, true)
       for each level in profileSupport["hevc"][profile]
-        levelFloat = level.ToFloat()
-        if levelFloat > hevcLevelSupported
-          hevcLevelSupported = levelFloat
+        jellyfinLevel = jellyfinVideoLevel("hevc", level)
+        if jellyfinLevel > hevcLevelSupported
+          hevcLevelSupported = jellyfinLevel
         end if
       end for
     end for
-
-    hevcLevelString = convertHevcLevelToString(hevcLevelSupported)
 
     hevcProfileArray = {
       "Type": "Video",
@@ -1121,16 +1147,20 @@ function getCodecProfiles() as object
       ]
     }
 
-    ' Always send VideoLevel so the server produces compatible transcodes.
+    ' Send VideoLevel so the server produces compatible transcodes.
     ' The playbackTryDirectHevcProfileLevel setting is handled client-side in
     ' LoadVideoContentTask — if the only transcode reason is VideoLevelNotSupported,
     ' the client will attempt direct play with a transcode fallback.
-    hevcProfileArray.Conditions.push({
-      "Condition": "LessThanEqual",
-      "Property": "VideoLevel",
-      "Value": hevcLevelString,
-      "IsRequired": false
-    })
+    '
+    ' Omitted when no probe succeeded — see the h264 note above.
+    if hevcLevelSupported <> NO_VIDEO_LEVEL
+      hevcProfileArray.Conditions.push({
+        "Condition": "LessThanEqual",
+        "Property": "VideoLevel",
+        "Value": hevcLevelSupported.toStr(),
+        "IsRequired": false
+      })
+    end if
 
     ' set max resolution
     hevcProfileArray.Conditions.Append(resolutionConditions)
@@ -1554,18 +1584,57 @@ function updateProfileArray(profileArray as object, videoCodec as string, videoP
   return profileArray
 end function
 
-' Remove all decimals from a string
-function removeDecimals(value as string) as string
-  r = CreateObject("roRegex", "\.", "")
-  value = r.ReplaceAll(value, "")
-  return value
-end function
+' The integer Jellyfin wants in a VideoLevel condition, for a level string Roku
+' reported as decodable ("4.1", "5.0"). Returns NO_VIDEO_LEVEL when this codec has
+' no scale established here, or when the string does not parse.
+'
+' THERE IS NO SINGLE SCALE, which is the entire reason this is a function.
+' Jellyfin matches a VideoLevel condition against MediaStream.Level, which is
+' ffprobe's raw `level` field — and ffprobe reports that field on each codec's OWN
+' scale:
+'
+'   h264   level x10        "4.2" -> 42
+'   hevc   level x30        "5.1" -> 153
+'   av1    seq_level_idx    "5.1" -> 13    (major - 2) * 4 + minor
+'
+' Read off Jellyfin's own reference client (jellyfin-web
+' src/scripts/browserDeviceProfile.js), which ships maxH264Level = 42,
+' maxHevcLevel = 153 and maxAv1Level = 15 carrying its own `// level 5.3` comment.
+'
+' A codec that is absent here gets NO condition rather than a guessed number.
+' The asymmetry is deliberate, and it is about WHICH WAY each choice can fail.
+' Omitting can only fail one way — permissively, since a condition we never send
+' constrains nothing — and that direction is still bounded by the resolution,
+' bitrate and profile conditions the codec profile keeps sending. A wrong number
+' fails EITHER way, silently, for every stream of that codec: too high permits a
+' direct play the device cannot decode (av1 shipped 612), too low forces a
+' transcode that was never needed (mpeg2 shipped "main|high", which parses as
+' nothing, so the condition could never be satisfied). mpeg2 is the worked
+' example — see getCodecProfiles().
+function jellyfinVideoLevel(codec as string, level as string) as integer
+  parts = level.split(".")
+  if parts.count() <> 2 then return NO_VIDEO_LEVEL
 
-' Convert HEVC level from float format (e.g., 5.0, 5.1, 4.1) to Jellyfin string format
-' HEVC levels are multiplied by 30 to convert to the integer representation
-' Examples: 5.0 → "150", 5.1 → "153", 4.1 → "123"
-function convertHevcLevelToString(level as float) as string
-  return (level * 30).toStr()
+  major = parts[0].toInt()
+  minor = parts[1].toInt()
+  ' toInt() yields 0 for anything non-numeric, and no codec here has a level 0,
+  ' so this rejects a garbage string as well as an out-of-range one.
+  if major < 1 or minor < 0 then return NO_VIDEO_LEVEL
+
+  ' Both spellings of each codec are accepted, so a caller can pass either the
+  ' Jellyfin codec name or the alias the codec profile advertises next to it
+  ' ("h264,avc", "h265,hevc"). Every call site here passes the first form.
+  name = LCase(codec)
+  if name = "h264" or name = "avc" then return major * 10 + minor
+  if name = "hevc" or name = "h265" then return (major * 10 + minor) * 3
+
+  ' An index, not a multiple, so the two halves are combined rather than scaled.
+  if name = "av1"
+    if major < 2 then return NO_VIDEO_LEVEL
+    return (major - 2) * 4 + minor
+  end if
+
+  return NO_VIDEO_LEVEL
 end function
 
 ' does this roku device support playing 4k video?

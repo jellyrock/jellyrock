@@ -431,7 +431,7 @@ Force transcoding of anamorphic video (non-square pixels). Enable this if you se
 
 <a href="#playback">Playback</a> › <a href="#playback-video-codec-support">Video Codec Support</a> › <a href="#playbackMpeg2">MPEG-2</a>
 
-Support Direct Play of MPEG-2 content (e.g., Live TV). This will prevent transcoding of MPEG-2 content, but uses significantly more bandwidth.
+Direct Play MPEG-2 video instead of transcoding it, which uses significantly more bandwidth. Does not apply to Live TV or other MPEG-TS sources, which are always transcoded.
 
 | Property | Value |
 | --- | --- |
