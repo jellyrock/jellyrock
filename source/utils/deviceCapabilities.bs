@@ -521,6 +521,15 @@ function getTranscodingProfiles() as object
       end if
     end if
 
+    ' KEEP THIS, even though Jellyfin discards it on every server we mostly meet.
+    ' StreamBuilder filters HLS video codecs against _supportedHlsVideoCodecs, and
+    ' mpeg2video is not in it: 10.8 ships ["h264","hevc"], 10.9 adds av1, 10.10+
+    ' adds vp9. So from 10.8 on, an mpeg2video HLS transcode target is dropped and
+    ' MPEG-2 is always re-encoded. **10.7.0 has no such allowlist** — it splits
+    ' TranscodingProfile.VideoCodec straight into playlistItem.VideoCodecs — so on
+    ' the oldest servers we support this entry is live and removing it would take a
+    ' capability away. Verified by reading StreamBuilder.cs at v10.7.0, v10.8.13,
+    ' v10.9.11, v10.10.0 and master.
     if globalUserSettings.playbackMpeg2
       if di.CanDecodeVideo({ Codec: "mpeg2", Container: container }).Result
         videoCodecList.push("mpeg2video")
@@ -990,6 +999,12 @@ function getCodecProfiles() as object
   ' essentially resolution tiers (Main <= 720x576, High <= 1920x1152), and we keep
   ' sending Height / Width, bitrate and IsAnamorphic. The gap is a user who sets
   ' Maximum Resolution to "off", which sends no height condition either.
+  '
+  ' This only ever reaches MPEG-2 in a container we direct play. Live TV and every
+  ' other MPEG-TS source is excluded from DirectPlayProfiles (see GetDirectPlayProfiles)
+  ' and mpeg2video is not a legal HLS transcode target from 10.8 on, so those are
+  ' re-encoded no matter what this profile says — which is why the setting's
+  ' description no longer offers Live TV as an example.
   if globalUserSettings.playbackMpeg2
     mpeg2ProfileArray = {
       "Type": "Video",

@@ -568,12 +568,12 @@
           },
           {
             "title": "MPEG-2",
-            "description": "Support Direct Play of MPEG-2 content (e.g., Live TV). This will prevent transcoding of MPEG-2 content, but uses significantly more bandwidth.",
+            "description": "Direct Play MPEG-2 video instead of transcoding it, which uses significantly more bandwidth. Does not apply to Live TV or other MPEG-TS sources, which are always transcoded.",
             "settingName": "playbackMpeg2",
             "type": "bool",
             "default": "false",
             "titleKey": "LabelMpeg2",
-            "descriptionKey": "MessageSupportDirectPlayOfMpeg2Content"
+            "descriptionKey": "MessageDirectPlayMpeg2Video"
           },
           {
             "title": "MPEG-4",
