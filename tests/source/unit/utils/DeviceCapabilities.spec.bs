@@ -13,6 +13,7 @@ namespace tests
     protected savedVideoHeight as dynamic
     protected savedVideoWidth as dynamic
     protected savedResolutionMax as dynamic
+    protected savedPlaybackMpeg2 as dynamic
 
     protected override function setup()
       super.setup()
@@ -23,12 +24,14 @@ namespace tests
       m.savedVideoHeight = m.global.device.videoHeight
       m.savedVideoWidth = m.global.device.videoWidth
       m.savedResolutionMax = m.global.user.settings.playbackResolutionMax
+      m.savedPlaybackMpeg2 = m.global.user.settings.playbackMpeg2
     end function
 
     protected override function afterEach()
       m.global.device.videoHeight = m.savedVideoHeight
       m.global.device.videoWidth = m.savedVideoWidth
       m.global.user.settings.playbackResolutionMax = m.savedResolutionMax
+      m.global.user.settings.playbackMpeg2 = m.savedPlaybackMpeg2
       super.afterEach()
     end function
 
@@ -604,6 +607,73 @@ namespace tests
     @params("1.3")
     function _(level)
       m.assertEqual(jellyfinVideoLevel("av1", level), NO_VIDEO_LEVEL)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getCodecProfiles() - emitted VideoLevel conditions")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The tests above prove the SCALES. This one proves the CALL SITES use them,
+    ' which is where all three shipped bugs actually lived: mpeg2 sent the
+    ' unparseable "main|high", av1 sent 120 * level, and h264 sent a number with
+    ' its decimal point deleted rather than multiplied out.
+    '
+    ' It runs against this device's real CanDecodeVideo results, so it cannot
+    ' assert fixed values. Instead it DECODES each emitted number back to the level
+    ' it claims and asserts that level exists. Decoding is what makes the check
+    ' discriminating rather than a range sniff: put hevc on h264's x10 scale and a
+    ' device whose top level is 5.1 emits 51, which is inside hevc's range AND a
+    ' multiple of 30/10 — but decodes to "level 1.7", which no HEVC stream can
+    ' carry. That mutation was measured passing an earlier, range-only version of
+    ' this test; 30 and 60 remain genuinely ambiguous between the two scales and
+    ' are the only wrong-scale values this cannot see.
+    @it("emits no VideoLevel that decodes to a level the codec does not have")
+    function _()
+      m.global.user.settings.playbackMpeg2 = true
+      codecProfiles = getCodecProfiles()
+      m.assertNotEmpty(codecProfiles)
+
+      digits = CreateObject("roRegex", "^[0-9]+$", "")
+
+      ' Only these three codecs have a scale, so only these three may ship a level.
+      levelledCodecs = ["h264,avc", "h265,hevc", "av1"]
+      found = 0
+
+      for each profile in codecProfiles
+        if profile.Type = "Video" and isValid(profile.Conditions)
+          for each condition in profile.Conditions
+            if condition.Property = "VideoLevel"
+              codec = profile.Codec
+              m.assertTrue(arrayHasValue(levelledCodecs, codec), "codec '" + codec + "' shipped a VideoLevel but has no established scale — omit the condition instead")
+              m.assertTrue(digits.IsMatch(condition.Value), "codec '" + codec + "' shipped a non-numeric VideoLevel '" + condition.Value + "'; Jellyfin parses this field with int.TryParse")
+
+              value = condition.Value.toInt()
+              found++
+
+              if codec = "h264,avc"
+                ' x10. Levels run 1.0 - 6.2, minor digit never above 3.
+                major = value \ 10
+                minor = value mod 10
+                m.assertTrue(major >= 1 and major <= 6 and minor <= 3, "h264 VideoLevel " + condition.Value + " decodes to level " + major.toStr() + "." + minor.toStr() + ", which does not exist")
+              else if codec = "h265,hevc"
+                ' x30. Decode by thirds first, then read it as x10.
+                m.assertEqual(value mod 3, 0, "hevc VideoLevel " + condition.Value + " is not on the x30 scale")
+                tenths = value \ 3
+                major = tenths \ 10
+                minor = tenths mod 10
+                m.assertTrue(major >= 1 and major <= 6 and minor <= 2, "hevc VideoLevel " + condition.Value + " decodes to level " + major.toStr() + "." + minor.toStr() + ", which does not exist")
+              else
+                ' av1 seq_level_idx. Levels run 2.0 - 7.3, so the index runs 0 - 23.
+                m.assertTrue(value >= 0 and value <= 23, "av1 VideoLevel " + condition.Value + " is outside seq_level_idx 0..23 — it looks like a multiplied level, not an index")
+              end if
+            end if
+          end for
+        end if
+      end for
+
+      ' Guards against the whole check passing because nothing was examined. Every
+      ' Roku that can run this app decodes h264, so at least one level must ship.
+      m.assertTrue(found > 0, "no VideoLevel condition was emitted at all — this test proved nothing")
     end function
 
     @it("updateProfileArray() creates nested structure for codec")
