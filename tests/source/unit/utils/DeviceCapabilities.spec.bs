@@ -576,8 +576,10 @@ namespace tests
       m.assertEqual(jellyfinVideoLevel(codec, "4.1"), expected)
     end function
 
-    ' Withholding beats guessing: an omitted condition costs one avoidable
-    ' transcode decision, a wrong one silently mis-decides every stream.
+    ' Withholding beats guessing because of WHICH WAY each fails. An omitted
+    ' condition fails one way only — permissively — and stays bounded by the
+    ' resolution, bitrate and profile conditions the codec profile keeps sending.
+    ' A wrong number fails either way, silently, for every stream of that codec.
     @it("jellyfinVideoLevel() returns NO_VIDEO_LEVEL for a codec with no established scale")
     @params("mpeg2")
     @params("vp9")
@@ -614,7 +616,7 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     ' The tests above prove the SCALES. This one proves the CALL SITES use them,
-    ' which is where all three shipped bugs actually lived: mpeg2 sent the
+    ' which is where all three wrong-scale bugs actually lived: mpeg2 sent the
     ' unparseable "main|high", av1 sent 120 * level, and h264 sent a number with
     ' its decimal point deleted rather than multiplied out.
     '
@@ -623,7 +625,7 @@ namespace tests
     ' it claims and asserts that level exists. Decoding is what makes the check
     ' discriminating rather than a range sniff: put hevc on h264's x10 scale and a
     ' device whose top level is 5.1 emits 51, which is inside hevc's range AND a
-    ' multiple of 30/10 — but decodes to "level 1.7", which no HEVC stream can
+    ' multiple of 3 — but decodes to "level 1.7", which no HEVC stream can
     ' carry. That mutation was measured passing an earlier, range-only version of
     ' this test; 30 and 60 remain genuinely ambiguous between the two scales and
     ' are the only wrong-scale values this cannot see.
@@ -654,7 +656,7 @@ namespace tests
             if condition.Property = "VideoLevel"
               codec = profile.Codec
               m.assertTrue(arrayHasValue(levelledCodecs, codec), "codec '" + codec + "' shipped a VideoLevel but has no established scale — omit the condition instead")
-              m.assertTrue(digits.IsMatch(condition.Value), "codec '" + codec + "' shipped a non-numeric VideoLevel '" + condition.Value + "'; Jellyfin parses this field with int.TryParse")
+              m.assertTrue(digits.IsMatch(condition.Value), "codec '" + codec + "' shipped a non-numeric VideoLevel '" + condition.Value + "'; Jellyfin parses this field with double.TryParse")
 
               value = condition.Value.toInt()
               found++
