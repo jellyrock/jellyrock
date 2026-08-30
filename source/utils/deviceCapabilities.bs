@@ -479,8 +479,14 @@ function getAudioDirectPlayProfiles(di as object, audioCodecs as object) as obje
     '            -5 "malformed data" under every streamFormat, while the IDENTICAL
     '            bitstream muxed into .mka plays. So dts belongs in the mkv row (it
     '            is there) and must NOT get a container row of its own.
-    '   truehd — Jellyfin does not index a .thd file at all, so no standalone
-    '            TrueHD container exists for a profile to match.
+    '   truehd — advertising it HANGS playback. TrueHD in .mka IS indexed
+    '            (container "mkv", codec "truehd"), so it is matchable, but on an
+    '            Ultra `4850X` it sits in buffering with audioFormat=mat and never
+    '            reaches playing — 45 s, streamFormat mkv / mka / unset alike, while
+    '            a control holding DTS in `mka` played at 0.5 s in the same run. A raw .thd separately
+    '            cannot be matched (Jellyfin does not index one at all), but
+    '            that covers only .thd — the hang is the reason that reaches .mka.
+    '            canDecodeAudioInContainer() enforces this; see the note there.
     { jellyfin: "ac3", roku: "", probe: ["ac3"], bounded: true },
     { jellyfin: "eac3", roku: "", probe: ["eac3"], bounded: true }
   ]
@@ -519,7 +525,7 @@ function canDecodeAudioInContainer(di as object, jellyfinCodec as string, rokuCo
   ' The probe cannot answer the question: asked for mat in mkv Roku returns
   '   { container: ["mat"], result: false, updated: "container" }
   ' — it wants Container to BE "mat", so the false is a rejected question rather than
-  ' a real "no". Measured on a Roku Ultra 4850X with a TrueHD-capable soundbar: mat is
+  ' a real "no". Measured on a Roku Ultra `4850X` with a TrueHD-capable soundbar: mat is
   ' true bare and false for mkv / mp4 / ts alike.
   '
   ' DO NOT "FIX" THIS BY FALLING BACK TO THE BARE PROBE. That reads as the obvious
@@ -528,7 +534,7 @@ function canDecodeAudioInContainer(di as object, jellyfinCodec as string, rokuCo
   ' same Ultra: a 6ch TrueHD stream muxed into .mka (Jellyfin reports it as
   ' container "mkv", codec "truehd") reaches state=buffering with audioFormat=mat and
   ' errorCode 0, and NEVER reaches playing — still buffering after 45 s, under
-  ' streamFormat "mkv", "mka" and unset alike. A dts-in-mka control played at 0.5 s in
+  ' streamFormat "mkv", "mka" and unset alike. A control holding DTS in `mka` played at 0.5 s in
   ' the same run, so it is TrueHD specifically and not the file, the mux or the
   ' network. Advertising it would trade a working transcode for an endless spinner,
   ' which is the worst outcome of the three.

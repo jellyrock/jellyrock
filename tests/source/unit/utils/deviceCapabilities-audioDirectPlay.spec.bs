@@ -256,10 +256,10 @@ namespace tests
       ' And truehd must stay OUT of the container rows regardless. Falling back to the
       ' bare probe here is the obvious-looking repair (the video mkv row does exactly
       ' that, so the audio row looks like it under-claims truehd) and it ships a HANG:
-      ' measured on a Roku Ultra 4850X with a TrueHD-capable soundbar, a 6ch TrueHD
+      ' measured on a Roku Ultra `4850X` with a TrueHD-capable soundbar, a 6ch TrueHD
       ' stream in .mka reaches buffering with audioFormat=mat and never reaches
       ' playing — 45 s, under streamFormat mkv / mka / unset alike — while a
-      ' dts-in-mka control played at 0.5 s in the same run.
+      ' control holding DTS in `mka` played at 0.5 s in the same run.
       called = { count: 0 }
       di = {
         called: called,
