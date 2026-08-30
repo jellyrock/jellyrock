@@ -514,13 +514,24 @@ end function
 function canDecodeAudioInContainer(di as object, jellyfinCodec as string, rokuContainer as string) as boolean
   rokuCodec = jellyfinToRokuCodecName(jellyfinCodec)
 
-  ' MAT (Jellyfin "truehd") is not something Roku will look for INSIDE another
-  ' container. Asked for mat in mkv it answers
+  ' MAT (Jellyfin "truehd") is excluded from every CONTAINER row, deliberately.
+  '
+  ' The probe cannot answer the question: asked for mat in mkv Roku returns
   '   { container: ["mat"], result: false, updated: "container" }
-  ' — it wants Container to BE "mat". Measured on a Roku Ultra with a TrueHD-capable
-  ' soundbar: mat answers true bare and false for mkv / mp4 / ts alike. So a
-  ' container-scoped question about mat has no answer this API can give, and sending
-  ' one reads the rejection as a real "no". Only the bare probe is meaningful.
+  ' — it wants Container to BE "mat", so the false is a rejected question rather than
+  ' a real "no". Measured on a Roku Ultra 4850X with a TrueHD-capable soundbar: mat is
+  ' true bare and false for mkv / mp4 / ts alike.
+  '
+  ' DO NOT "FIX" THIS BY FALLING BACK TO THE BARE PROBE. That reads as the obvious
+  ' repair — the video mkv row does exactly that, so the audio mkv row looks like it
+  ' is under-claiming truehd by comparison — and it ships a HANG. Measured on that
+  ' same Ultra: a 6ch TrueHD stream muxed into .mka (Jellyfin reports it as
+  ' container "mkv", codec "truehd") reaches state=buffering with audioFormat=mat and
+  ' errorCode 0, and NEVER reaches playing — still buffering after 45 s, under
+  ' streamFormat "mkv", "mka" and unset alike. A dts-in-mka control played at 0.5 s in
+  ' the same run, so it is TrueHD specifically and not the file, the mux or the
+  ' network. Advertising it would trade a working transcode for an endless spinner,
+  ' which is the worst outcome of the three.
   if rokuCodec = "mat" and rokuContainer <> "" then return false
 
   if rokuContainer = ""

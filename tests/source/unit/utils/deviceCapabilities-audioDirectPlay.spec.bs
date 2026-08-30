@@ -245,13 +245,21 @@ namespace tests
       m.assertEqual(seen.codec, "mat", "truehd must be probed under Roku's name")
     end function
 
-    @it("refuses a container-scoped probe for mat, which the API cannot answer")
+    @it("keeps mat out of every container row, and sends no probe to decide it")
     function _()
-      ' Roku answers { container: ["mat"], result: false, updated: "container" } for
-      ' mat + ANY container — it wants Container to BE "mat". Reading that false as a
-      ' real "no" is what silently dropped truehd from the audio mkv row while the
-      ' video mkv row (which probes mat bare) kept it. Measured on a Roku Ultra with a
-      ' TrueHD-capable soundbar: mat is true bare, false for mkv / mp4 / ts alike.
+      ' Two separate reasons, and the second is the load-bearing one.
+      '
+      ' The probe cannot answer: Roku returns { container: ["mat"], result: false,
+      ' updated: "container" } for mat + ANY container, because it wants Container to
+      ' BE "mat" — so that false is a rejected question, not a real "no".
+      '
+      ' And truehd must stay OUT of the container rows regardless. Falling back to the
+      ' bare probe here is the obvious-looking repair (the video mkv row does exactly
+      ' that, so the audio row looks like it under-claims truehd) and it ships a HANG:
+      ' measured on a Roku Ultra 4850X with a TrueHD-capable soundbar, a 6ch TrueHD
+      ' stream in .mka reaches buffering with audioFormat=mat and never reaches
+      ' playing — 45 s, under streamFormat mkv / mka / unset alike — while a
+      ' dts-in-mka control played at 0.5 s in the same run.
       called = { count: 0 }
       di = {
         called: called,
@@ -261,7 +269,7 @@ namespace tests
         end function
       }
 
-      m.assertFalse(canDecodeAudioInContainer(di, "truehd", "mkv"), "mat in a container has no answerable probe")
+      m.assertFalse(canDecodeAudioInContainer(di, "truehd", "mkv"), "truehd must never reach a container row — advertising it hangs playback in buffering")
       m.assertEqual(called.count, 0, "no probe should be sent at all — a false from the API here is not a real 'no'")
 
       m.assertTrue(canDecodeAudioInContainer(di, "truehd", ""), "the bare probe IS meaningful and must still run")
