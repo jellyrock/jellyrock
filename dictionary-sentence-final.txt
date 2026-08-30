@@ -91,6 +91,7 @@
 (?:Bitrate)\.
 (?:bitstream)\.
 (?:Bitstream)\.
+(?:bitstreams)\.
 (?:blockquote)\.
 (?:bool)\.
 (?:Bool)\.
@@ -184,6 +185,7 @@
 (?:dedupe)\.
 (?:dedupes)\.
 (?:deduplicated)\.
+(?:demux)\.
 (?:dep)\.
 (?:dep-bump)\.
 (?:Dependabot)\.
@@ -231,6 +233,7 @@
 (?:dropdowns)\.
 (?:DTO)\.
 (?:dts)\.
+(?:DTS)\.
 (?:DTS-HD)\.
 (?:dtshd)\.
 (?:durations)\.
@@ -387,6 +390,7 @@
 (?:mp4)\.
 (?:multicast)\.
 (?:multichannel)\.
+(?:muxed)\.
 (?:multiline)\.
 (?:musicvideo)\.
 (?:MVC)\.
