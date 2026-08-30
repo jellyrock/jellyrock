@@ -29,75 +29,146 @@ namespace tests
     @describe("getAudioDirectPlayProfiles() - container/codec separation")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("advertises m4a/m4b under the JELLYFIN container name while probing Roku's 'mp4'")
+    private function containerFor(profiles as object, container as string) as dynamic
+      for each profile in profiles
+        if profile.Container = container then return profile
+      end for
+      return invalid
+    end function
+
+    @it("advertises m4a/m4b under the JELLYFIN container names while probing Roku mp4")
     function _()
       ' Roku does not recognise "m4a"/"m4b" as containers at all — only "mp4".
       di = m.fakeDi(["aac/mp4", "alac/mp4"])
       profiles = getAudioDirectPlayProfiles(di, ["aac", "alac"])
 
-      m.assertArrayCount(profiles, 1)
-      m.assertEqual(profiles[0].Container, "m4a,m4b", "Container must carry the Jellyfin names the server matches against")
-      m.assertEqual(profiles[0].AudioCodec, "aac,alac", "AudioCodec must carry the codecs, not the container")
-      m.assertEqual(profiles[0].Type, "Audio")
+      entry = m.containerFor(profiles, "m4a,m4b")
+      m.assertNotInvalid(entry, "must advertise the Jellyfin container names the server matches on")
+      m.assertEqual(entry.AudioCodec, "aac,alac")
+      m.assertEqual(entry.Type, "Audio")
     end function
 
-    @it("bounds the m4a entry to only the codecs this device can actually decode")
+    @it("bounds a bounded entry to only the codecs this device can decode")
     function _()
       di = m.fakeDi(["aac/mp4"])
       profiles = getAudioDirectPlayProfiles(di, ["aac", "alac"])
 
-      m.assertArrayCount(profiles, 1)
-      m.assertEqual(profiles[0].AudioCodec, "aac", "alac must be absent when the device cannot decode it in mp4")
+      entry = m.containerFor(profiles, "m4a,m4b")
+      m.assertNotInvalid(entry)
+      m.assertEqual(entry.AudioCodec, "aac", "alac must be absent when the device cannot decode it in mp4")
     end function
 
-    @it("omits the m4a entry entirely when neither codec decodes")
+    @it("omits a container entirely when nothing in it decodes")
     function _()
       di = m.fakeDi(["mp3/mp3"])
       profiles = getAudioDirectPlayProfiles(di, ["aac", "alac", "mp3"])
 
-      for each profile in profiles
-        m.assertNotEqual(profile.Container, "m4a,m4b", "Must not advertise m4a when nothing decodes in mp4")
+      m.assertInvalid(m.containerFor(profiles, "m4a,m4b"), "must not advertise m4a when nothing decodes in mp4")
+      m.assertInvalid(m.containerFor(profiles, "ogg"), "must not advertise ogg when nothing decodes in ogg")
+    end function
+
+    @it("emits mp3, flac, wav and aiff with NO AudioCodec field")
+    function _()
+      ' wav and aiff MUST stay codec-open: Jellyfin reports the fine-grained codec name
+      ' ("pcm_s16le" for a .wav, "pcm_s16be" for an .aiff), which never equals the "pcm"
+      ' this profile can probe — an AudioCodec list would match nothing at all.
+      di = m.fakeDi(["mp3/mp3", "flac/flac", "pcm/wav", "lpcm/wav", "pcm/"])
+      profiles = getAudioDirectPlayProfiles(di, ["mp3", "flac", "pcm", "lpcm"])
+
+      for each container in ["mp3", "flac", "wav", "aiff"]
+        entry = m.containerFor(profiles, container)
+        m.assertNotInvalid(entry, "expected a profile for container '" + container + "'")
+        m.assertFalse(entry.DoesExist("AudioCodec"), "container '" + container + "' must not carry an AudioCodec field")
       end for
     end function
 
-    @it("emits mp3 and flac with NO AudioCodec field, so any codec in them still matches")
+    @it("probes with NO container for formats Roku has no container name for")
     function _()
-      ' Bounding these would newly transcode streams that direct-play today — an
-      ' "mp1" stream inside an .mp3 plays on Roku via its mpg123 decoder, and mp1
-      ' is not a codec this profile probes for.
-      di = m.fakeDi(["mp3/mp3", "flac/flac"])
-      profiles = getAudioDirectPlayProfiles(di, ["mp3", "flac"])
+      ' Roku answers false for the container strings "aac" and "aiff" for EVERY codec, so
+      ' probing under the Jellyfin name would read as unsupported. These probe bare.
+      di = m.fakeDi(["aac/", "pcm/"])
+      profiles = getAudioDirectPlayProfiles(di, ["aac", "pcm"])
 
-      m.assertArrayCount(profiles, 2)
-      for each profile in profiles
-        m.assertFalse(profile.DoesExist("AudioCodec"), "Container-only entries must not carry an AudioCodec field")
-      end for
-      m.assertEqual(profiles[0].Container, "mp3")
-      m.assertEqual(profiles[1].Container, "flac")
+      aacEntry = m.containerFor(profiles, "aac")
+      m.assertNotInvalid(aacEntry, "elementary aac must be advertised off the bare probe")
+      m.assertEqual(aacEntry.AudioCodec, "aac")
+      m.assertNotInvalid(m.containerFor(profiles, "aiff"), "aiff must be advertised off the bare pcm probe")
     end function
 
-    @it("drops a container the device cannot decode anything in")
+    @it("advertises one ogg entry, which covers .ogg, .oga and .opus alike")
     function _()
-      di = m.fakeDi(["flac/flac"])
-      profiles = getAudioDirectPlayProfiles(di, ["mp3", "flac"])
+      ' Measured on a live 10.11.11: all three report Container "ogg" from /PlaybackInfo.
+      di = m.fakeDi(["vorbis/ogg", "opus/ogg", "flac/ogg"])
+      profiles = getAudioDirectPlayProfiles(di, ["vorbis", "opus", "flac"])
 
-      m.assertArrayCount(profiles, 1)
-      m.assertEqual(profiles[0].Container, "flac")
+      entry = m.containerFor(profiles, "ogg")
+      m.assertNotInvalid(entry)
+      m.assertEqual(entry.AudioCodec, "vorbis,opus,flac")
+    end function
+
+    @it("advertises mka under mkv, bounded to what the device decodes there")
+    function _()
+      ' An .mka reports Container "mkv", not "mka".
+      di = m.fakeDi(["flac/mkv", "aac/mkv"])
+      profiles = getAudioDirectPlayProfiles(di, ["flac", "aac", "dts"])
+
+      entry = m.containerFor(profiles, "mkv")
+      m.assertNotInvalid(entry)
+      m.assertEqual(entry.AudioCodec, "flac,aac", "dts must be absent — the device cannot decode it in mkv")
     end function
 
     @it("never puts a codec name in the Container field")
     function _()
       ' The bug this replaced shipped Container:"mp3,mp2,pcm,lpcm,flac,alac,aac,vorbis,mpg123"
       ' — a CODEC list in a field Jellyfin matches against MediaSource.Container.
-      di = m.fakeDi(["aac/mp4", "alac/mp4", "mp3/mp3", "flac/flac"])
+      di = m.fakeDi(["aac/mp4", "alac/mp4", "mp3/mp3", "flac/flac", "vorbis/ogg", "pcm/wav", "aac/"])
       profiles = getAudioDirectPlayProfiles(di, ["mp3", "flac", "aac", "alac", "vorbis", "pcm", "lpcm", "mpg123"])
 
-      codecOnlyNames = ["pcm", "lpcm", "alac", "vorbis", "mpg123", "aac", "mp2"]
+      codecOnlyNames = ["pcm", "lpcm", "alac", "vorbis", "mpg123", "mp2", "opus"]
       for each profile in profiles
         for each part in profile.Container.split(",")
           m.assertFalse(arrayHasValue(codecOnlyNames, part), "Container must not contain the codec name '" + part + "'")
         end for
       end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("canDecodeAudioInContainer()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("omits the Container parameter entirely when the Roku container name is empty")
+    function _()
+      ' Passing an unknown Container makes the API answer false for every codec, which is
+      ' indistinguishable from a real no — so the bare question must send no Container.
+      seen = {}
+      di = {
+        seen: seen,
+        CanDecodeAudio: function(params as object) as object
+          m.seen.hadContainer = params.DoesExist("Container")
+          return { Result: true }
+        end function
+      }
+
+      m.assertTrue(canDecodeAudioInContainer(di, "aac", ""))
+      m.assertFalse(seen.hadContainer, "an empty Roku container must send NO Container parameter")
+
+      canDecodeAudioInContainer(di, "aac", "mp4")
+      m.assertTrue(seen.hadContainer, "a named Roku container must send the Container parameter")
+    end function
+
+    @it("translates the Jellyfin codec name to the Roku one before probing")
+    function _()
+      seen = {}
+      di = {
+        seen: seen,
+        CanDecodeAudio: function(params as object) as object
+          m.seen.codec = params.Codec
+          return { Result: true }
+        end function
+      }
+
+      canDecodeAudioInContainer(di, "truehd", "mkv")
+      m.assertEqual(seen.codec, "mat", "truehd must be probed under Roku's name")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

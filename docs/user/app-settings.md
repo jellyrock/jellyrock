@@ -131,7 +131,7 @@ Use custom subtitle rendering for external VTT subtitle files. Enables fallback 
 
 <a href="#playback">Playback</a> › <a href="#playbackDecodeMultichannelAudio">Decode Multichannel Audio</a>
 
-When enabled (default), Roku decodes multichannel audio sources directly. Disable to force the server to transcode instead. Useful if Roku audio sounds incorrect, or to guarantee surround passthrough (EAC3/AC3/DTS) to a capable receiver.
+When enabled (default), Roku decodes multichannel audio itself (Opus, AAC, FLAC, ALAC, PCM, Vorbis). Disable to make the server transcode instead — try this if surround audio sounds garbled or distorted, or to force surround passthrough (EAC3/AC3/DTS).
 
 | Property | Value |
 | --- | --- |

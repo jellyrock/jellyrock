@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-08-29
+last-updated: 2026-08-30
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-30 — Audio direct play now covers `wav`, `aiff`, elementary `.aac`, `ogg` (vorbis/opus/flac, covering `.ogg` / `.oga` / `.opus`) and `mka`, each gated on a real `CanDecodeAudio` probe and verified end to end at `PlayMethod=DirectPlay` on a Streaming Stick 4K; closes the followup the m4a fix opened.
 - 2026-08-29 — feat: rebuild the playback-info report as a `source → target` readout
 - 2026-08-29 — fix: MPEG-2 transcoded despite its setting; AV1 ignored its level cap
 - 2026-08-27 — fix(setting): Honor a non-default Maximum Resolution instead of capping at 1080p
@@ -143,8 +144,6 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 - **Tell the user when the server can't provide the fallback font** (#582 crash-fix follow-up): `FontDownloadTask` sets `errorMessage` to `Server does not support fallback fonts`, and `handleFontDownloadCompletion()` (`source/main.bs:367`) only `print`s it before booting Home with `uiFontFallback` still reading ON in Settings. That silence was unreachable until now — on those servers the guard *crashed* at `FontDownloadTask.bs:26` instead of taking this branch, so #841 is what turns it into real user-visible behavior. Fix shape: surface a toast (or a settings-level hint) for the *server does not support* reason specifically, kept distinct from a transient download failure (a URL we can't build, a font list we can't parse, a file that never lands), which shouldn't nag. Raised in review of #841.
 
 - **Quick Connect's 10.7-only `Error`-field branch is schema-derived, not probed** (#847 follow-up): `quickConnectPollOutcome` (`source/utils/quickConnect.bs`) treats a non-empty `QuickConnectResult.Error` on a 200 as a terminal failure, because 10.7.0's spec fingerprint declares the field and 10.8.0's does not. What is established is that the field EXISTS on 10.7 — not when the server populates it. No 10.7 server was reachable to probe. If 10.7 sets it on an ordinary not-yet-approved poll, Quick Connect there ends after three polls with "try again shortly" instead of waiting for the user to approve. That is bounded and reported where the old behavior was an unbounded silent spinner, so it is the safer direction to be wrong in — but it is still wrong, and it is the first thing to check if Quick Connect is reported broken on 10.7. Settle it by probing a real 10.7 server (or reading the 10.7 `QuickConnectController` source) rather than the spec alone.
-
-- **Settle the remaining AUDIO direct-play containers the m4a fix deliberately left out** — `wav` (pcm/lpcm), `ogg` / `oga` (vorbis/opus/flac), `mka`, and elementary `.aac` (ADTS). A Streaming Stick 4K probe on 2026-08-29 says the DEVICE can decode all of them: `CanDecodeAudio` returns true for pcm+wav, lpcm+wav, vorbis+ogg, opus+ogg, flac+ogg and the whole codec set in mkv. So the capability is real; what is missing is END-TO-END proof, and the m4a work is exactly why that gap matters — a `flac` file fails with `errorCode -5 "malformed data"` unless `content.streamformat` names it, so a container whose `streamFormat` Roku does not honor ships BROKEN playback rather than the working transcode it replaced. Blocked on test media, not on analysis: the user's 15,346-track library has ZERO ogg/oga/mka/aac files, and its only 21 `wav`-container files hold an `mp3` stream, which the probe says Roku CANNOT decode inside that container (`mp3`+`wav` = false) — so `wav` must be bounded to `AudioCodec: "pcm,lpcm"` rather than left open to any codec. Method: add one file per shape to the server, re-probe `POST /Items/{id}/PlaybackInfo` with the real captured profile, then play it on device and assert `PlayMethod=DirectPlay` from `GET /Sessions`.
 
 ### api
 

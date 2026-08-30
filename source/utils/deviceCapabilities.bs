@@ -425,46 +425,73 @@ end function
 ' codec answers false for them, while the same codec answers true for "mp4". So the
 ' capability is PROBED under the Roku name and ADVERTISED under the Jellyfin ones.
 function getAudioDirectPlayProfiles(di as object, audioCodecs as object) as object
-  ' An empty `codecs` list means advertise the container with NO AudioCodec field, i.e.
-  ' any codec. That is deliberately kept for the containers that already shipped this
-  ' way: Jellyfin's codec vocabulary is wider than the list we probe, and bounding
-  ' them would newly transcode streams that direct-play today — measured on a
-  ' Streaming Stick 4K, an "mp1" stream inside an .mp3 plays, decoded as mpg123.
-  ' m4a/m4b is NEW capability, so it IS bounded, to the codecs the probe confirms.
+  ' Each row is one CONTAINER the server may report for a standalone audio file.
+  '
+  '   jellyfin — the Container string(s) to advertise. MEASURED against a live 10.11.11
+  '              library, from the /PlaybackInfo MediaSource, which is the string the
+  '              server actually matches on. Do NOT read this off /Items?Fields=MediaSources
+  '              — that reports a SHORTER value ("m4a", "mov") and designing against it is
+  '              a trap. What PlaybackInfo reports: an .mka is "mkv" (not "mka"), .oga and
+  '              .opus are BOTH "ogg", and every mp4-family audio file — .m4a and .m4b
+  '              alike — is the full ffprobe list "mov,mp4,m4a,3gp,3g2,mj2". Since
+  '              ContainerHelper splits BOTH sides on commas, "m4a" alone matches .m4b too.
+  '   roku     — the container name to probe CanDecodeAudio with. Roku's vocabulary is
+  '              not Jellyfin's: it does not recognise "m4a"/"m4b"/"aac"/"aiff" at all
+  '              (every codec answers false), so those probe under "mp4" or, where Roku
+  '              has no container name for the format, with no Container at all ("").
+  '   probe    — codecs to test. Empty means test the whole audioCodecs list.
+  '   bounded  — true emits AudioCodec = the codecs that passed. False emits NO
+  '              AudioCodec, so any codec in that container matches.
+  '
+  ' Bounded is the safer default for a NEW container, but it is WRONG where Jellyfin
+  ' reports a codec name finer than the one Roku probes: a .wav carries "pcm_s16le"
+  ' and an .aiff "pcm_s16be", neither of which equals the "pcm" we can probe, so an
+  ' AudioCodec list would never match. mp3 and flac stay unbounded for a different
+  ' reason — they already shipped that way, and bounding them would newly transcode an
+  ' "mp1" stream inside an .mp3, which direct-plays via Roku's mpg123 decoder.
   audioContainers = [
-    { jellyfin: "mp3", roku: "mp3", codecs: [] },
-    { jellyfin: "flac", roku: "flac", codecs: [] },
-    { jellyfin: "m4a,m4b", roku: "mp4", codecs: ["aac", "alac"] }
+    { jellyfin: "mp3", roku: "mp3", probe: [], bounded: false },
+    { jellyfin: "flac", roku: "flac", probe: [], bounded: false },
+    { jellyfin: "wav", roku: "wav", probe: ["pcm", "lpcm"], bounded: false },
+    { jellyfin: "aiff", roku: "", probe: ["pcm"], bounded: false },
+    { jellyfin: "aac", roku: "", probe: ["aac"], bounded: true },
+    { jellyfin: "m4a,m4b", roku: "mp4", probe: ["aac", "alac"], bounded: true },
+    { jellyfin: "ogg", roku: "ogg", probe: ["vorbis", "opus", "flac"], bounded: true },
+    { jellyfin: "mkv", roku: "mkv", probe: [], bounded: true }
   ]
 
   profiles = []
   for each entry in audioContainers
-    if entry.codecs.count() = 0
-      ' Unbounded: advertise the container if the device decodes ANY audio codec inside it.
-      for each audioCodec in audioCodecs
-        if di.CanDecodeAudio({ Codec: jellyfinToRokuCodecName(audioCodec), Container: entry.roku }).Result
-          profiles.push({ "Container": entry.jellyfin, "Type": "Audio" })
-          exit for
-        end if
-      end for
-    else
-      decodable = []
-      for each audioCodec in entry.codecs
-        if di.CanDecodeAudio({ Codec: jellyfinToRokuCodecName(audioCodec), Container: entry.roku }).Result
-          decodable.push(audioCodec)
-        end if
-      end for
-      if decodable.count() > 0
-        profiles.push({
-          "Container": entry.jellyfin,
-          "Type": "Audio",
-          "AudioCodec": decodable.Join(",")
-        })
+    codecsToTest = entry.probe
+    if codecsToTest.count() = 0 then codecsToTest = audioCodecs
+
+    decodable = []
+    for each audioCodec in codecsToTest
+      if canDecodeAudioInContainer(di, audioCodec, entry.roku)
+        decodable.push(audioCodec)
       end if
+    end for
+
+    if decodable.count() > 0
+      profile = { "Container": entry.jellyfin, "Type": "Audio" }
+      if entry.bounded then profile.AddReplace("AudioCodec", decodable.Join(","))
+      profiles.push(profile)
     end if
   end for
 
   return profiles
+end function
+
+' CanDecodeAudio with an OPTIONAL container. An empty container asks the bare
+' question, which is the only way to probe a format whose container name Roku does
+' not recognise (elementary AAC, AIFF) — passing an unknown Container string makes
+' the API answer false for every codec, which is indistinguishable from a real no.
+function canDecodeAudioInContainer(di as object, jellyfinCodec as string, rokuContainer as string) as boolean
+  rokuCodec = jellyfinToRokuCodecName(jellyfinCodec)
+  if rokuContainer = ""
+    return di.CanDecodeAudio({ Codec: rokuCodec }).Result
+  end if
+  return di.CanDecodeAudio({ Codec: rokuCodec, Container: rokuContainer }).Result
 end function
 
 function getTranscodingProfiles() as object
@@ -851,8 +878,6 @@ function getCodecProfiles() as object
                   }
                 ]
               })
-            else if audioCodec = "opus" and codecType = "Audio"
-              ' Opus audio files not supported by Roku - skip
             else
               codecProfiles.push({
                 "Type": codecType,
