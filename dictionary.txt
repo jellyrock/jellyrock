@@ -100,6 +100,7 @@ bitrate
 Bitrate
 bitstream
 Bitstream
+bitstreams
 blockquote
 bool
 Bool
@@ -193,6 +194,7 @@ Dedup
 dedupe
 dedupes
 deduplicated
+demux
 dep
 dep-bump
 Dependabot
@@ -240,6 +242,7 @@ dropdown
 dropdowns
 DTO
 dts
+DTS
 DTS-HD
 dtshd
 durations
@@ -396,6 +399,7 @@ mkv
 mp4
 multicast
 multichannel
+muxed
 multiline
 musicvideo
 MVC

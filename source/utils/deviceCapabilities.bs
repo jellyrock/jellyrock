@@ -382,9 +382,11 @@ function GetDirectPlayProfiles() as object
     end for
   end for
 
-  ' Same list as above minus opus, which Roku cannot play as a standalone audio
-  ' file even where it decodes inside a video container.
-  audioCodecs = ["mp3", "mp2", "pcm", "lpcm", "wav", "ac3", "ac4", "aiff", "wma", "flac", "alac", "aac", "dts", "wmapro", "vorbis", "eac3", "truehd", "dtshd", "mpg123"]
+  ' The list above serves the standalone-audio profiles too — do NOT re-declare a
+  ' filtered copy here. It used to be re-declared minus opus, on the claim that Roku
+  ' cannot play opus as a standalone audio file. That claim is false (.opus and
+  ' opus-in-ogg both play), and the filtered copy silently cost the audio mkv row a
+  ' codec the video mkv row kept.
 
   ' build return array
   for each container in supportedContainers
@@ -457,7 +459,30 @@ function getAudioDirectPlayProfiles(di as object, audioCodecs as object) as obje
     { jellyfin: "aac", roku: "", probe: ["aac"], bounded: true },
     { jellyfin: "m4a,m4b", roku: "mp4", probe: ["aac", "alac"], bounded: true },
     { jellyfin: "ogg", roku: "ogg", probe: ["vorbis", "opus", "flac"], bounded: true },
-    { jellyfin: "mkv", roku: "mkv", probe: [], bounded: true }
+    { jellyfin: "mkv", roku: "mkv", probe: [], bounded: true },
+    ' Elementary surround bitstreams, where the container name IS the codec name —
+    ' the same shape as mp3 and flac, which is why the old joined-codec string
+    ' covered these by accident on a surround-capable device. A .ac3 reports "ac3"
+    ' and a .eac3 "eac3"; a .ec3 also resolves to "eac3", so one token covers both.
+    '
+    ' These probe BARE (roku: ""), because Roku has no container name for an
+    ' elementary bitstream. Bare is also the honest question here — "can this device
+    ' put ac3 out at all" is exactly the capability that makes the file playable —
+    ' and it gates per device: false on a Stick 4K in Stereo out, true on an Ultra
+    ' with a surround soundbar.
+    '
+    ' TWO SURROUND FORMATS ARE DELIBERATELY ABSENT, and neither can be added by
+    ' relaxing the probe:
+    '
+    '   dts    — CanDecodeAudio says yes and Roku really can decode DTS, but its
+    '            Audio node cannot DEMUX a raw DTS elementary stream: a .dts errors
+    '            -5 "malformed data" under every streamFormat, while the IDENTICAL
+    '            bitstream muxed into .mka plays. So dts belongs in the mkv row (it
+    '            is there) and must NOT get a container row of its own.
+    '   truehd — Jellyfin does not index a .thd file at all, so no standalone
+    '            TrueHD container exists for a profile to match.
+    { jellyfin: "ac3", roku: "", probe: ["ac3"], bounded: true },
+    { jellyfin: "eac3", roku: "", probe: ["eac3"], bounded: true }
   ]
 
   profiles = []
@@ -488,6 +513,16 @@ end function
 ' the API answer false for every codec, which is indistinguishable from a real no.
 function canDecodeAudioInContainer(di as object, jellyfinCodec as string, rokuContainer as string) as boolean
   rokuCodec = jellyfinToRokuCodecName(jellyfinCodec)
+
+  ' MAT (Jellyfin "truehd") is not something Roku will look for INSIDE another
+  ' container. Asked for mat in mkv it answers
+  '   { container: ["mat"], result: false, updated: "container" }
+  ' — it wants Container to BE "mat". Measured on a Roku Ultra with a TrueHD-capable
+  ' soundbar: mat answers true bare and false for mkv / mp4 / ts alike. So a
+  ' container-scoped question about mat has no answer this API can give, and sending
+  ' one reads the rejection as a real "no". Only the bare probe is meaningful.
+  if rokuCodec = "mat" and rokuContainer <> "" then return false
+
   if rokuContainer = ""
     return di.CanDecodeAudio({ Codec: rokuCodec }).Result
   end if
