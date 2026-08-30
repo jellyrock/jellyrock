@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update roku-deploy from v3.18.2 to v3.18.3 ([#867](https://github.com/jellyrock/jellyrock/pull/867))
 - Update eslint from v10.8.1 to v10.9.1 ([#839](https://github.com/jellyrock/jellyrock/pull/839))
 - Update sharp from v0.35.3 to v0.35.4 ([#863](https://github.com/jellyrock/jellyrock/pull/863))
 
