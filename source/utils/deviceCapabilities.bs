@@ -386,15 +386,6 @@ function GetDirectPlayProfiles() as object
   ' file even where it decodes inside a video container.
   audioCodecs = ["mp3", "mp2", "pcm", "lpcm", "wav", "ac3", "ac4", "aiff", "wma", "flac", "alac", "aac", "dts", "wmapro", "vorbis", "eac3", "truehd", "dtshd", "mpg123"]
 
-  ' check audio codecs with no container
-  ' translate Jellyfin names to Roku API names for the detection call
-  supportedAudio = []
-  for each audioCodec in audioCodecs
-    if di.CanDecodeAudio({ Codec: jellyfinToRokuCodecName(audioCodec) }).Result
-      supportedAudio.push(audioCodec)
-    end if
-  end for
-
   ' build return array
   for each container in supportedContainers
     videoCodecString = supportedContainers[container]["video"].Join(",")
@@ -416,11 +407,64 @@ function GetDirectPlayProfiles() as object
     end if
   end for
 
-  directPlayProfiles.push({
-    "Container": supportedAudio.Join(","),
-    "Type": "Audio"
-  })
+  directPlayProfiles.Append(getAudioDirectPlayProfiles(di, audioCodecs))
   return directPlayProfiles
+end function
+
+' Audio-only (standalone music file) direct-play profiles.
+'
+' Jellyfin matches DirectPlayProfile.Container against MediaSource.Container and
+' .AudioCodec against the audio stream's codec — both comma-lists, compared with
+' ContainerHelper.ContainsContainer, where an EMPTY field matches ANY value. So
+' Container must carry CONTAINER names; a codec name only ever matches by
+' coincidence, which is what "mp3" and "flac" do.
+'
+' Roku is the other half of the mismatch: CanDecodeAudio takes a ROKU container
+' name, and Roku's vocabulary is not Jellyfin's. An .m4a / .m4b is an MP4
+' container, but Roku does not recognise the strings "m4a" or "m4b" at all — every
+' codec answers false for them, while the same codec answers true for "mp4". So the
+' capability is PROBED under the Roku name and ADVERTISED under the Jellyfin ones.
+function getAudioDirectPlayProfiles(di as object, audioCodecs as object) as object
+  ' An empty `codecs` list means advertise the container with NO AudioCodec field, i.e.
+  ' any codec. That is deliberately kept for the containers that already shipped this
+  ' way: Jellyfin's codec vocabulary is wider than the list we probe, and bounding
+  ' them would newly transcode streams that direct-play today — measured on a
+  ' Streaming Stick 4K, an "mp1" stream inside an .mp3 plays, decoded as mpg123.
+  ' m4a/m4b is NEW capability, so it IS bounded, to the codecs the probe confirms.
+  audioContainers = [
+    { jellyfin: "mp3", roku: "mp3", codecs: [] },
+    { jellyfin: "flac", roku: "flac", codecs: [] },
+    { jellyfin: "m4a,m4b", roku: "mp4", codecs: ["aac", "alac"] }
+  ]
+
+  profiles = []
+  for each entry in audioContainers
+    if entry.codecs.count() = 0
+      ' Unbounded: advertise the container if the device decodes ANY audio codec inside it.
+      for each audioCodec in audioCodecs
+        if di.CanDecodeAudio({ Codec: jellyfinToRokuCodecName(audioCodec), Container: entry.roku }).Result
+          profiles.push({ "Container": entry.jellyfin, "Type": "Audio" })
+          exit for
+        end if
+      end for
+    else
+      decodable = []
+      for each audioCodec in entry.codecs
+        if di.CanDecodeAudio({ Codec: jellyfinToRokuCodecName(audioCodec), Container: entry.roku }).Result
+          decodable.push(audioCodec)
+        end if
+      end for
+      if decodable.count() > 0
+        profiles.push({
+          "Container": entry.jellyfin,
+          "Type": "Audio",
+          "AudioCodec": decodable.Join(",")
+        })
+      end if
+    end if
+  end for
+
+  return profiles
 end function
 
 function getTranscodingProfiles() as object
@@ -1257,6 +1301,49 @@ function getCodecProfiles() as object
   if apiVersion < 2
     codecProfiles = filterCodecProfileConditions(codecProfiles, ["VideoRangeType"])
   end if
+
+  return dropConditionsUnevaluableOnAudioFiles(codecProfiles)
+end function
+
+' Properties Jellyfin can evaluate in a Type:"Audio" codec-profile condition.
+' Mirrors ConditionProcessor.IsAudioConditionSatisfied's switch, which has no
+' default-allow branch — see dropConditionsUnevaluableOnAudioFiles().
+function audioFileConditionProperties() as object
+  return ["AudioBitrate", "AudioChannels", "AudioSampleRate", "AudioBitDepth"]
+end function
+
+' Strip conditions Jellyfin CANNOT evaluate on a standalone audio file.
+'
+' A Type:"Audio" condition goes through ConditionProcessor.IsAudioConditionSatisfied,
+' whose switch handles only the four properties above and ends in
+'   default: throw new ArgumentException("Unexpected condition on audio file: " + …)
+' There is no default-allow branch. Jellyfin turns that exception into HTTP 400 for
+' the whole /Items/{id}/PlaybackInfo request, so the track does not play AT ALL —
+' strictly worse than the transcode the condition was trying to force.
+'
+' AudioProfile is the one we emit that it cannot take: that property is only
+' evaluable on Type:"VideoAudio" (IsVideoAudioConditionSatisfied), where our aac
+' entry legitimately keeps it. Filtering here rather than at each push site makes
+' this an invariant over the whole list, so a condition added later cannot
+' reintroduce the 400.
+'
+' Verified against jellyfin v10.11.11 ConditionProcessor.cs and reproduced against a
+' live 10.11.11 server: an aac audio file whose container matched a direct-play
+' profile returned 400 until these conditions were dropped.
+function dropConditionsUnevaluableOnAudioFiles(codecProfiles as object) as object
+  allowed = audioFileConditionProperties()
+
+  for each profile in codecProfiles
+    if isValid(profile.Type) and profile.Type = "Audio" and isValid(profile.Conditions)
+      keptConditions = []
+      for each condition in profile.Conditions
+        if not isValid(condition.Property) or arrayHasValue(allowed, condition.Property)
+          keptConditions.push(condition)
+        end if
+      end for
+      profile.Conditions = keptConditions
+    end if
+  end for
 
   return codecProfiles
 end function

@@ -265,6 +265,7 @@
 (?:ffmpeg-tagged)\.
 (?:FHD)\.
 (?:filesystem)\.
+(?:flac)\.
 (?:fns)\.
 (?:focusable)\.
 (?:followup)\.
@@ -365,10 +366,13 @@
 (?:lookups)\.
 (?:lossy)\.
 (?:lowercased)\.
+(?:lpcm)\.
 (?:LRU)\.
 (?:Luhmann)\.
 (?:Luhmann's)\.
 (?:m3u8)\.
+(?:m4a)\.
+(?:m4b)\.
 (?:macOS)\.
 (?:Makefile)\.
 (?:markdownlint)\.
@@ -377,6 +381,7 @@
 (?:Mbps)\.
 (?:mixin)\.
 (?:Mixin)\.
+(?:mka)\.
 (?:MKV)\.
 (?:mkv)\.
 (?:mp4)\.
@@ -412,6 +417,8 @@
 (?:Nygard's)\.
 (?:ODC)\.
 (?:ODC-precondition)\.
+(?:oga)\.
+(?:ogg)\.
 (?:onboarding)\.
 (?:OpenAPI)\.
 (?:opencode)\.
@@ -433,6 +440,7 @@
 (?:Params)\.
 (?:PascalCase)\.
 (?:passthrough)\.
+(?:pcm)\.
 (?:PD-textlogo)\.
 (?:PDF)\.
 (?:PDFs)\.
@@ -721,12 +729,14 @@
 (?:virtuals)\.
 (?:Vitest)\.
 (?:Vitest's)\.
+(?:vorbis)\.
 (?:vscode)\.
 (?:VSCode)\.
 (?:VTT)\.
 (?:wakeup)\.
 (?:wakeup-signal)\.
 (?:walkthrough)\.
+(?:wav)\.
 (?:Weblate)\.
 (?:WebP)\.
 (?:webp)\.

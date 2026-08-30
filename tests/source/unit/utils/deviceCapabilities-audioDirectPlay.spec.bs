@@ -1,0 +1,213 @@
+import "pkg:/source/utils/deviceCapabilities.bs"
+import "pkg:/source/utils/misc.bs"
+
+namespace tests
+
+  @suite("deviceCapabilities.bs - Audio direct play + audio-file codec conditions")
+  class AudioDirectPlayTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    ' A roDeviceInfo stand-in whose CanDecodeAudio answers true only for the
+    ' (rokuCodec, container) pairs listed. Container is compared as sent, so a
+    ' test can prove the probe uses the ROKU container name rather than Jellyfin's.
+    private function fakeDi(supported as object) as object
+      return {
+        supported: supported,
+        CanDecodeAudio: function(params as object) as object
+          container = ""
+          if params.DoesExist("Container") then container = params.Container
+          key = params.Codec + "/" + container
+          return { Result: arrayHasValue(m.supported, key) }
+        end function
+      }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getAudioDirectPlayProfiles() - container/codec separation")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("advertises m4a/m4b under the JELLYFIN container name while probing Roku's 'mp4'")
+    function _()
+      ' Roku does not recognise "m4a"/"m4b" as containers at all — only "mp4".
+      di = m.fakeDi(["aac/mp4", "alac/mp4"])
+      profiles = getAudioDirectPlayProfiles(di, ["aac", "alac"])
+
+      m.assertArrayCount(profiles, 1)
+      m.assertEqual(profiles[0].Container, "m4a,m4b", "Container must carry the Jellyfin names the server matches against")
+      m.assertEqual(profiles[0].AudioCodec, "aac,alac", "AudioCodec must carry the codecs, not the container")
+      m.assertEqual(profiles[0].Type, "Audio")
+    end function
+
+    @it("bounds the m4a entry to only the codecs this device can actually decode")
+    function _()
+      di = m.fakeDi(["aac/mp4"])
+      profiles = getAudioDirectPlayProfiles(di, ["aac", "alac"])
+
+      m.assertArrayCount(profiles, 1)
+      m.assertEqual(profiles[0].AudioCodec, "aac", "alac must be absent when the device cannot decode it in mp4")
+    end function
+
+    @it("omits the m4a entry entirely when neither codec decodes")
+    function _()
+      di = m.fakeDi(["mp3/mp3"])
+      profiles = getAudioDirectPlayProfiles(di, ["aac", "alac", "mp3"])
+
+      for each profile in profiles
+        m.assertNotEqual(profile.Container, "m4a,m4b", "Must not advertise m4a when nothing decodes in mp4")
+      end for
+    end function
+
+    @it("emits mp3 and flac with NO AudioCodec field, so any codec in them still matches")
+    function _()
+      ' Bounding these would newly transcode streams that direct-play today — an
+      ' "mp1" stream inside an .mp3 plays on Roku via its mpg123 decoder, and mp1
+      ' is not a codec this profile probes for.
+      di = m.fakeDi(["mp3/mp3", "flac/flac"])
+      profiles = getAudioDirectPlayProfiles(di, ["mp3", "flac"])
+
+      m.assertArrayCount(profiles, 2)
+      for each profile in profiles
+        m.assertFalse(profile.DoesExist("AudioCodec"), "Container-only entries must not carry an AudioCodec field")
+      end for
+      m.assertEqual(profiles[0].Container, "mp3")
+      m.assertEqual(profiles[1].Container, "flac")
+    end function
+
+    @it("drops a container the device cannot decode anything in")
+    function _()
+      di = m.fakeDi(["flac/flac"])
+      profiles = getAudioDirectPlayProfiles(di, ["mp3", "flac"])
+
+      m.assertArrayCount(profiles, 1)
+      m.assertEqual(profiles[0].Container, "flac")
+    end function
+
+    @it("never puts a codec name in the Container field")
+    function _()
+      ' The bug this replaced shipped Container:"mp3,mp2,pcm,lpcm,flac,alac,aac,vorbis,mpg123"
+      ' — a CODEC list in a field Jellyfin matches against MediaSource.Container.
+      di = m.fakeDi(["aac/mp4", "alac/mp4", "mp3/mp3", "flac/flac"])
+      profiles = getAudioDirectPlayProfiles(di, ["mp3", "flac", "aac", "alac", "vorbis", "pcm", "lpcm", "mpg123"])
+
+      codecOnlyNames = ["pcm", "lpcm", "alac", "vorbis", "mpg123", "aac", "mp2"]
+      for each profile in profiles
+        for each part in profile.Container.split(",")
+          m.assertFalse(arrayHasValue(codecOnlyNames, part), "Container must not contain the codec name '" + part + "'")
+        end for
+      end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("dropConditionsUnevaluableOnAudioFiles() - the HTTP 400 guard")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("removes AudioProfile from a Type:'Audio' profile")
+    function _()
+      ' Jellyfin's ConditionProcessor.IsAudioConditionSatisfied THROWS on AudioProfile,
+      ' and the API turns that into a 400 for the whole PlaybackInfo request.
+      profiles = [{
+        "Type": "Audio",
+        "Codec": "aac",
+        "Conditions": [
+          { "Condition": "NotEquals", "Property": "AudioProfile", "Value": "Main", "IsRequired": true },
+          { "Condition": "LessThanEqual", "Property": "AudioChannels", "Value": "2", "IsRequired": true }
+        ]
+      }]
+
+      result = dropConditionsUnevaluableOnAudioFiles(profiles)
+
+      m.assertArrayCount(result[0].Conditions, 1)
+      m.assertEqual(result[0].Conditions[0].Property, "AudioChannels")
+    end function
+
+    @it("leaves AudioProfile intact on a Type:'VideoAudio' profile")
+    function _()
+      ' That property IS evaluable there (IsVideoAudioConditionSatisfied), and it is
+      ' the condition that keeps AAC Main / HE-AAC video audio off the direct-play path.
+      profiles = [{
+        "Type": "VideoAudio",
+        "Codec": "aac",
+        "Conditions": [
+          { "Condition": "NotEquals", "Property": "AudioProfile", "Value": "HE-AAC", "IsRequired": true },
+          { "Condition": "LessThanEqual", "Property": "AudioChannels", "Value": "2", "IsRequired": true }
+        ]
+      }]
+
+      result = dropConditionsUnevaluableOnAudioFiles(profiles)
+
+      m.assertArrayCount(result[0].Conditions, 2)
+      m.assertEqual(result[0].Conditions[0].Property, "AudioProfile")
+    end function
+
+    @it("keeps every property Jellyfin CAN evaluate on an audio file")
+    function _()
+      conditions = []
+      for each prop in audioFileConditionProperties()
+        conditions.push({ "Condition": "LessThanEqual", "Property": prop, "Value": "1", "IsRequired": true })
+      end for
+      profiles = [{ "Type": "Audio", "Codec": "flac", "Conditions": conditions }]
+
+      result = dropConditionsUnevaluableOnAudioFiles(profiles)
+
+      m.assertArrayCount(result[0].Conditions, audioFileConditionProperties().count())
+    end function
+
+    @it("strips an unknown property, so a condition added later cannot reintroduce the 400")
+    function _()
+      profiles = [{
+        "Type": "Audio",
+        "Codec": "flac",
+        "Conditions": [
+          { "Condition": "Equals", "Property": "VideoRangeType", "Value": "SDR", "IsRequired": true },
+          { "Condition": "LessThanEqual", "Property": "AudioChannels", "Value": "2", "IsRequired": true }
+        ]
+      }]
+
+      result = dropConditionsUnevaluableOnAudioFiles(profiles)
+
+      m.assertArrayCount(result[0].Conditions, 1)
+      m.assertEqual(result[0].Conditions[0].Property, "AudioChannels")
+    end function
+
+    @it("leaves Video and VideoAudio profiles untouched wholesale")
+    function _()
+      profiles = [
+        { "Type": "Video", "Codec": "h264", "Conditions": [{ "Condition": "LessThanEqual", "Property": "VideoLevel", "Value": "42", "IsRequired": false }] },
+        { "Type": "VideoAudio", "Codec": "mp3", "Conditions": [{ "Condition": "LessThanEqual", "Property": "AudioChannels", "Value": "2", "IsRequired": true }] }
+      ]
+
+      result = dropConditionsUnevaluableOnAudioFiles(profiles)
+
+      m.assertArrayCount(result[0].Conditions, 1)
+      m.assertEqual(result[0].Conditions[0].Property, "VideoLevel")
+      m.assertArrayCount(result[1].Conditions, 1)
+    end function
+
+    @it("tolerates a profile with no Conditions key")
+    function _()
+      profiles = [{ "Type": "Audio", "Codec": "flac" }]
+
+      result = dropConditionsUnevaluableOnAudioFiles(profiles)
+
+      m.assertArrayCount(result, 1)
+      m.assertEqual(result[0].Codec, "flac")
+    end function
+
+    @it("getCodecProfiles() emits no AudioProfile condition on any Type:'Audio' profile")
+    function _()
+      ' End-to-end guard on the real builder: this is the exact shape that returned
+      ' HTTP 400 from a live Jellyfin 10.11.11 for every aac audio file that matched.
+      for each profile in getCodecProfiles()
+        if isValid(profile.Type) and profile.Type = "Audio" and isValid(profile.Conditions)
+          for each condition in profile.Conditions
+            m.assertFalse(condition.Property = "AudioProfile", "Type:'Audio' profile for codec '" + profile.Codec + "' still carries an AudioProfile condition, which makes Jellyfin 400 the whole PlaybackInfo request")
+          end for
+        end if
+      end for
+    end function
+
+  end class
+end namespace
