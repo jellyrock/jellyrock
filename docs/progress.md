@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-08-30
+last-updated: 2026-08-31
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-08-31 — fix(playback): Direct-play music instead of transcoding it
 - 2026-08-30 — Audio direct play now covers `wav`, `aiff`, elementary `.aac`, `ogg` (vorbis/opus/flac, covering `.ogg` / `.oga` / `.opus`) and `mka`, each gated on a real `CanDecodeAudio` probe and verified end to end at `PlayMethod=DirectPlay` on a Streaming Stick 4K; closes the followup the m4a fix opened.
 - 2026-08-29 — feat: rebuild the playback-info report as a `source → target` readout
 - 2026-08-29 — fix: MPEG-2 transcoded despite its setting; AV1 ignored its level cap
@@ -62,14 +63,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-08-17 — fix: drop redundant am/pm from "Ends at" in `ItemDetails` and the OSD
 - 2026-08-17 — fix(overhang): stop long usernames rendering as a bare `...` in `JRDropdown`
 - 2026-08-17 — ci(rta): Give `measure:devices` a `--sign-in` mode
-- 2026-08-16 — ci(rta): Drive the measurement matrix across every device in `ROKU_DEVICES`
-- 2026-08-16 — ci(rta): Gate `focusOverhangIcon` on row 0, extract the sampling loop
-- 2026-08-16 — ci(rta): Measure `serverSelect` and assert the no-server state
-- 2026-08-15 — cit(rta): Make the leak gate reliable, tighten its budget, and give the resend one home
-- 2026-08-15 — ci: Make the PR description the commit message, and gate it
-- 2026-08-15 — fix(performance): Destroy popped routed screens and fix the `BaseGridView` retain cycle
-- 2026-08-15 — Measure the pre-login flow, and fix the `roku-log` crash it exposed
-- 2026-08-15 — ci(rta): Measure the `search` screen as its two separate loads
 
 ## Open followups
 
