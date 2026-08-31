@@ -1,0 +1,172 @@
+' Turning a playback failure into something a USER can act on and a MAINTAINER can
+' debug — the two audiences the one dialog has to serve.
+'
+' The split is deliberate and is the whole design:
+'
+'   playbackErrorCause()   -> ONE plain sentence, translated. This is all most
+'                             people should ever see. It names the CAUSE, not the
+'                             mechanism ("this device can't play this format", not
+'                             "mediaerror -5").
+'   playbackErrorSections() -> the opt-in diagnostic readout behind [Details],
+'                             rendered by showReportDialog. Technical on purpose.
+'
+' WHY BOTH, rather than picking one: JellyRock ships to a general audience but its
+' maintainer receives no logs — production builds STRIP every `m.log.*` call
+' (bsconfig-prod.json `"strip": true`), so nothing a user hits is recoverable
+' after the fact. A screenshot is the only telemetry channel that actually exists.
+' So the cause line keeps the default experience calm, and Details makes the
+' screenshot worth something. Anything that would only ever confuse a viewer
+' belongs in Details; anything they might act on belongs in the cause.
+'
+' The error codes come from Roku's Video node contract (`errorCode`), verified
+' against rokudev/dev-doc `media-playback-nodes/video.md` @ v2.0 rather than
+' recalled. Do NOT invent codes here: an unknown code must fall through to the
+' generic cause, because a wrong-but-confident explanation is worse than none.
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+
+' Roku Video node `errorCode` values. Named so a reader does not have to hold the
+' table in their head, and so the mapping below reads as prose.
+const PLAYBACK_ERR_NONE = 0
+const PLAYBACK_ERR_NETWORK = -1
+const PLAYBACK_ERR_TIMEOUT = -2
+const PLAYBACK_ERR_GENERIC = -3
+const PLAYBACK_ERR_EMPTY_LIST = -4
+const PLAYBACK_ERR_MEDIA = -5
+const PLAYBACK_ERR_DRM = -6
+
+' The one plain-language sentence shown in the dialog body.
+'
+' `serverMessage` wins when present: a message the SERVER produced (Jellyfin's
+' "No compatible streams are available for this item", the transcode failure text)
+' is more specific than anything a device-side code can say, and it is already
+' translated. The code mapping is the fallback for a device-side failure, where
+' the server said nothing because it was never asked.
+function playbackErrorCause(errorCode as integer, serverMessage = "" as string, title = "" as string) as string
+  ' A message identical to the dialog's own TITLE is not a message — it is a call
+  ' site that had nothing to say and reached for the nearest string. Rendering it
+  ' produces a dialog that states its heading twice and tells the user nothing,
+  ' which is what shipped for years and survived the first pass of this rework.
+  ' Dropping it here (rather than at the call site) means no future caller can
+  ' reintroduce it, and makes the rule testable without a scene.
+  if isValidAndNotEmpty(title) and serverMessage = title then serverMessage = ""
+
+  if isValidAndNotEmpty(serverMessage) then return serverMessage
+
+  if errorCode = PLAYBACK_ERR_NETWORK then return translate(translationKeys.ErrorPlaybackCauseNetwork)
+  if errorCode = PLAYBACK_ERR_TIMEOUT then return translate(translationKeys.ErrorPlaybackCauseTimeout)
+  if errorCode = PLAYBACK_ERR_MEDIA then return translate(translationKeys.ErrorPlaybackCauseUnsupportedMedia)
+  if errorCode = PLAYBACK_ERR_DRM then return translate(translationKeys.ErrorPlaybackCauseDrm)
+
+  ' -3 (generic), -4 (empty list) and 0 (no error reported, yet we are here) all
+  ' land on the generic sentence ON PURPOSE. -4 in particular describes an app
+  ' bug — we handed the player nothing to play — which no user-facing wording can
+  ' make actionable, so it says the honest minimum and Details carries the code.
+  return translate(translationKeys.ErrorPlaybackCauseUnknown)
+end function
+
+' The compact technical suffix shown UNDER the cause, e.g. "Media error (-5)".
+'
+' It exists so a casual screenshot — the common case, where nobody opens Details —
+' is still classifiable by whoever reads the bug report. Returns "" when there is
+' no device-side code to name, so a server-explained failure stays clean.
+function playbackErrorCodeLabel(errorCode as integer) as string
+  if errorCode = PLAYBACK_ERR_NONE then return ""
+
+  return Substitute(
+    "{0} ({1})",
+    translate(playbackErrorCategoryKey(errorCode)),
+    errorCode.toStr()
+  )
+end function
+
+' Category name for a code — used by both the inline label and the Details rows,
+' so the two can never disagree about what a code means.
+function playbackErrorCategoryKey(errorCode as integer) as string
+  if errorCode = PLAYBACK_ERR_NETWORK then return translationKeys.LabelPlaybackErrorNetwork
+  if errorCode = PLAYBACK_ERR_TIMEOUT then return translationKeys.LabelPlaybackErrorTimeout
+  if errorCode = PLAYBACK_ERR_EMPTY_LIST then return translationKeys.LabelPlaybackErrorNoStream
+  if errorCode = PLAYBACK_ERR_MEDIA then return translationKeys.LabelPlaybackErrorMedia
+  if errorCode = PLAYBACK_ERR_DRM then return translationKeys.LabelPlaybackErrorDrm
+  return translationKeys.LabelPlaybackErrorUnknown
+end function
+
+' Is there anything worth putting behind a [Details] button?
+'
+' The dialog asks this to decide whether to render a second button at all. Three
+' of the four failure paths (task failure, buffering stall, no content) reach the
+' dialog with NO Roku error data, and a Details button that opens an empty readout
+' is worse than no button — it promises help and delivers a blank panel.
+function hasPlaybackErrorDetails(errorCode as integer, errorInfo as object, context as object) as boolean
+  if errorCode <> PLAYBACK_ERR_NONE then return true
+  if isValid(errorInfo) then return true
+  ' Environment rows alone are still worth showing when we know WHAT failed —
+  ' version + model + the item are exactly what a maintainer asks for first.
+  return isValid(context) and isValidAndNotEmpty(context.itemName)
+end function
+
+' Build the Details readout.
+'
+' @param {integer} errorCode - Video node errorCode
+' @param {object} errorInfo - Video node errorInfo AA (may be invalid)
+' @param {string} errorMessage - Video node errorMsg / the server's message
+' @param {object} context - { itemName, playMethod, container, videoCodec, audioCodec, appVersion, deviceModel }
+' @return {object} sections array for showReportDialog
+function playbackErrorSections(errorCode as integer, errorInfo as object, errorMessage as string, context as object) as object
+  sections = []
+
+  failure = []
+  addErrorRow(failure, "code", translationKeys.LabelPlaybackErrorCode, playbackErrorCodeLabel(errorCode))
+  addErrorRow(failure, "message", translationKeys.LabelPlaybackErrorMessage, errorMessage)
+
+  if isValid(errorInfo)
+    ' These four are Roku's own diagnostic fields. They are NOT translated and
+    ' cannot be — they are verbatim strings from the player. That is acceptable
+    ' here precisely because Details is opt-in; it would not be in the body.
+    addErrorRow(failure, "category", translationKeys.LabelPlaybackErrorCategory, textOrEmpty(errorInfo.category))
+    addErrorRow(failure, "source", translationKeys.LabelPlaybackErrorSource, textOrEmpty(errorInfo.source))
+    addErrorRow(failure, "dbgmsg", translationKeys.LabelPlaybackErrorDebug, textOrEmpty(errorInfo.dbgmsg))
+  end if
+
+  if failure.count() > 0
+    ' wideLabels: "Debug message" and "Category" are long next to a short value,
+    ' and dbgmsg itself can be a full sentence.
+    sections.push({ id: "failure", heading: translate(translationKeys.LabelPlaybackErrorFailure), wideLabels: true, rows: failure })
+  end if
+
+  if isValid(context)
+    media = []
+    addErrorRow(media, "item", translationKeys.LabelPlaybackErrorItem, textOrEmpty(context.itemName))
+    addErrorRow(media, "playMethod", translationKeys.LabelPlaybackErrorPlayMethod, textOrEmpty(context.playMethod))
+    addErrorRow(media, "container", translationKeys.LabelPlaybackErrorContainer, textOrEmpty(context.container))
+    addErrorRow(media, "videoCodec", translationKeys.LabelPlaybackErrorVideoCodec, textOrEmpty(context.videoCodec))
+    addErrorRow(media, "audioCodec", translationKeys.LabelPlaybackErrorAudioCodec, textOrEmpty(context.audioCodec))
+    if media.count() > 0
+      sections.push({ id: "media", heading: translate(translationKeys.LabelPlaybackErrorMedia2), wideLabels: false, rows: media })
+    end if
+
+    ' Version and model are here because they are the first two things a
+    ' maintainer has to ask a reporter for, and asking costs a round trip that
+    ' usually ends the conversation.
+    env = []
+    addErrorRow(env, "appVersion", translationKeys.LabelPlaybackErrorAppVersion, textOrEmpty(context.appVersion))
+    addErrorRow(env, "deviceModel", translationKeys.LabelPlaybackErrorDevice, textOrEmpty(context.deviceModel))
+    if env.count() > 0
+      sections.push({ id: "env", heading: translate(translationKeys.LabelPlaybackErrorEnvironment), wideLabels: false, rows: env })
+    end if
+  end if
+
+  return sections
+end function
+
+' ---- internals ----
+
+' Push a row only when it has a value. An empty row in a diagnostic readout is
+' actively misleading — a reader cannot tell "we did not capture this" from "the
+' player reported it as empty", and a screenshot full of blank labels reads as a
+' broken dialog rather than a thin one.
+sub addErrorRow(rows as object, id as string, labelKey as string, value as string)
+  if not isValidAndNotEmpty(value) then return
+  rows.push({ id: id, label: translate(labelKey), value: value })
+end sub

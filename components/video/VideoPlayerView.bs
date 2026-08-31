@@ -14,6 +14,7 @@ import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/mediaSegments.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/playbackErrorInfo.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
 import "pkg:/source/utils/screenReadiness.bs"
 import "pkg:/source/utils/session.bs"
@@ -734,24 +735,143 @@ end sub
 ' it abandons before it cancels, and the comment there says why the order is
 ' load-bearing.
 sub onPlaybackErrorDialogResult()
+  result = m.playbackErrorDialog.result
   m.playbackErrorDialog = invalid
+
+  ' [Details] is button 1 when it is offered. It does NOT leave the route: the
+  ' user asked to see more about this failure, so the report replaces the alert
+  ' and the exit waits until they close that instead.
+  if result.buttonIndex = 1 and isValid(m.playbackErrorDetailSections)
+    showPlaybackErrorDetails()
+    return
+  end if
+
+  exitFromPlaybackError()
+end sub
+
+' The diagnostic readout behind [Details]. A plain report overlay — it owns no
+' result contract (OverviewDialog self-closes), so the exit is driven by its
+' `closed` field instead.
+sub showPlaybackErrorDetails()
+  m.playbackErrorDialog = showReportDialog(translate(translationKeys.ErrorDuringPlayback), m.playbackErrorCauseText, m.playbackErrorDetailSections)
+  if isValid(m.playbackErrorDialog)
+    m.playbackErrorDialog.observeFieldScoped("closed", "onPlaybackErrorDetailsClosed")
+  end if
+end sub
+
+sub onPlaybackErrorDetailsClosed()
+  if isValid(m.playbackErrorDialog) then m.playbackErrorDialog.unobserveFieldScoped("closed")
+  m.playbackErrorDialog = invalid
+  exitFromPlaybackError()
+end sub
+
+' One exit path for both tiers, so the report and the alert cannot drift apart
+' about what closing means.
+sub exitFromPlaybackError()
+  m.playbackErrorCauseText = ""
+  m.playbackErrorDetailSections = invalid
 
   ' Leave the play route via the host.
   host = m.top.getParent()
   if isValid(host) then host.callFunc("exitPlayback")
 end sub
 
-sub showPlaybackErrorDialog(errorMessage = "" as string)
-  m.playbackErrorDialog = showAlertDialog(translate(translationKeys.ErrorDuringPlayback), errorMessage, "onPlaybackErrorDialogResult")
+' Show the playback error.
+'
+' `serverMessage` is a message the SERVER already explained in words (the
+' LoadVideoContentTask failures); when it is empty the cause is derived from the
+' Video node's own errorCode. Either way the diagnostics come off the node, so a
+' failure that never reached the player simply has fewer rows — and no [Details]
+' button at all rather than an empty one.
+sub showPlaybackErrorDialog(serverMessage = "" as string)
+  errorCode = 0
+  if isValid(m.top.errorCode) then errorCode = m.top.errorCode
+  errorInfo = m.top.errorInfo
+
+  m.playbackErrorCauseText = playbackErrorCause(errorCode, serverMessage, translate(translationKeys.ErrorDuringPlayback))
+
+  buttons = [translate(translationKeys.ButtonOk)]
+  m.playbackErrorDetailSections = invalid
+  if hasPlaybackErrorDetails(errorCode, errorInfo, playbackErrorContext())
+    m.playbackErrorDetailSections = playbackErrorSections(errorCode, errorInfo, textOrEmpty(m.top.errorMsg), playbackErrorContext())
+    if m.playbackErrorDetailSections.count() > 0
+      buttons.push(translate(translationKeys.ButtonDetails))
+    else
+      m.playbackErrorDetailSections = invalid
+    end if
+  end if
+
+  ' The compact code line rides in the SUBHEADING slot rather than being glued to
+  ' the message: the family already defines that slot as a lead line, and keeping
+  ' the two separate means the cause sentence stays the thing being read.
+  message = m.playbackErrorCauseText
+  codeLabel = playbackErrorCodeLabel(errorCode)
+  if codeLabel <> "" then message = message + Chr(10) + Chr(10) + codeLabel
+
+  dialog = createObject("roSGNode", "JRDialog")
+  dialog.title = translate(translationKeys.ErrorDuringPlayback)
+  dialog.message = message
+  dialog.defaultButtonIndex = 0 ' OK — never open focused on Details
+  dialog.buttons = buttons
+  m.playbackErrorDialog = presentOverlayDialog(dialog, "onPlaybackErrorDialogResult")
 end sub
+
+' What we know about WHAT was playing, for the Details rows. Read from the
+' already-loaded content rather than re-derived: this runs on a failure path, so
+' it must not be able to fail itself.
+function playbackErrorContext() as object
+  itemName = ""
+  if isValid(m.currentItem) then itemName = textOrEmpty(m.currentItem.name)
+
+  container = textOrEmpty(m.top.container)
+  videoCodec = ""
+  audioCodec = ""
+  playMethod = ""
+  if isValid(m.top.content)
+    videoCodec = textOrEmpty(m.top.content.videoCodec)
+    audioCodec = textOrEmpty(m.top.content.audioCodec)
+  end if
+  if isValid(m.top.isDirectPlaySupported)
+    if m.top.isDirectPlaySupported
+      playMethod = translate(translationKeys.LabelDirectPlaying)
+    else
+      playMethod = translate(translationKeys.LabelTranscoding)
+    end if
+  end if
+
+  appVersion = ""
+  deviceModel = ""
+  globalApp = m.global.app
+  if isValid(globalApp) then appVersion = textOrEmpty(globalApp.version)
+  globalDevice = m.global.device
+  if isValid(globalDevice) then deviceModel = textOrEmpty(globalDevice.model)
+
+  return {
+    itemName: itemName,
+    playMethod: playMethod,
+    container: container,
+    videoCodec: videoCodec,
+    audioCodec: audioCodec,
+    appVersion: appVersion,
+    deviceModel: deviceModel
+  }
+end function
 
 ' Called by PlayerHostView BEFORE it clears the modal/overlay channels during its
 ' own teardown (onPlayerStateChange's finished-state path) — see the call site
 ' for why this has to run first. Abandon, not cancel: nothing should observe a
 ' result from a dialog that playback is walking away from regardless.
 sub abandonErrorDialog()
+  ' The slot holds EITHER tier — the alert or the Details report — so release the
+  ' report's `closed` observer before dropping the node. OverviewDialog has no
+  ' result contract, so that observer is the only thing tying it to this scope,
+  ' and leaving it attached would fire exitFromPlaybackError() into a component
+  ' that teardown has already navigated away from.
+  if isValid(m.playbackErrorDialog) then m.playbackErrorDialog.unobserveFieldScoped("closed")
   abandonDialog(m.playbackErrorDialog)
   m.playbackErrorDialog = invalid
+  m.playbackErrorCauseText = ""
+  m.playbackErrorDetailSections = invalid
 end sub
 
 sub onVideoContentLoaded()
@@ -1532,7 +1652,12 @@ sub onState()
         m.trickplayCarousel.isVisible = false
       end if
       stopLoadingSpinner()
-      showPlaybackErrorDialog(translate(translationKeys.ErrorDuringPlayback))
+      ' NO message argument on purpose. This is the Video node's own error state,
+      ' so the cause is derived from `errorCode` (see playbackErrorCause). Passing
+      ' a string here would OVERRIDE that mapping — which is exactly how this
+      ' dialog used to render its own title twice: the call site handed it
+      ' `ErrorDuringPlayback`, the same key the title already uses.
+      showPlaybackErrorDialog()
     end if
   else if m.top.state = "playing"
     stopLoadingSpinner()
