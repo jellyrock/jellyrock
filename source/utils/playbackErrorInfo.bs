@@ -23,7 +23,9 @@
 ' recalled. Do NOT invent codes here: an unknown code must fall through to the
 ' generic cause, because a wrong-but-confident explanation is worse than none.
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/playbackReport.bs"
 import "pkg:/source/utils/translate.bs"
 
 ' Roku Video node `errorCode` values. Named so a reader does not have to hold the
@@ -140,8 +142,7 @@ function playbackErrorSections(errorCode as integer, errorInfo as object, errorM
     addErrorRow(media, "item", translationKeys.LabelPlaybackErrorItem, textOrEmpty(context.itemName))
     addErrorRow(media, "playMethod", translationKeys.LabelPlaybackErrorPlayMethod, textOrEmpty(context.playMethod))
     addErrorRow(media, "container", translationKeys.LabelPlaybackErrorContainer, textOrEmpty(context.container))
-    addErrorRow(media, "videoCodec", translationKeys.LabelPlaybackErrorVideoCodec, textOrEmpty(context.videoCodec))
-    addErrorRow(media, "audioCodec", translationKeys.LabelPlaybackErrorAudioCodec, textOrEmpty(context.audioCodec))
+    addStreamRows(media, context)
     if media.count() > 0
       sections.push({ id: "media", heading: translate(translationKeys.LabelPlaybackErrorMedia2), wideLabels: false, rows: media })
     end if
@@ -158,6 +159,70 @@ function playbackErrorSections(errorCode as integer, errorInfo as object, errorM
   end if
 
   return sections
+end function
+
+
+' The three streams that were actually in play, read off the SAME MediaSource the
+' playback report reads.
+'
+' The audio and subtitle rows are found BY THEIR SELECTED INDEX, never by
+' position. That is the entire diagnostic value: a file's TrueHD or DTS track is
+' rarely stream 0, so `streams[0]` would name a track the user was not listening
+' to and quietly exonerate the codec that actually failed. `findStreamByIndex`
+' already encodes that lesson for the report (see its comment) — this reuses it
+' rather than repeating the mistake in a second place.
+'
+' Channels are included because a codec alone does not explain a refusal: 5.1
+' TrueHD and 2.0 TrueHD are different questions for a device, and the count is
+' what separates them.
+sub addStreamRows(rows as object, context as object)
+  mediaSource = context.mediaSource
+  if not isValid(mediaSource) then return
+
+  streams = mediaSource.MediaStreams
+  if not isValid(streams) then return
+
+  addErrorRow(rows, "videoCodec", translationKeys.LabelPlaybackErrorVideoCodec, videoStreamLabel(getFirstVideoStream(streams)))
+  addErrorRow(rows, "audioCodec", translationKeys.LabelPlaybackErrorAudioCodec, audioStreamLabel(findStreamByIndex(streams, context.audioStreamIndex, "audio")))
+  addErrorRow(rows, "subtitleCodec", translationKeys.LabelPlaybackErrorSubtitle, subtitleStreamLabel(findStreamByIndex(streams, context.subtitleStreamIndex, "subtitle")))
+end sub
+
+' "H264 1920x1080" — codec first, because that is the field a reader is checking.
+function videoStreamLabel(stream as dynamic) as string
+  if not isValid(stream) then return ""
+
+  label = upperOrEmpty(stream.Codec)
+  size = dimensionsLabel(stream.Width, stream.Height)
+  if label <> "" and size <> "" then return label + " " + size
+  if label = "" then return size
+  return label
+end function
+
+' "TRUEHD 5.1 (English)" — the shape that answers "why did this not play".
+function audioStreamLabel(stream as dynamic) as string
+  if not isValid(stream) then return ""
+
+  label = upperOrEmpty(stream.Codec)
+  channels = sourceChannels(stream)
+  if channels <> ""
+    if label = "" then label = channels else label = label + " " + channels
+  end if
+
+  language = resolveLanguageName(textOrEmpty(stream.Language))
+  if language <> "" and label <> "" then label = label + " (" + language + ")"
+  return label
+end function
+
+' Subtitles fail playback far less often, but a burned-in or PGS track forcing a
+' transcode is a real cause, so the codec is worth the row.
+function subtitleStreamLabel(stream as dynamic) as string
+  if not isValid(stream) then return ""
+
+  label = upperOrEmpty(stream.Codec)
+  language = resolveLanguageName(textOrEmpty(stream.Language))
+  if language <> "" and label <> "" then return label + " (" + language + ")"
+  if label = "" then return language
+  return label
 end function
 
 ' ---- internals ----

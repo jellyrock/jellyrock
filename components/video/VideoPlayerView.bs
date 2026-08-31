@@ -824,13 +824,17 @@ function playbackErrorContext() as object
   if isValid(m.currentItem) then itemName = textOrEmpty(m.currentItem.name)
 
   container = textOrEmpty(m.top.container)
-  videoCodec = ""
-  audioCodec = ""
+
+  ' The SAME MediaSource the playback report reads, so the two surfaces can never
+  ' describe the same stream differently. Codec extraction lives in the pure
+  ' module — this only hands over the source and which tracks were selected,
+  ' because WHICH audio track was playing is the whole point on a multi-track
+  ' file (a TrueHD track is rarely stream 0).
+  mediaSource = invalid
+  cached = m.top.cachedPlaybackInfo
+  if isValid(cached) and isValidAndNotEmpty(cached.MediaSources) then mediaSource = cached.MediaSources[0]
+
   playMethod = ""
-  if isValid(m.top.content)
-    videoCodec = textOrEmpty(m.top.content.videoCodec)
-    audioCodec = textOrEmpty(m.top.content.audioCodec)
-  end if
   if isValid(m.top.isDirectPlaySupported)
     if m.top.isDirectPlaySupported
       playMethod = translate(translationKeys.LabelDirectPlaying)
@@ -850,8 +854,9 @@ function playbackErrorContext() as object
     itemName: itemName,
     playMethod: playMethod,
     container: container,
-    videoCodec: videoCodec,
-    audioCodec: audioCodec,
+    mediaSource: mediaSource,
+    audioStreamIndex: m.top.audioIndex,
+    subtitleStreamIndex: m.top.selectedSubtitle,
     appVersion: appVersion,
     deviceModel: deviceModel
   }

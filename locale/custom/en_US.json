@@ -300,6 +300,7 @@
   "LabelPlaybackErrorNoStream": "No stream",
   "LabelPlaybackErrorPlayMethod": "Play method",
   "LabelPlaybackErrorSource": "Source",
+  "LabelPlaybackErrorSubtitle": "Subtitle",
   "LabelPlaybackErrorTimeout": "Connection timed out",
   "LabelPlaybackErrorUnknown": "Playback error",
   "LabelPlaybackErrorVideoCodec": "Video codec",

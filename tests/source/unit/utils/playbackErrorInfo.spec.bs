@@ -160,12 +160,86 @@ namespace tests
       m.assertEqual(values.deviceModel, "4850X")
     end function
 
+    @it("names the SELECTED audio track, not the first one")
+    ' The case this feature exists for: a file whose TrueHD track is not stream 0.
+    ' Reading streams[0] would name the AAC track and exonerate the codec that
+    ' actually failed to play, which is the exact bug findStreamByIndex was
+    ' written for on the playback report.
+    function _()
+      mediaSource = {
+        MediaStreams: [
+          { Type: "Video", Index: 0, Codec: "hevc", Width: 3840, Height: 2160 },
+          { Type: "Audio", Index: 1, Codec: "aac", Channels: 2, Language: "eng" },
+          { Type: "Audio", Index: 2, Codec: "truehd", Channels: 6, Language: "eng" }
+        ]
+      }
+      context = { itemName: "Elf", mediaSource: mediaSource, audioStreamIndex: 2, subtitleStreamIndex: -1 }
+
+      values = m.rowValues(playbackErrorSections(-3, invalid, "", context))
+
+      m.assertTrue(values.audioCodec.instr("TRUEHD") >= 0, "named the wrong audio track: " + values.audioCodec)
+      m.assertTrue(values.audioCodec.instr("5.1") >= 0, "lost the channel count: " + values.audioCodec)
+      m.assertTrue(values.videoCodec.instr("HEVC") >= 0, "lost the video codec: " + values.videoCodec)
+      m.assertTrue(values.videoCodec.instr("3840x2160") >= 0, "lost the resolution: " + values.videoCodec)
+    end function
+
+    @it("omits the subtitle row when no subtitle is selected")
+    ' -1 is Jellyfin's "none selected" and is a real answer, not missing data.
+    function _()
+      mediaSource = {
+        MediaStreams: [
+          { Type: "Audio", Index: 1, Codec: "aac", Channels: 2 },
+          { Type: "Subtitle", Index: 3, Codec: "pgssub", Language: "eng" }
+        ]
+      }
+      context = { itemName: "Elf", mediaSource: mediaSource, audioStreamIndex: 1, subtitleStreamIndex: -1 }
+
+      values = m.rowValues(playbackErrorSections(0, invalid, "", context))
+      m.assertInvalid(values.subtitleCodec)
+    end function
+
+    @it("names the selected subtitle track when there is one")
+    function _()
+      mediaSource = {
+        MediaStreams: [
+          { Type: "Audio", Index: 1, Codec: "aac", Channels: 2 },
+          { Type: "Subtitle", Index: 3, Codec: "pgssub", Language: "eng" }
+        ]
+      }
+      context = { itemName: "Elf", mediaSource: mediaSource, audioStreamIndex: 1, subtitleStreamIndex: 3 }
+
+      values = m.rowValues(playbackErrorSections(0, invalid, "", context))
+      m.assertTrue(values.subtitleCodec.instr("PGSSUB") >= 0, "lost the subtitle codec: " + values.subtitleCodec)
+    end function
+
+    @it("survives a context with no media source at all")
+    ' The three failure paths that never reach the player have none, and this
+    ' runs on a failure path — it must not be able to fail itself.
+    function _()
+      values = m.rowValues(playbackErrorSections(-1, invalid, "", { itemName: "Elf" }))
+      m.assertEqual(values.item, "Elf")
+      m.assertInvalid(values.audioCodec)
+    end function
+
     @it("returns NO sections when there is nothing to report")
     ' Paired with hasPlaybackErrorDetails: the caller drops the button when this
     ' comes back empty, so an all-empty input must produce zero sections rather
     ' than empty headings.
     function _()
       m.assertEqual(playbackErrorSections(0, invalid, "", invalid).count(), 0)
+    end function
+
+    ' Flatten every section's rows to { id: value } — each test asserts on a few
+    ' specific rows, and reading them positionally would break whenever a row is
+    ' added.
+    private function rowValues(sections as object) as object
+      values = {}
+      for each section in sections
+        for each row in section.rows
+          values[row.id] = row.value
+        end for
+      end for
+      return values
     end function
 
   end class
