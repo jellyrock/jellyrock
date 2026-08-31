@@ -20,7 +20,7 @@ related-files:
   - components/ItemGrid/LoadVideoContentTask.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-08-27
+last-reviewed: 2026-08-31
 ---
 
 # Video & Audio Playback
@@ -168,6 +168,39 @@ deep-link server-switch prompt — and it holds state until that dialog answers.
 is **canceled** (its owner is alive and has to be told, exactly as if the user had pressed
 `Back`). Leaving a foreign dialog up is not an option either: playback teardown navigates,
 the incoming screen takes focus, and the dialog is left on screen but deaf.
+
+### Three dialogs, cleared in a fixed order
+
+Playback teardown has to clear **three** separate things, and they differ by *who owns
+them* — which is what decides both the verb and the order:
+
+| # | Dialog | Owned by | How teardown clears it |
+|---|---|---|---|
+| 1 | Track pickers + the playback-info report (`m.playbackDialog`) | `PlayerHostView` | `abandonDialog()` on the slot |
+| 2 | The playback-error alert | **`VideoPlayerView`** (the player child) | `m.view.callFunc("abandonErrorDialog")` |
+| 3 | Anything a main-thread flow put over the player (cast notice, server-switch prompt) | someone else | `cancelOpenDialog()` |
+
+Rows 1 and 2 are *ours*, so they are **abandoned** — no result is delivered, because the
+scope that would receive it is going away. Row 3 belongs to a flow that is still alive and
+holding state until its dialog answers, so it is **canceled** — the same answer the user
+pressing `Back` would have produced.
+
+**Row 2 needs its own call, and it must come before row 3.** The error alert is created by
+`showPlaybackErrorDialog` inside the *player*, not the host, so it was never in
+`m.playbackDialog` and row 1 never touched it. Since it is now an ordinary overlay,
+`cancelOpenDialog()` *would* reach it — and that is the trap. Canceling is deliberately
+**indistinguishable from the user pressing `Back`** (see `JRDialog.cancelDialog`), and this
+dialog's result handler treats any real dismissal as "leave the player" and calls
+`exitPlayback()`. So a cancel arriving from teardown fires a `goBack()` from *inside*
+`onPlayerStateChange`, which then carries on to advance the queue or exit again — one
+navigation racing another. Abandoning first drops the dialog and its observer, so by the time
+`cancelOpenDialog()` runs there is nothing left for it to cancel.
+
+The host reaches into the player through an `<interface>` `<function>` because that is the
+only way to call a child component's method in Scene Graph. Historically this alert was a
+raw Roku `Dialog` on the modal channel whose `wasClosed` observer fired for user dismissals
+and programmatic closes alike — unable to tell them apart, it navigated for both, which is
+exactly the race this ordering retires.
 
 **Playback info** (`selectPlaybackInfoPressed`) takes the same route to a different
 member of the family, and the split is deliberate at every step:

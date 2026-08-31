@@ -42,6 +42,7 @@
     <field id="cachedPlaybackInfo" type="assocarray" />
     <function name="onDestroy" />
     <function name="handleTransport" />
+    <function name="abandonErrorDialog" />
   </interface>
 
   <children>

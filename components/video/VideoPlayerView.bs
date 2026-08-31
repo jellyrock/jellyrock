@@ -10,6 +10,7 @@ import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/mediaSegments.bs"
 import "pkg:/source/utils/misc.bs"
@@ -718,30 +719,39 @@ sub onVideoSourceChange()
   launchTask(m.LoadMetaDataTask)
 end sub
 
-sub onPlaybackErrorDialogClosed(msg)
-  sourceNode = msg.getRoSGNode()
-  sourceNode.unobserveField("buttonSelected")
-  sourceNode.unobserveField("wasClosed")
+' Fires on any REAL resolution of the error dialog — the user pressing OK, or
+' Back (result.cancelled, same as OK here: there's nothing to cancel back to).
+' Either way, leave the play route.
+'
+' A close driven by PLAYBACK TEARDOWN instead of the user must never reach this
+' handler — abandonErrorDialog() below is how teardown clears the dialog
+' without firing it, so this always means a genuine user action. Routing
+' teardown through the ordinary result path was the old bug
+' (playback-error-dialog-closed-by-teardown): the old raw Dialog's `wasClosed`
+' observer could not tell "user pressed OK" from "code closed me", so a
+' teardown-triggered close both delivered a result AND raced the teardown's own
+' navigation. PlayerHostView.onPlayerStateChange is the call site that matters —
+' it abandons before it cancels, and the comment there says why the order is
+' load-bearing.
+sub onPlaybackErrorDialogResult()
+  m.playbackErrorDialog = invalid
 
   ' Leave the play route via the host.
   host = m.top.getParent()
   if isValid(host) then host.callFunc("exitPlayback")
 end sub
 
-sub onPlaybackErrorButtonSelected(msg)
-  sourceNode = msg.getRoSGNode()
-  sourceNode.close = true
+sub showPlaybackErrorDialog(errorMessage = "" as string)
+  m.playbackErrorDialog = showAlertDialog(translate(translationKeys.ErrorDuringPlayback), errorMessage, "onPlaybackErrorDialogResult")
 end sub
 
-sub showPlaybackErrorDialog(errorMessage = "" as string)
-  dialog = createObject("roSGNode", "Dialog")
-  dialog.title = translate(translationKeys.ErrorDuringPlayback)
-  dialog.buttons = [translate(translationKeys.ButtonOk)]
-  dialog.message = errorMessage
-  dialog.observeField("buttonSelected", "onPlaybackErrorButtonSelected")
-  dialog.observeField("wasClosed", "onPlaybackErrorDialogClosed")
-
-  m.top.getScene().dialog = dialog
+' Called by PlayerHostView BEFORE it clears the modal/overlay channels during its
+' own teardown (onPlayerStateChange's finished-state path) — see the call site
+' for why this has to run first. Abandon, not cancel: nothing should observe a
+' result from a dialog that playback is walking away from regardless.
+sub abandonErrorDialog()
+  abandonDialog(m.playbackErrorDialog)
+  m.playbackErrorDialog = invalid
 end sub
 
 sub onVideoContentLoaded()
@@ -1962,6 +1972,12 @@ sub onDestroy()
     m.osd.unobserveField("action")
     m.osd.callFunc("onDestroy")
   end if
+
+  ' This scope is going away, so the error dialog's result (if it hasn't
+  ' answered yet) has nowhere to be delivered — abandon, not cancel. See
+  ' abandonDialog in source/utils/dialogs.bs.
+  abandonDialog(m.playbackErrorDialog)
+  m.playbackErrorDialog = invalid
 
   ' Stop and release timers
   if isValid(m.playbackTimer)

@@ -298,13 +298,11 @@ function presentOverlayDialog(dialog as object, onResult as string, returnFocusT
     ' Reusing the node we just found rather than calling cancelOpenDialog():
     ' that would re-run findNode against a render-thread-owned tree, and on the
     ' main-thread path every crossing is a rendezvous. It would also reach the
-    ' MODAL channel, which must not be superseded. That channel has TWO writers
-    ' and each is a different reason not to touch it: a keyboard dialog
-    ' (showKeyboardDialog) would lose what the user typed, and the player's error
-    ' dialog (VideoPlayerView.showPlaybackErrorDialog) NAVIGATES on close, so
-    ' superseding it would fire a goBack from in here. (It was THREE until
-    ' QuickConnectDialog moved onto this channel and joined the supersede.) See
-    ' docs/architecture/tech-debt.md#dialog-channels-unarbitrated.
+    ' MODAL channel, which must not be superseded. That channel has ONE writer
+    ' left — showKeyboardDialog — and superseding it would silently discard what
+    ' the user typed. (It was THREE: QuickConnectDialog and then the player's
+    ' error dialog both moved onto this overlay channel and joined the
+    ' supersede.) See docs/architecture/tech-debt.md#dialog-channels-unarbitrated.
     incumbent.callFunc("cancelDialog")
   end if
 
