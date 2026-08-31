@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Dependencies
+
+- Update js-yaml from v5.3.0 to v5.4.1 ([#857](https://github.com/jellyrock/jellyrock/pull/857))
+
 ## [2.27.0](https://github.com/jellyrock/jellyrock/compare/v2.26.1...v2.27.0) - 2026-08-31
 
 ### Added
