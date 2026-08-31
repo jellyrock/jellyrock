@@ -253,6 +253,7 @@ eac3
 EAC3
 ECP
 ECP-disabled
+EDID
 editorconfig
 enrichment
 Enrichment
