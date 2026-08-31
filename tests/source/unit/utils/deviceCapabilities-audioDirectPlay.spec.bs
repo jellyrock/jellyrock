@@ -1,0 +1,389 @@
+import "pkg:/source/utils/deviceCapabilities.bs"
+import "pkg:/source/utils/misc.bs"
+
+namespace tests
+
+  @suite("deviceCapabilities.bs - Audio direct play + audio-file codec conditions")
+  class AudioDirectPlayTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    ' A roDeviceInfo stand-in whose CanDecodeAudio answers true only for the
+    ' (rokuCodec, container) pairs listed. Container is compared as sent, so a
+    ' test can prove the probe uses the ROKU container name rather than Jellyfin's.
+    private function fakeDi(supported as object) as object
+      return {
+        supported: supported,
+        CanDecodeAudio: function(params as object) as object
+          container = ""
+          if params.DoesExist("Container") then container = params.Container
+          key = params.Codec + "/" + container
+          return { Result: arrayHasValue(m.supported, key) }
+        end function
+      }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getAudioDirectPlayProfiles() - container/codec separation")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    private function containerFor(profiles as object, container as string) as dynamic
+      for each profile in profiles
+        if profile.Container = container then return profile
+      end for
+      return invalid
+    end function
+
+    @it("advertises m4a/m4b under the JELLYFIN container names while probing Roku mp4")
+    function _()
+      ' Roku does not recognise "m4a"/"m4b" as containers at all — only "mp4".
+      di = m.fakeDi(["aac/mp4", "alac/mp4"])
+      profiles = getAudioDirectPlayProfiles(di, ["aac", "alac"])
+
+      entry = m.containerFor(profiles, "m4a,m4b")
+      m.assertNotInvalid(entry, "must advertise the Jellyfin container names the server matches on")
+      m.assertEqual(entry.AudioCodec, "aac,alac")
+      m.assertEqual(entry.Type, "Audio")
+    end function
+
+    @it("bounds a bounded entry to only the codecs this device can decode")
+    function _()
+      di = m.fakeDi(["aac/mp4"])
+      profiles = getAudioDirectPlayProfiles(di, ["aac", "alac"])
+
+      entry = m.containerFor(profiles, "m4a,m4b")
+      m.assertNotInvalid(entry)
+      m.assertEqual(entry.AudioCodec, "aac", "alac must be absent when the device cannot decode it in mp4")
+    end function
+
+    @it("omits a container entirely when nothing in it decodes")
+    function _()
+      di = m.fakeDi(["mp3/mp3"])
+      profiles = getAudioDirectPlayProfiles(di, ["aac", "alac", "mp3"])
+
+      m.assertInvalid(m.containerFor(profiles, "m4a,m4b"), "must not advertise m4a when nothing decodes in mp4")
+      m.assertInvalid(m.containerFor(profiles, "ogg"), "must not advertise ogg when nothing decodes in ogg")
+    end function
+
+    @it("emits mp3, flac, wav and aiff with NO AudioCodec field")
+    function _()
+      ' wav and aiff MUST stay codec-open: Jellyfin reports the fine-grained codec name
+      ' ("pcm_s16le" for a .wav, "pcm_s16be" for an .aiff), which never equals the "pcm"
+      ' this profile can probe — an AudioCodec list would match nothing at all.
+      di = m.fakeDi(["mp3/mp3", "flac/flac", "pcm/wav", "lpcm/wav", "pcm/"])
+      profiles = getAudioDirectPlayProfiles(di, ["mp3", "flac", "pcm", "lpcm"])
+
+      for each container in ["mp3", "flac", "wav", "aiff"]
+        entry = m.containerFor(profiles, container)
+        m.assertNotInvalid(entry, "expected a profile for container '" + container + "'")
+        m.assertFalse(entry.DoesExist("AudioCodec"), "container '" + container + "' must not carry an AudioCodec field")
+      end for
+    end function
+
+    @it("probes with NO container for formats Roku has no container name for")
+    function _()
+      ' Roku answers false for the container strings "aac" and "aiff" for EVERY codec, so
+      ' probing under the Jellyfin name would read as unsupported. These probe bare.
+      di = m.fakeDi(["aac/", "pcm/"])
+      profiles = getAudioDirectPlayProfiles(di, ["aac", "pcm"])
+
+      aacEntry = m.containerFor(profiles, "aac")
+      m.assertNotInvalid(aacEntry, "elementary aac must be advertised off the bare probe")
+      m.assertEqual(aacEntry.AudioCodec, "aac")
+      m.assertNotInvalid(m.containerFor(profiles, "aiff"), "aiff must be advertised off the bare pcm probe")
+    end function
+
+    @it("advertises one ogg entry, which covers .ogg, .oga and .opus alike")
+    function _()
+      ' Measured on a live 10.11.11: all three report Container "ogg" from /PlaybackInfo.
+      di = m.fakeDi(["vorbis/ogg", "opus/ogg", "flac/ogg"])
+      profiles = getAudioDirectPlayProfiles(di, ["vorbis", "opus", "flac"])
+
+      entry = m.containerFor(profiles, "ogg")
+      m.assertNotInvalid(entry)
+      m.assertEqual(entry.AudioCodec, "vorbis,opus,flac")
+    end function
+
+    @it("advertises mka under mkv, bounded to what the device decodes there")
+    function _()
+      ' An .mka reports Container "mkv", not "mka".
+      di = m.fakeDi(["flac/mkv", "aac/mkv"])
+      profiles = getAudioDirectPlayProfiles(di, ["flac", "aac", "dts"])
+
+      entry = m.containerFor(profiles, "mkv")
+      m.assertNotInvalid(entry)
+      m.assertEqual(entry.AudioCodec, "flac,aac", "dts must be absent — the device cannot decode it in mkv")
+    end function
+
+    @it("never puts a codec name in the Container field")
+    function _()
+      ' The bug this replaced shipped Container:"mp3,mp2,pcm,lpcm,flac,alac,aac,vorbis,mpg123"
+      ' — a CODEC list in a field Jellyfin matches against MediaSource.Container.
+      di = m.fakeDi(["aac/mp4", "alac/mp4", "mp3/mp3", "flac/flac", "vorbis/ogg", "pcm/wav", "aac/"])
+      profiles = getAudioDirectPlayProfiles(di, ["mp3", "flac", "aac", "alac", "vorbis", "pcm", "lpcm", "mpg123"])
+
+      codecOnlyNames = ["pcm", "lpcm", "alac", "vorbis", "mpg123", "mp2", "opus"]
+      for each profile in profiles
+        for each part in profile.Container.split(",")
+          m.assertFalse(arrayHasValue(codecOnlyNames, part), "Container must not contain the codec name '" + part + "'")
+        end for
+      end for
+    end function
+
+    @it("advertises ac3 and eac3 off a BARE probe, bounded to themselves")
+    function _()
+      ' Roku has no container name for an elementary bitstream, so these probe bare.
+      ' Container name == codec name, so the bound can never over-claim.
+      di = m.fakeDi(["ac3/", "eac3/"])
+      profiles = getAudioDirectPlayProfiles(di, ["ac3", "eac3"])
+
+      ac3Entry = m.containerFor(profiles, "ac3")
+      m.assertNotInvalid(ac3Entry, "a device that can output ac3 must advertise the ac3 container")
+      m.assertEqual(ac3Entry.AudioCodec, "ac3")
+
+      eac3Entry = m.containerFor(profiles, "eac3")
+      m.assertNotInvalid(eac3Entry, "one eac3 token covers .eac3 and .ec3 alike")
+      m.assertEqual(eac3Entry.AudioCodec, "eac3")
+    end function
+
+    @it("omits ac3 and eac3 on a device that cannot output them")
+    function _()
+      ' A Stick 4K in Stereo out answers false for every surround codec, including
+      ' PassThru — it must advertise neither container.
+      di = m.fakeDi(["mp3/mp3"])
+      profiles = getAudioDirectPlayProfiles(di, ["ac3", "eac3", "mp3"])
+
+      m.assertInvalid(m.containerFor(profiles, "ac3"), "must not advertise ac3 on a stereo-only device")
+      m.assertInvalid(m.containerFor(profiles, "eac3"), "must not advertise eac3 on a stereo-only device")
+    end function
+
+    @it("NEVER advertises a standalone dts container, however the device answers")
+    function _()
+      ' Roku's Audio node cannot DEMUX a raw DTS elementary stream: a .dts errors
+      ' -5 "malformed data" under every streamFormat, while the identical bitstream
+      ' muxed into .mka plays. CanDecodeAudio answers true either way, so the probe
+      ' cannot express this and the absence has to be a gate. dts belongs in the mkv
+      ' row, which this asserts is still where it lands.
+      di = m.fakeDi(["dts/", "dts/mkv", "dts/mp4", "ac3/"])
+      profiles = getAudioDirectPlayProfiles(di, ["dts", "ac3"])
+
+      m.assertInvalid(m.containerFor(profiles, "dts"), "a standalone dts container row ships broken playback in place of a working transcode")
+
+      mkvEntry = m.containerFor(profiles, "mkv")
+      m.assertNotInvalid(mkvEntry, "dts in mkv is the supported shape and must survive")
+      m.assertTrue(arrayHasValue(mkvEntry.AudioCodec.split(","), "dts"))
+    end function
+
+    @it("gives the audio mkv row the same opus answer as the video mkv row")
+    function _()
+      ' Regression guard on the REAL builder. The audio path used to re-declare the
+      ' codec list minus opus, on a false claim that Roku cannot play standalone opus.
+      ' Same device, same container, same build produced:
+      '   video mkv: "...,aac,opus,vorbis,mpg123"
+      '   audio mkv: "...,aac,     vorbis,mpg123"
+      ' This asserts the two paths AGREE rather than asserting opus is present, so it
+      ' holds on a device that cannot decode opus in mkv at all.
+      videoHasOpus = false
+      audioHasOpus = false
+      sawBoth = 0
+
+      for each profile in GetDirectPlayProfiles()
+        if not isValid(profile.AudioCodec) then continue for
+        codecs = profile.AudioCodec.split(",")
+        if profile.Type = "Video" and arrayHasValue(profile.Container.split(","), "mkv")
+          videoHasOpus = arrayHasValue(codecs, "opus")
+          sawBoth = sawBoth + 1
+        else if profile.Type = "Audio" and profile.Container = "mkv"
+          audioHasOpus = arrayHasValue(codecs, "opus")
+          sawBoth = sawBoth + 1
+        end if
+      end for
+
+      if sawBoth = 2
+        m.assertEqual(audioHasOpus, videoHasOpus, "the audio and video mkv rows must agree on opus — they probe the same device for the same container")
+      end if
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("canDecodeAudioInContainer()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("omits the Container parameter entirely when the Roku container name is empty")
+    function _()
+      ' Passing an unknown Container makes the API answer false for every codec, which is
+      ' indistinguishable from a real no — so the bare question must send no Container.
+      seen = {}
+      di = {
+        seen: seen,
+        CanDecodeAudio: function(params as object) as object
+          m.seen.hadContainer = params.DoesExist("Container")
+          return { Result: true }
+        end function
+      }
+
+      m.assertTrue(canDecodeAudioInContainer(di, "aac", ""))
+      m.assertFalse(seen.hadContainer, "an empty Roku container must send NO Container parameter")
+
+      canDecodeAudioInContainer(di, "aac", "mp4")
+      m.assertTrue(seen.hadContainer, "a named Roku container must send the Container parameter")
+    end function
+
+    @it("translates the Jellyfin codec name to the Roku one before probing")
+    function _()
+      seen = {}
+      di = {
+        seen: seen,
+        CanDecodeAudio: function(params as object) as object
+          m.seen.codec = params.Codec
+          return { Result: true }
+        end function
+      }
+
+      canDecodeAudioInContainer(di, "truehd", "")
+      m.assertEqual(seen.codec, "mat", "truehd must be probed under Roku's name")
+    end function
+
+    @it("keeps mat out of every container row, and sends no probe to decide it")
+    function _()
+      ' Two separate reasons, and the second is the load-bearing one.
+      '
+      ' The probe cannot answer: Roku returns { container: ["mat"], result: false,
+      ' updated: "container" } for mat + ANY container, because it wants Container to
+      ' BE "mat" — so that false is a rejected question, not a real "no".
+      '
+      ' And truehd must stay OUT of the container rows regardless. Falling back to the
+      ' bare probe here is the obvious-looking repair (the video mkv row does exactly
+      ' that, so the audio row looks like it under-claims truehd) and it ships a HANG:
+      ' measured on a Roku Ultra `4850X` with a TrueHD-capable soundbar, a 6ch TrueHD
+      ' stream in .mka reaches buffering with audioFormat=mat and never reaches
+      ' playing — 45 s, under streamFormat mkv / mka / unset alike — while a
+      ' control holding DTS in `mka` played at 0.5 s in the same run.
+      called = { count: 0 }
+      di = {
+        called: called,
+        CanDecodeAudio: function(params as object) as object
+          m.called.count = m.called.count + 1
+          return { Result: true }
+        end function
+      }
+
+      m.assertFalse(canDecodeAudioInContainer(di, "truehd", "mkv"), "truehd must never reach a container row — advertising it hangs playback in buffering")
+      m.assertEqual(called.count, 0, "no probe should be sent at all — a false from the API here is not a real 'no'")
+
+      m.assertTrue(canDecodeAudioInContainer(di, "truehd", ""), "the bare probe IS meaningful and must still run")
+      m.assertEqual(called.count, 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("dropConditionsUnevaluableOnAudioFiles() - the HTTP 400 guard")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("removes AudioProfile from a Type:'Audio' profile")
+    function _()
+      ' Jellyfin's ConditionProcessor.IsAudioConditionSatisfied THROWS on AudioProfile,
+      ' and the API turns that into a 400 for the whole PlaybackInfo request.
+      profiles = [{
+        "Type": "Audio",
+        "Codec": "aac",
+        "Conditions": [
+          { "Condition": "NotEquals", "Property": "AudioProfile", "Value": "Main", "IsRequired": true },
+          { "Condition": "LessThanEqual", "Property": "AudioChannels", "Value": "2", "IsRequired": true }
+        ]
+      }]
+
+      result = dropConditionsUnevaluableOnAudioFiles(profiles)
+
+      m.assertArrayCount(result[0].Conditions, 1)
+      m.assertEqual(result[0].Conditions[0].Property, "AudioChannels")
+    end function
+
+    @it("leaves AudioProfile intact on a Type:'VideoAudio' profile")
+    function _()
+      ' That property IS evaluable there (IsVideoAudioConditionSatisfied), and it is
+      ' the condition that keeps AAC Main / HE-AAC video audio off the direct-play path.
+      profiles = [{
+        "Type": "VideoAudio",
+        "Codec": "aac",
+        "Conditions": [
+          { "Condition": "NotEquals", "Property": "AudioProfile", "Value": "HE-AAC", "IsRequired": true },
+          { "Condition": "LessThanEqual", "Property": "AudioChannels", "Value": "2", "IsRequired": true }
+        ]
+      }]
+
+      result = dropConditionsUnevaluableOnAudioFiles(profiles)
+
+      m.assertArrayCount(result[0].Conditions, 2)
+      m.assertEqual(result[0].Conditions[0].Property, "AudioProfile")
+    end function
+
+    @it("keeps every property Jellyfin CAN evaluate on an audio file")
+    function _()
+      conditions = []
+      for each prop in audioFileConditionProperties()
+        conditions.push({ "Condition": "LessThanEqual", "Property": prop, "Value": "1", "IsRequired": true })
+      end for
+      profiles = [{ "Type": "Audio", "Codec": "flac", "Conditions": conditions }]
+
+      result = dropConditionsUnevaluableOnAudioFiles(profiles)
+
+      m.assertArrayCount(result[0].Conditions, audioFileConditionProperties().count())
+    end function
+
+    @it("strips an unknown property, so a condition added later cannot reintroduce the 400")
+    function _()
+      profiles = [{
+        "Type": "Audio",
+        "Codec": "flac",
+        "Conditions": [
+          { "Condition": "Equals", "Property": "VideoRangeType", "Value": "SDR", "IsRequired": true },
+          { "Condition": "LessThanEqual", "Property": "AudioChannels", "Value": "2", "IsRequired": true }
+        ]
+      }]
+
+      result = dropConditionsUnevaluableOnAudioFiles(profiles)
+
+      m.assertArrayCount(result[0].Conditions, 1)
+      m.assertEqual(result[0].Conditions[0].Property, "AudioChannels")
+    end function
+
+    @it("leaves Video and VideoAudio profiles untouched wholesale")
+    function _()
+      profiles = [
+        { "Type": "Video", "Codec": "h264", "Conditions": [{ "Condition": "LessThanEqual", "Property": "VideoLevel", "Value": "42", "IsRequired": false }] },
+        { "Type": "VideoAudio", "Codec": "mp3", "Conditions": [{ "Condition": "LessThanEqual", "Property": "AudioChannels", "Value": "2", "IsRequired": true }] }
+      ]
+
+      result = dropConditionsUnevaluableOnAudioFiles(profiles)
+
+      m.assertArrayCount(result[0].Conditions, 1)
+      m.assertEqual(result[0].Conditions[0].Property, "VideoLevel")
+      m.assertArrayCount(result[1].Conditions, 1)
+    end function
+
+    @it("tolerates a profile with no Conditions key")
+    function _()
+      profiles = [{ "Type": "Audio", "Codec": "flac" }]
+
+      result = dropConditionsUnevaluableOnAudioFiles(profiles)
+
+      m.assertArrayCount(result, 1)
+      m.assertEqual(result[0].Codec, "flac")
+    end function
+
+    @it("getCodecProfiles() emits no AudioProfile condition on any Type:'Audio' profile")
+    function _()
+      ' End-to-end guard on the real builder: this is the exact shape that returned
+      ' HTTP 400 from a live Jellyfin 10.11.11 for every aac audio file that matched.
+      for each profile in getCodecProfiles()
+        if isValid(profile.Type) and profile.Type = "Audio" and isValid(profile.Conditions)
+          for each condition in profile.Conditions
+            m.assertFalse(condition.Property = "AudioProfile", "Type:'Audio' profile for codec '" + profile.Codec + "' still carries an AudioProfile condition, which makes Jellyfin 400 the whole PlaybackInfo request")
+          end for
+        end if
+      end for
+    end function
+
+  end class
+end namespace

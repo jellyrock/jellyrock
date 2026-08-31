@@ -100,6 +100,7 @@ bitrate
 Bitrate
 bitstream
 Bitstream
+bitstreams
 blockquote
 bool
 Bool
@@ -193,6 +194,7 @@ Dedup
 dedupe
 dedupes
 deduplicated
+demux
 dep
 dep-bump
 Dependabot
@@ -240,6 +242,7 @@ dropdown
 dropdowns
 DTO
 dts
+DTS
 DTS-HD
 dtshd
 durations
@@ -250,6 +253,7 @@ eac3
 EAC3
 ECP
 ECP-disabled
+EDID
 editorconfig
 enrichment
 Enrichment
@@ -274,6 +278,7 @@ ffmpeg
 ffmpeg-tagged
 FHD
 filesystem
+flac
 fns
 focusable
 followup
@@ -374,10 +379,13 @@ longinteger
 lookups
 lossy
 lowercased
+lpcm
 LRU
 Luhmann
 Luhmann's
 m3u8
+m4a
+m4b
 macOS
 Makefile
 markdownlint
@@ -386,6 +394,7 @@ Marshalling
 Mbps
 mixin
 Mixin
+mka
 MKV
 mkv
 mp4
@@ -393,6 +402,7 @@ multicast
 multichannel
 multiline
 musicvideo
+muxed
 MVC
 namespace
 namespaced
@@ -421,6 +431,8 @@ Nygard
 Nygard's
 ODC
 ODC-precondition
+oga
+ogg
 onboarding
 OpenAPI
 opencode
@@ -442,6 +454,7 @@ params
 Params
 PascalCase
 passthrough
+pcm
 PD-textlogo
 PDF
 PDFs
@@ -730,12 +743,14 @@ virtualizes
 virtuals
 Vitest
 Vitest's
+vorbis
 vscode
 VSCode
 VTT
 wakeup
 wakeup-signal
 walkthrough
+wav
 Weblate
 WebP
 webp

@@ -382,18 +382,11 @@ function GetDirectPlayProfiles() as object
     end for
   end for
 
-  ' Same list as above minus opus, which Roku cannot play as a standalone audio
-  ' file even where it decodes inside a video container.
-  audioCodecs = ["mp3", "mp2", "pcm", "lpcm", "wav", "ac3", "ac4", "aiff", "wma", "flac", "alac", "aac", "dts", "wmapro", "vorbis", "eac3", "truehd", "dtshd", "mpg123"]
-
-  ' check audio codecs with no container
-  ' translate Jellyfin names to Roku API names for the detection call
-  supportedAudio = []
-  for each audioCodec in audioCodecs
-    if di.CanDecodeAudio({ Codec: jellyfinToRokuCodecName(audioCodec) }).Result
-      supportedAudio.push(audioCodec)
-    end if
-  end for
+  ' The list above serves the standalone-audio profiles too — do NOT re-declare a
+  ' filtered copy here. It used to be re-declared minus opus, on the claim that Roku
+  ' cannot play opus as a standalone audio file. That claim is false (.opus and
+  ' opus-in-ogg both play), and the filtered copy silently cost the audio mkv row a
+  ' codec the video mkv row kept.
 
   ' build return array
   for each container in supportedContainers
@@ -416,11 +409,141 @@ function GetDirectPlayProfiles() as object
     end if
   end for
 
-  directPlayProfiles.push({
-    "Container": supportedAudio.Join(","),
-    "Type": "Audio"
-  })
+  directPlayProfiles.Append(getAudioDirectPlayProfiles(di, audioCodecs))
   return directPlayProfiles
+end function
+
+' Audio-only (standalone music file) direct-play profiles.
+'
+' Jellyfin matches DirectPlayProfile.Container against MediaSource.Container and
+' .AudioCodec against the audio stream's codec — both comma-lists, compared with
+' ContainerHelper.ContainsContainer, where an EMPTY field matches ANY value. So
+' Container must carry CONTAINER names; a codec name only ever matches by
+' coincidence, which is what "mp3" and "flac" do.
+'
+' Roku is the other half of the mismatch: CanDecodeAudio takes a ROKU container
+' name, and Roku's vocabulary is not Jellyfin's. An .m4a / .m4b is an MP4
+' container, but Roku does not recognise the strings "m4a" or "m4b" at all — every
+' codec answers false for them, while the same codec answers true for "mp4". So the
+' capability is PROBED under the Roku name and ADVERTISED under the Jellyfin ones.
+function getAudioDirectPlayProfiles(di as object, audioCodecs as object) as object
+  ' Each row is one CONTAINER the server may report for a standalone audio file.
+  '
+  '   jellyfin — the Container string(s) to advertise. MEASURED against a live 10.11.11
+  '              library, from the /PlaybackInfo MediaSource, which is the string the
+  '              server actually matches on. Do NOT read this off /Items?Fields=MediaSources
+  '              — that reports a SHORTER value ("m4a", "mov") and designing against it is
+  '              a trap. What PlaybackInfo reports: an .mka is "mkv" (not "mka"), .oga and
+  '              .opus are BOTH "ogg", and every mp4-family audio file — .m4a and .m4b
+  '              alike — is the full ffprobe list "mov,mp4,m4a,3gp,3g2,mj2". Since
+  '              ContainerHelper splits BOTH sides on commas, "m4a" alone matches .m4b too.
+  '   roku     — the container name to probe CanDecodeAudio with. Roku's vocabulary is
+  '              not Jellyfin's: it does not recognise "m4a"/"m4b"/"aac"/"aiff" at all
+  '              (every codec answers false), so those probe under "mp4" or, where Roku
+  '              has no container name for the format, with no Container at all ("").
+  '   probe    — codecs to test. Empty means test the whole audioCodecs list.
+  '   bounded  — true emits AudioCodec = the codecs that passed. False emits NO
+  '              AudioCodec, so any codec in that container matches.
+  '
+  ' Bounded is the safer default for a NEW container, but it is WRONG where Jellyfin
+  ' reports a codec name finer than the one Roku probes: a .wav carries "pcm_s16le"
+  ' and an .aiff "pcm_s16be", neither of which equals the "pcm" we can probe, so an
+  ' AudioCodec list would never match. mp3 and flac stay unbounded for a different
+  ' reason — they already shipped that way, and bounding them would newly transcode an
+  ' "mp1" stream inside an .mp3, which direct-plays via Roku's mpg123 decoder.
+  audioContainers = [
+    { jellyfin: "mp3", roku: "mp3", probe: [], bounded: false },
+    { jellyfin: "flac", roku: "flac", probe: [], bounded: false },
+    { jellyfin: "wav", roku: "wav", probe: ["pcm", "lpcm"], bounded: false },
+    { jellyfin: "aiff", roku: "", probe: ["pcm"], bounded: false },
+    { jellyfin: "aac", roku: "", probe: ["aac"], bounded: true },
+    { jellyfin: "m4a,m4b", roku: "mp4", probe: ["aac", "alac"], bounded: true },
+    { jellyfin: "ogg", roku: "ogg", probe: ["vorbis", "opus", "flac"], bounded: true },
+    { jellyfin: "mkv", roku: "mkv", probe: [], bounded: true },
+    ' Elementary surround bitstreams, where the container name IS the codec name —
+    ' the same shape as mp3 and flac, which is why the old joined-codec string
+    ' covered these by accident on a surround-capable device. A .ac3 reports "ac3"
+    ' and a .eac3 "eac3"; a .ec3 also resolves to "eac3", so one token covers both.
+    '
+    ' These probe BARE (roku: ""), because Roku has no container name for an
+    ' elementary bitstream. Bare is also the honest question here — "can this device
+    ' put ac3 out at all" is exactly the capability that makes the file playable —
+    ' and it gates per device: false on a Stick 4K in Stereo out, true on an Ultra
+    ' with a surround soundbar.
+    '
+    ' TWO SURROUND FORMATS ARE DELIBERATELY ABSENT, and neither can be added by
+    ' relaxing the probe:
+    '
+    '   dts    — CanDecodeAudio says yes and Roku really can decode DTS, but its
+    '            Audio node cannot DEMUX a raw DTS elementary stream: a .dts errors
+    '            -5 "malformed data" under every streamFormat, while the IDENTICAL
+    '            bitstream muxed into .mka plays. So dts belongs in the mkv row (it
+    '            is there) and must NOT get a container row of its own.
+    '   truehd — advertising it HANGS playback. TrueHD in .mka IS indexed
+    '            (container "mkv", codec "truehd"), so it is matchable, but on an
+    '            Ultra `4850X` it sits in buffering with audioFormat=mat and never
+    '            reaches playing — 45 s, streamFormat mkv / mka / unset alike, while
+    '            a control holding DTS in `mka` played at 0.5 s in the same run. A raw .thd separately
+    '            cannot be matched (Jellyfin does not index one at all), but
+    '            that covers only .thd — the hang is the reason that reaches .mka.
+    '            canDecodeAudioInContainer() enforces this; see the note there.
+    { jellyfin: "ac3", roku: "", probe: ["ac3"], bounded: true },
+    { jellyfin: "eac3", roku: "", probe: ["eac3"], bounded: true }
+  ]
+
+  profiles = []
+  for each entry in audioContainers
+    codecsToTest = entry.probe
+    if codecsToTest.count() = 0 then codecsToTest = audioCodecs
+
+    decodable = []
+    for each audioCodec in codecsToTest
+      if canDecodeAudioInContainer(di, audioCodec, entry.roku)
+        decodable.push(audioCodec)
+      end if
+    end for
+
+    if decodable.count() > 0
+      profile = { "Container": entry.jellyfin, "Type": "Audio" }
+      if entry.bounded then profile.AddReplace("AudioCodec", decodable.Join(","))
+      profiles.push(profile)
+    end if
+  end for
+
+  return profiles
+end function
+
+' CanDecodeAudio with an OPTIONAL container. An empty container asks the bare
+' question, which is the only way to probe a format whose container name Roku does
+' not recognise (elementary AAC, AIFF) — passing an unknown Container string makes
+' the API answer false for every codec, which is indistinguishable from a real no.
+function canDecodeAudioInContainer(di as object, jellyfinCodec as string, rokuContainer as string) as boolean
+  rokuCodec = jellyfinToRokuCodecName(jellyfinCodec)
+
+  ' MAT (Jellyfin "truehd") is excluded from every CONTAINER row, deliberately.
+  '
+  ' The probe cannot answer the question: asked for mat in mkv Roku returns
+  '   { container: ["mat"], result: false, updated: "container" }
+  ' — it wants Container to BE "mat", so the false is a rejected question rather than
+  ' a real "no". Measured on a Roku Ultra `4850X` with a TrueHD-capable soundbar: mat is
+  ' true bare and false for mkv / mp4 / ts alike.
+  '
+  ' DO NOT "FIX" THIS BY FALLING BACK TO THE BARE PROBE. That reads as the obvious
+  ' repair — the video mkv row does exactly that, so the audio mkv row looks like it
+  ' is under-claiming truehd by comparison — and it ships a HANG. Measured on that
+  ' same Ultra: a 6ch TrueHD stream muxed into .mka (Jellyfin reports it as
+  ' container "mkv", codec "truehd") reaches state=buffering with audioFormat=mat and
+  ' errorCode 0, and NEVER reaches playing — still buffering after 45 s, under
+  ' streamFormat "mkv", "mka" and unset alike. A control holding DTS in `mka` played at 0.5 s in
+  ' the same run, so it is TrueHD specifically and not the file, the mux or the
+  ' network. Advertising it would trade a working transcode for an endless spinner,
+  ' which is the worst outcome of the three.
+  if rokuCodec = "mat" and rokuContainer <> "" then return false
+
+  if rokuContainer = ""
+    return di.CanDecodeAudio({ Codec: rokuCodec }).Result
+  end if
+  return di.CanDecodeAudio({ Codec: rokuCodec, Container: rokuContainer }).Result
 end function
 
 function getTranscodingProfiles() as object
@@ -807,8 +930,6 @@ function getCodecProfiles() as object
                   }
                 ]
               })
-            else if audioCodec = "opus" and codecType = "Audio"
-              ' Opus audio files not supported by Roku - skip
             else
               codecProfiles.push({
                 "Type": codecType,
@@ -1257,6 +1378,49 @@ function getCodecProfiles() as object
   if apiVersion < 2
     codecProfiles = filterCodecProfileConditions(codecProfiles, ["VideoRangeType"])
   end if
+
+  return dropConditionsUnevaluableOnAudioFiles(codecProfiles)
+end function
+
+' Properties Jellyfin can evaluate in a Type:"Audio" codec-profile condition.
+' Mirrors ConditionProcessor.IsAudioConditionSatisfied's switch, which has no
+' default-allow branch — see dropConditionsUnevaluableOnAudioFiles().
+function audioFileConditionProperties() as object
+  return ["AudioBitrate", "AudioChannels", "AudioSampleRate", "AudioBitDepth"]
+end function
+
+' Strip conditions Jellyfin CANNOT evaluate on a standalone audio file.
+'
+' A Type:"Audio" condition goes through ConditionProcessor.IsAudioConditionSatisfied,
+' whose switch handles only the four properties above and ends in
+'   default: throw new ArgumentException("Unexpected condition on audio file: " + …)
+' There is no default-allow branch. Jellyfin turns that exception into HTTP 400 for
+' the whole /Items/{id}/PlaybackInfo request, so the track does not play AT ALL —
+' strictly worse than the transcode the condition was trying to force.
+'
+' AudioProfile is the one we emit that it cannot take: that property is only
+' evaluable on Type:"VideoAudio" (IsVideoAudioConditionSatisfied), where our aac
+' entry legitimately keeps it. Filtering here rather than at each push site makes
+' this an invariant over the whole list, so a condition added later cannot
+' reintroduce the 400.
+'
+' Verified against jellyfin v10.11.11 ConditionProcessor.cs and reproduced against a
+' live 10.11.11 server: an aac audio file whose container matched a direct-play
+' profile returned 400 until these conditions were dropped.
+function dropConditionsUnevaluableOnAudioFiles(codecProfiles as object) as object
+  allowed = audioFileConditionProperties()
+
+  for each profile in codecProfiles
+    if isValid(profile.Type) and profile.Type = "Audio" and isValid(profile.Conditions)
+      keptConditions = []
+      for each condition in profile.Conditions
+        if not isValid(condition.Property) or arrayHasValue(allowed, condition.Property)
+          keptConditions.push(condition)
+        end if
+      end for
+      profile.Conditions = keptConditions
+    end if
+  end for
 
   return codecProfiles
 end function
