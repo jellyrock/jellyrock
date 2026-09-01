@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-08-31
+last-updated: 2026-09-01
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-09-01 — Migrate the playback error dialog onto `JRDialog` and make it diagnostic
 - 2026-08-31 — fix(playback): Direct-play music instead of transcoding it
 - 2026-08-30 — Audio direct play now covers `wav`, `aiff`, elementary `.aac`, `ogg` (vorbis/opus/flac, covering `.ogg` / `.oga` / `.opus`) and `mka`, each gated on a real `CanDecodeAudio` probe and verified end to end at `PlayMethod=DirectPlay` on a Streaming Stick 4K; closes the followup the m4a fix opened.
 - 2026-08-29 — feat: rebuild the playback-info report as a `source → target` readout
@@ -58,11 +59,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-08-19 — ci(rta): Add `measure:report`, the screen × tier coverage matrix
 - 2026-08-19 — ci(rta): Make the overhang escape recoverable and gate `waitHome` on login
 - 2026-08-18 — ci(rta): Add `measure:calibrate`, the ODC calibration harness
-- 2026-08-17 — ci(rta): Have the readiness ledger measure its own footprint
-- 2026-08-17 — **A multi-step followup can record that ONE step shipped**, closing the "no sanctioned way" followup. `/log followup --replace=<substring>` revises one named bullet in place instead of appending, so an entry listing ordered steps no longer has to choose between a `/done` that publishes a shipped-line claiming the whole thing and a raw edit the capture-discipline rule forbids. Exactly one match is required — zero refuses rather than falling back to appending (a silent append is the two-contradicting-bullets state the mode exists to prevent), more than one refuses and asks for a longer substring. It revises and never closes: the bullet stays under Open followups and nothing reaches Recently shipped. It was dogfooded on the ODC calibration entry, which is what surfaced the gap twice — once on step 1 (`fix/overhang-precondition-and-sampling-loop`) and again on step 2 (ADR 0030).
-- 2026-08-17 — fix: drop redundant am/pm from "Ends at" in `ItemDetails` and the OSD
-- 2026-08-17 — fix(overhang): stop long usernames rendering as a bare `...` in `JRDropdown`
-- 2026-08-17 — ci(rta): Give `measure:devices` a `--sign-in` mode
 
 ## Open followups
 
