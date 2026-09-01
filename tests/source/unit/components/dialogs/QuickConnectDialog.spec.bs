@@ -154,6 +154,7 @@ namespace tests
       m.assertTrue(result.cancelled)
       m.assertFalse(result.confirmed)
       m.assertEqual(result.buttonIndex, -1)
+      m.assertTrue(result.externallyCancelled)
       m.assertInvalid(m.dialog.getParent())
     end function
 

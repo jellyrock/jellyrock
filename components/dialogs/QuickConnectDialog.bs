@@ -218,22 +218,23 @@ end sub
 ' the user backing out — so there is no index to pass: approval arrives at the
 ' OWNER from the server, which closes this dialog with abandonDialog() rather
 ' than through here.
-sub resolveDialog()
+sub resolveDialog(externallyCancelled = false as boolean)
   if m.resolved then return
   m.resolved = true
 
   ' index -1 = cancelled, and there is no confirm index. The empty `buttons`
   ' array is honest rather than lazy: buttonText is only ever read for a button
   ' the user SELECTED, and no path here selects one.
-  m.top.result = buttonDialogResult(-1, -1, [])
+  m.top.result = buttonDialogResult(-1, -1, [], externallyCancelled)
   closeDialog()
 end sub
 
 ' Cancel from OUTSIDE — cancelOpenDialog() and presentOverlayDialog's supersede.
 ' Routed through resolveDialog so the once-only guard and the standard cancelled
-' result both apply.
+' result both apply. The result records that it came from code — see
+' JRDialog.cancelDialog.
 sub cancelDialog()
-  resolveDialog()
+  resolveDialog(true)
 end sub
 
 ' Dismiss this overlay: appended directly to the scene by dialogs.bs, so closing

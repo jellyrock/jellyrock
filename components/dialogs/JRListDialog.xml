@@ -48,7 +48,8 @@
          them made a focus fallback claim row 0 was playing. -->
     <field id="selectedIndex" type="integer" value="-1" />
     <!-- Set exactly once when the dialog resolves, then the dialog closes itself.
-         Shape: { cancelled, confirmed, buttonIndex, buttonText, optionIndex, value } -->
+         Shape: { cancelled, confirmed, buttonIndex, buttonText, optionIndex, value,
+         externallyCancelled } -->
     <field id="result" type="assocarray" alwaysNotify="true" />
     <field id="returnFocusTo" type="node" />
     <!-- Cancel this dialog from OUTSIDE (source/utils/dialogs.bs cancelOpenDialog).

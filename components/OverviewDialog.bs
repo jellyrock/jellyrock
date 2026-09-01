@@ -653,8 +653,11 @@ end sub
 
 ' Cancel this dialog from OUTSIDE — see cancelOpenDialog() in source/utils/dialogs.bs.
 ' This dialog is read-only and has no `result` field, so there is nothing to
-' deliver: cancelling it is exactly closing it.
+' deliver: cancelling it is exactly closing it — but WHO closed it is still worth
+' recording, because an owner that acts on `closed` must not act on a close the
+' user did not make. Set before closeDialog(), which writes `closed` last.
 sub cancelDialog()
+  m.top.externallyCancelled = true
   closeDialog()
 end sub
 

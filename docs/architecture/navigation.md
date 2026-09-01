@@ -13,7 +13,7 @@ related-files:
   - source/utils/dialogs.bs
   - source/replayRoute.bs
   - source/loginRouter.bs
-last-reviewed: 2026-08-31
+last-reviewed: 2026-09-01
 ---
 
 # Navigation (sgRouter)
@@ -328,7 +328,10 @@ the one-overlay invariant below.
 From a component, pass `onResult` (a function name in your scope) and the helper wires the
 scoped observer. From main-thread code, omit it and observe with your message port. The
 result shape is identical either way:
-`{ cancelled, confirmed, buttonIndex, buttonText, optionIndex, value }`.
+`{ cancelled, confirmed, buttonIndex, buttonText, optionIndex, value, externallyCancelled }`.
+`externallyCancelled` distinguishes a close made by code — `cancelOpenDialog`, or
+`presentOverlayDialog` superseding an incumbent — from the user pressing Back, which
+`cancelled` deliberately cannot. Only a handler that ACTS on its result needs it.
 
 Overlay dialogs are appended to the **scene**, not to the opening screen, so they outlive a
 routed view that is destroyed while one is open — a screen that opens a dialog is

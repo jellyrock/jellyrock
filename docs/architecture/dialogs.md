@@ -18,7 +18,7 @@ related-files:
   - source/utils/dialogKeys.bs
   - source/utils/dialogResult.bs
   - source/utils/dialogNarration.bs
-last-reviewed: 2026-08-31
+last-reviewed: 2026-09-01
 ---
 
 # The dialog family
@@ -236,10 +236,18 @@ Four rules that bite:
   calls `VideoPlayerView`'s `abandonErrorDialog()` before `cancelOpenDialog()`, reaching
   into the child through an `<interface>` `<function>` because that is the only way to call
   a child component's method in Scene Graph — but nothing about the hazard is
-  playback-specific. Note the same reasoning does **not** yet cover being *superseded* by a
-  newly presented overlay, which routes through the same cancel from a caller that cannot
-  know to abandon first: see
-  [`playback-error-dialog-dismissed-before-it-is-read`](./tech-debt.md#playback-error-dialog-dismissed-before-it-is-read).
+  playback-specific.
+- **Being *superseded* is the case abandoning cannot cover, so read
+  `result.externallyCancelled`.** `presentOverlayDialog` cancels the incumbent through the
+  same path, from a caller that cannot know it should abandon someone else's dialog first —
+  so ordering has nothing to work with. The result therefore records *who* closed the
+  dialog: `externallyCancelled` is true for `cancelOpenDialog` and for a supersede, false
+  for every user resolution including Back. An acting handler returns early on it; the
+  reading handlers never look. `OverviewDialog` has no `result` at all, so it carries the
+  same signal on a field of its own, set before `closed`. `VideoPlayerView`'s two
+  playback-error handlers are the reference for both mechanisms. The keyboard dialog cannot
+  report it — Roku's modal `close` reads the same whether the user or code wrote it — which
+  is a reason not to build an acting handler on one.
 
 ## Spacing, color and border weight
 

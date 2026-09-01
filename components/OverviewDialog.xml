@@ -66,6 +66,15 @@
          never fires. Node's observable fields are id / focusable / focusedChild /
          change, and none of them says "I was removed". -->
     <field id="closed" type="boolean" value="false" alwaysNotify="true" />
+    <!-- Whether that close came from CODE rather than from the user. Set before
+         `closed`, so a `closed` observer can always read it.
+         This dialog has no `result`, so it cannot carry the family's
+         externallyCancelled key (source/utils/dialogResult.bs) — same question,
+         second mechanism. It matters for the same reason: an owner whose `closed`
+         handler ACTS (VideoPlayerView exits the player when the playback-error
+         report closes) must not fire that action because presentOverlayDialog
+         superseded this dialog to put a cast message on screen. -->
+    <field id="externallyCancelled" type="boolean" value="false" />
     <!-- Cancel this dialog from OUTSIDE (source/utils/dialogs.bs cancelOpenDialog).
          This dialog has no result to deliver, so cancelling is just closing. -->
     <function name="cancelDialog" />

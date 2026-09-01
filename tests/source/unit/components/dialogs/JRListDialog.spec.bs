@@ -306,6 +306,20 @@ namespace tests
       m.assertInvalid(m.dialog.getParent())
     end function
 
+    ' Indistinguishable in what it delivers, not in where it came from — see
+    ' JRDialog's matching test and source/utils/dialogResult.bs.
+    @it("records that the close came from code")
+    function _()
+      scene = m.top.getScene()
+      m.dialog.title = "Select audio"
+      m.dialog.items = ["English 5.1", "Spanish"]
+      scene.appendChild(m.dialog)
+
+      m.dialog.callFunc("cancelDialog")
+
+      m.assertTrue(m.dialog.result.externallyCancelled)
+    end function
+
   end class
 
 end namespace

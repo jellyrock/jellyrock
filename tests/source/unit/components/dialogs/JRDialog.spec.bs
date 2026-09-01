@@ -187,6 +187,27 @@ namespace tests
       m.assertInvalid(m.dialog.getParent())
     end function
 
+    ' Indistinguishable in what it DELIVERS, not in where it came from. A handler
+    ' that ACTS on its result (VideoPlayerView's playback-error alert leaves the
+    ' play route) must be able to decline a close the user did not make, or
+    ' presentOverlayDialog's supersede fires that action from inside the mount of
+    ' the dialog replacing it.
+    ' Only the cancelDialog() path is reachable from a spec — onKeyEvent is not in
+    ' the <interface>, so a callFunc to it would silently do nothing. The
+    ' user-resolution side (every other route leaves the key false) is gated
+    ' where it is reachable, on the pure builders in dialogResult.spec.bs.
+    @it("records that the close came from code")
+    function _()
+      scene = m.top.getScene()
+      m.dialog.buttons = ["Cancel", "Delete"]
+      scene.appendChild(m.dialog)
+
+      m.dialog.callFunc("cancelDialog")
+
+      m.assertTrue(m.dialog.result.externallyCancelled)
+    end function
+
+
     @it("is once-only, like every other route out of the dialog")
     function _()
       scene = m.top.getScene()
