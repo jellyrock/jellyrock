@@ -781,8 +781,7 @@ end sub
 ' `serverMessage` is a message the SERVER already explained in words (the
 ' LoadVideoContentTask failures); when it is empty the cause is derived from the
 ' Video node's own errorCode. Either way the diagnostics come off the node, so a
-' failure that never reached the player simply has fewer rows — and no [Details]
-' button at all rather than an empty one.
+' failure that never reached the player simply has fewer rows.
 sub showPlaybackErrorDialog(serverMessage = "" as string)
   errorCode = 0
   if isValid(m.top.errorCode) then errorCode = m.top.errorCode
@@ -790,30 +789,30 @@ sub showPlaybackErrorDialog(serverMessage = "" as string)
 
   m.playbackErrorCauseText = playbackErrorCause(errorCode, serverMessage, translate(translationKeys.ErrorDuringPlayback))
 
-  buttons = [translate(translationKeys.ButtonOk)]
+  ' Built ONCE and passed to both calls: it reads m.global and walks the cached
+  ' playback info, and the guard and the readout must agree about what they saw.
+  context = playbackErrorContext()
+
+  detailsButton = ""
   m.playbackErrorDetailSections = invalid
-  if hasPlaybackErrorDetails(errorCode, errorInfo, playbackErrorContext())
-    m.playbackErrorDetailSections = playbackErrorSections(errorCode, errorInfo, textOrEmpty(m.top.errorMsg), playbackErrorContext())
+  if hasPlaybackErrorDetails(errorCode, errorInfo, context)
+    m.playbackErrorDetailSections = playbackErrorSections(errorCode, errorInfo, textOrEmpty(m.top.errorMsg), context)
     if m.playbackErrorDetailSections.count() > 0
-      buttons.push(translate(translationKeys.ButtonDetails))
+      detailsButton = translate(translationKeys.ButtonDetails)
     else
       m.playbackErrorDetailSections = invalid
     end if
   end if
 
-  ' The compact code line rides in the SUBHEADING slot rather than being glued to
-  ' the message: the family already defines that slot as a lead line, and keeping
-  ' the two separate means the cause sentence stays the thing being read.
+  ' The code line goes UNDER the cause, separated by a blank line, not in the
+  ' subheading slot: that slot is defined as a lead line ABOVE the body, and
+  ' "Media error (-5)" qualifies the sentence rather than introducing it. The
+  ' cause stays the thing being read; the code is the part a bug report quotes.
   message = m.playbackErrorCauseText
   codeLabel = playbackErrorCodeLabel(errorCode)
   if codeLabel <> "" then message = message + Chr(10) + Chr(10) + codeLabel
 
-  dialog = createObject("roSGNode", "JRDialog")
-  dialog.title = translate(translationKeys.ErrorDuringPlayback)
-  dialog.message = message
-  dialog.defaultButtonIndex = 0 ' OK — never open focused on Details
-  dialog.buttons = buttons
-  m.playbackErrorDialog = presentOverlayDialog(dialog, "onPlaybackErrorDialogResult")
+  m.playbackErrorDialog = showAlertDialog(translate(translationKeys.ErrorDuringPlayback), message, "onPlaybackErrorDialogResult", "", detailsButton)
 end sub
 
 ' What we know about WHAT was playing, for the Details rows. Read from the
@@ -825,14 +824,12 @@ function playbackErrorContext() as object
 
   container = textOrEmpty(m.top.container)
 
-  ' The SAME MediaSource the playback report reads, so the two surfaces can never
-  ' describe the same stream differently. Codec extraction lives in the pure
-  ' module — this only hands over the source and which tracks were selected,
-  ' because WHICH audio track was playing is the whole point on a multi-track
-  ' file (a TrueHD track is rarely stream 0).
-  mediaSource = invalid
-  cached = m.top.cachedPlaybackInfo
-  if isValid(cached) and isValidAndNotEmpty(cached.MediaSources) then mediaSource = cached.MediaSources[0]
+  ' The SAME MediaSource the playback report reads — one helper, so the two
+  ' surfaces can never describe the same stream differently. Codec extraction
+  ' lives in the pure module; this only hands over the source and which tracks
+  ' were selected, because WHICH audio track was playing is the whole point on a
+  ' multi-track file (a TrueHD track is rarely stream 0).
+  mediaSource = primaryMediaSource(m.top.cachedPlaybackInfo)
 
   playMethod = ""
   if isValid(m.top.isDirectPlaySupported)
@@ -2104,10 +2101,11 @@ sub onDestroy()
   end if
 
   ' This scope is going away, so the error dialog's result (if it hasn't
-  ' answered yet) has nowhere to be delivered — abandon, not cancel. See
-  ' abandonDialog in source/utils/dialogs.bs.
-  abandonDialog(m.playbackErrorDialog)
-  m.playbackErrorDialog = invalid
+  ' answered yet) has nowhere to be delivered — abandon, not cancel. The SAME
+  ' call teardown uses, not a partial copy of it: whichever tier is in the slot,
+  ' the Details report's `closed` observer has to come off before the node is
+  ' dropped, and one entry point is how the two paths stay identical.
+  abandonErrorDialog()
 
   ' Stop and release timers
   if isValid(m.playbackTimer)

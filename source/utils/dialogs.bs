@@ -30,19 +30,42 @@ import "pkg:/source/utils/dialogReveal.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
-' Simple message + OK button. result.buttonIndex = 0 (OK) or cancelled on back.
+' Simple message + OK button, plus an OPTIONAL secondary action beside it.
+'
+' result.buttonIndex is 0 for OK, 1 for the secondary action, and the result is
+' `cancelled` on back. A caller with no secondary state to unwind should treat
+' cancelled exactly as it treats OK — back on a one-button alert has nothing to
+' cancel back to.
 '
 ' `subheading` is an optional BOLD lead line above the message, for a message
 ' that genuinely arrives in two parts — a heading and its text. Use it only when
 ' the two parts come from different places (the cast notice: JellyRock owns the
 ' provenance title, the sender owns the heading and the body). A message you
 ' wrote yourself belongs in one string.
-function showAlertDialog(title as string, message as string, onResult = "" as string, subheading = "" as string) as object
+'
+' `secondaryButtonText` adds ONE extra button to the right of OK, for an action
+' that does not leave the alert's subject — "Details" on an error, not a second
+' answer to a question. Two answers to a question are showConfirmDialog.
+'
+' NOT showChoiceDialog, which is the near miss a reader will reach for: it falls
+' back to JRListDialog when the labels are wide (long translations), which would
+' turn an error message into a scrollable list, and its contract says NOTHING is
+' current yet — wrong for an alert whose primary action is already the default.
+function showAlertDialog(title as string, message as string, onResult = "" as string, subheading = "" as string, secondaryButtonText = "" as string) as object
   dialog = createObject("roSGNode", "JRDialog")
   dialog.title = title
   if subheading <> "" then dialog.subheading = subheading
   dialog.message = message
-  dialog.buttons = [translate(translationKeys.ButtonOk)]
+
+  buttons = [translate(translationKeys.ButtonOk)]
+  if secondaryButtonText <> "" then buttons.push(secondaryButtonText)
+
+  ' OK is focused whether or not a secondary exists. The secondary is an EXTRA,
+  ' never the thing a reflexive press should land on — and setting this before
+  ' `buttons` matters, because assigning `buttons` is what builds and focuses the
+  ' row (see JRDialog.onButtonsChanged).
+  dialog.defaultButtonIndex = 0
+  dialog.buttons = buttons
   return presentOverlayDialog(dialog, onResult)
 end function
 
@@ -303,6 +326,21 @@ function presentOverlayDialog(dialog as object, onResult as string, returnFocusT
     ' the user typed. (It was THREE: QuickConnectDialog and then the player's
     ' error dialog both moved onto this overlay channel and joined the
     ' supersede.) See docs/architecture/tech-debt.md#dialog-channels-unarbitrated.
+    '
+    ' ⚠️ ONE INCUMBENT IS NOT SAFE TO SUPERSEDE, and it is on THIS channel now:
+    ' VideoPlayerView's playback-error alert NAVIGATES on close. The blanket
+    ' safety argument above ("all ten result.confirmed consumers gate
+    ' positively") covers dialogs whose handler READS a value; it does not cover
+    ' one whose handler ACTS. Superseding that alert delivers a cancelled result
+    ' its handler cannot distinguish from Back, so it fires exitPlayback() — a
+    ' goBack out from under the dialog this call is in the middle of mounting.
+    ' The alert used to live on the modal channel, where this line could not
+    ' reach it; the phase-4 migration moved it here, which is what made the
+    ' hazard reachable rather than removing it. Do NOT "fix" that by skipping
+    ' the supersede — the one-overlay invariant is what stops findNode resolving
+    ' to a corpse. The fix belongs in the alert's owner, which has to stop
+    ' navigating from inside its result handler. Tracked as
+    ' docs/architecture/tech-debt.md#playback-error-dialog-dismissed-before-it-is-read.
     incumbent.callFunc("cancelDialog")
   end if
 

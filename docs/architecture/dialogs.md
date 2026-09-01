@@ -18,7 +18,7 @@ related-files:
   - source/utils/dialogKeys.bs
   - source/utils/dialogResult.bs
   - source/utils/dialogNarration.bs
-last-reviewed: 2026-08-25
+last-reviewed: 2026-08-31
 ---
 
 # The dialog family
@@ -213,7 +213,7 @@ file-scoped constant — two constants with no compiler relationship will drift.
 Full helper table and the result contract:
 [`navigation.md`](./navigation.md#the-standard-dialog-system-sourceutilsdialogsbs).
 
-Three rules that bite:
+Four rules that bite:
 
 - **Set every text field BEFORE presenting, never after.** `renderTracking` fires
   once on the none→full transition and never again, so a dialog never re-lays-out
@@ -225,6 +225,21 @@ Three rules that bite:
   nothing (right in `onDestroy` — the receiving scope is dying); `cancelOpenDialog`
   delivers a canceled result (right when a third party needs the screen clear and
   the owner is alive holding state).
+- **A result handler that ACTS makes teardown order load-bearing.** Ask one question of
+  your own dialog: *does my result handler do anything besides read a value?* If it
+  navigates, or mutates state, or starts work — then its owner must **abandon** it before
+  anything else can `cancelOpenDialog()`. Cancel is deliberately indistinguishable from
+  the user pressing `Back` (see `JRDialog.cancelDialog`), so a third party clearing the
+  screen fires your action, and it fires from inside *their* flow. Abandoning first drops
+  the dialog and its observer, so by the time the cancel runs there is nothing left to
+  cancel. The player is the first surface to hit this — `PlayerHostView.onPlayerStateChange`
+  calls `VideoPlayerView`'s `abandonErrorDialog()` before `cancelOpenDialog()`, reaching
+  into the child through an `<interface>` `<function>` because that is the only way to call
+  a child component's method in Scene Graph — but nothing about the hazard is
+  playback-specific. Note the same reasoning does **not** yet cover being *superseded* by a
+  newly presented overlay, which routes through the same cancel from a caller that cannot
+  know to abandon first: see
+  [`playback-error-dialog-dismissed-before-it-is-read`](./tech-debt.md#playback-error-dialog-dismissed-before-it-is-read).
 
 ## Spacing, color and border weight
 

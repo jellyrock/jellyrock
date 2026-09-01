@@ -88,9 +88,9 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("is false when nothing at all was captured")
-    ' This is what keeps a [Details] button off the three failure paths that
-    ' never reach the player — a button promising help then opening a blank
-    ' panel is worse than no button.
+    ' A button promising help then opening a blank panel is worse than no button.
+    ' This is the ONLY state that loses it — not "the paths that never reached the
+    ' player", which normally still know the item and get a thinner panel instead.
     function _()
       m.assertFalse(hasPlaybackErrorDetails(0, invalid, invalid))
       m.assertFalse(hasPlaybackErrorDetails(0, invalid, { itemName: "" }))
@@ -126,14 +126,7 @@ namespace tests
     ' they must reach the readout unaltered.
     function _()
       info = { category: "mediaerror", source: "buffer:loop:", dbgmsg: "decoder underflow" }
-      sections = playbackErrorSections(-5, info, "playback failed", invalid)
-
-      values = {}
-      for each section in sections
-        for each row in section.rows
-          values[row.id] = row.value
-        end for
-      end for
+      values = m.rowValues(playbackErrorSections(-5, info, "playback failed", invalid))
 
       m.assertEqual(values.category, "mediaerror")
       m.assertEqual(values.source, "buffer:loop:")
@@ -146,14 +139,7 @@ namespace tests
     ' asking costs a round trip that usually ends the conversation.
     function _()
       context = { itemName: "Blade Runner", appVersion: "2.26.1", deviceModel: "4850X" }
-      sections = playbackErrorSections(0, invalid, "", context)
-
-      values = {}
-      for each section in sections
-        for each row in section.rows
-          values[row.id] = row.value
-        end for
-      end for
+      values = m.rowValues(playbackErrorSections(0, invalid, "", context))
 
       m.assertEqual(values.item, "Blade Runner")
       m.assertEqual(values.appVersion, "2.26.1")

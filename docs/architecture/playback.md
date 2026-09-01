@@ -11,6 +11,7 @@ related-files:
   - source/utils/trackPickerOptions.bs
   - source/utils/playbackInfo.bs
   - source/utils/deviceCapabilities.bs
+  - source/utils/playbackErrorInfo.bs
   - source/utils/playbackReport.bs
   - source/utils/transcodeCause.bs
   - components/video/TrickplayCarousel.bs
@@ -201,6 +202,18 @@ only way to call a child component's method in Scene Graph. Historically this al
 raw Roku `Dialog` on the modal channel whose `wasClosed` observer fired for user dismissals
 and programmatic closes alike — unable to tell them apart, it navigated for both, which is
 exactly the race this ordering retires.
+
+**The rule is general, and lives in the dialog standard, not here.** Any dialog whose result
+handler *acts* rather than merely reading a value has this hazard; the player is simply the
+first surface to hit it. See
+[`dialogs.md`](./dialogs.md#presenting-and-tearing-down) — this section is the worked
+example, that bullet is the rule. What the ordering does **not** yet cover is a supersede:
+`presentOverlayDialog` routes through the same cancel, from a caller that cannot know to
+abandon first, so a cast message or a cross-server deep link arriving while this alert is up
+still fires the exit. Tracked as
+[`playback-error-dialog-dismissed-before-it-is-read`](./tech-debt.md#playback-error-dialog-dismissed-before-it-is-read),
+together with the buffering-stall path that opens this dialog and stops the stream on the
+next line.
 
 **Playback info** (`selectPlaybackInfoPressed`) takes the same route to a different
 member of the family, and the split is deliberate at every step:

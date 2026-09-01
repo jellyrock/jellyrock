@@ -479,9 +479,7 @@ end sub
 ' Everything the pure report builder needs, gathered on the RENDER thread where
 ' an m.global read costs ~2 µs rather than the ~93 µs it cost inside the task.
 function playbackReportInputs(session as dynamic) as object
-  cached = m.view.cachedPlaybackInfo
-  mediaSource = invalid
-  if isValid(cached) and isValidAndNotEmpty(cached.MediaSources) then mediaSource = cached.MediaSources[0]
+  mediaSource = primaryMediaSource(m.view.cachedPlaybackInfo)
 
   ' supportsDolbyVision here is the SAME predicate ItemPostPlaybackInfo uses to
   ' decide whether to inject the DoVi container profile at all

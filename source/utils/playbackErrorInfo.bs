@@ -22,6 +22,19 @@
 ' against rokudev/dev-doc `media-playback-nodes/video.md` @ v2.0 rather than
 ' recalled. Do NOT invent codes here: an unknown code must fall through to the
 ' generic cause, because a wrong-but-confident explanation is worse than none.
+'
+' WHAT IS DELIBERATELY NOT CARRIED. The Video node exposes four error surfaces —
+' `errorCode`, `errorMsg`, `errorStr` and `errorInfo` — and the readout takes the
+' first two plus three fields of the fourth. `errorStr` is left out because it is
+' a COMPOSITE of what we already show: per Roku's reference it packs
+' category_name, error_code, source, the catcher comment and error_string into
+' one string, and `errorInfo` hands the same facts over already separated into
+' rows a reader can scan. Adding it would spend several wrapped lines of a
+' screenshot restating the rows above it. `errorInfo.drmerrcode` is out for a
+' narrower reason: it is meaningful on exactly one code (-6) and a row that is
+' blank on every other failure is the empty-row problem addErrorRow exists to
+' avoid. If a DRM report ever needs it, add it gated on the code, not
+' unconditionally.
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
@@ -96,10 +109,17 @@ end function
 
 ' Is there anything worth putting behind a [Details] button?
 '
-' The dialog asks this to decide whether to render a second button at all. Three
-' of the four failure paths (task failure, buffering stall, no content) reach the
-' dialog with NO Roku error data, and a Details button that opens an empty readout
-' is worse than no button — it promises help and delivers a blank panel.
+' The dialog asks this to decide whether to render a second button at all, and a
+' button that opens an empty readout is worse than no button — it promises help
+' and delivers a blank panel.
+'
+' Three of the four failure paths (task failure, buffering stall, no content)
+' reach the dialog with NO Roku error data, so the code and errorInfo tests below
+' both miss them. They are NOT thereby button-less: the third test catches them
+' whenever the item is known, which it normally is (m.currentItem is set in
+' VideoPlayerView.init, before any of those paths can run). What they get is a
+' thinner panel — item, app version, device — not an empty one. Only a failure we
+' can say nothing at all about loses the button.
 function hasPlaybackErrorDetails(errorCode as integer, errorInfo as object, context as object) as boolean
   if errorCode <> PLAYBACK_ERR_NONE then return true
   if isValid(errorInfo) then return true
@@ -123,7 +143,7 @@ function playbackErrorSections(errorCode as integer, errorInfo as object, errorM
   addErrorRow(failure, "message", translationKeys.LabelPlaybackErrorMessage, errorMessage)
 
   if isValid(errorInfo)
-    ' These four are Roku's own diagnostic fields. They are NOT translated and
+    ' These three are Roku's own diagnostic fields. They are NOT translated and
     ' cannot be — they are verbatim strings from the player. That is acceptable
     ' here precisely because Details is opt-in; it would not be in the body.
     addErrorRow(failure, "category", translationKeys.LabelPlaybackErrorCategory, textOrEmpty(errorInfo.category))
@@ -134,17 +154,17 @@ function playbackErrorSections(errorCode as integer, errorInfo as object, errorM
   if failure.count() > 0
     ' wideLabels: "Debug message" and "Category" are long next to a short value,
     ' and dbgmsg itself can be a full sentence.
-    sections.push({ id: "failure", heading: translate(translationKeys.LabelPlaybackErrorFailure), wideLabels: true, rows: failure })
+    sections.push({ id: "failure", heading: translate(translationKeys.LabelPlaybackErrorSectionFailure), wideLabels: true, rows: failure })
   end if
 
   if isValid(context)
     media = []
     addErrorRow(media, "item", translationKeys.LabelPlaybackErrorItem, textOrEmpty(context.itemName))
     addErrorRow(media, "playMethod", translationKeys.LabelPlaybackErrorPlayMethod, textOrEmpty(context.playMethod))
-    addErrorRow(media, "container", translationKeys.LabelPlaybackErrorContainer, textOrEmpty(context.container))
+    addErrorRow(media, "container", translationKeys.LabelContainer, textOrEmpty(context.container))
     addStreamRows(media, context)
     if media.count() > 0
-      sections.push({ id: "media", heading: translate(translationKeys.LabelPlaybackErrorMedia2), wideLabels: false, rows: media })
+      sections.push({ id: "media", heading: translate(translationKeys.LabelPlaybackErrorSectionMedia), wideLabels: false, rows: media })
     end if
 
     ' Version and model are here because they are the first two things a
@@ -154,7 +174,7 @@ function playbackErrorSections(errorCode as integer, errorInfo as object, errorM
     addErrorRow(env, "appVersion", translationKeys.LabelPlaybackErrorAppVersion, textOrEmpty(context.appVersion))
     addErrorRow(env, "deviceModel", translationKeys.LabelPlaybackErrorDevice, textOrEmpty(context.deviceModel))
     if env.count() > 0
-      sections.push({ id: "env", heading: translate(translationKeys.LabelPlaybackErrorEnvironment), wideLabels: false, rows: env })
+      sections.push({ id: "env", heading: translate(translationKeys.LabelPlaybackErrorSectionApp), wideLabels: false, rows: env })
     end if
   end if
 
