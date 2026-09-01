@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Migrate the playback error dialog onto `JRDialog` and make it diagnostic ([#875](https://github.com/jellyrock/jellyrock/pull/875))
+
 ### Dependencies
 
 - Update softprops/action-gh-release action to v3.0.3 ([#873](https://github.com/jellyrock/jellyrock/pull/873))
