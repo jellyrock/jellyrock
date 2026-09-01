@@ -21,7 +21,7 @@ related-files:
   - components/ItemGrid/LoadVideoContentTask.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-08-31
+last-reviewed: 2026-09-01
 ---
 
 # Video & Audio Playback
@@ -207,13 +207,43 @@ exactly the race this ordering retires.
 handler *acts* rather than merely reading a value has this hazard; the player is simply the
 first surface to hit it. See
 [`dialogs.md`](./dialogs.md#presenting-and-tearing-down) — this section is the worked
-example, that bullet is the rule. What the ordering does **not** yet cover is a supersede:
-`presentOverlayDialog` routes through the same cancel, from a caller that cannot know to
-abandon first, so a cast message or a cross-server deep link arriving while this alert is up
-still fires the exit. Tracked as
-[`playback-error-dialog-dismissed-before-it-is-read`](./tech-debt.md#playback-error-dialog-dismissed-before-it-is-read),
-together with the buffering-stall path that opens this dialog and stops the stream on the
-next line.
+example, that bullet is the rule.
+
+### An error dialog owns the exit
+
+Ordering alone does not cover the stall path, because that path *creates* the very state
+teardown reacts to: `bufferCheck` shows the alert and stops the stream on the next line, with
+nothing claiming the exit. **Which state that stop produces decides whether it bites.**
+Measured on a Roku Ultra (4850X), four runs of a real TrueHD buffering stall, it produced
+`stopped` — which `onPlayerStateChange` ignores outright, so the alert survived and the path
+was already benign. It can produce `finished` instead, and that is not speculation: the
+`isRetrying` guard beside it exists because the DoVi fallback's `stop` did exactly that. On
+that landing the table above runs — abandoning the alert, then advancing the queue — with the
+error unread, and mid-season that reads as "play the next episode".
+
+So `VideoPlayerView` **claims the exit** when it shows an error: `errorDialogOwnsExit` is set
+alongside the dialog and cleared with it, and `onPlayerStateChange` returns early while it is
+set — the same shape as the `isRetrying` check beside it, and the same premise, that a
+`finished` this app caused is not playback ending. The dialog then drives the exit itself
+through `exitFromPlaybackError` → `exitPlayback`, the one path both error tiers share.
+Acknowledging leaves the player rather than advancing the queue: auto-advancing past a
+failure skips content the viewer asked for, and with the server down it walks the rest of the
+season one unread flash at a time. The claim is cheap insurance rather than a fix for a
+reproduced defect — it costs nothing on the `stopped` landing and closes the asymmetry on the
+`finished` one. See
+[`playback-error-dialog-dismissed-before-it-is-read`](./tech-debt.md#playback-error-dialog-dismissed-before-it-is-read)
+for the measurement and what a reproduction would still have to show. Bailing cannot strand the dialog — the dialog's own
+resolution exits, and anything that navigates without it reaches `VideoPlayerView.onDestroy`,
+which abandons it. Row 2 of the table stays as defense in depth for a dialog shown without a
+claim.
+
+A **supersede** is the case ordering genuinely cannot reach: `presentOverlayDialog` cancels
+the incumbent from a caller that cannot know to abandon someone else's dialog first. Both
+error tiers therefore check provenance — `result.externallyCancelled` on the alert, the
+`externallyCancelled` field on the `OverviewDialog` report, which has no result — and decline
+to leave the route on a close the user did not make. The player is left alive and stopped
+behind whatever took the screen; `Back` leaves it. See
+[`dialogs.md`](./dialogs.md#presenting-and-tearing-down) for the contract.
 
 **Playback info** (`selectPlaybackInfoPressed`) takes the same route to a different
 member of the family, and the split is deliberate at every step:

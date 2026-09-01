@@ -737,6 +737,24 @@ end sub
 sub onPlaybackErrorDialogResult()
   result = m.playbackErrorDialog.result
 
+  ' A SUPERSEDE is not a dismissal, and this is the one handler in the app that
+  ' has to care. presentOverlayDialog cancels the incumbent when a cast message
+  ' or the deep-link server prompt needs the screen, and that cancel is shaped
+  ' like the user pressing Back — so without this branch the exit below fired
+  ' from inside the new dialog's mount, popping the player while its
+  ' returnFocusTo was being derived and leaving that dialog able to hand focus
+  ' back to a destroyed node.
+  '
+  ' The player is left alive and stopped rather than exiting later: the user
+  ' dismisses whatever interrupted, finds the failed player, and presses Back.
+  ' Clunky, but every alternative navigates on someone else's schedule. The
+  ' error text is gone with the dialog — a second surface deliberately took the
+  ' screen, and re-presenting over it would just restart the fight.
+  if result.externallyCancelled
+    clearPlaybackErrorState()
+    return
+  end if
+
   m.playbackErrorDialog = invalid
 
   ' [Details] is button 1 when it is offered. It does NOT leave the route: the
@@ -761,7 +779,18 @@ sub showPlaybackErrorDetails()
 end sub
 
 sub onPlaybackErrorDetailsClosed()
-  if isValid(m.playbackErrorDialog) then m.playbackErrorDialog.unobserveFieldScoped("closed")
+  dialog = m.playbackErrorDialog
+  if isValid(dialog) then dialog.unobserveFieldScoped("closed")
+
+  ' Same rule as the alert above, through the second mechanism: OverviewDialog
+  ' has no `result` to carry the family's externallyCancelled key, so it reports
+  ' who closed it on a field of its own. This handler ACTS — it leaves the play
+  ' route — which is exactly the kind that must not fire on a supersede.
+  if isValid(dialog) and dialog.externallyCancelled
+    clearPlaybackErrorState()
+    return
+  end if
+
   m.playbackErrorDialog = invalid
   exitFromPlaybackError()
 end sub
