@@ -512,6 +512,33 @@ namespace tests
       m.assertEqual(mediaNumber([]), 0)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("primaryMediaSource(cachedPlaybackInfo)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' ONE definition, because the playback-info report and the playback-error
+    ' Details readout both describe the same streams. They held identical copies
+    ' of this derivation, which is how two surfaces come to disagree about one
+    ' stream.
+    @it("returns the negotiated source")
+    function _()
+      source = primaryMediaSource({ MediaSources: [{ Id: "abc", Container: "mkv" }] })
+
+      m.assertNotInvalid(source)
+      m.assertEqual(source.Id, "abc")
+    end function
+
+    ' This runs on a FAILURE path — a playback that never reached the player has
+    ' no cached response at all — so every absent shape must return invalid
+    ' rather than fault.
+    @it("is invalid for every shape of missing data")
+    function _()
+      m.assertInvalid(primaryMediaSource(invalid))
+      m.assertInvalid(primaryMediaSource({}))
+      m.assertInvalid(primaryMediaSource({ MediaSources: invalid }))
+      m.assertInvalid(primaryMediaSource({ MediaSources: [] }))
+    end function
+
   end class
 
 end namespace

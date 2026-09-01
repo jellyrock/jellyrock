@@ -368,6 +368,67 @@ namespace tests
       m.assertInvalid(wait(200, port))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("showAlertDialog — the optional secondary action")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The parameter exists because its absence caused a bypass: the playback
+    ' error dialog needed [Details] beside OK, could not say so through the
+    ' helper, and dropped a layer down to presentOverlayDialog to hand-build the
+    ' node — the one call site in the app doing that, and a shape the
+    ' no-hand-rolled-dialog plugin does not catch.
+    '
+    ' SHAPE ONLY. These assert the button row and the focus index; they do not
+    ' assert what pressing a button returns, because driving a press needs
+    ' synthetic key events this suite does not do. buttonDialogResult's index ->
+    ' result mapping is covered in dialogResult.spec.bs.
+    @it("is a single OK button when no secondary is asked for")
+    function _()
+      presented = showAlertDialog("Playback Error", "Something went wrong.")
+
+      m.assertEqual(presented.buttons.count(), 1)
+
+      abandonDialog(presented)
+    end function
+
+    @it("puts the secondary to the RIGHT of OK and leaves OK focused")
+    function _()
+      presented = showAlertDialog("Playback Error", "Something went wrong.", "", "", "Details")
+
+      m.assertEqual(presented.buttons.count(), 2)
+      m.assertEqual(presented.buttons[1], "Details")
+      ' OK is index 0 and stays the focused button: the secondary is an extra,
+      ' never the thing a reflexive press lands on.
+      m.assertEqual(presented.defaultButtonIndex, 0)
+
+      abandonDialog(presented)
+    end function
+
+    ' The GUARD, not the default. A caller that computes the label and comes up
+    ' empty (no details worth showing) passes "" rather than branching, so an
+    ' empty string must produce the one-button dialog rather than a blank second
+    ' button.
+    @it("treats an empty secondary label as no secondary at all")
+    function _()
+      presented = showAlertDialog("Playback Error", "Something went wrong.", "", "", "")
+
+      m.assertEqual(presented.buttons.count(), 1)
+
+      abandonDialog(presented)
+    end function
+
+    ' subheading and the secondary are independent slots — the cast notice uses
+    ' the first, the error dialog uses the second, and nothing should couple them.
+    @it("still honours subheading alongside a secondary action")
+    function _()
+      presented = showAlertDialog("Cast", "Body text.", "", "From the phone", "Details")
+
+      m.assertEqual(presented.subheading, "From the phone")
+      m.assertEqual(presented.buttons.count(), 2)
+
+      abandonDialog(presented)
+    end function
+
   end class
 
 end namespace

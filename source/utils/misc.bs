@@ -936,6 +936,27 @@ function getFirstVideoStream(mediaStreams as object) as dynamic
   return invalid
 end function
 
+' The MediaSource this playback is actually using, off the cached
+' /PlaybackInfo response.
+'
+' ONE definition because two surfaces describe the same streams — the
+' playback-info report (PlayerHostView) and the playback-error Details readout
+' (VideoPlayerView) — and two copies of "which source are we describing" is
+' exactly how they would come to disagree about one stream.
+'
+' MediaSources[0] is correct rather than merely convenient: the app asks the
+' server for ONE source (the selected mediaSourceId), so the response carries
+' the one that was negotiated for this play session, not a menu to pick from.
+'
+' @param {dynamic} cachedPlaybackInfo - the cached ItemPostPlaybackInfo response
+' @return {object} the MediaSource AA, or invalid when nothing is cached
+function primaryMediaSource(cachedPlaybackInfo as dynamic) as dynamic
+  if not isValid(cachedPlaybackInfo) then return invalid
+  if not isValidAndNotEmpty(cachedPlaybackInfo.MediaSources) then return invalid
+
+  return cachedPlaybackInfo.MediaSources[0]
+end function
+
 ' Returns the Jellyfin index of the first audio stream in the streams array
 ' @param {dynamic} streams - Array of media streams from Jellyfin
 ' @returns {integer} - Jellyfin index of first audio stream, or 0 if not found

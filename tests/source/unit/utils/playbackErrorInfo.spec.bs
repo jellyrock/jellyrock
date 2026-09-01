@@ -1,0 +1,232 @@
+namespace tests
+
+  ' The playback error dialog's decision logic, which had NO coverage before —
+  ' the component that owned it (VideoPlayerView) cannot be instantiated in a
+  ' spec (its init() needs a mounted scene, a queue manager and a task), which is
+  ' exactly why this logic was extracted into a pure module rather than left in
+  ' the handler. Every test here is a plain function call.
+  @suite("playbackErrorInfo - cause, code label and detail sections")
+  class PlaybackErrorInfoTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("playbackErrorCause")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a server message WINS over the code mapping")
+    ' The server explained the failure in words we already translate; a device
+    ' code cannot beat that. This is the branch that keeps "No compatible streams
+    ' are available for this item" reaching the user instead of a generic line.
+    function _()
+      m.assertEqual(playbackErrorCause(-5, "No compatible streams."), "No compatible streams.")
+    end function
+
+    @it("IGNORES a message identical to the dialog title")
+    ' The regression that shipped twice: a call site with nothing to say passes
+    ' the title's own key, and the dialog renders its heading as its body. The
+    ' guard lives in this function precisely so no call site can bring it back.
+    function _()
+      title = "Error During Playback"
+      m.assertEqual(playbackErrorCause(-5, title, title), playbackErrorCause(-5, "", title))
+      m.assertNotEqual(playbackErrorCause(-5, title, title), title)
+    end function
+
+    @it("still honours a real message when a title is supplied")
+    ' The guard must not swallow genuine server text just because a title exists.
+    function _()
+      m.assertEqual(playbackErrorCause(-5, "No compatible streams.", "Error During Playback"), "No compatible streams.")
+    end function
+
+    @it("maps each documented Roku errorCode to its own cause")
+    ' Codes per rokudev/dev-doc media-playback-nodes/video.md. Asserted as
+    ' DISTINCT rather than by literal text, so rewording a string does not fail
+    ' the test while collapsing two causes into one still does.
+    function _()
+      network = playbackErrorCause(-1)
+      timeout = playbackErrorCause(-2)
+      media = playbackErrorCause(-5)
+      drm = playbackErrorCause(-6)
+
+      seen = {}
+      for each cause in [network, timeout, media, drm]
+        m.assertNotEmpty(cause)
+        m.assertFalse(seen.doesExist(cause), "two error codes produced the same cause: " + cause)
+        seen[cause] = true
+      end for
+    end function
+
+    @it("falls through to the generic cause for unknown, generic and empty-list codes")
+    ' -3 generic, -4 empty list, 0 no-error and an undocumented code must NOT
+    ' invent an explanation — a confident wrong cause is worse than none.
+    function _()
+      generic = playbackErrorCause(-3)
+      m.assertEqual(playbackErrorCause(-4), generic)
+      m.assertEqual(playbackErrorCause(0), generic)
+      m.assertEqual(playbackErrorCause(-99), generic)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("playbackErrorCodeLabel")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is EMPTY when there is no device-side code")
+    ' A server-explained failure must not grow a "(0)" suffix — the inline label
+    ' exists to classify a device failure, and 0 means there wasn't one.
+    function _()
+      m.assertEqual(playbackErrorCodeLabel(0), "")
+    end function
+
+    @it("names the category and carries the raw number")
+    ' The number is the part a maintainer greps for, so it must survive verbatim.
+    function _()
+      label = playbackErrorCodeLabel(-5)
+      m.assertNotEmpty(label)
+      m.assertTrue(label.instr("-5") >= 0, "code label lost the number: " + label)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("hasPlaybackErrorDetails")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is false when nothing at all was captured")
+    ' A button promising help then opening a blank panel is worse than no button.
+    ' This is the ONLY state that loses it — not "the paths that never reached the
+    ' player", which normally still know the item and get a thinner panel instead.
+    function _()
+      m.assertFalse(hasPlaybackErrorDetails(0, invalid, invalid))
+      m.assertFalse(hasPlaybackErrorDetails(0, invalid, { itemName: "" }))
+    end function
+
+    @it("is true given a code, an errorInfo, or just a known item")
+    function _()
+      m.assertTrue(hasPlaybackErrorDetails(-5, invalid, invalid))
+      m.assertTrue(hasPlaybackErrorDetails(0, { category: "mediaerror" }, invalid))
+      m.assertTrue(hasPlaybackErrorDetails(0, invalid, { itemName: "Blade Runner" }))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("playbackErrorSections")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("omits every row it has no value for")
+    ' An empty row cannot be told apart from "not captured" by a reader, and a
+    ' readout of blank labels reads as a broken dialog.
+    function _()
+      sections = playbackErrorSections(-5, invalid, "", invalid)
+
+      for each section in sections
+        for each row in section.rows
+          m.assertNotEmpty(row.value, "section " + section.id + " row " + row.id + " has an empty value")
+        end for
+      end for
+    end function
+
+    @it("carries Roku's diagnostic fields verbatim")
+    ' category / source / dbgmsg are the fields that actually identify a failure
+    ' class (the DoVi 'buffer:loop:' case is diagnosed from `source` alone), so
+    ' they must reach the readout unaltered.
+    function _()
+      info = { category: "mediaerror", source: "buffer:loop:", dbgmsg: "decoder underflow" }
+      values = m.rowValues(playbackErrorSections(-5, info, "playback failed", invalid))
+
+      m.assertEqual(values.category, "mediaerror")
+      m.assertEqual(values.source, "buffer:loop:")
+      m.assertEqual(values.dbgmsg, "decoder underflow")
+      m.assertEqual(values.message, "playback failed")
+    end function
+
+    @it("includes app version and device model when context supplies them")
+    ' These two are the first things a maintainer has to ask a reporter for, and
+    ' asking costs a round trip that usually ends the conversation.
+    function _()
+      context = { itemName: "Blade Runner", appVersion: "2.26.1", deviceModel: "4850X" }
+      values = m.rowValues(playbackErrorSections(0, invalid, "", context))
+
+      m.assertEqual(values.item, "Blade Runner")
+      m.assertEqual(values.appVersion, "2.26.1")
+      m.assertEqual(values.deviceModel, "4850X")
+    end function
+
+    @it("names the SELECTED audio track, not the first one")
+    ' The case this feature exists for: a file whose TrueHD track is not stream 0.
+    ' Reading streams[0] would name the AAC track and exonerate the codec that
+    ' actually failed to play, which is the exact bug findStreamByIndex was
+    ' written for on the playback report.
+    function _()
+      mediaSource = {
+        MediaStreams: [
+          { Type: "Video", Index: 0, Codec: "hevc", Width: 3840, Height: 2160 },
+          { Type: "Audio", Index: 1, Codec: "aac", Channels: 2, Language: "eng" },
+          { Type: "Audio", Index: 2, Codec: "truehd", Channels: 6, Language: "eng" }
+        ]
+      }
+      context = { itemName: "Elf", mediaSource: mediaSource, audioStreamIndex: 2, subtitleStreamIndex: -1 }
+
+      values = m.rowValues(playbackErrorSections(-3, invalid, "", context))
+
+      m.assertTrue(values.audioCodec.instr("TRUEHD") >= 0, "named the wrong audio track: " + values.audioCodec)
+      m.assertTrue(values.audioCodec.instr("5.1") >= 0, "lost the channel count: " + values.audioCodec)
+      m.assertTrue(values.videoCodec.instr("HEVC") >= 0, "lost the video codec: " + values.videoCodec)
+      m.assertTrue(values.videoCodec.instr("3840x2160") >= 0, "lost the resolution: " + values.videoCodec)
+    end function
+
+    @it("omits the subtitle row when no subtitle is selected")
+    ' -1 is Jellyfin's "none selected" and is a real answer, not missing data.
+    function _()
+      mediaSource = {
+        MediaStreams: [
+          { Type: "Audio", Index: 1, Codec: "aac", Channels: 2 },
+          { Type: "Subtitle", Index: 3, Codec: "pgssub", Language: "eng" }
+        ]
+      }
+      context = { itemName: "Elf", mediaSource: mediaSource, audioStreamIndex: 1, subtitleStreamIndex: -1 }
+
+      values = m.rowValues(playbackErrorSections(0, invalid, "", context))
+      m.assertInvalid(values.subtitleCodec)
+    end function
+
+    @it("names the selected subtitle track when there is one")
+    function _()
+      mediaSource = {
+        MediaStreams: [
+          { Type: "Audio", Index: 1, Codec: "aac", Channels: 2 },
+          { Type: "Subtitle", Index: 3, Codec: "pgssub", Language: "eng" }
+        ]
+      }
+      context = { itemName: "Elf", mediaSource: mediaSource, audioStreamIndex: 1, subtitleStreamIndex: 3 }
+
+      values = m.rowValues(playbackErrorSections(0, invalid, "", context))
+      m.assertTrue(values.subtitleCodec.instr("PGSSUB") >= 0, "lost the subtitle codec: " + values.subtitleCodec)
+    end function
+
+    @it("survives a context with no media source at all")
+    ' The three failure paths that never reach the player have none, and this
+    ' runs on a failure path — it must not be able to fail itself.
+    function _()
+      values = m.rowValues(playbackErrorSections(-1, invalid, "", { itemName: "Elf" }))
+      m.assertEqual(values.item, "Elf")
+      m.assertInvalid(values.audioCodec)
+    end function
+
+    @it("returns NO sections when there is nothing to report")
+    ' Paired with hasPlaybackErrorDetails: the caller drops the button when this
+    ' comes back empty, so an all-empty input must produce zero sections rather
+    ' than empty headings.
+    function _()
+      m.assertEqual(playbackErrorSections(0, invalid, "", invalid).count(), 0)
+    end function
+
+    ' Flatten every section's rows to { id: value } — each test asserts on a few
+    ' specific rows, and reading them positionally would break whenever a row is
+    ' added.
+    private function rowValues(sections as object) as object
+      values = {}
+      for each section in sections
+        for each row in section.rows
+          values[row.id] = row.value
+        end for
+      end for
+      return values
+    end function
+
+  end class
+end namespace

@@ -1,0 +1,257 @@
+' Turning a playback failure into something a USER can act on and a MAINTAINER can
+' debug — the two audiences the one dialog has to serve.
+'
+' The split is deliberate and is the whole design:
+'
+'   playbackErrorCause()   -> ONE plain sentence, translated. This is all most
+'                             people should ever see. It names the CAUSE, not the
+'                             mechanism ("this device can't play this format", not
+'                             "mediaerror -5").
+'   playbackErrorSections() -> the opt-in diagnostic readout behind [Details],
+'                             rendered by showReportDialog. Technical on purpose.
+'
+' WHY BOTH, rather than picking one: JellyRock ships to a general audience but its
+' maintainer receives no logs — production builds STRIP every `m.log.*` call
+' (bsconfig-prod.json `"strip": true`), so nothing a user hits is recoverable
+' after the fact. A screenshot is the only telemetry channel that actually exists.
+' So the cause line keeps the default experience calm, and Details makes the
+' screenshot worth something. Anything that would only ever confuse a viewer
+' belongs in Details; anything they might act on belongs in the cause.
+'
+' The error codes come from Roku's Video node contract (`errorCode`), verified
+' against rokudev/dev-doc `media-playback-nodes/video.md` @ v2.0 rather than
+' recalled. Do NOT invent codes here: an unknown code must fall through to the
+' generic cause, because a wrong-but-confident explanation is worse than none.
+'
+' WHAT IS DELIBERATELY NOT CARRIED. The Video node exposes four error surfaces —
+' `errorCode`, `errorMsg`, `errorStr` and `errorInfo` — and the readout takes the
+' first two plus three fields of the fourth. `errorStr` is left out because it is
+' a COMPOSITE of what we already show: per Roku's reference it packs
+' category_name, error_code, source, the catcher comment and error_string into
+' one string, and `errorInfo` hands the same facts over already separated into
+' rows a reader can scan. Adding it would spend several wrapped lines of a
+' screenshot restating the rows above it. `errorInfo.drmerrcode` is out for a
+' narrower reason: it is meaningful on exactly one code (-6) and a row that is
+' blank on every other failure is the empty-row problem addErrorRow exists to
+' avoid. If a DRM report ever needs it, add it gated on the code, not
+' unconditionally.
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/mediaDisplayTitle.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/playbackReport.bs"
+import "pkg:/source/utils/translate.bs"
+
+' Roku Video node `errorCode` values. Named so a reader does not have to hold the
+' table in their head, and so the mapping below reads as prose.
+const PLAYBACK_ERR_NONE = 0
+const PLAYBACK_ERR_NETWORK = -1
+const PLAYBACK_ERR_TIMEOUT = -2
+const PLAYBACK_ERR_GENERIC = -3
+const PLAYBACK_ERR_EMPTY_LIST = -4
+const PLAYBACK_ERR_MEDIA = -5
+const PLAYBACK_ERR_DRM = -6
+
+' The one plain-language sentence shown in the dialog body.
+'
+' `serverMessage` wins when present: a message the SERVER produced (Jellyfin's
+' "No compatible streams are available for this item", the transcode failure text)
+' is more specific than anything a device-side code can say, and it is already
+' translated. The code mapping is the fallback for a device-side failure, where
+' the server said nothing because it was never asked.
+function playbackErrorCause(errorCode as integer, serverMessage = "" as string, title = "" as string) as string
+  ' A message identical to the dialog's own TITLE is not a message — it is a call
+  ' site that had nothing to say and reached for the nearest string. Rendering it
+  ' produces a dialog that states its heading twice and tells the user nothing,
+  ' which is what shipped for years and survived the first pass of this rework.
+  ' Dropping it here (rather than at the call site) means no future caller can
+  ' reintroduce it, and makes the rule testable without a scene.
+  if isValidAndNotEmpty(title) and serverMessage = title then serverMessage = ""
+
+  if isValidAndNotEmpty(serverMessage) then return serverMessage
+
+  if errorCode = PLAYBACK_ERR_NETWORK then return translate(translationKeys.ErrorPlaybackCauseNetwork)
+  if errorCode = PLAYBACK_ERR_TIMEOUT then return translate(translationKeys.ErrorPlaybackCauseTimeout)
+  if errorCode = PLAYBACK_ERR_MEDIA then return translate(translationKeys.ErrorPlaybackCauseUnsupportedMedia)
+  if errorCode = PLAYBACK_ERR_DRM then return translate(translationKeys.ErrorPlaybackCauseDrm)
+
+  ' -3 (generic), -4 (empty list) and 0 (no error reported, yet we are here) all
+  ' land on the generic sentence ON PURPOSE. -4 in particular describes an app
+  ' bug — we handed the player nothing to play — which no user-facing wording can
+  ' make actionable, so it says the honest minimum and Details carries the code.
+  return translate(translationKeys.ErrorPlaybackCauseUnknown)
+end function
+
+' The compact technical suffix shown UNDER the cause, e.g. "Media error (-5)".
+'
+' It exists so a casual screenshot — the common case, where nobody opens Details —
+' is still classifiable by whoever reads the bug report. Returns "" when there is
+' no device-side code to name, so a server-explained failure stays clean.
+function playbackErrorCodeLabel(errorCode as integer) as string
+  if errorCode = PLAYBACK_ERR_NONE then return ""
+
+  return Substitute(
+    "{0} ({1})",
+    translate(playbackErrorCategoryKey(errorCode)),
+    errorCode.toStr()
+  )
+end function
+
+' Category name for a code — used by both the inline label and the Details rows,
+' so the two can never disagree about what a code means.
+function playbackErrorCategoryKey(errorCode as integer) as string
+  if errorCode = PLAYBACK_ERR_NETWORK then return translationKeys.LabelPlaybackErrorNetwork
+  if errorCode = PLAYBACK_ERR_TIMEOUT then return translationKeys.LabelPlaybackErrorTimeout
+  if errorCode = PLAYBACK_ERR_EMPTY_LIST then return translationKeys.LabelPlaybackErrorNoStream
+  if errorCode = PLAYBACK_ERR_MEDIA then return translationKeys.LabelPlaybackErrorMedia
+  if errorCode = PLAYBACK_ERR_DRM then return translationKeys.LabelPlaybackErrorDrm
+  return translationKeys.LabelPlaybackErrorUnknown
+end function
+
+' Is there anything worth putting behind a [Details] button?
+'
+' The dialog asks this to decide whether to render a second button at all, and a
+' button that opens an empty readout is worse than no button — it promises help
+' and delivers a blank panel.
+'
+' Three of the four failure paths (task failure, buffering stall, no content)
+' reach the dialog with NO Roku error data, so the code and errorInfo tests below
+' both miss them. They are NOT thereby button-less: the third test catches them
+' whenever the item is known, which it normally is (m.currentItem is set in
+' VideoPlayerView.init, before any of those paths can run). What they get is a
+' thinner panel — item, app version, device — not an empty one. Only a failure we
+' can say nothing at all about loses the button.
+function hasPlaybackErrorDetails(errorCode as integer, errorInfo as object, context as object) as boolean
+  if errorCode <> PLAYBACK_ERR_NONE then return true
+  if isValid(errorInfo) then return true
+  ' Environment rows alone are still worth showing when we know WHAT failed —
+  ' version + model + the item are exactly what a maintainer asks for first.
+  return isValid(context) and isValidAndNotEmpty(context.itemName)
+end function
+
+' Build the Details readout.
+'
+' @param {integer} errorCode - Video node errorCode
+' @param {object} errorInfo - Video node errorInfo AA (may be invalid)
+' @param {string} errorMessage - Video node errorMsg / the server's message
+' @param {object} context - { itemName, playMethod, container, videoCodec, audioCodec, appVersion, deviceModel }
+' @return {object} sections array for showReportDialog
+function playbackErrorSections(errorCode as integer, errorInfo as object, errorMessage as string, context as object) as object
+  sections = []
+
+  failure = []
+  addErrorRow(failure, "code", translationKeys.LabelPlaybackErrorCode, playbackErrorCodeLabel(errorCode))
+  addErrorRow(failure, "message", translationKeys.LabelPlaybackErrorMessage, errorMessage)
+
+  if isValid(errorInfo)
+    ' These three are Roku's own diagnostic fields. They are NOT translated and
+    ' cannot be — they are verbatim strings from the player. That is acceptable
+    ' here precisely because Details is opt-in; it would not be in the body.
+    addErrorRow(failure, "category", translationKeys.LabelPlaybackErrorCategory, textOrEmpty(errorInfo.category))
+    addErrorRow(failure, "source", translationKeys.LabelPlaybackErrorSource, textOrEmpty(errorInfo.source))
+    addErrorRow(failure, "dbgmsg", translationKeys.LabelPlaybackErrorDebug, textOrEmpty(errorInfo.dbgmsg))
+  end if
+
+  if failure.count() > 0
+    ' wideLabels: "Debug message" and "Category" are long next to a short value,
+    ' and dbgmsg itself can be a full sentence.
+    sections.push({ id: "failure", heading: translate(translationKeys.LabelPlaybackErrorSectionFailure), wideLabels: true, rows: failure })
+  end if
+
+  if isValid(context)
+    media = []
+    addErrorRow(media, "item", translationKeys.LabelPlaybackErrorItem, textOrEmpty(context.itemName))
+    addErrorRow(media, "playMethod", translationKeys.LabelPlaybackErrorPlayMethod, textOrEmpty(context.playMethod))
+    addErrorRow(media, "container", translationKeys.LabelContainer, textOrEmpty(context.container))
+    addStreamRows(media, context)
+    if media.count() > 0
+      sections.push({ id: "media", heading: translate(translationKeys.LabelPlaybackErrorSectionMedia), wideLabels: false, rows: media })
+    end if
+
+    ' Version and model are here because they are the first two things a
+    ' maintainer has to ask a reporter for, and asking costs a round trip that
+    ' usually ends the conversation.
+    env = []
+    addErrorRow(env, "appVersion", translationKeys.LabelPlaybackErrorAppVersion, textOrEmpty(context.appVersion))
+    addErrorRow(env, "deviceModel", translationKeys.LabelPlaybackErrorDevice, textOrEmpty(context.deviceModel))
+    if env.count() > 0
+      sections.push({ id: "env", heading: translate(translationKeys.LabelPlaybackErrorSectionApp), wideLabels: false, rows: env })
+    end if
+  end if
+
+  return sections
+end function
+
+
+' The three streams that were actually in play, read off the SAME MediaSource the
+' playback report reads.
+'
+' The audio and subtitle rows are found BY THEIR SELECTED INDEX, never by
+' position. That is the entire diagnostic value: a file's TrueHD or DTS track is
+' rarely stream 0, so `streams[0]` would name a track the user was not listening
+' to and quietly exonerate the codec that actually failed. `findStreamByIndex`
+' already encodes that lesson for the report (see its comment) — this reuses it
+' rather than repeating the mistake in a second place.
+'
+' Channels are included because a codec alone does not explain a refusal: 5.1
+' TrueHD and 2.0 TrueHD are different questions for a device, and the count is
+' what separates them.
+sub addStreamRows(rows as object, context as object)
+  mediaSource = context.mediaSource
+  if not isValid(mediaSource) then return
+
+  streams = mediaSource.MediaStreams
+  if not isValid(streams) then return
+
+  addErrorRow(rows, "videoCodec", translationKeys.LabelPlaybackErrorVideoCodec, videoStreamLabel(getFirstVideoStream(streams)))
+  addErrorRow(rows, "audioCodec", translationKeys.LabelPlaybackErrorAudioCodec, audioStreamLabel(findStreamByIndex(streams, context.audioStreamIndex, "audio")))
+  addErrorRow(rows, "subtitleCodec", translationKeys.LabelPlaybackErrorSubtitle, subtitleStreamLabel(findStreamByIndex(streams, context.subtitleStreamIndex, "subtitle")))
+end sub
+
+' "H264 1920x1080" — codec first, because that is the field a reader is checking.
+function videoStreamLabel(stream as dynamic) as string
+  if not isValid(stream) then return ""
+
+  label = upperOrEmpty(stream.Codec)
+  size = dimensionsLabel(stream.Width, stream.Height)
+  if label <> "" and size <> "" then return label + " " + size
+  if label = "" then return size
+  return label
+end function
+
+' "TRUEHD 5.1 (English)" — the shape that answers "why did this not play".
+function audioStreamLabel(stream as dynamic) as string
+  if not isValid(stream) then return ""
+
+  label = upperOrEmpty(stream.Codec)
+  channels = sourceChannels(stream)
+  if channels <> ""
+    if label = "" then label = channels else label = label + " " + channels
+  end if
+
+  language = resolveLanguageName(textOrEmpty(stream.Language))
+  if language <> "" and label <> "" then label = label + " (" + language + ")"
+  return label
+end function
+
+' Subtitles fail playback far less often, but a burned-in or PGS track forcing a
+' transcode is a real cause, so the codec is worth the row.
+function subtitleStreamLabel(stream as dynamic) as string
+  if not isValid(stream) then return ""
+
+  label = upperOrEmpty(stream.Codec)
+  language = resolveLanguageName(textOrEmpty(stream.Language))
+  if language <> "" and label <> "" then return label + " (" + language + ")"
+  if label = "" then return language
+  return label
+end function
+
+' ---- internals ----
+
+' Push a row only when it has a value. An empty row in a diagnostic readout is
+' actively misleading — a reader cannot tell "we did not capture this" from "the
+' player reported it as empty", and a screenshot full of blank labels reads as a
+' broken dialog rather than a thin one.
+sub addErrorRow(rows as object, id as string, labelKey as string, value as string)
+  if not isValidAndNotEmpty(value) then return
+  rows.push({ id: id, label: translate(labelKey), value: value })
+end sub

@@ -201,21 +201,24 @@ sub onPlayerStateChange()
   ' Clear the screen before playback teardown navigates: a dialog left open would
   ' end up over the incoming screen, having lost focus to it — visible but deaf.
   '
-  ' Two calls because the two dialogs mean different things. Ours is ABANDONED —
-  ' this component owns it, and the scope that would receive its result is about
-  ' to be torn down. Anything else is CANCELLED — a main-thread flow (a cast
-  ' notice, the deep-link server-switch prompt) can open a dialog over the player,
-  ' and it holds state until that dialog answers, so it has to be told.
+  ' Three calls because the dialogs mean different things. Ours (the playback-info
+  ' report AND VideoPlayerView's error dialog) are ABANDONED — this host owns the
+  ' player, and the scope that would receive either result is about to be torn
+  ' down or has already moved on. Anything else is CANCELLED — a main-thread flow
+  ' (a cast notice, the deep-link server-switch prompt) can open a dialog over the
+  ' player, and it holds state until that dialog answers, so it has to be told.
   '
-  ' cancelOpenDialog() reaches BOTH channels, and the modal one is not empty
-  ' during playback: VideoPlayerView.showPlaybackErrorDialog puts a raw Dialog
-  ' there, and its close handler calls exitPlayback(). So on the stall path this
-  ' can fire a goBack() from inside this handler, which then continues on to
-  ' advance the queue or exit again. Pre-existing — the deleted
-  ' SceneManager.dismissDialog did exactly the same thing behind the same gate —
-  ' and tracked as playback-error-dialog-closed-by-teardown in tech-debt.md.
-  ' Don't "fix" it by narrowing this call: a stranded modal over the incoming
-  ' screen is the failure this line exists to prevent.
+  ' abandonErrorDialog() MUST run before cancelOpenDialog(): both the error
+  ' dialog and cancelOpenDialog() live on the overlay channel now (the dialog
+  ' moved off a raw modal Dialog in the dialog-standardization migration), and
+  ' cancelOpenDialog() delivers a CANCELLED result indistinguishable from the
+  ' user pressing Back — which VideoPlayerView's result handler treats as a real
+  ' dismissal and navigates on. Abandoning first drops the dialog (and the
+  ' observer that would have fired) before cancelOpenDialog() ever gets to it,
+  ' so a stall-path close is inert instead of racing this handler's own
+  ' navigation — the double-exit the old raw Dialog used to produce via its
+  ' undifferentiated `wasClosed` observer.
+  m.view.callFunc("abandonErrorDialog")
 
   ' Same two observers as onDestroy: we are dropping the reference to a dialog
   ' that lives on the SCENE, so the poll and its close observer go with it.
@@ -476,9 +479,7 @@ end sub
 ' Everything the pure report builder needs, gathered on the RENDER thread where
 ' an m.global read costs ~2 µs rather than the ~93 µs it cost inside the task.
 function playbackReportInputs(session as dynamic) as object
-  cached = m.view.cachedPlaybackInfo
-  mediaSource = invalid
-  if isValid(cached) and isValidAndNotEmpty(cached.MediaSources) then mediaSource = cached.MediaSources[0]
+  mediaSource = primaryMediaSource(m.view.cachedPlaybackInfo)
 
   ' supportsDolbyVision here is the SAME predicate ItemPostPlaybackInfo uses to
   ' decide whether to inject the DoVi container profile at all
