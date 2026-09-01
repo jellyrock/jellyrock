@@ -196,6 +196,21 @@ sub onPlayerStateChange()
   ' Don't advance mid-retry; the DoVi fallback calls stop which can fire "finished".
   if isValid(m.view.isRetrying) and m.view.isRetrying then return
 
+  ' Don't advance — or tear anything down — while an error dialog owns the exit.
+  ' Same class of "finished" as the line above, and the same asymmetry it fixes:
+  ' bufferCheck shows the dialog and stops the stream on the very next line, with
+  ' nothing claiming the exit. A `stop` usually surfaces as `stopped`, which the
+  ' guard at the top of this sub already ignores — but it can surface as
+  ' `finished`, which is precisely why isRetrying exists, and on that landing the
+  ' teardown below would abandon the dialog and the queue logic would advance to
+  ' the next episode with the error unread.
+  '
+  ' Bailing does not strand the dialog: the only routes out of the player still
+  ' tear it down — the dialog's own resolution calls exitFromPlaybackError ->
+  ' exitPlayback, and anything that navigates without it (deep link, sign-out)
+  ' reaches VideoPlayerView.onDestroy, which abandons it.
+  if isValid(m.view.errorDialogOwnsExit) and m.view.errorDialogOwnsExit then return
+
   queueManager = m.global.queueManager
 
   ' Clear the screen before playback teardown navigates: a dialog left open would
@@ -208,16 +223,21 @@ sub onPlayerStateChange()
   ' (a cast notice, the deep-link server-switch prompt) can open a dialog over the
   ' player, and it holds state until that dialog answers, so it has to be told.
   '
-  ' abandonErrorDialog() MUST run before cancelOpenDialog(): both the error
-  ' dialog and cancelOpenDialog() live on the overlay channel now (the dialog
-  ' moved off a raw modal Dialog in the dialog-standardization migration), and
-  ' cancelOpenDialog() delivers a CANCELLED result indistinguishable from the
-  ' user pressing Back — which VideoPlayerView's result handler treats as a real
-  ' dismissal and navigates on. Abandoning first drops the dialog (and the
-  ' observer that would have fired) before cancelOpenDialog() ever gets to it,
-  ' so a stall-path close is inert instead of racing this handler's own
-  ' navigation — the double-exit the old raw Dialog used to produce via its
-  ' undifferentiated `wasClosed` observer.
+  ' abandonErrorDialog() MUST run before cancelOpenDialog(), and that ordering is
+  ' the general rule even though the guard above now means there is normally
+  ' nothing here to abandon. Both the error dialog and cancelOpenDialog() live on
+  ' the overlay channel (the dialog moved off a raw modal Dialog in the
+  ' dialog-standardization migration), and cancelOpenDialog() delivers a
+  ' CANCELLED result indistinguishable from the user pressing Back — which
+  ' VideoPlayerView's result handler treats as a real dismissal and navigates on.
+  ' Abandoning first drops the dialog and its observer before cancelOpenDialog()
+  ' can reach either.
+  '
+  ' Kept as the belt to the guard's braces, NOT as the fix. The claim and the
+  ' dialog are set together (showPlaybackErrorDialog), so reaching this line with
+  ' a live error dialog means something showed one without claiming the exit —
+  ' worth surviving, not worth relying on. The stall path this used to catch is
+  ' now caught by the guard, which is what lets the user actually read the error.
   m.view.callFunc("abandonErrorDialog")
 
   ' Same two observers as onDestroy: we are dropping the reference to a dialog

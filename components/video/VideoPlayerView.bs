@@ -736,6 +736,7 @@ end sub
 ' load-bearing.
 sub onPlaybackErrorDialogResult()
   result = m.playbackErrorDialog.result
+
   m.playbackErrorDialog = invalid
 
   ' [Details] is button 1 when it is offered. It does NOT leave the route: the
@@ -768,8 +769,9 @@ end sub
 ' One exit path for both tiers, so the report and the alert cannot drift apart
 ' about what closing means.
 sub exitFromPlaybackError()
-  m.playbackErrorCauseText = ""
-  m.playbackErrorDetailSections = invalid
+  ' Clears BEFORE navigating: this is the exit the dialog was holding, and from
+  ' here on an ordinary `finished` means what it usually means.
+  clearPlaybackErrorState()
 
   ' Leave the play route via the host.
   host = m.top.getParent()
@@ -813,6 +815,14 @@ sub showPlaybackErrorDialog(serverMessage = "" as string)
   if codeLabel <> "" then message = message + Chr(10) + Chr(10) + codeLabel
 
   m.playbackErrorDialog = showAlertDialog(translate(translationKeys.ErrorDuringPlayback), message, "onPlaybackErrorDialogResult", "", detailsButton)
+
+  ' Claim the exit. Every caller of this either has already stopped the stream or
+  ' is about to (bufferCheck stops on the next line), and that stop reaches
+  ' PlayerHostView as `finished`. Without the claim the host tears this dialog
+  ' down and advances the queue, so a genuine stall reports nothing and plays the
+  ' next episode. Set only when the dialog actually mounted — a claim with no
+  ' dialog to release it would strand the player.
+  m.top.errorDialogOwnsExit = isValid(m.playbackErrorDialog)
 end sub
 
 ' What we know about WHAT was playing, for the Details rows. Read from the
@@ -871,9 +881,19 @@ sub abandonErrorDialog()
   ' that teardown has already navigated away from.
   if isValid(m.playbackErrorDialog) then m.playbackErrorDialog.unobserveFieldScoped("closed")
   abandonDialog(m.playbackErrorDialog)
+  clearPlaybackErrorState()
+end sub
+
+' The state one shown error owns: the dialog slot, the text both tiers render,
+' and the exit claim PlayerHostView reads. One place, because the three ways an
+' error ends — acknowledged, superseded, abandoned by teardown — all have to
+' leave exactly the same nothing behind. A claim outliving its dialog would gag
+' the host's queue logic for the rest of the session.
+sub clearPlaybackErrorState()
   m.playbackErrorDialog = invalid
   m.playbackErrorCauseText = ""
   m.playbackErrorDetailSections = invalid
+  m.top.errorDialogOwnsExit = false
 end sub
 
 sub onVideoContentLoaded()
