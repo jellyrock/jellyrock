@@ -18,7 +18,7 @@ related-files:
   - source/utils/dialogKeys.bs
   - source/utils/dialogResult.bs
   - source/utils/dialogNarration.bs
-last-reviewed: 2026-09-01
+last-reviewed: 2026-09-02
 ---
 
 # The dialog family
@@ -246,8 +246,11 @@ Four rules that bite:
   reading handlers never look. `OverviewDialog` has no `result` at all, so it carries the
   same signal on a field of its own, set before `closed`. `VideoPlayerView`'s two
   playback-error handlers are the reference for both mechanisms. The keyboard dialog cannot
-  report it — Roku's modal `close` reads the same whether the user or code wrote it — which
-  is a reason not to build an acting handler on one.
+  report it — Roku's modal `close` reads the same whether the user or code wrote it — and it
+  reports `false` rather than nothing, a positive claim that the user closed it. That answer
+  is reachable, not theoretical: `presentOverlayDialog` never supersedes the modal channel,
+  but `cancelOpenDialog` does close it. Trust the key on the overlay family only, and do not
+  build an acting handler on a modal dialog.
 
 ## Spacing, color and border weight
 

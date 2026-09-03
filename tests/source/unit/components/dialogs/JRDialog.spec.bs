@@ -207,7 +207,6 @@ namespace tests
       m.assertTrue(m.dialog.result.externallyCancelled)
     end function
 
-
     @it("is once-only, like every other route out of the dialog")
     function _()
       scene = m.top.getScene()

@@ -31,12 +31,16 @@
 ' presentOverlayDialog's supersede) and false for every user-driven resolution,
 ' cancels included.
 '
-' ⚠️ The KEYBOARD dialog cannot report it. It resolves through Roku's modal
-' `close` field, which reads identically whether the user backed out or code
-' wrote it, so textDialogResult always reports false. That is safe today (the
-' modal channel is never superseded — see presentOverlayDialog — and no keyboard
-' caller acts on its result), and it is the reason not to build an acting
-' handler on one.
+' ⚠️ The KEYBOARD dialog cannot report it, and it reports FALSE rather than
+' nothing — a positive claim that the USER closed it. It resolves through Roku's
+' modal `close` field, which reads identically whether the user backed out or
+' code wrote it. presentOverlayDialog never supersedes that channel, but
+' cancelOpenDialog DOES reach it (`scene.dialog.close = true`), so the wrong
+' answer is reachable rather than theoretical. Safe today only because neither
+' keyboard caller ACTS: SetServerScreen.onServerUrlEntered and
+' ConfigList.onConfigValueEntered both apply their value on `confirmed`. Trust
+' this key on the overlay family only — and do not build an acting handler on a
+' modal dialog.
 import "pkg:/source/utils/misc.bs"
 
 ' Result for a button-row dialog (JRDialog). index = -1 means cancelled.
