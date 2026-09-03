@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Stop the playback error dialog exiting on a close it did not cause ([#876](https://github.com/jellyrock/jellyrock/pull/876))
 - Migrate the playback error dialog onto `JRDialog` and make it diagnostic ([#875](https://github.com/jellyrock/jellyrock/pull/875))
 
+### Fixed
+
+- Guard `onKeyEvent` against key events delivered after teardown ([#883](https://github.com/jellyrock/jellyrock/pull/883))
+
 ### Dependencies
 
 - Update actions/setup-java action to v6 ([#874](https://github.com/jellyrock/jellyrock/pull/874))
