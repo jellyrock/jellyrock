@@ -31,6 +31,13 @@
  *      `m.X` replaces it; neither throws. Only dotting INTO it does.
  *   3. A handler that `isValid(m.X)`-checks the reference has handled the case
  *      itself and is not flagged.
+ *   4. Nor is a handler that early-returns on this project's OWN teardown flag
+ *      (`if m.isDestroyed = true then return`) when `onDestroy` arms that flag
+ *      BEFORE releasing anything — `VideoPlayerView.onPositionChanged`'s shape.
+ *      The ordering half is load-bearing: a flag armed only after a release
+ *      leaves a window where a delivered callback still finds it false. Without
+ *      this, the rule fires on already-correct code, and a warning that cries
+ *      wolf is one somebody turns off.
  *
  * Severity 2 (warning), matching `observe-without-on-destroy` — the house split
  * is that structural-absence rules error (`jrscreen-on-destroy`,
@@ -49,7 +56,7 @@
  *  - `' bsc-disable-next-line unobserve-before-release` on the line above
  *  - `' bsc-disable-file unobserve-before-release` anywhere in the file
  *
- * Known gaps, both toward FALSE NEGATIVES (the safe direction for a rule whose
+ * Known gaps, all toward FALSE NEGATIVES (the safe direction for a rule whose
  * whole value is that a hit means something):
  *  - Detachment or release reached through a HELPER is invisible.
  *    `ExtrasRowList.onDestroy` calls `cancelInFlightChain()` as its first
@@ -59,6 +66,9 @@
  *    names, is not bound to anything.
  *  - `isValid(m.X)` anywhere in a handler clears `m.X` for that handler, even
  *    if some path reads it unguarded.
+ *  - An armed `m.isDestroyed` early return (refinement 4) exempts the whole
+ *    handler, so a reference it dereferences before that return would be missed
+ *    — but the guard is the first statement, so there is nothing before it.
  */
 'use strict';
 
@@ -70,6 +80,7 @@ const DISABLE_FILE_MARKER = /'\s*bsc-disable-file\s+unobserve-before-release\b/i
 const DISABLE_LINE_MARKER = /'\s*bsc-disable-line\s+unobserve-before-release\b/i;
 const DISABLE_NEXT_LINE_MARKER = /'\s*bsc-disable-next-line\s+unobserve-before-release\b/i;
 const VALIDITY_CHECKS = new Set(['isvalid', 'isvalidandnotempty']);
+const DESTROYED_FLAG = 'isdestroyed';
 
 class UnobserveBeforeReleasePlugin {
   constructor() {
@@ -166,6 +177,10 @@ function collectObservations(brsFile) {
 // and reports every still-attached observer whose handler dereferences one.
 function findOrderingHits(onDestroy, observations, aliases, functions) {
   const released = new Map(); // lowercased ref → the ref as written
+  // Set when `m.isDestroyed = true` runs BEFORE any release. A handler that
+  // early-returns on that flag is then genuinely safe, because the flag is
+  // already true by the time any reference goes away.
+  let flagSetBeforeAnyRelease = false;
   const hits = [];
   const seen = new Set();
   // One walk per handler, not one per (unobserve x observation) pair — a file
@@ -183,11 +198,17 @@ function findOrderingHits(onDestroy, observations, aliases, functions) {
 
   const visitor = brighterscript.createVisitor({
     DottedSetStatement: (stmt) => {
-      // `m.<ref> = invalid` — a release. `m.<ref>.<field> = …` is not.
       if (!isMRoot(stmt.obj)) return;
-      if (!isInvalidLiteral(stmt.value)) return;
       const name = stmt.tokens?.name?.text;
-      if (name) released.set(name.toLowerCase(), name);
+      if (!name) return;
+      // `m.isDestroyed = true` ahead of every release arms the teardown flag.
+      if (name.toLowerCase() === DESTROYED_FLAG && isTrueLiteral(stmt.value)) {
+        if (released.size === 0) flagSetBeforeAnyRelease = true;
+        return;
+      }
+      // `m.<ref> = invalid` — a release. `m.<ref>.<field> = …` is not.
+      if (!isInvalidLiteral(stmt.value)) return;
+      released.set(name.toLowerCase(), name);
     },
     CallExpression: (call) => {
       if (released.size === 0) return;
@@ -210,7 +231,11 @@ function findOrderingHits(onDestroy, observations, aliases, functions) {
         const handlerKey = obs.handler.toLowerCase();
         const handlerFn = functions.get(handlerKey);
         if (!handlerFn) continue;
-        const { derefs, guarded } = handlerFacts(handlerKey, handlerFn);
+        const { derefs, guarded, destroyedGuard } = handlerFacts(handlerKey, handlerFn);
+        // The project's own teardown guard, armed before anything was released:
+        // the handler bails before it can dereference. Flagging it would fire on
+        // already-correct code, and a warning that cries wolf gets turned off.
+        if (destroyedGuard && flagSetBeforeAnyRelease) continue;
 
         for (const [refLower, refText] of released) {
           if (!derefs.has(refLower)) continue;
@@ -265,7 +290,32 @@ function analyzeHandler(fnStmt) {
   });
 
   fnStmt.walk(visitor, { walkMode: brighterscript.WalkMode.visitAllRecursive });
-  return { derefs, guarded };
+  return { derefs, guarded, destroyedGuard: opensWithDestroyedGuard(fnStmt) };
+}
+
+// True when the handler OPENS with an early return keyed on `m.isDestroyed` —
+// `if m.isDestroyed = true then return` (the form `auto-destroyed-guard` emits
+// and `VideoPlayerView.onPositionChanged` carries) or the bare variant. Only the
+// FIRST statement counts: a bail-out further down leaves the statements above it
+// exposed, which is the same reasoning `auto-destroyed-guard` uses.
+function opensWithDestroyedGuard(fnStmt) {
+  const stmt = (fnStmt.func?.body?.statements ?? []).find((st) => st?.location);
+  if (!brighterscript.isIfStatement(stmt)) return false;
+  const thenStatements = stmt.thenBranch?.statements;
+  if (!Array.isArray(thenStatements) || thenStatements.length !== 1) return false;
+  if (!brighterscript.isReturnStatement(thenStatements[0])) return false;
+  let mentionsFlag = false;
+  stmt.condition?.walk?.(
+    brighterscript.createVisitor({
+      DottedGetExpression: (expr) => {
+        if (isMRoot(expr.obj) && expr.tokens?.name?.text?.toLowerCase() === DESTROYED_FLAG) {
+          mentionsFlag = true;
+        }
+      },
+    }),
+    { walkMode: brighterscript.WalkMode.visitAllRecursive },
+  );
+  return mentionsFlag;
 }
 
 // ── small helpers ───────────────────────────────────────────────────────────
@@ -301,6 +351,13 @@ function isInvalidLiteral(expr) {
   return (
     brighterscript.isLiteralExpression(expr) &&
     expr.tokens?.value?.kind === brighterscript.TokenKind.Invalid
+  );
+}
+
+function isTrueLiteral(expr) {
+  return (
+    brighterscript.isLiteralExpression(expr) &&
+    expr.tokens?.value?.kind === brighterscript.TokenKind.True
   );
 }
 

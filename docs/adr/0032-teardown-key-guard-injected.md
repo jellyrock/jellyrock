@@ -71,11 +71,14 @@ suppresses nothing, which is the property an early return cannot offer here. It 
 `observe-without-on-destroy`: the house split is that structural-absence rules error while inference-heavy ones
 warn, and this one infers a handler binding through an alias graph.
 
-Precision came from three refinements, measured rather than argued — the naive "any unobserve after any release"
+Precision came from four refinements, measured rather than argued — the naive "any unobserve after any release"
 rule reports 62 hits, effectively all noise. Binding handlers by **(target, field)** rather than field name alone,
-counting only **receiver-position** uses, and exempting a handler that `isValid`-checks the reference itself take
-it to **exactly the three known-real sites on the tree as it stood before those fixes, and zero on the
-fixed one**.
+counting only **receiver-position** uses, exempting a handler that `isValid`-checks the reference itself, and
+exempting one that early-returns on this project's own `m.isDestroyed` flag when `onDestroy` arms it before any
+release, take it to **exactly the three known-real sites on the tree as it stood before those fixes, and zero on
+the fixed one**. That fourth refinement closed a false-positive class the first draft had:
+`VideoPlayerView.onPositionChanged` is guarded exactly that way, so the rule would have fired on already-correct
+code the moment that file's ordering was touched — the shape that gets a warning switched off.
 
 ## Consequences
 

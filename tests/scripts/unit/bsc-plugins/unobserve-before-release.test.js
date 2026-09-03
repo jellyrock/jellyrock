@@ -186,6 +186,59 @@ describe('unobserve-before-release — precision', () => {
     ).toHaveLength(0);
   });
 
+  it("does not flag a handler that early-returns on the project's own teardown flag", () => {
+    // VideoPlayerView.onPositionChanged's shape. `m.isDestroyed = true` runs
+    // before anything is released, so the handler bails before it can
+    // dereference — flagging it would fire on already-correct code, and a
+    // warning that cries wolf is one somebody turns off.
+    expect(
+      run(
+        'DestroyedGuarded',
+        `
+      sub init()
+        m.isDestroyed = false
+        m.taskB.observeField("done", "onDone")
+      end sub
+      sub onDone()
+        if m.isDestroyed = true then return
+        m.taskA.control = "RUN"
+      end sub
+      sub onDestroy()
+        m.isDestroyed = true
+        m.taskA = invalid
+        m.taskB.unobserveField("done")
+      end sub
+    `,
+      ),
+    ).toHaveLength(0);
+  });
+
+  it('still flags when the teardown flag is armed only AFTER a release', () => {
+    // The exemption is an ORDERING claim, not the mere presence of a flag: a
+    // callback delivered between the release and the assignment still finds the
+    // flag false and dereferences the reference that is already gone.
+    expect(
+      run(
+        'DestroyedLate',
+        `
+      sub init()
+        m.isDestroyed = false
+        m.taskB.observeField("done", "onDone")
+      end sub
+      sub onDone()
+        if m.isDestroyed = true then return
+        m.taskA.control = "RUN"
+      end sub
+      sub onDestroy()
+        m.taskA = invalid
+        m.isDestroyed = true
+        m.taskB.unobserveField("done")
+      end sub
+    `,
+      ),
+    ).toHaveLength(1);
+  });
+
   it('does not flag the paired unobserve-then-release idiom', () => {
     // `m.foo.unobserveField(...)` immediately followed by `m.foo = invalid` is
     // the canonical safe shape, and is what a naive "any unobserve after any
@@ -291,6 +344,29 @@ describe('unobserve-before-release — scope and escape hatches', () => {
       end sub
       sub onDone()
         m.taskA.control = "RUN"
+      end sub
+    `,
+      ),
+    ).toHaveLength(0);
+  });
+
+  it('respects the bsc-disable-line escape hatch', () => {
+    // build-and-tooling.md's suppression table claims all three markers for this
+    // rule, and that table exists because reaching for one a plugin does NOT
+    // implement fails silently. So each claimed marker gets a test.
+    expect(
+      run(
+        'EscLine',
+        `
+      sub init()
+        m.taskB.observeField("done", "onDone")
+      end sub
+      sub onDone()
+        m.taskA.control = "RUN"
+      end sub
+      sub onDestroy()
+        m.taskA = invalid
+        m.taskB.unobserveField("done") ' bsc-disable-line unobserve-before-release
       end sub
     `,
       ),
