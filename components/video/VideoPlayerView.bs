@@ -115,6 +115,7 @@ sub init()
   m.playbackTimer.observeField("fire", "reportPlayback")
   m.bufferPercentage = 0 ' Track whether content is being loaded
   m.isPlayReported = false
+  m.playerParked = false ' see parkPlayerAfterSupersede
   m.top.transcodeReasons = []
   m.bufferCheckTimer.duration = 30
 
@@ -745,13 +746,14 @@ sub onPlaybackErrorDialogResult()
   ' returnFocusTo was being derived and leaving that dialog able to hand focus
   ' back to a destroyed node.
   '
-  ' The player is left alive and stopped rather than exiting later: the user
-  ' dismisses whatever interrupted, finds the failed player, and presses Back.
-  ' Clunky, but every alternative navigates on someone else's schedule. The
-  ' error text is gone with the dialog — a second surface deliberately took the
-  ' screen, and re-presenting over it would just restart the fight.
+  ' The player is left alive and stopped rather than exiting later — every
+  ' alternative navigates on someone else's schedule — but PARKED, not just
+  ' abandoned in place: see parkPlayerAfterSupersede for what a live player with
+  ' no stream actually puts on screen. The error text is gone with the dialog; a
+  ' second surface deliberately took the screen, and re-presenting over it would
+  ' just restart the fight.
   if result.externallyCancelled
-    clearPlaybackErrorState()
+    parkPlayerAfterSupersede()
     return
   end if
 
@@ -787,7 +789,7 @@ sub onPlaybackErrorDetailsClosed()
   ' who closed it on a field of its own. This handler ACTS — it leaves the play
   ' route — which is exactly the kind that must not fire on a supersede.
   if isValid(dialog) and dialog.externallyCancelled
-    clearPlaybackErrorState()
+    parkPlayerAfterSupersede()
     return
   end if
 
@@ -845,12 +847,19 @@ sub showPlaybackErrorDialog(serverMessage = "" as string)
 
   m.playbackErrorDialog = showAlertDialog(translate(translationKeys.ErrorDuringPlayback), message, "onPlaybackErrorDialogResult", "", detailsButton)
 
-  ' Claim the exit. Every caller of this either has already stopped the stream or
-  ' is about to (bufferCheck stops on the next line), and that stop reaches
-  ' PlayerHostView as `finished`. Without the claim the host tears this dialog
-  ' down and advances the queue, so a genuine stall reports nothing and plays the
-  ' next episode. Set only when the dialog actually mounted — a claim with no
-  ' dialog to release it would strand the player.
+  ' Claim the exit. No caller leaves a stream progressing, but only ONE issues a
+  ' stop — bufferCheck, on the line after this call. The other three are already
+  ' past it: onState's `error` branch stops the two timers and not the stream,
+  ' and the two content-load failures never started one. So bufferCheck is the
+  ' only caller that can leave a state event in flight behind this dialog, and if
+  ' that stop surfaces as `finished` rather than `stopped` the host would tear
+  ' the dialog down and advance the queue — a genuine stall reporting nothing and
+  ' playing the next episode.
+  '
+  ' Set HERE rather than at the four call sites so none of them can order it
+  ' wrong: after the dialog is on screen, before any caller's stop. And only when
+  ' the dialog actually mounted — a claim with no dialog to release it would
+  ' strand the player.
   m.top.errorDialogOwnsExit = isValid(m.playbackErrorDialog)
 end sub
 
@@ -917,12 +926,38 @@ end sub
 ' and the exit claim PlayerHostView reads. One place, because the three ways an
 ' error ends — acknowledged, superseded, abandoned by teardown — all have to
 ' leave exactly the same nothing behind. A claim outliving its dialog would gag
-' the host's queue logic for the rest of the session.
+' the host's queue logic for the life of this player node — every queue advance
+' builds a fresh one (PlayerHostView.playCurrentQueueItem), so it cannot leak
+' past that, which is the bound and not a reason to be sloppy about clearing it.
 sub clearPlaybackErrorState()
   m.playbackErrorDialog = invalid
   m.playbackErrorCauseText = ""
   m.playbackErrorDetailSections = invalid
   m.top.errorDialogOwnsExit = false
+end sub
+
+' A superseded error leaves the player alive and stopped. PARK it — clear the
+' error state, hide the node, and stop treating it as a controllable player.
+'
+' Not cosmetic. The Video node draws Roku's OWN buffering indicator (the internal
+' `retrievingBar` / `bufferingBar` ProgressBars — `bufferingBar` is the one styled
+' in init) and it keeps drawing after the stream stops: a black screen with a ring
+' reading 0%, which is the app telling the user it is loading, forever. Hiding the
+' node removes it and reveals the backdrop the host already set for this item.
+'
+' The OSD goes with it. stateAllowsOSD() admits "stopped", so without the flag Up
+' would open an OSD inside a hidden parent — a control surface that renders
+' nothing and takes the focus Back needs. Parked there is nothing to control and
+' Back is the only action, which is what the state actually is.
+'
+' Undone in onState's `playing` branch, not here: the route back into playback is
+' not this scope. A voice or remote-control `play` restarts a stopped node WITHOUT
+' going through onVideoContentLoaded, which is the only other place that makes the
+' player visible.
+sub parkPlayerAfterSupersede()
+  clearPlaybackErrorState()
+  m.playerParked = true
+  m.top.visible = false
 end sub
 
 sub onVideoContentLoaded()
@@ -1713,6 +1748,15 @@ sub onState()
   else if m.top.state = "playing"
     stopLoadingSpinner()
 
+    ' Un-park. A `play` that did not come through onVideoContentLoaded — a voice or
+    ' remote-control resume of a stopped player — is the one route back from
+    ' parkPlayerAfterSupersede, and it restores neither the visibility nor the OSD
+    ' on its own.
+    if m.playerParked = true
+      m.playerParked = false
+      m.top.visible = true
+    end if
+
     ' PAINT. `playing` is this screen's first frame — Roku is rendering the stream and the
     ' spinner comes down on the line above — so it is the same "content ready, spinner
     ' down" moment every other instrumented screen marks.
@@ -1970,6 +2014,10 @@ end sub
 '
 ' @return {boolean} indicating if video state allows the OSD to show
 function stateAllowsOSD() as boolean
+  ' A PARKED player (a superseded error — see parkPlayerAfterSupersede) is hidden,
+  ' so an OSD opened over it would render nothing while still taking focus.
+  if m.playerParked = true then return false
+
   validStates = ["playing", "paused", "stopped"]
   return inArray(validStates, m.top.state)
 end function

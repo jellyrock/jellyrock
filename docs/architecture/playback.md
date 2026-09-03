@@ -21,7 +21,7 @@ related-files:
   - components/ItemGrid/LoadVideoContentTask.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-09-01
+last-reviewed: 2026-09-02
 ---
 
 # Video & Audio Playback
@@ -232,18 +232,50 @@ season one unread flash at a time. The claim is cheap insurance rather than a fi
 reproduced defect — it costs nothing on the `stopped` landing and closes the asymmetry on the
 `finished` one. See
 [`playback-error-dialog-dismissed-before-it-is-read`](./tech-debt.md#playback-error-dialog-dismissed-before-it-is-read)
-for the measurement and what a reproduction would still have to show. Bailing cannot strand the dialog — the dialog's own
-resolution exits, and anything that navigates without it reaches `VideoPlayerView.onDestroy`,
-which abandons it. Row 2 of the table stays as defense in depth for a dialog shown without a
-claim.
+for the measurement and what a reproduction would still have to show. Bailing cannot strand
+the dialog — the dialog's own resolution exits, and anything that navigates without it reaches
+`VideoPlayerView.onDestroy`, which abandons it. Row 2 of the table stays as defense in depth
+for a dialog shown without a claim.
+
+The claim is set inside `showPlaybackErrorDialog`, not at its call sites, so none of the four
+can order it wrong — it lands after the dialog is on screen and before any caller's stop. Only
+`bufferCheck` issues one: `onState`'s `error` branch stops the two timers and not the stream,
+and the two content-load failures never started one. Note that the `error` branch's
+`m.top.unobserveField("state")` drops only `VideoPlayerView`'s own observer — `PlayerHostView`
+holds a separate one from `mountPlayer()` — so the host can still receive a later `finished`
+from that branch, which is why the claim covers all four rather than the stall alone.
+
+### A superseded error parks the player
 
 A **supersede** is the case ordering genuinely cannot reach: `presentOverlayDialog` cancels
 the incumbent from a caller that cannot know to abandon someone else's dialog first. Both
 error tiers therefore check provenance — `result.externallyCancelled` on the alert, the
 `externallyCancelled` field on the `OverviewDialog` report, which has no result — and decline
-to leave the route on a close the user did not make. The player is left alive and stopped
-behind whatever took the screen; `Back` leaves it. See
+to leave the route on a close the user did not make. See
 [`dialogs.md`](./dialogs.md#presenting-and-tearing-down) for the contract.
+
+Declining to leave is not the same as doing nothing, because **a live `Video` node with no
+stream is not a blank screen**. It keeps drawing Roku's own buffering indicator (the internal
+`retrievingBar` / `bufferingBar` `ProgressBar` nodes — `bufferingBar` is the one `init` styles), so
+the first version of this left the viewer on a black screen with a ring reading `0%`: the app
+saying it is loading, forever. Captured on a Streaming Stick 4K by reproducing the state
+(player mounted, stream stopped, no dialog, OSD never opened) and reading the app's own
+spinner as `visible: false` at the same instant, which is what identifies the ring as Roku's
+node rather than ours.
+
+So the two handlers call `parkPlayerAfterSupersede`: clear the error state, hide the node, and
+mark the player parked. Hiding removes the ring and reveals the backdrop the host already set
+for this item. The parked flag is not decoration — `stateAllowsOSD()` admits `"stopped"`, so
+without it `Up` would open an OSD inside a hidden parent, a control surface that renders
+nothing while taking the focus `Back` needs. Parked, there is nothing to control and `Back` is
+the only action, which is what the state actually is. `onState`'s `playing` branch undoes both,
+because a voice or remote-control `play` restarts a stopped node without going through
+`onVideoContentLoaded` — the only other place that makes the player visible.
+
+What the viewer still does not get is an explanation: the error text went with the dialog, and
+re-presenting it over the surface that deliberately took the screen would just restart the
+fight. Doing better needs a signal that does not exist — the player does not own the
+interrupting dialog and has no way to observe its close.
 
 **Playback info** (`selectPlaybackInfoPressed`) takes the same route to a different
 member of the family, and the split is deliberate at every step:

@@ -6,6 +6,7 @@ Video playback subsystem. See [docs/architecture/playback.md](../../docs/archite
 
 - There is **exactly one** video player component: `VideoPlayerView`. The legacy `JRVideo` was removed (see `docs/architecture/tech-debt.md`'s "Recently removed"); don't reintroduce a parallel player.
 - `VideoPlayerView` extends Roku's native `Video` node. Inherits the full media-playback state machine; do NOT replicate state-machine logic.
+- **A live `Video` node with no stream is NOT a blank screen.** It keeps drawing Roku's own buffering indicator (the internal `retrievingBar` / `bufferingBar` ProgressBars — `bufferingBar` is the one `init` styles), so a player left mounted after the stream stops shows a ring reading `0%`: the app claiming to load, forever. Measured on a Stick 4K; the app's own spinner reads `visible: false` at the same instant, which is how you tell the two apart. If you keep a player mounted without navigating away, **hide the node** — `parkPlayerAfterSupersede` is the one case that does — **and** flag it parked, because `stateAllowsOSD()` admits `"stopped"` and `Up` would otherwise open an OSD inside a hidden parent: a control surface rendering nothing while holding the focus `Back` needs.
 - Pre-playback track selection happens in `ItemDetails`'s inline `TrackDropdown` cluster. **Playback-time** track selection happens via `PlayerHostView` dialog handlers (`onSelectAudioPressed` / `onSelectSubtitlePressed` / `onSelectVideoSourcePressed`). Both write to the same `VideoPlayerView` fields — they're parallel entry points, not duplicates.
 
 ## OSD
