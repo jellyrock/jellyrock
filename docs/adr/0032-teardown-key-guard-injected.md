@@ -12,7 +12,7 @@ message-loop turn**, and the router deliberately leaves the view visible in the 
 the screen is still mounted and still in the focus chain while every node reference it owns is already
 `invalid`. The next key press dots into `invalid` and throws `&hec`.
 
-A v2.27.0 crash report made it concrete: `settings.onKeyEvent`, `key = "left"`, at
+A v2.27.0 crash report (#881) made it concrete: `settings.onKeyEvent`, `key = "left"`, at
 `components/settings/settings.bs:894` — `if (key = "back" or key = "left") and
 isValid(m.settingsMenu.focusedChild) and …`. `isValid()` guards the **field** the dot produces, not the
 **receiver** being dotted, so it never protected `m.settingsMenu` at all. This was the third instance of
