@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Stop the playback error dialog exiting on a close it did not cause ([#876](https://github.com/jellyrock/jellyrock/pull/876))
 - Migrate the playback error dialog onto `JRDialog` and make it diagnostic ([#875](https://github.com/jellyrock/jellyrock/pull/875))
 
 ### Dependencies
