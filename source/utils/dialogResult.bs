@@ -19,12 +19,34 @@
 '   optionIndex - index of the chosen option, or -1 when nothing was chosen
 '   buttonText  - label of the chosen button ("" when none)
 '   value       - entered text (keyboard dialogs only; "" otherwise)
+'   externallyCancelled - the CANCEL came from code, not from the user
+'
+' externallyCancelled is the one key that answers "who closed this?" rather than
+' "what did the user choose?", and it exists for handlers that ACT on their
+' result. `cancelled` deliberately cannot tell the user pressing Back from a
+' third party clearing the screen — that is what stops an owner being stranded
+' with no result at all — but an owner whose handler navigates or mutates state
+' needs the difference, or someone else's dialog fires its action. It is true
+' only on the overlay family's cancelDialog() path (cancelOpenDialog and
+' presentOverlayDialog's supersede) and false for every user-driven resolution,
+' cancels included.
+'
+' ⚠️ The KEYBOARD dialog cannot report it, and it reports FALSE rather than
+' nothing — a positive claim that the USER closed it. It resolves through Roku's
+' modal `close` field, which reads identically whether the user backed out or
+' code wrote it. presentOverlayDialog never supersedes that channel, but
+' cancelOpenDialog DOES reach it (`scene.dialog.close = true`), so the wrong
+' answer is reachable rather than theoretical. Safe today only because neither
+' keyboard caller ACTS: SetServerScreen.onServerUrlEntered and
+' ConfigList.onConfigValueEntered both apply their value on `confirmed`. Trust
+' this key on the overlay family only — and do not build an acting handler on a
+' modal dialog.
 import "pkg:/source/utils/misc.bs"
 
 ' Result for a button-row dialog (JRDialog). index = -1 means cancelled.
 ' confirmIndex is the button that counts as the affirmative action (-1 = none),
 ' which is what `showConfirmDialog` sets so callers can read result.confirmed.
-function buttonDialogResult(index as integer, confirmIndex as integer, buttons as object) as object
+function buttonDialogResult(index as integer, confirmIndex as integer, buttons as object, externallyCancelled = false as boolean) as object
   buttonText = ""
   if index >= 0 and isValid(buttons) and index < buttons.count()
     buttonText = toString(buttons[index])
@@ -32,7 +54,7 @@ function buttonDialogResult(index as integer, confirmIndex as integer, buttons a
 
   ' optionIndex mirrors buttonIndex: for choice dialogs the buttons ARE the
   ' options, so showChoiceDialog callers read result.optionIndex on both routes.
-  return makeDialogResult(index < 0, index >= 0 and index = confirmIndex, index, index, buttonText, "")
+  return makeDialogResult(index < 0, index >= 0 and index = confirmIndex, index, index, buttonText, "", externallyCancelled)
 end function
 
 ' Result for a selection-list dialog (JRListDialog). index = -1 means dismissed
@@ -43,8 +65,8 @@ end function
 ' It used to take a `cancelText` and report it as buttonText on dismissal, from
 ' when the dialog had a Cancel button. Keeping that would have meant a result
 ' naming a control the user was never shown.
-function listDialogResult(index as integer) as object
-  return makeDialogResult(index < 0, false, -1, index, "", "")
+function listDialogResult(index as integer, externallyCancelled = false as boolean) as object
+  return makeDialogResult(index < 0, false, -1, index, "", "", externallyCancelled)
 end function
 
 ' Result for a text-entry dialog (JRKeyboardDialog). `cancelled` distinguishes a
@@ -52,16 +74,18 @@ end function
 function textDialogResult(cancelled as boolean, enteredText as string) as object
   value = ""
   if not cancelled then value = enteredText
-  return makeDialogResult(cancelled, not cancelled, -1, -1, "", value)
+  ' externallyCancelled is left false — see the ⚠️ note at the top of this file.
+  return makeDialogResult(cancelled, not cancelled, -1, -1, "", value, false)
 end function
 
-function makeDialogResult(cancelled as boolean, confirmed as boolean, buttonIndex as integer, optionIndex as integer, buttonText as string, value as string) as object
+function makeDialogResult(cancelled as boolean, confirmed as boolean, buttonIndex as integer, optionIndex as integer, buttonText as string, value as string, externallyCancelled = false as boolean) as object
   return {
     cancelled: cancelled,
     confirmed: confirmed,
     buttonIndex: buttonIndex,
     optionIndex: optionIndex,
     buttonText: buttonText,
-    value: value
+    value: value,
+    externallyCancelled: externallyCancelled
   }
 end function

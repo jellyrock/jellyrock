@@ -9,7 +9,7 @@ namespace tests
     @describe("shape")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("every builder produces the same six keys")
+    @it("every builder produces the same seven keys")
     function _()
       results = [
         buttonDialogResult(0, 1, ["Cancel", "Delete"]),
@@ -23,7 +23,43 @@ namespace tests
         m.assertTrue(result.doesExist("optionIndex"))
         m.assertTrue(result.doesExist("buttonText"))
         m.assertTrue(result.doesExist("value"))
+        m.assertTrue(result.doesExist("externallyCancelled"))
       end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("externallyCancelled - who closed the dialog")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The key exists for handlers that ACT on their result. `cancelled` cannot
+    ' tell the user pressing Back from code clearing the screen, deliberately, so
+    ' an acting handler needs a second signal or it fires from inside someone
+    ' else's flow. Defaulting FALSE is the load-bearing half: every one of the
+    ' fourteen reading handlers keeps behaving exactly as before.
+    @it("defaults to false on every builder, user cancels included")
+    function _()
+      results = [
+        buttonDialogResult(-1, 1, ["Cancel", "Delete"]),
+        buttonDialogResult(0, 1, ["Cancel", "Delete"]),
+        listDialogResult(-1),
+        listDialogResult(2),
+        textDialogResult(true, ""),
+        textDialogResult(false, "hello")
+      ]
+      for each result in results
+        m.assertFalse(result.externallyCancelled)
+      end for
+    end function
+
+    @it("is carried through by the dialogs that can report it")
+    function _()
+      button = buttonDialogResult(-1, 1, ["Cancel", "Delete"], true)
+      m.assertTrue(button.externallyCancelled)
+      m.assertTrue(button.cancelled)
+
+      list = listDialogResult(-1, true)
+      m.assertTrue(list.externallyCancelled)
+      m.assertTrue(list.cancelled)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

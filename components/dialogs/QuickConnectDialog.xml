@@ -56,7 +56,8 @@
     <field id="code" type="string" onChange="onCodeChanged" />
 
     <!-- Set exactly once when the dialog resolves, then it closes itself.
-         Shape: { cancelled, confirmed, buttonIndex, buttonText, optionIndex, value }.
+         Shape: { cancelled, confirmed, buttonIndex, buttonText, optionIndex, value,
+         externallyCancelled }.
          This dialog only ever resolves CANCELLED — the user backing out is the
          only outcome it can produce on its own; approval arrives at the owner
          from the server, not from here. -->

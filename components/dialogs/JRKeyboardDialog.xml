@@ -10,7 +10,8 @@
 <component name="JRKeyboardDialog" extends="StandardKeyboardDialog">
   <interface>
     <!-- Set exactly once when the dialog resolves (OK / Cancel / back).
-         Shape: { cancelled, confirmed, buttonIndex, buttonText, optionIndex, value } -->
+         Shape: { cancelled, confirmed, buttonIndex, buttonText, optionIndex, value,
+         externallyCancelled } -->
     <field id="result" type="assocarray" alwaysNotify="true" />
     <!-- Mask input (passwords). Sets the internal VoiceTextEditBox secureMode. -->
     <field id="secure" type="boolean" value="false" onChange="onSecureChanged" />

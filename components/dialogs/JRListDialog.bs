@@ -239,11 +239,12 @@ sub onItemSelected()
 end sub
 
 ' Resolve exactly once, then close. index = -1 means dismissed without choosing.
-sub resolveDialog(index as integer)
+' externallyCancelled is true only on the cancelDialog() path below.
+sub resolveDialog(index as integer, externallyCancelled = false as boolean)
   if m.resolved then return
   m.resolved = true
 
-  m.top.result = listDialogResult(index)
+  m.top.result = listDialogResult(index, externallyCancelled)
 
   closeDialog()
 end sub
@@ -252,8 +253,9 @@ end sub
 ' Routed through resolveDialog so the once-only guard and the standard cancelled
 ' result both apply: a third party clearing the screen must be indistinguishable
 ' from the user pressing Back, or the owner waiting on the result is stranded.
+' The result still records that it came from code — see JRDialog.cancelDialog.
 sub cancelDialog()
-  resolveDialog(-1)
+  resolveDialog(-1, true)
 end sub
 
 ' Same close mechanics as JRDialog / OverviewDialog: removeChild + returnFocusTo.

@@ -9,7 +9,7 @@ related-files:
   - components/manager/QueueManager.bs
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
-last-reviewed: 2026-08-27
+last-reviewed: 2026-09-01
 ---
 
 # The User Journey
@@ -295,6 +295,12 @@ When the video finishes (`state = "finished"`), `PlayerHostView.onPlayerStateCha
 - **Live TV channel** — `playCurrentQueueItem()` (restart the same channel by remounting)
 - **More items in queue** — `moveForward` → `playCurrentQueueItem()` (remount for the next item)
 - **Queue exhausted** — `exitPlayback()` → `sgrouter.goBack()` (the suspended launching detail, or Home, resumes)
+
+Two `finished` states are *not* the end of playback and bail before any of that: a DoVi
+fallback retry (`isRetrying`) and an error dialog holding the exit (`errorDialogOwnsExit`),
+both of which reach this handler only because the player itself called `stop` and that stop
+surfaced as `finished` rather than `stopped`. See [`playback.md`](./playback.md) for the
+second one and for what is and is not measured about it.
 
 Whether the user backs out (router `goBack` → `beforeViewClose` → `onDestroy`) or the queue exhausts, `PlayerHostView.destroyPlayer()` sets `m.view.control = "stop"` so Jellyfin records the stop before the player node is destroyed.
 

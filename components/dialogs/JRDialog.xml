@@ -53,7 +53,8 @@
     <!-- Button focused when the dialog opens -->
     <field id="defaultButtonIndex" type="integer" value="0" />
     <!-- Set exactly once when the dialog resolves, then the dialog closes itself.
-         Shape: { cancelled, confirmed, buttonIndex, buttonText, optionIndex, value } -->
+         Shape: { cancelled, confirmed, buttonIndex, buttonText, optionIndex, value,
+         externallyCancelled } -->
     <field id="result" type="assocarray" alwaysNotify="true" />
     <!-- Node to restore remote focus to on close. Set by the dialogs.bs helper. -->
     <field id="returnFocusTo" type="node" />

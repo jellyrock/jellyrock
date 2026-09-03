@@ -152,5 +152,25 @@ namespace tests
       m.assertInvalid(m.dialog.getParent())
     end function
 
+    ' Having no `result` is exactly why it needs a field of its own: an owner that
+    ' ACTS when this closes (VideoPlayerView leaves the play route when the
+    ' playback-error report closes) must not act on a close the user did not make.
+    ' Set BEFORE `closed`, which closeDialog writes last, so a `closed` observer
+    ' can always read it. The default-false half is asserted here rather than by
+    ' driving a user close, which a spec cannot reach: neither closeDialog nor
+    ' onKeyEvent is in the <interface>, so a callFunc to either does nothing.
+    @it("records that the close came from code")
+    function _()
+      scene = m.top.getScene()
+      m.dialog.title = "Overview"
+      scene.appendChild(m.dialog)
+
+      m.assertFalse(m.dialog.externallyCancelled)
+      m.dialog.callFunc("cancelDialog")
+
+      m.assertTrue(m.dialog.externallyCancelled)
+      m.assertTrue(m.dialog.closed)
+    end function
+
   end class
 end namespace

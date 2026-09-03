@@ -24,8 +24,19 @@
          On a buffer:loop: error the player retries with shouldBypassDoviPreservation=true
          to allow the server to grant direct play instead. -->
     <field id="isDoviDirectPlayFallbackAvailable" type="boolean" value="false" />
-    <!-- Prevents ViewCreator from popping the scene during a DoVi fallback retry. -->
+    <!-- Prevents PlayerHostView from advancing or exiting during a DoVi fallback
+         retry, whose `stop` can surface as state `finished`. -->
     <field id="isRetrying" type="boolean" value="false" />
+    <!-- An error dialog is up and IT owns the exit, so PlayerHostView must not
+         treat a `finished` as the end of playback. The stall path shows the
+         dialog and then stops the stream (bufferCheck); a `stop` USUALLY
+         surfaces as `stopped`, which the host ignores, but it can surface as
+         `finished` — that is the whole reason isRetrying above exists — and
+         then the host would abandon this dialog and advance the queue before
+         the user had read it. Cleared when the dialog resolves or is abandoned.
+         Same shape and same reason as isRetrying: a `finished` this app caused
+         is not playback ending. -->
+    <field id="errorDialogOwnsExit" type="boolean" value="false" />
     <!-- True once a retry re-asked the server WITHOUT the DoVi container profile.
          Read by the playback-info report: with the profile bypassed, a
          VideoRangeTypeNotSupported on this pass cannot be the Preserve DoVi

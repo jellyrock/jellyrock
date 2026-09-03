@@ -2,7 +2,8 @@
 '
 ' All helpers create the dialog, present it, and return the dialog NODE. Result
 ' delivery is per-dialog-instance through the node's `result` field (shape:
-' { cancelled, confirmed, buttonIndex, buttonText, optionIndex, value }), set
+' { cancelled, confirmed, buttonIndex, buttonText, optionIndex, value,
+' externallyCancelled }), set
 ' exactly once when the user resolves the dialog — there is no shared global
 ' return field, so concurrent observers can never cross-fire.
 '
@@ -327,20 +328,15 @@ function presentOverlayDialog(dialog as object, onResult as string, returnFocusT
     ' error dialog both moved onto this overlay channel and joined the
     ' supersede.) See docs/architecture/tech-debt.md#dialog-channels-unarbitrated.
     '
-    ' ⚠️ ONE INCUMBENT IS NOT SAFE TO SUPERSEDE, and it is on THIS channel now:
-    ' VideoPlayerView's playback-error alert NAVIGATES on close. The blanket
-    ' safety argument above ("all ten result.confirmed consumers gate
-    ' positively") covers dialogs whose handler READS a value; it does not cover
-    ' one whose handler ACTS. Superseding that alert delivers a cancelled result
-    ' its handler cannot distinguish from Back, so it fires exitPlayback() — a
-    ' goBack out from under the dialog this call is in the middle of mounting.
-    ' The alert used to live on the modal channel, where this line could not
-    ' reach it; the phase-4 migration moved it here, which is what made the
-    ' hazard reachable rather than removing it. Do NOT "fix" that by skipping
-    ' the supersede — the one-overlay invariant is what stops findNode resolving
-    ' to a corpse. The fix belongs in the alert's owner, which has to stop
-    ' navigating from inside its result handler. Tracked as
-    ' docs/architecture/tech-debt.md#playback-error-dialog-dismissed-before-it-is-read.
+    ' ⚠️ The blanket safety argument above covers dialogs whose handler READS a
+    ' value. It does NOT cover one whose handler ACTS — VideoPlayerView's
+    ' playback-error alert leaves the play route on close, so superseding it
+    ' used to fire exitPlayback() from inside this very call, a goBack out from
+    ' under the dialog being mounted. That is why the cancelled result now
+    ' carries externallyCancelled (see source/utils/dialogResult.bs): an acting
+    ' handler declines a close the user did not make, while every reading
+    ' handler is untouched. Do NOT instead skip the supersede for such a dialog
+    ' — the one-overlay invariant is what stops findNode resolving to a corpse.
     incumbent.callFunc("cancelDialog")
   end if
 

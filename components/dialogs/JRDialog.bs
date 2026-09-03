@@ -423,11 +423,12 @@ sub moveButtonFocus(delta as integer)
 end sub
 
 ' Resolve the dialog exactly once, then close. index = -1 means cancelled (back).
-sub resolveDialog(index as integer)
+' externallyCancelled is true only on the cancelDialog() path below.
+sub resolveDialog(index as integer, externallyCancelled = false as boolean)
   if m.resolved then return
   m.resolved = true
 
-  m.top.result = buttonDialogResult(index, m.top.confirmIndex, m.top.buttons)
+  m.top.result = buttonDialogResult(index, m.top.confirmIndex, m.top.buttons, externallyCancelled)
 
   closeDialog()
 end sub
@@ -436,8 +437,13 @@ end sub
 ' Routed through resolveDialog so the once-only guard and the standard cancelled
 ' result both apply: a third party clearing the screen must be indistinguishable
 ' from the user pressing Back, or the owner waiting on the result is stranded.
+'
+' Indistinguishable in what it DELIVERS, not in where it came from — the result
+' also carries externallyCancelled, so an owner whose handler ACTS can decline to
+' act on a close the user did not make. Everyone else reads `cancelled` and is
+' unaffected. See source/utils/dialogResult.bs.
 sub cancelDialog()
-  resolveDialog(-1)
+  resolveDialog(-1, true)
 end sub
 
 ' Dismiss this overlay. Appended directly to the scene by dialogs.bs, so closing is a
