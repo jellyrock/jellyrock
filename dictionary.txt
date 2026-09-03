@@ -199,6 +199,7 @@ dep
 dep-bump
 Dependabot
 deps
+dereferences
 deserialize
 dev
 Dev
@@ -703,6 +704,8 @@ unlinked
 unmapped
 unmerged
 unobserve
+unobserves
+unobserving
 unowned
 unparented
 unprefixed

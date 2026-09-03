@@ -3,7 +3,7 @@
 **Status:** Accepted
 **Date:** 2026-09-02
 
-**related-files**: `scripts/bsc-plugins/auto-destroyed-guard.cjs`, `tests/scripts/unit/bsc-plugins/auto-destroyed-guard.test.js`, `bsconfig.json`, `bsconfig-prod.json`, `components/CLAUDE.md`, `docs/architecture/build-and-tooling.md`, `docs/architecture/tech-debt.md`
+**related-files**: `scripts/bsc-plugins/auto-destroyed-guard.cjs`, `scripts/bsc-plugins/unobserve-before-release.cjs`, `tests/scripts/unit/bsc-plugins/auto-destroyed-guard.test.js`, `tests/scripts/unit/bsc-plugins/unobserve-before-release.test.js`, `bsconfig.json`, `bsconfig-prod.json`, `bsconfig-analysis.json`, `components/CLAUDE.md`, `docs/architecture/build-and-tooling.md`, `docs/architecture/tech-debt.md`
 
 `sgrouter_closeView` runs a view's `_beforeViewClose` hook — which reaches `JRScreen.beforeViewClose`
 -> `onScreenHidden()` + `onDestroy()` — and removes the node only once the returned promise resolves.
@@ -61,9 +61,21 @@ screen's `onKeyEvent` is unambiguously correct — the key belongs to whatever t
 early return in an observer callback is not: some legitimately run during teardown (stop-reporting,
 dialog cleanup), so a blanket injection would silently change behavior. The observer half is also far
 smaller than a read count suggests: its real property is cross-reference ordering inside `onDestroy`
-(is a reference released while a handler that reads it is still attached?), which found **three** live sites, all
-fixed by reordering rather than guarding. That is tracked as `teardown-ordering-unenforced`, along with
-the false-positive classes a re-audit must exclude.
+(is a reference released while a handler that dereferences it is still attached?), which found **three** live
+sites, all fixed by reordering rather than guarding.
+
+That half is closed by a **diagnostic** rather than an injection:
+[`unobserve-before-release`](../../scripts/bsc-plugins/unobserve-before-release.cjs) reports an unobserve that
+runs after a release its handler dereferences, and the fix it asks for is to move the unobserve up. Reordering
+suppresses nothing, which is the property an early return cannot offer here. It is **severity 2**, matching
+`observe-without-on-destroy`: the house split is that structural-absence rules error while inference-heavy ones
+warn, and this one infers a handler binding through an alias graph.
+
+Precision came from three refinements, measured rather than argued — the naive "any unobserve after any release"
+rule reports 62 hits, effectively all noise. Binding handlers by **(target, field)** rather than field name alone,
+counting only **receiver-position** uses, and exempting a handler that `isValid`-checks the reference itself take
+it to **exactly the three known-real sites on the tree as it stood before those fixes, and zero on the
+fixed one**.
 
 ## Consequences
 
@@ -77,3 +89,8 @@ make. A reader of `onKeyEvent` will not see the guard, so `components/CLAUDE.md`
 
 The rule keys on a top-level `onDestroy`. A component that tears down under some other method name gets
 no guard; `onDestroy` is the project-wide convention and both existing teardown plugins already assume it.
+
+The observer diagnostic's gaps all fall toward **false negatives** — detachment reached through a helper
+(`ExtrasRowList.onDestroy` delegates to `cancelInFlightChain()`), a handler named by a non-literal, an `isValid`
+on any path clearing the reference. That is the safe direction for a rule whose whole value is that a hit means
+something; a warning that cried wolf would be turned off.
