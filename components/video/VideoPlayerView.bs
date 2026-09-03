@@ -2154,17 +2154,26 @@ sub onDestroy()
     m.trickplayCarousel = invalid
   end if
 
-  ' Destroy notification components
+  ' Destroy notification components. Detach BOTH notifications' observers before
+  ' releasing EITHER reference: onNotificationStateChanged reads both, so nulling
+  ' one while the other is still observed leaves a live callback dotting an
+  ' invalid ref - the same teardown shape as #733, one handler over.
   if isValid(m.segmentNotification)
     m.segmentNotification.unobserveField("action")
     m.segmentNotification.unobserveField("state")
-    m.segmentNotification.callFunc("onDestroy")
-    m.segmentNotification = invalid
   end if
 
   if isValid(m.nextEpisodeNotification)
     m.nextEpisodeNotification.unobserveField("action")
     m.nextEpisodeNotification.unobserveField("state")
+  end if
+
+  if isValid(m.segmentNotification)
+    m.segmentNotification.callFunc("onDestroy")
+    m.segmentNotification = invalid
+  end if
+
+  if isValid(m.nextEpisodeNotification)
     m.nextEpisodeNotification.callFunc("onDestroy")
     m.nextEpisodeNotification = invalid
   end if
