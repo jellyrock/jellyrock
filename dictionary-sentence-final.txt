@@ -190,6 +190,7 @@
 (?:dep-bump)\.
 (?:Dependabot)\.
 (?:deps)\.
+(?:dereferences)\.
 (?:deserialize)\.
 (?:dev)\.
 (?:Dev)\.
@@ -694,6 +695,8 @@
 (?:unmapped)\.
 (?:unmerged)\.
 (?:unobserve)\.
+(?:unobserves)\.
+(?:unobserving)\.
 (?:unowned)\.
 (?:unparented)\.
 (?:unprefixed)\.

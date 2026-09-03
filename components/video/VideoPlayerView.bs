@@ -33,6 +33,13 @@ import "pkg:/source/utils/voiceTransport.bs"
 const TRICKPLAYBAR_POSITION_LABEL_INDEX = 8
 
 sub init()
+  ' Guard against observer callbacks (notably onPositionChanged, driven by the
+  ' native playback engine) that can still fire while onDestroy is tearing down
+  ' this component's node references. FIRST statement on purpose: auto-destroyed-guard
+  ' injects this line only when init() does not already open with it, so keeping it
+  ' first is what stops the build from carrying a second, redundant copy.
+  m.isDestroyed = false
+
   ' Open the readiness ledger for one playback start. This is the RTA `osd` and
   ' `trickplay` screens' load: both navs drive `startPlayback` and then wait for the
   ' player, so the number a reader wants is time-to-first-frame — not the OSD's own
@@ -43,10 +50,6 @@ sub init()
   ' remounts it), so one component instance is exactly one load.
   screenLoad.begin("videoPlayer")
   m.log = new log.Logger("VideoPlayerView")
-  ' Guard against observer callbacks (notably onPositionChanged, driven by the
-  ' native playback engine) that can still fire while onDestroy is tearing down
-  ' this component's node references.
-  m.isDestroyed = false
   ' Hide the overhang on init to prevent showing 2 clocks
   m.top.getScene().findNode("overhang").visible = false
   m.forceFinished = false
@@ -1519,7 +1522,7 @@ sub onPositionChanged()
   ' (destroyPlayer sets control="stop" before onDestroy unobserves position),
   ' so this observer can fire mid-teardown when m.osd / m.*Notification refs are
   ' being cleared. Bail out rather than dot into a torn-down reference.
-  if m.isDestroyed then return
+  if m.isDestroyed = true then return
 
   ' Fall back to content.length (which Jellyfin populates from mediaSource.RunTimeTicks)
   ' when Roku's own duration probe returns 0. This happens with live-transcoded progressive
@@ -2251,17 +2254,26 @@ sub onDestroy()
     m.trickplayCarousel = invalid
   end if
 
-  ' Destroy notification components
+  ' Destroy notification components. Detach BOTH notifications' observers before
+  ' releasing EITHER reference: onNotificationStateChanged reads both, so nulling
+  ' one while the other is still observed leaves a live callback dotting an
+  ' invalid ref - the same teardown shape as #733, one handler over.
   if isValid(m.segmentNotification)
     m.segmentNotification.unobserveField("action")
     m.segmentNotification.unobserveField("state")
-    m.segmentNotification.callFunc("onDestroy")
-    m.segmentNotification = invalid
   end if
 
   if isValid(m.nextEpisodeNotification)
     m.nextEpisodeNotification.unobserveField("action")
     m.nextEpisodeNotification.unobserveField("state")
+  end if
+
+  if isValid(m.segmentNotification)
+    m.segmentNotification.callFunc("onDestroy")
+    m.segmentNotification = invalid
+  end if
+
+  if isValid(m.nextEpisodeNotification)
     m.nextEpisodeNotification.callFunc("onDestroy")
     m.nextEpisodeNotification = invalid
   end if

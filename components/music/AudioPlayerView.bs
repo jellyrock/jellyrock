@@ -912,16 +912,21 @@ sub onDestroy()
   ' Unobserve button observer
   m.buttons.unobserveField("buttonSelected")
 
-  ' Stop and release task nodes (observers may already be cleared by their callbacks)
+  ' Detach EVERY task observer before releasing ANY task reference. Interleaving
+  ' them leaves a window: onAudioStreamLoaded reads m.LoadMetaDataTask, so a late
+  ' content write arriving after that ref was nulled but before this task's own
+  ' observer came off would dot into invalid (&hec) - the #733 teardown shape.
   m.LoadMetaDataTask.unobserveField("content")
+  m.LoadAudioStreamTask.unobserveField("content")
+  m.LoadScreenSaverTimeoutTask.unobserveField("content")
+
+  ' Stop and release task nodes (observers may already be cleared by their callbacks)
   m.LoadMetaDataTask.control = "STOP"
   m.LoadMetaDataTask = invalid
 
-  m.LoadAudioStreamTask.unobserveField("content")
   m.LoadAudioStreamTask.control = "STOP"
   m.LoadAudioStreamTask = invalid
 
-  m.LoadScreenSaverTimeoutTask.unobserveField("content")
   m.LoadScreenSaverTimeoutTask.control = "STOP"
   m.LoadScreenSaverTimeoutTask = invalid
 
