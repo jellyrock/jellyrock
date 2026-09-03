@@ -15,6 +15,7 @@ import { describe, it, expect } from 'vitest';
 import { transpileWithPlugin } from '../_helpers/transpile-with-plugin.js';
 import { runPluginOnSource, diagnosticsByCode } from '../_helpers/run-plugin.js';
 import autoDestroyedGuardPlugin from '../../../../scripts/bsc-plugins/auto-destroyed-guard.cjs';
+import autoAbandonPromisesPlugin from '../../../../scripts/bsc-plugins/auto-abandon-promises.cjs';
 
 const CODE = 'auto-destroyed-guard-needs-init';
 
@@ -106,10 +107,32 @@ describe('auto-destroyed-guard — injection', () => {
     expect(code).toContain('if m.isDestroyed = true then');
   });
 
-  it('does not double-guard an onKeyEvent that already reads the flag', async () => {
+  it('does not double-guard an onKeyEvent that already OPENS with the exact guard', async () => {
     const out = await transpileWithPlugin(autoDestroyedGuardPlugin, {
       'components/Guarded.xml': xml('Guarded'),
       'components/Guarded.bs': `
+        sub init()
+          m.isDestroyed = false
+        end sub
+        function onKeyEvent(key as string, press as boolean) as boolean
+          if m.isDestroyed = true then return false
+          return false
+        end function
+        sub onDestroy()
+          m.isDestroyed = true
+        end sub
+      `,
+    });
+    expect(countOccurrences(out['components/Guarded.bs'], 'm\\.isDestroyed')).toBe(3);
+  });
+
+  it('injects ABOVE a hand-written bare-truthiness guard rather than accepting it', async () => {
+    // `if m.isDestroyed then` THROWS on an uninitialised flag (pinned on device in
+    // tests/source/unit/utils/teardownGuardSemantics.spec.bs). Finding one is a
+    // reason to put the safe form above it, not a reason to skip the site.
+    const out = await transpileWithPlugin(autoDestroyedGuardPlugin, {
+      'components/Bare.xml': xml('Bare'),
+      'components/Bare.bs': `
         sub init()
           m.isDestroyed = false
         end sub
@@ -122,7 +145,111 @@ describe('auto-destroyed-guard — injection', () => {
         end sub
       `,
     });
-    expect(countOccurrences(out['components/Guarded.bs'], 'm\\.isDestroyed')).toBe(3);
+    const code = out['components/Bare.bs'];
+    expect(code).toContain('if m.isDestroyed = true then');
+    expect(code.indexOf('if m.isDestroyed = true then')).toBeLessThan(
+      code.indexOf('if m.isDestroyed then'),
+    );
+  });
+
+  it('guards an onKeyEvent that mentions the flag only AFTER dereferencing a node', async () => {
+    // The regression this rule exists to stop: a body-wide "does it mention the
+    // flag?" test reads this file as already-guarded and injects nothing, leaving
+    // `m.menu.focusedChild` — the statement that actually crashes — unprotected.
+    const out = await transpileWithPlugin(autoDestroyedGuardPlugin, {
+      'components/Late.xml': xml('Late'),
+      'components/Late.bs': `
+        sub init()
+          m.menu = m.top.findNode("menu")
+        end sub
+        function onKeyEvent(key as string, press as boolean) as boolean
+          if key = "left" and isValid(m.menu.focusedChild)
+            m.log.info("destroyed?", m.isDestroyed)
+            return true
+          end if
+          return false
+        end function
+        sub onDestroy()
+          m.menu = invalid
+        end sub
+      `,
+    });
+    const code = out['components/Late.bs'];
+    expect(code).toContain('if m.isDestroyed = true then');
+    expect(code.indexOf('if m.isDestroyed = true then')).toBeLessThan(
+      code.indexOf('m.menu.focusedChild'),
+    );
+  });
+
+  it('still sets the flag when onDestroy assigns it only conditionally', async () => {
+    // A conditional set can leave the flag `false` after teardown, so the guard
+    // would never fire — exactly the case a body-wide assignment test would skip.
+    const out = await transpileWithPlugin(autoDestroyedGuardPlugin, {
+      'components/Cond.xml': xml('Cond'),
+      'components/Cond.bs': `
+        sub init()
+          m.menu = m.top.findNode("menu")
+        end sub
+        function onKeyEvent(key as string, press as boolean) as boolean
+          return false
+        end function
+        sub onDestroy()
+          if isValid(m.menu) then m.isDestroyed = true
+          m.menu = invalid
+        end sub
+      `,
+    });
+    const code = out['components/Cond.bs'];
+    expect(code).toMatch(/sub onDestroy\(\)\s*\n\s*m\.isDestroyed = true/);
+  });
+
+  it('initialises the flag when init sets it somewhere other than the first statement', async () => {
+    const out = await transpileWithPlugin(autoDestroyedGuardPlugin, {
+      'components/LateInit.xml': xml('LateInit'),
+      'components/LateInit.bs': `
+        sub init()
+          m.menu = m.top.findNode("menu")
+          m.isDestroyed = false
+        end sub
+        function onKeyEvent(key as string, press as boolean) as boolean
+          return false
+        end function
+        sub onDestroy()
+          m.menu = invalid
+        end sub
+      `,
+    });
+    expect(out['components/LateInit.bs']).toMatch(/sub init\(\)\s*\n\s*m\.isDestroyed = false/);
+  });
+
+  it('is not fooled by another plugin prepending into onDestroy', async () => {
+    // auto-abandon-promises runs FIRST in bsconfig.json and prepends
+    // abandonApiPromises() into onDestroy, so by the time this plugin looks, the
+    // hand-written flag is no longer statement 0. Idempotency keys on the first
+    // AUTHORED statement for exactly this reason — a positional test that counted
+    // injected statements would emit a duplicate `m.isDestroyed = true` here.
+    const out = await transpileWithPlugin([autoAbandonPromisesPlugin, autoDestroyedGuardPlugin], {
+      'components/Chain.xml': xml('Chain'),
+      'components/Chain.bs': `
+        sub init()
+          m.isDestroyed = false
+        end sub
+        function onKeyEvent(key as string, press as boolean) as boolean
+          return false
+        end function
+        sub loadIt()
+          fetchAsync("things", "onThings")
+        end sub
+        sub onDestroy()
+          m.isDestroyed = true
+          m.menu = invalid
+        end sub
+      `,
+    });
+    const code = out['components/Chain.bs'];
+    expect(code).toContain('abandonApiPromises()');
+    expect(countOccurrences(code, 'm\\.isDestroyed = true')).toBe(2); // 1 assignment + 1 guard compare
+    expect(countOccurrences(code, 'm\\.isDestroyed = false')).toBe(1);
   });
 
   it('does not inject into a component with no onDestroy', async () => {

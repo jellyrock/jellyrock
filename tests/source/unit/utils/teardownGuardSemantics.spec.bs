@@ -5,12 +5,12 @@
 ' shorter `if m.isDestroyed then return false`. That choice is NOT style: Roku's
 ' BrightScript reference documents the comparison operators for numerics and
 ' strings only, and separately warns that "an `invalid` value is not considered
-' false". So the behaviour of both forms against an UNINITIALISED flag is
+' false". So the behavior of both forms against an UNINITIALISED flag is
 ' exactly the undocumented corner the injected code must survive — a component
 ' whose `init()` is shadowed by a subclass's own `init()` (SceneGraph does not
 ' chain `init`) would reach `onKeyEvent` with the flag still `invalid`.
 '
-' These tests pin that behaviour on real hardware so a future rewrite of the
+' These tests pin that behavior on real hardware so a future rewrite of the
 ' emitted guard cannot silently regress into the throwing form.
 namespace tests
 

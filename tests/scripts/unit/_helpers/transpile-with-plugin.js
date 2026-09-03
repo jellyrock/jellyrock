@@ -19,10 +19,12 @@ import { Program } from 'brighterscript';
  * Transpile inline-source files through a Tier 2 plugin and return the
  * transpiled output for each.
  *
- * @param {() => object} pluginFactory  Factory exported by the plugin
- *                                       (the `module.exports = () => new X()`
- *                                       form). A fresh instance is created
- *                                       per call — never share across calls.
+ * @param {(() => object)|Array<() => object>} pluginFactory
+ *        Factory exported by the plugin (the `module.exports = () => new X()`
+ *        form), or an ARRAY of them to exercise a chain. A fresh instance is
+ *        created per call — never share across calls. Array order is the order
+ *        plugins run in, so mirror the `bsconfig.json` `plugins` order when a
+ *        test is about how two injecting plugins interact.
  * @param {Record<string,string>} files Map of pkgPath → BS/XML source.
  * @param {object} [options]            Extra options merged into the Program
  *                                       constructor. Use this to pass plugin
@@ -34,7 +36,9 @@ export async function transpileWithPlugin(pluginFactory, files, options = {}) {
     rootDir: '/tmp/jellyrock-plugin-test',
     ...options,
   });
-  program.plugins.add(pluginFactory());
+  for (const factory of Array.isArray(pluginFactory) ? pluginFactory : [pluginFactory]) {
+    program.plugins.add(factory());
+  }
   for (const [pkgPath, content] of Object.entries(files)) {
     program.setFile(pkgPath, content);
   }

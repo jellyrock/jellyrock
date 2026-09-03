@@ -18,11 +18,23 @@
  * in `JRScreen`. So this plugin does it mechanically, for every component that
  * has both hooks:
  *
- *  1. INJECT (beforePrepareFile), all three sites, each independently
- *     idempotent — a site the file already writes by hand is left alone:
+ *  1. INJECT (beforePrepareFile), all three sites:
  *       init()        -> `m.isDestroyed = false`
  *       onDestroy()   -> `m.isDestroyed = true`
  *       onKeyEvent()  -> `if m.isDestroyed = true then return false`
+ *
+ *     Idempotency is POSITIONAL: a site is skipped only when the function's
+ *     first AUTHORED statement (statements other plugins injected carry no
+ *     source location and are skipped) is already exactly the form above, so
+ *     the guarantee the plugin makes is "the injected form opens every hook,
+ *     ahead of anything the file itself does". Matching anything
+ *     looser — "the body mentions `m.isDestroyed` somewhere" — silently opts a
+ *     file out of the guard it most needs: an `onKeyEvent` that reads the flag
+ *     only after dereferencing a node still crashes on the statements above the
+ *     read, and an `onDestroy` that sets it inside an `if` may never set it at
+ *     all. Injecting above a hand-written flag is harmless (the later statement
+ *     simply wins, or repeats); skipping because of one is not. Files that must
+ *     opt out have the escape hatch below, which is explicit and greppable.
  *
  *  2. ENFORCE (afterValidateFile): a component with `onDestroy` + `onKeyEvent`
  *     but NO `init()` is a build ERROR. The flag has to be initialised
@@ -90,13 +102,13 @@ class AutoDestroyedGuardPlugin {
       const init = findFunction(file, INIT);
       if (!init) return; // missing init is handled by the diagnostic
 
-      if (!assignsFlag(init)) {
+      if (!opensWithFlagAssignment(init, false)) {
         prepend(event, init, makeFlagAssignment(false));
       }
-      if (!assignsFlag(onDestroy)) {
+      if (!opensWithFlagAssignment(onDestroy, true)) {
         prepend(event, onDestroy, makeFlagAssignment(true));
       }
-      if (!readsFlag(onKeyEvent)) {
+      if (!opensWithGuard(onKeyEvent)) {
         prepend(event, onKeyEvent, makeGuardStatement());
       }
     } catch (_e) {
@@ -165,30 +177,61 @@ function prepend(event, fnStmt, statement) {
   event.editor.addToArray(statements, 0, statement);
 }
 
-// True if the function already assigns `m.isDestroyed` anywhere in its body.
-function assignsFlag(fnStmt) {
-  let found = false;
-  const visitor = brighterscript.createVisitor({
-    DottedSetStatement: (stmt) => {
-      if (found) return;
-      if (isFlagOnM(stmt.obj, stmt.tokens?.name?.text)) found = true;
-    },
-  });
-  fnStmt.walk(visitor, { walkMode: brighterscript.WalkMode.visitAllRecursive });
-  return found;
+// The first statement the AUTHOR wrote in `fnStmt`'s body, or null.
+//
+// Statements another plugin injected are skipped: they are built from synthetic
+// tokens and so carry no source `location`. This matters because
+// `auto-abandon-promises` prepends `abandonApiPromises()` into `onDestroy`
+// before this plugin runs, and a plain "statement 0" test would read that as
+// "the file does not set the flag first" and inject a duplicate. What decides
+// idempotency is what the FILE opens with, not what plugin order leaves in
+// front of it.
+function firstAuthoredStatement(fnStmt) {
+  const statements = fnStmt.func?.body?.statements;
+  if (!Array.isArray(statements)) return null;
+  return statements.find((stmt) => stmt?.location) ?? null;
 }
 
-// True if the function already reads `m.isDestroyed` anywhere in its body.
-function readsFlag(fnStmt) {
-  let found = false;
-  const visitor = brighterscript.createVisitor({
-    DottedGetExpression: (expr) => {
-      if (found) return;
-      if (isFlagOnM(expr.obj, expr.tokens?.name?.text)) found = true;
-    },
-  });
-  fnStmt.walk(visitor, { walkMode: brighterscript.WalkMode.visitAllRecursive });
-  return found;
+// True when `expr` is the boolean literal `value`.
+function isBoolLiteral(expr, value) {
+  return (
+    brighterscript.isLiteralExpression(expr) &&
+    expr.tokens?.value?.kind === (value ? TokenKind.True : TokenKind.False)
+  );
+}
+
+// True when the function OPENS with `m.isDestroyed = <value>`.
+function opensWithFlagAssignment(fnStmt, value) {
+  const stmt = firstAuthoredStatement(fnStmt);
+  return (
+    brighterscript.isDottedSetStatement(stmt) &&
+    isFlagOnM(stmt.obj, stmt.tokens?.name?.text) &&
+    isBoolLiteral(stmt.value, value)
+  );
+}
+
+// True when the function OPENS with exactly `if m.isDestroyed = true then return false`.
+//
+// Exact on purpose. The bare `if m.isDestroyed then return false` does NOT match:
+// it throws on an uninitialised flag (pinned in teardownGuardSemantics.spec.bs), so
+// the right response to finding one is to inject the safe form ABOVE it, which
+// makes the throwing form unreachable.
+function opensWithGuard(fnStmt) {
+  const stmt = firstAuthoredStatement(fnStmt);
+  if (!brighterscript.isIfStatement(stmt)) return false;
+  const condition = stmt.condition;
+  if (!brighterscript.isBinaryExpression(condition)) return false;
+  if (condition.tokens?.operator?.kind !== TokenKind.Equal) return false;
+  if (!brighterscript.isDottedGetExpression(condition.left)) return false;
+  if (!isFlagOnM(condition.left.obj, condition.left.tokens?.name?.text)) return false;
+  if (!isBoolLiteral(condition.right, true)) return false;
+  const thenStatements = stmt.thenBranch?.statements;
+  return (
+    Array.isArray(thenStatements) &&
+    thenStatements.length === 1 &&
+    brighterscript.isReturnStatement(thenStatements[0]) &&
+    isBoolLiteral(thenStatements[0].value, false)
+  );
 }
 
 // True when `obj`.`name` denotes `m.isDestroyed`.
