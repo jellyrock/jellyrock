@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update actions/setup-java action to v6 ([#874](https://github.com/jellyrock/jellyrock/pull/874))
 - Update lint-staged from v17.3.0 to v17.4.1 ([#865](https://github.com/jellyrock/jellyrock/pull/865))
 - Update softprops/action-gh-release action to v3.0.3 ([#873](https://github.com/jellyrock/jellyrock/pull/873))
 - Update js-yaml from v5.3.0 to v5.4.1 ([#857](https://github.com/jellyrock/jellyrock/pull/857))
