@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-09-03 — fix: Guard `onKeyEvent` against key events delivered after teardown
 - 2026-09-03 — Stop the playback error dialog exiting on a close it did not cause
 - 2026-09-01 — Migrate the playback error dialog onto `JRDialog` and make it diagnostic
 - 2026-08-31 — fix(playback): Direct-play music instead of transcoding it
