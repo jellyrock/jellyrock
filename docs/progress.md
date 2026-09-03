@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-09-01
+last-updated: 2026-09-03
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-09-03 — Stop the playback error dialog exiting on a close it did not cause
 - 2026-09-01 — Migrate the playback error dialog onto `JRDialog` and make it diagnostic
 - 2026-08-31 — fix(playback): Direct-play music instead of transcoding it
 - 2026-08-30 — Audio direct play now covers `wav`, `aiff`, elementary `.aac`, `ogg` (vorbis/opus/flac, covering `.ogg` / `.oga` / `.opus`) and `mka`, each gated on a real `CanDecodeAudio` probe and verified end to end at `PlayMethod=DirectPlay` on a Streaming Stick 4K; closes the followup the m4a fix opened.
@@ -54,11 +55,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-08-21 — Give `cell-load` rates a denominator with scripted RTA sweeps
 - 2026-08-20 — Batch Home's row-size recompute across a latest-rows run
 - 2026-08-20 — ci(rta): Fix `measure --deploy` deleting the run provenance it just wrote
-- 2026-08-19 — ci(rta): Add `npm run device:check` so "no device access" is a checked claim
-- 2026-08-19 — ci(rta): Stop citing gitignored paths from tracked files
-- 2026-08-19 — ci(rta): Add `measure:report`, the screen × tier coverage matrix
-- 2026-08-19 — ci(rta): Make the overhang escape recoverable and gate `waitHome` on login
-- 2026-08-18 — ci(rta): Add `measure:calibrate`, the ODC calibration harness
 
 ## Open followups
 
