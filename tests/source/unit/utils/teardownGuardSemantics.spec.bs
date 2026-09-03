@@ -1,0 +1,72 @@
+' Device-verified semantics for the guard that `auto-destroyed-guard` injects
+' into every component declaring both `onDestroy` and `onKeyEvent` (ADR 0032).
+'
+' The plugin emits `if m.isDestroyed = true then return false` rather than the
+' shorter `if m.isDestroyed then return false`. That choice is NOT style: Roku's
+' BrightScript reference documents the comparison operators for numerics and
+' strings only, and separately warns that "an `invalid` value is not considered
+' false". So the behaviour of both forms against an UNINITIALISED flag is
+' exactly the undocumented corner the injected code must survive — a component
+' whose `init()` is shadowed by a subclass's own `init()` (SceneGraph does not
+' chain `init`) would reach `onKeyEvent` with the flag still `invalid`.
+'
+' These tests pin that behaviour on real hardware so a future rewrite of the
+' emitted guard cannot silently regress into the throwing form.
+namespace tests
+
+  @suite("teardown guard - BrightScript semantics the injected guard relies on")
+  class TeardownGuardSemanticsTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the emitted form: `= true` against an uninitialised flag")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("comparing invalid to true does not throw, and does not fire the guard")
+    function _()
+      scope = {}
+      threw = false
+      outcome = "unset"
+      try
+        if scope.isDestroyed = true
+          outcome = "guard-fired"
+        else
+          outcome = "guard-not-fired"
+        end if
+      catch e
+        threw = true
+      end try
+      m.assertFalse(threw, "`invalid = true` must not throw - the injected guard runs it whenever init() was shadowed")
+      m.assertEqual(outcome, "guard-not-fired", "an uninitialised flag must fall through, not swallow the key")
+    end function
+
+    @it("the guard fires only once onDestroy has set the flag")
+    function _()
+      scope = {}
+      scope.isDestroyed = false
+      m.assertFalse(scope.isDestroyed = true, "a live component must not be guarded")
+      scope.isDestroyed = true
+      m.assertTrue(scope.isDestroyed = true, "a destroyed component must be guarded")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the form we must NOT emit")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' If this ever starts passing without throwing, the `= true` comparison is no
+    ' longer load-bearing and ADR 0032's second-layer argument can be revisited.
+    @it("bare truthiness on an uninitialised flag throws")
+    function _()
+      scope = {}
+      threw = false
+      try
+        if scope.isDestroyed
+          threw = false
+        end if
+      catch e
+        threw = true
+      end try
+      m.assertTrue(threw, "`if m.isDestroyed` on invalid must throw - this is why the plugin emits `= true`")
+    end function
+
+  end class
+end namespace

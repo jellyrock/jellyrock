@@ -20,6 +20,7 @@ related-files:
   - scripts/bsc-plugins/no-task-fanout.cjs
   - scripts/bsc-plugins/no-hand-rolled-dialog.cjs
   - scripts/bsc-plugins/callfunc-interface.cjs
+  - scripts/bsc-plugins/auto-destroyed-guard.cjs
   - scripts/lint/dictionary-audit.cjs
   - scripts/lint/docs-check.cjs
   - scripts/lint/docs-stale.cjs
@@ -82,7 +83,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-08-24
+last-reviewed: 2026-09-02
 ---
 
 # Build & Tooling
@@ -203,7 +204,7 @@ npm run build:prod && grep bs_const build/manifest
 
 ## Custom BSC plugins
 
-Two custom plugins live in `scripts/bsc-plugins/`:
+Custom plugins live in `scripts/bsc-plugins/`:
 
 ### `scripts/bsc-plugins/roku-log.cjs`
 
@@ -221,6 +222,26 @@ This is the reason `m.log.debug("intermediate value", x, y, z)` is fine to leave
 Generates a virtual `pkg:/source/translationKeys.bs` file containing a `translationKeys` namespace with one constant per key in `locale/custom/en_US.json`. Documented in detail in `translations.md`.
 
 The plugin uses `fs.watch` to detect en_US.json changes in language-server mode (so the IDE always sees up-to-date constants without re-running the build).
+
+### `scripts/bsc-plugins/auto-destroyed-guard.cjs`
+
+Injects a teardown guard so a key event delivered *after* a component's `onDestroy` cannot dot into the references that `onDestroy` just set to `invalid`.
+
+The window is real and structural. `sgrouter_closeView` runs the view's `_beforeViewClose` hook — which reaches `JRScreen.beforeViewClose` -> `onScreenHidden()` + `onDestroy()` — and removes the node only once the returned promise resolves. Resolution goes through the promise's observed `promiseState` field, so the removal lands on a **later message-loop turn**, and the router deliberately leaves the view visible in the meantime. For that turn the screen is still mounted and still in the focus chain while every node reference it owns is already `invalid`, so the next key press throws `&hec` ('Dot' Operator attempted with invalid BrightScript Component or interface reference).
+
+A base-class fix is not available: SceneGraph `onDestroy` and `onKeyEvent` do **not** chain to a base component (no `super`), the same constraint that made `auto-abandon-promises.cjs` an injecting plugin rather than a line in `JRScreen`. So the guard is injected into every component codebehind that declares both hooks:
+
+| Site | Injected |
+|---|---|
+| `init()` | `m.isDestroyed = false` |
+| `onDestroy()` | `m.isDestroyed = true` |
+| `onKeyEvent()` | `if m.isDestroyed = true then return false` |
+
+Each site is **independently idempotent** — one a file already writes by hand is left alone. `VideoPlayerView` is the live example: it manages the flag itself (issue #733 guarded `onPositionChanged` with it) and receives only the `onKeyEvent` guard it was missing.
+
+**`= true`, not a bare truthiness test.** Roku treats `invalid` as neither true nor false — "An `invalid` value is not considered false" (BrightScript reference) — so `if m.isDestroyed then` *throws* on an uninitialized flag, turning a rare teardown race into a crash on every key press. The `init()` injection makes that unreachable and the comparison form is the second layer. The same reasoning drives the plugin's one **error** (severity 1): a component with `onDestroy` + `onKeyEvent` but no `init()` has nowhere to initialize the flag.
+
+Returning `false` from a destroyed screen's `onKeyEvent` is unambiguously correct — the key belongs to whatever the router focuses next, not to a view that has released its nodes.
 
 ### Convention plugins
 
@@ -262,6 +283,7 @@ Prefer the narrowest scope: line > next-line > file. Whole-file opt-outs should 
 | `no-hand-rolled-dialog` | ✅ | ✅ | ❌ | **Deliberate**, same reasoning as the Task rules. The marker is matched WITHOUT requiring a comment opener on its own line, so a multi-line XML comment can carry it — `ItemGridOptions` is the one live suppression |
 | `jrscreen-on-destroy` | ❌ | ❌ | ✅ | The diagnostic lands on the XML component declaration, not a source line |
 | `auto-abandon-promises` | ❌ | ❌ | ✅ | |
+| `auto-destroyed-guard` | ❌ | ❌ | ✅ | Suppresses BOTH the injection and the diagnostic |
 
 ### Other plugins
 

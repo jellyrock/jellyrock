@@ -16,6 +16,7 @@
     "./scripts/bsc-plugins/print-locations.cjs",
     "./scripts/bsc-plugins/observe-without-on-destroy.cjs",
     "./scripts/bsc-plugins/auto-abandon-promises.cjs",
+    "./scripts/bsc-plugins/auto-destroyed-guard.cjs",
     "./scripts/bsc-plugins/no-direct-sdk.cjs",
     "./scripts/bsc-plugins/no-raw-run.cjs",
     "./scripts/bsc-plugins/no-task-fanout.cjs",
