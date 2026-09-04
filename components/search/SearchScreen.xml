@@ -59,20 +59,13 @@
          can end up stranded in the wrong visual state. -->
     <field id="isExpanded" type="boolean" onChange="onExpansionChanged" alwaysNotify="true" />
 
-    <!-- Emitted when a row is selected in the results (existing consumer:
-         showScenes.bs observer on CreateSearchPage result). -->
-    <field id="selectedItem" type="node" alwaysNotify="true" />
-
-    <!-- Quick-play flow — existing semantics preserved. -->
+    <!-- Quick-play flow. Set by onSearchItemSelected for results with no route of their
+         own, and by Play on a focused result; observed by this screen (see init) and
+         forwarded to QueueManager.launchItem. -->
     <field id="quickPlayNode" type="node" alwaysNotify="true" />
 
     <!-- Image display mode hint — kept for backward compat with any subtype-
          based callers (e.g. backdrop refresh logic). -->
     <field id="imageDisplayMode" type="string" value="scaleToZoom" />
-
-    <!-- External voice-entry hook. Main.bs sets this when the user invokes
-         voice search from Home — SearchScreen then populates the query and
-         triggers a full search without waiting for the user to expand. -->
-    <field id="voiceQueryIn" type="string" alwaysNotify="true" onChange="onVoiceQueryIn" />
   </interface>
 </component>

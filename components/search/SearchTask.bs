@@ -26,7 +26,7 @@ end sub
 ' load-bearing, not incidental. It is what lets the caller's `control = "stop"` prevent a
 ' superseded query from delivering at all (measured: 12 keystrokes, 6 deliveries, every one
 ' current). Publishing partial results as each fetch lands would open exactly the race
-' `SearchResults.loadResults` watches for.
+' `SearchScreen.onFullSearchResults` watches for.
 function searchMedia(query as string)
   if query = "" then return { Items: [], TotalRecordCount: 0, query: query }
 

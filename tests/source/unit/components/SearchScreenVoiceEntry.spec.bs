@@ -67,30 +67,6 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("External voice entry via voiceQueryIn field")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("populates query when voiceQueryIn is set from Main.bs")
-    function _()
-      m.screen.voiceQueryIn = "star wars"
-      m.assertEqual(m.screen.query, "star wars")
-    end function
-
-    @it("collapses the overlay after a voice submit")
-    function _()
-      m.screen.isExpanded = true
-      m.screen.voiceQueryIn = "inception"
-      m.assertFalse(m.screen.isExpanded)
-    end function
-
-    @it("ignores empty voiceQueryIn writes")
-    function _()
-      m.screen.query = "existing"
-      m.screen.voiceQueryIn = ""
-      m.assertEqual(m.screen.query, "existing")
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Expansion state machine")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

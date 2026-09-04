@@ -14,6 +14,8 @@ import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/searchHints.bs"
+import "pkg:/source/utils/screenReadiness.bs"
+import "pkg:/source/utils/searchRoute.bs"
 import "pkg:/source/utils/searchHistory.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
@@ -36,6 +38,23 @@ import "pkg:/source/utils/translate.bs"
 ' matches the pattern used by Home.
 
 sub init()
+  ' This screen has TWO loads, measured as two ledger runs rather than one — the same
+  ' split, for the same reason, as the screen it replaces. Opening search and running a
+  ' search are separated by the user typing, which is an unbounded wait belonging to the
+  ' person rather than the app; one run spanning both would publish a `settled` dominated
+  ' by how fast something typed.
+  '
+  ' `init` opens a run ending when the keyboard is typable (variant `open`); every query
+  ' opens a fresh one ending when its results are on screen (variant `query`).
+  '
+  ' The component is named `searchScreen`, not `searchResults`. ADR 0027's rule is that the
+  ' app names its COMPONENT, and this is a different one — a pull-down keyboard over a
+  ' full-width row list, against a side-by-side keyboard and a narrow list. Reusing the old
+  ' name would silently mix two populations in one series, which is the exact failure
+  ' `component`/`variant` exist to prevent. Historical `searchResults` samples stay valid
+  ' records of the old screen; they are simply not comparable to these.
+  screenLoad.begin("searchScreen")
+
   m.log = new log.Logger("SearchScreen")
   m.log.verbose("init")
 
@@ -121,6 +140,19 @@ sub init()
   ' Row list focus observer — drives backdrop updates as user scrolls results.
   m.searchSelect.observeField("rowItemFocused", "onSearchItemFocused")
 
+  ' Close the `rows` fill in the readiness ledger. SearchRow builds the rows in its OWN `m`,
+  ' so it cannot resolve this screen's ledger directly — it marks a field and this screen
+  ' resolves on it, the same signal ExtrasRowList gives ItemDetails.
+  m.searchSelect.observeField("contentReady", "onResultRowsReady")
+
+  ' This screen owns its own navigation — a selected result navigates to its route.
+  m.searchSelect.observeField("itemSelected", "onSearchItemSelected")
+
+  ' A non-navigable result (plays directly) sets m.top.quickPlayNode; this self-observer
+  ' forwards it to the QueueManager launcher, the same shape Home / BaseGridView /
+  ' ItemDetails use. Without it, Play on a result sets a field nobody reads.
+  m.top.observeField("quickPlayNode", "onQuickPlayLaunch")
+
   ' Voice — screen owns the voiceEnabled slot. initialise once, release in destroy.
   initVoiceBox()
 
@@ -134,6 +166,23 @@ sub init()
 
   ' Default lastFocus — results list when populated, peek chip otherwise.
   m.top.lastFocus = m.searchSelect
+
+  ' First show opens the overlay so the user can type immediately; later shows (a resume,
+  ' e.g. back from a result's detail page) restore the prior focus and expansion state.
+  m.isFirstShow = true
+
+  ' Last voice query applied via applyRouteQuery — guards against re-applying (and
+  ' re-grabbing focus) on a back-resume that replays the same route context.
+  m.lastAppliedQuery = ""
+
+  ' The keyboard is BUILT here but not yet typable: nothing has focus until the router shows
+  ' the view and onScreenShown runs, which is a later turn of the event loop. So it is
+  ' outstanding at paint and has to be declared here rather than discovered afterwards.
+  screenLoad.pending("focus")
+
+  ' PAINT — the search UI exists and the help text is on screen. What it is NOT yet is
+  ' usable, which is exactly what `focus` above measures.
+  screenLoad.paint("open")
 end sub
 
 ' ============================================================================
@@ -142,6 +191,12 @@ end sub
 
 sub OnScreenShown()
   m.log.verbose("OnScreenShown")
+
+  ' The screen is showing and about to take focus — it has become typable. Resolved at the
+  ' TOP because paths below return early, and a `pending` that any path can skip leaves the
+  ' screen permanently unsettled. Silent on later calls: `resolve` ignores a run that is
+  ' already over (screenReadiness.bs), which is what a back-resume produces.
+  screenLoad.resolve("focus")
 
   ' Hide every overhang element on this screen — the peek-chip search bar
   ' (positioned at y=54 above the keyboard) is the screen's top chrome and
@@ -163,9 +218,25 @@ sub OnScreenShown()
     end if
   end if
 
+  ' Voice search arrives as route.context.query — populate, search and take focus,
+  ' skipping normal focus restoration.
+  if applyRouteQuery() then return
+
   if isValid(m.searchSelect) and isValid(m.searchSelect.content)
     updateTextureBufferRange(m.searchSelect.content, m.searchSelect.rowItemFocused[0], m.searchSelect.rowItemFocused[1], m.searchSelect.numRows)
     activateTextureManager(m.searchSelect.content)
+  end if
+
+  ' First open with nothing typed: expand so the keyboard is immediately usable. Landing
+  ' collapsed would show an empty results list with no visible way forward — the user would
+  ' have to guess that UP opens the keyboard. onExpansionChanged hands focus to the
+  ' keyboard, which is what closes the `focus` fill above in practice.
+  if m.isFirstShow
+    m.isFirstShow = false
+    if not isValidAndNotEmpty(m.top.query)
+      m.top.isExpanded = true
+      return
+    end if
   end if
 
   if isValid(m.top.lastFocus)
@@ -209,7 +280,7 @@ sub onDestroy()
   end if
 
   ' Release the firmware's voice route so the returning screen's voice box can
-  ' reclaim it. Mirrors the teardown from the old SearchResults.bs.
+  ' reclaim it. Same release the screen this replaced performed on its own keyboard.
   if isValid(m.voiceBox)
     m.voiceBox.unobserveField("text")
     m.voiceBox.voiceEnabled = false
@@ -229,11 +300,15 @@ sub onDestroy()
     m.suggestions.unobserveField("escape")
   end if
 
+  m.top.unobserveField("quickPlayNode") ' playback launcher
+
   if isValid(m.searchSelect)
     m.searchSelect.unobserveField("rowItemFocused")
+    m.searchSelect.unobserveField("contentReady") ' readiness ledger's `rows` fill
+    m.searchSelect.unobserveField("itemSelected") ' self-navigation observer
 
-    ' Drop the row content, same shape and same reason as BaseGridView.onDestroy and
-    ' SearchResults.onDestroy: SearchRow's cells are BrowseRowItem (a JRRowItem), which
+    ' Drop the row content, same shape and same reason as BaseGridView.onDestroy:
+    ' SearchRow's cells are BrowseRowItem (a JRRowItem), which
     ' caches m.contentRoot and registers scoped observers on it, so the content root holds
     ' each cell's scope. JRRowItem has no onDestroy and SearchRow has none either, so the
     ' release has to come from the container — tech-debt.md's
@@ -297,15 +372,60 @@ sub onVoiceText()
   applyQueryAndSubmit(voiceText)
 end sub
 
-' onVoiceQueryIn — external entry from Main.bs when voice fires on Home. Same
-' semantics as a local voice capture, just arrives via a field write instead
-' of the VoiceTextEditBox.
-sub onVoiceQueryIn()
-  voiceText = m.top.voiceQueryIn
-  if not isValid(voiceText) or voiceText = "" then return
+' If the route carries a voice query in its context, apply it and submit. Returns true when
+' a query was applied so onScreenShown can skip normal focus restoration.
+'
+' Home's voice handler navigates `/search` with `{ context: { query: ... } }` rather than
+' setting a field on this node, because under sgRouter there is no scene stack to reach into
+' — the route IS the channel.
+'
+' onScreenShown fires on first open AND on resume, and the router replays the ORIGINAL route
+' (with its query context) on a back-resume, so applying unconditionally would re-run the
+' search every time the user backs out of a result. Guard on the last-applied value: a
+' back-resume carries the same query we already applied (skip), while a genuinely new voice
+' search carries a different one (apply).
+function applyRouteQuery() as boolean
+  query = searchRoute.queryToApply(m.top.route, m.lastAppliedQuery)
+  if query = "" then return false
 
-  m.log.info("external voiceQueryIn: " + voiceText)
-  applyQueryAndSubmit(voiceText)
+  m.lastAppliedQuery = query
+  m.log.info("route voice query: " + query)
+  applyQueryAndSubmit(query)
+  return true
+end function
+
+' A search result was selected — navigate to its route, passing the rich node as context so
+' the destination does not re-fetch what we already hold. Non-navigable results (a chapter,
+' a live channel) have no route and fall through to the playback launcher.
+sub onSearchItemSelected(msg as object)
+  item = getMsgPicker(msg)
+  if not isValid(item) then return
+
+  route = routeForItem(item)
+  if isValid(route)
+    sgrouter.navigateTo(route, { context: { item: item } })
+  else
+    m.top.quickPlayNode = item
+  end if
+end sub
+
+' Forward a non-navigable result to the playback launcher.
+sub onQuickPlayLaunch(msg as object)
+  node = msg.getData()
+  if isValid(node) then m.global.queueManager.callFunc("launchItem", node)
+end sub
+
+' The result rows are built and on screen — closes the `rows` fill.
+'
+' Reads the VALUE rather than treating the notification as the signal: SearchRow clears the
+' field at the start of every build, so half the callbacks here are the clear rather than the
+' completion. Deliberately unguarded against arriving late — `resolve` warns and returns
+' without counting if the run already closed, and that warning is the only signal that would
+' ever show the keystroke race is real.
+sub onResultRowsReady()
+  if not isValid(m.searchSelect) then return
+  if not m.searchSelect.contentReady then return
+  screenLoad.resolve("rows")
 end sub
 
 ' Shared helper — write the query, sync the keyboard's text field so the
@@ -633,6 +753,13 @@ end sub
 sub runFullSearch(query as string)
   m.log.verbose("runFullSearch query=" + query)
 
+  ' A new query is a NEW run, not a continuation — `begin` restarts the ledger so the clock
+  ' starts at the keystroke rather than at the screen opening. A superseded run simply never
+  ' paints, so it emits nothing rather than a truncated number.
+  screenLoad.begin("searchScreen")
+  ' Declared before launchTask below, so the resolve can never outrun its own pending.
+  screenLoad.pending("results")
+
   ' Stop any in-flight task cleanly before restarting.
   m.searchTask.unobserveField("results")
   m.searchTask.control = "stop"
@@ -688,17 +815,38 @@ sub onFullSearchDebounceFire()
 end sub
 
 sub onFullSearchResults()
+  results = m.searchTask.results
+
+  ' A DETECTOR, not a guard — it reports the invariant breaking and carries on. The
+  ' invariant: a delivery arriving here answers the query currently typed. SearchTask
+  ' assigns m.top.results exactly once as its last statement, so the `control = "stop"` a
+  ' new query issues lands before that assignment and a superseded query does not deliver at
+  ' all. Measured on `.177`: 12 launches, 6 deliveries, all answering the current query.
+  if isValid(results) and isValid(results.query) and results.query <> m.top.query
+    m.log.warn("superseded search delivery - answered", results.query, "current", m.top.query)
+  end if
+
+  ' The server work is done. Resolved at the TOP because this handler returns early on the
+  ' no-results path.
+  screenLoad.resolve("results")
+
   m.searchTask.unobserveField("results")
   stopLoadingSpinner()
 
-  results = m.searchTask.results
   if not isValid(results)
     m.log.warn("full search returned invalid results")
     return
   end if
 
+  ' Declared before the assignment that triggers it: SearchRow.getData runs off an onChange,
+  ' and declaring first is correct whether Scene Graph dispatches that inline or a turn later.
+  screenLoad.pending("rows")
+
   m.searchSelect.itemdata = results
   m.searchSelect.query = m.top.query
+
+  ' PAINT — results handed over, rows built, spinner down.
+  screenLoad.paint("query")
 
   total = (results.TotalRecordCount ?? 0)
   m.log.info("full results total=" + total.toStr())

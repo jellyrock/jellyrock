@@ -332,7 +332,7 @@ sub initVoiceBox()
 end sub
 
 ' onVoiceSearch: Fires when voice input is captured by the hidden VoiceTextEditBox.
-' Signals Main.bs to open SearchResults with the spoken query pre-populated.
+' Navigates to the search route with the spoken query as context.
 sub onVoiceSearch()
   voiceText = m.voiceBox.text
   if voiceText = "" then return
@@ -344,7 +344,7 @@ sub onVoiceSearch()
   ' field is kept as the last-captured-query record (and is what the unit suite asserts).
   m.top.voiceQuery = voiceText
 
-  ' Open the search route with the spoken query as context (the SearchResults view reads
+  ' Open the search route with the spoken query as context (the SearchScreen view reads
   ' route.context.query in onViewOpen / applyRouteQuery).
   sgrouter.navigateTo("/search", { context: { query: voiceText } })
 end sub

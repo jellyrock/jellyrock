@@ -1,0 +1,36 @@
+' @fileoverview Route-context decision for the search screen.
+'
+' Extracted from SearchScreen so the rule can be unit-tested with plain AAs, with no
+' router, no node graph and no device — the same reason quickConnect.bs holds the poll
+' classification rather than UserSelect (docs/dev/promises.md, worked example 3d).
+'
+' The rule looks trivial and is not: sgRouter replays a view's ORIGINAL route when a
+' covered view resumes, so the difference between "a new voice search arrived" and "the
+' user backed out of a result" is carried entirely by comparing against the last query
+' this screen applied.
+
+import "pkg:/source/utils/misc.bs"
+
+namespace searchRoute
+
+  ' Decide which voice query, if any, a route's context should apply.
+  '
+  ' @param route       - the view's route AA, or invalid
+  ' @param lastApplied - the query this screen last applied ("" if none)
+  ' @returns the query to apply, or "" when there is nothing new to apply
+  function queryToApply(route as dynamic, lastApplied as string) as string
+    if not isValid(route) then return ""
+    if not isValid(route.context) then return ""
+
+    query = route.context.query
+    if not isValidAndNotEmpty(query) then return ""
+
+    ' Same query we already applied — this is a back-resume replaying the original route,
+    ' not a new voice search. Re-applying would re-run the search and yank focus away from
+    ' whatever result the user just came back to.
+    if query = lastApplied then return ""
+
+    return query
+  end function
+
+end namespace

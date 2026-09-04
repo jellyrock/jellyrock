@@ -30,7 +30,7 @@ sub init()
 
   ' Hide + disable the built-in textEditBox. DynamicCustomKeyboard always
   ' renders it above the grid as a hint/voice-prompt bar; we have a dedicated
-  ' SearchHeader that mirrors the query text, so the built-in one just looks
+  ' peek chip that mirrors the query text, so the built-in one just looks
   ' like a weird white line above the keyboard if left visible.
   ' voiceEnabled must also be false so Roku's single global voice slot stays
   ' claimed by the screen-level VoiceTextEditBox (see SearchScreen.bs).

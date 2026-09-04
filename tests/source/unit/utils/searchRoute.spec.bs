@@ -1,0 +1,67 @@
+namespace tests
+
+  @suite("searchRoute.bs - voice query from route context")
+  class SearchRouteTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("queryToApply(route, lastApplied) - nothing to apply")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns empty for an invalid route")
+    function _()
+      m.assertEqual(searchRoute.queryToApply(invalid, ""), "")
+    end function
+
+    @it("returns empty for a route with no context")
+    function _()
+      m.assertEqual(searchRoute.queryToApply({ path: "/search" }, ""), "")
+    end function
+
+    @it("returns empty for a context carrying no query")
+    function _()
+      m.assertEqual(searchRoute.queryToApply({ context: {} }, ""), "")
+    end function
+
+    @it("returns empty for an empty or invalid query")
+    function _()
+      m.assertEqual(searchRoute.queryToApply({ context: { query: "" } }, ""), "")
+      m.assertEqual(searchRoute.queryToApply({ context: { query: invalid } }, ""), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("queryToApply(route, lastApplied) - applying")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns the query when the context carries a new one")
+    function _()
+      m.assertEqual(searchRoute.queryToApply({ context: { query: "star wars" } }, ""), "star wars")
+    end function
+
+    @it("returns the query when it differs from the last applied")
+    function _()
+      m.assertEqual(searchRoute.queryToApply({ context: { query: "arrival" } }, "dune"), "arrival")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("queryToApply(route, lastApplied) - back-resume guard")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("declines a repeat of the query already applied")
+    function _()
+      ' sgRouter replays a view's ORIGINAL route when a covered view resumes, so this exact
+      ' call happens every time the user backs out of a result. Re-applying would re-run the
+      ' search and yank focus off whatever they came back to.
+      m.assertEqual(searchRoute.queryToApply({ context: { query: "dune" } }, "dune"), "")
+    end function
+
+    @it("is case sensitive - a differently-cased query is a new search")
+    function _()
+      ' Voice transcription casing is not stable, and re-searching is the safe answer when
+      ' we cannot tell: the cost is one repeated search, against silently ignoring a real
+      ' voice request.
+      m.assertEqual(searchRoute.queryToApply({ context: { query: "Dune" } }, "dune"), "Dune")
+    end function
+
+  end class
+
+end namespace
