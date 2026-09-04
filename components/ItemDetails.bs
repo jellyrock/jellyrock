@@ -3795,6 +3795,12 @@ sub setupButtons(item as object)
     focusButtonGroupChild()
   end if
 
+  ' Debug-only: pad the row so the overflow can be reached on a device. Inert at
+  ' its default and compiled out of production. See docs/dev/debug-flags.md.
+  #if debug
+    appendDebugSpareButtons(m.buttonGrp)
+  #end if
+
   ' Last: split the finished row if it no longer fits. Runs AFTER the focus restore
   ' above so it inherits a settled buttonFocused and can re-point it at More when the
   ' button the user was on has moved into the menu.

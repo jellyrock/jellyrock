@@ -270,6 +270,12 @@ sub setButtonStates()
     end if
   end if
 
+  ' Debug-only: pad the row so the overflow can be reached on a device. Inert at
+  ' its default and compiled out of production. See docs/dev/debug-flags.md.
+  #if debug
+    appendDebugSpareButtons(m.buttonMenuLeft)
+  #end if
+
   ' Membership is settled for this item — split the row if it no longer fits.
   applyOverflow()
 end sub

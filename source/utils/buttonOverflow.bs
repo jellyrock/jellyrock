@@ -247,3 +247,36 @@ end function
 
 ' The shared More affordance, so both surfaces show the same glyph.
 const MORE_BUTTON_ICON = "pkg:/images/icons/more_horiz_$$RES$$.png"
+
+#if debug
+  ' Append `m.global.debug.extraButtonCount` stand-in buttons to a row, so the
+  ' overflow can be SEEN on a device.
+  '
+  ' It cannot be seen otherwise. ItemDetails tops out at exactly 8 of 8 and the OSD
+  ' at 7 of 10, so no library and no item type reaches either cap — and the 8th
+  ' ItemDetails button is Trailer, which needs a local trailer FILE in the library
+  ' (BuildGetLocalTrailersRequest), not a RemoteTrailers URL. Without this flag a
+  ' reviewer cannot reach the boundary case either, let alone the menu.
+  '
+  ' Compiled out of production entirely (bs_const=debug=false), and inert at its
+  ' default of 0, so a debug build behaves exactly as a production one until the
+  ' flag is set from the BrightScript console.
+  sub appendDebugSpareButtons(group as object)
+    if not isValid(group) or not isValid(m.global.debug) then return
+
+    spareCount = m.global.debug.extraButtonCount
+    if spareCount <= 0 then return
+
+    for i = 1 to spareCount
+      spare = CreateObject("roSGNode", "IconButton")
+      spare.id = "debugSpareButton" + stri(i).trim()
+      ' Labelled and iconed like a real button so the row and the menu rows look
+      ' the way they would with genuine content.
+      spare.setFields({
+        text: "Spare " + stri(i).trim(),
+        icon: "pkg:/images/icons/settings_$$RES$$.png"
+      })
+      group.appendChild(spare)
+    end for
+  end sub
+#end if
