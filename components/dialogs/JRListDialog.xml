@@ -35,8 +35,15 @@
     <Timer id="narrationTimer" repeat="false" />
   </children>
   <interface>
-    <!-- Array of option label strings -->
+    <!-- Array of option label strings. Assigning this REBUILDS the rows, so it
+         is the last field a caller sets. -->
     <field id="items" type="array" onChange="onItemsChanged" />
+    <!-- Optional leading icon URIs, positionally paired with `items`. Deliberately
+         a parallel array with no onChange: `items` is already the build trigger,
+         so set this BEFORE it — the same ordering defaultIndex and selectedIndex
+         already rely on. A shorter array (or none) simply leaves later rows without
+         an icon, so a caller can decorate some rows and not others. -->
+    <field id="icons" type="array" />
     <field id="title" type="string" onChange="onTitleChanged" />
     <!-- Which row to FOCUS when the dialog opens. Falls back to 0. -->
     <field id="defaultIndex" type="integer" value="0" />

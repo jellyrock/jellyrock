@@ -1,0 +1,249 @@
+' The ONE definition of how many action buttons fit on a row, and what happens to
+' the ones that don't.
+'
+' Two surfaces cap a horizontal IconButton row — ItemDetails' JRButtonGroup and the
+' OSD's buttonMenuLeft — and they arrive at DIFFERENT caps from the same arithmetic,
+' because their geometry differs:
+'
+'   ItemDetails   spacing 18, stops at the logo's leftmost possible edge   -> 8
+'   OSD           spacing 24, stops at the pinned info button's left edge  -> 10
+'
+' That is the whole reason this is a function taking geometry rather than a constant
+' named MAX_BUTTONS. A single hardcoded number would be right for one surface and
+' invented for the other, and neither would follow when the geometry it depends on
+' moves. ItemDetails' bound is derived from LOGO_MAX_DISPLAY_WIDTH; the day that
+' constant changes, the cap changes with it or the guarantee it encodes is fiction.
+'
+' Pure on purpose: no node access, no m, no globals. The overflow path is not
+' reachable on either surface today (ItemDetails sits at exactly 8 of 8, the OSD at
+' 7 of 10), so a spec is the ONLY thing that can exercise it until someone adds the
+' button that pushes a row over. A gate that needs the bug to already be shipping is
+' not a gate.
+import "pkg:/source/utils/misc.bs"
+
+' ---------------------------------------------------------------------------
+' IconButton metrics
+'
+' Shared with components/ui/button/IconButton.bs, which imports this file and
+' renders from the same two functions. The layout budget below and the button's
+' own sizing code MUST agree, and the only way to guarantee that is for there to
+' be one copy of the arithmetic. (ICON_BUTTON_PADDING previously existed as a bare
+' `paddingPixels = 15` local in two separate IconButton subs.)
+' ---------------------------------------------------------------------------
+
+' Padding around the icon inside the button background. Applied x4 horizontally
+' (extra room so a two-word label has somewhere to go) and x2 vertically.
+const ICON_BUTTON_PADDING = 15
+
+' The caption is wider than the button by 6px on each side so labels don't wrap
+' any earlier than they have to. It is what actually sets the button's layout
+' footprint — the caption, not the background, is the widest thing in the node.
+const ICON_BUTTON_TEXT_EXTENSION = 12
+
+' The FHD icon asset's edge length. Used only to budget a row in the 1920x1080
+' design space; IconButton itself sizes from the bitmap it actually loaded.
+'
+' Deliberately the FHD figure even though $$RES$$ substitutes a smaller _hd asset
+' on 720p-UI devices: a narrower button can only mean MORE fit, so budgeting with
+' the wider one is the conservative direction on every device. Whether Roku
+' reports bitmapWidth in design units or physical pixels on an HD device has NOT
+' been measured here (the test device is an Ultra), and this comment is the reason
+' it does not need to be.
+const ICON_BUTTON_ICON_SIZE = 64
+
+' The button's visible background plate.
+function iconButtonBackgroundWidth(iconWidth as integer) as integer
+  return iconWidth + (ICON_BUTTON_PADDING * 4)
+end function
+
+' What the button occupies in a LayoutGroup: the caption's width, since it
+' overhangs the background on both sides.
+function iconButtonLayoutWidth(iconWidth as integer) as integer
+  return iconButtonBackgroundWidth(iconWidth) + ICON_BUTTON_TEXT_EXTENSION
+end function
+
+' ---------------------------------------------------------------------------
+' The cap
+' ---------------------------------------------------------------------------
+
+' How many items of `itemWidth`, laid out from `originX` with `spacing` between
+' them, fit before `rightBound`.
+'
+' `spacing` is added back to the available width because the gaps sit BETWEEN
+' items — n items occupy n*width + (n-1)*spacing, not n*(width+spacing).
+'
+' @param originX    left edge of the row (the group's own translation x)
+' @param spacing    LayoutGroup itemSpacings
+' @param itemWidth  one item's layout footprint
+' @param rightBound the first x the row may NOT reach
+' @return the largest n that fits, never below 0
+function maxVisibleButtons(originX as integer, spacing as integer, itemWidth as integer, rightBound as integer) as integer
+  stride = itemWidth + spacing
+  if stride <= 0 then return 0
+
+  available = (rightBound - originX) + spacing
+  if available <= 0 then return 0
+
+  return int(available / stride)
+end function
+
+' ---------------------------------------------------------------------------
+' The split
+' ---------------------------------------------------------------------------
+
+' Decide how a row of `count` buttons is divided by a cap of `cap`.
+'
+' At or below the cap everything is visible and there is NO More button — the cap
+' is a ceiling, not a quota. Above it, one slot is spent on More, so `cap - 1`
+' real buttons remain.
+'
+' A consequence worth stating because it is load-bearing rather than incidental:
+' the menu never holds a single item. Reaching overflow at all means count > cap,
+' and cap-1 visible leaves at least two behind. A one-item More menu would be a
+' worse affordance than the button it replaced, and this shape rules it out
+' rather than relying on nobody hitting it.
+'
+' @param count total buttons the surface wants to show
+' @param cap   the ceiling from maxVisibleButtons()
+' @return {object} AA with shape: hasOverflow=boolean, visibleCount=integer,
+'         overflowFrom=integer (index of the first button that moves into the menu)
+function splitForOverflow(count as integer, cap as integer) as object
+  if count <= cap
+    return { hasOverflow: false, visibleCount: count, overflowFrom: count }
+  end if
+
+  visibleCount = cap - 1
+  if visibleCount < 0 then visibleCount = 0
+
+  return { hasOverflow: true, visibleCount: visibleCount, overflowFrom: visibleCount }
+end function
+
+' ---------------------------------------------------------------------------
+' Applying it to a real row
+'
+' Both surfaces keep their overflowed buttons in an off-layout STASH node: a
+' sibling Group that is in the screen's node tree but not in any LayoutGroup. A
+' hidden child of a LayoutGroup still reserves its slot, so an overflowed button
+' has to leave the group entirely — but staying in the tree is what keeps
+' `screen.findNode("refreshButton")` resolving for the code that mutates the row
+' afterwards.
+' ---------------------------------------------------------------------------
+
+' Put the row back the way it was built: drop the More button and return every
+' stashed button to the row, in stash order, AT THE SLOT MORE WAS STANDING IN.
+' Safe to call when nothing is stashed.
+'
+' Restoring at More's index rather than appending is what makes the order robust.
+' More marks exactly where the tail was cut, so putting the tail back there is
+' correct even when the row has grown since the split — and a row that has grown
+' since the split is precisely the case a caller creates by forgetting to restore
+' before it mutates. Appending would have put that newer button ahead of the
+' older tail and silently reordered the row.
+sub restoreOverflowedButtons(group as object, stash as object)
+  if not isValid(group) or not isValid(stash) then return
+
+  ' Default to the end, which is where the tail belongs when More is missing
+  ' (nothing was ever split, or something removed it).
+  restoreAt = group.getChildCount()
+
+  moreButton = group.findNode("moreButton")
+  if isValid(moreButton)
+    for i = 0 to group.getChildCount() - 1
+      if group.getChild(i).isSameNode(moreButton)
+        restoreAt = i
+        exit for
+      end if
+    end for
+    group.removeChild(moreButton)
+  end if
+
+  while stash.getChildCount() > 0
+    stashed = stash.getChild(0)
+    stash.removeChild(stashed)
+    group.insertChild(stashed, restoreAt)
+    restoreAt++
+  end while
+end sub
+
+' Split a row that no longer fits: move the tail into the stash and append a
+' More button in its place. Restores first, so the split is always derived from
+' the whole set rather than accumulated across calls.
+'
+' Focus is carried by ID rather than index — the entire point of the split is
+' that indices move. A button that ends up in the stash hands focus to More,
+' which is where the user will now find it; landing back on index 0 instead
+' would silently throw them to the other end of the row.
+sub applyButtonOverflow(group as object, stash as object, cap as integer, moreText as string, moreIcon as string)
+  if not isValid(group) or not isValid(stash) then return
+
+  ' Held across the restore below, which detaches it, so the SAME node goes back
+  ' into the row rather than a fresh one. Two reasons, and the first is a bug:
+  ' an open More menu holds this node as its returnFocusTo, so recreating it
+  ' while the menu is up would leave the dialog restoring focus to an orphan.
+  ' The second is cost — the row re-derives on every mutation, and re-using a
+  ' node is cheaper than churning one on the render thread each time.
+  existingMore = group.findNode("moreButton")
+
+  restoreOverflowedButtons(group, stash)
+
+  split = splitForOverflow(group.getChildCount(), cap)
+  if not split.hasOverflow then return
+
+  focusedId = ""
+  focusIndex = group.buttonFocused
+  if focusIndex >= 0 and focusIndex < group.getChildCount()
+    focusedNode = group.getChild(focusIndex)
+    if isValid(focusedNode) then focusedId = focusedNode.id
+  end if
+
+  while group.getChildCount() > split.visibleCount
+    overflowed = group.getChild(split.visibleCount)
+    group.removeChild(overflowed)
+    stash.appendChild(overflowed)
+  end while
+
+  moreButton = existingMore
+  if not isValid(moreButton)
+    moreButton = CreateObject("roSGNode", "IconButton")
+    moreButton.id = "moreButton"
+  end if
+  moreButton.setFields({ icon: moreIcon, text: moreText })
+  group.appendChild(moreButton)
+
+  restoredIndex = 0
+  if focusedId <> ""
+    restoredIndex = -1
+    for i = 0 to group.getChildCount() - 1
+      if group.getChild(i).id = focusedId
+        restoredIndex = i
+        exit for
+      end if
+    end for
+    ' Not in the row any more means it moved into the menu; More stands in for it.
+    if restoredIndex < 0 then restoredIndex = group.getChildCount() - 1
+  end if
+
+  group.buttonFocused = restoredIndex
+  if group.isInFocusChain() then group.getChild(restoredIndex).setFocus(true)
+end sub
+
+' The label/icon pairs for the rows a More menu should show, read straight off the
+' stashed buttons so the menu wears what the buttons were wearing.
+'
+' @return {object} AA with shape: labels=[string], icons=[string], ids=[string]
+function overflowMenuEntries(stash as object) as object
+  entries = { labels: [], icons: [], ids: [] }
+  if not isValid(stash) then return entries
+
+  for i = 0 to stash.getChildCount() - 1
+    overflowed = stash.getChild(i)
+    if not isValid(overflowed) then continue for
+    entries.labels.push(overflowed.text)
+    entries.icons.push(overflowed.icon)
+    entries.ids.push(overflowed.id)
+  end for
+  return entries
+end function
+
+' The shared More affordance, so both surfaces show the same glyph.
+const MORE_BUTTON_ICON = "pkg:/images/icons/more_horiz_$$RES$$.png"

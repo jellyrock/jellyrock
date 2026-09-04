@@ -72,11 +72,16 @@ sub onItemsChanged()
   ' which row to focus and falls back to 0. -1 marks nothing, which is what a
   ' choice dialog and a picker with no matching track both want.
   selectedIndex = m.top.selectedIndex
+  ' Optional and positionally paired with `items` — see the field comment in the
+  ' XML for why it is a parallel array rather than a richer `items` shape.
+  icons = m.top.icons
   index = 0
   for each item in items
     row = CreateObject("roSGNode", "ContentNode")
     row.title = toString(item)
-    row.addFields({ isSelected: index = selectedIndex })
+    rowIconUri = ""
+    if isValid(icons) and index < icons.count() then rowIconUri = toString(icons[index])
+    row.addFields({ isSelected: index = selectedIndex, icon: rowIconUri })
 
     ' The three visual markers (check glyph, surface, hue) are all sighted-only,
     ' so the current option is also announced. AUDIO_GUIDE_SUFFIX is a PREDEFINED

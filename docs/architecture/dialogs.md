@@ -18,7 +18,7 @@ related-files:
   - source/utils/dialogKeys.bs
   - source/utils/dialogResult.bs
   - source/utils/dialogNarration.bs
-last-reviewed: 2026-09-02
+last-reviewed: 2026-09-04
 ---
 
 # The dialog family
@@ -146,6 +146,29 @@ Two things follow from it:
   needs a rendered pass, and this dialog already learned that nothing may depend on
   which pass it is in. `wideLabels` picks the wider of two constants for rows whose
   labels are Jellyfin reason codes.
+
+#### A list row's gutter holds ONE thing
+
+`JRListDialogRow` reserves a fixed `36px` slot (`LIST_ROW_ICON_SIZE`, inside
+`LIST_ROW_CHECK_GUTTER`) on **every** row, so the labels line up whether or not a
+row is marked. Two things can want that slot, and they never share it:
+
+| Occupant | Set by | Color | For |
+|---|---|---|---|
+| the current-option check | `selectedIndex` | `colorSecondary` — a state marker | a picker (audio, subtitles, video source) |
+| a leading action icon | the optional `icons` array | `colorTextPrimary` — label content, not state | an ACTION list, e.g. a `More` overflow menu |
+
+The two are mutually exclusive *by construction* — an action list passes
+`selectedIndex = -1`, so nothing is ever checked — but the row states which one
+draws rather than relying on that, because "cannot happen" is not a layout rule and
+the alternative is two posters stacked in the same `36px` slot.
+
+`icons` is a **parallel array positionally paired with `items`**, deliberately not a
+richer `items` shape: `items` is a plain string array that three playback pickers
+already pass, and a parallel field is additive where a union type is a contract
+change. It carries no `onChange`, so callers set it **before** `items` — the same
+ordering `defaultIndex` and `selectedIndex` already rely on, since `items` is the
+field that triggers the row build. A short array simply leaves later rows without one.
 
 ### 5. A dialog has exactly ONE class of focusable thing
 

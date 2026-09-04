@@ -256,6 +256,7 @@ ECP
 ECP-disabled
 EDID
 editorconfig
+enablement
 enrichment
 Enrichment
 enrichments
@@ -478,6 +479,7 @@ Plex
 PNG
 PNGs
 portal-UI
+positionally
 post-auth
 postcondition
 postconditions

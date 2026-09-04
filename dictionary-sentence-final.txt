@@ -247,6 +247,7 @@
 (?:ECP-disabled)\.
 (?:EDID)\.
 (?:editorconfig)\.
+(?:enablement)\.
 (?:enrichment)\.
 (?:Enrichment)\.
 (?:enrichments)\.
@@ -469,6 +470,7 @@
 (?:PNG)\.
 (?:PNGs)\.
 (?:portal-UI)\.
+(?:positionally)\.
 (?:post-auth)\.
 (?:postcondition)\.
 (?:postconditions)\.

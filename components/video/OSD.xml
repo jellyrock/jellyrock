@@ -41,9 +41,11 @@
       <IconButton id="itemBack" icon="pkg:/images/icons/itemPrevious_$$RES$$.png" />
       <IconButton id="videoPlayPause" icon="pkg:/images/icons/play_$$RES$$.png" />
       <IconButton id="itemNext" icon="pkg:/images/icons/itemNext_$$RES$$.png" />
-      <!-- Go to Live: detached from the layout by setButtonStates() and reattached by
-           attachGoToLiveButton() only when the user is behind the live edge. visible="false"
-           is defense-in-depth for the frame between XML load and setButtonStates running. -->
+      <!-- Go to Live: removed from the row by setButtonStates() for anything that is not
+           a TvChannel, and kept for the whole item when it IS one — greyed at the live
+           edge rather than detached, so the row never reshuffles mid-playback. See the
+           setButtonStates() comment in OSD.bs. visible="false" is defense-in-depth for
+           the frame between XML load and setButtonStates running. -->
       <IconButton id="goToLive" icon="pkg:/images/icons/liveTV_$$RES$$.png" visible="false" />
       <IconButton id="showVideoSourceMenu" icon="pkg:/images/icons/videoFile_$$RES$$.png" />
       <IconButton id="showAudioMenu" icon="pkg:/images/icons/musicNote_$$RES$$.png" />
@@ -54,6 +56,12 @@
     <OSDButtonGroup id="buttonMenuRight" horizAlignment="right" translation="[1830,932]">
       <IconButton id="showVideoInfoPopup" icon="pkg:/images/icons/fileInfo_$$RES$$.png" />
     </OSDButtonGroup>
+
+    <!-- Overflow stash. Holds the left-row buttons that did not fit, in order, while
+         "More" stands in for them (see applyOverflow in OSD.bs). A child of the SCREEN
+         and deliberately NOT of buttonMenuLeft: a hidden child of a LayoutGroup still
+         reserves its slot, so an overflowed button has to leave the group entirely. -->
+    <Group id="buttonOverflow" visible="false" />
 
     <Timer id="inactivityTimer" duration="1" repeat="true" />
   </children>

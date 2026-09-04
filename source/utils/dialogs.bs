@@ -113,11 +113,18 @@ end function
 ' already CURRENT — it gets the check, the surface, and the "currently selected"
 ' announcement — and defaults to -1, meaning none is. A picker passes both (they
 ' normally coincide); anything offering a fresh choice passes only the first.
-function showListDialog(title as string, items as object, onResult = "" as string, defaultIndex = 0 as integer, selectedIndex = -1 as integer) as object
+' `icons` is optional and positionally paired with `items`: an array of Poster
+' URIs drawn in the row gutter the check would otherwise occupy. It exists for
+' ACTION lists — a "More" overflow menu whose rows should wear the same glyphs as
+' the buttons they stand in for. A picker passes none, because the gutter is
+' already carrying its current-option check.
+function showListDialog(title as string, items as object, onResult = "" as string, defaultIndex = 0 as integer, selectedIndex = -1 as integer, icons = invalid as object) as object
   dialog = createObject("roSGNode", "JRListDialog")
   dialog.title = title
   dialog.defaultIndex = defaultIndex
   dialog.selectedIndex = selectedIndex
+  ' Before `items`, which is the field that triggers the row build.
+  if isValid(icons) then dialog.icons = icons
   dialog.items = items
   return presentOverlayDialog(dialog, onResult)
 end function

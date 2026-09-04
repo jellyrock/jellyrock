@@ -71,11 +71,18 @@ const PANEL_WIDTH_SCALE = 6
 ' so the spacing gate below covers them: they asserted the 6px rhythm in their
 ' own comments with nothing enforcing it, which is how a scale drifts.
 '
-' LIST_ROW_CHECK_GUTTER = LIST_ROW_PADDING + 36 icon slot + 24 gap. A fixed gutter on
-' EVERY row, selected or not, so the labels line up with each other.
+' LIST_ROW_CHECK_GUTTER = LIST_ROW_PADDING + LIST_ROW_ICON_SIZE + 24 gap. A fixed
+' gutter on EVERY row, selected or not, so the labels line up with each other.
+'
+' The gutter holds one of two things and never both: the current-option check, or
+' a leading action icon (an overflow menu's rows carry the same glyph the button
+' they replaced was wearing). LIST_ROW_ICON_SIZE is the SLOT, which is why it is
+' on the 6px scale — unlike CHECK_ICON_SIZE in JRListDialogRow.bs, which is a
+' source-bitmap dimension and deliberately is not.
 const LIST_ROW_HEIGHT = 60
 const LIST_ROW_SPACING = 24
 const LIST_ROW_PADDING = 24
+const LIST_ROW_ICON_SIZE = 36
 const LIST_ROW_CHECK_GUTTER = 84
 
 ' Minimum width of a dialog footer button. Shared because THREE places need the

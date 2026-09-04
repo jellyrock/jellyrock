@@ -231,6 +231,105 @@ namespace tests
       m.assertEqual(optionList.itemComponentName, "JRListDialogRow")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Leading icons")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    private function rowWith(fields as object) as object
+      row = CreateObject("roSGNode", "JRListDialogRow")
+      row.width = 800
+      row.height = 60
+
+      content = CreateObject("roSGNode", "ContentNode")
+      content.title = "Refresh"
+      content.addFields(fields)
+      row.itemContent = content
+      return row
+    end function
+
+    @it("draws a leading icon on an unselected row")
+    function _()
+      row = m.rowWith({ isSelected: false, icon: "pkg:/images/icons/refresh_$$RES$$.png" })
+
+      rowIcon = row.findNode("rowIcon")
+      m.assertTrue(rowIcon.visible)
+      m.assertEqual(rowIcon.uri, "pkg:/images/icons/refresh_$$RES$$.png")
+    end function
+
+    ' The gutter holds ONE thing. The two cannot co-occur through the helpers — a
+    ' picker marks a current option and passes no icons, an action list passes
+    ' icons and marks nothing — but "unreachable" is not a layout rule, and two
+    ' posters stacked in the same 36px slot is what the alternative looks like.
+    @it("yields the gutter to the check when a row is somehow both")
+    function _()
+      row = m.rowWith({ isSelected: true, icon: "pkg:/images/icons/refresh_$$RES$$.png" })
+
+      m.assertTrue(row.findNode("checkIcon").visible)
+      m.assertFalse(row.findNode("rowIcon").visible, "the check owns the gutter when both are set")
+    end function
+
+    @it("hides the icon poster when a row carries no icon")
+    function _()
+      m.assertFalse(m.rowWith({ isSelected: false, icon: "" }).findNode("rowIcon").visible)
+    end function
+
+    ' Every existing caller (the three playback pickers) builds rows without this
+    ' field. They must render exactly as before rather than faulting on it.
+    @it("renders a row that has no icon field at all")
+    function _()
+      row = CreateObject("roSGNode", "JRListDialogRow")
+      row.width = 800
+      row.height = 60
+
+      content = CreateObject("roSGNode", "ContentNode")
+      content.title = "English 5.1"
+      content.addFields({ isSelected: false })
+      row.itemContent = content
+
+      m.assertFalse(row.findNode("rowIcon").visible)
+    end function
+
+    ' colorTextPrimary, not the check's colorSecondary: this glyph labels the row,
+    ' it does not mark a state. Getting this wrong would make every menu row read
+    ' as "currently selected".
+    @it("tints the leading icon as label content, not as a state marker")
+    function _()
+      row = m.rowWith({ isSelected: false, icon: "pkg:/images/icons/refresh_$$RES$$.png" })
+
+      m.assertEqual(row.findNode("rowIcon").blendColor, m.themeColor(m.global.constants.colorTextPrimary))
+      m.assertNotEqual(row.findNode("rowIcon").blendColor, m.themeColor(m.global.constants.colorSecondary))
+    end function
+
+    @it("pairs icons with items positionally")
+    function _()
+      m.dialog.icons = ["pkg:/a.png", "pkg:/b.png"]
+      m.dialog.items = ["Delete", "Refresh"]
+
+      content = m.dialog.findNode("content")
+      m.assertEqual(content.getChild(0).icon, "pkg:/a.png")
+      m.assertEqual(content.getChild(1).icon, "pkg:/b.png")
+    end function
+
+    @it("leaves rows past the end of a short icons array undecorated")
+    function _()
+      m.dialog.icons = ["pkg:/a.png"]
+      m.dialog.items = ["Delete", "Refresh", "Identify"]
+
+      content = m.dialog.findNode("content")
+      m.assertEqual(content.getChild(0).icon, "pkg:/a.png")
+      m.assertEqual(content.getChild(1).icon, "")
+      m.assertEqual(content.getChild(2).icon, "")
+    end function
+
+    @it("builds undecorated rows when no icons are supplied")
+    function _()
+      m.dialog.items = ["English 5.1", "Spanish"]
+
+      content = m.dialog.findNode("content")
+      m.assertEqual(content.getChild(0).icon, "")
+      m.assertEqual(content.getChild(1).icon, "")
+    end function
+
     @it("takes its chrome from JRDialogPanel rather than its own nodes")
     function _()
       chrome = m.dialog.findNode("chrome")

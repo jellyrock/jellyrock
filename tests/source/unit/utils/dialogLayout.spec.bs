@@ -19,7 +19,7 @@ namespace tests
     ' is the gate for it, so the next value someone adds cannot quietly break it.
     @it("every spacing constant survives the 720p downscale as an integer")
     function _()
-      for each value in [PANEL_PADDING, TITLE_GAP, BODY_GAP, SUBHEADING_GAP, SEPARATOR_ACCENT_WIDTH, LIST_ROW_HEIGHT, LIST_ROW_SPACING, LIST_ROW_PADDING, LIST_ROW_CHECK_GUTTER, DIALOG_BUTTON_MIN_WIDTH, DIALOG_BUTTON_PADDING]
+      for each value in [PANEL_PADDING, TITLE_GAP, BODY_GAP, SUBHEADING_GAP, SEPARATOR_ACCENT_WIDTH, LIST_ROW_HEIGHT, LIST_ROW_SPACING, LIST_ROW_PADDING, LIST_ROW_ICON_SIZE, LIST_ROW_CHECK_GUTTER, DIALOG_BUTTON_MIN_WIDTH, DIALOG_BUTTON_PADDING]
         m.assertEqual(value mod 6, 0)
         m.assertEqual((value * 2) mod 3, 0)
       end for

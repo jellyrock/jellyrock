@@ -10,5 +10,6 @@
   "mic_icon": { "sizeFhd": 16, "glyphSize": 22 },
   "circle": { "sizeFhd": 48, "glyphSize": 48 },
   "tomato-fresh": { "sizeFhd": 64, "glyphSize": 64 },
-  "tomato-rotten": { "sizeFhd": 64, "glyphSize": 64 }
+  "tomato-rotten": { "sizeFhd": 64, "glyphSize": 64 },
+  "more_horiz": { "sizeFhd": 64, "glyphSize": 46 }
 }
