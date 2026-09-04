@@ -81,7 +81,7 @@ import { recordAssertion } from '../../../scripts/run-record.js';
 const LOCALE = RTA_CONFIG.languages[0]; // en_US
 
 /** Routed views that must not outlive the user backing out of them. */
-const ROUTED_VIEWS = ['BaseGridView', 'ItemDetails', 'SearchResults'];
+const ROUTED_VIEWS = ['BaseGridView', 'ItemDetails', 'SearchScreen'];
 
 /** Every routed view released — the expected census after any of these walks. */
 const NOTHING_RETAINED = Object.fromEntries(ROUTED_VIEWS.map((t) => [t, 0]));
@@ -207,7 +207,7 @@ it('retains no views after six distinct detail round trips', async () => {
 
 it('retains no views after a search round trip', async () => {
   // Search is the least-exercised of the three teardowns and the most consequential:
-  // /search was keepAlive, so SearchResults.onDestroy never ran in production, and it
+  // /search was keepAlive, so the screen's onDestroy never ran in production, and it
   // owns releasing the firmware's global voice route (one voiceEnabled node at a time —
   // a leaked claim denies it to the next screen that wants one). Its rows are
   // BrowseRowItem cells, the same cache-the-content-root shape the grid fix addresses.
