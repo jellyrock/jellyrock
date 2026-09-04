@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-09-04 — chore: Retire the calendar stale-docs backlog; cover `docs/dev/` contextually
 - 2026-09-03 — fix: Guard `onKeyEvent` against key events delivered after teardown
 - 2026-09-03 — Stop the playback error dialog exiting on a close it did not cause
 - 2026-09-01 — Migrate the playback error dialog onto `JRDialog` and make it diagnostic
@@ -54,8 +55,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-08-21 — fix: stop `FontDownloadTask` crashing on servers that omit `EnableFallbackFont`
 - 2026-08-21 — fix: Stop posters blinking on the Cast & Crew row as you scroll it
 - 2026-08-21 — Give `cell-load` rates a denominator with scripted RTA sweeps
-- 2026-08-20 — Batch Home's row-size recompute across a latest-rows run
-- 2026-08-20 — ci(rta): Fix `measure --deploy` deleting the run provenance it just wrote
 
 ## Open followups
 
