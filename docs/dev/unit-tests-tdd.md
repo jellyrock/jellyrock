@@ -4,7 +4,7 @@ related-files:
   - bsconfig-tdd-sample.json
   - scripts/run-roku-tests.js
   - tests/source/BaseTestSuite.spec.bs
-last-reviewed: 2026-05-01
+last-reviewed: 2026-09-04
 ---
 
 # Test-Driven Development (TDD) Workflow
@@ -131,7 +131,7 @@ The sample config includes optimized settings for TDD:
 
 **Scenario:** Adding a new `getDisplaySetting()` function
 
-1. Create test file: `tests/source/tests/unit/DisplaySettings.spec.bs`
+1. Create test file: `tests/source/unit/utils/DisplaySettings.spec.bs`
 2. Update `bsconfig-tdd.json`:
 
    ```json

@@ -44,3 +44,4 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0030](0030-non-odc-arm-identity-by-enclosure.md) | A measurement arm with no ODC asserts its identity by enclosure, and records that it did | Accepted (unimplemented) | 2026-08-16 |
 | [0031](0031-task-thread-ceiling.md) | A production Task-thread ceiling that refuses, backed by a pre-ship peak gate | Accepted | 2026-08-23 |
 | [0032](0032-teardown-key-guard-injected.md) | Key events after teardown are guarded by transpile-time injection, not per-screen discipline | Accepted | 2026-09-02 |
+| [0033](0033-contextual-doc-freshness.md) | Doc-freshness pressure is contextual; there is no calendar backlog of stale docs | Accepted | 2026-09-04 |

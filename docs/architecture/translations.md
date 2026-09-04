@@ -6,7 +6,6 @@ related-files:
   - scripts/bsc-plugins/translation-keys.cjs
   - scripts/lint/update-translations.cjs
   - scripts/lint/language-coverage.cjs
-  - locale/custom/en_US.json
   - locale/languages.json
 last-reviewed: 2026-06-07
 ---

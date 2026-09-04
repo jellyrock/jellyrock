@@ -5,8 +5,8 @@
 //
 // What it does: compares the current branch's diff against its base,
 // cross-references each touched file against the `related-files:`
-// frontmatter of every architecture doc, and emits a reminder for each
-// match where the architecture doc itself wasn't also touched.
+// frontmatter of every architecture doc and dev guide, and emits a
+// reminder for each match where the doc itself wasn't also touched.
 //
 // Why end-of-session, not on each tool call: the reminder needs to land
 // at the moment the agent is deciding whether their work is done.
@@ -22,10 +22,15 @@
 //     signal the date is supposed to carry. A soft reminder lets the
 //     agent decide; the date stays meaningful.
 //
-// Why architecture docs only (not docs/dev/): same reason as
-// `docs-stale-blocking.cjs` — dev/how-to guides document workflows, not
-// subsystem shape, so a shared related-file appearing in both shouldn't
-// double-prompt.
+// Why dev guides are covered here but NOT by `docs-stale-blocking.cjs`:
+// this reminder is the only freshness pressure `docs/dev/` gets, and a
+// how-to that documents a moved path breaks the reader immediately — but
+// it does so without changing any subsystem's shape, so it must never
+// block a PR. Soft prompt here, hard gate for architecture only.
+//
+// A related-file shared by an architecture doc and a dev guide prints
+// twice. That is intended: the two docs need different edits (shape vs.
+// procedure), and a duplicate line is cheaper than a missed one.
 //
 // Output: reminders to stdout, one block per affected doc. Exit code is
 // always 0 (informational). If you need a non-zero exit for a particular
@@ -58,18 +63,24 @@ const QUIET = args.includes('--quiet');
 
 const ROOT_DIR = '.';
 const ARCH_DIR = path.join(ROOT_DIR, 'docs/architecture');
+const DEV_DIR = path.join(ROOT_DIR, 'docs/dev');
 
-function collectArchDocs() {
-  if (!fs.existsSync(ARCH_DIR)) return [];
+function collectDocsIn(dir) {
+  if (!fs.existsSync(dir)) return [];
   return fs
-    .readdirSync(ARCH_DIR)
+    .readdirSync(dir)
     .filter((f) => f.endsWith('.md') && f !== 'README.md')
-    .map((f) => path.join(ARCH_DIR, f))
+    .map((f) => path.join(dir, f))
     .sort();
 }
 
+// Architecture first so the PR-gated docs lead the reminder list.
+function collectDocs() {
+  return [...collectDocsIn(ARCH_DIR), ...collectDocsIn(DEV_DIR)];
+}
+
 const touched = changedFiles(BASE_REF);
-const docs = collectArchDocs();
+const docs = collectDocs();
 const reminders = [];
 
 for (const docPath of docs) {
@@ -96,17 +107,15 @@ for (const docPath of docs) {
 
 if (reminders.length === 0) {
   if (!QUIET) {
-    console.log('check-touched-related-files: no architecture docs need attention.');
+    console.log('check-touched-related-files: no docs need attention.');
   }
   process.exit(0);
 }
 
 console.log('');
-console.log('📚 Architecture-doc reminder');
+console.log('📚 Doc reminder');
 console.log('');
-console.log(
-  `This session touched files in ${reminders.length} architecture doc(s)' related-files.`,
-);
+console.log(`This session touched files in ${reminders.length} doc(s)' related-files.`);
 console.log(`Before you finish, re-read each doc and decide:`);
 console.log(
   `  - If the change altered the subsystem's shape or why → update the doc + bump last-reviewed.`,
@@ -115,7 +124,11 @@ console.log(`  - If shape/why is unchanged → no action needed (the doc is stil
 console.log('');
 
 for (const r of reminders) {
-  console.log(`  ${r.doc}`);
+  // Architecture docs are additionally PR-gated at 120 days
+  // (docs-stale-blocking.cjs); dev guides are informational only. Labelling
+  // says which reminders can later turn into a blocked PR.
+  const gated = r.doc.startsWith('docs/architecture/');
+  console.log(`  ${r.doc}${gated ? '' : '  (dev guide — informational)'}`);
   for (const h of r.hits) {
     console.log(`    ← touched: ${h.touched}`);
   }
