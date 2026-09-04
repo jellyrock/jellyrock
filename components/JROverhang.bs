@@ -117,9 +117,11 @@ sub onCurrentUserChanged()
     m.userDropdown.triggerText = ""
     m.userDropdown.triggerIconUri = ""
   else
-    ' User logged in — configure and show the dropdown
+    ' User logged in — configure and show the dropdown.
+    ' isUserDropdownVisible acts as an additional AND gate so screens that
+    ' suppress the dropdown (e.g. SearchScreen) stay suppressed across logins.
     m.userDropdown.triggerText = username
-    m.userDropdown.visible = true
+    m.userDropdown.visible = m.top.isUserDropdownVisible
 
     ' Set user avatar image
     localUser = m.global.user
@@ -300,15 +302,25 @@ end sub
 ' POSITIONING
 ' ============================================
 
-' Hides the overhang clock and repositions the user dropdown to fill the freed space.
-' Called by Home.bs when the user's uiDesignHideClock setting is enabled.
-sub hideClock()
-  if isValid(m.clock)
-    m.top.removeChild(m.clock)
-    m.clock = invalid
-  end if
-  m.isClockHidden = true
+' Observer for the isClockVisible interface field. Toggles the clock's visibility
+' and repositions the user dropdown so the right-edge chrome still lines up.
+' Replaces the older imperative hideClock() function so every screen uses the
+' same field-assignment pattern for overhang chrome customization.
+sub isClockVisibleChanged()
+  visible = m.top.isClockVisible
+  if isValid(m.clock) then m.clock.visible = visible
+  m.isClockHidden = not visible
   positionUserDropdown()
+end sub
+
+' Observer for the isUserDropdownVisible interface field. Allows a screen to
+' hide the dropdown even when a user is logged in (e.g. SearchScreen, which
+' renders its own minimal chrome). The dropdown still requires a signed-in
+' user — this is an additional AND gate on top of the currentUser check.
+sub isUserDropdownVisibleChanged()
+  if not isValid(m.userDropdown) then return
+  haveUser = m.top.currentUser <> ""
+  m.userDropdown.visible = haveUser and m.top.isUserDropdownVisible
 end sub
 
 ' Repositions the dropdown when its trigger button width changes.

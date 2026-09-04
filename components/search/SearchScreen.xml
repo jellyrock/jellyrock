@@ -8,20 +8,29 @@
          so we're the only claimant. -->
     <VoiceTextEditBox id="searchVoiceBox" visible="true" width="40" translation="[0, 0]" />
 
-    <!-- Pinned collapsed-state indicator. Always visible; overlay slides on top. -->
-    <SearchPeekChip id="peekChip" translation="[600, 24]" />
-
     <!-- Results list — full-width RowList. Repositioned from the old side-by-side
          layout now that the keyboard is a pull-down. -->
     <SearchRow id="searchSelect" focusable="true" />
 
     <!-- Empty-state help label (shown when no query has been submitted yet).
-         Translation set in bs because the overlay covers the top third of the
-         screen when expanded. -->
-    <LabelPrimaryLarge id="SearchHelpText" width="1394" horizAlign="center" text="" translation="[263, 540]" />
+         Secondary color (dim) so it reads as helper copy, not primary content.
+         Translation is updated in bs — repositioned below the overlay when
+         expanded, and back to the mid-screen position when collapsed. -->
+    <LabelSecondaryLarge id="SearchHelpText" width="1394" horizAlign="center" text="" translation="[263, 540]" />
 
-    <!-- Sliding overlay: keyboard + suggestion list. Animated by its own bs. -->
+    <!-- Sliding overlay: keyboard + suggestion list. Animated by its own bs.
+         Rendered BEFORE the peek chip so the chip stays visually on top even
+         mid-slide animation when the overlay is passing through the peek
+         chip's y range. -->
     <SearchOverlay id="overlay" />
+
+    <!-- Pinned search-bar pill. Single search-bar surface for both collapsed
+         and expanded states — sits directly above the keyboard at the same
+         width and x position. y=54 = 5% top safe-area edge, x=824 aligns
+         with the keyboard's left edge below (keyboard right edge at x=1824
+         = 5% right safe edge). Coexists with the clock at the far-right of
+         the overhang area. -->
+    <SearchPeekChip id="peekChip" translation="[824, 54]" />
 
     <!-- Results slide animation — runs in sync with the overlay. When
          expanded, SearchRow slides down to RESULTS_Y_EXPANDED so row 0

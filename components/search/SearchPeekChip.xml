@@ -1,34 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="SearchPeekChip" extends="Group">
   <children>
-    <!-- Pill background. Rounded look comes from vertical padding; the Rectangle
-         itself is plain so it survives theme color overrides cleanly.
-         color is set in init() from m.global.constants. -->
-    <Rectangle id="chipBg" width="720" height="60" />
+    <!-- Pill background. Width is fixed at PEEK_CHIP_WIDTH (1000) in bs so it
+         matches the keyboard's width — search bar + keyboard form a single
+         visual column. -->
+    <Rectangle id="chipBg" height="60" />
 
-    <Label id="queryLabel" width="620" height="60" translation="[40, 0]"
-      horizAlign="left" vertAlign="center" />
-
-    <!-- Chevron hints the direction in which the keyboard will move.
-         Down-arrow when collapsed (pull me down), up-arrow when expanded
-         (push me back up). URIs are swapped at runtime in renderChevron()
-         via m.global.constants.iconArrowDownWhite / iconArrowUpWhite rather
-         than rotating a single image (rotation of a non-square asset
-         produces a sheared-looking glyph). -->
-    <Poster id="chevron"
-      translation="[680, 20]"
+    <!-- Magnifying-glass icon — always visible on the left of the pill. -->
+    <Poster id="searchIcon"
+      translation="[24, 18]"
       width="24"
-      height="24" />
+      height="24"
+      uri="pkg:/images/icons/search.png" />
+
+    <!-- Query text label. Pinned width so the pill doesn't grow with text;
+         long queries marquee-scroll within the fixed pill bounds. -->
+    <Label id="queryLabel" height="60" translation="[64, 0]"
+      horizAlign="left" vertAlign="center" />
   </children>
   <interface>
-    <!-- Current query text to display. Empty string -> show placeholder. -->
+    <!-- Current query text to display. Empty string -> empty pill (no
+         placeholder; the search icon alone signals purpose). -->
     <field id="queryText" type="string" onChange="renderLabel" />
 
-    <!-- Placeholder shown when queryText is empty. Typically "Search". -->
-    <field id="placeholder" type="string" onChange="renderLabel" />
-
-    <!-- Mirrors the parent's expanded state so the chevron rotates to
-         indicate current direction of the pull-down. -->
-    <field id="isExpanded" type="boolean" onChange="renderChevron" />
+    <!-- Mirrors the parent's expanded state. Currently a no-op cosmetically;
+         kept as a hook in case we add focus-ring / tint state later. -->
+    <field id="isExpanded" type="boolean" onChange="onExpandedChanged" />
   </interface>
 </component>

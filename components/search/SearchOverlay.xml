@@ -7,23 +7,22 @@
          clippingRect confines rendering to the overlay's rectangle in the
          group's own coord space — a tight seal so nothing leaks into the
          viewport when the group is parked off-screen. -->
-    <Group id="slideGroup" clippingRect="[0, 0, 1920, 580]">
+    <Group id="slideGroup" clippingRect="[0, 0, 1920, 400]">
       <!-- Solid backdrop — dimensions + color set in bs from searchLayout constants. -->
       <Rectangle id="overlayBg" />
 
-      <!-- Query display — horizontally centered at the top of the overlay
-           (same screen x as the peek chip, so the text appears to descend
-           from where the chip sat). -->
-      <SearchHeader id="header" translation="[600, 16]" />
-
       <!-- Two-column body:
-           SUGGESTIONS on the LEFT, KEYBOARD on the RIGHT.
-           Default focus lands on Q (top-left of the keyboard); pressing LEFT
-           from any left-edge key (Q/A/Z/mode123) escapes straight into the
-           suggestion list — one keypress, vs the 9+ RIGHT presses the
-           keyboard-on-left layout required to reach suggestions. -->
-      <SearchSuggestionList id="suggestions" translation="[180, 190]" />
-      <SearchQwertyKeyboard id="kbd" translation="[740, 80]" />
+           SUGGESTIONS on the LEFT (left edge at x=96 = 5% left safe edge,
+           matching result row items), KEYBOARD on the RIGHT (right edge
+           at x=1824 = 5% right safe edge). 44px gap between columns.
+           The peek chip (outside this overlay, at SearchScreen level) is
+           pinned directly above the keyboard at the same width — search
+           bar + keyboard form a single visual column on the right.
+           Default focus lands on Q (top-left of the keyboard); pressing
+           LEFT from any left-edge key (Q, A, Z, 3) escapes into the
+           suggestion list in a single press. -->
+      <SearchSuggestionList id="suggestions" translation="[96, 0]" />
+      <SearchQwertyKeyboard id="kbd" translation="[824, 0]" />
     </Group>
 
     <!-- Slide-in/out animation. keyValue overridden in bs from searchLayout
@@ -31,18 +30,13 @@
          animation range. -->
     <Animation id="slideAnim" duration="0.3" repeat="false" easeFunction="outCubic">
       <Vector2DFieldInterpolator id="slideInterp" key="[0.0, 1.0]"
-        keyValue="[[0, -580],[0, 0]]"
+        keyValue="[[0, -400],[0, 130]]"
         fieldToInterp="slideGroup.translation" />
     </Animation>
   </children>
   <interface>
     <!-- Writing true slides the overlay into view; false slides it out. -->
     <field id="isExpanded" type="boolean" onChange="onExpansionChanged" />
-
-    <!-- Current query text (mirrored into SearchHeader).
-         alwaysNotify lets identical-length replacement strings still flow
-         through to the label, which a plain alias can elide. -->
-    <field id="queryText" type="string" alias="header.queryText" alwaysNotify="true" />
 
     <!-- Suggestion list contents (proxied to child). alwaysNotify ensures
          same-length array writes (e.g. swapping one hint set for another of

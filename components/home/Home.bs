@@ -195,10 +195,10 @@ sub onScreenShown()
       end if
     end if
 
-    ' Hide clock if user preference is set
-    if globalUser.settings.uiDesignHideClock
-      overhang.callFunc("hideClock")
-    end if
+    ' Apply clock visibility from the user's preference. Declarative field
+     ' assignment — mirrors isLogoVisible / shouldShowIcons and replaces the
+     ' former callFunc("hideClock") imperative path.
+    overhang.isClockVisible = not globalUser.settings.uiDesignHideClock
   end if
 
   ' Re-activate voice capture — matching BaseGridView's onScreenShown pattern.

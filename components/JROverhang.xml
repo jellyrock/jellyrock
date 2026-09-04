@@ -20,10 +20,19 @@
     <field id="selectedTabId" type="string" alwaysNotify="true" />
     <field id="shouldShowIcons" type="boolean" value="false" onChange="onShouldShowIconsChanged" />
     <field id="iconAction" type="string" alwaysNotify="true" />
+    <!-- Clock visibility — default true. Set to false from any screen that wants
+         the clock hidden (e.g. Home, when the user has uiDesignHideClock enabled).
+         Replaces the old imperative hideClock() function so all overhang element
+         visibility follows one field-assignment pattern. -->
+    <field id="isClockVisible" value="true" type="boolean" onChange="isClockVisibleChanged" />
+    <!-- User-dropdown visibility override. Dropdown still requires a logged-in
+         user (currentUser <> ""); this field is an additional AND gate so a
+         screen can hide the dropdown even when a user is signed in
+         (e.g. SearchScreen's clock-only chrome). Default true. -->
+    <field id="isUserDropdownVisible" value="true" type="boolean" onChange="isUserDropdownVisibleChanged" />
     <function name="getTabBar" />
     <function name="getUserDropdown" />
     <function name="getSearchIcon" />
     <function name="getSettingsIcon" />
-    <function name="hideClock" />
   </interface>
 </component>

@@ -50,6 +50,34 @@ namespace searchHistory
     setUserSetting(KEY, FormatJson(cleaned))
   end sub
 
+  ' Remove a single term from the recent list, preserving the order of remaining
+  ' entries. Matching is case-insensitive + whitespace-trimmed, mirroring push()
+  ' so a term the user sees on screen can be removed by the string shown.
+  ' No-op if the term is empty or not present.
+  sub remove(term as string)
+    trimmed = Trim(term)
+    if trimmed = "" then return
+
+    list = load()
+    lower = LCase(trimmed)
+
+    cleaned = []
+    removed = false
+    for each existing in list
+      if type(existing) = "roString" or type(existing) = "String"
+        if LCase(existing) = lower
+          removed = true
+        else
+          cleaned.push(existing)
+        end if
+      end if
+    end for
+
+    if removed
+      setUserSetting(KEY, FormatJson(cleaned))
+    end if
+  end sub
+
   ' Wipe the user's recent-search list.
   sub clear()
     setUserSetting(KEY, "[]")

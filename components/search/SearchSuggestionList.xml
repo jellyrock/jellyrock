@@ -6,22 +6,37 @@
          text is set in bs by the mode-change handler. -->
     <LabelSecondarySmall id="sectionLabel" width="480" height="36" translation="[0, 0]" />
 
-    <!-- Roku LabelList — rows configured in bs. drawFocusFeedback supplies the
-         focus bitmap highlight. Content is assigned at runtime in renderItems()
-         by creating a fresh ContentNode every call — mutating a shared
-         ContentNode's children (via clear() + CreateChild) doesn't reliably
-         trigger LabelList to re-render. A name collision with the "items"
-         interface field also made findNode resolution ambiguous, so we now
-         keep the handle on the LabelList itself and reassign its content. -->
-    <LabelList id="list"
+    <!-- EscapingLabelList — LabelList subclass that emits an "escape"="down"
+         signal when the user presses DOWN on the last content row, so the
+         pinned Clear History button below can be reached via DOWN. Roku's
+         stock LabelList edge-stops on DOWN and doesn't bubble the event.
+         numRows=5 so the section label (36) + list (5×56=280) + 8px gap +
+         Clear button (56) sums to 380, fitting within OVERLAY_HEIGHT=400. -->
+    <EscapingLabelList id="list"
       translation="[0, 56]"
       itemSize="[480, 56]"
-      numRows="9"
+      numRows="5"
       drawFocusFeedback="true" />
+
+    <!-- Pinned Clear History button — visible only in recent mode with a
+         non-empty history. Sits below the list so it never scrolls off when
+         the history grows past numRows. Width matches the list; height 56
+         matches a list row for visual consistency.
+         padding=12: TextButton sizes its background to
+         max(minHeight, textHeight + 2*padding). With the default padding of
+         30 the button rendered ~90px tall and clipped past the overlay's
+         bottom edge. 12px keeps the button at minHeight=56. -->
+    <TextButton id="clearButton"
+      translation="[0, 344]"
+      text=""
+      minWidth="480"
+      minHeight="56"
+      padding="12"
+      visible="false" />
   </children>
   <interface>
-    <!-- "recent" | "hints" | "empty" — governs section label + what items mean.
-         Changing mode re-renders the list header.
+    <!-- "recent" | "hints" | "empty" — governs section label + Clear button
+         visibility. Changing mode re-renders the list header.
          alwaysNotify so repeated writes of the same mode (e.g. still "hints"
          but with new items) reliably fire even when the string is unchanged. -->
     <field id="mode" type="string" onChange="renderSectionLabel" alwaysNotify="true" />
@@ -39,13 +54,15 @@
          Observers pick this up to trigger a full search. -->
     <field id="selectedSuggestion" type="string" alwaysNotify="true" />
 
-    <!-- Emitted when the user activates the special "Clear history" row
-         (only present when mode == "recent" and at least one item exists). -->
+    <!-- Emitted when the user activates the pinned Clear History button. -->
     <field id="clearHistoryRequested" type="boolean" alwaysNotify="true" />
 
-    <!-- Set to "left" when LEFT is pressed on any row — parent redirects
-         focus back to the keyboard. The LabelList itself has no content to
-         the left, so this key would otherwise be a dead-end. -->
+    <!-- Emitted when the user presses OPTIONS on a focused recent-search row.
+         Value is the term string that should be removed from registry. -->
+    <field id="removeRequested" type="string" alwaysNotify="true" />
+
+    <!-- Set to "right" when the user presses RIGHT to escape back to the
+         keyboard column (which sits to the right of this list). -->
     <field id="escape" type="string" alwaysNotify="true" />
   </interface>
 </component>

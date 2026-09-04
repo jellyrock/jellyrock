@@ -3,8 +3,9 @@ import "pkg:/source/utils/misc.bs"
 ' SearchQwertyKeyboard — custom DynamicCustomKeyboard subclass used inside the
 ' SearchOverlay pull-down. Extends the stock keyboard with:
 '
-' 1. Special-key handling: Submit/Clear strOut tokens bubble up as boolean
-'    fields (submit, clearRequested) the parent observes.
+' 1. Special-key handling: Clear strOut token bubbles up as a boolean field
+'    (clearRequested) the parent observes. Submit/Enter key was removed —
+'    submission happens via DOWN from the bottom row or suggestion tap.
 ' 2. Edge-escape signalling: arrow presses at grid edges set m.top.escape so
 '    the parent can hand focus to adjacent UI (suggestion list to the right,
 '    results list downward) instead of wrapping inside the grid.
@@ -41,6 +42,20 @@ sub init()
     m.top.textEditBox.active = false
     m.top.textEditBox.visible = false
     m.top.textEditBox.opacity = 0
+    ' Collapse the textEditBox's layout reservation so the keyGrid sits at
+    ' the top of the component. Even with visible=false, DynamicCustomKeyboard
+    ' reserves ~110px above the grid for the (now-hidden) hint/voice bar —
+    ' that empty band was the dominant source of the "too much vertical space
+    ' above the keyboard" feedback.
+    m.top.textEditBox.height = 0
+  end if
+
+  ' Force the keyGrid to sit at the top of the keyboard component regardless
+  ' of any internal layout the DynamicCustomKeyboard tries to apply for the
+  ' hidden textEditBox. Combined with textEditBox.height=0 above, this keeps
+  ' the full keyboard at exactly its keyGrid height (360px FHD).
+  if isValid(m.top.keyGrid)
+    m.top.keyGrid.translation = [0, 0]
   end if
 end sub
 
@@ -48,10 +63,7 @@ end sub
 ' Returns true if the key was handled internally (preventing its strOut from
 ' being appended to the text field), false to let the default behaviour run.
 function keySelected(key as string) as boolean
-  if key = "submit"
-    m.top.submit = true
-    return true
-  else if key = "clear"
+  if key = "clear"
     m.top.clearRequested = true
     return true
   end if
@@ -64,16 +76,19 @@ end function
 ' override that at the outer edges because there's content outside the grid
 ' (suggestion list to the LEFT now, results grid below).
 '
-' 10×4 grid layout (see SearchQwertyKDF.json):
+' Grid layout (see SearchQwertyKDF.json) — rows 1-3 are 10 wide, row 4 is 9
+' wide after the Submit key was removed (DynamicCustomKeyboard tolerates a
+' ragged bottom row; right edge of row 4 is now Clear instead of Submit):
 '   Row 1:   Q  W  E  R  T  Y  U  I  O  P
 '   Row 2:   A  S  D  F  G  H  J  K  L  [backspace]
 '   Row 3:   Z  X  C  V  B  N  M  0  1  2
-'   Row 4:   3  4  5  6  7  8  9  Space  Clear  [submit]
+'   Row 4:   3  4  5  6  7  8  9  [Space-icon]  [Clear-icon]
 '
-' LEFT at the left edge (Q, A, Z, 3) escapes to the suggestion list.
-' RIGHT at the right edge (P, backspace, 2, submit) is a dead-end — nothing
-' to the right of the keyboard in this layout — so it stays consumed by the
-' keyboard's internal wrap behaviour.
+' Keyboard sits on the RIGHT (right edge at x=1824 = 5% right safe edge),
+' suggestion list on the LEFT (left edge at x=96 = 5% left safe edge). So:
+'   LEFT at the left edge (Q, A, Z, 3) escapes to suggestions in 1 press.
+'   RIGHT at the right edge (P, backspace, 2, clear) is a dead-end (nothing
+'   to the right of the keyboard) — kept as the keyboard's internal wrap.
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 
@@ -83,7 +98,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
   if not isValid(focused) then return false
 
   topRowKeys = ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"]
-  bottomRowKeys = ["3", "4", "5", "6", "7", "8", "9", " ", "clear", "submit"]
+  bottomRowKeys = ["3", "4", "5", "6", "7", "8", "9", " ", "clear"]
   leftEdgeKeys = ["Q", "A", "Z", "3"]
 
   if key = "up" and inArray(topRowKeys, focused)

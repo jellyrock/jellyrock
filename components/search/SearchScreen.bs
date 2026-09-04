@@ -37,10 +37,11 @@ sub init()
 
   m.top.isOptionsAvailable = false
 
-  ' Hide the stock overhang — this screen has its own top chrome (peek chip
-  ' when collapsed, SearchHeader when expanded). The overhang's logo/user/
-  ' title bar would just stack duplicate UI on top.
-  m.top.isOverhangVisible = false
+  ' Show the app-wide overhang — but configure it to clock-only in
+  ' OnScreenShown. This respects the user's uiDesignHideClock setting and
+  ' keeps a single overhang chrome path across screens instead of a
+  ' SearchScreen-only bypass.
+  m.top.isOverhangVisible = true
 
   m.global.sceneManager.callFunc("setBackgroundImage", "")
 
@@ -95,22 +96,25 @@ sub init()
   m.top.appendChild(m.fullSearchTimer)
   m.fullSearchTimer.observeField("fire", "onFullSearchDebounceFire")
 
-  ' Resolve overlay children we need to observe / control.
+  ' Resolve overlay children we need to observe / control. The inline header
+  ' was removed — the peek chip (screen-level) is now the single search-bar
+  ' surface in both collapsed and expanded states.
   m.kbd = m.overlay.findNode("kbd")
-  m.header = m.overlay.findNode("header")
   m.suggestions = m.overlay.findNode("suggestions")
 
   ' Keyboard → query pipeline. DynamicCustomKeyboard emits typed characters
   ' into its own text field; mirror every change into m.top.query so the rest
   ' of the state machine keys off a single source of truth.
+  ' No Submit key: DOWN from keyboard bottom row (onKeyboardEscape) and
+  ' suggestion selection are the only submit paths now.
   m.kbd.observeField("text", "onKeyboardTextChanged")
-  m.kbd.observeField("submit", "onSubmit")
   m.kbd.observeField("clearRequested", "onClearRequested")
   m.kbd.observeField("escape", "onKeyboardEscape")
 
   ' Suggestion list emits selection back to us.
   m.suggestions.observeField("selectedSuggestion", "onSuggestionSelected")
   m.suggestions.observeField("clearHistoryRequested", "onClearHistoryRequested")
+  m.suggestions.observeField("removeRequested", "onSuggestionRemoveRequested")
   m.suggestions.observeField("escape", "onSuggestionEscape")
 
   ' Row list focus observer — drives backdrop updates as user scrolls results.
@@ -119,8 +123,7 @@ sub init()
   ' Voice — screen owns the voiceEnabled slot. initialise once, release in destroy.
   initVoiceBox()
 
-  ' Peek chip starts collapsed and empty.
-  m.peekChip.placeholder = translate(translationKeys.ButtonSearch)
+  ' Peek chip starts collapsed and empty (no placeholder text — icon alone).
   m.peekChip.isExpanded = false
   m.peekChip.queryText = ""
 
@@ -139,6 +142,26 @@ end sub
 sub OnScreenShown()
   m.log.verbose("OnScreenShown")
 
+  ' Hide every overhang element on this screen — the peek-chip search bar
+  ' (positioned at y=54 above the keyboard) is the screen's top chrome and
+  ' provides its own visual anchor. The clock specifically is suppressed
+  ' here (regardless of the user's uiDesignHideClock setting) because its
+  ' default top-right position at [1824, 39] sits behind the peek chip's
+  ' right edge — a no-overlap layout would force either a narrower search
+  ' bar (mismatched with the keyboard below) or a per-screen clock
+  ' relocation. Hiding it on the search screen specifically — the way
+  ' Netflix/YouTube TV do — keeps the top chrome clean.
+  scene = m.top.getScene()
+  if isValid(scene)
+    overhang = scene.findNode("overhang")
+    if isValid(overhang)
+      overhang.isClockVisible = false
+      overhang.isLogoVisible = false
+      overhang.isUserDropdownVisible = false
+      overhang.shouldShowIcons = false
+    end if
+  end if
+
   if isValid(m.searchSelect) and isValid(m.searchSelect.content)
     updateTextureBufferRange(m.searchSelect.content, m.searchSelect.rowItemFocused[0], m.searchSelect.rowItemFocused[1], m.searchSelect.numRows)
     activateTextureManager(m.searchSelect.content)
@@ -153,6 +176,21 @@ end sub
 
 sub OnScreenHidden()
   m.log.info("OnScreenHidden")
+
+  ' Reset overhang chrome fields we changed so the next screen inherits
+  ' sensible defaults. Each screen that cares about these fields sets them
+  ' explicitly in OnScreenShown (Home sets isLogoVisible=true +
+  ' shouldShowIcons=true, etc.) so this is belt-and-braces against stale
+  ' SearchScreen config bleeding into simpler screens that don't configure.
+  scene = m.top.getScene()
+  if isValid(scene)
+    overhang = scene.findNode("overhang")
+    if isValid(overhang)
+      overhang.isClockVisible = true
+      overhang.isUserDropdownVisible = true
+    end if
+  end if
+
   if isValid(m.searchSelect) and isValid(m.searchSelect.content)
     hideTextureManager(m.searchSelect.content)
   end if
@@ -177,7 +215,6 @@ sub destroy()
 
   if isValid(m.kbd)
     m.kbd.unobserveField("text")
-    m.kbd.unobserveField("submit")
     m.kbd.unobserveField("clearRequested")
     m.kbd.unobserveField("escape")
   end if
@@ -185,6 +222,7 @@ sub destroy()
   if isValid(m.suggestions)
     m.suggestions.unobserveField("selectedSuggestion")
     m.suggestions.unobserveField("clearHistoryRequested")
+    m.suggestions.unobserveField("removeRequested")
     m.suggestions.unobserveField("escape")
   end if
 
@@ -216,7 +254,6 @@ sub destroy()
   m.peekChip = invalid
   m.overlay = invalid
   m.kbd = invalid
-  m.header = invalid
   m.suggestions = invalid
   m.searchHelpText = invalid
   m.voiceBox = invalid
@@ -290,19 +327,27 @@ sub onExpansionChanged()
     m.resultsSlideAnim.control = "start"
   end if
 
-  ' Hide the peek chip while the overlay is up — the overlay has its own
-  ' SearchHeader that shows the query text, and the semi-transparent backdrop
-  ' leaves the chip faintly visible behind it otherwise (double-search-bar
-  ' visual bug reported on first pass).
-  m.peekChip.visible = not expanded
+  ' Peek chip is the single search-bar surface — stays visible in both
+  ' states. The overlay's solid background already hides anything behind it
+  ' so there's no double-bar bleed-through to worry about.
 
-  ' Same deal with the empty-state help label — the overlay's alpha lets it
-  ' bleed through as ghost text. Hide while expanded; restore when we collapse
-  ' back to the empty state with no results.
+  ' Empty-state help label:
+  '   Expanded — vertically centered between the keyboard bottom and the 5%
+  '   bottom safe-area edge. Keyboard bottom = OVERLAY_OPEN_Y + 360
+  '   (textEditBox reservation collapsed in SearchQwertyKeyboard.bs init,
+  '   so keyGrid sits at the top of the keyboard). 130 + 360 = 490.
+  '   5% bottom safe edge = 1080 × 0.95 = 1026. Midpoint = 758.
+  '   Collapsed — mid-screen (y=540), out of the way of the peek chip and
+  '   the eventual results row at RESULTS_Y=140.
+  '   Hidden when results are present.
   haveResults = hasResults()
-  if expanded
+  if haveResults
     m.searchHelpText.visible = false
-  else if not haveResults
+  else if expanded
+    m.searchHelpText.translation = [263, 758]
+    m.searchHelpText.visible = true
+  else
+    m.searchHelpText.translation = [263, 540]
     m.searchHelpText.visible = true
   end if
 
@@ -351,9 +396,8 @@ sub onQueryChanged()
   query = m.top.query
   if not isValid(query) then query = ""
 
-  ' Update the peek chip and overlay header so they stay in lockstep.
+  ' Peek chip is the single search-bar surface; it auto-resizes on text change.
   m.peekChip.queryText = query
-  m.overlay.queryText = query
 
   ' Reset both debounce timers for every keystroke.
   m.debounceTimer.control = "stop"
@@ -361,11 +405,26 @@ sub onQueryChanged()
 
   trimmed = searchHistory.Trim(query)
   if trimmed = ""
-    ' No input — cancel any in-flight hints and show the recent-searches list.
+    ' No input — cancel any in-flight hints, stop any in-flight full search,
+    ' wipe the existing results from the SearchRow, and show the recent-
+    ' searches list. Without the results-wipe, the trashcan key (or repeated
+    ' backspace) leaves stale results visible below the overlay even though
+    ' there's no query — they can't be re-focused (overlay is open) and the
+    ' user has no way to clear them short of leaving the screen.
     if isValid(m.hintsTask)
       m.hintsTask.unobserveField("results")
       m.hintsTask.control = "stop"
     end if
+    if isValid(m.searchTask)
+      m.searchTask.unobserveField("results")
+      m.searchTask.control = "stop"
+    end if
+    if isValid(m.searchSelect)
+      m.searchSelect.itemdata = invalid
+      m.searchSelect.query = ""
+      m.searchSelect.content = invalid
+    end if
+    m.searchHelpText.text = translate(translationKeys.MessageYouCanSearchForTitlesPeople)
     renderRecentSuggestions()
     return
   end if
@@ -450,13 +509,6 @@ end sub
 ' SUBMIT / SELECTION HANDLERS
 ' ============================================================================
 
-sub onSubmit()
-  if not m.kbd.submit then return
-  query = m.top.query
-  if not isValid(query) or query = "" then return
-  submitSearch(query)
-end sub
-
 sub onClearRequested()
   if not m.kbd.clearRequested then return
   m.kbd.text = ""  ' cascades into onKeyboardTextChanged → query = ""
@@ -479,8 +531,67 @@ sub onClearHistoryRequested()
   renderRecentSuggestions()
 end sub
 
-' RIGHT from the suggestion list — return focus to the keyboard (to the
-' right of the list in the current layout) so the user can resume typing.
+' Per-entry delete — SearchSuggestionList emits this when the user presses
+' OPTIONS on a focused row. Show a confirm dialog; on confirm remove the
+' term from registry and re-render. The dialog makes the destructive action
+' discoverable and recoverable (the old silent-remove was jarring).
+'
+' The SuggestionList emits for any focused row (not just recent-mode rows);
+' we gate here by looking up the term in the saved history. If it's not a
+' saved recent, the OPTIONS press is a no-op.
+sub onSuggestionRemoveRequested()
+  term = m.suggestions.removeRequested
+  if not isValid(term) or term = "" then return
+
+  ' Only prompt if the term is actually in the user's recent-search list —
+  ' OPTIONS on a pure hint row that the user never searched should not open
+  ' a "remove?" dialog for a phantom entry.
+  recent = searchHistory.load()
+  isInHistory as boolean = false
+  lowerTerm = LCase(term)
+  for each existing in recent
+    if type(existing) = "roString" or type(existing) = "String"
+      if LCase(existing) = lowerTerm
+        isInHistory = true
+        exit for
+      end if
+    end if
+  end for
+
+  if not isInHistory
+    m.log.verbose("remove ignored — not in history: " + term)
+    return
+  end if
+
+  m.pendingRemoveTerm = term
+  m.log.info("remove confirm for term=" + term)
+
+  title = translate(translationKeys.LabelRemove)
+  msg = translate(translationKeys.MessageAreYouSureYouWantToRemoveTerm, [term])
+  m.global.sceneManager.observeFieldScoped("isDataReturned", "onRemoveDialogResponse")
+  m.global.sceneManager.callFunc("showConfirmationDialog", title, [msg], [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonRemove)])
+end sub
+
+' Result handler for the per-entry remove confirm dialog. Only acts on index
+' 1 (Remove); Cancel (0) and dismiss (-1) are no-ops.
+sub onRemoveDialogResponse()
+  m.global.sceneManager.unobserveFieldScoped("isDataReturned")
+
+  returnData = m.global.sceneManager.returnData
+  if not isValid(returnData) then return
+  if returnData.indexSelected <> 1 then return
+
+  term = m.pendingRemoveTerm
+  if not isValid(term) or term = "" then return
+  m.pendingRemoveTerm = invalid
+
+  m.log.info("remove confirmed term=" + term)
+  searchHistory.remove(term)
+  renderRecentSuggestions()
+end sub
+
+' RIGHT from the suggestion list — return focus to the keyboard (which sits
+' to the right of the suggestion list) so the user can resume typing.
 sub onSuggestionEscape()
   if m.suggestions.escape <> "right" then return
   if isValid(m.kbd) then m.kbd.setFocus(true)
@@ -589,24 +700,26 @@ sub onKeyboardEscape()
   if not isValid(direction) then return
 
   if direction = "down"
-    ' DOWN from bottom row: collapse back to results (an implicit submit).
+    ' DOWN from bottom row: submit the current query (implicit submit). If
+    ' the query is empty there's nothing to submit — stay on the keyboard
+    ' rather than collapsing into an empty results view; the user hasn't
+    ' asked to leave and there's nothing to focus downstream.
     query = m.top.query
     if isValid(query) and query <> ""
       submitSearch(query)
-    else
-      m.top.isExpanded = false
     end if
   else if direction = "left"
     ' LEFT from left-edge keys (Q/A/Z/3): hand focus to the suggestion list
-    ' sitting in the left column. If the list is empty (no recent, no hints),
-    ' stay on the keyboard rather than focusing an empty list.
+    ' on the LEFT side of the overlay. Single-press escape — the dominant
+    ' reason suggestions sit on the left rather than the right. If the list
+    ' is empty (no recent, no hints), stay on the keyboard.
     list = m.suggestions.findNode("list")
     if isValid(list) and isValid(list.content) and list.content.getChildCount() > 0
       list.setFocus(true)
     end if
   else if direction = "up"
-    ' No content above the keyboard within the overlay currently — stay put
-    ' rather than looping focus.
+    ' No content above the keyboard within the overlay (peek chip is screen-
+    ' level, not focusable) — stay put rather than looping focus.
   end if
   ' "right" is an edge-stop — nothing to the right of the keyboard.
 end sub
@@ -642,13 +755,11 @@ end sub
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 
-  if key = "back"
-    if m.top.isExpanded
-      m.top.isExpanded = false
-      return true
-    end if
-    return false
-  end if
+  ' BACK always pops the scene — no intermediate "first back collapses overlay,
+  ' second back pops" step. The overlay is not a piece of state the user
+  ' consciously opened; collapsing it first surprised users by revealing an
+  ' unseen results state that they hadn't viewed yet.
+  if key = "back" then return false
 
   ' UP (or OK in the empty state) expands the overlay. Gated on the
   ' searchSelect being in focus chain — onExpansionChanged always focuses

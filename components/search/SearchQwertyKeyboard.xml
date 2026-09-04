@@ -7,10 +7,6 @@
          handled internally. -->
     <function name="keySelected" />
 
-    <!-- Raised true when the user activates the Submit/Go key. Observer should
-         clear it or wait for next alwaysNotify fire. -->
-    <field id="submit" type="bool" alwaysNotify="true" />
-
     <!-- Raised true when the user activates the Clear key. Observer should
          wipe the current query text in response. -->
     <field id="clearRequested" type="bool" alwaysNotify="true" />

@@ -1,0 +1,34 @@
+import "pkg:/source/utils/misc.bs"
+
+' EscapingLabelList — LabelList subclass that emits an escape signal when the
+' user presses DOWN on the last content row. See XML for rationale.
+'
+' Returning false from onKeyEvent lets the base LabelList keep its normal
+' handling for every other key; returning true on the last-row DOWN prevents
+' the default edge-stop behavior while the parent re-routes focus.
+
+function onKeyEvent(key as string, press as boolean) as boolean
+  if not press then return false
+
+  if key = "down"
+    content = m.top.content
+    if isValid(content)
+      lastIdx = content.getChildCount() - 1
+      if lastIdx >= 0 and m.top.itemFocused >= lastIdx
+        m.top.escape = "down"
+        return true
+      end if
+    end if
+  end if
+
+  ' UP at the first row: edge-stop. Without this LabelList wraps to the last
+  ' row, which reads as the focus jumping unpredictably. Consume the press
+  ' and emit an "up" escape so the parent can route focus elsewhere if it
+  ' wants to (currently a no-op).
+  if key = "up" and m.top.itemFocused = 0
+    m.top.escape = "up"
+    return true
+  end if
+
+  return false
+end function

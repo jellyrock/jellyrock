@@ -64,12 +64,15 @@
                 { "label": "7" },
                 { "label": "8" },
                 { "label": "9" },
-                { "label": "Space", "strOut": " " },
-                { "label": "Clear", "strOut": "clear" },
                 {
-                  "icon": "pkg:/images/icons/check-white.png",
-                  "focusIcon": "pkg:/images/icons/check-black.png",
-                  "strOut": "submit"
+                  "icon": "pkg:/images/icons/space-white.png",
+                  "focusIcon": "pkg:/images/icons/space-black.png",
+                  "strOut": " "
+                },
+                {
+                  "icon": "pkg:/images/icons/delete.png",
+                  "focusIcon": "pkg:/images/icons/delete-black.png",
+                  "strOut": "clear"
                 }
               ]
             }

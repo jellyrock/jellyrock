@@ -5,51 +5,79 @@
 
 namespace searchLayout
 
-  ' Peek chip — pinned at top, always visible. Shows current query or placeholder
-  ' with a chevron indicating the keyboard can be pulled down.
-  const PEEK_CHIP_Y = 24
+  ' Peek chip — pinned search bar. Sits directly above the keyboard at the
+  ' same width so the search bar and keyboard form a single visual column.
+  ' Top edge at y=54 = 5% top-safe-area edge. x position aligns with keyboard
+  ' (KEYBOARD_X = 824) so the bar visually couples to the keys below.
+  const PEEK_CHIP_X = 824
+  const PEEK_CHIP_Y = 54
   const PEEK_CHIP_HEIGHT = 60
-  const PEEK_CHIP_WIDTH = 720
+  const PEEK_CHIP_WIDTH = 1000
+
+  ' Two-column layout inside the overlay slideGroup:
+  '   Suggestions on the LEFT (left edge x=96 = 5% left safe edge — matches
+  '     result row items so the single LEFT-press escape from any left-edge
+  '     keyboard key (Q/A/Z/3) reaches it).
+  '   Keyboard on the RIGHT (right edge x=1824 = 5% right safe edge).
+  ' Both columns frame to the safe area, leaving a 44px gap between.
+  const SUGGESTIONS_X = 96
+  const SUGGESTIONS_WIDTH = 684
+  const KEYBOARD_X = 824
 
   ' Results row list (SearchRow) translation when collapsed.
-  ' y starts below the peek chip so both are visible together.
-  const RESULTS_Y = 120
+  ' Sits below the peek chip (peek chip ends at y=114) with breathing room.
+  const RESULTS_Y = 140
 
   ' Results row list translation when the overlay is expanded. Positioned
-  ' just below the overlay's bottom edge (OVERLAY_HEIGHT + 20px margin) so
-  ' row 0 remains partially visible as live-typing results populate. Also
-  ' prevents the texture-reload flash that happens when content is fully
+  ' just below the overlay's bottom edge (OVERLAY_OPEN_Y + OVERLAY_HEIGHT + 20px
+  ' margin) so row 0 remains partially visible as live-typing results populate.
+  ' Also prevents the texture-reload flash that happens when content is fully
   ' occluded by an opaque rectangle and then revealed — keeping at least
   ' part of row 0 on-screen means its textures never unload.
-  const RESULTS_Y_EXPANDED = 600
+  const RESULTS_Y_EXPANDED = 550
 
   ' Overlay (keyboard + suggestion panel) — slides down from above the viewport.
-  ' OPEN_Y: fully visible, top aligned to screen top.
-  ' CLOSED_Y: placed above the viewport so it's invisible until animated in.
-  ' Height budget: header at y=16 (~50px), keyboard at y=80 in slideGroup
-  ' with keyGrid effective offset of ~110px for DynamicCustomKeyboard's
-  ' textEditBox layout reservation (even with visible=false), keyGrid
-  ' height 360 → keyGrid bottom at y=550, plus 30px padding = 580.
-  const OVERLAY_OPEN_Y = 0
-  const OVERLAY_CLOSED_Y = -580
-  const OVERLAY_HEIGHT = 580
+  ' OPEN_Y: resting position when expanded. y=130 — directly below the peek
+  '         chip (peek chip occupies y=54–114 with a 16px gap before the
+  '         overlay starts). Peek chip stays visible above the overlay.
+  ' CLOSED_Y: placed fully above the viewport.
+  ' Height budget:
+  '   Keyboard at y=0 inside slideGroup, internal keyGrid height 360 (the
+  '     hidden textEditBox reservation is removed by setting textEditBox
+  '     height=0 and keyGrid translation=[0,0] in SearchQwertyKeyboard.bs
+  '     init — see comments there for rationale).
+  '   Suggestion list at y=0 inside slideGroup, internal height = 380:
+  '     section label 36 (translation y=0) + list 5×56=280 (translation y=56,
+  '     ends at y=336) + 8px gap + pinned Clear button 56 (translation y=344,
+  '     ends at y=400).
+  '   Suggestion column hits exactly 400 — overlay height matches.
+  const OVERLAY_OPEN_Y = 130
+  const OVERLAY_CLOSED_Y = -400
+  const OVERLAY_HEIGHT = 400
   const OVERLAY_WIDTH = 1920
 
   ' Slide-in animation timing — matches ExtrasSlider / OptionsSlider feel.
   const SLIDE_DURATION_S = 0.3
 
   ' Typeahead debounce — gap after the last keystroke before firing /Search/Hints.
-  ' 275ms balances "snappy" against avoiding a request per key on fast typers.
-  const DEBOUNCE_S = 0.275
+  ' 0 means the timer fires on the next render-thread tick, which is effectively
+  ' per-keystroke. The stale-response guard in SearchScreen.onHintsResults keeps
+  ' UI consistent if an older request finishes after a newer one.
+  const DEBOUNCE_S = 0
 
-  ' Full-search debounce — longer than the hints debounce so the heavier
-  ' multi-endpoint search only fires when the user pauses to look at results.
-  ' Keeps results populating live while typing (old behaviour users expect)
-  ' without thrashing the server on every keystroke.
-  const FULL_SEARCH_DEBOUNCE_S = 0.5
+  ' Full-search debounce — 150ms. Snappy enough that burst-typing feels
+  ' live, but coalesces rapid keystrokes so the heavy multi-endpoint search
+  ' (Items + Persons + Artists + LiveTv/Programs) doesn't fire on every
+  ' keypress. Stale-response guard in onFullSearchResults handles out-of-
+  ' order completions.
+  const FULL_SEARCH_DEBOUNCE_S = 0.15
 
   ' /Search/Hints limit — keeps suggestion list short enough to scan in one glance.
   const HINTS_LIMIT = 8
+
+  ' Related-tags suggestion limit — how many tag matches to surface below the
+  ' titles section in the suggestion list.
+  const TAG_HINTS_LIMIT = 5
 
   ' Recent-searches cap — MRU window. More than this and the list feels unwieldy.
   const RECENT_MAX = 10

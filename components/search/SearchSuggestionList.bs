@@ -3,24 +3,23 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
 ' SearchSuggestionList — vertical list of selectable suggestions rendered to
-' the right of the QWERTY keyboard inside the SearchOverlay.
+' the left of the QWERTY keyboard inside the SearchOverlay.
 '
 ' Two modes:
-'   "recent" — the user's stored recent-search history, plus a trailing
-'              "Clear History" action row when the list is non-empty.
+'   "recent" — the user's stored recent-search history. A pinned "Clear
+'              History" TextButton below the list wipes the full list, and
+'              OPTIONS on a focused row emits removeRequested for per-entry
+'              deletion.
 '   "hints"  — live /Search/Hints typeahead results for the current query.
 '
 ' The `items` field carries an array of { text, value } AAs. `text` is shown;
 ' `value` is emitted on activation so the screen can populate the query and
 ' run a full search.
 
-' Sentinel value emitted by the special "Clear History" row. Chosen to be
-' extremely unlikely to collide with a real search term.
-const CLEAR_HISTORY_SENTINEL = "__jr_clear_history__"
-
 sub init()
   m.list = m.top.findNode("list")
   m.sectionLabel = m.top.findNode("sectionLabel")
+  m.clearButton = m.top.findNode("clearButton")
 
   constants = m.global.constants
   m.list.color = constants.colorTextPrimary
@@ -35,6 +34,15 @@ sub init()
   m.list.focusedFont.size = constants.fontSizeMedium
 
   m.list.observeField("itemSelected", "onItemSelected")
+  m.list.observeField("escape", "onListEscape")
+
+  ' Configure the pinned Clear History button.
+  m.clearButton.text = translate(translationKeys.ButtonClearHistory)
+  m.clearButton.background = constants.colorBackgroundSecondary
+  m.clearButton.focusBackground = constants.colorPrimary
+  m.clearButton.textColor = constants.colorTextSecondary
+  m.clearButton.textFocusColor = constants.colorTextPrimary
+  m.clearButton.enableBorder = false
 
   renderSectionLabel()
   renderItems()
@@ -52,6 +60,8 @@ sub renderSectionLabel()
   else
     m.sectionLabel.text = ""
   end if
+
+  refreshClearButtonVisibility()
 end sub
 
 ' Rebuild the list content node from the items array.
@@ -59,8 +69,6 @@ end sub
 ' a shared ContentNode's children (clear() + CreateChild) didn't reliably
 ' trigger LabelList to re-render, so repeated typeahead pushes stacked old
 ' items on top of new ones in the UI.
-' Appends a synthetic "Clear History" row when mode == "recent" and the list
-' is non-empty; activating it emits clearHistoryRequested instead of a query.
 sub renderItems()
   if not isValid(m.list) then return
 
@@ -79,39 +87,93 @@ sub renderItems()
     end if
   end for
 
-  if m.top.mode = "recent" and items.count() > 0
-    row = newContent.CreateChild("ContentNode")
-    row.title = translate(translationKeys.ButtonClearHistory)
-    row.description = CLEAR_HISTORY_SENTINEL
-  end if
-
   m.list.content = newContent
+  refreshClearButtonVisibility()
 end sub
 
-' Fired by the LabelList when the user presses OK on a row. Read back the
-' stashed activation value and emit the appropriate field.
+' Show the Clear History button only in recent mode when the list is
+' non-empty — matches the old synthetic-row logic without the row-shift
+' weirdness that came with a sentinel row inside the LabelList.
+sub refreshClearButtonVisibility()
+  if not isValid(m.clearButton) then return
+  items = m.top.items
+  haveItems = isValid(items) and items.count() > 0
+  m.clearButton.visible = (m.top.mode = "recent" and haveItems)
+end sub
+
+' Fired by the LabelList when the user presses OK on a row. Emit the row's
+' stashed activation value so the parent can run a full search.
 sub onItemSelected()
   if not isValid(m.list.content) then return
   row = m.list.content.getChild(m.list.itemSelected)
   if not isValid(row) then return
+  m.top.selectedSuggestion = row.description
+end sub
 
-  value = row.description
-  if value = CLEAR_HISTORY_SENTINEL
-    m.top.clearHistoryRequested = true
-  else
-    m.top.selectedSuggestion = value
+' Fired by EscapingLabelList when the user presses DOWN on the last row.
+' Hand focus to the pinned Clear History button if it's visible; otherwise
+' the DOWN press is absorbed harmlessly (nothing below the list to reach).
+sub onListEscape()
+  if m.list.escape <> "down" then return
+  if isValid(m.clearButton) and m.clearButton.visible
+    m.clearButton.setFocus(true)
   end if
 end sub
 
-' RIGHT on any row escapes to the keyboard (which sits to the right of the
-' suggestion list in the current layout). Parent handles the focus hand-off.
-' Without this, RIGHT is swallowed by the LabelList and the user has no way
-' out of the suggestion column short of picking a row or pressing BACK.
+' Key handling:
+'   RIGHT on any row (or the Clear button) → escape to the keyboard.
+'   OPTIONS on a list row in recent mode → emit removeRequested for that term.
+'   DOWN on the last list row → focus the Clear button (if visible).
+'   UP on the Clear button → return focus to the list (last row).
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
+
+  ' OK on the focused Clear History button — TextButton is "dumb" (no
+  ' internal OK handling), so the parent emits clearHistoryRequested here.
+  if key = "OK" and isValid(m.clearButton) and m.clearButton.isInFocusChain()
+    m.top.clearHistoryRequested = true
+    return true
+  end if
+
+  ' RIGHT escapes back to the keyboard column (which sits to the right of
+  ' the suggestion list). LEFT is a dead-end — nothing to the left of the
+  ' suggestion list in this layout.
   if key = "right"
     m.top.escape = "right"
     return true
   end if
+
+  ' OPTIONS on a focused list row — emit the focused term's value so the
+  ' parent can attempt to remove it from the recent-search registry. The
+  ' parent treats removeRequested as a request (not a fait accompli) and
+  ' no-ops if the term isn't in history. Mode-gating removed because the
+  ' hints list can contain strings that are also in the user's history
+  ' (e.g. the user searched "Star Wars" before, now sees it echoed as a
+  ' /Search/Hints result), and expecting the user to distinguish modes to
+  ' delete a visible entry was unintuitive.
+  if key = "options" and isValid(m.list) and m.list.isInFocusChain()
+    if isValid(m.list.content)
+      idx = m.list.itemFocused
+      row = m.list.content.getChild(idx)
+      if isValid(row) and isValid(row.description) and row.description <> ""
+        m.top.removeRequested = row.description
+        return true
+      end if
+    end if
+  end if
+
+  ' DOWN-from-last-row escape is handled by EscapingLabelList via the
+  ' `escape` field observer (onListEscape) — it fires before the base
+  ' LabelList can edge-stop. Nothing to do at this level.
+
+  ' UP from the Clear button returns focus to the list's last row.
+  if key = "up" and isValid(m.clearButton) and m.clearButton.isInFocusChain()
+    if isValid(m.list) and isValid(m.list.content) and m.list.content.getChildCount() > 0
+      m.list.jumpToItem = m.list.content.getChildCount() - 1
+      m.list.setFocus(true)
+      return true
+    end if
+  end if
+
   return false
 end function

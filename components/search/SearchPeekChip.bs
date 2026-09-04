@@ -1,61 +1,74 @@
+import "pkg:/source/constants/searchLayout.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
-' SearchPeekChip — collapsed-state indicator that pins to the top of the
-' SearchScreen. Shows the current query (or a "Search" placeholder) with a
-' chevron that flips to signal the keyboard-overlay direction.
+' SearchPeekChip — pinned search-bar pill that is the single search-bar
+' surface on the SearchScreen. Width is fixed at PEEK_CHIP_WIDTH so the pill
+' aligns with the keyboard below it (search bar + keyboard form one column).
+' Long queries marquee-scroll within the fixed bounds.
 '
-' Not independently focusable — activation goes through the screen-level
-' onKeyEvent (UP on the first row of results expands the overlay). The chip's
-' job is purely informational: "this is what you searched for; press up to
-' change it."
+' Not independently focusable — expansion is initiated from the results list
+' (UP on row 0) or via OK in the empty state, matching SearchScreen's keymap.
+' No directional chevron: with BACK always popping the scene, the former
+' "chevron indicates pull direction" affordance was redundant.
+
+' Layout geometry — kept local (not in searchLayout.bs) because every value
+' here is internal to the pill's own coordinate system.
+const ICON_X = 24
+const ICON_WIDTH = 24
+const LABEL_X = 64        ' ICON_X + ICON_WIDTH + 16px gap
+const RIGHT_PADDING = 24  ' breathing room on the right edge
 
 sub init()
   constants = m.global.constants
   m.bg = m.top.findNode("chipBg")
   m.queryLabel = m.top.findNode("queryLabel")
-  m.chevron = m.top.findNode("chevron")
+  m.searchIcon = m.top.findNode("searchIcon")
 
   ' Background: secondary panel tint so the chip stands out against the
   ' screen's primary background, but with enough alpha to feel integrated.
   m.bg.color = constants.colorBackgroundSecondary + constants.alpha80
 
-  ' Placeholder default — overridden by parent via setField("placeholder", …)
-  ' when translated strings are available.
-  m.top.placeholder = translate(translationKeys.ButtonSearch)
+  ' Fixed pill width — matches the keyboard's width below.
+  m.bg.width = searchLayout.PEEK_CHIP_WIDTH
+
+  ' Label width = pill width minus the icon area on the left and right padding.
+  ' Past this width the label marquee-scrolls (set in renderLabel when needed).
+  m.queryLabel.width = searchLayout.PEEK_CHIP_WIDTH - LABEL_X - RIGHT_PADDING
+
+  ' No placeholder text when empty — the magnifying-glass icon on the left is
+  ' enough to communicate "this is the search input." A "Search" word on a
+  ' wide pill below an empty keyboard reads as redundant chrome.
+  m.queryLabel.color = m.global.constants.colorTextPrimary
 
   renderLabel()
-  renderChevron()
 end sub
 
-' Update label text and dim color for placeholder state.
+' Update label text. Empty when no query (icon alone signals purpose). Long
+' queries marquee-scroll so the overflow stays readable.
 sub renderLabel()
   if not isValid(m.queryLabel) then return
-  constants = m.global.constants
 
   queryText = m.top.queryText
-  if isValid(queryText) and queryText <> ""
-    m.queryLabel.text = queryText
-    m.queryLabel.color = constants.colorTextPrimary
+  if not isValid(queryText) then queryText = ""
+  m.queryLabel.text = queryText
+
+  if queryText = ""
+    m.queryLabel.repeatCount = 0
+    return
+  end if
+
+  bounds = m.queryLabel.localBoundingRect()
+  if type(bounds) = "roAssociativeArray" and isValid(bounds.width) and bounds.width > m.queryLabel.width
+    m.queryLabel.repeatCount = -1
   else
-    m.queryLabel.text = m.top.placeholder
-    m.queryLabel.color = constants.colorTextSecondary
+    m.queryLabel.repeatCount = 0
   end if
 end sub
 
-' Swap the chevron image based on overlay state. Down arrow when collapsed
-' ("pull me down"); up arrow when expanded ("push me back up"). A discrete
-' swap rather than an Animation, because the Animation itself lives on the
-' overlay that's already sliding — animating two things in sync is a wash
-' visually and adds complexity. URI swap avoids the rendering artifacts a
-' rotation would produce on a non-square glyph.
-sub renderChevron()
-  if not isValid(m.chevron) then return
-  constants = m.global.constants
-  if m.top.isExpanded
-    m.chevron.uri = constants.iconArrowUpWhite
-  else
-    m.chevron.uri = constants.iconArrowDownWhite
-  end if
+' Currently unused visually but kept as a hook: if we later add a focus ring
+' or background tint shift, this is the place to drive it.
+sub onExpandedChanged()
+  ' no-op
 end sub

@@ -27,9 +27,9 @@ sub init()
   m.bg.width = searchLayout.OVERLAY_WIDTH
   m.bg.height = searchLayout.OVERLAY_HEIGHT
   ' Solid opaque. Alpha blending let the content behind bleed through and
-  ' made keyboard / suggestion text hard to read. Since the overlay is now
-  ' compact (580px tall), results below the overlay are still visible; we
-  ' don't need the alpha trick to "show through" anymore.
+  ' made keyboard / suggestion text hard to read. The overlay is compact
+  ' (400px tall) so results below the overlay are still visible; we don't
+  ' need the alpha trick to "show through" anymore.
   m.bg.color = constants.colorBackgroundPrimary
 
   ' Initial position: slideGroup parked above the viewport.

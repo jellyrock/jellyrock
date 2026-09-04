@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="EscapingLabelList" extends="LabelList">
+  <interface>
+    <!-- Set to "down" when the user presses DOWN while focused on the last
+         content row. Roku's LabelList consumes DOWN at the edge (wrap-or-stop
+         behavior) so parent onKeyEvent never sees it, meaning a sibling node
+         below the list can't be reached via DOWN. This subclass intercepts
+         the DOWN press at the edge and emits the escape signal so the parent
+         can reroute focus (e.g. to a pinned Clear History button). -->
+    <field id="escape" type="string" alwaysNotify="true" />
+  </interface>
+</component>
