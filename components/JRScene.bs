@@ -789,6 +789,9 @@ sub registerOverhangData(group as object)
     m.overhang.isLogoVisible = group.isLogoVisible
     group.observeField("isLogoVisible", "updateOverhangLogo")
 
+    m.overhang.isClockVisible = group.isClockVisible
+    group.observeField("isClockVisible", "updateOverhangClock")
+
     m.overhang.shouldShowIcons = group.shouldShowIcons
     group.observeField("shouldShowIcons", "updateOverhangIcons")
 
@@ -805,6 +808,7 @@ sub unregisterOverhangData(group as object)
     group.unobserveField("overhangTabs")
     group.unobserveField("isOverhangVisible")
     group.unobserveField("isLogoVisible")
+    group.unobserveField("isClockVisible")
     group.unobserveField("shouldShowIcons")
     group.unobserveField("shouldShowUserDropdown")
     m.overhang.unobserveField("selectedTabId")
@@ -817,6 +821,10 @@ end sub
 
 sub updateOverhangLogo(msg)
   m.overhang.isLogoVisible = msg.getData()
+end sub
+
+sub updateOverhangClock(msg)
+  m.overhang.isClockVisible = msg.getData()
 end sub
 
 sub updateOverhangIcons(msg)

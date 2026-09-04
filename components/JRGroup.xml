@@ -25,6 +25,10 @@
          shared overhang atomically on view-change (see registerOverhangData), so the whole
          overhang updates in one frame. Screens DECLARE these (typically in init); they never
          poke the overhang node directly. Defaults give a bare overhang (detail/grid screens). -->
+    <!-- Clock visibility. Defaults TRUE, unlike its neighbours: the clock is app-wide
+         chrome a screen opts OUT of (Home honours uiDesignHideClock, SearchScreen's peek
+         chip occupies the clock's corner), whereas the logo/icons/dropdown are opted IN. -->
+    <field id="isClockVisible" type="boolean" value="true" />
     <field id="isLogoVisible" type="boolean" value="false" />
     <field id="shouldShowIcons" type="boolean" value="false" />
     <field id="shouldShowUserDropdown" type="boolean" value="false" />

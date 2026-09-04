@@ -117,11 +117,11 @@ sub onCurrentUserChanged()
     m.userDropdown.triggerText = ""
     m.userDropdown.triggerIconUri = ""
   else
-    ' User logged in — configure and show the dropdown.
-    ' isUserDropdownVisible acts as an additional AND gate so screens that
-    ' suppress the dropdown (e.g. SearchScreen) stay suppressed across logins.
+    ' User logged in — configure and show the dropdown. A screen that wants no
+    ' dropdown leaves shouldShowUserDropdown false, and the controller clears
+    ' currentUser instead, which lands in the branch above.
     m.userDropdown.triggerText = username
-    m.userDropdown.visible = m.top.isUserDropdownVisible
+    m.userDropdown.visible = true
 
     ' Set user avatar image
     localUser = m.global.user
@@ -311,16 +311,6 @@ sub isClockVisibleChanged()
   if isValid(m.clock) then m.clock.visible = visible
   m.isClockHidden = not visible
   positionUserDropdown()
-end sub
-
-' Observer for the isUserDropdownVisible interface field. Allows a screen to
-' hide the dropdown even when a user is logged in (e.g. SearchScreen, which
-' renders its own minimal chrome). The dropdown still requires a signed-in
-' user — this is an additional AND gate on top of the currentUser check.
-sub isUserDropdownVisibleChanged()
-  if not isValid(m.userDropdown) then return
-  haveUser = m.top.currentUser <> ""
-  m.userDropdown.visible = haveUser and m.top.isUserDropdownVisible
 end sub
 
 ' Repositions the dropdown when its trigger button width changes.

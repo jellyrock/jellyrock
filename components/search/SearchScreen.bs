@@ -66,6 +66,16 @@ sub init()
   ' SearchScreen-only bypass.
   m.top.isOverhangVisible = true
 
+  ' Chrome intent is DECLARED on this node; JRScene's overhang controller projects it
+  ' (JRScene.registerOverhangData — "screens declare these; they never poke the overhang
+  ' node directly"). Only the clock needs saying: JRGroup already defaults isLogoVisible,
+  ' shouldShowIcons and shouldShowUserDropdown to false, which is exactly what this screen
+  ' wants. The clock defaults true and has to be opted out of, because its top-right
+  ' position at [1824, 39] sits behind the peek chip's right edge — a no-overlap layout
+  ' would force either a narrower search bar (mismatched with the keyboard below it) or a
+  ' per-screen clock relocation.
+  m.top.isClockVisible = false
+
   m.global.sceneManager.callFunc("setBackgroundImage", "")
 
   m.searchSelect = m.top.findNode("searchSelect")
@@ -198,26 +208,6 @@ sub OnScreenShown()
   ' already over (screenReadiness.bs), which is what a back-resume produces.
   screenLoad.resolve("focus")
 
-  ' Hide every overhang element on this screen — the peek-chip search bar
-  ' (positioned at y=54 above the keyboard) is the screen's top chrome and
-  ' provides its own visual anchor. The clock specifically is suppressed
-  ' here (regardless of the user's uiDesignHideClock setting) because its
-  ' default top-right position at [1824, 39] sits behind the peek chip's
-  ' right edge — a no-overlap layout would force either a narrower search
-  ' bar (mismatched with the keyboard below) or a per-screen clock
-  ' relocation. Hiding it on the search screen specifically — the way
-  ' Netflix/YouTube TV do — keeps the top chrome clean.
-  scene = m.top.getScene()
-  if isValid(scene)
-    overhang = scene.findNode("overhang")
-    if isValid(overhang)
-      overhang.isClockVisible = false
-      overhang.isLogoVisible = false
-      overhang.isUserDropdownVisible = false
-      overhang.shouldShowIcons = false
-    end if
-  end if
-
   ' Voice search arrives as route.context.query — populate, search and take focus,
   ' skipping normal focus restoration.
   if applyRouteQuery() then return
@@ -248,20 +238,6 @@ end sub
 
 sub OnScreenHidden()
   m.log.info("OnScreenHidden")
-
-  ' Reset overhang chrome fields we changed so the next screen inherits
-  ' sensible defaults. Each screen that cares about these fields sets them
-  ' explicitly in OnScreenShown (Home sets isLogoVisible=true +
-  ' shouldShowIcons=true, etc.) so this is belt-and-braces against stale
-  ' SearchScreen config bleeding into simpler screens that don't configure.
-  scene = m.top.getScene()
-  if isValid(scene)
-    overhang = scene.findNode("overhang")
-    if isValid(overhang)
-      overhang.isClockVisible = true
-      overhang.isUserDropdownVisible = true
-    end if
-  end if
 
   if isValid(m.searchSelect) and isValid(m.searchSelect.content)
     hideTextureManager(m.searchSelect.content)

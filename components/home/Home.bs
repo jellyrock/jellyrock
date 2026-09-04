@@ -194,12 +194,13 @@ sub onScreenShown()
         m.settingsIcon.observeField("requestFocusReturn", "onIconFocusReturn")
       end if
     end if
-
-    ' Apply clock visibility from the user's preference. Declarative field
-     ' assignment — mirrors isLogoVisible / shouldShowIcons and replaces the
-     ' former callFunc("hideClock") imperative path.
-    overhang.isClockVisible = not globalUser.settings.uiDesignHideClock
   end if
+
+  ' Clock visibility from the user's preference, DECLARED on this node rather than written
+  ' onto the overhang: JRScene's controller projects it in the same frame as tabs and title
+  ' (see registerOverhangData). Writing the overhang directly here would also race that
+  ' projection, which runs off a queued activeRoutedView observer.
+  m.top.isClockVisible = not globalUser.settings.uiDesignHideClock
 
   ' Re-activate voice capture — matching BaseGridView's onScreenShown pattern.
   ' Only toggle active; voiceEnabled was set once in init() and never changed.
