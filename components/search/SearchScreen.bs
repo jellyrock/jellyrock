@@ -510,7 +510,7 @@ sub onQueryChanged()
   m.debounceTimer.control = "stop"
   m.fullSearchTimer.control = "stop"
 
-  trimmed = searchHistory.Trim(query)
+  trimmed = query.Trim()
   if trimmed = ""
     ' No input — stop any in-flight full search, wipe the existing results from
     ' the SearchRow, and show the recent-searches list. Without the results-wipe,
@@ -786,7 +786,7 @@ end sub
 ' matches live as they type.
 sub onFullSearchDebounceFire()
   query = m.top.query
-  if not isValid(query) or searchHistory.Trim(query) = "" then return
+  if not isValid(query) or query.Trim() = "" then return
   runFullSearch(query)
 end sub
 

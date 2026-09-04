@@ -94,10 +94,6 @@ namespace searchLayout
   ' /Search/Hints limit — keeps suggestion list short enough to scan in one glance.
   const HINTS_LIMIT = 8
 
-  ' Related-tags suggestion limit — how many tag matches to surface below the
-  ' titles section in the suggestion list.
-  const TAG_HINTS_LIMIT = 5
-
   ' Recent-searches cap — MRU window. More than this and the list feels unwieldy.
   const RECENT_MAX = 10
 

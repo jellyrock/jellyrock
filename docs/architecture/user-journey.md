@@ -216,7 +216,7 @@ This appears in several places in `ItemDetails.bs`. The trick: `SceneGraph`'s `o
 
 ## 7. Quickplay dispatch — `QueueManager.launchItem`
 
-The `quickPlayNode` self-observers across `Home` / `BaseGridView` / `SearchResults` / `ItemDetails` all forward the node to `m.global.queueManager.callFunc("launchItem", node)`. `launchItem` (`components/manager/QueueManager.bs`) — **not** `main.bs` anymore — classifies the item by `type` and builds the queue, using the helpers in `source/utils/quickplay.bs`:
+The `quickPlayNode` self-observers across `Home` / `BaseGridView` / `SearchScreen` / `ItemDetails` all forward the node to `m.global.queueManager.callFunc("launchItem", node)`. `launchItem` (`components/manager/QueueManager.bs`) — **not** `main.bs` anymore — classifies the item by `type` and builds the queue, using the helpers in `source/utils/quickplay.bs`:
 
 ```brightscript
 sub launchItem(itemNode)

@@ -36,7 +36,7 @@ roSGNode
                   ├─ Home
                   ├─ ItemDetails
                   ├─ BaseGridView
-                  ├─ SearchResults
+                  ├─ SearchScreen
                   ├─ Settings
                   ├─ PlayerHostView
                   ├─ AudioPlayerView
@@ -138,7 +138,7 @@ Registered exactly as below. Pre-login routes carry **no guard** (their redirect
 | `/details/:type/:id/play` | `PlayerHostView` | `canActivate` |
 | `/details/:type/:id` | `ItemDetails` | `suspendMode: "detach"`, `canActivate` — **no `allowReuse`** |
 | `/library/:id` | `BaseGridView` | `suspendMode: "detach"`, `canActivate` |
-| `/search` | `SearchResults` | `suspendMode: "detach"`, `canActivate` |
+| `/search` | `SearchScreen` | `suspendMode: "detach"`, `canActivate` |
 | `/settings` | `Settings` | `canActivate` |
 | `/photo` | `PhotoDetails` | `canActivate` |
 | `/audio` | `AudioPlayerView` | `canActivate` |
@@ -154,7 +154,7 @@ What the flags mean:
   > `allowReuse` does **not** govern a *same-path* navigation. The router reuses the active view whenever `isSamePath` (`Router.brs` `_navigateTo`), independent of every flag — that is the path `ItemDetails.onRouteUpdate` serves when a cast re-targets the item already showing.
 - **`suspendMode: "detach"`** (details / library / search) — governs how a view is held while it is **covered** by a view pushed on top: `"detach"` removes it from the tree into the router's detach store and re-attaches it on `goBack`, freeing its render/texture cost while it is not visible. Every outgoing view is suspended this way *regardless of any flag*, and `_goBack` resumes it through `_onViewResume` either way, so back navigation is unaffected. This is what lets detail→`/play` restore the launching detail on back instead of bubbling a spurious Exit dialog.
 - **`keepAlive` — do not use it.** It looks like the flag that means "don't destroy while covered". It is not. Upstream documents it as *"retained for later resumption"*: a session-lifetime, **path-keyed view cache**, so a view that is **popped** is kept rather than closed, and a later forward navigation to the same path resumes the old instance. It is also **unbounded** — the only eviction helper (`sgrouter_collectDetachedViewsToDestroy`) skips `keepAlive` views by design, so nothing short of `sgrouter.destroy()` at sign-out releases them.
-  > **Why this matters, measured.** These three routes carried `keepAlive` until the retained-view fix. Because the cache is keyed by `route.path`, every *distinct* path visited and backed out of stayed alive for the session — one `BaseGridView` per library, one `ItemDetails` per item. A retained view is **not** an inert node tree: `onScreenHidden` runs on suspend but `onDestroy` does not, and `onDestroy` is where the teardown lives (tasks stopped, ~40 observers dropped, textures freed, promises abandoned, and for `SearchResults` the firmware's global voice route released). An on-device census — browse six items, back out of each, return Home — measured **1,936 unparented roots against a 519-root cold-Home baseline**, growing monotonically (946 → 1,884 across the six round trips). Removing the flag brought the same walk to **458**, flat. (`getRootsCount` counts nodes with *no parent* — the ones held only by a BrightScript reference — not every live node. The load-bearing result is the flatness across round trips; the absolute figure landing under the cold-Home baseline is not a like-for-like comparison, since cold Home and returned-to Home are different app states.)
+  > **Why this matters, measured.** These three routes carried `keepAlive` until the retained-view fix. Because the cache is keyed by `route.path`, every *distinct* path visited and backed out of stayed alive for the session — one `BaseGridView` per library, one `ItemDetails` per item. A retained view is **not** an inert node tree: `onScreenHidden` runs on suspend but `onDestroy` does not, and `onDestroy` is where the teardown lives (tasks stopped, ~40 observers dropped, textures freed, promises abandoned, and for `SearchScreen` the firmware's global voice route released). An on-device census — browse six items, back out of each, return Home — measured **1,936 unparented roots against a 519-root cold-Home baseline**, growing monotonically (946 → 1,884 across the six round trips). Removing the flag brought the same walk to **458**, flat. (`getRootsCount` counts nodes with *no parent* — the ones held only by a BrightScript reference — not every live node. The load-bearing result is the flatness across round trips; the absolute figure landing under the cold-Home baseline is not a like-for-like comparison, since cold Home and returned-to Home are different app states.)
 - **No `suspendMode`** (photo / audio) — defaults to `"hide"`: kept in the tree, hidden and parked off-screen. Both set `isOverhangVisible = false`, so the overhang hides while they're active and the view beneath suspends (focus saved) and resumes (focus restored) on back — exactly like the video player.
 
 ### The auth guard — `components/auth/AuthManager`
@@ -197,7 +197,7 @@ The scene-level loading spinner is toggled by `JRScene.onIsLoadingChanged` (fire
 
 **Convention: a routed destination screen owns its own load spinner.** The screen that loads data on open starts the spinner when its fetch begins and stops it when the data arrives; callers just `navigateTo`. This is the pattern the sgRouter migration established, and where a spinner "goes missing" it's almost always a screen that didn't get the memo.
 
-- **Self-starting screens** — `BaseGridView` (`loadInitialItems` → `prepareDataLoad`), `SearchResults` (`searchMedias`), the Live TV schedule: start *and* stop their own spinner.
+- **Self-starting screens** — `BaseGridView` (`loadInitialItems` → `prepareDataLoad`), `SearchScreen` (`runFullSearch`), the Live TV schedule: start *and* stop their own spinner.
 - **Launcher-started** — photo / player: `QueueManager.launchItem` (and the play/quickplay paths) start the spinner; the destination (`PhotoDetails` on mount, the player when content loads) stops it.
 - **`ItemDetails`** — starts the spinner in `onItemIdChanged` (right before the metadata fetch task), stops it in `onDetailsLoaded`. Its start used to live in the removed `showScenes.CreateItemDetailsGroup` factory; the migration didn't re-home it, so item opens showed no spinner until this was restored. `itemId`'s `onChange` is a synchronous scoped observer, so the spinner is up before the empty springboard renders a frame; the complete-context (deep-link) early-return shows no spinner for an already-loaded item.
 

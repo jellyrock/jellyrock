@@ -11,8 +11,10 @@ import "pkg:/source/utils/config.bs"
 
 namespace searchHistory
 
-  ' Registry key used for per-user recent-search storage.
-  const KEY = "search_recent"
+  ' Registry key used for per-user recent-search storage. lowerCamelCase to match the
+  ' other user-scoped keys (authToken, username, primaryImageTag). Never shipped under
+  ' another name, so no migration is needed.
+  const KEY = "searchRecent"
 
   ' Load the user's recent search list.
   ' Returns an empty array if nothing is stored or the payload is corrupt.
@@ -29,7 +31,7 @@ namespace searchHistory
   ' Trims whitespace, case-insensitively de-duplicates, caps at RECENT_MAX.
   ' No-op for empty input.
   sub push(term as string)
-    trimmed = Trim(term)
+    trimmed = term.Trim()
     if trimmed = "" then return
 
     list = load()
@@ -55,7 +57,7 @@ namespace searchHistory
   ' so a term the user sees on screen can be removed by the string shown.
   ' No-op if the term is empty or not present.
   sub remove(term as string)
-    trimmed = Trim(term)
+    trimmed = term.Trim()
     if trimmed = "" then return
 
     list = load()
@@ -82,14 +84,5 @@ namespace searchHistory
   sub clear()
     setUserSetting(KEY, "[]")
   end sub
-
-  ' Trim leading and trailing whitespace from a string.
-  ' Roku's BrightScript doesn't ship a native Trim on strings in all firmware
-  ' versions, so use a local regex-backed implementation for portability.
-  function Trim(s as string) as string
-    if s = "" then return ""
-    rx = CreateObject("roRegex", "^\s+|\s+$", "")
-    return rx.ReplaceAll(s, "")
-  end function
 
 end namespace
