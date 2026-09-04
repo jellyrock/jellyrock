@@ -9,9 +9,11 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
+import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/searchHistory.bs"
+import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/translate.bs"
 
@@ -196,10 +198,12 @@ sub OnScreenHidden()
   end if
 end sub
 
-' destroy: Full teardown releasing all resources before component removal.
-' Called automatically by SceneManager.popScene() / clearScenes().
-sub destroy()
-  m.log.verbose("destroy — released voice slot")
+' onDestroy: Full teardown releasing all resources before component removal.
+' Called automatically via JRScreen.beforeViewClose when sgRouter permanently
+' closes this view (ADR 0029 — popped routes are destroyed, never cached), so
+' this runs on every back-out and must fully release.
+sub onDestroy()
+  m.log.verbose("onDestroy — releasing voice slot")
 
   if isValid(m.searchSelect) and isValid(m.searchSelect.content)
     destroyTextureManager(m.searchSelect.content)
@@ -226,7 +230,21 @@ sub destroy()
     m.suggestions.unobserveField("escape")
   end if
 
-  if isValid(m.searchSelect) then m.searchSelect.unobserveField("rowItemFocused")
+  if isValid(m.searchSelect)
+    m.searchSelect.unobserveField("rowItemFocused")
+
+    ' Drop the row content, same shape and same reason as BaseGridView.onDestroy and
+    ' SearchResults.onDestroy: SearchRow's cells are BrowseRowItem (a JRRowItem), which
+    ' caches m.contentRoot and registers scoped observers on it, so the content root holds
+    ' each cell's scope. JRRowItem has no onDestroy and SearchRow has none either, so the
+    ' release has to come from the container — tech-debt.md's
+    ' `observe-without-on-destroy-jrscreen-only` entry names JRRowItem explicitly and warns
+    ' that nothing enforces the next container remembering to do this.
+    '
+    ' BELOW the unobserves for the same reason it is there in BaseGridView — emptying the
+    ' RowList can move rowItemFocused, and onSearchItemFocused dereferences `.content`.
+    m.searchSelect.content = invalid
+  end if
 
   if isValid(m.debounceTimer)
     m.debounceTimer.unobserveField("fire")
@@ -568,18 +586,17 @@ sub onSuggestionRemoveRequested()
 
   title = translate(translationKeys.LabelRemove)
   msg = translate(translationKeys.MessageAreYouSureYouWantToRemoveTerm, [term])
-  m.global.sceneManager.observeFieldScoped("isDataReturned", "onRemoveDialogResponse")
-  m.global.sceneManager.callFunc("showConfirmationDialog", title, [msg], [translate(translationKeys.ButtonCancel), translate(translationKeys.ButtonRemove)])
+  m.removeDialog = showConfirmDialog(title, msg, "onRemoveDialogResponse", translate(translationKeys.ButtonRemove), translate(translationKeys.ButtonCancel))
 end sub
 
-' Result handler for the per-entry remove confirm dialog. Only acts on index
-' 1 (Remove); Cancel (0) and dismiss (-1) are no-ops.
+' Result handler for the per-entry remove confirm dialog. `confirmed` is true only
+' when the Remove button was selected — Cancel and Back both arrive as not-confirmed,
+' so a single positive gate covers every dismissal path (including this dialog being
+' superseded by another overlay, which resolves it as cancelled).
 sub onRemoveDialogResponse()
-  m.global.sceneManager.unobserveFieldScoped("isDataReturned")
-
-  returnData = m.global.sceneManager.returnData
-  if not isValid(returnData) then return
-  if returnData.indexSelected <> 1 then return
+  result = m.removeDialog.result
+  m.removeDialog = invalid
+  if not isValid(result) or not result.confirmed then return
 
   term = m.pendingRemoveTerm
   if not isValid(term) or term = "" then return
@@ -610,7 +627,10 @@ sub runFullSearch(query as string)
   m.searchHelpText.visible = false
   m.searchTask.observeField("results", "onFullSearchResults")
   m.searchTask.query = query
-  m.searchTask.control = "RUN"
+  ' launchTask() is the single accounted chokepoint for starting a Task thread
+  ' (source/utils/tasks.bs). A bare control = "RUN" is a build error under the
+  ' no-raw-run plugin, and would launch outside the thread-watermark budget.
+  launchTask(m.searchTask)
 end sub
 
 ' User-initiated submit — Go key, suggestion tap, voice, or DOWN from the
