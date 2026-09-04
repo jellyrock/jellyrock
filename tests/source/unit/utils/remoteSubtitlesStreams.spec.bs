@@ -114,6 +114,98 @@ namespace tests
       m.assertEqual(remoteSubtitles.newSubtitleStreams([], invalid).count(), 0)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("subtitleFileTail() - the only discriminator between two subtitles")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("strips the media basename so only the differing suffix is left")
+    function _()
+      media = "/media/Movies/Sintel (2010)/Sintel.2010.1080p.BluRay.x264-CtrlHD.mkv"
+      m.assertEqual(remoteSubtitles.subtitleFileTail("/media/Movies/Sintel (2010)/Sintel.2010.1080p.BluRay.x264-CtrlHD.en.hi.srt", media), ".en.hi.srt")
+      m.assertEqual(remoteSubtitles.subtitleFileTail("/media/Movies/Sintel (2010)/Sintel.2010.1080p.BluRay.x264-CtrlHD.en.sdh.srt", media), ".en.sdh.srt")
+    end function
+
+    @it("matches the basename case-insensitively - servers do not agree on case")
+    function _()
+      m.assertEqual(remoteSubtitles.subtitleFileTail("/m/MOVIE.NAME.en.srt", "/m/movie.name.mkv"), ".en.srt")
+    end function
+
+    @it("handles Windows server paths, which roPath cannot parse")
+    function _()
+      m.assertEqual(remoteSubtitles.subtitleFileTail("D:\Media\Movies\Sintel.2010.en.srt", "D:\Media\Movies\Sintel.2010.mkv"), ".en.srt")
+    end function
+
+    @it("returns the whole filename when the subtitle does not sit beside the media file")
+    function _()
+      ' A Subs/ folder or a hand-placed file: there is no redundant prefix to
+      ' strip, and the whole name IS what tells it apart.
+      m.assertEqual(remoteSubtitles.subtitleFileTail("/media/Movies/Sintel (2010)/Subs/English.srt", "/media/Movies/Sintel (2010)/Sintel.2010.mkv"), "English.srt")
+    end function
+
+    @it("returns the whole filename when the media path is missing")
+    function _()
+      m.assertEqual(remoteSubtitles.subtitleFileTail("/m/a.en.srt", ""), "a.en.srt")
+      m.assertEqual(remoteSubtitles.subtitleFileTail("/m/a.en.srt", invalid), "a.en.srt")
+    end function
+
+    @it("returns empty when the subtitle has no path at all")
+    function _()
+      m.assertEqual(remoteSubtitles.subtitleFileTail("", "/m/movie.mkv"), "")
+      m.assertEqual(remoteSubtitles.subtitleFileTail(invalid, "/m/movie.mkv"), "")
+    end function
+
+    @it("does not strip when the subtitle name merely starts with the same letters")
+    function _()
+      ' "Sintel.2010" is not a prefix of "Sintel.2011...", so nothing is stripped.
+      m.assertEqual(remoteSubtitles.subtitleFileTail("/m/Sintel.2011.en.srt", "/m/Sintel.2010.mkv"), "Sintel.2011.en.srt")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("fileNameFrom() - server paths, not Roku paths")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("takes the last segment of a posix path")
+    function _()
+      m.assertEqual(remoteSubtitles.fileNameFrom("/media/Movies/x/Sintel.2010.mkv"), "Sintel.2010.mkv")
+    end function
+
+    @it("takes the last segment of a windows path")
+    function _()
+      m.assertEqual(remoteSubtitles.fileNameFrom("D:\Media\Movies\Sintel.2010.mkv"), "Sintel.2010.mkv")
+    end function
+
+    @it("returns a bare filename unchanged")
+    function _()
+      m.assertEqual(remoteSubtitles.fileNameFrom("Sintel.2010.mkv"), "Sintel.2010.mkv")
+    end function
+
+    @it("returns empty for a missing or blank path")
+    function _()
+      m.assertEqual(remoteSubtitles.fileNameFrom(invalid), "")
+      m.assertEqual(remoteSubtitles.fileNameFrom(""), "")
+      m.assertEqual(remoteSubtitles.fileNameFrom("   "), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("fileNameWithoutExtension() - only the LAST dot is the extension")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps every dot a release name carries")
+    function _()
+      m.assertEqual(remoteSubtitles.fileNameWithoutExtension("Sintel.2010.1080p.BluRay.mkv"), "Sintel.2010.1080p.BluRay")
+    end function
+
+    @it("returns the name unchanged when there is no extension")
+    function _()
+      m.assertEqual(remoteSubtitles.fileNameWithoutExtension("Sintel"), "Sintel")
+      m.assertEqual(remoteSubtitles.fileNameWithoutExtension(""), "")
+    end function
+
+    @it("keeps a leading-dot name whole rather than reducing it to nothing")
+    function _()
+      m.assertEqual(remoteSubtitles.fileNameWithoutExtension(".srt"), ".srt")
+    end function
+
   end class
 
 end namespace

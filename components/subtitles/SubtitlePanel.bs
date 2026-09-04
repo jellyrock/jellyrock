@@ -120,19 +120,18 @@ end sub
 ' is the thing worth keeping on screen while scanning results. The directory is
 ' noise at this width, and on some deployments it leaks server-side layout.
 sub onFilePathChanged()
-  path = m.top.filePath
-  if not isValidAndNotEmpty(path)
-    m.fileLabel.text = ""
-    return
-  end if
+  ' remoteSubtitles.fileNameFrom rather than roPath: these paths come from the
+  ' SERVER, so a Windows install reports backslashes and roPath expects a Roku
+  ' volume (pkg:/, tmp:/). The old roPath call fell back to printing the whole
+  ' path when it could not parse one. It also has to be the same splitter the
+  ' per-row filename tail uses, or the header and the rows can disagree about
+  ' where the media filename starts.
+  m.fileLabel.text = remoteSubtitles.fileNameFrom(m.top.filePath)
 
-  filePath = createObject("roPath", path)
-  parts = filePath.split()
-  if isValid(parts) and isValidAndNotEmpty(parts.filename)
-    m.fileLabel.text = parts.filename
-  else
-    m.fileLabel.text = path
-  end if
+  ' The tail shown on each existing-subtitle row is computed against this path,
+  ' so a path arriving after the streams did has to re-render them. ItemDetails
+  ' happens to set filePath first today; nothing enforces that.
+  renderExistingList()
 end sub
 
 sub onExistingStreamsChanged()
@@ -495,6 +494,11 @@ sub renderExistingList()
     row.addFields({
       language: resolveLanguageName(valueOrEmpty(stream.Language)),
       codec: valueOrEmpty(stream.Codec),
+      ' The only thing that tells two otherwise-identical subtitles apart, since
+      ' Jellyfin records no provenance for one. Computed here rather than in the
+      ' row because this is the only scope holding the MEDIA path the redundant
+      ' leading part is stripped against.
+      fileTail: remoteSubtitles.subtitleFileTail(stream.Path, m.top.filePath),
       hearingImpaired: stream.IsHearingImpaired = true,
       forced: stream.IsForced = true,
       streamIndex: intOrZero(stream.Index),

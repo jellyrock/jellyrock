@@ -18,15 +18,41 @@ namespace subtitleLayout
   ' family.
   const ROW_H_PADDING = 12
 
-  ' Vertical breathing room above the badge line and below the meta line.
+  ' Vertical breathing room above the first line and below the second.
   const ROW_V_PADDING = 10
 
-  ' Reserved height of the badge strip. Always reserved, even for rows with no
-  ' badges, so every row in both columns is identical in height.
-  const ROW_BADGE_HEIGHT = 26
-
-  ' Gap between the release-name line and the meta line.
+  ' Gap between the row's two lines.
   const ROW_LINE_GAP = 6
+
+  ' Gap between the detail text and the badge zone on the second line. Wide
+  ' enough that an ellipsized detail line never looks joined to the first badge.
+  const ROW_BADGE_GUTTER = 24
+
+  ' Width reserved for badges at the right of a row's second line.
+  '
+  ' Sized by the BADGE STRINGS, not by the column: the same words are drawn
+  ' whatever the column's width, and the two row types carry different sets.
+  ' Measured off a device capture at fontSizeSmallest — ~10.3px per character
+  ' plus 28px for an icon and its gap, 16px between badges:
+  '
+  '   results   "Perfect match" 162 + "Hearing impaired" 193 + "Forced" 62,
+  '             with two 16px gaps = 449
+  '   existing  "Hearing impaired" 193 + "Forced" 62 + one gap = 271
+  '
+  ' So each holds every badge its row type can carry IN ENGLISH, with a little
+  ' slack. A longer translation, or a results row that also carries
+  ' "Machine translated", will exceed it — and that is handled rather than
+  ' prevented: badges are appended most-significant first and the zone is
+  ' clipped to the row's right padding edge, so the overflow is cut instead of
+  ' overrunning the neighbouring column, and what is lost is always the least
+  ' significant badge. Widening these to fit every language would cost the
+  ' common two-badge row a large dead gap, which is the worse trade.
+  const RESULTS_BADGE_WIDTH = 460
+  const EXISTING_BADGE_WIDTH = 300
+
+  ' Floor for the detail text so a hypothetical narrow row can never be handed a
+  ' negative width (a Label with width <= 0 renders its text unclipped).
+  const ROW_DETAIL_MIN_WIDTH = 120
 
   ' Column widths. The results column is wide because release names run long —
   ' 85 characters was the longest observed in a real result set — and width here
@@ -42,15 +68,67 @@ namespace subtitleLayout
 
   ' rowHeight: Total height of one subtitle row.
   '
+  ' Exactly two lines, and that is a shape decision rather than an arithmetic
+  ' one: the first draft reserved a third line for a badge strip on EVERY row so
+  ' both columns would stay a uniform height, which left rows without badges
+  ' looking broken next to rows with them. Badges now sit on the second line
+  ' beside the detail text, so a badge-free row is correctly spaced by
+  ' construction and the reserved strip is gone.
+  '
   ' Pure by construction — the font sizes are passed in rather than read off
   ' m.global — so it is unit-testable and callable from either component's
   ' scope.
   '
-  ' @param {integer} fontSmaller - constants.fontSizeSmaller (release-name line)
-  ' @param {integer} fontSmallest - constants.fontSizeSmallest (meta line)
+  ' @param {integer} fontSmaller - constants.fontSizeSmaller (first line)
+  ' @param {integer} fontSmallest - constants.fontSizeSmallest (second line)
   ' @return {integer} row height in pixels
   function rowHeight(fontSmaller as integer, fontSmallest as integer) as integer
-    return (subtitleLayout.ROW_V_PADDING * 2) + subtitleLayout.ROW_BADGE_HEIGHT + fontSmaller + subtitleLayout.ROW_LINE_GAP + fontSmallest
+    return (subtitleLayout.ROW_V_PADDING * 2) + fontSmaller + subtitleLayout.ROW_LINE_GAP + fontSmallest
+  end function
+
+  ' secondLineZones: Where the detail text and the badges go on a row's second line.
+  '
+  ' Returned together, from one function, because the two are complementary
+  ' halves of the same split — computing them separately is how the panel's
+  ' first draft ended up with a row component and a list slot that disagreed.
+  '
+  ' The badge zone is anchored to the row's right padding edge rather than
+  ' flowing after the detail text. Flowing would waste nothing, but the detail
+  ' line's width swings widely (uploader names in the sampled results ran from 4
+  ' to 20 characters), so a flowed badge would land at a different x on every
+  ' row and read as jitter while scrolling. A fixed anchor also means the row
+  ' needs no text measurement, which a MarkupList row cannot do cheaply — it is
+  ' recycled on every scroll step and localBoundingRect() is only valid after a
+  ' render pass.
+  '
+  ' @param {integer} rowWidth - full width of the row
+  ' @param {integer} badgeZoneWidth - width to reserve for badges (RESULTS_/EXISTING_BADGE_WIDTH)
+  ' @return {object} { detailWidth, badgeX, badgeWidth }
+  function secondLineZones(rowWidth as integer, badgeZoneWidth as integer) as object
+    usable = rowWidth - (subtitleLayout.ROW_H_PADDING * 2)
+
+    ' Badges give way to the detail text, not the other way round: the text is
+    ' the row's content and the badges only qualify it.
+    badgeWidth = badgeZoneWidth
+    maxBadgeWidth = usable - subtitleLayout.ROW_BADGE_GUTTER - subtitleLayout.ROW_DETAIL_MIN_WIDTH
+    if badgeWidth > maxBadgeWidth then badgeWidth = maxBadgeWidth
+    if badgeWidth < 0 then badgeWidth = 0
+
+    ' No badge zone means no gap to leave before it — the detail line takes the
+    ' whole row rather than ending short of an edge that isn't there.
+    gutter = subtitleLayout.ROW_BADGE_GUTTER
+    if badgeWidth = 0 then gutter = 0
+
+    detailWidth = usable - badgeWidth - gutter
+    ' A Label with width <= 0 renders UNCLIPPED, so the degenerate row has to end
+    ' up with a positive width even when it is too narrow to honour the floor.
+    if detailWidth < 1 then detailWidth = 1
+
+    return {
+      detailWidth: detailWidth,
+      badgeX: rowWidth - subtitleLayout.ROW_H_PADDING - badgeWidth,
+      badgeWidth: badgeWidth
+    }
   end function
 
 end namespace

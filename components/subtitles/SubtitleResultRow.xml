@@ -3,11 +3,21 @@
   SubtitleResultRow: one remote subtitle search result inside SubtitlePanel's
   results MarkupList.
 
-  Three stacked lines, the first of which is conditional:
+  Exactly two lines — identity, then detail:
 
-    [ Perfect match ]  [ Hearing impaired ]      <- badge strip, hidden when empty
-    Sintel.2010.1080p.BluRay.x264-CtrlHD          <- release name, marquees on focus
-    561,277 downloads . pirosasz . 2012           <- meta line
+    Sintel.2010.1080p.BluRay.x264-CtrlHD                             <- release name, marquees on focus
+    561,277 downloads · pirosasz · 2012      * Perfect match  CC HI  <- meta line, badges right-anchored
+
+  Badges sit BESIDE the meta line rather than on a line of their own. The first
+  draft gave them a third line that was reserved on every row so both columns
+  stayed a uniform height, which meant a row with no badges rendered an empty
+  strip and read as broken next to a row with them. Now a badge-free row is
+  correctly spaced by construction, and the row lost 26px of height with it.
+
+  The badge zone is anchored to the row's right padding edge, not flowed after
+  the meta text: uploader names in the sampled results ran from 4 to 20
+  characters, so a flowed badge lands at a different x on every row and reads as
+  jitter while scrolling. Geometry is in source/constants/subtitleLayout.bs.
 
   The shape is driven by what the API actually returns, measured across 9 films
   and 6 episodes on a real server (see source/utils/remoteSubtitles.bs):
@@ -30,14 +40,24 @@
     <Poster id="rowBackground" uri="pkg:/images/9patch/filled-rounded.9.png" visible="false" />
     <Poster id="rowBorder" uri="pkg:/images/9patch/border-6px.9.png" visible="false" />
 
-    <!-- Badge strip. Always occupies its line even when empty: rows must be a
-         UNIFORM height or the MarkupList's fixed itemSize disagrees with the
-         rendered content, which shows up as rows drifting out of their slots
-         and as the left and right columns failing to line up with each other. -->
-    <LayoutGroup id="badgeRow" layoutDirection="horiz" itemSpacings="[16]" />
-
     <ScrollingLabelPrimarySmaller id="nameLabel" repeatCount="0" />
     <LabelSecondarySmallest id="metaLabel" />
+
+    <!-- Clips the badge zone to the row's right padding edge. A third or fourth
+         badge is rare but possible, and translations run longer than English:
+         without this it would overrun the 40px gutter and draw over the
+         "Current subtitles" column beside it. Badges are appended in order of
+         significance, so the one that gets cut is always the least important. -->
+    <Group id="badgeClip">
+      <!-- vertAlignment is deliberately left at its default of "top". A HORIZ
+           LayoutGroup set to "center" puts its local y-origin at the group's
+           vertical CENTRE, not its top edge, so translating it to the second
+           line's y drew the badges half their height too high — measured at 12px
+           above the detail text's baseline on a Stick 4K. The inner per-badge
+           groups DO use center, which is what keeps each icon aligned with its
+           own label. -->
+      <LayoutGroup id="badgeRow" layoutDirection="horiz" itemSpacings="[16]" />
+    </Group>
   </children>
 
   <interface>

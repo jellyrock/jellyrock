@@ -141,6 +141,80 @@ namespace remoteSubtitles
     return LCase(title + "|" + language)
   end function
 
+  ' subtitleFileTail: The part of an installed subtitle's filename that actually
+  ' tells it apart from another subtitle on the same item.
+  '
+  ' Jellyfin records NO provenance for a subtitle. A subtitle MediaStream
+  ' carries only Codec, Language, IsForced, IsHearingImpaired, IsDefault,
+  ' IsExternal, Index, DisplayTitle and Path — no provider, no download date, no
+  ' rating. Two English SRTs are therefore identical in every field the API
+  ' returns EXCEPT Path, which makes the filename the only discriminator the
+  ' client can offer, and the sidecar suffix (".en.hi.srt" vs ".en.sdh.srt") the
+  ' only part of it that differs.
+  '
+  ' The media file's own basename is stripped when the subtitle sits beside it,
+  ' because that name is already on screen in the panel header and repeating it
+  ' per row would push the differing tail off the end of a 570px column. When
+  ' the subtitle does NOT share the media basename — a Subs/ folder, a manually
+  ' placed file — there is no redundancy to strip and the whole filename is
+  ' returned, since then it IS the discriminator.
+  '
+  ' @param {dynamic} subtitlePath - MediaStream.Path of the subtitle
+  ' @param {dynamic} mediaPath - Path of the media file the item plays from
+  ' @return {string} the distinguishing tail, or "" when the subtitle has no path
+  function subtitleFileTail(subtitlePath as dynamic, mediaPath as dynamic) as string
+    subtitleName = remoteSubtitles.fileNameFrom(subtitlePath)
+    if subtitleName = "" then return ""
+
+    stem = remoteSubtitles.fileNameWithoutExtension(remoteSubtitles.fileNameFrom(mediaPath))
+    if stem = "" then return subtitleName
+    if Len(subtitleName) <= Len(stem) then return subtitleName
+    if LCase(Left(subtitleName, Len(stem))) <> LCase(stem) then return subtitleName
+
+    return Mid(subtitleName, Len(stem) + 1)
+  end function
+
+  ' fileNameFrom: The last path segment of a server-side path.
+  '
+  ' Deliberately string-based rather than roPath: the paths here come from the
+  ' SERVER, so they are in the server host's format (a Windows install reports
+  ' backslashes), and roPath expects a Roku volume like pkg:/ or tmp:/. Handling
+  ' both separators here also keeps the function pure and unit-testable off
+  ' device.
+  '
+  ' @param {dynamic} path - a file path in any host's format
+  ' @return {string} the filename, or "" when there is no usable path
+  function fileNameFrom(path as dynamic) as string
+    name = textOrEmpty(path).trim()
+    if name = "" then return ""
+
+    for each separator in ["/", "\"]
+      segments = name.split(separator)
+      name = segments[segments.count() - 1]
+    end for
+
+    return name
+  end function
+
+  ' fileNameWithoutExtension: "Sintel.2010.mkv" -> "Sintel.2010".
+  '
+  ' Only the LAST dot is treated as the extension boundary, so a release name
+  ' full of dots keeps all of them.
+  '
+  ' @param {string} fileName - a bare filename, no directory part
+  ' @return {string} the filename with its final extension removed
+  function fileNameWithoutExtension(fileName as string) as string
+    if fileName = "" then return ""
+
+    lastDot = 0
+    for i = 1 to Len(fileName)
+      if Mid(fileName, i, 1) = "." then lastDot = i
+    end for
+
+    if lastDot <= 1 then return fileName
+    return Left(fileName, lastDot - 1)
+  end function
+
   ' newSubtitleStreams: Subtitle streams present in `after` but not in `before`.
   '
   ' This is the ONLY honest completion signal for a download. The server's

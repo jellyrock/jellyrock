@@ -1,0 +1,115 @@
+import "pkg:/source/constants/subtitleLayout.bs"
+
+' Unit tests for the subtitle panel's row geometry (issue #750).
+'
+' Three components derive from these helpers — SubtitlePanel sizes the list
+' slot, SubtitleResultRow and CurrentSubtitleRow lay out their contents — and
+' the panel's first draft shipped with the slot height and the rendered row
+' disagreeing, which showed up as rows drifting out of their slots and the two
+' columns failing to line up. These tests pin the arithmetic they all share.
+
+namespace tests
+
+  @suite("subtitleLayout - subtitle panel row geometry")
+  class SubtitleLayoutTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("rowHeight() - exactly two lines")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is padding, two lines and the gap between them - nothing else")
+    function _()
+      ' Guards the shape, not just the number: a row that reserves a third line
+      ' for a badge strip is what made badge-free rows read as broken, and the
+      ' regression would be invisible in a build.
+      expected = (subtitleLayout.ROW_V_PADDING * 2) + 25 + subtitleLayout.ROW_LINE_GAP + 21
+      m.assertEqual(subtitleLayout.rowHeight(25, 21), expected)
+      m.assertEqual(subtitleLayout.rowHeight(25, 21), 72)
+    end function
+
+    @it("tracks the font metrics it is handed rather than a fixed height")
+    function _()
+      m.assertEqual(subtitleLayout.rowHeight(40, 30) - subtitleLayout.rowHeight(25, 21), 24)
+    end function
+
+    @it("keeps VISIBLE_ROWS of both columns inside the panel's clipped area")
+    function _()
+      ' The lists start at y=194 inside a panel clipped at y=720 (see
+      ' SubtitlePanel.xml). Overshooting renders a half-row at the bottom edge
+      ' AND makes VISIBLE_ROWS lie to the perfect-match filter, whose whole
+      ' premise is "the user can already see the entire set".
+      listTop = 194
+      clipBottom = 720
+      listHeight = subtitleLayout.VISIBLE_ROWS * subtitleLayout.rowHeight(25, 21)
+      m.assertTrue(listTop + listHeight <= clipBottom, "VISIBLE_ROWS rows must fit above the panel's clip")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("secondLineZones() - detail text left, badges right")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("splits the results row into a detail width and a right-anchored badge zone")
+    function _()
+      zones = subtitleLayout.secondLineZones(subtitleLayout.RESULTS_WIDTH, subtitleLayout.RESULTS_BADGE_WIDTH)
+
+      m.assertEqual(zones.badgeWidth, subtitleLayout.RESULTS_BADGE_WIDTH)
+      ' The badge zone ends exactly on the row's right padding edge.
+      m.assertEqual(zones.badgeX + zones.badgeWidth, subtitleLayout.RESULTS_WIDTH - subtitleLayout.ROW_H_PADDING)
+      ' Detail text, gutter and badges together fill the row's usable width.
+      m.assertEqual(zones.detailWidth + subtitleLayout.ROW_BADGE_GUTTER + zones.badgeWidth, subtitleLayout.RESULTS_WIDTH - (subtitleLayout.ROW_H_PADDING * 2))
+    end function
+
+    @it("splits the narrower current-subtitles row the same way")
+    function _()
+      zones = subtitleLayout.secondLineZones(subtitleLayout.EXISTING_WIDTH, subtitleLayout.EXISTING_BADGE_WIDTH)
+
+      m.assertEqual(zones.badgeWidth, subtitleLayout.EXISTING_BADGE_WIDTH)
+      m.assertEqual(zones.badgeX + zones.badgeWidth, subtitleLayout.EXISTING_WIDTH - subtitleLayout.ROW_H_PADDING)
+      m.assertTrue(zones.detailWidth > 0, "the filename tail must have room to render")
+    end function
+
+    @it("never hands a Label a width of zero or less, at any row width")
+    function _()
+      ' A Label with width <= 0 renders its text UNCLIPPED, so a bad split would
+      ' silently draw the detail line straight through the badges instead of
+      ' ellipsizing. This has to hold even at widths no column actually uses —
+      ' the guard is worthless if it only survives the two inputs we pass today.
+      for each rowWidth in [subtitleLayout.RESULTS_WIDTH, subtitleLayout.EXISTING_WIDTH, 400, 200, 100, 24, 0]
+        zones = subtitleLayout.secondLineZones(rowWidth, subtitleLayout.RESULTS_BADGE_WIDTH)
+        m.assertTrue(zones.detailWidth > 0, "detail width must stay positive")
+        m.assertTrue(zones.badgeWidth >= 0, "badge width must never go negative")
+      end for
+    end function
+
+    @it("honours the detail floor at both real column widths")
+    function _()
+      for each pair in [[subtitleLayout.RESULTS_WIDTH, subtitleLayout.RESULTS_BADGE_WIDTH], [subtitleLayout.EXISTING_WIDTH, subtitleLayout.EXISTING_BADGE_WIDTH]]
+        zones = subtitleLayout.secondLineZones(pair[0], pair[1])
+        m.assertTrue(zones.detailWidth >= subtitleLayout.ROW_DETAIL_MIN_WIDTH, "detail width must stay at or above its floor")
+      end for
+    end function
+
+    @it("drops the gutter with the badge zone rather than leaving a gap to nothing")
+    function _()
+      ' Too narrow for any badges at all: the detail line takes the whole usable
+      ' width instead of stopping short of an edge that is not there.
+      zones = subtitleLayout.secondLineZones(100, subtitleLayout.RESULTS_BADGE_WIDTH)
+
+      m.assertEqual(zones.badgeWidth, 0)
+      m.assertEqual(zones.detailWidth, 100 - (subtitleLayout.ROW_H_PADDING * 2))
+    end function
+
+    @it("gives the badge zone whatever is left once the detail floor is met")
+    function _()
+      ' A row too narrow for the full badge zone shrinks the badges, not the
+      ' text: the text is the row's content, the badges are qualifiers on it.
+      narrow = subtitleLayout.ROW_DETAIL_MIN_WIDTH + subtitleLayout.ROW_BADGE_GUTTER + 40 + (subtitleLayout.ROW_H_PADDING * 2)
+      zones = subtitleLayout.secondLineZones(narrow, subtitleLayout.RESULTS_BADGE_WIDTH)
+
+      m.assertEqual(zones.detailWidth, subtitleLayout.ROW_DETAIL_MIN_WIDTH)
+      m.assertEqual(zones.badgeWidth, 40)
+    end function
+
+  end class
+
+end namespace

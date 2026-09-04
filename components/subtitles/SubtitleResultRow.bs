@@ -20,6 +20,7 @@ const BADGE_POOL_SIZE = 4
 sub init()
   m.rowBackground = m.top.findNode("rowBackground")
   m.rowBorder = m.top.findNode("rowBorder")
+  m.badgeClip = m.top.findNode("badgeClip")
   m.badgeRow = m.top.findNode("badgeRow")
   m.nameLabel = m.top.findNode("nameLabel")
   m.metaLabel = m.top.findNode("metaLabel")
@@ -147,7 +148,11 @@ function groupThousands(value as integer) as string
   return grouped
 end function
 
-' rebuildBadges: The first line.
+' rebuildBadges: The flags that sit at the right of the meta line.
+'
+' Order is significance order, and that is load-bearing rather than cosmetic:
+' the badge zone is clipped to the row's right edge, so if a row ever carries
+' more badges than fit, the ones dropped are the last appended.
 '
 ' Only truths worth acting on get a badge. "Perfect match" leads because a
 ' hash-matched subtitle is the one signal that reliably predicts sync; the
@@ -221,19 +226,25 @@ sub onSizeChanged()
   m.rowBorder.width = rowWidth
   m.rowBorder.height = rowHeight
 
-  textWidth = rowWidth - (subtitleLayout.ROW_H_PADDING * 2)
-
-  y = subtitleLayout.ROW_V_PADDING
-  m.badgeRow.translation = [subtitleLayout.ROW_H_PADDING, y]
-  y += subtitleLayout.ROW_BADGE_HEIGHT
-
+  ' Line 1: the release name, across the row's full text width.
   ' ScrollingLabel viewports are driven by maxWidth, not width.
-  m.nameLabel.maxWidth = textWidth
-  m.nameLabel.translation = [subtitleLayout.ROW_H_PADDING, y]
-  y += constants.fontSizeSmaller + subtitleLayout.ROW_LINE_GAP
+  m.nameLabel.maxWidth = rowWidth - (subtitleLayout.ROW_H_PADDING * 2)
+  m.nameLabel.translation = [subtitleLayout.ROW_H_PADDING, subtitleLayout.ROW_V_PADDING]
 
-  m.metaLabel.width = textWidth
-  m.metaLabel.translation = [subtitleLayout.ROW_H_PADDING, y]
+  ' Line 2: meta text on the left, badges anchored right.
+  secondLineY = subtitleLayout.ROW_V_PADDING + constants.fontSizeSmaller + subtitleLayout.ROW_LINE_GAP
+  zones = subtitleLayout.secondLineZones(rowWidth, subtitleLayout.RESULTS_BADGE_WIDTH)
+
+  ' A Label with wrap off and a width ellipsizes what does not fit, so a long
+  ' meta line degrades to "…" instead of running under the badges.
+  m.metaLabel.width = zones.detailWidth
+  m.metaLabel.translation = [subtitleLayout.ROW_H_PADDING, secondLineY]
+
+  ' The clip spans the row's full height so it can only ever bound the badges
+  ' horizontally — a short clippingRect would slice them mid-glyph.
+  m.badgeClip.clippingRect = [0, 0, zones.badgeWidth, rowHeight]
+  m.badgeClip.translation = [zones.badgeX, 0]
+  m.badgeRow.translation = [0, secondLineY]
 end sub
 
 
