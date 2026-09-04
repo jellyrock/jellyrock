@@ -199,113 +199,66 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("subtitleDropdownEntries() - no two entries may read alike")
+    @describe("subtitleDropdownEntries() - mark what you added, leave the rest")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("leaves already-distinct embedded entries alone")
+    @it("marks a downloaded file and leaves built-in tracks plain")
     function _()
-      ' Embedded is the default state, so tagging every row of an all-embedded
-      ' item with "Embedded" says nothing and costs trigger width.
       streams = [
         { Type: "Subtitle", Index: 1, IsExternal: false, Language: "eng", Codec: "subrip" },
-        { Type: "Subtitle", Index: 2, IsExternal: false, Language: "spa", Codec: "subrip" }
+        { Type: "Subtitle", Index: 2, IsExternal: true, Language: "eng", Codec: "subrip", IsHearingImpaired: true, Path: "/m/movie.en.sdh.srt" },
+        { Type: "Subtitle", Index: 3, IsExternal: false, Language: "spa", Codec: "subrip" }
       ]
-      entries = remoteSubtitles.subtitleDropdownEntries(streams, "/m/movie.mkv")
+      entries = remoteSubtitles.subtitleDropdownEntries(streams)
       m.assertEqual(entries[0].title, "English SUBRIP")
-      m.assertEqual(entries[1].title, "Spanish SUBRIP")
+      m.assertEqual(entries[1].title, "English SUBRIP (Hearing impaired)  ·  Downloaded")
+      m.assertEqual(entries[2].title, "Spanish SUBRIP")
     end function
 
-    @it("always names an external file, even when nothing else collides")
+    @it("does NOT number built-in tracks that read alike")
     function _()
-      ' "This is a file you added" is exactly what a user looks for right after
-      ' downloading one, and no other field implies it. A purely
-      ' collision-driven rule left a downloaded sidecar reading like any other
-      ' entry whenever a flag happened to make it unique.
-      streams = [
-        { Type: "Subtitle", Index: 1, IsExternal: false, Language: "spa", Codec: "subrip" },
-        { Type: "Subtitle", Index: 2, IsExternal: true, Language: "eng", Codec: "subrip", IsHearingImpaired: true, Path: "/m/movie.en.sdh.srt" }
-      ]
-      entries = remoteSubtitles.subtitleDropdownEntries(streams, "/m/movie.mkv")
-      m.assertEqual(entries[0].title, "Spanish SUBRIP")
-      m.assertEqual(entries[1].title, "English SUBRIP (Hearing impaired)  ·  .en.sdh.srt")
-    end function
-
-    @it("separates a downloaded sidecar from the embedded track it matches")
-    function _()
-      streams = [
-        { Type: "Subtitle", Index: 1, IsExternal: false, Language: "eng", Codec: "subrip" },
-        { Type: "Subtitle", Index: 2, IsExternal: true, Language: "eng", Codec: "subrip", Path: "/m/movie.en.srt" }
-      ]
-      entries = remoteSubtitles.subtitleDropdownEntries(streams, "/m/movie.mkv")
-      m.assertEqual(entries[0].title, "English SUBRIP  ·  Embedded")
-      m.assertEqual(entries[1].title, "English SUBRIP  ·  .en.srt")
-    end function
-
-    @it("numbers entries the source segment still cannot separate")
-    function _()
-      ' Two embedded English tracks are identical in every field the API returns,
-      ' so an ordinal is all the data supports. It claims nothing beyond "these
-      ' are different tracks".
+      ' An earlier cut appended "Embedded 1" / "Embedded 2" here. Two built-in
+      ' English tracks are identical in every field the API returns, the trigger
+      ' shows the same text whichever is picked, and a suffix that appears on
+      ' some rows but not others reads as arbitrary. The ordinal cost more than
+      ' it bought, so its absence is the assertion.
       streams = [
         { Type: "Subtitle", Index: 1, IsExternal: false, Language: "eng", Codec: "subrip" },
         { Type: "Subtitle", Index: 2, IsExternal: false, Language: "eng", Codec: "subrip" }
       ]
-      entries = remoteSubtitles.subtitleDropdownEntries(streams, "/m/movie.mkv")
-      m.assertEqual(entries[0].title, "English SUBRIP  ·  Embedded 1")
-      m.assertEqual(entries[1].title, "English SUBRIP  ·  Embedded 2")
-    end function
-
-    @it("keeps the collapsed trigger free of the disambiguator")
-    function _()
-      streams = [
-        { Type: "Subtitle", Index: 1, IsExternal: false, Language: "eng", Codec: "subrip" },
-        { Type: "Subtitle", Index: 2, IsExternal: true, Language: "eng", Codec: "subrip", Path: "/m/movie.en.srt" }
-      ]
-      entries = remoteSubtitles.subtitleDropdownEntries(streams, "/m/movie.mkv")
-      m.assertEqual(entries[0].triggerTitle, "English SUBRIP")
-      m.assertEqual(entries[1].triggerTitle, "English SUBRIP")
-    end function
-
-    @it("distinguishes embedded tracks by flags before adding a source segment")
-    function _()
-      streams = [
-        { Type: "Subtitle", Index: 1, IsExternal: false, Language: "eng", Codec: "subrip" },
-        { Type: "Subtitle", Index: 2, IsExternal: false, Language: "eng", Codec: "subrip", IsHearingImpaired: true }
-      ]
-      entries = remoteSubtitles.subtitleDropdownEntries(streams, "/m/movie.mkv")
+      entries = remoteSubtitles.subtitleDropdownEntries(streams)
       m.assertEqual(entries[0].title, "English SUBRIP")
-      m.assertEqual(entries[1].title, "English SUBRIP (Hearing impaired)")
+      m.assertEqual(entries[1].title, "English SUBRIP")
+    end function
+
+    @it("marks every downloaded file, so two of them are still both marked")
+    function _()
+      streams = [
+        { Type: "Subtitle", Index: 1, IsExternal: true, Language: "eng", Codec: "subrip", Path: "/m/movie.en.srt" },
+        { Type: "Subtitle", Index: 2, IsExternal: true, Language: "spa", Codec: "subrip", Path: "/m/movie.es.srt" }
+      ]
+      entries = remoteSubtitles.subtitleDropdownEntries(streams)
+      m.assertEqual(entries[0].title, "English SUBRIP  ·  Downloaded")
+      m.assertEqual(entries[1].title, "Spanish SUBRIP  ·  Downloaded")
+    end function
+
+    @it("keeps the collapsed trigger free of the marker")
+    function _()
+      streams = [{ Type: "Subtitle", Index: 1, IsExternal: true, Language: "eng", Codec: "subrip", Path: "/m/movie.en.srt" }]
+      entries = remoteSubtitles.subtitleDropdownEntries(streams)
+      m.assertEqual(entries[0].title, "English SUBRIP  ·  Downloaded")
+      m.assertEqual(entries[0].triggerTitle, "English SUBRIP")
     end function
 
     @it("carries the server stream index through for selection")
     function _()
       streams = [{ Type: "Subtitle", Index: 7, IsExternal: false, Language: "eng", Codec: "subrip" }]
-      m.assertEqual(remoteSubtitles.subtitleDropdownEntries(streams, "").count(), 1)
-      m.assertEqual(remoteSubtitles.subtitleDropdownEntries(streams, "")[0].index, 7)
+      m.assertEqual(remoteSubtitles.subtitleDropdownEntries(streams)[0].index, 7)
     end function
 
     @it("returns empty when the item has no subtitle streams")
     function _()
-      m.assertEqual(remoteSubtitles.subtitleDropdownEntries([{ Type: "Audio", Index: 0 }], "").count(), 0)
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("subtitleSourceText() - one phrase, shared by panel and dropdown")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("says Embedded for a stream with no file of its own")
-    function _()
-      m.assertEqual(remoteSubtitles.subtitleSourceText({ IsExternal: false, Path: "/m/movie.mkv" }, "/m/movie.mkv"), "Embedded")
-    end function
-
-    @it("gives an external file its differing tail")
-    function _()
-      m.assertEqual(remoteSubtitles.subtitleSourceText({ IsExternal: true, Path: "/m/movie.en.sdh.srt" }, "/m/movie.mkv"), ".en.sdh.srt")
-    end function
-
-    @it("falls back to External when an external stream has no readable path")
-    function _()
-      m.assertEqual(remoteSubtitles.subtitleSourceText({ IsExternal: true }, "/m/movie.mkv"), "External")
+      m.assertEqual(remoteSubtitles.subtitleDropdownEntries([{ Type: "Audio", Index: 0 }]).count(), 0)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

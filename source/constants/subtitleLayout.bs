@@ -60,6 +60,26 @@ namespace subtitleLayout
   const RESULTS_WIDTH = 1120
   const EXISTING_WIDTH = 570
 
+  ' ── Panel geometry ─────────────────────────────────────────────────────────
+  ' Mirrors SubtitlePanel.xml. Declared here so the row/list arithmetic below can
+  ' be checked against the space it actually has to fit into, rather than a
+  ' number remembered from the markup.
+
+  ' Height of the panel's clipped content area (panelClip's clippingRect).
+  const PANEL_CONTENT_HEIGHT = 720
+
+  ' Y of both columns inside the panel. Below the title, the file name and the
+  ' control row.
+  const COLUMNS_Y = 190
+
+  ' Gap between a column's heading and the content beneath it.
+  const COLUMN_HEADING_HEIGHT = 44
+
+  ' A section heading INSIDE the "on this item" column ("Downloaded files",
+  ' "In the video file"), and the gap between one section and the next.
+  const SECTION_HEADING_HEIGHT = 34
+  const SECTION_GAP = 18
+
   ' Rows visible in either column without scrolling. Drives the MarkupList's
   ' numRows AND the perfect-match filter's visibility threshold — the filter is
   ' pointless when the whole result set already fits on screen, so the two must
@@ -84,6 +104,82 @@ namespace subtitleLayout
   ' @return {integer} row height in pixels
   function rowHeight(fontSmaller as integer, fontSmallest as integer) as integer
     return (subtitleLayout.ROW_V_PADDING * 2) + fontSmaller + subtitleLayout.ROW_LINE_GAP + fontSmallest
+  end function
+
+  ' rowHeightCompact: A one-line row.
+  '
+  ' Used for a subtitle built into the video file, which has nothing to put on a
+  ' second line: it has no filename of its own, and the section heading above it
+  ' already says where it comes from. Giving it the two-line height anyway is
+  ' what the first draft of this column did — every such row then carried the
+  ' word "Embedded" purely to fill the space, which made the least informative
+  ' text on screen the most repeated.
+  '
+  ' @param {integer} fontSmaller - constants.fontSizeSmaller (the single line)
+  ' @return {integer} row height in pixels
+  function rowHeightCompact(fontSmaller as integer) as integer
+    return (subtitleLayout.ROW_V_PADDING * 2) + fontSmaller
+  end function
+
+  ' existingColumnHeight: Room the "on this item" column has for its sections.
+  '
+  ' From the bottom of its heading to the panel's clip. Derived rather than
+  ' written down, so moving the columns cannot silently push a section past the
+  ' edge where it would render as a half-row.
+  '
+  ' @return {integer} available height in pixels
+  function existingColumnHeight() as integer
+    return subtitleLayout.PANEL_CONTENT_HEIGHT - subtitleLayout.COLUMNS_Y - subtitleLayout.COLUMN_HEADING_HEIGHT
+  end function
+
+  ' sectionRowCounts: How many rows each "on this item" section may render.
+  '
+  ' Both sections compete for one fixed column, and neither may overflow the
+  ' panel's clip — a list that renders one row past the edge is the exact bug the
+  ' results column shipped with, and it is invisible in a build.
+  '
+  ' The rule when they cannot both fit in full: every non-empty section is
+  ' guaranteed its heading plus ONE row, and the downloaded section gets first
+  ' claim on whatever is left. Downloaded files are the actionable ones — they
+  ' are what you came here to manage and the only ones you can delete — while a
+  ' built-in track is reference information. A section that had to be trimmed
+  ' still scrolls, so nothing becomes unreachable; it is only the number visible
+  ' at rest that is being rationed.
+  '
+  ' Returning zero for a section means it has no content, NOT that it was
+  ' squeezed out: a section with content always keeps at least one row.
+  '
+  ' @param {integer} downloadedCount - external subtitles on the item
+  ' @param {integer} embeddedCount - subtitles inside the video file
+  ' @param {integer} downloadedRowHeight - height of a two-line row
+  ' @param {integer} embeddedRowHeight - height of a one-line row
+  ' @return {object} { downloadedRows, embeddedRows }
+  function sectionRowCounts(downloadedCount as integer, embeddedCount as integer, downloadedRowHeight as integer, embeddedRowHeight as integer) as object
+    available = subtitleLayout.existingColumnHeight()
+
+    ' Space the OTHER section must be left, so it can never be squeezed to
+    ' nothing while it still has something to show.
+    reserved = 0
+    if embeddedCount > 0 then reserved = subtitleLayout.SECTION_HEADING_HEIGHT + embeddedRowHeight + subtitleLayout.SECTION_GAP
+
+    downloadedRows = 0
+    if downloadedCount > 0
+      room = available - reserved - subtitleLayout.SECTION_HEADING_HEIGHT
+      downloadedRows = int(room / downloadedRowHeight)
+      if downloadedRows > downloadedCount then downloadedRows = downloadedCount
+      if downloadedRows < 1 then downloadedRows = 1
+      available -= subtitleLayout.SECTION_HEADING_HEIGHT + (downloadedRows * downloadedRowHeight)
+      if embeddedCount > 0 then available -= subtitleLayout.SECTION_GAP
+    end if
+
+    embeddedRows = 0
+    if embeddedCount > 0
+      embeddedRows = int((available - subtitleLayout.SECTION_HEADING_HEIGHT) / embeddedRowHeight)
+      if embeddedRows > embeddedCount then embeddedRows = embeddedCount
+      if embeddedRows < 1 then embeddedRows = 1
+    end if
+
+    return { downloadedRows: downloadedRows, embeddedRows: embeddedRows }
   end function
 
   ' secondLineZones: Where the detail text and the badges go on a row's second line.

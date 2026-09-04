@@ -22,6 +22,9 @@ sub init()
 
   m.titleLabel.color = m.global.constants.colorTextPrimary
   m.titleLabel.repeatCount = 0
+  ' Until a content node says otherwise, assume the compact shape — a row sized
+  ' for two lines that only ever draws one leaves a visible gap.
+  m.isExternal = false
 
   buildBadgePool()
   onSizeChanged()
@@ -62,11 +65,17 @@ sub onItemContentChanged()
   if isValid(content.rowWidth) and content.rowWidth > 0 then m.top.rowWidth = content.rowWidth
 
   m.titleLabel.text = titleLineFor(content)
-  ' Computed by the panel, which is the only scope holding BOTH the subtitle path
-  ' and the media path the redundant part is stripped against.
+
+  ' The filename line belongs to downloaded files only. Computed by the panel,
+  ' which is the only scope holding BOTH the subtitle path and the media path the
+  ' redundant leading part is stripped against.
+  m.isExternal = content.isExternal = true
   m.sourceLabel.text = textOrEmpty(content.source)
+  m.sourceLabel.visible = m.isExternal and m.sourceLabel.text <> ""
+
   rebuildBadges(content)
   hideUnusedBadges()
+  onSizeChanged()
 end sub
 
 ' titleLineFor: "English  ·  SRT".
@@ -142,34 +151,37 @@ sub onSizeChanged()
   rowWidth = m.top.rowWidth
   constants = m.global.constants
 
-  ' Same total height as a search-result row so the two columns stay in step
-  ' line-for-line. They now also share the same two-line SHAPE, so that holds by
-  ' construction rather than by two components agreeing to fake it.
-  rowHeight = subtitleLayout.rowHeight(constants.fontSizeSmaller, constants.fontSizeSmallest)
+  ' One line for a built-in track, two for a downloaded file. The list this row
+  ' sits in sizes its slot with the same helper, so the two cannot disagree.
+  if m.isExternal = true
+    rowHeight = subtitleLayout.rowHeight(constants.fontSizeSmaller, constants.fontSizeSmallest)
+  else
+    rowHeight = subtitleLayout.rowHeightCompact(constants.fontSizeSmaller)
+  end if
 
   m.rowBackground.width = rowWidth
   m.rowBackground.height = rowHeight
   m.rowBorder.width = rowWidth
   m.rowBorder.height = rowHeight
 
-  ' Line 1: language and codec, across the row's full text width.
-  ' ScrollingLabel viewports are driven by maxWidth, not width.
-  m.titleLabel.maxWidth = rowWidth - (subtitleLayout.ROW_H_PADDING * 2)
-  m.titleLabel.translation = [subtitleLayout.ROW_H_PADDING, subtitleLayout.ROW_V_PADDING]
-
-  ' Line 2: source on the left, badges anchored right.
-  secondLineY = subtitleLayout.ROW_V_PADDING + constants.fontSizeSmaller + subtitleLayout.ROW_LINE_GAP
+  ' Line 1: language and codec on the left, badges anchored right. Badges live on
+  ' the FIRST line for both shapes so they align down the column regardless of
+  ' whether a row has a second line.
+  firstLineY = subtitleLayout.ROW_V_PADDING
   zones = subtitleLayout.secondLineZones(rowWidth, subtitleLayout.EXISTING_BADGE_WIDTH)
 
-  ' A Label with wrap off and a width ellipsizes what does not fit, which matters
-  ' more here than in the results column: the source falls back to a whole
-  ' filename whenever the subtitle does not sit beside the media file.
-  m.sourceLabel.width = zones.detailWidth
-  m.sourceLabel.translation = [subtitleLayout.ROW_H_PADDING, secondLineY]
+  ' ScrollingLabel viewports are driven by maxWidth, not width.
+  m.titleLabel.maxWidth = zones.detailWidth
+  m.titleLabel.translation = [subtitleLayout.ROW_H_PADDING, firstLineY]
 
   m.badgeClip.clippingRect = [0, 0, zones.badgeWidth, rowHeight]
   m.badgeClip.translation = [zones.badgeX, 0]
-  m.badgeRow.translation = [0, secondLineY]
+  m.badgeRow.translation = [0, firstLineY]
+
+  ' Line 2: the filename, across the full width — nothing shares this line, and a
+  ' Label with wrap off and a width ellipsizes whatever does not fit.
+  m.sourceLabel.width = rowWidth - (subtitleLayout.ROW_H_PADDING * 2)
+  m.sourceLabel.translation = [subtitleLayout.ROW_H_PADDING, firstLineY + constants.fontSizeSmaller + subtitleLayout.ROW_LINE_GAP]
 end sub
 
 sub onFocusChanged()

@@ -43,8 +43,12 @@ sub init()
   m.resultsHeading = m.top.findNode("resultsHeading")
   m.resultsList = m.top.findNode("resultsList")
   m.statusLabel = m.top.findNode("statusLabel")
+  m.panelTitle = m.top.findNode("panelTitle")
   m.existingHeading = m.top.findNode("existingHeading")
-  m.existingList = m.top.findNode("existingList")
+  m.downloadedHeading = m.top.findNode("downloadedHeading")
+  m.downloadedList = m.top.findNode("downloadedList")
+  m.embeddedHeading = m.top.findNode("embeddedHeading")
+  m.embeddedList = m.top.findNode("embeddedList")
   m.existingEmptyLabel = m.top.findNode("existingEmptyLabel")
   m.languageOverlay = m.top.findNode("languageOverlay")
   m.languagePicker = m.top.findNode("languagePicker")
@@ -64,8 +68,16 @@ sub init()
   ' therefore tied to the END of the close animation, not to isOpen.
   m.panelAnime.observeField("state", "onPanelAnimeStateChanged")
 
-  m.resultsHeading.text = translate(translationKeys.LabelSearchForSubtitles)
-  m.existingHeading.text = translate(translationKeys.LabelCurrentSubtitles)
+  ' The panel's title, then what each column actually holds. "Search for
+  ' subtitles" used to sit over the RESULTS list while reading as the dialog's
+  ' title, so the two columns looked like the same kind of list; naming one by
+  ' what you can add and the other by what is already there is what makes the
+  ' downloaded / built-in split legible.
+  m.panelTitle.text = translate(translationKeys.LabelManageSubtitles)
+  m.resultsHeading.text = translate(translationKeys.LabelAvailableToDownload)
+  m.existingHeading.text = translate(translationKeys.LabelOnThisItem)
+  m.downloadedHeading.text = translate(translationKeys.LabelDownloadedFiles)
+  m.embeddedHeading.text = translate(translationKeys.LabelInTheVideoFile)
   m.searchButton.text = translate(translationKeys.ButtonSearch)
   m.existingEmptyLabel.text = translate(translationKeys.LabelNoSubtitlesOnItem)
 
@@ -89,7 +101,6 @@ sub init()
   ' A MarkupList is visible by default, so without this DOWN on first open moves
   ' focus into an empty list and strands the remote until BACK.
   m.resultsList.visible = false
-  m.existingList.visible = false
 
   m.resultsList.observeField("itemSelected", "onResultSelected")
 
@@ -516,14 +527,22 @@ end sub
 sub renderExistingList()
   streams = remoteSubtitles.subtitleStreams(m.top.existingStreams)
 
-  content = createObject("roSGNode", "ContentNode")
+  downloaded = createObject("roSGNode", "ContentNode")
+  embedded = createObject("roSGNode", "ContentNode")
+
   for each stream in streams
     isExternal = stream.IsExternal = true
-    row = content.createChild("ContentNode")
+    parent = embedded
+    if isExternal then parent = downloaded
+
+    row = parent.createChild("ContentNode")
     row.addFields({
       language: resolveLanguageName(valueOrEmpty(stream.Language)),
       codec: valueOrEmpty(stream.Codec),
-      source: remoteSubtitles.subtitleSourceText(stream, m.top.filePath),
+      ' Only a downloaded file has a name of its own, and only the part that
+      ' differs from the media file's is worth the width — the rest is already in
+      ' the panel header. A built-in track leaves this empty and gets one line.
+      source: subtitleFileLine(stream, isExternal),
       isExternal: isExternal,
       hearingImpaired: stream.IsHearingImpaired = true,
       forced: stream.IsForced = true,
@@ -532,11 +551,68 @@ sub renderExistingList()
     })
   end for
 
-  m.existingList.content = content
-  m.existingList.visible = streams.count() > 0
-  m.existingEmptyLabel.visible = streams.count() = 0
+  m.downloadedList.content = downloaded
+  m.embeddedList.content = embedded
+  layoutExistingSections(downloaded.getChildCount(), embedded.getChildCount())
 end sub
 
+' subtitleFileLine: The filename line for a downloaded subtitle, "" for a built-in one.
+function subtitleFileLine(stream as object, isExternal as boolean) as string
+  if not isExternal then return ""
+
+  tail = remoteSubtitles.subtitleFileTail(stream.Path, m.top.filePath)
+  if tail <> "" then return tail
+  ' A downloaded file the server reports without a readable path. Rare, but the
+  ' row still has a second line to fill, and saying what it IS beats blank.
+  return translate(translationKeys.LabelExternalSubtitle)
+end function
+
+' layoutExistingSections: Stack whichever sections have content, and hide the rest.
+'
+' Both sections vary in length, so their positions cannot live in the XML. Each
+' section is a heading plus its list; an empty one contributes nothing at all
+' rather than an empty heading and a gap.
+'
+' How many rows each section gets is subtitleLayout.sectionRowCounts()' problem,
+' not this function's — that is where the judgment lives (who yields to whom when
+' they cannot both fit) and it is unit-tested there. This function only places
+' what it is told to.
+sub layoutExistingSections(downloadedCount as integer, embeddedCount as integer)
+  constants = m.global.constants
+  downloadedRowHeight = subtitleLayout.rowHeight(constants.fontSizeSmaller, constants.fontSizeSmallest)
+  embeddedRowHeight = subtitleLayout.rowHeightCompact(constants.fontSizeSmaller)
+
+  counts = subtitleLayout.sectionRowCounts(downloadedCount, embeddedCount, downloadedRowHeight, embeddedRowHeight)
+
+  y = placeSection(m.downloadedHeading, m.downloadedList, counts.downloadedRows, downloadedRowHeight, subtitleLayout.COLUMN_HEADING_HEIGHT)
+  if counts.downloadedRows > 0 and counts.embeddedRows > 0 then y += subtitleLayout.SECTION_GAP
+  placeSection(m.embeddedHeading, m.embeddedList, counts.embeddedRows, embeddedRowHeight, y)
+
+  m.existingEmptyLabel.visible = (downloadedCount + embeddedCount) = 0
+end sub
+
+' placeSection: Position one heading + list pair, and return the y below it.
+'
+' Returns the incoming y untouched for a section with no rows, so an absent
+' section leaves no trace behind it.
+function placeSection(heading as object, list as object, rows as integer, rowHeight as integer, y as integer) as integer
+  if rows <= 0
+    heading.visible = false
+    list.visible = false
+    return y
+  end if
+
+  heading.translation = [0, y]
+  heading.visible = true
+  y += subtitleLayout.SECTION_HEADING_HEIGHT
+
+  list.translation = [0, y]
+  ' A section trimmed to fit still SCROLLS to the rest of its content, so
+  ' rationing visible rows never makes a track unreachable.
+  list.numRows = rows
+  list.visible = true
+  return y + (rows * rowHeight)
+end function
 
 ' ── Download + confirmation ──────────────────────────────────────────────────
 
@@ -640,11 +716,16 @@ sub sizeLists()
   ' metrics; the two disagreed, which is what pushed rows out of their slots and
   ' left the two columns unaligned.
   constants = m.global.constants
-  rowHeight = subtitleLayout.rowHeight(constants.fontSizeSmaller, constants.fontSizeSmallest)
-  m.resultsList.itemSize = [subtitleLayout.RESULTS_WIDTH, rowHeight]
+  m.resultsList.itemSize = [subtitleLayout.RESULTS_WIDTH, subtitleLayout.rowHeight(constants.fontSizeSmaller, constants.fontSizeSmallest)]
   m.resultsList.numRows = subtitleLayout.VISIBLE_ROWS
-  m.existingList.itemSize = [subtitleLayout.EXISTING_WIDTH, rowHeight]
-  m.existingList.numRows = subtitleLayout.VISIBLE_ROWS
+
+  ' The two existing-subtitle sections hold different row SHAPES — a downloaded
+  ' file has a filename line, a built-in track has nothing to put on one — so
+  ' their slots are sized separately. numRows is set per render by
+  ' layoutExistingSections(), which is the only place that knows how many of each
+  ' there are.
+  m.downloadedList.itemSize = [subtitleLayout.EXISTING_WIDTH, subtitleLayout.rowHeight(constants.fontSizeSmaller, constants.fontSizeSmallest)]
+  m.embeddedList.itemSize = [subtitleLayout.EXISTING_WIDTH, subtitleLayout.rowHeightCompact(constants.fontSizeSmaller)]
 end sub
 
 ' hasRows: A list is only a focus target when it actually has rows. Guarding on
@@ -658,7 +739,10 @@ end function
 
 sub applyFocus()
   if m.focusTarget = "results" and not hasRows(m.resultsList) then m.focusTarget = "search"
-  if m.focusTarget = "existing" and not hasRows(m.existingList) then m.focusTarget = "search"
+  ' "existing" means the DOWNLOADED list specifically. Built-in tracks cannot be
+  ' deleted or otherwise acted on, so their list is never a focus stop — landing
+  ' there would be dead travel with nothing to do at the end of it.
+  if m.focusTarget = "existing" and not hasRows(m.downloadedList) then m.focusTarget = "search"
 
   if m.focusTarget = "language"
     m.languageButton.setFocus(true)
@@ -667,7 +751,7 @@ sub applyFocus()
   else if m.focusTarget = "results"
     m.resultsList.setFocus(true)
   else if m.focusTarget = "existing"
-    m.existingList.setFocus(true)
+    m.downloadedList.setFocus(true)
   else
     m.searchButton.setFocus(true)
   end if
@@ -730,7 +814,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       applyFocus()
       return true
     end if
-    if m.resultsList.hasFocus() and hasRows(m.existingList)
+    if m.resultsList.hasFocus() and hasRows(m.downloadedList)
       m.focusTarget = "existing"
       applyFocus()
       return true
@@ -749,7 +833,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       applyFocus()
       return true
     end if
-    if m.existingList.hasFocus()
+    if m.downloadedList.hasFocus()
       m.focusTarget = "results"
       applyFocus()
       return true
@@ -764,7 +848,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
         applyFocus()
         return true
       end if
-      if hasRows(m.existingList)
+      if hasRows(m.downloadedList)
         m.focusTarget = "existing"
         applyFocus()
         return true
@@ -782,7 +866,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       applyFocus()
       return true
     end if
-    if m.existingList.hasFocus() and m.existingList.itemFocused = 0
+    if m.downloadedList.hasFocus() and m.downloadedList.itemFocused = 0
       m.focusTarget = "search"
       applyFocus()
       return true

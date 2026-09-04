@@ -150,120 +150,47 @@ namespace remoteSubtitles
     return result
   end function
 
-  ' subtitleSourceText: Where a subtitle comes from, in one short phrase.
-  '
-  ' For an external file that is the part of its filename which differs from the
-  ' media file's — the ONLY thing separating two otherwise-identical entries,
-  ' since Jellyfin records no provider, no download date and no rating for a
-  ' subtitle. An embedded stream has no file of its own (its Path is the
-  ' container), so it says so instead, which doubles as the reason it cannot be
-  ' deleted.
-  '
-  ' Shared by the panel's "Current subtitles" rows and the detail screen's
-  ' subtitle dropdown so the two cannot describe the same track differently.
-  '
-  ' @param {object} stream - A subtitle MediaStream AA
-  ' @param {string} mediaPath - Path of the media file the item plays from
-  ' @return {string} the source phrase for this stream
-  function subtitleSourceText(stream as object, mediaPath as string) as string
-    if not isValid(stream) then return ""
-    if stream.IsExternal <> true then return translate(translationKeys.LabelEmbedded)
-
-    tail = remoteSubtitles.subtitleFileTail(stream.Path, mediaPath)
-    if tail <> "" then return tail
-    return translate(translationKeys.LabelExternalSubtitle)
-  end function
-
   ' subtitleDropdownEntries: An item's subtitle tracks, made distinguishable.
   '
   ' The detail screen rendered every track through formatSubtitleDisplayTitle()
   ' alone, which describes a stream by language, codec and flags — nothing that
-  ' separates two English SRTs. Measured on a real 4-stream movie, the dropdown
+  ' separates two English SRTs. Measured on a real 6-stream movie, the dropdown
   ' offered "English SUBRIP" three times, so after downloading a subtitle there
   ' was no way to tell which entry was the file just fetched.
   '
-  ' An EXTERNAL track always carries its source, because "this is a file you
-  ' added" is the thing a user is looking for right after downloading one — and
-  ' it is not reliably implied by anything else. On the item this was measured
-  ' against, the downloaded sidecar happened to be the only hearing-impaired
-  ' track, so a purely collision-driven rule left it looking like any other
-  ' entry: technically unique, useless for "which one did I just get?".
+  ' ONE RULE, statable in a sentence: a downloaded file is marked, and everything
+  ' else came with the video. That is the question a user is actually asking here
+  ' — "which one did I just add?" — and answering only that keeps the list quiet.
   '
-  ' An EMBEDDED track carries "Embedded" only where it would otherwise collide.
-  ' Embedded is the default state, so tagging every row of an all-embedded item
-  ' with it says nothing and costs width. That is the same "is this column
-  ' informative?" test the search panel applies to a result set's provider and
-  ' format columns.
+  ' What this deliberately does NOT do is number the built-in tracks. An earlier
+  ' cut appended a source segment wherever two entries collided and an ordinal
+  ' where they still collided, which produced "English SUBRIP · Embedded 1" /
+  ' "Embedded 2": jargon, and arbitrary-looking because the suffix appeared on
+  ' some rows and not others. Two built-in English tracks really are identical in
+  ' every field the API returns, and the collapsed trigger shows the same text
+  ' whichever is picked, so the ordinal bought nothing it did not also cost.
   '
-  ' Entries can still collide after that: two embedded English SDH tracks are
-  ' identical in every field the API returns. A 1-based ordinal is the last
-  ' resort, and it deliberately claims nothing beyond "these are different
-  ' tracks" — which is the most the data supports.
-  '
-  ' triggerTitle is the undisambiguated form, for the collapsed dropdown trigger:
-  ' it is a narrow slot that already ellipsizes, and the disambiguator only means
-  ' anything next to the entries it is distinguishing FROM.
+  ' triggerTitle is the unmarked form, for the collapsed dropdown trigger: it is a
+  ' narrow slot that already ellipsizes, and the marker only means anything beside
+  ' the entries it is distinguishing FROM.
   '
   ' @param {object} streams - MediaStreams array (mixed types; subtitles are picked out)
-  ' @param {string} mediaPath - Path of the media file, for trimming sidecar names
   ' @return {object} array of { index, title, triggerTitle } in server order
-  function subtitleDropdownEntries(streams as object, mediaPath as string) as object
+  function subtitleDropdownEntries(streams as object) as object
     entries = []
     subs = remoteSubtitles.subtitleStreams(streams)
     if subs.count() = 0 then return entries
 
-    baseCounts = {}
-    for each stream in subs
-      base = formatSubtitleDisplayTitle(stream)
-      if isValid(baseCounts[base])
-        baseCounts[base] = baseCounts[base] + 1
-      else
-        baseCounts[base] = 1
-      end if
-    end for
+    downloadedMark = translate(translationKeys.LabelDownloadedSubtitle)
 
     for each stream in subs
       base = formatSubtitleDisplayTitle(stream)
       title = base
-      if stream.IsExternal = true or baseCounts[base] > 1
-        source = remoteSubtitles.subtitleSourceText(stream, mediaPath)
-        if source <> "" then title = base + "  ·  " + source
-      end if
+      if stream.IsExternal = true then title = base + "  ·  " + downloadedMark
 
       index = 0
       if isValid(stream.Index) then index = stream.Index
       entries.push({ index: index, title: title, triggerTitle: base })
-    end for
-
-    return remoteSubtitles.numberRemainingDuplicates(entries)
-  end function
-
-  ' numberRemainingDuplicates: Suffix a 1-based ordinal onto entries the source
-  ' segment could not tell apart. Separated out so the fallback is testable on
-  ' its own, and so subtitleDropdownEntries reads as the policy rather than the
-  ' bookkeeping.
-  '
-  ' @param {object} entries - array of { index, title, triggerTitle }
-  ' @return {object} the same array, titles made unique
-  function numberRemainingDuplicates(entries as object) as object
-    counts = {}
-    for each entry in entries
-      if isValid(counts[entry.title])
-        counts[entry.title] = counts[entry.title] + 1
-      else
-        counts[entry.title] = 1
-      end if
-    end for
-
-    seen = {}
-    for each entry in entries
-      if counts[entry.title] > 1
-        key = entry.title
-        ordinal = 1
-        if isValid(seen[key]) then ordinal = seen[key] + 1
-        seen[key] = ordinal
-        entry.title = key + " " + stri(ordinal).trim()
-      end if
     end for
 
     return entries

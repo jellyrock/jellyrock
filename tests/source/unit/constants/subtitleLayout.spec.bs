@@ -32,16 +32,105 @@ namespace tests
       m.assertEqual(subtitleLayout.rowHeight(40, 30) - subtitleLayout.rowHeight(25, 21), 24)
     end function
 
-    @it("keeps VISIBLE_ROWS of both columns inside the panel's clipped area")
+    @it("keeps VISIBLE_ROWS of results inside the panel's clipped area")
     function _()
-      ' The lists start at y=194 inside a panel clipped at y=720 (see
-      ' SubtitlePanel.xml). Overshooting renders a half-row at the bottom edge
-      ' AND makes VISIBLE_ROWS lie to the perfect-match filter, whose whole
-      ' premise is "the user can already see the entire set".
-      listTop = 194
-      clipBottom = 720
+      ' Overshooting renders a half-row at the bottom edge AND makes VISIBLE_ROWS
+      ' lie to the perfect-match filter, whose whole premise is "the user can
+      ' already see the entire set". Derived from the constants rather than from
+      ' remembered pixel values, so moving the columns re-checks itself.
+      listTop = subtitleLayout.COLUMNS_Y + subtitleLayout.COLUMN_HEADING_HEIGHT
       listHeight = subtitleLayout.VISIBLE_ROWS * subtitleLayout.rowHeight(25, 21)
-      m.assertTrue(listTop + listHeight <= clipBottom, "VISIBLE_ROWS rows must fit above the panel's clip")
+      m.assertTrue(listTop + listHeight <= subtitleLayout.PANEL_CONTENT_HEIGHT, "VISIBLE_ROWS rows must fit above the panel's clip")
+    end function
+
+    @it("fits both sections of a realistic item into the existing column")
+    function _()
+      ' The shape this column was redesigned against: one downloaded file and
+      ' five tracks built into the video. Both section headings, both lists and
+      ' the gap between them have to clear the panel's clip.
+      needed = (subtitleLayout.SECTION_HEADING_HEIGHT * 2) + subtitleLayout.SECTION_GAP
+      needed += 1 * subtitleLayout.rowHeight(25, 21)
+      needed += 5 * subtitleLayout.rowHeightCompact(25)
+      m.assertTrue(needed <= subtitleLayout.existingColumnHeight(), "a 1-downloaded / 5-embedded item must fit without scrolling")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("rowHeightCompact() - a track with nothing to say on a second line")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is exactly one line plus padding")
+    function _()
+      m.assertEqual(subtitleLayout.rowHeightCompact(25), (subtitleLayout.ROW_V_PADDING * 2) + 25)
+    end function
+
+    @it("is shorter than a two-line row by exactly the second line")
+    function _()
+      ' The saving IS the point: it is what lets five built-in tracks sit under
+      ' their own heading instead of each spending a line on the word "Embedded".
+      m.assertEqual(subtitleLayout.rowHeight(25, 21) - subtitleLayout.rowHeightCompact(25), subtitleLayout.ROW_LINE_GAP + 21)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("sectionRowCounts() - two sections, one column")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows both sections in full when they fit")
+    function _()
+      ' The measured item: one downloaded file, six tracks in the video.
+      counts = m.rowCounts(1, 6)
+      m.assertEqual(counts.downloadedRows, 1)
+      m.assertEqual(counts.embeddedRows, 6)
+    end function
+
+    @it("reports zero rows for a section with no content")
+    function _()
+      counts = m.rowCounts(0, 4)
+      m.assertEqual(counts.downloadedRows, 0)
+      m.assertEqual(counts.embeddedRows, 4)
+
+      counts = m.rowCounts(3, 0)
+      m.assertEqual(counts.downloadedRows, 3)
+      m.assertEqual(counts.embeddedRows, 0)
+    end function
+
+    @it("gives a lone section the whole column")
+    function _()
+      ' Nothing to yield to, so it is bounded only by the column itself.
+      counts = m.rowCounts(0, 99)
+      m.assertTrue(counts.embeddedRows > m.rowCounts(0, 4).embeddedRows, "a long lone section must use more of the column")
+      m.assertTrue(m.sectionFits(0, counts.embeddedRows), "and still fit inside it")
+    end function
+
+    @it("never squeezes a section with content down to nothing")
+    function _()
+      ' The failure this guards: enough downloaded files to fill the column would
+      ' otherwise leave the built-in section with no room, and the earlier draft
+      ' resolved that by drawing one row anyway — past the panel's clip, which is
+      ' precisely the half-row bug the results column shipped with.
+      for each downloaded in [1, 3, 6, 12, 50]
+        counts = m.rowCounts(downloaded, 6)
+        m.assertTrue(counts.downloadedRows >= 1, "downloaded section must keep a row")
+        m.assertTrue(counts.embeddedRows >= 1, "built-in section must keep a row")
+      end for
+    end function
+
+    @it("never lets the two sections overflow the column, at any mix")
+    function _()
+      ' The invariant that matters, checked across the whole space rather than at
+      ' the one shape we happen to have on hand.
+      for each downloaded in [0, 1, 2, 5, 10, 40]
+        for each embedded in [0, 1, 2, 5, 10, 40]
+          counts = m.rowCounts(downloaded, embedded)
+          m.assertTrue(m.sectionFits(counts.downloadedRows, counts.embeddedRows), "overflowed at " + stri(downloaded).trim() + "/" + stri(embedded).trim())
+        end for
+      end for
+    end function
+
+    @it("never promises more rows than the section actually has")
+    function _()
+      counts = m.rowCounts(2, 3)
+      m.assertEqual(counts.downloadedRows, 2)
+      m.assertEqual(counts.embeddedRows, 3)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -108,6 +197,24 @@ namespace tests
 
       m.assertEqual(zones.detailWidth, subtitleLayout.ROW_DETAIL_MIN_WIDTH)
       m.assertEqual(zones.badgeWidth, 40)
+    end function
+
+    ' ── helpers ──────────────────────────────────────────────────────────────
+
+    ' Real font metrics, so the arithmetic is checked against the sizes that
+    ' actually ship rather than convenient round numbers.
+    function rowCounts(downloadedCount as integer, embeddedCount as integer) as object
+      return subtitleLayout.sectionRowCounts(downloadedCount, embeddedCount, subtitleLayout.rowHeight(25, 21), subtitleLayout.rowHeightCompact(25))
+    end function
+
+    ' Does this pair of row counts, with the headings and gap they imply, clear
+    ' the panel's clip?
+    function sectionFits(downloadedRows as integer, embeddedRows as integer) as boolean
+      used = 0
+      if downloadedRows > 0 then used += subtitleLayout.SECTION_HEADING_HEIGHT + (downloadedRows * subtitleLayout.rowHeight(25, 21))
+      if embeddedRows > 0 then used += subtitleLayout.SECTION_HEADING_HEIGHT + (embeddedRows * subtitleLayout.rowHeightCompact(25))
+      if downloadedRows > 0 and embeddedRows > 0 then used += subtitleLayout.SECTION_GAP
+      return used <= subtitleLayout.existingColumnHeight()
     end function
 
   end class

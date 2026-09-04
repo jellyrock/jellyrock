@@ -1,65 +1,65 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  CurrentSubtitleRow: one subtitle file already attached to the item, in
-  SubtitlePanel's "Current subtitles" column.
+  CurrentSubtitleRow: one subtitle already attached to the item, in SubtitlePanel's
+  "On this item" column.
 
-  Deliberately NOT the same component as SubtitleResultRow. The first draft
-  reused that row for both columns and the mismatch showed immediately: an
-  installed subtitle has no download count, so every entry read "no downloads";
-  it has no upload date or uploader, so the meta line was mostly empty; and it
-  can never be a provider "perfect match", so the badge line sat blank while
-  still reserving its height. The two things genuinely carry different
-  information, so they get different rows.
+  Deliberately NOT the same component as SubtitleResultRow. The first draft reused
+  that row for both columns and the mismatch showed immediately: an installed
+  subtitle has no download count, so every entry read "no downloads"; it has no
+  upload date or uploader, so the meta line was mostly empty; and it can never be a
+  provider "perfect match".
 
-  Same two-line shape as a result row — identity, then source:
+  TWO SHAPES, chosen by isExternal, because the two genuinely have different
+  amounts to say:
 
-    English · SRT                               <- language and codec
-    .en.sdh.srt             CC Hearing impaired <- source, badges right-anchored
-    English · SRT
-    Embedded                                    <- a stream inside the container
+    English · SUBRIP              CC Hearing impaired    <- a downloaded file
+    .en.sdh.srt
 
-  What an installed subtitle actually has that's worth showing is thin, because
-  Jellyfin records no provenance for one: no provider, no download date, no
-  rating. Language leads because it is the thing you scan this column for; the
-  codec follows because it changes how the track behaves. The SOURCE line is the
-  tiebreaker — two English SRTs are identical in every field the API returns
-  except Path, so ".en.hi.srt" vs ".en.sdh.srt" is the only thing that tells them
-  apart. Only the part that differs from the media file's own name is shown; the
-  rest is already in the panel header. See remoteSubtitles.subtitleFileTail().
+    English · SUBRIP              CC Hearing impaired    <- built into the video
 
-  Embedded streams appear here too — the column has to describe the item, or it
-  disagrees with the detail screen's own subtitle dropdown. They are NOT
-  deletable, and "Embedded" is what says so.
+  A built-in track has no filename of its own, and the section heading above it
+  already says where it came from — so it gets ONE line. The draft before this gave
+  it the two-line height anyway and filled the spare line with the word "Embedded",
+  which put the least informative text on screen in the most repeated position: on
+  a six-stream movie the column read "Embedded" five times. Worse, that slot also
+  held the downloaded row's FILENAME, so the eye was asked to compare a category
+  word against an instance identifier and could not tell the rows apart at a
+  glance. Grouping under headings says the category once and frees the slot for the
+  only thing that varies within a group.
 
-  The server's DisplayTitle ("English - Hearing Impaired - SUBRIP - External") is
-  NOT used verbatim: it repeats information the badges carry, restates "External"
-  which is true of every row here by construction, and is not localized.
+  Badges sit on the FIRST line for both shapes, so they align down the column
+  whatever a row's height. (SubtitleResultRow puts them on its second line instead —
+  its first line is a long release name that marquees and cannot share the width.)
+
+  The filename tail is the tiebreaker between two downloaded files: Jellyfin records
+  no provenance for a subtitle — no provider, no download date, no rating — so two
+  English SRTs are identical in every field the API returns except Path. Only the
+  part that differs from the media file's own name is shown; the rest is already in
+  the panel header. See remoteSubtitles.subtitleFileTail().
+
+  The server's DisplayTitle ("English - Hearing Impaired - SUBRIP - External") is NOT
+  used verbatim: it repeats what the badges and the section heading carry, and it is
+  not localized.
 -->
 <component name="CurrentSubtitleRow" extends="Group">
   <children>
-    <!-- Focus chrome, same 9-patch pair as SubtitleResultRow so both columns
-         read as one control family. -->
+    <!-- Focus chrome, same 9-patch pair as SubtitleResultRow so both columns read
+         as one control family. Only downloaded rows are ever focused — a built-in
+         track cannot be acted on, so it is not a focus stop. -->
     <Poster id="rowBackground" uri="pkg:/images/9patch/filled-rounded.9.png" visible="false" />
     <Poster id="rowBorder" uri="pkg:/images/9patch/border-6px.9.png" visible="false" />
 
     <ScrollingLabelPrimarySmaller id="titleLabel" repeatCount="0" />
-    <!-- Where the subtitle comes from: the differing tail of an external file's
-         name, or "Embedded". NOT "fileLabel" — SubtitlePanel's header already
-         owns that id, and a MarkupList row lives inside the panel's subtree once
-         the list builds it. -->
-    <LabelSecondarySmallest id="sourceLabel" />
+
+    <!-- Second line, downloaded rows only: the part of the filename that differs
+         from the media file's. Hidden entirely for a built-in track rather than
+         filled with a placeholder. -->
+    <LabelSecondarySmallest id="sourceLabel" visible="false" />
 
     <!-- Clips the badge zone to the row's right padding edge — see the matching
-         comment in SubtitleResultRow.xml. This column is only 570px wide, so it
-         is the likelier of the two to need it. -->
+         comment in SubtitleResultRow.xml. This column is only 570px wide, so it is
+         the likelier of the two to need it. -->
     <Group id="badgeClip">
-      <!-- vertAlignment is deliberately left at its default of "top". A HORIZ
-           LayoutGroup set to "center" puts its local y-origin at the group's
-           vertical CENTRE, not its top edge, so translating it to the second
-           line's y drew the badges half their height too high — measured at 12px
-           above the detail text's baseline on a Stick 4K. The inner per-badge
-           groups DO use center, which is what keeps each icon aligned with its
-           own label. -->
       <LayoutGroup id="badgeRow" layoutDirection="horiz" itemSpacings="[16]" />
     </Group>
   </children>

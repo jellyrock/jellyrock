@@ -2888,16 +2888,16 @@ end function
 '
 ' Titles come from remoteSubtitles.subtitleDropdownEntries() rather than straight
 ' from formatSubtitleDisplayTitle(), because language + codec + flags does not
-' separate two English SRTs — measured on a 4-stream movie, this dropdown offered
+' separate two English SRTs — measured on a 6-stream movie, this dropdown offered
 ' "English SUBRIP" three times, so a freshly downloaded subtitle was impossible
-' to pick out from the two embedded ones. The helper appends a source segment
-' only to the entries that would otherwise collide.
+' to pick out from the built-in ones. The helper marks the downloaded ones and
+' leaves the rest plain, which is the one question worth answering here.
 '
 ' Each item carries triggerTitle as well: the collapsed trigger is a narrow slot
-' that already ellipsizes, and the disambiguator is only meaningful beside the
-' entries it distinguishes FROM, so the trigger shows the plain form.
+' that already ellipsizes, and the marker is only meaningful beside the entries
+' it distinguishes FROM, so the trigger shows the plain form.
 function buildSubtitleDropdownItems(streams as object) as object
-  entries = remoteSubtitles.subtitleDropdownEntries(streams, currentMediaPath())
+  entries = remoteSubtitles.subtitleDropdownEntries(streams)
 
   if entries.count() = 0
     noneLabel = translate(translationKeys.LabelNone)
@@ -2910,14 +2910,6 @@ function buildSubtitleDropdownItems(streams as object) as object
     items.push({ id: str(entry.index).trim(), title: entry.title, triggerTitle: entry.triggerTitle })
   end for
   return items
-end function
-
-' currentMediaPath: The item's own file path, used to trim a sidecar subtitle's
-' name down to the part that differs from it.
-function currentMediaPath() as string
-  item = m.top.itemContent
-  if not isValid(item) then return ""
-  return textOrEmpty(item.path)
 end function
 
 ' getStreamsForSelectedSource: Pull the MediaStreams array from whichever media source
