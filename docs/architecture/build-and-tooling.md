@@ -84,7 +84,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-09-03
+last-reviewed: 2026-09-04
 ---
 
 # Build & Tooling
@@ -554,7 +554,7 @@ Surfaces 1–7 are a pure cost ladder — the same check pushed to the cheapest 
 |---|---|---|---|---|
 | 1 | **IDE** (BrighterScript ext) | Live, per keystroke | `.bs` validation + bslint diagnostics, `bsfmt` on save | <100 ms |
 | 2 | **`PostToolUse` hook** ([`bsfmt-on-write.sh`](../../.claude/hooks/bsfmt-on-write.sh)) | Agent's `Edit` / `Write` / `MultiEdit` | `bsfmt --write` on the file just edited | ~500 ms |
-| 3 | **End-of-turn hook** ([`check-touched-related-files.sh`](../../.claude/hooks/check-touched-related-files.sh) + [`check-touched-lint.sh`](../../.claude/hooks/check-touched-lint.sh) + [`check-progress-cursor.sh`](../../.claude/hooks/check-progress-cursor.sh)) | Agent finishes turn (`Stop` / `sessionEnd`) | Architecture-doc reminder + lint on **uncommitted-only** files + stale-progress / cursor-shipped nudges | 2–5 s |
+| 3 | **End-of-turn hook** ([`check-touched-related-files.sh`](../../.claude/hooks/check-touched-related-files.sh) + [`check-touched-lint.sh`](../../.claude/hooks/check-touched-lint.sh) + [`check-progress-cursor.sh`](../../.claude/hooks/check-progress-cursor.sh)) | Agent finishes turn (`Stop` / `sessionEnd`) | Architecture-doc + dev guide reminder + lint on **uncommitted-only** files + stale-progress / cursor-shipped nudges | 2–5 s |
 | 4 | **Pre-commit hook** ([`.lintstagedrc.cjs`](../../.lintstagedrc.cjs) via `lint-staged`) | `git commit` | File-scoped lint + auto-format on staged files | 1–5 s |
 | 5 | **Pre-push hook** ([`.husky/pre-push`](../../.husky/pre-push)) | `git push` | Project-wide checks that aren't file-scoped + decision/cursor advisory nudges | 10–30 s |
 | 6 | **Post-merge journal-sync** ([`journal-sync.yml`](../../.github/workflows/journal-sync.yml)) | PR merges to main | Mechanical close-loop on `progress.md` (running → shipped, last-updated bump) via [`scripts/journal-sync.js`](../../scripts/journal-sync.js) | seconds |
@@ -648,11 +648,13 @@ gh api repos/jellyrock/jellyrock/branches/main/protection --jq '.required_status
 
 ## Doc-maintenance enforcement
 
-The agent-context system (architecture docs, scoped CLAUDE.md, BSC convention plugins, `lint:docs`) only delivers value if the docs are kept in sync with the code. Three layers enforce that:
+The agent-context system (architecture docs, scoped CLAUDE.md, BSC convention plugins, `lint:docs`) only delivers value if the docs are kept in sync with the code. Two **contextual** layers enforce that — both fire when you touch a doc's `related-files`, which is when re-reading it is cheap:
 
 ### 1. End-of-turn reminder hook (soft, per-session)
 
-Fires when an agent finishes its turn. Prints which architecture doc(s) claim files the session touched, prompting the agent to re-read and update the doc if the change altered shape/why.
+Fires when an agent finishes its turn. Prints which doc(s) claim files the session touched — `docs/architecture/` **and** `docs/dev/`, the latter marked `(dev guide — informational)` — prompting the agent to re-read and update the doc if the change altered shape/why.
+
+Dev guides are covered here but *not* by the CI gate below: this reminder is the only freshness pressure `docs/dev/` gets, and a how-to that documents a moved path breaks its reader immediately — but does so without changing any subsystem's shape, so it must never block a PR. A `related-file` shared by an architecture doc and a dev guide prints twice; that is intended, since the two need different edits (shape vs. procedure).
 
 - Logic: [`scripts/lint/check-touched-related-files.cjs`](../../scripts/lint/check-touched-related-files.cjs)
 - Claude Code wrapper: `Stop` hook in `.claude/settings.json` → [`.claude/hooks/check-touched-related-files.sh`](../../.claude/hooks/check-touched-related-files.sh)
@@ -667,16 +669,15 @@ The conditional hard gate. `lint-docs.yml` runs `npm run docs:stale:blocking` on
 
 Designed to avoid the blanket-gate trap (every PR blocked once any doc is stale) — see the docstring on [`scripts/lint/docs-stale-blocking.cjs`](../../scripts/lint/docs-stale-blocking.cjs) for the design rationale.
 
-### 3. Weekly stale tracker (visibility)
+### Why there is no weekly "stale docs" backlog
 
-[`.github/workflows/docs-stale-tracker.yml`](../../.github/workflows/docs-stale-tracker.yml) runs every Monday morning UTC, finds the stale list, and maintains a single canonical issue labeled `docs:stale`:
+[`.github/workflows/docs-stale-tracker.yml`](../../.github/workflows/docs-stale-tracker.yml) used to also publish a weekly checklist of every doc past 90 days. It was retired: a calendar-driven backlog asks for a cold re-read with no triggering work, so it produced no reviews, while its list could never be cleared — 43 docs on a 90-day cycle needs one review every two days, forever — leaving a permanently red label that stopped carrying information.
 
-- Opens the issue when stale docs exist and no issue is open
-- Edits the body in place when the list changes (one issue, not per-doc — keeps noise low)
-- Auto-closes when no docs are stale
-- Splits the body into "Architecture (PR-gated at 120 days)" and "Dev guides (informational)" so contributors understand which entries block PRs
+`last-reviewed` is therefore a record of the last *contextual* review, not a countdown clock. `npm run docs:stale` reports the full cadence on demand, and the workflow now tracks only the `docs/progress.md` journal cursor.
 
-The combination: agent sees a soft prompt during work (#1), CI blocks at PR time if the stale-doc territory was touched (#2), weekly tracker keeps any unresolved staleness visible (#3).
+Keep pure **content data** out of `related-files`. A file that changes on every routine edit without indicating a shape change — `locale/custom/en_US.json` grows a row per new string — makes a doc look drifted whenever anyone does ordinary work, and eventually blocks an unrelated PR. Machinery files (`translate.bs`, the BSC plugin, the linters) carry that signal instead.
+
+The combination: agent sees a soft prompt during work (#1); CI blocks at PR time if a stale architecture doc's territory was touched (#2).
 
 ## End-of-turn lint feedback for agents
 
