@@ -16,7 +16,7 @@ sub init()
   m.rowBackground = m.top.findNode("rowBackground")
   m.rowBorder = m.top.findNode("rowBorder")
   m.titleLabel = m.top.findNode("titleLabel")
-  m.fileTailLabel = m.top.findNode("fileTailLabel")
+  m.sourceLabel = m.top.findNode("sourceLabel")
   m.badgeClip = m.top.findNode("badgeClip")
   m.badgeRow = m.top.findNode("badgeRow")
 
@@ -62,9 +62,9 @@ sub onItemContentChanged()
   if isValid(content.rowWidth) and content.rowWidth > 0 then m.top.rowWidth = content.rowWidth
 
   m.titleLabel.text = titleLineFor(content)
-  ' Computed by the panel, which is the only scope that holds BOTH the subtitle
-  ' path and the media path the redundant part is stripped against.
-  m.fileTailLabel.text = textOrEmpty(content.fileTail)
+  ' Computed by the panel, which is the only scope holding BOTH the subtitle path
+  ' and the media path the redundant part is stripped against.
+  m.sourceLabel.text = textOrEmpty(content.source)
   rebuildBadges(content)
   hideUnusedBadges()
 end sub
@@ -157,15 +157,15 @@ sub onSizeChanged()
   m.titleLabel.maxWidth = rowWidth - (subtitleLayout.ROW_H_PADDING * 2)
   m.titleLabel.translation = [subtitleLayout.ROW_H_PADDING, subtitleLayout.ROW_V_PADDING]
 
-  ' Line 2: filename tail on the left, badges anchored right.
+  ' Line 2: source on the left, badges anchored right.
   secondLineY = subtitleLayout.ROW_V_PADDING + constants.fontSizeSmaller + subtitleLayout.ROW_LINE_GAP
   zones = subtitleLayout.secondLineZones(rowWidth, subtitleLayout.EXISTING_BADGE_WIDTH)
 
   ' A Label with wrap off and a width ellipsizes what does not fit, which matters
-  ' more here than in the results column: the tail falls back to a whole filename
-  ' whenever the subtitle does not sit beside the media file.
-  m.fileTailLabel.width = zones.detailWidth
-  m.fileTailLabel.translation = [subtitleLayout.ROW_H_PADDING, secondLineY]
+  ' more here than in the results column: the source falls back to a whole
+  ' filename whenever the subtitle does not sit beside the media file.
+  m.sourceLabel.width = zones.detailWidth
+  m.sourceLabel.translation = [subtitleLayout.ROW_H_PADDING, secondLineY]
 
   m.badgeClip.clippingRect = [0, 0, zones.badgeWidth, rowHeight]
   m.badgeClip.translation = [zones.badgeX, 0]

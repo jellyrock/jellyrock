@@ -11,19 +11,25 @@
   still reserving its height. The two things genuinely carry different
   information, so they get different rows.
 
-  Same two-line shape as a result row — identity, then detail:
+  Same two-line shape as a result row — identity, then source:
 
-    English · SRT                              <- language and codec
-    .en.hi.srt              CC Hearing impaired <- filename tail, badges right-anchored
+    English · SRT                               <- language and codec
+    .en.sdh.srt             CC Hearing impaired <- source, badges right-anchored
+    English · SRT
+    Embedded                                    <- a stream inside the container
 
   What an installed subtitle actually has that's worth showing is thin, because
   Jellyfin records no provenance for one: no provider, no download date, no
   rating. Language leads because it is the thing you scan this column for; the
-  codec follows because it changes how the track behaves. The FILENAME TAIL is
-  the tiebreaker — two English SRTs are identical in every field the API returns
+  codec follows because it changes how the track behaves. The SOURCE line is the
+  tiebreaker — two English SRTs are identical in every field the API returns
   except Path, so ".en.hi.srt" vs ".en.sdh.srt" is the only thing that tells them
   apart. Only the part that differs from the media file's own name is shown; the
   rest is already in the panel header. See remoteSubtitles.subtitleFileTail().
+
+  Embedded streams appear here too — the column has to describe the item, or it
+  disagrees with the detail screen's own subtitle dropdown. They are NOT
+  deletable, and "Embedded" is what says so.
 
   The server's DisplayTitle ("English - Hearing Impaired - SUBRIP - External") is
   NOT used verbatim: it repeats information the badges carry, restates "External"
@@ -37,11 +43,11 @@
     <Poster id="rowBorder" uri="pkg:/images/9patch/border-6px.9.png" visible="false" />
 
     <ScrollingLabelPrimarySmaller id="titleLabel" repeatCount="0" />
-    <!-- Named for what it holds: only the part of the subtitle's filename that
-         differs from the media file's. NOT "fileLabel" — SubtitlePanel's header
-         already owns that id, and a MarkupList row lives inside the panel's
-         subtree once the list builds it. -->
-    <LabelSecondarySmallest id="fileTailLabel" />
+    <!-- Where the subtitle comes from: the differing tail of an external file's
+         name, or "Embedded". NOT "fileLabel" — SubtitlePanel's header already
+         owns that id, and a MarkupList row lives inside the panel's subtree once
+         the list builds it. -->
+    <LabelSecondarySmallest id="sourceLabel" />
 
     <!-- Clips the badge zone to the row's right padding edge — see the matching
          comment in SubtitleResultRow.xml. This column is only 570px wide, so it

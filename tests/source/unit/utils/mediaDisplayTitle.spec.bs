@@ -213,13 +213,22 @@ namespace tests
     @it("uses ChannelLayout directly when available")
     function _()
       stream = { Language: "eng", Codec: "aac", ChannelLayout: "stereo", Channels: 2, IsDefault: true }
-      m.assertEqual(formatAudioDisplayTitle(stream), "English AAC stereo (default)")
+      m.assertEqual(formatAudioDisplayTitle(stream), "English AAC stereo (Default)")
     end function
 
     @it("uses ChannelLayout for 7.1 surround")
     function _()
       stream = { Language: "eng", Codec: "dts", ChannelLayout: "7.1", Channels: 8, IsDefault: true }
-      m.assertEqual(formatAudioDisplayTitle(stream), "English DTS 7.1 (default)")
+      m.assertEqual(formatAudioDisplayTitle(stream), "English DTS 7.1 (Default)")
+    end function
+
+    @it("takes the default marker from the locale, not from a literal")
+    function _()
+      ' It used to be a hard-coded English "(default)", which read as English in
+      ' every other locale. Asserting on the translated value is what stops it
+      ' regressing back to a literal.
+      stream = { Language: "eng", Codec: "aac", Channels: 2, IsDefault: true }
+      m.assertTrue(formatAudioDisplayTitle(stream).instr(translate(translationKeys.LabelDefault)) >= 0, "audio default marker must come from the locale")
     end function
 
     @it("uses ChannelLayout for 5.1 surround without default")
@@ -288,7 +297,7 @@ namespace tests
     @it("formats subtitle with language, codec, and default flag")
     function _()
       stream = { Language: "eng", Codec: "subrip", IsDefault: true }
-      m.assertEqual(formatSubtitleDisplayTitle(stream), "English SUBRIP (default)")
+      m.assertEqual(formatSubtitleDisplayTitle(stream), "English SUBRIP (Default)")
     end function
 
     @it("formats subtitle without default flag")
@@ -312,7 +321,7 @@ namespace tests
     @it("omits codec when missing")
     function _()
       stream = { Language: "eng", IsDefault: true }
-      m.assertEqual(formatSubtitleDisplayTitle(stream), "English (default)")
+      m.assertEqual(formatSubtitleDisplayTitle(stream), "English (Default)")
     end function
 
     @it("returns N/A for invalid stream")
@@ -326,16 +335,16 @@ namespace tests
       m.assertEqual(formatSubtitleDisplayTitle(stream), "N/A")
     end function
 
-    @it("formats forced subtitle with (forced) suffix")
+    @it("formats forced subtitle with a Forced flag")
     function _()
       stream = { Language: "eng", Codec: "subrip", IsForced: true, IsDefault: false }
-      m.assertEqual(formatSubtitleDisplayTitle(stream), "English SUBRIP (forced)")
+      m.assertEqual(formatSubtitleDisplayTitle(stream), "English SUBRIP (Forced)")
     end function
 
     @it("forced takes precedence over default")
     function _()
       stream = { Language: "eng", Codec: "subrip", IsForced: true, IsDefault: true }
-      m.assertEqual(formatSubtitleDisplayTitle(stream), "English SUBRIP (forced)")
+      m.assertEqual(formatSubtitleDisplayTitle(stream), "English SUBRIP (Forced)")
     end function
 
     @it("falls back to raw code for unknown language")
@@ -348,6 +357,26 @@ namespace tests
     function _()
       stream = { Language: "und", Codec: "subrip", IsDefault: false }
       m.assertEqual(formatSubtitleDisplayTitle(stream), "SUBRIP")
+    end function
+
+    @it("surfaces hearing-impaired, which the panel badges and this used to drop")
+    function _()
+      stream = { Language: "eng", Codec: "subrip", IsHearingImpaired: true }
+      m.assertEqual(formatSubtitleDisplayTitle(stream), "English SUBRIP (Hearing impaired)")
+    end function
+
+    @it("lists hearing-impaired ahead of forced when a track is both")
+    function _()
+      ' Hearing-impaired changes what the track IS; forced only changes when it
+      ' shows. The more defining property reads first.
+      stream = { Language: "eng", Codec: "subrip", IsHearingImpaired: true, IsForced: true }
+      m.assertEqual(formatSubtitleDisplayTitle(stream), "English SUBRIP (Hearing impaired, Forced)")
+    end function
+
+    @it("ignores a non-boolean hearing-impaired value rather than faulting")
+    function _()
+      stream = { Language: "eng", Codec: "subrip", IsHearingImpaired: invalid }
+      m.assertEqual(formatSubtitleDisplayTitle(stream), "English SUBRIP")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

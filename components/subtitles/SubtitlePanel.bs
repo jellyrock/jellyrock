@@ -327,6 +327,13 @@ sub runSearch()
   if not isValidAndNotEmpty(m.top.itemId) then return
   if not isValidAndNotEmpty(m.selectedLanguageCode) then return
 
+  ' Drop the previous results BEFORE the status line goes up. The status label
+  ' sits at the results list's own origin, so a search started over a populated
+  ' list drew "Searching…" straight through the first row — and the rows under it
+  ' were answers to the PREVIOUS query, which the user is in the middle of
+  ' replacing. Clearing content as well as hiding also resets the scroll offset,
+  ' so the new results always arrive at the top.
+  clearResults()
   setStatus(translate(translationKeys.LabelSearchNow))
   m.searchButton.isEnabled = false
 
@@ -478,27 +485,46 @@ sub setStatus(text as string)
   m.statusLabel.visible = text <> ""
 end sub
 
+' clearResults: Empty the results column so the status line is the only thing in it.
+'
+' Both halves matter. Hiding the list stops it drawing under the status label;
+' emptying its content stops a stale row flashing back when the list is shown
+' again, and drops the ContentNode a slow response would otherwise keep alive.
+sub clearResults()
+  m.results = []
+  m.resultsList.content = createObject("roSGNode", "ContentNode")
+  m.resultsList.visible = false
+end sub
+
 ' ── Existing subtitles ───────────────────────────────────────────────────────
 
 ' renderExistingList: Show the subtitles already on the item.
 '
-' Only EXTERNAL streams are listed. That is a safety guard, not a filter: the
-' server's delete resolves a stream by index and unconditionally deletes its
-' Path, and for an embedded stream that path is the media container itself.
+' EVERY subtitle stream is listed, embedded ones included. Listing only the
+' external ones made this column disagree with the detail screen's own subtitle
+' dropdown directly above it — measured on a 4-stream movie where 3 were
+' embedded, so the dropdown offered four tracks while a column headed "Current
+' subtitles" said the item had none.
+'
+' ⚠️ DELETE IS STILL EXTERNAL-ONLY, and this list is no longer pre-filtered into
+' safety. That guarantee moved rather than vanished:
+' ApiClient.BuildDeleteSubtitleRequest() now takes the STREAM and returns invalid
+' for anything whose IsExternal is not true, so a row wired up wrongly here
+' produces an inert button rather than a deleted media container. isExternal is
+' carried on each row so the UI can also decline to OFFER delete — but the
+' correctness of that decision does not depend on the UI getting it right.
 sub renderExistingList()
-  external = remoteSubtitles.externalSubtitleStreams(m.top.existingStreams)
+  streams = remoteSubtitles.subtitleStreams(m.top.existingStreams)
 
   content = createObject("roSGNode", "ContentNode")
-  for each stream in external
+  for each stream in streams
+    isExternal = stream.IsExternal = true
     row = content.createChild("ContentNode")
     row.addFields({
       language: resolveLanguageName(valueOrEmpty(stream.Language)),
       codec: valueOrEmpty(stream.Codec),
-      ' The only thing that tells two otherwise-identical subtitles apart, since
-      ' Jellyfin records no provenance for one. Computed here rather than in the
-      ' row because this is the only scope holding the MEDIA path the redundant
-      ' leading part is stripped against.
-      fileTail: remoteSubtitles.subtitleFileTail(stream.Path, m.top.filePath),
+      source: remoteSubtitles.subtitleSourceText(stream, m.top.filePath),
+      isExternal: isExternal,
       hearingImpaired: stream.IsHearingImpaired = true,
       forced: stream.IsForced = true,
       streamIndex: intOrZero(stream.Index),
@@ -507,9 +533,10 @@ sub renderExistingList()
   end for
 
   m.existingList.content = content
-  m.existingList.visible = external.count() > 0
-  m.existingEmptyLabel.visible = external.count() = 0
+  m.existingList.visible = streams.count() > 0
+  m.existingEmptyLabel.visible = streams.count() = 0
 end sub
+
 
 ' ── Download + confirmation ──────────────────────────────────────────────────
 

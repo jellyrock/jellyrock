@@ -11,7 +11,9 @@
 ' Where the server's behaviour is surprising it is called out at the function
 ' that compensates for it.
 
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
+import "pkg:/source/utils/translate.bs"
 
 namespace remoteSubtitles
 
@@ -116,6 +118,155 @@ namespace remoteSubtitles
     end for
 
     return result
+  end function
+
+  ' subtitleStreams: Every subtitle stream on the item, in server-index order.
+  '
+  ' The DISPLAY set, and deliberately wider than externalSubtitleStreams(),
+  ' which is the DELETE set. The panel used to render only external streams, so
+  ' an item whose subtitles are all embedded reported "no subtitles on item"
+  ' while the detail screen's own dropdown listed several — measured on a
+  ' 4-stream movie where 3 of the 4 were embedded, which is the ordinary case
+  ' for a remuxed release. A column headed "Current subtitles" has to describe
+  ' the item; whether a given row may be DELETED is a property of that row
+  ' (IsExternal), not a reason to hide it from the list.
+  '
+  ' ⚠️ Anything that acts on a row from THIS set must re-check IsExternal.
+  ' Deleting an embedded stream deletes the media container — see
+  ' externalSubtitleStreams() for why.
+  '
+  ' @param {object} streams - MediaStreams array from a fresh item fetch
+  ' @return {object} array of subtitle stream AAs, external and embedded alike
+  function subtitleStreams(streams as object) as object
+    result = []
+    if not isValid(streams) then return result
+
+    for each stream in streams
+      if isValid(stream) and isValid(stream.Type) and LCase(stream.Type) = "subtitle" and isValid(stream.Index)
+        result.push(stream)
+      end if
+    end for
+
+    return result
+  end function
+
+  ' subtitleSourceText: Where a subtitle comes from, in one short phrase.
+  '
+  ' For an external file that is the part of its filename which differs from the
+  ' media file's — the ONLY thing separating two otherwise-identical entries,
+  ' since Jellyfin records no provider, no download date and no rating for a
+  ' subtitle. An embedded stream has no file of its own (its Path is the
+  ' container), so it says so instead, which doubles as the reason it cannot be
+  ' deleted.
+  '
+  ' Shared by the panel's "Current subtitles" rows and the detail screen's
+  ' subtitle dropdown so the two cannot describe the same track differently.
+  '
+  ' @param {object} stream - A subtitle MediaStream AA
+  ' @param {string} mediaPath - Path of the media file the item plays from
+  ' @return {string} the source phrase for this stream
+  function subtitleSourceText(stream as object, mediaPath as string) as string
+    if not isValid(stream) then return ""
+    if stream.IsExternal <> true then return translate(translationKeys.LabelEmbedded)
+
+    tail = remoteSubtitles.subtitleFileTail(stream.Path, mediaPath)
+    if tail <> "" then return tail
+    return translate(translationKeys.LabelExternalSubtitle)
+  end function
+
+  ' subtitleDropdownEntries: An item's subtitle tracks, made distinguishable.
+  '
+  ' The detail screen rendered every track through formatSubtitleDisplayTitle()
+  ' alone, which describes a stream by language, codec and flags — nothing that
+  ' separates two English SRTs. Measured on a real 4-stream movie, the dropdown
+  ' offered "English SUBRIP" three times, so after downloading a subtitle there
+  ' was no way to tell which entry was the file just fetched.
+  '
+  ' An EXTERNAL track always carries its source, because "this is a file you
+  ' added" is the thing a user is looking for right after downloading one — and
+  ' it is not reliably implied by anything else. On the item this was measured
+  ' against, the downloaded sidecar happened to be the only hearing-impaired
+  ' track, so a purely collision-driven rule left it looking like any other
+  ' entry: technically unique, useless for "which one did I just get?".
+  '
+  ' An EMBEDDED track carries "Embedded" only where it would otherwise collide.
+  ' Embedded is the default state, so tagging every row of an all-embedded item
+  ' with it says nothing and costs width. That is the same "is this column
+  ' informative?" test the search panel applies to a result set's provider and
+  ' format columns.
+  '
+  ' Entries can still collide after that: two embedded English SDH tracks are
+  ' identical in every field the API returns. A 1-based ordinal is the last
+  ' resort, and it deliberately claims nothing beyond "these are different
+  ' tracks" — which is the most the data supports.
+  '
+  ' triggerTitle is the undisambiguated form, for the collapsed dropdown trigger:
+  ' it is a narrow slot that already ellipsizes, and the disambiguator only means
+  ' anything next to the entries it is distinguishing FROM.
+  '
+  ' @param {object} streams - MediaStreams array (mixed types; subtitles are picked out)
+  ' @param {string} mediaPath - Path of the media file, for trimming sidecar names
+  ' @return {object} array of { index, title, triggerTitle } in server order
+  function subtitleDropdownEntries(streams as object, mediaPath as string) as object
+    entries = []
+    subs = remoteSubtitles.subtitleStreams(streams)
+    if subs.count() = 0 then return entries
+
+    baseCounts = {}
+    for each stream in subs
+      base = formatSubtitleDisplayTitle(stream)
+      if isValid(baseCounts[base])
+        baseCounts[base] = baseCounts[base] + 1
+      else
+        baseCounts[base] = 1
+      end if
+    end for
+
+    for each stream in subs
+      base = formatSubtitleDisplayTitle(stream)
+      title = base
+      if stream.IsExternal = true or baseCounts[base] > 1
+        source = remoteSubtitles.subtitleSourceText(stream, mediaPath)
+        if source <> "" then title = base + "  ·  " + source
+      end if
+
+      index = 0
+      if isValid(stream.Index) then index = stream.Index
+      entries.push({ index: index, title: title, triggerTitle: base })
+    end for
+
+    return remoteSubtitles.numberRemainingDuplicates(entries)
+  end function
+
+  ' numberRemainingDuplicates: Suffix a 1-based ordinal onto entries the source
+  ' segment could not tell apart. Separated out so the fallback is testable on
+  ' its own, and so subtitleDropdownEntries reads as the policy rather than the
+  ' bookkeeping.
+  '
+  ' @param {object} entries - array of { index, title, triggerTitle }
+  ' @return {object} the same array, titles made unique
+  function numberRemainingDuplicates(entries as object) as object
+    counts = {}
+    for each entry in entries
+      if isValid(counts[entry.title])
+        counts[entry.title] = counts[entry.title] + 1
+      else
+        counts[entry.title] = 1
+      end if
+    end for
+
+    seen = {}
+    for each entry in entries
+      if counts[entry.title] > 1
+        key = entry.title
+        ordinal = 1
+        if isValid(seen[key]) then ordinal = seen[key] + 1
+        seen[key] = ordinal
+        entry.title = key + " " + stri(ordinal).trim()
+      end if
+    end for
+
+    return entries
   end function
 
   ' subtitleStreamKey: A stable identity for a subtitle stream that survives

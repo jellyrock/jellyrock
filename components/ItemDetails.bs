@@ -2823,14 +2823,23 @@ sub applyDropdown(dropdown as object, items as object, selectedId as string, app
 end sub
 
 ' triggerTextForSelection: Look up the currently-selected item's display title.
+' Prefers triggerTitle where an item carries one — the subtitle slot uses it to
+' keep the collapsed trigger free of a disambiguator that only reads correctly
+' beside the other entries. Video and audio items have no triggerTitle and fall
+' through to title unchanged.
 function triggerTextForSelection(items as object, selectedId as string) as string
   if not isValid(items) or items.count() = 0 then return ""
   for each item in items
     if isValid(item.id) and item.id = selectedId
-      return item.title
+      return triggerTextForItem(item)
     end if
   end for
-  return items[0].title
+  return triggerTextForItem(items[0])
+end function
+
+function triggerTextForItem(item as object) as string
+  if isValidAndNotEmpty(item.triggerTitle) then return item.triggerTitle
+  return item.title
 end function
 
 ' buildVideoDropdownItems: Convert MediaSources into dropdown items. "Video" here is the
@@ -2875,25 +2884,40 @@ end function
 '   * One or more subtitle streams → [{ id:"-1", title:"Off" }, ...tracks]. The
 '     "Off" entry lets the user disable subtitles when tracks ARE present. id "-1"
 '     is the SubtitleSelection.NONE sentinel used by m.top.selectedSubtitleStreamIndex.
+' buildSubtitleDropdownItems: Subtitle rows for the track cluster.
+'
+' Titles come from remoteSubtitles.subtitleDropdownEntries() rather than straight
+' from formatSubtitleDisplayTitle(), because language + codec + flags does not
+' separate two English SRTs — measured on a 4-stream movie, this dropdown offered
+' "English SUBRIP" three times, so a freshly downloaded subtitle was impossible
+' to pick out from the two embedded ones. The helper appends a source segment
+' only to the entries that would otherwise collide.
+'
+' Each item carries triggerTitle as well: the collapsed trigger is a narrow slot
+' that already ellipsizes, and the disambiguator is only meaningful beside the
+' entries it distinguishes FROM, so the trigger shows the plain form.
 function buildSubtitleDropdownItems(streams as object) as object
-  tracks = []
-  if isValid(streams)
-    for each stream in streams
-      if isValid(stream) and isValid(stream.Type) and LCase(stream.Type) = "subtitle" and isValid(stream.index)
-        tracks.push({ id: str(stream.index).trim(), title: formatSubtitleDisplayTitle(stream) })
-      end if
-    end for
+  entries = remoteSubtitles.subtitleDropdownEntries(streams, currentMediaPath())
+
+  if entries.count() = 0
+    noneLabel = translate(translationKeys.LabelNone)
+    return [{ id: "-1", title: noneLabel, triggerTitle: noneLabel }]
   end if
 
-  if tracks.count() = 0
-    return [{ id: "-1", title: translate(translationKeys.LabelNone) }]
-  end if
-
-  items = [{ id: "-1", title: translate(translationKeys.LabelOff) }]
-  for each track in tracks
-    items.push(track)
+  offLabel = translate(translationKeys.LabelOff)
+  items = [{ id: "-1", title: offLabel, triggerTitle: offLabel }]
+  for each entry in entries
+    items.push({ id: str(entry.index).trim(), title: entry.title, triggerTitle: entry.triggerTitle })
   end for
   return items
+end function
+
+' currentMediaPath: The item's own file path, used to trim a sidecar subtitle's
+' name down to the part that differs from it.
+function currentMediaPath() as string
+  item = m.top.itemContent
+  if not isValid(item) then return ""
+  return textOrEmpty(item.path)
 end function
 
 ' getStreamsForSelectedSource: Pull the MediaStreams array from whichever media source

@@ -731,22 +731,44 @@ class ApiClient
   ' Build a request AA to delete an EXTERNAL subtitle file from an item, for
   ' use with fetchRes().
   '
-  ' Two hazards the caller must guard, because the server does not:
-  '   1. Only ever pass the index of a stream whose IsExternal is true. The
-  '      server deletes MediaStream.Path unconditionally; for an EMBEDDED
-  '      stream that path is the media container itself.
-  '   2. A stale index yields a server-side error (observed as HTTP 400), so
-  '      the index must come from a fresh item fetch.
+  ' TAKES THE STREAM, NOT AN INDEX, AND THAT IS THE POINT. The server deletes
+  ' MediaStream.Path unconditionally, and for an EMBEDDED stream that path is
+  ' the media container — so aiming this at the wrong stream destroys the
+  ' user's movie, not a subtitle. This used to accept a bare integer and warn
+  ' the caller in prose to check IsExternal first. Prose is not a guard: the
+  ' subtitle panel's list was ALSO external-only at the time, so the safety
+  ' rested on two separate places staying in agreement, and the moment that
+  ' list grew to include embedded streams (so it could describe the item
+  ' honestly) the only thing standing between a mis-wired row and a deleted
+  ' container was a comment. Requiring the stream means the check happens here,
+  ' once, and cannot be forgotten by a future caller.
+  '
+  ' A non-external stream returns INVALID rather than raising: callers already
+  ' treat an invalid request as "cannot do this" (validatedReq does the same
+  ' when no server URL is set), so refusing degrades into an inert button
+  ' instead of a crash.
+  '
+  ' The one hazard left with the caller: Index must come from a FRESH item
+  ' fetch. A download inserts a subtitle at index 0 and renumbers every other
+  ' stream, so a stale index deletes the wrong file — or errors (observed as
+  ' HTTP 400) if it now points past the end.
   '
   ' Unlike download, delete is SYNCHRONOUS end-to-end — the controller awaits
   ' RefreshMetadata, so the next GET /Items/{id} already reflects the new
   ' stream list (verified: correct at t+0s).
   '
   ' @param itemId - The video item ID
-  ' @param streamIndex - MediaStream.Index of the external subtitle to delete
-  ' @returns Request AA: { method, url } or invalid if server URL not set
-  function BuildDeleteSubtitleRequest(itemId as string, streamIndex as integer) as dynamic
-    return m.validatedReq("DELETE", buildURL(Substitute("/Videos/{0}/Subtitles/{1}", itemId, streamIndex.toStr())))
+  ' @param stream - The subtitle MediaStream AA to delete; must be IsExternal
+  ' @returns Request AA: { method, url }, or invalid if the stream is not an
+  '          external subtitle, has no index, or the server URL is not set
+  function BuildDeleteSubtitleRequest(itemId as string, stream as dynamic) as dynamic
+    if not isValid(stream) then return invalid
+    ' Explicitly true — an absent IsExternal must read as "not safe", never as
+    ' "probably fine".
+    if stream.IsExternal <> true then return invalid
+    if not isValid(stream.Index) then return invalid
+
+    return m.validatedReq("DELETE", buildURL(Substitute("/Videos/{0}/Subtitles/{1}", itemId, stream.Index.toStr())))
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
