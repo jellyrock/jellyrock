@@ -74,7 +74,7 @@ namespace tests
     function _()
       searchHistory.push("Batman")
       searchHistory.push("inception")
-      searchHistory.push("BATMAN")  ' should promote, not add a second copy
+      searchHistory.push("BATMAN") ' should promote, not add a second copy
       list = searchHistory.load()
 
       m.assertEqual(list.count(), 2)

@@ -17,8 +17,8 @@ import "pkg:/source/utils/translate.bs"
 ' here is internal to the pill's own coordinate system.
 const ICON_X = 24
 const ICON_WIDTH = 24
-const LABEL_X = 64        ' ICON_X + ICON_WIDTH + 16px gap
-const RIGHT_PADDING = 24  ' breathing room on the right edge
+const LABEL_X = 64 ' ICON_X + ICON_WIDTH + 16px gap
+const RIGHT_PADDING = 24 ' breathing room on the right edge
 
 sub init()
   constants = m.global.constants
