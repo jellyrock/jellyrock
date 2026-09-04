@@ -1,5 +1,6 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/api/items.bs"
@@ -12,6 +13,7 @@ import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/searchHints.bs"
 import "pkg:/source/utils/searchHistory.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
@@ -69,23 +71,20 @@ sub init()
   ' Full-search task — single instance, reused across submits.
   m.searchTask = CreateObject("roSGNode", "SearchTask")
 
-  ' Hints task is created FRESH on every debounce fire. Re-using a single
-  ' SearchHintsTask instance with "stop"→"RUN" transitions is unreliable:
-  ' when the prior fetch is still in flight, "stop" is only honored when the
-  ' task next yields, and "RUN" on an already-running task is a silent no-op.
-  ' Net effect: typing "S" then "T" leaves the task running the "S" query,
-  ' and the "T" restart never fires — the UI stays frozen on stale hints.
-  ' Creating a new node each fire guarantees a clean starting state; the old
-  ' task's stale write is harmless (observer is detached so the callback
-  ' never runs) and the Task node is GC'd once its fetch returns.
-  m.hintsTask = invalid
+  ' Typeahead single-flight state. /Search/Hints rides the API pool via
+  ' fetchAsync (no Task node, so no Task thread), and at most ONE request is
+  ' outstanding at a time — see startHintsFetch().
+  m.hintsInFlight = false
+  m.hintsSeq = 0
 
-  ' Two debounce timers, one per task, different durations:
-  '  - hintsDebounce (275ms): snappy typeahead for suggestion rows.
-  '  - fullSearchDebounce (500ms): heavier multi-endpoint search that
-  '    populates results under the overlay LIVE as the user types, without
-  '    collapsing. Collapse happens only on explicit submit (Go key /
-  '    suggestion tap / voice / DOWN from keyboard bottom row).
+  ' Two debounce timers, with different jobs:
+  '  - debounceTimer (searchLayout.DEBOUNCE_S): a burst filter for typeahead —
+  '    it only stops us firing between fast keystrokes. It is NOT what keeps
+  '    the request rate sane on a slow server; single-flight does that.
+  '  - fullSearchTimer (searchLayout.FULL_SEARCH_DEBOUNCE_S): the heavier
+  '    multi-endpoint search that populates results under the overlay LIVE as
+  '    the user types, without collapsing. Collapse happens only on explicit
+  '    submit (suggestion tap / voice / DOWN from the keyboard bottom row).
   m.debounceTimer = CreateObject("roSGNode", "Timer")
   m.debounceTimer.duration = searchLayout.DEBOUNCE_S
   m.debounceTimer.repeat = false
@@ -256,12 +255,6 @@ sub onDestroy()
     m.fullSearchTimer.control = "stop"
   end if
 
-  if isValid(m.hintsTask)
-    m.hintsTask.unobserveField("results")
-    m.hintsTask.control = "stop"
-    m.hintsTask = invalid
-  end if
-
   if isValid(m.searchTask)
     m.searchTask.unobserveField("results")
     m.searchTask.control = "STOP"
@@ -423,16 +416,15 @@ sub onQueryChanged()
 
   trimmed = searchHistory.Trim(query)
   if trimmed = ""
-    ' No input — cancel any in-flight hints, stop any in-flight full search,
-    ' wipe the existing results from the SearchRow, and show the recent-
-    ' searches list. Without the results-wipe, the trashcan key (or repeated
-    ' backspace) leaves stale results visible below the overlay even though
-    ' there's no query — they can't be re-focused (overlay is open) and the
-    ' user has no way to clear them short of leaving the screen.
-    if isValid(m.hintsTask)
-      m.hintsTask.unobserveField("results")
-      m.hintsTask.control = "stop"
-    end if
+    ' No input — stop any in-flight full search, wipe the existing results from
+    ' the SearchRow, and show the recent-searches list. Without the results-wipe,
+    ' the trashcan key (or repeated backspace) leaves stale results visible below
+    ' the overlay even though there's no query — they can't be re-focused (the
+    ' overlay is open) and the user has no way to clear them short of leaving.
+    '
+    ' An in-flight hints request needs no cancelling: its handler drops the result
+    ' because the query no longer matches, and the re-fire it would otherwise do
+    ' is refused by startHintsFetch's empty-query guard.
     if isValid(m.searchTask)
       m.searchTask.unobserveField("results")
       m.searchTask.control = "stop"
@@ -453,49 +445,70 @@ sub onQueryChanged()
   m.fullSearchTimer.control = "start"
 end sub
 
-' Debounce timer fired — kick off /Search/Hints for the current query.
-' Always starts a fresh SearchHintsTask instance (see the comment in init()
-' explaining why reusing one task with stop/RUN is unreliable).
+' Debounce timer fired — ask for hints for whatever is currently typed.
 sub onDebounceFire()
-  query = m.top.query
-  if not isValid(query) or query = "" then return
-
-  m.log.verbose("hints query=" + query)
-
-  ' Detach the old task's observer so its in-flight fetch, when it finally
-  ' returns, lands in silence. The task node itself GCs after it finishes.
-  if isValid(m.hintsTask)
-    m.hintsTask.unobserveField("results")
-    m.hintsTask.control = "stop"
-  end if
-
-  m.hintsTask = CreateObject("roSGNode", "SearchHintsTask")
-  m.hintsTask.observeField("results", "onHintsResults")
-  m.hintsTask.query = query
-  m.hintsTask.control = "RUN"
+  startHintsFetch()
 end sub
 
-' Hints task completed — guard against stale responses, then render.
-sub onHintsResults(msg as object)
-  ' The observer is bound to a specific task instance, but because we create
-  ' a new task each fire, this handler can legitimately be invoked by an
-  ' older task that happens to finish after a newer one was spawned. Resolve
-  ' the actual firing node from the message rather than m.hintsTask so we
-  ' read its results (and only its results).
-  task = msg.getRoSGNode()
-  if not isValid(task) then return
+' Fetch /Search/Hints for the current query through the API pool.
+'
+' SINGLE-FLIGHT. At most one hints request is outstanding; a keystroke arriving
+' while one is in flight does not queue a second. The completion handler re-fires
+' once if the query moved on, so the emergent request rate is
+' min(typing rate, 1 / round-trip) with no tuned constant: on a fast server it
+' approaches per-keystroke, and on a slow one it settles at exactly one request
+' per round trip, always for the newest text, never falling further behind than
+' a single trip. That property is what makes this safe across the range of
+' self-hosted servers, which no debounce value could cover.
+'
+' fetchAsync submits to the persistent 3-worker pool from the render thread, so
+' this launches NO Task thread and can never be refused by launchTask()'s
+' watermark — unlike the previous shape, which created a SearchHintsTask node
+' per keystroke and blocked one of RokuOS's 100 threads for each in-flight fetch.
+' Cancellation on teardown is automatic: the auto-abandon-promises plugin injects
+' abandonApiPromises() into onDestroy, so a late response resolves nothing.
+sub startHintsFetch()
+  query = m.top.query
+  if not isValid(query) or query = "" then return
+  if m.hintsInFlight then return
 
-  results = task.results
-  if not isValid(results) then return
+  req = GetApi().BuildGetSearchHintsRequest({
+    searchTerm: query,
+    limit: searchLayout.HINTS_LIMIT,
+    includeItemTypes: "Movie,Series,Episode,Person,MusicArtist,MusicAlbum",
+    includePeople: true,
+    includeMedia: true,
+    includeArtists: true,
+    includeGenres: false,
+    includeStudios: false
+  })
+  if not isValid(req) then return
 
-  if not isValid(results.query) or results.query <> m.top.query
-    ' User has typed more since this request was issued — drop.
-    return
-  end if
+  m.hintsSeq += 1
+  m.hintsInFlight = true
+  m.log.verbose("hints query=" + query)
 
-  hints = results.hints
+  ' The query rides the promise context (the no-closure state channel) so the
+  ' handler can tell what it asked for, independent of what is typed now.
+  promises.chain(fetchAsync(req, "searchHints-" + m.hintsSeq.toStr()), { query: query }).then(sub(res as object, ctx as object)
+    m.hintsInFlight = false
+    if res.ok and isValid(res.json) and ctx.query = m.top.query
+      renderHintSuggestions(searchHints.transform(res.json))
+    end if
+    if ctx.query <> m.top.query then startHintsFetch()
+  end sub).catch(sub(err as object, ctx as object)
+    ' Transport failure or pool timeout. Leave the current suggestions standing
+    ' rather than blanking the panel — a dropped request should not look like
+    ' "no matches", which is a different and wrong answer.
+    m.hintsInFlight = false
+    m.log.warn("hints fetch failed", err.reason)
+    if ctx.query <> m.top.query then startHintsFetch()
+  end sub)
+end sub
+
+' Render transformed hint rows into the suggestion panel.
+sub renderHintSuggestions(hints as object)
   if not isValid(hints) then hints = []
-
   m.log.verbose("hints received n=" + hints.count().toStr())
 
   items = []

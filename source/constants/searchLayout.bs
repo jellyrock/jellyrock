@@ -59,17 +59,36 @@ namespace searchLayout
   ' Slide-in animation timing — matches ExtrasSlider / OptionsSlider feel.
   const SLIDE_DURATION_S = 0.3
 
-  ' Typeahead debounce — gap after the last keystroke before firing /Search/Hints.
-  ' 0 means the timer fires on the next render-thread tick, which is effectively
-  ' per-keystroke. The stale-response guard in SearchScreen.onHintsResults keeps
-  ' UI consistent if an older request finishes after a newer one.
-  const DEBOUNCE_S = 0
+  ' Typeahead debounce — a BURST FILTER, and only that. Its one job is to avoid
+  ' firing between keystrokes while fingers are still moving; 120ms is below the
+  ' threshold where a suggestion list feels laggy and above a fast typist's
+  ' inter-key gap.
+  '
+  ' It is deliberately NOT the mechanism that protects a slow server. That is
+  ' SearchScreen.startHintsFetch's single-flight rule, which caps outstanding
+  ' hints requests at one and self-limits the rate to one per round trip. Because
+  ' the hard bound lives there, this value is not load-bearing — getting it a
+  ' little wrong costs a little latency, never a pile-up.
+  const DEBOUNCE_S = 0.12
 
-  ' Full-search debounce — 150ms. Snappy enough that burst-typing feels
-  ' live, but coalesces rapid keystrokes so the heavy multi-endpoint search
-  ' (Items + Persons + Artists + LiveTv/Programs) doesn't fire on every
-  ' keypress. Stale-response guard in onFullSearchResults handles out-of-
-  ' order completions.
+  ' Full-search debounce — 150ms. Coalesces rapid keystrokes so the heavy
+  ' multi-endpoint search (Items + Persons + Artists + LiveTv/Programs) doesn't
+  ' fire on every keypress. Stale-response guard in onFullSearchResults handles
+  ' out-of-order completions.
+  '
+  ' For context before anyone tunes this: the screen this replaced ran the same
+  ' four-endpoint search on EVERY keystroke with no debounce at all
+  ' (SearchResults.searchMedias — "if search task is running and user selects
+  ' another letter stop the search and load the next letter"), and that shipped.
+  ' So this value is already strictly more conservative than production. It was
+  ' NOT chosen by measurement, and no adaptive back-off was added on top,
+  ' deliberately: the two instrumented orchestrators in this codebase answer
+  ' oppositely on work-bound vs network-bound (docs/dev/home-first-paint-
+  ' performance.md), so there is no general result to reason from, and ADR 0026
+  ' is the precedent for rejecting exactly that kind of unmeasured mechanism.
+  ' If live search is ever reported as too heavy on a slow self-hosted server,
+  ' instrument this screen the way Home and the grid are instrumented and decide
+  ' from the numbers — do not guess a threshold here.
   const FULL_SEARCH_DEBOUNCE_S = 0.15
 
   ' /Search/Hints limit — keeps suggestion list short enough to scan in one glance.

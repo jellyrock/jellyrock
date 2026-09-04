@@ -1,21 +1,31 @@
 ' @fileoverview Pure transform for /Search/Hints API responses.
-' Kept in source/ (rather than inside SearchHintsTask.bs) so unit tests can
-' exercise the formatting logic without spinning up the Task node graph.
+' Kept in source/ (rather than inside the screen) so unit tests can exercise the
+' formatting logic without a node graph or a live pool.
+'
+' Runs on the RENDER thread: SearchScreen consumes /Search/Hints through
+' fetchAsync() rather than a Task node, so this transform executes in the
+' promise callback. That is deliberate and bounded — see the cap in transform()
+' — and it is what lets the labels below go through translate(), which reads
+' m.global.translations.
 
+import "pkg:/source/constants/searchLayout.bs"
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
 
 namespace searchHints
 
   ' Transform a raw SearchHintResult payload into lightweight display rows.
-  ' Pure function — no node graph, no m.global — so it's unit-testable.
+  ' Pure function — no node graph, no side effects — so it's unit-testable.
   '
   ' @param raw - Parsed /Search/Hints JSON body, or invalid. Expected shape:
   '              { SearchHints: [ { Id, Name, Type, ProductionYear, ... } ] }
-  ' @returns Array of { text, name, id, type } — up to HINTS_LIMIT items.
+  ' @returns Array of { text, name, id, type } — at most HINTS_LIMIT items.
   '
   ' The `text` field is the user-visible string. Format:
   '   "{Name} · {TypeLabel}"            (default)
   '   "{Name} · {TypeLabel} ({Year})"   (Movie or Series with ProductionYear)
+  '   "{Name}"                          (type not one we have a label for)
   function transform(raw as dynamic) as object
     rows = []
     if not isValid(raw) then return rows
@@ -24,16 +34,26 @@ namespace searchHints
     if not isValid(hints) or type(hints) <> "roArray" then return rows
 
     for each hint in hints
+      ' Hard cap the work this loop can do. `limit` is sent on the request, but the
+      ' response is server-controlled and this runs on the render thread, so the
+      ' bound has to be enforced here rather than assumed from the query param.
+      if rows.count() >= searchLayout.HINTS_LIMIT then exit for
+
       if not isValid(hint) then continue for
       name = hint.Name
       if not isValid(name) or name = "" then continue for
 
+      ' Unknown types yield an empty label and the name stands alone. Passing the
+      ' raw Jellyfin type string through — the previous behaviour — put an
+      ' untranslated API enum in front of the user in every locale.
+      text = name
       label = typeLabel(hint.Type)
-
-      text = name + " · " + label
-      year = hint.ProductionYear
-      if isValid(year) and year > 0 and (hint.Type = "Movie" or hint.Type = "Series")
-        text = text + " (" + year.toStr() + ")"
+      if label <> ""
+        text = text + " · " + label
+        year = hint.ProductionYear
+        if isValid(year) and year > 0 and (hint.Type = "Movie" or hint.Type = "Series")
+          text = text + " (" + year.toStr() + ")"
+        end if
       end if
 
       rows.push({
@@ -47,24 +67,25 @@ namespace searchHints
     return rows
   end function
 
-  ' Map Jellyfin item-type strings to short, user-facing category labels.
-  ' Mirrors the row labels used by SearchRow.bs for consistency. Unknown
-  ' types pass through verbatim rather than being hidden, so the user still
-  ' sees a hint rather than an orphaned name.
+  ' Map Jellyfin item-type strings to short, user-facing category labels, using the
+  ' same translation keys SearchRow.bs labels its result rows with so a hint and the
+  ' row it leads to read identically.
+  '
+  ' @returns the localized label, or "" for a type we have no label for.
   function typeLabel(itemType as dynamic) as string
-    if not isValid(itemType) or itemType = "" then return "Item"
+    if not isValid(itemType) or itemType = "" then return ""
 
-    if itemType = "Movie" then return "Movies"
-    if itemType = "Series" then return "Shows"
-    if itemType = "Episode" then return "Episodes"
-    if itemType = "Person" then return "People"
-    if itemType = "MusicArtist" then return "Artists"
-    if itemType = "MusicAlbum" then return "Albums"
-    if itemType = "Audio" then return "Songs"
-    if itemType = "Playlist" then return "Playlists"
-    if itemType = "BoxSet" then return "Collections"
+    if itemType = "Movie" then return translate(translationKeys.LabelMovies)
+    if itemType = "Series" then return translate(translationKeys.LabelShows)
+    if itemType = "Episode" then return translate(translationKeys.LabelEpisodes)
+    if itemType = "Person" then return translate(translationKeys.LabelPeople)
+    if itemType = "MusicArtist" then return translate(translationKeys.LabelArtists)
+    if itemType = "MusicAlbum" then return translate(translationKeys.LabelAlbums)
+    if itemType = "Audio" then return translate(translationKeys.LabelSongs)
+    if itemType = "Playlist" then return translate(translationKeys.LabelPlaylists)
+    if itemType = "BoxSet" then return translate(translationKeys.LabelCollections)
 
-    return itemType
+    return ""
   end function
 
 end namespace

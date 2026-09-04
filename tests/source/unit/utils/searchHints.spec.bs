@@ -3,6 +3,30 @@ namespace tests
   @suite("searchHints.bs - /Search/Hints transform")
   class SearchHintsTransformTests extends tests.BaseTestSuite
 
+    ' typeLabel() resolves its labels through translate(), which reads
+    ' m.global.translations. Seeding them here (rather than relying on a loaded
+    ' locale) keeps the suite hermetic AND makes the label assertions below a
+    ' real check that the strings are translated rather than hardcoded: swap a
+    ' translate() call back to a literal and these fail.
+    protected override function setup()
+      super.setup()
+      m.global.setFields({
+        translations: {
+          "LabelMovies": "Movies",
+          "LabelShows": "Shows",
+          "LabelEpisodes": "Episodes",
+          "LabelPeople": "People",
+          "LabelArtists": "Artists",
+          "LabelAlbums": "Albums",
+          "LabelSongs": "Songs",
+          "LabelPlaylists": "Playlists",
+          "LabelCollections": "Collections"
+        },
+        translationsFallback: {},
+        translationLocale: "en_US"
+      })
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("transform(raw) - invalid or empty input")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -79,15 +103,27 @@ namespace tests
       m.assertEqual(result, expectedLabel)
     end function
 
-    @it("passes through unknown types verbatim")
+    @it("returns no label for unknown types rather than leaking the raw API enum")
     function _()
-      m.assertEqual(searchHints.typeLabel("PhotoAlbum"), "PhotoAlbum")
+      ' A Jellyfin type string we have no translation key for is untranslatable,
+      ' so showing it would put English-ish API vocabulary in front of every
+      ' non-English user. The name stands alone instead.
+      m.assertEqual(searchHints.typeLabel("PhotoAlbum"), "")
     end function
 
-    @it("returns 'Item' for invalid or empty input")
+    @it("returns no label for invalid or empty input")
     function _()
-      m.assertEqual(searchHints.typeLabel(invalid), "Item")
-      m.assertEqual(searchHints.typeLabel(""), "Item")
+      m.assertEqual(searchHints.typeLabel(invalid), "")
+      m.assertEqual(searchHints.typeLabel(""), "")
+    end function
+
+    @it("omits the separator entirely when the type has no label")
+    function _()
+      rows = searchHints.transform({
+        SearchHints: [{ Id: "x", Name: "Holiday 2019", Type: "PhotoAlbum" }]
+      })
+      m.assertEqual(rows.count(), 1)
+      m.assertEqual(rows[0].text, "Holiday 2019")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -125,6 +161,18 @@ namespace tests
       })
       m.assertEqual(rows.count(), 1)
       m.assertEqual(rows[0].name, "Valid")
+    end function
+
+    @it("caps rows at HINTS_LIMIT even when the server ignores the limit param")
+    function _()
+      ' transform() runs on the render thread, so the bound has to be enforced
+      ' here rather than assumed from the `limit` query parameter.
+      hints = []
+      for i = 0 to searchLayout.HINTS_LIMIT + 5
+        hints.push({ Id: stri(i).trim(), Name: "Item " + stri(i).trim(), Type: "Movie" })
+      end for
+      rows = searchHints.transform({ SearchHints: hints })
+      m.assertEqual(rows.count(), searchLayout.HINTS_LIMIT)
     end function
 
     @it("preserves order of hints from the server")
