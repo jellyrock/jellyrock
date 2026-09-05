@@ -71,14 +71,28 @@ when it had to re-press, because a silently recovered escape tells you nothing t
 
 **Identify a dynamically-created node by `subtype`, never by `id` or a `#name` in its keyPath.**
 RTA builds each keyPath segment from `node.id` while it is non-empty and from the child INDEX
-otherwise, and the app creates plenty of nodes without ids — `Home.onTabChanged` re-creates
-BOTH row lists via `CreateObject` and re-assigns no id, and `JROverhang` appends its `JRTabBar`
-the same way. So a predicate keyed on `#homeRows` matches on a fresh launch and silently stops
-matching after one tab round trip, falling through to whatever its `else` branch does. That is a
-regression with no failure mode of its own — it just quietly restores the bug you fixed.
-`overhangWalkKey` matches `HOME_ROW_LIST_SUBTYPES`; the sibling walks in
-[`lib/nav.js`](lib/nav.js) still match by name (`rta-home-active-list-hardcoded` in
-[`tech-debt.md`](../../docs/architecture/tech-debt.md)).
+otherwise, so a node created without an id is addressable only by POSITION, and a predicate
+keyed on its name falls through to whatever its `else` branch does. That is a regression with
+no failure mode of its own — it just quietly restores the bug you fixed. The live example is
+`JROverhang`, which appends its `JRTabBar` via `CreateObject` and assigns no id — on the
+`focusOverhangIcon` walk's own path, which is why `overhangWalkKey` matches
+`HOME_ROW_LIST_SUBTYPES` rather than `#homeRows`. Home's row lists were the sharper example
+until #864 (2026-08-26) made `onTabChanged` assign both ids, which retired the by-name-read
+half of `rta-home-active-list-hardcoded` in
+[`tech-debt.md`](../../docs/architecture/tech-debt.md); the focus-walk half is still open, and
+the sibling walks in [`lib/nav.js`](lib/nav.js) still hardcode `#homeRows`.
+
+**Ask "is focus inside X?" through `focusIsInside` / `waitFocusInside`, never a hand-rolled
+`keyPath.includes(...)`.** A container id always occupies a WHOLE keyPath segment (see the rule
+above), so a substring test is strictly weaker than the question being asked: `#options` is a
+substring of `#optionsPanelOverlay` — the reparenting host in
+[`components/JRScene.xml`](../../components/JRScene.xml) — so the grid-options gate could report
+the dialog focused for focus anywhere in that overlay. That is the north-star failure made
+invisible twice over: it succeeds EARLY, so the blame lands on whatever times out next, and it
+is introduced by NAMING a node rather than by touching a test, so no test diff reveals it.
+`focusIsInside` normalises a missing `#` (`dialogs.spec.js` asks for `jrDialog`), so there is no
+reason to reach past it. Gated in [`lib/steps.test.js`](lib/steps.test.js) against keyPaths
+captured off `.178`, not invented ones.
 
 ## Layout
 

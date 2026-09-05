@@ -28,6 +28,8 @@ import { navSeriesDetails, navMovieDetails } from '../lib/nav.js';
 import {
   waitFor,
   waitFocused,
+  waitFocusInside,
+  focusIsInside,
   waitHome,
   waitMediaPlaying,
   stopPlayback,
@@ -465,9 +467,10 @@ it('osd video-source button opens the list dialog; back cancels it', async () =>
 
   // Focus opens ON the list — the picker's job is picking, and there is no
   // footer button to compete for it.
-  await waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes('#optionList'), {
+  await waitFocusInside('#optionList', {
     label: 'list focused on open',
     timeout: 5000,
+    interval: 500,
   });
 
   // The list wraps in BOTH directions and Back is the only exit. This is the one
@@ -758,7 +761,10 @@ it('a dialog keeps focus when the osd auto-hides underneath it', async () => {
   // so presence alone would have passed while the dialog was already dead.
   const focused = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
   const keyPath = typeof focused?.keyPath === 'string' ? focused.keyPath : '';
-  if (!keyPath.includes('jrDialog'))
+  // Through the shared predicate rather than a local `includes`, so this one-shot check
+  // reads focus the same way every waiting gate does (`#jrDialog` is a whole keyPath
+  // segment; the `#` is normalised in).
+  if (!focusIsInside(keyPath, 'jrDialog'))
     throw new Error(
       `focus left the dialog while the osd auto-hid (focused: ${keyPath || 'unknown'})`,
     );

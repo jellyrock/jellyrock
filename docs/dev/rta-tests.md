@@ -25,7 +25,7 @@ related-files:
   - scripts/flake-baseline.js
   - tests/rta/demos/run.mjs
   - .github/workflows/rta-functional-tests.yml
-last-reviewed: 2026-08-27
+last-reviewed: 2026-09-04
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -142,6 +142,17 @@ branch to find it.
   getActiveVal })`), which scopes to `m.global.activeRoutedView` (the app's own "view the
   user is on"). Focus-based assertions (`waitFocused`) are inherently unambiguous — there
   is only one focused node — so prefer them when "did this open/land?" is the question.
+- **"Is focus inside X?" goes through `focusIsInside` / `waitFocusInside`, never a
+  hand-rolled `keyPath.includes(...)`.** One focused node makes the *reading* unambiguous;
+  it does not make the *predicate* unambiguous. RTA composes a `keyPath` as one segment per
+  ancestor — `"#" + node.id`, or the child index when the node has no id — so an id always
+  occupies a whole segment and a substring test is strictly weaker than the question being
+  asked. `#options` is a substring of `#optionsPanelOverlay` (the re-parenting host in
+  `components/JRScene.xml`), so the grid-options gate could have reported the dialog focused
+  for focus anywhere in that overlay: the north-star failure, succeeding early, with the
+  blame landing on whatever times out next. `focusIsInside` matches whole segments and
+  normalizes a missing `#`, and `waitFocusInside` takes `label` / `timeout` / `interval` /
+  `action`, so there is no call site that needs its own predicate.
 
 ## When a wait times out, it reports what it SAW
 

@@ -286,6 +286,41 @@ export async function waitFocused(
 }
 
 /**
+ * Is the node with id `containerId` in the focused node's ancestry (or the focused node
+ * itself)? The ONE place that answers "is focus inside X", so every gate agrees.
+ *
+ * ## Why a whole SEGMENT and not a substring
+ *
+ * RTA builds the keyPath one segment per ancestor — `"#" + node.id` while the id is
+ * non-empty, the child INDEX otherwise — and joins them with `.`
+ * (`processGetFocusedNodeRequest` in `RTA_OnDeviceComponent.brs`). So an id always
+ * occupies a whole segment, which makes a segment test EXACTLY "this node is in the
+ * focus chain" and a substring test strictly weaker: `#options` is a substring of
+ * `#optionsPanelOverlay` (the reparenting host in `components/JRScene.xml`), so the
+ * grid-options gate could report the dialog focused for focus anywhere in that overlay.
+ *
+ * That is the north-star failure mode — succeeding EARLY — and it has no failure of its
+ * own to notice: the gate passes, the next step acts against a screen that is not there
+ * yet, and whatever times out afterwards gets the blame. A prefix collision is also
+ * invisible to review, because it is introduced by NAMING a node, not by touching a test.
+ *
+ * ## The `#` is normalised, not required
+ *
+ * `dialogs.spec.js` asks for `jrDialog` without one. Rejecting that would trade a silent
+ * over-match for a silent under-match — the same class of bug, failing the other way.
+ *
+ * Ids containing a `.` would break the split; the app has none, and one would break RTA's
+ * own keyPath addressing long before it reached here.
+ *
+ * @param {unknown} keyPath the focused node's `keyPath`, however it was read
+ * @param {string} containerId the container's id, with or without a leading `#`
+ */
+export function focusIsInside(keyPath, containerId) {
+  const want = containerId.startsWith('#') ? containerId : `#${containerId}`;
+  return typeof keyPath === 'string' && keyPath.split('.').includes(want);
+}
+
+/**
  * Wait until focus is INSIDE the container with id `containerId` (e.g. `#itemGrid`).
  *
  * The precondition for walking any focus-driven list: `rowItemFocused` / `itemFocused`
@@ -294,14 +329,29 @@ export async function waitFocused(
  * then times out blaming the list. "Loaded" is not "focused". Named rather than
  * hand-rolled at each call site so its ABSENCE is visible in review.
  *
- * No key presses on purpose: focus arrives on its own once the view settles, and
- * pressing at a component we have not located yet is the mistake this guards against.
+ * No key presses of its OWN on purpose: focus arrives once the view settles, and pressing
+ * at a component we have not located yet is the mistake this guards against. `action` is
+ * for the separate case where a press already sent may have been SWALLOWED — pass
+ * `resendIfSwallowed` / `resendUntilFocusInside`, which sit out the first tick and stop
+ * once focus lands.
+ *
+ * `label` overrides the default so a call site can name the thing it is waiting for
+ * ("grid options dialog") rather than the container it happens to live in; the timeout
+ * message is the first thing read when this fails.
+ *
+ * ⚠️ **The defaults here are NOT `waitFocused`'s** (15000/500) — they are deliberately
+ * tighter. A site moved over from a bare `waitFocused` must therefore state the cadence it
+ * already had, or it silently starts polling the device more often than anyone chose.
  */
-export async function waitFocusInside(containerId, { timeout = 12000, interval = 300 } = {}) {
-  return waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes(containerId), {
+export async function waitFocusInside(
+  containerId,
+  { timeout = 12000, interval = 300, label, action } = {},
+) {
+  return waitFocused((f) => focusIsInside(f.keyPath, containerId), {
     timeout,
     interval,
-    label: `focus inside ${containerId}`,
+    action,
+    label: label || `focus inside ${containerId}`,
   });
 }
 
@@ -350,7 +400,7 @@ export function resendIfSwallowed(key, containerId) {
       return;
     }
     const focused = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
-    if (typeof focused?.keyPath === 'string' && focused.keyPath.includes(containerId)) {
+    if (focusIsInside(focused?.keyPath, containerId)) {
       await press(key);
     }
   };
@@ -384,7 +434,7 @@ export function resendUntilFocusInside(key, containerId) {
     }
     const focused = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
     if (typeof focused?.keyPath !== 'string') return;
-    if (!focused.keyPath.includes(containerId)) await press(key);
+    if (!focusIsInside(focused.keyPath, containerId)) await press(key);
   };
 }
 
@@ -517,19 +567,24 @@ const HOME_ROW_LIST_SUBTYPES = Object.freeze(['HomeRows', 'FavoritesRows']);
  *
  * ## Why it reads `subtype`, and not the id or the keyPath
  *
- * `Home.xml` declares `<HomeRows id="homeRows" />`, so on a fresh launch the focused node
- * does carry that id. But `Home.onTabChanged` RE-CREATES both lists with `CreateObject` and
- * never assigns an id — and RTA builds a keyPath segment from `node.id` only while it is
- * non-empty, falling back to the child INDEX otherwise. So after one favorites round trip
- * an id/keyPath match silently stops matching and falls straight through to Right, which is
- * the exact defect above, reinstated and invisible. `subtype` is set by the component rather
- * than by the call site, so it holds across that path.
+ * RTA builds a keyPath segment from `node.id` only while it is non-empty, falling back to
+ * the child INDEX otherwise — so an id/keyPath match stops matching the moment a node is
+ * created without one, falling straight through to Right, which is the exact defect above
+ * reinstated and invisible. `subtype` is set by the component rather than by the call site,
+ * so it cannot be lost that way.
+ *
+ * The app does create such nodes: `JROverhang` appends its `JRTabBar` with `CreateObject`
+ * and assigns no id (`components/JROverhang.bs`), which is on this very walk's path.
+ * Home's two row lists USED to be the sharper example — `onTabChanged` re-created both
+ * without ids — but it has assigned both since #864 (2026-08-26), so `#homeRows` now
+ * survives a tab round trip. That is why the `rta-home-active-list-hardcoded` entry in
+ * `docs/architecture/tech-debt.md` records its by-name-read half as retired. The rule
+ * stands on the tab bar, not on Home.
  *
  * The favorites half is future-proofing, not coverage: nothing in `specs/` selects a tab, so
- * `FavoritesRows` is unreachable from here today (see the `rta-home-active-list-hardcoded`
- * entry in `docs/architecture/tech-debt.md`, whose sibling call sites still match by name).
- * It is here because the predicate should agree with the app — `getActiveRows()` returns
- * `m.activeContent` — not because a test exercises it.
+ * `FavoritesRows` is unreachable from here today (the focus-walk half of that same
+ * tech-debt entry, still open). It is here because the predicate should agree with the
+ * app — `getActiveRows()` returns `m.activeContent` — not because a test exercises it.
  *
  * Kept pure, and here rather than in `nav.js`, so it can be unit-tested directly: `nav.js`
  * IS importable under a mocked device, but its walk is wrapped in the unexported

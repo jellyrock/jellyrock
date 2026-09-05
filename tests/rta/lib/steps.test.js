@@ -46,6 +46,8 @@ const {
   getVals,
   waitFor,
   waitFocused,
+  focusIsInside,
+  waitFocusInside,
   resendIfSwallowed,
   resendUntilFocusInside,
   walkHomeToFirstRow,
@@ -222,6 +224,125 @@ describe('wait read-failure attribution', () => {
     await expect(
       waitFocused(() => true, { timeout: 60, interval: 10, label: 'anything' }),
     ).rejects.toThrow(/read\(s\) did not complete/);
+  });
+});
+
+/**
+ * `focusIsInside` — the one predicate every "is focus inside X" gate now shares.
+ *
+ * The property under test is that a container id is matched as a whole keyPath SEGMENT,
+ * never as a substring. It is a red/green gate rather than a review note on purpose: the
+ * substring form fails by succeeding EARLY, which produces no failure of its own — the
+ * gate passes, the next step acts against a screen that has not arrived, and whatever
+ * times out later gets the blame. And a prefix collision is introduced by NAMING a node,
+ * so nothing in a test diff reveals it.
+ *
+ * The keyPaths below are the real ones, captured off `.178` on 2026-09-04 (a full green
+ * suite, 214 focused-node reads) rather than invented — an invented shape is exactly how
+ * a predicate ends up agreeing with a fixture and disagreeing with the device.
+ */
+describe('focusIsInside', () => {
+  it('matches a container that is an ancestor segment of the focused node', () => {
+    expect(focusIsInside('#routerOutlet.#viewTarget.#5d412eb3.#itemGrid', '#itemGrid')).toBe(true);
+    expect(
+      focusIsInside('#routerOutlet.#viewTarget.#a957cebb.#buttons.#resumeButton', '#buttons'),
+    ).toBe(true);
+  });
+
+  it('matches through index segments, which ids-less nodes contribute', () => {
+    // `...#extrasGrp.0.#extrasGrid` and `...#options.1.1.#buttons` are both real: RTA
+    // falls back to the child index whenever a node carries no id.
+    expect(
+      focusIsInside(
+        '#routerOutlet.#viewTarget.#0d5a08a5.#itemExtras.#extrasGrp.0.#extrasGrid',
+        '#extrasGrid',
+      ),
+    ).toBe(true);
+    expect(
+      focusIsInside('#routerOutlet.#viewTarget.#fddf1216.#options.1.1.#buttons', '#options'),
+    ).toBe(true);
+  });
+
+  it('does NOT match a container whose id merely PREFIXES the one asked for', () => {
+    // The live collision this helper was written for: `#optionsPanelOverlay` is the
+    // reparenting host in `components/JRScene.xml` and `#options` is a substring of it,
+    // so the substring form reported the grid options dialog focused for focus anywhere
+    // in that overlay. Segment matching is what makes the two distinguishable.
+    expect(focusIsInside('#routerOutlet.#optionsPanelOverlay.2', '#options')).toBe(false);
+    expect(focusIsInside('#routerOutlet.#itemGridTitles', '#itemGrid')).toBe(false);
+  });
+
+  it('still matches the real node when the overlay IS in the path', () => {
+    // `OptionsSlider` reparents itself into that overlay when opened, and its own id is
+    // `options` — so the overlay being present must not be read as the collision above.
+    expect(focusIsInside('#optionsPanelOverlay.#options.0', '#options')).toBe(true);
+  });
+
+  it('normalises a container id given without its `#`', () => {
+    // `dialogs.spec.js` asks for `jrDialog`; the real path is `#jrDialog.#optionList`.
+    // Rejecting the bare form would trade a silent over-match for a silent under-match.
+    expect(focusIsInside('#jrDialog.#optionList', 'jrDialog')).toBe(true);
+    expect(focusIsInside('#jrDialog.#okButton', '#jrDialog')).toBe(true);
+  });
+
+  it('matches the FOCUSED node itself, not only its ancestors', () => {
+    expect(focusIsInside('#routerOutlet.#viewTarget.#59354e77.#homeRows', '#homeRows')).toBe(true);
+  });
+
+  it('is false for a keyPath that was never read', () => {
+    // A failed `getFocusedNode` must not read as "focus is somewhere else" OR as a match.
+    for (const bad of [undefined, null, '', 0, {}])
+      expect(focusIsInside(bad, '#itemGrid')).toBe(false);
+  });
+});
+
+describe('waitFocusInside', () => {
+  beforeEach(() => {
+    getFocusedNode.mockReset().mockResolvedValue(null);
+    sendKeypress.mockReset();
+  });
+
+  it('resolves once focus is inside the container', async () => {
+    getFocusedNode.mockResolvedValue({ keyPath: '#routerOutlet.#viewTarget.#x.#itemGrid' });
+    await expect(waitFocusInside('#itemGrid', { timeout: 200, interval: 10 })).resolves.toEqual({
+      keyPath: '#routerOutlet.#viewTarget.#x.#itemGrid',
+    });
+  });
+
+  it('does not resolve on a container that merely prefixes the one asked for', async () => {
+    // The on-device consequence of the collision above, at the wait rather than the
+    // predicate: this must TIME OUT, not report the dialog open.
+    getFocusedNode.mockResolvedValue({ keyPath: '#routerOutlet.#optionsPanelOverlay.2' });
+    await expect(waitFocusInside('#options', { timeout: 60, interval: 10 })).rejects.toThrow(
+      /timed out waiting for focus/,
+    );
+  });
+
+  it("names the caller's label in the timeout, not the container", async () => {
+    // The label is the first thing read when a gate fails, and "grid options dialog" says
+    // what was being waited for where "focus inside #options" only says where it lives.
+    await expect(
+      waitFocusInside('#options', { timeout: 60, interval: 10, label: 'grid options dialog' }),
+    ).rejects.toThrow(/grid options dialog/);
+  });
+
+  it('falls back to naming the container when no label is given', async () => {
+    await expect(waitFocusInside('#itemGrid', { timeout: 60, interval: 10 })).rejects.toThrow(
+      /focus inside #itemGrid/,
+    );
+  });
+
+  it('passes an action through, so a swallowed press can still be re-sent', async () => {
+    // `navCellSweepExtras` and `focus.spec` both gate on focus ARRIVING after a Back that
+    // the router may have swallowed; routing them through this helper must not cost them
+    // the retry.
+    getFocusedNode.mockResolvedValue({ keyPath: '#routerOutlet.#viewTarget.#x.#extrasGrid' });
+    await waitFocusInside('#itemGrid', {
+      timeout: 80,
+      interval: 10,
+      action: resendIfSwallowed('back', '#extrasGrid'),
+    }).catch(() => {});
+    expect(sendKeypress).toHaveBeenCalledWith('back');
   });
 });
 

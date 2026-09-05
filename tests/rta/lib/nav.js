@@ -682,9 +682,10 @@ export async function navLibraryOptions(ctx) {
   // whose own `#options` (an OptionsSlider, hidden) would win a recursive id lookup and
   // read visible=false. Focus is unambiguous (one focused node), so it's the robust
   // signal that the active grid's options dialog opened.
-  await waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes('#options'), {
+  await waitFocusInside('#options', {
     label: 'grid options dialog',
     timeout: 8000,
+    interval: 500,
   });
   await sleep(800); // let the dialog's menus paint
 }
@@ -805,9 +806,10 @@ async function openChildDetailByRowType(tileType) {
   }
   await press(ecp.Key.Ok); // Select the first tile -> child ItemDetails
   // Focus moves from the parent's #extrasGrid into the CHILD detail's #buttons.
-  await waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes('#buttons'), {
+  await waitFocusInside('#buttons', {
     label: `${tileType} detail buttons`,
     timeout: 20000,
+    interval: 500,
   });
   await sleep(1500); // let the child detail's backdrop + content paint
 }
@@ -1008,8 +1010,10 @@ export async function startPlayback(ctx) {
   // focus actually lands inside the details button group (Play or Resume,
   // depending on watch state) before pressing OK, else the press lands too
   // early and playback never starts.
-  await waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes('#buttons'), {
+  await waitFocusInside('#buttons', {
     label: 'details play/resume button',
+    timeout: 15000,
+    interval: 500,
   });
   await press(ecp.Key.Ok);
 }
@@ -1525,7 +1529,7 @@ export async function navCellSweepExtras(ctx) {
   // for the swallow `resendIfSwallowed` documents — the router restores focus before it
   // dispatches NavigationEnd, and a Back that arrives in that gap simply vanishes.
   await press(ecp.Key.Back);
-  await waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes('#itemGrid'), {
+  await waitFocusInside('#itemGrid', {
     label: 'cellSweepExtras back on the grid',
     timeout: 20000,
     interval: 500,
