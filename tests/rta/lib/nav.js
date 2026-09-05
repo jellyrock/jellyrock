@@ -992,7 +992,7 @@ export async function navHomeReturnAfterDetails(ctx) {
  *
  * Search is here because its teardown is the most consequential of the three routed screens
  * and, until ADR 0029, the least exercised: `/search` was `keepAlive`, so a popped
- * the search view was suspended rather than closed and `onDestroy` never ran in production —
+ * search view was suspended rather than closed and `onDestroy` never ran in production —
  * including the part that releases the firmware's global voice route (only one node may hold
  * `voiceEnabled` at a time, so a leaked claim would deny it to the next screen that wants it).
  * `navSearch` already gates on rendered result rows, so the only thing added here is the exit.
