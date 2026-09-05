@@ -18,6 +18,7 @@ import nodePlugin from 'eslint-plugin-n';
 import prettierConfig from 'eslint-config-prettier';
 
 import rtaWaitJustified from './scripts/lint/eslint-rules/rta-wait-justified.js';
+import rtaSleepBudgeted from './scripts/lint/eslint-rules/rta-sleep-budgeted.js';
 
 export default [
   {
@@ -131,11 +132,24 @@ export default [
   //
   // `*.test.js` is excluded — steps.test.js calls `waitFor` against a mocked device to
   // test the wait itself, which is not a wait on real app state.
+  //
+  // The sibling rule in the same block — `sleep-budgeted` — covers the OTHER half of the
+  // same bar. `wait-justified` asks why a wait polls where the library offers an
+  // observer; `sleep-budgeted` asks why a wait is a fixed duration where the app offers a
+  // signal. Same scope and same exclusion, because a `sleep` in a `*.test.js` paces a
+  // mocked clock rather than a real device.
   {
     files: ['tests/rta/**/*.{js,mjs}', 'scripts/capture-screenshots.js'],
     ignores: ['tests/rta/**/*.test.js'],
-    plugins: { 'jellyrock-rta': { rules: { 'wait-justified': rtaWaitJustified } } },
-    rules: { 'jellyrock-rta/wait-justified': 'error' },
+    plugins: {
+      'jellyrock-rta': {
+        rules: { 'wait-justified': rtaWaitJustified, 'sleep-budgeted': rtaSleepBudgeted },
+      },
+    },
+    rules: {
+      'jellyrock-rta/wait-justified': 'error',
+      'jellyrock-rta/sleep-budgeted': 'error',
+    },
   },
 
   // Test files — Vitest globals are imported explicitly (see vitest.config.js

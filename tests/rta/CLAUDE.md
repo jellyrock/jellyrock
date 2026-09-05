@@ -165,6 +165,72 @@ The gate covers [`scripts/capture-screenshots.js`](../../scripts/capture-screens
 too: it imports the same `waitFor` and drives the same device, so a wait that hangs there
 burns a device run just the same.
 
+## Why the surviving sleeps are not arbitrary waits
+
+`roku-test-automation`'s README says arbitrary waiting *"is almost never needed"*, and
+[the north star](#-the-north-star-establish-the-state-that-makes-an-action-or-a-read-meaningful-before-doing-it)
+above says it harder: never paper over a flake with a fixed `sleep`, because the wait was
+not timing out — it was succeeding too early. So the same bar the waits carry applies
+here: every `sleep()` either has no signal available to gate on, or it is a defect.
+
+**Most of them are not waits at all.** Of **47** `sleep()` calls (derived from the AST on
+2026-09-05 — a grep says 46 and counts the primitive's own definition), **15 are poll
+ticks**: a `sleep` lexically inside a bounded loop that exits on its own predicate. The
+interval sets sampling cadence and nothing else, and raising or lowering it is a separate
+question this project puts out of scope. Worth stating plainly because it reads as a
+surprise: [`lib/steps.js`](lib/steps.js), the file that owns every wait primitive, contains
+**seven** `sleep()` calls and **zero** arbitrary waits.
+
+That leaves **32 bare** ones, and they fall in seven categories.
+
+| Category | n | Why no signal was available |
+|---|---|---|
+| Paint / texture settle | 11 | After a `waitFor` gate has already passed, waiting for PIXELS. The app's only load-completion signal is the `cellLoad*` counter family — and it is `#if perfTiming`, which [`scripts/harden-prod-manifest.js`](../../scripts/harden-prod-manifest.js) forces OFF in `build:prod`. These navs are shared with `screenshots:capture`, which runs exactly that build, so on the path they serve there is provably no field to read. |
+| Pre-action / pre-read settle | 8 | ⚠️ **The unjustified residue — see below.** |
+| Timer window | 5 | Out-waiting a period to prove a NON-EVENT. [`deeplink.spec.js`](specs/deeplink.spec.js) names it: *"Assert we never leave Home (a non-event → a bounded wait)."* Ungateable by construction — the only signal would be the very thing being disproven, and a dialog that must survive its own 5 s auto-hide cannot be gated on the timer under test. |
+| App lifecycle | 4 | [`lib/driver.js`](lib/driver.js)'s `bootMs` / `exitMs`. The channel is down or coming up, so ODC cannot answer at all — there is no device to read from until the app exists. |
+| Measurement window | 2 | The dwell IS the quantity being measured (a baseline phase, an extras-launch window). Gating it on a signal would change what is measured. |
+| Async teardown | 1 | `retainedAfter`'s docblock states it: the teardown the last Back press started is finished by no app field that reports it. |
+| Demo footage dwell | 1 | `hold(ms, label)` in [`demos/run.mjs`](demos/run.mjs) is a shot-list beat for the camera, not a wait on app state. Not a test. |
+
+### The eight that are NOT yet justified
+
+**Recorded as owed rather than argued away.** The pre-action and pre-read settles — a
+fixed wait before `sendText`, before sending input to a just-started player, before
+reading `buttonFocused` after a forced focus, before reading focus back after a dialog
+closes — are the shape the north star exists to catch. Each of them waits for a state that
+plausibly HAS a readable signal, which is exactly why they are the ones a conversion
+should be attempted on rather than the ones a category argument should cover.
+
+They are not converted here because a conversion changes harness behaviour and has to be
+proven on hardware. Until then they are counted, not excused: the budget below holds the
+number at 8 so it cannot quietly become 9.
+
+### The gate
+
+`jellyrock-rta/sleep-budgeted`
+([`scripts/lint/eslint-rules/rta-sleep-budgeted.js`](../../scripts/lint/eslint-rules/rta-sleep-budgeted.js))
+holds the bare-wait population to a declared per-file count, and a file with no entry has
+a budget of zero. Poll ticks prove themselves from syntax and are never counted.
+
+**Why a count rather than a per-site tag.** The sibling rule ratchets on the FIELD because
+"this field is not a pulse" is reusable — verify `#osd.visible` once and every wait on it
+inherits the check. An arbitrary wait has no such key: the argument is a property of the
+call site's purpose, and 11 of the 32 sites are anonymous spec arrows with no stable name
+to key on. The alternative was a `// sleep: <category>` tag on all 32, which is the shape
+[Phase 3 already rejected](#the-37-plain-field-waits-and-the-gate-that-keeps-them-honest)
+for the settle waits — annotations that say nothing a reader of the code needs.
+
+A count cannot say WHICH argument a site claims; the table above does that per category.
+What it does is make adding a thirty-third arbitrary wait a deliberate act with a second
+file to edit and a reviewer-visible diff — which is the whole failure being guarded, since
+a papering-over `sleep(2000)` and a legitimate paint settle are the same three tokens and
+review cannot tell them apart.
+
+**The match is exact, not a ceiling.** Removing a sleep is meant to fail the rule until
+the budget is lowered, so the table stays an inventory rather than drifting upward into
+permission. That includes emptying a file completely.
+
 ## Layout
 
 - `config.js` — `RTA_CONFIG` (demo server, hero movie, seek position, locales). Shared with the store screenshot generator.
@@ -180,6 +246,7 @@ burns a device run just the same.
 - **CI runs this suite only on the release-prep branch** ([`rta-functional-tests.yml`](../../.github/workflows/rta-functional-tests.yml)) — there is one physical device and a full pass is ~10–15 min, so it is not a per-PR gate. That makes the local run above the *only* feedback a PR gets: a regression you don't catch here surfaces at release, after N merged PRs, where bisecting it is much harder. See [`docs/dev/rta-tests.md`](../../docs/dev/rta-tests.md#when-ci-runs-it).
 - **Use `npm run test:rta:capture` (or `RTA_CAPTURE=1`) to view the GUI** when modifying or designing UI — it dumps `out/rta-captures/<screen>.png`. The OSD's video plane is black there (expected); the polished store images come from `screenshots:capture`.
 - **Every wait must land in a justified category — see [Why every wait polls](#why-every-wait-polls).** The harness polls where the library offers an observer, so each wait says why. `jellyrock-rta/wait-justified` fails `lint:js` on a `waitFor` that fits none of the four, and a new plain-field wait on an unverified keyPath is the case it fires for: read where the app writes that field, confirm the target state is not a one-shot pulse, then add it to `VERIFIED_SETTLE_KEYPATHS`. Never add a keyPath you have not checked — an unverified entry is worse than a red lint, because it looks like it was checked.
+- **A fixed `sleep` is never the fix for a flake — see [Why the surviving sleeps are not arbitrary waits](#why-the-surviving-sleeps-are-not-arbitrary-waits).** The wait was not timing out, it was succeeding too early, so gate on the state that makes the next step meaningful instead. `jellyrock-rta/sleep-budgeted` holds each file's bare-`sleep` count to a declared budget (a `sleep` inside a poll loop is a tick and is never counted), so a thirty-third arbitrary wait cannot land without someone editing the table and saying which category it falls in. **Removing one also fails the rule** until the budget is lowered — the table is an inventory, not a ceiling.
 - **`waitFor`/`waitFocused` throw on timeout — that IS the assertion.** Don't wrap them in `expect`. Use `expect` only for value checks (label text, focus subtype).
 - **Preconditions before actions and reads** — see [the north star](#-the-north-star-establish-the-state-that-makes-an-action-or-a-read-meaningful-before-doing-it) at the top of this file. It is the rule most worth internalizing before you touch a nav.
 - **A timeout must report what it SAW, so throw via `diagnosedError`, never a bare `new Error`.** `lib/diagnostics.js` attaches the state the device was actually in (active view + `loadState`, the app shell's `isLoading` / `isRemoteDisabled`, focused node, row counts, seeded server/user identity) and appends a record to the run's `failures.jsonl` that the run's `close()` folds into `run-meta.json` (see [`scripts/run-record.js`](../../scripts/run-record.js)). The capture runs only at the throw site, after a poll loop has given up — never inside a tick — so it costs nothing on the success path (measured on `.177`: median 21 ms, n=20). This applies to **timeouts**; a fail-fast that already names its cause (the ambiguous-library refusal in `nav.js`) can stay a plain throw.
