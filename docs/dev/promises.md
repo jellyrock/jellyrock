@@ -7,7 +7,7 @@ related-files:
   - components/JRGroup.bs
   - scripts/bsc-plugins/auto-abandon-promises.cjs
   - tests/source/unit/api/apiPromise.spec.bs
-last-reviewed: 2026-08-23
+last-reviewed: 2026-09-04
 ---
 
 # Promises How-To & Style Guide
@@ -176,8 +176,8 @@ pattern. Key points:
 
 ## Canonical examples (copy these)
 
-The three Phase-3 reference migrations, each verified on hardware. They cover the three real
-shapes you'll hit:
+The Phase-3 reference migrations, each verified on hardware. They cover the real shapes
+you'll hit:
 
 | # | Pattern | Where | What it shows |
 |---|---|---|---|
@@ -185,6 +185,8 @@ shapes you'll hit:
 | `3b` | **Render-thread `submitApiRequest`+`observeField` → promise** | [`ItemDetails.checkTrailerAvailability`](../../components/ItemDetails.bs) | Swaps a named-observer result node for `fetchAsync().then()`. Uses the **`context`** AA to drop a result that lands after the user navigated away (no closures in BS). |
 | `3c` | **Main-thread caller → render-thread promise via `callFunc`** | [`ItemDetails.toggleFavorite`](../../components/ItemDetails.bs), invoked from [`main.bs`](../../source/main.bs)'s button router | The favorite toggle moves off `main.bs`'s god-loop. `main.bs` (main thread) calls `group.callFunc("toggleFavorite")`; the method runs on the render thread where `fetchAsync` works. Exercises the **error contract** (revert button + toast when `res.ok` is false or on reject). |
 | `3d` | **A dependent SEQUENCE on the render thread** | [`UserSelect.startQuickConnect`](../../components/login/UserSelect.bs) | Three requests where each depends on the last (initiate → poll until approved → exchange the secret), driven by a `Timer` between the polls rather than a loop. Replaced a Task node that was `CreateObject`ed **per poll**. The classification of each poll is extracted to a pure module ([`source/utils/quickConnect.bs`](../../source/utils/quickConnect.bs)) so the decision table is unit-testable without a pool. |
+
+| `3e` | **Collapse a Task that fires REPEATEDLY, under user input** | [`SearchScreen.startHintsFetch`](../../components/search/SearchScreen.bs) | `3a` deletes a Task that ran once; this one ran on every keystroke. `SearchHintsTask` was `CreateObject`ed per debounce fire and each instance blocked a thread inside `fetchJson` for up to `API_WAIT_MS`, so concurrent threads scaled as typing-rate x latency — the shape epic #728's `&h29` came from, and invisible to `launchTask`'s watermark because it never went through it. What a repeated fetch needs beyond `3a` is a rate rule, and the one that survives a self-hosted audience is **single-flight**, not a debounce: at most one request outstanding, and the completion handler re-fires once if the query moved on. The rate self-limits to `min(typing rate, 1/round-trip)` with no constant to tune — a fast server approaches per-keystroke, a slow one settles at one request per trip and never queues. Guarded by the search phase in [`task-thread-peak.spec.js`](../../tests/rta/specs/task-thread-peak.spec.js) (9 live threads against a cap of 100). |
 
 > **The "two dependent calls" case, and why it stayed rare.** Dependent fetch *sequences* mostly
 > live inside the Task orchestrators (`QuickPlayTask`, `LoadItemsTask`, …) that decision #3

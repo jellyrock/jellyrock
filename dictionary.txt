@@ -187,6 +187,7 @@ datagram
 datestamp
 datestamped
 de-duplicates
+debounce
 decision-shape
 decrypting
 dedup
