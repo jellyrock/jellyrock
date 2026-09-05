@@ -153,7 +153,9 @@ harness throws through `diagnosedError`
 state the device was actually in.
 
 Both samples below are **real captured output** from forced failures on `.177`, not
-illustrations. A detail screen first:
+illustrations — and they are kept verbatim rather than edited, so note that they
+**predate `readErrors=`** (see [below](#a-failed-read-and-an-unchanged-field-are-not-the-same-timeout)),
+which now prints beside `actionErrors=` on every dump. A detail screen first:
 
 ```text
 nav timed out waiting for a detail row count that can never happen (last=3)
@@ -170,6 +172,35 @@ nav timed out waiting for a grid item count that can never happen (last=11)
         ↳ home=5 · keyPath="#itemGrid.content.getChildCount()" · last=11 · actionErrors=0
         ↳ server=https://demo.jellyfin.org/stable (id f0b33816…) user=4ed1b8b4…
 ```
+
+### A failed read and an unchanged field are not the same timeout
+
+`getVal` / `getActiveVal` swallow a failed read to `undefined`. That is **correct for a
+poll** — the loop retries, and a persistent miss ends in the diagnosed timeout above — but
+on its own it makes two very different failures print identically as `last=undefined`:
+
+- the app never set the field (a real app or nav problem), and
+- **the device stopped answering** (an ODC timeout — the client's default is 10 s and
+  nothing here overrides it — or a transport error).
+
+So the waits now **count** reads that did not complete, exactly as they already count a
+throwing `action`, and name them:
+
+```text
+… (last=undefined) — 12 read(s) did not complete; the device may have stopped answering
+```
+
+`readErrors=<n>` also rides in the `observed` payload, so a flake baseline aggregates the
+same number a human reads. The distinction is real on the wire rather than guessed: ODC
+answers `found: false` for a `keyPath` it resolved and did not find, and only *rejects* when
+the request itself failed — so an ordinary "not there yet" timeout still reports
+`readErrors=0`.
+
+**Why it exists:** [#785](https://github.com/jellyrock/jellyrock/issues/785) recorded four
+back-to-back suites degrading into *"`last=undefined` ODC reads in different specs each
+run"* and could not attribute them — the harness had thrown the evidence away. This does
+not explain that episode, and is not claimed to; it makes the next one answerable.
+The per-tick swallow is unchanged, so nothing on the success path moves.
 
 ### `loadState=—` on a detail screen is correct, not a broken capture
 

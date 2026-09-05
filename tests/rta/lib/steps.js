@@ -15,10 +15,36 @@ export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export const press = (key) => ecp.sendKeypress(key);
 export const hasChildren = (n) => typeof n === 'number' && n > 0;
 
+/**
+ * One single read, reporting WHY there is no value: `{ value, failed }`.
+ *
+ * `failed` is true only when the request itself did not complete — a transport error, or
+ * an ODC timeout (the client's default is 10 s, and nothing here overrides it). A keyPath
+ * the device answered about and did not find comes back `{ value: undefined, failed:
+ * false }`, because `processGetValueRequest` returns `found: false` for an unresolved
+ * keyPath and only errors on an unresolvable `base`. Those two are genuinely different on
+ * the wire, which is what makes this distinction reportable rather than guessed.
+ *
+ * Internal on purpose: the public readers below keep swallowing to `undefined`, which is
+ * the right contract for a poll. What this exists for is ATTRIBUTION at the timeout —
+ * see `waitFor`.
+ */
+async function readOnce(request) {
+  try {
+    const res = await odc.getValue(request);
+    return { value: res.found ? res.value : undefined, failed: false };
+  } catch {
+    return { value: undefined, failed: true };
+  }
+}
+
+const readScene = (keyPath) => readOnce({ base: 'scene', keyPath });
+const readActive = (keyPath) =>
+  readOnce({ base: 'global', keyPath: `activeRoutedView.${keyPath}` });
+
 /** Read a scene-rooted keyPath; returns the value or undefined if not present. */
 export async function getVal(keyPath) {
-  const res = await odc.getValue({ base: 'scene', keyPath }).catch(() => ({ found: false }));
-  return res.found ? res.value : undefined;
+  return (await readScene(keyPath)).value;
 }
 
 /**
@@ -32,11 +58,18 @@ export async function getVal(keyPath) {
  * reads of ids that recur across views — it holds whichever suspendMode a route carries.
  */
 export async function getActiveVal(keyPath) {
-  const res = await odc
-    .getValue({ base: 'global', keyPath: `activeRoutedView.${keyPath}` })
-    .catch(() => ({ found: false }));
-  return res.found ? res.value : undefined;
+  return (await readActive(keyPath)).value;
 }
+
+/**
+ * The attributing twin of each public reader, keyed BY the reader a caller passes as
+ * `read`. A custom reader is not in the map and simply gets no attribution — the wait
+ * behaves exactly as it did before.
+ */
+const ATTRIBUTING_READS = new Map([
+  [getVal, readScene],
+  [getActiveVal, readActive],
+]);
 
 /**
  * `getActiveVal` for MANY keyPaths in one device round trip. Returns an array
@@ -134,6 +167,15 @@ async function batchRead(keyPaths, toRequest) {
  * produce the same "timed out waiting for X" otherwise, and telling those apart
  * after the fact costs hours.
  *
+ * **A failing READ is counted the same way, and for the same reason.** `getVal` /
+ * `getActiveVal` swallow a transport failure to `undefined` — correct for a poll, since
+ * the loop retries — but it leaves a device that stopped answering indistinguishable
+ * from a field the app never set: both report `last=undefined`. That ambiguity is not
+ * hypothetical; it is what
+ * [#785](https://github.com/jellyrock/jellyrock/issues/785) recorded as
+ * *"`last=undefined` ODC reads in different specs each run"* and could not attribute.
+ * The per-tick swallow is unchanged, so nothing about the success path moves.
+ *
  * On timeout the throw carries a dump of what the device actually looked like
  * (see [`diagnostics.js`](diagnostics.js)) — the poll loop itself is untouched,
  * so this costs nothing on the success path.
@@ -146,15 +188,28 @@ export async function waitFor(
   const start = Date.now();
   let last;
   let actionErrors = 0;
+  let readErrors = 0;
+  const attributingRead = ATTRIBUTING_READS.get(read);
   while (Date.now() - start < timeout) {
     if (action) await action().catch(() => actionErrors++);
-    last = await read(keyPath);
+    if (attributingRead) {
+      const r = await attributingRead(keyPath);
+      if (r.failed) readErrors++;
+      last = r.value;
+    } else {
+      last = await read(keyPath);
+    }
     if (predicate(last)) return last;
     await sleep(interval);
   }
   throw await diagnosedError(
     `nav timed out waiting for ${label || keyPath} (last=${JSON.stringify(last)})` +
-      (actionErrors ? ` — ${actionErrors} action(s) threw; input may not have been delivered` : ''),
+      (actionErrors
+        ? ` — ${actionErrors} action(s) threw; input may not have been delivered`
+        : '') +
+      (readErrors
+        ? ` — ${readErrors} read(s) did not complete; the device may have stopped answering`
+        : ''),
     {
       kind: FAILURE_KINDS.WAIT_FOR_TIMEOUT,
       label: label || keyPath,
@@ -169,7 +224,7 @@ export async function waitFor(
       // `diagnosedError` follows for its own dump. It must not be able to replace the
       // failure with its own: a throwing or slow reader loses its contribution and the
       // timeout still reports.
-      observed: { keyPath, last, actionErrors, ...(await resolveObserved(observed)) },
+      observed: { keyPath, last, actionErrors, readErrors, ...(await resolveObserved(observed)) },
     },
   );
 }
@@ -198,21 +253,34 @@ export async function waitFocused(
   const start = Date.now();
   let last;
   let actionErrors = 0;
+  let readErrors = 0;
   while (Date.now() - start < timeout) {
     if (action) await action().catch(() => actionErrors++);
-    const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+    // Counted for the same reason `waitFor` counts its reads: a device that stopped
+    // answering and a focus that never arrived both leave `last=undefined@undefined`.
+    let f = null;
+    try {
+      f = await odc.getFocusedNode({ includeNode: true });
+    } catch {
+      readErrors++;
+    }
     last = `${f?.node?.subtype}@${f?.keyPath}`;
     if (f && predicate(f)) return f;
     await sleep(interval);
   }
   throw await diagnosedError(
     `nav timed out waiting for focus (${label || 'predicate'}); last=${last}` +
-      (actionErrors ? ` — ${actionErrors} action(s) threw; input may not have been delivered` : ''),
+      (actionErrors
+        ? ` — ${actionErrors} action(s) threw; input may not have been delivered`
+        : '') +
+      (readErrors
+        ? ` — ${readErrors} read(s) did not complete; the device may have stopped answering`
+        : ''),
     {
       kind: FAILURE_KINDS.WAIT_FOCUSED_TIMEOUT,
       label: label || 'predicate',
       waitedMs: Date.now() - start,
-      observed: { last, actionErrors },
+      observed: { last, actionErrors, readErrors },
     },
   );
 }

@@ -45,6 +45,7 @@ const {
   getActiveVals,
   getVals,
   waitFor,
+  waitFocused,
   resendIfSwallowed,
   resendUntilFocusInside,
   walkHomeToFirstRow,
@@ -141,6 +142,86 @@ describe('getActiveVals', () => {
   it('makes no device call at all for an empty list', async () => {
     await expect(getActiveVals([])).resolves.toEqual([]);
     expect(getValues).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Read-failure ATTRIBUTION in the waits.
+ *
+ * The single-read swallow stays (a poll retries; that contract is unchanged and is
+ * asserted below). What is gated here is that the timeout can still say WHICH of the two
+ * causes it hit, because `last=undefined` alone cannot: a device that stopped answering
+ * and a field the app never set produce byte-identical messages otherwise. That is the
+ * ambiguity #785 recorded and could not resolve after the fact.
+ *
+ * The distinction is real on the wire, not inferred: ODC answers `found: false` for a
+ * keyPath it resolved and did not find, and only REJECTS when the request itself failed.
+ * So these drive the two shapes separately and assert they are not conflated.
+ */
+describe('wait read-failure attribution', () => {
+  beforeEach(() => {
+    getValue.mockReset();
+  });
+
+  it('names failed reads in the timeout when the device stops answering', async () => {
+    getValue.mockRejectedValue(new Error('odc timeout'));
+    await expect(
+      waitFor('#a.loadState', (v) => v === 'loaded', { timeout: 120, interval: 10 }),
+    ).rejects.toThrow(/read\(s\) did not complete/);
+  });
+
+  it('does NOT count a found:false answer as a failed read', async () => {
+    // THE case that keeps the signal worth having. The device answered — the field is
+    // simply not there — so a timeout here must read as a real absence, not as an
+    // infrastructure fault. Conflating these would make the new clause fire on every
+    // ordinary "not there yet" timeout and mean nothing.
+    getValue.mockResolvedValue({ found: false });
+    const err = await waitFor('#a.loadState', (v) => v === 'loaded', {
+      timeout: 120,
+      interval: 10,
+    }).catch((e) => e);
+    expect(err.message).toMatch(/timed out waiting for/);
+    expect(err.message).not.toMatch(/read\(s\) did not complete/);
+    expect(err.message).toMatch(/readErrors=0/);
+  });
+
+  it('still swallows a failed read per tick, so a recovering wait passes', async () => {
+    // The swallow is the POINT of the single-read form and must survive: one dropped
+    // read cannot fail a wait the very next tick satisfies.
+    getValue
+      .mockRejectedValueOnce(new Error('odc timeout'))
+      .mockResolvedValue({ found: true, value: 'loaded' });
+    await expect(
+      waitFor('#a.loadState', (v) => v === 'loaded', { timeout: 500, interval: 10 }),
+    ).resolves.toBe('loaded');
+  });
+
+  it('carries readErrors in the observed payload, beside actionErrors', async () => {
+    // `observed` is what `diagnosedError` both renders into the message and hands to
+    // `recordFailure`, so a flake baseline aggregates the same number a human reads.
+    // Asserted through the rendered message because that is the shared surface.
+    // Both counters appear so the two causes stay separable rather than merged.
+    getValue.mockRejectedValue(new Error('odc timeout'));
+    const err = await waitFor('#a.loadState', (v) => v === 'loaded', {
+      timeout: 120,
+      interval: 10,
+    }).catch((e) => e);
+    expect(err.message).toMatch(/readErrors=[1-9]/);
+    expect(err.message).toMatch(/actionErrors=0/);
+  });
+
+  it('attributes a failed focus read in waitFocused too', async () => {
+    // Same defect, same fix, different reader: `last=undefined@undefined` is otherwise
+    // identical whether focus never arrived or the device went away. The capture at the
+    // throw site needs getFocusedNode to answer, so only the polled reads reject.
+    getFocusedNode
+      .mockReset()
+      .mockRejectedValueOnce(new Error('odc timeout'))
+      .mockRejectedValueOnce(new Error('odc timeout'))
+      .mockResolvedValue(null);
+    await expect(
+      waitFocused(() => true, { timeout: 60, interval: 10, label: 'anything' }),
+    ).rejects.toThrow(/read\(s\) did not complete/);
   });
 });
 
