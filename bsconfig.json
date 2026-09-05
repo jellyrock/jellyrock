@@ -22,7 +22,8 @@
     "./scripts/bsc-plugins/no-raw-run.cjs",
     "./scripts/bsc-plugins/no-task-fanout.cjs",
     "./scripts/bsc-plugins/no-hand-rolled-dialog.cjs",
-    "./scripts/bsc-plugins/callfunc-interface.cjs"
+    "./scripts/bsc-plugins/callfunc-interface.cjs",
+    "./scripts/bsc-plugins/button-row-bracket.cjs"
   ],
   "lintConfig": "bslint.json",
   "rokuLog": {
