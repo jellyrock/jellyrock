@@ -48,6 +48,7 @@ const {
   waitFocused,
   focusIsInside,
   waitFocusInside,
+  waitDialogClosed,
   resendIfSwallowed,
   resendUntilFocusInside,
   walkHomeToFirstRow,
@@ -343,6 +344,57 @@ describe('waitFocusInside', () => {
       action: resendIfSwallowed('back', '#extrasGrid'),
     }).catch(() => {});
     expect(sendKeypress).toHaveBeenCalledWith('back');
+  });
+});
+
+/**
+ * The shared dialog-dismiss wait, gated because it is now a SINGLE point of failure for
+ * ten call sites across two specs and a demo take. Before Phase 3b each of those spelled
+ * out its own `#jrDialog.id` / `=== undefined` pair, so a typo could only break one site;
+ * now a wrong keyPath or an inverted predicate breaks every dialog test at once, and it
+ * would present as ten unrelated timeouts rather than as one broken helper.
+ */
+describe('waitDialogClosed', () => {
+  beforeEach(() => {
+    getValue.mockReset();
+  });
+
+  it('resolves once the overlay has left the scene', async () => {
+    // ODC answers `found: false` for a keyPath it resolved and did not find, which is
+    // exactly what a removed overlay looks like on the wire.
+    getValue.mockResolvedValue({ found: false });
+    await expect(
+      waitDialogClosed('confirm dialog dismissed', { timeout: 200 }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('reads the scene-rooted overlay id, not an active-view-scoped one', async () => {
+    // The keyPath is the helper's whole contract. `#jrDialog` is a top-level overlay
+    // parented to the scene, not into the routed view, so a `getActiveVal` read would
+    // miss it and every dismiss would report as still-open.
+    getValue.mockResolvedValue({ found: false });
+    await waitDialogClosed('x', { timeout: 200 });
+    expect(getValue).toHaveBeenCalledWith(
+      expect.objectContaining({ base: 'scene', keyPath: '#jrDialog.id' }),
+    );
+  });
+
+  it('does NOT resolve while the dialog is still open', async () => {
+    // The inverse of the first case, and the one that matters: a predicate flipped to
+    // truthy would make all ten sites pass the instant the dialog OPENED.
+    getValue.mockResolvedValue({ found: true, value: 'jrDialog' });
+    await expect(waitDialogClosed('confirm dialog dismissed', { timeout: 60 })).rejects.toThrow(
+      /confirm dialog dismissed/,
+    );
+  });
+
+  it("honours the caller's timeout rather than its own default", async () => {
+    // Landmine from Phase 2, gated rather than remembered: routing sites onto a helper
+    // silently adopted ITS defaults and re-polled six of them every 300 ms. A default
+    // that quietly overrode the 60 ms asked for here would show up as ~1000 reads.
+    getValue.mockResolvedValue({ found: true, value: 'jrDialog' });
+    await waitDialogClosed('still open', { timeout: 60 }).catch(() => {});
+    expect(getValue.mock.calls.length).toBeLessThan(20);
   });
 });
 

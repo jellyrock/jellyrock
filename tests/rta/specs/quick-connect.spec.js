@@ -34,7 +34,15 @@ import { RTA_CONFIG } from '../config.js';
 import { authenticate, authorizeQuickConnect, quickConnectEnabled } from '../lib/jellyfin.js';
 import { seedUserSelect, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch, ecp, odc } from '../lib/driver.js';
-import { waitFor, waitHome, hasChildren, getVal, press, sleep } from '../lib/steps.js';
+import {
+  waitFor,
+  waitDialogClosed,
+  waitHome,
+  hasChildren,
+  getVal,
+  press,
+  sleep,
+} from '../lib/steps.js';
 import { captureRawUI } from '../capture.js';
 
 const CAPTURE = process.env.RTA_CAPTURE === '1';
@@ -161,10 +169,7 @@ it('cancel leaves the code dialog and returns to the user picker', async (testCt
   await openQuickConnectDialog();
 
   await press(ecp.Key.Back);
-  await waitFor('#jrDialog.id', (v) => v === undefined, {
-    label: 'quick connect dialog dismissed',
-    timeout: 10000,
-  });
+  await waitDialogClosed('quick connect dialog dismissed', { timeout: 10000 });
 
   // Still signed out, still on the picker — a cancel must not half-start a
   // session. Settle first: the dialog restores focus to its opener on close.

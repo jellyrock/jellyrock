@@ -77,10 +77,7 @@ async function confirmServerSwitch(ctx) {
   // Self-gate on the dialog actually being answered — the overlay removes itself from the scene —
   // then confirm it was SWITCH not Cancel: on Switch the stash survives (replays post-login); on
   // Cancel it's wiped.
-  await ctx.waitFor('#jrDialog.id', (v) => v === undefined, {
-    label: 'server-switch: change-server dialog dismissed',
-    timeout: 8000,
-  });
+  await ctx.waitDialogClosed('server-switch: change-server dialog dismissed', { timeout: 8000 });
   const stash = await ctx.odc
     .getValue({ base: 'global', keyPath: 'AuthManager.stashedDeepLink' })
     .catch(() => null);

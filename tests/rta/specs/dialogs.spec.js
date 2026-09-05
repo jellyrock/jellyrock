@@ -27,6 +27,7 @@ import { relaunch, hardRelaunch, ecp, odc } from '../lib/driver.js';
 import { navSeriesDetails, navMovieDetails } from '../lib/nav.js';
 import {
   waitFor,
+  waitDialogClosed,
   waitFocused,
   waitFocusInside,
   focusIsInside,
@@ -314,10 +315,7 @@ it('series watched button opens the standard confirm dialog; back cancels it', a
 
   // Back cancels: the overlay removes itself from the scene
   await press(ecp.Key.Back);
-  await waitFor('#jrDialog.id', (v) => v === undefined, {
-    label: 'confirm dialog dismissed',
-    timeout: 10000,
-  });
+  await waitDialogClosed('confirm dialog dismissed', { timeout: 10000 });
 
   // Focus is restored to the opener
   await sleep(500);
@@ -364,10 +362,7 @@ it('item description opens the overview overlay; back restores focus to it', asy
   if (CAPTURE) await captureRawUI('overviewDialog');
 
   await press(ecp.Key.Back);
-  await waitFor('#jrDialog.id', (v) => v === undefined, {
-    label: 'overview overlay dismissed',
-    timeout: 10000,
-  });
+  await waitDialogClosed('overview overlay dismissed', { timeout: 10000 });
 
   // returnFocusTo was passed explicitly as the FocusableOverview itself.
   await waitFocused((f) => f.node?.id === 'itemDescription', {
@@ -443,10 +438,7 @@ it('a scrolling overview overlay opens focused on the text, not on OK', async ()
   });
 
   await press(ecp.Key.Back);
-  await waitFor('#jrDialog.id', (v) => v === undefined, {
-    label: 'overview overlay dismissed',
-    timeout: 10000,
-  });
+  await waitDialogClosed('overview overlay dismissed', { timeout: 10000 });
 });
 
 // The playback-time pickers moved off SceneManager's shared returnData onto
@@ -504,10 +496,7 @@ it('osd video-source button opens the list dialog; back cancels it', async () =>
 
   // Back is the only exit, so it has to work from anywhere in the list.
   await press(ecp.Key.Back);
-  await waitFor('#jrDialog.id', (v) => v === undefined, {
-    label: 'Back dismissed the dialog',
-    timeout: 10000,
-  });
+  await waitDialogClosed('Back dismissed the dialog', { timeout: 10000 });
   await waitFocused((f) => f.node?.id === 'showVideoSourceMenu', {
     label: 'focus restored to the osd button',
     timeout: 8000,
@@ -586,10 +575,7 @@ it('osd info button opens the playback-info report; back dismisses it', async ()
   if (CAPTURE) await captureRawUI('playbackInfoDialog');
 
   await press(ecp.Key.Back);
-  await waitFor('#jrDialog.id', (v) => v === undefined, {
-    label: 'playback info dismissed',
-    timeout: 10000,
-  });
+  await waitDialogClosed('playback info dismissed', { timeout: 10000 });
 
   await stopPlayback();
 }, 240000);
@@ -656,10 +642,7 @@ it('a user-capped bitrate transcodes, and the report says which setting did it',
   expect(await getVal('#jrDialog.id'), 'the dialog must survive its own refresh').toBe('jrDialog');
 
   await press(ecp.Key.Back);
-  await waitFor('#jrDialog.id', (v) => v === undefined, {
-    label: 'playback info dismissed',
-    timeout: 10000,
-  });
+  await waitDialogClosed('playback info dismissed', { timeout: 10000 });
 
   await stopPlayback();
 }, 240000);
@@ -726,10 +709,7 @@ it('the playback report scrolls, hands focus to OK, and only closes from the but
   expect(await getVal('#jrDialog.id'), 'still open after the focusing press').toBe('jrDialog');
 
   await press(ecp.Key.Ok);
-  await waitFor('#jrDialog.id', (v) => v === undefined, {
-    label: 'OK from the button closed the dialog',
-    timeout: 10000,
-  });
+  await waitDialogClosed('OK from the button closed the dialog', { timeout: 10000 });
 
   await stopPlayback();
 }, 240000);
@@ -771,8 +751,7 @@ it('a dialog keeps focus when the osd auto-hides underneath it', async () => {
 
   // ...and Back still closes the dialog rather than leaving playback.
   await press(ecp.Key.Back);
-  await waitFor('#jrDialog.id', (v) => v === undefined, {
-    label: 'back closed the dialog after the osd auto-hide window',
+  await waitDialogClosed('back closed the dialog after the osd auto-hide window', {
     timeout: 10000,
   });
 

@@ -115,14 +115,15 @@ prove themselves; the rest are properties of the FIELD or of focus.
 | Category | n | Why a poll, not an observer |
 |---|---|---|
 | Function `keyPath` | 13 | ODC observes a **field**. `getChildCount()` / `subtype()` are calls, not fields, so the primitive cannot apply at all. |
-| Waits for absence | 10 | The node is gone. A departed node has no field left to observe. |
+| Waits for absence | 10 | The node is gone. A departed node has no field left to observe. All ten are dialog dismissals and route through `waitDialogClosed`, whose JSDoc carries this argument. |
 | `action:` retry loops | 11 | The per-tick re-press **is** the mechanism (see `resendIfSwallowed`). An observer would sit and watch for a key that never landed. |
 | Plain field settle | 37 | The primitive could apply; it is ruled out below. |
 | Focus containment (`waitFocusInside`) | 16 | ODC has no "observe global focus" primitive. Its request table (`RTA_OnDeviceComponent.brs`) offers `getFocusedNode` / `hasFocus` / `isInFocusChain` — all READS — and one observer, `onFieldChange`, which needs a node keyPath and a field name and so cannot express "wherever focus now is". |
 | Focus identity (`waitFocused`) | 15 | Same absence of a primitive, and focus is inherently terminal: it stays where it landed until the next key. There is no pulse to miss. |
 
-*(13 + 10 + 11 + 37 = 71 against 70 `waitFor` calls: `backToHome`'s wait is both a
-function keyPath and an `action:` loop.)*
+*(13 + 10 + 11 + 37 = 71 against 70 waits: `backToHome`'s wait is both a function keyPath
+and an `action:` loop. Those 70 waits are issued by **61** `waitFor` calls — the ten
+absence waits route through `waitDialogClosed`, which issues one on their behalf.)*
 
 ### The 37 plain-field waits, and the gate that keeps them honest
 

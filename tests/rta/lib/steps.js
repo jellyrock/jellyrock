@@ -439,6 +439,42 @@ export function resendUntilFocusInside(key, containerId) {
 }
 
 /**
+ * Wait until the shared dialog overlay has left the scene.
+ *
+ * Shared rather than copied per caller, the same reason `waitMediaPlaying` is: ten call
+ * sites across `dialogs.spec.js`, `quick-connect.spec.js` and a demo take carried a
+ * byte-identical `waitFor('#jrDialog.id', (v) => v === undefined, …)`, differing only in
+ * what they called it. Every dialog in the app closes by REMOVING itself from the scene,
+ * so "the overlay's id no longer resolves" is the one honest signal that a dismiss
+ * landed — and spelling that out per site invited each one to drift.
+ *
+ * **Why this polls rather than observing the field.** This is the "waits for absence"
+ * category (`tests/rta/CLAUDE.md` → *Why every wait polls*, and
+ * `rta-waits-poll-not-observe` in `docs/decisions.md`): `roku-test-automation`'s
+ * `onFieldChangeOnce` observes a field ON A NODE, and the whole point of this wait is
+ * that the node is gone. There is nothing left to attach an observer to, so the library's
+ * primitive cannot express it at all. That argument lives here, at the helper the ten
+ * sites now route through, because folding them in took their `waitFor` calls — and with
+ * them their individually-provable absence check — out of `jellyrock-rta/wait-justified`'s
+ * view. The gate still classifies the single `waitFor` below as ABS from its own syntax.
+ *
+ * `label` names the dismiss being verified ('confirm dialog dismissed'), not the node —
+ * it is the first thing read when this times out, and `#jrDialog` alone says nothing
+ * about which of the eleven dialogs failed to close.
+ *
+ * The default matches the cadence every existing spec site already used. Pass `timeout`
+ * explicitly anyway: a helper's default is not the default a converted call site had, and
+ * adopting one silently is exactly what cost `waitFocusInside` a site's 3 s of budget.
+ *
+ * @param {string} label what to call this dismiss in the timeout message and the record
+ * @param {object} [opts]
+ * @param {number} [opts.timeout] budget for the overlay to leave the scene
+ */
+export async function waitDialogClosed(label, { timeout = 10000 } = {}) {
+  return waitFor('#jrDialog.id', (v) => v === undefined, { label, timeout });
+}
+
+/**
  * Home is ready once HomeRows has rendered its content — but only once the app is PAST
  * its login flow, which is a separate question and has to be asked first.
  *
