@@ -94,6 +94,76 @@ is introduced by NAMING a node rather than by touching a test, so no test diff r
 reason to reach past it. Gated in [`lib/steps.test.js`](lib/steps.test.js) against keyPaths
 captured off `.178`, not invented ones.
 
+## Why every wait polls
+
+`roku-test-automation` ships a field OBSERVER (`onFieldChangeOnce`), and this harness
+polls instead — 101 times. That is a deviation from the library's documented practice, so
+the standing bar is that **every wait either follows that practice or says why it
+deviates**. "It works" is not a justification; "the library's primitive is wrong here
+because X" is.
+
+The failure being guarded is quiet by construction. **A poll can only miss a state that is
+a one-shot PULSE** — entered and left inside one interval. Such a wait does not fail
+loudly, it fails *rarely*, and the timeout blames whatever it was watching rather than the
+wait that sampled between frames. That is the symptom
+[#785](https://github.com/jellyrock/jellyrock/issues/785) recorded as unattributable, and
+it is why "it passes" was ruled out as evidence.
+
+Six categories carry the justifications. The first three are properties of the CALL and
+prove themselves; the rest are properties of the FIELD or of focus.
+
+| Category | n | Why a poll, not an observer |
+|---|---|---|
+| Function `keyPath` | 13 | ODC observes a **field**. `getChildCount()` / `subtype()` are calls, not fields, so the primitive cannot apply at all. |
+| Waits for absence | 10 | The node is gone. A departed node has no field left to observe. |
+| `action:` retry loops | 11 | The per-tick re-press **is** the mechanism (see `resendIfSwallowed`). An observer would sit and watch for a key that never landed. |
+| Plain field settle | 37 | The primitive could apply; it is ruled out below. |
+| Focus containment (`waitFocusInside`) | 16 | ODC has no "observe global focus" primitive. Its request table (`RTA_OnDeviceComponent.brs`) offers `getFocusedNode` / `hasFocus` / `isInFocusChain` — all READS — and one observer, `onFieldChange`, which needs a node keyPath and a field name and so cannot express "wherever focus now is". |
+| Focus identity (`waitFocused`) | 15 | Same absence of a primitive, and focus is inherently terminal: it stays where it landed until the next key. There is no pulse to miss. |
+
+*(13 + 10 + 11 + 37 = 71 against 70 `waitFor` calls: `backToHome`'s wait is both a
+function keyPath and an `action:` loop.)*
+
+### The 37 plain-field waits, and the gate that keeps them honest
+
+These are the ones an observer genuinely could serve, so they need the real argument.
+Every one was checked against the app source, and **no target state is a one-shot pulse**
+— each is either
+
+- **terminal**, held until the next user action (`#osd.visible`, `#jrDialog.sections`,
+  `#videoTitle.text`, the focus-index fields, …), or
+- **recurrent**, re-entered if a tick misses it. `state` is the only one: Roku's
+  `Video.state` re-enters `playing` after a mid-stream rebuffer, so it is *not* terminal,
+  but a tick that misses it gets another.
+
+Two were worth checking rather than assuming, because either could have been an animation
+a poll samples between frames, and neither is: `#buttonBorder.blendColor` is assigned
+directly on focus change ([`TextButton.bs`](../../components/ui/button/TextButton.bs)) with
+no interpolator, and `#scrollContent.translation` is likewise a direct assignment
+([`OverviewDialog.bs`](../../components/OverviewDialog.bs)).
+
+**The one real pulse in the suite is `loadState === 'skeleton'`**, and it is not waited for
+bare — `genre-skeleton.spec.js` widens the window first through the `rtaSkeletonHoldMs`
+hook ([`LoadItemsTask2.bs`](../../components/ItemGrid/LoadItemsTask2.bs), compiled in only
+under `ENABLE_RTA`). Widening the window in the app beats observing it from the harness,
+because it keeps one answer to "how do we wait" instead of two.
+
+**This is gated, not eyeballed.** `jellyrock-rta/wait-justified`
+([`scripts/lint/eslint-rules/rta-wait-justified.js`](../../scripts/lint/eslint-rules/rta-wait-justified.js))
+fails `lint:js` on a `waitFor` that lands in none of the four `waitFor` categories. The
+first three it proves from the syntax; "this field is not a pulse" it cannot, because that
+is a fact about how the APP writes the field. So it ratchets on the **field**, not the call
+site: a keyPath in `VERIFIED_SETTLE_KEYPATHS` inherits its check for free, and one that is
+not there trips the gate. Adding a sixth `#osd.visible` wait costs nothing; adding a wait
+on a field nobody has read the app source for is exactly when the verification is owed, and
+that is when it fires. A wait whose keyPath is a runtime value cannot be classified at all
+— its justification goes in the owning helper's JSDoc and the call site disables the rule
+with that reason.
+
+The gate covers [`scripts/capture-screenshots.js`](../../scripts/capture-screenshots.js)
+too: it imports the same `waitFor` and drives the same device, so a wait that hangs there
+burns a device run just the same.
+
 ## Layout
 
 - `config.js` — `RTA_CONFIG` (demo server, hero movie, seek position, locales). Shared with the store screenshot generator.
@@ -108,6 +178,7 @@ captured off `.178`, not invented ones.
 - **Run `npm run test:rta` to verify no RTA/nav regressions** after touching `tests/rta/`, `scripts/capture-screenshots.js`, or app navigation/screens. Needs hardware + `.env` (`ROKU_IP`/`ROKU_PASSWORD`); if no device, say so — don't claim a pass.
 - **CI runs this suite only on the release-prep branch** ([`rta-functional-tests.yml`](../../.github/workflows/rta-functional-tests.yml)) — there is one physical device and a full pass is ~10–15 min, so it is not a per-PR gate. That makes the local run above the *only* feedback a PR gets: a regression you don't catch here surfaces at release, after N merged PRs, where bisecting it is much harder. See [`docs/dev/rta-tests.md`](../../docs/dev/rta-tests.md#when-ci-runs-it).
 - **Use `npm run test:rta:capture` (or `RTA_CAPTURE=1`) to view the GUI** when modifying or designing UI — it dumps `out/rta-captures/<screen>.png`. The OSD's video plane is black there (expected); the polished store images come from `screenshots:capture`.
+- **Every wait must land in a justified category — see [Why every wait polls](#why-every-wait-polls).** The harness polls where the library offers an observer, so each wait says why. `jellyrock-rta/wait-justified` fails `lint:js` on a `waitFor` that fits none of the four, and a new plain-field wait on an unverified keyPath is the case it fires for: read where the app writes that field, confirm the target state is not a one-shot pulse, then add it to `VERIFIED_SETTLE_KEYPATHS`. Never add a keyPath you have not checked — an unverified entry is worse than a red lint, because it looks like it was checked.
 - **`waitFor`/`waitFocused` throw on timeout — that IS the assertion.** Don't wrap them in `expect`. Use `expect` only for value checks (label text, focus subtype).
 - **Preconditions before actions and reads** — see [the north star](#-the-north-star-establish-the-state-that-makes-an-action-or-a-read-meaningful-before-doing-it) at the top of this file. It is the rule most worth internalizing before you touch a nav.
 - **A timeout must report what it SAW, so throw via `diagnosedError`, never a bare `new Error`.** `lib/diagnostics.js` attaches the state the device was actually in (active view + `loadState`, the app shell's `isLoading` / `isRemoteDisabled`, focused node, row counts, seeded server/user identity) and appends a record to the run's `failures.jsonl` that the run's `close()` folds into `run-meta.json` (see [`scripts/run-record.js`](../../scripts/run-record.js)). The capture runs only at the throw site, after a poll loop has given up — never inside a tick — so it costs nothing on the success path (measured on `.177`: median 21 ms, n=20). This applies to **timeouts**; a fail-fast that already names its cause (the ambiguous-library refusal in `nav.js`) can stay a plain throw.

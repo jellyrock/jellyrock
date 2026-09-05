@@ -6,7 +6,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-08-24
+last-reviewed: 2026-09-05
 ---
 
 # Working in `scripts/`
@@ -31,7 +31,8 @@ See [`scripts/CLAUDE.md`](../../scripts/CLAUDE.md) for the canonical layout
 and module-system rule. Brief recap:
 
 - `bsc-plugins/` — BSC compiler plugins
-- `lint/` — validators (fail CI on bad input)
+- `lint/` — validators (fail CI on bad input); `lint/eslint-rules/` holds local ESLint
+  rules imported by [`eslint.config.js`](../../eslint.config.js) rather than run as CLIs
 - `generate/` — output emitters
 - `lib/` — shared CJS helpers
 - root — one-off tools (build, ropm, telemetry, changelog, test runner)

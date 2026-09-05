@@ -17,6 +17,8 @@ import js from '@eslint/js';
 import nodePlugin from 'eslint-plugin-n';
 import prettierConfig from 'eslint-config-prettier';
 
+import rtaWaitJustified from './scripts/lint/eslint-rules/rta-wait-justified.js';
+
 export default [
   {
     ignores: [
@@ -86,12 +88,18 @@ export default [
   // REGISTRY, not a spec, so the "spec throws are assertions, not timeouts" carve-out
   // that keeps `specs/` out does not cover it: an assertion that reads device state
   // and finds it wrong is exactly the case that needs the state dumped.
+  //
+  // `scripts/capture-screenshots.js` joined for the same reason `screens.js` did: it
+  // imports the same `waitFor` and drives the same device, so a wait that hangs there
+  // burns a device run and reports nothing attributable. It lives outside `tests/rta/`
+  // only because its OUTPUT is the store image set rather than a test result.
   {
     files: [
       'tests/rta/lib/nav.js',
       'tests/rta/lib/steps.js',
       'tests/rta/screens.js',
       'tests/rta/demos/**/*.{js,mjs}',
+      'scripts/capture-screenshots.js',
     ],
     rules: {
       'no-restricted-syntax': [
@@ -105,6 +113,29 @@ export default [
         },
       ],
     },
+  },
+
+  // RTA waits — every `waitFor` must fall in a justified category.
+  //
+  // The harness polls where `roku-test-automation` offers an observer
+  // (`onFieldChangeOnce`), which is a deviation from the library's documented practice.
+  // The project's bar is that each such wait carries a written justification; the four
+  // categories that supply them are in tests/rta/CLAUDE.md → "Why every wait polls".
+  // This rule fails a wait that lands in none of them, so the inventory cannot silently
+  // grow a member nobody reasoned about.
+  //
+  // Rationale, the field allowlist and how to extend it live in the rule module. Why a
+  // rule module rather than a `no-restricted-syntax` selector: expressing "matches none
+  // of four shapes" in esquery needs stacked `:not(:has(...))` plus a long alternation
+  // for the allowlist, which produces a line nobody can safely edit.
+  //
+  // `*.test.js` is excluded — steps.test.js calls `waitFor` against a mocked device to
+  // test the wait itself, which is not a wait on real app state.
+  {
+    files: ['tests/rta/**/*.{js,mjs}', 'scripts/capture-screenshots.js'],
+    ignores: ['tests/rta/**/*.test.js'],
+    plugins: { 'jellyrock-rta': { rules: { 'wait-justified': rtaWaitJustified } } },
+    rules: { 'jellyrock-rta/wait-justified': 'error' },
   },
 
   // Test files — Vitest globals are imported explicitly (see vitest.config.js

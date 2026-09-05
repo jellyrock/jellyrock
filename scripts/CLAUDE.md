@@ -8,6 +8,7 @@ Build, lint, and codegen tooling that runs outside the BSC project (Node.js, not
 scripts/
 ├── bsc-plugins/   BSC compiler plugins (loaded via bsconfig*.json)
 ├── lint/          Validators that fail CI on bad input
+│   └── eslint-rules/  Local ESLint rules, imported by eslint.config.js
 ├── generate/      Output emitters (write files; no validation role)
 ├── data/          Committed GENERATED datasets (never hand-edited)
 ├── lib/           Shared CJS helpers (require()'d by the above)

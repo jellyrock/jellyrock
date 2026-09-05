@@ -25,7 +25,7 @@ related-files:
   - scripts/flake-baseline.js
   - tests/rta/demos/run.mjs
   - .github/workflows/rta-functional-tests.yml
-last-reviewed: 2026-09-04
+last-reviewed: 2026-09-05
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -243,10 +243,14 @@ only be inferred. Both print **only when set**, so an ordinary failure stays as
 short as the samples above and the flag keeps its signal value.
 
 - **It costs nothing on the success path.** The capture runs *after* a poll loop
-  has given up, at the throw site, never inside a tick — deliberately, because
-  [#785](https://github.com/jellyrock/jellyrock/issues/785) may replace those loops
-  with `onFieldChangeOnce` and diagnostics must not entrench a shape it might
-  delete. At the boundary it is three round-trips issued in parallel
+  has given up, at the throw site, never inside a tick. That was originally hedged
+  against [#785](https://github.com/jellyrock/jellyrock/issues/785) replacing those
+  loops with `onFieldChangeOnce`; **that migration is not happening** — #785 is closed
+  and the observer was ruled out for the whole harness (see
+  [`tests/rta/CLAUDE.md` → Why every wait polls](../../tests/rta/CLAUDE.md#why-every-wait-polls)).
+  The placement is still right, now for its own reason rather than a hedge: keeping the
+  capture off the tick is what makes it free on the success path. At the boundary it is
+  three round-trips issued in parallel
   (`getFocusedNode` and `getMediaPlayer()` each have no batch form; everything else
   rides one `getValues` of 11 key paths).
   **Measured at TWO round-trips: median 21 ms, 18–30 ms typical** on `.177` (n=20 on
@@ -281,11 +285,14 @@ short as the samples above and the flag keeps its signal value.
     should not have a hole in it. It is still only a **tripwire** — `const e = new
     Error(…); throw e` slips it — so a green `lint:js` means "nobody wrote the
     obvious shape", not "no unattributable timeout exists".
-  - The gate covers `lib/nav.js`, `lib/steps.js` and **all of `demos/`**. The other
-    lib modules throw fail-fasts that already name their cause (a snapshot from the
-    wrong device, a seed that did not take), so gating them would buy four disable
-    comments and no signal. **A new lib file that grows a wait belongs in that
-    glob** — adding it is one reviewable line.
+  - The gate covers `lib/nav.js`, `lib/steps.js`, `screens.js`, **all of `demos/`**
+    and `scripts/capture-screenshots.js`. The other lib modules throw fail-fasts that
+    already name their cause (a snapshot from the wrong device, a seed that did not
+    take), so gating them would buy four disable comments and no signal. **A new lib
+    file that grows a wait belongs in that glob** — adding it is one reviewable line.
+    `capture-screenshots.js` is in it because it imports the same `waitFor` and drives
+    the same device, so a wait that hangs there burns a device run identically; it
+    lives outside `tests/rta/` only because its output is the store image set.
   - `demos/` is in the glob on evidence, not symmetry: while it was outside, it
     accumulated two unconverted waits — the runner's own playback timeout and a
     take's 15 s dialog poll. It is also the directory that grows by adding
@@ -302,6 +309,18 @@ short as the samples above and the flag keeps its signal value.
     `waitMediaPlaying` lives in `lib/steps.js` and is shared by `deeplink.spec.js`
     and the demo runner, because "media player never started" cannot otherwise
     distinguish a stream that failed to open from a cast the app never routed.
+- **A new WAIT must land in a justified category**, and that is gated too. The harness
+  polls where `roku-test-automation` offers `onFieldChangeOnce`, so each wait says why
+  it deviates; `jellyrock-rta/wait-justified`
+  ([`scripts/lint/eslint-rules/rta-wait-justified.js`](../../scripts/lint/eslint-rules/rta-wait-justified.js))
+  fails `lint:js` on a `waitFor` that fits none of them. Three categories it proves from
+  the call's syntax (a function `keyPath`, a test for absence, an `action:` retry loop);
+  the fourth — a plain field settle — it cannot, because "this field is not a one-shot
+  pulse" is a fact about how the APP writes it. So it ratchets on the FIELD: a `keyPath` in
+  `VERIFIED_SETTLE_KEYPATHS` inherits its check, and one that is not there trips the gate
+  at exactly the moment the verification is owed. The categories and the argument behind
+  each are in
+  [`tests/rta/CLAUDE.md` → Why every wait polls](../../tests/rta/CLAUDE.md#why-every-wait-polls).
 - **Register the `kind` first.** It is the key a flake baseline aggregates by, so it
   comes from the frozen `FAILURE_KINDS` set in `diagnostics.js`, never an inline
   string. An unregistered slug is recorded as-is and called out in the run summary

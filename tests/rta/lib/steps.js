@@ -759,6 +759,11 @@ export async function scrollFocus({
   // their retained value (or as undefined) until the list holds focus, and a burst sent at
   // that moment goes to whatever does. This is `waitFocusInside`'s rule applied to the field
   // the walk actually reads — a caller that established focus pays one read for it.
+  // The keyPath is a runtime value, so `wait-justified` cannot classify it here. Every
+  // caller passes `itemFocused` or `rowItemFocused`, which RETAIN their last value rather
+  // than pulsing — the property the comment above depends on, and the one
+  // `waitFocusInside` exists to guard.
+  // eslint-disable-next-line jellyrock-rta/wait-justified -- justified in the comment above
   const from = await waitFor(keyPath, (v) => typeof select(v) === 'number', {
     read,
     timeout: 12000,
