@@ -81,6 +81,15 @@
             drawFocusFeedback="false" />
         </Group>
 
+        <!-- Loading indicator for the results column, in place of the rows.
+             Sized in init(): 64px, chosen the way every other Spinner in the app
+             is — for legibility in ITS region, not from a ratio. The column is
+             1120x486, so the scene-level 125px reads as content rather than as
+             a wait, and skeleton's 48px is tuned for one recycled cell. Nothing
+             in the app derives a spinner size from its container: skeleton draws
+             the same 48px in grid cells and row cells of different heights. -->
+        <Spinner id="resultsSpinner" visible="false" />
+
         <!-- Empty / status line, shown in place of the results list. Covers
              both real emptiness and the several server states that are
              indistinguishable from it (no provider plugin, missing provider

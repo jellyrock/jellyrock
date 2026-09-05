@@ -43,6 +43,7 @@ sub init()
   m.resultsHeading = m.top.findNode("resultsHeading")
   m.resultsList = m.top.findNode("resultsList")
   m.statusLabel = m.top.findNode("statusLabel")
+  m.resultsSpinner = m.top.findNode("resultsSpinner")
   m.panelTitle = m.top.findNode("panelTitle")
   m.existingHeading = m.top.findNode("existingHeading")
   m.downloadedHeading = m.top.findNode("downloadedHeading")
@@ -96,6 +97,21 @@ sub init()
   ' position that bar itself, copying JRTab's arithmetic; the copy was wrong at
   ' this button's padding, which is why the geometry now lives in one component.
   m.perfectMatchButton.text = translate(translationKeys.LabelPerfectMatchesOnly)
+
+  ' Centre the 64px spinner in the results list's own rect — the area whose
+  ' content it stands in for — not in the panel. The list starts below the column
+  ' heading and runs to the bottom of the clipped panel. The 96 is the panel's
+  ' left margin, hard-coded in the XML for resultsGroup and statusLabel too;
+  ' XML cannot read a BrighterScript constant, so there is nothing to share.
+  spinnerSize = 64
+  listTop = subtitleLayout.COLUMNS_Y + subtitleLayout.COLUMN_HEADING_HEIGHT
+  listHeight = subtitleLayout.PANEL_CONTENT_HEIGHT - listTop
+  m.resultsSpinner.poster.width = spinnerSize
+  m.resultsSpinner.poster.height = spinnerSize
+  m.resultsSpinner.translation = [
+    96 + (subtitleLayout.RESULTS_WIDTH - spinnerSize) / 2,
+    listTop + (listHeight - spinnerSize) / 2
+  ]
 
   ' Nothing has been searched yet, so the results list is not a focus target.
   ' A MarkupList is visible by default, so without this DOWN on first open moves
@@ -171,6 +187,14 @@ sub openPanel()
   ' this is a no-op and applyLanguageFromCultures() asks again when it lands.
   maybeAutoSearch()
 
+  ' The panel is committed to searching as soon as it has a language, so the
+  ' column shows the wait from the moment it opens rather than sitting blank
+  ' through the cultures round-trip. maybeAutoSearch() has already raised the
+  ' spinner if it started a search; this covers the case where it could not yet.
+  if m.allResults.count() = 0 and not isValidAndNotEmpty(m.selectedLanguageCode)
+    showResultsSpinner()
+  end if
+
   m.panelSlideReverse = false
   m.top.findNode("panelSlide").reverse = false
   m.top.findNode("panelTint").reverse = false
@@ -191,6 +215,35 @@ sub maybeAutoSearch()
   if remoteSubtitles.shouldAutoSearch(m.top.isOpen, m.allResults.count(), m.selectedLanguageCode, m.searchInFlight)
     runSearch()
   end if
+end sub
+
+' showResultsSpinner / hideResultsSpinner: the results column's wait state.
+'
+' A LOCAL spinner, deliberately not the scene-level startLoadingSpinner(). That
+' one is full-screen and disables the remote by default, and this wait is a
+' provider round-trip of several seconds: it would cover the "On this item"
+' column — which has content worth reading meanwhile — and take away the Back
+' that closes the panel. The scene spinner belongs to routed screens loading
+' their whole content; this is one column of one panel.
+sub showResultsSpinner()
+  if m.resultsSpinner.visible then return
+  setStatus("")
+  m.resultsSpinner.visible = true
+  m.resultsSpinner.control = "start"
+end sub
+
+sub hideResultsSpinner()
+  if not m.resultsSpinner.visible then return
+  m.resultsSpinner.visible = false
+  m.resultsSpinner.control = "stop"
+end sub
+
+' showCannotSearch: a terminal state where no search is coming, so the wait
+' indicator would be a lie. Text is right here and a spinner is not: nothing is
+' in flight and nothing will start on its own.
+sub showCannotSearch(message as string)
+  hideResultsSpinner()
+  setStatus(message)
 end sub
 
 ' onPanelAnimeStateChanged: Stop drawing once the outbound slide has finished.
@@ -258,6 +311,11 @@ sub ensureCulturesLoaded()
     if ctx.serverUrl <> m.global.server.url then return
     if not res.ok
       m.log.warn("cultures fetch failed", res.statusCode)
+      ' Only when nothing else got us a language — a manual pick before this
+      ' landed means the panel is working and this reply is irrelevant.
+      if not isValidAndNotEmpty(m.selectedLanguageCode)
+        showCannotSearch(translate(translationKeys.MessageSubtitleLanguagesUnavailable))
+      end if
       return
     end if
     m.cultures = res.json
@@ -267,6 +325,9 @@ sub ensureCulturesLoaded()
     ' Not fatal: the language button keeps whatever it already had, and the
     ' next open retries because m.cultures stays invalid.
     m.log.warn("cultures fetch error", err.reason, "server", ctx.serverUrl)
+    if not isValidAndNotEmpty(m.selectedLanguageCode)
+      showCannotSearch(translate(translationKeys.MessageSubtitleLanguagesUnavailable))
+    end if
   end sub)
 end sub
 
@@ -288,6 +349,14 @@ sub applyLanguageFromCultures()
       end if
     end if
   end for
+
+  ' The list loaded but the user's preference is not in it, so no language will
+  ' ever resolve on its own and the auto-search can never fire. The picker DOES
+  ' work here, so this is recoverable — point at the control that recovers it
+  ' rather than leaving the column waiting on something that is not coming.
+  if m.top.isOpen
+    showCannotSearch(translate(translationKeys.LabelChooseSubtitleLanguage))
+  end if
 end sub
 
 sub setSelectedLanguage(code as string)
@@ -351,7 +420,7 @@ sub runSearch()
   ' replacing. Clearing content as well as hiding also resets the scroll offset,
   ' so the new results always arrive at the top.
   clearResults()
-  setStatus(translate(translationKeys.LabelSearchNow))
+  showResultsSpinner()
   m.searchButton.isEnabled = false
 
   ' isPerfectMatch is deliberately NOT sent to the server. The Open Subtitles
@@ -412,6 +481,7 @@ end sub
 ' in the same sample, so sorting by it would be close to sorting by noise.
 sub renderResults(results as object)
   m.results = results
+  hideResultsSpinner()
 
   ' Provider and format earn a place on each row only if they actually vary —
   ' a single-provider install repeats the same two values on every row.
