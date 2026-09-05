@@ -294,6 +294,25 @@ sub seedDefaultLanguage()
   if not isValidAndNotEmpty(preferred) then preferred = "eng"
 
   m.preferredThreeLetter = LCase(preferred)
+
+  ' Label the button NOW, from the preference itself, instead of leaving it blank
+  ' until /Localization/Cultures answers. Every other button in this row gets its
+  ' text in init(); this one was the only control that rendered as an empty 420px
+  ' box with a lone chevron for the whole round-trip.
+  '
+  ' This is not an approximation of the eventual label — it is the SAME
+  ' computation. cultureOptions() labels each entry with localizedLanguageName(),
+  ' which for a non-regional culture returns resolveLanguageName() of that
+  ' culture's THREE-letter code, and the preference we hold here is that same
+  ' three-letter code. So the string does not change when the list lands.
+  '
+  ' It can change in one case, by design: if the preference first matches a
+  ' REGIONAL culture (pt-br, zh-tw, es-419), localizedLanguageName() keeps the
+  ' server's DisplayName so the region is not lost, and that more specific name
+  ' replaces this one. Refining to the more precise value is the right direction.
+  seededLabel = resolveLanguageName(m.preferredThreeLetter)
+  if isValidAndNotEmpty(seededLabel) then m.languageButton.text = seededLabel
+
   applyLanguageFromCultures()
 end sub
 

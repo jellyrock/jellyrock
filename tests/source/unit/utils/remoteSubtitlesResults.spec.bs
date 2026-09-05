@@ -115,6 +115,38 @@ namespace tests
       m.assertEqual(options[1].nativeName, "Portuguese (Portugal)")
     end function
 
+    @it("labels a non-regional culture with exactly resolveLanguageName() of its 3-letter code")
+    function _()
+      ' SubtitlePanel seeds the language BUTTON from the user's stored
+      ' three-letter preference before the culture list has loaded, so the button
+      ' is never an empty box during the round-trip. That seed is only safe while
+      ' this equality holds — otherwise the label would visibly change to a
+      ' different string a second after the panel opens.
+      cultures = [{
+        DisplayName: "German",
+        TwoLetterISOLanguageName: "de",
+        ThreeLetterISOLanguageName: "deu"
+      }]
+      options = remoteSubtitles.cultureOptions(cultures)
+      m.assertEqual(options[0].nativeName, resolveLanguageName("deu"))
+    end function
+
+    @it("REGIONAL cultures are the documented exception to that equality")
+    function _()
+      ' Here the seeded label and the final label legitimately differ: the seed
+      ' says "Portuguese" and the list says "Portuguese (Brazil)". Refining to
+      ' the more specific name is the wanted direction, and it is why the panel
+      ' seeds a label rather than a selected code.
+      cultures = [{
+        DisplayName: "Portuguese (Brazil)",
+        TwoLetterISOLanguageName: "pt-br",
+        ThreeLetterISOLanguageName: "por"
+      }]
+      options = remoteSubtitles.cultureOptions(cultures)
+      m.assertNotEqual(options[0].nativeName, resolveLanguageName("por"))
+      m.assertEqual(options[0].nativeName, "Portuguese (Brazil)")
+    end function
+
     @it("skips cultures with no two-letter code")
     function _()
       cultures = [{ DisplayName: "Nothing", ThreeLetterISOLanguageName: "xxx" }]
