@@ -182,6 +182,15 @@ namespace subtitleLayout
   ' still scrolls, so nothing becomes unreachable; it is only the number visible
   ' at rest that is being rationed.
   '
+  ' ⚠️ THAT LAST SENTENCE IS A CLAIM ON THE PANEL, NOT A PROPERTY OF THIS
+  ' FUNCTION, and it was false for two months. Rationing is only honest while
+  ' BOTH sections can take focus, because a MarkupList that cannot be focused
+  ' cannot be scrolled — and the built-in section was deliberately not a focus
+  ' stop, so on a 3-downloaded/8-embedded item four tracks were simply
+  ' unreachable. SubtitlePanel.canFocusDownloaded/canFocusEmbedded now gate on
+  ' rows alone for exactly this reason. Re-narrow either of them and this
+  ' function silently starts hiding content again.
+  '
   ' Returning zero for a section means it has no content, NOT that it was
   ' squeezed out: a section with content always keeps at least one row.
   '

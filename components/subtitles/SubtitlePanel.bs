@@ -120,8 +120,9 @@ sub init()
   m.resultsList.visible = false
 
   m.resultsList.observeField("itemSelected", "onResultSelected")
-  ' Only the downloaded list is wired: a built-in track has no action, which is
-  ' the same reason it is not a focus stop.
+  ' Only the downloaded list is wired. The embedded list IS focusable — it has to
+  ' be, or its surplus rows cannot be scrolled to — but focus there buys the right
+  ' to read a track, not to act on one, so OK on it resolves to nothing.
   m.downloadedList.observeField("itemSelected", "onExistingSelected")
 
   ' Poll timer for confirming a download. One timer reused across attempts; the
@@ -768,7 +769,10 @@ function placeSection(heading as object, list as object, rows as integer, rowHei
 
   list.translation = [0, y]
   ' A section trimmed to fit still SCROLLS to the rest of its content, so
-  ' rationing visible rows never makes a track unreachable.
+  ' rationing visible rows never makes a track unreachable — which holds only
+  ' because both sections are focus targets (canFocusDownloaded /
+  ' canFocusEmbedded). It did not hold while the built-in section was
+  ' unfocusable, and this comment asserted it anyway.
   list.numRows = rows
   list.visible = true
   return y + (rows * rowHeight)
@@ -1013,7 +1017,7 @@ sub refreshAfterDelete(name as string)
 
     ' Back to the list only if it still has something left to act on.
     if canFocusDownloaded()
-      m.focusTarget = "existing"
+      m.focusTarget = "downloaded"
       applyFocus()
     end if
   end sub).catch(sub(err as object, ctx as object)
@@ -1051,24 +1055,39 @@ function hasRows(list as object) as boolean
   return list.content.getChildCount() > 0
 end function
 
-' canFocusDownloaded: Whether the downloaded list is worth landing on.
+' canFocusDownloaded / canFocusEmbedded: Whether a section is worth landing on.
 '
-' Rows AND permission, because delete is the only thing OK does there. Without
-' the permission half, a non-admin gets a focus stop whose every press is a
-' silent no-op — the same dead travel that keeps built-in tracks unfocusable,
-' and the same reason their list is not a stop either. This is also the single
-' source that decides the row's icon (via renderExistingList), so a row can
-' never advertise an action the panel will not perform.
+' ROWS ALONE, and deliberately not permission or actionability. Both earlier
+' rules — the downloaded list requiring canDelete, the embedded list never being
+' a stop at all — were justified as avoiding "dead travel" to a row whose OK does
+' nothing. That reasoning missed that SCROLLING is the travel's purpose whenever
+' a section holds more rows than it can show: sectionRowCounts() rations visible
+' rows on the stated promise that "a section trimmed to fit still SCROLLS to the
+' rest of its content", and a list that cannot take focus cannot scroll, so the
+' promise was false and the surplus rows were simply unreachable.
+'
+' Measured against the real constants (486px column, 45px built-in row, 72px
+' downloaded row): a 3-downloaded/8-embedded item showed 4 built-in tracks and
+' hid 4 with no way to reach them. The permission half had the same shape for a
+' non-admin, who could not focus the downloaded list at all.
+'
+' What actionability still governs is what OK DOES — see onExistingSelected,
+' which is wired only to the downloaded list — and whether a row draws the delete
+' icon, which renderExistingList still resolves from canDelete. A row therefore
+' still never advertises an action the panel will not perform; it is only the
+' right to LOOK at it that is no longer rationed.
 function canFocusDownloaded() as boolean
-  return m.top.canDelete and hasRows(m.downloadedList)
+  return hasRows(m.downloadedList)
+end function
+
+function canFocusEmbedded() as boolean
+  return hasRows(m.embeddedList)
 end function
 
 sub applyFocus()
   if m.focusTarget = "results" and not hasRows(m.resultsList) then m.focusTarget = "search"
-  ' "existing" means the DOWNLOADED list specifically. Built-in tracks cannot be
-  ' deleted or otherwise acted on, so their list is never a focus stop — landing
-  ' there would be dead travel with nothing to do at the end of it.
-  if m.focusTarget = "existing" and not canFocusDownloaded() then m.focusTarget = "search"
+  if m.focusTarget = "downloaded" and not canFocusDownloaded() then m.focusTarget = "search"
+  if m.focusTarget = "embedded" and not canFocusEmbedded() then m.focusTarget = "search"
 
   if m.focusTarget = "language"
     m.languageButton.setFocus(true)
@@ -1076,18 +1095,34 @@ sub applyFocus()
     m.perfectMatchButton.setFocus(true)
   else if m.focusTarget = "results"
     m.resultsList.setFocus(true)
-  else if m.focusTarget = "existing"
+  else if m.focusTarget = "downloaded"
     m.downloadedList.setFocus(true)
+  else if m.focusTarget = "embedded"
+    m.embeddedList.setFocus(true)
   else
     m.searchButton.setFocus(true)
   end if
 end sub
 
+' firstExistingTarget: Whichever section of the "on this item" column can be
+' landed on first, or "" when neither can.
+'
+' Both callers that ENTER the column (RIGHT from the results, DOWN from the
+' header) want the same answer, and asking it in one place is what stops the two
+' drifting apart when a section is empty.
+function firstExistingTarget() as string
+  if canFocusDownloaded() then return "downloaded"
+  if canFocusEmbedded() then return "embedded"
+  return ""
+end function
+
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
   if not m.top.isOpen then return false
 
-  ' The language overlay owns every key while it is up, except BACK.
+  ' The language overlay owns every key while it is up, except BACK. Anything
+  ' the picker itself declines stops here rather than bubbling — see the trap at
+  ' the bottom of this function.
   if m.languageOverlay.visible
     if key = "back"
       m.languageOverlay.visible = false
@@ -1095,7 +1130,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       applyFocus()
       return true
     end if
-    return false
+    return true
   end if
 
   if key = "back"
@@ -1124,9 +1159,11 @@ function onKeyEvent(key as string, press as boolean) as boolean
       togglePerfectMatch()
       return true
     end if
-    ' Both lists raise itemSelected themselves, handled by onResultSelected /
-    ' onExistingSelected. Nothing else in the panel answers OK.
-    return false
+    ' The results and downloaded lists raise itemSelected themselves, handled by
+    ' onResultSelected / onExistingSelected. Nothing else in the panel answers OK
+    ' — including a built-in track, which is focusable only so it can be scrolled
+    ' to. Consumed rather than bubbled, for the reason at the end of this function.
+    return true
   end if
 
   if key = "right"
@@ -1140,9 +1177,12 @@ function onKeyEvent(key as string, press as boolean) as boolean
       applyFocus()
       return true
     end if
-    if m.resultsList.hasFocus() and canFocusDownloaded()
-      m.focusTarget = "existing"
-      applyFocus()
+    if m.resultsList.hasFocus()
+      target = firstExistingTarget()
+      if target <> ""
+        m.focusTarget = target
+        applyFocus()
+      end if
       return true
     end if
     return true
@@ -1159,7 +1199,9 @@ function onKeyEvent(key as string, press as boolean) as boolean
       applyFocus()
       return true
     end if
-    if m.downloadedList.hasFocus()
+    ' Either section of the right-hand column returns to the results, so the
+    ' column behaves as one destination however the user entered it.
+    if m.downloadedList.hasFocus() or m.embeddedList.hasFocus()
       m.focusTarget = "results"
       applyFocus()
       return true
@@ -1174,14 +1216,24 @@ function onKeyEvent(key as string, press as boolean) as boolean
         applyFocus()
         return true
       end if
-      if canFocusDownloaded()
-        m.focusTarget = "existing"
+      target = firstExistingTarget()
+      if target <> ""
+        m.focusTarget = target
         applyFocus()
-        return true
       end if
       return true
     end if
-    return false
+    ' The two "on this item" sections are separate lists stacked in one column,
+    ' so the seam between them is ours to bridge: the downloaded list declines
+    ' DOWN at its last row and the built-in tracks below it would otherwise be
+    ' unreachable. This is the other half of the fix that made them focusable —
+    ' being a focus target is no use without a key that reaches it.
+    if m.downloadedList.hasFocus() and atLastRow(m.downloadedList) and canFocusEmbedded()
+      m.focusTarget = "embedded"
+      applyFocus()
+      return true
+    end if
+    return true
   end if
 
   if key = "up"
@@ -1197,10 +1249,39 @@ function onKeyEvent(key as string, press as boolean) as boolean
       applyFocus()
       return true
     end if
-    return false
+    ' Back up the same seam DOWN crossed, to the section above if there is one.
+    if m.embeddedList.hasFocus() and m.embeddedList.itemFocused = 0
+      m.focusTarget = "search"
+      if canFocusDownloaded() then m.focusTarget = "downloaded"
+      applyFocus()
+      return true
+    end if
+    return true
   end if
 
-  return false
+  ' NOTHING ELSE ESCAPES. The panel is modal for as long as it is open, so every
+  ' remaining press stops here rather than bubbling to ItemDetails behind it.
+  '
+  ' Returning false instead let UP off the header walk out of the panel entirely
+  ' and land on ItemDetails' own description — reported from device. ItemDetails
+  ' carries a patch for one such route (a DOWN guard on m.subtitlePanelOpen), but
+  ' enumerating exits from the OTHER side is the wrong layer: it fixes the routes
+  ' someone happened to try and leaves the rest. A modal panel owning its own keys
+  ' has no routes to enumerate.
+  '
+  ' Safe for the lists, which are FOCUSED and therefore see every key before this
+  ' function does — anything reaching here is something nothing inside the panel
+  ' wanted.
+  return true
+end function
+
+' atLastRow: Whether a list's focus is on its final row.
+'
+' itemFocused is an index into the CONTENT, not into the visible window, so this
+' is the true end of the section rather than the bottom of what is on screen.
+function atLastRow(list as object) as boolean
+  if not isValid(list) or not isValid(list.content) then return false
+  return list.itemFocused >= list.content.getChildCount() - 1
 end function
 
 function inHeader() as boolean
