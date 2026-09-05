@@ -124,6 +124,70 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("moreButtonAnchor() - where the menu hangs from")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The anchor is derived from the SAME arithmetic as the cap, which is the
+    ' property worth gating: it is why the menu cannot end up pointing at a slot
+    ' the row does not have. These assert against the row-occupancy helper above
+    ' rather than against restated coordinates, so a change to the stride breaks
+    ' them the same way it breaks the cap.
+
+    @it("puts the anchor on the LAST slot the cap allows")
+    function _()
+      itemWidth = iconButtonLayoutWidth(ICON_BUTTON_ICON_SIZE)
+      cap = maxVisibleButtons(m.itemDetailsOriginX, m.itemDetailsSpacing, itemWidth, m.itemDetailsBound)
+
+      anchor = moreButtonAnchor(m.itemDetailsOriginX, m.itemDetailsSpacing, itemWidth, 800, cap)
+
+      ' A full row of `cap` items ends at originX + rowWidth(cap). The last item
+      ' starts one width before that.
+      rowEnd = m.itemDetailsOriginX + m.rowWidth(cap, itemWidth, m.itemDetailsSpacing)
+      m.assertEqual(anchor.x + anchor.width, rowEnd)
+      m.assertEqual(anchor.width, itemWidth)
+    end function
+
+    @it("never reaches past the bound the cap was derived from")
+    function _()
+      itemWidth = iconButtonLayoutWidth(ICON_BUTTON_ICON_SIZE)
+
+      for each surface in [{ originX: m.itemDetailsOriginX, spacing: m.itemDetailsSpacing, bound: m.itemDetailsBound }, { originX: m.osdOriginX, spacing: m.osdSpacing, bound: m.osdBound }]
+        cap = maxVisibleButtons(surface.originX, surface.spacing, itemWidth, surface.bound)
+        anchor = moreButtonAnchor(surface.originX, surface.spacing, itemWidth, 800, cap)
+
+        m.assertTrue(anchor.x + anchor.width <= surface.bound, "anchor overruns the bound at origin " + surface.originX.toStr())
+      end for
+    end function
+
+    @it("passes the row's y through as the anchor's y")
+    function _()
+      anchor = moreButtonAnchor(90, 18, 136, 932, 10)
+      m.assertEqual(anchor.y, 932)
+    end function
+
+    ' The OSD's stride differs from ItemDetails', so the two anchors land in
+    ' different places from the same function — the same property the cap has.
+    @it("lands somewhere DIFFERENT for the OSD, from the same arithmetic")
+    function _()
+      itemWidth = iconButtonLayoutWidth(ICON_BUTTON_ICON_SIZE)
+      itemDetails = moreButtonAnchor(m.itemDetailsOriginX, m.itemDetailsSpacing, itemWidth, 800, 8)
+      osd = moreButtonAnchor(m.osdOriginX, m.osdSpacing, itemWidth, 932, 10)
+
+      m.assertNotEqual(itemDetails.x, osd.x)
+    end function
+
+    ' A degenerate cap must still produce a usable rect. Anchoring at the row's
+    ' own origin puts the menu at the start of the row, which is visibly wrong
+    ' rather than off-screen — the same direction every other guard here takes.
+    @it("falls back to the row origin when the cap is degenerate")
+    function _()
+      for each cap in [0, -3]
+        anchor = moreButtonAnchor(90, 18, 136, 800, cap)
+        m.assertEqual(anchor.x, 90, "cap " + cap.toStr() + " moved the anchor off the row origin")
+      end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("splitForOverflow() - the cap is a ceiling, not a quota")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

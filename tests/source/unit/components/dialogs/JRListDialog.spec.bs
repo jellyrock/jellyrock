@@ -351,6 +351,164 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Menu presentation - width, anchor and title")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The GEOMETRY is gated in dialogLayout.spec.bs, which is pure and sweeps it
+    ' properly. What these assert is the WIRING: that this component forwards the
+    ' anchor, derives a width when asked to, and keeps the title's two jobs apart.
+    '
+    ' The panel rect is read back off optionList, whose translation is layout.body
+    ' and whose itemSize width is layout.body.width. Both are this component's own
+    ' nodes, so nothing here reaches into JRDialogPanel's internals:
+    '   panelWidth = body.width + (PANEL_PADDING * 2)
+    '   panelRight = body.x + body.width + PANEL_PADDING
+    private function listWidthOf(dialog as object) as integer
+      return int(dialog.findNode("optionList").itemSize[0])
+    end function
+
+    @it("exposes the menu-presentation fields, defaulted to the dialog behaviour")
+    function _()
+      m.assertTrue(m.dialog.doesExist("sizeToContent"))
+      m.assertTrue(m.dialog.doesExist("anchor"))
+      m.assertTrue(m.dialog.doesExist("titleVisible"))
+
+      m.assertFalse(m.dialog.sizeToContent)
+      m.assertTrue(m.dialog.titleVisible)
+    end function
+
+    ' REGRESSION GUARD for every existing caller — the track pickers and the
+    ' choice dialogs all rely on the fixed 900.
+    @it("keeps the fixed 900px panel when nothing opts out of it")
+    function _()
+      m.dialog.items = ["Play", "OK"]
+      ' 900 - (PANEL_PADDING * 2)
+      m.assertEqual(m.listWidthOf(m.dialog), 804)
+    end function
+
+    @it("narrows the panel to its content when asked")
+    function _()
+      m.dialog.sizeToContent = true
+      m.dialog.items = ["Play", "Watched"]
+
+      m.assertTrue(m.listWidthOf(m.dialog) < 804, "sizeToContent did not narrow the panel")
+    end function
+
+    ' The point of the feature: a menu of one-word actions must not be laid out
+    ' at the width a track picker needs.
+    @it("gives a longer label set a wider panel than a shorter one")
+    function _()
+      short = CreateObject("roSGNode", "JRListDialog")
+      short.sizeToContent = true
+      short.items = ["Play"]
+
+      long = CreateObject("roSGNode", "JRListDialog")
+      long.sizeToContent = true
+      long.items = ["Play", "Go to Series and then some more words"]
+
+      m.assertTrue(m.listWidthOf(long) > m.listWidthOf(short), "content width did not follow the label")
+    end function
+
+    ' Bounded at both ends. A three-letter menu must not become a sliver, and a
+    ' menu with a runaway label must not outgrow the centred dialog.
+    @it("never narrows past the minimum or grows past the fixed width")
+    function _()
+      tiny = CreateObject("roSGNode", "JRListDialog")
+      tiny.sizeToContent = true
+      tiny.items = ["OK"]
+
+      huge = CreateObject("roSGNode", "JRListDialog")
+      huge.sizeToContent = true
+      words = ""
+      for i = 1 to 40
+        words += "verylongword "
+      end for
+      huge.items = [words]
+
+      ' MIN_CONTENT_PANEL_WIDTH (300) - (PANEL_PADDING * 2)
+      m.assertTrue(m.listWidthOf(tiny) >= 204, "narrower than the minimum panel")
+      m.assertTrue(m.listWidthOf(huge) <= 804, "wider than the fixed panel")
+    end function
+
+    ' A menu of short action labels fits rightward from its anchor, so it takes
+    ' the preferred side and opens under the button. Which side the flip rule
+    ' picks at which width is gated in dialogLayout.spec.bs; what this asserts is
+    ' that the anchor reaches it at all.
+    @it("opens from the anchor it is given")
+    function _()
+      m.dialog.sizeToContent = true
+      m.dialog.anchor = { x: 1168, y: 800, width: 136 }
+      m.dialog.items = ["Spare 2", "Spare 3", "Spare 4"]
+
+      optionList = m.dialog.findNode("optionList")
+      ' body.x = panelX + PANEL_PADDING, and these labels are nowhere near wide
+      ' enough to flip, so the panel's left edge sits on the anchor's.
+      panelLeft = int(optionList.translation[0]) - 48
+
+      drift = 1168 - panelLeft
+      m.assertTrue(drift >= 0 and drift < 3, "panel left edge drifted " + drift.toStr() + " from the anchor")
+    end function
+
+    @it("puts the whole panel ABOVE the anchor, clear of the row it belongs to")
+    function _()
+      m.dialog.sizeToContent = true
+      m.dialog.anchor = { x: 1168, y: 800, width: 136 }
+      m.dialog.items = ["Spare 2", "Spare 3", "Spare 4"]
+
+      optionList = m.dialog.findNode("optionList")
+      ' The list starts below the panel's top padding, so a list top above the
+      ' anchor is necessary for the panel to clear it; the exact gap is gated in
+      ' dialogLayout.spec.bs.
+      m.assertTrue(int(optionList.translation[1]) < 800 - 24, "the list is not above the anchor")
+    end function
+
+    @it("centres the panel when no anchor is set")
+    function _()
+      m.dialog.items = ["one", "two"]
+
+      optionList = m.dialog.findNode("optionList")
+      ' body.x = panelX + PANEL_PADDING, and a centred 900px panel starts at 510.
+      m.assertEqual(int(optionList.translation[0]), 510 + 48)
+    end function
+
+    ' THE ACCESSIBILITY HALF. Hiding the heading must not take the announcement
+    ' with it — narration reads `title`, the panel draws `chrome.title`, and this
+    ' is the assertion that keeps the two separable.
+    @it("hides the drawn title without discarding the announced one")
+    function _()
+      m.dialog.titleVisible = false
+      m.dialog.title = "More"
+      m.dialog.items = ["Spare 2"]
+
+      m.assertEqual(m.dialog.title, "More")
+      m.assertEqual(m.dialog.findNode("chrome").title, "")
+    end function
+
+    ' The ORDER showOverflowMenu actually uses: title first, then titleVisible.
+    ' Both fields drive the same handler, so a caller setting them the other way
+    ' round from the spec above must still land titleless.
+    @it("ends up titleless whichever order the two title fields are set in")
+    function _()
+      m.dialog.title = "More"
+      m.dialog.titleVisible = false
+      m.dialog.items = ["Spare 2"]
+
+      m.assertEqual(m.dialog.title, "More")
+      m.assertEqual(m.dialog.findNode("chrome").title, "")
+      ' ...and the panel actually reclaimed the space, rather than merely blanking
+      ' the label: a titleless panel reports no title height.
+      m.assertEqual(m.dialog.findNode("chrome").titleHeight, 0)
+    end function
+
+    @it("draws the title by default, exactly as every other list dialog does")
+    function _()
+      m.dialog.title = "Audio"
+      m.dialog.items = ["English"]
+
+      m.assertEqual(m.dialog.findNode("chrome").title, "Audio")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Focus on open")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

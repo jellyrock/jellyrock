@@ -129,6 +129,45 @@ function showListDialog(title as string, items as object, onResult = "" as strin
   return presentOverlayDialog(dialog, onResult)
 end function
 
+' An overflow ("More") menu — the same JRListDialog, presented as a MENU instead
+' of as a centred modal.
+'
+' Three presentation differences, and each is a fix for something the centred
+' form got wrong here (#788):
+'
+'   ANCHORED. A centred 900px panel covers the button row the menu belongs to AND
+'   the title/metadata column on the left. Anchored to the More button and grown
+'   upward, it sits over the backdrop art on the right and leaves both readable.
+'   It opens leftward from the button where it fits and flips rightward where it
+'   does not — computeDialogLayout owns that rule. `anchor` is { x, y, width } in
+'   screen coordinates; build it with moreButtonAnchor() so it cannot drift from
+'   the cap that produced the button.
+'
+'   SIZED TO CONTENT. These rows are one-word actions. At the fixed width every
+'   label was stranded in a mostly-empty row.
+'
+'   NO DRAWN TITLE. The menu hangs off a button already labelled More, so the
+'   heading repeated it and cost ~100px of height. It is still ANNOUNCED — the
+'   title field is set, and narration reads that, not the panel.
+'
+' Everything else is JRListDialog: same chrome, same key model, same result
+' contract, same specs. This is a presentation of the family's list dialog, not
+' a second surface — see docs/architecture/dialogs.md for why that distinction
+' is enforced rather than encouraged.
+function showOverflowMenu(title as string, items as object, onResult as string, anchor as object, icons = invalid as object) as object
+  dialog = createObject("roSGNode", "JRListDialog")
+  dialog.title = title
+  dialog.titleVisible = false
+  dialog.sizeToContent = true
+  dialog.anchor = anchor
+  ' selectedIndex is left at -1: these are ACTIONS, so no row is current — which
+  ' is also what frees the row gutter for the buttons' own glyphs.
+  if isValid(icons) then dialog.icons = icons
+  ' Before `items`, which is the field that triggers the row build.
+  dialog.items = items
+  return presentOverlayDialog(dialog, onResult)
+end function
+
 ' Read-only long-form text (descriptions, biographies). Self-closing on OK/back;
 ' no result to observe. Wraps the existing OverviewDialog chrome.
 '

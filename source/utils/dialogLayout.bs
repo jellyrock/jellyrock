@@ -59,6 +59,13 @@ const SEPARATOR_HEIGHT = 3
 ' the subheading would look like a second title.
 const SUBHEADING_GAP = 24
 
+' Daylight between an ANCHORED panel and the thing it is anchored to. Equal to
+' TITLE_GAP and SUBHEADING_GAP because it reads as the same kind of gap — the
+' panel and its anchor are one unit, the way a title and its accent rule are.
+' Non-zero on purpose: the two must not touch, or the menu reads as an extension
+' of the button row rather than as a surface floating above it.
+const ANCHOR_GAP = 24
+
 ' The 720p output row. 1080 / 720 = 3 source rows per 2 output rows, so an
 ' absolute coordinate divisible by 3 falls on an output-row boundary.
 const PIXEL_GRID = 3
@@ -141,6 +148,13 @@ const PANEL_MAX_HEIGHT = SCREEN_HEIGHT - (PANEL_PADDING * 2) - 60
 '                  never exceeds PANEL_MAX_HEIGHT — read `body.height` back, do
 '                  not assume you got what you asked for.
 '   footerHeight - measured footer height, 0 for none
+'   anchor       - OPTIONAL { x, y, width }, in screen coordinates. Omitted, the
+'                  panel is centred, which is what every dialog did before this
+'                  existed and what all but the overflow menus still do. Given,
+'                  the panel is LEFT-aligned to the anchor where it fits and
+'                  RIGHT-aligned where it does not, and grows UPWARD from
+'                  `anchor.y` so it sits above the thing it belongs to rather
+'                  than over it. See placement below for the flip rule.
 '
 ' @returns {object} - { panel, title, accent, subheading, body, footer }, each
 '                     { x, y, width, height }, plus `overflows`.
@@ -156,6 +170,21 @@ function computeDialogLayout(spec as object) as object
   subheadingHeight = intOr(spec.subheadingHeight, 0)
   bodyHeight = intOr(spec.bodyHeight, 0)
   footerHeight = intOr(spec.footerHeight, 0)
+
+  ' An anchor is present only if it carries the one field placement cannot be
+  ' derived without. x and width default to 0 so a half-built anchor lays out
+  ' against the screen's left edge rather than reading uninitialised memory as a
+  ' position — visibly wrong, which is what you want from a caller bug.
+  anchor = spec.anchor
+  hasAnchor = isValid(anchor) and isValid(anchor.y)
+  anchorX = 0
+  anchorY = 0
+  anchorWidth = 0
+  if hasAnchor
+    anchorX = intOr(anchor.x, 0)
+    anchorY = intOr(anchor.y, 0)
+    anchorWidth = intOr(anchor.width, 0)
+  end if
 
   ' Snap the MEASURED heights up to the grid before anything is added to them.
   ' A label's rendered height is whatever the font gave us, so without this one
@@ -194,9 +223,26 @@ function computeDialogLayout(spec as object) as object
   ' that still fits is arithmetic rather than a second pass. Clamping HERE, in
   ' the one place that owns the flow, is why no caller has to re-derive the
   ' ceiling: a dialog asks for the body it measured and is told what it got.
+  ' An anchored panel has LESS room than a centred one: it may only occupy the
+  ' band between the top margin and the gap above its anchor. Resolving that into
+  ' the same `ceiling` the centred path uses is what lets one clamp serve both —
+  ' and it is why an anchored caller needs no new overflow handling. It asks for
+  ' the body it measured, is told what it got, and JRListDialog's existing
+  ' drop-rows-and-relayout loop reacts to `overflows` exactly as it always has.
+  '
+  ' Never LARGER than PANEL_MAX_HEIGHT: an anchor low on the screen leaves plenty
+  ' of room above it, and a menu allowed to grow into all of it would be a
+  ' full-height panel that happens to be right-aligned.
+  ceiling = PANEL_MAX_HEIGHT
+  if hasAnchor
+    ceiling = anchorY - ANCHOR_GAP - PANEL_PADDING
+    if ceiling > PANEL_MAX_HEIGHT then ceiling = PANEL_MAX_HEIGHT
+    if ceiling < 0 then ceiling = 0
+  end if
+
   belowBody = PANEL_PADDING
   if hasFooter then belowBody += BODY_GAP + footerHeight
-  maxBodyHeight = PANEL_MAX_HEIGHT - bodyY - belowBody
+  maxBodyHeight = ceiling - bodyY - belowBody
   if maxBodyHeight < 0 then maxBodyHeight = 0
 
   overflows = false
@@ -224,7 +270,7 @@ function computeDialogLayout(spec as object) as object
   ' is what grew. A title tall enough to blow the ceiling on its own leaves
   ' maxBodyHeight at 0 and clamps nothing, so the panel can still come back over
   ' the line — say so rather than reporting a fit nobody checked.
-  if panelHeight > PANEL_MAX_HEIGHT then overflows = true
+  if panelHeight > ceiling then overflows = true
 
   ' --- place the panel, then resolve everything to screen coordinates --------
   ' Both origins snap to the grid, because every offset is measured from them —
@@ -237,8 +283,58 @@ function computeDialogLayout(spec as object) as object
   ' uses, and which is why a width divisible by 6 lands panelX on the grid by
   ' itself ((1920 - w) / 2 = 960 - w/2). The snap is the floor for a future
   ' caller that picks a width off the scale: one crisp edge beats none.
-  panelX = floorToGrid(int((SCREEN_WIDTH - panelWidth) / 2))
-  panelY = floorToGrid(int((SCREEN_HEIGHT - panelHeight) / 2))
+  if hasAnchor
+    ' PREFERRED PLACEMENT PLUS FALLBACK, which is how an anchored menu is
+    ' normally positioned: try the side you want, flip to the other only when the
+    ' panel would not fit there.
+    '
+    ' Preferred is LEFT-aligned, growing right — the menu starts under the button
+    ' that opened it, which is the direction the eye is already travelling. The
+    ' fallback is RIGHT-aligned, growing left, and it exists because both callers
+    ' anchor to the LAST button of a left-to-right row, which sits near the right
+    ' edge: ItemDetails' More starts at x=1168, leaving 704px to the margin, and
+    ' the OSD's at x=1530, leaving 342px. A panel wider than that has nowhere to
+    ' go rightward, and the left side has 1256px and 1618px respectively.
+    '
+    ' So a narrow menu — every one either surface builds today — opens leftward
+    ' under its button, and only a wide one (a long translation, a longer label
+    ' set) flips to where the room actually is. One rule; the side it picks is a
+    ' consequence of where the anchor sits, not a per-surface decision.
+    '
+    ' UPWARD in both cases, because both surfaces put their button row near the
+    ' bottom of the screen (ItemDetails at y=800, the OSD at y=932), so above is
+    ' where the room is. That is an observation about these two callers, not a
+    ' law — a row near the TOP would need a downward variant, and this is the
+    ' place to add it rather than a second placement mode elsewhere.
+    rightLimit = SCREEN_WIDTH - PANEL_PADDING
+
+    panelX = floorToGrid(anchorX)
+    if panelX + panelWidth > rightLimit
+      panelX = floorToGrid(anchorX + anchorWidth - panelWidth)
+    end if
+
+    panelY = floorToGrid(anchorY - ANCHOR_GAP - panelHeight)
+
+    ' Keep the panel on screen with the same margin the centred path leaves.
+    ' Both bounds are already grid-aligned — PANEL_PADDING is 48, and the right
+    ' bound is 1872 minus a width the caller took off the 6px scale — so
+    ' clamping after the snap cannot knock an edge back off the grid.
+    minPanelX = PANEL_PADDING
+    maxPanelX = rightLimit - panelWidth
+    ' A panel wider than the screen's usable width has no valid position; pin it
+    ' to the left margin so the failure is visible at the edge it overflows.
+    if maxPanelX < minPanelX then maxPanelX = minPanelX
+    if panelX < minPanelX then panelX = minPanelX
+    if panelX > maxPanelX then panelX = maxPanelX
+
+    ' The ceiling above already sized the body to fit this band, so this clamp
+    ' only engages for the case the ceiling cannot fix — a title tall enough to
+    ' blow it on its own, which `overflows` has already reported.
+    if panelY < PANEL_PADDING then panelY = PANEL_PADDING
+  else
+    panelX = floorToGrid(int((SCREEN_WIDTH - panelWidth) / 2))
+    panelY = floorToGrid(int((SCREEN_HEIGHT - panelHeight) / 2))
+  end if
 
   layout = {
     panel: layoutRect(panelX, panelY, panelWidth, panelHeight),

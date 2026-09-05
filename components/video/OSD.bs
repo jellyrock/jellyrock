@@ -816,11 +816,17 @@ function osdRowSpacing(group as object) as integer
   return 0
 end function
 
-' The cap for the left row: it may not reach the right group's leftmost edge.
+' The left row's geometry, in ONE place so the cap and the overflow menu's anchor
+' cannot be derived from different numbers.
+'
 ' The right group is right-ALIGNED, so its origin is its right edge and it grows
 ' leftward — derived from its live child count so pinning a second button there
 ' correctly costs the left row a slot.
-function osdButtonCap() as integer
+'
+' `translation` is taken as a SCREEN coordinate: the OSD is mounted at the origin
+' of a full-screen view, which is the same assumption the right group's own
+' 1830 origin already encodes.
+function osdRowGeometry() as object
   buttonWidth = iconButtonLayoutWidth(ICON_BUTTON_ICON_SIZE)
   leftSpacing = osdRowSpacing(m.buttonMenuLeft)
 
@@ -832,7 +838,19 @@ function osdButtonCap() as integer
   end if
   rightGroupLeftEdge = int(m.buttonMenuRight.translation[0]) - rightWidth
 
-  return maxVisibleButtons(int(m.buttonMenuLeft.translation[0]), leftSpacing, buttonWidth, rightGroupLeftEdge - leftSpacing)
+  return {
+    originX: int(m.buttonMenuLeft.translation[0]),
+    rowY: int(m.buttonMenuLeft.translation[1]),
+    spacing: leftSpacing,
+    itemWidth: buttonWidth,
+    rightBound: rightGroupLeftEdge - leftSpacing
+  }
+end function
+
+' The cap for the left row: it may not reach the right group's leftmost edge.
+function osdButtonCap() as integer
+  geometry = osdRowGeometry()
+  return maxVisibleButtons(geometry.originX, geometry.spacing, geometry.itemWidth, geometry.rightBound)
 end function
 
 sub unsplitButtons()
@@ -853,7 +871,10 @@ sub openMoreMenu()
   m.overflowMenuIds = entries.ids
   ' selectedIndex -1: these are actions, so no row is "current" — which is also
   ' what frees the row gutter for the icons.
-  m.moreMenuDialog = showListDialog(translate(translationKeys.ButtonMore), entries.labels, "onMoreMenuResult", 0, -1, entries.icons)
+  geometry = osdRowGeometry()
+  anchor = moreButtonAnchor(geometry.originX, geometry.spacing, geometry.itemWidth, geometry.rowY, osdButtonCap())
+
+  m.moreMenuDialog = showOverflowMenu(translate(translationKeys.ButtonMore), entries.labels, "onMoreMenuResult", anchor, entries.icons)
   m.moreMenuDialog.returnFocusTo = m.buttonMenuLeft.findNode("moreButton")
 end sub
 

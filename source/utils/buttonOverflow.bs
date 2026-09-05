@@ -87,6 +87,39 @@ function maxVisibleButtons(originX as integer, spacing as integer, itemWidth as 
   return int(available / stride)
 end function
 
+' Where the More button sits, so the menu can be anchored to it.
+'
+' DERIVED FROM THE SAME ARITHMETIC AS THE CAP, deliberately. More occupies the
+' last slot the cap allows, so its position is the row's stride walked `cap - 1`
+' times — the identical expression maxVisibleButtons() inverted to produce `cap`.
+' Reading the rendered node's boundingRect() would have been the obvious
+' alternative and is worse in three ways: it is a render-thread node read the
+' pure path does not otherwise need, it returns LOCAL coordinates that the caller
+' would have to re-base onto the screen (see the comment above
+' updateExtrasPanePosition in ItemDetails.bs for that trap), and it answers 0
+' until the row has laid out — which, for a menu opened from the very button
+' being measured, is a race there is no reason to take.
+'
+' Because it is the same arithmetic, the anchor CANNOT drift from the cap. Change
+' the geometry and both move together or neither does.
+'
+' @param originX   left edge of the row (the group's own translation x)
+' @param spacing   LayoutGroup itemSpacings
+' @param itemWidth one item's layout footprint
+' @param rowY      the row's top edge in SCREEN coordinates
+' @param cap       the ceiling from maxVisibleButtons()
+' @return {object} { x, y, width } for computeDialogLayout's `anchor`
+function moreButtonAnchor(originX as integer, spacing as integer, itemWidth as integer, rowY as integer, cap as integer) as object
+  slot = cap - 1
+  if slot < 0 then slot = 0
+
+  return {
+    x: originX + (slot * (itemWidth + spacing)),
+    y: rowY,
+    width: itemWidth
+  }
+end function
+
 ' ---------------------------------------------------------------------------
 ' The split
 ' ---------------------------------------------------------------------------

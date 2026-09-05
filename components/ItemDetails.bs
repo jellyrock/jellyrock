@@ -3341,18 +3341,34 @@ end sub
 ' guard rail.
 ' ===========================================================================
 
-' The cap for THIS row: it may not reach the logo's leftmost possible edge.
-' Geometry is read from the live nodes rather than restated, so a change to the
-' group's translation or spacing is picked up instead of drifting.
-function itemDetailsButtonCap() as integer
-  logoLeftBound = LOGO_RIGHT_ANCHOR_X - LOGO_MAX_DISPLAY_WIDTH
-
+' The row's geometry, read from the live nodes rather than restated — so a change
+' to the group's translation or spacing is picked up instead of drifting — and
+' read in ONE place, so the cap and the overflow menu's anchor can never be
+' derived from different numbers.
+'
+' `translation` is taken as a SCREEN coordinate, which it is: buttonGrp is a
+' direct child of this screen's root and the screen is mounted at the origin, the
+' same thing updateItemDetailsAnimationTarget() already relies on when it compares
+' a derived y against extrasLayout's absolute constants.
+function itemDetailsRowGeometry() as object
   spacing = 0
   if isValid(m.buttonGrp.itemSpacings) and m.buttonGrp.itemSpacings.count() > 0
     spacing = int(m.buttonGrp.itemSpacings[0])
   end if
 
-  return maxVisibleButtons(int(m.buttonGrp.translation[0]), spacing, iconButtonLayoutWidth(ICON_BUTTON_ICON_SIZE), logoLeftBound)
+  return {
+    originX: int(m.buttonGrp.translation[0]),
+    rowY: int(m.buttonGrp.translation[1]),
+    spacing: spacing,
+    itemWidth: iconButtonLayoutWidth(ICON_BUTTON_ICON_SIZE),
+    rightBound: LOGO_RIGHT_ANCHOR_X - LOGO_MAX_DISPLAY_WIDTH
+  }
+end function
+
+' The cap for THIS row: it may not reach the logo's leftmost possible edge.
+function itemDetailsButtonCap() as integer
+  geometry = itemDetailsRowGeometry()
+  return maxVisibleButtons(geometry.originX, geometry.spacing, geometry.itemWidth, geometry.rightBound)
 end function
 
 ' The two halves of the contract. Both delegate to source/utils/buttonOverflow.bs
@@ -3376,7 +3392,10 @@ sub openMoreMenu()
   m.overflowMenuIds = entries.ids
   ' selectedIndex -1: these are actions, so no row is "current" — which is also
   ' what frees the row gutter for the icons.
-  m.moreMenuDialog = showListDialog(translate(translationKeys.ButtonMore), entries.labels, "onMoreMenuResult", 0, -1, entries.icons)
+  geometry = itemDetailsRowGeometry()
+  anchor = moreButtonAnchor(geometry.originX, geometry.spacing, geometry.itemWidth, geometry.rowY, itemDetailsButtonCap())
+
+  m.moreMenuDialog = showOverflowMenu(translate(translationKeys.ButtonMore), entries.labels, "onMoreMenuResult", anchor, entries.icons)
   m.moreMenuDialog.returnFocusTo = m.buttonGrp.findNode("moreButton")
 end sub
 

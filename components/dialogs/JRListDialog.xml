@@ -33,6 +33,13 @@
     <!-- Delays ONLY the opening announcement; see OPENING_ANNOUNCEMENT_DELAY in
          JRDialog.bs. -->
     <Timer id="narrationTimer" repeat="false" />
+
+    <!-- Measures a row label so `sizeToContent` can derive a panel width. Same
+         component the row itself uses, so it carries the same font; no width is
+         set on it, so localBoundingRect() reports the text's NATURAL width.
+         Hidden, which does not stop it measuring — see source/utils/dialogReveal.bs
+         for the hardware-verified reason font metrics answer while invisible. -->
+    <LabelPrimaryMedium id="widthProbe" visible="false" />
   </children>
   <interface>
     <!-- Array of option label strings. Assigning this REBUILDS the rows, so it
@@ -45,6 +52,22 @@
          an icon, so a caller can decorate some rows and not others. -->
     <field id="icons" type="array" />
     <field id="title" type="string" onChange="onTitleChanged" />
+    <!-- Whether the title is DRAWN. The title is still announced either way:
+         narration reads `title` directly, so a menu that shows no heading still
+         opens with "More" spoken before the focused row. Blanking `title` to hide
+         it would have taken the announcement with it and left a screen-reader
+         user with no idea which surface they had opened. -->
+    <field id="titleVisible" type="boolean" value="true" onChange="onTitleChanged" />
+    <!-- Derive the panel width from the widest row label instead of the fixed
+         900. For a menu of one-word actions the fixed width strands every label
+         in a mostly-empty row; for a track picker carrying "English (SDH) - AC3
+         5.1" the fixed width is right, which is why this is opt-in. -->
+    <field id="sizeToContent" type="boolean" value="false" />
+    <!-- OPTIONAL { x, y, width } in screen coordinates. Set, the panel is
+         aligned to that rect and grows upward from it instead of being centred -
+         left-aligned where it fits, flipping right where it does not. The rule
+         lives in computeDialogLayout (source/utils/dialogLayout.bs). -->
+    <field id="anchor" type="assocarray" />
     <!-- Which row to FOCUS when the dialog opens. Falls back to 0. -->
     <field id="defaultIndex" type="integer" value="0" />
     <!-- Which option is genuinely CURRENT — it gets the check, the surface and
