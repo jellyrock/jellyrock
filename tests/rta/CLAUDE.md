@@ -176,8 +176,8 @@ above says it harder: never paper over a flake with a fixed `sleep`, because the
 not timing out — it was succeeding too early. So the same bar the waits carry applies
 here: every `sleep()` either has no signal available to gate on, or it is a defect.
 
-**Most of them are not waits at all.** Of **38** `sleep()` calls (derived from the AST),
-**14 are poll ticks**: a `sleep` lexically inside a bounded loop that exits on its own
+**Most of them are not waits at all.** Of **37** `sleep()` calls (derived from the AST),
+**13 are poll ticks**: a `sleep` lexically inside a bounded loop that exits on its own
 predicate. The interval sets sampling cadence and nothing else, and raising or lowering it
 is a separate question this project puts out of scope. Worth stating plainly because it
 reads as a surprise: [`lib/steps.js`](lib/steps.js), the file that owns every wait
@@ -260,6 +260,45 @@ review cannot tell them apart.
 **The match is exact, not a ceiling.** Removing a sleep is meant to fail the rule until
 the budget is lowered, so the table stays an inventory rather than drifting upward into
 permission. That includes emptying a file completely.
+
+## The loops that are not `waitFor`, and why
+
+Thirteen loops in the suite poll by hand. Five of them **are** the polling layer —
+`waitFor`, `waitFocused`, `scrollFocus`, `waitCellsQuiet`, `waitRowsSettled` — and the
+question does not apply to them. The other eight sites sit outside `waitFor`, which means
+they are outside `jellyrock-rta/wait-justified` too, so each needs a reason written down
+rather than a gate.
+
+The reasons are structural, not preference. `waitFor` polls ONE keyPath, on ODC, and
+throws through `diagnosedError`, which reads the device to attach a state dump. A loop that
+breaks any of those three cannot use it.
+
+| Loop | Why not `waitFor` |
+|---|---|
+| `findHomeLibraryTile` ([`lib/nav.js`](lib/nav.js)) | A multi-read SCAN: N reads per tick over a tree that changes under it, with a third exit for genuine ambiguity. `waitFor` polls one keyPath and has two outcomes. |
+| `openChildDetailByRowType` ([`lib/nav.js`](lib/nav.js), two loops) | Same scan shape. |
+| `waitMediaPlaying` ([`lib/steps.js`](lib/steps.js)) | Reads the OS media player over **ECP** (`ecp.getMediaPlayer()`). There is no keyPath, because there is no node — it is a different transport answering about a different thing. |
+| `stopPlayback` ([`lib/steps.js`](lib/steps.js)) | Same ECP transport, and it deliberately does NOT throw: it is cleanup, run on the way out of a step that already succeeded or already failed, and a throw here would replace a real failure with a teardown one. `waitFor` always throws. |
+| `waitSceneAnswering` ([`lib/driver.js`](lib/driver.js)) | Polls for the scene answering AT ALL, before the app has a screen. `diagnosedError` reads the device, so the diagnostic would fail on the same condition as the wait and bury the real message. |
+| the `gaaProbeResult` poll ([`specs/gaa-thread-scope.spec.js`](specs/gaa-thread-scope.spec.js)) | Polls the return value of a `callFunc` — a Task's own state — not a field. Same reason the function-`keyPath` category exists: ODC observes fields, and a call is not one. |
+| `startPolling` ([`specs/task-thread-peak.spec.js`](specs/task-thread-peak.spec.js)) | Not a wait at all. It is a SAMPLER with no exit predicate: it runs until told to stop and collects a series, and the series is the measurement. |
+
+**One was convertible and has been converted.** `waitGridLoaded` hand-rolled its poll for
+no reason that survived being written down — one keyPath, one predicate, one reader,
+throws on timeout. It now routes through `waitFor`, which is what gave `waitFor` its
+optional `kind`: converting without one would have merged `grid-load-timeout` into the
+bucket every other wait shares.
+
+**One was a duplicate, and the duplication hid a defect.** Two specs had each written out
+"wait until the scene answers". They were recorded as byte-identical and were not — the
+bench spec threw on timeout, and the other ran a bounded `for` that simply fell through, so
+a scene that never answered went on to `createChild` and failed there, blaming the child
+for the app not being up. They now share `waitSceneAnswering`, which throws. That the two
+copies disagreed about failure behaviour, of all things, is the argument for sharing them.
+
+**`waitSceneAnswering` is not a replacement for `bootMs`.** `relaunch()` also runs against
+`ENABLE_RTA=false` builds, where ODC never answers — polling there would burn the full
+timeout on every call instead of sleeping once. The app-lifecycle sleeps stay.
 
 ## Layout
 

@@ -212,6 +212,63 @@ export async function relaunch() {
 }
 
 /**
+ * Wait until the scene ANSWERS — not until Home is ready, and not for a field.
+ *
+ * An empty keyPath resolves to the base node, so this asks the one question that has a
+ * meaningful answer before the app has a screen: is there a scene there at all. Callers
+ * are the render-thread benches, which need a render-owned parent to `createChild` under
+ * and nothing else — no server, no library, no signed-in user. Gating them on `waitHome()`
+ * would make a measurement depend on seeded demo content it never reads, and make it
+ * unrunnable on its own (`npm run test:rta -- task-ledger-bench`), which is how a
+ * measurement actually gets re-taken.
+ *
+ * ## Why this is a hand-rolled loop and not a `waitFor`
+ *
+ * `waitFor` throws through `diagnosedError`, which READS THE DEVICE to attach a state
+ * dump. That is exactly what cannot be assumed here: the thing being waited for is the
+ * device becoming answerable, so the diagnostic would fail on the same condition as the
+ * wait and replace a clear "the scene never answered" with a transport error. Every other
+ * loop in the suite that stays hand-rolled has a structural reason of this kind
+ * (`tests/rta/CLAUDE.md` → *The loops that are not `waitFor`*).
+ *
+ * ## Why it is shared, and why it THROWS
+ *
+ * Two specs had each written this out. They were recorded as byte-identical duplicates
+ * and were not: `task-ledger-bench.spec.js` threw on timeout, while
+ * `gaa-thread-scope.spec.js` ran a bounded `for` and simply fell through — so a scene
+ * that never answered went on to `createChild` anyway and failed there, blaming the
+ * child. Sharing the version that throws is the point of sharing it; the difference was
+ * in the one property a duplicate is most likely to get wrong.
+ *
+ * **Not a replacement for `bootMs`.** `relaunch()` is also used against `ENABLE_RTA=false`
+ * builds, where ODC never answers at all — polling there would burn the full timeout on
+ * every call instead of sleeping once. The lifecycle sleeps stay.
+ *
+ * @param {object} [opts]
+ * @param {number} [opts.timeout] how long to wait for the scene to answer
+ * @param {number} [opts.interval] poll cadence
+ */
+export async function waitSceneAnswering({ timeout = 60000, interval = 500 } = {}) {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    const res = await odc.getValue({ base: 'scene', keyPath: '' }).catch(() => ({ found: false }));
+    if (res.found) return;
+    // Deadline checked AFTER a read, so the full budget is spent on reads rather than
+    // ending on a sleep that is never followed by an attempt.
+    if (Date.now() > deadline) {
+      // A plain `Error`, not `diagnosedError`: the diagnostic reads the very device that
+      // is not answering, so it would fail on the same condition and replace this message
+      // with a transport error. The message carries the two things worth checking.
+      throw new Error(
+        `scene never answered within ${timeout} ms — is the app running, and is this an ` +
+          'ENABLE_RTA build?',
+      );
+    }
+    await sleep(interval);
+  }
+}
+
+/**
  * Restart the channel FOR REAL: exit to the Roku home screen first, then launch.
  *
  * An ECP `/launch/dev` against an ALREADY-RUNNING channel only foregrounds it —
