@@ -1269,6 +1269,18 @@ The alert helper takes an OPTIONAL secondary button beside OK, rather than the f
 
 **`showChoiceDialog` is the near miss, and it is the wrong fit for two separate reasons.** It falls back to `JRListDialog` when the labels are too wide for a button row — which for a long translation would turn an error MESSAGE into a scrollable list, a presentation nobody chose and nobody would notice until it shipped in a locale nobody reads. And its contract deliberately marks nothing as current, because a choice dialog is asking the user to pick; an alert is not asking, OK is already the default and the secondary sits beside it. The dividing line for future callers: two ANSWERS to a question are `showConfirmDialog`, three or more are `showChoiceDialog`, and one answer plus one action that does not leave the alert's subject is this parameter.
 
+## decision-id: button-overflow-tail-cut
+
+**date**: 2026-09-05
+**status**: accepted
+**related-files**: `source/utils/buttonOverflow.bs`, `components/ItemDetails.bs`, `components/video/OSD.bs`
+
+When a button row exceeds its cap and the last slot becomes `More`, the buttons that move into the menu are simply the tail — the row keeps its natural order and the visible set is the first `cap - 1` buttons. Issue #788 left this open explicitly, offering the alternative of PINNING a specific button (it suggested Refresh) into the second-to-last slot so it stays reachable. That was rejected.
+
+Three reasons, in the order they mattered. **The cap is derived per surface, not fixed** — `maxVisibleButtons()` yields 8 on `ItemDetails` and 10 on the OSD from the same arithmetic over different geometry, so "the second-to-last slot" is not one identity across surfaces and a pin list would have to be written per surface. That reintroduces exactly the hard-coded constant the derived cap exists to remove, and it would need updating whenever the geometry moves. **Pinning inverts the row's own ordering intent** — `setupButtons()` appends deliberately, and Refresh is the LAST button it appends, with Delete immediately before it; the tail cut therefore removes buttons in the reverse of the order the row itself considers important, which is the right direction. Pinning Refresh would preserve the button the row places last at the cost of one placed earlier. **And a rule with one exception is harder to predict than none** — "everything past the second-to-last slot is inside `More`" is a rule a user can learn from one encounter, whereas one button that jumps somewhere else is a special case they have to discover separately.
+
+Cheap to revisit: the split lives in one pure function (`splitForOverflow`), so pinning would be a change there plus a per-surface pin list, not a redesign. Re-open if a specific action turns out to be needed often enough from an overflowing row that a menu hop is a real cost — that is a usage question, and no usage data exists today, which is itself part of why the simpler rule won.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

@@ -6,7 +6,7 @@ related-files:
   - components/JRScene.xml
   - source/utils/globals.bs
   - source/utils/tasks.bs
-last-reviewed: 2026-08-23
+last-reviewed: 2026-09-05
 ---
 
 # Debug Tools
@@ -19,7 +19,7 @@ A compile-time error injection system for testing error paths. **Zero overhead i
 
 ### Setup
 
-`components/data/DebugFlags.xml` is a `ContentNode` with boolean fields, one per injectable failure:
+`components/data/DebugFlags.xml` is a `ContentNode` whose fields are the debug switches. Most are booleans, one per injectable failure; a field is **not required to be a failure injection or a boolean**, and `extraButtonCount` is neither — it is an integer that pads a button row so a feature unreachable from real data can be seen on a device. The shared contract is only that a field is inert at its default and compiled out of production, not that it breaks something:
 
 ```xml
 <component name="DebugFlags" extends="ContentNode">
@@ -27,6 +27,8 @@ A compile-time error injection system for testing error paths. **Zero overhead i
     <field id="shouldForceFiltersFail" type="boolean" value="false" />
     <field id="shouldForceFavoriteFail" type="boolean" value="false" />
     <field id="shouldForceWatchedFail" type="boolean" value="false" />
+
+    <field id="extraButtonCount" type="integer" value="0" />
   </interface>
 </component>
 ```
@@ -42,6 +44,7 @@ A compile-time error injection system for testing error paths. **Zero overhead i
   print "[DEBUG]   m.global.debug.shouldForceFiltersFail = true"
   print "[DEBUG]   m.global.debug.shouldForceFavoriteFail = true"
   print "[DEBUG]   m.global.debug.shouldForceWatchedFail = true"
+  print "[DEBUG]   m.global.debug.extraButtonCount = 3"
 #end if
 ```
 
