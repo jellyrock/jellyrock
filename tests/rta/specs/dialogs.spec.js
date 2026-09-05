@@ -33,6 +33,7 @@ import {
   focusIsInside,
   waitHome,
   waitMediaPlaying,
+  waitOsdUp,
   stopPlayback,
   PLAYING_STATES,
   getVal,
@@ -127,17 +128,13 @@ async function pausedOsd(userSettings = null) {
   // Cast rather than walk the grid: this spec is about the dialogs, and every
   // press between Home and the player is a chance to fail for another reason.
   await ecp.sendInput({ params: { contentId: `id=${heroId}|action=play` } });
+  // Both gates, because they answer different questions. `waitMediaPlaying` reads the OS
+  // media player over ECP and reports `media-player-not-started` — "did a stream open at
+  // all". `waitOsdUp` then reads the APP's own `state`, which is what `stateAllowsOSD()`
+  // consults before it will open the OSD for an Up. Dropping the first would report a
+  // stream that never opened as an OSD timeout.
   await waitMediaPlaying('osd dialogs');
-  await sleep(1500); // let the just-started player settle before sending any input
-
-  await waitFor('#osd.visible', (v) => v === true, {
-    timeout: 30000,
-    interval: 2000,
-    action: async () => {
-      if ((await getVal('#osd.visible')) !== true) await press(ecp.Key.Up);
-    },
-    label: 'osd visible',
-  });
+  await waitOsdUp('osd visible', { itemId: heroId });
   await press(ecp.Key.Back);
   await waitFor('#osd.visible', (v) => v === false, { timeout: 8000, label: 'osd hidden' });
   await press(ecp.Key.Play); // pause + re-show the OSD
@@ -190,16 +187,7 @@ async function playingOsd(userSettings = null) {
 
   await ecp.sendInput({ params: { contentId: `id=${heroId}|action=play` } });
   await waitMediaPlaying('osd auto-hide');
-  await sleep(1500);
-
-  await waitFor('#osd.visible', (v) => v === true, {
-    timeout: 30000,
-    interval: 2000,
-    action: async () => {
-      if ((await getVal('#osd.visible')) !== true) await press(ecp.Key.Up);
-    },
-    label: 'osd visible (playing)',
-  });
+  await waitOsdUp('osd visible (playing)', { itemId: heroId });
 }
 
 it('series watched button opens the standard confirm dialog; back cancels it', async () => {
@@ -223,7 +211,17 @@ it('series watched button opens the standard confirm dialog; back cancels it', a
   if (watchedIndex < 0) throw new Error('watchedButton not found in detail button group');
 
   await odc.focusNode({ base: 'scene', keyPath: '#buttons' });
-  await sleep(300);
+  // Gate on FOCUS ARRIVING, not on `buttonFocused` being readable. The obvious wait —
+  // poll until `#buttons.buttonFocused` is a number — cannot fail: `JRButtonGroup.bs`
+  // sets it to 0 in `init()`, so it answers long before the teleport lands and the wait
+  // returns on its first tick having proven nothing. That is the north star's "succeeding
+  // too early", and the read below would then describe the group's PREVIOUS index.
+  // `onGroupFocusChanged` is what re-asserts the index, and it runs on the group taking
+  // focus — so focus being inside `#buttons` is the state that makes the read meaningful.
+  await waitFocusInside('#buttons', {
+    label: 'detail button group focused (pre-index read)',
+    timeout: 8000,
+  });
   const groupIndex = await getVal('#buttons.buttonFocused');
   if (typeof groupIndex !== 'number')
     throw new Error(`cannot read #buttons.buttonFocused (got ${groupIndex})`);
@@ -317,8 +315,18 @@ it('series watched button opens the standard confirm dialog; back cancels it', a
   await press(ecp.Key.Back);
   await waitDialogClosed('confirm dialog dismissed', { timeout: 10000 });
 
-  // Focus is restored to the opener
-  await sleep(500);
+  // Focus is restored to the opener — asserted as a POSITIVE signal, which is also what
+  // makes the wait honest. A poll for "focus is no longer on the dialog" would be
+  // satisfied by focus being nowhere in particular, so it could pass on the very state it
+  // is meant to catch; waiting for focus to arrive back in the detail button group can
+  // only pass by the restoration actually happening, and fails as a diagnosed timeout
+  // naming this step when it does not.
+  await waitFocusInside('#buttons', {
+    label: 'focus restored to the opener after dismiss',
+    timeout: 8000,
+  });
+  // Kept as well as the wait: the wait proves focus ARRIVED, this proves it did not stay
+  // on a dismissed overlay that is somehow still in the chain. Different failures.
   const afterCloseFocusId = await getVal('focusedChild.id');
   if (afterCloseFocusId === 'jrDialog') throw new Error('focus stuck on dismissed dialog');
 });

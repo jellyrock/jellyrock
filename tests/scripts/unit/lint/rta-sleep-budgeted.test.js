@@ -88,10 +88,14 @@ describe('rta-sleep-budgeted', () => {
         errors: [{ messageId: 'unbudgetedFile' }],
       },
 
-      // Removing one leaves the table overstating the inventory.
+      // Removing one leaves the table overstating the inventory. The code carries one
+      // FEWER sleep than the file's entry allows — stated as a relationship rather than a
+      // hardcoded count, because pinning it to a literal is what broke this case when
+      // Phase 6b lowered `dialogs.spec.js` from 6 to 2 and five sleeps stopped being
+      // "one short" and started being over budget.
       {
-        filename: at('tests/rta/specs/dialogs.spec.js'), // budget 6
-        code: `async function f() { await sleep(1); await sleep(2); await sleep(3); await sleep(4); await sleep(5); }`,
+        filename: at('tests/rta/specs/dialogs.spec.js'),
+        code: `async function f() { await sleep(1); }`,
         errors: [{ messageId: 'staleBudget' }],
       },
 

@@ -17,6 +17,9 @@
  * shapes at the module boundary. What needs a real Roku is whether a given keyPath
  * resolves — that stays hardware-verified via `npm run test:rta`.
  */
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const getValues = vi.fn();
@@ -49,6 +52,7 @@ const {
   focusIsInside,
   waitFocusInside,
   waitDialogClosed,
+  waitOsdUp,
   resendIfSwallowed,
   resendUntilFocusInside,
   walkHomeToFirstRow,
@@ -63,6 +67,10 @@ const {
   axisEnd,
   sweepBudget,
 } = await import('./steps.js');
+// The closed set the failure records group by. Imported from its owning module
+// rather than through `diagnostics.js` so a test asserting a slug cannot agree
+// with a re-export that has drifted.
+const { FAILURE_KINDS } = await import('../../../scripts/run-record.js');
 
 /** A `getFocusedNode` answer resting on a row list at `[row, item]`. */
 const onRow = (row) => ({
@@ -1610,5 +1618,180 @@ describe('resendUntilFocusInside', () => {
     const second = resendUntilFocusInside('back', '#homeRows');
     await second();
     expect(sendKeypress).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The failure KIND a timeout is recorded under.
+ *
+ * `FAILURE_KINDS` is a closed set because the flake baseline groups by it, and its own
+ * docblock names the two ways that goes wrong: two slugs for one class SPLIT the count,
+ * one slug for two classes MERGES it. Routing a hand-rolled poll loop through `waitFor`
+ * causes the merge — silently, since a converted loop's diff shows the loop leaving and
+ * nothing about the bucket it used to report. That is why `waitFor` takes a `kind` at
+ * all, and it is only worth taking if it actually reaches the record.
+ *
+ * Asserted against `failures.jsonl` rather than the thrown Error, because the record is
+ * the artifact the baseline reads — the message never carries the slug. `RTA_RECORD_DIR`
+ * points it at a tmpdir, the same channel `diagnostics.test.js` uses and the same one a
+ * spawned Vitest child gets in production.
+ */
+describe('waitFor — the failure kind that reaches the record', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rta-steps-kind-'));
+    process.env.RTA_RECORD_DIR = tmpDir;
+    getValue.mockReset().mockResolvedValue({ found: true, value: 'never' });
+  });
+
+  afterEach(() => {
+    delete process.env.RTA_RECORD_DIR;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  /** The last failure record this tmpdir received. */
+  const lastRecord = () => {
+    const lines = fs
+      .readFileSync(path.join(tmpDir, 'failures.jsonl'), 'utf8')
+      .split('\n')
+      .filter(Boolean);
+    return JSON.parse(lines.at(-1));
+  };
+
+  it('defaults to wait-for-timeout, so the 61 existing call sites are unmoved', async () => {
+    await waitFor('#a.loadState', () => false, { timeout: 60, interval: 10 }).catch(() => {});
+    const record = lastRecord();
+    expect(record.kind).toBe('wait-for-timeout');
+    expect(record.kindUnknown).toBeUndefined();
+  });
+
+  it("records the CALLER's kind when it has one, instead of merging into the default", async () => {
+    await waitFor('loadState', () => false, {
+      timeout: 60,
+      interval: 10,
+      label: 'movies grid',
+      kind: FAILURE_KINDS.GRID_LOAD_TIMEOUT,
+    }).catch(() => {});
+    const record = lastRecord();
+    expect(record.kind).toBe('grid-load-timeout');
+    expect(record.label).toBe('movies grid');
+    expect(record.kindUnknown).toBeUndefined();
+  });
+
+  it('flags an unregistered slug rather than correcting it, so a SPLIT bucket is visible', async () => {
+    // The opposite error to the merge above, and the reason the parameter takes a
+    // `FAILURE_KINDS` member rather than a string: an invented slug must not quietly
+    // become a new bucket. `diagnosedError` owns this guard; the point here is that
+    // routing a kind through `waitFor` does not bypass it.
+    await waitFor('#a.loadState', () => false, {
+      timeout: 60,
+      interval: 10,
+      kind: 'grid-loading-timeout',
+    }).catch(() => {});
+    expect(lastRecord().kindUnknown).toBe(true);
+  });
+});
+
+/**
+ * `waitOsdUp` — the OSD-open sequence the three call sites used to each carry a copy of.
+ *
+ * ## What is actually being gated
+ *
+ * The app swallows Up until `stateAllowsOSD()` says otherwise, and that predicate reads
+ * `m.top.state` on the player node — the same field this reads back over ODC, because
+ * `VideoPlayerView` stamps itself with the item id it is playing. All three sites used to
+ * follow their playable gate with `await sleep(1500)`, and the two in `dialogs.spec.js`
+ * NEEDED something there: they gate on `waitMediaPlaying`, which reads the OS media
+ * player over ECP and goes true well before the app's own field does.
+ *
+ * So the property under test is not "it opens the OSD" — it is that no input is sent
+ * until the app would accept it, with no fixed dwell standing in for that fact. A
+ * regression here is silent: pressing early just wastes presses, the retry loop still
+ * gets there, and the suite stays green while the guard is gone.
+ *
+ * The device is faked at the `odc`/`ecp` boundary. Whether `#osd.visible` is the right
+ * keyPath stays hardware-verified via `npm run test:rta`.
+ */
+describe('waitOsdUp — no input before the app will accept it', () => {
+  /**
+   * A device whose player reports `state` from `states` (one per read, last value
+   * sticking) and whose OSD becomes visible once `upPressesToOpen` Ups have landed.
+   */
+  const player = ({ states, upPressesToOpen = 1 }) => {
+    const queue = [...states];
+    let last = queue[0];
+    let ups = 0;
+    // The state the player was in AT THE MOMENT of each Up. Counting presses is not
+    // enough: with the gate removed the OSD still opens on the first press, so the count
+    // is identical and only the state it was sent in differs. That state is the property.
+    const pressedWhile = [];
+    sendKeypress.mockReset().mockImplementation(async (key) => {
+      if (key !== 'Up') return;
+      ups++;
+      pressedWhile.push(last);
+    });
+    getValue.mockReset().mockImplementation(async ({ keyPath }) => {
+      if (keyPath === '#hero1.state') {
+        if (queue.length) last = queue.shift();
+        return { found: true, value: last };
+      }
+      if (keyPath === '#osd.visible') return { found: true, value: ups >= upPressesToOpen };
+      return { found: false };
+    });
+    return { ups: () => ups, pressedWhile: () => pressedWhile };
+  };
+
+  it('sends NOTHING while the player is still buffering', async () => {
+    // The regression that produced this helper: the old loop pressed Up through the
+    // whole ~5-7 s stream-start window, into a player designed not to answer.
+    const p = player({ states: ['buffering', 'buffering', 'playing'] });
+    // The state gate polls at 1 s, so three answers need room for three ticks.
+    await waitOsdUp('osd visible', { itemId: 'hero1', playableTimeout: 5000, timeout: 2000 });
+    // Every Up was sent against a playable player — not merely "one Up was sent", which
+    // stays true with the gate removed and is what let an earlier version of this test
+    // pass a mutation that deleted the guard outright.
+    expect(p.pressedWhile()).not.toHaveLength(0);
+    expect(p.pressedWhile().every((state) => state === 'playing')).toBe(true);
+  });
+
+  it("reads the app's OWN player field, not the OS media player", async () => {
+    // `dialogs.spec.js` gates on ECP before calling this. If this read moved to ECP too,
+    // both sites would gate on the same early signal and the guard would be gone.
+    player({ states: ['playing'] });
+    await waitOsdUp('osd visible', { itemId: 'hero1', playableTimeout: 2000, timeout: 2000 });
+    const keyPaths = getValue.mock.calls.map(([req]) => req.keyPath);
+    expect(keyPaths).toContain('#hero1.state');
+  });
+
+  it('does not dwell once the player answers — the 1500 ms settle is gone', async () => {
+    // The assertion the conversion exists for. A restored `sleep(1500)` between the two
+    // waits pushes this well past the bound; the gated path costs one poll interval.
+    player({ states: ['playing'] });
+    const start = Date.now();
+    await waitOsdUp('osd visible', { itemId: 'hero1', playableTimeout: 2000, timeout: 2000 });
+    expect(Date.now() - start).toBeLessThan(1200);
+  });
+
+  it('does not press into an OSD that is already up', async () => {
+    // Up OPENS the OSD; it is not a toggle. Once open the key reaches the OSD itself and
+    // moves focus between its controls, perturbing the state the caller asserts on.
+    player({ states: ['playing'], upPressesToOpen: 0 });
+    await waitOsdUp('osd visible', { itemId: 'hero1', playableTimeout: 2000, timeout: 2000 });
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+
+  it('keeps re-pressing when a key is swallowed, rather than failing on one drop', async () => {
+    player({ states: ['playing'], upPressesToOpen: 3 });
+    await waitOsdUp('osd visible', { itemId: 'hero1', playableTimeout: 2000, timeout: 12000 });
+    expect(sendKeypress.mock.calls.filter(([k]) => k === 'Up').length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('times out under the OSD label when the player never becomes playable', async () => {
+    player({ states: ['buffering'] });
+    await expect(
+      waitOsdUp('osd visible', { itemId: 'hero1', playableTimeout: 150, timeout: 150 }),
+    ).rejects.toThrow(/player playable \(pre-OSD\)/);
+    expect(sendKeypress).not.toHaveBeenCalled();
   });
 });

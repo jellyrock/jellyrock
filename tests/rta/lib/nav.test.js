@@ -225,6 +225,69 @@ describe('navLibraryByType — which library actually opened', () => {
 });
 
 /**
+ * `waitGridLoaded`'s conversion to `waitFor`, and the bucket it must not fall into.
+ *
+ * It hand-rolled its own poll loop until 2026-09-05. Routing it through the shared
+ * primitive buys read-failure attribution and brings it inside
+ * `jellyrock-rta/wait-justified`'s view — but a naive conversion would also have taken
+ * its failure slug, because `waitFor` recorded `wait-for-timeout` unconditionally.
+ *
+ * That merge is the regression this gates, and it is invisible by construction: the
+ * suite stays green (the wait still works), the diff shows a loop leaving and says
+ * nothing about the record, and the cost lands weeks later in a flake baseline where a
+ * grid that never loads is indistinguishable from every other timeout in the suite.
+ * `FAILURE_KINDS`' own docblock names one-slug-for-two-classes as the failure; this is
+ * the assertion that the conversion did not cause it.
+ *
+ * The reader and cadence are asserted for the same reason Phase 3b stated every
+ * converted site's timeout: a helper's defaults are not the defaults the call site had.
+ * `loadState` recurs on every BaseGridView, so a scene-rooted read could answer from a
+ * SUSPENDED view and pass this wait against the screen the user just left.
+ */
+describe('waitGridLoaded — converted to waitFor without losing its own failure bucket', () => {
+  /** The `waitFor` call the grid wait issued, out of the several a nav makes. */
+  const gridWait = () => waitFor.mock.calls.find(([keyPath]) => keyPath === 'loadState');
+
+  it('reports grid-load-timeout, not the shared wait-for-timeout bucket', async () => {
+    opensInOrder(SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+    expect(gridWait()?.[2]).toMatchObject({ kind: FAILURE_KINDS.GRID_LOAD_TIMEOUT });
+  });
+
+  it('keeps the 20 s budget and 500 ms cadence the hand-rolled loop had', async () => {
+    opensInOrder(SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+    expect(gridWait()?.[2]).toMatchObject({ timeout: 20000, interval: 500 });
+  });
+
+  it('polls the ACTIVE routed view, so a suspended grid cannot satisfy it', async () => {
+    opensInOrder(SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+    // Asserted by DELEGATION, not by reference: `steps.js` is mocked with wrappers, so
+    // the reader `nav.js` holds is never the same object as the spy here. Calling it is
+    // the stronger check anyway — it proves which reader RUNS. Passing the scene-rooted
+    // `getVal` instead would leave this spy untouched, which is the mistake being gated.
+    getActiveVal.mockClear();
+    await gridWait()[2].read('loadState');
+    expect(getActiveVal).toHaveBeenCalledWith('loadState');
+    expect(getVal).not.toHaveBeenCalledWith('loadState');
+  });
+
+  it('accepts loaded and empty, and nothing else — an empty library is a real screen', async () => {
+    // "empty" means zero ITEMS, not a failed load: the "No Items" view is capture-worthy
+    // and this nav is shared with the store-screenshot path, which would otherwise time
+    // out on every legitimately empty library.
+    opensInOrder(SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+    const predicate = gridWait()?.[1];
+    expect(predicate('loaded')).toBe(true);
+    expect(predicate('empty')).toBe(true);
+    expect(predicate('skeleton')).toBe(false);
+    expect(predicate(undefined)).toBe(false);
+  });
+});
+
+/**
  * `reportSweep`'s suppression rule, which is a decision table and not a device property.
  *
  * Its branches are exactly the ones a green on-device run cannot tell apart: a build with

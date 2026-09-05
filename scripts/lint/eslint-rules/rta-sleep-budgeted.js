@@ -32,9 +32,9 @@
 // The sibling rule (`rta-wait-justified`) ratchets on the FIELD, because "this field is
 // not a pulse" is a reusable fact: verify `#osd.visible` once and every wait on it
 // inherits the check. Arbitrary waits have no such key — the argument is a property of
-// the call site's PURPOSE, and 11 of the 32 sites are anonymous spec arrows with no
+// the call site's PURPOSE, and most of the sites are anonymous spec arrows with no
 // stable name to hang an allowlist on. The alternative was a `// sleep: <category>` tag
-// on all 32, and Phase 3 had already rejected that shape for the settle waits: 37
+// on every one, and Phase 3 had already rejected that shape for the settle waits:
 // annotations that say nothing a reader of the code needs.
 //
 // A count is the cheapest thing that still fires at the right moment. It cannot say WHICH
@@ -73,7 +73,12 @@ const BUDGETS = new Map([
   // counter family, which is `#if perfTiming` — and `scripts/harden-prod-manifest.js`
   // forces that const off in `build:prod`, which is what `screenshots:capture` runs. So
   // on the path these serve there is provably no field to read.
-  ['tests/rta/lib/nav.js', 12],
+  //
+  // 12 before Phase 6b. The two it lost were the pre-action settles: the wait before
+  // `sendText` now gates on the search keyboard holding focus, and the one before the
+  // first OSD press went away with `waitOsdUp`, whose own state gate already established
+  // the app's precondition for accepting that key.
+  ['tests/rta/lib/nav.js', 10],
   ['scripts/capture-screenshots.js', 1],
 
   // Timer-window waits: out-wait a period to prove a NON-EVENT (a dialog that must
@@ -81,11 +86,12 @@ const BUDGETS = new Map([
   // periodic refresh. Ungateable by construction — the only signal would be the very
   // thing being disproven.
   ['tests/rta/specs/deeplink.spec.js', 2],
-  ['tests/rta/specs/genre-skeleton.spec.js', 2],
+  ['tests/rta/specs/genre-skeleton.spec.js', 1],
 
-  // Mixed: timer-window non-events plus pre-action settles after a forced focus.
-  ['tests/rta/specs/dialogs.spec.js', 6],
-  ['tests/rta/specs/quick-connect.spec.js', 1],
+  // Timer-window non-events only, since Phase 6b: a dialog that must survive its own 5 s
+  // auto-hide, and a Back that must not exit before it. The four pre-action settles that
+  // shared this entry are gone — two through `waitOsdUp`, two through `waitFocusInside`.
+  ['tests/rta/specs/dialogs.spec.js', 2],
 
   // Asynchronous teardown that no app field reports — see `retainedAfter`'s docblock.
   ['tests/rta/specs/leaks.spec.js', 1],

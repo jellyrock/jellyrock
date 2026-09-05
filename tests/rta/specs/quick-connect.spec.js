@@ -37,11 +37,11 @@ import { hardRelaunch, ecp, odc } from '../lib/driver.js';
 import {
   waitFor,
   waitDialogClosed,
+  waitFocusInside,
   waitHome,
   hasChildren,
   getVal,
   press,
-  sleep,
 } from '../lib/steps.js';
 import { captureRawUI } from '../capture.js';
 
@@ -91,7 +91,14 @@ async function focusQuickConnectButton() {
   }
 
   await odc.focusNode({ base: 'scene', keyPath: '#buttons' });
-  await waitFor('#buttons.buttonFocused', (n) => typeof n === 'number', {
+  // This gate used to poll `#buttons.buttonFocused` until it read as a NUMBER, which
+  // could not fail: `JRButtonGroup.bs` sets the field to 0 in `init()`, so it already
+  // answered before the teleport and the wait returned on its first tick regardless of
+  // where focus was. It looked like a proper wait and was a no-op — the shape the north
+  // star calls succeeding too early. Focus arriving in the group is the real state, and
+  // it is the one `onGroupFocusChanged` acts on to re-assert the index the walk below
+  // then drives.
+  await waitFocusInside('#buttons', {
     label: 'user-select button group focused',
     timeout: 8000,
   });
@@ -171,8 +178,14 @@ it('cancel leaves the code dialog and returns to the user picker', async (testCt
   await press(ecp.Key.Back);
   await waitDialogClosed('quick connect dialog dismissed', { timeout: 10000 });
 
-  // Still signed out, still on the picker — a cancel must not half-start a
-  // session. Settle first: the dialog restores focus to its opener on close.
-  await sleep(500);
+  // Still signed out, still on the picker — a cancel must not half-start a session.
+  // The settle this replaces was named for focus restoration, so gate on that: the
+  // dialog hands focus back to its opener, the `#buttons` group holding Quick Connect.
+  // Waiting for focus to ARRIVE there can only pass by the restoration happening, where
+  // a fixed dwell passed whatever the app did with focus.
+  await waitFocusInside('#buttons', {
+    label: 'focus restored to the user picker after cancel',
+    timeout: 8000,
+  });
   expect(await getVal('#userRow.content.getChildCount()')).toBeGreaterThan(0);
 }, 120000);

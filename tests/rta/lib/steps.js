@@ -179,11 +179,35 @@ async function batchRead(keyPaths, toRequest) {
  * On timeout the throw carries a dump of what the device actually looked like
  * (see [`diagnostics.js`](diagnostics.js)) — the poll loop itself is untouched,
  * so this costs nothing on the success path.
+ *
+ * **`kind` names the flake-baseline bucket the timeout aggregates under**, and defaults
+ * to `WAIT_FOR_TIMEOUT`. It exists so a wait that already HAS its own failure class can
+ * route through this loop without dissolving into that default. `FAILURE_KINDS`' own
+ * docblock names the hazard: one name for two classes MERGES the count, and it reads a
+ * copy-pasted entry as the way that happens — but converting a hand-rolled poll loop to
+ * `waitFor` does it just as effectively, and with nothing in the diff to show for it.
+ * `waitGridLoaded` ([`nav.js`](nav.js)) is the case this was added for: a grid that never
+ * finishes loading and a wait that timed out on any other field are different failures
+ * with different fixes, and the baseline can only tell them apart if the slug survives
+ * the conversion.
+ *
+ * Pass a `FAILURE_KINDS` member, never a literal. An unregistered slug is not corrected
+ * here — `diagnosedError` records it as `kindUnknown` and the run summary reports it,
+ * which is the guard against the opposite error (two names for one class, SPLITTING the
+ * count).
  */
 export async function waitFor(
   keyPath,
   predicate,
-  { timeout = 30000, interval = 500, action, label, read = getVal, observed } = {},
+  {
+    timeout = 30000,
+    interval = 500,
+    action,
+    label,
+    read = getVal,
+    observed,
+    kind = FAILURE_KINDS.WAIT_FOR_TIMEOUT,
+  } = {},
 ) {
   const start = Date.now();
   let last;
@@ -211,7 +235,7 @@ export async function waitFor(
         ? ` — ${readErrors} read(s) did not complete; the device may have stopped answering`
         : ''),
     {
-      kind: FAILURE_KINDS.WAIT_FOR_TIMEOUT,
+      kind,
       label: label || keyPath,
       waitedMs: Date.now() - start,
       // The caller's own context, merged over the loop's. `tests/rta/CLAUDE.md` already
@@ -675,6 +699,97 @@ export async function waitMediaPlaying(label, timeout = 30000) {
     label: `media player (${label})`,
     waitedMs: Date.now() - start,
     observed: { lastPlayerState: last, expected: PLAYING_STATES },
+  });
+}
+
+/**
+ * Read a field on the player node. The player's `id` IS the item id (`m.top.id =
+ * m.currentItem.id` in
+ * [`VideoPlayerView.bs`](../../../components/video/VideoPlayerView.bs), which is also how
+ * `navOsd` addresses its `seek`), so read it by id rather than via `focusedNode`: focus is
+ * not guaranteed to be on the player at any given tick, and a focus-based read silently
+ * returns another node's field (or `state="none"`) when it isn't.
+ *
+ * Deliberately outside `ATTRIBUTING_READS`: it is a custom reader, so a wait using it gets
+ * no read-failure attribution. Recorded as still-owed rather than silently accepted.
+ */
+const readPlayer = (itemId) => async (keyPath) =>
+  (
+    await odc
+      .getValue(
+        itemId
+          ? { base: 'scene', keyPath: `#${itemId}.${keyPath}` }
+          : { base: 'focusedNode', keyPath },
+      )
+      .catch(() => ({}))
+  ).value;
+
+/**
+ * Wait for the OSD to come up after playback starts.
+ *
+ * Found when `osd` + `trickplay` failed on a Roku Stick `3600X` (720p UI) while the
+ * same build passed on a Roku Ultra. The app was never at fault — its `onKeyEvent`
+ * behaved correctly on both:
+ *
+ * 1. **Don't send input while the player is still loading.** The app deliberately
+ *    swallows Up until the video is playable (`stateAllowsOSD` excludes
+ *    `buffering`), so the old loop spent that whole window pressing a player that
+ *    is designed not to answer. Measured, the window is ~5-7 s on BOTH devices
+ *    (stick 5.6/5.8 s, Ultra 7.2 s) — it is bound by stream start against a remote
+ *    server, NOT by device speed, so this was never a slow-device-only hazard; the
+ *    stick is just where it surfaced.
+ * 2. **Don't keep pressing into an OSD that is already up.** Up only OPENS the
+ *    OSD (it is not a toggle), and once open the key goes to the OSD itself,
+ *    where it moves focus between controls — so a stray press perturbs the state
+ *    the following steps assert on. Read first, press only while it is down —
+ *    the same guard the focus-walk navs use.
+ * (A dropped key press masquerading as "the screen never loaded" was the third
+ * hazard here; that one is fixed for every nav in `waitFor`/`waitFocused`, which
+ * now count failing actions and name them in the timeout message.)
+ *
+ * ## Why the first wait is the app's OWN state field, and why there is no settle after it
+ *
+ * Three call sites carried this sequence, and all three followed it with
+ * `await sleep(1500) // let the just-started player settle before sending any input` —
+ * a fixed wait for a state that turns out to be readable. The app's gate is
+ * `stateAllowsOSD()`, which is `m.top.state` in `playing | paused | stopped` and not
+ * parked; `onKeyEvent` consults exactly that before opening the OSD for Up, Down, OK or
+ * Play. So the honest precondition for sending Up is the app's own `state`, and this
+ * wait reads it — no dwell needed once it answers.
+ *
+ * That mattered unequally across the three. `nav.js` already waited on this field, so its
+ * settle was buying nothing. The two `dialogs.spec.js` helpers gated on
+ * `waitMediaPlaying` instead, which reads the **OS** media player over ECP — a different
+ * observation of a different thing, true well before the app's own field flips. Their
+ * 1500 ms was covering exactly that gap, and covering it by guess.
+ *
+ * `m.playerParked` is the one clause of `stateAllowsOSD()` that cannot be read: it is a
+ * private `m.` variable, not an interface field. It is only set by
+ * `parkPlayerAfterSupersede` on a superseded error, which is not a state a healthy
+ * playback start reaches — and the OSD wait below re-presses for 30 s, so a parked player
+ * fails as a timeout naming the OSD rather than as a silent wrong answer.
+ *
+ * @param {string} label what to call the OSD wait in the timeout message and the record
+ * @param {object} [opts]
+ * @param {string} [opts.itemId] the item being played, so the player is read by id
+ * @param {number} [opts.playableTimeout] budget for the app to report a playable state
+ * @param {number} [opts.timeout] budget for the OSD to come up once input is accepted
+ */
+export async function waitOsdUp(label, { itemId, playableTimeout = 90000, timeout = 30000 } = {}) {
+  await waitFor('state', (v) => v === 'playing' || v === 'paused', {
+    timeout: playableTimeout,
+    interval: 1000,
+    label: 'player playable (pre-OSD)',
+    read: readPlayer(itemId),
+  });
+
+  await waitFor('#osd.visible', (v) => v === true, {
+    timeout,
+    interval: 2000,
+    action: async () => {
+      if ((await getVal('#osd.visible')) !== true) await press(ecp.Key.Up);
+    },
+    label,
   });
 }
 

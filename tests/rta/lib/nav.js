@@ -29,6 +29,7 @@ import {
   waitFocused,
   waitFocusInside,
   waitHome,
+  waitOsdUp,
   walkHomeToFirstRow,
   overhangWalkKey,
   hasChildren,
@@ -122,7 +123,20 @@ export async function navSettings() {
 export async function navSearch() {
   await focusOverhangIcon('searchIcon');
   await press(ecp.Key.Ok);
-  await sleep(1500); // let SearchResults push + the keyboard take focus
+  // `sendText` types into whatever holds focus, so the keyboard HOLDING it is the
+  // precondition — not a guess at how long the push takes. `SearchResults.bs` says the
+  // screen is built before it is typable ("nothing has focus until the router shows the
+  // view and `onScreenShown` runs, which is a later turn of the event loop") and
+  // `onScreenShown` is what calls `m.searchAlphabox.setFocus(true)` on first show. That
+  // focus landing is the app's own statement that it will accept a keystroke.
+  //
+  // The screen's readiness ledger declares the same thing as `pending("focus")`, and is
+  // NOT usable here: it is `#if perfTiming`, which `harden-prod-manifest.js` forces off in
+  // `build:prod` — the build `screenshots:capture` runs through this very nav.
+  await waitFocusInside('#searchKey', {
+    label: 'search keyboard typable (pre-sendText)',
+    timeout: 15000,
+  });
   await ecp.sendText(RTA_CONFIG.searchQuery); // types into the focused search box
   await waitFor('#searchSelect.content.getChildCount()', hasChildren, {
     label: `search results for "${RTA_CONFIG.searchQuery}"`,
@@ -575,24 +589,38 @@ async function walkHomeRowsTo({ row, col }, collectionType) {
  *
  * Scoped to the active routed view (getActiveVal): `loadState` recurs on every
  * BaseGridView, and a suspended view can still be in the scene tree (see getActiveVal).
+ *
+ * ## Why this is a `waitFor` and not its own loop
+ *
+ * It hand-rolled the poll until 2026-09-05, for no reason that survived being written
+ * down: one keyPath, one predicate, one reader, throws on timeout — the shape `waitFor`
+ * exists for. Keeping its own copy cost it the read-failure attribution every other wait
+ * gained (a raw `getActiveVal` swallows a transport failure to `undefined`, so a device
+ * that stopped answering and a grid that never loaded both reported
+ * `last loadState=undefined` — the #785 ambiguity, in the one wait not covered by the fix
+ * for it), and it sat outside `jellyrock-rta/wait-justified`, which is what checks that a
+ * polled field is not a one-shot pulse.
+ *
+ * The conversion waited on `waitFor` accepting a `kind`, and that was not a formality:
+ * without it this timeout would have been recorded as `wait-for-timeout` and merged into
+ * the bucket every other wait shares. `FAILURE_KINDS` keeps `grid-load-timeout` separate
+ * because a grid that never finishes loading has a different cause and a different fix
+ * from a wait that timed out on any other field, and the flake baseline groups by that
+ * slug.
+ *
+ * `timeout` and `interval` are stated rather than inherited. The old loop hardcoded a
+ * 500 ms tick, so leaving it to `waitFor`'s default would tie this wait's cadence to a
+ * number chosen for other call sites — the drift that cost `waitFocusInside` six sites
+ * their intervals in Phase 2.
  */
 async function waitGridLoaded(label, timeout = 20000) {
-  const start = Date.now();
-  let last;
-  while (Date.now() - start < timeout) {
-    last = await getActiveVal('loadState');
-    if (last === 'loaded' || last === 'empty') return;
-    await sleep(500);
-  }
-  throw await diagnosedError(
-    `nav timed out waiting for ${label} (last loadState=${JSON.stringify(last)})`,
-    {
-      kind: FAILURE_KINDS.GRID_LOAD_TIMEOUT,
-      label,
-      waitedMs: Date.now() - start,
-      observed: { lastLoadState: last },
-    },
-  );
+  await waitFor('loadState', (v) => v === 'loaded' || v === 'empty', {
+    label,
+    timeout,
+    interval: 500,
+    read: getActiveVal,
+    kind: FAILURE_KINDS.GRID_LOAD_TIMEOUT,
+  });
 }
 
 /** home -> Movies library grid (hardened against Home-layout changes). */
@@ -1019,65 +1047,6 @@ export async function startPlayback(ctx) {
 }
 
 /**
- * Read a field on the player node. The player's `id` IS the item id (that is how
- * `navOsd` addresses its `seek`), so read it by id rather than via `focusedNode`:
- * focus is not guaranteed to be on the player at any given tick, and a focus-based
- * read silently returns another node's field (or `state="none"`) when it isn't.
- */
-const readPlayer = (itemId) => async (keyPath) =>
-  (
-    await odc
-      .getValue(
-        itemId
-          ? { base: 'scene', keyPath: `#${itemId}.${keyPath}` }
-          : { base: 'focusedNode', keyPath },
-      )
-      .catch(() => ({}))
-  ).value;
-
-/**
- * Wait for the OSD to come up after playback starts.
- *
- * Found when `osd` + `trickplay` failed on a Roku Stick `3600X` (720p UI) while the
- * same build passed on a Roku Ultra. The app was never at fault — its `onKeyEvent`
- * behaved correctly on both:
- *
- * 1. **Don't send input while the player is still loading.** The app deliberately
- *    swallows Up until the video is playable (`stateAllowsOSD` excludes
- *    `buffering`), so the old loop spent that whole window pressing a player that
- *    is designed not to answer. Measured, the window is ~5-7 s on BOTH devices
- *    (stick 5.6/5.8 s, Ultra 7.2 s) — it is bound by stream start against a remote
- *    server, NOT by device speed, so this was never a slow-device-only hazard; the
- *    stick is just where it surfaced.
- * 2. **Don't keep pressing into an OSD that is already up.** Up only OPENS the
- *    OSD (it is not a toggle), and once open the key goes to the OSD itself,
- *    where it moves focus between controls — so a stray press perturbs the state
- *    the following steps assert on. Read first, press only while it is down —
- *    the same guard the focus-walk navs above use.
- * (A dropped key press masquerading as "the screen never loaded" was the third
- * hazard here; that one is fixed for every nav in `waitFor`/`waitFocused`, which
- * now count failing actions and name them in the timeout message.)
- */
-async function waitOsdUp(label, ctx) {
-  await waitFor('state', (v) => v === 'playing' || v === 'paused', {
-    timeout: 90000,
-    interval: 1000,
-    label: 'player playable (pre-OSD)',
-    read: readPlayer(ctx?.heroId),
-  });
-  await sleep(1500); // let the just-started player settle before sending any input
-
-  await waitFor('#osd.visible', (v) => v === true, {
-    timeout: 30000,
-    interval: 2000,
-    action: async () => {
-      if ((await getVal('#osd.visible')) !== true) await press(ecp.Key.Up);
-    },
-    label,
-  });
-}
-
-/**
  * Playback -> paused OSD overlay at the exact target position. OSD only appears
  * once the player reaches a playable state (`stateAllowsOSD`), so we retry Up
  * until it shows, then Play to PAUSE + re-show it (matches the reference's
@@ -1088,7 +1057,7 @@ async function waitOsdUp(label, ctx) {
 export async function navOsd(ctx) {
   await startPlayback(ctx);
   // Confirm the player reached a playable state (OSD only shows when it has).
-  await waitOsdUp('osd visible', ctx);
+  await waitOsdUp('osd visible', { itemId: ctx?.heroId });
   // Hide the OSD (focus -> player), then Play to PAUSE + re-show the OSD.
   await press(ecp.Key.Back);
   await waitFor('#osd.visible', (v) => v === false, { timeout: 8000, label: 'osd hidden' });
@@ -1119,7 +1088,7 @@ export async function navOsd(ctx) {
  */
 export async function navTrickplay(ctx) {
   await startPlayback(ctx);
-  await waitOsdUp('playback ready (osd)', ctx);
+  await waitOsdUp('playback ready (osd)', { itemId: ctx?.heroId });
   await press(ecp.Key.Back); // hide OSD so the player (not the OSD) receives Right
   await waitFor('#osd.visible', (v) => v === false, { timeout: 8000, label: 'osd hidden' });
   await odc

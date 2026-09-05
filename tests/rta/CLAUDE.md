@@ -55,7 +55,7 @@ and answering — so every gate that means "loaded" passes. Two investigations o
 an IDENTICAL focused keyPath (`#homeRows`) and only the row index tells them apart; that
 field is now kept in the failure dump for exactly that reason.
 
-Canonical examples in [`lib/nav.js`](lib/nav.js): `waitOsdUp` (input), `findHomeLibraryTile`
+Canonical examples: `waitOsdUp` (input, in [`lib/steps.js`](lib/steps.js)), `findHomeLibraryTile` ([`lib/nav.js`](lib/nav.js))
 (scan), and the focus gates in `navLibraryByType` / `navMovieDetails` /
 `openChildDetailByRowType` (stale reads). For the third shape, `walkHomeToFirstRow` in
 [`lib/steps.js`](lib/steps.js) — shared rather than inlined at its one call site precisely
@@ -97,7 +97,7 @@ captured off `.178`, not invented ones.
 ## Why every wait polls
 
 `roku-test-automation` ships a field OBSERVER (`onFieldChangeOnce`), and this harness
-polls instead — 101 times. That is a deviation from the library's documented practice, so
+polls instead — 94 times. That is a deviation from the library's documented practice, so
 the standing bar is that **every wait either follows that practice or says why it
 deviates**. "It works" is not a justification; "the library's primitive is wrong here
 because X" is.
@@ -114,18 +114,21 @@ prove themselves; the rest are properties of the FIELD or of focus.
 
 | Category | n | Why a poll, not an observer |
 |---|---|---|
-| Function `keyPath` | 13 | ODC observes a **field**. `getChildCount()` / `subtype()` are calls, not fields, so the primitive cannot apply at all. |
-| Waits for absence | 10 | The node is gone. A departed node has no field left to observe. All ten are dialog dismissals and route through `waitDialogClosed`, whose JSDoc carries this argument. |
-| `action:` retry loops | 11 | The per-tick re-press **is** the mechanism (see `resendIfSwallowed`). An observer would sit and watch for a key that never landed. |
-| Plain field settle | 37 | The primitive could apply; it is ruled out below. |
-| Focus containment (`waitFocusInside`) | 16 | ODC has no "observe global focus" primitive. Its request table (`RTA_OnDeviceComponent.brs`) offers `getFocusedNode` / `hasFocus` / `isInFocusChain` — all READS — and one observer, `onFieldChange`, which needs a node keyPath and a field name and so cannot express "wherever focus now is". |
+| Function `keyPath` | 12 | ODC observes a **field**. `getChildCount()` / `subtype()` are calls, not fields, so the primitive cannot apply at all. |
+| Waits for absence | 1 | The node is gone. A departed node has no field left to observe. This is `waitDialogClosed`, whose JSDoc carries the argument on behalf of the ten dialog-dismiss sites that route through it. |
+| `action:` retry loops | 8 | The per-tick re-press **is** the mechanism (see `resendIfSwallowed`). An observer would sit and watch for a key that never landed. |
+| Plain field settle | 36 | The primitive could apply; it is ruled out below. |
+| Dynamic `keyPath` | 1 | `scrollFocus`, whose keyPath is its caller's. Unclassifiable from syntax, so it carries a rule disable naming the reason and the argument lives in its docblock. |
+| Focus containment (`waitFocusInside`) | 21 | ODC has no "observe global focus" primitive. Its request table (`RTA_OnDeviceComponent.brs`) offers `getFocusedNode` / `hasFocus` / `isInFocusChain` — all READS — and one observer, `onFieldChange`, which needs a node keyPath and a field name and so cannot express "wherever focus now is". |
 | Focus identity (`waitFocused`) | 15 | Same absence of a primitive, and focus is inherently terminal: it stays where it landed until the next key. There is no pulse to miss. |
 
-*(13 + 10 + 11 + 37 = 71 against 70 waits: `backToHome`'s wait is both a function keyPath
-and an `action:` loop. Those 70 waits are issued by **61** `waitFor` calls — the ten
-absence waits route through `waitDialogClosed`, which issues one on their behalf.)*
+*(12 + 1 + 8 + 36 + 1 = 58 `waitFor` CALLS, plus 21 + 15 focus waits = 94. Counts are
+call sites, which is what the gate sees; a call is not always one wait. `waitDialogClosed`
+issues one on behalf of ten sites, and `waitOsdUp` issues two on behalf of three.
+Re-derived from the AST — never `grep`, which has now produced five wrong figures in this
+project's history.)*
 
-### The 37 plain-field waits, and the gate that keeps them honest
+### The 36 plain-field waits, and the gate that keeps them honest
 
 These are the ones an observer genuinely could serve, so they need the real argument.
 Every one was checked against the app source, and **no target state is a one-shot pulse**
@@ -173,38 +176,65 @@ above says it harder: never paper over a flake with a fixed `sleep`, because the
 not timing out — it was succeeding too early. So the same bar the waits carry applies
 here: every `sleep()` either has no signal available to gate on, or it is a defect.
 
-**Most of them are not waits at all.** Of **47** `sleep()` calls (derived from the AST on
-2026-09-05 — a grep says 46 and counts the primitive's own definition), **15 are poll
-ticks**: a `sleep` lexically inside a bounded loop that exits on its own predicate. The
-interval sets sampling cadence and nothing else, and raising or lowering it is a separate
-question this project puts out of scope. Worth stating plainly because it reads as a
-surprise: [`lib/steps.js`](lib/steps.js), the file that owns every wait primitive, contains
-**seven** `sleep()` calls and **zero** arbitrary waits.
+**Most of them are not waits at all.** Of **38** `sleep()` calls (derived from the AST),
+**14 are poll ticks**: a `sleep` lexically inside a bounded loop that exits on its own
+predicate. The interval sets sampling cadence and nothing else, and raising or lowering it
+is a separate question this project puts out of scope. Worth stating plainly because it
+reads as a surprise: [`lib/steps.js`](lib/steps.js), the file that owns every wait
+primitive, contains **seven** `sleep()` calls and **zero** arbitrary waits.
 
-That leaves **32 bare** ones, and they fall in seven categories.
+That leaves **24 bare** ones, and they fall in six categories.
 
 | Category | n | Why no signal was available |
 |---|---|---|
 | Paint / texture settle | 11 | After a `waitFor` gate has already passed, waiting for PIXELS. The app's only load-completion signal is the `cellLoad*` counter family — and it is `#if perfTiming`, which [`scripts/harden-prod-manifest.js`](../../scripts/harden-prod-manifest.js) forces OFF in `build:prod`. These navs are shared with `screenshots:capture`, which runs exactly that build, so on the path they serve there is provably no field to read. |
-| Pre-action / pre-read settle | 8 | ⚠️ **The unjustified residue — see below.** |
 | Timer window | 5 | Out-waiting a period to prove a NON-EVENT. [`deeplink.spec.js`](specs/deeplink.spec.js) names it: *"Assert we never leave Home (a non-event → a bounded wait)."* Ungateable by construction — the only signal would be the very thing being disproven, and a dialog that must survive its own 5 s auto-hide cannot be gated on the timer under test. |
 | App lifecycle | 4 | [`lib/driver.js`](lib/driver.js)'s `bootMs` / `exitMs`. The channel is down or coming up, so ODC cannot answer at all — there is no device to read from until the app exists. |
 | Measurement window | 2 | The dwell IS the quantity being measured (a baseline phase, an extras-launch window). Gating it on a signal would change what is measured. |
 | Async teardown | 1 | `retainedAfter`'s docblock states it: the teardown the last Back press started is finished by no app field that reports it. |
 | Demo footage dwell | 1 | `hold(ms, label)` in [`demos/run.mjs`](demos/run.mjs) is a shot-list beat for the camera, not a wait on app state. Not a test. |
 
-### The eight that are NOT yet justified
+### The eight pre-action settles, and what replaced them
 
-**Recorded as owed rather than argued away.** The pre-action and pre-read settles — a
-fixed wait before `sendText`, before sending input to a just-started player, before
-reading `buttonFocused` after a forced focus, before reading focus back after a dialog
-closes — are the shape the north star exists to catch. Each of them waits for a state that
-plausibly HAS a readable signal, which is exactly why they are the ones a conversion
-should be attempted on rather than the ones a category argument should cover.
+**They are gone — converted, not argued away.** A previous pass recorded eight
+pre-action / pre-read settles as the unjustified residue: a fixed wait before `sendText`,
+before sending input to a just-started player, before reading `buttonFocused` after a
+forced focus, before reading focus back after a dialog closes. Each waited for a state
+that plausibly HAD a readable signal, which is why they earned a conversion attempt rather
+than a category argument. Every one of them did have a signal:
 
-They are not converted here because a conversion changes harness behaviour and has to be
-proven on hardware. Until then they are counted, not excused: the budget below holds the
-number at 8 so it cannot quietly become 9.
+| Was | n | Is | The signal |
+|---|---|---|---|
+| before `ecp.sendText` | 1 | `waitFocusInside('#searchKey')` | `sendText` types into whatever holds focus, and `SearchResults.bs` only focuses the keyboard in `onScreenShown` — "nothing has focus until the router shows the view", a later turn of the event loop. |
+| before the first OSD press | 3 | `waitOsdUp`'s state gate | The app's `stateAllowsOSD()` reads `m.top.state` on the player node, and `VideoPlayerView` stamps that node with the item id. So the precondition for the key is readable by id. |
+| after `odc.focusNode('#buttons')` | 1 | `waitFocusInside('#buttons')` | `onGroupFocusChanged` re-asserts the group's index when it TAKES focus, so focus arriving is what makes the index read meaningful. |
+| after a dialog closes | 2 | `waitFocusInside` on the opener | The dialog restores focus to its opener; waiting for it to ARRIVE can only pass by the restoration happening. |
+| before recording a scroll position | 1 | `scrollFocus` | Covered below — the cause was removed rather than out-waited. |
+
+*(1 + 3 + 1 + 2 + 1 = 8.)*
+
+Two of them were not the conversion they looked like, and both are worth keeping in mind
+before writing the next one:
+
+- **`#buttons.buttonFocused` is not a gate.** The obvious wait — poll until it reads as a
+  number — cannot fail, because
+  [`JRButtonGroup.bs`](../../components/ui/buttongroup/JRButtonGroup.bs) sets it to `0` in
+  `init()`. It answers long before any focus lands, so the wait returns on its first tick
+  having proven nothing, and the read after it describes the group's PREVIOUS index. One
+  site in `quick-connect.spec.js` had already been "converted" to exactly that shape —
+  a no-op wearing a wait's clothes, which is why it never appeared in the sleep inventory
+  at all. It now gates on focus like the rest.
+- **Waiting for a state to STOP being true is not a gate either.** The settle after a
+  dialog closes was followed by "focus is not on the dialog" — so polling for that would
+  be satisfied by focus being nowhere at all, passing on the very state it exists to
+  catch. The waits gate on focus ARRIVING at the opener, and the original assertion is
+  kept beside them: different failures.
+
+The last row was a different shape again — it waited out an in-flight keypress before
+recording a scroll position in `genre-skeleton.spec.js`. That one routes through
+[`scrollFocus`](lib/steps.js), which sends the exact distance as one burst and only
+re-presses for a key it can prove was DROPPED, so the position it returns has stopped
+moving. The cause was removed rather than out-waited.
 
 ### The gate
 
@@ -216,8 +246,8 @@ a budget of zero. Poll ticks prove themselves from syntax and are never counted.
 **Why a count rather than a per-site tag.** The sibling rule ratchets on the FIELD because
 "this field is not a pulse" is reusable — verify `#osd.visible` once and every wait on it
 inherits the check. An arbitrary wait has no such key: the argument is a property of the
-call site's purpose, and 11 of the 32 sites are anonymous spec arrows with no stable name
-to key on. The alternative was a `// sleep: <category>` tag on all 32, which is the shape
+call site's purpose, and most of the sites are anonymous spec arrows with no stable name
+to key on. The alternative was a `// sleep: <category>` tag on every one, which is the shape
 [Phase 3 already rejected](#the-37-plain-field-waits-and-the-gate-that-keeps-them-honest)
 for the settle waits — annotations that say nothing a reader of the code needs.
 
