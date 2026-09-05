@@ -463,6 +463,14 @@ sub onExpansionChanged()
     ' doesn't bleed through the alpha layer.
     m.global.sceneManager.callFunc("setBackgroundImage", "")
     m.kbd.setFocus(true)
+    ' lastFocus must move WITH the focus, not just on collapse. sgRouter calls
+    ' handleFocus() after onViewOpen has already run onScreenShown, and
+    ' JRScreen.handleFocus restores m.top.lastFocus — so a keyboard focus taken here
+    ' and not recorded is silently overwritten by whatever lastFocus still points at.
+    ' Measured on device (.178): the overlay opened with isExpanded=true while focus
+    ' sat on SearchRow, so every keypress went to an empty results list and the
+    ' keyboard could not be typed on at all.
+    m.top.lastFocus = m.kbd
   else
     ' Collapse: always focus the results list — even when empty — so the
     ' screen has a single, consistent focus target. onKeyEvent treats "in
