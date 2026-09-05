@@ -62,6 +62,16 @@
     <Group id="badgeClip">
       <LayoutGroup id="badgeRow" layoutDirection="horiz" itemSpacings="[16]" />
     </Group>
+
+    <!-- What OK will do to this row, shown only while it is focused.
+         Deliberately NOT a badge: the badges say what the track IS, and an
+         action that appears in the same strip would read as another property.
+         It sits outside badgeClip for the same reason — the badge zone drops
+         its overflow, and an affordance that can silently vanish is worse than
+         none. Space for it is reserved by subtitleLayout.actionZoneWidth()
+         whenever the row is deletable, so focusing a row never shifts its
+         text. -->
+    <Poster id="deleteIcon" uri="pkg:/images/icons/delete_$$RES$$.png" visible="false" />
   </children>
 
   <interface>

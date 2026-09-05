@@ -54,6 +54,42 @@ namespace subtitleLayout
   ' negative width (a Label with width <= 0 renders its text unclipped).
   const ROW_DETAIL_MIN_WIDTH = 120
 
+  ' ── Row action affordance ──────────────────────────────────────────────────
+  ' The delete icon on a downloaded-subtitle row. 24px matches the app's other
+  ' affordance markers — TrackDropdown's chevron and the panel's own language
+  ' button — so an icon that says "this control does something" is the same size
+  ' wherever it appears.
+  const ROW_ACTION_ICON_SIZE = 24
+
+  ' Gap between the icon and whatever text ends before it.
+  const ROW_ACTION_GUTTER = 16
+
+  ' actionZoneWidth: Width a row reserves for the action icon, ON ITS SECOND LINE.
+  '
+  ' THE SECOND LINE, AND THAT IS THE POINT. The first line is already fully
+  ' committed — a title that has to hold "Portuguese (Brazil) · SUBRIP" beside a
+  ' right-anchored badge zone wide enough for "Hearing impaired" and "Forced" —
+  ' so taking the icon's strip out of the row as a whole ellipsized the title.
+  ' Measured on device: it truncated "English · SUBRIP" to "English · SUB…" on a
+  ' row carrying no badges at all, while 300px of badge zone sat empty beside it.
+  ' The SECOND line holds only the filename tail (".en.sdh.srt") across the full
+  ' width, has no badges to collide with, and had ~500px of slack. Only a
+  ' downloaded file is ever deletable and only a downloaded file has a second
+  ' line, so the space is always there when the icon is.
+  '
+  ' RESERVED BY DELETABILITY, NOT BY FOCUS. The icon is only DRAWN while the row
+  ' is focused, but the space is held whenever the row can be acted on — so
+  ' focusing a row cannot shift its filename sideways. Every row in the
+  ' downloaded section reserves the same amount (they share one canDelete), so
+  ' the reservation never makes the section look ragged.
+  '
+  ' @param {boolean} hasAction - whether this row has an action to offer
+  ' @return {integer} width to subtract from the row's SECOND line
+  function actionZoneWidth(hasAction as boolean) as integer
+    if not hasAction then return 0
+    return subtitleLayout.ROW_ACTION_ICON_SIZE + subtitleLayout.ROW_ACTION_GUTTER
+  end function
+
   ' Column widths. The results column is wide because release names run long —
   ' 85 characters was the longest observed in a real result set — and width here
   ' directly buys fewer marquees.

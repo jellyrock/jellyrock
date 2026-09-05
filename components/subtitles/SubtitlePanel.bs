@@ -14,6 +14,7 @@ import "pkg:/source/constants/extrasLayout.bs"
 import "pkg:/source/constants/subtitleLayout.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/remoteSubtitles.bs"
@@ -119,6 +120,9 @@ sub init()
   m.resultsList.visible = false
 
   m.resultsList.observeField("itemSelected", "onResultSelected")
+  ' Only the downloaded list is wired: a built-in track has no action, which is
+  ' the same reason it is not a focus stop.
+  m.downloadedList.observeField("itemSelected", "onExistingSelected")
 
   ' Poll timer for confirming a download. One timer reused across attempts; the
   ' attempt counter drives the backoff.
@@ -136,6 +140,10 @@ sub init()
   m.closing = false
   m.pendingDownloadName = ""
   m.streamsBeforeDownload = []
+  m.deleteConfirmDialog = invalid
+  m.pendingDeleteRequest = invalid
+  m.pendingDeleteName = ""
+  m.subtitlesChangedPending = false
   m.focusTarget = "search"
 end sub
 
@@ -257,6 +265,34 @@ end sub
 sub closePanel()
   m.languageOverlay.visible = false
   m.pollTimer.control = "stop"
+  abandonDeleteConfirm()
+
+  ' Hand the host its re-sync on the way out.
+  '
+  ' DEFERRED ON PURPOSE, and the reason is focus rather than efficiency. Setting
+  ' subtitlesChanged makes ItemDetails re-fetch and rebuild itself, and that
+  ' rebuild TAKES FOCUS — measured on device: after a delete, focus left the open
+  ' panel and landed on ItemDetails' own manageSubtitlesButton behind it, where
+  ' neither UP nor DOWN could recover it because the panel was no longer in the
+  ' focus chain. Proven by isolation rather than argument: with this one line
+  ' removed from the delete path, focus stayed in the panel across the same
+  ' sequence; with it restored, it did not.
+  '
+  ' Deferring is also the more honest moment. The host needs the re-sync because
+  ' deleting renumbers every stream index it holds, and the only consumer of
+  ' those indices is the detail screen the user is about to be handed back to.
+  ' Nothing behind the panel is reachable in the meantime, and a user removing
+  ' three subtitles now costs one item re-fetch instead of three.
+  '
+  ' The download path still fires it inline and is deliberately left alone: it
+  ' does not lose focus there (focus sits on the results list, which the delete
+  ' path's re-render is what disturbs), and changing a shipped, working path is
+  ' not this slice's business.
+  if m.subtitlesChangedPending
+    m.subtitlesChangedPending = false
+    m.top.subtitlesChanged = true
+  end if
+
   m.closing = true
 
   m.top.findNode("panelSlide").reverse = true
@@ -269,6 +305,22 @@ end sub
 ' late reply can't fire into a node that no longer exists.
 sub onDestroy()
   m.pollTimer.control = "stop"
+  abandonDeleteConfirm()
+end sub
+
+' abandonDeleteConfirm: Drop an open confirmation without resolving it.
+'
+' ABANDON, not cancel. A cancelled result is indistinguishable from the user
+' pressing Back, so anything that clears the screen while our dialog is up would
+' otherwise deliver a result into a handler whose panel is closing. Abandoning
+' detaches the node and its observer, so there is nothing left to fire. The
+' pending request goes with it — a confirmation the user never answered must not
+' survive to be answered by the next one.
+sub abandonDeleteConfirm()
+  if isValid(m.deleteConfirmDialog) then abandonDialog(m.deleteConfirmDialog)
+  m.deleteConfirmDialog = invalid
+  m.pendingDeleteRequest = invalid
+  m.pendingDeleteName = ""
 end sub
 
 ' teardown: The host's explicit hand-off, called from ItemDetails.onDestroy.
@@ -647,6 +699,11 @@ sub renderExistingList()
       ' the panel header. A built-in track leaves this empty and gets one line.
       source: subtitleFileLine(stream, isExternal),
       isExternal: isExternal,
+      ' Both halves must hold: the SERVER only lets an admin delete, and the
+      ' server only lets ANY of us delete an external file. Resolved here rather
+      ' than in the row so the row never has to know a policy rule — it just
+      ' draws the affordance it is given.
+      canDelete: isExternal and m.top.canDelete,
       hearingImpaired: stream.IsHearingImpaired = true,
       forced: stream.IsForced = true,
       streamIndex: intOrZero(stream.Index),
@@ -811,6 +868,160 @@ sub onPollTimerFired()
   end sub)
 end sub
 
+' ── Delete ───────────────────────────────────────────────────────────────────
+
+' onExistingSelected: OK on a downloaded subtitle — confirm, then delete.
+'
+' OK carries the action here because this row has no other one. That is the
+' condition, not a preference: on the server and user pickers OK already means
+' connect / sign in, so their delete belongs on the options key instead. The
+' rule and its enforcement are tracked in #889.
+sub onExistingSelected()
+  ' Re-checked here even though canFocusDownloaded() should have kept the list
+  ' out of the focus chain entirely. Two separate places already have to agree
+  ' for the row to be reachable, and the API layer guards IsExternal for exactly
+  ' this reason — a permission check that lives only in the focus model is one
+  ' refactor away from being the thing that was quietly dropped.
+  if not m.top.canDelete then return
+
+  index = m.downloadedList.itemSelected
+  ' The rendered rows are externalSubtitleStreams() of the same array, in the
+  ' same order, so the row's position IS its index into that set. Recomputing
+  ' from m.top.existingStreams rather than trusting a streamIndex copied onto
+  ' the row means the stream handed to the API layer is always the one currently
+  ' on screen — and a download renumbers every index on the item.
+  deletable = remoteSubtitles.externalSubtitleStreams(m.top.existingStreams)
+  if index < 0 or index >= deletable.count() then return
+
+  startDelete(deletable[index])
+end sub
+
+' startDelete: Ask before doing it.
+'
+' A subtitle file is cheap to lose and cheap to re-download, so the confirmation
+' is not about gravity — it is about a single OK press on a focused row being
+' too easy to do by accident. showConfirmDialog focuses the cancel side, so a
+' reflexive second press cancels.
+sub startDelete(stream as object)
+  ' Ask the API layer to build the request BEFORE showing a dialog, so a stream
+  ' it refuses (anything not explicitly IsExternal) never produces a prompt for
+  ' an action that cannot happen.
+  req = GetApi().BuildDeleteSubtitleRequest(m.top.itemId, stream)
+  if not isValid(req) then return
+
+  m.pendingDeleteRequest = req
+  m.pendingDeleteName = deleteTargetName(stream)
+
+  m.deleteConfirmDialog = showConfirmDialog(
+    translate(translationKeys.ButtonDelete),
+    translate(translationKeys.MessageSubtitleDeleteConfirm, [m.pendingDeleteName]),
+    "onDeleteConfirmResponse",
+    translate(translationKeys.ButtonDelete),
+    translate(translationKeys.ButtonCancel)
+  )
+end sub
+
+' deleteTargetName: What to call the file in the confirmation.
+'
+' The filename tail, because it is the ONLY thing that separates two subtitles
+' in the same language and codec — Jellyfin records no provenance for a subtitle
+' (no provider, no date, no rating), so "English SUBRIP" can name three rows at
+' once and a confirmation that says it names none of them. Falls back to the
+' row's own first line when the server reports no readable path.
+function deleteTargetName(stream as object) as string
+  tail = remoteSubtitles.subtitleFileTail(stream.Path, m.top.filePath)
+  if tail <> "" then return tail
+
+  language = resolveLanguageName(valueOrEmpty(stream.Language))
+  codec = valueOrEmpty(stream.Codec)
+  if language <> "" and codec <> "" then return language + " " + UCase(codec)
+  if language <> "" then return language
+  return translate(translationKeys.LabelExternalSubtitle)
+end function
+
+' onDeleteConfirmResponse: Act only on an explicit confirm.
+'
+' Gating positively on `confirmed` is what makes this safe against being
+' SUPERSEDED — presentOverlayDialog cancels an incumbent dialog with a result
+' its owner cannot distinguish from Back, so any handler that acted on the
+' cancel path would fire from inside someone else's dialog mount. Nothing here
+' runs unless the user chose Delete, so there is no such path to protect.
+sub onDeleteConfirmResponse()
+  dialog = m.deleteConfirmDialog
+  m.deleteConfirmDialog = invalid
+  req = m.pendingDeleteRequest
+  m.pendingDeleteRequest = invalid
+  name = m.pendingDeleteName
+  m.pendingDeleteName = ""
+
+  if not isValid(dialog) or not isValid(dialog.result) or not isValid(req) then return
+  if not dialog.result.confirmed then return
+
+  ' Unlike download, delete is SYNCHRONOUS end to end: the server's controller
+  ' awaits the metadata refresh before responding, so the next GET already
+  ' reflects the new stream list. No poll schedule is needed here — the one the
+  ' download path carries exists purely because that endpoint returns 204 before
+  ' the work has happened.
+  promises.chain(fetchAsync(req, "subtitleDelete-" + m.top.itemId), { itemId: m.top.itemId, name: name }).then(sub(res as object, ctx as object)
+    if ctx.itemId <> m.top.itemId then return
+    if not res.ok
+      m.log.warn("subtitle delete rejected", res.statusCode)
+      displayToast(translate(translationKeys.MessageSubtitleDeleteFailed), "error")
+      return
+    end if
+    refreshAfterDelete(ctx.name)
+  end sub).catch(sub(err as object, ctx as object)
+    if ctx.itemId <> m.top.itemId then return
+    m.log.warn("subtitle delete error", err.reason)
+    displayToast(translate(translationKeys.MessageSubtitleDeleteFailed), "error")
+  end sub)
+end sub
+
+' refreshAfterDelete: Re-read the item and re-sync everything holding an index.
+'
+' Deleting renumbers the item's streams exactly as downloading does, so the host
+' has to be told even though nothing was added — selectedAudioStreamIndex and
+' selectedSubtitleStreamIndex are server indices and are now pointing one place
+' to the left of where they were.
+sub refreshAfterDelete(name as string)
+  req = GetApi().BuildGetItemRequest(m.top.itemId)
+  if not isValid(req) then return
+
+  promises.chain(fetchAsync(req, "subtitleDeleteRefresh-" + m.top.itemId), { itemId: m.top.itemId, name: name }).then(sub(res as object, ctx as object)
+    if ctx.itemId <> m.top.itemId then return
+    if not res.ok then return
+
+    item = res.json
+    if not isValid(item) then return
+
+    ' Move focus out of the list BEFORE re-rendering it.
+    '
+    ' The dialog hands focus back to downloadedList on close, and deleting the
+    ' last downloaded file empties and hides that list — so without this, focus
+    ' sits on a hidden node until something else moves it. Ordering it before the
+    ' re-render rather than after is hygiene, not the bug fix: the focus loss
+    ' this path actually had was caused by the HOST REFRESH, which is why that is
+    ' now deferred to closePanel(). Do not read this as the cure for it.
+    m.focusTarget = "search"
+    applyFocus()
+
+    m.top.existingStreams = item.MediaStreams
+    displayToast(translate(translationKeys.MessageSubtitleDeleted, [ctx.name]), "success")
+
+    ' Tell the host when the panel CLOSES, not now — see closePanel().
+    m.subtitlesChangedPending = true
+
+    ' Back to the list only if it still has something left to act on.
+    if canFocusDownloaded()
+      m.focusTarget = "existing"
+      applyFocus()
+    end if
+  end sub).catch(sub(err as object, ctx as object)
+    if ctx.itemId <> m.top.itemId then return
+    m.log.warn("subtitle delete refresh error", err.reason)
+  end sub)
+end sub
+
 ' ── Focus + keys ─────────────────────────────────────────────────────────────
 
 sub sizeLists()
@@ -840,12 +1051,24 @@ function hasRows(list as object) as boolean
   return list.content.getChildCount() > 0
 end function
 
+' canFocusDownloaded: Whether the downloaded list is worth landing on.
+'
+' Rows AND permission, because delete is the only thing OK does there. Without
+' the permission half, a non-admin gets a focus stop whose every press is a
+' silent no-op — the same dead travel that keeps built-in tracks unfocusable,
+' and the same reason their list is not a stop either. This is also the single
+' source that decides the row's icon (via renderExistingList), so a row can
+' never advertise an action the panel will not perform.
+function canFocusDownloaded() as boolean
+  return m.top.canDelete and hasRows(m.downloadedList)
+end function
+
 sub applyFocus()
   if m.focusTarget = "results" and not hasRows(m.resultsList) then m.focusTarget = "search"
   ' "existing" means the DOWNLOADED list specifically. Built-in tracks cannot be
   ' deleted or otherwise acted on, so their list is never a focus stop — landing
   ' there would be dead travel with nothing to do at the end of it.
-  if m.focusTarget = "existing" and not hasRows(m.downloadedList) then m.focusTarget = "search"
+  if m.focusTarget = "existing" and not canFocusDownloaded() then m.focusTarget = "search"
 
   if m.focusTarget = "language"
     m.languageButton.setFocus(true)
@@ -901,8 +1124,8 @@ function onKeyEvent(key as string, press as boolean) as boolean
       togglePerfectMatch()
       return true
     end if
-    ' The results list raises itemSelected itself; deletion from the existing
-    ' list is not wired yet (tracked as the next slice of #750).
+    ' Both lists raise itemSelected themselves, handled by onResultSelected /
+    ' onExistingSelected. Nothing else in the panel answers OK.
     return false
   end if
 
@@ -917,7 +1140,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       applyFocus()
       return true
     end if
-    if m.resultsList.hasFocus() and hasRows(m.downloadedList)
+    if m.resultsList.hasFocus() and canFocusDownloaded()
       m.focusTarget = "existing"
       applyFocus()
       return true
@@ -951,7 +1174,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
         applyFocus()
         return true
       end if
-      if hasRows(m.downloadedList)
+      if canFocusDownloaded()
         m.focusTarget = "existing"
         applyFocus()
         return true

@@ -19,12 +19,24 @@ sub init()
   m.sourceLabel = m.top.findNode("sourceLabel")
   m.badgeClip = m.top.findNode("badgeClip")
   m.badgeRow = m.top.findNode("badgeRow")
+  m.deleteIcon = m.top.findNode("deleteIcon")
 
   m.titleLabel.color = m.global.constants.colorTextPrimary
   m.titleLabel.repeatCount = 0
   ' Until a content node says otherwise, assume the compact shape — a row sized
   ' for two lines that only ever draws one leaves a visible gap.
   m.isExternal = false
+  ' Likewise assume no action: a row that reserves space for an affordance it
+  ' never draws is indistinguishable from one that is simply misaligned.
+  m.canDelete = false
+
+  m.deleteIcon.width = subtitleLayout.ROW_ACTION_ICON_SIZE
+  m.deleteIcon.height = subtitleLayout.ROW_ACTION_ICON_SIZE
+  ' Tracks the row's text rather than an error colour. colorError is this app's
+  ' signal for an outcome that already went wrong (Toast), not for an action
+  ' that is merely available — the weight of the action belongs in the
+  ' confirmation, not in the affordance.
+  m.deleteIcon.blendColor = m.global.constants.colorTextPrimary
 
   buildBadgePool()
   onSizeChanged()
@@ -72,6 +84,11 @@ sub onItemContentChanged()
   m.isExternal = content.isExternal = true
   m.sourceLabel.text = textOrEmpty(content.source)
   m.sourceLabel.visible = m.isExternal and m.sourceLabel.text <> ""
+
+  ' Whether OK does anything on this row. Resolved by the panel, which is the
+  ' only scope that knows the user's delete permission; the row just draws it.
+  ' Explicitly `= true` so an absent field reads as "no action", never as one.
+  m.canDelete = content.canDelete = true
 
   rebuildBadges(content)
   hideUnusedBadges()
@@ -167,6 +184,9 @@ sub onSizeChanged()
   ' Line 1: language and codec on the left, badges anchored right. Badges live on
   ' the FIRST line for both shapes so they align down the column regardless of
   ' whether a row has a second line.
+  '
+  ' The action icon takes NOTHING from this line — it lives on line 2. Reserving
+  ' here instead ellipsized the title on a real row (see actionZoneWidth).
   firstLineY = subtitleLayout.ROW_V_PADDING
   zones = subtitleLayout.secondLineZones(rowWidth, subtitleLayout.EXISTING_BADGE_WIDTH)
 
@@ -178,10 +198,21 @@ sub onSizeChanged()
   m.badgeClip.translation = [zones.badgeX, 0]
   m.badgeRow.translation = [0, firstLineY]
 
-  ' Line 2: the filename, across the full width — nothing shares this line, and a
-  ' Label with wrap off and a width ellipsizes whatever does not fit.
-  m.sourceLabel.width = rowWidth - (subtitleLayout.ROW_H_PADDING * 2)
-  m.sourceLabel.translation = [subtitleLayout.ROW_H_PADDING, firstLineY + constants.fontSizeSmaller + subtitleLayout.ROW_LINE_GAP]
+  ' Line 2: the filename, and the action icon at the far right. This line has no
+  ' badges, so the icon is the only thing competing with the text here — and the
+  ' filename tail it holds is short enough that giving up the icon's strip costs
+  ' nothing visible. A Label with wrap off and a width ellipsizes any overflow.
+  secondLineY = firstLineY + constants.fontSizeSmaller + subtitleLayout.ROW_LINE_GAP
+  m.sourceLabel.width = rowWidth - (subtitleLayout.ROW_H_PADDING * 2) - subtitleLayout.actionZoneWidth(m.canDelete)
+  m.sourceLabel.translation = [subtitleLayout.ROW_H_PADDING, secondLineY]
+
+  ' Centred on line 2 rather than on the row, which is what keeps it clear of the
+  ' right-anchored badge zone above: both are pinned to the same right edge, so
+  ' they would collide on any row that carries a badge.
+  m.deleteIcon.translation = [
+    rowWidth - subtitleLayout.ROW_H_PADDING - subtitleLayout.ROW_ACTION_ICON_SIZE,
+    secondLineY + (constants.fontSizeSmallest - subtitleLayout.ROW_ACTION_ICON_SIZE) / 2
+  ]
 end sub
 
 sub onFocusChanged()
@@ -190,6 +221,10 @@ sub onFocusChanged()
 
   m.rowBorder.visible = hasFocus
   m.rowBackground.visible = hasFocus
+  ' Drawn only while focused — an icon on every row would read as a column of
+  ' delete buttons rather than as what OK does to the row you are on. Its space
+  ' is reserved regardless (see onSizeChanged), so this cannot shift the layout.
+  m.deleteIcon.visible = hasFocus and m.canDelete
 
   if hasFocus
     m.rowBorder.blendColor = constants.colorPrimary

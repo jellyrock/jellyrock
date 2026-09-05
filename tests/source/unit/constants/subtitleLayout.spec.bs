@@ -199,6 +199,84 @@ namespace tests
       m.assertEqual(zones.badgeWidth, 40)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("actionZoneWidth() - room for the delete affordance")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reserves nothing for a row with no action")
+    function _()
+      ' A built-in track, and every row for a user who cannot delete. Reserving
+      ' unconditionally would inset text against an affordance that never
+      ' appears, which reads as a misaligned column rather than as spare room.
+      m.assertEqual(subtitleLayout.actionZoneWidth(false), 0)
+    end function
+
+    @it("is the icon plus its gutter, derived rather than restated")
+    function _()
+      expected = subtitleLayout.ROW_ACTION_ICON_SIZE + subtitleLayout.ROW_ACTION_GUTTER
+      m.assertEqual(subtitleLayout.actionZoneWidth(true), expected)
+    end function
+
+    @it("leaves the filename line the rest of the row")
+    function _()
+      ' The icon's strip comes off line 2, which holds only the filename tail.
+      ' Anything approaching half the row would mean the affordance had started
+      ' costing the content it sits beside.
+      sourceWidth = subtitleLayout.EXISTING_WIDTH - (subtitleLayout.ROW_H_PADDING * 2) - subtitleLayout.actionZoneWidth(true)
+
+      m.assertTrue(sourceWidth > 0, "the filename line must keep a positive width")
+      m.assertTrue(sourceWidth > subtitleLayout.EXISTING_WIDTH / 2, "the filename must keep most of the row")
+    end function
+
+    @it("takes nothing from the first line, so the title cannot be ellipsized by it")
+    function _()
+      ' THE REGRESSION THIS EXISTS FOR. Reserving the icon out of the row as a
+      ' whole narrowed the title by the icon's width, which on device truncated
+      ' "English · SUBRIP" to "English · SUB…" on a row carrying no badges at
+      ' all. Line 1's split must be identical whether or not the row is
+      ' deletable — the icon is a second-line citizen.
+      zones = subtitleLayout.secondLineZones(subtitleLayout.EXISTING_WIDTH, subtitleLayout.EXISTING_BADGE_WIDTH)
+
+      m.assertEqual(zones.detailWidth, 222, "the title keeps the full first-line width")
+      m.assertEqual(zones.badgeWidth, subtitleLayout.EXISTING_BADGE_WIDTH, "the badge zone is untouched too")
+    end function
+
+    @it("fits the icon between the filename and the row's edge, one gutter apart")
+    function _()
+      sourceWidth = subtitleLayout.EXISTING_WIDTH - (subtitleLayout.ROW_H_PADDING * 2) - subtitleLayout.actionZoneWidth(true)
+      filenameRight = subtitleLayout.ROW_H_PADDING + sourceWidth
+      iconLeft = subtitleLayout.EXISTING_WIDTH - subtitleLayout.ROW_H_PADDING - subtitleLayout.ROW_ACTION_ICON_SIZE
+
+      m.assertEqual(iconLeft - filenameRight, subtitleLayout.ROW_ACTION_GUTTER, "exactly the gutter separates them")
+    end function
+
+    @it("keeps the icon below the badge zone it shares a right edge with")
+    function _()
+      ' Both are pinned to the row's right padding edge, so the ONLY thing
+      ' keeping them apart is that the badges sit on line 1 and the icon on
+      ' line 2. If the icon ever rose into line 1 it would land underneath a
+      ' badge, and the badge zone clips its overflow rather than complaining.
+      firstLineY = subtitleLayout.ROW_V_PADDING
+      firstLineBottom = firstLineY + 25
+      secondLineY = firstLineY + 25 + subtitleLayout.ROW_LINE_GAP
+      iconTop = secondLineY + (21 - subtitleLayout.ROW_ACTION_ICON_SIZE) / 2
+
+      m.assertTrue(iconTop >= firstLineBottom, "the action icon must start below the badge line")
+    end function
+
+    @it("fits the icon inside the row it marks")
+    function _()
+      ' Only a downloaded file is ever deletable, and a downloaded file is always
+      ' the two-line row — but the icon is centred on line 2, so one tall enough
+      ' would hang out of the bottom of the focus ring.
+      rowHeight = subtitleLayout.rowHeight(25, 21)
+      secondLineY = subtitleLayout.ROW_V_PADDING + 25 + subtitleLayout.ROW_LINE_GAP
+      iconBottom = secondLineY + (21 - subtitleLayout.ROW_ACTION_ICON_SIZE) / 2 + subtitleLayout.ROW_ACTION_ICON_SIZE
+
+      m.assertTrue(subtitleLayout.ROW_ACTION_ICON_SIZE <= rowHeight, "the action icon must fit a two-line row")
+      m.assertTrue(iconBottom <= rowHeight, "the action icon must stay inside the row")
+    end function
+
     ' ── helpers ──────────────────────────────────────────────────────────────
 
     ' Real font metrics, so the arithmetic is checked against the sizes that
