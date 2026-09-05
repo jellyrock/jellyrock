@@ -3,16 +3,19 @@ namespace tests
   @suite("searchHistory.bs - Recent-search MRU storage")
   class SearchHistoryTests extends tests.BaseTestSuite
 
-    protected override function setup()
-      super.setup()
-      ' Each test starts from a clean slate. searchHistory.clear() writes the
-      ' empty array to the user's registry section.
+    ' Per TEST, not per suite. `setup()` runs once for the whole suite, so clearing there
+    ' let every test inherit whatever the last one stored: the MRU accumulated 1 + 3 = 4
+    ' entries and the count assertions below failed against a neighbour's leftovers.
+    ' See tests/CLAUDE.md's lifecycle-hooks section and tech-debt's
+    ' `rooibos-setup-not-per-test`.
+    protected override function beforeEach()
+      super.beforeEach()
       searchHistory.clear()
     end function
 
-    protected override function teardown()
+    protected override function afterEach()
       searchHistory.clear()
-      super.teardown()
+      super.afterEach()
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
