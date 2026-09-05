@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-08-15
+last-updated: 2026-09-04
 ---
 
 # Signals backlog
@@ -90,4 +90,14 @@ Schema is enforced by `npm run lint:docs` (`signals-schema-invalid` category). A
 - **latest_acknowledged**: 10.11.11
 - **last_checked**: 2026-07-13
 - **action_when_moves**: re-pin the plugin's `Jellyfin.Controller`/`Jellyfin.Model` + `build.yaml` `targetAbi` to the new line, rebuild in the SDK container, and re-verify the cast and closed app liveness gate on a test server (12.0 RC restructures the API — check `ISessionController` / `SessionInfo` shapes)
+- **status**: watching
+
+### rta-odc-connect-hang: `roku-test-automation` ODC socket setup never settles
+
+- **watching**: `roku-test-automation` releases after 2.2.2 (including the `next` 3.0.0-alpha line) that settle `setupClientSocket`'s promise when the post-connect handshake fails
+- **current**: pinned to 2.2.2. In `client/dist/OnDeviceComponent.js`, `setupClientSocket` resolves its cached `clientSocketPromise` from the socket's `connect` handler only after a `setSettings` handshake succeeds; the rejection arm of that `.then()` calls `debugLog` and **never settles the promise**. So a handshake that fails leaves every later ODC call awaiting a dead promise, and no timeout can fire — the per-request `promiseTimeout` wraps the request, not the socket setup, so no `defaultTimeout` / `timeoutMultiplier` value would help. Still present on upstream HEAD (verified 2026-09-04; the 3.0.0-alpha refactor to `RokuDeploySocket` kept the same handler). Observed once on `.178`: SIGINT mid-suite left `restoreRegistry` hung 8+ minutes on an ESTABLISHED socket to port 9000 with zero bytes queued and no timeout, after which the device refused new ODC connections and its debug console reported "already in use". The code defect is certain; that it is what hung that process is consistent with the evidence but not proven. Recovery is `kill` + a re-deploy — `npm run test:rta` does it automatically, since `snapshotRegistry()` restores from the stranded snapshot first
+- **latest_upstream**: 2.2.2
+- **latest_acknowledged**: 2.2.2
+- **last_checked**: 2026-09-04
+- **action_when_moves**: read `setupClientSocket`'s `connect` handler in the new release — if the rejection arm now rejects (or the setup is wrapped in a timeout), take the bump and drop the recovery note from [`docs/dev/rta-tests.md`](dev/rta-tests.md). If it is still unfixed after another occurrence, add a watchdog around the restore path in [`scripts/rta-run.js`](../scripts/rta-run.js) rather than waiting on upstream
 - **status**: watching
