@@ -323,12 +323,34 @@ function writeAcceptedRecord(diffs, label) {
   return file;
 }
 
-function writeSnapshotFile(values) {
-  const file = snapshotPath();
+/**
+ * `ownerPid` is what makes this file's PRESENCE readable.
+ *
+ * The file is written before any seeding and removed only by a verified restore,
+ * so it sits on disk for the whole of a run — which means "a snapshot exists" and
+ * "a run is in progress" look identical from outside. They are opposite
+ * instructions: one wants `npm run rta:restore`, the other would be destroyed by
+ * it. Nothing else on disk separates them (`.device-runs/` is not per-run, and a
+ * device lock is absent in degraded mode and can outlive its run as a stale
+ * lease), so the writer records itself and readers ask whether it is still alive.
+ *
+ * Readers must treat a MISSING `ownerPid` as stranded, not as live — that is both
+ * the safe default and the truth for any snapshot written before this field.
+ *
+ * `file` is a test seam. The only reader that matters lives in another module
+ * (`device-lock.js`), so what has to be pinned is that the two agree on the field
+ * — and a test can only do that by producing a real snapshot somewhere other than
+ * the real `.device-runs/`.
+ */
+export function writeSnapshotFile(values, file = snapshotPath()) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(
     file,
-    JSON.stringify({ host: deviceHost(), takenAt: new Date().toISOString(), values }, null, 2),
+    JSON.stringify(
+      { host: deviceHost(), takenAt: new Date().toISOString(), ownerPid: process.pid, values },
+      null,
+      2,
+    ),
   );
   return file;
 }

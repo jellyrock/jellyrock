@@ -965,6 +965,17 @@ runs Vitest **as a child process**, and restores. `npm run test:rta` (and `:fast
     you are *not* currently pointed at (stranded by `npm run demo` on one Roku, then
     a run against another). Before this the file had no operator-facing surface at
     all, which is how one got destroyed by an `rm -rf` aimed at the ledger beside it.
+  - **A snapshot on disk does not mean the device was stranded** — the file is
+    written before any seeding and removed only by a verified restore, so it is
+    present for the *whole* of a healthy run. `status` used to report a live
+    `test:rta` as "left mid-restore" and hand you `rta:restore`, which would have
+    put the registry back underneath the run and relaunched the channel mid-suite:
+    the exact inverse of the right move. The snapshot now records the `pid` that
+    wrote it, so `status` reports a live run as `IN PROGRESS` and withholds the
+    recovery command, and `rta:restore` refuses outright (`-- --force` overrides).
+    The device lock is deliberately *not* the signal used for this: a degraded run
+    holds no lock while very much running, and a stale lease outlives a run that
+    finished cleanly.
     It reports accepted differences on the same terms, and that line matters more,
     not less: accepting is what *cleared* the snapshot, so it is the one dirty state
     no later run can rediscover on its own. Deleting `accepted-<host>.json` is how you
@@ -1009,7 +1020,9 @@ The split of responsibility is the part worth knowing:
   concurrent run's `snapshotRegistry()` would adopt *our seed* as that user's state and
   then restore it faithfully forever. The restore afterwards deliberately does **not** take
   the lock: `rta:restore` is the documented repair for a device stranded by a dead run, and
-  a repair tool blocked by that run's leftover lock fails exactly when you need it.
+  a repair tool blocked by that run's leftover lock fails exactly when you need it. That is
+  why its one refusal keys on the snapshot's owning `pid` rather than on the lock — a dead
+  run's leftover lock must not block the repair, while a live run must.
 - **`hardRelaunch()` runs before the first registry read**, and that ordering is not
   stylistic: the on-device component lives INSIDE the app, so an ODC read against a device
   that is not running it HANGS rather than failing, and presents like a network problem.
