@@ -50,7 +50,15 @@ jobs:
           # sentence-final-dictionary.test.js asserts the generated file is in
           # step with its source; a PR editing only dictionary.txt would
           # otherwise skip the test that exists to catch exactly that.
-          pattern: '^scripts/|^tests/scripts/|^images/gradients/|^vitest\.config\.js$|^package(-lock)?\.json$|^\.lintstagedrc\.cjs$|^\.spellcheckerrc\.ya?ml$|^dictionary(-sentence-final)?\.txt$'
+          # The icon + placeholder source and output trees are here because
+          # icons-build.test.js asserts the COMMITTED PNGs still match the
+          # generator, exactly as gradient-assets.test.js does for the ramps.
+          # This is icons:check's only CI home: `vitest / vitest` is a required
+          # context, so wiring the gate here makes it block a merge on the day
+          # it lands, with no branch-protection change. package-lock.json (above)
+          # is what makes it fire on a Renovate bump of sharp — the case that
+          # broke the check for three months.
+          pattern: '^scripts/|^tests/scripts/|^images/gradients/|^resources/icons/|^images/icons/|^resources/placeholders/|^images/placeholders/|^vitest\.config\.js$|^package(-lock)?\.json$|^\.lintstagedrc\.cjs$|^\.spellcheckerrc\.ya?ml$|^dictionary(-sentence-final)?\.txt$'
           force: ${{ inputs.force }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: steps.detect.outputs.relevant == 'true'

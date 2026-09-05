@@ -6,10 +6,15 @@
 // so adding a check to the aggregate without wiring it into CI fails here.
 
 import { describe, it, expect } from 'vitest';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { check, expandAggregate, LOCAL_ONLY } from '../../../../scripts/lint/ci-parity-check.js';
+import {
+  check,
+  expandAggregate,
+  LOCAL_ONLY,
+  COVERED_BY_TEST,
+} from '../../../../scripts/lint/ci-parity-check.js';
 
 const REPO_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '..', '..');
 
@@ -109,6 +114,78 @@ describe('coverage detection', () => {
   });
 });
 
+// The indirect CI home: a Vitest drift-gate test that shells the real check
+// against the real repo, run in CI by `npm run test:scripts`. Every condition is
+// verified, so each of these is a way the claim can go stale silently.
+describe('the COVERED_BY_TEST indirection', () => {
+  // Mirrors the real shape: icons:check has no `run:` line anywhere.
+  const scripts = {
+    lint: 'npm run icons:check',
+    'icons:check': 'node scripts/generate/icons-build.js --check',
+    'test:scripts': 'vitest run',
+  };
+  const TEST_FILE = 'tests/scripts/unit/generate/icons-build.test.js';
+  const runnerWf = wf('run: npm run test:scripts');
+  const gate = (text) => [{ name: TEST_FILE, text }];
+  const REAL_GATE =
+    "const SCRIPT = 'scripts/generate/icons-build.js';\nspawnScript(SCRIPT, ['--check']);";
+
+  it('accepts a drift-gate test when the runner itself is wired into CI', () => {
+    expect(check({ scripts, workflows: runnerWf, tests: gate(REAL_GATE) }).missing).toEqual([]);
+  });
+
+  it('flags the check when the cited test file is gone (renamed or deleted)', () => {
+    const { missing } = check({ scripts, workflows: runnerWf, tests: [] });
+    expect(missing.map((m) => m.name)).toEqual(['icons:check']);
+  });
+
+  // A test that only drives the generator against a temp fixture proves nothing
+  // about the COMMITTED assets, which is exactly what the entry claims.
+  it('flags the check when the test never invokes it in --check mode', () => {
+    const { missing } = check({
+      scripts,
+      workflows: runnerWf,
+      tests: gate("const SCRIPT = 'scripts/generate/icons-build.js';\nspawnScript(SCRIPT, [dir]);"),
+    });
+    expect(missing.map((m) => m.name)).toEqual(['icons:check']);
+  });
+
+  // The whole indirection hangs off this. If test:scripts loses its workflow,
+  // every COVERED_BY_TEST entry silently stops gating.
+  it('flags the check when the test runner has no workflow home', () => {
+    const { missing } = check({
+      scripts,
+      workflows: wf('run: npm run something-else'),
+      tests: gate(REAL_GATE),
+    });
+    expect(missing.map((m) => m.name)).toEqual(['icons:check']);
+  });
+
+  // Every test file in tests/scripts/ opens with `// Tests for scripts/<path>`.
+  // Without JS comment stripping each would vacuously cover its own subject.
+  it('does not let a `// Tests for scripts/...` header count as a gate', () => {
+    const { missing } = check({
+      scripts,
+      workflows: runnerWf,
+      tests: gate('// Tests for scripts/generate/icons-build.js --check\nit("x", () => {});'),
+    });
+    expect(missing.map((m) => m.name)).toEqual(['icons:check']);
+  });
+
+  it('reports an entry for a check no longer in the aggregate as stale', () => {
+    const { staleTestCoverage } = check({ scripts: { lint: '' }, workflows: runnerWf, tests: [] });
+    expect(staleTestCoverage).toEqual(expect.arrayContaining(['icons:check', 'gradients:check']));
+  });
+
+  it('every entry names a test file that exists', () => {
+    for (const [name, rel] of Object.entries(COVERED_BY_TEST)) {
+      expect(existsSync(resolve(REPO_ROOT, rel)), `${name} cites a missing test: ${rel}`).toBe(
+        true,
+      );
+    }
+  });
+});
+
 describe('the LOCAL_ONLY allowlist', () => {
   const scripts = { lint: 'npm run lint:bs', 'lint:bs': 'bslint' };
 
@@ -141,8 +218,16 @@ describe('the committed package.json + workflows', () => {
       .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
       .map((f) => ({ name: f, text: readFileSync(resolve(dir, f), 'utf8') }));
 
-    const { missing, staleAllowlist } = check({ scripts, workflows });
+    // Same inputs the CLI assembles, including the COVERED_BY_TEST files —
+    // otherwise this gate would report the test-hosted checks as missing.
+    const tests = [...new Set(Object.values(COVERED_BY_TEST))].map((rel) => ({
+      name: rel,
+      text: readFileSync(resolve(REPO_ROOT, rel), 'utf8'),
+    }));
+
+    const { missing, staleAllowlist, staleTestCoverage } = check({ scripts, workflows, tests });
     expect(missing.map((m) => m.name)).toEqual([]);
     expect(staleAllowlist).toEqual([]);
+    expect(staleTestCoverage).toEqual([]);
   });
 });

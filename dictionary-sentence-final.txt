@@ -498,6 +498,7 @@
 (?:pre-ship)\.
 (?:pre-show)\.
 (?:pre-test)\.
+(?:prebuilt)\.
 (?:Prefetch)\.
 (?:preflight)\.
 (?:preloading)\.
