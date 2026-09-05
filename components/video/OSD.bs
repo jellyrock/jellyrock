@@ -854,7 +854,17 @@ function osdButtonCap() as integer
 end function
 
 sub unsplitButtons()
+  closeMoreMenuBeforeRowChanges()
   restoreOverflowedButtons(m.buttonMenuLeft, m.buttonOverflow)
+end sub
+
+' Same contract ItemDetails runs — see the comment there. The reachable trigger
+' on this surface is a live-TV program boundary: setButtonStates() re-derives the
+' row from the refreshed program's metadata, and populateData() repaints the
+' title, subtitle and logo in the same turn, so the menu closing reads as the
+' OSD moving to the new program rather than as a dialog dismissing itself.
+sub closeMoreMenuBeforeRowChanges()
+  if isValid(m.moreMenuDialog) then m.moreMenuDialog.callFunc("cancelDialog")
 end sub
 
 sub applyOverflow()
@@ -883,16 +893,13 @@ sub onMoreMenuResult()
   ids = m.overflowMenuIds
   m.moreMenuDialog = invalid
   m.overflowMenuIds = invalid
-  if not isValid(dialog) or not isValid(dialog.result) or not isValid(ids) then return
+  if not isValid(dialog) then return
 
-  ' This handler ACTS — it seeks, switches tracks, opens panels. So it must decline
-  ' a close that CODE made rather than the user (dialogs.md).
-  if dialog.result.externallyCancelled then return
-  if dialog.result.cancelled then return
-
-  chosen = dialog.result.optionIndex
-  if chosen < 0 or chosen >= ids.count() then return
-  dispatchOsdAction(ids[chosen])
+  ' Declining a code-made close is overflowMenuSelection's job — this handler ACTS
+  ' (seeks, switches tracks, opens panels), and that rule is shared with
+  ' ItemDetails' identical handler rather than copied into both.
+  buttonId = overflowMenuSelection(dialog.result, ids)
+  if buttonId <> "" then dispatchOsdAction(buttonId)
 end sub
 
 function createSubtitleLabelNode(labelId as string) as object

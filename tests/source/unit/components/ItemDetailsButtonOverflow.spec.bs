@@ -20,6 +20,7 @@ namespace tests
     private itemDetails as object
     private buttonGrp as object
     private stash as object
+    private mountedIn as object
 
     ' beforeEach, not setup: every test mutates the row (tests/CLAUDE.md).
     protected override sub beforeEach()
@@ -36,11 +37,38 @@ namespace tests
     end sub
 
     protected override sub afterEach()
+      ' Only the focus/menu tests mount; the rest run detached exactly as before.
+      if isValid(m.mountedIn)
+        m.mountedIn.removeChild(m.itemDetails)
+        m.mountedIn = invalid
+      end if
       m.stash = invalid
       m.buttonGrp = invalid
       m.itemDetails = invalid
       super.afterEach()
     end sub
+
+    ' Put the screen in the scene and give the row real focus.
+    '
+    ' Needed because the bugs these tests cover are invisible to a detached node:
+    ' isInFocusChain() and hasFocus() are both false off-tree, so a detached
+    ' assertion passes whether or not focus survives. It is also what makes
+    ' appScene() (m.top.getScene()) resolve, which openMoreMenu depends on.
+    private sub mountAndFocusRow(focusIndex as integer)
+      m.mountedIn = m.top.getScene()
+      m.mountedIn.appendChild(m.itemDetails)
+      m.buttonGrp.visible = true
+      m.buttonGrp.setFocus(true)
+      m.buttonGrp.getChild(focusIndex).setFocus(true)
+      m.buttonGrp.buttonFocused = focusIndex
+    end sub
+
+    private function focusedRowId() as string
+      for i = 0 to m.buttonGrp.getChildCount() - 1
+        if m.buttonGrp.getChild(i).hasFocus() then return m.buttonGrp.getChild(i).id
+      end for
+      return "<nothing focused>"
+    end function
 
     ' Stand-ins for the buttons a future item type will carry. Ids are positional so
     ' the assertions can state WHICH buttons moved, not just how many.
@@ -237,6 +265,116 @@ namespace tests
       m.settleRow()
 
       m.assertEqual(m.buttonGrp.getChild(m.buttonGrp.buttonFocused).id, "moreButton")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("focus survives the split ON A MOUNTED SCREEN")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The tests above assert the focus INDEX. These assert that a node actually
+    ' holds focus, which is a different property and the one that broke.
+    '
+    ' Detaching the focused child nulls out focus for the ENTIRE tree, so the
+    ' original code's `if group.isInFocusChain()` — read AFTER the detach — always
+    ' answered false and skipped its own restore. Measured on an Ultra before the
+    ' fix: buttonFocused was correct, and no node in the scene held focus, so the
+    ' screen stopped responding to the remote entirely. Both triggers are gated
+    ' here because they break by different routes: More is detached by the restore
+    ' half, a spilling button by the split half.
+
+    @it("keeps a node focused when the row re-derives with More focused")
+    function _()
+      m.fillRow(9)
+      m.settleRow()
+      moreIndex = m.buttonGrp.getChildCount() - 1
+      m.assertEqual(m.buttonGrp.getChild(moreIndex).id, "moreButton")
+
+      m.mountAndFocusRow(moreIndex)
+      m.assertTrue(m.buttonGrp.isInFocusChain(), "precondition: the row holds focus")
+
+      ' A row mutation through the real bracket, exactly as an async load does.
+      m.itemDetails.trailerAvailable = true
+
+      m.assertTrue(m.itemDetails.isInFocusChain(), "the screen must not go deaf")
+      m.assertTrue(m.buttonGrp.isInFocusChain(), "the row must still hold focus")
+      m.assertNotEqual(m.focusedRowId(), "<nothing focused>", "some button must hold focus")
+    end function
+
+    @it("keeps a node focused when the focused button spills into the menu")
+    function _()
+      m.fillRow(8)
+      m.settleRow()
+      m.assertInvalid(m.buttonGrp.findNode("moreButton"), "precondition: 8 of 8 does not overflow")
+
+      m.mountAndFocusRow(7)
+
+      ' Growing past the cap pushes the focused button into the stash.
+      m.itemDetails.trailerAvailable = true
+
+      m.assertTrue(m.itemDetails.isInFocusChain(), "the screen must not go deaf")
+      m.assertEqual(m.focusedRowId(), "moreButton", "More stands in for the button that left")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the More button keeps its identity")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' An open menu holds this node as its returnFocusTo, so a fresh one each
+    ' re-derive would leave the dialog restoring focus to an orphan. Re-looking it
+    ' up in the ROW cannot work: the nine mutators call unsplitButtons() before they
+    ' mutate, so it has already left the row by the time the split runs. The stash
+    ' holds custody instead, and this asserts node identity rather than presence —
+    ' the previous implementation passed a presence check while failing this.
+    @it("puts the SAME node back after a row mutation, not a fresh one")
+    function _()
+      m.fillRow(9)
+      m.settleRow()
+      before = m.buttonGrp.findNode("moreButton")
+      m.assertNotInvalid(before)
+
+      m.itemDetails.trailerAvailable = true
+
+      after = m.buttonGrp.findNode("moreButton")
+      m.assertNotInvalid(after)
+      m.assertTrue(before.isSameNode(after), "More must survive the re-derive as one node")
+    end function
+
+    @it("keeps that identity across a full setupButtons rebuild")
+    function _()
+      m.fillRow(9)
+      m.settleRow()
+      before = m.buttonGrp.findNode("moreButton")
+
+      m.itemDetails.trailerAvailable = true
+      m.itemDetails.trailerAvailable = false
+      m.itemDetails.trailerAvailable = true
+
+      m.assertTrue(before.isSameNode(m.buttonGrp.findNode("moreButton")))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("an open More menu does not outlive the row it describes")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Cancelled at the TOP of the bracket, while More is still attached, so the
+    ' dialog's returnFocusTo is still a live node. Cancelling afterwards would be a
+    ' race against the orphan this avoids.
+    @it("closes the menu when the row re-derives beneath it")
+    function _()
+      m.fillRow(9)
+      m.settleRow()
+      moreIndex = m.buttonGrp.getChildCount() - 1
+      m.mountAndFocusRow(moreIndex)
+
+      ' The production route: the group publishes the pressed index, which is what
+      ' onDetailNavButton observes.
+      m.buttonGrp.buttonSelected = moreIndex
+      m.assertNotInvalid(m.mountedIn.findNode("jrDialog"), "precondition: the menu opened")
+
+      m.itemDetails.trailerAvailable = true
+
+      m.assertInvalid(m.mountedIn.findNode("jrDialog"), "the menu must close with the row")
+      m.assertTrue(m.itemDetails.isInFocusChain(), "and focus must come back to the screen")
     end function
 
   end class

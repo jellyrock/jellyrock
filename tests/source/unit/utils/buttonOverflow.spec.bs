@@ -480,6 +480,67 @@ namespace tests
       m.assertEqual(entries.ids.count(), 0)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("overflowMenuSelection() - which id a result may act on")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Both surfaces' menu handlers ACT, and the OSD's is unreachable from a spec
+    ' (its OK press arrives via onKeyEvent). This is the one place the decline
+    ' rules are gated, which is why they are gated exhaustively.
+    private menuIds = ["refreshButton", "deleteButton", "trailerButton"]
+
+    private function pick(index as integer) as object
+      return { cancelled: false, externallyCancelled: false, optionIndex: index }
+    end function
+
+    @it("resolves a chosen row to its button id")
+    function _()
+      m.assertEqual(overflowMenuSelection(m.pick(0), m.menuIds), "refreshButton")
+      m.assertEqual(overflowMenuSelection(m.pick(2), m.menuIds), "trailerButton")
+    end function
+
+    ' The mapping is positional, so an off-by-one here fires the WRONG item action
+    ' — picking Refresh and getting Delete. Asserted per index rather than in bulk.
+    @it("maps every index to the id at that position, with no drift")
+    function _()
+      for i = 0 to m.menuIds.count() - 1
+        m.assertEqual(overflowMenuSelection(m.pick(i), m.menuIds), m.menuIds[i], "index " + stri(i).trim())
+      end for
+    end function
+
+    @it("declines a close that CODE made, not the user")
+    function _()
+      result = m.pick(0)
+      result.externallyCancelled = true
+      m.assertEqual(overflowMenuSelection(result, m.menuIds), "")
+    end function
+
+    @it("declines a user cancel")
+    function _()
+      result = m.pick(0)
+      result.cancelled = true
+      m.assertEqual(overflowMenuSelection(result, m.menuIds), "")
+    end function
+
+    @it("declines an index outside the id list rather than faulting")
+    function _()
+      m.assertEqual(overflowMenuSelection(m.pick(-1), m.menuIds), "")
+      m.assertEqual(overflowMenuSelection(m.pick(3), m.menuIds), "")
+      m.assertEqual(overflowMenuSelection(m.pick(99), m.menuIds), "")
+    end function
+
+    @it("declines an empty id list")
+    function _()
+      m.assertEqual(overflowMenuSelection(m.pick(0), []), "")
+    end function
+
+    @it("declines invalid inputs rather than faulting")
+    function _()
+      m.assertEqual(overflowMenuSelection(invalid, m.menuIds), "")
+      m.assertEqual(overflowMenuSelection(m.pick(0), invalid), "")
+      m.assertEqual(overflowMenuSelection({ cancelled: false, externallyCancelled: false }, m.menuIds), "")
+    end function
+
   end class
 
 end namespace

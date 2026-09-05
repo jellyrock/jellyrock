@@ -177,25 +177,69 @@ sub restoreOverflowedButtons(group as object, stash as object)
 
   ' Default to the end, which is where the tail belongs when More is missing
   ' (nothing was ever split, or something removed it).
-  restoreAt = group.getChildCount()
+  moreSlot = group.getChildCount()
 
   moreButton = group.findNode("moreButton")
+  ' Read BEFORE the detach below: removing the focused node is what destroys the
+  ' answer, so asking afterwards always says false.
+  moreHadFocus = isValid(moreButton) and moreButton.hasFocus()
   if isValid(moreButton)
     for i = 0 to group.getChildCount() - 1
       if group.getChild(i).isSameNode(moreButton)
-        restoreAt = i
+        moreSlot = i
         exit for
       end if
     end for
     group.removeChild(moreButton)
+    ' The stash takes CUSTODY of the detached More button, so applyButtonOverflow
+    ' puts the same node back rather than building a fresh one. It cannot be
+    ' held in a local across the bracket: the nine row mutators call this half
+    ' directly and run arbitrary code before the other half, so the only place
+    ' with a lifetime long enough to hold it is the row's own stash node.
+    takeCustodyOfMoreButton(stash, moreButton)
   end if
 
+  restoreAt = moreSlot
   while stash.getChildCount() > 0
     stashed = stash.getChild(0)
     stash.removeChild(stashed)
     group.insertChild(stashed, restoreAt)
     restoreAt++
   end while
+
+  ' Hand focus on to whatever now stands in More's slot.
+  '
+  ' Detaching the focused node breaks the focus chain for the ENTIRE tree — not
+  ' just this group — so without this the screen goes deaf: every later
+  ' `if group.isInFocusChain()` guard answers false and silently skips its own
+  ' focus restore, including the ones the nine mutators already had. Measured on
+  ' a Stick 4K / Ultra: after a mutation with More focused, no node in the scene
+  ' held focus. Landing on More's old slot is the same rule the split itself
+  ' uses — More stood in for the tail, so the tail's first button is where the
+  ' user was looking.
+  if moreHadFocus and group.getChildCount() > 0
+    landing = moreSlot
+    if landing > group.getChildCount() - 1 then landing = group.getChildCount() - 1
+    if group.hasField("buttonFocused") then group.buttonFocused = landing
+    group.getChild(landing).setFocus(true)
+  end if
+end sub
+
+' The row's More button while it is detached from the row.
+'
+' A `node` field on the stash rather than anything on `m`: it is per-row (a
+' screen with two overflowing rows gets two, with no collision), it needs no
+' signature change at the nine call sites, and it keeps this file free of
+' component state.
+function custodiedMoreButton(stash as object) as object
+  if not isValid(stash) or not stash.hasField("moreButton") then return invalid
+  return stash.moreButton
+end function
+
+sub takeCustodyOfMoreButton(stash as object, moreButton as object)
+  if not isValid(stash) then return
+  if not stash.hasField("moreButton") then stash.addField("moreButton", "node", false)
+  stash.moreButton = moreButton
 end sub
 
 ' Split a row that no longer fits: move the tail into the stash and append a
@@ -209,13 +253,12 @@ end sub
 sub applyButtonOverflow(group as object, stash as object, cap as integer, moreText as string, moreIcon as string)
   if not isValid(group) or not isValid(stash) then return
 
-  ' Held across the restore below, which detaches it, so the SAME node goes back
-  ' into the row rather than a fresh one. Two reasons, and the first is a bug:
-  ' an open More menu holds this node as its returnFocusTo, so recreating it
-  ' while the menu is up would leave the dialog restoring focus to an orphan.
-  ' The second is cost — the row re-derives on every mutation, and re-using a
-  ' node is cheaper than churning one on the render thread each time.
-  existingMore = group.findNode("moreButton")
+  ' Captured BEFORE anything detaches. Removing a focused child nulls out focus
+  ' for the whole tree, so asking isInFocusChain() after the split below always
+  ' answers false — which silently skips the restore at the end of this sub and
+  ' leaves the screen deaf. This is the same trap, and the same idiom, as
+  ' `wasButtonGroupFocused` at the head of ItemDetails.setupButtons().
+  wasFocused = group.isInFocusChain()
 
   restoreOverflowedButtons(group, stash)
 
@@ -235,10 +278,17 @@ sub applyButtonOverflow(group as object, stash as object, cap as integer, moreTe
     stash.appendChild(overflowed)
   end while
 
-  moreButton = existingMore
+  ' The same node every time, taken back from the stash's custody. Re-creating it
+  ' is a BUG, not just churn: an open More menu holds this node as its
+  ' returnFocusTo, so a fresh one would leave the dialog restoring focus to an
+  ' orphan. (Looking it up in the row here instead does not work — the nine
+  ' mutators call restoreOverflowedButtons() themselves before they mutate, so
+  ' by the time this runs the button has already left the row.)
+  moreButton = custodiedMoreButton(stash)
   if not isValid(moreButton)
     moreButton = CreateObject("roSGNode", "IconButton")
     moreButton.id = "moreButton"
+    takeCustodyOfMoreButton(stash, moreButton)
   end if
   moreButton.setFields({ icon: moreIcon, text: moreText })
   group.appendChild(moreButton)
@@ -257,7 +307,9 @@ sub applyButtonOverflow(group as object, stash as object, cap as integer, moreTe
   end if
 
   group.buttonFocused = restoredIndex
-  if group.isInFocusChain() then group.getChild(restoredIndex).setFocus(true)
+  ' `wasFocused`, NOT a fresh isInFocusChain() — the stash loop above detached a
+  ' child, and if that child was the focused one the chain is already gone.
+  if wasFocused then group.getChild(restoredIndex).setFocus(true)
 end sub
 
 ' The label/icon pairs for the rows a More menu should show, read straight off the
@@ -276,6 +328,29 @@ function overflowMenuEntries(stash as object) as object
     entries.ids.push(overflowed.id)
   end for
   return entries
+end function
+
+' Which button ID a More-menu result chose, or "" for a result that must NOT act.
+'
+' Both surfaces' onMoreMenuResult handlers ACT — ItemDetails navigates, deletes and
+' starts playback; the OSD seeks and switches tracks — so both have to decline a
+' close that CODE made rather than the user, or a third party clearing the screen
+' fires an item action from inside its own flow (dialogs.md). They had a line-for-
+' line copy of that rule each. One copy, because the OSD's is otherwise unreachable
+' from a spec: its OK press arrives through onKeyEvent, which a test cannot send.
+'
+' @param result the dialog's `result` AA
+' @param ids    the ids captured when the menu was opened, parallel to its rows
+' @return {string} the chosen button id, or "" to do nothing
+function overflowMenuSelection(result as object, ids as object) as string
+  if not isValid(result) or not isValid(ids) then return ""
+  if result.externallyCancelled then return ""
+  if result.cancelled then return ""
+
+  chosen = result.optionIndex
+  if not isValid(chosen) then return ""
+  if chosen < 0 or chosen >= ids.count() then return ""
+  return toString(ids[chosen])
 end function
 
 ' The shared More affordance, so both surfaces show the same glyph.

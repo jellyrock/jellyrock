@@ -3375,7 +3375,22 @@ end function
 ' so the OSD's row runs the same implementation rather than a second copy of it;
 ' what stays here is only which nodes this screen's row is made of.
 sub unsplitButtons()
+  closeMoreMenuBeforeRowChanges()
   restoreOverflowedButtons(m.buttonGrp, m.buttonOverflow)
+end sub
+
+' An open More menu describes a row that is about to change, so it closes with
+' it. Cancelled HERE, at the top of the bracket, because at this instant nothing
+' has detached yet: the More button is still in the row, so the dialog's
+' returnFocusTo is still a live node and focus lands where the user left it.
+' Cancelling after the re-derive would be a race against the very orphan this
+' avoids.
+'
+' No bookkeeping needed — cancelDialog resolves as externallyCancelled, and
+' onMoreMenuResult already clears m.moreMenuDialog / m.overflowMenuIds and
+' declines that result before it can act.
+sub closeMoreMenuBeforeRowChanges()
+  if isValid(m.moreMenuDialog) then m.moreMenuDialog.callFunc("cancelDialog")
 end sub
 
 sub applyOverflow()
@@ -3404,17 +3419,13 @@ sub onMoreMenuResult()
   ids = m.overflowMenuIds
   m.moreMenuDialog = invalid
   m.overflowMenuIds = invalid
-  if not isValid(dialog) or not isValid(dialog.result) or not isValid(ids) then return
+  if not isValid(dialog) then return
 
-  ' This handler ACTS — it navigates, deletes, starts playback. So it must decline
-  ' a close that CODE made rather than the user, or a third party clearing the
-  ' screen would fire an item action from inside its own flow (dialogs.md).
-  if dialog.result.externallyCancelled then return
-  if dialog.result.cancelled then return
-
-  chosen = dialog.result.optionIndex
-  if chosen < 0 or chosen >= ids.count() then return
-  dispatchDetailButtonAction(ids[chosen])
+  ' Declining a code-made close is overflowMenuSelection's job — this handler ACTS
+  ' (navigates, deletes, starts playback), and that rule is shared with the OSD's
+  ' identical handler rather than copied into both.
+  buttonId = overflowMenuSelection(dialog.result, ids)
+  if buttonId <> "" then dispatchDetailButtonAction(buttonId)
 end sub
 
 ' getButtonIndex: Find the index of a button by ID in the button group
