@@ -95,6 +95,41 @@ namespace remoteSubtitles
     return false
   end function
 
+  ' shouldAutoSearch: Whether the panel should start a search by itself.
+  '
+  ' The seeded language is not always available at the moment the panel opens —
+  ' /Localization/Cultures may still be in flight — so the decision has to be
+  ' re-asked when the language lands. That makes it an IDEMPOTENT predicate
+  ' called from both points rather than a "remember to search later" flag: the
+  ' flag shape is what failed here, having been armed on open and never read by
+  ' anything (two writes, zero readers), so no first open ever searched.
+  '
+  ' Each guard earns its place:
+  '   * isOpen        - cultures can land AFTER the user has backed out, and a
+  '                     search costs a real provider round-trip through the
+  '                     server. Never search a panel nobody is looking at.
+  '   * searchInFlight - openPanel() resolves the language and then asks this
+  '                     question, so without it the seed path and the open path
+  '                     both fire for the same open.
+  '   * resultCount   - results are kept for the panel's lifetime, so a reopen
+  '                     shows what was already found instead of re-querying.
+  '                     A search that came back EMPTY leaves this at 0 and so
+  '                     retries on the next open, which is the wanted behaviour:
+  '                     an empty result is indistinguishable from an
+  '                     unconfigured provider, and that is worth re-asking.
+  '
+  ' @param {boolean} isOpen - the panel's current isOpen state
+  ' @param {integer} resultCount - results already held for this panel lifetime
+  ' @param {string} languageCode - resolved 2-letter/regional search language
+  ' @param {boolean} searchInFlight - a search has been issued and not answered
+  ' @return {boolean} true when a search should be started now
+  function shouldAutoSearch(isOpen as boolean, resultCount as integer, languageCode as string, searchInFlight as boolean) as boolean
+    if not isOpen then return false
+    if searchInFlight then return false
+    if resultCount > 0 then return false
+    return isValidAndNotEmpty(languageCode)
+  end function
+
   ' externalSubtitleStreams: The subtitle streams that are safe to offer for
   ' deletion, in server-index order.
   '

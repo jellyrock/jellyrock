@@ -116,7 +116,7 @@ sub init()
   m.allResults = []
   m.perfectMatchOnly = false
   m.pollAttempt = 0
-  m.autoSearchPending = false
+  m.searchInFlight = false
   m.closing = false
   m.pendingDownloadName = ""
   m.streamsBeforeDownload = []
@@ -167,18 +167,9 @@ sub openPanel()
 
   ' Search the seeded language straight away rather than making the user press
   ' Search to see the obvious default — they have already told us their subtitle
-  ' language via their Jellyfin preference. Only on a FIRST open: results are
-  ' kept for the panel's lifetime, so reopening shows what was already found
-  ' instead of spending another provider round-trip.
-  if m.allResults.count() = 0
-    if isValidAndNotEmpty(m.selectedLanguageCode)
-      runSearch()
-    else
-      ' Language not resolved yet — /Localization/Cultures is still in flight.
-      ' applyLanguageFromCultures() picks this up when it lands.
-      m.autoSearchPending = true
-    end if
-  end if
+  ' language via their Jellyfin preference. If the language is not resolved yet
+  ' this is a no-op and applyLanguageFromCultures() asks again when it lands.
+  maybeAutoSearch()
 
   m.panelSlideReverse = false
   m.top.findNode("panelSlide").reverse = false
@@ -188,6 +179,18 @@ sub openPanel()
   m.closing = false
   m.focusTarget = "search"
   applyFocus()
+end sub
+
+' maybeAutoSearch: The one place that decides to search without being asked.
+'
+' Called from BOTH ends of the open path — openPanel() and the cultures reply —
+' because whichever happens last is the one that can act. The decision itself is
+' remoteSubtitles.shouldAutoSearch(), a pure predicate, so its guards are swept
+' by tests instead of resting on the order these two callers happen to run in.
+sub maybeAutoSearch()
+  if remoteSubtitles.shouldAutoSearch(m.top.isOpen, m.allResults.count(), m.selectedLanguageCode, m.searchInFlight)
+    runSearch()
+  end if
 end sub
 
 ' onPanelAnimeStateChanged: Stop drawing once the outbound slide has finished.
@@ -278,6 +281,9 @@ sub applyLanguageFromCultures()
     if isValid(culture) and isValidAndNotEmpty(culture.ThreeLetterISOLanguageName)
       if LCase(culture.ThreeLetterISOLanguageName) = m.preferredThreeLetter
         setSelectedLanguage(culture.TwoLetterISOLanguageName)
+        ' The language may have arrived after the panel opened, which is the
+        ' case openPanel() could not act on.
+        maybeAutoSearch()
         return
       end if
     end if
@@ -361,11 +367,18 @@ sub runSearch()
     return
   end if
 
+  ' Set once the request is genuinely on the wire — the bail above returns
+  ' without searching. Cleared alongside the Search button in both handlers, and
+  ' deliberately NOT cleared on a stale reply: a stale reply means a newer search
+  ' is already in flight and owns this flag.
+  m.searchInFlight = true
+
   promises.chain(fetchAsync(req, "subtitleSearch-" + m.top.itemId), { itemId: m.top.itemId, language: m.selectedLanguageCode }).then(sub(res as object, ctx as object)
     ' A search takes real time (a provider round-trip through the server), so
     ' the user can change language — or the host can swap items — before it
     ' lands. Render only the reply that matches what is on screen now.
     if ctx.itemId <> m.top.itemId or ctx.language <> m.selectedLanguageCode then return
+    m.searchInFlight = false
     m.searchButton.isEnabled = true
     if not res.ok
       ' A non-Video item 404s here rather than returning an empty list; the
@@ -382,6 +395,7 @@ sub runSearch()
     renderResults(applyPerfectMatchFilter(results))
   end sub).catch(sub(err as object, ctx as object)
     if ctx.itemId <> m.top.itemId then return
+    m.searchInFlight = false
     m.searchButton.isEnabled = true
     m.log.warn("subtitle search error", err.reason)
     setStatus(translate(translationKeys.MessageNoSubtitlesFound))

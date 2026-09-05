@@ -1,0 +1,90 @@
+import "pkg:/source/utils/remoteSubtitles.bs"
+
+' Unit tests for the subtitle panel's auto-search decision (issue #750).
+'
+' This predicate exists because the previous shape — an m.autoSearchPending flag
+' armed on open and consumed "when the language lands" — shipped with two writes
+' and ZERO readers, so no first open ever searched. A flag can lose its reader
+' silently and still build; a predicate cannot, because these tests call it.
+'
+' The panel asks the same question from both ends of its open path (openPanel()
+' and the /Localization/Cultures reply), so the cases below are written as
+' "which end is asking, and what has happened by then".
+
+namespace tests
+
+  @suite("remoteSubtitles - auto-search decision")
+  class RemoteSubtitlesAutoSearchTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("shouldAutoSearch() - the case it must handle")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("searches an open panel whose language is resolved and which holds nothing")
+    function _()
+      m.assertTrue(remoteSubtitles.shouldAutoSearch(true, 0, "en", false))
+    end function
+
+    @it("searches when the language arrives AFTER the open - the regressed case")
+    function _()
+      ' openPanel() ran with no language and correctly did nothing; the cultures
+      ' reply asks again. This is the path the dead flag never reached.
+      m.assertFalse(remoteSubtitles.shouldAutoSearch(true, 0, "", false))
+      m.assertTrue(remoteSubtitles.shouldAutoSearch(true, 0, "en", false))
+    end function
+
+    @it("accepts a regional code, which is what the search actually sends")
+    function _()
+      m.assertTrue(remoteSubtitles.shouldAutoSearch(true, 0, "zh-TW", false))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("shouldAutoSearch() - isOpen guard")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("does not search a closed panel when cultures land after the user backs out")
+    function _()
+      ' A search is a real provider round-trip through the server. Nothing else
+      ' in the cultures reply path knows the panel was closed.
+      m.assertFalse(remoteSubtitles.shouldAutoSearch(false, 0, "en", false))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("shouldAutoSearch() - searchInFlight guard")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("does not fire twice for one open")
+    function _()
+      ' openPanel() seeds the language (which can itself reach this decision)
+      ' and then asks again. Without this guard both would search.
+      m.assertFalse(remoteSubtitles.shouldAutoSearch(true, 0, "en", true))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("shouldAutoSearch() - resultCount guard")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("does not re-query on a reopen that already holds results")
+    function _()
+      m.assertFalse(remoteSubtitles.shouldAutoSearch(true, 12, "en", false))
+    end function
+
+    @it("DOES retry on a reopen after a search that came back empty")
+    function _()
+      ' Deliberate: 200 [] is indistinguishable from an unconfigured provider,
+      ' absent credentials and a genuine no-match, so it is worth re-asking.
+      m.assertTrue(remoteSubtitles.shouldAutoSearch(true, 0, "en", false))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("shouldAutoSearch() - language guard")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("does not search while the language is still unresolved")
+    function _()
+      m.assertFalse(remoteSubtitles.shouldAutoSearch(true, 0, "", false))
+    end function
+
+  end class
+
+end namespace
