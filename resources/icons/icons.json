@@ -6,10 +6,11 @@
   "itemNext": { "glyphSize": 42 },
   "chapters": { "glyphSize": 60 },
   "star": { "sizeFhd": 36, "glyphSize": 30 },
-  "person": { "glyphSize": 64 },
+  "person": { "sizeFhd": 64, "glyphSize": 46 },
   "mic_icon": { "sizeFhd": 16, "glyphSize": 22 },
   "circle": { "sizeFhd": 48, "glyphSize": 48 },
   "tomato-fresh": { "sizeFhd": 64, "glyphSize": 64 },
   "tomato-rotten": { "sizeFhd": 64, "glyphSize": 64 },
-  "more_horiz": { "sizeFhd": 64, "glyphSize": 46 }
+  "more_horiz": { "sizeFhd": 64, "glyphSize": 46 },
+  "album": { "sizeFhd": 64, "glyphSize": 46 }
 }
