@@ -263,9 +263,9 @@ permission. That includes emptying a file completely.
 
 ## The loops that are not `waitFor`, and why
 
-Thirteen loops in the suite poll by hand. Five of them **are** the polling layer —
+Fourteen loops in the suite poll by hand. Five of them **are** the polling layer —
 `waitFor`, `waitFocused`, `scrollFocus`, `waitCellsQuiet`, `waitRowsSettled` — and the
-question does not apply to them. The other eight sites sit outside `waitFor`, which means
+question does not apply to them. The other nine sites sit outside `waitFor`, which means
 they are outside `jellyrock-rta/wait-justified` too, so each needs a reason written down
 rather than a gate.
 
@@ -282,6 +282,7 @@ breaks any of those three cannot use it.
 | `waitSceneAnswering` ([`lib/driver.js`](lib/driver.js)) | Polls for the scene answering AT ALL, before the app has a screen. `diagnosedError` reads the device, so the diagnostic would fail on the same condition as the wait and bury the real message. |
 | the `gaaProbeResult` poll ([`specs/gaa-thread-scope.spec.js`](specs/gaa-thread-scope.spec.js)) | Polls the return value of a `callFunc` — a Task's own state — not a field. Same reason the function-`keyPath` category exists: ODC observes fields, and a call is not one. |
 | `startPolling` ([`specs/task-thread-peak.spec.js`](specs/task-thread-peak.spec.js)) | Not a wait at all. It is a SAMPLER with no exit predicate: it runs until told to stop and collects a series, and the series is the measurement. |
+| `ensureOdcReachable` ([`lib/driver.js`](lib/driver.js)) | Polls a raw TCP connect, not ODC — it is what runs BEFORE the first ODC call of a run, to establish that there is a component to call. Same shape as `waitSceneAnswering` one layer earlier, and for the same reason: `waitFor` would have to reach the device to poll and again to diagnose, on exactly the condition being tested. |
 
 **One was convertible and has been converted.** `waitGridLoaded` hand-rolled its poll for
 no reason that survived being written down — one keyPath, one predicate, one reader,
@@ -368,6 +369,23 @@ failure that genuinely takes a device out — `rta-odc-connect-hang` in
 [`docs/signals-backlog.md`](../../docs/signals-backlog.md) — is a socket handshake that
 never settles, while the per-request timeout wraps the *request*. Neither field can reach
 it.
+
+**What DOES reach it sits outside the config, in two pieces that cover different halves.**
+Neither is sufficient alone, so do not delete one on the strength of the other:
+
+- `ensureOdcReachable` ([`lib/driver.js`](lib/driver.js)) refuses to make a run's first ODC
+  call until a raw TCP probe says the component is there. That is the only thing that
+  handles the common case, because a connect RTA cannot complete does not merely fail — it
+  rejects a promise the library then orphans through its own unattached `.finally()`
+  (`OnDeviceComponent.js:1080`), and an unhandled rejection is a hard `exit 1`. Measured
+  2026-09-06: a caller that awaits, catches and carries on still dies. The orphan is
+  unreachable from our code, so this is not a thing a `try`/`catch` or a `withTimeout` can
+  be added to fix — the call has to not be made. Mechanism and the control that proved it
+  are in [`scripts/lib/odc-probe.js`](../../scripts/lib/odc-probe.js).
+- `REGISTRY_READ_TIMEOUT_MS` ([`lib/registry.js`](lib/registry.js)) then bounds the read
+  itself, because the probe answers "is the port open" and the hang above happens with the
+  port **open** — measured `true` in ~1 ms against a socket that accepts and never replies,
+  while the ODC call beside it was still pending at 45 s.
 
 **Know this about the 10 s ceiling: it is longer than some of the waits that contain it.**
 `waitFor` checks its deadline at the top of a tick and then awaits a read the loop does not

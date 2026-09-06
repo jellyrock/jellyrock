@@ -25,7 +25,7 @@ related-files:
   - scripts/flake-baseline.js
   - tests/rta/demos/run.mjs
   - .github/workflows/rta-functional-tests.yml
-last-reviewed: 2026-09-05
+last-reviewed: 2026-09-06
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -919,6 +919,47 @@ Two habits that came out of the same investigation:
 - **Run against the slowest supported device before a release, not only the fast one.**
   In a single afternoon the stick surfaced a rendering bug (#777), a render-thread cost
   regression, and this harness gap. A device with headroom hides all three.
+
+## "nothing is listening on <host>:9000" — the run refused to start
+
+Every RTA entry point now proves the on-device component is THERE before its first ODC
+call, and says so in those words when it is not. It is a precondition failure, not a
+timeout: the run stopped in about a second rather than doing anything to the device.
+
+Three things produce it, and the message lists all three because they are indistinguishable
+from the outside:
+
+- **The resident build has no ODC.** A Rooibos test build (`npm run test:unit`) and a
+  `build:prod` both leave a perfectly working channel on the device with no component
+  inside it. Redeploy the dev build — `npm run test:rta` does it for you unless you passed
+  `RTA_NO_DEPLOY=1`.
+- **The channel is closed.** The component lives INSIDE the app, so port 9000 goes quiet
+  the moment the app exits, even with the RTA build still sideloaded. This is also why
+  `npm run device:check` reporting "ODC not answering" is never on its own a reason to
+  redeploy.
+- **The device is asleep, off, or `ROKU_IP` names another host.** Run
+  `npm run device:check`.
+
+**Why it is a gate and not a longer timeout.** Making the call anyway does not fail
+cleanly: `roku-test-automation` rejects the connect and then orphans its own rejection
+through an unattached `.finally()`, and an unhandled rejection is a hard `exit 1` — so a
+run that caught the error correctly still died, at whatever unrelated point the connect
+gave up, losing its run record. That orphan cannot be reached from our code, so the call
+has to not be made. Full mechanism in
+[`scripts/lib/odc-probe.js`](../../scripts/lib/odc-probe.js); the reasoning and the
+alternatives that were ruled out are in [`decisions.md`](../decisions.md) →
+`rta-odc-gated-before-bounded`.
+
+**The gate is deliberately more patient than what it replaces** — it polls for 30 s where
+RTA's own connect retry gives up at 10 s — so a slow-but-working boot cannot fail here. If
+you see this on a device that is genuinely coming up, that is a bug in the gate, not a
+device you need to wait longer for.
+
+A companion bound covers the case this gate cannot see: a port that is open while the
+component never answers. That one surfaces as *"the ODC port is open but the component
+never answered ... within 60 s"* and names
+[`signals-backlog.md`](../signals-backlog.md) → `rta-odc-connect-hang`, an upstream defect
+whose recovery is a kill plus a re-deploy.
 
 ## Leaving the device as you found it
 

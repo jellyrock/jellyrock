@@ -41,7 +41,56 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { odc, device, hardRelaunch } from './driver.js';
+import { odc, device, hardRelaunch, ensureOdcReachable, withTimeout } from './driver.js';
+
+/**
+ * Wall clock on a registry read, covering the one failure the reachability gate cannot see.
+ *
+ * The gate answers "is the port open"; this answers "did the component ANSWER". They are
+ * different questions and the gap between them is a real hang: RTA's `setupClientSocket`
+ * resolves its cached promise only after a post-connect `setSettings` handshake succeeds,
+ * and the rejection arm of that `.then()` only calls `debugLog` — so a failed handshake
+ * leaves every later ODC call awaiting a promise that never settles, and no RTA timeout can
+ * fire (the per-request one wraps the request, not the socket setup). Measured 2026-09-06:
+ * still pending at 45 s against a socket that accepts and never replies. Observed for real
+ * once, on `.178` after a SIGINT, at 8+ minutes. `docs/signals-backlog.md` →
+ * `rta-odc-connect-hang`.
+ *
+ * 60 s is ~10,000x a healthy ODC round trip (~5.4 ms on the slower of the two devices), so
+ * it bounds the hang without being reachable by a slow-but-working read. It is a diagnosis,
+ * not a performance gate — the same posture as `DEPLOY_TIMEOUT_MS`.
+ *
+ * Only the reads are wrapped. The writes in between run on a socket the read just
+ * established, so they are covered by RTA's own per-request timeout; a read is the call
+ * that may have to CONNECT, which is the unbounded part.
+ */
+const REGISTRY_READ_TIMEOUT_MS = 60 * 1000;
+
+/** Why a registry read gave up, said in terms of what to do about it. */
+const readTimedOut = (what, timeoutMs) =>
+  `the ODC port is open but the component never answered ${what} within ` +
+  `${timeoutMs / 1000}s. This is roku-test-automation's setupClientSocket ` +
+  'defect (docs/signals-backlog.md -> rta-odc-connect-hang): a failed post-connect ' +
+  'handshake leaves the cached socket promise unsettled, so every later ODC call awaits a ' +
+  'dead promise and no RTA timeout can fire. Recovery is a kill plus a re-deploy — ' +
+  '`npm run test:rta` does it for you, since snapshotRegistry restores from the stranded ' +
+  'snapshot first.';
+
+/**
+ * A registry read that cannot hang, and cannot be reached without a live component.
+ *
+ * The ORDER carries the whole point and is not interchangeable: the gate runs FIRST because
+ * the failure it prevents is not a slow read, it is RTA crashing the process out from under
+ * us on a connect it cannot complete (`scripts/lib/odc-probe.js`). Reading first and
+ * bounding afterwards would leave that crash exactly where it was.
+ */
+const readRegistryBounded = async (what, { timeoutMs = REGISTRY_READ_TIMEOUT_MS } = {}) => {
+  await ensureOdcReachable();
+  return withTimeout(odc.readRegistry(), timeoutMs, readTimedOut(what, timeoutMs));
+};
+
+/** Test seams — the bound above is the point of this module's ODC handling, so it has a gate. */
+export const _internals = { readRegistryBounded, REGISTRY_READ_TIMEOUT_MS };
 
 /**
  * Where the snapshot lives — deliberately NOT under `out/`, and gitignored.
@@ -409,7 +458,7 @@ export async function snapshotRegistry() {
     clearSnapshotFile();
   }
 
-  const { values } = await odc.readRegistry();
+  const { values } = await readRegistryBounded('the registry snapshot read');
   const file = writeSnapshotFile(values);
   console.log(
     `[registry] snapshot: ${Object.keys(values).length} sections -> ${file} (restore: npm run rta:restore)`,
@@ -438,7 +487,7 @@ export async function restoreRegistry(saved, { attempts = 3, accept = false } = 
 
 async function applyRestore(saved, { attempts, label, accept = false }) {
   for (let attempt = 1; attempt <= attempts; attempt++) {
-    const { values: live } = await odc.readRegistry();
+    const { values: live } = await readRegistryBounded(`the ${label} read`);
     const { sectionsToDelete, writes } = planRestore(saved, live);
 
     if (sectionsToDelete.length) await odc.deleteRegistrySections({ sections: sectionsToDelete });
@@ -448,7 +497,15 @@ async function applyRestore(saved, { attempts, label, accept = false }) {
     // just wrote over a still-running app.
     await hardRelaunch();
 
-    const { values: after } = await odc.readRegistry().catch(() => ({ values: {} }));
+    // Bounded like the read above, but its failure is still swallowed into "nothing came
+    // back" so the retry semantics do not move: this loop exists to converge a restore that
+    // did not take, and a device that vanished mid-restore should be reported by the NEXT
+    // attempt's gate — which throws the real diagnosis — rather than by this line guessing
+    // at one. Costs one extra iteration (~30 s) before that diagnosis lands, against an
+    // unbounded wait before this change.
+    const { values: after } = await readRegistryBounded(`the ${label} verify read`).catch(() => ({
+      values: {},
+    }));
     const diffs = compareRegistries(saved, after);
     if (diffs.length === 0) return;
 
