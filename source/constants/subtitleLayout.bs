@@ -13,13 +13,33 @@
 
 namespace subtitleLayout
 
-  ' Horizontal inset inside a row. Matched to TrackDropdownRow's ROW_H_PADDING so
-  ' a focused subtitle row and a focused track-dropdown row read as one control
-  ' family.
-  const ROW_H_PADDING = 12
+  ' ── Row padding, measured from the FOCUS RING rather than the row ──────────
+  '
+  ' These are small because the list's focus indicator is drawn ~10px OUTSIDE the
+  ' row (see ROW_SPACING), so 10px of inset already exists before the row adds
+  ' any. They were 12 and 10 — written when the row drew its own border AT its
+  ' own bounds — which silently became insets of 22 and 21 once the list took the
+  ' indicator over. Measured on a Stick 4K: a 92px ring around a 50px text block,
+  ' 42px of it air.
+  '
+  ' That read as "off" for a reason worth keeping: 21px of padding inside the ring
+  ' against a 24px gap BETWEEN rows meant the two were nearly equal, so nothing
+  ' grouped — the eye cannot tell which space belongs to the row. Inside must be
+  ' clearly tighter than outside.
+  '
+  ' 2 and 1 rather than 0: the totals land at 12 and 11, which is what the
+  ' original constants were actually asking for, and ROW_V_PADDING has to keep
+  ' rowHeight divisible by 3 for the 720p grid (2P + 52 and 2P + 25 are both
+  ' divisible by 3 only when P is 1, 4, 7, 10 …).
+  '
+  ' 12 is also what finally MAKES GOOD the claim the old comment made: it matched
+  ' TrackDropdownRow's 12 so the two would read as one control family, but
+  ' TrackDropdownRow draws its own border at its own bounds with no overshoot, so
+  ' matching the number was giving 22 against its 12. Matching the ring-to-text
+  ' distance is what matches the look.
+  const ROW_H_PADDING = 2
 
-  ' Vertical breathing room above the first line and below the second.
-  const ROW_V_PADDING = 10
+  const ROW_V_PADDING = 1
 
   ' Gap between the row's two lines.
   const ROW_LINE_GAP = 6
@@ -49,6 +69,45 @@ namespace subtitleLayout
   ' common two-badge row a large dead gap, which is the worse trade.
   const RESULTS_BADGE_WIDTH = 460
   const EXISTING_BADGE_WIDTH = 300
+
+  ' ── Per-badge widths, for the "on this item" column ────────────────────────
+  ' Same measurement basis as the totals above (~10.3px per character at
+  ' fontSizeSmallest, plus 28px where a badge carries an icon and its gap).
+  const BADGE_WIDTH_HEARING_IMPAIRED = 193
+  const BADGE_WIDTH_FORCED = 62
+  const BADGE_GAP = 16
+
+  ' existingBadgeZoneWidth: How much of a row's width the badge zone should take.
+  '
+  ' Asked of the SECTION, not of the row — the zone is right-anchored so the
+  ' badges line up down the column, which only works if every row in the section
+  ' reserves the same width. That makes "how wide" a property of the whole set,
+  ' the same way showProvider / showFormat are properties of a result set rather
+  ' than of a result.
+  '
+  ' The flat EXISTING_BADGE_WIDTH it replaces was charged to every row whether or
+  ' not the section had any badges at all, and at 300px out of a 570px column it
+  ' left the title 222px. Measured on a 28-track film: "Portuguese · PGSSUB"
+  ' ellipsized to "Portuguese · PGS…" on rows carrying no badges whatsoever,
+  ' while the reserved strip beside them sat empty — the same mistake, in the same
+  ' column, that actionZoneWidth() already documents for the delete icon.
+  '
+  ' Returning 0 for a section with no badges is the case that matters most: the
+  ' built-in tracks are the long-named ones and are usually badge-free, so they
+  ' get the entire row.
+  '
+  ' @param {boolean} hasHearingImpaired - any row in the section is hearing-impaired
+  ' @param {boolean} hasForced - any row in the section is forced
+  ' @return {integer} width to reserve at the row's right edge
+  function existingBadgeZoneWidth(hasHearingImpaired as boolean, hasForced as boolean) as integer
+    width = 0
+    if hasHearingImpaired then width += subtitleLayout.BADGE_WIDTH_HEARING_IMPAIRED
+    if hasForced
+      if width > 0 then width += subtitleLayout.BADGE_GAP
+      width += subtitleLayout.BADGE_WIDTH_FORCED
+    end if
+    return width
+  end function
 
   ' Floor for the detail text so a hypothetical narrow row can never be handed a
   ' negative width (a Label with width <= 0 renders its text unclipped).
@@ -116,11 +175,87 @@ namespace subtitleLayout
   const SECTION_HEADING_HEIGHT = 34
   const SECTION_GAP = 18
 
+  ' Extra whitespace ABOVE a section heading, so it binds to the rows it labels
+  ' rather than to the column heading above it.
+  '
+  ' This is a proximity fix, and the numbers are why it was needed. The column
+  ' heading is fontSizeMedium (32) in a 44px slot and a section heading is
+  ' fontSizeSmaller (25) in a 34px slot, so the actual whitespace was 12px above
+  ' the section heading and 9px below it — near enough to equal that the heading
+  ' grouped ambiguously, and because it is also the SMALLER of the two it read as
+  ' a subtitle of the column heading instead of a label for its own list. With
+  ' one section present that produced a run-on title ("On this item / In the video
+  ' file") with no content between the two lines to break it up, which is exactly
+  ' what was reported from device.
+  '
+  ' Widening the gap above rather than tightening the one below, because 9px is
+  ' already close: a heading needs to sit nearer its rows than its neighbour, and
+  ' only one of those two distances had room to move.
+  const SECTION_HEADING_TOP_GAP = 14
+
   ' Rows visible in either column without scrolling. Drives the MarkupList's
   ' numRows AND the perfect-match filter's visibility threshold — the filter is
   ' pointless when the whole result set already fits on screen, so the two must
   ' be the same number by construction.
+  ' Vertical gap between rows, and the reason the lists can no longer be flush.
+  '
+  ' The list draws the app's focus indicator (source/utils/listTheme.bs), and that
+  ' 9-patch is drawn EXPANDED ~10px beyond the row on every side — measured on a
+  ' Stick 4K: a 72px row's ring spanned 92px. With rows flush the ring's edge
+  ' landed exactly on the neighbouring row's first line of text.
+  '
+  ' 24 for a TWO-LINE row: it is JRLabelList's spacing, so these lists share the
+  ' rhythm of every other list in the app, and it is divisible by 3 AND 6 — 6 for
+  ' the design scale, 3 because 1080/720 means an absolute edge divisible by 3
+  ' lands on a 720p output row and stays sharp. Row heights are already divisible
+  ' by 3, so a spacing that is too keeps every row boundary on the grid. See
+  ' dialogLayout.bs's PIXEL_GRID note: the constant only helps because the
+  ' absolute origin (306 panel + 190 column + 44 heading = 540) is on the grid.
+  const ROW_SPACING = 24
+
+  ' …and 12 for the COMPACT one-line row, which is a density decision rather than
+  ' a second opinion about rhythm. A built-in track's row is 45px, so 24 would be
+  ' more than half a row of air between every entry — and it cost real content:
+  ' the column's own design target (one downloaded file plus five built-in tracks,
+  ' visible without scrolling — see the spec) fits at 12 and does NOT at 24, which
+  ' dropped the built-in section from six visible rows to four. 12 still clears the
+  ' ring's 10px overshoot and is still divisible by 3 and 6.
+  const ROW_SPACING_COMPACT = 12
+
+  ' Rows visible in the RESULTS column without scrolling.
+  '
+  ' SIX, and it is six again only because the row got shorter: at the old 72px row
+  ' the gaps pushed six rows to 552px against a 486px column, so five was all that
+  ' fit. Trimming the double padding took the row to 54, and 6 x 54 + 5 x 24 = 444
+  ' — which leaves room for the focus ring below the last row too.
+  '
+  ' Drives the MarkupList's numRows AND the perfect-match filter's visibility
+  ' threshold — the filter is pointless when the whole result set already fits on
+  ' screen, so the two must be the same number by construction.
   const VISIBLE_ROWS = 6
+
+  ' rowsHeight: What n rows actually occupy, gaps included.
+  '
+  ' Gaps sit BETWEEN rows, so n rows have n-1 of them. Spacing is a PARAMETER
+  ' rather than read from the constant, because the two row shapes use different
+  ' gaps; passing it makes each call site say which rhythm it is stacking.
+  function rowsHeight(rows as integer, rowHeight as integer, spacing as integer) as integer
+    if rows <= 0 then return 0
+    return (rows * rowHeight) + ((rows - 1) * spacing)
+  end function
+
+  ' rowsThatFit: The most whole rows, with their gaps, that fit in `available`.
+  '
+  ' The inverse of rowsHeight, and it must stay its inverse: solving
+  ' n*h + (n-1)*s <= available for n gives (available + s) / (h + s). The two are
+  ' used on opposite sides of the same decision — one rations rows to a height,
+  ' the other places them — so a disagreement is a clipped row no build can see.
+  function rowsThatFit(available as integer, rowHeight as integer, spacing as integer) as integer
+    if rowHeight <= 0 then return 0
+    rows = int((available + spacing) / (rowHeight + spacing))
+    if rows < 0 then return 0
+    return rows
+  end function
 
   ' rowHeight: Total height of one subtitle row.
   '
@@ -201,30 +336,45 @@ namespace subtitleLayout
   ' @return {object} { downloadedRows, embeddedRows }
   function sectionRowCounts(downloadedCount as integer, embeddedCount as integer, downloadedRowHeight as integer, embeddedRowHeight as integer) as object
     available = subtitleLayout.existingColumnHeight()
+    headingSpace = subtitleLayout.sectionHeadingSpace()
 
     ' Space the OTHER section must be left, so it can never be squeezed to
     ' nothing while it still has something to show.
     reserved = 0
-    if embeddedCount > 0 then reserved = subtitleLayout.SECTION_HEADING_HEIGHT + embeddedRowHeight + subtitleLayout.SECTION_GAP
+    if embeddedCount > 0 then reserved = headingSpace + embeddedRowHeight + subtitleLayout.SECTION_GAP
 
     downloadedRows = 0
     if downloadedCount > 0
-      room = available - reserved - subtitleLayout.SECTION_HEADING_HEIGHT
-      downloadedRows = int(room / downloadedRowHeight)
+      room = available - reserved - headingSpace
+      downloadedRows = subtitleLayout.rowsThatFit(room, downloadedRowHeight, subtitleLayout.ROW_SPACING)
       if downloadedRows > downloadedCount then downloadedRows = downloadedCount
       if downloadedRows < 1 then downloadedRows = 1
-      available -= subtitleLayout.SECTION_HEADING_HEIGHT + (downloadedRows * downloadedRowHeight)
+      available -= headingSpace + subtitleLayout.rowsHeight(downloadedRows, downloadedRowHeight, subtitleLayout.ROW_SPACING)
       if embeddedCount > 0 then available -= subtitleLayout.SECTION_GAP
     end if
 
     embeddedRows = 0
     if embeddedCount > 0
-      embeddedRows = int((available - subtitleLayout.SECTION_HEADING_HEIGHT) / embeddedRowHeight)
+      embeddedRows = subtitleLayout.rowsThatFit(available - headingSpace, embeddedRowHeight, subtitleLayout.ROW_SPACING_COMPACT)
       if embeddedRows > embeddedCount then embeddedRows = embeddedCount
       if embeddedRows < 1 then embeddedRows = 1
     end if
 
     return { downloadedRows: downloadedRows, embeddedRows: embeddedRows }
+  end function
+
+  ' sectionHeadingSpace: Total vertical cost of one section heading.
+  '
+  ' The top gap and the heading slot are always spent together — placeSection
+  ' cannot draw one without the other — so they are added up in ONE place and
+  ' every consumer asks here. Summing them at each of the four sites in
+  ' sectionRowCounts() is how a section ends up drawing a row past the panel's
+  ' clip: miss one and the arithmetic under-counts, which is invisible in a build
+  ' and has already produced that bug twice in this column.
+  '
+  ' @return {integer} pixels from the top of a section to the top of its rows
+  function sectionHeadingSpace() as integer
+    return subtitleLayout.SECTION_HEADING_TOP_GAP + subtitleLayout.SECTION_HEADING_HEIGHT
   end function
 
   ' secondLineZones: Where the detail text and the badges go on a row's second line.

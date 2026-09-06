@@ -15,6 +15,7 @@ import "pkg:/source/constants/subtitleLayout.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/dialogs.bs"
+import "pkg:/source/utils/listTheme.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/remoteSubtitles.bs"
@@ -42,6 +43,9 @@ sub init()
   m.searchButton = m.top.findNode("searchButton")
   m.perfectMatchButton = m.top.findNode("perfectMatchButton")
   m.resultsHeading = m.top.findNode("resultsHeading")
+  m.resultsCount = m.top.findNode("resultsCount")
+  m.downloadedCount = m.top.findNode("downloadedCount")
+  m.embeddedCount = m.top.findNode("embeddedCount")
   m.resultsList = m.top.findNode("resultsList")
   m.statusLabel = m.top.findNode("statusLabel")
   m.resultsSpinner = m.top.findNode("resultsSpinner")
@@ -83,6 +87,34 @@ sub init()
   m.searchButton.text = translate(translationKeys.ButtonSearch)
   m.existingEmptyLabel.text = translate(translationKeys.LabelNoSubtitlesOnItem)
 
+  ' The app's one definition of a focused list row — a 6px colorPrimary border
+  ' over a colorBackgroundSecondary footprint. Both rows used to draw exactly this
+  ' themselves, per row, which is the duplication listTheme.bs exists to prevent
+  ' AND the reason focus could not travel: a per-row toggle can only switch on and
+  ' off, while the list's own indicator floats to the row you moved to.
+  ' ALL THREE lists, including the built-in-tracks one. That list became a focus
+  ' target when both sections were made reachable; leaving it unthemed gave it
+  ' focus with nothing drawn, so the remote moved and the screen did not.
+  applyListFocusChrome(m.resultsList)
+  applyListFocusChrome(m.downloadedList)
+  applyListFocusChrome(m.embeddedList)
+
+  ' …then suppress the FOOTPRINT on both, which is where this panel genuinely
+  ' differs from every other consumer of that helper.
+  '
+  ' focusFootprintBitmapUri is the fill Roku draws on a list's focused item WHILE
+  ' THE LIST ITSELF DOES NOT HAVE FOCUS. Every existing caller has exactly one
+  ' focusable list on screen, so it never renders and the shared default is free.
+  ' This panel has TWO, so one of them always lacks focus — and the footprint is
+  ' colorBackgroundSecondary, the same fill that means FOCUS on a TextButton or a
+  ' JRDropdownItem. Left on, the "On this item" row sat there permanently filled
+  ' while the user was in the results list, reading as selected. The 1px
+  ' transparent stand-in is how Alpha.bs turns the same thing off; focus here is
+  ' the 6px colorPrimary border alone, which nothing else can be mistaken for.
+  m.resultsList.focusFootprintBitmapUri = "pkg:/images/1px-transparent.png"
+  m.downloadedList.focusFootprintBitmapUri = "pkg:/images/1px-transparent.png"
+  m.embeddedList.focusFootprintBitmapUri = "pkg:/images/1px-transparent.png"
+
   ' Row heights are computed by SubtitleResultRow from the live font metrics, so
   ' the list asks the same helper rather than duplicating the arithmetic.
   sizeLists()
@@ -118,6 +150,12 @@ sub init()
   ' A MarkupList is visible by default, so without this DOWN on first open moves
   ' focus into an empty list and strands the remote until BACK.
   m.resultsList.visible = false
+
+  ' Each list keeps its own counter honest. itemFocused is an index into the
+  ' CONTENT, so it answers "where am I in all of it", not "where am I on screen".
+  m.resultsList.observeField("itemFocused", "onResultsFocusMoved")
+  m.downloadedList.observeField("itemFocused", "onDownloadedFocusMoved")
+  m.embeddedList.observeField("itemFocused", "onEmbeddedFocusMoved")
 
   m.resultsList.observeField("itemSelected", "onResultSelected")
   ' Only the downloaded list is wired. The embedded list IS focusable — it has to
@@ -186,6 +224,21 @@ end sub
 
 sub openPanel()
   m.top.visible = true
+
+  ' Start unblocked, whatever the last open left behind.
+  '
+  ' searchInFlight is deliberately NOT cleared when a STALE reply lands — a stale
+  ' reply normally means a newer search already owns the flag. Closing the panel
+  ' mid-search breaks that assumption: the reply returns early on the itemId
+  ' guard, no newer search exists, and the flag stays true for the life of the
+  ' component. shouldAutoSearch() reads it, so the next open would silently never
+  ' auto-search, and runSearch()'s in-flight guard would refuse every manual press
+  ' as well. Reopening is the one moment that can say for certain nothing this
+  ' panel started is still wanted.
+  m.searchInFlight = false
+  m.searchButton.isLoading = false
+  m.searchButton.isEnabled = true
+
   seedDefaultLanguage()
   ensureCulturesLoaded()
   renderExistingList()
@@ -484,6 +537,20 @@ end sub
 sub runSearch()
   if not isValidAndNotEmpty(m.top.itemId) then return
   if not isValidAndNotEmpty(m.selectedLanguageCode) then return
+  ' A second search while one is in flight is refused HERE rather than by
+  ' greying the button out.
+  '
+  ' The button used to carry the refusal itself (isEnabled = false), which
+  ' protected correctly and explained nothing: the panel auto-searches on open,
+  ' so the first thing a user saw was a disabled, focused Search button with no
+  ' stated reason — read on device as broken rather than as busy. isLoading says
+  ' the same thing in the affirmative (this is working) while keeping the button's
+  ' normal colours and focus border, and it is what IconButton has done for
+  ' ItemDetails' favourite / watched / record buttons all along. Moving the guard
+  ' into the function is the other half of that trade: with the button no longer
+  ' refusing presses, this is the only thing standing between a held-down OK and
+  ' two concurrent provider round-trips.
+  if m.searchInFlight then return
 
   ' Drop the previous results BEFORE the status line goes up. The status label
   ' sits at the results list's own origin, so a search started over a populated
@@ -493,6 +560,7 @@ sub runSearch()
   ' so the new results always arrive at the top.
   clearResults()
   showResultsSpinner()
+  m.searchButton.isLoading = true
   m.searchButton.isEnabled = false
 
   ' isPerfectMatch is deliberately NOT sent to the server. The Open Subtitles
@@ -504,6 +572,7 @@ sub runSearch()
   ' makes it instant rather than a network round-trip.
   req = GetApi().BuildSearchRemoteSubtitlesRequest(m.top.itemId, m.selectedLanguageCode, false)
   if not isValid(req)
+    m.searchButton.isLoading = false
     m.searchButton.isEnabled = true
     return
   end if
@@ -520,6 +589,7 @@ sub runSearch()
     ' lands. Render only the reply that matches what is on screen now.
     if ctx.itemId <> m.top.itemId or ctx.language <> m.selectedLanguageCode then return
     m.searchInFlight = false
+    m.searchButton.isLoading = false
     m.searchButton.isEnabled = true
     if not res.ok
       ' A non-Video item 404s here rather than returning an empty list; the
@@ -537,6 +607,7 @@ sub runSearch()
   end sub).catch(sub(err as object, ctx as object)
     if ctx.itemId <> m.top.itemId then return
     m.searchInFlight = false
+    m.searchButton.isLoading = false
     m.searchButton.isEnabled = true
     m.log.warn("subtitle search error", err.reason)
     setStatus(translate(translationKeys.MessageNoSubtitlesFound))
@@ -595,6 +666,7 @@ sub renderResults(results as object)
   end if
 
   m.perfectMatchButton.visible = shouldOfferPerfectMatchFilter()
+  updateListCounter(m.resultsCount, m.resultsList)
 end sub
 
 ' togglePerfectMatch: Re-filter the results already in hand. No re-search — the
@@ -661,6 +733,9 @@ sub clearResults()
   m.results = []
   m.resultsList.content = createObject("roSGNode", "ContentNode")
   m.resultsList.visible = false
+  ' The counter describes the list, so it goes with it — leaving "3 of 47" over
+  ' the spinner would be counting results that are no longer on screen.
+  m.resultsCount.visible = false
 end sub
 
 ' ── Existing subtitles ───────────────────────────────────────────────────────
@@ -686,10 +761,21 @@ sub renderExistingList()
   downloaded = createObject("roSGNode", "ContentNode")
   embedded = createObject("roSGNode", "ContentNode")
 
+  ' How wide each section's badge zone is, decided BEFORE any row is built —
+  ' every row in a section must reserve the same width or the right-anchored
+  ' badges stop lining up, so it cannot be a per-row answer. A section with no
+  ' badges reserves nothing and its titles get the whole row.
+  downloadedZone = badgeZoneFor(streams, true)
+  embeddedZone = badgeZoneFor(streams, false)
+
   for each stream in streams
     isExternal = stream.IsExternal = true
     parent = embedded
-    if isExternal then parent = downloaded
+    zone = embeddedZone
+    if isExternal
+      parent = downloaded
+      zone = downloadedZone
+    end if
 
     row = parent.createChild("ContentNode")
     row.addFields({
@@ -708,7 +794,8 @@ sub renderExistingList()
       hearingImpaired: stream.IsHearingImpaired = true,
       forced: stream.IsForced = true,
       streamIndex: intOrZero(stream.Index),
-      rowWidth: subtitleLayout.EXISTING_WIDTH
+      rowWidth: subtitleLayout.EXISTING_WIDTH,
+      badgeZoneWidth: zone
     })
   end for
 
@@ -716,6 +803,30 @@ sub renderExistingList()
   m.embeddedList.content = embedded
   layoutExistingSections(downloaded.getChildCount(), embedded.getChildCount())
 end sub
+
+' badgeZoneFor: The badge-zone width one section of the column needs.
+'
+' Scans only the streams belonging to that section — external for the downloaded
+' list, the rest for the built-in one — because the two sections are separate
+' MarkupLists with separate geometry, and a badge on a downloaded file should not
+' cost a built-in track any of its title width.
+'
+' @param {object} streams - every subtitle stream on the item
+' @param {boolean} wantExternal - true for the downloaded section, false for built-in
+' @return {integer} width to reserve at each of that section's right edges
+function badgeZoneFor(streams as object, wantExternal as boolean) as integer
+  hearingImpaired = false
+  forced = false
+
+  for each stream in streams
+    if (stream.IsExternal = true) = wantExternal
+      if stream.IsHearingImpaired = true then hearingImpaired = true
+      if stream.IsForced = true then forced = true
+    end if
+  end for
+
+  return subtitleLayout.existingBadgeZoneWidth(hearingImpaired, forced)
+end function
 
 ' subtitleFileLine: The filename line for a downloaded subtitle, "" for a built-in one.
 function subtitleFileLine(stream as object, isExternal as boolean) as string
@@ -745,26 +856,37 @@ sub layoutExistingSections(downloadedCount as integer, embeddedCount as integer)
 
   counts = subtitleLayout.sectionRowCounts(downloadedCount, embeddedCount, downloadedRowHeight, embeddedRowHeight)
 
-  y = placeSection(m.downloadedHeading, m.downloadedList, counts.downloadedRows, downloadedRowHeight, subtitleLayout.COLUMN_HEADING_HEIGHT)
+  y = placeSection(m.downloadedHeading, m.downloadedCount, m.downloadedList, counts.downloadedRows, downloadedRowHeight, subtitleLayout.ROW_SPACING, subtitleLayout.COLUMN_HEADING_HEIGHT)
   if counts.downloadedRows > 0 and counts.embeddedRows > 0 then y += subtitleLayout.SECTION_GAP
-  placeSection(m.embeddedHeading, m.embeddedList, counts.embeddedRows, embeddedRowHeight, y)
+  placeSection(m.embeddedHeading, m.embeddedCount, m.embeddedList, counts.embeddedRows, embeddedRowHeight, subtitleLayout.ROW_SPACING_COMPACT, y)
 
   m.existingEmptyLabel.visible = (downloadedCount + embeddedCount) = 0
+
+  updateListCounter(m.downloadedCount, m.downloadedList)
+  updateListCounter(m.embeddedCount, m.embeddedList)
 end sub
 
 ' placeSection: Position one heading + list pair, and return the y below it.
 '
 ' Returns the incoming y untouched for a section with no rows, so an absent
 ' section leaves no trace behind it.
-function placeSection(heading as object, list as object, rows as integer, rowHeight as integer, y as integer) as integer
+function placeSection(heading as object, counter as object, list as object, rows as integer, rowHeight as integer, spacing as integer, y as integer) as integer
   if rows <= 0
     heading.visible = false
+    counter.visible = false
     list.visible = false
     return y
   end if
 
+  ' The heading is pushed down by its top gap so it sits nearer the rows it names
+  ' than the column heading above it — sectionHeadingSpace() is the same total
+  ' sectionRowCounts() rationed against, and they have to stay the same total.
+  y += subtitleLayout.SECTION_HEADING_TOP_GAP
   heading.translation = [0, y]
   heading.visible = true
+  ' Right-aligned on the heading's own line, so a section says what it holds and
+  ' how far through it you are in one place.
+  counter.translation = [0, y]
   y += subtitleLayout.SECTION_HEADING_HEIGHT
 
   list.translation = [0, y]
@@ -775,7 +897,8 @@ function placeSection(heading as object, list as object, rows as integer, rowHei
   ' unfocusable, and this comment asserted it anyway.
   list.numRows = rows
   list.visible = true
-  return y + (rows * rowHeight)
+  list.itemSpacing = [0, spacing]
+  return y + subtitleLayout.rowsHeight(rows, rowHeight, spacing)
 end function
 
 ' ── Download + confirmation ──────────────────────────────────────────────────
@@ -1026,6 +1149,56 @@ sub refreshAfterDelete(name as string)
   end sub)
 end sub
 
+' ── List position counters ───────────────────────────────────────────────────
+
+sub onResultsFocusMoved()
+  updateListCounter(m.resultsCount, m.resultsList)
+end sub
+
+sub onDownloadedFocusMoved()
+  updateListCounter(m.downloadedCount, m.downloadedList)
+end sub
+
+sub onEmbeddedFocusMoved()
+  updateListCounter(m.embeddedCount, m.embeddedList)
+end sub
+
+' updateListCounter: "3 of 47" beside a list's heading, or nothing.
+'
+' SHOWN ONLY WHEN THE LIST CAN SCROLL, which is the only time the question it
+' answers exists. A count beside a list you can already see in full states
+' something the eye has, and this panel has three lists sharing a 720px clip —
+' three permanent counters would be three pieces of furniture earning nothing.
+' The same test the perfect-match toggle uses ("can the user already see the whole
+' set?"), asked of each list's own numRows rather than a shared constant, because
+' the two "on this item" sections are sized per render by sectionRowCounts().
+'
+' The string is Message1Of2, the app's existing "{0} of {1}" — already what the
+' library grid's overhang and the audio player's track line use, so a position
+' readout means the same thing wherever it turns up. Roku's own list counter is a
+' RowList field (showRowCounter) and MarkupList does not have it, which is why
+' this is built by hand rather than switched on.
+sub updateListCounter(counter as object, list as object)
+  if not isValid(counter) or not isValid(list) then return
+
+  total = 0
+  if isValid(list.content) then total = list.content.getChildCount()
+
+  if not list.visible or total <= list.numRows
+    counter.visible = false
+    return
+  end if
+
+  ' itemFocused indexes the CONTENT, so this reads as a position in the whole
+  ' list rather than in the visible window. It is -1 before the list has ever
+  ' been focused, where the honest answer is the first row.
+  position = list.itemFocused + 1
+  if position < 1 then position = 1
+
+  counter.text = translate(translationKeys.Message1Of2, [position.toStr(), total.toStr()])
+  counter.visible = true
+end sub
+
 ' ── Focus + keys ─────────────────────────────────────────────────────────────
 
 sub sizeLists()
@@ -1036,6 +1209,12 @@ sub sizeLists()
   constants = m.global.constants
   m.resultsList.itemSize = [subtitleLayout.RESULTS_WIDTH, subtitleLayout.rowHeight(constants.fontSizeSmaller, constants.fontSizeSmallest)]
   m.resultsList.numRows = subtitleLayout.VISIBLE_ROWS
+
+  ' Without a gap the focus indicator — which the list draws ~10px OUTSIDE the
+  ' row — lands on the neighbouring row's text. The two "on this item" lists get
+  ' theirs from placeSection(), which is the only place that knows which of the
+  ' two row shapes, and therefore which rhythm, each section is stacking.
+  m.resultsList.itemSpacing = [0, subtitleLayout.ROW_SPACING]
 
   ' The two existing-subtitle sections hold different row SHAPES — a downloaded
   ' file has a filename line, a built-in track has nothing to put on one — so

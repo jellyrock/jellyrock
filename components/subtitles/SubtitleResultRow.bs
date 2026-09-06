@@ -13,13 +13,17 @@ import "pkg:/source/utils/translate.bs"
 ' label beside them rather than towering over it.
 const BADGE_ICON_SIZE = 22
 
+' Which icon a badge draws. A slot can show either, so both Posters exist in
+' every slot with their uri assigned ONCE — see buildBadgePool.
+const BADGE_ICON_NONE = ""
+const BADGE_ICON_STAR = "star"
+const BADGE_ICON_CC = "cc"
+
 ' Badge slots pre-allocated per row, sized to the most badges a single
 ' row of this type can carry so the pool never grows mid-scroll.
 const BADGE_POOL_SIZE = 4
 
 sub init()
-  m.rowBackground = m.top.findNode("rowBackground")
-  m.rowBorder = m.top.findNode("rowBorder")
   m.badgeClip = m.top.findNode("badgeClip")
   m.badgeRow = m.top.findNode("badgeRow")
   m.nameLabel = m.top.findNode("nameLabel")
@@ -42,31 +46,100 @@ end sub
 sub buildBadgePool()
   m.badges = []
   m.badgeCount = 0
+
   for i = 0 to BADGE_POOL_SIZE - 1
     badge = m.badgeRow.createChild("LayoutGroup")
+    ' Named so the slot is addressable from RTA/odc. Pooled nodes are otherwise
+    ' anonymous, which makes a layout question like "did this badge move after the
+    ' row was populated?" unanswerable without a screenshot.
+    badge.id = "resultBadgeSlot" + i.toStr()
     badge.layoutDirection = "horiz"
     badge.itemSpacings = [6]
     badge.vertAlignment = "center"
     badge.visible = false
 
-    icon = badge.createChild("Poster")
-    icon.width = BADGE_ICON_SIZE
-    icon.height = BADGE_ICON_SIZE
-    icon.visible = false
+    ' ONE holder, TWO overlapping Posters, and a uri that is never reassigned.
+    '
+    ' A slot shows whichever icon its badge needs, so the free-pool version just
+    ' wrote the uri it wanted onto the slot's single Poster. That churned: a
+    ' result WITH a perfect match put the star in slot 0 and one without put the
+    ' CC icon there, so every recycle that changed which kind came first rebound
+    ' slot 0's texture — and a Poster draws nothing until the new bitmap is
+    ' bound, which is the icon visibly popping in mid-scroll even though the
+    ' asset was already in Roku's texture cache. Keeping both Posters resident
+    ' and switching which one is SHOWN costs two nodes and rebinds nothing.
+    '
+    ' They overlap inside a holder rather than sitting side by side because
+    ' LayoutGroup would otherwise lay them out in sequence.
+    holder = badge.createChild("Group")
+    icons = {}
+    icons[BADGE_ICON_STAR] = newBadgeIcon(holder, "pkg:/images/icons/star_$$RES$$.png")
+    icons[BADGE_ICON_CC] = newBadgeIcon(holder, "pkg:/images/icons/closedCaptions_$$RES$$.png")
 
     label = badge.createChild("LabelSecondarySmallest")
 
-    m.badges.push({ group: badge, icon: icon, label: label })
+    m.badges.push({ group: badge, holder: holder, icons: icons, label: label })
   end for
 end sub
 
-' onItemContentChanged: Render one RemoteSubtitleInfo.
+' newBadgeIcon: one resident, pre-bound badge Poster, collapsed until used.
 '
-' The MarkupList content node carries the raw server fields plus two flags the
-' panel computes once per result SET (not per row) — showProvider / showFormat —
-' because "is this column informative?" is a property of the whole set, and
-' asking it per row would render the provider on every row of a single-provider
-' install.
+' Starts at zero SIZE, not merely hidden, and that distinction is load-bearing:
+' measured on device, an invisible LayoutGroup child still occupies its slot in
+' the layout — hiding a 22px icon left a 22px hole plus its spacing, which is
+' how a badge with no icon ends up indented from one that has it. Width is
+' therefore what this row toggles; `visible` just follows it.
+function newBadgeIcon(holder as object, uri as string) as object
+  icon = holder.createChild("Poster")
+  ' Downscale into TEXTURE MEMORY, not just on the way to the screen.
+  '
+  ' All THREE fields are required and none is optional: loadWidth/loadHeight
+  ' state the cap, and loadDisplayMode is what makes the cap apply at load time
+  ' -- the Poster docs are explicit that the scaling capability is used "by
+  ' setting the loadWidth and loadHeight field values" and then "select the
+  ' scaling option you want as the value of the loadDisplayMode field", whose
+  ' default noScale loads "at the image's original resolution". Set the first
+  ' two alone and nothing happens at all.
+  '
+  ' It matters here because the badge assets are not uniform:
+  ' closedCaptions_fhd.png is 64x64 and star_fhd.png is 36x36, both drawn at
+  ' 22px, so the CC icon was holding ~3.2x the texture of the star for the same
+  ' pixels. limitSize (the mode CommunityRating already uses for that same star)
+  ' preserves aspect ratio and leaves an already-small image alone.
+  icon.loadWidth = BADGE_ICON_SIZE
+  icon.loadHeight = BADGE_ICON_SIZE
+  icon.loadDisplayMode = "limitSize"
+  ' Load the bitmap SYNCHRONOUSLY, and set this BEFORE uri so it governs the load
+  ' that assigning uri kicks off.
+  '
+  ' This is the pop-in, and it is documented rather than inferred. Poster.loadSync
+  ' defaults to FALSE, which the Roku docs define as "loaded asynchronously in a
+  ' background thread, and may not appear immediately"; with true "and the uri
+  ' field specifies a local file (in the pkg:/images directory), the image is
+  ' loaded synchronously, and appears immediately". Every icon here is a local
+  ' pkg:/images file, so the async default was buying nothing and costing a frame.
+  '
+  ' It also explains the SHIFT that came with it, which is the more telling half:
+  ' until the bitmap arrives the Poster has no content to contribute, so the
+  ' LayoutGroup lays the row out as though the icon were not there and re-flows
+  ' when it lands — measured as a badge after it jumping right by ~28px, which is
+  ' exactly this icon (22) plus its gutter (6). A label measuring late would have
+  ' moved it by a label's width; 28px names the icon specifically.
+  '
+  ' The docs' caveat ("might cause brief glitches in the rendering while the image
+  ' is being fetched and loaded") is about paying the fetch on the render thread.
+  ' That is the right trade for a handful of tiny local PNGs already in the
+  ' package, and the load happens once per uri at row construction rather than
+  ' per scroll — NOT the trade to copy for a remote poster.
+  icon.loadSync = true
+  ' Assigned once, here, for the row component's whole life.
+  icon.uri = uri
+  icon.width = 0
+  icon.height = BADGE_ICON_SIZE
+  icon.visible = false
+  return icon
+end function
+
 sub onItemContentChanged()
   content = m.top.itemContent
   if not isValid(content) then return
@@ -169,41 +242,50 @@ sub rebuildBadges(content as object)
   constants = m.global.constants
 
   if content.isHashMatch = true
-    appendBadge(translate(translationKeys.LabelPerfectMatch), constants.colorPrimary, "pkg:/images/icons/star_$$RES$$.png")
+    ' colorSecondary, not colorPrimary. The theme encodes interaction state: primary
+    ' is for what you can focus or act on (it is the focus ring on this very row),
+    ' secondary is for non-focusable emphasis. A perfect-match mark is emphasis on a
+    ' property of the result, not something you can move focus to — and tinting it
+    ' primary put the same colour on the badge and the focus ring in one frame.
+    appendBadge(translate(translationKeys.LabelPerfectMatch), constants.colorSecondary, BADGE_ICON_STAR)
   end if
   if content.hearingImpaired = true
     ' Closed-captioning mark for hearing-impaired subtitles: broadcast CC has
     ' always meant SDH, so it is the icon viewers already know for this.
-    appendBadge(translate(translationKeys.LabelHearingImpaired), constants.colorTextSecondary, "pkg:/images/icons/closedCaptions_$$RES$$.png")
+    appendBadge(translate(translationKeys.LabelHearingImpaired), constants.colorTextSecondary, BADGE_ICON_CC)
   end if
   if content.forced = true
-    appendBadge(translate(translationKeys.LabelForcedSubtitle), constants.colorTextSecondary, "")
+    appendBadge(translate(translationKeys.LabelForcedSubtitle), constants.colorTextSecondary, BADGE_ICON_NONE)
   end if
   if content.aiTranslated = true
-    appendBadge(translate(translationKeys.LabelAiTranslated), constants.colorTextSecondary, "")
+    appendBadge(translate(translationKeys.LabelAiTranslated), constants.colorTextSecondary, BADGE_ICON_NONE)
   else if content.machineTranslated = true
-    appendBadge(translate(translationKeys.LabelMachineTranslated), constants.colorTextSecondary, "")
+    appendBadge(translate(translationKeys.LabelMachineTranslated), constants.colorTextSecondary, BADGE_ICON_NONE)
   end if
-
 end sub
 
-' appendBadge: One icon-and-label pair.
-'
-' Deliberately no pill background — at this row height a filled chip competes
-' with the focus background for attention. The icon is tinted to match its
-' label so each badge reads as one object.
-sub appendBadge(text as string, color as string, iconUri as string)
+' appendBadge: Fill the next slot. Chooses WHICH resident icon shows; never
+' assigns a uri, which is what keeps a recycled row from rebinding a texture.
+sub appendBadge(text as string, color as string, iconKind as string)
   if m.badgeCount >= m.badges.count() then return
 
   slot = m.badges[m.badgeCount]
   slot.label.text = text
   slot.label.color = color
 
-  slot.icon.visible = iconUri <> ""
-  if iconUri <> ""
-    if slot.icon.uri <> iconUri then slot.icon.uri = iconUri
-    slot.icon.blendColor = color
-  end if
+  ' Collapse every icon in this slot, then open the one asked for. Width rather
+  ' than visibility is what takes it out of the layout — see newBadgeIcon.
+  for each kind in slot.icons
+    icon = slot.icons[kind]
+    wanted = (kind = iconKind)
+    icon.visible = wanted
+    if wanted
+      icon.width = BADGE_ICON_SIZE
+      icon.blendColor = color
+    else
+      icon.width = 0
+    end if
+  end for
 
   slot.group.visible = true
   m.badgeCount++
@@ -221,10 +303,6 @@ sub onSizeChanged()
   constants = m.global.constants
   rowHeight = subtitleLayout.rowHeight(constants.fontSizeSmaller, constants.fontSizeSmallest)
 
-  m.rowBackground.width = rowWidth
-  m.rowBackground.height = rowHeight
-  m.rowBorder.width = rowWidth
-  m.rowBorder.height = rowHeight
 
   ' Line 1: the release name, across the row's full text width.
   ' ScrollingLabel viewports are driven by maxWidth, not width.
@@ -248,20 +326,17 @@ sub onSizeChanged()
 end sub
 
 
+' onFocusChanged: the marquee, and nothing else.
+'
+' The focus BORDER and surface are the list's now (see the XML), so all that is
+' left here is the one thing a shared indicator cannot do: start and stop this
+' row's own scrolling label. The colour used to be re-applied in both branches to
+' the same value it is already given in init(), which is a write per focus change
+' that could never change anything.
 sub onFocusChanged()
-  constants = m.global.constants
-  hasFocus = m.top.itemHasFocus
-
-  m.rowBorder.visible = hasFocus
-  m.rowBackground.visible = hasFocus
-
-  if hasFocus
-    m.rowBorder.blendColor = constants.colorPrimary
-    m.rowBackground.blendColor = constants.colorBackgroundSecondary
+  if m.top.itemHasFocus
     m.nameLabel.repeatCount = -1
-    m.nameLabel.color = constants.colorTextPrimary
   else
     m.nameLabel.repeatCount = 0
-    m.nameLabel.color = constants.colorTextPrimary
   end if
 end sub

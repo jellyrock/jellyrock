@@ -43,12 +43,9 @@
 -->
 <component name="CurrentSubtitleRow" extends="Group">
   <children>
-    <!-- Focus chrome, same 9-patch pair as SubtitleResultRow so both columns read
-         as one control family. Only downloaded rows are ever focused — a built-in
-         track cannot be acted on, so it is not a focus stop. -->
-    <Poster id="rowBackground" uri="pkg:/images/9patch/filled-rounded.9.png" visible="false" />
-    <Poster id="rowBorder" uri="pkg:/images/9patch/border-6px.9.png" visible="false" />
-
+    <!-- No focus chrome here. The list draws the app's standard indicator
+         (source/utils/listTheme.bs, applied in SubtitlePanel.init), which is what
+         lets it FLOAT between rows instead of blinking on and off per row. -->
     <ScrollingLabelPrimarySmaller id="titleLabel" repeatCount="0" />
 
     <!-- Second line, downloaded rows only: the part of the filename that differs

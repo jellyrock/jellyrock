@@ -74,11 +74,25 @@
              and resolved it the same way; see the comment there. -->
         <Group id="resultsGroup" translation="[96, 190]">
           <LabelPrimaryMedium id="resultsHeading" translation="[0, 0]" />
+          <!-- "3 of 47", right-aligned on the heading's own line. A MarkupList has
+               no counter of its own — showRowCounter is a RowList field — so this
+               is hand-built, but the STRING is the app's existing Message1Of2, the
+               same one the grid overhang and the audio player use, so a position
+               readout means the same thing wherever it appears. On the heading
+               line rather than below the list: it costs no row, and the question
+               it answers ("is there more?") is asked while looking at the top. -->
+          <LabelSecondarySmall id="resultsCount" translation="[0, 0]" width="1120" horizAlign="right" visible="false" />
+          <!-- drawFocusFeedback is LEFT AT ITS DEFAULT (true) so the list draws the
+               one focus indicator that FLOATS between rows, which is what every
+               other list in the app does. The rows previously hand-drew their own
+               border and surface from the same two 9-patches and the same two
+               theme colours, toggled per row — identical pixels, but a static
+               indicator that can only appear, never travel. Chrome comes from
+               applyListFocusChrome() in SubtitlePanel.init(). -->
           <MarkupList id="resultsList"
             translation="[0, 44]"
             itemComponentName="SubtitleResultRow"
-            vertFocusAnimationStyle="floatingFocus"
-            drawFocusFeedback="false" />
+            vertFocusAnimationStyle="floatingFocus" />
         </Group>
 
         <!-- Loading indicator for the results column, in place of the rows.
@@ -117,17 +131,17 @@
           <LabelPrimaryMedium id="existingHeading" translation="[0, 0]" />
 
           <LabelSecondarySmaller id="downloadedHeading" visible="false" />
+          <LabelSecondarySmall id="downloadedCount" width="570" horizAlign="right" visible="false" />
           <MarkupList id="downloadedList"
             itemComponentName="CurrentSubtitleRow"
             vertFocusAnimationStyle="floatingFocus"
-            drawFocusFeedback="false"
             visible="false" />
 
           <LabelSecondarySmaller id="embeddedHeading" visible="false" />
+          <LabelSecondarySmall id="embeddedCount" width="570" horizAlign="right" visible="false" />
           <MarkupList id="embeddedList"
             itemComponentName="CurrentSubtitleRow"
             vertFocusAnimationStyle="floatingFocus"
-            drawFocusFeedback="false"
             visible="false" />
 
           <LabelSecondarySmallest id="existingEmptyLabel" width="570" wrap="true" translation="[0, 44]" visible="false" />

@@ -8,13 +8,16 @@ import "pkg:/source/utils/translate.bs"
 
 const BADGE_ICON_SIZE = 22
 
+' Which icon a badge draws. Both Posters live in every slot with their uri
+' assigned once — see SubtitleResultRow.buildBadgePool for the full reasoning.
+const BADGE_ICON_NONE = ""
+const BADGE_ICON_CC = "cc"
+
 ' Badge slots pre-allocated per row, sized to the most badges a single
 ' row of this type can carry so the pool never grows mid-scroll.
 const BADGE_POOL_SIZE = 2
 
 sub init()
-  m.rowBackground = m.top.findNode("rowBackground")
-  m.rowBorder = m.top.findNode("rowBorder")
   m.titleLabel = m.top.findNode("titleLabel")
   m.sourceLabel = m.top.findNode("sourceLabel")
   m.badgeClip = m.top.findNode("badgeClip")
@@ -26,12 +29,23 @@ sub init()
   ' Until a content node says otherwise, assume the compact shape — a row sized
   ' for two lines that only ever draws one leaves a visible gap.
   m.isExternal = false
+  ' No badges until a content node says otherwise, so a row measured before its
+  ' content arrives gives the title the full width rather than an empty strip.
+  m.badgeZoneWidth = 0
   ' Likewise assume no action: a row that reserves space for an affordance it
   ' never draws is indistinguishable from one that is simply misaligned.
   m.canDelete = false
 
   m.deleteIcon.width = subtitleLayout.ROW_ACTION_ICON_SIZE
   m.deleteIcon.height = subtitleLayout.ROW_ACTION_ICON_SIZE
+  ' delete_fhd.png is 64x64 and drawn at 24 -- same load-time scaling gap as the
+  ' badge icons in buildBadgePool, and the same three fields close it.
+  m.deleteIcon.loadWidth = subtitleLayout.ROW_ACTION_ICON_SIZE
+  m.deleteIcon.loadHeight = subtitleLayout.ROW_ACTION_ICON_SIZE
+  m.deleteIcon.loadDisplayMode = "limitSize"
+  ' Same synchronous local load as the badge icons — this one appears on focus,
+  ' where a late bitmap reads as the affordance lagging the focus ring.
+  m.deleteIcon.loadSync = true
   ' Tracks the row's text rather than an error colour. colorError is this app's
   ' signal for an outcome that already went wrong (Toast), not for an action
   ' that is merely available — the weight of the action belongs in the
@@ -52,29 +66,68 @@ end sub
 sub buildBadgePool()
   m.badges = []
   m.badgeCount = 0
+
   for i = 0 to BADGE_POOL_SIZE - 1
     badge = m.badgeRow.createChild("LayoutGroup")
+    ' Named so the slot is addressable from RTA/odc. Pooled nodes are otherwise
+    ' anonymous, which makes a layout question like "did this badge move after the
+    ' row was populated?" unanswerable without a screenshot.
+    badge.id = "existingBadgeSlot" + i.toStr()
     badge.layoutDirection = "horiz"
     badge.itemSpacings = [6]
     badge.vertAlignment = "center"
     badge.visible = false
 
-    icon = badge.createChild("Poster")
-    icon.width = BADGE_ICON_SIZE
-    icon.height = BADGE_ICON_SIZE
-    icon.visible = false
+    ' Resident, pre-bound icon in a holder — the uri is assigned once and never
+    ' rebound, so a recycled row cannot make the icon pop in. This row type only
+    ' ever draws the CC mark, but it keeps the holder so both row types collapse
+    ' an unused icon the same way (by WIDTH, because an invisible LayoutGroup
+    ' child still occupies its slot — measured on device).
+    holder = badge.createChild("Group")
+    icons = {}
+    icons[BADGE_ICON_CC] = newBadgeIcon(holder, "pkg:/images/icons/closedCaptions_$$RES$$.png")
 
     label = badge.createChild("LabelSecondarySmallest")
 
-    m.badges.push({ group: badge, icon: icon, label: label })
+    m.badges.push({ group: badge, holder: holder, icons: icons, label: label })
   end for
 end sub
+
+' newBadgeIcon: one resident, pre-bound badge Poster, collapsed until used.
+' Starts at zero WIDTH rather than merely hidden — an invisible LayoutGroup
+' child still takes its place in the layout, which is what leaves a badge with
+' no icon indented from one that has it.
+function newBadgeIcon(holder as object, uri as string) as object
+  icon = holder.createChild("Poster")
+  ' loadWidth/loadHeight state the cap; loadDisplayMode is what makes it apply at
+  ' load time (its noScale default loads at the asset's full resolution, so the
+  ' first two do nothing alone). closedCaptions_fhd.png is 64x64 drawn at 22.
+  icon.loadWidth = BADGE_ICON_SIZE
+  icon.loadHeight = BADGE_ICON_SIZE
+  icon.loadDisplayMode = "limitSize"
+  ' Synchronous load, set BEFORE uri — Poster.loadSync defaults to false, i.e.
+  ' async, "may not appear immediately". That async default is the icon pop-in AND
+  ' the ~28px rightward jump of whatever badge follows, because a Poster with no
+  ' bitmap yet contributes nothing to the LayoutGroup. Full reasoning in
+  ' SubtitleResultRow.newBadgeIcon.
+  icon.loadSync = true
+  icon.uri = uri
+  icon.width = 0
+  icon.height = BADGE_ICON_SIZE
+  icon.visible = false
+  return icon
+end function
 
 sub onItemContentChanged()
   content = m.top.itemContent
   if not isValid(content) then return
 
   if isValid(content.rowWidth) and content.rowWidth > 0 then m.top.rowWidth = content.rowWidth
+  ' Decided per SECTION by the panel, so every row in a section reserves the same
+  ' width and the right-anchored badges line up. Zero when the section carries no
+  ' badges at all, which hands the title the whole row.
+  m.badgeZoneWidth = 0
+  if isValid(content.badgeZoneWidth) then m.badgeZoneWidth = content.badgeZoneWidth
 
   m.titleLabel.text = titleLineFor(content)
 
@@ -121,8 +174,9 @@ end function
 
 ' rebuildBadges: Only the flags that change what the track IS.
 '
-' Appended in significance order — the badge zone is clipped to the row's right
-' edge, so anything that overflows is dropped from the end.
+' Slots are ordered by significance and the badge zone is clipped to the row's
+' right edge, so anything that overflows is dropped from the least significant
+' end. Each kind has its own slot — see the slot constants.
 '
 ' No "perfect match" here — that is a property of a provider search result, not
 ' of a file already on disk — and no download count, which an installed subtitle
@@ -133,25 +187,33 @@ sub rebuildBadges(content as object)
   constants = m.global.constants
 
   if content.hearingImpaired = true
-    appendBadge(translate(translationKeys.LabelHearingImpaired), constants.colorTextSecondary, "pkg:/images/icons/closedCaptions_$$RES$$.png")
+    appendBadge(translate(translationKeys.LabelHearingImpaired), constants.colorTextSecondary, BADGE_ICON_CC)
   end if
   if content.forced = true
-    appendBadge(translate(translationKeys.LabelForcedSubtitle), constants.colorTextSecondary, "")
+    appendBadge(translate(translationKeys.LabelForcedSubtitle), constants.colorTextSecondary, BADGE_ICON_NONE)
   end if
 end sub
 
-sub appendBadge(text as string, color as string, iconUri as string)
+' appendBadge: Fill the next slot. Chooses WHICH resident icon shows; never
+' assigns a uri, which is what keeps a recycled row from rebinding a texture.
+sub appendBadge(text as string, color as string, iconKind as string)
   if m.badgeCount >= m.badges.count() then return
 
   slot = m.badges[m.badgeCount]
   slot.label.text = text
   slot.label.color = color
 
-  slot.icon.visible = iconUri <> ""
-  if iconUri <> ""
-    if slot.icon.uri <> iconUri then slot.icon.uri = iconUri
-    slot.icon.blendColor = color
-  end if
+  for each kind in slot.icons
+    icon = slot.icons[kind]
+    wanted = (kind = iconKind)
+    icon.visible = wanted
+    if wanted
+      icon.width = BADGE_ICON_SIZE
+      icon.blendColor = color
+    else
+      icon.width = 0
+    end if
+  end for
 
   slot.group.visible = true
   m.badgeCount++
@@ -163,6 +225,15 @@ sub hideUnusedBadges()
     m.badges[i].group.visible = false
   end for
 end sub
+
+' badgeZoneWidth: What this row reserves for badges, defaulting to nothing.
+'
+' A separate accessor because onSizeChanged() runs from init() too, before any
+' itemContent exists -- reading the field raw would be `invalid` there.
+function badgeZoneWidth() as integer
+  if not isValid(m.badgeZoneWidth) then return 0
+  return m.badgeZoneWidth
+end function
 
 sub onSizeChanged()
   rowWidth = m.top.rowWidth
@@ -176,10 +247,6 @@ sub onSizeChanged()
     rowHeight = subtitleLayout.rowHeightCompact(constants.fontSizeSmaller)
   end if
 
-  m.rowBackground.width = rowWidth
-  m.rowBackground.height = rowHeight
-  m.rowBorder.width = rowWidth
-  m.rowBorder.height = rowHeight
 
   ' Line 1: language and codec on the left, badges anchored right. Badges live on
   ' the FIRST line for both shapes so they align down the column regardless of
@@ -188,7 +255,7 @@ sub onSizeChanged()
   ' The action icon takes NOTHING from this line — it lives on line 2. Reserving
   ' here instead ellipsized the title on a real row (see actionZoneWidth).
   firstLineY = subtitleLayout.ROW_V_PADDING
-  zones = subtitleLayout.secondLineZones(rowWidth, subtitleLayout.EXISTING_BADGE_WIDTH)
+  zones = subtitleLayout.secondLineZones(rowWidth, badgeZoneWidth())
 
   ' ScrollingLabel viewports are driven by maxWidth, not width.
   m.titleLabel.maxWidth = zones.detailWidth
@@ -216,19 +283,14 @@ sub onSizeChanged()
 end sub
 
 sub onFocusChanged()
-  constants = m.global.constants
   hasFocus = m.top.itemHasFocus
 
-  m.rowBorder.visible = hasFocus
-  m.rowBackground.visible = hasFocus
   ' Drawn only while focused — an icon on every row would read as a column of
   ' delete buttons rather than as what OK does to the row you are on. Its space
   ' is reserved regardless (see onSizeChanged), so this cannot shift the layout.
   m.deleteIcon.visible = hasFocus and m.canDelete
 
   if hasFocus
-    m.rowBorder.blendColor = constants.colorPrimary
-    m.rowBackground.blendColor = constants.colorBackgroundSecondary
     m.titleLabel.repeatCount = -1
   else
     m.titleLabel.repeatCount = 0
