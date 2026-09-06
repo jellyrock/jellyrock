@@ -29,7 +29,6 @@ sub init()
   m.top.observeField("width", "onWidthChanged")
   m.top.observeField("padding", "onPaddingChanged")
   m.top.observeField("focusedChild", "onFocusChanged")
-  m.top.observeField("isButtonSelected", "onSelectedChanged")
 
   applyTheme()
 end sub
