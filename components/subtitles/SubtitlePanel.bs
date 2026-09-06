@@ -430,10 +430,10 @@ sub ensureCulturesLoaded()
   req = GetApi().BuildGetCulturesRequest()
   if not isValid(req) then return
 
-  promises.chain(fetchAsync(req, "subtitleCultures"), { serverUrl: m.global.server.url }).then(sub(res as object, ctx as object)
+  promises.chain(fetchAsync(req, "subtitleCultures"), { serverUrl: m.global.server.serverUrl }).then(sub(res as object, ctx as object)
     ' Guard a reply that outlived a server switch — the culture list is
     ' server-specific and a stale one would mislabel every language.
-    if ctx.serverUrl <> m.global.server.url then return
+    if ctx.serverUrl <> m.global.server.serverUrl then return
     if not res.ok
       m.log.warn("cultures fetch failed", res.statusCode)
       ' Only when nothing else got us a language — a manual pick before this
@@ -517,7 +517,11 @@ end sub
 
 sub showLanguageOverlay()
   if not isValid(m.languagePicker.languages) or m.languagePicker.languages.count() = 0
-    displayToast(translate(translationKeys.MessageNoSubtitlesFound), "error")
+    ' What failed here is the CULTURE LIST, not the search. Saying "no subtitles
+    ' found — ask your admin to set up a provider" sends the user to configure
+    ' something that is working, for a picker that is empty because
+    ' /Localization/Cultures has not answered.
+    displayToast(translate(translationKeys.MessageSubtitleLanguagesUnavailable), "error")
     return
   end if
 
