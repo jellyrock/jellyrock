@@ -65,6 +65,17 @@ for (const screen of SCREENS) {
     if (screen.view && !libraryIdFor(libraries, screen.view.collectionType)) {
       testCtx.skip(`server has no "${screen.view.collectionType}" library`);
     }
+    // Same shape, one axis over: a screen can also need a CAPABILITY the fixture's
+    // user or server does not grant. `subtitlePanel`'s button only exists when the
+    // server would let this user search subtitles, and the public demo's user is
+    // neither an administrator nor holds EnableSubtitleManagement — so on the default
+    // fixture there is no button to press and the nav would fail obscurely. That is a
+    // statement about the fixture, not a regression, so it skips visibly for the same
+    // reason a missing library does. Generic on purpose: `requires` is a predicate on
+    // the registry entry, so a future capability-gated screen needs no change here.
+    if (screen.requires && !(await screen.requires.probe(ctx))) {
+      testCtx.skip(screen.requires.reason);
+    }
 
     let expectedServer;
     if (screen.state === 'home') expectedServer = await seedHome(session, LOCALE);

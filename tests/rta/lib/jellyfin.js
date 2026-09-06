@@ -405,6 +405,59 @@ export async function firstItemId(session, includeItemTypes) {
 }
 
 /**
+ * Would the app offer "Manage Subtitles" to THIS user on THIS server?
+ *
+ * A capability probe, in the same family as `quickConnectEnabled` and read the
+ * same way: a false answer is a fact about the fixture that the caller acts on
+ * by SKIPPING, never a regression.
+ *
+ * It mirrors `remoteSubtitles.canSearchSubtitles()` deliberately rather than
+ * approximating it, because the app's rule is not the obvious one:
+ *
+ *   - Below 10.9 the endpoints carry only DefaultAuthorization, so ANY
+ *     authenticated user may search and the permission does not exist yet.
+ *   - From 10.9 they carry Policies.SubtitleManagement — but
+ *     EnableSubtitleManagement defaults to FALSE for every account INCLUDING
+ *     administrators, and Jellyfin lets admins through regardless. So the flag
+ *     alone is the wrong question; admin OR the flag is the right one.
+ *
+ * The 10.9 boundary is `resolveApiVersion()` in `source/utils/misc.bs`, and this
+ * is the second place that rule now lives. Keep them together: the app deciding
+ * the button exists while the suite believes it does not (or the reverse) shows
+ * up as a nav timeout that blames the screen.
+ *
+ * Measured against the public demo (10.11.11) on 2026-09-06 while writing this,
+ * per the tests/rta/CLAUDE.md rule about checking a capability-dependent
+ * assertion against the real server first: user `demo` is IsAdministrator=false
+ * with EnableSubtitleManagement=false, so the button does NOT render there and
+ * `subtitlePanel` skips on the default fixture. That is the expected result, not
+ * a broken probe — see the screen's entry in `screens.js`.
+ *
+ * Throws on any failed request, like every other helper here: a 401 must not be
+ * read as "this user cannot manage subtitles".
+ *
+ * @param {{serverUrl: string, userId: string, token: string}} session
+ * @returns {Promise<boolean>}
+ */
+export async function subtitleManagementAllowed(session) {
+  const info = await getJson(`${session.serverUrl}/System/Info/Public`, {});
+  // Same boundary as resolveApiVersion(): >= 10.9.0 is apiVersion 2.
+  const [maj, min] = String(info?.Version ?? '')
+    .split('.')
+    .map((n) => Number.parseInt(n, 10));
+  const isV2 =
+    Number.isFinite(maj) && Number.isFinite(min) && (maj > 10 || (maj === 10 && min >= 9));
+  if (!isV2) return true;
+
+  const user = await getJson(
+    `${session.serverUrl}/Users/${session.userId}`,
+    tokenHeader(session.token),
+  );
+  const policy = user?.Policy ?? {};
+  return policy.IsAdministrator === true || policy.EnableSubtitleManagement === true;
+}
+
+/**
  * Is Quick Connect switched on for this server?
  *
  * `GET /QuickConnect/Enabled` returns a bare JSON boolean, and 404s on servers
