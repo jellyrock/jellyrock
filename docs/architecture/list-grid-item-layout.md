@@ -1,13 +1,14 @@
 ---
 topic: list-grid-item-layout
 related-files:
+  - components/subtitles/SubtitlePanel.xml
   - components/ui/rowlist/JRRowList.bs
   - components/ui/rowitem/JRRowItem.bs
   - components/ItemGrid/GridItem.bs
   - components/ItemGrid/BaseGridView.xml
   - components/home/HomeRows.bs
   - source/utils/listTheme.bs
-last-reviewed: 2026-08-09
+last-reviewed: 2026-09-05
 ---
 
 # `RowList` / grid item layout & the focus indicator
@@ -54,6 +55,41 @@ For an item component that shows a **poster with a title below it**:
    9-patch draw right on the image edge → overlap.
 4. **Title** sits at `offset + posterHeight + gap`, landing in the `rowHeights` title
    area, below the indicator.
+
+## Don't hand-roll focus chrome in a custom row
+
+A `MarkupList` with an `itemComponentName` still draws its **own** focus indicator.
+Drawing one inside the row instead is the trap, and it does not look like a bug —
+it looks like a list that works, until you notice the focus never travels.
+
+> **`drawFocusFeedback` defaults to `true`.** Turning it off means the list draws
+> no indicator at all, so the row has to. A per-row indicator can only switch on
+> and off; the list's own one **floats** between rows. That difference is what
+> reads as lag.
+
+The subtitle panel had `drawFocusFeedback="false"` and each row toggled a
+`filled-rounded.9.png` + `border-6px.9.png` pair — the same two assets and the same
+two theme colors `applyListFocusChrome()` already applies. Identical pixels, no
+animation, two extra Posters per row, and a second copy of the focus vocabulary.
+
+**Use [`applyListFocusChrome(list)`](../../source/utils/listTheme.bs)** and leave
+`drawFocusFeedback` alone. Three things follow from that, all measured on a
+Stick 4K:
+
+1. **The indicator is drawn about 10 pixels OUTSIDE the row** — a row 72 tall
+   had a ring spanning 92. With rows flush, its edge lands on the neighboring
+   row's first line of text, so the list needs `itemSpacing` of at least that much. There is no
+   padding in the 9-patch to read this from; it was measured from a capture.
+2. **Keep `rowHeight + itemSpacing` divisible by 3.** 1080/720 means an absolute
+   edge divisible by 3 lands on a 720p output row; the pitch is what carries the
+   column's origin down the list. See `dialogLayout.bs`'s `PIXEL_GRID` note — the
+   constant only helps if the absolute origin is on the grid too.
+3. **Two focusable lists on one screen? Suppress the footprint.**
+   `focusFootprintBitmapUri` draws on a list's focused item _while that list does
+   not have focus_. Every other caller has one focusable list so it never renders;
+   with two, the idle one shows a permanent `colorBackgroundSecondary` fill — the
+   color that means _focused_ on a `TextButton`. Set it to
+   `pkg:/images/1px-transparent.png`, as `Alpha.bs` does.
 
 ## Canonical examples
 

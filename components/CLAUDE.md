@@ -102,6 +102,23 @@ Same principle for the 9-patch border assets: the weight encodes interaction sta
 
 Building or changing the `itemComponentName` for a `RowList` / `MarkupGrid` (a poster with a title below it)? The focus indicator pins to the poster slot (`rowItemSize`/`itemSize`) **only when `rowHeights` is set taller than the slot**. Without `rowHeights` it wraps the item's full bounding box (poster **+ title**), so the border extends past the image and swallows the title. Set `rowHeights = rowItemSize height + a title area`, fill the poster at a top offset, put the title below. Canonical: `JRRowItem` + `HomeRows`. This wastes a session every time it's rediscovered — full contract + evidence in [docs/architecture/list-grid-item-layout.md](../docs/architecture/list-grid-item-layout.md).
 
+## Custom list rows — let the LIST draw the focus indicator
+
+Building an `itemComponentName` for a `MarkupList`? **Do not draw focus chrome in
+the row.** `drawFocusFeedback` defaults to `true` and the list's own indicator
+*floats* between rows; a per-row border can only blink on and off, which reads as
+lag. Call [`applyListFocusChrome(list)`](../source/utils/listTheme.bs) and leave
+the flag alone.
+
+Then three consequences, all measured: the indicator is drawn **~10px outside**
+the row (so the list needs `itemSpacing` to keep it off the next row's text), keep
+`rowHeight + itemSpacing` **divisible by 3** for the 720p grid, and if the screen
+has **two focusable lists** set `focusFootprintBitmapUri` to
+`pkg:/images/1px-transparent.png` — the footprint only draws while a list lacks
+focus, so the idle one otherwise sits permanently filled and reads as selected.
+
+Full contract + evidence: [docs/architecture/list-grid-item-layout.md](../docs/architecture/list-grid-item-layout.md).
+
 ## What does NOT belong here
 
 - No synchronous network calls from a component — always go through the task pool.
