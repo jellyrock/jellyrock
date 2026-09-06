@@ -283,6 +283,13 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 - **area**: `components/video/VideoPlayerView.xml`
 - **issue**: The OSD instance is declared with `inactiveTimeout="5"` (a literal). `OSD.xml` itself only declares the field — the value is set by the parent. Should be a named constant.
 
+#### `duplicate-field-observer-unguarded`
+
+- **area**: every `components/**/*.xml` interface field carrying an `onChange`, paired against the `observeField` calls in its codebehind. No checker exists; the eventual home is a new `scripts/lint/` script plus a step in [`_lint-brightscript.yml`](../../.github/workflows/_lint-brightscript.yml).
+- **issue**: A field wired to its handler BOTH by an XML `onChange` and by `m.top.observeField()` in `init()` registers two observers and runs the handler twice per write. Nothing catches it, and it is silent whenever the handler is idempotent — which is why `OSD.itemData` and `IconButton.isButtonSelected` both carried it for six months (since `b7c2b6cd3`, 2026-02-28). It surfaced only by accident: a test counted 4 appended buttons where it expected 2, because `setButtonStates()` was running twice. Both were fixed in `ecf879da`, and the authoring rule now lives in [`components/CLAUDE.md`](../../components/CLAUDE.md) — but a convention is not a gate, which is the same argument `button-row-bracket` was built on.
+- **direction**: A script cross-referencing each component's XML `onChange` attributes against its `.bs` `observeField` calls, flagging any field with both. **The check itself is ~20 lines; the cost is the wiring** — an `npm run lint:*` entry, registration in the `lint` aggregate (`lint:ci-parity` fails otherwise), a workflow step, and widening `_lint-brightscript.yml`'s path pattern, which today matches `\.(brs|bs)$` and so would not re-run when only the XML half changed. ⚠️ Any implementation must guard with `(?<!un)`: a naive `observeField\("<field>"` also matches `unobserveField("<field>")`, which false-positives on every component that correctly unobserves — that mistake produced a phantom third instance during the original audit.
+- **severity**: Low. Both known instances are fixed, the cost of a recurrence is duplicated work rather than incorrect behavior, and `components/CLAUDE.md` now states the rule at the point an author picks a form.
+
 #### `scenemanager-stack-unbounded`
 
 - **area**: `components/data/SceneManager.bs`
