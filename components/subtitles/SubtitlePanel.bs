@@ -347,15 +347,18 @@ sub closePanel()
   ' sequence; with it restored, it did not.
   '
   ' Deferring is also the more honest moment. The host needs the re-sync because
-  ' deleting renumbers every stream index it holds, and the only consumer of
-  ' those indices is the detail screen the user is about to be handed back to.
-  ' Nothing behind the panel is reachable in the meantime, and a user removing
-  ' three subtitles now costs one item re-fetch instead of three.
+  ' adding or deleting renumbers every stream index it holds, and the only
+  ' consumer of those indices is the detail screen the user is about to be handed
+  ' back to. Nothing behind the panel is reachable in the meantime, and a user
+  ' who removes three subtitles and adds one now costs a single item re-fetch
+  ' instead of four.
   '
-  ' The download path still fires it inline and is deliberately left alone: it
-  ' does not lose focus there (focus sits on the results list, which the delete
-  ' path's re-render is what disturbs), and changing a shipped, working path is
-  ' not this slice's business.
+  ' BOTH paths defer here. The download path fired inline for a while, justified
+  ' as not wanting to disturb a shipped, working path — but neither path had
+  ' shipped, and the mechanism the delete path established by isolation is the
+  ' HOST REFRESH, which download triggers identically. The only difference was
+  ' which list focus happened to be on when it fired, which is not a difference
+  ' in exposure.
   if m.subtitlesChangedPending
     m.subtitlesChangedPending = false
     m.top.subtitlesChanged = true
@@ -1079,7 +1082,13 @@ sub onPollTimerFired()
     releaseMutation()
     m.top.existingStreams = streams
     displayToast(translate(translationKeys.MessageSubtitleAdded, [m.pendingDownloadName]), "success")
-    m.top.subtitlesChanged = true
+
+    ' Deferred to closePanel(), exactly as the delete path is — see the comment
+    ' there. Setting subtitlesChanged makes ItemDetails re-fetch and rebuild, and
+    ' that rebuild takes focus away from this panel while the user is still in
+    ' it. The delete path proved that by isolation; this path has the same
+    ' exposure, differing only in which list focus is sitting on when it happens.
+    m.subtitlesChangedPending = true
   end sub).catch(sub(err as object, ctx as object)
     if ctx.itemId <> m.top.itemId
       releaseMutation()
