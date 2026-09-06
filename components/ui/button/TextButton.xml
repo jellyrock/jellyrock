@@ -12,6 +12,10 @@
          overhang tab and the subtitle panel's filter toggle previously each
          hand-rolled this, and the copy drifted. -->
     <Rectangle id="buttonIndicator" visible="false" />
+    <!-- In-flight indicator. Occupies the buttonIcon slot — same size, same
+         position, same gutter — so it sits BESIDE the label rather than over it,
+         and a button that already has an icon simply swaps one for the other. -->
+    <Spinner id="buttonSpinner" visible="false" />
   </children>
   <interface>
     <field id="background" type="color" value="" />
@@ -27,6 +31,16 @@
     <field id="enableBorder" type="boolean" value="true" />
     <field id="isFocused" type="boolean" />
     <field id="isEnabled" type="boolean" value="true" />
+    <!-- An action started by this button is in flight: a spinner takes the icon
+         slot beside the label, which stays put. ORTHOGONAL to isEnabled rather
+         than a replacement for it — isEnabled says whether the button can be
+         pressed, isLoading says why not — so a caller that wants the button to
+         look unavailable sets both, and the two compose without either knowing
+         about the other. Matches IconButton.isLoading, which ItemDetails' favourite
+         / watched / record buttons have used all along. Blocking a second press
+         stays the CALLER's job (guard on your own in-flight flag), as it is for
+         IconButton, because only the caller knows what "already running" means. -->
+    <field id="isLoading" type="boolean" value="false" onChange="onLoadingChanged" />
     <field id="minWidth" type="integer" value="60" />
     <field id="minHeight" type="integer" value="0" />
     <!-- Icon URI (blank = no icon). Tinted to track the text color across focus
