@@ -300,6 +300,49 @@ copies disagreed about failure behaviour, of all things, is the argument for sha
 `ENABLE_RTA=false` builds, where ODC never answers — polling there would burn the full
 timeout on every call instead of sleeping once. The app-lifecycle sleeps stay.
 
+## Why the ODC transport config is left unset
+
+[`lib/driver.js`](lib/driver.js)'s `setupRtaEnv()` hands the device only `host`,
+`password` and `screenshotFormat`. Three transport knobs the library offers —
+`defaultTimeout`, `timeoutMultiplier` and `disableCallOriginationLine` — are deliberately
+unset, and the first of those must stay that way.
+
+**`disableCallOriginationLine` stays off, and it is not a deferred optimization.** The
+library bills it as a small overhead: it builds an `Error` per request purely to capture a
+stack. What that `Error` buys is the reason this suite exists — on a failed request the
+client rejects with THAT error instead of one constructed inside its own socket callback,
+so the stack names your call site rather than the library's async internals. Enabling it
+would trade attributable failure for **1.54 µs per request** (measured; the `.stack` string
+is only materialized on the failure path, at 6.22 µs). Even at a wildly generous 100k
+requests in a suite that is 154 ms. Read the row in any capability inventory that calls
+this a pending win as already answered: the answer is no.
+
+**`defaultTimeout` and `timeoutMultiplier` have no value worth setting.** Unset, every
+request gets a 10 s ceiling. On `.177` — the *slower* of the two devices — a healthy round
+trip is ~5.4 ms, and the two-round-trip failure capture runs a median 21 ms (18–30 ms,
+n=20). The ceiling therefore sits some 1800× above the thing it bounds, with no tail at
+n=20 to argue about. Scaling it *up* only delays a failure no run has recorded; scaling it
+*down* is not a per-device question, which is what `timeoutMultiplier` is for. And the
+failure that genuinely takes a device out — `rta-odc-connect-hang` in
+[`docs/signals-backlog.md`](../../docs/signals-backlog.md) — is a socket handshake that
+never settles, while the per-request timeout wraps the *request*. Neither field can reach
+it.
+
+**Know this about the 10 s ceiling: it is longer than some of the waits that contain it.**
+`waitFor` checks its deadline at the top of a tick and then awaits a read the loop does not
+bound, and 23 wait sites carry a total budget under 10 s (8 at 5 s, 15 at 8 s). So a single
+request that times out can outlast the whole wait, and a `waitFor(…, {timeout: 5000})` can
+report `waitedMs: 10500`. That is not a wait misbehaving — it is two layers keeping
+independent clocks, and the message already says which one moved: a read that did not
+complete is counted and named (`readErrors=n`), which is precisely what that counter was
+added for. It is left as-is rather than tightened because no run has ever recorded such a
+timeout, and a ceiling low enough to fit the shortest wait would be picked with no device
+baseline to justify it — inventing the flake class this harness exists to remove.
+
+The one call that sets its own ceiling is `readIdentity` in
+[`scripts/measurement-guard.js`](../../scripts/measurement-guard.js), at 5 s; the value
+carries no recorded reason. Every other ODC call in the repo runs on the 10 s default.
+
 ## Layout
 
 - `config.js` — `RTA_CONFIG` (demo server, hero movie, seek position, locales). Shared with the store screenshot generator.
