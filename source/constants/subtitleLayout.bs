@@ -193,10 +193,6 @@ namespace subtitleLayout
   ' only one of those two distances had room to move.
   const SECTION_HEADING_TOP_GAP = 14
 
-  ' Rows visible in either column without scrolling. Drives the MarkupList's
-  ' numRows AND the perfect-match filter's visibility threshold — the filter is
-  ' pointless when the whole result set already fits on screen, so the two must
-  ' be the same number by construction.
   ' Vertical gap between rows, and the reason the lists can no longer be flush.
   '
   ' The list draws the app's focus indicator (source/utils/listTheme.bs), and that
@@ -214,12 +210,17 @@ namespace subtitleLayout
   const ROW_SPACING = 24
 
   ' …and 12 for the COMPACT one-line row, which is a density decision rather than
-  ' a second opinion about rhythm. A built-in track's row is 45px, so 24 would be
-  ' more than half a row of air between every entry — and it cost real content:
-  ' the column's own design target (one downloaded file plus five built-in tracks,
-  ' visible without scrolling — see the spec) fits at 12 and does NOT at 24, which
-  ' dropped the built-in section from six visible rows to four. 12 still clears the
-  ' ring's 10px overshoot and is still divisible by 3 and 6.
+  ' a second opinion about rhythm. A built-in track's row is 27px
+  ' (rowHeightCompact at fontSizeSmaller 25 plus 2 x ROW_V_PADDING), so 24 would
+  ' be very nearly a whole row of air between every entry — and it costs real
+  ' content: the column's design target of one downloaded file plus six built-in
+  ' tracks fits at 12 and does not at 24. 12 still clears the focus ring's 10px
+  ' overshoot and is still divisible by 3 and 6.
+  '
+  ' The arithmetic is pinned in subtitleLayout.spec.bs rather than restated here,
+  ' so a future padding or font change fails a test instead of quietly making
+  ' this paragraph wrong — which is exactly what happened to the numbers it used
+  ' to carry, written against the 45px row of the pre-padding-trim draft.
   const ROW_SPACING_COMPACT = 12
 
   ' Rows visible in the RESULTS column without scrolling.

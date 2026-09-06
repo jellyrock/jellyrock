@@ -1383,10 +1383,13 @@ end function
 ' rest of its content", and a list that cannot take focus cannot scroll, so the
 ' promise was false and the surplus rows were simply unreachable.
 '
-' Measured against the real constants (486px column, 45px built-in row, 72px
-' downloaded row): a 3-downloaded/8-embedded item showed 4 built-in tracks and
+' Measured when it bit, against the row heights of the time (486px column, 45px
+' built-in row, 72px downloaded row — both rows are shorter now that the double
+' padding is gone): a 3-downloaded/8-embedded item showed 4 built-in tracks and
 ' hid 4 with no way to reach them. The permission half had the same shape for a
-' non-admin, who could not focus the downloaded list at all.
+' non-admin, who could not focus the downloaded list at all. Shorter rows move
+' the threshold; they do not remove it, because any item can hold more tracks
+' than the column can show.
 '
 ' What actionability still governs is what OK DOES — see onExistingSelected,
 ' which is wired only to the downloaded list — and whether a row draws the delete

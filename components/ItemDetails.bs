@@ -571,7 +571,6 @@ sub openSubtitlePanel(item as object)
   if m.subtitlePanelOpen then return
 
   m.subtitlePanel.itemId = item.id
-  m.subtitlePanel.itemType = item.type
   m.subtitlePanel.filePath = item.path
   m.subtitlePanel.existingStreams = currentMediaStreams()
   m.subtitlePanel.canDelete = remoteSubtitles.canDeleteSubtitles(m.global.user.policy)
@@ -2873,8 +2872,7 @@ function buildAudioDropdownItems(streams as object) as object
   return items
 end function
 
-' buildSubtitleDropdownItems: Convert the MediaStreams array into dropdown items for
-' subtitles.
+' buildSubtitleDropdownItems: Subtitle rows for the track cluster.
 '
 ' Two shapes are returned depending on whether the item actually has subtitle streams:
 '   * No subtitle streams at all → [{ id:"-1", title:"None" }]. Rendered as a static
@@ -2884,7 +2882,6 @@ end function
 '   * One or more subtitle streams → [{ id:"-1", title:"Off" }, ...tracks]. The
 '     "Off" entry lets the user disable subtitles when tracks ARE present. id "-1"
 '     is the SubtitleSelection.NONE sentinel used by m.top.selectedSubtitleStreamIndex.
-' buildSubtitleDropdownItems: Subtitle rows for the track cluster.
 '
 ' Titles come from remoteSubtitles.subtitleDropdownEntries() rather than straight
 ' from formatSubtitleDisplayTitle(), because language + codec + flags does not

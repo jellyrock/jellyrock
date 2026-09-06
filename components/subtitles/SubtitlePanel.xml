@@ -121,9 +121,16 @@
              deleted) and in what there is to say about them (only a file has a
              name). Tagging every row with its category instead made the word
              "Embedded" the most repeated text in the column while telling the
-             user nothing — a heading says it once. Only the downloaded list is
-             ever focused: a built-in track cannot be acted on, so making it a
-             focus stop would be dead travel.
+             user nothing — a heading says it once.
+
+             BOTH sections take focus, and the built-in one must keep doing so.
+             It was once excluded on the grounds that a track you cannot act on
+             is dead travel, which missed that SCROLLING is the travel's purpose:
+             sectionRowCounts() rations visible rows on the promise that a
+             trimmed section still scrolls to the rest, and a MarkupList that
+             cannot be focused cannot be scrolled. Re-narrowing this silently
+             hides content — see the warning on sectionRowCounts() and
+             canFocusDownloaded / canFocusEmbedded.
 
              Section positions and row counts are computed in layoutExistingSections()
              because both sections vary in length; only the column heading is fixed. -->
@@ -172,7 +179,6 @@
   <interface>
     <!-- ── Inputs, set by the host screen ── -->
     <field id="itemId" type="string" />
-    <field id="itemType" type="string" />
     <field id="filePath" type="string" onChange="onFilePathChanged" />
     <!-- MediaStreams from the host's most recent item fetch. Also the baseline
          the download-completion diff is taken against. -->

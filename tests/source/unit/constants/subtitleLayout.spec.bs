@@ -106,11 +106,10 @@ namespace tests
     @it("shows both sections in full when they fit")
     function _()
       ' The invariant is "do not ration what already fits" — the fixture just has
-      ' to be a shape that fits. It was 1 + 6 (the measured item) until the rows
-      ' gained gaps for the focus ring: six compact rows plus five 12px gaps is
-      ' 330px against the 300px left after the downloaded section, so 1 + 6 now
-      ' rations to 5 and scrolls. That is a real density cost of the gaps, not a
-      ' bug — the sweep below still proves nothing ever overflows.
+      ' to be a shape that fits, and a modest one keeps this test about the
+      ' invariant rather than about the current row heights. The measured 1 + 6
+      ' item gets its own test below, and the sweep after that proves nothing
+      ' ever overflows at any mix.
       counts = m.rowCounts(1, 5)
       m.assertEqual(counts.downloadedRows, 1)
       m.assertEqual(counts.embeddedRows, 5)
