@@ -1281,6 +1281,16 @@ Three reasons, in the order they mattered. **The cap is derived per surface, not
 
 Cheap to revisit: the split lives in one pure function (`splitForOverflow`), so pinning would be a change there plus a per-surface pin list, not a redesign. Re-open if a specific action turns out to be needed often enough from an overflowing row that a menu hop is a real cost — that is a usage question, and no usage data exists today, which is itself part of why the simpler rule won.
 
+## decision-id: button-overflow-load-box
+
+**date**: 2026-09-06
+**status**: accepted
+**related-files**: `source/utils/buttonOverflow.bs`, `components/ui/button/IconButton.xml`, `tests/source/unit/components/ui/IconButtonWidth.spec.bs`
+
+The row cap budgets every button at one uniform width, and what guarantees that is `IconButton`'s icon **Poster load box** — `loadWidth`/`loadHeight` 64 with `loadDisplayMode="limitSize"` — NOT an assumption that every icon asset is `64px`. Two icons on the capped `ItemDetails` row ship a `96x96` FHD asset (`album`, `person`) and still render a `64px` bitmap in a `124px` plate, because `limitSize` scales them down as they load. Measured via RTA against a rendered `IconButton` on a Streaming Stick 4K (OS 15.3.4, 1080p UI): `person_fhd.png` reports `bitmapWidth` 64 and `buttonBackground.width` 124 — exactly `iconButtonBackgroundWidth(64)`.
+
+Recorded because the constant's original comment claimed 64 was "the FHD icon asset's edge length" — false for those two icons — and the natural fix on noticing that is to clamp `iconWidth` inside `IconButton.setIconSize()`. **That clamp was considered and rejected**: it is a no-op while the load box is 64, and in the one case where it could fire — someone widening the load box — it would hold the plate at `124px` while the glyph grew past it, turning a visible failure into a silent one. Belt-and-braces makes the failure worse here, so the load box is pinned instead by `IconButtonWidth.spec.bs`, which asserts the static XML fields directly and therefore needs no image load (a Rooibos test cannot complete one synchronously, which is why the measurement above had to go through RTA). Re-evaluate if a capped row ever needs a control that is not an `IconButton` — `ResumeButton` extends it and qualifies; `TextButton` extends `Group` and sizes differently.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
