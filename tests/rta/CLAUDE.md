@@ -207,7 +207,7 @@ than a category argument. Every one of them did have a signal:
 |---|---|---|---|
 | before `ecp.sendText` | 1 | `waitFocusInside('#searchKey')` | `sendText` types into whatever holds focus, and `SearchResults.bs` only focuses the keyboard in `onScreenShown` — "nothing has focus until the router shows the view", a later turn of the event loop. |
 | before the first OSD press | 3 | `waitOsdUp`'s state gate | The app's `stateAllowsOSD()` reads `m.top.state` on the player node, and `VideoPlayerView` stamps that node with the item id. So the precondition for the key is readable by id. |
-| after `odc.focusNode('#buttons')` | 1 | `waitFocusInside('#buttons')` | `onGroupFocusChanged` re-asserts the group's index when it TAKES focus, so focus arriving is what makes the index read meaningful. |
+| after walking focus into `#buttons` | 1 | `waitFocusInside('#buttons')` | `onGroupFocusChanged` re-asserts the group's index when it TAKES focus, so focus arriving is what makes the index read meaningful. |
 | after a dialog closes | 2 | `waitFocusInside` on the opener | The dialog restores focus to its opener; waiting for it to ARRIVE can only pass by the restoration happening. |
 | before recording a scroll position | 1 | `scrollFocus` | Covered below — the cause was removed rather than out-waited. |
 
@@ -299,6 +299,47 @@ copies disagreed about failure behaviour, of all things, is the argument for sha
 **`waitSceneAnswering` is not a replacement for `bootMs`.** `relaunch()` also runs against
 `ENABLE_RTA=false` builds, where ODC never answers — polling there would burn the full
 timeout on every call instead of sleeping once. The app-lifecycle sleeps stay.
+
+## Focus is walked, never teleported
+
+`odc.focusNode` sets focus straight onto a node. That skips the key handler which would
+have moved it there — so a spec can arrange a state the remote cannot actually reach and
+still pass green, which is the one failure a device suite exists to make impossible. The
+suite therefore does not use it, and `no-restricted-syntax` says so in `eslint.config.js`:
+walk with `walkFocusInto(key, containerId)` from [`lib/steps.js`](lib/steps.js).
+
+**It used to use it four times, and the inventory recorded that as zero.** The Appendix's
+"correctly unused" row was wrong from the day it was written; the four sites were
+`quick-connect.spec.js` (into `#buttons`) and `dialogs.spec.js` (into `#buttons`, and
+twice into `#itemDescription`). Every one now presses the keys a viewer presses.
+
+**What the teleports were standing in for turned out to be untested app code.** The
+ladders are real and reachable in both directions:
+
+- UserSelect focuses `UserRow` in `init()` (`UserRow.bs:8`), and one Down reaches the
+  button group (`UserSelect.bs:564`). Unconditional — a single rung.
+- ItemDetails is two-branched. Up from the button group targets an interactive track
+  dropdown when there is one and falls through to the description when there is not
+  (`ItemDetails.bs:4271`); Up from a CLOSED dropdown arrives via `requestFocusReturn` ->
+  `onDropdownRequestUp` (`ItemDetails.bs:3898`). So the rung COUNT is a property of the
+  fixture's tracks, not of the app.
+
+That second point is why the walks are guarded loops rather than counted presses. A fixed
+number of Ups is right on one server and wrong on another; pressing until focus ARRIVES is
+right on both, and it is the same shape `focusOverhangIcon` already uses for the overhang.
+
+**Two properties make a walk safe, and both live in `walkFocusInto`.** It presses only
+while focus is not yet inside the target, so arriving stops it and it cannot press on into
+whatever the target opens. And the containment test goes through `focusIsInside`, never a
+hand-rolled `keyPath.includes(...)` — substring matching reports `#options` as inside
+`#optionsPanelOverlay`, and consolidating that onto one predicate was its own phase of
+work. Its unit tests gate both, including the substring case.
+
+**A walk costs a tick per rung.** A site converted from a teleport has to budget for the
+presses instead of inheriting the timeout an instant `focusNode` was happy with — the two
+description sites went 5 s -> 8 s for exactly this reason. Watch for it in review: a
+converted site that kept its old timeout is the shape that goes flaky on the slower device
+rather than on the one it was written against.
 
 ## Why the ODC transport config is left unset
 

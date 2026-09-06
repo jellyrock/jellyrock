@@ -463,6 +463,54 @@ export function resendUntilFocusInside(key, containerId) {
 }
 
 /**
+ * An `action` for `waitFocused` / `waitFocusInside` that WALKS focus to `containerId`
+ * by pressing `key` until it arrives — the app's own navigation, rather than
+ * `odc.focusNode`.
+ *
+ * ## Why this exists instead of a teleport
+ *
+ * `focusNode` sets focus directly on the device, which skips the key handler that would
+ * have moved it — so a spec can arrange a state the remote cannot actually reach and
+ * still pass. Walking presses the same keys a viewer does, which means the ladder itself
+ * is covered rather than bypassed. See `tests/rta/CLAUDE.md` → *Focus is walked, never
+ * teleported*; `jellyrock-rta`'s `no-restricted-syntax` ban is what keeps it that way.
+ *
+ * ## Eager, unlike the two `resend*` actions beside it
+ *
+ * Those sit out the first tick because their caller has ALREADY pressed and needs a
+ * window to see whether it landed. This one has pressed nothing, so waiting a tick
+ * would only add an interval of latency to every walk. Same distinction
+ * `resendIfSwallowed` documents for `focusGridTile` / `focusOverhangIcon`.
+ *
+ * ## The guard is the overshoot protection
+ *
+ * It presses only while focus is NOT yet inside, so arriving stops the walk and it
+ * cannot press on into whatever the target opens. An unreadable keyPath sends nothing
+ * rather than guessing — the rule `walkHomeToFirstRow` and `resendUntilFocusInside`
+ * already follow, for the same reason.
+ *
+ * The containment test goes through `focusIsInside` rather than a hand-rolled
+ * `keyPath.includes(...)`, which is the whole point of having one predicate: substring
+ * matching reports `#options` as inside `#optionsPanelOverlay`, and consolidating those
+ * sites was its own phase of work. A third copy here would walk it straight back.
+ *
+ * **Presses cost real time.** A walk needs one tick per rung of the ladder, so a call
+ * site converted from a teleport must budget for the presses rather than inherit the
+ * timeout an instant `focusNode` was happy with.
+ *
+ * @param {string} key - an `ecp.Key` value to press until focus arrives
+ * @param {string} containerId - `#id` of the container focus should end up INSIDE
+ * @returns {() => Promise<void>} an action for the wait's `action` option
+ */
+export function walkFocusInto(key, containerId) {
+  return async () => {
+    const focused = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+    if (typeof focused?.keyPath !== 'string') return;
+    if (!focusIsInside(focused.keyPath, containerId)) await press(key);
+  };
+}
+
+/**
  * Wait until the shared dialog overlay has left the scene.
  *
  * Shared rather than copied per caller, the same reason `waitMediaPlaying` is: ten call

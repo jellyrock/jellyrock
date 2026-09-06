@@ -33,11 +33,12 @@ import { beforeAll, expect, it } from 'vitest';
 import { RTA_CONFIG } from '../config.js';
 import { authenticate, authorizeQuickConnect, quickConnectEnabled } from '../lib/jellyfin.js';
 import { seedUserSelect, assertSeedTookEffect } from '../lib/seed.js';
-import { hardRelaunch, ecp, odc } from '../lib/driver.js';
+import { hardRelaunch, ecp } from '../lib/driver.js';
 import {
   waitFor,
   waitDialogClosed,
   waitFocusInside,
+  walkFocusInto,
   waitHome,
   hasChildren,
   getVal,
@@ -90,10 +91,14 @@ async function focusQuickConnectButton() {
     );
   }
 
-  await odc.focusNode({ base: 'scene', keyPath: '#buttons' });
+  // WALKED, not teleported. `UserRow.bs:8` takes focus in `init()`, and UserSelect's
+  // ladder is one unconditional Down (`UserSelect.bs:564`) — so pressing it exercises the
+  // handler a viewer uses, where `odc.focusNode` would have skipped it. Guarded, so a
+  // group that already holds focus is never pressed at.
+  //
   // This gate used to poll `#buttons.buttonFocused` until it read as a NUMBER, which
   // could not fail: `JRButtonGroup.bs` sets the field to 0 in `init()`, so it already
-  // answered before the teleport and the wait returned on its first tick regardless of
+  // answered before focus moved and the wait returned on its first tick regardless of
   // where focus was. It looked like a proper wait and was a no-op — the shape the north
   // star calls succeeding too early. Focus arriving in the group is the real state, and
   // it is the one `onGroupFocusChanged` acts on to re-assert the index the walk below
@@ -101,6 +106,8 @@ async function focusQuickConnectButton() {
   await waitFocusInside('#buttons', {
     label: 'user-select button group focused',
     timeout: 8000,
+    interval: 300,
+    action: walkFocusInto(ecp.Key.Down, '#buttons'),
   });
   // Quick Connect is index 0; walk left until we are on it. Guarded (press only
   // while not yet there) so a group that already answered is never perturbed.

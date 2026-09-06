@@ -20,6 +20,28 @@ import prettierConfig from 'eslint-config-prettier';
 import rtaWaitJustified from './scripts/lint/eslint-rules/rta-wait-justified.js';
 import rtaSleepBudgeted from './scripts/lint/eslint-rules/rta-sleep-budgeted.js';
 
+/**
+ * Focus is WALKED, never teleported.
+ *
+ * `odc.focusNode` sets focus straight onto a node, which skips the key handler that
+ * would have moved it there — so a spec can arrange a state the remote cannot actually
+ * reach and still pass green. Four sites used it; all four now press real keys via
+ * `walkFocusInto`, and the ladders they walk (`UserSelect.bs:564`,
+ * `ItemDetails.bs:4271` / `:3898`) had no coverage at all while the teleports stood in
+ * for them. Reasoning: `docs/decisions.md` -> `rta-focus-walked-not-teleported`.
+ *
+ * Declared once and applied in TWO blocks below because ESLint flat config REPLACES a
+ * rule's options rather than merging them: a second `no-restricted-syntax` covering a
+ * file the first one also covers would silently drop the `diagnosedError` selector.
+ * The two blocks' file sets are therefore disjoint, and this constant is what keeps
+ * them from drifting apart.
+ */
+const NO_FOCUS_TELEPORT = {
+  selector: "CallExpression[callee.object.name='odc'][callee.property.name='focusNode']",
+  message:
+    'RTA focus: walk with `walkFocusInto(key, containerId)` instead of `odc.focusNode`. A teleport skips the key handler under test, so a spec can pass on a state the remote cannot reach.',
+};
+
 export default [
   {
     ignores: [
@@ -112,7 +134,28 @@ export default [
           message:
             'RTA waits: throw via `diagnosedError` so the failure reports the device state it saw. A fail-fast that already names its cause may disable this with a reason.',
         },
+        NO_FOCUS_TELEPORT,
       ],
+    },
+  },
+
+  // The same focus-teleport ban for the RTA files the block above does not list —
+  // `specs/`, `capture.js`, and the lib modules other than `nav`/`steps`. It is a
+  // SEPARATE block, with a file set disjoint from that one, because re-declaring
+  // `no-restricted-syntax` for an already-covered file would replace its
+  // `diagnosedError` selector rather than add to it. `specs/` deliberately stays out of
+  // that selector: a spec's `throw new Error` is a fixture assertion, not a timeout.
+  {
+    files: ['tests/rta/**/*.{js,mjs}'],
+    ignores: [
+      'tests/rta/**/*.test.js',
+      'tests/rta/lib/nav.js',
+      'tests/rta/lib/steps.js',
+      'tests/rta/screens.js',
+      'tests/rta/demos/**/*.{js,mjs}',
+    ],
+    rules: {
+      'no-restricted-syntax': ['error', NO_FOCUS_TELEPORT],
     },
   },
 

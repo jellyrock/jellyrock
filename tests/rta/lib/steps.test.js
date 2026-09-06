@@ -59,6 +59,7 @@ const {
   waitOsdUp,
   resendIfSwallowed,
   resendUntilFocusInside,
+  walkFocusInto,
   walkHomeToFirstRow,
   overhangWalkKey,
   waitHome,
@@ -1552,6 +1553,76 @@ describe('getVals', () => {
   it('costs no device call for an empty read', async () => {
     await expect(getVals([])).resolves.toEqual([]);
     expect(getValues).not.toHaveBeenCalled();
+  });
+});
+
+describe('walkFocusInto', () => {
+  beforeEach(() => {
+    getFocusedNode.mockReset();
+    sendKeypress.mockReset();
+  });
+
+  const focusedAt = (keyPath) => getFocusedNode.mockResolvedValue({ keyPath });
+
+  it('presses on the FIRST tick — a walk has sent nothing to wait and see about', async () => {
+    // The one behaviour that separates this from both `resend*` helpers. They sit out a
+    // tick because their caller already pressed; a walk that did the same would add an
+    // interval of latency to every call for no reading.
+    focusedAt('scene.#userRow.0');
+    await walkFocusInto('down', '#buttons')();
+    expect(sendKeypress).toHaveBeenCalledTimes(1);
+    expect(sendKeypress).toHaveBeenCalledWith('down');
+  });
+
+  it("keeps pressing while focus has not arrived — the rung count is the fixture's, not ours", async () => {
+    focusedAt('scene.#buttons.1');
+    const action = walkFocusInto('up', '#itemDescription');
+    await action();
+    await action();
+    await action();
+    expect(sendKeypress).toHaveBeenCalledTimes(3);
+  });
+
+  it('stops the moment focus arrives, so it cannot press on into what the target opens', async () => {
+    focusedAt('scene.#buttons.1');
+    const action = walkFocusInto('up', '#itemDescription');
+    await action();
+    expect(sendKeypress).toHaveBeenCalledTimes(1);
+    focusedAt('scene.#itemDetails.#itemDescription');
+    await action();
+    await action();
+    expect(sendKeypress).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts the container itself as arrived, not only its descendants', async () => {
+    // `#itemDescription` is a leaf the app focuses directly — if containment did not
+    // include the node itself this would press forever at a target already reached.
+    focusedAt('scene.#itemDescription');
+    await walkFocusInto('up', '#itemDescription')();
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+
+  it('matches a whole keyPath SEGMENT, never a substring', async () => {
+    // Phase 2's fix, restated as a gate on this helper: substring matching reports
+    // `#options` as inside `#optionsPanelOverlay`. A walk that believed that would stop
+    // one container short and hand the press budget to the wrong node.
+    focusedAt('scene.#optionsPanelOverlay.0');
+    await walkFocusInto('up', '#options')();
+    expect(sendKeypress).toHaveBeenCalledTimes(1);
+  });
+
+  it('normalises a missing `#` the same way the predicate does', async () => {
+    focusedAt('scene.#itemDescription');
+    await walkFocusInto('up', 'itemDescription')();
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+
+  it('does not press when the focus read fails — an unknown state is not a reason to walk', async () => {
+    getFocusedNode.mockRejectedValue(new Error('odc down'));
+    const action = walkFocusInto('down', '#buttons');
+    await action();
+    await action();
+    expect(sendKeypress).not.toHaveBeenCalled();
   });
 });
 

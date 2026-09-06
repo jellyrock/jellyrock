@@ -30,6 +30,7 @@ import {
   waitDialogClosed,
   waitFocused,
   waitFocusInside,
+  walkFocusInto,
   focusIsInside,
   waitHome,
   waitMediaPlaying,
@@ -210,7 +211,14 @@ it('series watched button opens the standard confirm dialog; back cancels it', a
   }
   if (watchedIndex < 0) throw new Error('watchedButton not found in detail button group');
 
-  await odc.focusNode({ base: 'scene', keyPath: '#buttons' });
+  // WALKED, not teleported. `ItemDetails.bs:281-285` focuses the button group on a fresh
+  // mount, so the guard normally presses NOTHING and this is just the gate below. What it
+  // is not is a source-proven precondition: `openFirstGridTileDetail` gates on the title
+  // rendering, never on focus, and the group is mutated asynchronously as data lands
+  // (`removeChild` of the loading/trailer/resume buttons). Down is the recovery from the
+  // description or a track dropdown; recovering with a real press beats asserting the
+  // app's focus behaviour from reading it.
+  //
   // Gate on FOCUS ARRIVING, not on `buttonFocused` being readable. The obvious wait —
   // poll until `#buttons.buttonFocused` is a number — cannot fail: `JRButtonGroup.bs`
   // sets it to 0 in `init()`, so it answers long before the teleport lands and the wait
@@ -221,6 +229,8 @@ it('series watched button opens the standard confirm dialog; back cancels it', a
   await waitFocusInside('#buttons', {
     label: 'detail button group focused (pre-index read)',
     timeout: 8000,
+    interval: 300,
+    action: walkFocusInto(ecp.Key.Down, '#buttons'),
   });
   const groupIndex = await getVal('#buttons.buttonFocused');
   if (typeof groupIndex !== 'number')
@@ -353,10 +363,21 @@ it('item description opens the overview overlay; back restores focus to it', asy
     );
 
   // Not a JRButtonGroup, so teleporting focus here sticks — no index to re-assert.
-  await odc.focusNode({ base: 'scene', keyPath: '#itemDescription' });
+  // WALKED up the ladder, not teleported. Up from the button group targets an interactive
+  // track dropdown if there is one and falls through to the description if there is not
+  // (`ItemDetails.bs:4271`); Up from a CLOSED dropdown gets there via `requestFocusReturn`
+  // -> `onDropdownRequestUp` (`ItemDetails.bs:3898`). So the rung count is a property of
+  // the fixture's tracks, and a fixed number of presses would be wrong on one server or
+  // the other — pressing until focus ARRIVES is right on both, which is why this is a
+  // guarded walk rather than a counted one.
+  //
+  // 8000/500 rather than the 5000 a teleport was happy with: this now spends a tick per
+  // rung, and the budget has to cover the presses (see `walkFocusInto`).
   await waitFocused((f) => f.node?.id === 'itemDescription', {
     label: 'item description focused',
-    timeout: 5000,
+    timeout: 8000,
+    interval: 500,
+    action: walkFocusInto(ecp.Key.Up, '#itemDescription'),
   });
 
   await press(ecp.Key.Ok);
@@ -414,10 +435,21 @@ it('a scrolling overview overlay opens focused on the text, not on OK', async ()
   const long = `${overview} `.repeat(40);
   await odc.setValue({ base: 'scene', keyPath: '#itemDescription.text', value: long });
 
-  await odc.focusNode({ base: 'scene', keyPath: '#itemDescription' });
+  // WALKED up the ladder, not teleported. Up from the button group targets an interactive
+  // track dropdown if there is one and falls through to the description if there is not
+  // (`ItemDetails.bs:4271`); Up from a CLOSED dropdown gets there via `requestFocusReturn`
+  // -> `onDropdownRequestUp` (`ItemDetails.bs:3898`). So the rung count is a property of
+  // the fixture's tracks, and a fixed number of presses would be wrong on one server or
+  // the other — pressing until focus ARRIVES is right on both, which is why this is a
+  // guarded walk rather than a counted one.
+  //
+  // 8000/500 rather than the 5000 a teleport was happy with: this now spends a tick per
+  // rung, and the budget has to cover the presses (see `walkFocusInto`).
   await waitFocused((f) => f.node?.id === 'itemDescription', {
     label: 'item description focused',
-    timeout: 5000,
+    timeout: 8000,
+    interval: 500,
+    action: walkFocusInto(ecp.Key.Up, '#itemDescription'),
   });
   await press(ecp.Key.Ok);
 
