@@ -51,6 +51,12 @@ Roku Scene Graph (RSG) components — XML interface + paired BrighterScript back
 
 - **In `onDestroy`, detach EVERY observer before releasing ANY reference.** The window is the mirror image of the one above: an external writer — a Task thread, or the native playback engine — can deliver an observed field one last time while your `onDestroy` is still running, and if you have already nulled a reference that handler dereferences, it throws `&hec`. That is what #733 was. Two phases, in this order: all the `unobserveField`s, then all the `= invalid`s. [`unobserve-before-release`](../docs/architecture/build-and-tooling.md#convention-plugins) warns when you interleave them in a way that can actually bite — **reorder** to clear it rather than adding an early return to the handler, because some observers legitimately run during teardown (stop-reporting, dialog cleanup) and a guard would silently skip those too.
 
+- **Wire an interface field to its handler ONCE — an XML `onChange` OR an `observeField`, never both.** Declaring both registers two observers and runs the handler twice on every write, which is silent when the handler is idempotent: `OSD.itemData` and `IconButton.isButtonSelected` each did this for six months, and the OSD one was only caught because a test counted 4 appended buttons where it expected 2. Which form to use is not a style pick:
+  - **XML `onChange` is the default**, and is right for a field the component itself owns — the observer dies with the node, which is why 40 of the 51 components using `onChange` have no `onDestroy` at all and correctly need none.
+  - **`m.top.observeField()` in `init()` earns its place only when an EXTERNAL owner writes the field** and the handler must not run during teardown — because only that form can be paired with the `unobserveField` the rule above requires. `OSD.itemData` qualifies (`VideoPlayerView` writes it); a leaf button's own state does not.
+  
+  ⚠️ When auditing for this, `observeField\("x"` also matches `unobserveField("x")` — guard with `(?<!un)` or every component that correctly unobserves reads as a false positive.
+
 ## Showing a dialog
 
 **Full contract and the reasoning behind it: [`docs/architecture/dialogs.md`](../docs/architecture/dialogs.md).** Read it before building or restyling one. What follows is only what you need in order not to get it wrong by accident.
