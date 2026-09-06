@@ -213,6 +213,36 @@ run"* and could not attribute them — the harness had thrown the evidence away.
 not explain that episode, and is not claimed to; it makes the next one answerable.
 The per-tick swallow is unchanged, so nothing on the success path moves.
 
+### A screensaver looks exactly like a dead device
+
+Roku runs a screensaver in its **own BrightScript context**
+([Roku's screensaver guide](https://github.com/rokudev/dev-doc/blob/v2.0/docs/DEVELOPER/media-playback/screensavers.md)),
+and `roku-test-automation`'s README states that ODC communication is not possible while one
+is up. The app is still installed, still launched and still fine — but the ODC reads in the
+dump fail, so the record says `device did not answer ODC: …` and nothing in it separates
+that from a crashed app or a device off the network.
+
+So the capture also asks ECP what is actually in front:
+
+```text
+nav timed out waiting for home rows (last=undefined)
+        ↳ a SCREENSAVER is running ("Aquatic Life") — the app is not on screen, so treat every reading below as describing a backgrounded app
+        ↳ device did not answer ODC: timed out after 5000ms
+```
+
+It is read over **ECP, not ODC**, and that is the whole point: ECP answers from the OS
+rather than from inside the channel, so it keeps working exactly when ODC may not.
+Verified 2026-09-05 on `.178` — `query/active-app` named the running screensaver
+(`type="ssvr"`) while ODC requests to the same host were not completing. The line prints
+**only when one is actually up**, and prints **above** the ODC line, because it explains it.
+
+A screensaver only starts after the device's configured idle timeout — **10 minutes on both
+test devices** — which a healthy run never reaches, because the suite is sending key presses
+throughout. It becomes reachable when a run has *already* stalled (a hung ODC handshake, a
+long teardown), which is precisely when this dump is the only account of the failure anyone
+gets. The suite deliberately does **not** suppress the screensaver; that was weighed and
+declined — see [`decisions.md` → `rta-screensaver-detect-not-suppress`](../decisions.md).
+
 ### `loadState=—` on a detail screen is correct, not a broken capture
 
 The difference between those two lines is the thing worth knowing before you read a
@@ -250,14 +280,15 @@ short as the samples above and the flag keeps its signal value.
   [`tests/rta/CLAUDE.md` → Why every wait polls](../../tests/rta/CLAUDE.md#why-every-wait-polls)).
   The placement is still right, now for its own reason rather than a hedge: keeping the
   capture off the tick is what makes it free on the success path. At the boundary it is
-  three round-trips issued in parallel
-  (`getFocusedNode` and `getMediaPlayer()` each have no batch form; everything else
-  rides one `getValues` of 11 key paths).
+  four round-trips issued in parallel
+  (`getFocusedNode`, `getMediaPlayer()` and `getActiveApp()` each have no batch form;
+  everything else rides one `getValues` of 11 key paths).
   **Measured at TWO round-trips: median 21 ms, 18–30 ms typical** on `.177` (n=20 on
   `ItemDetails`), with occasional spikes to ~70 ms when the render thread is busy.
-  **That figure predates `getMediaPlayer()` and has not been re-taken** — the three
+  **That figure predates `getMediaPlayer()` and `getActiveApp()` and has not been
+  re-taken** — the three
   shell fields it does cover were genuinely free (they ride the existing `getValues`),
-  but the third round-trip is unmeasured. The calls go out in parallel, so the
+  but the third and fourth round-trips are unmeasured. The calls go out in parallel, so the
   expectation is that the slowest one still sets the floor; that is an expectation,
   not a reading. And it is the reading that matters here, because
   [the platform cost model](../architecture/async.md#crossing-the-thread-boundary-costs-a-rendezvous--budget-crossings-not-bytes)

@@ -40,6 +40,10 @@ vi.mock('roku-test-automation', () => ({
     // captureFailureState reads the OS media player, so the mock has to answer it
     // or every diagnosed failure throws instead of reporting.
     getMediaPlayer: async () => null,
+    // Same reason: it also asks ECP whether a screensaver is up, which is the one
+    // device state that explains an all-ODC-reads-failed record. `app` with no
+    // `screensaver` is the ordinary case — the channel in the foreground.
+    getActiveApp: async () => ({ app: { id: 'dev', title: 'JellyRock' } }),
     Key: { Up: 'Up', Down: 'Down', Left: 'Left', Right: 'Right' },
   },
 }));

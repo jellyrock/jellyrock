@@ -138,7 +138,7 @@ const CAPTURE_TIMEOUT_MS = 5000;
 export async function captureFailureState() {
   const started = Date.now();
   const opts = { timeout: CAPTURE_TIMEOUT_MS };
-  const [focused, batch, mediaPlayer] = await Promise.all([
+  const [focused, batch, mediaPlayer, activeApp] = await Promise.all([
     // `includeNode` already defaults to true; we need the node for its subtype.
     // Only the four fields below are kept — the rest never reaches a record.
     odc.getFocusedNode({}, opts).catch(() => null),
@@ -154,6 +154,27 @@ export async function captureFailureState() {
     // fault and had to be settled by a control run. One field ends that: a stalled
     // stream now says so in the record.
     ecp.getMediaPlayer().catch(() => null),
+    // ECP, and on the failure path deliberately: a screensaver is the one device state
+    // that can make every ODC read in this record fail while nothing is wrong with the
+    // app. Roku runs a screensaver in its own BrightScript context
+    // (`DEVELOPER/media-playback/screensavers.md`), and roku-test-automation's README
+    // states ODC communication is not possible while one is up — so without this field a
+    // screensaver presents as `device did not answer ODC`, which reads as a harness or
+    // app fault and is neither.
+    //
+    // ECP is what makes it readable: it answers from the OS, not from inside the
+    // channel, so it keeps working exactly when ODC may not. Verified 2026-09-05 —
+    // `query/active-app` named the running screensaver (`type="ssvr"`) on an idle
+    // device whose ODC was not answering at all. That a screensaver CAUSES the ODC
+    // failure is NOT claimed: the one host showing both had a fault of its own, and
+    // the mechanism above is cited to the two docs, not measured here. See
+    // `docs/decisions.md` → `rta-screensaver-detect-not-suppress`.
+    //
+    // `retryCount: 0` because this is a diagnostic, not a measurement: ECP options carry
+    // no timeout (only a retry count, defaulting to 3), so a single attempt is what keeps
+    // an unreachable device from stretching the failure path. A missed reading costs one
+    // line of context; a slow one delays every failure in the run.
+    ecp.getActiveApp({ retryCount: 0 }).catch(() => null),
   ]);
 
   const results = batch?.results;
@@ -210,6 +231,11 @@ export async function captureFailureState() {
           state: mediaPlayer.state,
           error: mediaPlayer.error || undefined,
         }
+      : undefined,
+    // Present ONLY when one is actually running, so the field's existence is the
+    // finding and every other record stays the shape it was.
+    screensaver: activeApp?.screensaver
+      ? { title: activeApp.screensaver.title, id: activeApp.screensaver.id }
       : undefined,
     unreachable: batch?.error,
     captureMs: Date.now() - started,
@@ -275,6 +301,15 @@ const short = (v) => (typeof v === 'string' && v.length > 12 ? `${v.slice(0, 8)}
  */
 function formatState(state, observed) {
   const lines = [];
+  // BEFORE the ODC line, because it explains it. On its own `device did not answer ODC`
+  // invites a hunt through the app; with this line above it the record has already named
+  // the cause, which is the whole point of reading it.
+  if (state.screensaver) {
+    lines.push(
+      `a SCREENSAVER is running ("${state.screensaver.title}") — the app is not on ` +
+        'screen, so treat every reading below as describing a backgrounded app',
+    );
+  }
   if (state.unreachable) lines.push(`device did not answer ODC: ${state.unreachable}`);
   // Source field name verbatim (`rowItemFocused`), for the same reason the shell fields
   // are: a record greps back to the component that wrote it. Printed only when the
