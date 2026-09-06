@@ -568,6 +568,23 @@ export async function waitDialogClosed(label, { timeout = 10000 } = {}) {
  * Gating on a view existing first means a slow login is WAITED for and, if it never
  * arrives, is reported as itself instead of as a missing Home. The login phase carries the
  * larger budget because it is the one bound by a remote server rather than by rendering.
+ *
+ * ## ⚠️ This does NOT prove the app is ON Home — use `backToHome` when that is the question
+ *
+ * Both gates pass from a library grid. The first only asks that
+ * `activeRoutedView.subtype()` be non-EMPTY, and a grid answers `BaseGridView`; the second
+ * is scene-rooted, so it finds Home's rows sitting suspended in the tree under sgRouter's
+ * default `suspendMode: "hide"`. So this is a gate on "the app is past login and Home's
+ * rows exist somewhere", which is what its callers on Home actually want — and it is NOT a
+ * gate on having ARRIVED there.
+ *
+ * The distinction has bitten: a Back swallowed by the router (see `resendIfSwallowed`)
+ * leaves the app on the grid, sails through both gates, and the caller's NEXT step times
+ * out blaming focus one nav later. Observed on `.178` 2026-09-06, where
+ * `navCellSweepExtras` reported `focus inside #homeRows` timing out while the failure dump
+ * showed the active view was still a `BaseGridView`. `backToHome` in
+ * [`lib/nav.js`](nav.js) is the gate for that question: it polls
+ * `activeRoutedView.subtype() === 'Home'` and re-sends the Back that was owed.
  */
 export async function waitHome() {
   await waitFor('subtype()', (v) => typeof v === 'string' && v !== '', {

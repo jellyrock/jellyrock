@@ -996,8 +996,7 @@ async function navHomeReturn(ctx, detailCount = 0) {
     await waitFocusInside('#itemGrid');
   }
 
-  await press(ecp.Key.Back);
-  await waitHome();
+  await backToHome('homeReturn');
 }
 
 /**
@@ -1027,8 +1026,7 @@ export async function navHomeReturnAfterDetails(ctx) {
  */
 export async function navSearchReturn() {
   await navSearch();
-  await press(ecp.Key.Back);
-  await waitHome();
+  await backToHome('searchReturn');
 }
 
 /** details -> OK on default Play/Resume button -> playback begins. */
@@ -1468,8 +1466,7 @@ export async function navCellSweepGrid(ctx) {
     ],
     quiet,
   );
-  await press(ecp.Key.Back);
-  await waitHome();
+  await backToHome('cellSweepGrid');
 }
 
 /**
@@ -1529,6 +1526,5 @@ export async function navCellSweepSearch() {
   const legs = await sweepRowList('#searchSelect', { label: 'cellSweepSearch' });
   const quiet = await waitCellsQuiet('#searchSelect', { read: getActiveVal });
   reportSweep('cellSweepSearch', legs, quiet);
-  await press(ecp.Key.Back);
-  await waitHome();
+  await backToHome('cellSweepSearch');
 }
