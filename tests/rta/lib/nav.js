@@ -442,6 +442,25 @@ export async function navLibraryByType(collectionType, libraryId = null) {
  * are backing out is that an unexpected library opened, and it may be an `#itemGrid` or
  * the Genres `RowList`. Once focus is back inside Home's rows it stops pressing, which
  * is what keeps a re-press off the exit-confirm dialog.
+ *
+ * ## ⚠️ Do NOT generalise this to other "leave for Home" sites — it is safe HERE only
+ *
+ * The resend presses Back every tick that focus is not yet inside `#homeRows`: at
+ * `interval: 350` inside a 12 s budget that is up to ~34 presses. That is safe at THIS
+ * call site and nowhere else by default, because this one only runs after a wrong
+ * library grid opened — so the app is demonstrably on a grid, where Back pops to Home.
+ *
+ * Sent from a screen that is NOT on the way to Home, those presses are destructive.
+ * `UserSelect.onKeyEvent` treats Back as *change server*, and the coordinator DELETES the
+ * saved server and routes to `/server` — so a single stray Back on the user picker signs
+ * the device out, and the next `waitHome()` times out against a `SetServerScreen` with an
+ * empty identity.
+ *
+ * Tried and reverted 2026-09-06: four navs (`navHomeReturn`, `navSearchReturn`, the two
+ * cell sweeps) were routed through here to fix `waitHome()`'s inability to tell a
+ * swallowed Back from an arrival. The run came back signed out on `SetServerScreen`. The
+ * gate those sites want is the ASSERTION half — poll `activeRoutedView.subtype() ===
+ * 'Home'` — WITHOUT this action; the re-press is what cannot be shared.
  */
 async function backToHome(label) {
   await press(ecp.Key.Back);
@@ -1053,7 +1072,8 @@ async function navHomeReturn(ctx, detailCount = 0) {
     await waitFocusInside('#itemGrid');
   }
 
-  await backToHome('homeReturn');
+  await press(ecp.Key.Back);
+  await waitHome();
 }
 
 /**
@@ -1083,7 +1103,8 @@ export async function navHomeReturnAfterDetails(ctx) {
  */
 export async function navSearchReturn() {
   await navSearch();
-  await backToHome('searchReturn');
+  await press(ecp.Key.Back);
+  await waitHome();
 }
 
 /** details -> OK on default Play/Resume button -> playback begins. */
@@ -1523,7 +1544,8 @@ export async function navCellSweepGrid(ctx) {
     ],
     quiet,
   );
-  await backToHome('cellSweepGrid');
+  await press(ecp.Key.Back);
+  await waitHome();
 }
 
 /**
@@ -1583,5 +1605,6 @@ export async function navCellSweepSearch() {
   const legs = await sweepRowList('#searchSelect', { label: 'cellSweepSearch' });
   const quiet = await waitCellsQuiet('#searchSelect', { read: getActiveVal });
   reportSweep('cellSweepSearch', legs, quiet);
-  await backToHome('cellSweepSearch');
+  await press(ecp.Key.Back);
+  await waitHome();
 }
