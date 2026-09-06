@@ -85,6 +85,46 @@ namespace tests
       m.assertFalse(remoteSubtitles.shouldAutoSearch(true, 0, "", false))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("shouldStartSearch() - repeat is refused, supersede is not")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("refuses the SAME language already in flight - a held-down OK on Search")
+    function _()
+      ' The one case the old boolean got right: a repeat costs a real provider
+      ' round-trip through the server for an answer already on its way.
+      m.assertFalse(remoteSubtitles.shouldStartSearch("en", "en"))
+    end function
+
+    @it("ALLOWS a different language to supersede - the case that deadlocked")
+    function _()
+      ' A boolean refused this, so picking a language mid-search started nothing.
+      ' The original reply was then dropped by the stale-language guard WITHOUT
+      ' clearing the flag — because that guard's premise is "a newer search
+      ' already owns it", and the refusal is what stopped one existing. The panel
+      ' spun forever and only a close-and-reopen recovered it.
+      m.assertTrue(remoteSubtitles.shouldStartSearch("en", "fr"))
+    end function
+
+    @it("starts a search when nothing is in flight")
+    function _()
+      m.assertTrue(remoteSubtitles.shouldStartSearch("", "en"))
+    end function
+
+    @it("never searches without a language, in flight or not")
+    function _()
+      m.assertFalse(remoteSubtitles.shouldStartSearch("", ""))
+      m.assertFalse(remoteSubtitles.shouldStartSearch("en", ""))
+    end function
+
+    @it("treats a regional code as distinct from its base language")
+    function _()
+      ' pt-br and pt return genuinely different result sets (the server resolves
+      ' our path param through FindLanguageInfo), so switching between them is a
+      ' new question, not a repeat.
+      m.assertTrue(remoteSubtitles.shouldStartSearch("pt", "pt-br"))
+    end function
+
   end class
 
 end namespace

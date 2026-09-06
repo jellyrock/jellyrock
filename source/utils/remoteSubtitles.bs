@@ -130,6 +130,39 @@ namespace remoteSubtitles
     return isValidAndNotEmpty(languageCode)
   end function
 
+  ' shouldStartSearch: Whether a search request should be issued right now.
+  '
+  ' The panel holds the language a search is IN FLIGHT FOR rather than a bare
+  ' "busy" boolean, because the two things a user can do here need opposite
+  ' answers and a boolean cannot tell them apart:
+  '
+  '   * the SAME language again — a held-down OK on Search — is a repeat, and
+  '     costs a real provider round-trip through the server for an answer
+  '     already on its way. Refused.
+  '   * a DIFFERENT language is a new question, and the old answer is now
+  '     unwanted. Allowed, superseding whatever is running.
+  '
+  ' A boolean refused both, which is what deadlocked the panel: picking a
+  ' language mid-search started nothing, and then the original reply was
+  ' discarded by the stale-language guard without clearing the flag — because
+  ' that guard's premise is "a newer search already owns it", and the refusal is
+  ' precisely what stopped a newer search existing. Nothing could search again
+  ' until the panel was closed and reopened.
+  '
+  ' Superseding is only SAFE because each search carries its own requestId
+  ' (fetchAsync keys its pending registry by it, and apiPool documents the
+  ' parameter as unique). Two searches sharing one id cross-wire: the first
+  ' reply settles the second's registry entry, reading a result that has not
+  ' arrived and rejecting it as a timeout. See runSearch's m.searchSeq.
+  '
+  ' @param {string} inFlightLanguage - language a search is running for; "" when idle
+  ' @param {string} requestedLanguage - language being asked for now
+  ' @return {boolean} true when a search should be issued
+  function shouldStartSearch(inFlightLanguage as string, requestedLanguage as string) as boolean
+    if not isValidAndNotEmpty(requestedLanguage) then return false
+    return inFlightLanguage <> requestedLanguage
+  end function
+
   ' externalSubtitleStreams: The subtitle streams that are safe to offer for
   ' deletion, in server-index order.
   '

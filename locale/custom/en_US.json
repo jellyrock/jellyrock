@@ -602,6 +602,7 @@
   "MessageSettingsRelatingToTheAppearanceOf4": "Settings relating to the appearance of the Home screen and the program in general.",
   "MessageShowItemCountInTheLibrary": "Show item count in the library and index of selected item.",
   "MessageSubtitleAdded": "Added {0}",
+  "MessageSubtitleBusy": "Still finishing the last subtitle. Try again in a moment.",
   "MessageSubtitleDeleteConfirm": "Delete {0}? This removes the subtitle file from your server.",
   "MessageSubtitleDeleteFailed": "Couldn't delete that subtitle. Your server may have refused the request.",
   "MessageSubtitleDeleted": "Deleted {0}",

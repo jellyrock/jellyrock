@@ -175,7 +175,16 @@ sub init()
   m.allResults = []
   m.perfectMatchOnly = false
   m.pollAttempt = 0
-  m.searchInFlight = false
+  ' The language a search is running for, "" when idle — NOT a boolean. Which of
+  ' the two it is decides whether picking a new language supersedes the running
+  ' search or is silently refused; see remoteSubtitles.shouldStartSearch().
+  m.searchInFlightLanguage = ""
+  ' Uniquifies each search's requestId so a superseded search and its replacement
+  ' cannot share a registry slot in fetchAsync. Same shape as ItemDetails'
+  ' m.trailerCheckSeq, the app's other supersede-rather-than-refuse case.
+  m.searchSeq = 0
+  ' One item-mutating operation at a time — see startDownload().
+  m.mutationInFlight = false
   m.closing = false
   m.pendingDownloadName = ""
   m.streamsBeforeDownload = []
@@ -227,17 +236,22 @@ sub openPanel()
 
   ' Start unblocked, whatever the last open left behind.
   '
-  ' searchInFlight is deliberately NOT cleared when a STALE reply lands — a stale
-  ' reply normally means a newer search already owns the flag. Closing the panel
-  ' mid-search breaks that assumption: the reply returns early on the itemId
-  ' guard, no newer search exists, and the flag stays true for the life of the
-  ' component. shouldAutoSearch() reads it, so the next open would silently never
-  ' auto-search, and runSearch()'s in-flight guard would refuse every manual press
-  ' as well. Reopening is the one moment that can say for certain nothing this
-  ' panel started is still wanted.
-  m.searchInFlight = false
+  ' The in-flight language is deliberately NOT cleared when a STALE reply lands —
+  ' a stale reply means a newer search already owns it, which is now TRUE by
+  ' construction rather than by hope: a language change supersedes rather than
+  ' being refused, so the newer search always exists. Closing the panel
+  ' mid-search is the one case that still breaks it — the reply returns early on
+  ' the itemId guard and nothing newer was ever started — so reopening remains
+  ' the moment that can say for certain nothing this panel began is still wanted.
+  m.searchInFlightLanguage = ""
   m.searchButton.isLoading = false
-  m.searchButton.isEnabled = true
+
+  ' m.mutationInFlight is deliberately NOT reset here. A download's POST is not
+  ' abandoned by closePanel(), so it can still land and resume polling after a
+  ' close — clearing the flag on reopen would let a second download start beside
+  ' the first, which is the collision the flag exists to prevent. It is cleared
+  ' only by its own terminal outcomes, and the poll schedule is bounded, so the
+  ' worst case is a few seconds of "still working" on reopen, which is true.
 
   seedDefaultLanguage()
   ensureCulturesLoaded()
@@ -274,7 +288,7 @@ end sub
 ' remoteSubtitles.shouldAutoSearch(), a pure predicate, so its guards are swept
 ' by tests instead of resting on the order these two callers happen to run in.
 sub maybeAutoSearch()
-  if remoteSubtitles.shouldAutoSearch(m.top.isOpen, m.allResults.count(), m.selectedLanguageCode, m.searchInFlight)
+  if remoteSubtitles.shouldAutoSearch(m.top.isOpen, m.allResults.count(), m.selectedLanguageCode, m.searchInFlightLanguage <> "")
     runSearch()
   end if
 end sub
@@ -371,7 +385,14 @@ end sub
 ' pending request goes with it — a confirmation the user never answered must not
 ' survive to be answered by the next one.
 sub abandonDeleteConfirm()
-  if isValid(m.deleteConfirmDialog) then abandonDialog(m.deleteConfirmDialog)
+  if isValid(m.deleteConfirmDialog)
+    abandonDialog(m.deleteConfirmDialog)
+    ' Abandoning delivers NOTHING, so onDeleteConfirmResponse will never run to
+    ' hand back the claim startDelete took at the prompt. Released here, and
+    ' ONLY when a dialog was actually open — an unconditional release would let
+    ' a close during a download's poll drop that download's claim instead.
+    releaseMutation()
+  end if
   m.deleteConfirmDialog = invalid
   m.pendingDeleteRequest = invalid
   m.pendingDeleteName = ""
@@ -540,9 +561,8 @@ end sub
 
 sub runSearch()
   if not isValidAndNotEmpty(m.top.itemId) then return
-  if not isValidAndNotEmpty(m.selectedLanguageCode) then return
-  ' A second search while one is in flight is refused HERE rather than by
-  ' greying the button out.
+  ' Refused HERE rather than by greying the button out, and refused only for a
+  ' REPEAT of the query already running — a different language supersedes it.
   '
   ' The button used to carry the refusal itself (isEnabled = false), which
   ' protected correctly and explained nothing: the panel auto-searches on open,
@@ -550,11 +570,12 @@ sub runSearch()
   ' stated reason — read on device as broken rather than as busy. isLoading says
   ' the same thing in the affirmative (this is working) while keeping the button's
   ' normal colours and focus border, and it is what IconButton has done for
-  ' ItemDetails' favourite / watched / record buttons all along. Moving the guard
-  ' into the function is the other half of that trade: with the button no longer
-  ' refusing presses, this is the only thing standing between a held-down OK and
-  ' two concurrent provider round-trips.
-  if m.searchInFlight then return
+  ' ItemDetails' favourite / watched / record buttons all along (it never touches
+  ' isEnabled either — the two fields are orthogonal there and here).
+  '
+  ' Which press is a repeat and which is a new question is the whole judgment,
+  ' so it lives in a pure predicate rather than in this flag's truthiness.
+  if not remoteSubtitles.shouldStartSearch(m.searchInFlightLanguage, m.selectedLanguageCode) then return
 
   ' Drop the previous results BEFORE the status line goes up. The status label
   ' sits at the results list's own origin, so a search started over a populated
@@ -565,7 +586,6 @@ sub runSearch()
   clearResults()
   showResultsSpinner()
   m.searchButton.isLoading = true
-  m.searchButton.isEnabled = false
 
   ' isPerfectMatch is deliberately NOT sent to the server. The Open Subtitles
   ' plugin forwards it upstream as moviehash_match=only, and that filter is
@@ -577,24 +597,31 @@ sub runSearch()
   req = GetApi().BuildSearchRemoteSubtitlesRequest(m.top.itemId, m.selectedLanguageCode, false)
   if not isValid(req)
     m.searchButton.isLoading = false
-    m.searchButton.isEnabled = true
     return
   end if
 
   ' Set once the request is genuinely on the wire — the bail above returns
   ' without searching. Cleared alongside the Search button in both handlers, and
   ' deliberately NOT cleared on a stale reply: a stale reply means a newer search
-  ' is already in flight and owns this flag.
-  m.searchInFlight = true
+  ' is already in flight and owns this language slot.
+  m.searchInFlightLanguage = m.selectedLanguageCode
 
-  promises.chain(fetchAsync(req, "subtitleSearch-" + m.top.itemId), { itemId: m.top.itemId, language: m.selectedLanguageCode }).then(sub(res as object, ctx as object)
+  ' A UNIQUE id per search, not one per item. fetchAsync keys its pending
+  ' registry by requestId and overwrites on collision, so two searches sharing an
+  ' id cross-wire: the first reply settles the SECOND's entry, reads a result
+  ' that has not arrived yet, and rejects it as a timeout — a superseding search
+  ' would report "no subtitles found" for an answer that was on its way. The
+  ' itemId stays in the string so the id remains greppable in a pool log.
+  m.searchSeq += 1
+  searchRequestId = "subtitleSearch-" + m.top.itemId + "-" + m.searchSeq.toStr()
+
+  promises.chain(fetchAsync(req, searchRequestId), { itemId: m.top.itemId, language: m.selectedLanguageCode }).then(sub(res as object, ctx as object)
     ' A search takes real time (a provider round-trip through the server), so
     ' the user can change language — or the host can swap items — before it
     ' lands. Render only the reply that matches what is on screen now.
     if ctx.itemId <> m.top.itemId or ctx.language <> m.selectedLanguageCode then return
-    m.searchInFlight = false
+    m.searchInFlightLanguage = ""
     m.searchButton.isLoading = false
-    m.searchButton.isEnabled = true
     if not res.ok
       ' A non-Video item 404s here rather than returning an empty list; the
       ' entry point is type-gated, so this is a genuine failure.
@@ -609,10 +636,12 @@ sub runSearch()
     m.allResults = results
     renderResults(applyPerfectMatchFilter(results))
   end sub).catch(sub(err as object, ctx as object)
-    if ctx.itemId <> m.top.itemId then return
-    m.searchInFlight = false
+    ' Guarded on the language as well as the item, exactly as the success path
+    ' is. A superseded search that fails in TRANSPORT must not clear the flag the
+    ' newer one now owns, nor blank the results column the newer one is filling.
+    if ctx.itemId <> m.top.itemId or ctx.language <> m.selectedLanguageCode then return
+    m.searchInFlightLanguage = ""
     m.searchButton.isLoading = false
-    m.searchButton.isEnabled = true
     m.log.warn("subtitle search error", err.reason)
     setStatus(translate(translationKeys.MessageNoSubtitlesFound))
     m.allResults = []
@@ -923,8 +952,13 @@ end sub
 ' credentials and an exhausted quota all return 204 exactly like a success — so
 ' the baseline stream set is captured here and diffed against later fetches.
 sub startDownload(info as object)
+  if not claimMutation() then return
+
   req = GetApi().BuildDownloadRemoteSubtitleRequest(m.top.itemId, info.Id)
-  if not isValid(req) then return
+  if not isValid(req)
+    releaseMutation()
+    return
+  end if
 
   m.pendingDownloadName = valueOrEmpty(info.Name)
   m.streamsBeforeDownload = m.top.existingStreams
@@ -933,26 +967,70 @@ sub startDownload(info as object)
   displayToast(translate(translationKeys.MessageSubtitleDownloading), "info")
 
   promises.chain(fetchAsync(req, "subtitleDownload-" + m.top.itemId), { itemId: m.top.itemId }).then(sub(res as object, ctx as object)
-    if ctx.itemId <> m.top.itemId then return
+    if ctx.itemId <> m.top.itemId
+      ' The host moved to another item; this download's confirmation goes with it.
+      releaseMutation()
+      return
+    end if
     ' res.ok is 204 whether or not the download actually worked, so it is only
     ' checked to catch a rejected REQUEST (403, 404) — not a failed download.
     if not res.ok
+      releaseMutation()
       m.log.warn("subtitle download rejected", res.statusCode)
       displayToast(translate(translationKeys.MessageSubtitleDownloadFailed), "error")
       return
     end if
+    ' Still held: the POST is not the end of the operation, the poll is.
     schedulePoll()
   end sub).catch(sub(err as object, ctx as object)
+    releaseMutation()
     if ctx.itemId <> m.top.itemId then return
     m.log.warn("subtitle download error", err.reason)
     displayToast(translate(translationKeys.MessageSubtitleDownloadFailed), "error")
   end sub)
 end sub
 
+' claimMutation / releaseMutation: one item-mutating operation at a time.
+'
+' Downloads and deletes share ONE claim rather than guarding each other
+' separately, and that is a correctness requirement rather than tidiness. Both
+' renumber every stream index on the item, and a download confirms itself by
+' diffing the CURRENT streams against the baseline it captured before starting
+' (see newSubtitleStreams) — so a delete landing mid-poll mutates the very set
+' that diff is measured against, and the download would report the wrong file,
+' or none.
+'
+' The claim is also what keeps each operation's requestId unique. fetchAsync
+' keys its pending registry by requestId and overwrites on collision, so two
+' downloads sharing "subtitleDownload-<itemId>" would cross-wire: the first
+' reply settles the SECOND's entry, reads a result that has not arrived, and
+' rejects it as a timeout — the user's second press reporting a failure while
+' the first download quietly succeeded. The app's other repeatable requests are
+' safe for the same reason, via their buttons' own isLoading guards
+' (ItemDetails' favourite / watched / record); this panel drives its actions
+' from list selections, which have no such button, so the guard lives here.
+'
+' NOT reset by open or close — see openPanel().
+function claimMutation() as boolean
+  if m.mutationInFlight
+    displayToast(translate(translationKeys.MessageSubtitleBusy), "info")
+    return false
+  end if
+  m.mutationInFlight = true
+  return true
+end function
+
+sub releaseMutation()
+  m.mutationInFlight = false
+end sub
+
 sub schedulePoll()
   if m.pollAttempt >= SUBTITLE_POLL_DELAYS_MS.count()
     ' Out of attempts. The server may still be refreshing, and we cannot
-    ' distinguish "slow" from "failed", so say the true thing.
+    ' distinguish "slow" from "failed", so say the true thing — and let go of the
+    ' claim, because this is where the operation ends whether or not it worked.
+    ' Holding it past the schedule's ceiling would strand the panel.
+    releaseMutation()
     displayToast(translate(translationKeys.MessageSubtitleStillProcessing), "info")
     return
   end if
@@ -965,12 +1043,21 @@ end sub
 
 sub onPollTimerFired()
   req = GetApi().BuildGetItemRequest(m.top.itemId)
-  if not isValid(req) then return
+  if not isValid(req)
+    ' No request means no further poll will ever be scheduled, so this is where
+    ' the download ends — the claim has to go with it or the panel refuses every
+    ' later download for the rest of its life.
+    releaseMutation()
+    return
+  end if
 
   promises.chain(fetchAsync(req, "subtitlePoll-" + m.top.itemId), { itemId: m.top.itemId }).then(sub(res as object, ctx as object)
     ' Abandon the confirmation entirely if the host moved to another item;
     ' rescheduling would poll the wrong item forever.
-    if ctx.itemId <> m.top.itemId then return
+    if ctx.itemId <> m.top.itemId
+      releaseMutation()
+      return
+    end if
     if not res.ok
       schedulePoll()
       return
@@ -989,12 +1076,18 @@ sub onPollTimerFired()
     ' Confirmed. Adopt the fresh stream list — note this also means every
     ' stream index the host is holding is now stale, which is exactly what
     ' subtitlesChanged tells it to go fix.
+    releaseMutation()
     m.top.existingStreams = streams
     displayToast(translate(translationKeys.MessageSubtitleAdded, [m.pendingDownloadName]), "success")
     m.top.subtitlesChanged = true
   end sub).catch(sub(err as object, ctx as object)
-    if ctx.itemId <> m.top.itemId then return
+    if ctx.itemId <> m.top.itemId
+      releaseMutation()
+      return
+    end if
     m.log.warn("subtitle poll error", err.reason)
+    ' Still held — a transport failure on one poll is not the end of the
+    ' operation, and schedulePoll() releases it when the attempts run out.
     schedulePoll()
   end sub)
 end sub
@@ -1034,11 +1127,20 @@ end sub
 ' too easy to do by accident. showConfirmDialog focuses the cancel side, so a
 ' reflexive second press cancels.
 sub startDelete(stream as object)
+  ' Claimed at the PROMPT, not at the request. A download landing between the
+  ' question and the answer would renumber the very stream this dialog names, so
+  ' the index the user agreed to delete would no longer be the file they saw.
+  ' Released on cancel, so declining costs nothing.
+  if not claimMutation() then return
+
   ' Ask the API layer to build the request BEFORE showing a dialog, so a stream
   ' it refuses (anything not explicitly IsExternal) never produces a prompt for
   ' an action that cannot happen.
   req = GetApi().BuildDeleteSubtitleRequest(m.top.itemId, stream)
-  if not isValid(req) then return
+  if not isValid(req)
+    releaseMutation()
+    return
+  end if
 
   m.pendingDeleteRequest = req
   m.pendingDeleteName = deleteTargetName(stream)
@@ -1085,8 +1187,17 @@ sub onDeleteConfirmResponse()
   name = m.pendingDeleteName
   m.pendingDeleteName = ""
 
-  if not isValid(dialog) or not isValid(dialog.result) or not isValid(req) then return
-  if not dialog.result.confirmed then return
+  ' Every path out of here that is NOT an issued request has to hand the claim
+  ' back — a declined or superseded confirmation must not leave the panel
+  ' believing it is still mutating.
+  if not isValid(dialog) or not isValid(dialog.result) or not isValid(req)
+    releaseMutation()
+    return
+  end if
+  if not dialog.result.confirmed
+    releaseMutation()
+    return
+  end if
 
   ' Unlike download, delete is SYNCHRONOUS end to end: the server's controller
   ' awaits the metadata refresh before responding, so the next GET already
@@ -1094,14 +1205,21 @@ sub onDeleteConfirmResponse()
   ' download path carries exists purely because that endpoint returns 204 before
   ' the work has happened.
   promises.chain(fetchAsync(req, "subtitleDelete-" + m.top.itemId), { itemId: m.top.itemId, name: name }).then(sub(res as object, ctx as object)
-    if ctx.itemId <> m.top.itemId then return
+    if ctx.itemId <> m.top.itemId
+      releaseMutation()
+      return
+    end if
     if not res.ok
+      releaseMutation()
       m.log.warn("subtitle delete rejected", res.statusCode)
       displayToast(translate(translationKeys.MessageSubtitleDeleteFailed), "error")
       return
     end if
+    ' Still held: the refresh that follows is part of this delete, and it is
+    ' what re-reads the stream list a second delete would need.
     refreshAfterDelete(ctx.name)
   end sub).catch(sub(err as object, ctx as object)
+    releaseMutation()
     if ctx.itemId <> m.top.itemId then return
     m.log.warn("subtitle delete error", err.reason)
     displayToast(translate(translationKeys.MessageSubtitleDeleteFailed), "error")
@@ -1116,9 +1234,15 @@ end sub
 ' to the left of where they were.
 sub refreshAfterDelete(name as string)
   req = GetApi().BuildGetItemRequest(m.top.itemId)
-  if not isValid(req) then return
+  if not isValid(req)
+    releaseMutation()
+    return
+  end if
 
   promises.chain(fetchAsync(req, "subtitleDeleteRefresh-" + m.top.itemId), { itemId: m.top.itemId, name: name }).then(sub(res as object, ctx as object)
+    ' The delete ENDS here however this settles — released before any branching
+    ' so none of the four ways out of this handler can strand the claim.
+    releaseMutation()
     if ctx.itemId <> m.top.itemId then return
     if not res.ok then return
 
@@ -1148,6 +1272,7 @@ sub refreshAfterDelete(name as string)
       applyFocus()
     end if
   end sub).catch(sub(err as object, ctx as object)
+    releaseMutation()
     if ctx.itemId <> m.top.itemId then return
     m.log.warn("subtitle delete refresh error", err.reason)
   end sub)
