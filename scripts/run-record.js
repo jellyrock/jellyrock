@@ -537,6 +537,19 @@ export const FAILURE_KINDS = Object.freeze({
    */
   LIBRARY_OPENED_MISMATCH: 'library-opened-mismatch',
   GRID_LOAD_TIMEOUT: 'grid-load-timeout',
+  /**
+   * The right library grid opened, and the tile pressed inside it produced a detail of
+   * the WRONG kind — a Movie while navigating the Shows library, say.
+   *
+   * Deliberately not folded into `library-opened-mismatch`, on that entry's own
+   * reasoning one level down: there the tile was located fine and the wrong GRID
+   * opened; here the grid's identity checked out and its CONTENT had not caught up, so
+   * the causes and the fixes differ and a shared slug would merge them in the flake
+   * baseline this registry keys. Observed on `.178` 2026-09-06, where a recovered
+   * tvshows nav opened a Movie detail and the failure surfaced ten seconds later as a
+   * confirm dialog that never appeared (a Movie's watched button toggles without one).
+   */
+  DETAIL_TYPE_MISMATCH: 'detail-type-mismatch',
   DETAIL_ROW_NOT_FOUND: 'detail-row-not-found',
   MEDIA_PLAYER_NOT_STARTED: 'media-player-not-started',
   /**

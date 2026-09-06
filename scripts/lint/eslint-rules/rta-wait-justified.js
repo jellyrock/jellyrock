@@ -77,6 +77,14 @@
  */
 const VERIFIED_SETTLE_KEYPATHS = new Set([
   '#buttons.buttonFocused',
+  // `ItemDetails.bs` assigns `m.extrasGrid.type = item.type` on content load and on an
+  // explicit extras refresh, and never clears it — terminal for the life of that
+  // content, so a poll cannot miss it. Read against the app source 2026-09-06, both
+  // assignment sites. Note it is NOT set when `item.type = "Person"` (both sites branch
+  // to `loadPersonVideos` instead); the only gate using it is
+  // `openFirstGridTileDetail`, whose three callers open Series / MusicAlbum |
+  // MusicArtist / Playlist, so that branch is unreachable from it.
+  '#extrasGrid.type',
   // Not an app field: `scripts/capture-screenshots.js` injects this Poster over ODC and
   // waits for its image to decode. Roku's docs (dev-doc v2.0,
   // REFERENCES/scenegraph/renderable-nodes/poster.md) define `loadStatus` as READ_ONLY

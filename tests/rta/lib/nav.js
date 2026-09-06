@@ -649,6 +649,21 @@ export async function navPlaylistsLibrary(ctx) {
  * item of that library's type (`#videoTitle` is the shared detail title node for
  * every item type). Used by the per-type detail screens that just need ONE example.
  */
+/**
+ * What each library's first tile must open. `label` used to be an error string only;
+ * making it an EXPECTATION is what lets the nav check its own outcome.
+ *
+ * A label with no entry is a fail-fast rather than a skipped check — a new caller has to
+ * declare what it expects, or the gate would silently not apply to it.
+ */
+const FIRST_TILE_DETAIL_TYPES = Object.freeze({
+  series: ['Series'],
+  // The seeded landing view decides which: an Albums-view first tile opens a MusicAlbum,
+  // an Artists / AlbumArtists-view first tile a MusicArtist. Both are correct here.
+  music: ['MusicAlbum', 'MusicArtist'],
+  playlist: ['Playlist'],
+});
+
 async function openFirstGridTileDetail(label) {
   // GATE FOCUS BEFORE PRESSING, via the same helper the indexed callers use.
   //
@@ -671,6 +686,48 @@ async function openFirstGridTileDetail(label) {
     label: `${label} detail title`,
     timeout: 20000,
   });
+
+  // VERIFY WHAT OPENED. A title is not an identity: `navLibraryByType` confirms the GRID
+  // it landed on by `parentItem.id` and retries a wrong one, but nothing checked that the
+  // grid's CONTENT had caught up before this pressed a tile in it. So a recovered nav
+  // could still open a detail belonging to the previous library, and the run would not say
+  // so — it would fail later, somewhere else, describing something else.
+  //
+  // That is not hypothetical. `.178` 2026-09-06: a tvshows nav reported
+  // `recovered on attempt 2`, this opened `The Boy in the Plastic Bubble` (a MOVIE), and
+  // the failure surfaced ten seconds later as a confirm dialog that never appeared —
+  // because `ItemDetails.onWatchedButtonPressed` only confirms for a Series and toggles a
+  // Movie silently. The app was correct at every step; only the harness was lost.
+  //
+  // Polled rather than read once because `m.extrasGrid.type` is set when the extras chain
+  // STARTS, not when the title lands, so a bare read here would race the load and report
+  // `undefined` for a detail that is perfectly fine. Wrong content fails this on its
+  // budget instead, naming what it actually found.
+  const wanted = FIRST_TILE_DETAIL_TYPES[label];
+  if (!wanted) {
+    // eslint-disable-next-line no-restricted-syntax -- fail-fast, cause already named
+    throw new Error(
+      `openFirstGridTileDetail has no expected detail type for label "${label}". Add one ` +
+        'to FIRST_TILE_DETAIL_TYPES — an unlisted label would skip the outcome check ' +
+        'that stops a wrong-library nav opening the wrong detail unnoticed.',
+    );
+  }
+  await waitFor('#extrasGrid.type', (t) => wanted.includes(t), {
+    read: getActiveVal,
+    label: `${label} detail is ${wanted.join(' or ')}`,
+    timeout: 10000,
+    interval: 500,
+    kind: FAILURE_KINDS.DETAIL_TYPE_MISMATCH,
+    observed: async () => {
+      const [type, parentId, title] = await getActiveVals([
+        '#extrasGrid.type',
+        '#extrasGrid.parentId',
+        '#videoTitle.text',
+      ]);
+      return { wanted, sawType: type, detailId: parentId, detailTitle: title };
+    },
+  });
+
   await sleep(1500); // let backdrop + logo paint
 }
 
