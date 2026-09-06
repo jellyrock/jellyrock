@@ -538,6 +538,16 @@ export const FAILURE_KINDS = Object.freeze({
   LIBRARY_OPENED_MISMATCH: 'library-opened-mismatch',
   GRID_LOAD_TIMEOUT: 'grid-load-timeout',
   DETAIL_ROW_NOT_FOUND: 'detail-row-not-found',
+  /**
+   * A named button was never reachable in `ItemDetails`' action-button group.
+   * Its own slug rather than `wait-focused-timeout` because the two have
+   * different causes and different fixes: this one means the group did not
+   * CONTAIN the button (an absent feature, a permission, or a still-pending
+   * async mutation of the group), while a focus timeout means it was there and
+   * focus never landed on it. `itemdetails-button-group-mutations` in
+   * tech-debt.md is the standing reason the group's membership is not stable.
+   */
+  DETAIL_BUTTON_NOT_FOUND: 'detail-button-not-found',
   MEDIA_PLAYER_NOT_STARTED: 'media-player-not-started',
   /**
    * A request to the fixture server did not answer usefully — a non-2xx, or a

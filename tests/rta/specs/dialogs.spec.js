@@ -24,7 +24,7 @@ import { RTA_CONFIG } from '../config.js';
 import { authenticate, getHero, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
 import { seedHome, seedLibraryLanding, assertSeedTookEffect } from '../lib/seed.js';
 import { relaunch, hardRelaunch, ecp, odc } from '../lib/driver.js';
-import { navSeriesDetails, navMovieDetails } from '../lib/nav.js';
+import { navSeriesDetails, navMovieDetails, focusDetailButton } from '../lib/nav.js';
 import {
   waitFor,
   waitFocused,
@@ -205,51 +205,11 @@ it('series watched button opens the standard confirm dialog; back cancels it', a
   await relaunch();
   await navSeriesDetails();
 
-  // JRButtonGroup tracks its own focused index and re-asserts it whenever the group
-  // gains focus, so teleporting focus onto #watchedButton gets reverted. Enter via
-  // the GROUP (it focuses its current index) and walk right with real presses.
-  let watchedIndex = -1;
-  for (let i = 0; i < 12; i++) {
-    const id = await getVal(`#buttons.${i}.id`);
-    if (id === undefined) break;
-    if (id === 'watchedButton') {
-      watchedIndex = i;
-      break;
-    }
-  }
-  if (watchedIndex < 0) throw new Error('watchedButton not found in detail button group');
-
-  await odc.focusNode({ base: 'scene', keyPath: '#buttons' });
-  await sleep(300);
-  const groupIndex = await getVal('#buttons.buttonFocused');
-  if (typeof groupIndex !== 'number')
-    throw new Error(`cannot read #buttons.buttonFocused (got ${groupIndex})`);
-  for (let i = groupIndex; i < watchedIndex; i++) await press(ecp.Key.Right);
-  // Gate on the BUTTON, not on its index. `watchedIndex` was resolved by scanning the
-  // group above, and `ItemDetails` mutates that group asynchronously as data lands —
-  // `m.buttonGrp.removeChild(loadingButton)` once the trailer check resolves through
-  // `fetchAsync().then()`, `removeChild(trailerButton)` when there is none,
-  // `removeChild(resumeButton)`. Every removal shifts the indices after it, so a gate
-  // on `buttonFocused === watchedIndex` can be satisfied by a DIFFERENT button, and the
-  // OK below then lands on it: no dialog opens, and by the time the wait gives up the
-  // group has settled and the failure dump looks innocent — focus on `#watchedButton`,
-  // no confirm. Recorded 4 times in 63 ledger runs, always `wait-for-timeout` on
-  // `#buttonRow.getChildCount()`.
-  //
-  // This is the same defect as the library-nav wrong-turn (`openLibraryByType`):
-  // commit to an index, act later, index means something else. `pressOsdButton` in this
-  // same file already gates by identity for the same reason; this walk did not.
-  await waitFocused((f) => f.node?.id === 'watchedButton', {
-    label: 'watched button focused in group',
-    timeout: 8000,
-  });
-  // What we were standing on WHEN WE PRESSED. The throw-time dump cannot answer this:
-  // it is taken 10s later, by which point the button group has settled and focus reads
-  // `#watchedButton` whether or not that is where the press landed — which is exactly
-  // the dump every occurrence of this failure has produced, and why two different
-  // explanations both fitted it.
-  const pressedOn = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
-  const pressedIndex = await getVal('#buttons.buttonFocused');
+  // The group walk, the identity gate and the pressed-on capture all live in
+  // `focusDetailButton` — shared because `navSubtitlePanel` needs the identical
+  // walk, and a second copy of a walk whose whole point is a subtle async-index
+  // bug is how that bug comes back. Its doc comment carries the reasoning.
+  const { pressedOn, pressedIndex, wantedIndex } = await focusDetailButton('watchedButton');
   await press(ecp.Key.Ok);
 
   // The JRDialog overlay mounts on the scene with two TextButtons under the panel.
@@ -277,7 +237,7 @@ it('series watched button opens the standard confirm dialog; back cancels it', a
         pressedOnId: pressedOn?.node?.id,
         pressedOnSubtype: pressedOn?.node?.subtype,
         pressedIndex,
-        wantedIndex: watchedIndex,
+        wantedIndex,
       };
     },
   });
