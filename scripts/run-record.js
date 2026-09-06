@@ -690,12 +690,34 @@ const KNOWN_OUTCOMES = new Set(Object.values(RUN_OUTCOMES));
  * The hour flag is meaningless there (any session over an hour trips it), and a
  * flag that always fires is one nobody reads, so the formatter drops it.
  */
+/**
+ * Fixture-health readings for the open run, kept in memory rather than in a `.jsonl`
+ * beside the other three streams.
+ *
+ * Those exist because the vitest CHILD writes them and the parent folds them at close.
+ * These are taken by the parent itself, on either side of the child, so a file would be
+ * a second copy of state one process already holds. The cost is that the exit net cannot
+ * fold readings a crashed parent never handed over — acceptable for an instrument, and
+ * stated here so the asymmetry does not read as an oversight.
+ */
+let fixtureReadings = [];
+
+/** Record one fixture-health reading (see `scripts/lib/fixture-probe.js`). */
+export function recordFixtureReading(reading) {
+  if (reading) fixtureReadings.push(reading);
+}
+
+function resetFixtureReadings() {
+  fixtureReadings = [];
+}
+
 export function summarizeRun({
   startedAt,
   endedAt,
   failures = [],
   assertions = {},
   recoveries = [],
+  fixture = [],
   run,
   what,
   variant,
@@ -757,6 +779,11 @@ export function summarizeRun({
     // Omitted entirely when nothing recorded one, so an ordinary line is unchanged
     // and older ledger entries stay comparable.
     assertions: Object.keys(assertions).length ? assertions : undefined,
+    // How the FIXTURE SERVER was doing on either side of the run. Present so a red run
+    // against a sick server is readable as such instead of re-argued from memory — the
+    // third leg of "app vs. harness vs. fixture", which was the one with no instrument.
+    // Omitted when empty, on the same grounds as `assertions` below.
+    fixture: fixture.length ? fixture : undefined,
     // Steps the harness worked around. Omitted when empty, on the same grounds as
     // `assertions` above: an ordinary line stays unchanged and older ledger entries
     // stay comparable. Present, it is what makes "how often does the retry fire"
@@ -1030,6 +1057,7 @@ export function beginRun({ lock, run, cumulative = false }) {
   // Same contract as the failure records: a fold may only ever see THIS run's.
   resetAssertions();
   resetRecoveries();
+  resetFixtureReadings();
   // Closed over rather than re-read at close time, so a handle always folds the run
   // it was handed. Note the LIMIT of that: `activeRunDir` and the `closedSummary`
   // guard below are module state, so this makes a handle carry the right VALUES —
@@ -1139,6 +1167,7 @@ export function endRun({
     failures: readFailures(),
     assertions: foldAssertions(readAssertions()),
     recoveries: readRecoveries(),
+    fixture: fixtureReadings,
     cumulative,
   });
   closedSummary = summary;

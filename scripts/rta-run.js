@@ -38,7 +38,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setupRtaEnv, deployRtaBuild, relaunch, ecp } from '../tests/rta/lib/driver.js';
 import { snapshotRegistry, restoreRegistry } from '../tests/rta/lib/registry.js';
-import { beginRun, readFailures, RUN_OUTCOMES, wasBlocked } from './run-record.js';
+import { probeFixture } from './lib/fixture-probe.js';
+import { RTA_CONFIG } from '../tests/rta/config.js';
+import {
+  beginRun,
+  readFailures,
+  recordFixtureReading,
+  RUN_OUTCOMES,
+  wasBlocked,
+} from './run-record.js';
 import { acquireDeviceLock } from './device-lock.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -119,6 +127,13 @@ for (const event of ['uncaughtException', 'unhandledRejection']) {
 // entry point never got to close (the abandon path below), and it can only know a
 // watch session spans many iterations if the OPEN said so.
 const run = beginRun({ lock, run: runName, cumulative: watch });
+
+// Take the fixture's pulse BEFORE the suite, and again after it. A red run against a
+// degraded demo server is not a verdict on the app, and until this the record could not
+// tell the two apart — see `scripts/lib/fixture-probe.js`. Awaited (it is bounded and
+// costs one round trip) but never allowed to fail the run: `probeFixture` resolves on
+// every path, and nothing here reads its result to decide anything.
+recordFixtureReading(await probeFixture(RTA_CONFIG.server.url, { phase: 'start' }));
 
 if (process.env.RTA_NO_DEPLOY === '1') {
   console.log('[rta] RTA_NO_DEPLOY=1 — skipping deploy, using the already-sideloaded build');
@@ -203,6 +218,11 @@ const exitCode = await new Promise((resolve) => {
 // Deliberately narrow: a green run is never re-read (a suite that passed IS a verdict,
 // whatever the fixture did along the way), and the check cannot promote a failure into
 // a pass. See `RUN_OUTCOMES.BLOCKED` for why blocked outranks failed.
+// Taken before the close so the reading lands in this run's row rather than the next
+// one's. A fixture that was fine at the start and sick at the end is the shape that most
+// often reads as "the app broke halfway through".
+recordFixtureReading(await probeFixture(RTA_CONFIG.server.url, { phase: 'end' }));
+
 const redOutcome = wasBlocked(readFailures()) ? RUN_OUTCOMES.BLOCKED : RUN_OUTCOMES.FAILED;
 run.close(
   interrupting ? RUN_OUTCOMES.INTERRUPTED : exitCode === 0 ? RUN_OUTCOMES.PASSED : redOutcome,
