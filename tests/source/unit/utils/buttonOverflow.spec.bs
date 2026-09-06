@@ -210,7 +210,6 @@ namespace tests
       split = splitForOverflow(9, 8)
       m.assertTrue(split.hasOverflow)
       m.assertEqual(split.visibleCount, 7)
-      m.assertEqual(split.overflowFrom, 7)
     end function
 
     @it("keeps the visible count fixed however far past the cap the row goes")
@@ -235,10 +234,19 @@ namespace tests
 
     @it("accounts for every button - visible plus hidden is the whole row")
     function _()
+      ' `visibleCount` is also the index the menu starts at, so the hidden tail is
+      ' whatever sits past it. Sweeping both sides of the cap is what makes this an
+      ' accounting check rather than a restatement of the split.
       for each count in [0, 1, 7, 8, 9, 20]
         split = splitForOverflow(count, 8)
-        m.assertTrue(split.visibleCount <= count, "cannot show more than it was given")
-        m.assertEqual(split.overflowFrom, split.visibleCount, "the menu starts where the row stops")
+        hidden = count - split.visibleCount
+
+        m.assertTrue(hidden >= 0, "cannot show more than it was given")
+        if split.hasOverflow
+          m.assertTrue(hidden >= 2, "an overflowing row must leave at least two behind")
+        else
+          m.assertEqual(hidden, 0, "a row that fits must hide nothing")
+        end if
       end for
     end function
 

@@ -40,15 +40,42 @@ const ICON_BUTTON_PADDING = 15
 ' footprint — the caption, not the background, is the widest thing in the node.
 const ICON_BUTTON_TEXT_EXTENSION = 12
 
-' The FHD icon asset's edge length. Used only to budget a row in the 1920x1080
-' design space; IconButton itself sizes from the bitmap it actually loaded.
+' The icon's rendered edge length, and the reason every button on a capped row is
+' the same width.
 '
-' Deliberately the FHD figure even though $$RES$$ substitutes a smaller _hd asset
-' on 720p-UI devices: a narrower button can only mean MORE fit, so budgeting with
-' the wider one is the conservative direction on every device. Whether Roku
-' reports bitmapWidth in design units or physical pixels on an HD device has NOT
-' been measured here (the test device is an Ultra), and this comment is the reason
-' it does not need to be.
+' This is NOT "the size of the icon asset" — it is the LOAD BOX. IconButton.xml
+' declares its icon Poster as `width/loadWidth/height/loadHeight = 64` with
+' `loadDisplayMode="limitSize"`, so an oversized source is scaled down AS IT
+' LOADS and `bitmapWidth` reports the scaled figure. That is what makes the
+' uniform budget below true rather than merely hopeful, and it is worth stating
+' plainly because two icons on the ItemDetails row ship a 96x96 FHD asset
+' (album -> goToAlbumButton, person -> goToArtistButton) and still render at 64.
+'
+' Measured, not assumed — via RTA against a rendered IconButton on a Streaming
+' Stick 4K (OS 15.3.4, 1080p UI), because a Rooibos test cannot complete an image
+' load synchronously:
+'
+'   icon = person_fhd.png (96x96 source)
+'     buttonIcon.loadDisplayMode = "limitsize"   buttonIcon.loadWidth   = 64
+'     buttonIcon.bitmapWidth     = 64            buttonBackground.width = 124
+'
+' 124 is exactly iconButtonBackgroundWidth(64), so the layout footprint is the
+' budgeted 136. The gate for this lives in
+' tests/source/unit/components/ui/IconButtonWidth.spec.bs, which pins the load box
+' itself: widen it or drop limitSize and every cap in this file silently stops
+' describing what renders.
+'
+' TWO CONSTRAINTS THIS ENCODES, for anyone extending a capped row:
+'   - Every child of a capped row must be an IconButton (ResumeButton extends it,
+'     so it qualifies). A TextButton extends Group and sizes differently, so it
+'     would not fit this budget.
+'   - An icon asset LARGER than the load box is safe (it is scaled down); the
+'     load box is the thing that must not move.
+'
+' Still open, and safe in both directions: whether Roku reports bitmapWidth in
+' design units or physical pixels on a 720p-UI device (both test devices render
+' at 1080p). Physical-pixel reporting would yield a NARROWER plate, so more
+' buttons would fit than the cap allows - conservative, never an overrun.
 const ICON_BUTTON_ICON_SIZE = 64
 
 ' The button's visible background plate.
@@ -136,20 +163,46 @@ end function
 ' worse affordance than the button it replaced, and this shape rules it out
 ' rather than relying on nobody hitting it.
 '
+' `visibleCount` doubles as the index of the first button that moves into the
+' menu — the row stops exactly where the menu starts. This used to also be
+' returned as a separate `overflowFrom`, which no caller ever read and which the
+' spec asserted was equal to `visibleCount`: two names for one number is a thing
+' that can drift, so there is one.
+'
 ' @param count total buttons the surface wants to show
 ' @param cap   the ceiling from maxVisibleButtons()
-' @return {object} AA with shape: hasOverflow=boolean, visibleCount=integer,
-'         overflowFrom=integer (index of the first button that moves into the menu)
+' @return {object} AA with shape: hasOverflow=boolean, visibleCount=integer
 function splitForOverflow(count as integer, cap as integer) as object
   if count <= cap
-    return { hasOverflow: false, visibleCount: count, overflowFrom: count }
+    return { hasOverflow: false, visibleCount: count }
   end if
 
   visibleCount = cap - 1
   if visibleCount < 0 then visibleCount = 0
 
-  return { hasOverflow: true, visibleCount: visibleCount, overflowFrom: visibleCount }
+  return { hasOverflow: true, visibleCount: visibleCount }
 end function
+
+' The row's focus index, read and written through ONE guarded pair.
+'
+' Both halves of the bracket touch `buttonFocused`, and this file's signatures
+' take a plain `group as object` — so a group without the field (any bare Group)
+' must not fault. It previously guarded with hasField() in one half and read the
+' field directly in the other, which is a rule the second half had to remember
+' rather than a property of the code. Reading an absent field yields invalid, and
+' comparing that against an integer is a type mismatch, so the direct read was
+' the unsafe half.
+'
+' @return the index, or -1 when the group cannot carry one
+function rowFocusIndex(group as object) as integer
+  if not isValid(group) or not group.hasField("buttonFocused") then return -1
+  return group.buttonFocused
+end function
+
+sub setRowFocusIndex(group as object, index as integer)
+  if not isValid(group) or not group.hasField("buttonFocused") then return
+  group.buttonFocused = index
+end sub
 
 ' ---------------------------------------------------------------------------
 ' Applying it to a real row
@@ -220,7 +273,7 @@ sub restoreOverflowedButtons(group as object, stash as object)
   if moreHadFocus and group.getChildCount() > 0
     landing = moreSlot
     if landing > group.getChildCount() - 1 then landing = group.getChildCount() - 1
-    if group.hasField("buttonFocused") then group.buttonFocused = landing
+    setRowFocusIndex(group, landing)
     group.getChild(landing).setFocus(true)
   end if
 end sub
@@ -266,7 +319,7 @@ sub applyButtonOverflow(group as object, stash as object, cap as integer, moreTe
   if not split.hasOverflow then return
 
   focusedId = ""
-  focusIndex = group.buttonFocused
+  focusIndex = rowFocusIndex(group)
   if focusIndex >= 0 and focusIndex < group.getChildCount()
     focusedNode = group.getChild(focusIndex)
     if isValid(focusedNode) then focusedId = focusedNode.id
@@ -306,7 +359,7 @@ sub applyButtonOverflow(group as object, stash as object, cap as integer, moreTe
     if restoredIndex < 0 then restoredIndex = group.getChildCount() - 1
   end if
 
-  group.buttonFocused = restoredIndex
+  setRowFocusIndex(group, restoredIndex)
   ' `wasFocused`, NOT a fresh isInFocusChain() — the stash loop above detached a
   ' child, and if that child was the focused one the chain is already gone.
   if wasFocused then group.getChild(restoredIndex).setFocus(true)
@@ -357,6 +410,9 @@ end function
 const MORE_BUTTON_ICON = "pkg:/images/icons/more_horiz_$$RES$$.png"
 
 #if debug
+  ' One prefix, used to BOTH build and clear the spares, so the two can't drift.
+  const DEBUG_SPARE_ID_PREFIX = "debugSpareButton"
+
   ' Append `m.global.debug.extraButtonCount` stand-in buttons to a row, so the
   ' overflow can be SEEN on a device.
   '
@@ -372,12 +428,32 @@ const MORE_BUTTON_ICON = "pkg:/images/icons/more_horiz_$$RES$$.png"
   sub appendDebugSpareButtons(group as object)
     if not isValid(group) or not isValid(m.global.debug) then return
 
+    ' Clear previous spares FIRST — this sub is idempotent for the same reason the
+    ' two bracket halves are, and it has to be.
+    '
+    ' OSD.setButtonStates() re-derives its row WITHOUT clearing it (it only removes
+    ' buttons by id) and runs again on every item change — which for live TV is
+    ' every program boundary. Appending unconditionally therefore grew the row by
+    ' `extraButtonCount` on each pass, silently moving the very cap boundary this
+    ' flag exists to locate, and breaking the "lower the value until More
+    ' disappears" procedure in docs/dev/debug-flags.md. ItemDetails never showed it
+    ' because setupButtons() empties the group before it rebuilds.
+    '
+    ' Runs before the `spareCount <= 0` return below on purpose, so setting the
+    ' flag back to 0 and re-entering the screen actually removes them.
+    for i = group.getChildCount() - 1 to 0 step -1
+      child = group.getChild(i)
+      if isValid(child) and Left(child.id, Len(DEBUG_SPARE_ID_PREFIX)) = DEBUG_SPARE_ID_PREFIX
+        group.removeChild(child)
+      end if
+    end for
+
     spareCount = m.global.debug.extraButtonCount
     if spareCount <= 0 then return
 
     for i = 1 to spareCount
       spare = CreateObject("roSGNode", "IconButton")
-      spare.id = "debugSpareButton" + stri(i).trim()
+      spare.id = DEBUG_SPARE_ID_PREFIX + stri(i).trim()
       ' Labelled and iconed like a real button so the row and the menu rows look
       ' the way they would with genuine content.
       spare.setFields({

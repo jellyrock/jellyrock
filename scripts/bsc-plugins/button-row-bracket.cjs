@@ -38,6 +38,29 @@
  *   - Anything about reads. `getButtonIndex()` answering -1 for a stashed button
  *     only misplaces something in combination with a mutation, which is flagged.
  *
+ * TWO BLIND SPOTS, stated because a gate you believe is total is worse than one
+ * whose edges you know. This matches a mutation only in its literal
+ * `m.<row>.<mutator>()` form, so two shapes slip past:
+ *
+ *   1. HELPER-MEDIATED. A function handed the row as an argument can mutate it
+ *      without the call site naming a mutator at all. Not hypothetical:
+ *      `appendDebugSpareButtons(m.buttonGrp)` does `group.appendChild(...)`, and
+ *      both of its call sites are invisible here. Neither is a bug — both sit
+ *      inside already-bracketed functions (`setupButtons`, `setButtonStates`),
+ *      and both are `#if debug`, compiled out of production and test builds.
+ *   2. LOCAL ALIAS. `grp = m.buttonGrp : grp.removeChild(x)` is not matched.
+ *      ZERO instances in the codebase; the house style is uniformly
+ *      `m.buttonGrp.<mutator>()`.
+ *
+ * Neither is closed, deliberately. (1) needs interprocedural analysis to do
+ * properly; approximating it by flagging "row passed as an argument" false-
+ * positives on read-only helpers — `osdRowSpacing(m.buttonMenuLeft)` is called
+ * from the unbracketed `osdRowGeometry()` — and a false positive on an
+ * ERROR-level gate blocks correct work, which is strictly worse than the false
+ * negative it replaces. (2) is easy but would be machinery for a shape nobody
+ * writes. Both would also add code to a plugin scheduled for deletion (below).
+ * Revisit if a row-mutating helper ever gains a call site outside a bracket.
+ *
  * ⚠️ This plugin is SCAFFOLDING for a design that should not need it. The root
  * cause is that the row's logical content and its physical child list are the
  * same list; a row model with a single render step would delete the bracket and
@@ -71,8 +94,9 @@ const ROW_MUTATORS = new Set([
   'removechildren',
 ]);
 
-// The bracket halves themselves, plus the menu-close helper they call. Exempt
-// because they ARE the bracket.
+// The bracket halves themselves. Exempt because they ARE the bracket — each one
+// legitimately mutates the row without calling the other. The menu-close helper
+// they call needs no exemption: it cancels a dialog and never touches the row.
 const EXEMPT_FUNCTIONS = new Set([UNSPLIT_FN.toLowerCase(), APPLY_FN.toLowerCase()]);
 
 class ButtonRowBracketPlugin {
