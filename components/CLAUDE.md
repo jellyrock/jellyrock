@@ -57,7 +57,9 @@ Roku Scene Graph (RSG) components — XML interface + paired BrighterScript back
 
   ⚠️ **`unobserveField` does not appear to remove an XML `onChange`** — so a field wired that way cannot be detached at teardown, and `unobserveField` returns `true` regardless, which means the return value will not tell you. Treat this as the safe assumption rather than settled platform law: Roku's own docs say the opposite (an `onChange` "is equivalent to calling ... `m.top.ObserveField()`"), and we have only ever exercised current firmware, while the app supports OS 11+. If you need a handler detached, use `observeField`.
 
-  ⚠️ When auditing for this, `observeField\("x"` also matches `unobserveField("x")` — guard with `(?<!un)` or every component that correctly unobserves reads as a false positive.
+  Both halves of this are now build **errors** — [`field-observer-wiring`](../docs/architecture/build-and-tooling.md#convention-plugins) fails the build on a field wired twice (`duplicate-field-observer`) and on an `unobserveField` against a field only an XML `onChange` registers (`ineffective-unobserve`). You should not be able to reintroduce either by hand.
+
+  ⚠️ If you ever audit this with a regex instead, `observeField\("x"` also matches `unobserveField("x")` — guard with `(?<!un)` or every component that correctly unobserves reads as a false positive. The plugin walks the AST and does not have this problem.
 
 ## Showing a dialog
 

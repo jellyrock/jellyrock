@@ -213,6 +213,13 @@ sub init()
   m.buttonGrp.observeField("buttonSelected", "onDetailNavButton")
   m.extrasGrid.observeField("selectedItem", "onExtrasItemSelected")
 
+  ' Registered here rather than as an XML onChange so onDestroy can detach it —
+  ' onItemContentChanged dereferences node references that onDestroy nulls, and an
+  ' XML onChange does not appear to be removable by unobserveField (components/CLAUDE.md).
+  ' Both this screen's own load callbacks (onDetailsLoaded, onRefreshDetailsLoaded)
+  ' write m.top.itemContent, so the handler has live writers until teardown completes.
+  m.top.observeField("itemContent", "onItemContentChanged")
+
   ' A non-navigable extras selection (e.g. a Chapter, a next-up episode) sets
   ' m.top.quickPlayNode; forward it to the QueueManager launcher. onDestroy already
   ' unobserves quickPlayNode.
@@ -4523,7 +4530,8 @@ sub onDestroy()
   ' while the initial load or a refresh is still in flight.
   stopLoadingSpinner()
 
-  ' Unobserve m.top programmatic observer (may or may not be active depending on flow)
+  ' Detach the itemContent observer registered in init(). Must precede the node
+  ' releases below — onItemContentChanged dereferences several of them.
   m.top.unobserveField("itemContent")
 
   ' Unobserve child node observers

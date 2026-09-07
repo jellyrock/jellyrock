@@ -145,7 +145,11 @@
   <interface>
     <field id="itemId" type="string" onChange="onItemIdChanged" />
     <field id="itemType" type="string" />
-    <field id="itemContent" type="node" onChange="onItemContentChanged" />
+    <!-- DELIBERATELY NO onChange: the observer is registered in init() instead, so
+         onDestroy can detach it. An XML onChange does not appear to be removable by
+         unobserveField, and onItemContentChanged dereferences node references that
+         onDestroy nulls, so it must not run after teardown. See components/CLAUDE.md. -->
+    <field id="itemContent" type="node" />
     <field id="trailerAvailable" type="bool" onChange="onTrailerAvailableChanged" value="false" />
     <field id="selectedAudioStreamIndex" type="integer" />
     <field id="selectedVideoStreamId" type="string" />
