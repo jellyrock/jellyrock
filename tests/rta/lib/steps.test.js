@@ -616,7 +616,13 @@ describe('overhangWalkKey — the key is chosen from where focus IS', () => {
 describe('waitHome — the login flow is a separate question, asked first', () => {
   beforeEach(() => {
     getValue.mockReset();
-    getFocusedNode.mockReset();
+    // Re-arm rather than bare-reset: the refusal tests below take the THROW path, which
+    // runs `diagnosedError` -> `captureFailureState` -> its own `getFocusedNode`, and the
+    // capture `.catch()`es the result. A bare `mockReset()` returns undefined and the
+    // diagnostic dies on `.catch` of undefined, replacing the real failure with a mock
+    // artifact. Same coupling the file-level `beforeEach` documents.
+    getFocusedNode.mockReset().mockResolvedValue(null);
+    sendKeypress.mockReset();
   });
 
   it('waits for a routed view BEFORE it ever reads Home rows', async () => {
@@ -655,6 +661,52 @@ describe('waitHome — the login flow is a separate question, asked first', () =
       ([a]) => a.keyPath === 'activeRoutedView.subtype()',
     );
     expect(viewReads.length).toBeGreaterThan(1);
+  });
+
+  it('REFUSES a library grid — the false gate this helper used to be', async () => {
+    // The whole point. Before 2026-09-06 both gates passed from a grid: the view gate only
+    // asked that `subtype()` be non-EMPTY and a grid answers `BaseGridView`, while the rows
+    // gate is scene-rooted and finds Home's rows SUSPENDED in the tree under sgRouter's
+    // `suspendMode: "hide"`. So a Back swallowed by the router reported as an arrival, and
+    // the caller's next step timed out blaming focus one nav later (.178, 2026-09-06).
+    //
+    // Both device answers below are the ones a real grid gives, including the rows read
+    // succeeding — so this fails ONLY because the view is named.
+    getValue.mockImplementation(async ({ keyPath }) =>
+      keyPath === 'activeRoutedView.subtype()'
+        ? { found: true, value: 'BaseGridView' }
+        : { found: true, value: 7 },
+    );
+
+    await expect(waitHome({ viewTimeout: 1 })).rejects.toThrow(/Home to be the active/);
+  });
+
+  it('does not fall through to the rows gate when the app is not on Home', async () => {
+    // Attribution, not just failure: the run must blame the view it is actually on, never
+    // "home rows". A rows read here would mean the helper had gone on to ask a question
+    // whose answer cannot be trusted.
+    const seen = [];
+    getValue.mockImplementation(async ({ base, keyPath }) => {
+      seen.push(`${base}:${keyPath}`);
+      return keyPath === 'activeRoutedView.subtype()'
+        ? { found: true, value: 'BaseGridView' }
+        : { found: true, value: 7 };
+    });
+
+    await expect(waitHome({ viewTimeout: 1 })).rejects.toThrow();
+    expect(seen).not.toContain('scene:#homeRows.content.getChildCount()');
+  });
+
+  it('sends no keys — it detects a lost Back, it does not recover from one', async () => {
+    // Deliberate, and load-bearing. The recovery is a re-pressed Back, which is
+    // destructive off the path to Home: `UserSelect.onKeyEvent` treats Back as CHANGE
+    // SERVER and the coordinator DELETES the saved server. Routing four navs through the
+    // re-pressing `backToHome` was tried on 2026-09-06 and came back signed out on
+    // `SetServerScreen`. 30-odd call sites share this helper; only detection is safe here.
+    getValue.mockImplementation(async () => ({ found: true, value: 'BaseGridView' }));
+
+    await expect(waitHome({ viewTimeout: 1 })).rejects.toThrow();
+    expect(sendKeypress).not.toHaveBeenCalled();
   });
 });
 

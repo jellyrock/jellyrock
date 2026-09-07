@@ -426,17 +426,19 @@ export async function navLibraryByType(collectionType, libraryId = null) {
 /**
  * Leave the current view for Home, and confirm we actually got there.
  *
- * A bare `press(Back)` is not enough and `waitHome()` cannot catch the shortfall.
- * `sgrouter_showView`'s `finally` restores focus BEFORE dispatching `NavigationEnd`, so
- * a key sent in that window is rejected by `_goBack` and swallowed — measured twice on
- * `.178` (see `resendIfSwallowed`, which exists for exactly this). And `waitHome()`
- * cannot tell: its first gate is `activeRoutedView.subtype()` being non-empty, which a
- * grid satisfies, and its second is scene-rooted `#homeRows.content.getChildCount()`,
- * which passes because Home stays in the scene tree under sgRouter's default
- * `suspendMode: "hide"`. So a lost Back sails through both and the caller's next step
- * times out blaming focus.
+ * A bare `press(Back)` is not enough. `sgrouter_showView`'s `finally` restores focus
+ * BEFORE dispatching `NavigationEnd`, so a key sent in that window is rejected by
+ * `_goBack` and swallowed — measured twice on `.178` (see `resendIfSwallowed`, which
+ * exists for exactly this).
  *
- * Gating on the ACTIVE view being Home is the reading that separates them, and
+ * **What is different about this helper is the RECOVERY, not the detection.** `waitHome()`
+ * used to be unable to tell a lost Back from an arrival, and that was the original reason
+ * to reach for this; it no longer is. Its first gate now polls
+ * `activeRoutedView.subtype() === 'Home'`, so a swallowed Back fails there, by name, at
+ * the site that lost it. What `waitHome()` still will not do — deliberately, because it is
+ * shared by 30-odd call sites — is send a key to fix it. This helper does, and that is the
+ * whole of what it adds.
+ *
  * `resendUntilFocusInside` re-sends the key actually owed. It gates on the DESTINATION
  * rather than the origin because the origin is not knowable here — the whole reason we
  * are backing out is that an unexpected library opened, and it may be an `#itemGrid` or
@@ -458,9 +460,12 @@ export async function navLibraryByType(collectionType, libraryId = null) {
  *
  * Tried and reverted 2026-09-06: four navs (`navHomeReturn`, `navSearchReturn`, the two
  * cell sweeps) were routed through here to fix `waitHome()`'s inability to tell a
- * swallowed Back from an arrival. The run came back signed out on `SetServerScreen`. The
- * gate those sites want is the ASSERTION half — poll `activeRoutedView.subtype() ===
- * 'Home'` — WITHOUT this action; the re-press is what cannot be shared.
+ * swallowed Back from an arrival. The run came back signed out on `SetServerScreen`,
+ * because those sites are NOT reached from a grid and the re-press landed on the user
+ * picker. **That need is now met the safe way** — `waitHome()` took the assertion half and
+ * left the action, so every one of those navs detects the shortfall without sending a key.
+ * This helper keeps its single call site: the library-retry path, which only runs after a
+ * wrong grid opened and is therefore the one place the re-press is provably safe.
  */
 async function backToHome(label) {
   await press(ecp.Key.Back);

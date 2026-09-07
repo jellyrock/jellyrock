@@ -569,33 +569,56 @@ export async function waitDialogClosed(label, { timeout = 10000 } = {}) {
  * arrives, is reported as itself instead of as a missing Home. The login phase carries the
  * larger budget because it is the one bound by a remote server rather than by rendering.
  *
- * ## ⚠️ This does NOT prove the app is ON Home — use `backToHome` when that is the question
+ * ## Why the first gate asks for Home BY NAME, and not merely for a mounted view
  *
- * Both gates pass from a library grid. The first only asks that
- * `activeRoutedView.subtype()` be non-EMPTY, and a grid answers `BaseGridView`; the second
- * is scene-rooted, so it finds Home's rows sitting suspended in the tree under sgRouter's
- * default `suspendMode: "hide"`. So this is a gate on "the app is past login and Home's
- * rows exist somewhere", which is what its callers on Home actually want — and it is NOT a
- * gate on having ARRIVED there.
+ * It used to ask only that `activeRoutedView.subtype()` be non-EMPTY, and that made this a
+ * FALSE GATE: a library grid answers `BaseGridView`, which is non-empty, and the second
+ * gate is scene-rooted, so it finds Home's rows sitting suspended in the tree under
+ * sgRouter's default `suspendMode: "hide"`. Both gates therefore passed from a grid, and
+ * this reported "we are on Home" for an app that was not.
  *
- * The distinction has bitten: a Back swallowed by the router (see `resendIfSwallowed`)
- * leaves the app on the grid, sails through both gates, and the caller's NEXT step times
- * out blaming focus one nav later. Observed on `.178` 2026-09-06, where
- * `navCellSweepExtras` reported `focus inside #homeRows` timing out while the failure dump
- * showed the active view was still a `BaseGridView`. `backToHome` in
- * [`lib/nav.js`](nav.js) is the gate for that question: it polls
- * `activeRoutedView.subtype() === 'Home'` and re-sends the Back that was owed.
+ * That bit: a Back swallowed by the router (`sgrouter_showView`'s `finally` restores focus
+ * BEFORE dispatching `NavigationEnd`, so a key sent in that window is rejected by
+ * `_goBack` — see `resendIfSwallowed`) leaves the app on the grid, sailed through both
+ * gates, and the caller's NEXT step timed out blaming focus one nav later. Observed on
+ * `.178` 2026-09-06: `navCellSweepExtras` reported `focus inside #homeRows` timing out
+ * while the failure dump showed the active view was still a `BaseGridView`.
+ *
+ * Naming Home closes it — and `subtype()` is the read that can, because `JRScreen`
+ * publishes `m.global.activeRoutedView = m.top` in both `onViewOpen` and `onViewResume`,
+ * so a resumed Home re-announces itself. Dialogs do NOT disturb it (`JRDialog` extends
+ * `JRGroup`, not `JRScreen`), so a gate placed after dismissing one still reads Home.
+ *
+ * ## ⚠️ It DETECTS a lost Back; it does not RECOVER from one — and that is deliberate
+ *
+ * This helper sends no keys. Detection is all 30-odd call sites can safely share, because
+ * the recovery — re-pressing the owed Back — is destructive off the path to Home:
+ * `UserSelect.onKeyEvent` treats Back as *change server* and the coordinator DELETES the
+ * saved server. Routing four navs through the re-pressing `backToHome` was tried on
+ * 2026-09-06 and came back signed out on `SetServerScreen`; see that helper's JSDoc in
+ * [`lib/nav.js`](nav.js), which is the one site where the re-press is provably safe.
+ *
+ * So a swallowed Back now fails HERE, by name, instead of one nav later — which is the
+ * charter's attribution bar, not a recovery.
+ *
+ * @param {number} [opts.viewTimeout] budget for Home to become the active view. Bounded by
+ *   a remote login rather than by rendering, which is why it is the larger of the two.
+ * @param {number} [opts.rowsTimeout] budget for HomeRows to have content.
+ *
+ * Both are exposed so the hardware-free gate in `steps.test.js` can drive the false-gate
+ * case in milliseconds instead of 45 s. The poll INTERVAL is deliberately not exposed —
+ * tuning intervals is out of scope for this suite (`tests/rta/CLAUDE.md`).
  */
-export async function waitHome() {
-  await waitFor('subtype()', (v) => typeof v === 'string' && v !== '', {
+export async function waitHome({ viewTimeout = 45000, rowsTimeout = 20000 } = {}) {
+  await waitFor('subtype()', (v) => v === 'Home', {
     read: getActiveVal,
-    label: 'app past the login flow (a routed view mounted)',
-    timeout: 45000,
+    label: 'Home to be the active routed view (past the login flow, and actually arrived)',
+    timeout: viewTimeout,
     interval: 500,
   });
   await waitFor('#homeRows.content.getChildCount()', hasChildren, {
     label: 'home rows',
-    timeout: 20000,
+    timeout: rowsTimeout,
   });
 }
 
