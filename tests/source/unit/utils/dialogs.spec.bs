@@ -87,6 +87,56 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("showListDialog — the optional leading icons")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' `icons` is the SIXTH positional parameter, so a caller that miscounts would
+    ' silently hand an array to selectedIndex (or a number to icons) and the rows
+    ' would come out wrong rather than failing. These pin the position.
+    @it("forwards icons onto the dialog, paired with the items")
+    function _()
+      presented = showListDialog("More", ["Delete", "Refresh"], "", 0, -1, ["pkg:/a.png", "pkg:/b.png"])
+
+      content = presented.findNode("content")
+      firstIcon = content.getChild(0).icon
+      secondIcon = content.getChild(1).icon
+      abandonDialog(presented)
+
+      m.assertEqual(firstIcon, "pkg:/a.png")
+      m.assertEqual(secondIcon, "pkg:/b.png")
+    end function
+
+    ' Icons only ever accompany selectedIndex = -1 (an action list marks nothing),
+    ' and that is what leaves the row gutter free for them. Asserted here so the
+    ' two arguments cannot drift into each other.
+    @it("marks no row as current when an action list passes selectedIndex -1")
+    function _()
+      presented = showListDialog("More", ["Delete", "Refresh"], "", 0, -1, ["pkg:/a.png", "pkg:/b.png"])
+
+      content = presented.findNode("content")
+      firstSelected = content.getChild(0).isSelected
+      secondSelected = content.getChild(1).isSelected
+      abandonDialog(presented)
+
+      m.assertFalse(firstSelected)
+      m.assertFalse(secondSelected)
+    end function
+
+    ' Every existing caller — the three playback pickers — omits the argument.
+    @it("builds undecorated rows when the argument is omitted")
+    function _()
+      presented = showListDialog("Select audio", ["English", "Spanish"], "", 0, 1)
+
+      content = presented.findNode("content")
+      firstIcon = content.getChild(0).icon
+      secondSelected = content.getChild(1).isSelected
+      abandonDialog(presented)
+
+      m.assertEqual(firstIcon, "")
+      m.assertTrue(secondSelected, "selectedIndex must still land where it always did")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("cancelOpenDialog vs abandonDialog")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

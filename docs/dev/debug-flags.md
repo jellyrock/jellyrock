@@ -137,6 +137,43 @@ Enforcement is therefore a build step: [`scripts/harden-prod-manifest.js`](../..
 | `shouldForceFiltersFail` | Skips the API call in `GetFiltersTask` and simulates a failure response | Navigate to any library with dynamic filters (e.g., Movies) |
 | `shouldForceFavoriteFail` | Forces the favorite toggle API response to appear failed | Press the favorite button on any `ItemDetails` screen |
 | `shouldForceWatchedFail` | Forces the watched toggle API response to appear failed | Press the watched button on any `ItemDetails` screen |
+| `extraButtonCount` | Appends N spare buttons to the `ItemDetails` and OSD button rows, so the #788 overflow cap and its `More` menu can be reached | Set it, then open any `ItemDetails` screen or the playback OSD (the row is built on open, so re-enter the screen) |
+
+#### `extraButtonCount` — why a count, and why it exists at all
+
+This is the only flag that is not an error injection, and the only one without
+which a feature cannot be seen at all.
+
+Both button rows cap at what fits before the thing to their right — 8 on
+`ItemDetails` (the logo), 10 on the OSD (the pinned playback-info button) — and
+**neither row can reach its cap from real item data**. The busiest `ItemDetails`
+types top out at exactly 8, and the OSD at 7. So the `More` button and its menu
+are unreachable on a device without help.
+
+Reaching even the *boundary* is awkward: the 8th `ItemDetails` button is Trailer,
+and the check behind it is `BuildGetLocalTrailersRequest` — a trailer **file** in
+the library, not a `RemoteTrailers` URL.
+
+It is a count rather than a toggle because the number you need **depends on the
+item**: `More` appears the moment a row exceeds its cap, and how many buttons a
+row already has varies by type (a `Person` may carry 3, a Series with a trailer
+and delete rights carries 8; the OSD carries 4 on a bare live channel and 7 on a
+rich local file).
+
+So work it empirically — the row is built when the screen opens, so change the
+flag and then **re-enter the screen**:
+
+- **`8` overflows both surfaces for every item type**, which is the value to use
+  if you just want to see `More` and the menu.
+- To find the **boundary** instead — a full row sitting exactly at its cap with
+  no `More` — lower the value one at a time until `More` disappears. The last
+  value that still showed it is one past the cap.
+- Raise it to lengthen the menu; past 8 rows the list scrolls, which is worth
+  seeing at least once.
+
+The spare buttons carry a label and an icon so the row — and the menu rows they
+become — look the way they would with genuine content. They do nothing when
+pressed.
 
 ---
 

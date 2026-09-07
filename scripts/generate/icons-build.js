@@ -50,11 +50,20 @@
 //
 // Run modes:
 //   node scripts/generate/icons-build.js           → write (default)
-//   node scripts/generate/icons-build.js --check   → fail on drift (CI)
+//   node scripts/generate/icons-build.js --check   → fail on drift
+//   node scripts/generate/icons-build.js --force   → rewrite every PNG
 //
 // npm scripts:
 //   icons:build        → regenerate (write mode)
-//   icons:check        → drift check (used by pre-push hook + CI)
+//   icons:check        → drift check (pre-push hook + the test-scripts workflow,
+//                        via icons-build.test.js's repo drift gate)
+//
+// --force exists because write mode leaves a pixel-identical PNG alone, which is
+// what stops a rebuild on one machine churning every committed asset for the next
+// contributor. The cost of that is the committed bytes freeze at whatever encoder
+// wrote them, so a future sharp that compresses better would never be adopted.
+// --force is the deliberate way to take it — and it must stay deliberate, because
+// an unconditional rewrite is exactly the churn the pixel compare exists to stop.
 //
 // Pre-push hook integration: when `resources/icons/*.svg` or
 // `resources/icons/icons.json` or this script changes, the hook runs the
@@ -64,6 +73,7 @@ import { readdirSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 
 import { join, dirname, basename, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
+import { matchesRenderedOutput } from '../lib/png-compare.js';
 
 // ────────────────────────────────────────────────────────────────────
 
@@ -71,6 +81,9 @@ const args = process.argv.slice(2);
 const positional = args.filter((a) => !a.startsWith('--'));
 const ROOT_DIR = positional[0] || '.';
 const CHECK_MODE = args.includes('--check');
+// Rewrite every output even when it already matches, to re-encode with the
+// current sharp. Ignored in --check mode, which never writes.
+const REWRITE_ALL = args.includes('--force') && !CHECK_MODE;
 
 const SVG_DIR = join(ROOT_DIR, 'resources/icons');
 const DEFAULT_OUTPUT_DIR = 'images/icons';
@@ -85,9 +98,12 @@ const DEFAULT_GLYPH_SIZE = 54;
 // downsample. Higher = sharper glyph silhouette + slightly slower build.
 const RENDER_DENSITY_PX = 256;
 
-// Sharp render config — locked for deterministic byte-identical output across
-// runs given a fixed sharp version. Drift detection in --check mode relies on
-// this; CI must use the same sharp version (devDependency is exact-pinned).
+// Sharp render config. Locked so a given SVG renders to the same IMAGE every
+// time — not to the same bytes: sharp's prebuilt binary bundles its own libvips
+// (and zlib), so the PNG encoder's output varies with the sharp build even at a
+// pinned version. Drift detection therefore compares decoded PIXELS, never raw
+// bytes — see scripts/lib/png-compare.js for what that cost the repo when it
+// did compare bytes.
 const PNG_OPTIONS = {
   compressionLevel: 9,
   palette: false,
@@ -311,12 +327,9 @@ async function main() {
     }
     for (const { path: outPath, buffer, canvas, glyph } of outputs) {
       const exists = existsSync(outPath);
-      if (exists) {
-        const existing = readFileSync(outPath);
-        if (existing.equals(buffer)) {
-          unchangedCount++;
-          continue;
-        }
+      if (exists && !REWRITE_ALL && (await matchesRenderedOutput(readFileSync(outPath), buffer))) {
+        unchangedCount++;
+        continue;
       }
       if (CHECK_MODE) {
         driftPaths.push({

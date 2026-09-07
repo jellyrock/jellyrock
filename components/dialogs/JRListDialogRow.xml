@@ -34,6 +34,19 @@
     <!-- White source asset: blendColor MULTIPLIES, so a white glyph takes the
          tint exactly. check-black would stay black whatever colour we asked for. -->
     <Poster id="checkIcon" visible="false" />
+
+    <!-- Optional LEADING icon, in the same gutter as the check and never at the
+         same time as it. An overflow menu ("More") carries the glyph each row's
+         button was already wearing, so the icon the user learned in the button
+         row is the icon they recognise in the menu.
+
+         It is NOT a state marker, so it takes colorTextPrimary rather than the
+         check's colorSecondary — it reads as part of the label, which is what it
+         is. Sized to the SLOT (LIST_ROW_ICON_SIZE) rather than 1:1 with its
+         source: these are 64px button icons being reused, so this is always a
+         downscale, which is the safe direction. -->
+    <Poster id="rowIcon" visible="false" />
+
     <LabelPrimaryMedium id="rowLabel" horizAlign="left" vertAlign="center" />
   </children>
   <interface>

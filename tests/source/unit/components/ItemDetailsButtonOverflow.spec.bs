@@ -1,0 +1,382 @@
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/buttonOverflow.bs"
+import "pkg:/source/utils/translate.bs"
+
+namespace tests
+
+  ' The overflow split is NOT reachable through real item data: the busiest item
+  ' types (Series, Season, Episode, MusicAlbum with a trailer and delete rights)
+  ' reach exactly 8 buttons against a cap of 8. So this suite is the only thing
+  ' that exercises it until someone adds the ninth button — which is the whole
+  ' reason it exists, and why it drives the REAL production path rather than
+  ' reaching for the internals.
+  '
+  ' `trailerAvailable` is that path: it is a public interface field whose observer
+  ' is one of the nine row mutators, so setting it runs the genuine
+  ' unsplit -> mutate -> applyOverflow bracket.
+  @suite("ItemDetails - button row overflow")
+  class ItemDetailsButtonOverflowTests extends tests.BaseTestSuite
+
+    private itemDetails as object
+    private buttonGrp as object
+    private stash as object
+    private mountedIn as object
+
+    ' beforeEach, not setup: every test mutates the row (tests/CLAUDE.md).
+    protected override sub beforeEach()
+      super.beforeEach()
+
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+
+      m.itemDetails = CreateObject("roSGNode", "ItemDetails")
+      m.buttonGrp = m.itemDetails.findNode("buttons")
+      m.stash = m.itemDetails.findNode("buttonOverflow")
+    end sub
+
+    protected override sub afterEach()
+      ' Only the focus/menu tests mount; the rest run detached exactly as before.
+      if isValid(m.mountedIn)
+        m.mountedIn.removeChild(m.itemDetails)
+        m.mountedIn = invalid
+      end if
+      m.stash = invalid
+      m.buttonGrp = invalid
+      m.itemDetails = invalid
+      super.afterEach()
+    end sub
+
+    ' Put the screen in the scene and give the row real focus.
+    '
+    ' Needed because the bugs these tests cover are invisible to a detached node:
+    ' isInFocusChain() and hasFocus() are both false off-tree, so a detached
+    ' assertion passes whether or not focus survives. It is also what makes
+    ' appScene() (m.top.getScene()) resolve, which openMoreMenu depends on.
+    private sub mountAndFocusRow(focusIndex as integer)
+      m.mountedIn = m.top.getScene()
+      m.mountedIn.appendChild(m.itemDetails)
+      m.buttonGrp.visible = true
+      m.buttonGrp.setFocus(true)
+      m.buttonGrp.getChild(focusIndex).setFocus(true)
+      m.buttonGrp.buttonFocused = focusIndex
+    end sub
+
+    private function focusedRowId() as string
+      for i = 0 to m.buttonGrp.getChildCount() - 1
+        if m.buttonGrp.getChild(i).hasFocus() then return m.buttonGrp.getChild(i).id
+      end for
+      return "<nothing focused>"
+    end function
+
+    ' Stand-ins for the buttons a future item type will carry. Ids are positional so
+    ' the assertions can state WHICH buttons moved, not just how many.
+    private sub fillRow(count as integer)
+      for i = 0 to count - 1
+        button = CreateObject("roSGNode", "IconButton")
+        button.id = "btn" + stri(i).trim()
+        button.text = "Button " + stri(i).trim()
+        button.icon = "pkg:/images/icons/refresh_$$RES$$.png"
+        m.buttonGrp.appendChild(button)
+      end for
+    end sub
+
+    ' Fire onTrailerAvailableChanged twice. The round trip adds a trailer button and
+    ' takes it away again, so the row ends at the count fillRow() produced — but it
+    ' has been through the full bracket in both directions.
+    private sub settleRow()
+      m.itemDetails.trailerAvailable = true
+      m.itemDetails.trailerAvailable = false
+    end sub
+
+    private function rowIds() as object
+      ids = []
+      for i = 0 to m.buttonGrp.getChildCount() - 1
+        ids.push(m.buttonGrp.getChild(i).id)
+      end for
+      return ids
+    end function
+
+    private function stashIds() as object
+      ids = []
+      for i = 0 to m.stash.getChildCount() - 1
+        ids.push(m.stash.getChild(i).id)
+      end for
+      return ids
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the cap is a ceiling, not a quota")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' 8 is what the geometry yields (row origin 90, spacing 18, 136-wide buttons,
+    ' stopping before the logo's leftmost edge at 1824 - 500). Asserted through
+    ' behaviour rather than by calling the arithmetic, so this fails if the row's
+    ' translation or spacing changes without the cap following.
+    @it("shows all 8 buttons with no More button")
+    function _()
+      m.fillRow(8)
+      m.settleRow()
+
+      m.assertEqual(m.buttonGrp.getChildCount(), 8)
+      m.assertInvalid(m.buttonGrp.findNode("moreButton"))
+      m.assertEqual(m.stash.getChildCount(), 0)
+    end function
+
+    @it("spends the last slot on More at 9")
+    function _()
+      m.fillRow(9)
+      m.settleRow()
+
+      m.assertEqual(m.rowIds(), ["btn0", "btn1", "btn2", "btn3", "btn4", "btn5", "btn6", "moreButton"])
+      m.assertEqual(m.stashIds(), ["btn7", "btn8"])
+    end function
+
+    @it("keeps the visible count fixed however far past the cap the row goes")
+    function _()
+      m.fillRow(12)
+      m.settleRow()
+
+      m.assertEqual(m.rowIds(), ["btn0", "btn1", "btn2", "btn3", "btn4", "btn5", "btn6", "moreButton"])
+      m.assertEqual(m.stashIds(), ["btn7", "btn8", "btn9", "btn10", "btn11"])
+    end function
+
+    @it("never leaves a single button in the menu")
+    function _()
+      m.fillRow(9)
+      m.settleRow()
+
+      m.assertTrue(m.stash.getChildCount() >= 2)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the More button")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is labelled and iconed from the shared asset and translation")
+    function _()
+      m.fillRow(9)
+      m.settleRow()
+
+      moreButton = m.buttonGrp.findNode("moreButton")
+      m.assertNotInvalid(moreButton)
+      m.assertEqual(moreButton.text, translate(translationKeys.ButtonMore))
+      m.assertEqual(moreButton.icon, "pkg:/images/icons/more_horiz_$$RES$$.png")
+    end function
+
+    @it("is always the LAST button in the row")
+    function _()
+      m.fillRow(11)
+      m.settleRow()
+
+      m.assertEqual(m.buttonGrp.getChild(m.buttonGrp.getChildCount() - 1).id, "moreButton")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("stashed buttons stay reachable")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' This is the property the whole off-layout-stash design exists for. Nine places
+    ' in ItemDetails.bs look a button up by id after the row is built; if the stash
+    ' left the node tree, every one of them would answer invalid on a split row.
+    @it("resolves an overflowed button through the screen's findNode")
+    function _()
+      m.fillRow(12)
+      m.settleRow()
+
+      m.assertInvalid(m.buttonGrp.findNode("btn11"), "it has left the ROW")
+      m.assertNotInvalid(m.itemDetails.findNode("btn11"), "but not the node tree")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the split is re-derived, never accumulated")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is idempotent - settling twice changes nothing")
+    function _()
+      m.fillRow(10)
+      m.settleRow()
+      rowAfterFirst = m.rowIds()
+      stashAfterFirst = m.stashIds()
+
+      m.settleRow()
+
+      m.assertEqual(m.rowIds(), rowAfterFirst)
+      m.assertEqual(m.stashIds(), stashAfterFirst)
+    end function
+
+    ' The unsplit half: a mutator that ADDS a button must see the whole row, and the
+    ' re-split must put the new button in its ordered place rather than appending it
+    ' after the ones already stashed.
+    @it("restores the whole row before a mutation, so a new button lands in order")
+    function _()
+      m.fillRow(9)
+      m.settleRow()
+      m.assertEqual(m.stashIds(), ["btn7", "btn8"])
+
+      ' Leaves the trailer button in place this time: it is appended to the END of
+      ' the restored row, so it must come after btn8 in the menu.
+      m.itemDetails.trailerAvailable = true
+
+      m.assertEqual(m.rowIds(), ["btn0", "btn1", "btn2", "btn3", "btn4", "btn5", "btn6", "moreButton"])
+      m.assertEqual(m.stashIds(), ["btn7", "btn8", "trailerButton"])
+    end function
+
+    @it("collapses back to a whole row when the count drops below the cap")
+    function _()
+      m.fillRow(8)
+      m.itemDetails.trailerAvailable = true
+      m.assertNotInvalid(m.buttonGrp.findNode("moreButton"), "9 buttons must overflow")
+
+      ' Removing the trailer takes it back to 8, which fits.
+      m.itemDetails.trailerAvailable = false
+
+      m.assertEqual(m.buttonGrp.getChildCount(), 8)
+      m.assertInvalid(m.buttonGrp.findNode("moreButton"))
+      m.assertEqual(m.stash.getChildCount(), 0)
+      m.assertEqual(m.rowIds(), ["btn0", "btn1", "btn2", "btn3", "btn4", "btn5", "btn6", "btn7"])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("focus survives the split")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps the index on the same button when it stays visible")
+    function _()
+      m.fillRow(12)
+      m.buttonGrp.buttonFocused = 2
+      focusedBefore = m.buttonGrp.getChild(2)
+
+      m.settleRow()
+
+      m.assertEqual(m.buttonGrp.buttonFocused, 2)
+      m.assertTrue(focusedBefore.isSameNode(m.buttonGrp.getChild(m.buttonGrp.buttonFocused)))
+    end function
+
+    ' Focus cannot follow a button into the menu, so it follows it to the affordance
+    ' that now stands in for it. Landing back on index 0 would silently throw the
+    ' user to the other end of the row.
+    @it("hands focus to More when the focused button moves into the menu")
+    function _()
+      m.fillRow(12)
+      m.buttonGrp.buttonFocused = 10
+
+      m.settleRow()
+
+      m.assertEqual(m.buttonGrp.getChild(m.buttonGrp.buttonFocused).id, "moreButton")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("focus survives the split ON A MOUNTED SCREEN")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The tests above assert the focus INDEX. These assert that a node actually
+    ' holds focus, which is a different property and the one that broke.
+    '
+    ' Detaching the focused child nulls out focus for the ENTIRE tree, so the
+    ' original code's `if group.isInFocusChain()` — read AFTER the detach — always
+    ' answered false and skipped its own restore. Measured on an Ultra before the
+    ' fix: buttonFocused was correct, and no node in the scene held focus, so the
+    ' screen stopped responding to the remote entirely. Both triggers are gated
+    ' here because they break by different routes: More is detached by the restore
+    ' half, a spilling button by the split half.
+
+    @it("keeps a node focused when the row re-derives with More focused")
+    function _()
+      m.fillRow(9)
+      m.settleRow()
+      moreIndex = m.buttonGrp.getChildCount() - 1
+      m.assertEqual(m.buttonGrp.getChild(moreIndex).id, "moreButton")
+
+      m.mountAndFocusRow(moreIndex)
+      m.assertTrue(m.buttonGrp.isInFocusChain(), "precondition: the row holds focus")
+
+      ' A row mutation through the real bracket, exactly as an async load does.
+      m.itemDetails.trailerAvailable = true
+
+      m.assertTrue(m.itemDetails.isInFocusChain(), "the screen must not go deaf")
+      m.assertTrue(m.buttonGrp.isInFocusChain(), "the row must still hold focus")
+      m.assertNotEqual(m.focusedRowId(), "<nothing focused>", "some button must hold focus")
+    end function
+
+    @it("keeps a node focused when the focused button spills into the menu")
+    function _()
+      m.fillRow(8)
+      m.settleRow()
+      m.assertInvalid(m.buttonGrp.findNode("moreButton"), "precondition: 8 of 8 does not overflow")
+
+      m.mountAndFocusRow(7)
+
+      ' Growing past the cap pushes the focused button into the stash.
+      m.itemDetails.trailerAvailable = true
+
+      m.assertTrue(m.itemDetails.isInFocusChain(), "the screen must not go deaf")
+      m.assertEqual(m.focusedRowId(), "moreButton", "More stands in for the button that left")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the More button keeps its identity")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' An open menu holds this node as its returnFocusTo, so a fresh one each
+    ' re-derive would leave the dialog restoring focus to an orphan. Re-looking it
+    ' up in the ROW cannot work: the nine mutators call unsplitButtons() before they
+    ' mutate, so it has already left the row by the time the split runs. The stash
+    ' holds custody instead, and this asserts node identity rather than presence —
+    ' the previous implementation passed a presence check while failing this.
+    @it("puts the SAME node back after a row mutation, not a fresh one")
+    function _()
+      m.fillRow(9)
+      m.settleRow()
+      before = m.buttonGrp.findNode("moreButton")
+      m.assertNotInvalid(before)
+
+      m.itemDetails.trailerAvailable = true
+
+      after = m.buttonGrp.findNode("moreButton")
+      m.assertNotInvalid(after)
+      m.assertTrue(before.isSameNode(after), "More must survive the re-derive as one node")
+    end function
+
+    @it("keeps that identity across a full setupButtons rebuild")
+    function _()
+      m.fillRow(9)
+      m.settleRow()
+      before = m.buttonGrp.findNode("moreButton")
+
+      m.itemDetails.trailerAvailable = true
+      m.itemDetails.trailerAvailable = false
+      m.itemDetails.trailerAvailable = true
+
+      m.assertTrue(before.isSameNode(m.buttonGrp.findNode("moreButton")))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("an open More menu does not outlive the row it describes")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Cancelled at the TOP of the bracket, while More is still attached, so the
+    ' dialog's returnFocusTo is still a live node. Cancelling afterwards would be a
+    ' race against the orphan this avoids.
+    @it("closes the menu when the row re-derives beneath it")
+    function _()
+      m.fillRow(9)
+      m.settleRow()
+      moreIndex = m.buttonGrp.getChildCount() - 1
+      m.mountAndFocusRow(moreIndex)
+
+      ' The production route: the group publishes the pressed index, which is what
+      ' onDetailNavButton observes.
+      m.buttonGrp.buttonSelected = moreIndex
+      m.assertNotInvalid(m.mountedIn.findNode("jrDialog"), "precondition: the menu opened")
+
+      m.itemDetails.trailerAvailable = true
+
+      m.assertInvalid(m.mountedIn.findNode("jrDialog"), "the menu must close with the row")
+      m.assertTrue(m.itemDetails.isInFocusChain(), "and focus must come back to the screen")
+    end function
+
+  end class
+
+end namespace

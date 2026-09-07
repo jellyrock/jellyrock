@@ -13,7 +13,7 @@ related-files:
   - source/utils/dialogs.bs
   - source/replayRoute.bs
   - source/loginRouter.bs
-last-reviewed: 2026-09-01
+last-reviewed: 2026-09-04
 ---
 
 # Navigation (sgRouter)
@@ -286,7 +286,7 @@ global to cross-fire (the failure mode of `SceneManager.returnData`).
 | Helper | Component | Presentation |
 |---|---|---|
 | `showAlertDialog` / `showConfirmDialog` / `showChoiceDialog` | `JRDialog` | Scene-appended overlay (`OverviewDialog` mechanics). `showAlertDialog` takes an optional SECONDARY button beside OK (`result.buttonIndex` 1) — for an action that does not leave the alert's subject, like `[Details]` on a playback error. Two *answers* to a question are `showConfirmDialog` |
-| `showListDialog` | `JRListDialog` | Scene-appended overlay |
+| `showListDialog` | `JRListDialog` | Scene-appended overlay. Takes an optional `icons` array paired with `items` — a leading glyph per row, for ACTION lists (a `More` overflow menu) rather than pickers, which use that gutter for the current-option check |
 | `showInfoDialog` | `OverviewDialog` | Scene-appended overlay |
 | `showReportDialog` | `OverviewDialog` | Scene-appended overlay; structured label/value body instead of a paragraph, and **re-settable** — see below |
 | `showQuickConnectDialog` | `QuickConnectDialog` | Scene-appended overlay |

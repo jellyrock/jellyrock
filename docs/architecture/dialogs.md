@@ -18,7 +18,7 @@ related-files:
   - source/utils/dialogKeys.bs
   - source/utils/dialogResult.bs
   - source/utils/dialogNarration.bs
-last-reviewed: 2026-09-02
+last-reviewed: 2026-09-04
 ---
 
 # The dialog family
@@ -80,6 +80,64 @@ part that could not be checked without a device, and it was the part that drifte
 **Never re-derive a gap, an offset or the ceiling in a component.** If you find
 yourself adding an offset, the answer is a new field on the layout, not arithmetic
 at the call site.
+
+#### Placement: centered, or anchored to something
+
+The flow above is the panel's *inside*. Where the panel goes is the same
+function's job, and there are exactly two answers:
+
+| `anchor` | Placement | Used by |
+|---|---|---|
+| omitted | Centered on screen | Every dialog in the family |
+| `{ x, y, width }` | **Left**-aligned to the anchor where it fits, **right**-aligned where it does not, grown **upward** from `anchor.y` | The `More` overflow menus (#788) |
+
+Anchoring exists because a centered panel is the one geometry guaranteed to cover
+both the button row a menu belongs to *and* the metadata column beside it — on
+`ItemDetails` the row is at `y=800` and the title, date and stream info are all
+left of x≈500, so a `900px` centered panel sits on top of every one of them. A
+narrow panel anchored to the `More` button covers backdrop art instead.
+
+**The side is derived, never assigned.** Placement is preferred-plus-fallback,
+the way an anchored menu is normally positioned: left-aligned is preferred, so
+the menu opens under the button that spawned it in the direction the eye is
+already moving; it flips to right-aligned only when the panel would not clear
+the right margin. The fallback earns its keep because both callers anchor to the
+*last* button of a left-to-right row, which sits near the right edge:
+
+| Surface | `More` at | Room rightward | Room leftward |
+|---|---|---|---|
+| `ItemDetails` | x 1168 | `704px` | `1256px` |
+| OSD | x 1530 | `342px` | `1618px` |
+
+So every menu either surface builds today opens leftward under its button, and
+only a wide one — a long translation, a longer label set — flips to where the
+room actually is. The two surfaces can end up on different sides, and that is the
+rule working rather than an inconsistency: the side is a consequence of where the
+anchor sits, so nobody has to decide it per surface, and nobody can get it wrong
+for a third one.
+
+The flip is content-dependent, so a surface whose labels grow can change sides
+between builds. That is the standard behavior for anchored menus and it is what
+keeps them on screen; deciding from anchor position alone would be stable but
+would put every menu on the same side regardless of whether it fit.
+
+Two consequences worth knowing before adding a third caller:
+
+- **The ceiling moves with the anchor.** An anchored panel may only occupy the
+  band between the top margin and `ANCHOR_GAP` above its anchor, so it overflows
+  sooner than a centered one. It reports that through the same `overflows` field,
+  which is why `JRListDialog` needed no new overflow handling — the
+  existing loop that drops rows and lays out again already reacts to it.
+- **Upward is an observation, not a law.** Both current callers put their row near
+  the bottom of the screen. A row near the top would need a downward variant, and
+  it belongs in `computeDialogLayout` beside the horizontal flip — not as a second
+  placement mode somewhere else.
+
+Build the anchor with `moreButtonAnchor()` (`source/utils/buttonOverflow.bs`)
+rather than measuring the rendered button. It derives the slot from the same
+arithmetic that produced the cap, so the anchor cannot drift from the button it
+points at, it needs no local-to-screen coordinate conversion, and it answers
+before the row has laid out.
 
 ### 3. The footer flows INSIDE the panel
 
@@ -147,6 +205,29 @@ Two things follow from it:
   which pass it is in. `wideLabels` picks the wider of two constants for rows whose
   labels are Jellyfin reason codes.
 
+#### A list row's gutter holds ONE thing
+
+`JRListDialogRow` reserves a fixed `36px` slot (`LIST_ROW_ICON_SIZE`, inside
+`LIST_ROW_CHECK_GUTTER`) on **every** row, so the labels line up whether or not a
+row is marked. Two things can want that slot, and they never share it:
+
+| Occupant | Set by | Color | For |
+|---|---|---|---|
+| the current-option check | `selectedIndex` | `colorSecondary` — a state marker | a picker (audio, subtitles, video source) |
+| a leading action icon | the optional `icons` array | `colorTextPrimary` — label content, not state | an ACTION list, e.g. a `More` overflow menu |
+
+The two are mutually exclusive *by construction* — an action list passes
+`selectedIndex = -1`, so nothing is ever checked — but the row states which one
+draws rather than relying on that, because "cannot happen" is not a layout rule and
+the alternative is two posters stacked in the same `36px` slot.
+
+`icons` is a **parallel array positionally paired with `items`**, deliberately not a
+richer `items` shape: `items` is a plain string array that three playback pickers
+already pass, and a parallel field is additive where a union type is a contract
+change. It carries no `onChange`, so callers set it **before** `items` — the same
+ordering `defaultIndex` and `selectedIndex` already rely on, since `items` is the
+field that triggers the row build. A short array simply leaves later rows without one.
+
 ### 5. A dialog has exactly ONE class of focusable thing
 
 Buttons, or rows, or a scroll area plus its dismiss button. Not a mixture. This is
@@ -212,6 +293,13 @@ file-scoped constant — two constants with no compiler relationship will drift.
 
 Full helper table and the result contract:
 [`navigation.md`](./navigation.md#the-standard-dialog-system-sourceutilsdialogsbs).
+
+`showOverflowMenu` is worth calling out because it looks like a new surface and is
+not: it presents the **same** `JRListDialog` — same chrome, same key model, same
+result contract, same specs — with three presentation fields set (`anchor`,
+`sizeToContent`, `titleVisible = false`). Reach for it for a `More` menu hanging
+off a button; reach for `showListDialog` for everything else. If you need a fourth
+difference, add a field to `JRListDialog`, not a second component.
 
 Four rules that bite:
 

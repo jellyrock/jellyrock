@@ -16,9 +16,19 @@ const CHECK_ICON_SIZE = 35
 sub init()
   m.selectedBackground = m.top.findNode("selectedBackground")
   m.checkIcon = m.top.findNode("checkIcon")
+  m.rowIcon = m.top.findNode("rowIcon")
   m.rowLabel = m.top.findNode("rowLabel")
 
   constants = m.global.constants
+
+  ' The leading icon fills the gutter's slot. colorTextPrimary, NOT the check's
+  ' colorSecondary: it labels the row, it does not mark a state.
+  m.rowIcon.width = LIST_ROW_ICON_SIZE
+  m.rowIcon.height = LIST_ROW_ICON_SIZE
+  m.rowIcon.loadWidth = LIST_ROW_ICON_SIZE
+  m.rowIcon.loadHeight = LIST_ROW_ICON_SIZE
+  m.rowIcon.loadDisplayMode = "limitSize"
+  m.rowIcon.blendColor = constants.colorTextPrimary
   m.selectedBackground.blendColor = constants.colorBackgroundSecondary
   ' Sized 1:1 with the source bitmap so it renders crisp at native resolution,
   ' the same way the app's other inline icons are declared.
@@ -50,6 +60,15 @@ sub onItemContentChanged()
   m.checkIcon.visible = isSelected
   m.selectedBackground.visible = isSelected
 
+  ' One gutter, two possible occupants, and the check always wins. They cannot
+  ' co-occur in practice — a picker marks a current option and carries no icons,
+  ' an action list carries icons and marks nothing (selectedIndex = -1) — but
+  ' "cannot happen" is not a layout rule, so this states which one draws rather
+  ' than letting two posters stack in the same 36px slot.
+  iconUri = isValid(content.icon) ? content.icon : ""
+  m.rowIcon.uri = iconUri
+  m.rowIcon.visible = iconUri <> "" and not isSelected
+
   ' The LABEL stays colorTextPrimary either way. Recolouring it to match the
   ' check was tried and read as too much contrast on device once the surface
   ' landed: three simultaneous treatments on one row is louder than the state
@@ -76,6 +95,7 @@ sub layoutRow()
   m.selectedBackground.height = rowHeight
 
   m.checkIcon.translation = [LIST_ROW_PADDING, int((rowHeight - CHECK_ICON_SIZE) / 2)]
+  m.rowIcon.translation = [LIST_ROW_PADDING, int((rowHeight - LIST_ROW_ICON_SIZE) / 2)]
 
   m.rowLabel.translation = [LIST_ROW_CHECK_GUTTER, 0]
   m.rowLabel.width = rowWidth - LIST_ROW_CHECK_GUTTER - LIST_ROW_PADDING

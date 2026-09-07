@@ -1,9 +1,13 @@
 import "pkg:/source/utils/misc.bs"
+' The width metrics (ICON_BUTTON_PADDING / ICON_BUTTON_TEXT_EXTENSION /
+' ICON_BUTTON_ICON_SIZE and the two width functions) live in buttonOverflow.bs
+' because the row-overflow budget has to agree with what this file renders. Two
+' copies of "how wide is an IconButton" is how a cap silently stops matching the
+' thing it caps. See that file's header for the surfaces that depend on it.
+import "pkg:/source/utils/buttonOverflow.bs"
 
 const focusBorderOffset = 6 ' Used for positioning calculations only (matches 6px border in 9-patch image); does NOT control actual border rendering
-const textExtension = 12 ' Text extends 6px on each side to prevent label wrapping
 const spinnerSize = 42 ' Spinner rendered smaller than 64px icon frame — icons have transparent padding so this matches the visible icon area
-const defaultIconSize = 64 ' Default icon dimensions used for layout when icon hasn't loaded yet
 
 ' LAYOUT NOTE FOR DEVELOPERS:
 ' IconButton text extends 12px wider than the button (6px on each side) to prevent label wrapping.
@@ -115,12 +119,15 @@ sub setIconSize()
     iconWidth = m.buttonIcon.bitmapWidth
     iconHeight = m.buttonIcon.bitmapHeight
 
-    paddingPixels = 15
-    m.buttonBackground.width = iconWidth + (paddingPixels * 4) ' extra horiz padding for text
-    m.buttonBackground.height = iconHeight + (paddingPixels * 2)
+    ' Width goes through the shared function because the row-overflow cap is
+    ' computed from it; height does not, so it only shares the constant.
+    ' int() because bitmapWidth is a float field and the metric is in whole
+    ' design-space pixels — our icon assets are square whole numbers.
+    m.buttonBackground.width = iconButtonBackgroundWidth(int(iconWidth)) ' extra horiz padding for text
+    m.buttonBackground.height = iconHeight + (ICON_BUTTON_PADDING * 2)
 
     ' Position icon centered in button background
-    buttonOffset = textExtension / 2
+    buttonOffset = ICON_BUTTON_TEXT_EXTENSION / 2
     m.buttonIcon.translation = [buttonOffset + ((m.buttonBackground.width - iconWidth) / 2), ((m.buttonBackground.height - iconHeight) / 2)]
 
     ' Update button and text positioning using shared method
@@ -158,18 +165,18 @@ sub onSelectedChanged()
   end if
 end sub
 
-' Updates button and text positioning based on textExtension constant
+' Updates button and text positioning based on ICON_BUTTON_TEXT_EXTENSION constant
 ' This centers button elements under the wider text label
 sub updateButtonPositioning()
   ' Calculate offset to center button elements under wider text
-  buttonOffset = textExtension / 2
+  buttonOffset = ICON_BUTTON_TEXT_EXTENSION / 2
 
   ' Shift button elements to the right to center them under the wider text
   m.buttonBackground.translation = [buttonOffset, 0]
   m.buttonBorder.translation = [buttonOffset, 0]
 
   ' Text positioned at 0, extends equally on both sides
-  m.buttonText.width = m.buttonBackground.width + textExtension
+  m.buttonText.width = m.buttonBackground.width + ICON_BUTTON_TEXT_EXTENSION
   m.buttonText.translation = [0, m.buttonBackground.height + (focusBorderOffset * 2)]
 end sub
 
@@ -197,9 +204,8 @@ sub onLoadingChanged()
 
     ' If icon hasn't loaded yet, the background has no dimensions — apply default layout
     if m.buttonBackground.width < 1
-      paddingPixels = 15
-      btnWidth = defaultIconSize + (paddingPixels * 4)
-      btnHeight = defaultIconSize + (paddingPixels * 2)
+      btnWidth = iconButtonBackgroundWidth(ICON_BUTTON_ICON_SIZE)
+      btnHeight = ICON_BUTTON_ICON_SIZE + (ICON_BUTTON_PADDING * 2)
       m.buttonBackground.width = btnWidth
       m.buttonBackground.height = btnHeight
       m.buttonBorder.width = btnWidth
@@ -208,7 +214,7 @@ sub onLoadingChanged()
     end if
 
     ' Center spinner in button background
-    buttonOffset = textExtension / 2
+    buttonOffset = ICON_BUTTON_TEXT_EXTENSION / 2
     m.buttonSpinner.translation = [
       buttonOffset + (m.buttonBackground.width - spinnerSize) / 2,
       (m.buttonBackground.height - spinnerSize) / 2

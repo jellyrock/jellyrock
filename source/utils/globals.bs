@@ -171,6 +171,7 @@ sub setGlobalNodes()
     print "[DEBUG]   m.global.debug.shouldForceFiltersFail = true"
     print "[DEBUG]   m.global.debug.shouldForceFavoriteFail = true"
     print "[DEBUG]   m.global.debug.shouldForceWatchedFail = true"
+    print "[DEBUG]   m.global.debug.extraButtonCount = 3"
 
     ' Task-thread ledger — every node launchTask() has started, so the live
     ' thread count can be derived from each node's `state`. Debug builds only;
