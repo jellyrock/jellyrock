@@ -62,6 +62,7 @@ api-patterns
 APIs
 arg
 args
+argv
 assignees
 AST
 async
@@ -735,6 +736,7 @@ v2
 V2
 v2\.0
 v3
+v4
 validator
 validators
 vendored

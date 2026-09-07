@@ -534,6 +534,29 @@ describe('the run lifecycle — where a run s records actually land', () => {
       expect(ledger(runsLedgerPath())[0].variant).toBe('test:rta');
     });
 
+    it('records what the run FORWARDED to its test runner, which variant cannot say', async () => {
+      // `rta-run.js` forwards its passthrough to Vitest, so a `-t` run appends a line
+      // identical in every other filter key to a full suite. Hit live 2026-08-12:
+      // three targeted single-screen runs each wrote a line `flake-baseline` would
+      // have counted as a clean sample.
+      const { beginRun, readRuns: ledger, runsLedgerPath } = await fresh();
+      beginRun({ lock: LOCK, run: 'test:rta', runnerArgs: ['-t', 'moviesLibraryGenres'] }).close();
+      expect(ledger(runsLedgerPath())[0].runnerArgs).toEqual(['-t', 'moviesLibraryGenres']);
+    });
+
+    it('always emits the key, as `[]`, for a run that forwarded nothing', async () => {
+      // A SELECTION key, so it follows the four around it and NOT the "omitted when
+      // empty" rule `assertions` / `recoveries` / `fixture` use. `[]` is a positive
+      // statement — this run declared no filter — where an absent key would mean
+      // "written before this existed", and a key that vanishes at its default is how
+      // a row gets silently mis-selected.
+      const { beginRun, readRuns: ledger, runsLedgerPath } = await fresh();
+      beginRun({ lock: LOCK, run: 'test:rta' }).close();
+      const [line] = ledger(runsLedgerPath());
+      expect(line).toHaveProperty('runnerArgs');
+      expect(line.runnerArgs).toEqual([]);
+    });
+
     it('records the device the run drove, off the lock', async () => {
       // The ledger is the only record that survives the next run, and `run-meta.json`
       // is NOT a fallback for this: it is per-run and lives under `out/`, which the
@@ -667,12 +690,13 @@ describe('the process-exit net — the fold nobody calls', () => {
   const runRecord = pathToFileURL(path.join(repoRoot, 'scripts', 'run-record.js')).href;
 
   /** Run `body` in a fresh node process rooted at the temp dir, and read its ledger back. */
-  const inSubprocess = (body, { exitCode = 0 } = {}) => {
+  const inSubprocess = (body, { exitCode = 0, open = {} } = {}) => {
     const probe = path.join(tmpDir, 'probe.mjs');
+    const opts = { lock: LOCK, run: 'test:rta', ...open };
     fs.writeFileSync(
       probe,
       `import { beginRun } from ${JSON.stringify(runRecord)};\n` +
-        `const run = beginRun({ lock: ${JSON.stringify(LOCK)}, run: 'test:rta' });\n` +
+        `const run = beginRun(${JSON.stringify(opts)});\n` +
         `${body}\n`,
     );
     const result = spawnSync(process.execPath, [probe], {
@@ -707,6 +731,17 @@ describe('the process-exit net — the fold nobody calls', () => {
     // `beginRun`, and a baseline filters on the result.
     const { lines } = inSubprocess('process.exit(0);');
     expect(lines[0].variant).toBe('test:rta:fast');
+  });
+
+  it('carries the open s runnerArgs, so a SCOPED run that crashed still reads as scoped', () => {
+    // Same argument as `variant` above, on the key that says what actually ran. A
+    // crashed run is already excluded from a baseline as a non-sample — but the net
+    // also folds the INTERRUPT path, and an operator who Ctrl-Cs a `-t` debugging run
+    // must not leave a line that reads like an abandoned full suite.
+    const { lines } = inSubprocess('process.exit(0);', {
+      open: { runnerArgs: ['-t', 'moviesLibraryGenres'] },
+    });
+    expect(lines[0].runnerArgs).toEqual(['-t', 'moviesLibraryGenres']);
   });
 
   it('folds on an uncaught throw too, not only on an explicit exit', () => {

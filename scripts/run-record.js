@@ -721,6 +721,7 @@ export function summarizeRun({
   run,
   what,
   variant,
+  runnerArgs = [],
   commit,
   dirty,
   deviceKey,
@@ -746,6 +747,33 @@ export function summarizeRun({
     // quiet miscount the ledger exists to prevent. `null` says "unknown"; missing
     // would say "you have to know the convention".
     variant: variant ?? null,
+    // WHAT THE RUN ACTUALLY RAN, which `variant` cannot say. `rta-run.js` forwards
+    // its own passthrough to Vitest, so `test:rta:fast -- -t "moviesLibraryGenres"`
+    // runs ONE test and — before this key — wrote a line identical in every other
+    // filter key to a full suite. Hit live on 2026-08-12: three targeted single-screen
+    // runs each appended a line `flake-baseline` would have counted as a clean sample,
+    // and only a moved `HEAD` excluded them, by accident rather than by design.
+    //
+    // The ARGS, verbatim, rather than a `scoped: true` we derive here. Vitest 4.1.10's
+    // scope-narrowing surface is eight things — positional filters, `-t`, `--dir`,
+    // `--shard`, `--changed`, `--exclude`, `--project`, `--tagsFilter` — and it MOVES
+    // between majors (`--tagsFilter` is new in v4; `--related` is gone). An allowlist
+    // here would be a list that silently stops matching, which is the exact failure
+    // this key exists to close. Recording what was typed has no version coupling, and
+    // leaves the policy with the reader that has to defend a number — see
+    // `flake-baseline.js`, which excludes on ANY arg for that reason.
+    //
+    // ALWAYS emitted as an array, on the same grounds as the four keys around it and
+    // deliberately NOT the "omitted when empty" rule `assertions` / `recoveries` /
+    // `fixture` follow: those are instruments reporting what they saw, this is a
+    // SELECTION key, and a selection key that vanishes at its default is how a row
+    // gets silently mis-selected. `[]` is a positive statement ("this run declared no
+    // filter"); ABSENT means a line written before this key existed.
+    //
+    // Operator-typed text landing in a never-reset file: `runs.jsonl` is gitignored
+    // and must stay that way, the same contract `tests/rta/lib/diagnostics.js` states
+    // for the identity fields it records.
+    runnerArgs,
     commit: commit ?? null,
     dirty: dirty ?? null,
     // WHICH Roku. There are three on this LAN and they are not interchangeable:
@@ -760,7 +788,7 @@ export function summarizeRun({
     // both parties agree on. Null on the degraded lock path, which never resolves
     // one — honest, and the run really is of unknown provenance there.
     deviceKey: deviceKey ?? null,
-    // The fifth filter key, and the only one that is about the run rather than the
+    // The sixth filter key, and the only one that is about the run rather than the
     // invocation. `null` when the entry point did not say — honest, and the same
     // "missing would mean you have to know the convention" argument as the four
     // above. A baseline reads `outcome` over `SAMPLE_OUTCOMES`, never
@@ -993,8 +1021,16 @@ function codeState() {
  * to fold — it carries the lock, kind, origin, `cumulative` and the invocation
  * provenance this call already resolved, so no caller has to restate them and none
  * can restate them wrongly.
+ *
+ * `runnerArgs` is a PARAMETER rather than something this module derives, for the
+ * same reason `cumulative` is: only the caller knows. Five entry points open runs
+ * here and `process.argv` means a different thing in each — `run-roku-tests.js`
+ * takes none at all (its scope is a BUILD choice, already separated by `variant`:
+ * `test:tdd` / `test:unit` / `test:all`), while `measure`, `capture-screenshots`
+ * and the demo runner parse their OWN options, which narrow nothing about a test
+ * suite. Reading argv here would record all three as though they had.
  */
-export function beginRun({ lock, run, cumulative = false }) {
+export function beginRun({ lock, run, cumulative = false, runnerArgs = [] }) {
   activeRunDir = runDir(run);
   // Resolved here rather than read from the environment inside `recordDir`, for the
   // same reason `activeRunDir` is: this process OWNS the run, and the lock already
@@ -1064,7 +1100,7 @@ export function beginRun({ lock, run, cumulative = false }) {
   // it does not make two concurrently-open runs safe in one process. Nothing does
   // that today, and no entry point opens more than one; if a fifth ever needs to,
   // this state moves onto the handle.
-  const args = { lock, run, startedAt, cumulative, variant, commit, dirty };
+  const args = { lock, run, startedAt, cumulative, variant, runnerArgs, commit, dirty };
   closeArgs = args;
   armCloseOnExit();
   return {
@@ -1142,6 +1178,7 @@ export function endRun({
   startedAt,
   cumulative = false,
   variant,
+  runnerArgs = [],
   commit,
   dirty,
   outcome,
@@ -1160,6 +1197,11 @@ export function endRun({
     // provenance an explicit close would — and so no git subprocess runs on the
     // exit path. See `codeState`.
     variant,
+    // Carried from the OPEN alongside `variant` / `commit` / `dirty`, not re-read from
+    // `process.argv`:
+    // the exit net folds from inside a `process.on('exit')` handler, and an entry
+    // point's argv is not the same question as what it forwarded to a test runner.
+    runnerArgs,
     commit,
     dirty,
     startedAt,

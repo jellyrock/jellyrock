@@ -126,7 +126,13 @@ for (const event of ['uncaughtException', 'unhandledRejection']) {
 // always ours to make: the process-exit net in `run-record.js` closes a run the
 // entry point never got to close (the abandon path below), and it can only know a
 // watch session spans many iterations if the OPEN said so.
-const run = beginRun({ lock, run: runName, cumulative: watch });
+//
+// `runnerArgs` is what makes a SCOPED run readable as one. Everything this file
+// forwards to Vitest narrows what ran — `-t`, a spec filter, `--shard` — and none of
+// it shows up in `variant`, so before this a `test:rta:fast -- -t "…"` appended a line
+// a flake baseline could not tell from a full suite. `--watch` is deliberately not in
+// it: this file consumes that one itself, and it is already recorded as `cumulative`.
+const run = beginRun({ lock, run: runName, cumulative: watch, runnerArgs: passthrough });
 
 // Take the fixture's pulse BEFORE the suite, and again after it. A red run against a
 // degraded demo server is not a verdict on the app, and until this the record could not

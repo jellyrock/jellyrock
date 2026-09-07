@@ -53,6 +53,7 @@
 (?:APIs)\.
 (?:arg)\.
 (?:args)\.
+(?:argv)\.
 (?:assignees)\.
 (?:AST)\.
 (?:async)\.
@@ -726,6 +727,7 @@
 (?:V2)\.
 (?:v2\.0)\.
 (?:v3)\.
+(?:v4)\.
 (?:validator)\.
 (?:validators)\.
 (?:vendored)\.

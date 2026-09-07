@@ -25,7 +25,7 @@ related-files:
   - scripts/flake-baseline.js
   - tests/rta/demos/run.mjs
   - .github/workflows/rta-functional-tests.yml
-last-reviewed: 2026-09-06
+last-reviewed: 2026-09-07
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -438,17 +438,18 @@ It is **not** a second run ledger, and the two files are deliberately not joinab
 of `.device-runs/rta/runs.jsonl`, not "remember to copy a file aside after each
 run" — each line is a complete `summarizeRun` including that run's failure records.
 
-**Scope a baseline by FILTERING, not by deleting.** Every line carries four keys
-for exactly that, and all four are always present (`null` when unknown) so a
-filter can never silently drop a row:
+**Scope a baseline by FILTERING, not by deleting.** Every line carries six keys
+for exactly that, and all six are always present (`null` when unknown, `[]` for
+`runnerArgs`) so a filter can never silently drop a row:
 
 | Key | Is | Why a baseline needs it |
 |---|---|---|
 | `variant` | the npm script that ran (`test:rta`, `test:rta:fast`, `test:unit`, …) | run kinds are SHARED — `:fast` skips the deploy, `:capture` adds per-screen PNG work, and `test:unit`/`test:all` are different suites. Pooling their durations compares incomparable runs |
+| `runnerArgs` | what the run FORWARDED to its test runner, verbatim — `[]` for a full suite | `variant` names the npm script, not the scope. `rta-run.js` passes its own passthrough through to Vitest, so `test:rta:fast -- -t "moviesLibraryGenres"` runs ONE test and, without this, appended a line identical in every other key to a full suite. Hit live 2026-08-12: three targeted single-screen runs each wrote a line a baseline would have counted as clean, and only a moved `HEAD` excluded them — by accident, not by design |
 | `commit` | short SHA at the start of the run | "are these N runs even the same code?" |
 | `dirty` | working tree not clean at that SHA (untracked files included — they get compiled in) | during RTA work the tree is usually dirty, and a bare SHA would over-claim reproducibility |
 | `deviceKey` | **which Roku** — the lock's own `sha256(device-id)`, not an address | there are three on this LAN and they are not interchangeable. A baseline is specified on one device, so `variant` and `commit` are IDENTICAL across its runs and cannot separate a stray run on another one. `null` on the degraded lock path, which never resolves a device |
-| `outcome` | `passed` / `failed` / `interrupted` / `crashed` / `blocked` — what became of the run | the other four describe the INVOCATION; this is the only one about the run itself. See below — without it, a run that never executed a test is indistinguishable from a perfect one, and a run the fixture broke is indistinguishable from app flake |
+| `outcome` | `passed` / `failed` / `interrupted` / `crashed` / `blocked` — what became of the run | the other five describe the INVOCATION; this is the only one about the run itself. See below — without it, a run that never executed a test is indistinguishable from a perfect one, and a run the fixture broke is indistinguishable from app flake |
 
 Plus one field that is **provenance, not a filter key**:
 
@@ -470,11 +471,12 @@ $ npm run flake-baseline
   commit      27279e75 ×3   f45eebd7 ×2   ad1908cb ×2   …
   outcome     (unrecorded) ×6   crashed ×2   passed ×1   failed ×1
   tree        dirty ×9   clean ×1
+  scope       full suite ×9   -t moviesLibraryGenres ×1
   hour        inside one hour ×10
 
 $ npm run flake-baseline -- --commit HEAD --device ac4701ca4a5d8a0b
   samples     6   (6 passed, 0 failed)
-  excluded    4   2 dirty tree · 1 other device · 1 not a sample (1 crashed)
+  excluded    4   1 dirty tree · 1 other device · 1 scoped run (-t moviesLibraryGenres) · 1 not a sample (1 crashed)
 
   flake rate  0/6 = 0.0%   95% upper bound 39.3%
   ⚠ 4 of 6 samples crossed the top of the hour.
@@ -507,6 +509,35 @@ the bound without saying why. An **absent** flag is counted separately rather th
 as "did not cross": `summarizeRun` writes it on every close, so a missing one means a
 hand-edited or truncated line, and treating unknown as the good case is the move this
 whole field exists to prevent.
+
+**A scoped run is EXCLUDED, not warned — the opposite call from the hour row above,
+and for a reason that does not transfer.** An hour-crossing run *is* a sample of the
+whole suite, just a contaminated one, so how much it matters is a proportion only you
+can judge. A `-t` run is not a weak sample of the suite; it is a sample of something
+else. There is nothing to weigh.
+
+**It excludes on ANY forwarded argument, not on a list of the narrowing ones.** Vitest
+4.1.10 narrows scope eight ways — positional filters, `-t`, `--dir`, `--shard`,
+`--changed`, `--exclude`, `--project`, `--tagsFilter` — and that set MOVES between
+majors (`--tagsFilter` is new in v4; `--related` is gone). An allowlist in our code
+would be a list that silently stops matching, which is the exact failure `runnerArgs`
+exists to close. The conservative rule fails the other way instead: a purely
+non-narrowing flag (`--reporter=verbose`) costs you a sample **loudly**, with the args
+printed beside the count, and the fix is to re-take the run without it. Losing a
+visible sample beats counting an invisible one-test run as a clean suite. It also
+catches `--bail`, which truncates execution without narrowing intent — an allowlist
+would not have.
+
+**There is deliberately no `--include-scoped`.** The recovery for a lost sample is one
+re-run; the recovery for a wrong number nobody questioned is nothing. Everything above
+about why this is a command rather than a snippet applies to selection knobs too.
+
+**An absent `runnerArgs` counts as a full suite** — the opposite reading from an absent
+`outcome`, which is a non-sample. That is a checked backfill, not an assumption: every
+one of the 26 lines in the ledger on 2026-09-07 was a full suite, so nothing historical
+is being admitted that should not be, and treating them as unknown would instead
+invalidate every baseline taken to date. The `scope` row in describe mode shows them as
+`(unrecorded)` so the assumption stays visible rather than buried.
 
 **The rate reads `outcome`, never `failures.length`** — see the three-way conflation
 below.

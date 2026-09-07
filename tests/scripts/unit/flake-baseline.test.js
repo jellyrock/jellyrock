@@ -30,6 +30,9 @@ const row = (over = {}) => ({
   // `summarizeRun` writes this on every close, so a complete ledger line always
   // carries it. Cases that need an ABSENT flag delete it explicitly, below.
   crossedHourBoundary: false,
+  // Likewise always written, and `[]` rather than absent BECAUSE it is a selection
+  // key — see `runnerArgs` in `summarizeRun`.
+  runnerArgs: [],
   ...over,
 });
 
@@ -37,6 +40,13 @@ const row = (over = {}) => ({
 const rowWithoutHourFlag = () => {
   const r = row();
   delete r.crossedHourBoundary;
+  return r;
+};
+
+/** A row written before `runnerArgs` existed — every line in the ledger until 2026-09-07. */
+const rowWithoutRunnerArgs = () => {
+  const r = row();
+  delete r.runnerArgs;
   return r;
 };
 
@@ -92,6 +102,67 @@ describe('selecting a baseline series', () => {
     expect(sel.excluded.dirty).toBe(1);
   });
 
+  it('excludes a scoped run, which did not run the suite the rate is about', () => {
+    // The gap this key closes: a `-t` run appends a line identical in every OTHER
+    // filter key to a full suite, so it joined the population as a clean sample. Hit
+    // live 2026-08-12 — three targeted single-screen runs, each of which would have
+    // counted, and only a moved `HEAD` excluded them by accident.
+    const sel = selectBaseline(
+      [row(), row({ runnerArgs: ['-t', 'moviesLibraryGenres'] })],
+      CRITERIA,
+    );
+    expect(sel.samples).toHaveLength(1);
+    expect(sel.excluded.scoped).toBe(1);
+  });
+
+  it('excludes on ANY forwarded arg, not on a list of the narrowing ones', () => {
+    // Vitest narrows on eight flags and the set moves between majors, so an allowlist
+    // here would silently stop matching and count a one-test run as a clean suite. The
+    // conservative rule fails the other way — loudly, costing a sample. `--bail` is the
+    // case that shows the difference: it truncates execution without narrowing intent.
+    const runs = [
+      row({ runnerArgs: ['screens.spec.js'] }),
+      row({ runnerArgs: ['--shard', '1/4'] }),
+      row({ runnerArgs: ['--bail', '1'] }),
+      row({ runnerArgs: ['--reporter=verbose'] }),
+    ];
+    expect(selectBaseline(runs, CRITERIA).excluded.scoped).toBe(4);
+  });
+
+  it('names the args, since scoped is the one exclusion an operator may dispute', () => {
+    // They know what they typed. Printing it lets them confirm the exclusion in the
+    // line, and keeps the word honest on the case where it over-claims.
+    const text = reportBaseline(
+      selectBaseline([row(), row({ runnerArgs: ['-t', 'moviesLibraryGenres'] })], CRITERIA),
+    ).join('\n');
+    expect(text).toContain('1 scoped run (-t moviesLibraryGenres)');
+  });
+
+  it('names each distinct filter once, not once per run that used it', () => {
+    const sel = selectBaseline(
+      [
+        row({ runnerArgs: ['-t', 'foo'] }),
+        row({ runnerArgs: ['-t', 'foo'] }),
+        row({ runnerArgs: ['bar.spec.js'] }),
+      ],
+      CRITERIA,
+    );
+    expect(sel.excluded.scoped).toBe(3);
+    expect(reportBaseline(sel).join('\n')).toContain('3 scoped run (-t foo, bar.spec.js)');
+  });
+
+  it('counts a line from before the key as a full suite, unlike an absent outcome', () => {
+    // Deliberately the OPPOSITE reading from `outcome`, where absent means unknown and
+    // therefore not a sample. Checked rather than assumed: all 26 lines in
+    // `.device-runs/rta/runs.jsonl` on 2026-09-07 were full suites (1239-1390 s, plus
+    // one 31 s interrupted and two blocked, already non-samples), so nothing
+    // historical is silently admitted — and treating them as unknown would instead
+    // invalidate every baseline taken to date.
+    const sel = selectBaseline([rowWithoutRunnerArgs(), rowWithoutRunnerArgs()], CRITERIA);
+    expect(sel.samples).toHaveLength(2);
+    expect(sel.excluded.scoped).toBe(0);
+  });
+
   it('attributes every excluded row to exactly one reason', () => {
     // So the counts sum to what was read: a reader can tell "my filter is too
     // tight" from "the ledger is empty", and neither reads as a rate.
@@ -101,6 +172,7 @@ describe('selecting a baseline series', () => {
       row({ deviceKey: 'dev-b' }),
       row({ variant: 'test:rta:tdd' }),
       row({ dirty: true }),
+      row({ runnerArgs: ['-t', 'one test'] }),
       row({ outcome: 'crashed' }),
     ];
     const sel = selectBaseline(runs, CRITERIA);
@@ -111,6 +183,7 @@ describe('selecting a baseline series', () => {
       otherDevice: 1,
       otherVariant: 1,
       dirty: 1,
+      scoped: 1,
       nonSample: 1,
     });
   });
@@ -200,6 +273,21 @@ describe('describing a ledger nobody has filtered yet', () => {
     const text = describeLedger([row(), row({ dirty: true })]).join('\n');
     expect(text).toContain('clean ×1');
     expect(text).toContain('dirty ×1');
+  });
+
+  it('shows what each run ran, so a scoped line is visible before a series is named', () => {
+    const text = describeLedger([row(), row({ runnerArgs: ['-t', 'genres'] })]).join('\n');
+    expect(text).toContain('full suite ×1');
+    expect(text).toContain('-t genres ×1');
+  });
+
+  it('distinguishes a pre-key line from one that declared no filter', () => {
+    // `(unrecorded)` is where the rate mode's backfill assumption is visible rather
+    // than buried: those lines are COUNTED as full suites, and a reader deserves to
+    // see how many of them there are before trusting a number drawn from them.
+    const text = describeLedger([rowWithoutRunnerArgs()]).join('\n');
+    expect(text).toContain('(unrecorded) ×1');
+    expect(text).not.toContain('full suite');
   });
 });
 
