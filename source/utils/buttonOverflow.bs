@@ -409,12 +409,79 @@ end function
 ' The shared More affordance, so both surfaces show the same glyph.
 const MORE_BUTTON_ICON = "pkg:/images/icons/more_horiz_$$RES$$.png"
 
-#if debug
-  ' One prefix, used to BOTH build and clear the spares, so the two can't drift.
-  const DEBUG_SPARE_ID_PREFIX = "debugSpareButton"
+' ---------------------------------------------------------------------------
+' Debug spare buttons — pure half
+'
+' SPLIT ON PURPOSE, and the split is not stylistic. `#if debug` is resolved by the
+' DEVICE from the manifest's `bs_const`, which every test build shares — so
+' anything inside the shell is stripped before Rooibos ever sees it and cannot be
+' tested at all. That is not hypothetical here: the accumulation bug these
+' functions exist to prevent shipped once precisely because nothing could reach
+' this code, and proving the fix took a hand-edited manifest and a throwaway spec.
+'
+' Flipping the manifest to debug=true globally was tried and does not work: rooibos
+' code-coverage instrumentation splices a statement into every `#if` block, which
+' at file scope is a syntax error on device, and past that the coverage event
+' volume hangs the render thread. So the pure half lives out here where the specs
+' can reach it in EVERY build, and the shell keeps only the `m.global` read.
+'
+' Same shape as source/utils/tasks.bs's ledger — see its header for the original
+' statement of the rule. A production build pays only these functions' bytes,
+' since nothing outside the shell calls them.
+' ---------------------------------------------------------------------------
 
-  ' Append `m.global.debug.extraButtonCount` stand-in buttons to a row, so the
-  ' overflow can be SEEN on a device.
+' One prefix, used to BOTH build and clear the spares, so the two can't drift.
+const DEBUG_SPARE_ID_PREFIX = "debugSpareButton"
+
+' Remove every child of `group` whose id starts with `prefix`.
+'
+' Iterates BACKWARDS: removeChild shifts every later index down, so a forward
+' loop skips the element after each removal.
+sub removeChildrenWithIdPrefix(group as object, prefix as string)
+  if not isValid(group) or prefix = "" then return
+
+  for i = group.getChildCount() - 1 to 0 step -1
+    child = group.getChild(i)
+    if isValid(child) and Left(child.id, Len(prefix)) = prefix
+      group.removeChild(child)
+    end if
+  end for
+end sub
+
+' Bring `group` to EXACTLY `count` spare buttons, whatever it started with.
+'
+' Idempotent, and that is the whole point. OSD.setButtonStates() re-derives its
+' row WITHOUT clearing it — it only removes buttons by id — and runs again on
+' every item change, which for live TV is every program boundary. Appending
+' unconditionally grew the row by `count` on each pass, silently moving the very
+' cap boundary the flag exists to locate. ItemDetails never showed it because
+' setupButtons() empties the group before it rebuilds.
+'
+' The clear runs before the `count <= 0` return, so lowering the flag to 0 and
+' re-entering the screen actually removes the spares instead of stranding them.
+sub syncDebugSpareButtons(group as object, count as integer)
+  if not isValid(group) then return
+
+  removeChildrenWithIdPrefix(group, DEBUG_SPARE_ID_PREFIX)
+  if count <= 0 then return
+
+  for i = 1 to count
+    spare = CreateObject("roSGNode", "IconButton")
+    spare.id = DEBUG_SPARE_ID_PREFIX + stri(i).trim()
+    ' Labelled and iconed like a real button so the row and the menu rows look
+    ' the way they would with genuine content.
+    spare.setFields({
+      text: "Spare " + stri(i).trim(),
+      icon: "pkg:/images/icons/settings_$$RES$$.png"
+    })
+    group.appendChild(spare)
+  end for
+end sub
+
+' ── Debug shell ─────────────────────────────────────────────────────────────
+
+#if debug
+  ' Pad a row so the #788 overflow can be SEEN on a device.
   '
   ' It cannot be seen otherwise. ItemDetails tops out at exactly 8 of 8 and the OSD
   ' at 7 of 10, so no library and no item type reaches either cap — and the 8th
@@ -422,45 +489,10 @@ const MORE_BUTTON_ICON = "pkg:/images/icons/more_horiz_$$RES$$.png"
   ' (BuildGetLocalTrailersRequest), not a RemoteTrailers URL. Without this flag a
   ' reviewer cannot reach the boundary case either, let alone the menu.
   '
-  ' Compiled out of production entirely (bs_const=debug=false), and inert at its
-  ' default of 0, so a debug build behaves exactly as a production one until the
-  ' flag is set from the BrightScript console.
+  ' Nothing but the `m.global` read lives here — the behaviour is in
+  ' syncDebugSpareButtons() above, where a spec can reach it.
   sub appendDebugSpareButtons(group as object)
-    if not isValid(group) or not isValid(m.global.debug) then return
-
-    ' Clear previous spares FIRST — this sub is idempotent for the same reason the
-    ' two bracket halves are, and it has to be.
-    '
-    ' OSD.setButtonStates() re-derives its row WITHOUT clearing it (it only removes
-    ' buttons by id) and runs again on every item change — which for live TV is
-    ' every program boundary. Appending unconditionally therefore grew the row by
-    ' `extraButtonCount` on each pass, silently moving the very cap boundary this
-    ' flag exists to locate, and breaking the "lower the value until More
-    ' disappears" procedure in docs/dev/debug-flags.md. ItemDetails never showed it
-    ' because setupButtons() empties the group before it rebuilds.
-    '
-    ' Runs before the `spareCount <= 0` return below on purpose, so setting the
-    ' flag back to 0 and re-entering the screen actually removes them.
-    for i = group.getChildCount() - 1 to 0 step -1
-      child = group.getChild(i)
-      if isValid(child) and Left(child.id, Len(DEBUG_SPARE_ID_PREFIX)) = DEBUG_SPARE_ID_PREFIX
-        group.removeChild(child)
-      end if
-    end for
-
-    spareCount = m.global.debug.extraButtonCount
-    if spareCount <= 0 then return
-
-    for i = 1 to spareCount
-      spare = CreateObject("roSGNode", "IconButton")
-      spare.id = DEBUG_SPARE_ID_PREFIX + stri(i).trim()
-      ' Labelled and iconed like a real button so the row and the menu rows look
-      ' the way they would with genuine content.
-      spare.setFields({
-        text: "Spare " + stri(i).trim(),
-        icon: "pkg:/images/icons/settings_$$RES$$.png"
-      })
-      group.appendChild(spare)
-    end for
+    if not isValid(m.global.debug) then return
+    syncDebugSpareButtons(group, m.global.debug.extraButtonCount)
   end sub
 #end if
