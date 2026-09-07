@@ -99,11 +99,21 @@ keyed on its name falls through to whatever its `else` branch does. That is a re
 no failure mode of its own — it just quietly restores the bug you fixed. The live example is
 `JROverhang`, which appends its `JRTabBar` via `CreateObject` and assigns no id — on the
 `focusOverhangIcon` walk's own path, which is why `overhangWalkKey` matches
-`HOME_ROW_LIST_SUBTYPES` rather than `#homeRows`. Home's row lists were the sharper example
-until #864 (2026-08-26) made `onTabChanged` assign both ids, which retired the by-name-read
-half of `rta-home-active-list-hardcoded` in
-[`tech-debt.md`](../../docs/architecture/tech-debt.md); the focus-walk half is still open, and
-the sibling walks in [`lib/nav.js`](lib/nav.js) still hardcode `#homeRows`.
+`HOME_ROW_LIST_SUBTYPES` rather than `#homeRows`. Home's row lists are the other example, and
+#864 (2026-08-26) closed less of it than was claimed: assigning both ids at creation fixed the
+tab ROUND TRIP, but only ONE list is in the scene at a time — `onTabChanged` `removeChild`s the
+old one before building the new — so under another tab `#homeRows` is absent outright. Measured
+on `.177` 2026-09-07: a focus gate and a `rowItemFocused` wait both THROW naming the real focus,
+while `#homeRows.content.getChildCount()` **resolves in 8 ms to `undefined`**, which
+`scanHomeLibraryTiles` turns into "0 rows" and reports as `home library tile not found`. Full
+record in [`tech-debt.md`](../../docs/architecture/tech-debt.md) →
+`rta-home-active-list-hardcoded`.
+
+**Do not add a thirty-first site.** `jellyrock-rta/home-rows-budgeted` holds the 30 remaining
+sites as a per-file inventory whose numbers only go DOWN: converting one fails the lint until
+its number is lowered, so the table tracks the conversion rather than drifting. Resolve Home's
+active list instead — exactly one of the two ids resolves — or ask the focused node its
+`subtype`, as `overhangWalkKey` and `walkHomeToFirstRow` already do.
 
 **Ask "is focus inside X?" through `focusIsInside` / `waitFocusInside`, never a hand-rolled
 `keyPath.includes(...)`.** A container id always occupies a WHOLE keyPath segment (see the rule

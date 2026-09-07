@@ -403,6 +403,7 @@
 (?:Namespaces)\.
 (?:natively)\.
 (?:nav)\.
+(?:navs)\.
 (?:Niklas)\.
 (?:no-ODC)\.
 (?:nodearray)\.
