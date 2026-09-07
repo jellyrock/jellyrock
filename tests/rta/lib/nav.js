@@ -507,7 +507,7 @@ async function backToHome(label) {
  * Cost is one round trip per attempt (~5 ms), on the success path, which buys the only
  * chance of catching an intermittent event that no one can reproduce on demand.
  */
-async function pressProbe(row) {
+async function pressProbe({ row, col }) {
   // NEVER let the reading fail the nav it is observing. `getVals` throws when the
   // batch itself fails — deliberately, because for an ASSERTION a half-answered
   // screen must not read as a screen of missing fields. This is not an assertion:
@@ -516,19 +516,69 @@ async function pressProbe(row) {
   // fine. Diagnostics may not break the thing they diagnose; an absent reading
   // costs a `?` in a message that only prints when something else already went
   // wrong.
+  //
+  // ONE batch, not five reads: ODC loops a `getValues` inside a single on-device
+  // message, so this is one observation of Home rather than five spread across
+  // ~27 ms of a screen that is by hypothesis MUTATING. Reading them sequentially
+  // would let the very row swap under investigation happen mid-reading and produce
+  // an incoherent record — an instrument that cannot be trusted about the thing it
+  // was built to catch.
   try {
-    const [focused, childCount] = await getVals([
+    const [focused, childCount, tileId, rowCount, sectionId] = await getVals([
       '#homeRows.rowItemFocused',
       `#homeRows.content.${row}.getChildCount()`,
+      `#homeRows.content.${row}.${col}.id`,
+      '#homeRows.content.getChildCount()',
+      `#homeRows.content.${row}.sectionId`,
     ]);
-    return { focused, childCount };
+    return { focused, childCount, tileId, rowCount, sectionId };
   } catch {
-    return { focused: undefined, childCount: undefined };
+    return {};
+  }
+}
+
+/**
+ * What Home actually SELECTED, read after the press.
+ *
+ * This is the half the earlier attempt was missing. A gate on the tile's content at the
+ * walked-to coordinates was tried here and PASSED while the press still opened Movies —
+ * so whatever moves, moves in a window a pre-press reading cannot see. Bracketing the
+ * press is what separates the two candidate mechanisms:
+ *
+ *  - `selected` DIFFERENT from the coordinates we walked to  -> focus/selection moved
+ *    between the probe and the press, and the tile we aimed at was never pressed.
+ *  - `selected` the SAME but `selectedId` not the library we asked for -> the row's
+ *    CONTENT changed under fixed coordinates, i.e. the row swap
+ *    (`HomeRows.insertLatestMediaSkeletons` inserts latest-media rows MID-LIST).
+ *
+ * Home is suspended by the time this runs, which is exactly why the reads are
+ * scene-rooted: under sgRouter's default `suspendMode: "hide"` a suspended view stays in
+ * the scene tree, so `#homeRows` still resolves. `getActiveVal` would follow the grid
+ * that just opened and answer about the wrong node.
+ *
+ * Two round trips rather than one, because the second batch's keyPaths are built from the
+ * first batch's answer. ~11 ms on `.177`, on roughly six library navs per suite.
+ */
+async function selectionProbe() {
+  try {
+    const [selected] = await getVals(['#homeRows.rowItemSelected']);
+    if (!Array.isArray(selected)) return { selected };
+    const [selectedId, selectedType] = await getVals([
+      `#homeRows.content.${selected[0]}.${selected[1]}.id`,
+      `#homeRows.content.${selected[0]}.${selected[1]}.collectionType`,
+    ]);
+    return { selected, selectedId, selectedType };
+  } catch {
+    return {};
   }
 }
 
 const formatPressProbe = (p, i) =>
-  `#${i + 1} focused=${JSON.stringify(p.focused ?? null)} rowChildCount=${p.childCount ?? '?'}`;
+  `#${i + 1} focused=${JSON.stringify(p.focused ?? null)} rowChildCount=${p.childCount ?? '?'}` +
+  ` aimedAt=${JSON.stringify(p.aimedAt ?? null)} tileId=${p.tileId ?? '?'}` +
+  ` rows=${p.rowCount ?? '?'} section=${p.sectionId ?? '?'}` +
+  ` selected=${JSON.stringify(p.selected ?? null)} selectedId=${p.selectedId ?? '?'}` +
+  ` selectedType=${p.selectedType ?? '?'}`;
 
 /**
  * The press-into-the-library half of navLibraryByType, WITHOUT the loaded wait.
@@ -556,9 +606,11 @@ export async function openLibraryByType(collectionType, libraryId = null) {
   // and the judgement is made on the OUTCOME instead, by `navLibraryByType`.
   const tile = await findHomeLibraryTile(collectionType, libraryId);
   await walkHomeRowsTo(tile, collectionType);
-  const probe = await pressProbe(tile.row);
+  const probe = await pressProbe(tile);
   await press(ecp.Key.Ok);
-  return probe;
+  // Read what Home SELECTED, not just what we aimed at. `aimedAt` is carried alongside so
+  // the record compares the two without a reader having to reconstruct the intent.
+  return { ...probe, aimedAt: [tile.row, tile.col], ...(await selectionProbe()) };
 }
 
 /** Step focus to `tile`, vertically then horizontally. Guarded against overshoot. */

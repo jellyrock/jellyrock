@@ -169,6 +169,53 @@ describe('navLibraryByType — which library actually opened', () => {
     expect(recordRecovery).not.toHaveBeenCalled();
   });
 
+  it('BRACKETS the press — the selection reading is taken after Ok, not before', async () => {
+    // The whole reason this instrument exists. A gate on the tile's content at the
+    // walked-to coordinates was tried here and PASSED while the press still opened
+    // Movies, so whatever moves does so in a window no pre-press reading can see.
+    // Ordering is therefore the property under test, not the field list.
+    const order = [];
+    press.mockImplementation(async (k) => order.push(`press:${k}`));
+    getVals.mockImplementation(async (keyPaths) => {
+      order.push(keyPaths.includes('#homeRows.rowItemSelected') ? 'read:selected' : 'read:pre');
+      return keyPaths.map(() => undefined);
+    });
+    opensInOrder(SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+
+    expect(order.indexOf('read:pre')).toBeLessThan(order.indexOf('press:Ok'));
+    expect(order.indexOf('press:Ok')).toBeLessThan(order.indexOf('read:selected'));
+  });
+
+  it('records what it AIMED AT beside what Home SELECTED, so the two can disagree', async () => {
+    // The discriminator. Same coordinates with a different id means the row's content
+    // changed under fixed coordinates (a row swap); different coordinates means focus
+    // moved between the probe and the press. A record carrying only one of the two
+    // cannot tell those apart, which is the state this replaces.
+    getVals.mockImplementation(async (keyPaths) =>
+      keyPaths.includes('#homeRows.rowItemSelected')
+        ? [[0, 5]]
+        : keyPaths.map((k) => (k.endsWith('.id') ? MOVIES : undefined)),
+    );
+    opensInOrder(MOVIES, SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+
+    const [entry] = recordRecovery.mock.calls[0];
+    expect(entry.observed.probe[0]).toMatchObject({ aimedAt: [0, 1], selected: [0, 5] });
+  });
+
+  it('does not let a failed SELECTION read fail a nav either', async () => {
+    // The second probe is a second chance to break a healthy nav. It runs after the
+    // press, when Home is suspended, so it is the likelier of the two to come back
+    // empty — and it still may not turn instrumentation into a failure.
+    getVals.mockImplementation(async (keyPaths) => {
+      if (keyPaths.includes('#homeRows.rowItemSelected')) throw new Error('odc timeout');
+      return keyPaths.map(() => undefined);
+    });
+    opensInOrder(SHOWS);
+    await expect(navLibraryByType('tvshows', SHOWS)).resolves.toBeUndefined();
+  });
+
   it('does not let a failed probe read fail a nav that was otherwise fine', async () => {
     // `getVals` throws on a batch failure by design. That is right for an assertion
     // and wrong for instrumentation on the SUCCESS path of every library nav:
