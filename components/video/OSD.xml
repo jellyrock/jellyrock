@@ -73,7 +73,8 @@
          DELIBERATELY NO onChange: the observer is registered in init() instead, so
          onDestroy can detach it. VideoPlayerView owns this field and can deliver one
          last change while teardown is running, which is the case components/CLAUDE.md
-         requires an unobserveField for — and an XML onChange cannot be detached.
+         requires an unobserveField for — and an XML onChange does not appear to be
+         removable by unobserveField, so it could not be undone here.
          Declaring both registers TWO observers and runs the handler twice. -->
     <field id="itemData" type="node" />
 

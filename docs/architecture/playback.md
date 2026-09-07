@@ -7,6 +7,7 @@ related-files:
   - components/video/VideoPlayerView.bs
   - components/video/VideoPlayerView.xml
   - components/video/OSD.bs
+  - components/video/OSD.xml
   - components/GetPlaybackInfoTask.bs
   - source/utils/trackPickerOptions.bs
   - source/utils/playbackInfo.bs
