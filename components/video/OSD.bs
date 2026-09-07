@@ -1,6 +1,8 @@
 import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/buttonOverflow.bs"
+import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
@@ -58,13 +60,16 @@ sub init()
   m.liveTvLastPosition = 0 ' baseline for scrub-during-pause delta detection
   m.liveTvIsAtLiveEdge = true
 
-  ' Go to Live button — cached and attached/detached dynamically by setButtonStates()
-  ' and attach/detachGoToLiveButton() so it doesn't reserve a layout slot when hidden.
+  ' Go to Live button — cached by setButtonStates() for live channels and dropped
+  ' from the row entirely for anything else. See the comment there for why it is
+  ' greyed rather than detached once it IS a member.
   m.goToLiveButton = invalid
-  m.goToLiveAttached = false
 
   m.buttonMenuRight = m.top.findNode("buttonMenuRight")
   m.buttonMenuLeft = m.top.findNode("buttonMenuLeft")
+  ' Holds the transport buttons that did not fit, while "More" stands in for them.
+  ' See applyOverflow() below.
+  m.buttonOverflow = m.top.findNode("buttonOverflow")
   m.buttonMenuLeft.buttonFocused = m.defaultButtonIndex
 end sub
 
@@ -182,6 +187,11 @@ end sub
 
 ' setButtonStates: Disable previous/next buttons if needed and remove any other unneeded buttons
 sub setButtonStates()
+  ' Whole row first: the removals below look buttons up BY ID inside the group, and a
+  ' stashed button is not in it. Without this a previous item's overflow would survive
+  ' its own removal and reappear in the next item's menu.
+  unsplitButtons()
+
   queueCount = m.global.queueManager.callFunc("getCount")
   queueIndex = m.global.queueManager.callFunc("getPosition")
   isTvChannel = m.itemData.type = "TvChannel"
@@ -216,45 +226,66 @@ sub setButtonStates()
   if not m.top.hasChapters or isTvChannel
     m.buttonMenuLeft.removeChild(m.buttonMenuLeft.findNode("chapterList"))
   end if
-  ' Go to Live — detach from layout until the user falls behind the live edge, then
-  ' re-insert via attachGoToLiveButton(). Toggling visible/isEnabled isn't enough:
-  ' LayoutGroup reserves a slot for invisible children, so a hidden button would
-  ' leave a gap in the button row.
+  ' Go to Live — MEMBERSHIP IS PER-ITEM, ENABLEMENT IS PER-MOMENT.
+  '
+  ' A live channel keeps this button in the row for the whole item and greys it out
+  ' at the live edge (updateLiveTvDisplay owns isEnabled); anything else drops it
+  ' entirely. Nothing is inserted or removed while the user is watching.
+  '
+  ' It used to attach and detach mid-playback, on the reasoning that "toggling
+  ' visible/isEnabled isn't enough: LayoutGroup reserves a slot for invisible
+  ' children." That is true of `visible` and NOT of `isEnabled` — a disabled
+  ' IconButton only recolours (onEnabledChanged) and keeps its slot. The old
+  ' reasoning ruled out one option and then generalised to the other.
+  '
+  ' The generalisation cost a real defect. insertChild(_, 3) shifts every later
+  ' child right, but buttonFocused is an INDEX and was never repaired, so it ended
+  ' up naming a different node than the one holding focus and the next left/right
+  ' press stepped from the wrong origin. Reachable by arrowing onto the audio or
+  ' subtitle button and then pausing — pause flips liveTvIsAtLiveEdge false, and
+  ' inactiveCheck declines to auto-hide while paused, so the OSD stayed open
+  ' holding the bad index. (ItemDetails.manageResumeButton repairs exactly this
+  ' after its own insertChild; this never did.) Confirmed on device before the fix
+  ' — see tests/source/unit/components/video/OSDGoToLive.spec.bs.
+  '
+  ' Greying in place is also what the rest of this row already does: itemBack and
+  ' itemNext are disabled, not removed, when they would be a no-op.
   if not isTvChannel
     existing = m.buttonMenuLeft.findNode("goToLive")
     if isValid(existing)
       m.buttonMenuLeft.removeChild(existing)
     end if
     m.goToLiveButton = invalid
-    m.goToLiveAttached = false
   else
     if not isValid(m.goToLiveButton)
+      ' XML attaches the button at load time, and it stays attached from here on.
       m.goToLiveButton = m.buttonMenuLeft.findNode("goToLive")
-      if isValid(m.goToLiveButton)
-        ' XML attaches the button at load time
-        m.goToLiveAttached = true
-      end if
     end if
     if isValid(m.goToLiveButton)
       m.goToLiveButton.text = UCase(translate(translationKeys.LabelLive))
-      detachGoToLiveButton()
+      m.goToLiveButton.visible = true
+      ' Playback starts at the live edge, so the button starts greyed. The first
+      ' position tick re-derives this through setGoToLiveEnabled().
+      m.goToLiveButton.isEnabled = false
     end if
   end if
+
+  ' Debug-only: pad the row so the overflow can be reached on a device. Inert at
+  ' its default and compiled out of production. See docs/dev/debug-flags.md.
+  #if debug
+    appendDebugSpareButtons(m.buttonMenuLeft)
+  #end if
+
+  ' Membership is settled for this item — split the row if it no longer fits.
+  applyOverflow()
 end sub
 
-' Insert after itemNext (index 3 in the XML-declared button order) so prev/next stay
-' contiguous and the live-edge button appears where channel up/down users look first.
-sub attachGoToLiveButton()
-  if not isValid(m.goToLiveButton) or m.goToLiveAttached then return
-  m.goToLiveButton.visible = true
-  m.buttonMenuLeft.insertChild(m.goToLiveButton, 3)
-  m.goToLiveAttached = true
-end sub
-
-sub detachGoToLiveButton()
-  if not isValid(m.goToLiveButton) or not m.goToLiveAttached then return
-  m.buttonMenuLeft.removeChild(m.goToLiveButton)
-  m.goToLiveAttached = false
+' The per-moment half: greys the button at the live edge, restores it once the user
+' is behind. A no-op for non-live items, where the button is not a member at all.
+sub setGoToLiveEnabled(isEnabled as boolean)
+  if not isValid(m.goToLiveButton) then return
+  if m.goToLiveButton.isEnabled = isEnabled then return
+  m.goToLiveButton.isEnabled = isEnabled
 end sub
 
 ' setEndsAtText: "Ends at <time>", refreshed on every clock minute tick.
@@ -543,11 +574,7 @@ sub updateLiveTvDisplay()
   ' suppresses sub-second rounding flicker during normal play.
   m.liveTvIsAtLiveEdge = LCase(m.top.playbackState) = "playing" and behindLive < LIVE_EDGE_THRESHOLD_SECONDS
 
-  if m.liveTvIsAtLiveEdge
-    detachGoToLiveButton()
-  else
-    attachGoToLiveButton()
-  end if
+  setGoToLiveEnabled(not m.liveTvIsAtLiveEdge)
 
   if programStart > 0 and programEnd > programStart
     programDuration = programEnd - programStart
@@ -731,11 +758,31 @@ sub onButtonSelected()
     return
   end if
 
-  if LCase(selectedButton.id) = "chapterlist"
+  ' A disabled button can HOLD focus even though left/right never move onto one:
+  ' goToLive is greyed the moment the user reaches the live edge, which can happen
+  ' while it is the focused button (a scrub forward with the OSD open). Left/right
+  ' skip disabled buttons, so this is the only way OK could reach one.
+  if not isValid(selectedButton) or not selectedButton.isEnabled then return
+
+  ' "More" is a row affordance rather than a playback action — it opens the overflow
+  ' menu, whose rows come back through dispatchOsdAction below.
+  if selectedButton.id = "moreButton"
+    openMoreMenu()
+    return
+  end if
+
+  dispatchOsdAction(selectedButton.id)
+end sub
+
+' Run the action for a button ID. Reached two ways — a press on a visible button,
+' and a row picked out of the "More" menu — so the overflow menu adds no second
+' copy of this mapping. VideoPlayerView.onOSDAction routes `action` from here.
+sub dispatchOsdAction(buttonId as string)
+  if LCase(buttonId) = "chapterlist"
     m.top.shouldShowChapterList = not m.top.shouldShowChapterList
   end if
 
-  if LCase(selectedButton.id) = "gotolive"
+  if LCase(buttonId) = "gotolive"
     ' VideoPlayerView seeks to LIVE_EDGE_SEEK; clear all behind-live state so the next
     ' position tick re-anchors epochAtPosition0 to the new live-edge position.
     m.liveTvCalibrated = false
@@ -746,7 +793,113 @@ sub onButtonSelected()
     m.liveTvIsAtLiveEdge = true
   end if
 
-  m.top.action = selectedButton.id
+  m.top.action = buttonId
+end sub
+
+' ===========================================================================
+' Button-row overflow — the same contract ItemDetails runs, over this row.
+'
+' The left group is capped at whatever fits before the RIGHT group's leftmost
+' edge, so the transport row can never run into the pinned playback-info button.
+' That cap is 10, not ItemDetails' 8: the spacing is 24 rather than 18 and the
+' bound is a button rather than the logo. Both numbers come out of the same
+' arithmetic in source/utils/buttonOverflow.bs, which is why neither is written
+' down anywhere.
+'
+' Only setButtonStates() changes this row's membership — since goToLive stopped
+' attaching and detaching mid-playback, nothing else does — so unlike ItemDetails
+' this needs exactly one bracket rather than nine.
+' ===========================================================================
+
+function osdRowSpacing(group as object) as integer
+  if isValid(group.itemSpacings) and group.itemSpacings.count() > 0 then return int(group.itemSpacings[0])
+  return 0
+end function
+
+' The left row's geometry, in ONE place so the cap and the overflow menu's anchor
+' cannot be derived from different numbers.
+'
+' The right group is right-ALIGNED, so its origin is its right edge and it grows
+' leftward — derived from its live child count so pinning a second button there
+' correctly costs the left row a slot.
+'
+' `translation` is taken as a SCREEN coordinate: the OSD is mounted at the origin
+' of a full-screen view, which is the same assumption the right group's own
+' 1830 origin already encodes.
+function osdRowGeometry() as object
+  buttonWidth = iconButtonLayoutWidth(ICON_BUTTON_ICON_SIZE)
+  leftSpacing = osdRowSpacing(m.buttonMenuLeft)
+
+  rightCount = m.buttonMenuRight.getChildCount()
+  rightWidth = 0
+  if rightCount > 0
+    rightSpacing = osdRowSpacing(m.buttonMenuRight)
+    rightWidth = (rightCount * buttonWidth) + ((rightCount - 1) * rightSpacing)
+  end if
+  rightGroupLeftEdge = int(m.buttonMenuRight.translation[0]) - rightWidth
+
+  return {
+    originX: int(m.buttonMenuLeft.translation[0]),
+    rowY: int(m.buttonMenuLeft.translation[1]),
+    spacing: leftSpacing,
+    itemWidth: buttonWidth,
+    rightBound: rightGroupLeftEdge - leftSpacing
+  }
+end function
+
+' The cap for the left row: it may not reach the right group's leftmost edge.
+function osdButtonCap() as integer
+  geometry = osdRowGeometry()
+  return maxVisibleButtons(geometry.originX, geometry.spacing, geometry.itemWidth, geometry.rightBound)
+end function
+
+sub unsplitButtons()
+  closeMoreMenuBeforeRowChanges()
+  restoreOverflowedButtons(m.buttonMenuLeft, m.buttonOverflow)
+end sub
+
+' Same contract ItemDetails runs — see the comment there. The reachable trigger
+' on this surface is a live-TV program boundary: setButtonStates() re-derives the
+' row from the refreshed program's metadata, and populateData() repaints the
+' title, subtitle and logo in the same turn, so the menu closing reads as the
+' OSD moving to the new program rather than as a dialog dismissing itself.
+sub closeMoreMenuBeforeRowChanges()
+  if isValid(m.moreMenuDialog) then m.moreMenuDialog.callFunc("cancelDialog")
+end sub
+
+sub applyOverflow()
+  applyButtonOverflow(m.buttonMenuLeft, m.buttonOverflow, osdButtonCap(), translate(translationKeys.ButtonMore), MORE_BUTTON_ICON)
+end sub
+
+' Open the overflow menu. Rows carry the label and glyph their buttons were
+' wearing and resolve back to a button ID, so a selection runs through
+' dispatchOsdAction rather than a second copy of the mapping.
+sub openMoreMenu()
+  entries = overflowMenuEntries(m.buttonOverflow)
+  if entries.ids.count() = 0 then return
+
+  m.overflowMenuIds = entries.ids
+  ' selectedIndex -1: these are actions, so no row is "current" — which is also
+  ' what frees the row gutter for the icons.
+  geometry = osdRowGeometry()
+  anchor = moreButtonAnchor(geometry.originX, geometry.spacing, geometry.itemWidth, geometry.rowY, osdButtonCap())
+
+  m.moreMenuDialog = showOverflowMenu(translate(translationKeys.ButtonMore), entries.labels, "onMoreMenuResult", anchor, entries.icons)
+  m.moreMenuDialog.returnFocusTo = m.buttonMenuLeft.findNode("moreButton")
+end sub
+
+sub onMoreMenuResult()
+  dialog = m.moreMenuDialog
+  ids = m.overflowMenuIds
+  m.moreMenuDialog = invalid
+  m.overflowMenuIds = invalid
+  if not isValid(dialog) then return
+
+  ' Declining a code-made close is overflowMenuSelection's job — this handler ACTS
+  ' (seeks, switches tracks, opens panels), and that rule is shared with
+  ' ItemDetails' identical handler rather than copied into both.
+  buttonId = overflowMenuSelection(dialog.result, ids)
+  if buttonId <> "" then dispatchOsdAction(buttonId)
 end sub
 
 function createSubtitleLabelNode(labelId as string) as object
@@ -838,6 +991,13 @@ end function
 sub onDestroy()
   m.log.verbose("onDestroy")
 
+  ' The More menu's result handler ACTS (seeks, switches tracks), so it must be
+  ' abandoned rather than cancelled — a cancel is indistinguishable from the user
+  ' pressing Back and would fire a playback action into a dying scope (dialogs.md).
+  abandonDialog(m.moreMenuDialog)
+  m.moreMenuDialog = invalid
+  m.overflowMenuIds = invalid
+
   ' Unobserve all m.top observers
   m.top.unobserveField("itemData")
   m.top.unobserveField("visible")
@@ -869,6 +1029,7 @@ sub onDestroy()
   m.progressBarBackground = invalid
   m.buttonMenuRight = invalid
   m.buttonMenuLeft = invalid
+  m.buttonOverflow = invalid
 
   ' Release cached item data reference
   m.itemData = invalid

@@ -47,6 +47,15 @@
     <!-- Buttons are created dynamically in setupButtons() based on item type -->
     <JRButtonGroup id="buttons" translation="[90, 800]" />
 
+    <!-- Overflow stash. Holds the buttons that did not fit the row, in order, while
+         the "More" button stands in for them (see applyOverflow in ItemDetails.bs).
+         A child of the SCREEN and deliberately NOT of the button group: a hidden
+         child of a LayoutGroup still reserves its slot, so a stashed button has to
+         leave the group entirely — but staying in the node tree is what keeps
+         m.top.findNode("refreshButton") resolving at the nine places that mutate
+         this row after setupButtons has built it. -->
+    <Group id="buttonOverflow" visible="false" />
+
     <!-- Item logo - positioned 5% from right edge -->
     <Poster id="itemLogo" visible="false" />
 

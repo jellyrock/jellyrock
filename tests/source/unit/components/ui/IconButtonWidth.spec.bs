@@ -1,0 +1,63 @@
+import "pkg:/source/utils/buttonOverflow.bs"
+
+namespace tests
+
+  ' The button-row overflow cap budgets EVERY button at
+  ' iconButtonLayoutWidth(ICON_BUTTON_ICON_SIZE). That is only true because the
+  ' icon Poster is declared with a 64px load box and loadDisplayMode="limitSize",
+  ' which scales an oversized source down AT LOAD — two icons on the capped
+  ' ItemDetails row ship a 96px FHD asset (album, person) and still render a
+  ' 64px bitmap in a 124px plate.
+  '
+  ' Measured on a Streaming Stick 4K (OS 15.3.4, 1080p UI) via RTA, since a
+  ' Rooibos test cannot complete an image load synchronously:
+  '   person_fhd.png (96x96 source) -> bitmapWidth 64, buttonBackground.width 124
+  '
+  ' So the load box is the mechanism the cap depends on. Widen it, or drop
+  ' limitSize, and every row budget in buttonOverflow.bs silently stops matching
+  ' what renders. These assertions pin the mechanism rather than the consequence,
+  ' which is why they need no image load and cannot flake.
+  @suite("IconButton - the load box the row cap depends on")
+  class IconButtonWidthTests extends tests.BaseTestSuite
+
+    private button as object
+    private icon as object
+
+    protected override sub beforeEach()
+      super.beforeEach()
+      ' The button is held as well as the icon: the icon is its child, and there is
+      ' no reason to rely on a detached subtree outliving its only reference.
+      m.button = CreateObject("roSGNode", "IconButton")
+      m.icon = m.button.findNode("buttonIcon")
+    end sub
+
+    protected override sub afterEach()
+      m.icon = invalid
+      m.button = invalid
+      super.afterEach()
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the icon load box is what makes every button the same width")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("caps the loaded bitmap at the size the row budget assumes")
+    function _()
+      m.assertEqual(int(m.icon.loadWidth), ICON_BUTTON_ICON_SIZE)
+      m.assertEqual(int(m.icon.loadHeight), ICON_BUTTON_ICON_SIZE)
+    end function
+
+    @it("scales an oversized source down instead of drawing it at source size")
+    function _()
+      m.assertEqual(LCase(m.icon.loadDisplayMode), "limitsize")
+    end function
+
+    @it("declares a display size matching the load box, so no icon can render wider")
+    function _()
+      m.assertEqual(int(m.icon.width), ICON_BUTTON_ICON_SIZE)
+      m.assertEqual(int(m.icon.height), ICON_BUTTON_ICON_SIZE)
+    end function
+
+  end class
+
+end namespace

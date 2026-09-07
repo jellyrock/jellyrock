@@ -1,0 +1,209 @@
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/buttonOverflow.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+
+namespace tests
+
+  ' The OSD's left row holds 7 buttons at its busiest against a cap of 10, so like
+  ' ItemDetails its overflow is not reachable through real data — and unlike
+  ' ItemDetails it is three buttons short rather than none. This suite is therefore
+  ' the entire deliverable for the OSD half: it proves the split works before the
+  ' button that needs it exists.
+  '
+  ' The cap being 10 and not 8 is the point worth gating. Same arithmetic, different
+  ' geometry: spacing 24 rather than 18, and the bound is the right-aligned playback
+  ' info button rather than the logo.
+  @suite("OSD - button row overflow")
+  class OSDButtonOverflowTests extends tests.BaseTestSuite
+
+    private osd as object
+    private buttonMenuLeft as object
+    private stash as object
+
+    protected override sub beforeEach()
+      super.beforeEach()
+
+      if not m.global.doesExist("queueManager")
+        m.global.addField("queueManager", "node", false)
+      end if
+      m.global.queueManager = CreateObject("roSGNode", "QueueManager")
+
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+
+      m.osd = CreateObject("roSGNode", "OSD")
+      m.buttonMenuLeft = m.osd.findNode("buttonMenuLeft")
+      m.stash = m.osd.findNode("buttonOverflow")
+    end sub
+
+    protected override sub afterEach()
+      m.stash = invalid
+      m.buttonMenuLeft = invalid
+      m.osd = invalid
+      super.afterEach()
+    end sub
+
+    ' A movie carrying every stream kind, so setButtonStates keeps all seven of its
+    ' non-live buttons and only drops goToLive. That is the busiest real row.
+    private function richMovie() as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.setFields({
+        id: "test-movie-1",
+        type: "Movie",
+        audioStreamCount: 2,
+        hasSubtitles: true,
+        chapterCount: 12,
+        hasMultipleVideoSources: true
+      })
+      return item
+    end function
+
+    ' Stand-ins for buttons a future OSD will carry (playback options, quality, …).
+    private sub addFutureButtons(count as integer)
+      for i = 0 to count - 1
+        button = CreateObject("roSGNode", "IconButton")
+        button.id = "future" + stri(i).trim()
+        button.text = "Future " + stri(i).trim()
+        button.icon = "pkg:/images/icons/settings_$$RES$$.png"
+        m.buttonMenuLeft.appendChild(button)
+      end for
+    end sub
+
+    private function rowIds() as object
+      ids = []
+      for i = 0 to m.buttonMenuLeft.getChildCount() - 1
+        ids.push(m.buttonMenuLeft.getChild(i).id)
+      end for
+      return ids
+    end function
+
+    private function stashIds() as object
+      ids = []
+      for i = 0 to m.stash.getChildCount() - 1
+        ids.push(m.stash.getChild(i).id)
+      end for
+      return ids
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("today's row is well inside the cap")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows all 7 buttons of the busiest real item, with no More")
+    function _()
+      m.osd.itemData = m.richMovie()
+
+      m.assertEqual(m.rowIds(), ["itemBack", "videoPlayPause", "itemNext", "showVideoSourceMenu", "showAudioMenu", "showSubtitleMenu", "chapterList"])
+      m.assertInvalid(m.buttonMenuLeft.findNode("moreButton"))
+      m.assertEqual(m.stash.getChildCount(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the cap is 10 here, not ItemDetails' 8")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The load-bearing assertion of this suite. Nine buttons already overflow on
+    ' ItemDetails; here they must not, because the spacing and the bound differ.
+    @it("still fits 10 buttons without a More button")
+    function _()
+      m.addFutureButtons(3)
+      m.osd.itemData = m.richMovie()
+
+      m.assertEqual(m.buttonMenuLeft.getChildCount(), 10)
+      m.assertInvalid(m.buttonMenuLeft.findNode("moreButton"))
+      m.assertEqual(m.stash.getChildCount(), 0)
+    end function
+
+    @it("spends the last slot on More at 11")
+    function _()
+      m.addFutureButtons(4)
+      m.osd.itemData = m.richMovie()
+
+      m.assertEqual(m.buttonMenuLeft.getChildCount(), 10, "9 real buttons plus More")
+      m.assertEqual(m.buttonMenuLeft.getChild(9).id, "moreButton")
+      m.assertEqual(m.stashIds(), ["future2", "future3"])
+    end function
+
+    @it("labels and icons More from the shared asset and translation")
+    function _()
+      m.addFutureButtons(4)
+      m.osd.itemData = m.richMovie()
+
+      moreButton = m.buttonMenuLeft.findNode("moreButton")
+      m.assertNotInvalid(moreButton)
+      m.assertEqual(moreButton.text, translate(translationKeys.ButtonMore))
+      m.assertEqual(moreButton.icon, "pkg:/images/icons/more_horiz_$$RES$$.png")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the right group keeps its pin")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Overflow spills at the END of the LEFT row, so the button a user reaches for
+    ' when playback misbehaves stays one press away at the same screen position.
+    @it("never touches the playback-info button")
+    function _()
+      m.addFutureButtons(6)
+      m.osd.itemData = m.richMovie()
+
+      buttonMenuRight = m.osd.findNode("buttonMenuRight")
+      m.assertEqual(buttonMenuRight.getChildCount(), 1)
+      m.assertEqual(buttonMenuRight.getChild(0).id, "showVideoInfoPopup")
+      ' Membership is checked by walking the stash, NOT with findNode: findNode
+      ' resolves from the nearest COMPONENT ancestor, and the stash is a plain Group,
+      ' so `stash.findNode(id)` would search the whole OSD and answer yes for a node
+      ' that never left the right group.
+      m.assertFalse(m.stashIds().count() > 0 and inArray(m.stashIds(), "showVideoInfoPopup"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a re-run re-derives the row")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' setButtonStates runs again on every item change, and it removes buttons BY ID
+    ' from inside the group. A stashed button is not in the group, so without the
+    ' restore at the top of setButtonStates a previous item's overflow would survive
+    ' its own removal and reappear in the next item's menu.
+    @it("does not carry a stashed button across an item change")
+    function _()
+      m.addFutureButtons(4)
+      m.osd.itemData = m.richMovie()
+      m.assertEqual(m.stashIds(), ["future2", "future3"])
+
+      ' A live channel: setButtonStates drops the source and chapter buttons and
+      ' keeps goToLive, so the row shrinks back under the cap.
+      channel = CreateObject("roSGNode", "JellyfinBaseItem")
+      channel.setFields({
+        id: "test-channel-1",
+        type: "TvChannel",
+        audioStreamCount: 2,
+        hasSubtitles: true,
+        chapterCount: 0,
+        hasMultipleVideoSources: false
+      })
+      m.osd.itemData = channel
+
+      m.assertInvalid(m.buttonMenuLeft.findNode("moreButton"), "the shorter row fits")
+      m.assertEqual(m.stash.getChildCount(), 0, "nothing may be left behind in the stash")
+      m.assertNotInvalid(m.buttonMenuLeft.findNode("future3"), "and the stashed buttons came home")
+    end function
+
+    @it("is idempotent across repeated item assignments")
+    function _()
+      m.addFutureButtons(4)
+      m.osd.itemData = m.richMovie()
+      rowAfterFirst = m.rowIds()
+      stashAfterFirst = m.stashIds()
+
+      m.osd.itemData = m.richMovie()
+
+      m.assertEqual(m.rowIds(), rowAfterFirst)
+      m.assertEqual(m.stashIds(), stashAfterFirst)
+    end function
+
+  end class
+
+end namespace

@@ -21,7 +21,7 @@ related-files:
   - components/ItemGrid/LoadVideoContentTask.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-09-02
+last-reviewed: 2026-09-04
 ---
 
 # Video & Audio Playback
@@ -413,7 +413,11 @@ The OSD is the entry point for advanced controls — it has menu icons for audio
 
 The OSD adapts when the current item is a live TV channel or a DVR recording (vs. on-demand video). The hybrid behind-live math lives in `source/utils/liveTv.bs` (extracted as testable helpers). Notable adaptations:
 
-- **`goToLive` button** — appears in the `OSD`'s left button menu when the user has scrubbed back from the live edge of a live TV stream. Pressing it seeks to live. The button auto-hides when the user is already at the live edge (detached from the layout entirely so it doesn't reserve dead space).
+- **`goToLive` button** — sits in the `OSD`'s left button menu for the whole of a live TV item, and is **grayed out** while the user is at the live edge rather than removed. Pressing it seeks to live.
+
+  The rule is **membership is per-item, enablement is per-moment**: `setButtonStates()` decides once whether the button is in the row (in for a `TvChannel`, dropped for anything else) and `updateLiveTvDisplay()` only toggles `isEnabled` from there. It matches what the rest of that row already does — `itemBack` and `itemNext` are disabled in place when they would be a no-op — and it is why the OSD row never reshuffles mid-playback.
+
+  It previously attached and detached from the layout as the user crossed the live-edge threshold, on the reasoning that a hidden child still reserves its `LayoutGroup` slot. That is true of `visible` but not of `isEnabled`, which only recolors. The generalization cost a defect: `insertChild(_, 3)` shifted every later child right while `buttonFocused` — an index — was never repaired, so it came to name a different node than the one holding focus and the next left/right press stepped from the wrong origin. Reachable by moving focus onto the audio or subtitle button and then pausing, since pause flips the state immediately and `inactiveCheck` declines to auto-hide while paused. Confirmed on device before the fix; gated by `tests/source/unit/components/video/OSDGoToLive.spec.bs`.
 - **Wall-clock fallback** — when stream metadata is missing (some recordings, mid-stream channel switches), OSD timestamps fall back to wall-clock time + program EPG data rather than reporting zeros.
 - **Logo/metadata refresh** — channel switches reset stale logo and metadata before the new channel's data arrives, so the OSD doesn't briefly show the previous channel's branding.
 - **Recording playback** — short MPEG-TS recordings stay on HLS so the trickplay scrub bar can scrub them; longer recordings remain progressive (the MPEG-TS → progressive MKV transcode path was tried and reverted as not worth the complexity).
