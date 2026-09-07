@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Cap `ItemDetails` and `OSD` button rows with a `More` overflow menu ([#890](https://github.com/jellyrock/jellyrock/pull/890))
+
 ### Dependencies
 
 - Update ropm from v0.11.9 to v0.11.10 ([#880](https://github.com/jellyrock/jellyrock/pull/880))
