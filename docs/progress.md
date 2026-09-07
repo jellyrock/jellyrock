@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-09-05
+last-updated: 2026-09-07
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-09-07 — feat: Cap `ItemDetails` and `OSD` button rows with a `More` overflow menu
 - 2026-09-04 — chore: Retire the calendar stale-docs backlog; cover `docs/dev/` contextually
 - 2026-09-03 — fix: Guard `onKeyEvent` against key events delivered after teardown
 - 2026-09-03 — Stop the playback error dialog exiting on a close it did not cause
@@ -46,15 +47,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-08-24 — Rebuild Quick Connect on the `JRDialog` family and the API pool
 - 2026-08-24 — ci(rta): stop a library nav opening the wrong library, and record it when it recovers
 - 2026-08-24 — Enforce a production Task-thread ceiling in `launchTask()`
-- 2026-08-23 — Removed `tests/source/unit/utils/taskLedgerCost.spec.bs`, closing the `(sink len 0)` shared-sink followup by deleting the shape rather than splitting the sinks. Its benchmark cells were superseded by the render-thread apparatus in `components/testing/TaskLedgerBench.bs` (numbers now recorded in `docs/architecture/threading.md`), and a printout that asserts nothing does not belong in a per-PR device suite. The one real gate — a thread-local node field read staying under 10 µs, the premise the whole production ledger rests on — is folded into `tests/source/unit/utils/tasks.spec.bs`, where it now runs in `test:tdd` as well as `test:unit` and ASSERTS `Len(sink) > 0` so a loop that never executed cannot pass as a cheap measurement.
-- 2026-08-23 — Bound Task fan-out structurally with a `no-task-fanout` BSC plugin
-- 2026-08-23 — Retire `SceneManager`'s dialog machinery for the `JRDialog` family
-- 2026-08-22 — ci(rta): pin `cellSweepHome`'s workload; Home's variance is app-side
-- 2026-08-22 — ci(rta): Instrument cell pop-in, and stop a screen suspend from inflating `appearances`
-- 2026-08-22 — Move `PlayerHostView` onto the standard dialogs and unify the chrome
-- 2026-08-21 — fix: stop `FontDownloadTask` crashing on servers that omit `EnableFallbackFont`
-- 2026-08-21 — fix: Stop posters blinking on the Cast & Crew row as you scroll it
-- 2026-08-21 — Give `cell-load` rates a denominator with scripted RTA sweeps
 
 ## Open followups
 
