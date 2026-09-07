@@ -605,15 +605,35 @@ export async function openLibraryByType(collectionType, libraryId = null) {
   // completes, index N holds the same library it held before. So the reading is kept
   // and the judgement is made on the OUTCOME instead, by `navLibraryByType`.
   const tile = await findHomeLibraryTile(collectionType, libraryId);
-  await walkHomeRowsTo(tile, collectionType);
+  const walk = await walkHomeRowsTo(tile, collectionType);
   const probe = await pressProbe(tile);
   await press(ecp.Key.Ok);
   // Read what Home SELECTED, not just what we aimed at. `aimedAt` is carried alongside so
   // the record compares the two without a reader having to reconstruct the intent.
-  return { ...probe, aimedAt: [tile.row, tile.col], ...(await selectionProbe()) };
+  return {
+    ...probe,
+    aimedAt: [tile.row, tile.col],
+    colPressed: walk?.pressed,
+    colRecovered: walk?.recovered,
+    ...(await selectionProbe()),
+  };
 }
 
 /** Step focus to `tile`, vertically then horizontally. Guarded against overshoot. */
+/**
+ * Walk focus to a Home tile at `{row, col}`.
+ *
+ * ## Why the two halves are not symmetrical
+ *
+ * The COLUMN half goes through `scrollFocus`; the ROW half deliberately does not, and the
+ * asymmetry is a decision rather than an unfinished conversion. The defect measured here
+ * was a column over-press, and the column axis is bounded on both sides by the row itself.
+ * The row axis is NOT: `Home.onKeyEvent` releases focus to the OVERHANG on Up from row 0
+ * (the whole reason `walkHomeToFirstRow` exists), so a single overshoot there does not land
+ * on the wrong tile, it leaves Home entirely — and the caller's next step would then be
+ * pressing at the overhang. Converting it on the strength of a column measurement would be
+ * changing the riskier half on speculation. Revisit if a row over-press is ever captured.
+ */
 async function walkHomeRowsTo({ row, col }, collectionType) {
   await waitFor('#homeRows.rowItemFocused', (v) => Array.isArray(v) && v[0] === row, {
     timeout: 12000,
@@ -626,15 +646,33 @@ async function walkHomeRowsTo({ row, col }, collectionType) {
     },
     label: `home library row ${row} (${collectionType})`,
   });
-  await waitFor('#homeRows.rowItemFocused', (v) => Array.isArray(v) && v[1] === col, {
-    timeout: 12000,
-    interval: 350,
-    action: async () => {
-      const v = await getVal('#homeRows.rowItemFocused');
-      if (!Array.isArray(v)) return;
-      if (v[1] < col) await press(ecp.Key.Right);
-      else if (v[1] > col) await press(ecp.Key.Left);
-    },
+  // The COLUMN walk goes through `scrollFocus`, and that is the fix for a measured defect
+  // rather than a tidy-up. The loop this replaces decided whether to press from its OWN
+  // read of `rowItemFocused`, a field that LAGS the device, so it could press on top of a
+  // key already in flight: read [0,1] while the device was already at [0,2], press Right,
+  // and the predicate's own read then returns [0,2] and satisfies the wait — leaving an
+  // extra Right in flight that lands after the caller's probe and before its `Ok`.
+  //
+  // Captured on `.177` 2026-09-07 with the press bracketed (run 4 of 4): focus reported
+  // [0,2], the tile at [0,2] was the music library asked for, Home's row structure was
+  // unchanged — and `rowItemSelected` came back [0,3], opening playlists. That is also why
+  // an earlier content-at-coordinates gate passed while the press still opened the wrong
+  // library: the gate read the right cell, and the press landed on the next one.
+  //
+  // `scrollFocus` sends the exact distance as one burst and re-presses ONLY for a key it
+  // can prove was dropped — the index unchanged across a whole tick — so it cannot stack a
+  // press on an in-flight one. `tests/rta/CLAUDE.md` records it retiring the identical
+  // over-press elsewhere: "The cause was removed rather than out-waited."
+  //
+  // `recovered` is returned so the fix stays measurable: it counts keys this walk had to
+  // re-send, which is the number that should now be the only source of drift here.
+  return scrollFocus({
+    keyPath: '#homeRows.rowItemFocused',
+    target: col,
+    forwardKey: ecp.Key.Right,
+    backKey: ecp.Key.Left,
+    select: (v) => (Array.isArray(v) ? v[1] : undefined),
+    read: getVal,
     label: `home library tile col ${col} (${collectionType})`,
   });
 }

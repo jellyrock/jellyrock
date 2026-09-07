@@ -33,6 +33,7 @@ const waitHome = vi.fn();
 const sleep = vi.fn();
 const formatCellCounts = vi.fn();
 const readCellCounts = vi.fn();
+const scrollFocus = vi.fn();
 
 vi.mock('./steps.js', () => ({
   press: (...a) => press(...a),
@@ -49,7 +50,7 @@ vi.mock('./steps.js', () => ({
   hasChildren: (v) => typeof v === 'number' && v > 0,
   resendIfSwallowed: vi.fn(() => vi.fn()),
   resendUntilFocusInside: vi.fn(() => vi.fn()),
-  scrollFocus: vi.fn(),
+  scrollFocus: (...a) => scrollFocus(...a),
   waitCellsQuiet: vi.fn(),
   waitRowsSettled: vi.fn(),
   readCellCounts: (...a) => readCellCounts(...a),
@@ -101,8 +102,10 @@ function homeWithShowsAt(row, col) {
     if (keyPath === `#homeRows.content.${row}.${col}.id`) return SHOWS;
     return undefined;
   });
-  // The focus walk gates via `waitFor`; it has nothing to prove here, so let it pass.
+  // The focus walk gates via `waitFor` (row half) and `scrollFocus` (column half);
+  // neither has anything to prove here, so let both pass.
   waitFor.mockResolvedValue(undefined);
+  scrollFocus.mockResolvedValue({ from: 0, to: col, pressed: col, recovered: 0 });
   getVals.mockResolvedValue([[row, col], col + 1]);
 }
 
@@ -167,6 +170,59 @@ describe('navLibraryByType — which library actually opened', () => {
     opensInOrder(SHOWS);
     await navLibraryByType('tvshows', SHOWS);
     expect(recordRecovery).not.toHaveBeenCalled();
+  });
+
+  it('walks the COLUMN through scrollFocus, which cannot press on an in-flight key', async () => {
+    // The fix for the mechanism captured on .177 2026-09-07. The loop this replaced
+    // decided whether to press from its own read of a LAGGING field, so it could send a
+    // Right on top of one already in flight: focus reported [0,2], the tile there was the
+    // library asked for, Home's rows were unchanged — and `rowItemSelected` came back
+    // [0,3]. `scrollFocus` sends the exact distance once and re-presses only for a key it
+    // can prove was dropped.
+    opensInOrder(SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+
+    expect(scrollFocus).toHaveBeenCalledTimes(1);
+    const [opts] = scrollFocus.mock.calls[0];
+    expect(opts).toMatchObject({
+      keyPath: '#homeRows.rowItemFocused',
+      target: 1,
+      forwardKey: 'Right',
+      backKey: 'Left',
+    });
+  });
+
+  it('selects the COLUMN component of rowItemFocused, not the row', async () => {
+    // `rowItemFocused` is [row, item]. Selecting index 0 here would walk the vertical axis
+    // with horizontal keys — it would still terminate, on the wrong cell, and the failure
+    // would surface somewhere else entirely.
+    opensInOrder(SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+    const [{ select }] = scrollFocus.mock.calls[0];
+    expect(select([7, 3])).toBe(3);
+    expect(select(undefined)).toBeUndefined();
+  });
+
+  it('leaves the ROW walk hand-rolled — Up from row 0 escapes Home entirely', async () => {
+    // The asymmetry is deliberate. `Home.onKeyEvent` releases focus to the OVERHANG on Up
+    // from row 0, so a single row overshoot does not land on the wrong tile, it leaves the
+    // screen. The measured defect was a COLUMN over-press; converting the riskier axis on
+    // that evidence would be speculation. This fails if someone converts it anyway.
+    opensInOrder(SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+    const rowWalks = waitFor.mock.calls.filter(([kp]) => kp === '#homeRows.rowItemFocused');
+    expect(rowWalks).toHaveLength(1);
+    expect(rowWalks[0][2].label).toContain('home library row');
+  });
+
+  it('carries the column walk’s recovered count into the record, so the fix stays measurable', async () => {
+    // `recovered` counts keys the walk had to re-send. After this fix it should be the only
+    // source of drift on this path, so a record without it cannot show the fix working.
+    scrollFocus.mockResolvedValue({ from: 0, to: 1, pressed: 1, recovered: 2 });
+    opensInOrder(MOVIES, SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+    const [entry] = recordRecovery.mock.calls[0];
+    expect(entry.observed.probe[0]).toMatchObject({ colPressed: 1, colRecovered: 2 });
   });
 
   it('BRACKETS the press — the selection reading is taken after Ok, not before', async () => {
