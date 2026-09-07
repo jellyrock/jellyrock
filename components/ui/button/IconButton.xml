@@ -21,6 +21,10 @@
     <field id="iconFocusBackground" type="color" value="" />
     <field id="text" type="string" value="" />
     <field id="icon" type="string" value="" />
+    <!-- This onChange is the SOLE registration. Don't also observeField() it in
+         init(): that registers a second observer and runs onSelectedChanged twice.
+         XML is the right form here because IconButton has no onDestroy to detach
+         from — it is a leaf whose observer dies with the node. -->
     <field id="isButtonSelected" type="boolean" value="false" onChange="onSelectedChanged" />
     <field id="isFocused" type="boolean" />
     <field id="escape" type="string" value="" />
