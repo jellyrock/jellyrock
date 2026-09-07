@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-09-07 — fix: Observe each interface field exactly once in `OSD` and `IconButton`
 - 2026-09-07 — feat: Cap `ItemDetails` and `OSD` button rows with a `More` overflow menu
 - 2026-09-04 — chore: Retire the calendar stale-docs backlog; cover `docs/dev/` contextually
 - 2026-09-03 — fix: Guard `onKeyEvent` against key events delivered after teardown
