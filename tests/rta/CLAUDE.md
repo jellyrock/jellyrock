@@ -62,6 +62,29 @@ Canonical examples: `waitOsdUp` (input, in [`lib/steps.js`](lib/steps.js)), `fin
 because the next Home-relative press will need it too, and it is unit-tested there against a
 mocked device.
 
+**A fourth shape, and the one that cost the most to find: a WALK that decides whether to
+press from its own read of a lagging field.** `walkHomeRowsTo`'s column half used to do
+exactly that, and it could stack a press on a key already in flight — `waitFor` runs
+`action()` and THEN its predicate read, so the action read `[0,1]` while the device was
+already at `[0,2]`, sent a Right, and the predicate's read then returned `[0,2]` and
+satisfied the wait. The walk exited "successful" with an extra Right in flight, which landed
+after the caller's probe and before its `Ok`.
+
+Measured on `.177` 2026-09-07 with the press bracketed: focus reported `[0,2]`, the tile
+there WAS the library asked for, Home's row structure was unchanged — and `rowItemSelected`
+came back `[0,3]`, opening a different library. It fires in roughly one run in four. Note
+what this defeats: a gate on the tile's content at the walked-to coordinates was tried and
+**passed**, because it read the right cell and the press landed on the next one. **No
+reading taken before the press can catch this** — the press has to be bracketed.
+
+So a walk presses through [`scrollFocus`](lib/steps.js), which sends the exact distance as
+one burst and re-presses ONLY for a key it can prove was dropped (the index unchanged across
+a whole tick, then re-armed). If you are writing a loop that reads an index and presses
+toward a target, you are writing this bug; reach for the helper. The one deliberate holdout
+is `walkHomeRowsTo`'s ROW half, because `Home.onKeyEvent` releases focus to the overhang on
+Up from row 0 — there an overshoot leaves Home rather than landing on the wrong tile, so it
+was not converted on the strength of a column measurement.
+
 **A guarded re-press must re-send the key that is actually still owed.** `waitOsdUp` re-sends
 `Up` until the OSD is up; `focusOverhangIcon` pressed `Up` once and then re-sent `Right`, which
 walks the row rather than leaving Home — so one lost `Up` could never be recovered and surfaced
@@ -97,7 +120,7 @@ captured off `.178`, not invented ones.
 ## Why every wait polls
 
 `roku-test-automation` ships a field OBSERVER (`onFieldChangeOnce`), and this harness
-polls instead — 94 times. That is a deviation from the library's documented practice, so
+polls instead — 93 times. That is a deviation from the library's documented practice, so
 the standing bar is that **every wait either follows that practice or says why it
 deviates**. "It works" is not a justification; "the library's primitive is wrong here
 because X" is.
@@ -116,13 +139,13 @@ prove themselves; the rest are properties of the FIELD or of focus.
 |---|---|---|
 | Function `keyPath` | 12 | ODC observes a **field**. `getChildCount()` / `subtype()` are calls, not fields, so the primitive cannot apply at all. |
 | Waits for absence | 1 | The node is gone. A departed node has no field left to observe. This is `waitDialogClosed`, whose JSDoc carries the argument on behalf of the ten dialog-dismiss sites that route through it. |
-| `action:` retry loops | 8 | The per-tick re-press **is** the mechanism (see `resendIfSwallowed`). An observer would sit and watch for a key that never landed. |
+| `action:` retry loops | 7 | The per-tick re-press **is** the mechanism (see `resendIfSwallowed`). An observer would sit and watch for a key that never landed. |
 | Plain field settle | 36 | The primitive could apply; it is ruled out below. |
 | Dynamic `keyPath` | 1 | `scrollFocus`, whose keyPath is its caller's. Unclassifiable from syntax, so it carries a rule disable naming the reason and the argument lives in its docblock. |
 | Focus containment (`waitFocusInside`) | 21 | ODC has no "observe global focus" primitive. Its request table (`RTA_OnDeviceComponent.brs`) offers `getFocusedNode` / `hasFocus` / `isInFocusChain` — all READS — and one observer, `onFieldChange`, which needs a node keyPath and a field name and so cannot express "wherever focus now is". |
 | Focus identity (`waitFocused`) | 15 | Same absence of a primitive, and focus is inherently terminal: it stays where it landed until the next key. There is no pulse to miss. |
 
-*(12 + 1 + 8 + 36 + 1 = 58 `waitFor` CALLS, plus 21 + 15 focus waits = 94. Counts are
+*(12 + 1 + 7 + 36 + 1 = 57 `waitFor` CALLS, plus 21 + 15 focus waits = 93. Counts are
 call sites, which is what the gate sees; a call is not always one wait. `waitDialogClosed`
 issues one on behalf of ten sites, and `waitOsdUp` issues two on behalf of three.
 Re-derived from the AST — never `grep`, which has now produced five wrong figures in this
