@@ -124,6 +124,27 @@ async function readHomeList(suffix) {
  * `read`. A custom reader is not in the map and simply gets no attribution — the wait
  * behaves exactly as it did before.
  */
+/**
+ * The readers a SCENE census actually describes.
+ *
+ * `waitFor` audits the keyPath it settled on, but that census walks from the scene ROOT —
+ * so it describes what the wait read only if the read was scene-rooted too. `getActiveVal`
+ * resolves under `m.global.activeRoutedView` SPECIFICALLY to dodge the cross-view id
+ * collisions this audit hunts for: every ItemDetails declares `#extrasGrid`, and sgRouter's
+ * default `suspendMode: "hide"` keeps prior views in the tree during a drill-down. Censusing
+ * its keyPath would report an ambiguity that read was never exposed to.
+ *
+ * That is not cosmetic noise. A false AMBIGUOUS lands in the very false-alarm count
+ * `resolution.js` names as the bar for promoting this audit from report-only to a throw — so
+ * an audit that cries wolf about scoped reads would be measured as signal at exactly the
+ * moment that call is made.
+ *
+ * A reader not in this set simply gets no audit, which is the safe default: a census cannot
+ * be trusted to describe a read whose base it does not know. `readHomeList` is deliberately
+ * absent — it audits its OWN scene-rooted keyPaths (it is handed a suffix, not a keyPath).
+ */
+const SCENE_ROOTED_READS = new Set([getVal]);
+
 const ATTRIBUTING_READS = new Map([
   [getVal, readScene],
   [getActiveVal, readActive],
@@ -289,7 +310,10 @@ export async function waitFor(
       // reason this is here rather than beside the throw below. Report-only and awaited:
       // it cannot fail the wait (see `resolution.js`), and letting it run after the
       // return would race the next step's presses against the census it is reading.
-      await auditSceneResolution(keyPath, { label });
+      //
+      // Gated on the READER, because a scene census only describes a scene-rooted read —
+      // see `SCENE_ROOTED_READS`.
+      if (SCENE_ROOTED_READS.has(read)) await auditSceneResolution(keyPath, { label });
       return last;
     }
     await sleep(interval);

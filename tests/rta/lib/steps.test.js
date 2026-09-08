@@ -48,7 +48,19 @@ vi.mock('roku-test-automation', () => ({
   },
 }));
 
+// `resolution.js` is stubbed so these assert WHICH reads `waitFor` hands to the audit,
+// without standing up a census. The real module is a no-op unless `RTA_AUDIT_RESOLUTION=1`,
+// so replacing it changes nothing for every other case in this file.
+const auditSceneResolution = vi.fn();
+const auditSceneResolutions = vi.fn();
+vi.mock('./resolution.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  auditSceneResolution: (...a) => auditSceneResolution(...a),
+  auditSceneResolutions: (...a) => auditSceneResolutions(...a),
+}));
+
 const {
+  getActiveVal,
   getActiveVals,
   getVals,
   waitFor,
@@ -2155,5 +2167,43 @@ describe('waitOsdUp — no input before the app will accept it', () => {
       waitOsdUp('osd visible', { itemId: 'hero1', playableTimeout: 150, timeout: 150 }),
     ).rejects.toThrow(/player playable \(pre-OSD\)/);
     expect(sendKeypress).not.toHaveBeenCalled();
+  });
+});
+
+// A scene census walks from the scene ROOT, so it only describes a read that was
+// scene-rooted too. `getActiveVal` resolves under `m.global.activeRoutedView` precisely to
+// dodge the cross-view id collisions the audit hunts for, so auditing ITS keyPath reports an
+// ambiguity that read was never exposed to — and a false positive lands in the same
+// false-alarm count `resolution.js` names as the bar for promoting the audit to a throw.
+describe('waitFor audits only the reads a scene census can describe', () => {
+  beforeEach(() => {
+    auditSceneResolution.mockClear();
+    getValue.mockResolvedValue({ found: true, value: 'ready' });
+  });
+
+  it('audits a scene-rooted read', async () => {
+    await waitFor('#itemGrid.type', (v) => v === 'ready', { interval: 1 });
+    expect(auditSceneResolution).toHaveBeenCalledWith('#itemGrid.type', expect.anything());
+  });
+
+  it('does NOT audit an activeVal-scoped read', async () => {
+    // `#extrasGrid` is the real instance of the collision: every ItemDetails declares one,
+    // and sgRouter keeps suspended views in the tree through a Series -> Season -> Episode
+    // drill-down, which is exactly why this site reads activeVal-scoped in the first place.
+    await waitFor('#extrasGrid.type', (v) => v === 'ready', {
+      read: getActiveVal,
+      interval: 1,
+    });
+    expect(auditSceneResolution).not.toHaveBeenCalled();
+  });
+
+  it('does NOT audit a reader it cannot characterise', async () => {
+    // The safe default: a census cannot be trusted to describe a read whose base it does
+    // not know, so an unknown reader gets no audit rather than a scene-rooted guess.
+    await waitFor('#itemGrid.type', (v) => v === 'ready', {
+      read: async () => 'ready',
+      interval: 1,
+    });
+    expect(auditSceneResolution).not.toHaveBeenCalled();
   });
 });
