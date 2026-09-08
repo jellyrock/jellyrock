@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-09-07
+last-updated: 2026-09-08
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-09-08 — fix: Gate interface-field observer wiring; fix stale cross-file findings
 - 2026-09-07 — `ItemDetails.itemContent` now registers its observer via `m.top.observeField()` in `init()`, so the `unobserveField` in `onDestroy` actually detaches it; the new `ineffective-unobserve` build gate now fails the build on that pairing.
 - 2026-09-07 — fix: Observe each interface field exactly once in `OSD` and `IconButton`
 - 2026-09-07 — feat: Cap `ItemDetails` and `OSD` button rows with a `More` overflow menu
@@ -43,12 +44,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-08-25 — fix: apply the user's Maximum Bitrate limit instead of discarding it
 - 2026-08-25 — ci(rta): Attribute Home's mid-run row-size recompute to its call site
 - 2026-08-25 — Collapse the dialog family onto one `computeDialogLayout` shape
-- 2026-08-24 — ci(rta): Stop `test:scripts` writing into the real device-run ledger
-- 2026-08-24 — ci(rta): Separate page-load work from sweep work in `cellSweepHome`
-- 2026-08-24 — Give the app one authoritative "a session is established" signal
-- 2026-08-24 — Rebuild Quick Connect on the `JRDialog` family and the API pool
-- 2026-08-24 — ci(rta): stop a library nav opening the wrong library, and record it when it recovers
-- 2026-08-24 — Enforce a production Task-thread ceiling in `launchTask()`
 
 ## Open followups
 
