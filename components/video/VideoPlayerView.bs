@@ -1208,6 +1208,11 @@ end sub
 sub onContentChange()
   if not isValid(m.top.content) then return
 
+  ' Unobserve before observing: `content` is re-set on every reload path
+  ' (audio/subtitle/source change, retry), and Roku does not dedupe identical
+  ' observeField registrations — each one fires the handler again per notify.
+  ' Same idiom as audioIndex and selectedSubtitle above.
+  m.top.unobserveField("position")
   m.top.observeField("position", "onPositionChanged")
 end sub
 
@@ -1234,8 +1239,6 @@ sub fetchNextEpisode()
       onNextEpisodeFetchFailed()
       return
     end if
-
-    m.top.observeField("position", "onPositionChanged")
 
     ' BuildGetEpisodesRequest(Limit 2) returns [current, next]; a count other
     ' than 2 means there is no next episode, so disable the Next Episode button.
