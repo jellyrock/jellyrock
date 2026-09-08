@@ -24,6 +24,21 @@
  *    protection and provides none — which is worse than not having it, because
  *    the next reader stops looking.
  *
+ * 3. `undetachable-observer` (error) — a component that defines `onDestroy` and
+ *    ALSO declares an XML `onChange` on an interface field. An `onDestroy` is the
+ *    declaration that this component releases state at teardown; from that point
+ *    any handler that can still run is a hazard, and an XML `onChange` is the one
+ *    form that cannot be detached. So the two do not belong in the same component.
+ *
+ *    This is the STRUCTURAL version of a rule that used to be a judgment call
+ *    ("can a writer of this field outlive onDestroy?" — true but undecidable by a
+ *    linter, so it left every site needing a human). Keying on the presence of an
+ *    `onDestroy` is blunter and provable: 42 of the 53 components using `onChange`
+ *    have no `onDestroy` at all, release nothing, and are untouched by this.
+ *
+ *    It reports ONCE per component, listing the fields, because the fix is one
+ *    edit to that component rather than one per field.
+ *
  *    ⚠️ Known false positive: a component that calls `m.top.unobserveField()` to
  *    clear observers registered by OTHER nodes is doing something legal but
  *    exotic. There is no instance in the tree; suppress with the escape hatch
@@ -62,6 +77,7 @@ const { createScopeRule, stringLiteralValue, referenceText } = require('../lib/b
 
 const DUPLICATE = 'duplicate-field-observer';
 const INEFFECTIVE = 'ineffective-unobserve';
+const UNDETACHABLE = 'undetachable-observer';
 
 module.exports = () =>
   createScopeRule({
@@ -73,9 +89,24 @@ module.exports = () =>
       const calls = collectMTopFieldCalls(brsFile);
       const xmlName = baseName(xmlFile.srcPath);
 
+      // A component that tears down state must be able to detach every observer,
+      // and an XML onChange cannot be detached. Anchored on `onDestroy` — the
+      // declaration that makes the rule apply — and reported once for the whole
+      // component, since the fix is one edit rather than one per field.
+      const onDestroy = findOnDestroy(brsFile);
+      if (onDestroy?.location) {
+        const spellings = [...onChangeFields.values()].map((v) => v.written);
+        report({
+          code: UNDETACHABLE,
+          location: onDestroy.location,
+          message: `${baseName(brsFile.srcPath)} defines onDestroy(), so every observer it registers must be detachable — but ${xmlName} still wires ${spellings.length === 1 ? 'a field' : spellings.length + ' fields'} with an XML onChange: ${spellings.join(', ')}. An XML onChange does not appear to be removable by unobserveField, so a handler wired that way can still run after onDestroy has released the references it dereferences. Move ${spellings.length === 1 ? 'it' : 'them'} to m.top.observeField() in init(), with a matching unobserveField() ahead of the releases in onDestroy(). Suppress with ' bsc-disable-next-line ${UNDETACHABLE}.`,
+        });
+      }
+
       for (const call of calls) {
-        const handler = onChangeFields.get(call.field);
-        if (!handler) continue;
+        const entry = onChangeFields.get(call.field);
+        if (!entry) continue;
+        const handler = entry.handler;
 
         const code = call.kind === 'observe' ? DUPLICATE : INEFFECTIVE;
 
@@ -115,7 +146,9 @@ function xmlOnChangeFields(xmlFile) {
     xmlFile?.parser?.ast?.componentElement?.interfaceElement?.getElementsByTagName?.('field') || [];
   const out = new Map();
   for (const field of fields) {
-    if (field?.id && field?.onChange) out.set(field.id.toLowerCase(), field.onChange);
+    if (field?.id && field?.onChange) {
+      out.set(field.id.toLowerCase(), { handler: field.onChange, written: field.id });
+    }
   }
   return out;
 }
@@ -158,6 +191,17 @@ function collectMTopFieldCalls(brsFile) {
 
   ast.walk(visitor, { walkMode: brighterscript.WalkMode.visitAllRecursive });
   return out;
+}
+
+/** The component's own top-level `onDestroy` function statement, or null. */
+function findOnDestroy(brsFile) {
+  const statements = brsFile?.parser?.ast?.statements;
+  if (!Array.isArray(statements)) return null;
+  for (const stmt of statements) {
+    if (!brighterscript.isFunctionStatement(stmt)) continue;
+    if (stmt.tokens?.name?.text?.toLowerCase() === 'ondestroy') return stmt;
+  }
+  return null;
 }
 
 function baseName(p) {

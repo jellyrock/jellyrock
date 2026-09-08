@@ -21,6 +21,7 @@ import fieldObserverWiringPlugin from '../../../../scripts/bsc-plugins/field-obs
 
 const DUPLICATE = 'duplicate-field-observer';
 const INEFFECTIVE = 'ineffective-unobserve';
+const UNDETACHABLE = 'undetachable-observer';
 
 // Component XML whose <interface> carries the given fields.
 // `fields` entries: { id, onChange? }
@@ -394,5 +395,120 @@ describe('incremental re-validation', () => {
     const [, second, third] = runPluginOnEdits(fieldObserverWiringPlugin, [buggy, {}, {}]);
     expect(dupCount(second)).toBe(1);
     expect(dupCount(third)).toBe(1);
+  });
+});
+
+// The structural half of the wiring rule: an onDestroy is the declaration that a
+// component releases state, and an XML onChange is the one registration form that
+// cannot be detached. The two must not coexist. Keying on onDestroy's PRESENCE is
+// deliberately blunter than asking "can a writer outlive teardown?" — that
+// question is true but undecidable by a linter, and left every site to a human.
+describe('undetachable-observer', () => {
+  const withDestroy = `
+    sub init()
+    end sub
+    sub onDestroy()
+      m.node = invalid
+    end sub
+  `;
+
+  it('errors when a component with onDestroy declares an XML onChange', () => {
+    const diagnostics = run({
+      'components/Foo.xml': xml('Foo', [{ id: 'items', onChange: 'onItems' }]),
+      'components/Foo.bs': withDestroy,
+    });
+    const flagged = diagnosticsByCode(diagnostics, UNDETACHABLE);
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0].severity).toBe(1);
+    expect(flagged[0].message).toMatch(/items/);
+    expect(flagged[0].message).toMatch(/onDestroy/);
+  });
+
+  it('reports ONCE per component, listing every offending field', () => {
+    const diagnostics = run({
+      'components/Foo.xml': xml('Foo', [
+        { id: 'alpha', onChange: 'onAlpha' },
+        { id: 'beta', onChange: 'onBeta' },
+        { id: 'gamma', onChange: 'onGamma' },
+      ]),
+      'components/Foo.bs': withDestroy,
+    });
+    const flagged = diagnosticsByCode(diagnostics, UNDETACHABLE);
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0].message).toMatch(/alpha/);
+    expect(flagged[0].message).toMatch(/beta/);
+    expect(flagged[0].message).toMatch(/gamma/);
+    expect(flagged[0].message).toMatch(/3 fields/);
+  });
+
+  // 42 of the 53 components using onChange have no onDestroy: they release
+  // nothing, so no handler of theirs can dereference a nulled reference. The rule
+  // must leave every one of them alone.
+  it('is silent for a component with no onDestroy — the majority case', () => {
+    const diagnostics = run({
+      'components/Foo.xml': xml('Foo', [{ id: 'items', onChange: 'onItems' }]),
+      'components/Foo.bs': `
+        sub init()
+        end sub
+        sub onItems()
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, UNDETACHABLE)).toHaveLength(0);
+  });
+
+  it('is silent for a component with onDestroy but no XML onChange', () => {
+    const diagnostics = run({
+      'components/Foo.xml': xml('Foo', [{ id: 'items' }]),
+      'components/Foo.bs': withDestroy,
+    });
+    expect(diagnosticsByCode(diagnostics, UNDETACHABLE)).toHaveLength(0);
+  });
+
+  it('is silent for the converted shape — observeField in init, unobserveField in onDestroy', () => {
+    const diagnostics = run({
+      'components/Foo.xml': xml('Foo', [{ id: 'items' }]),
+      'components/Foo.bs': `
+        sub init()
+          m.top.observeField("items", "onItems")
+        end sub
+        sub onDestroy()
+          m.top.unobserveField("items")
+          m.node = invalid
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, UNDETACHABLE)).toHaveLength(0);
+    expect(diagnosticsByCode(diagnostics, DUPLICATE)).toHaveLength(0);
+    expect(diagnosticsByCode(diagnostics, INEFFECTIVE)).toHaveLength(0);
+  });
+
+  it('honours a suppression marker', () => {
+    const diagnostics = run({
+      'components/Foo.xml': xml('Foo', [{ id: 'items', onChange: 'onItems' }]),
+      'components/Foo.bs': `
+        sub init()
+        end sub
+        ' bsc-disable-next-line undetachable-observer
+        sub onDestroy()
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, UNDETACHABLE)).toHaveLength(0);
+  });
+
+  it('appears when a teardown is added, and clears when the onChange is moved out', () => {
+    const noDestroy = {
+      'components/Foo.xml': xml('Foo', [{ id: 'items', onChange: 'onItems' }]),
+      'components/Foo.bs': 'sub init()\nend sub',
+    };
+    const [before, afterDestroy, afterFix] = runPluginOnEdits(fieldObserverWiringPlugin, [
+      noDestroy,
+      { 'components/Foo.bs': 'sub init()\nend sub\nsub onDestroy()\nend sub' },
+      { 'components/Foo.xml': xml('Foo', [{ id: 'items' }]) },
+    ]);
+    expect(diagnosticsByCode(before, UNDETACHABLE)).toHaveLength(0);
+    expect(diagnosticsByCode(afterDestroy, UNDETACHABLE)).toHaveLength(1);
+    expect(diagnosticsByCode(afterFix, UNDETACHABLE)).toHaveLength(0);
   });
 });
