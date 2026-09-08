@@ -184,6 +184,58 @@ nav timed out waiting for a grid item count that can never happen (last=11)
         ↳ server=https://demo.jellyfin.org/stable (id f0b33816…) user=4ed1b8b4…
 ```
 
+## A green wait can still have read the wrong node (`RTA_AUDIT_RESOLUTION=1`)
+
+Every section above is about a wait that FAILED. This one is about the opposite, and it
+is the harder case: `getVal('#homeRows…')` is `scene.findNode("homeRows")`, a recursive
+search of the whole scene rather than of the screen the test is standing on. So a read
+can succeed against something other than what the call site names, and nothing in the
+result says so — the gate goes green, there is no retry, no dump, no line to notice.
+
+Two ways it happens, and they are different defects:
+
+- **DUPLICATE** — several nodes carry the id, so which one answers is a property of tree
+  order rather than of the test. Seven components declare a node with id `buttons`.
+- **NOT PRESENTED** — exactly one node carries it, and it sits in a view sgRouter has
+  parked off-screen. `suspendMode` defaults to `"hide"`, which keeps a COVERED view in
+  the tree, so the read resolves happily against a screen nobody is looking at.
+
+**The second is the one that has actually bitten, and counting ids does not find it.**
+`waitHome()` passed from a library grid because a scene-rooted `#homeRows` read found a
+SUSPENDED Home — there was only ever one `#homeRows` — and
+[`rta-home-active-list-hardcoded`](../architecture/tech-debt.md#rta-home-active-list-hardcoded)
+is the same mechanism across 30 more sites.
+
+Set `RTA_AUDIT_RESOLUTION=1` and every scene-rooted read is checked against a census of
+the live scene ([`lib/resolution.js`](../../tests/rta/lib/resolution.js)). One
+`storeNodeReferences` call answers both questions — uniqueness by counting ids,
+whether it is presented by walking `parentRef` for a hidden ANCESTOR — so it costs one round trip,
+a median 30 ms on `.177`. Findings land in the run's `resolutions.jsonl` and fold onto the
+ledger line, and the run summary prints them **on a passing run**, which is the only time
+they can appear:
+
+```text
+[rta] 4 scene-rooted read(s) did not resolve to what the call site names, out of 538 audited.
+      The suite is green either way — that is the defect, not the reassurance.
+[rta]   OFF-SCREEN #homeRows.content.0.0.id (#homeRows) — hidden at #routerOutlet.#viewTarget.#d5e10d7e-…
+```
+
+Three things about it are deliberate and easy to get wrong on a second pass:
+
+- **It is REPORT-ONLY and throws nothing.** It runs inside the wait path of the only
+  per-PR feedback nav changes get, so it may not red a healthy suite until its
+  false-alarm rate is known — the same rule `probeFixture` was built under.
+- **The predicate is "presented", NOT "inside `activeRoutedView`".** `#jrDialog` — the
+  most-read id in the suite — is appended to the SCENE by `presentOverlayDialog`, and
+  `#imageFader` sits at scene level too. An active-view rule would false-fail both.
+- **A node hidden in its OWN right is not flagged, only one hidden by an ancestor.**
+  `waitFor('#osd.visible', v => v === false)` is a gate whose job is to wait until the
+  OSD is hidden; flagging it reports a node for the exact state the caller asserted. The
+  first audited suite produced 14 such false alarms out of 19 records.
+
+`waitFocusInside` is out of scope by construction: it tests the FOCUSED node's `keyPath`
+for a segment match, not a scene-rooted find, so it always names the real focus chain.
+
 ### A failed read and an unchanged field are not the same timeout
 
 `getVal` / `getActiveVal` swallow a failed read to `undefined`. That is **correct for a
