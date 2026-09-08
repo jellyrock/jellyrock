@@ -117,7 +117,7 @@ needed yet, so we haven't standardized a layout.
 `createProgramRule` for one that needs the whole program before it can judge a
 single site. They own the diagnostic lifecycle: a rule reading two files has to
 CLEAR its previous findings before re-deriving them, or editing the half that is
-not the diagnostic's anchor leaves a stale finding on screen. Three plugins got
+not the diagnostic's anchor leaves a stale finding on screen. Four plugins got
 that wrong before the module existed. See
 [build-and-tooling.md → Convention plugins](../architecture/build-and-tooling.md#convention-plugins).
 

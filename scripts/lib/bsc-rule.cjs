@@ -10,8 +10,10 @@
  * A plugin that derives a finding from TWO files cannot. `field-observer-wiring`
  * reads a component's XML half and anchors the diagnostic in its codebehind;
  * `observe-without-on-destroy` decides JRScreen-ness from the XML and reports on
- * the `.bs`; `callfunc-interface` needs every component interface in the program
- * before it can judge one call site. In all three, editing the file that is NOT
+ * the `.bs`; `jrscreen-on-destroy` runs the same split the other way, anchoring on
+ * the XML while the verdict comes from the codebehind's function list;
+ * `callfunc-interface` needs every component interface in the program
+ * before it can judge one call site. In all four, editing the file that is NOT
  * the diagnostic's anchor changes the verdict — but BSC only clears diagnostics
  * for the file that changed, so the stale finding survives. Measured, before this
  * module existed: fixing a duplicate observer by deleting the XML `onChange`, or
@@ -98,10 +100,16 @@ function makeReport(program, context, defaultFile, pluginName) {
  * A rule scoped to one component — its XML and its codebehind.
  *
  * `analyze({ program, scope, xmlFile, brsFile, report })` is called once per
- * component scope that has both halves. Scopes without a resolvable codebehind
- * are skipped: there is nothing to anchor a finding to.
+ * component scope. By default a scope with no resolvable codebehind is skipped:
+ * a rule that anchors its finding on the `.bs` has nothing to attach to.
+ *
+ * `requiresCodebehind: false` opts out of that skip, for a rule whose finding
+ * anchors on the XML instead — `jrscreen-on-destroy` reports "this component has
+ * no onDestroy", and a component with no codebehind at all is the strongest case
+ * of that, not an absent one. Such a rule receives `brsFile: null` and must
+ * handle it.
  */
-function createScopeRule({ name, analyze }) {
+function createScopeRule({ name, analyze, requiresCodebehind = true }) {
   return {
     name,
     afterValidateScope(event) {
@@ -119,13 +127,13 @@ function createScopeRule({ name, analyze }) {
         // other component's verdict.
         program.diagnostics.clearByFilter({ scope, tag: name });
 
-        if (!brsFile) return;
+        if (!brsFile && requiresCodebehind) return;
         analyze({
           program,
           scope,
           xmlFile,
           brsFile,
-          report: makeReport(program, { scope, tags: [name] }, brsFile, name),
+          report: makeReport(program, { scope, tags: [name] }, brsFile ?? xmlFile, name),
         });
       } catch (_e) {
         // Never crash the build.

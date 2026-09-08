@@ -28,7 +28,7 @@ ESM plugins won't load.
 not by hooking `afterValidateFile` directly.** Its `createScopeRule` /
 `createProgramRule` factories own the diagnostic lifecycle — clearing the previous
 run's findings before re-deriving them, which is what a rule reading two files
-must do and what three plugins previously got wrong — plus the `bsc-disable-*`
+must do and what four plugins previously got wrong — plus the `bsc-disable-*`
 markers and the never-crash-the-build guard. See
 [build-and-tooling.md → Convention plugins](../docs/architecture/build-and-tooling.md#convention-plugins).
 
