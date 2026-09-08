@@ -12,6 +12,7 @@ import { ecp, odc, device, utils } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
 import { ODC_PORT, odcIsResident } from '../../../scripts/lib/odc-probe.js';
 import { sleep } from './steps.js';
+import { withTimeout } from './timeout.js';
 
 export { ecp, odc, device, utils };
 export const BOOT_MS = RTA_CONFIG.bootMs;
@@ -156,37 +157,10 @@ export async function deployRtaBuild() {
  */
 const DEPLOY_TIMEOUT_MS = 5 * 60 * 1000;
 
-/**
- * Race `promise` against a wall clock, so an unbounded wait fails with a DIAGNOSIS.
- *
- * Exported because the deploy is not the only step here that can wait forever, and the
- * second caller proved the shape general rather than deploy-specific. RTA's own timeouts
- * do not cover this class: `sendRequest` races the request against `getTimeOut(options)`,
- * but it `await`s `setupClientSocket()` FIRST — and that promise only self-rejects on
- * `ECONNREFUSED`/`EPIPE`. A connect to port 9000 that neither connects nor errors leaves
- * it unsettled, and `clientSocketPromise` is cached, so it stays that way. Read out of
- * `client/dist/OnDeviceComponent.js` on 2026-08-16, not inferred from a symptom.
- *
- * So a caller that needs a bound on "the on-device component answers at all" has to put
- * it OUTSIDE the ODC call. That is what this is for.
- *
- * @param {Promise} promise the work to bound.
- * @param {number} ms the cap.
- * @param {string} message what to throw — say the likely CAUSE, not just the elapsed time.
- */
-export async function withTimeout(promise, ms, message) {
-  let timer;
-  const timeout = new Promise((_resolve, reject) => {
-    timer = setTimeout(() => reject(new Error(message)), ms);
-    // Never hold the process open on the timer alone.
-    timer.unref?.();
-  });
-  try {
-    return await Promise.race([promise, timeout]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
+// Re-exported from its own leaf module so `registry.js` and `scripts/measure-signin.js`
+// keep their import site. It moved because `diagnostics.js` needs it too and cannot
+// import this file — see `timeout.js`.
+export { withTimeout };
 
 /**
  * How long to wait for the on-device component to start answering on its port.

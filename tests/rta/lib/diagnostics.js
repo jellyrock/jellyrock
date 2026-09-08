@@ -75,6 +75,7 @@
  */
 import { odc, ecp } from 'roku-test-automation';
 import { homeListKeyPaths } from './home-list.js';
+import { withTimeout } from './timeout.js';
 import {
   crossesHourBoundary,
   FAILURE_KINDS,
@@ -134,8 +135,38 @@ const unwrap = (results, key) => (results?.[key]?.found ? results[key].value : u
  * ever bites when the device has stopped answering — and there it is the point:
  * a suite failing N times against a dead device would otherwise spend 10 s per
  * failure re-confirming the same thing. The unanswered read is still recorded.
+ *
+ * It bounds the two ECP readings below as well, but from OUTSIDE the call rather than
+ * as an option, because ECP has no timeout to pass — see `ecpReading`.
  */
 const CAPTURE_TIMEOUT_MS = 5000;
+
+/**
+ * An ECP reading that cannot hang, which it otherwise can — indefinitely.
+ *
+ * `HttpRequestOptions` carries `retryCount` and nothing else, and the client's
+ * `getNeedleOptions()` sets only auth and proxy, so needle's own defaults stand:
+ * `open_timeout` 10 s, but `response_timeout` and `read_timeout` both 0 — DISABLED.
+ * So a device that accepts the socket and then never answers leaves the request
+ * pending forever, and `retryCount` bounds the number of attempts, not the length of
+ * one. (Read out of `roku-test-automation/client/dist/RokuDevice.js` and
+ * `needle/lib/needle.js` on 2026-09-08, not inferred from a symptom.)
+ *
+ * Unbounded matters more here than at a normal call site: both readings sit in the
+ * `Promise.all` below, where ONE unsettled promise withholds the whole capture — and
+ * this runs on every wait timeout, which is precisely when the device is least likely
+ * to be healthy. The failure that would produce is the worst shape available: a suite
+ * that hangs instead of reporting the timeout it had already detected.
+ *
+ * The rejection is caught by the caller's `.catch(() => null)` like any other, so a
+ * bounded-out reading costs one line of context and never the capture.
+ */
+const ecpReading = (promise, what) =>
+  withTimeout(
+    promise,
+    CAPTURE_TIMEOUT_MS,
+    `ECP ${what} did not answer within ${CAPTURE_TIMEOUT_MS / 1000}s`,
+  );
 
 /**
  * One batched read of device state, plus the focused node.
@@ -163,7 +194,7 @@ export async function captureFailureState() {
     // playing/paused/stopped. Three separate investigations read that as a dialog
     // fault and had to be settled by a control run. One field ends that: a stalled
     // stream now says so in the record.
-    ecp.getMediaPlayer().catch(() => null),
+    ecpReading(ecp.getMediaPlayer(), 'getMediaPlayer').catch(() => null),
     // ECP, and on the failure path deliberately: a screensaver is the one device state
     // that can make every ODC read in this record fail while nothing is wrong with the
     // app. Roku runs a screensaver in its own BrightScript context
@@ -180,11 +211,12 @@ export async function captureFailureState() {
     // the mechanism above is cited to the two docs, not measured here. See
     // `docs/decisions.md` → `rta-screensaver-detect-not-suppress`.
     //
-    // `retryCount: 0` because this is a diagnostic, not a measurement: ECP options carry
-    // no timeout (only a retry count, defaulting to 3), so a single attempt is what keeps
-    // an unreachable device from stretching the failure path. A missed reading costs one
-    // line of context; a slow one delays every failure in the run.
-    ecp.getActiveApp({ retryCount: 0 }).catch(() => null),
+    // `retryCount: 0` because this is a diagnostic, not a measurement: one attempt is
+    // enough context and three would triple the delay on an unreachable device. It is NOT
+    // what bounds the call — retries and duration are different things, and `ecpReading`
+    // is what makes a single attempt unable to hang. A missed reading costs one line of
+    // context; a slow one delays every failure in the run.
+    ecpReading(ecp.getActiveApp({ retryCount: 0 }), 'getActiveApp').catch(() => null),
   ]);
 
   const results = batch?.results;
