@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-09-08 — fix: Register the `state` observer exactly once
 - 2026-09-08 — fix: Register the `position` observer exactly once
 - 2026-09-08 — fix: Gate interface-field observer wiring; fix stale cross-file findings
 - 2026-09-07 — `ItemDetails.itemContent` now registers its observer via `m.top.observeField()` in `init()`, so the `unobserveField` in `onDestroy` actually detaches it; the new `ineffective-unobserve` build gate now fails the build on that pairing.
