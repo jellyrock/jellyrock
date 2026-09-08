@@ -1361,6 +1361,18 @@ The 30 sites naming Home's row list by `#id` are converted to zero, and the gate
 
 **The cap is exact in BOTH directions, and the lower bound is the load-bearing one.** Over two means reads have crept into the exempt module. Under two means `HOME_ROW_LIST_IDS` lists one id, which makes the resolver probe one list and silently revert to the original bug — because the read it drops is the one that does not throw: a hardcoded `#homeRows.content.getChildCount()` resolved in 8 ms to `undefined`, callers turned that into `|| 0` rows, and the run blamed a tile on a healthy Home. The rule lost its `staleBudget` failure mode entirely (~179 → ~135 lines): an allowlist carries no state that can drift from the code, which is the whole reason that failure mode existed. Retires the `rta-home-active-list-hardcoded` tech-debt entry.
 
+## decision-id: rta-row-walk-instrumented-not-converted
+
+**date**: 2026-09-08
+**status**: accepted
+**related-files**: `tests/rta/lib/nav.js`, `tests/rta/lib/nav.test.js`
+
+`walkHomeRowsTo` walks the COLUMN axis through `scrollFocus` and the ROW axis with a read-then-press loop, and that asymmetry stays — the row half is instrumented rather than converted. The symmetry argument is the obvious one and it is wrong, which is why this is recorded: `scrollFocus` computes one burst from a SINGLE index read, so a stale base sends several presses at once. On the column axis the row's own ends bound that. On the row axis they do not — past row 0 the burst walks into the overhang and leaves Home, while `rowItemFocused` keeps RETAINING its last value, so the recovery loop cannot see that focus left the list. The current loop presses at most one key before re-reading. Converting would trade a detectable failure for an undetectable one.
+
+**The library offers no third option**, checked rather than assumed: `focusNode` sets focus directly, skipping the key handler and is banned by `no-restricted-syntax`, `onFieldChangeOnce` is ruled out per-category (`rta-waits-poll-not-observe`), and `sendKeypressSequence` is an unverified fixed burst with the same stale-base property and no read-back.
+
+**What was actually defective was that the decision could not be revisited.** The function's own comment deferred converting "if a row over-press is ever captured" and nothing could capture one: the row half returned no metrics, and `navLibraryByType`'s recovery record is outcome-level and strictly narrower — it fires only when a wrong library actually OPENED and the caller passed an id. The fix compares the walk's target against a reading `pressProbe` already batches one read before the press, recording an `axis` of `row` / `column` / `both`. It costs no device call, and a full green suite recorded zero, so it does not fire on the success path. Re-open this note if the instrument ever records `axis: 'row'` — the candidate then is guarded stepping (`scrollFocus` with the burst disabled), whose cost is a slower walk on every Home nav.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
