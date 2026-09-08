@@ -239,6 +239,12 @@ describe('navLibraryByType — which library actually opened', () => {
     opensInOrder(SHOWS);
     await navLibraryByType('tvshows', SHOWS);
 
+    // All three asserted PRESENT first. `indexOf` answers -1 for a step that never ran,
+    // and -1 is less than every real index — so the ordering alone passes when the press
+    // or either read is missing entirely, which is the regression this test exists for.
+    expect(order).toContain('read:pre');
+    expect(order).toContain('press:Ok');
+    expect(order).toContain('read:selected');
     expect(order.indexOf('read:pre')).toBeLessThan(order.indexOf('press:Ok'));
     expect(order.indexOf('press:Ok')).toBeLessThan(order.indexOf('read:selected'));
   });

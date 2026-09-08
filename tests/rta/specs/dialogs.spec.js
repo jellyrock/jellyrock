@@ -301,6 +301,26 @@ it('series watched button opens the standard confirm dialog; back cancels it', a
   const cancelLabel = await getVal('#buttonRow.0.text');
   const confirmLabel = await getVal('#buttonRow.1.text');
 
+  // Both labels asserted READ, and asserted DIFFERENT, before anything is compared to
+  // them — otherwise every wait below is vacuous. An absent read answers `undefined`, and
+  // a focused node with no `text` field reads `undefined` too, so `f.node?.text ===
+  // confirmLabel` would be satisfied by focus sitting on ANY node without text: all three
+  // waits pass on their first tick and the wrap behaviour is never exercised. Two labels
+  // that merely matched each other would break the wrap assertion the same way. Same guard
+  // the colour comparison at the bottom of this file carries, and the one
+  // `demos/takes/server-switch.js` carries over the identical pair of reads.
+  expect(
+    cancelLabel,
+    'dialog button labels must be readable or the waits below prove nothing',
+  ).toBeTruthy();
+  expect(
+    confirmLabel,
+    'dialog button labels must be readable or the waits below prove nothing',
+  ).toBeTruthy();
+  expect(cancelLabel, 'the two labels must differ or focus cannot be told apart').not.toBe(
+    confirmLabel,
+  );
+
   // showConfirmDialog focuses the SAFE side first
   await waitFocused((f) => f.node?.text === cancelLabel, {
     label: 'cancel focused on open',

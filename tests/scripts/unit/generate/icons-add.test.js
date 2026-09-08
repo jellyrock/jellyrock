@@ -125,7 +125,10 @@ describe('icons-add', () => {
       const lines = result.split('\n');
       const pauseIdx = lines.findIndex((l) => l.includes('pause.svg'));
       const playIdx = lines.findIndex((l) => l.includes('play.svg'));
+      // `findIndex` answers -1 for a row that was never written, and -1 is less than
+      // every real index — so the ordering alone passes on an empty result.
       expect(pauseIdx).toBeGreaterThan(0);
+      expect(playIdx).toBeGreaterThan(-1);
       expect(playIdx).toBeGreaterThan(pauseIdx);
     });
 

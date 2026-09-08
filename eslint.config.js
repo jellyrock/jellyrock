@@ -20,6 +20,7 @@ import prettierConfig from 'eslint-config-prettier';
 import rtaWaitJustified from './scripts/lint/eslint-rules/rta-wait-justified.js';
 import rtaSleepBudgeted from './scripts/lint/eslint-rules/rta-sleep-budgeted.js';
 import rtaHomeRowsBudgeted from './scripts/lint/eslint-rules/rta-home-rows-budgeted.js';
+import orderingAssertsPresence from './scripts/lint/eslint-rules/ordering-asserts-presence.js';
 
 /**
  * Focus is WALKED, never teleported.
@@ -216,6 +217,21 @@ export default [
     rules: {
       // Tests sometimes redeclare common identifiers; tolerate.
       'no-shadow': 'off',
+    },
+  },
+
+  // Every test file, RTA specs included. `ordering-asserts-presence` is repo-wide rather
+  // than RTA-scoped because the defect is a property of `indexOf` returning -1, not of
+  // driving a device: the 2026-09-07 audit proved twelve vacuous sites, and only two of
+  // them were in `tests/rta/`. It is a separate plugin namespace from `jellyrock-rta` for
+  // the same reason — nothing about it is RTA-specific.
+  {
+    files: ['tests/**/*.{test,spec}.js'],
+    plugins: {
+      'jellyrock-tests': { rules: { 'ordering-asserts-presence': orderingAssertsPresence } },
+    },
+    rules: {
+      'jellyrock-tests/ordering-asserts-presence': 'error',
     },
   },
 
