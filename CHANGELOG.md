@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update spellchecker-cli from v7.0.3 to v7.0.4 ([#893](https://github.com/jellyrock/jellyrock/pull/893))
 - Update ropm from v0.11.9 to v0.11.10 ([#880](https://github.com/jellyrock/jellyrock/pull/880))
 - Update promises from v0.7.1 to v0.7.2 ([#878](https://github.com/jellyrock/jellyrock/pull/878))
 - Update brighterscript-formatter from v1.8.1 to v1.8.2 ([#877](https://github.com/jellyrock/jellyrock/pull/877))
