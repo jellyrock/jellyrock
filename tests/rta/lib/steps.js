@@ -9,6 +9,7 @@
  * Node lookups use RTA's `#id` keyPath (a recursive findNode from the scene root).
  */
 import { ecp, odc } from 'roku-test-automation';
+import { recordRecovery } from '../../../scripts/run-record.js';
 import { diagnosedError, FAILURE_KINDS } from './diagnostics.js';
 import { auditSceneResolution, auditSceneResolutions } from './resolution.js';
 import {
@@ -485,6 +486,7 @@ export async function waitFocusInside(
  */
 export function resendIfSwallowed(key, containerId) {
   let ticked = false;
+  let resends = 0;
   return async () => {
     if (!ticked) {
       ticked = true;
@@ -492,6 +494,21 @@ export function resendIfSwallowed(key, containerId) {
     }
     const focused = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
     if (focusIsInside(focused?.keyPath, containerId)) {
+      resends += 1;
+      // RECORDED, not merely re-sent — the argument `navLibraryByType` already makes where
+      // it calls `recordRecovery`, applied to the guard that recovers most often. A harness
+      // that quietly recovers masks the regression a run exists to catch, and a silent
+      // success is indistinguishable in the record from the event never happening. Until
+      // this was recorded, nothing could answer the two questions this guard raises: how
+      // often is a press actually swallowed, and does re-sending it help?
+      recordRecovery({
+        at: new Date().toISOString(),
+        what: `swallowed ${key} at ${containerId}`,
+        detail:
+          `focus was still inside ${containerId} a full tick after ${key} was sent, so the ` +
+          `press was swallowed and has been re-sent (resend ${resends} within this wait).`,
+        observed: { key, containerId, resends, keyPath: focused?.keyPath ?? null },
+      });
       await press(key);
     }
   };

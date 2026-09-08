@@ -1176,7 +1176,27 @@ async function navHomeReturn(ctx, detailCount = 0) {
     await waitFocusInside('#itemGrid');
   }
 
+  // GUARDED, like the OK press in the loop above and the Back in `navCellSweepExtras` —
+  // and it is the same window for the same reason: this press is sent the instant focus
+  // returns to the grid, and `sgrouter_showView`'s finally restores focus BEFORE it
+  // dispatches NavigationEnd, so a key arriving there is rejected by `_goBack` and simply
+  // vanishes. Unguarded, that cost the whole 45 s of `waitHome` with the app sitting
+  // motionless on the grid — focus still inside `#itemGrid`, view still `BaseGridView`
+  // (`.177`, 2026-09-08). It was the last unguarded press of the three in this file.
+  //
+  // ORIGIN-gated, which is precisely what makes it safe here where `backToHome` was not:
+  // `resendIfSwallowed` presses only while focus is STILL inside `#itemGrid`, so the moment
+  // the Back lands it stops and cannot press on into whatever opened. The DESTINATION-gated
+  // `resendUntilFocused` that `backToHome` uses keeps pressing until focus ARRIVES, and
+  // routing this very function through it on 2026-09-06 signed the device out — see that
+  // helper's JSDoc. Different guard, opposite failure mode.
   await press(ecp.Key.Back);
+  await waitFocusInHomeContent({
+    label: 'homeReturn back on Home',
+    timeout: 20000,
+    interval: 500,
+    action: resendIfSwallowed(ecp.Key.Back, '#itemGrid'),
+  });
   await waitHome();
 }
 

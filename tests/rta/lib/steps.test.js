@@ -78,7 +78,7 @@ const {
 // The closed set the failure records group by. Imported from its owning module
 // rather than through `diagnostics.js` so a test asserting a slug cannot agree
 // with a re-export that has drifted.
-const { FAILURE_KINDS } = await import('../../../scripts/run-record.js');
+const { FAILURE_KINDS, readRecoveries } = await import('../../../scripts/run-record.js');
 // The predicate `resendUntilFocused` is driven with here, imported from the module that
 // owns it rather than redefined — a test asserting against a hand-copied predicate would
 // agree with a copy that had drifted.
@@ -474,6 +474,39 @@ describe('resendIfSwallowed', () => {
     await action();
     await action();
     expect(sendKeypress).not.toHaveBeenCalled();
+  });
+
+  it('RECORDS the resend, so a silent recovery cannot look like the event never happening', async () => {
+    // Read back through the module's own accessor rather than a mock: with no run context
+    // `recordDir()` returns a throwaway per-pid tmpdir and keeps read/write symmetric,
+    // which is the property that makes this assertable without stubbing the writer.
+    const before = readRecoveries().length;
+    focusedAt('scene.#itemGrid.0');
+    const action = resendIfSwallowed('back', '#itemGrid');
+    await action(); // first tick, sits out
+    await action(); // swallow detected -> re-send
+    const added = readRecoveries().slice(before);
+    expect(added).toHaveLength(1);
+    expect(added[0].what).toBe('swallowed back at #itemGrid');
+    expect(added[0].observed).toMatchObject({
+      key: 'back',
+      containerId: '#itemGrid',
+      resends: 1,
+      keyPath: 'scene.#itemGrid.0',
+    });
+  });
+
+  it('records NOTHING when the press landed — the guard is silent on the happy path', async () => {
+    // The counterpart that matters: an instrument firing on every wait would drown the
+    // signal it exists to carry. Verified on device 2026-09-08 (a full green suite recorded
+    // `recoveries: 0`), and pinned here so it stays true.
+    focusedAt('scene.#homeRows.2'); // focus already left the grid: the Back landed
+    const before = readRecoveries().length;
+    const action = resendIfSwallowed('back', '#itemGrid');
+    await action();
+    await action();
+    expect(sendKeypress).not.toHaveBeenCalled();
+    expect(readRecoveries()).toHaveLength(before);
   });
 
   it('gives each wait its own first-tick budget', async () => {
