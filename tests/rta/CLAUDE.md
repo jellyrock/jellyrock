@@ -454,6 +454,79 @@ The one call that sets its own ceiling is `readIdentity` in
 [`scripts/measurement-guard.js`](../../scripts/measurement-guard.js), at 5 s; the value
 carries no recorded reason. Every other ODC call in the repo runs on the 10 s default.
 
+## The ODC capability inventory — what we use, and why we don't use the rest
+
+`roku-test-automation`'s client exposes **47 public methods** on `OnDeviceComponent`. This
+suite calls 14 of them. The bar this section exists to hold is the charter's: *an unused
+primitive is fine when there is a recorded reason, and a defect when there is not.* "We
+never needed it" is a reason; silence is not.
+
+It is **gated**, so it cannot go stale the way it already did once: `npm run
+lint:rta-capabilities` reads the method names straight out of the installed
+`client/dist/OnDeviceComponent.d.ts` and fails if any is missing from the block below, or
+if the block names a method the library no longer ships. That second direction is the one
+that matters — the library removed `getNodeReferences` and replaced it with `getNodesInfo`
+in a past release (its README records the swap), which is exactly how an inventory written
+once drifts into fiction.
+
+<!-- rta-capability-inventory:start -->
+
+### Used (14)
+
+| Primitive | Where, and what for |
+|---|---|
+| `getValues` | The batch reader every wait routes through (`getVals` / `getActiveVals`). A keyPath that does not resolve comes back `found: false` rather than failing the batch, which is what lets one fixed request set cover every screen. |
+| `getValue` | Single reads in [`lib/driver.js`](lib/driver.js) / [`lib/steps.js`](lib/steps.js) where there is genuinely one keyPath. |
+| `getFocusedNode` | Every focus predicate — `focusIsInside`, `waitFocused`, `focusIsInHomeContent`, and the failure dump. |
+| `callFunc` | The bench specs' harness nodes, and [`scripts/crash-report.js`](../../scripts/crash-report.js). |
+| `setValue` | Arranging state the app cannot be walked into — [`lib/nav.js`](lib/nav.js), `dialogs.spec.js`, `genre-skeleton.spec.js`. |
+| `createChild` / `removeNode` | The four bench specs create a measurement node under the scene and tear it down again; `capture-screenshots.js` creates one too. Paired on purpose — a bench that leaves its node behind would be caught by the leak gate as an app defect. |
+| `readRegistry` / `writeRegistry` / `deleteRegistrySections` | [`lib/registry.js`](lib/registry.js)'s snapshot / verified-restore, and [`lib/seed.js`](lib/seed.js)'s session seeds. |
+| `getRootsCount` / `getAllCount` | The leak gate's two censuses (`specs/leaks.spec.js`). `getRoots()` is the assertion; `getAll()` is recorded but not asserted — see that file for why both. |
+| `storeNodeReferences` | [`lib/resolution.js`](lib/resolution.js)'s node-resolution audit — one whole-scene census per audited read, behind `RTA_AUDIT_RESOLUTION=1`, report-only. |
+| `writeFile` | `capture-screenshots.js` pushing an image to the device. The only filesystem call this repo makes. |
+
+### Evaluated and rejected (8)
+
+These are the ones that *look* like they should be used. Each was tried or read against the
+device and turned down for a reason, not skipped.
+
+| Primitive | Why not |
+|---|---|
+| `focusNode` | Teleports focus, skipping the key handler a viewer's remote would exercise. All four former sites now walk with real presses through `walkFocusInto`; `no-restricted-syntax` bans it. See *Focus is walked, never teleported*. |
+| `onFieldChangeOnce` | The library's observer primitive, and the obvious answer to "why poll?". Ruled out per-category in *Why every wait polls* — recorded as `rta-waits-poll-not-observe`. |
+| `isInFocusChain` / `hasFocus` | Both resolve by the same recursive id lookup that a suspended Home's hidden `OptionsSlider` wins, so `isInFocusChain` is *wrong* at the `#options` site. `focusIsInside` answers the same question locally, off the keyPath the focus read already returned, at no extra round trip. |
+| `disableScreenSaver` | Declined in favour of DETECTING a running screensaver in the failure dump. It works by adding a hidden `Video` node whose effect outside the render tree was never measured, must be re-issued after every relaunch, and would delete the very signal the dump reports. Recorded as `rta-screensaver-detect-not-suppress`. |
+| `isShowingOnScreen` | Looks purpose-built for the resolution audit and answers in 5–10 ms, but **hung indefinitely on one probe run with no mechanism found**. The `storeNodeReferences` census carries `visible` / `opacity` anyway, so depending on it would buy nothing and import an unexplained hang into the wait path. |
+| `getNodesWithProperties` | Needs a prior whole-tree `storeNodeReferences` walk and returns `nodeRefs`, never the `[row, col]` a focus walk needs. |
+| `getNodesInfo` | Its documented purpose is field-TYPE introspection for the vscode SceneGraph Inspector; a declared field type is in the app's own XML, readable at authoring time for free. Worse, it dumps EVERY field: measured on `.177` 2026-09-08, `getNodesInfo` on `m.global.user` returned `authToken` **with a live 32-character value**, and node-valued fields expand one level (`config` 29 + `policy` 47 + `settings` 77 keys, a 16-field node producing 5963 bytes). That is exactly the whole-node read [`lib/diagnostics.js`](lib/diagnostics.js) refuses under *What it never reads*, because `runs.jsonl` is never reset. `getValues` covers the batch-read need without it. |
+
+### Not applicable (25)
+
+Grouped, because the argument is per family rather than per method.
+
+**Device filesystem — `createDirectory`, `deleteFile`, `getDirectoryListing`, `getVolumeList`, `readFile`, `renameFile`, `statPath`.** These address the device's storage (`tmp:/`, volumes), not the SceneGraph. This suite asserts UI state; its one filesystem need is pushing a screenshot *to* the device, which `writeFile` covers. Nothing here reads device files back — artifacts are written on the dev machine by [`scripts/run-record.js`](../../scripts/run-record.js).
+
+**Responsiveness testing — `startResponsivenessTesting`, `getResponsivenessTestingData`, `stopResponsivenessTesting`.** Undocumented in the library README (they exist in the client but have no section), and this repo already has a purpose-built measurement stack — `scripts/measure*.js`, the task-ledger benches, and the app's own instrumentation — whose numbers are comparable across the historical record. Adopting a second, undocumented one would fork that record.
+
+**Node-reference lifecycle — `assignElementIdOnAllNodes`, `deleteNodeReferences`, `convertKeyPathToSceneKeyPath`.** The audit takes its census under one fixed `nodeRefKey`, and the device *replaces* that array on each call (`processStoreNodeReferencesRequest` clears before it walks), so references cannot accumulate and there is nothing to delete between censuses. The obvious worry — that a census left holding nodes would inflate the leak gate's roots count — was **measured on `.177` 2026-09-08 and does not occur: 108 nodes stored, roots 14 → 14 → 14, zero inflation**, because `buildTree` walks from `m.top.getScene()` and can therefore only capture *parented* nodes, which `getRoots()` excludes by definition. What that does NOT cover is a census taken while a view is open and the view then closed, which would leave the array holding an unparented node; in the leak gate that ordering is prevented by the `hardRelaunch()` at the head of each measurement and by the walk ending on Home. **If the audit is ever asserted on, or its 200-census budget is raised so it can exhaust mid-walk, `deleteNodeReferences` becomes owed.** `assignElementIdOnAllNodes` serves `base: 'elementId'`, which nothing here uses, and `convertKeyPathToSceneKeyPath` converts `appUI` paths, which nothing here produces.
+
+**Coordinate hit-testing — `findNodesAtLocation`.** Answers "what is at x,y". A Roku is driven by a directional remote, not a pointer, so a test that asserted by screen position would assert something no user can do and would break on every layout change. The suite's whole input model is *walk focus with real presses*.
+
+**Component-private state — `getComponentGlobalAAKeyPath`, `setComponentGlobalAAKeyPath`.** Read and write a component's own `m`. That is implementation-private state, and coupling assertions to it is the opposite of the north star: a test that reads `m` passes on a component whose declared interface is broken. `m.global` is different and IS used via `getValue`/`setValue` — it is an app-owned, declared surface.
+
+**Client and transport lifecycle — `cancelRequest`, `setSettings`, `shutdown`, `getServerHost`.** The client drives these itself: `setSettings` is part of RTA's own post-connect handshake, `cancelRequest` backs its request bookkeeping, and `getServerHost` reports a host we configured in the first place. Teardown is owned by [`scripts/rta-run.js`](../../scripts/rta-run.js), which ends the run by process exit after restoring the registry, so there is no point at which the suite would call `shutdown` itself.
+
+**Whole-registry destruction — `deleteEntireRegistry`.** Deliberately never issued. `lib/registry.js` restores by explicit section with `APP_OWNED_KEYS` carved out, and a blanket wipe is precisely the operation that destroyed a device's registry during Phase 7 — unrecoverable, because no run record captures the pre-run registry shape. The narrower `deleteRegistrySections` is what restore needs and all it gets.
+
+**Repeating observer — `onFieldChange`.** The repeating sibling of `onFieldChangeOnce`, and the same argument retires it: see *Why every wait polls*. It is strictly further from the polling model, since a repeating observer also has to be torn down.
+
+**Redundant with a cheaper read — `isSubtype`, `getApplicationStartTime`.** `isSubtype` answers about one node per request, while `subtype()` is a function keyPath that rides inside an existing `getValues` batch — `homeListId()` reads it off *both* candidate ids in a single round trip, which `isSubtype` would cost two calls to do. `getApplicationStartTime` exposes `roAppManager.getUptime()` for perf work that the app's own instrumentation and `bootMs` already cover; it is the one row here with a plausible future use, if boot timing ever needs device-side truth rather than the harness's wall clock.
+
+**Node surgery — `removeNodeChildren`.** The bench specs own exactly one node each and remove it whole with `removeNode`. Stripping a node's children while leaving it in the tree is an app operation, and this suite does not reach into the app's structure to perform one.
+
+<!-- rta-capability-inventory:end -->
+
 ## Layout
 
 - `config.js` — `RTA_CONFIG` (demo server, hero movie, seek position, locales). Shared with the store screenshot generator.

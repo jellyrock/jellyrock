@@ -154,8 +154,12 @@ async function pausedOsd(userSettings = null) {
  * show (see the file header), so a missing target is checked for FIRST — otherwise
  * "this item has one audio track" arrives as an unexplained focus timeout.
  */
+async function osdHasButton(buttonId) {
+  return (await getVal(`#${buttonId}.id`)) === buttonId;
+}
+
 async function pressOsdButton(buttonId) {
-  if ((await getVal(`#${buttonId}.id`)) !== buttonId) {
+  if (!(await osdHasButton(buttonId))) {
     throw new Error(
       `OSD has no #${buttonId} — the item this spec plays no longer has enough streams/sources for it`,
     );
@@ -505,8 +509,24 @@ it('a scrolling overview overlay opens focused on the text, not on OK', async ()
 // JRListDialog, whose result is per-instance. This drives the one picker the demo
 // server can populate and proves the overlay opens over the player, lists the real
 // options, and cancels cleanly without disturbing playback.
-it('osd video-source button opens the list dialog; back cancels it', async () => {
+it('osd video-source button opens the list dialog; back cancels it', async (testCtx) => {
   await pausedOsd();
+
+  // The ONE button in this file whose presence is a FIXTURE precondition rather than an
+  // app invariant: `OSD.bs` removes #showVideoSourceMenu when `numVideoSources < 2`, so a
+  // single-source item correctly has no button and there is nothing for this test to drive.
+  // Skipped rather than failed, on the same grounds as quick-connect's
+  // `server reports Quick Connect disabled` — a precondition the server has to supply is
+  // not an app defect, and a red suite that means "the demo library changed" is the
+  // run-to-run inconsistency this suite exists to remove.
+  //
+  // Verified 2026-09-08: the demo server's hero (`Dracula`) reports 1 MediaSource, and
+  // 0 of its 11 movies carry more than one — so this is not retunable to another item.
+  // `pressOsdButton` still THROWS for the four #showVideoInfoPopup callers below, which
+  // have no content precondition and where a missing button is a real defect.
+  if (!(await osdHasButton('showVideoSourceMenu'))) {
+    testCtx.skip('demo item has a single video source — the OSD correctly drops the button');
+  }
   await pressOsdButton('showVideoSourceMenu');
 
   // The overlay mounts on the SCENE (not on the player), with one row per source.
