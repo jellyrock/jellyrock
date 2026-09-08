@@ -56,6 +56,8 @@
 // assertion in one `it()` says nothing about the operands of another, and treating the
 // file as one scope would silently excuse the second.
 
+import { walkAst } from './_shared.js';
+
 const SEARCHES = new Set(['indexOf', 'lastIndexOf', 'findIndex', 'search']);
 const ORDERING = new Set([
   'toBeLessThan',
@@ -64,21 +66,6 @@ const ORDERING = new Set([
   'toBeGreaterThanOrEqual',
 ]);
 const FUNCTIONS = new Set(['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression']);
-
-/** Walk every child node of `node`, depth-first. */
-function walk(node, visit) {
-  if (!node || typeof node.type !== 'string') return;
-  visit(node);
-  for (const key of Object.keys(node)) {
-    if (key === 'parent') continue;
-    const value = node[key];
-    if (Array.isArray(value)) {
-      for (const child of value) if (child && typeof child.type === 'string') walk(child, visit);
-    } else if (value && typeof value.type === 'string') {
-      walk(value, visit);
-    }
-  }
-}
 
 /** True when `node` is a direct call to one of the -1-returning search methods. */
 function isSearchCall(node) {
@@ -169,7 +156,7 @@ export default {
         const init = def.node?.type === 'VariableDeclarator' ? def.node.init : null;
         if (!init) return false;
         let found = false;
-        walk(init, (n) => {
+        walkAst(init, (n) => {
           if (isSearchCall(n)) found = true;
         });
         return found;
@@ -194,7 +181,7 @@ export default {
       /** Haystack source text -> the string literals asserted to be contained in it. */
       const contains = new Map();
       if (!body) return { proven, contains };
-      walk(body, (node) => {
+      walkAst(body, (node) => {
         if (node.type !== 'CallExpression' || node.callee.type !== 'MemberExpression') return;
         const call = expectCallOf(node.callee);
         if (!call?.arguments[0]) return;

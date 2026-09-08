@@ -61,7 +61,7 @@
 // `waitFocusInHomeContent`, which ask the FOCUSED node its `subtype` — see
 // `tests/rta/CLAUDE.md` → "Identify a dynamically-created node by `subtype`".
 
-import path from 'node:path';
+import { relativeFilename } from './_shared.js';
 
 const DOC = 'tests/rta/lib/home-list.js';
 
@@ -78,15 +78,6 @@ const TAB_OWNED_IDS = ['#homeRows', '#favoritesRows'];
  */
 const RESOLVER_MODULE = 'tests/rta/lib/home-list.js';
 const RESOLVER_SITES = 2;
-
-/** The repo-relative, POSIX-separated path ESLint is currently linting. */
-function relativeFilename(context) {
-  const filename = context.filename ?? context.getFilename();
-  return path
-    .relative(context.cwd ?? process.cwd(), filename)
-    .split(path.sep)
-    .join('/');
-}
 
 const namesATabOwnedList = (text) => TAB_OWNED_IDS.some((id) => text.includes(id));
 

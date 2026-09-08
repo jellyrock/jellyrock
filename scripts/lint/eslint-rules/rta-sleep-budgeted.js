@@ -47,7 +47,7 @@
 // rule until the table is lowered to match. That keeps the table an INVENTORY rather than
 // a ceiling that only ever drifts upward.
 
-import path from 'node:path';
+import { relativeFilename, calleeName } from './_shared.js';
 
 const DOC = 'tests/rta/CLAUDE.md → "Why the surviving sleeps are not arbitrary waits"';
 
@@ -114,15 +114,6 @@ const LOOP_TYPES = new Set([
   'ForInStatement',
 ]);
 
-/** The repo-relative, POSIX-separated path ESLint is currently linting. */
-function relativeFilename(context) {
-  const filename = context.filename ?? context.getFilename();
-  return path
-    .relative(context.cwd ?? process.cwd(), filename)
-    .split(path.sep)
-    .join('/');
-}
-
 /**
  * Is this call lexically inside a loop, and therefore a poll tick rather than an
  * arbitrary wait?
@@ -178,13 +169,7 @@ export default {
 
     return {
       CallExpression(node) {
-        const callee = node.callee;
-        const name =
-          callee.type === 'Identifier'
-            ? callee.name
-            : callee.type === 'MemberExpression' && callee.property.type === 'Identifier'
-              ? callee.property.name
-              : null;
+        const name = calleeName(node);
         if (name !== 'sleep') return;
 
         // A poll tick proves itself from syntax — the loop owns the exit condition.

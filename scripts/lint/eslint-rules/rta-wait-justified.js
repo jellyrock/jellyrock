@@ -44,6 +44,8 @@
 // disables this rule with a reason — the same escape hatch `no-restricted-syntax` uses
 // for a named fail-fast in these files.
 
+import { calleeName, walkAst } from './_shared.js';
+
 /**
  * KeyPaths whose target states have been read in the app source and found to be
  * non-transient at the poll intervals these waits use — each is either TERMINAL (held
@@ -145,22 +147,15 @@ function hasActionOption(node) {
  */
 function testsForAbsence(node) {
   let found = false;
-  const walk = (n) => {
-    if (found || !n || typeof n.type !== 'string') return;
+  walkAst(node, (n) => {
+    if (found) return;
     if (n.type === 'BinaryExpression' && (n.operator === '===' || n.operator === '==')) {
       for (const side of [n.left, n.right]) {
         if (side.type === 'Identifier' && side.name === 'undefined') found = true;
         if (side.type === 'Literal' && side.value === null && side.raw === 'null') found = true;
       }
     }
-    for (const key of Object.keys(n)) {
-      if (key === 'parent' || key === 'loc' || key === 'range') continue;
-      const v = n[key];
-      if (Array.isArray(v)) v.forEach((c) => c && typeof c.type === 'string' && walk(c));
-      else if (v && typeof v.type === 'string') walk(v);
-    }
-  };
-  walk(node);
+  });
   return found;
 }
 
@@ -196,13 +191,7 @@ export default {
   create(context) {
     return {
       CallExpression(node) {
-        const callee = node.callee;
-        const name =
-          callee.type === 'Identifier'
-            ? callee.name
-            : callee.type === 'MemberExpression' && callee.property.type === 'Identifier'
-              ? callee.property.name
-              : null;
+        const name = calleeName(node);
         if (name !== 'waitFor' || node.arguments.length === 0) return;
 
         const [keyPathArg, predicateArg] = node.arguments;
