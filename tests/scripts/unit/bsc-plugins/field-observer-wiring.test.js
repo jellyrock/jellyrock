@@ -16,7 +16,7 @@
 //   protection and provides none.
 
 import { describe, it, expect } from 'vitest';
-import { runPluginOnSource, diagnosticsByCode } from '../_helpers/run-plugin.js';
+import { runPluginOnSource, runPluginOnEdits, diagnosticsByCode } from '../_helpers/run-plugin.js';
 import fieldObserverWiringPlugin from '../../../../scripts/bsc-plugins/field-observer-wiring.cjs';
 
 const DUPLICATE = 'duplicate-field-observer';
@@ -288,5 +288,111 @@ describe('robustness', () => {
       `,
     });
     expect(diagnosticsByCode(diagnostics, DUPLICATE)).toHaveLength(0);
+  });
+});
+
+describe('case-insensitive field matching', () => {
+  // BrightScript field names are case-insensitive, so `<field id="isSelected">`
+  // and `observeField("isselected")` name the SAME field and are still a double
+  // registration. A case-sensitive compare reads them as unrelated and says
+  // nothing. No instance exists in the tree today — this keeps it that way.
+  it('flags a duplicate whose spellings differ only in case', () => {
+    const diagnostics = run({
+      'components/Foo.xml': xml('Foo', [{ id: 'isSelected', onChange: 'onSelected' }]),
+      'components/Foo.bs': `
+        sub init()
+          m.top.observeField("isselected", "onSelected")
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, DUPLICATE)).toHaveLength(1);
+  });
+
+  it('flags an ineffective unobserve whose spelling differs only in case', () => {
+    const diagnostics = run({
+      'components/Foo.xml': xml('Foo', [{ id: 'itemContent', onChange: 'onItemContent' }]),
+      'components/Foo.bs': `
+        sub onDestroy()
+          m.top.unobserveField("ITEMCONTENT")
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, INEFFECTIVE)).toHaveLength(1);
+  });
+});
+
+// The verdict depends on BOTH halves of the component, but the diagnostic is
+// anchored in the .bs. Before the plugin moved onto the shared scope lifecycle,
+// a fix made on the XML side left the error sitting on the codebehind until the
+// codebehind itself was touched — the author does exactly what the message says
+// and the IDE keeps saying no. `runPluginOnSource` validates once and so cannot
+// see any of this; these use the edit-sequence harness.
+describe('incremental re-validation', () => {
+  const buggy = {
+    'components/Foo.xml': xml('Foo', [{ id: 'isSelected', onChange: 'onSelected' }]),
+    'components/Foo.bs': `
+      sub init()
+        m.top.observeField("isSelected", "onSelected")
+      end sub
+    `,
+  };
+  const clean = { 'components/Foo.xml': xml('Foo', [{ id: 'isSelected' }]) };
+  const dupCount = (d) => diagnosticsByCode(d, DUPLICATE).length;
+
+  it('clears when the fix is made on the XML side', () => {
+    const [before, after] = runPluginOnEdits(fieldObserverWiringPlugin, [buggy, clean]);
+    expect(dupCount(before)).toBe(1);
+    expect(dupCount(after)).toBe(0);
+  });
+
+  it('clears when the fix is made on the codebehind side', () => {
+    const [before, after] = runPluginOnEdits(fieldObserverWiringPlugin, [
+      buggy,
+      { 'components/Foo.bs': 'sub init()\nend sub' },
+    ]);
+    expect(dupCount(before)).toBe(1);
+    expect(dupCount(after)).toBe(0);
+  });
+
+  it('appears when the XML side introduces the duplicate', () => {
+    const [before, after] = runPluginOnEdits(fieldObserverWiringPlugin, [
+      { ...buggy, ...clean },
+      { 'components/Foo.xml': xml('Foo', [{ id: 'isSelected', onChange: 'onSelected' }]) },
+    ]);
+    expect(dupCount(before)).toBe(0);
+    expect(dupCount(after)).toBe(1);
+  });
+
+  it('appears when the codebehind side introduces the duplicate', () => {
+    const [before, after] = runPluginOnEdits(fieldObserverWiringPlugin, [
+      {
+        'components/Foo.xml': xml('Foo', [{ id: 'isSelected', onChange: 'onSelected' }]),
+        'components/Foo.bs': 'sub init()\nend sub',
+      },
+      {
+        'components/Foo.bs':
+          'sub init()\n  m.top.observeField("isSelected", "onSelected")\nend sub',
+      },
+    ]);
+    expect(dupCount(before)).toBe(0);
+    expect(dupCount(after)).toBe(1);
+  });
+
+  it('keeps the finding when an unrelated component is edited', () => {
+    const [, after] = runPluginOnEdits(fieldObserverWiringPlugin, [
+      {
+        ...buggy,
+        'components/Other.xml': xml('Other', [{ id: 'plain' }]),
+        'components/Other.bs': 'sub init()\nend sub',
+      },
+      { 'components/Other.bs': 'sub init()\n  x = 1\nend sub' },
+    ]);
+    expect(dupCount(after)).toBe(1);
+  });
+
+  it('does not duplicate the finding across repeated validations', () => {
+    const [, second, third] = runPluginOnEdits(fieldObserverWiringPlugin, [buggy, {}, {}]);
+    expect(dupCount(second)).toBe(1);
+    expect(dupCount(third)).toBe(1);
   });
 });
