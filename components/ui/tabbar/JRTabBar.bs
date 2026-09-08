@@ -6,6 +6,14 @@ sub init()
 
   ' When the tab bar gains focus, highlight the focused tab
   m.top.observeField("focusedChild", "onFocusChanged")
+
+  ' Interface observers are registered HERE rather than declared as XML onChange
+  ' attributes: this component releases node references in onDestroy and these
+  ' handlers dereference them, so the registrations have to be detachable. An XML
+  ' onChange does not appear to be removable by unobserveField — see the wiring
+  ' rule in components/CLAUDE.md.
+  m.top.observeField("tabs", "onTabsChanged")
+  m.top.observeField("focusedTabIndex", "onFocusedTabIndexChanged")
 end sub
 
 ' Rebuilds tab children when the tabs array changes.
@@ -215,7 +223,12 @@ sub onFocusedTabIndexChanged()
 end sub
 
 sub onDestroy()
+  ' Detach the interface observers registered in init(). Must precede every
+  ' reference release below — these handlers dereference them.
+  m.top.unobserveField("tabs")
+  m.top.unobserveField("focusedTabIndex")
   m.top.unobserveField("focusedChild")
+
   m.tabContainer.removeChildren(m.tabContainer.getChildren(-1, 0))
   m.tabContainer = invalid
 end sub

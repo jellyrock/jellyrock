@@ -24,6 +24,17 @@ sub init()
   m.top.enableRenderTracking = true
   m.top.observeField("renderTracking", "onRenderComplete")
   m.top.observeField("focusedChild", "onFocusChanged")
+
+  ' Interface observers are registered HERE rather than declared as XML onChange
+  ' attributes: this component releases node references in onDestroy and these
+  ' handlers dereference them, so the registrations have to be detachable. An XML
+  ' onChange does not appear to be removable by unobserveField — see the wiring
+  ' rule in components/CLAUDE.md.
+  m.top.observeField("triggerText", "onTriggerTextChanged")
+  m.top.observeField("triggerIconUri", "onTriggerIconChanged")
+  m.top.observeField("triggerIconBlendColor", "onTriggerIconBlendColorChanged")
+  m.top.observeField("items", "onItemsChanged")
+  m.top.observeField("selectedItemId", "onSelectedItemChanged")
 end sub
 
 ' ============================================
@@ -332,7 +343,15 @@ end function
 ' ============================================
 
 sub onDestroy()
+  ' Detach the interface observers registered in init(). Must precede every
+  ' reference release below — these handlers dereference them.
+  m.top.unobserveField("triggerText")
+  m.top.unobserveField("triggerIconUri")
+  m.top.unobserveField("triggerIconBlendColor")
+  m.top.unobserveField("items")
+  m.top.unobserveField("selectedItemId")
   m.top.unobserveField("focusedChild")
+
   m.top.unobserveField("renderTracking")
 
   ' Clear menu items

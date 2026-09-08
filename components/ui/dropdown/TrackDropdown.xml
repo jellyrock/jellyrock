@@ -57,14 +57,14 @@
   </children>
   <interface>
     <!-- Input -->
-    <field id="triggerText" type="string" onChange="onTriggerTextChanged" />
-    <field id="items" type="array" onChange="onItemsChanged" />
-    <field id="selectedItemId" type="string" onChange="onSelectedItemChanged" />
+    <field id="triggerText" type="string" />
+    <field id="items" type="array" />
+    <field id="selectedItemId" type="string" />
     <!-- 2 * IconButton icon frame (124 each) + the 30px visible gap between adjacent
          icons = 278. Slot spans from button[N]'s visible left edge to button[N+1]'s
          visible right edge in the button group below. -->
-    <field id="slotWidth" type="integer" value="278" onChange="onSlotWidthChanged" />
-    <field id="isInteractive" type="boolean" value="true" onChange="onIsInteractiveChanged" />
+    <field id="slotWidth" type="integer" value="278" />
+    <field id="isInteractive" type="boolean" value="true" />
 
     <!-- Output -->
     <field id="selectedAction" type="string" alwaysNotify="true" />

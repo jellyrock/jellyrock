@@ -249,6 +249,19 @@ sub init()
       end if
     end if
   end if
+
+  ' Interface observers are registered HERE rather than declared as XML onChange
+  ' attributes: this component releases node references in onDestroy and these
+  ' handlers dereference them, so the registrations have to be detachable. An XML
+  ' onChange does not appear to be removable by unobserveField — see the wiring
+  ' rule in components/CLAUDE.md.
+  m.top.observeField("itemId", "onItemIdChanged")
+  m.top.observeField("itemContent", "onItemContentChanged")
+  m.top.observeField("trailerAvailable", "onTrailerAvailableChanged")
+  m.top.observeField("refreshItemDetailsData", "onRefreshItemDetailsData")
+  m.top.observeField("refreshExtrasData", "onRefreshExtrasData")
+  m.top.observeField("nextUpEpisode", "onNextUpEpisodeChanged")
+  m.top.observeField("refreshResumeData", "onRefreshResumeData")
 end sub
 
 ' onScreenShown: Callback when view is presented on screen
@@ -4496,6 +4509,16 @@ end function
 ' onDestroy: Full teardown releasing all resources before component removal
 ' Called automatically via JRScreen.beforeViewClose when sgRouter permanently closes this view.
 sub onDestroy()
+  ' Detach the interface observers registered in init(). Must precede every
+  ' reference release below — these handlers dereference them.
+  m.top.unobserveField("itemId")
+  m.top.unobserveField("itemContent")
+  m.top.unobserveField("trailerAvailable")
+  m.top.unobserveField("refreshItemDetailsData")
+  m.top.unobserveField("refreshExtrasData")
+  m.top.unobserveField("nextUpEpisode")
+  m.top.unobserveField("refreshResumeData")
+
   m.log.verbose("onDestroy")
 
   ' Tear down ExtrasRowList FIRST — stops in-flight tasks (including any
@@ -4522,9 +4545,6 @@ sub onDestroy()
   ' Safety net: stop the loading spinner in case the component is destroyed
   ' while the initial load or a refresh is still in flight.
   stopLoadingSpinner()
-
-  ' Unobserve m.top programmatic observer (may or may not be active depending on flow)
-  m.top.unobserveField("itemContent")
 
   ' Unobserve child node observers
   m.itemLogo.unobserveField("loadStatus")

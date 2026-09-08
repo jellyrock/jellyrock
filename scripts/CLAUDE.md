@@ -24,6 +24,14 @@ both lint and generator (e.g. `update-translations.cjs`: default = lint, `--fix`
 in the vendored `brighterscript/dist/util.js`) uses `require()`.
 ESM plugins won't load.
 
+**A convention plugin should be built from [`lib/bsc-rule.cjs`](lib/bsc-rule.cjs),
+not by hooking `afterValidateFile` directly.** Its `createScopeRule` /
+`createProgramRule` factories own the diagnostic lifecycle — clearing the previous
+run's findings before re-deriving them, which is what a rule reading two files
+must do and what four plugins previously got wrong — plus the `bsc-disable-*`
+markers and the never-crash-the-build guard. See
+[build-and-tooling.md → Convention plugins](../docs/architecture/build-and-tooling.md#convention-plugins).
+
 **Anything `require()`'d by a `.cjs` file is also forced `.cjs`** — including
 everything in `scripts/lib/`. ESM (`.js`) modules can't be `require()`'d from
 CJS. The reverse works fine: ESM can `import x from './foo.cjs'`.
@@ -134,7 +142,12 @@ BSC plugin tests use **inline scenarios** — template literals carrying short
 synthetic `.bs`/`.xml` snippets passed to one of three harnesses under
 `tests/scripts/unit/_helpers/`:
 
-- `run-plugin.js` — diagnostic-emitting plugins (Tier 1).
+- `run-plugin.js` — diagnostic-emitting plugins (Tier 1). Exports `runPluginOnSource`
+  (one validation) and **`runPluginOnEdits`** (a SEQUENCE of edits against one
+  program, returning the diagnostics after each). Any plugin whose verdict depends
+  on more than one file needs the second: a stale-diagnostic bug is only visible
+  across validations, and `field-observer-wiring` shipped with 18 green tests and
+  exactly that defect because no harness could express "edit this, then look again".
 - `transpile-with-plugin.js` — transpile-mutating plugins (`roku-log`).
 - `run-plugin-with-temp-locale.js` — virtual-file injectors (`translation-keys`).
 

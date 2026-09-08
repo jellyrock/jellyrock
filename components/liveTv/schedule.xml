@@ -14,8 +14,8 @@
   <interface>
     <field id="watchChannel" type="node" alwaysNotify="false" />
     <field id="focusedChannel" type="node" alwaysNotify="false" />
-    <field id="filter" type="string" value="All" onChange="channelFilterSet" />
-    <field id="searchTerm" type="string" value="" onChange="channelsearchTermSet" />
+    <field id="filter" type="string" value="All" />
+    <field id="searchTerm" type="string" value="" />
     <function name="startLoading" />
   </interface>
 </component>
