@@ -616,6 +616,49 @@ export async function openLibraryByType(collectionType, libraryId = null) {
   const tile = await findHomeLibraryTile(list, collectionType, libraryId);
   const walk = await walkHomeRowsTo(list, tile, collectionType);
   const probe = await pressProbe(list, tile);
+  // Where the walk AIMED against where focus actually sits one read before the press.
+  // They disagree when a key landed AFTER the wait that sent it had already returned —
+  // the over-press shape measured on the column axis on `.177` 2026-09-07, and the one
+  // the row axis can still produce, because it is walked by a read-then-press loop
+  // rather than by `scrollFocus` (that asymmetry is argued in `walkHomeRowsTo`).
+  //
+  // Costs nothing: `pressProbe` already batches this reading and `aimedAt` is already
+  // carried on the return. What was missing is that nothing COMPARED them on a green
+  // run. The recovery record in `navLibraryByType` is outcome-level and strictly
+  // narrower — it fires only when a wrong library actually OPENED and the caller
+  // supplied an id, so drift that still landed on the right library, and any drift at
+  // all on an id-less nav, left no trace anywhere.
+  //
+  // Recorded, not gated, for the same reason `pressProbe` is not a gate: this is the
+  // success path of every library nav, and an instrument may not fail the thing it
+  // observes. `axis` is the field the open question needs — `walkHomeRowsTo` defers
+  // converting its row half until a row over-press is captured, and until now nothing
+  // could capture one.
+  if (
+    Array.isArray(probe.focused) &&
+    (probe.focused[0] !== tile.row || probe.focused[1] !== tile.col)
+  ) {
+    const rowOff = probe.focused[0] !== tile.row;
+    const colOff = probe.focused[1] !== tile.col;
+    const detail =
+      `${collectionType}: the walk aimed at [${tile.row},${tile.col}] but focus was at ` +
+      `[${probe.focused}] one read before the press — a key landed after the wait that ` +
+      'sent it had already returned.';
+    recordRecovery({
+      at: new Date().toISOString(),
+      what: `home tile walk drift (${collectionType})`,
+      detail,
+      observed: {
+        collectionType,
+        aimedAt: [tile.row, tile.col],
+        landedOn: probe.focused,
+        axis: rowOff && colOff ? 'both' : rowOff ? 'row' : 'column',
+        colPressed: walk?.pressed,
+        colRecovered: walk?.recovered,
+      },
+    });
+    console.warn(`[nav] ${detail}`);
+  }
   await press(ecp.Key.Ok);
   // Read what Home SELECTED, not just what we aimed at. `aimedAt` is carried alongside so
   // the record compares the two without a reader having to reconstruct the intent.
@@ -641,7 +684,17 @@ export async function openLibraryByType(collectionType, libraryId = null) {
  * (the whole reason `walkHomeToFirstRow` exists), so a single overshoot there does not land
  * on the wrong tile, it leaves Home entirely — and the caller's next step would then be
  * pressing at the overhang. Converting it on the strength of a column measurement would be
- * changing the riskier half on speculation. Revisit if a row over-press is ever captured.
+ * changing the riskier half on speculation — and the conversion is not free of risk in the
+ * other direction either: `scrollFocus` computes ONE burst from a single index read, so a
+ * stale read there sends several Ups at once, and past row 0 that walks into the overhang
+ * while `rowItemFocused` keeps RETAINING its last value, which is a failure the recovery
+ * loop cannot see. The current loop presses at most one key before re-reading.
+ *
+ * Revisit if a row over-press is ever captured. `navHomeLibraryTile` is what captures one:
+ * it compares the walk's target against `pressProbe`'s reading one read before the press
+ * and records an `axis: 'row'` drift. That comparison is the evidence this paragraph is
+ * waiting on — before it existed the condition above could never be met, because nothing
+ * measured it.
  */
 async function walkHomeRowsTo(list, { row, col }, collectionType) {
   await waitFor(`${list}.rowItemFocused`, (v) => Array.isArray(v) && v[0] === row, {

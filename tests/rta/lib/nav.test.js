@@ -523,3 +523,43 @@ describe('reportSweep — the BEFORE segment, and when it must not print', () =>
     expect(warned).toEqual([]);
   });
 });
+
+// The instrument `walkHomeRowsTo`'s docblock defers to. That docblock declines to convert
+// the row half until a row over-press is CAPTURED — and until this comparison existed,
+// nothing could capture one. The recovery record asserted above is outcome-level and
+// strictly narrower: it fires only when a wrong library actually OPENED and the caller
+// supplied an id, so drift that still landed on the right library left no trace at all.
+//
+// Hardware-free for the same reason as the rest of this file: what is asserted is the
+// comparison, which is pure control flow over a reading `pressProbe` already takes.
+describe('navHomeLibraryTile — did the walk land where it aimed', () => {
+  it('records a ROW drift, which is the reading the row-axis decision is waiting on', async () => {
+    // Aimed at [0,1]; focus sits at [1,1] one read before the press — a Down that landed
+    // after the row wait that sent it had already returned. This is the shape the column
+    // axis was measured producing, on the axis that is still walked by a press loop.
+    getVals.mockResolvedValue([[1, 1], 2]);
+    opensInOrder(SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+    expect(recordRecovery).toHaveBeenCalledTimes(1);
+    const [entry] = recordRecovery.mock.calls[0];
+    expect(entry.what).toContain('home tile walk drift');
+    expect(entry.observed).toMatchObject({ axis: 'row', aimedAt: [0, 1], landedOn: [1, 1] });
+  });
+
+  it('names the COLUMN axis when only the column drifted', async () => {
+    // Same instrument, the axis that already has a fix — kept so the field cannot silently
+    // start reporting one axis for both, which would make the row evidence unreadable.
+    getVals.mockResolvedValue([[0, 2], 3]);
+    opensInOrder(SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+    expect(recordRecovery.mock.calls[0][0].observed.axis).toBe('column');
+  });
+
+  it('stays silent when focus is exactly where the walk aimed', async () => {
+    // A clean nav must leave NO drift record. An instrument that fires on the success path
+    // is noise, and the decision it feeds would be unreadable.
+    opensInOrder(SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+    expect(recordRecovery).not.toHaveBeenCalled();
+  });
+});
