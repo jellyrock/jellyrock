@@ -1349,6 +1349,18 @@ A scene-rooted `#id` read is now checked against a census of the live scene unde
 
 **Report-only is a posture with a scheduled end, not a permanent choice.** It runs inside the wait path of the only per-PR feedback nav changes get, and a check whose false-alarm rate has never been measured must not be able to red a healthy suite — the rule `probeFixture` was built under, one layer up: instrumentation must never move a verdict. The `#osd` episode is that rule earning itself, in the first run. Findings land in a fourth ledger stream (`resolutions.jsonl`, beside failures / assertions / recoveries, on those two entries' own split reasoning) and print on a PASSING run, the only time they can appear. Promote to a throw once a suite says the rate is zero. There is deliberately **no allowlist** yet: `getVals`' own doc comment says `#homeRows` is read scene-rooted on purpose during a drill-down, so seeding one from that guess would launder the assumption the audit exists to test.
 
+## decision-id: rta-home-list-ban-not-budget
+
+**date**: 2026-09-08
+**status**: accepted
+**related-files**: `tests/rta/lib/home-list.js`, `tests/rta/lib/steps.js`, `scripts/lint/eslint-rules/rta-home-list-resolved.js`, `tests/rta/CLAUDE.md`
+
+The 30 sites naming Home's row list by `#id` are converted to zero, and the gate that froze them is now a **ban with one capped exemption** rather than the per-file ratcheting budget it shipped as. Both the tech-debt entry and the rule's own header prescribed "delete the rule when every number reaches zero". That premise is false: resolving Home's active list means reading BOTH candidate ids and taking whichever is in the scene, so something must know them, and nothing in the app offers an id-free route — `getActiveRows()` is not in Home's `<interface>` and no node-typed field exposes `m.activeContent`. The reachable answer is not "no module names them" but "exactly one does", which is what the rule now enforces.
+
+**A budget was rejected on its message, not its cost.** Keeping the table with the resolver's file pinned at 2 was the cheaper edit, and it answers the wrong question: `overBudget` tells a developer to "lower the number", which is right if they converted a site and wrong if they added one, and the rule cannot tell those apart. A per-FILE budget also has to trust a whole file — the resolver's natural home was 1611-line `steps.js`, where an allowance of 2 permits any two sites anywhere in it. The import graph then forced the better shape anyway (`steps.js` imports `diagnostics.js`, so the ids had to move to a module both could import), and a ~40-line module is an exemption a reviewer can check at a glance. Deleting the rule outright was rejected on evidence: `nav.js` grew 21 → 26 sites unnoticed, each addition made by a session working on something else.
+
+**The cap is exact in BOTH directions, and the lower bound is the load-bearing one.** Over two means reads have crept into the exempt module. Under two means `HOME_ROW_LIST_IDS` lists one id, which makes the resolver probe one list and silently revert to the original bug — because the read it drops is the one that does not throw: a hardcoded `#homeRows.content.getChildCount()` resolved in 8 ms to `undefined`, callers turned that into `|| 0` rows, and the run blamed a tile on a healthy Home. The rule lost its `staleBudget` failure mode entirely (~179 → ~135 lines): an allowlist carries no state that can drift from the code, which is the whole reason that failure mode existed. Retires the `rta-home-active-list-hardcoded` tech-debt entry.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

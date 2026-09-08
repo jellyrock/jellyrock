@@ -197,11 +197,12 @@ assigned at creation, so either list is addressable by `#id` like the other four
 What is left is writing `navCellSweepFavorites` itself; it is tracked as a followup in
 [`docs/progress.md`](../progress.md).
 
-The related fragility
-[`rta-home-active-list-hardcoded`](../architecture/tech-debt.md#rta-home-active-list-hardcoded)
-is only **half** retired by that. The by-name content reads it covers now resolve; the focus
-walks still poll `#homeRows` by name rather than reading off the focused node, so they read a
-frozen `rowItemFocused` if a walk ever runs with Favorites selected. Nothing in the suite
+The related fragility — the suite naming Home's row list by id — is now **fully** closed
+(2026-09-08). Both halves went together: the by-name content reads resolve the active list
+through `homeListId()`, and the focus walks ask the focused node its `subtype` via
+`focusIsInHomeContent`, so neither depends on which tab is selected. The ids survive in one
+module, [`tests/rta/lib/home-list.js`](../../tests/rta/lib/home-list.js), and
+`jellyrock-rta/home-list-resolved` keeps them there. Nothing in the suite
 selects a non-default tab before a nav, so it is still unreachable — see the entry for the
 directions that close it.
 

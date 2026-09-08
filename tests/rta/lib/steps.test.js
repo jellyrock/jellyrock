@@ -59,6 +59,9 @@ const {
   waitOsdUp,
   resendIfSwallowed,
   resendUntilFocusInside,
+  resendUntilFocused,
+  homeListId,
+  waitFocusInHomeContent,
   walkFocusInto,
   walkHomeToFirstRow,
   overhangWalkKey,
@@ -76,6 +79,10 @@ const {
 // rather than through `diagnostics.js` so a test asserting a slug cannot agree
 // with a re-export that has drifted.
 const { FAILURE_KINDS } = await import('../../../scripts/run-record.js');
+// The predicate `resendUntilFocused` is driven with here, imported from the module that
+// owns it rather than redefined — a test asserting against a hand-copied predicate would
+// agree with a copy that had drifted.
+const { focusIsInHomeContent } = await import('./home-list.js');
 
 /** A `getFocusedNode` answer resting on a row list at `[row, item]`. */
 const onRow = (row) => ({
@@ -585,7 +592,7 @@ describe('overhangWalkKey — the key is chosen from where focus IS', () => {
     // Home's active list is `m.activeContent`, which is the favorites list under that tab.
     // Nothing in `specs/` selects a tab, so this state is unreachable from `focusOverhangIcon`
     // today — asserted so the predicate agrees with the app, NOT as evidence it is exercised.
-    // See `rta-home-active-list-hardcoded` in docs/architecture/tech-debt.md.
+    // See `focusIsInHomeContent` in ./home-list.js, which owns this question.
     const inFavorites = {
       node: { subtype: 'FavoritesRows', id: '', rowItemFocused: [0, 0] },
       keyPath: '#routerOutlet.#viewTarget.#abc.0',
@@ -613,6 +620,142 @@ describe('overhangWalkKey — the key is chosen from where focus IS', () => {
   });
 });
 
+describe('homeListId — which row list Home actually has in the scene', () => {
+  beforeEach(() => {
+    getValue.mockReset();
+    getFocusedNode.mockReset().mockResolvedValue(null);
+    getValues.mockReset();
+  });
+
+  /** A batch answer where candidate `i` resolved to `subtype`. */
+  const resolves = (i, subtype) => ({
+    results: { [`k${i}`]: { found: true, value: subtype }, [`k${1 - i}`]: { found: false } },
+  });
+
+  it('asks about BOTH candidate ids in ONE round trip', async () => {
+    getValues.mockResolvedValue(resolves(0, 'HomeRows'));
+
+    await homeListId();
+
+    // One batch, not two reads. Asking sequentially would cost a second round trip AND
+    // straddle a tab change, so the two answers could describe different moments.
+    expect(getValues).toHaveBeenCalledTimes(1);
+    const sent = Object.values(getValues.mock.calls[0][0].requests).map((r) => r.keyPath);
+    expect(sent).toEqual(['#homeRows.subtype()', '#favoritesRows.subtype()']);
+    // Scene-rooted, not `activeRoutedView`-scoped: `selectionProbe` reads Home's rows AFTER
+    // a drill-down has opened, when Home is suspended but still in the tree.
+    expect(Object.values(getValues.mock.calls[0][0].requests).map((r) => r.base)).toEqual([
+      'scene',
+      'scene',
+    ]);
+  });
+
+  it('returns the id of whichever list answered', async () => {
+    getValues.mockResolvedValue(resolves(0, 'HomeRows'));
+    await expect(homeListId()).resolves.toBe('#homeRows');
+  });
+
+  it('resolves the FAVORITES list when that is the tab in the scene', async () => {
+    // The case no spec reaches today and the whole reason the conversion happened: under
+    // the Favorites tab, `#homeRows` is not stale, it is absent.
+    getValues.mockResolvedValue(resolves(1, 'FavoritesRows'));
+    await expect(homeListId()).resolves.toBe('#favoritesRows');
+  });
+
+  it('probes `subtype()` rather than `id`, so the right id on the wrong node cannot pass', async () => {
+    // Costs the same round trip and proves more. A node carrying the id but a different
+    // subtype is not a row list, and reading it would be the "right id, wrong node" class.
+    getValues.mockResolvedValue({
+      results: { k0: { found: true, value: 'Group' }, k1: { found: false } },
+    });
+    await expect(homeListId({ timeout: 1 })).rejects.toThrow(/active row list to be in the scene/);
+  });
+
+  it('fails under its OWN kind when neither list is there, rather than answering undefined', async () => {
+    // The defect this whole conversion exists to remove. The shape it replaces did not fail
+    // at all: `#homeRows.content.getChildCount()` resolved in 8 ms to `undefined`, a
+    // caller's `|| 0` read that as an empty Home, and the run blamed a tile.
+    getValues.mockResolvedValue({ results: { k0: { found: false }, k1: { found: false } } });
+
+    // The slug it aggregates under is asserted against the RECORD, in the failure-kind
+    // describe below — the message never carries it.
+    await expect(homeListId({ timeout: 1 })).rejects.toThrow(/neither #id resolved/);
+  });
+
+  it('keeps waiting through a dead batch instead of throwing the transport error', async () => {
+    // A poll must swallow a transport failure per tick — the loop retries, and a persistent
+    // miss ends in the diagnosed timeout above. Letting `getVals`' batch throw escape here
+    // would turn one ODC hiccup into a failed nav.
+    getValues.mockRejectedValue(new Error('odc timeout'));
+    await expect(homeListId({ timeout: 1 })).rejects.toThrow(/neither #id resolved/);
+  });
+});
+
+describe('resendUntilFocused — the resend whose destination is a predicate', () => {
+  beforeEach(() => {
+    getFocusedNode.mockReset();
+    sendKeypress.mockReset();
+  });
+
+  it('sits out the first tick, like its id-keyed sibling', async () => {
+    // The press may still be in flight; spending the poll interval as the "did it land?"
+    // window is the whole mechanism.
+    getFocusedNode.mockResolvedValue({ keyPath: 'x', node: { subtype: 'BaseGridView' } });
+    const action = resendUntilFocused('back', focusIsInHomeContent);
+
+    await action();
+    expect(sendKeypress).not.toHaveBeenCalled();
+
+    await action();
+    expect(sendKeypress).toHaveBeenCalledTimes(1);
+  });
+
+  it('STOPS pressing once the predicate is satisfied', async () => {
+    // Over-pressing Back on Home raises the exit-confirm dialog, and off the path to Home it
+    // is worse than that: `UserSelect.onKeyEvent` treats Back as *change server*.
+    getFocusedNode.mockResolvedValue({ keyPath: 'x', node: { subtype: 'HomeRows' } });
+    const action = resendUntilFocused('back', focusIsInHomeContent);
+
+    await action();
+    await action();
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+
+  it('sends NOTHING when focus cannot be read, rather than guessing', async () => {
+    // The same rule `walkHomeToFirstRow` follows: an unreadable focus is not a licence to
+    // press at an unidentified component.
+    getFocusedNode.mockResolvedValue(null);
+    const action = resendUntilFocused('back', focusIsInHomeContent);
+
+    await action();
+    await action();
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+});
+
+describe('waitFocusInHomeContent — Home focus, asked by subtype', () => {
+  beforeEach(() => {
+    getFocusedNode.mockReset();
+    getValue.mockReset();
+    sendKeypress.mockReset();
+  });
+
+  it('accepts focus on EITHER row list', async () => {
+    getFocusedNode.mockResolvedValue({ keyPath: 'x', node: { subtype: 'FavoritesRows' } });
+    await expect(waitFocusInHomeContent({ timeout: 1000 })).resolves.toBeTruthy();
+  });
+
+  it('does not accept focus that merely sits under a matching keyPath', async () => {
+    // The id half is gone on purpose: a keyPath naming the container is exactly what stops
+    // being true when the other tab is selected.
+    getFocusedNode.mockResolvedValue({
+      keyPath: 'a.#homeRows.b',
+      node: { subtype: 'JRTabBar' },
+    });
+    await expect(waitFocusInHomeContent({ timeout: 1 })).rejects.toThrow(/focus inside Home/);
+  });
+});
+
 describe('waitHome — the login flow is a separate question, asked first', () => {
   beforeEach(() => {
     getValue.mockReset();
@@ -623,6 +766,49 @@ describe('waitHome — the login flow is a separate question, asked first', () =
     // artifact. Same coupling the file-level `beforeEach` documents.
     getFocusedNode.mockReset().mockResolvedValue(null);
     sendKeypress.mockReset();
+    // Home's active list resolves to `HomeRows`. `waitHome` no longer NAMES a row list — it
+    // asks `homeListId` which of the two is in the scene, which is one batched read of both
+    // candidate ids. These cases are about the LOGIN gate, so the resolution is arranged to
+    // succeed; `homeListId`'s own behaviour is tested separately below.
+    getValues.mockReset().mockResolvedValue({
+      results: { k0: { found: true, value: 'HomeRows' }, k1: { found: false } },
+    });
+  });
+
+  it('resolves the row list only AFTER the view gate has named Home', async () => {
+    // The ordering that makes a throwing resolver safe here. `steps.js` documents a window
+    // between launch and Home where NEITHER list is in the tree, so asking which list is
+    // active before Home is up would fail on a login that had simply not finished — the
+    // exact misattribution the view gate exists to prevent, reintroduced one layer down.
+    const order = [];
+    let mounted = false;
+    getValue.mockImplementation(async ({ keyPath }) => {
+      if (keyPath === 'activeRoutedView.subtype()') {
+        order.push('view');
+        const res = mounted ? { found: true, value: 'Home' } : { found: false };
+        mounted = true;
+        return res;
+      }
+      order.push('rows');
+      return { found: true, value: 3 };
+    });
+    getValues.mockImplementation(async () => {
+      order.push('resolve');
+      return { results: { k0: { found: true, value: 'HomeRows' }, k1: { found: false } } };
+    });
+
+    await waitHome();
+
+    // Presence FIRST: `indexOf` answers -1 for an absent step, and -1 is below every real
+    // index, so the ordering assertions below would pass on a `waitHome` that never resolved
+    // or never read the rows at all. (`jellyrock-tests/ordering-asserts-presence` catches
+    // exactly this — it caught this very test.)
+    expect(order).toContain('view');
+    expect(order).toContain('resolve');
+    expect(order).toContain('rows');
+    // Every view read precedes the resolution, and the rows read follows it.
+    expect(order.lastIndexOf('view')).toBeLessThan(order.indexOf('resolve'));
+    expect(order.indexOf('resolve')).toBeLessThan(order.indexOf('rows'));
   });
 
   it('waits for a routed view BEFORE it ever reads Home rows', async () => {
@@ -1803,6 +1989,22 @@ describe('waitFor — the failure kind that reaches the record', () => {
     const record = lastRecord();
     expect(record.kind).toBe('grid-load-timeout');
     expect(record.label).toBe('movies grid');
+    expect(record.kindUnknown).toBeUndefined();
+  });
+
+  it('records home-list-absent for an unresolvable Home list, not the shared default', async () => {
+    // Its own bucket because the fix is different in kind: a wait timeout says a field never
+    // reached a value; this says the node that field lives on is not in the scene, so no
+    // amount of waiting on Home's content is the answer. Merging them would hide that.
+    getValues.mockResolvedValue({ results: { k0: { found: false }, k1: { found: false } } });
+
+    await homeListId({ timeout: 60, interval: 10 }).catch(() => {});
+
+    const record = lastRecord();
+    expect(record.kind).toBe('home-list-absent');
+    expect(record.kind).toBe(FAILURE_KINDS.HOME_LIST_ABSENT);
+    // The guard against the opposite error: a slug that is not in the registry is reported
+    // rather than silently corrected, which would SPLIT the bucket instead of merging it.
     expect(record.kindUnknown).toBeUndefined();
   });
 

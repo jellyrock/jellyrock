@@ -19,6 +19,7 @@ import { RTA_CONFIG } from '../config.js';
 import { libraryIdFor } from './jellyfin.js';
 import { diagnosedError, FAILURE_KINDS } from './diagnostics.js';
 import { recordRecovery } from '../../../scripts/run-record.js';
+import { focusIsInHomeContent } from './home-list.js';
 import {
   press,
   getVal,
@@ -28,13 +29,15 @@ import {
   waitFor,
   waitFocused,
   waitFocusInside,
+  waitFocusInHomeContent,
+  homeListId,
   waitHome,
   waitOsdUp,
   walkHomeToFirstRow,
   overhangWalkKey,
   hasChildren,
   resendIfSwallowed,
-  resendUntilFocusInside,
+  resendUntilFocused,
   scrollFocus,
   waitCellsQuiet,
   waitRowsSettled,
@@ -217,39 +220,39 @@ const LIBRARY_OPEN_ATTEMPTS = 3;
  * had 1 tile", which is the difference between a skeleton-window race and a Home
  * that never populated.
  */
-async function scanHomeLibraryTiles(collectionType, libraryId) {
-  const rowCount = (await getVal('#homeRows.content.getChildCount()')) || 0;
+async function scanHomeLibraryTiles(list, collectionType, libraryId) {
+  const rowCount = (await getVal(`${list}.content.getChildCount()`)) || 0;
   // Collected rather than returned on first hit, so the no-id path can tell
   // "one match" from "several" — see the ambiguity guard below.
   const matches = [];
   const rows = [];
   for (let r = 0; r < rowCount; r++) {
-    const sectionId = await getVal(`#homeRows.content.${r}.sectionId`);
+    const sectionId = await getVal(`${list}.content.${r}.sectionId`);
     if (sectionId !== 'library') {
       rows.push(`${r}:${sectionId ?? '?'}`);
       continue;
     }
-    const tiles = (await getVal(`#homeRows.content.${r}.getChildCount()`)) || 0;
+    const tiles = (await getVal(`${list}.content.${r}.getChildCount()`)) || 0;
     rows.push(`${r}:library(${tiles})`);
     for (let c = 0; c < tiles; c++) {
       if (libraryId) {
-        if ((await getVal(`#homeRows.content.${r}.${c}.id`)) === libraryId)
+        if ((await getVal(`${list}.content.${r}.${c}.id`)) === libraryId)
           return { tile: { row: r, col: c }, matches, rows };
         continue;
       }
-      const ct = await getVal(`#homeRows.content.${r}.${c}.collectionType`);
+      const ct = await getVal(`${list}.content.${r}.${c}.collectionType`);
       if (ct === collectionType) matches.push({ row: r, col: c });
     }
   }
   return { tile: null, matches, rows };
 }
 
-async function findHomeLibraryTile(collectionType, libraryId = null) {
+async function findHomeLibraryTile(list, collectionType, libraryId = null) {
   const start = Date.now();
   let matches;
   let rows;
   for (;;) {
-    const scan = await scanHomeLibraryTiles(collectionType, libraryId);
+    const scan = await scanHomeLibraryTiles(list, collectionType, libraryId);
     if (scan.tile) return scan.tile;
     matches = scan.matches;
     rows = scan.rows;
@@ -292,8 +295,8 @@ async function findHomeLibraryTile(collectionType, libraryId = null) {
   // server, `demos/`) never trips it.
   const named = [];
   for (const m of matches) {
-    const id = await getVal(`#homeRows.content.${m.row}.${m.col}.id`);
-    const title = await getVal(`#homeRows.content.${m.row}.${m.col}.title`);
+    const id = await getVal(`${list}.content.${m.row}.${m.col}.id`);
+    const title = await getVal(`${list}.content.${m.row}.${m.col}.title`);
     named.push(`${title} (${id})`);
   }
   // Not a timeout: a fail-fast that already names its own cause and lists the
@@ -473,7 +476,7 @@ async function backToHome(label) {
     read: getActiveVal,
     timeout: 12000,
     interval: 350,
-    action: resendUntilFocusInside(ecp.Key.Back, '#homeRows'),
+    action: resendUntilFocused(ecp.Key.Back, focusIsInHomeContent),
     label: `back to Home (${label})`,
   });
   await waitHome();
@@ -507,7 +510,7 @@ async function backToHome(label) {
  * Cost is one round trip per attempt (~5 ms), on the success path, which buys the only
  * chance of catching an intermittent event that no one can reproduce on demand.
  */
-async function pressProbe({ row, col }) {
+async function pressProbe(list, { row, col }) {
   // NEVER let the reading fail the nav it is observing. `getVals` throws when the
   // batch itself fails — deliberately, because for an ASSERTION a half-answered
   // screen must not read as a screen of missing fields. This is not an assertion:
@@ -525,11 +528,11 @@ async function pressProbe({ row, col }) {
   // was built to catch.
   try {
     const [focused, childCount, tileId, rowCount, sectionId] = await getVals([
-      '#homeRows.rowItemFocused',
-      `#homeRows.content.${row}.getChildCount()`,
-      `#homeRows.content.${row}.${col}.id`,
-      '#homeRows.content.getChildCount()',
-      `#homeRows.content.${row}.sectionId`,
+      `${list}.rowItemFocused`,
+      `${list}.content.${row}.getChildCount()`,
+      `${list}.content.${row}.${col}.id`,
+      `${list}.content.getChildCount()`,
+      `${list}.content.${row}.sectionId`,
     ]);
     return { focused, childCount, tileId, rowCount, sectionId };
   } catch {
@@ -559,13 +562,13 @@ async function pressProbe({ row, col }) {
  * Two round trips rather than one, because the second batch's keyPaths are built from the
  * first batch's answer. ~11 ms on `.177`, on roughly six library navs per suite.
  */
-async function selectionProbe() {
+async function selectionProbe(list) {
   try {
-    const [selected] = await getVals(['#homeRows.rowItemSelected']);
+    const [selected] = await getVals([`${list}.rowItemSelected`]);
     if (!Array.isArray(selected)) return { selected };
     const [selectedId, selectedType] = await getVals([
-      `#homeRows.content.${selected[0]}.${selected[1]}.id`,
-      `#homeRows.content.${selected[0]}.${selected[1]}.collectionType`,
+      `${list}.content.${selected[0]}.${selected[1]}.id`,
+      `${list}.content.${selected[0]}.${selected[1]}.collectionType`,
     ]);
     return { selected, selectedId, selectedType };
   } catch {
@@ -594,7 +597,13 @@ export async function openLibraryByType(collectionType, libraryId = null) {
   // `home library tile col N (...) (last=[0,0])` actually means. No action here on
   // purpose: focus lands in the rows on its own once Home is up, and pressing keys at
   // a component we have not located yet is how the OSD navs got this wrong.
-  await waitFocusInside('#homeRows');
+  await waitFocusInHomeContent();
+
+  // Resolved ONCE for the whole nav rather than per poll tick: every helper below reads the
+  // same list, and `waitHome()` above has already proved Home is the active view, so the
+  // answer cannot change underneath them (only a tab change moves it, and no spec changes
+  // tabs). One round trip for the nav instead of one per scan pass.
+  const list = await homeListId();
 
   // Scan for the tile, walk focus to it, read what we are standing on, then press.
   //
@@ -604,9 +613,9 @@ export async function openLibraryByType(collectionType, libraryId = null) {
   // the press still opened Movies. Content-by-index cannot see this — after a row swap
   // completes, index N holds the same library it held before. So the reading is kept
   // and the judgement is made on the OUTCOME instead, by `navLibraryByType`.
-  const tile = await findHomeLibraryTile(collectionType, libraryId);
-  const walk = await walkHomeRowsTo(tile, collectionType);
-  const probe = await pressProbe(tile);
+  const tile = await findHomeLibraryTile(list, collectionType, libraryId);
+  const walk = await walkHomeRowsTo(list, tile, collectionType);
+  const probe = await pressProbe(list, tile);
   await press(ecp.Key.Ok);
   // Read what Home SELECTED, not just what we aimed at. `aimedAt` is carried alongside so
   // the record compares the two without a reader having to reconstruct the intent.
@@ -615,7 +624,7 @@ export async function openLibraryByType(collectionType, libraryId = null) {
     aimedAt: [tile.row, tile.col],
     colPressed: walk?.pressed,
     colRecovered: walk?.recovered,
-    ...(await selectionProbe()),
+    ...(await selectionProbe(list)),
   };
 }
 
@@ -634,12 +643,12 @@ export async function openLibraryByType(collectionType, libraryId = null) {
  * pressing at the overhang. Converting it on the strength of a column measurement would be
  * changing the riskier half on speculation. Revisit if a row over-press is ever captured.
  */
-async function walkHomeRowsTo({ row, col }, collectionType) {
-  await waitFor('#homeRows.rowItemFocused', (v) => Array.isArray(v) && v[0] === row, {
+async function walkHomeRowsTo(list, { row, col }, collectionType) {
+  await waitFor(`${list}.rowItemFocused`, (v) => Array.isArray(v) && v[0] === row, {
     timeout: 12000,
     interval: 350,
     action: async () => {
-      const v = await getVal('#homeRows.rowItemFocused');
+      const v = await getVal(`${list}.rowItemFocused`);
       if (!Array.isArray(v)) return;
       if (v[0] < row) await press(ecp.Key.Down);
       else if (v[0] > row) await press(ecp.Key.Up);
@@ -667,7 +676,7 @@ async function walkHomeRowsTo({ row, col }, collectionType) {
   // `recovered` is returned so the fix stays measurable: it counts keys this walk had to
   // re-send, which is the number that should now be the only source of drift here.
   return scrollFocus({
-    keyPath: '#homeRows.rowItemFocused',
+    keyPath: `${list}.rowItemFocused`,
     target: col,
     forwardKey: ecp.Key.Right,
     backKey: ecp.Key.Left,
@@ -1486,21 +1495,22 @@ async function sweepRowList(listId, { label } = {}) {
  */
 export async function navCellSweepHome() {
   await waitHome();
-  await waitFocusInside('#homeRows');
+  await waitFocusInHomeContent();
+  const list = await homeListId();
   // The opening half of `waitCellsQuiet`, and the reason this sweep never reproduced:
   // `waitHome()` is satisfied by SKELETON rows, and Home keeps inserting and filling rows
   // mid-list for seconds afterwards. Reading the itinerary off that screen picks a row
   // count and a widest row that another launch need not agree with. See `waitRowsSettled`
   // for what the gate can and cannot prove, and why only Home carries it.
-  const settle = await waitRowsSettled('#homeRows', { read: getActiveVal });
+  const settle = await waitRowsSettled(list, { read: getActiveVal });
   // The subtrahend. Home's counters at the gate are everything the screen did loading ITSELF,
   // so the sweep's own work is the difference and not the total the ledger emits. Taken here
   // rather than inside `sweepRowList` because the settle above is what makes the instant
   // meaningful: read before the structure stops moving and the baseline is a moving target.
-  const atStart = await readCellCounts('#homeRows');
-  const legs = await sweepRowList('#homeRows', { label: 'cellSweepHome' });
+  const atStart = await readCellCounts(list);
+  const legs = await sweepRowList(list, { label: 'cellSweepHome' });
   const back = await scrollFocus({
-    keyPath: '#homeRows.rowItemFocused',
+    keyPath: `${list}.rowItemFocused`,
     select: (v) => (Array.isArray(v) ? v[0] : undefined),
     read: getActiveVal,
     target: 0,
@@ -1509,7 +1519,7 @@ export async function navCellSweepHome() {
     label: 'cellSweepHome back to row 0',
   });
   legs.push({ axis: 'rows -> 0', walk: back, available: legs[0].available });
-  const quiet = await waitCellsQuiet('#homeRows', { read: getActiveVal });
+  const quiet = await waitCellsQuiet(list, { read: getActiveVal });
   reportSweep('cellSweepHome', legs, quiet, { settle, atStart });
   await navSettings();
 }

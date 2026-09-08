@@ -372,8 +372,9 @@ sub onTabChanged()
     ' fresh one — so without this, `#homeRows` resolves to nothing for the rest of the
     ' session and every by-name read of it returns undefined. Favorites never had an id at
     ' all, which is why it is the one cell-bearing screen with no `cell-load` sweep. Set
-    ' here rather than taught to each consumer: see `rta-home-active-list-hardcoded` in
-    ' docs/architecture/tech-debt.md.
+    ' here rather than taught to each consumer. The RTA suite no longer names either list
+    ' by id — it resolves whichever is in the scene — but this id is still what makes that
+    ' resolution possible at all: see tests/rta/lib/home-list.js.
     m.homeRows.id = "homeRows"
     m.activeContent = m.homeRows
     m.top.insertChild(m.homeRows, 0)

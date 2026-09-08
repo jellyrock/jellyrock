@@ -11,6 +11,12 @@
 import { ecp, odc } from 'roku-test-automation';
 import { diagnosedError, FAILURE_KINDS } from './diagnostics.js';
 import { auditSceneResolution, auditSceneResolutions } from './resolution.js';
+import {
+  HOME_ROW_LIST_IDS,
+  HOME_ROW_LIST_SUBTYPES,
+  focusIsInHomeContent,
+  homeListKeyPaths,
+} from './home-list.js';
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export const press = (key) => ecp.sendKeypress(key);
@@ -70,6 +76,49 @@ export async function getActiveVal(keyPath) {
 }
 
 /**
+ * `readOnce`'s twin for Home's active row list: batch-read `suffix` off BOTH candidate ids
+ * and answer with whichever list is actually in the scene.
+ *
+ * Private, and non-auditing, for exactly the reason `readScene` is: `waitFor` holds this
+ * directly on every tick, and running a `storeNodeReferences` census per tick would turn a
+ * poll into a whole-tree walk. The public `readHomeList` below audits, like `getVal` does.
+ *
+ * `find` rather than an index because absence is the normal answer for one of the two: under
+ * the Home tab `#favoritesRows` resolves to nothing at all, and vice versa. If both ever
+ * answered, the first wins — but they cannot, because `onTabChanged` removes the outgoing
+ * list before building the incoming one.
+ */
+async function readHomeListOnce(suffix) {
+  try {
+    const values = await batchRead(homeListKeyPaths(suffix), (keyPath) => ({
+      base: 'scene',
+      keyPath,
+    }));
+    return { value: values.find((v) => v !== undefined), failed: false };
+  } catch {
+    return { value: undefined, failed: true };
+  }
+}
+
+/**
+ * Read `suffix` off Home's ACTIVE row list, whichever tab is selected — the reader to pass
+ * as `waitFor`'s `read` for anything below Home's rows.
+ *
+ * One device round trip, not two: both candidate keyPaths go in a single `getValues`, so this
+ * costs the same as the hardcoded single read it replaces (~5.4 ms on `.177`) and cannot be
+ * wrong about which list is live.
+ *
+ * Returns `undefined` while NEITHER list is in the tree — the window `waitHome`'s own docblock
+ * describes between launch and Home — which is the right answer for a poll: keep waiting. A
+ * caller that needs absence to be an ERROR should use `homeListId`, which names it.
+ */
+async function readHomeList(suffix) {
+  const { value } = await readHomeListOnce(suffix);
+  await auditSceneResolutions(homeListKeyPaths(suffix));
+  return value;
+}
+
+/**
  * The attributing twin of each public reader, keyed BY the reader a caller passes as
  * `read`. A custom reader is not in the map and simply gets no attribution — the wait
  * behaves exactly as it did before.
@@ -77,6 +126,7 @@ export async function getActiveVal(keyPath) {
 const ATTRIBUTING_READS = new Map([
   [getVal, readScene],
   [getActiveVal, readActive],
+  [readHomeList, readHomeListOnce],
 ]);
 
 /**
@@ -467,6 +517,23 @@ export function resendIfSwallowed(key, containerId) {
  * @returns {() => Promise<void>} a fresh, single-use action (it carries per-wait state)
  */
 export function resendUntilFocusInside(key, containerId) {
+  return resendUntilFocused(key, (f) => focusIsInside(f.keyPath, containerId));
+}
+
+/**
+ * `resendUntilFocusInside` with the destination given as a PREDICATE rather than an id.
+ *
+ * Exists because not every destination is nameable by id: Home's content is whichever of
+ * `HomeRows` / `FavoritesRows` the selected tab put in the scene, so the arrival test is
+ * `focusIsInHomeContent`, not a container id. Everything else is unchanged and shared rather
+ * than copied — the first-tick skip, and the rule that an unreadable focus sends NOTHING
+ * rather than guessing, which is what keeps an over-press off Home's exit-confirm dialog.
+ *
+ * @param {string} key - an `ecp.Key` value to re-send
+ * @param {(focused: object) => boolean} arrived - true once focus is where it belongs
+ * @returns {() => Promise<void>} a fresh, single-use action (it carries per-wait state)
+ */
+export function resendUntilFocused(key, arrived) {
   let ticked = false;
   return async () => {
     if (!ticked) {
@@ -475,7 +542,7 @@ export function resendUntilFocusInside(key, containerId) {
     }
     const focused = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
     if (typeof focused?.keyPath !== 'string') return;
-    if (!focusIsInside(focused.keyPath, containerId)) await press(key);
+    if (!arrived(focused)) await press(key);
   };
 }
 
@@ -564,6 +631,71 @@ export async function waitDialogClosed(label, { timeout = 10000 } = {}) {
 }
 
 /**
+ * Which of Home's two row lists is in the scene right now — `#homeRows` or `#favoritesRows`.
+ *
+ * The answer to *"where do I read Home's content?"*, asked instead of assumed. Home's active
+ * list is `m.activeContent`, and `onTabChanged` `removeChild`s the outgoing list before
+ * building the incoming one, so exactly one of the two ids resolves at any moment and which
+ * one is a property of the SELECTED TAB rather than of Home.
+ *
+ * ## Why it waits rather than reading once
+ *
+ * `steps.js` documents a window between launch and Home where NEITHER list is in the tree.
+ * A single read taken inside it answers "neither", which is true and useless. A bounded wait
+ * spends the same one round trip in the overwhelmingly common case — the list is already
+ * there, so the first tick returns — and turns the rare case into a wait instead of a throw.
+ *
+ * ## Why absence is an ERROR here and `undefined` elsewhere
+ *
+ * Every caller runs after `waitHome()` has proved Home is the active routed view, so "Home is
+ * up and neither of its row lists exists" is a genuine failure with no recovery. Reporting it
+ * under its own `HOME_LIST_ABSENT` kind is the whole point of the conversion: the shape this
+ * replaces did not fail at all — a hardcoded `#homeRows.content.getChildCount()` resolved to
+ * `undefined` in 8 ms, callers turned that into `|| 0` rows, and the run blamed a tile.
+ *
+ * Reads `subtype()` rather than `id` as the presence probe deliberately. It costs the same
+ * round trip and proves more: that the node found by that id really IS a row list, not some
+ * other node carrying the id — the "right id, wrong node" class Phase 9a's audit was built
+ * for. The returned id comes from `HOME_ROW_LIST_SUBTYPES`' positional alignment with
+ * `HOME_ROW_LIST_IDS`, which `home-list.js` states and its unit tests pin.
+ *
+ * @returns {Promise<string>} the `#id` of the list that is in the scene
+ */
+export async function homeListId({ timeout = 5000, interval = 300 } = {}) {
+  const subtype = await waitFor('subtype()', (v) => HOME_ROW_LIST_SUBTYPES.includes(v), {
+    read: readHomeList,
+    timeout,
+    interval,
+    kind: FAILURE_KINDS.HOME_LIST_ABSENT,
+    label: "Home's active row list to be in the scene (neither #id resolved)",
+  });
+  return HOME_ROW_LIST_IDS[HOME_ROW_LIST_SUBTYPES.indexOf(subtype)];
+}
+
+/**
+ * Wait until focus is inside Home's content, whichever tab is selected.
+ *
+ * The `waitFocusInside` of Home's rows, with the id question removed: it asks the focused
+ * node its `subtype` (see `focusIsInHomeContent`) rather than testing a keyPath for an id
+ * that is absent under the other tab. Defaults match `waitFocusInside`'s deliberately tighter
+ * 12000/300 rather than `waitFocused`'s, so a site moved across does not silently change how
+ * often it polls the device.
+ */
+export async function waitFocusInHomeContent({
+  timeout = 12000,
+  interval = 300,
+  label,
+  action,
+} = {}) {
+  return waitFocused(focusIsInHomeContent, {
+    timeout,
+    interval,
+    action,
+    label: label || "focus inside Home's content",
+  });
+}
+
+/**
  * Home is ready once HomeRows has rendered its content — but only once the app is PAST
  * its login flow, which is a separate question and has to be asked first.
  *
@@ -633,7 +765,16 @@ export async function waitHome({ viewTimeout = 45000, rowsTimeout = 20000 } = {}
     timeout: viewTimeout,
     interval: 500,
   });
-  await waitFor('#homeRows.content.getChildCount()', hasChildren, {
+  // Resolved rather than named. The read below is otherwise unchanged — same keyPath shape,
+  // same reader, same attribution and same resolution audit — so this gate keeps every
+  // property it had, minus the assumption that the Home tab is the selected one.
+  const list = await homeListId();
+  // FN — `content.getChildCount()` is a CALL, and ODC observes a field, so no observer can
+  // apply here whatever `list` resolves to. The rule cannot see that through the
+  // interpolation; the interpolation is there so the audit and the failure dump get the real
+  // `#id`, which a static-suffix reader would cost this gate on ~30 navs a run.
+  // eslint-disable-next-line jellyrock-rta/wait-justified -- FN: see this helper's docblock
+  await waitFor(`${list}.content.getChildCount()`, hasChildren, {
     label: 'home rows',
     timeout: rowsTimeout,
   });
@@ -697,12 +838,6 @@ export async function walkHomeToFirstRow({ timeout = 10000, interval = 400 } = {
 }
 
 /**
- * Subtypes Home uses for `m.activeContent`, its active row list (`components/home/Home.bs`).
- * Focus resting on one of these means the app is still inside Home's content.
- */
-const HOME_ROW_LIST_SUBTYPES = Object.freeze(['HomeRows', 'FavoritesRows']);
-
-/**
  * Which key advances the overhang walk, given where focus ACTUALLY is right now.
  *
  * ## The defect this exists to fix
@@ -739,17 +874,16 @@ const HOME_ROW_LIST_SUBTYPES = Object.freeze(['HomeRows', 'FavoritesRows']);
  * so it cannot be lost that way.
  *
  * The app does create such nodes: `JROverhang` appends its `JRTabBar` with `CreateObject`
- * and assigns no id (`components/JROverhang.bs`), which is on this very walk's path.
- * Home's two row lists USED to be the sharper example — `onTabChanged` re-created both
- * without ids — but it has assigned both since #864 (2026-08-26), so `#homeRows` now
- * survives a tab round trip. That is why the `rta-home-active-list-hardcoded` entry in
- * `docs/architecture/tech-debt.md` records its by-name-read half as retired. The rule
- * stands on the tab bar, not on Home.
+ * and assigns no id (`components/JROverhang.bs`), which is on this very walk's path. Home's
+ * row lists are the other example and a sharper one, for a different reason: #864
+ * (2026-08-26) made `onTabChanged` assign both ids, so a tab ROUND TRIP no longer loses
+ * them — but only one list is in the scene at a time, so under the other tab the id is not
+ * stale, it is absent. Both cases defeat an id-keyed predicate; only `subtype` survives both.
  *
  * The favorites half is future-proofing, not coverage: nothing in `specs/` selects a tab, so
- * `FavoritesRows` is unreachable from here today (the focus-walk half of that same
- * tech-debt entry, still open). It is here because the predicate should agree with the
- * app — `getActiveRows()` returns `m.activeContent` — not because a test exercises it.
+ * `FavoritesRows` is unreachable from here today. It is here because the predicate should
+ * agree with the app — `getActiveRows()` returns `m.activeContent` — not because a test
+ * exercises it.
  *
  * Kept pure, and here rather than in `nav.js`, so it can be unit-tested directly: `nav.js`
  * IS importable under a mocked device, but its walk is wrapped in the unexported
@@ -763,8 +897,9 @@ const HOME_ROW_LIST_SUBTYPES = Object.freeze(['HomeRows', 'FavoritesRows']);
 export function overhangWalkKey(focused, iconId) {
   if (focused?.node?.id === iconId) return null;
   // Home's active list is `m.activeContent` — `HomeRows` or `FavoritesRows` depending on the
-  // selected tab — so either subtype means "the escape has not happened yet".
-  if (HOME_ROW_LIST_SUBTYPES.includes(focused?.node?.subtype)) return ecp.Key.Up;
+  // selected tab — so either subtype means "the escape has not happened yet". Shared with
+  // every Home focus gate via `home-list.js`, so there is one definition of the question.
+  if (focusIsInHomeContent(focused)) return ecp.Key.Up;
   // Unknown focus (a failed read) keeps the pre-existing behaviour rather than inventing a
   // new one: Right is inert on most of the overhang chain, Up from it is inert by design.
   return ecp.Key.Right;

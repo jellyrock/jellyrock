@@ -21,8 +21,9 @@
  * **(b) is the one that has actually bitten, and a uniqueness check misses it.**
  * `waitHome()` passed from a library grid because a scene-rooted `#homeRows` read found
  * a SUSPENDED Home — there was only ever ONE `#homeRows`, so counting ids would have
- * called it clean. `rta-home-active-list-hardcoded` is the same mechanism across 30 more
- * sites. Any audit that only asks "is this id unique" is answering the easier question.
+ * called it clean. The same mechanism ran across 30 more sites that named Home's row list
+ * by id (converted 2026-09-08; see ./home-list.js). Any audit that only asks "is this id
+ * unique" is answering the easier question.
  *
  * ## Why one device call answers both
  *

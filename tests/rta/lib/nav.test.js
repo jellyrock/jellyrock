@@ -29,6 +29,10 @@ const getActiveVal = vi.fn();
 const getActiveVals = vi.fn();
 const waitFor = vi.fn();
 const waitFocusInside = vi.fn();
+const waitFocusInHomeContent = vi.fn();
+// Home's active list, already resolved. `homeListId` is exercised for real in
+// `steps.test.js`; here it stands in so nav's own logic is what these cases test.
+const homeListId = vi.fn(async () => '#homeRows');
 const waitHome = vi.fn();
 const sleep = vi.fn();
 const formatCellCounts = vi.fn();
@@ -44,12 +48,14 @@ vi.mock('./steps.js', () => ({
   waitFor: (...a) => waitFor(...a),
   waitFocused: vi.fn(),
   waitFocusInside: (...a) => waitFocusInside(...a),
+  waitFocusInHomeContent: (...a) => waitFocusInHomeContent(...a),
+  homeListId: (...a) => homeListId(...a),
   waitHome: (...a) => waitHome(...a),
   walkHomeToFirstRow: vi.fn(),
   overhangWalkKey: vi.fn(),
   hasChildren: (v) => typeof v === 'number' && v > 0,
   resendIfSwallowed: vi.fn(() => vi.fn()),
-  resendUntilFocusInside: vi.fn(() => vi.fn()),
+  resendUntilFocused: vi.fn(() => vi.fn()),
   scrollFocus: (...a) => scrollFocus(...a),
   waitCellsQuiet: vi.fn(),
   waitRowsSettled: vi.fn(),

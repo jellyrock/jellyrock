@@ -203,8 +203,9 @@ Two ways it happens, and they are different defects:
 **The second is the one that has actually bitten, and counting ids does not find it.**
 `waitHome()` passed from a library grid because a scene-rooted `#homeRows` read found a
 SUSPENDED Home — there was only ever one `#homeRows` — and
-[`rta-home-active-list-hardcoded`](../architecture/tech-debt.md#rta-home-active-list-hardcoded)
-is the same mechanism across 30 more sites.
+the same mechanism ran across 30 more sites that named Home's row list by id. Those are
+converted now ([`lib/home-list.js`](../../tests/rta/lib/home-list.js)), but the audit is what
+found which of them actually executed against a suspended Home.
 
 Set `RTA_AUDIT_RESOLUTION=1` and every scene-rooted read is checked against a census of
 the live scene ([`lib/resolution.js`](../../tests/rta/lib/resolution.js)). One

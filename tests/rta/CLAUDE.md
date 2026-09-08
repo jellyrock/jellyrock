@@ -104,16 +104,28 @@ no failure mode of its own — it just quietly restores the bug you fixed. The l
 tab ROUND TRIP, but only ONE list is in the scene at a time — `onTabChanged` `removeChild`s the
 old one before building the new — so under another tab `#homeRows` is absent outright. Measured
 on `.177` 2026-09-07: a focus gate and a `rowItemFocused` wait both THROW naming the real focus,
-while `#homeRows.content.getChildCount()` **resolves in 8 ms to `undefined`**, which
-`scanHomeLibraryTiles` turns into "0 rows" and reports as `home library tile not found`. Full
-record in [`tech-debt.md`](../../docs/architecture/tech-debt.md) →
-`rta-home-active-list-hardcoded`.
+while `#homeRows.content.getChildCount()` **resolved in 8 ms to `undefined`**, which
+`scanHomeLibraryTiles` turned into "0 rows" and reported as `home library tile not found` —
+blaming a tile on a Home that was healthy under a different tab. That is fixed: the reads all
+resolve the active list now, and the mechanism plus the measurements are recorded in
+[`lib/home-list.js`](lib/home-list.js) and the rule that holds the line
+([`rta-home-list-resolved.js`](../../scripts/lint/eslint-rules/rta-home-list-resolved.js)).
 
-**Do not add a thirty-first site.** `jellyrock-rta/home-rows-budgeted` holds the 30 remaining
-sites as a per-file inventory whose numbers only go DOWN: converting one fails the lint until
-its number is lowered, so the table tracks the conversion rather than drifting. Resolve Home's
-active list instead — exactly one of the two ids resolves — or ask the focused node its
-`subtype`, as `overhangWalkKey` and `walkHomeToFirstRow` already do.
+**Never name Home's row list by id.** `jellyrock-rta/home-list-resolved` permits `#homeRows`
+/ `#favoritesRows` in exactly one module — [`lib/home-list.js`](lib/home-list.js), at a fixed
+cap of two, one per id in `HOME_ROW_LIST_IDS` — and nowhere else. The 30 sites that used to
+name one are now zero. Ask instead:
+
+- **"where do I read Home's content?"** → `homeListId()` ([`lib/steps.js`](lib/steps.js)).
+  It batch-reads `subtype()` off BOTH candidate ids in one round trip and returns whichever
+  is in the scene, so the answer is independent of the selected tab. Absence becomes a named
+  failure (`HOME_LIST_ABSENT`) instead of the `undefined` a caller turns into zero rows.
+- **"is focus inside Home's content?"** → `focusIsInHomeContent` / `waitFocusInHomeContent`,
+  which ask the FOCUSED node its `subtype`, as `overhangWalkKey` already did.
+
+Probed on `.177` 2026-09-08: the focused node IS the row list at every state the walks reach
+(after `waitHome`, after the containment gate, after a Down and after a Right), so asking by
+subtype is not weaker than the keyPath containment test it replaced.
 
 **Ask "is focus inside X?" through `focusIsInside` / `waitFocusInside`, never a hand-rolled
 `keyPath.includes(...)`.** A container id always occupies a WHOLE keyPath segment (see the rule
@@ -151,15 +163,22 @@ prove themselves; the rest are properties of the FIELD or of focus.
 | Waits for absence | 1 | The node is gone. A departed node has no field left to observe. This is `waitDialogClosed`, whose JSDoc carries the argument on behalf of the ten dialog-dismiss sites that route through it. |
 | `action:` retry loops | 7 | The per-tick re-press **is** the mechanism (see `resendIfSwallowed`). An observer would sit and watch for a key that never landed. |
 | Plain field settle | 36 | The primitive could apply; it is ruled out below. |
-| Dynamic `keyPath` | 1 | `scrollFocus`, whose keyPath is its caller's. Unclassifiable from syntax, so it carries a rule disable naming the reason and the argument lives in its docblock. |
-| Focus containment (`waitFocusInside`) | 21 | ODC has no "observe global focus" primitive. Its request table (`RTA_OnDeviceComponent.brs`) offers `getFocusedNode` / `hasFocus` / `isInFocusChain` — all READS — and one observer, `onFieldChange`, which needs a node keyPath and a field name and so cannot express "wherever focus now is". |
+| Dynamic `keyPath` | 2 | `scrollFocus`, whose keyPath is its caller's, and `waitHome`'s rows gate, whose list id is RESOLVED rather than named. Unclassifiable from syntax, so each carries a rule disable naming the reason and the argument lives in its docblock. |
+| Focus containment (`waitFocusInside`) | 18 | ODC has no "observe global focus" primitive. Its request table (`RTA_OnDeviceComponent.brs`) offers `getFocusedNode` / `hasFocus` / `isInFocusChain` — all READS — and one observer, `onFieldChange`, which needs a node keyPath and a field name and so cannot express "wherever focus now is". |
+| Focus containment by subtype (`waitFocusInHomeContent`) | 3 | Same absence of a primitive. Separate row because the QUESTION differs: Home's content is whichever of `HomeRows` / `FavoritesRows` the selected tab put in the scene, so it cannot be asked by container id at all. |
 | Focus identity (`waitFocused`) | 15 | Same absence of a primitive, and focus is inherently terminal: it stays where it landed until the next key. There is no pulse to miss. |
 
-*(12 + 1 + 7 + 36 + 1 = 57 `waitFor` CALLS, plus 21 + 15 focus waits = 93. Counts are
+*(12 + 1 + 7 + 36 + 2 = 58 `waitFor` CALLS, plus 18 + 3 + 15 focus waits = 94. Counts are
 call sites, which is what the gate sees; a call is not always one wait. `waitDialogClosed`
 issues one on behalf of ten sites, and `waitOsdUp` issues two on behalf of three.
 Re-derived from the AST — never `grep`, which has now produced five wrong figures in this
-project's history.)*
+project's history. The Home-list conversion moved three categories and **only those were
+touched**: `waitHome`'s rows gate left `Function keyPath` for `Dynamic keyPath` (its id is
+resolved now, so the syntax no longer shows the call), `homeListId`'s new `subtype()` wait
+took its place in `Function keyPath`, and three containment waits moved to the subtype row.
+Totals were derived from those known deltas rather than re-counted, because an ad-hoc
+counter written for the occasion misclassified `scrollFocus` — whose keyPath is an
+identifier — which is how a sixth wrong figure would have entered this file.)*
 
 ### The 36 plain-field waits, and the gate that keeps them honest
 

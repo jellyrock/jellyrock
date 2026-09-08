@@ -16,7 +16,14 @@ import { authenticate, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch, ecp, odc } from '../lib/driver.js';
 import { navLibraryByType } from '../lib/nav.js';
-import { press, resendIfSwallowed, waitFor, waitFocusInside, waitHome } from '../lib/steps.js';
+import {
+  press,
+  resendIfSwallowed,
+  waitFor,
+  waitFocusInside,
+  waitFocusInHomeContent,
+  waitHome,
+} from '../lib/steps.js';
 
 const LOCALE = RTA_CONFIG.languages[0]; // en_US
 
@@ -64,14 +71,15 @@ it('focus restoration: Home -> Library -> Detail -> back -> back', async () => {
     interval: 500,
   });
 
-  // Back -> Home resumes: focus must land back in Home's content (#homeRows), not lost.
+  // Back -> Home resumes: focus must land back in Home's content, not lost. Asked by subtype
+  // rather than by id, because which list holds Home's content depends on the selected tab.
   //
   // The press is GUARDED rather than fired once: the gate above is a proxy for the state
   // this press needs, so the Back can arrive mid-navigation and be swallowed. Mechanism,
   // detection and the safety argument live with the helper in lib/steps.js.
   await press(ecp.Key.Back);
   await waitHome();
-  await waitFocusInside('#homeRows', {
+  await waitFocusInHomeContent({
     label: 'home content focus restored',
     timeout: 15000,
     interval: 500,

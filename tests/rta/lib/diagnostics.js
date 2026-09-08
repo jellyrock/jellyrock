@@ -74,6 +74,7 @@
  * the RTA-specific capture that goes INTO it.
  */
 import { odc, ecp } from 'roku-test-automation';
+import { homeListKeyPaths } from './home-list.js';
 import {
   crossesHourBoundary,
   FAILURE_KINDS,
@@ -88,10 +89,13 @@ import {
  *
  * Scoped to `activeRoutedView` (the app's own "view the user is on") wherever the
  * id recurs across views, for the same reason `getActiveVal` exists: a suspended view can
- * still be in the scene tree, so a scene-rooted `#id` read can answer for the wrong screen. `#homeRows` is deliberately scene-rooted
+ * still be in the scene tree, so a scene-rooted `#id` read can answer for the wrong screen. Home's row list is deliberately scene-rooted
  * — on a failure deep in a drill-down, "is Home still populated behind me?" is
  * itself a signal.
  */
+/** Both candidate keyPaths for Home's row count — see `homeRowCount` below. */
+const HOME_ROW_COUNT_PATHS = homeListKeyPaths('content.getChildCount()');
+
 const CORE_REQUESTS = {
   viewSubtype: { base: 'global', keyPath: 'activeRoutedView.subtype()' },
   viewId: { base: 'global', keyPath: 'activeRoutedView.id' },
@@ -103,7 +107,13 @@ const CORE_REQUESTS = {
   isLoading: { base: 'scene', keyPath: 'isLoading' },
   loadingText: { base: 'scene', keyPath: 'loadingText' },
   isRemoteDisabled: { base: 'scene', keyPath: 'isRemoteDisabled' },
-  homeRowCount: { base: 'scene', keyPath: '#homeRows.content.getChildCount()' },
+  // BOTH candidate row lists, because only one of them is in the scene and which one is a
+  // property of Home's selected tab, not of Home. They cost nothing extra: this is already
+  // one batched `getValues`, so a second keyPath adds no round trip — and asking only about
+  // `#homeRows` would report "Home has no rows" under the Favorites tab, misinforming a
+  // diagnosis with a confident wrong number, which is the one thing a failure dump must not do.
+  homeRowCount: { base: 'scene', keyPath: HOME_ROW_COUNT_PATHS[0] },
+  favoritesRowCount: { base: 'scene', keyPath: HOME_ROW_COUNT_PATHS[1] },
   detailRowCount: {
     base: 'global',
     keyPath: 'activeRoutedView.#extrasGrid.content.getChildCount()',
@@ -214,7 +224,8 @@ export async function captureFailureState() {
       isRemoteDisabled: unwrap(results, 'isRemoteDisabled'),
     },
     counts: {
-      homeRows: unwrap(results, 'homeRowCount'),
+      // Whichever list answered. Absence is the normal reading for one of the two.
+      homeRows: unwrap(results, 'homeRowCount') ?? unwrap(results, 'favoritesRowCount'),
       detailRows: unwrap(results, 'detailRowCount'),
     },
     identity: {

@@ -19,7 +19,7 @@ import prettierConfig from 'eslint-config-prettier';
 
 import rtaWaitJustified from './scripts/lint/eslint-rules/rta-wait-justified.js';
 import rtaSleepBudgeted from './scripts/lint/eslint-rules/rta-sleep-budgeted.js';
-import rtaHomeRowsBudgeted from './scripts/lint/eslint-rules/rta-home-rows-budgeted.js';
+import rtaHomeListResolved from './scripts/lint/eslint-rules/rta-home-list-resolved.js';
 import orderingAssertsPresence from './scripts/lint/eslint-rules/ordering-asserts-presence.js';
 
 /**
@@ -184,9 +184,9 @@ export default [
   // signal. Same scope and same exclusion, because a `sleep` in a `*.test.js` paces a
   // mocked clock rather than a real device.
   //
-  // `home-rows-budgeted` is the third, and it is a SHRINKING inventory rather than a
-  // standing one: naming Home's row list by id reads a node that is absent under the other
-  // tab, and its per-file numbers only ever go down. Same scope and same exclusion again —
+  // `home-list-resolved` is the third, and it is a BAN with one named exemption rather than an
+  // inventory: naming Home's row list by id reads a node that is absent under the other tab,
+  // so only `tests/rta/lib/home-list.js` may do it. Same scope and same exclusion again —
   // a `*.test.js` naming `#homeRows` is asserting on a mocked keyPath, not driving a
   // device. All three share this block because ESLint flat config REPLACES a rule's
   // options rather than merging them, so a second block re-declaring the plugin for an
@@ -199,14 +199,14 @@ export default [
         rules: {
           'wait-justified': rtaWaitJustified,
           'sleep-budgeted': rtaSleepBudgeted,
-          'home-rows-budgeted': rtaHomeRowsBudgeted,
+          'home-list-resolved': rtaHomeListResolved,
         },
       },
     },
     rules: {
       'jellyrock-rta/wait-justified': 'error',
       'jellyrock-rta/sleep-budgeted': 'error',
-      'jellyrock-rta/home-rows-budgeted': 'error',
+      'jellyrock-rta/home-list-resolved': 'error',
     },
   },
 

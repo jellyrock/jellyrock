@@ -412,9 +412,10 @@ export function readRecoveries(file = recoveriesPath()) {
  *       tree, so the read succeeds and describes a screen nobody is looking at.
  *
  * (b) is the one that has actually bitten: `waitHome()` passed from a library grid
- * because a scene-rooted `#homeRows` read found a SUSPENDED Home, and
- * `rta-home-active-list-hardcoded` is the same mechanism across 30 more sites. A
- * uniqueness check alone would have passed both — there was only ever one `#homeRows`.
+ * because a scene-rooted `#homeRows` read found a SUSPENDED Home, and the same mechanism
+ * ran across 30 more sites that named Home's row list by id (converted 2026-09-08; see
+ * `tests/rta/lib/home-list.js`). A uniqueness check alone would have passed both — there
+ * was only ever one `#homeRows`.
  *
  * Neither shows up in a result. A gate that reads the wrong node still goes green, which
  * is the whole defect class: succeeding for a reason nobody chose.
@@ -613,6 +614,19 @@ export const FAILURE_KINDS = Object.freeze({
   WAIT_FOR_TIMEOUT: 'wait-for-timeout',
   WAIT_FOCUSED_TIMEOUT: 'wait-focused-timeout',
   HOME_LIBRARY_TILE_NOT_FOUND: 'home-library-tile-not-found',
+  /**
+   * Home was the active routed view, and NEITHER of its candidate row lists
+   * (`HomeRows` / `FavoritesRows`) was in the scene to read.
+   *
+   * Its own slug rather than `wait-for-timeout` because the fix is different in kind: a
+   * wait timeout says a field never reached a value, whereas this says the node that
+   * field lives on is not there at all — so no amount of waiting on Home's content is
+   * the answer. It is also the failure that used to be INVISIBLE: a hardcoded
+   * `#homeRows.content.getChildCount()` resolved to `undefined` rather than throwing
+   * (measured 8 ms on `.177`, 2026-09-07), a caller's `|| 0` read that as an empty Home,
+   * and the run reported `home-library-tile-not-found` — blaming the tile.
+   */
+  HOME_LIST_ABSENT: 'home-list-absent',
   /**
    * A library tile WAS found and pressed, and a different library's grid opened.
    * Deliberately not folded into `home-library-tile-not-found`: the tile was located
