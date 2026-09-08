@@ -25,7 +25,7 @@ related-files:
   - scripts/flake-baseline.js
   - tests/rta/demos/run.mjs
   - .github/workflows/rta-functional-tests.yml
-last-reviewed: 2026-09-07
+last-reviewed: 2026-09-08
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -1083,6 +1083,17 @@ runs Vitest **as a child process**, and restores. `npm run test:rta` (and `:fast
   - `npm run rta:restore` reapplies it on demand.
   - The next run repairs the device automatically — it restores from the leftover file
     *before* taking its own snapshot, so a stranded run can't become the new baseline.
+  - **Unless the run that wrote it is still alive**, which is the one case where the
+    repair above would be the damage. The file records an `ownerPid`, and a snapshot is
+    present for the *whole* of a healthy run — so "a file exists" and "a run is in
+    progress" look identical on disk. `snapshotRegistry()` therefore refuses outright
+    when that process is still alive, rather than reverting the registry underneath the
+    running suite (and rather than capturing *its* seeded state as your session, which is
+    the same corruption from the other end). The device lock normally keeps two runs
+    apart, but it degrades to advisory on `RTA_SKIP_LOCK=1`, on a missing GitHub token
+    and on an unreachable GitHub, so this is an ordinary local condition. If the recorded
+    process is gone but its number has been reused, `npm run rta:restore -- --force`
+    repairs and clears the file.
   - **It is outside `out/` for the same reason the run ledger is**, and this one was a
     live bug rather than a precaution: while it lived in `out/rta/`, the sequence
     "abandon a run → re-run `npm run test:rta`" deleted the snapshot *before* the

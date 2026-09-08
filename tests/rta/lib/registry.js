@@ -42,6 +42,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { odc, device, hardRelaunch, ensureOdcReachable, withTimeout } from './driver.js';
+import { isProcessAlive } from '../../../scripts/lib/process-liveness.cjs';
 
 /**
  * Wall clock on a registry read, covering the one failure the reachability gate cannot see.
@@ -386,10 +387,15 @@ function writeAcceptedRecord(diffs, label) {
  * Readers must treat a MISSING `ownerPid` as stranded, not as live — that is both
  * the safe default and the truth for any snapshot written before this field.
  *
- * `file` is a test seam. The only reader that matters lives in another module
- * (`device-lock.js`), so what has to be pinned is that the two agree on the field
- * — and a test can only do that by producing a real snapshot somewhere other than
- * the real `.device-runs/`.
+ * Three readers act on it, and they escalate: `device-lock.js` only REPORTS
+ * (withholds the restore command), `rta-restore.js` REFUSES a manual restore
+ * behind `--force`, and `snapshotRegistry` in this module THROWS — it is the one
+ * that runs unattended at the start of every run, so it is the one a wrong answer
+ * costs the most. Adding a fourth means deciding which of those three it is.
+ *
+ * `file` is a test seam. The reader in `device-lock.js` lives in another module, so
+ * what has to be pinned is that the two agree on the field — and a test can only do
+ * that by producing a real snapshot somewhere other than the real `.device-runs/`.
  */
 export function writeSnapshotFile(values, file = snapshotPath()) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -439,17 +445,43 @@ export function readSnapshotFile(file) {
 }
 
 /**
+ * Why a run refuses a device another run is already using.
+ *
+ * Says BOTH halves of the damage on purpose: a reader who knows only one of them
+ * "fixes" this by deleting the file, which re-enables the other. Restoring would
+ * revert the registry underneath the live run; snapshotting would capture that
+ * run's SEEDED state as the user's session and then preserve it forever (the
+ * second half is the hazard `scripts/measure-devices.js` names).
+ */
+const ownerStillRunning = (stranded) =>
+  `${stranded.file} belongs to pid ${stranded.ownerPid}, which is STILL RUNNING — ` +
+  'another RTA run owns this device. Refusing to restore from that snapshot (it would ' +
+  'revert the registry underneath the live run) and refusing to snapshot over it (this ' +
+  "run would adopt the other run's seeded state as the user's session and keep it " +
+  'forever). Wait for that run to finish. If that pid is NOT an RTA run — pids get ' +
+  'recycled — `npm run rta:restore -- --force` repairs the device and clears the file.';
+
+/**
  * Snapshot the device's ENTIRE registry, persisting it before returning.
  *
- * If a snapshot file is already sitting there, the previous run never completed
- * its restore (killed, crashed, or a restore that threw). Restore from it FIRST,
- * so this run's snapshot captures the user's state rather than the last run's
- * seeded leftovers. Without this the damage compounds silently: run N leaks, run
- * N+1 adopts the leak as the baseline and faithfully restores it forever.
+ * A snapshot file is present for the WHOLE of a healthy run, so its EXISTENCE does
+ * not mean the previous run died — `ownerPid` is the field that separates the two,
+ * and this is the reader that acts destructively on the difference. A dead owner
+ * means the run was killed, crashed, or threw mid-restore: restore from it FIRST, so
+ * this run's snapshot captures the user's state rather than the last run's seeded
+ * leftovers. Without that the damage compounds silently: run N leaks, run N+1 adopts
+ * the leak as the baseline and faithfully restores it forever.
+ *
+ * A LIVE owner is the opposite case and neither branch above is safe for it, so this
+ * refuses instead — see `ownerStillRunning`. The device lock normally keeps two runs
+ * apart, but it degrades to advisory whenever `RTA_SKIP_LOCK=1` is set, no GitHub
+ * token is available, or GitHub is unreachable (`scripts/device-lock.js`), and those
+ * are ordinary local conditions rather than edge cases.
  */
 export async function snapshotRegistry() {
   const stranded = readSnapshotFile();
   if (stranded) {
+    if (isProcessAlive(stranded.ownerPid)) throw new Error(ownerStillRunning(stranded));
     console.warn(
       `\n[registry] ${stranded.file} exists — the previous run never restored this device.` +
         `\n[registry] Restoring from it first so this run does not snapshot its leftovers.`,
