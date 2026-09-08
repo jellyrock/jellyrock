@@ -391,6 +391,90 @@ export function readRecoveries(file = recoveriesPath()) {
   return readJsonLines(file);
 }
 
+/**
+ * This run's RESOLUTION records — what a scene-rooted `#id` read actually resolved to.
+ *
+ * A fourth stream, on the split `assertionsPath` and `recoveriesPath` already argue for:
+ * these are written by reads that SUCCEEDED, so a file named for failures would make
+ * both harder to read, and they measure neither assertion strength nor a worked-around
+ * step.
+ *
+ * ## What this is for
+ *
+ * `getVal('#homeRows…')` is `scene.findNode("homeRows")` — a recursive search of the
+ * WHOLE scene, not of the screen the test is on. Two things can therefore go wrong
+ * without anything going red, and they are different defects:
+ *
+ *   (a) DUPLICATE — several nodes carry the id, so which one answers is a property of
+ *       tree order rather than of the test. `#buttons` is declared by seven components.
+ *   (b) NOT PRESENTED — exactly one node carries it and it is in a view that is parked
+ *       off-screen. sgRouter's default `suspendMode: "hide"` keeps a covered view IN the
+ *       tree, so the read succeeds and describes a screen nobody is looking at.
+ *
+ * (b) is the one that has actually bitten: `waitHome()` passed from a library grid
+ * because a scene-rooted `#homeRows` read found a SUSPENDED Home, and
+ * `rta-home-active-list-hardcoded` is the same mechanism across 30 more sites. A
+ * uniqueness check alone would have passed both — there was only ever one `#homeRows`.
+ *
+ * Neither shows up in a result. A gate that reads the wrong node still goes green, which
+ * is the whole defect class: succeeding for a reason nobody chose.
+ *
+ * ## Why RECORDED rather than asserted, for now
+ *
+ * Deliberately provenance and not a threshold, on `assertionsPath`'s reasoning: this runs
+ * inside the wait path of the only per-PR feedback nav changes get, and a gate whose
+ * precision has never been measured must not be able to red a healthy suite. Record
+ * first, read what a full suite says, promote to a throw once the false-alarm rate is
+ * known to be zero. `instrumentation must never move a verdict` — the same rule
+ * `probeFixture` was built under.
+ */
+export const resolutionsPath = () => path.join(recordDir(), 'resolutions.jsonl');
+
+/** Append one resolution record. Same never-throws contract as `recordFailure`. */
+export function recordResolution(entry, file = resolutionsPath()) {
+  appendJsonLine(file, entry);
+}
+
+/** Drop the previous run's resolution records. */
+export function resetResolutions(file = resolutionsPath()) {
+  try {
+    fs.rmSync(file, { force: true });
+  } catch {
+    // Nothing to clear, or the directory does not exist yet.
+  }
+}
+
+/** Read back this run's resolution records. */
+export function readResolutions(file = resolutionsPath()) {
+  return readJsonLines(file);
+}
+
+/**
+ * Collapse resolution records into a summary the ledger can carry.
+ *
+ * `audited` is the COVERAGE number and is the first thing to read: an anomaly count of
+ * zero means nothing if the audit only ever ran twice. The two anomaly lists are keyed
+ * by call site (`label`) rather than summed, because "which read is wrong" is the
+ * actionable question and a count alone sends you looking for it by hand.
+ */
+export function foldResolutions(records) {
+  const ambiguous = new Map();
+  const notPresented = new Map();
+  let audited = 0;
+  for (const r of records || []) {
+    if (!r || typeof r.id !== 'string') continue;
+    audited++;
+    const at = `${r.label ?? r.keyPath} (#${r.id})`;
+    if (r.count > 1) ambiguous.set(at, { at, count: r.count, subtypes: r.subtypes });
+    if (r.presented === false) notPresented.set(at, { at, hiddenAt: r.hiddenAt });
+  }
+  return {
+    audited,
+    ambiguous: [...ambiguous.values()],
+    notPresented: [...notPresented.values()],
+  };
+}
+
 /** Read back this run's assertion records. */
 export function readAssertions(file = assertionsPath()) {
   return readJsonLines(file);
@@ -717,6 +801,7 @@ export function summarizeRun({
   failures = [],
   assertions = {},
   recoveries = [],
+  resolutions = { audited: 0, ambiguous: [], notPresented: [] },
   fixture = [],
   run,
   what,
@@ -817,6 +902,12 @@ export function summarizeRun({
     // stay comparable. Present, it is what makes "how often does the retry fire"
     // a read over the ledger rather than a question nobody can answer.
     recoveries: recoveries.length ? recoveries : undefined,
+    // What the suite's scene-rooted `#id` reads actually resolved to — see
+    // `resolutionsPath`. Omitted when the audit did not run (it is env-gated), on the
+    // same grounds as the three above: an ordinary line stays unchanged and older ledger
+    // entries stay comparable. `audited` is present whenever it DID run, including at
+    // zero anomalies, because a clean result is only readable next to its coverage.
+    resolutions: resolutions?.audited ? resolutions : undefined,
     failures,
   };
 }
@@ -837,6 +928,9 @@ export function formatRunSummary(summary, file = failuresPath()) {
   const { failures = [], startedAt, endedAt, crossedHourBoundary, cumulative, outcome } = summary;
   const unknownKinds = summary.unknownKinds || [];
   const recoveries = summary.recoveries || [];
+  const resolutions = summary.resolutions;
+  const resolutionAnomalies =
+    (resolutions?.ambiguous?.length ?? 0) + (resolutions?.notPresented?.length ?? 0);
   // Suppressed for a cumulative window — see `summarizeRun`.
   const flagHour = crossedHourBoundary && !cumulative;
   // A run that died before it could run anything has no failures to report, which
@@ -844,7 +938,14 @@ export function formatRunSummary(summary, file = failuresPath()) {
   // is the right output for a clean run only.
   const flagOutcome = outcome && outcome !== RUN_OUTCOMES.PASSED;
   const flagUnknownOutcome = Boolean(summary.outcomeUnknown);
-  if (!failures.length && !flagHour && !unknownKinds.length && !flagOutcome && !recoveries.length)
+  if (
+    !failures.length &&
+    !flagHour &&
+    !unknownKinds.length &&
+    !flagOutcome &&
+    !recoveries.length &&
+    !resolutionAnomalies
+  )
     return [];
   const tag = `[${path.basename(runDir(summary.run))}]`;
   const window = `${clock(startedAt)}→${clock(endedAt)} UTC`;
@@ -921,6 +1022,26 @@ export function formatRunSummary(summary, file = failuresPath()) {
     );
     for (const r of recoveries) {
       lines.push(`${tag}   ${clock(r.at)} ${r.what ?? r.kind ?? 'recovery'} — ${r.detail ?? ''}`);
+    }
+  }
+  if (resolutionAnomalies) {
+    // Printed on a PASSING run for the same reason a recovery is, and it is a sharper
+    // case: a read that resolved to the wrong node leaves NO trace at all — the gate
+    // went green, so there is no failure, no retry, and nothing for the operator to
+    // notice. Report-only by design (see `resolutionsPath`), so it states what it saw
+    // and changes no verdict.
+    lines.push(
+      `${tag} ${resolutionAnomalies} scene-rooted read(s) did not resolve to what the ` +
+        `call site names, out of ${resolutions.audited} audited. The suite is green ` +
+        'either way — that is the defect, not the reassurance.',
+    );
+    for (const a of resolutions.ambiguous ?? []) {
+      lines.push(
+        `${tag}   AMBIGUOUS  ${a.at} — ${a.count} nodes carry the id [${(a.subtypes ?? []).join(', ')}]`,
+      );
+    }
+    for (const n of resolutions.notPresented ?? []) {
+      lines.push(`${tag}   OFF-SCREEN ${n.at} — hidden at ${n.hiddenAt}`);
     }
   }
   if (failures.length) {
@@ -1093,6 +1214,7 @@ export function beginRun({ lock, run, cumulative = false, runnerArgs = [] }) {
   // Same contract as the failure records: a fold may only ever see THIS run's.
   resetAssertions();
   resetRecoveries();
+  resetResolutions();
   resetFixtureReadings();
   // Closed over rather than re-read at close time, so a handle always folds the run
   // it was handed. Note the LIMIT of that: `activeRunDir` and the `closedSummary`
@@ -1209,6 +1331,7 @@ export function endRun({
     failures: readFailures(),
     assertions: foldAssertions(readAssertions()),
     recoveries: readRecoveries(),
+    resolutions: foldResolutions(readResolutions()),
     fixture: fixtureReadings,
     cumulative,
   });

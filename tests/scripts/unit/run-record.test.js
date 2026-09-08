@@ -36,6 +36,7 @@ import {
   foldAssertions,
   recordAssertion,
   readAssertions,
+  foldResolutions,
 } from '../../../scripts/run-record.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -1429,5 +1430,86 @@ describe('formatRunSummary', () => {
     ).join('\n');
     expect(lines).toContain('home rows');
     expect(lines).toContain('wait-for-timeout');
+  });
+});
+
+describe('foldResolutions — coverage first, then the two defects', () => {
+  const at = { startedAt: '2026-08-12T01:07:47Z', endedAt: '2026-08-12T01:07:48Z' };
+
+  it('reports the audited COUNT even when nothing was wrong', () => {
+    // The count is the first thing to read: "no anomalies" means nothing if the audit
+    // only ever ran twice. A clean result is only interpretable next to its coverage.
+    expect(
+      foldResolutions([
+        { id: 'homeRows', count: 1, presented: true },
+        { id: 'jrDialog', count: 1, presented: true },
+      ]),
+    ).toEqual({ audited: 2, ambiguous: [], notPresented: [] });
+  });
+
+  it('separates a DUPLICATE from a NOT-PRESENTED read', () => {
+    // They are different defects with different fixes — a shared list would merge them
+    // the way a shared failure-kind slug merges two failure classes.
+    const folded = foldResolutions([
+      {
+        id: 'buttons',
+        count: 2,
+        presented: true,
+        subtypes: ['JRButtonGroup', 'JRButtons'],
+        label: 'a',
+      },
+      { id: 'homeRows', count: 1, presented: false, hiddenAt: '#view', label: 'b' },
+    ]);
+    expect(folded.ambiguous).toEqual([
+      { at: 'a (#buttons)', count: 2, subtypes: ['JRButtonGroup', 'JRButtons'] },
+    ]);
+    expect(folded.notPresented).toEqual([{ at: 'b (#homeRows)', hiddenAt: '#view' }]);
+  });
+
+  it('lists a site ONCE however many times it fired', () => {
+    // A nav helper runs on ~30 navigations a suite. Thirty copies of one finding is a
+    // wall to scroll past; the actionable question is WHICH read is wrong, not how often
+    // the same one repeated.
+    const folded = foldResolutions([
+      { id: 'homeRows', count: 1, presented: false, hiddenAt: '#view', label: 'home rows' },
+      { id: 'homeRows', count: 1, presented: false, hiddenAt: '#view', label: 'home rows' },
+    ]);
+    expect(folded.audited).toBe(2);
+    expect(folded.notPresented).toHaveLength(1);
+  });
+
+  it('can report BOTH defects for one read', () => {
+    const folded = foldResolutions([
+      { id: 'buttons', count: 2, presented: false, hiddenAt: '#view', subtypes: ['A'], label: 'x' },
+    ]);
+    expect(folded.ambiguous).toHaveLength(1);
+    expect(folded.notPresented).toHaveLength(1);
+  });
+
+  it('ignores malformed records rather than throwing', () => {
+    // Bookkeeping must never fail the run it is bookkeeping about.
+    expect(foldResolutions([null, {}, { count: 2 }])).toEqual({
+      audited: 0,
+      ambiguous: [],
+      notPresented: [],
+    });
+    expect(foldResolutions(undefined)).toEqual({ audited: 0, ambiguous: [], notPresented: [] });
+  });
+
+  it('leaves no `resolutions` key in the LEDGER LINE when the audit did not run', () => {
+    // Asserted on the serialized line for the same reason `assertions` is: older ledger
+    // entries have to stay comparable, and the audit is env-gated so most runs have none.
+    const s = summarizeRun({ ...at, run: 'test:rta', outcome: RUN_OUTCOMES.PASSED });
+    expect(JSON.parse(JSON.stringify(s))).not.toHaveProperty('resolutions');
+  });
+
+  it('carries a CLEAN audit onto the summary — zero anomalies is a result', () => {
+    const s = summarizeRun({
+      ...at,
+      run: 'test:rta',
+      outcome: RUN_OUTCOMES.PASSED,
+      resolutions: { audited: 87, ambiguous: [], notPresented: [] },
+    });
+    expect(s.resolutions).toEqual({ audited: 87, ambiguous: [], notPresented: [] });
   });
 });

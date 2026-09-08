@@ -10,6 +10,7 @@
  */
 import { ecp, odc } from 'roku-test-automation';
 import { diagnosedError, FAILURE_KINDS } from './diagnostics.js';
+import { auditSceneResolution, auditSceneResolutions } from './resolution.js';
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export const press = (key) => ecp.sendKeypress(key);
@@ -44,7 +45,14 @@ const readActive = (keyPath) =>
 
 /** Read a scene-rooted keyPath; returns the value or undefined if not present. */
 export async function getVal(keyPath) {
-  return (await readScene(keyPath)).value;
+  const { value } = await readScene(keyPath);
+  // A one-shot read is audited too, not just a wait's resolution: half the scene-rooted
+  // sites in the suite are `expect(await getVal(...))`, and an assertion reading the
+  // wrong node is the same defect as a gate doing it. Note `waitFor` does NOT come
+  // through here on its ticks — it holds `readScene` directly — so this cannot make a
+  // poll census once per tick.
+  await auditSceneResolution(keyPath);
+  return value;
 }
 
 /**
@@ -136,7 +144,9 @@ export async function getActiveVals(keyPaths) {
  * different frames, which is the failure the reader would be trying to diagnose.
  */
 export async function getVals(keyPaths) {
-  return batchRead(keyPaths, (keyPath) => ({ base: 'scene', keyPath }));
+  const values = await batchRead(keyPaths, (keyPath) => ({ base: 'scene', keyPath }));
+  await auditSceneResolutions(keyPaths);
+  return values;
 }
 
 async function batchRead(keyPaths, toRequest) {
@@ -223,7 +233,14 @@ export async function waitFor(
     } else {
       last = await read(keyPath);
     }
-    if (predicate(last)) return last;
+    if (predicate(last)) {
+      // The wait PASSED — which is the only moment a vacuous pass can be caught, and the
+      // reason this is here rather than beside the throw below. Report-only and awaited:
+      // it cannot fail the wait (see `resolution.js`), and letting it run after the
+      // return would race the next step's presses against the census it is reading.
+      await auditSceneResolution(keyPath, { label });
+      return last;
+    }
     await sleep(interval);
   }
   throw await diagnosedError(
