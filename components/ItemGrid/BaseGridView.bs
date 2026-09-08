@@ -103,6 +103,16 @@ sub init()
   m.backdropSize = { width: device.uiResolution[0], height: device.uiResolution[1] }
 
   m.log.debug("end init()")
+
+  ' Interface observers are registered HERE rather than declared as XML onChange
+  ' attributes: this component releases node references in onDestroy and these
+  ' handlers dereference them, so the registrations have to be detachable. An XML
+  ' onChange does not appear to be removable by unobserveField — see the wiring
+  ' rule in components/CLAUDE.md.
+  m.top.observeField("presenterType", "onPresenterTypeChanged")
+  m.top.observeField("parentItem", "loadInitialItems")
+  m.top.observeField("alphaSelected", "onAlphaSelectedChanged")
+  m.top.observeField("isAlphaActive", "onAlphaActiveChanged")
 end sub
 
 sub setupNodes()
@@ -1395,6 +1405,13 @@ end function
 ' onDestroy: Full teardown releasing all resources before component removal
 ' Called automatically via JRScreen.beforeViewClose when sgRouter permanently closes this view.
 sub onDestroy()
+  ' Detach the interface observers registered in init(). Must precede every
+  ' reference release below — these handlers dereference them.
+  m.top.unobserveField("presenterType")
+  m.top.unobserveField("parentItem")
+  m.top.unobserveField("alphaSelected")
+  m.top.unobserveField("isAlphaActive")
+
   m.log.verbose("onDestroy")
 
   ' Destroy texture manager — force-unloads all grid item textures

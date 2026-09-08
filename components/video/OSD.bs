@@ -71,6 +71,13 @@ sub init()
   ' See applyOverflow() below.
   m.buttonOverflow = m.top.findNode("buttonOverflow")
   m.buttonMenuLeft.buttonFocused = m.defaultButtonIndex
+
+  ' Interface observers are registered HERE rather than declared as XML onChange
+  ' attributes: this component releases node references in onDestroy and these
+  ' handlers dereference them, so the registrations have to be detachable. An XML
+  ' onChange does not appear to be removable by unobserveField — see the wiring
+  ' rule in components/CLAUDE.md.
+  m.top.observeField("videoLogo", "setVideoLogoGroup")
 end sub
 
 ' onItemDataChanged: Reads typed fields from JellyfinBaseItem node and populates OSD display.
@@ -989,6 +996,10 @@ end function
 ' onDestroy: Full teardown releasing all resources before component removal
 ' Called by VideoPlayerView.onDestroy() since OSD is a child component, not a SceneManager scene
 sub onDestroy()
+  ' Detach the interface observers registered in init(). Must precede every
+  ' reference release below — these handlers dereference them.
+  m.top.unobserveField("videoLogo")
+
   m.log.verbose("onDestroy")
 
   ' The More menu's result handler ACTS (seeks, switches tracks), so it must be

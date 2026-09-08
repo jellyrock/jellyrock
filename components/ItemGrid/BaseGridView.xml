@@ -105,15 +105,15 @@
   </children>
 
   <interface>
-    <field id="presenterType" type="string" value="" onChange="onPresenterTypeChanged" />
+    <field id="presenterType" type="string" value="" />
     <field id="HomeLibraryItem" type="string" />
-    <field id="parentItem" type="node" onChange="loadInitialItems" />
+    <field id="parentItem" type="node" />
     <field id="selectedItem" type="node" alwaysNotify="true" />
     <field id="loadLogoTask" type="node" />
     <field id="quickPlayNode" type="node" alwaysNotify="true" />
     <field id="imageDisplayMode" type="string" value="scaleToZoom" />
-    <field id="alphaSelected" type="string" alias="alpha.letterSelected" alwaysNotify="true" onChange="onAlphaSelectedChanged" />
-    <field id="isAlphaActive" type="boolean" value="false" onChange="onAlphaActiveChanged" />
+    <field id="alphaSelected" type="string" alias="alpha.letterSelected" alwaysNotify="true" />
+    <field id="isAlphaActive" type="boolean" value="false" />
     <field id="showItemTitles" type="string" value="showonhover" />
     <field id="jumpToItem" type="integer" value="" />
     <field id="gridTitles" type="string" />
