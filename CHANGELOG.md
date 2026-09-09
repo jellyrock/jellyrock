@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update eslint from v10.9.1 to v10.10.0 ([#886](https://github.com/jellyrock/jellyrock/pull/886))
 - Update spellchecker-cli from v7.0.3 to v7.0.4 ([#893](https://github.com/jellyrock/jellyrock/pull/893))
 - Update ropm from v0.11.9 to v0.11.10 ([#880](https://github.com/jellyrock/jellyrock/pull/880))
 - Update promises from v0.7.1 to v0.7.2 ([#878](https://github.com/jellyrock/jellyrock/pull/878))
