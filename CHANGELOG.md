@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Close all three routes to a false buffer stall ([#899](https://github.com/jellyrock/jellyrock/pull/899))
 - Register the `state` observer exactly once ([#898](https://github.com/jellyrock/jellyrock/pull/898))
 - Register the `position` observer exactly once ([#896](https://github.com/jellyrock/jellyrock/pull/896))
 - Gate interface-field observer wiring; fix stale cross-file findings ([#895](https://github.com/jellyrock/jellyrock/pull/895))
