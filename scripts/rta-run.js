@@ -218,17 +218,17 @@ const exitCode = await new Promise((resolve) => {
 // `expect()`, so a red run can fold with an EMPTY failure list. Reading `failures`
 // as the outcome would score that run green.
 //
+// The fixture's pulse again, taken before the close so the reading lands in this run's row
+// rather than the next one's. A fixture that was fine at the start and sick at the end is
+// the shape that most often reads as "the app broke halfway through".
+recordFixtureReading(await probeFixture(RTA_CONFIG.server.url, { phase: 'end' }));
+
 // A RED run is then read once more, and only ever downgraded: if the child recorded a
 // dependency failure, the run is `blocked` rather than `failed` — it never put the app
 // on trial, so it leaves the baseline population instead of entering it as evidence.
 // Deliberately narrow: a green run is never re-read (a suite that passed IS a verdict,
 // whatever the fixture did along the way), and the check cannot promote a failure into
 // a pass. See `RUN_OUTCOMES.BLOCKED` for why blocked outranks failed.
-// Taken before the close so the reading lands in this run's row rather than the next
-// one's. A fixture that was fine at the start and sick at the end is the shape that most
-// often reads as "the app broke halfway through".
-recordFixtureReading(await probeFixture(RTA_CONFIG.server.url, { phase: 'end' }));
-
 const redOutcome = wasBlocked(readFailures()) ? RUN_OUTCOMES.BLOCKED : RUN_OUTCOMES.FAILED;
 run.close(
   interrupting ? RUN_OUTCOMES.INTERRUPTED : exitCode === 0 ? RUN_OUTCOMES.PASSED : redOutcome,

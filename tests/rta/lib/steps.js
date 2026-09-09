@@ -120,11 +120,6 @@ async function readHomeList(suffix) {
 }
 
 /**
- * The attributing twin of each public reader, keyed BY the reader a caller passes as
- * `read`. A custom reader is not in the map and simply gets no attribution — the wait
- * behaves exactly as it did before.
- */
-/**
  * The readers a SCENE census actually describes.
  *
  * `waitFor` audits the keyPath it settled on, but that census walks from the scene ROOT —
@@ -145,6 +140,11 @@ async function readHomeList(suffix) {
  */
 const SCENE_ROOTED_READS = new Set([getVal]);
 
+/**
+ * The attributing twin of each public reader, keyed BY the reader a caller passes as
+ * `read`. A custom reader is not in the map and simply gets no attribution — the wait
+ * behaves exactly as it did before.
+ */
 const ATTRIBUTING_READS = new Map([
   [getVal, readScene],
   [getActiveVal, readActive],

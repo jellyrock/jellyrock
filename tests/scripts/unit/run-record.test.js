@@ -1496,6 +1496,27 @@ describe('foldResolutions — coverage first, then the two defects', () => {
     expect(foldResolutions(undefined)).toEqual({ audited: 0, ambiguous: [], notPresented: [] });
   });
 
+  it('carries a truncation marker through, and does not count it as an audited read', () => {
+    // `audited` is a COVERAGE claim, so it must not be possible to read a capped audit as
+    // a complete one. The marker is a record on the same stream rather than a counter,
+    // because the counter would live in a Vitest worker and the fold happens in the parent.
+    const folded = foldResolutions([
+      { id: 'homeRows', count: 1, presented: true },
+      { truncated: true, budget: 200 },
+      { id: 'osd', count: 1, presented: true },
+    ]);
+    expect(folded.audited).toBe(2);
+    expect(folded.truncated).toBe(true);
+  });
+
+  it('omits `truncated` entirely when the audit ran to completion', () => {
+    // Same rule as the optional keys around it: an ordinary line keeps the shape it had,
+    // so older ledger entries stay comparable.
+    expect(foldResolutions([{ id: 'homeRows', count: 1, presented: true }])).not.toHaveProperty(
+      'truncated',
+    );
+  });
+
   it('leaves no `resolutions` key in the LEDGER LINE when the audit did not run', () => {
     // Asserted on the serialized line for the same reason `assertions` is: older ledger
     // entries have to stay comparable, and the audit is env-gated so most runs have none.

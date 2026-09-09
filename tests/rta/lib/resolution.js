@@ -78,27 +78,25 @@ export const auditEnabled = () => process.env.RTA_AUDIT_RESOLUTION === '1';
 /**
  * How many censuses one process may take.
  *
- * A budget rather than a rate limit or a memo, because the FIRST question this pass has
- * to answer is not "are there anomalies" but "how many reads are there to audit at all" —
- * and nobody knows: a `getVal` inside a poll `action` re-runs every tick, so the call
- * volume is not the 106 static call sites. Recording `asked` alongside `audited` answers
- * the sizing question and the anomaly question in one suite run instead of two.
+ * A cap on the pathological shape rather than on cost: a `getVal` inside a poll `action`
+ * re-runs every tick, so the call volume is not the ~106 static call sites and nobody can
+ * bound it by reading the code. Vitest runs one worker per spec FILE, so this is a
+ * per-file budget.
  *
- * Vitest runs one worker per spec FILE, so this is a per-file budget and the total is
- * roughly `files x BUDGET`. At ~30 ms a census that is a bounded few seconds either way.
+ * **It is not there for speed.** Measured 2026-09-09 on `.177`: a full audited suite took
+ * 1330 s against a prior passing band of 1295 / 1321 / 1337 / 1352 s on the same branch —
+ * 525 censuses cost nothing detectable at suite level. So do not raise or lower this
+ * looking for time; the only thing it buys is a bound on a runaway poll.
  */
 const CENSUS_BUDGET = Number(process.env.RTA_AUDIT_BUDGET ?? 200);
 let spent = 0;
-let asked = 0;
+let truncationRecorded = false;
 
-/** Test seam — reset the per-process counters. */
+/** Test seam — reset the per-process budget state. */
 export function resetAuditBudget() {
   spent = 0;
-  asked = 0;
+  truncationRecorded = false;
 }
-
-/** What this process has done so far, for the end-of-file record. */
-export const auditCounters = () => ({ asked, audited: spent });
 
 /**
  * The id a scene-rooted keyPath resolves through, or null when there is nothing to audit.
@@ -193,8 +191,11 @@ export function classifyResolution(id, flatTree) {
  * Swallowing is the right contract for the same reason the readers swallow: this is
  * instrumentation on a path that has already succeeded, and an audit that can fail a
  * green wait is strictly worse than no audit. A census that errors is simply not
- * recorded — it cannot be reported as "clean", because `audited` counts only the ones
- * that produced a record.
+ * recorded — it cannot be reported as "clean", because the ledger's `audited` counts
+ * RECORDS, not attempts, so a failed census raises no number.
+ *
+ * It does spend budget, which is deliberate: a device answering nothing would otherwise
+ * retry a census on every audited read for the whole file.
  */
 export async function auditSceneResolution(keyPath, options) {
   return auditSceneResolutions([keyPath], options);
@@ -214,8 +215,30 @@ export async function auditSceneResolutions(keyPaths, { label } = {}) {
   if (!auditEnabled()) return;
   const ids = [...new Set((keyPaths ?? []).map(leadingSceneId).filter(Boolean))];
   if (!ids.length) return;
-  asked++;
-  if (spent >= CENSUS_BUDGET) return;
+  if (spent >= CENSUS_BUDGET) {
+    // The budget stops the audit, and until this it stopped it SILENTLY: the ledger
+    // reported `audited: N` with nothing to say whether N was the whole population or
+    // the point at which we stopped looking. That is the exact failure this module's
+    // own docblock names — "a clean result is only readable next to its coverage" —
+    // reintroduced one level up.
+    //
+    // It is not hypothetical, and the run that proved it is worth stating: on
+    // 2026-09-09 a full audited suite folded to `audited: 525`, and NOTHING in the
+    // ledger could say whether any worker had capped. The raw records that might have
+    // answered it were reset by the very next run, which is correct — a fold may only
+    // ever see this run's — but it means the question becomes unanswerable the moment
+    // anyone runs the suite again. So the marker has to reach the FOLD, not just sit
+    // in a stream that the next run deletes.
+    //
+    // ONE record, on the first skip. Emitting per skip would flood the stream with the
+    // one fact it is trying to state, and the fact is binary: this worker stopped
+    // auditing. `foldResolutions` turns it into a flag on the ledger line.
+    if (!truncationRecorded) {
+      truncationRecorded = true;
+      recordResolution({ truncated: true, budget: CENSUS_BUDGET, at: new Date().toISOString() });
+    }
+    return;
+  }
   spent++;
   try {
     const census = await odc.storeNodeReferences({ nodeRefKey: 'resolutionAudit' });

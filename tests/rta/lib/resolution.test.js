@@ -13,8 +13,26 @@
  * resolves at all, which stays hardware-verified through `npm run test:rta`. The same
  * split `steps.test.js` already draws.
  */
-import { describe, it, expect } from 'vitest';
-import { leadingSceneId, hiddenAncestor, classifyResolution } from './resolution.js';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// The census is the only thing that needs a device, so it is the only thing mocked. The
+// recorder is mocked too because the budget test's whole assertion is WHAT gets recorded.
+const storeNodeReferences = vi.fn();
+const recordResolution = vi.fn();
+vi.mock('roku-test-automation', () => ({
+  odc: { storeNodeReferences: () => storeNodeReferences() },
+}));
+vi.mock('../../../scripts/run-record.js', () => ({
+  recordResolution: (...a) => recordResolution(...a),
+}));
+
+const {
+  leadingSceneId,
+  hiddenAncestor,
+  classifyResolution,
+  auditSceneResolutions,
+  resetAuditBudget,
+} = await import('./resolution.js');
 
 /** Build a flat tree from `[id, subtype, parentRef, extra]` rows; ref is the index. */
 const tree = (rows) =>
@@ -223,5 +241,53 @@ describe('classifyResolution — the two defects stay separate', () => {
       presented: true,
       hiddenAt: null,
     });
+  });
+});
+
+describe('the census budget reports that it stopped, rather than stopping silently', () => {
+  const OLD = process.env.RTA_AUDIT_RESOLUTION;
+
+  beforeEach(() => {
+    process.env.RTA_AUDIT_RESOLUTION = '1';
+    resetAuditBudget();
+    recordResolution.mockClear();
+    storeNodeReferences.mockClear();
+    storeNodeReferences.mockResolvedValue({
+      flatTree: [{ id: 'osd', subtype: 'OSD', ref: 0, parentRef: -1, keyPath: '#osd' }],
+    });
+  });
+  afterEach(() => {
+    if (OLD === undefined) delete process.env.RTA_AUDIT_RESOLUTION;
+    else process.env.RTA_AUDIT_RESOLUTION = OLD;
+    resetAuditBudget();
+  });
+
+  /** Drive `n` audited reads through the real budget path. */
+  const audit = async (n) => {
+    for (let i = 0; i < n; i++) await auditSceneResolutions(['#osd.visible']);
+  };
+
+  it('emits a truncation record once the budget is spent, and only once', async () => {
+    // The budget silently capped the audit before this: the ledger reported `audited: N`
+    // with no way to say whether N was the population or the point we stopped looking.
+    //
+    // Driven against the DEFAULT budget rather than a small override, because the module
+    // reads `RTA_AUDIT_BUDGET` once at import time — setting it here would change nothing
+    // and would read as though it had.
+    await audit(205);
+    const markers = recordResolution.mock.calls.map(([r]) => r).filter((r) => r.truncated);
+    expect(markers).toHaveLength(1);
+    expect(markers[0]).toMatchObject({ truncated: true, budget: 200 });
+  });
+
+  it('takes no further censuses once truncated — the cap is real, not advisory', async () => {
+    await audit(205);
+    expect(storeNodeReferences).toHaveBeenCalledTimes(200);
+  });
+
+  it('records nothing at all while under budget', async () => {
+    await audit(5);
+    expect(recordResolution.mock.calls.filter(([r]) => r.truncated)).toHaveLength(0);
+    expect(storeNodeReferences).toHaveBeenCalledTimes(5);
   });
 });

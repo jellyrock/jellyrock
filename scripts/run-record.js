@@ -462,8 +462,19 @@ export function foldResolutions(records) {
   const ambiguous = new Map();
   const notPresented = new Map();
   let audited = 0;
+  // At least one worker hit `CENSUS_BUDGET` and stopped auditing, so `audited` is a FLOOR
+  // rather than the population. Carried onto the ledger line because the raw records it
+  // is derived from are reset by the next run — a fold may only ever see this run's — so
+  // a marker that lived only in the stream would answer the question for about as long as
+  // it took someone to run the suite again.
+  let truncated = false;
   for (const r of records || []) {
-    if (!r || typeof r.id !== 'string') continue;
+    if (!r) continue;
+    if (r.truncated) {
+      truncated = true;
+      continue;
+    }
+    if (typeof r.id !== 'string') continue;
     audited++;
     const at = `${r.label ?? r.keyPath} (#${r.id})`;
     if (r.count > 1) ambiguous.set(at, { at, count: r.count, subtypes: r.subtypes });
@@ -471,6 +482,9 @@ export function foldResolutions(records) {
   }
   return {
     audited,
+    // Omitted when false, on the same grounds as the optional keys in `summarizeRun`: an
+    // ordinary line stays the shape it was, and older entries stay comparable.
+    ...(truncated ? { truncated: true } : {}),
     ambiguous: [...ambiguous.values()],
     notPresented: [...notPresented.values()],
   };
@@ -909,7 +923,7 @@ export function summarizeRun({
     // How the FIXTURE SERVER was doing on either side of the run. Present so a red run
     // against a sick server is readable as such instead of re-argued from memory — the
     // third leg of "app vs. harness vs. fixture", which was the one with no instrument.
-    // Omitted when empty, on the same grounds as `assertions` below.
+    // Omitted when empty, on the same grounds as `assertions` above.
     fixture: fixture.length ? fixture : undefined,
     // Steps the harness worked around. Omitted when empty, on the same grounds as
     // `assertions` above: an ordinary line stays unchanged and older ledger entries
@@ -1046,9 +1060,18 @@ export function formatRunSummary(summary, file = failuresPath()) {
     // and changes no verdict.
     lines.push(
       `${tag} ${resolutionAnomalies} scene-rooted read(s) did not resolve to what the ` +
-        `call site names, out of ${resolutions.audited} audited. The suite is green ` +
-        'either way — that is the defect, not the reassurance.',
+        `call site names, out of ${resolutions.audited}${resolutions.truncated ? '+' : ''} ` +
+        'audited. The suite is green either way — that is the defect, not the reassurance.',
     );
+    if (resolutions.truncated) {
+      // Said out loud rather than left to the `+`: the number above is where the audit
+      // STOPPED, not the population, and a zero-anomaly result under a cap means nothing.
+      lines.push(
+        `${tag}   COVERAGE   at least one spec file hit RTA_AUDIT_BUDGET and stopped ` +
+          'auditing — the count above is a floor, not a total. Raise RTA_AUDIT_BUDGET to ' +
+          'audit the whole population.',
+      );
+    }
     for (const a of resolutions.ambiguous ?? []) {
       lines.push(
         `${tag}   AMBIGUOUS  ${a.at} — ${a.count} nodes carry the id [${(a.subtypes ?? []).join(', ')}]`,
