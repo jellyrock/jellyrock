@@ -27,7 +27,7 @@ Roku Scene Graph (RSG) components — XML interface + paired BrighterScript back
 
 A node that outlives the function observing it — `m.top`, or a member bound once from `m.top.findNode()` — must have its observer wired in **exactly one** of two shapes. Anything else accumulates registrations, and the handler then runs N times per notification. It is silent whenever the handler is idempotent, which is why these survive for months.
 
-- **Register once in `init()`**, never re-register; drive lifecycle with `control` alone. [`playbackTimer`](video/VideoPlayerView.bs) is the reference.
+- **Register once in `init()`**, never re-register; drive lifecycle with `control` alone, and unobserve only at teardown. [`PhotoDetails.slideshowTimer`](photos/PhotoDetails.bs) is the reference: observed in `init()`, started and stopped from four places, unobserved only in `onDestroy()`. Note that `VideoPlayerView`'s `playbackTimer` is **not** a clean example of this shape despite looking like one — it registers once in `init()` but then unobserves in the `stopped` and `finished` branches and never re-registers, which is tracked as a followup.
 - **Balanced toggle** — observe on the way in, `unobserveField` on **every** exit path, not just the common one. [`OSD.inactivityTimer`](video/OSD.bs) is the reference: `onVisibleChanged` observes in the `true` arm and unobserves in the `false` arm.
 
 If a toggle has an exit that cannot unobserve (an unhandled-state `else`, an early return), put an `unobserveField` immediately before the `observeField` so the registration is single by construction rather than by the caller's discipline — `VideoPlayerView`'s `bufferCheckTimer` does both.
