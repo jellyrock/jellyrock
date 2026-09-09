@@ -23,6 +23,17 @@ Roku Scene Graph (RSG) components — XML interface + paired BrighterScript back
 - Override `onDestroy()` — release Task nodes, unobserve fields, drop large data structures. The base `onDestroy()` is a no-op; missing it leaks observers and tasks across navigation. **Unobserve everything before you null anything** — see the ordering rule under Input handling. Several BSC plugins enforce this family; opt-out comments are documented in [build-and-tooling.md](../docs/architecture/build-and-tooling.md).
 - **A routed screen owns its own load spinner.** If a screen fetches data on open, it `startLoadingSpinner()`s when the fetch begins and `stopLoadingSpinner()`s when data arrives — callers just navigate. Don't stop a spinner synchronously right after a `navigateTo` to a *different* view: the nav is async (settles at `NavigationEnd`) so `activeRoutedView` is still the outgoing view, and stopping re-shows it for a frame. See [navigation.md → Loading spinners across navigation](../docs/architecture/navigation.md).
 
+## Observing a field on a long-lived node
+
+A node that outlives the function observing it — `m.top`, or a member bound once from `m.top.findNode()` — must have its observer wired in **exactly one** of two shapes. Anything else accumulates registrations, and the handler then runs N times per notification. It is silent whenever the handler is idempotent, which is why these survive for months.
+
+- **Register once in `init()`**, never re-register; drive lifecycle with `control` alone, and unobserve only at teardown. [`PhotoDetails.slideshowTimer`](photos/PhotoDetails.bs) is the reference: observed in `init()`, started and stopped from four places, unobserved only in `onDestroy()`. Note that `VideoPlayerView`'s `playbackTimer` is **not** a clean example of this shape despite looking like one — it registers once in `init()` but then unobserves in the `stopped` and `finished` branches and never re-registers, which is tracked as a followup.
+- **Balanced toggle** — observe on the way in, `unobserveField` on **every** exit path, not just the common one. [`OSD.inactivityTimer`](video/OSD.bs) is the reference: `onVisibleChanged` observes in the `true` arm and unobserves in the `false` arm.
+
+If a toggle has an exit that cannot unobserve (an unhandled-state `else`, an early return), put an `unobserveField` immediately before the `observeField` so the registration is single by construction rather than by the caller's discipline — `VideoPlayerView`'s `bufferCheckTimer` does both.
+
+**Why this is a convention and not a lint rule.** The naive check ("no preceding `unobserveField` of the same field in the same function") flags **143** sites, ~127 of them one-shot Task launches where the handler unobserves itself. Narrowed to long-lived receivers it flags 16, and 3 of 3 spot-checked were false positives — legitimate toggles paired across an `if`/`else`, across a handler boundary, or in named `start`/`stop` helper pairs. A useful gate needs control-flow-aware analysis of all three shapes; until someone builds that, this section is the gate. Real instances so far: #896 (`position`), #898 (`state`), #899 (`bufferCheckTimer.fire`).
+
 ## Render thread protection
 
 - Roku's render thread runs the UI. Anything I/O — network, registry I/O, large file reads — **MUST run on a Task thread**. Which thread is which (there are three, and main ≠ render), plus the measured list of what is actually constructible where: [threading.md](../docs/architecture/threading.md).

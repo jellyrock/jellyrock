@@ -46,6 +46,31 @@ on:
           - all
           - complete
 
+# One in-flight device run per PR (per branch for pushes). The Roku is a single
+# physical device behind one serial ephemeral runner at ~11 min a job, so a burst
+# of triggers queues rather than parallelising. On 2026-09-09 six device-eligible
+# runs landed in 23 minutes; the last sat queued ~57 min behind the others, which
+# reads as "the runner is dead" on the Actions page even though every job passed.
+# Superseded pushes to the same PR were most of that backlog.
+#
+# cancel-in-progress is TRUE for pull_request_target ONLY, and that asymmetry is
+# load-bearing — do not simplify it to a bare `true`. The hazard is the one
+# rta-functional-tests.yml documents: concurrency is evaluated BEFORE any job
+# runs, so a superseding docs-only trigger can cancel an in-flight run and then
+# skip via check-skip, leaving the earlier source change ungated. That is
+# reachable only on the `push` path, because .github/actions/changed-paths
+# resolves a push's file list from the before...after compare (that push's files
+# alone) but resolves a PR's from `gh pr diff` (the whole base...head diff). A
+# docs-only push to a PR therefore still sees the earlier source change and still
+# runs the device tests, so cancelling superseded PR runs cannot cause a false
+# skip — while cancelling superseded main pushes could. Hence false for push.
+#
+# Fork PRs stay fails-closed: cancelling a run awaiting fork-gate approval leaves
+# fork-gate 'cancelled', which the all-tests allowlist below treats as blocked.
+concurrency:
+  group: device-unit-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
+
 # Restrict the default GITHUB_TOKEN to read-only contents access. This workflow
 # only checks out code, installs deps, and runs tests on the Roku — it never
 # pushes, comments, or otherwise mutates the repo. Without this, a malicious
