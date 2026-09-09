@@ -9,7 +9,7 @@ related-files:
   - components/data/Constants.xml
   - components/data/jellyfin/AppInfo.xml
   - components/data/jellyfin/DeviceInfo.xml
-last-reviewed: 2026-08-23
+last-reviewed: 2026-09-08
 ---
 
 # Global State
@@ -242,7 +242,7 @@ from every store build, and readable from the port-8085 console with no rebuild:
 `FirstRefused` rather than most-recent on purpose: the node that tipped the app over the watermark
 names the fan-out, and every refusal after it is a consequence.
 
-It is the only `m.global` field holding node references in an array rather than a single node. `tests/source/unit/utils/tasks.spec.bs` pins the safety bound (watermark + untracked threads < Roku's 100-thread cap) so a future edit to either constant cannot quietly break it, and `tests/rta/specs/task-thread-peak.spec.js` gates the real peak on device (measured 9-11).
+It is the only `m.global` field holding node references in an array rather than a single node. `tests/source/unit/utils/tasks.spec.bs` pins the safety bound (watermark + untracked threads < Roku's 100-thread cap) so a future edit to either constant cannot quietly break it, and `tests/rta/specs/task-thread-peak.spec.js` gates the real peak on device (measured 9-11). **That band is conditional on the fixture's library count, which the spec records as `libraryCount` in its artifact and this sentence previously did not state.** The two readings behind it are not interchangeable: `.178` at 4 libraries peaked at 10, in the extras sweep; `.177` at 3 libraries peaked at 9, in the seven-screens phase. Device and library count both changed between them, so the difference is not attributable to either — read a peak against the `libraryCount` its own artifact records, and re-derive the band rather than assuming it if the demo server's library set moves again.
 
 ## Known cruft
 
