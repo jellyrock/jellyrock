@@ -38,6 +38,23 @@ describe('ordering-asserts-presence', () => {
         expect(code).toContain('read');
         expect(code.indexOf('guard')).toBeLessThan(code.indexOf('read'));
       `),
+
+      // A proof in the `it()` body governs an assert inside a nested callback. Scoping to
+      // the NEAREST function would miss it and report a sound test — and this rule has no
+      // escape hatch, so a false positive can only be answered by disabling it.
+      inTest(`
+        expect(code).toContain('guard');
+        expect(code).toContain('read');
+        ['a', 'b'].forEach((_) => {
+          expect(code.indexOf('guard')).toBeLessThan(code.indexOf('read'));
+        });
+      `),
+      inTest(`
+        expect(code).toContain('guard');
+        for (const _ of xs) {
+          expect(code.indexOf('guard')).toBeGreaterThan(-1);
+        }
+      `),
       // The numeric guard, which is the only option for a `findIndex` over a predicate.
       inTest(`
         const a = lines.findIndex((l) => l.includes('a'));
@@ -184,6 +201,24 @@ describe('ordering-asserts-presence', () => {
         code: inTest(`
           expect(lines).toContain('a');
           expect(lines.findIndex((l) => l.includes('a'))).toBeLessThan(9);
+        `),
+        errors: [{ messageId: 'vacuous' }],
+      },
+      // A NEGATED lower bound asserts the value was NOT found, so it must not be read as
+      // a presence proof. This is the one shape that states the opposite of presence and
+      // would still have satisfied the matcher-name check — the rule failing in exactly
+      // the direction it exists to prevent.
+      {
+        code: inTest(`
+          expect(s.indexOf('x')).not.toBeGreaterThan(-1);
+          expect(s.indexOf('x')).toBeLessThan(s.indexOf('y'));
+        `),
+        errors: [{ messageId: 'vacuous' }, { messageId: 'vacuous' }],
+      },
+      {
+        code: inTest(`
+          expect(s.indexOf('x')).not.toBeGreaterThanOrEqual(0);
+          expect(s.indexOf('x')).toBeLessThan(9);
         `),
         errors: [{ messageId: 'vacuous' }],
       },

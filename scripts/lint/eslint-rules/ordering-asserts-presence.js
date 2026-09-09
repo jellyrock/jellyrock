@@ -67,6 +67,30 @@ const ORDERING = new Set([
 ]);
 const FUNCTIONS = new Set(['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression']);
 
+/**
+ * Callers whose function argument is a TEST BODY — the scope a presence proof governs.
+ *
+ * `describe` is deliberately absent: two `it()`s inside one `describe` are separate tests,
+ * and treating the describe body as one scope would let a proof in the first excuse a
+ * vacuous assert in the second. That is the same reason the file is not one scope.
+ */
+const TEST_CALLERS = new Set(['it', 'test', 'fit', 'xit', 'specify']);
+
+/** Is this function the body argument of an `it()` / `test()` call? */
+function isTestBody(fn) {
+  const call = fn.parent;
+  if (call?.type !== 'CallExpression' || !call.arguments.includes(fn)) return false;
+  const callee = call.callee;
+  // Covers `it(...)`, `it.each(...)(...)`'s inner call, and `it.only` / `it.skip`.
+  const root =
+    callee.type === 'Identifier'
+      ? callee.name
+      : callee.type === 'MemberExpression' && callee.object.type === 'Identifier'
+        ? callee.object.name
+        : null;
+  return TEST_CALLERS.has(root);
+}
+
 /** True when `node` is a direct call to one of the -1-returning search methods. */
 function isSearchCall(node) {
   return (
@@ -94,6 +118,14 @@ function expectCallOf(memberExpression) {
  * `toBe(-1)` and `toEqual(-1)` only prove presence under a `.not`, so the negation is
  * checked rather than assumed from the matcher name.
  */
+/** Does a `.not` sit between `expect(...)` and this matcher? */
+function isNegated(node) {
+  for (let o = node.callee.object; o.type === 'MemberExpression'; o = o.object) {
+    if (o.property.type === 'Identifier' && o.property.name === 'not') return true;
+  }
+  return false;
+}
+
 function isPresenceAssertion(node) {
   if (node.type !== 'CallExpression' || node.callee.type !== 'MemberExpression') return false;
   const matcher = node.callee.property.type === 'Identifier' ? node.callee.property.name : null;
@@ -109,15 +141,17 @@ function isPresenceAssertion(node) {
         ? argument.value
         : null;
 
-  if (matcher === 'toBeGreaterThan') return bound !== null && bound >= -1;
-  if (matcher === 'toBeGreaterThanOrEqual') return bound !== null && bound >= 0;
-  if (matcher === 'toBe' || matcher === 'toEqual') {
-    let negated = false;
-    for (let o = node.callee.object; o.type === 'MemberExpression'; o = o.object) {
-      if (o.property.type === 'Identifier' && o.property.name === 'not') negated = true;
-    }
-    return negated && bound === -1;
-  }
+  const negated = isNegated(node);
+
+  // The negation is checked for EVERY matcher, not just the equality pair. `.not` inverts
+  // a lower bound into an upper one, so `expect(idx).not.toBeGreaterThan(-1)` asserts the
+  // index is at most -1 — that the value was NOT found. Reading it as a presence proof
+  // would let the one shape that states the opposite of presence wave a vacuous ordering
+  // assert through, which is the rule failing in the exact direction it exists to prevent.
+  if (matcher === 'toBeGreaterThan') return !negated && bound !== null && bound >= -1;
+  if (matcher === 'toBeGreaterThanOrEqual') return !negated && bound !== null && bound >= 0;
+  // `toBe(-1)` / `toEqual(-1)` prove presence only UNDER a `.not` — the mirror image.
+  if (matcher === 'toBe' || matcher === 'toEqual') return negated && bound === -1;
   return false;
 }
 
@@ -163,10 +197,35 @@ export default {
       });
     }
 
-    /** The nearest enclosing function body, which is the scope a presence proof must sit in. */
+    /**
+     * The scope a presence proof must sit in: the enclosing TEST body where there is one,
+     * and otherwise the nearest enclosing function.
+     *
+     * ## Why not simply the nearest function
+     *
+     * That was the first shape, and it false-positives on a nested callback. An ordering
+     * assert inside a `forEach` / `map` / `for (const … )` arrow cannot see a presence
+     * assert sitting in the `it()` body around it, even though that assert governs it
+     * perfectly well — the operands are the same, and the proof ran before the loop.
+     *
+     * A false positive matters more here than in the sibling RTA rules, because this rule
+     * deliberately has no escape hatch: its header argues that compliance is always one
+     * free line, so there is no budget, no allowlist, and the only way out of a wrong
+     * report is disabling the rule. A rule people disable is worse than no rule.
+     *
+     * The scope still stops at the test: a presence assertion in one `it()` says nothing
+     * about the operands of another, and widening to the file would silently excuse the
+     * second. So this walks out through nested callbacks and stops at the first function
+     * that IS a test body.
+     */
     function enclosingBody(node) {
-      for (let n = node; n; n = n.parent) if (FUNCTIONS.has(n.type)) return n.body;
-      return null;
+      let nearestFunction = null;
+      for (let n = node; n; n = n.parent) {
+        if (!FUNCTIONS.has(n.type)) continue;
+        if (!nearestFunction) nearestFunction = n;
+        if (isTestBody(n)) return n.body;
+      }
+      return nearestFunction?.body ?? null;
     }
 
     /**
@@ -214,6 +273,19 @@ export default {
         if (!ORDERING.has(matcher)) return;
         const expectCall = expectCallOf(node.callee);
         if (!expectCall?.arguments[0]) return;
+
+        // A NEGATED ordering assertion is left alone. `.not` inverts the claim, so
+        // "the operand must have been found" stops being its precondition — and the
+        // common negated shape, `expect(idx).not.toBeGreaterThan(-1)`, is a deliberate
+        // assertion that the value is ABSENT. Reporting it would demand a presence proof
+        // for the one assertion whose whole point is the opposite.
+        //
+        // This leaves one narrow shape unreported: `expect(a.indexOf(x)).not.toBeLessThan(
+        // b.indexOf(y))` is satisfied when both are -1. It is accepted deliberately, on
+        // this rule's own no-escape-hatch argument — a false positive can only be answered
+        // by disabling the rule, so where the two errors are not symmetric the false
+        // NEGATIVE is the cheaper one. No instance exists in the tree.
+        if (isNegated(node)) return;
 
         const { proven, contains } = provenPresentIn(enclosingBody(node));
 

@@ -76,7 +76,7 @@ const TAB_OWNED_IDS = ['#homeRows', '#favoritesRows'];
  * both ids — and a resolver that probes only one silently reverts to the bug this rule was
  * built for, because the read it drops is the one that does not throw.
  */
-const RESOLVER_MODULE = 'tests/rta/lib/home-list.js';
+export const RESOLVER_MODULE = 'tests/rta/lib/home-list.js';
 const RESOLVER_SITES = 2;
 
 const namesATabOwnedList = (text) => TAB_OWNED_IDS.some((id) => text.includes(id));

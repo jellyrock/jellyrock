@@ -12,10 +12,27 @@
 // The filenames are REAL repo paths, deliberately: the rule keys off the resolver's path, so
 // a test on a fictional path would exercise the counting and never the exemption.
 
+import fs from 'node:fs';
 import path from 'node:path';
-import { describe, it } from 'vitest';
+import { fileURLToPath } from 'node:url';
+import { describe, it, expect } from 'vitest';
 import { RuleTester } from 'eslint';
-import rule from '../../../../scripts/lint/eslint-rules/rta-home-list-resolved.js';
+import rule, {
+  RESOLVER_MODULE,
+} from '../../../../scripts/lint/eslint-rules/rta-home-list-resolved.js';
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+
+describe('the exempt resolver module exists', () => {
+  // Same blind spot as the sibling rule's budget table, and sharper here: the exemption
+  // names ONE file, and if it is renamed the rule silently permits nothing and reports
+  // nothing — every other file still fails correctly, so the gate LOOKS healthy while the
+  // module it was built around has moved. `Program:exit` cannot fire on a path that no
+  // longer resolves.
+  it(`${RESOLVER_MODULE} is still there`, () => {
+    expect(fs.existsSync(path.join(REPO_ROOT, RESOLVER_MODULE))).toBe(true);
+  });
+});
 
 // RuleTester drives its own describe/it; hand it Vitest's so failures land in the normal
 // reporter. Must run at module scope — `ruleTester.run()` registers its cases while the

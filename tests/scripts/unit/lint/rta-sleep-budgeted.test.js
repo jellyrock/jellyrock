@@ -9,10 +9,25 @@
 // a test on a fictional path would exercise the counting and never the table. Each case
 // states the budget it is written against, and the table lives in the rule module.
 
+import fs from 'node:fs';
 import path from 'node:path';
-import { describe, it } from 'vitest';
+import { fileURLToPath } from 'node:url';
+import { describe, it, expect } from 'vitest';
 import { RuleTester } from 'eslint';
-import rule from '../../../../scripts/lint/eslint-rules/rta-sleep-budgeted.js';
+import rule, { BUDGETS } from '../../../../scripts/lint/eslint-rules/rta-sleep-budgeted.js';
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+
+describe('BUDGETS is an inventory of files that exist', () => {
+  // The rule's exact-match design catches a REMOVED sleep — but only in a file ESLint
+  // still visits. Delete or rename a budgeted file and its row survives unreported
+  // forever, because there is nothing left for `Program:exit` to fire on. That is the
+  // "table rots" failure the rule's own header argues against, in the one direction the
+  // rule structurally cannot see, so it is checked here instead.
+  it.each([...BUDGETS.keys()])('%s still exists', (file) => {
+    expect(fs.existsSync(path.join(REPO_ROOT, file))).toBe(true);
+  });
+});
 
 // RuleTester drives its own describe/it; hand it Vitest's so failures land in the normal
 // reporter. Must run at module scope — `ruleTester.run()` registers its cases while the

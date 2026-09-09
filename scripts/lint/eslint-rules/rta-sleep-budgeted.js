@@ -63,7 +63,7 @@ const DOC = 'tests/rta/CLAUDE.md → "Why the surviving sleeps are not arbitrary
  * that is the finding — gate on a signal instead. Adding a row here to silence a flake is
  * the exact move this rule exists to make visible.
  */
-const BUDGETS = new Map([
+export const BUDGETS = new Map([
   // App lifecycle: the channel is down or coming up, so ODC cannot answer at all. There
   // is no signal to gate on until the app exists.
   ['tests/rta/lib/driver.js', 4],

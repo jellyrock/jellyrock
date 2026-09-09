@@ -180,4 +180,48 @@ describe('classifyResolution — the two defects stay separate', () => {
   it('survives a census that came back without a tree', () => {
     expect(classifyResolution('homeRows', undefined)).toMatchObject({ count: 0 });
   });
+
+  // A button the OVERFLOW menu has stashed. `components/ItemDetails.xml` declares
+  // `<Group id="buttonOverflow" visible="false" />` beside the row, and
+  // `source/utils/buttonOverflow.bs` moves the tail into it once the row is over its cap,
+  // leaving a `moreButton` in the last slot.
+  //
+  // This is the `#homeRows` defect again, on a surface this suite reads 31 times: the
+  // stashed button is still in the SCENE, so a scene-rooted `#watchedButton.id` resolves
+  // and the gate goes green while describing a button nobody can see. Pinned here because
+  // the overflow is not reachable on the fixture today — main's own note puts ItemDetails
+  // at exactly 8 of 8 — so nothing else can exercise it until a ninth button lands, and by
+  // then the question is whether the instrument WOULD have caught it. It does, with no new
+  // machinery: `hiddenAncestor` walks up and the stash is `visible: false`.
+  it('reports a button the overflow menu has stashed as OFF-SCREEN', () => {
+    const t = tree([
+      ['', 'JRScene', -1],
+      ['view', 'ItemDetails', 0, { visible: true }],
+      ['buttons', 'JRButtonGroup', 1, { visible: true }],
+      ['buttonOverflow', 'Group', 1, { visible: false }],
+      ['watchedButton', 'IconButton', 3, { visible: true }],
+    ]);
+    expect(classifyResolution('watchedButton', t)).toMatchObject({
+      count: 1,
+      presented: false,
+      hiddenAt: '#buttonOverflow',
+    });
+  });
+
+  it('leaves a button still ON the row alone, so the gate is not noise', () => {
+    // The other half of the same check: flagging every button on a surface that HAS an
+    // overflow stash would report the 7 that are visible along with the 1 that is not.
+    const t = tree([
+      ['', 'JRScene', -1],
+      ['view', 'ItemDetails', 0, { visible: true }],
+      ['buttons', 'JRButtonGroup', 1, { visible: true }],
+      ['buttonOverflow', 'Group', 1, { visible: false }],
+      ['playButton', 'IconButton', 2, { visible: true }],
+    ]);
+    expect(classifyResolution('playButton', t)).toMatchObject({
+      count: 1,
+      presented: true,
+      hiddenAt: null,
+    });
+  });
 });
