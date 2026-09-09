@@ -26,7 +26,8 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
-- 2026-09-08 — `bufferCheck` false stalls closed at all three doors: per-episode `m.bufferPercentage` baseline, an `unobserveField` guarding the registration, and a `control = "stop"` + unobserve on the `playing` / `paused` exits so each buffering episode gets a fresh 30s window (#899)
+- 2026-09-09 — Refresh the `rooibos-roku` patch for the installed version
+- 2026-09-08 — fix: Register the `state` observer exactly once
 - 2026-09-08 — fix: Register the `position` observer exactly once
 - 2026-09-08 — fix: Gate interface-field observer wiring; fix stale cross-file findings
 - 2026-09-07 — `ItemDetails.itemContent` now registers its observer via `m.top.observeField()` in `init()`, so the `unobserveField` in `onDestroy` actually detaches it; the new `ineffective-unobserve` build gate now fails the build on that pairing.
@@ -43,9 +44,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-08-27 — fix(setting): Honor a non-default Maximum Resolution instead of capping at 1080p
 - 2026-08-26 — Size Home's browse feeds with one setting and measure its ceiling
 - 2026-08-26 — ci(rta): Stamp the phase of Home's immediate row removal
-- 2026-08-25 — fix: apply the user's Maximum Bitrate limit instead of discarding it
-- 2026-08-25 — ci(rta): Attribute Home's mid-run row-size recompute to its call site
-- 2026-08-25 — Collapse the dialog family onto one `computeDialogLayout` shape
 
 ## Open followups
 
