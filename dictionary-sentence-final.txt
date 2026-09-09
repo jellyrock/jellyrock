@@ -154,6 +154,7 @@
 (?:codecs)\.
 (?:codegen)\.
 (?:CommonJS)\.
+(?:comparator)\.
 (?:config)\.
 (?:Config)\.
 (?:configs)\.
@@ -359,6 +360,7 @@
 (?:last-checked)\.
 (?:last-updated)\.
 (?:lexically)\.
+(?:libvips)\.
 (?:lifecycle)\.
 (?:Lifecycle)\.
 (?:linter)\.
@@ -727,6 +729,7 @@
 (?:UX)\.
 (?:v1)\.
 (?:V1)\.
+(?:v12)\.
 (?:v2)\.
 (?:V2)\.
 (?:v2\.0)\.
