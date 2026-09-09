@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-09-09 — ci: cancel superseded PR device runs to drain the Roku queue
 - 2026-09-09 — Refresh the `rooibos-roku` patch for the installed version
 - 2026-09-08 — fix: Register the `state` observer exactly once
 - 2026-09-08 — fix: Register the `position` observer exactly once
