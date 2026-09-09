@@ -83,12 +83,22 @@ export const auditEnabled = () => process.env.RTA_AUDIT_RESOLUTION === '1';
  * bound it by reading the code. Vitest runs one worker per spec FILE, so this is a
  * per-file budget.
  *
- * **It is not there for speed.** Measured 2026-09-09 on `.177`: a full audited suite took
- * 1330 s against a prior passing band of 1295 / 1321 / 1337 / 1352 s on the same branch —
- * 525 censuses cost nothing detectable at suite level. So do not raise or lower this
- * looking for time; the only thing it buys is a bound on a runaway poll.
+ * **It is not there for speed.** Measured 2026-09-09 on `.177`: two full audited suites took
+ * 1330 s and 1339 s against a prior passing band of 1295 / 1321 / 1337 / 1352 s on the same
+ * branch — the censuses cost nothing detectable at suite level. So do not tune this looking
+ * for time; the only thing it buys is a bound on a runaway poll.
+ *
+ * **1000 rather than the 200 it shipped as, because 200 was arbitrary and demonstrably bit
+ * a healthy run.** Both of those suites folded to exactly `audited: 525` — the same number
+ * twice, which is the signature of a CAP rather than a population — and the second, once it
+ * could say so, reported `truncated: true`. A cap that trims a normal run is not bounding
+ * pathology, it is silently narrowing coverage, and `audited` is a coverage claim. At ~30 ms
+ * a census, 1000 is ~30 s per spec-file worker in the worst case, which still bounds the
+ * runaway shape this exists for. If a run still reports `truncated`, this is still too low —
+ * that marker is now the instrument for setting it, so the number never has to be guessed
+ * again.
  */
-const CENSUS_BUDGET = Number(process.env.RTA_AUDIT_BUDGET ?? 200);
+const CENSUS_BUDGET = Number(process.env.RTA_AUDIT_BUDGET ?? 1000);
 let spent = 0;
 let truncationRecorded = false;
 

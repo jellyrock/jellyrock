@@ -274,15 +274,15 @@ describe('the census budget reports that it stopped, rather than stopping silent
     // Driven against the DEFAULT budget rather than a small override, because the module
     // reads `RTA_AUDIT_BUDGET` once at import time — setting it here would change nothing
     // and would read as though it had.
-    await audit(205);
+    await audit(1005);
     const markers = recordResolution.mock.calls.map(([r]) => r).filter((r) => r.truncated);
     expect(markers).toHaveLength(1);
-    expect(markers[0]).toMatchObject({ truncated: true, budget: 200 });
+    expect(markers[0]).toMatchObject({ truncated: true, budget: 1000 });
   });
 
   it('takes no further censuses once truncated — the cap is real, not advisory', async () => {
-    await audit(205);
-    expect(storeNodeReferences).toHaveBeenCalledTimes(200);
+    await audit(1005);
+    expect(storeNodeReferences).toHaveBeenCalledTimes(1000);
   });
 
   it('records nothing at all while under budget', async () => {

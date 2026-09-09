@@ -33,6 +33,7 @@ import {
   homeListId,
   waitHome,
   waitOsdUp,
+  walkFocusUntil,
   walkHomeToFirstRow,
   overhangWalkKey,
   hasChildren,
@@ -151,13 +152,14 @@ export async function navSearch() {
   // box is focused. The keyboard is a 6-column grid, so Right steps through its keys
   // then crosses to the results; the guard stops the instant focus reaches them (so
   // it lands on the first tile without over-scrolling the row).
-  await waitFocused((f) => f?.node?.id === 'searchSelect', {
+  // `walkFocusUntil`, not a hand-rolled press, because the hand-rolled version pressed
+  // wherever focus WAS. On 2026-09-09 that meant 12.4 s of Right delivered into Home's row
+  // list while the active view was SearchResults — see that helper for the dump.
+  const arrivedAtResults = (f) => f?.node?.id === 'searchSelect';
+  await waitFocused(arrivedAtResults, {
     timeout: 12000,
     interval: 350,
-    action: async () => {
-      const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
-      if (f?.node?.id !== 'searchSelect') await press(ecp.Key.Right);
-    },
+    action: walkFocusUntil(ecp.Key.Right, arrivedAtResults),
     label: 'search results (off keyboard)',
   });
   await sleep(1500); // let the focus settle + result posters paint before capture

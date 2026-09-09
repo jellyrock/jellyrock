@@ -31,6 +31,7 @@ import {
   waitFocused,
   waitFocusInside,
   walkFocusInto,
+  walkFocusUntil,
   focusIsInside,
   waitHome,
   waitMediaPlaying,
@@ -164,12 +165,13 @@ async function pressOsdButton(buttonId) {
       `OSD has no #${buttonId} — the item this spec plays no longer has enough streams/sources for it`,
     );
   }
-  await waitFocused((f) => f.node?.id === buttonId, {
+  // Same origin gate as `navSearch`'s walk: press Right only while focus is still inside
+  // the active routed view. The hand-rolled form pressed wherever focus was, which on the
+  // player means driving whatever took focus instead of the OSD.
+  const arrivedAtButton = (f) => f.node?.id === buttonId;
+  await waitFocused(arrivedAtButton, {
     timeout: 20000,
-    action: async () => {
-      const focused = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
-      if (focused?.node?.id !== buttonId) await press(ecp.Key.Right);
-    },
+    action: walkFocusUntil(ecp.Key.Right, arrivedAtButton),
     label: `osd button ${buttonId} focused`,
   });
   await press(ecp.Key.Ok);

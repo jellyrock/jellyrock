@@ -1840,9 +1840,16 @@ describe('getVals', () => {
 });
 
 describe('walkFocusInto', () => {
+  // Every keyPath below sits under `#view`, and the active routed view reads `view`, so
+  // the origin gate is satisfied and these cases test the DESTINATION behaviour they were
+  // written for. The gate itself is exercised in the `walkFocusUntil` block below.
+  const ACTIVE_VIEW = 'view';
+
   beforeEach(() => {
     getFocusedNode.mockReset();
     sendKeypress.mockReset();
+    getValue.mockReset();
+    getValue.mockResolvedValue({ found: true, value: ACTIVE_VIEW });
   });
 
   const focusedAt = (keyPath) => getFocusedNode.mockResolvedValue({ keyPath });
@@ -1851,14 +1858,14 @@ describe('walkFocusInto', () => {
     // The one behaviour that separates this from both `resend*` helpers. They sit out a
     // tick because their caller already pressed; a walk that did the same would add an
     // interval of latency to every call for no reading.
-    focusedAt('scene.#userRow.0');
+    focusedAt('scene.#view.#userRow.0');
     await walkFocusInto('down', '#buttons')();
     expect(sendKeypress).toHaveBeenCalledTimes(1);
     expect(sendKeypress).toHaveBeenCalledWith('down');
   });
 
   it("keeps pressing while focus has not arrived — the rung count is the fixture's, not ours", async () => {
-    focusedAt('scene.#buttons.1');
+    focusedAt('scene.#view.#buttons.1');
     const action = walkFocusInto('up', '#itemDescription');
     await action();
     await action();
@@ -1867,14 +1874,63 @@ describe('walkFocusInto', () => {
   });
 
   it('stops the moment focus arrives, so it cannot press on into what the target opens', async () => {
-    focusedAt('scene.#buttons.1');
+    focusedAt('scene.#view.#buttons.1');
     const action = walkFocusInto('up', '#itemDescription');
     await action();
     expect(sendKeypress).toHaveBeenCalledTimes(1);
-    focusedAt('scene.#itemDetails.#itemDescription');
+    focusedAt('scene.#view.#itemDetails.#itemDescription');
     await action();
     await action();
     expect(sendKeypress).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends NOTHING when focus is on ANOTHER routed view — the 2026-09-09 over-press', async () => {
+    // The failure this gate was built from. `navSearch`'s walk timed out after 12.4 s with
+    // the active view SearchResults and focus on Home's row list inside the suspended Home,
+    // every press delivered (`actionErrors: 0`) — ~34 Rights into a screen the walk was not
+    // on. A destination-only guard cannot tell "not arrived yet" from "on the wrong
+    // screen"; this one can. It does NOT explain why focus left, which is still open.
+    getFocusedNode.mockResolvedValue({
+      keyPath: '#routerOutlet.#viewTarget.#c0d84208.#homeRows',
+    });
+    getValue.mockResolvedValue({ found: true, value: '269f4e88' });
+    const action = walkFocusInto('right', '#searchSelect');
+    await action();
+    await action();
+    await action();
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+
+  it('presses again once focus returns to the active view', async () => {
+    // The gate must not latch: a walk that gave up permanently would turn a recoverable
+    // blip into a guaranteed timeout.
+    getValue.mockResolvedValue({ found: true, value: 'view' });
+    getFocusedNode.mockResolvedValue({ keyPath: '#routerOutlet.#other.#homeRows' });
+    const action = walkFocusInto('right', '#searchSelect');
+    await action();
+    expect(sendKeypress).not.toHaveBeenCalled();
+    getFocusedNode.mockResolvedValue({ keyPath: '#routerOutlet.#view.#searchKey' });
+    await action();
+    expect(sendKeypress).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends nothing when the active view id cannot be read', async () => {
+    // Same rule an unreadable FOCUS already follows: a walk that cannot establish where it
+    // is must not press. Pressing on an unknown screen is the failure being prevented.
+    getFocusedNode.mockResolvedValue({ keyPath: '#routerOutlet.#view.#buttons' });
+    getValue.mockResolvedValue({ found: false });
+    await walkFocusInto('right', '#searchSelect')();
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+
+  it('does not pay for the view read once focus has ARRIVED', async () => {
+    // Arrival is checked before the origin gate, so a settled walk costs one ODC read per
+    // tick rather than two.
+    getFocusedNode.mockResolvedValue({ keyPath: '#routerOutlet.#view.#searchSelect' });
+    getValue.mockReset();
+    await walkFocusInto('right', '#searchSelect')();
+    expect(sendKeypress).not.toHaveBeenCalled();
+    expect(getValue).not.toHaveBeenCalled();
   });
 
   it('counts the container itself as arrived, not only its descendants', async () => {
@@ -1889,7 +1945,7 @@ describe('walkFocusInto', () => {
     // Phase 2's fix, restated as a gate on this helper: substring matching reports
     // `#options` as inside `#optionsPanelOverlay`. A walk that believed that would stop
     // one container short and hand the press budget to the wrong node.
-    focusedAt('scene.#optionsPanelOverlay.0');
+    focusedAt('scene.#view.#optionsPanelOverlay.0');
     await walkFocusInto('up', '#options')();
     expect(sendKeypress).toHaveBeenCalledTimes(1);
   });

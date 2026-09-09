@@ -628,10 +628,94 @@ export function resendUntilFocused(key, arrived) {
  * @returns {() => Promise<void>} an action for the wait's `action` option
  */
 export function walkFocusInto(key, containerId) {
+  return walkFocusUntil(key, (f) => focusIsInside(f.keyPath, containerId));
+}
+
+/**
+ * `walkFocusInto` with the destination as a PREDICATE, and — the part that matters — with
+ * an ORIGIN gate: it presses only while focus is still inside the view the router says is
+ * active.
+ *
+ * ## Why the destination test alone is not enough
+ *
+ * A walk written as *"press until focus is X"* presses wherever focus actually is. That is
+ * fine while focus is on the screen the walk belongs to, and it is a bug the moment focus
+ * is anywhere else: the walk cannot reach X by pressing at a different screen, so it spends
+ * its whole budget driving a screen nobody asked it to touch, and then blames X.
+ *
+ * **Measured, not reasoned.** `.177`, 2026-09-09 13:15 UTC: `navSearch`'s off-keyboard walk
+ * timed out after 12.4 s with `view=SearchResults` (`#269f4e88…`) but focus on **Home's**
+ * row list, inside the suspended Home (`#routerOutlet.#viewTarget.#c0d84208….#homeRows`).
+ * `actionErrors: 0`, `readErrors: 0` — so ~34 Right presses were DELIVERED, every one of
+ * them to whatever held focus on a screen the walk was not on.
+ *
+ * ## The gate is the ACTIVE ROUTED VIEW, not a container id
+ *
+ * `m.global.activeRoutedView` is the app's own statement of which screen the user is on,
+ * and comparing focus against its `id` is what separates the two cases: focus at
+ * `#c0d84208…` while the active view is `#269f4e88…` is not "focus has not arrived yet",
+ * it is "focus is on another screen". A container id cannot express that — `#searchSelect`
+ * is equally absent from Home whether the walk is one press away or on the wrong screen
+ * entirely.
+ *
+ * An UNREADABLE view id sends nothing, the same rule `walkHomeToFirstRow` and
+ * `resendUntilFocused` follow for an unreadable focus: a walk that cannot establish where
+ * it is must not press. The cost of that is one extra ODC read per tick (~5 ms against a
+ * 350 ms interval); the cost of not doing it is measured above.
+ *
+ * ## ⚠️ What this is NOT
+ *
+ * **It does not explain why focus left the search view, and it is not known to fix that
+ * run.** Two mechanisms were proposed for the 2026-09-09 failure and BOTH were disproved
+ * rather than left hanging: a stale suspended `SearchResults` satisfying the results gate
+ * is impossible, because `/search` is routed `suspendMode: "detach"`
+ * (`components/JRScene.bs`) so a covered SearchResults leaves the tree entirely; and the
+ * dump's `rowItemFocused: [0,1]` is NOT evidence the walk moved Home's index, because
+ * `rowItemFocused` retains its last value while a list is unfocused — the very property
+ * `scrollFocus` is written around.
+ *
+ * What is left is narrow and solid: presses were delivered to a screen the walk was not on.
+ * This stops that, and `recordRecovery` below is what turns the NEXT occurrence into an
+ * answer — the record names the active view, where focus actually was, and when it left,
+ * which is the evidence this failure did not leave behind. Same argument
+ * `resendIfSwallowed` makes for recording rather than silently recovering.
+ *
+ * @param {string} key - an `ecp.Key` value to press until focus arrives
+ * @param {(focused: object) => boolean} arrived - true once focus is where it belongs
+ * @returns {() => Promise<void>} an action for the wait's `action` option
+ */
+export function walkFocusUntil(key, arrived) {
+  let reported = false;
   return async () => {
     const focused = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+    // Unreadable focus sends nothing rather than guessing.
     if (typeof focused?.keyPath !== 'string') return;
-    if (!focusIsInside(focused.keyPath, containerId)) await press(key);
+    // Already there — never press on into whatever the destination opens.
+    if (arrived(focused)) return;
+    // ORIGIN gate. Read after the arrival test so an arrived walk pays nothing for it.
+    const viewId = await getActiveVal('id');
+    if (typeof viewId !== 'string' || !viewId) return;
+    if (!focusIsInside(focused.keyPath, viewId)) {
+      // ONCE per wait, not per tick: the departure is one event, and a record per tick
+      // would bury it under 30-odd copies of itself. Recorded rather than merely declined
+      // because a harness that quietly does nothing is indistinguishable in the ledger
+      // from one that had nothing to do — and the open question here is exactly WHEN and
+      // WHERE focus left, which the 2026-09-09 dump could not say.
+      if (!reported) {
+        reported = true;
+        recordRecovery({
+          at: new Date().toISOString(),
+          what: `focus left the active view during a ${key} walk`,
+          detail:
+            `the walk declined to press ${key}: focus is at ${focused.keyPath}, which is ` +
+            `outside the active routed view #${viewId}. Pressing here would drive a screen ` +
+            'the walk is not on. See `walkFocusUntil`.',
+          observed: { key, activeViewId: viewId, focusKeyPath: focused.keyPath },
+        });
+      }
+      return;
+    }
+    await press(key);
   };
 }
 
