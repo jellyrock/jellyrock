@@ -1717,9 +1717,18 @@ sub onState()
   m.osd.playbackState = m.top.state
 
   if m.top.state = "buffering"
+    ' Each buffering episode gets its own progress baseline. `bufferingStatus` is
+    ' per-episode — Roku invalidates it once buffering completes — so carrying the
+    ' previous episode's high-water mark forward compares a fresh 10% against an old
+    ' 80% and reports a stall that never happened.
+    m.bufferPercentage = 0
     ' When buffering, start timer to monitor buffering process
     if isValid(m.bufferCheckTimer)
       m.bufferCheckTimer.control = "start"
+      ' Unobserve first: this branch runs once per buffering episode and the `playing`
+      ' and `paused` exits never unobserve, so two episodes inside one timer window
+      ' would otherwise leave two registrations on `fire`.
+      m.bufferCheckTimer.unobserveField("fire")
       m.bufferCheckTimer.ObserveField("fire", "bufferCheck")
     end if
     ' Show non-blocking spinner for mid-playback buffering (seek, network stall)
