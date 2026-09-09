@@ -159,6 +159,61 @@ function testsForAbsence(node) {
   return found;
 }
 
+/**
+ * The categories a `waitFor` can land in, in the order they are tested.
+ *
+ * `UNVERIFIED` is the failing residual — the rule reports it, and a passing lint run
+ * therefore has none. That is what lets the inventory checker treat a non-zero count as
+ * its own bug rather than as a number to print.
+ */
+export const WAIT_CATEGORIES = Object.freeze({
+  ACT: 'ACT',
+  DYN: 'DYN',
+  FN: 'FN',
+  ABS: 'ABS',
+  SETTLE: 'SETTLE',
+  UNVERIFIED: 'UNVERIFIED',
+});
+
+/**
+ * Which category does this `CallExpression` fall in? `null` when it is not a `waitFor`
+ * call at all.
+ *
+ * EXPORTED, and the rule below is one of its two callers — the other is
+ * `scripts/lint/rta-wait-inventory.js`, which counts the categories the wait inventory in
+ * `tests/rta/CLAUDE.md` publishes. They must not be able to answer differently: a checker
+ * with its own copy of this ladder would drift from the gate, and the doc would then be
+ * verified against something other than the rule it claims to describe. Same argument, and
+ * the same fix, as `scripts/lib/process-liveness.cjs` and `_shared.js` in this directory.
+ *
+ * The ORDER is load-bearing and is the rule's, not a convenience: `ACT` holds whatever the
+ * keyPath looks like, and a dynamic keyPath cannot be classified further.
+ */
+export function classifyWait(node) {
+  if (calleeName(node) !== 'waitFor' || !node.arguments?.length) return null;
+
+  const [keyPathArg, predicateArg] = node.arguments;
+  const options = node.arguments.length > 2 ? node.arguments[2] : null;
+
+  // ACT — the per-tick re-press is the mechanism. Checked first because it holds
+  // whatever the keyPath looks like.
+  if (hasActionOption(options)) return { category: WAIT_CATEGORIES.ACT, keyPath: null };
+
+  const keyPath = staticString(keyPathArg);
+  if (keyPath === null) return { category: WAIT_CATEGORIES.DYN, keyPath: null };
+
+  // FN — ODC observes a field, and a function call is not one.
+  if (keyPath.includes('()')) return { category: WAIT_CATEGORIES.FN, keyPath };
+
+  // ABS — the node is gone; there is nothing left to observe.
+  if (testsForAbsence(predicateArg)) return { category: WAIT_CATEGORIES.ABS, keyPath };
+
+  // SETTLE — the residual, justified per FIELD rather than per site.
+  if (VERIFIED_SETTLE_KEYPATHS.has(keyPath)) return { category: WAIT_CATEGORIES.SETTLE, keyPath };
+
+  return { category: WAIT_CATEGORIES.UNVERIFIED, keyPath };
+}
+
 export default {
   meta: {
     type: 'problem',
@@ -191,32 +246,24 @@ export default {
   create(context) {
     return {
       CallExpression(node) {
-        const name = calleeName(node);
-        if (name !== 'waitFor' || node.arguments.length === 0) return;
+        // The ladder itself lives in `classifyWait` so the inventory checker shares it —
+        // see that function. Only the two REPORTING categories are handled here; the four
+        // justified ones are silence, exactly as before.
+        const verdict = classifyWait(node);
+        if (!verdict) return;
+        const keyPathArg = node.arguments[0];
 
-        const [keyPathArg, predicateArg] = node.arguments;
-        const options = node.arguments.length > 2 ? node.arguments[2] : null;
-
-        // ACT — the per-tick re-press is the mechanism. Checked first because it holds
-        // whatever the keyPath looks like.
-        if (hasActionOption(options)) return;
-
-        const keyPath = staticString(keyPathArg);
-        if (keyPath === null) {
+        if (verdict.category === WAIT_CATEGORIES.DYN) {
           context.report({ node: keyPathArg, messageId: 'dynamicKeyPath' });
           return;
         }
-
-        // FN — ODC observes a field, and a function call is not one.
-        if (keyPath.includes('()')) return;
-
-        // ABS — the node is gone; there is nothing left to observe.
-        if (testsForAbsence(predicateArg)) return;
-
-        // SETTLE — the residual, justified per FIELD rather than per site.
-        if (VERIFIED_SETTLE_KEYPATHS.has(keyPath)) return;
-
-        context.report({ node: keyPathArg, messageId: 'unverifiedField', data: { keyPath } });
+        if (verdict.category === WAIT_CATEGORIES.UNVERIFIED) {
+          context.report({
+            node: keyPathArg,
+            messageId: 'unverifiedField',
+            data: { keyPath: verdict.keyPath },
+          });
+        }
       },
     };
   },

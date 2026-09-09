@@ -157,28 +157,40 @@ it is why "it passes" was ruled out as evidence.
 Six categories carry the justifications. The first three are properties of the CALL and
 prove themselves; the rest are properties of the FIELD or of focus.
 
+The token opening each row is the gate's own category name, and it is what
+`npm run lint:rta-waits` keys on — the label beside it is free to be reworded, the token is
+a contract.
+
+<!-- rta-wait-inventory:start -->
+
 | Category | n | Why a poll, not an observer |
 |---|---|---|
-| Function `keyPath` | 12 | ODC observes a **field**. `getChildCount()` / `subtype()` are calls, not fields, so the primitive cannot apply at all. |
-| Waits for absence | 1 | The node is gone. A departed node has no field left to observe. This is `waitDialogClosed`, whose JSDoc carries the argument on behalf of the ten dialog-dismiss sites that route through it. |
-| `action:` retry loops | 7 | The per-tick re-press **is** the mechanism (see `resendIfSwallowed`). An observer would sit and watch for a key that never landed. |
-| Plain field settle | 36 | The primitive could apply; it is ruled out below. |
-| Dynamic `keyPath` | 2 | `scrollFocus`, whose keyPath is its caller's, and `waitHome`'s rows gate, whose list id is RESOLVED rather than named. Unclassifiable from syntax, so each carries a rule disable naming the reason and the argument lives in its docblock. |
-| Focus containment (`waitFocusInside`) | 18 | ODC has no "observe global focus" primitive. Its request table (`RTA_OnDeviceComponent.brs`) offers `getFocusedNode` / `hasFocus` / `isInFocusChain` — all READS — and one observer, `onFieldChange`, which needs a node keyPath and a field name and so cannot express "wherever focus now is". |
-| Focus containment by subtype (`waitFocusInHomeContent`) | 4 | Same absence of a primitive. Separate row because the QUESTION differs: Home's content is whichever of `HomeRows` / `FavoritesRows` the selected tab put in the scene, so it cannot be asked by container id at all. |
-| Focus identity (`waitFocused`) | 15 | Same absence of a primitive, and focus is inherently terminal: it stays where it landed until the next key. There is no pulse to miss. |
+| `FN` Function `keyPath` | 12 | ODC observes a **field**. `getChildCount()` / `subtype()` are calls, not fields, so the primitive cannot apply at all. |
+| `ABS` Waits for absence | 1 | The node is gone. A departed node has no field left to observe. This is `waitDialogClosed`, whose JSDoc carries the argument on behalf of the ten dialog-dismiss sites that route through it. |
+| `ACT` `action:` retry loops | 7 | The per-tick re-press **is** the mechanism (see `resendIfSwallowed`). An observer would sit and watch for a key that never landed. |
+| `SETTLE` Plain field settle | 37 | The primitive could apply; it is ruled out below. |
+| `DYN` Dynamic `keyPath` | 2 | `scrollFocus`, whose keyPath is its caller's, and `waitHome`'s rows gate, whose list id is RESOLVED rather than named. Unclassifiable from syntax, so each carries a rule disable naming the reason and the argument lives in its docblock. |
+| `FOCUS_INSIDE` Focus containment (`waitFocusInside`) | 18 | ODC has no "observe global focus" primitive. Its request table (`RTA_OnDeviceComponent.brs`) offers `getFocusedNode` / `hasFocus` / `isInFocusChain` — all READS — and one observer, `onFieldChange`, which needs a node keyPath and a field name and so cannot express "wherever focus now is". |
+| `FOCUS_SUBTYPE` Focus containment by subtype (`waitFocusInHomeContent`) | 4 | Same absence of a primitive. Separate row because the QUESTION differs: Home's content is whichever of `HomeRows` / `FavoritesRows` the selected tab put in the scene, so it cannot be asked by container id at all. |
+| `FOCUS_IDENTITY` Focus identity (`waitFocused`) | 15 | Same absence of a primitive, and focus is inherently terminal: it stays where it landed until the next key. There is no pulse to miss. |
 
-*(12 + 1 + 7 + 36 + 2 = 58 `waitFor` CALLS, plus 18 + 4 + 15 focus waits = 95. Counts are
-call sites, which is what the gate sees; a call is not always one wait. `waitDialogClosed`
-issues one on behalf of ten sites, and `waitOsdUp` issues two on behalf of three.
-Re-derived from the AST — never `grep`, which has now produced five wrong figures in this
-project's history. The Home-list conversion moved three categories and **only those were
-touched**: `waitHome`'s rows gate left `Function keyPath` for `Dynamic keyPath` (its id is
-resolved now, so the syntax no longer shows the call), `homeListId`'s new `subtype()` wait
-took its place in `Function keyPath`, and three containment waits moved to the subtype row.
-Totals were derived from those known deltas rather than re-counted, because an ad-hoc
-counter written for the occasion misclassified `scrollFocus` — whose keyPath is an
-identifier — which is how a sixth wrong figure would have entered this file.)*
+<!-- rta-wait-inventory:end -->
+
+*(Counts are call sites, which is what the gate sees; a call is not always one wait.
+`waitDialogClosed` issues one on behalf of ten sites, and `waitOsdUp` issues two on behalf
+of three. `FOCUS_IDENTITY` counts sites that chose `waitFocused` DIRECTLY — the two calls
+inside `waitFocusInside` / `waitFocusInHomeContent` are those rows' implementations and
+would otherwise be counted twice.)*
+
+**Every `n` above is gated by [`npm run lint:rta-waits`](../../scripts/lint/rta-wait-inventory.js),
+and no total is published here on purpose.** These numbers were hand-maintained for most of
+this file's life and were wrong seven times — most recently `SETTLE`, which read 36 against
+an AST that said 37 because `waitOsdUp` added a site the "derive it from the known deltas"
+shortcut did not account for. A second, larger wrong figure for the same population was
+sitting in `docs/decisions.md` at the same moment. The gate imports `classifyWait` from the
+`wait-justified` rule itself and drives ESLint with the repo's own config, so the count and
+the categories cannot disagree, and a stale row now fails a lint instead of being believed.
+Add a category here and the checker fails until the row exists — which is the point.
 
 ### The 36 plain-field waits, and the gate that keeps them honest
 
