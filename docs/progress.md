@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-09-08
+last-updated: 2026-09-09
 ---
 
 # Progress
@@ -26,6 +26,13 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-09-09 — Refresh the `rooibos-roku` patch for the installed version
+- 2026-09-08 — fix: Register the `state` observer exactly once
+- 2026-09-08 — fix: Register the `position` observer exactly once
+- 2026-09-08 — fix: Gate interface-field observer wiring; fix stale cross-file findings
+- 2026-09-07 — `ItemDetails.itemContent` now registers its observer via `m.top.observeField()` in `init()`, so the `unobserveField` in `onDestroy` actually detaches it; the new `ineffective-unobserve` build gate now fails the build on that pairing.
+- 2026-09-07 — fix: Observe each interface field exactly once in `OSD` and `IconButton`
+- 2026-09-07 — feat: Cap `ItemDetails` and `OSD` button rows with a `More` overflow menu
 - 2026-09-04 — chore: Retire the calendar stale-docs backlog; cover `docs/dev/` contextually
 - 2026-09-03 — fix: Guard `onKeyEvent` against key events delivered after teardown
 - 2026-09-03 — Stop the playback error dialog exiting on a close it did not cause
@@ -37,24 +44,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-08-27 — fix(setting): Honor a non-default Maximum Resolution instead of capping at 1080p
 - 2026-08-26 — Size Home's browse feeds with one setting and measure its ceiling
 - 2026-08-26 — ci(rta): Stamp the phase of Home's immediate row removal
-- 2026-08-25 — fix: apply the user's Maximum Bitrate limit instead of discarding it
-- 2026-08-25 — ci(rta): Attribute Home's mid-run row-size recompute to its call site
-- 2026-08-25 — Collapse the dialog family onto one `computeDialogLayout` shape
-- 2026-08-24 — ci(rta): Stop `test:scripts` writing into the real device-run ledger
-- 2026-08-24 — ci(rta): Separate page-load work from sweep work in `cellSweepHome`
-- 2026-08-24 — Give the app one authoritative "a session is established" signal
-- 2026-08-24 — Rebuild Quick Connect on the `JRDialog` family and the API pool
-- 2026-08-24 — ci(rta): stop a library nav opening the wrong library, and record it when it recovers
-- 2026-08-24 — Enforce a production Task-thread ceiling in `launchTask()`
-- 2026-08-23 — Removed `tests/source/unit/utils/taskLedgerCost.spec.bs`, closing the `(sink len 0)` shared-sink followup by deleting the shape rather than splitting the sinks. Its benchmark cells were superseded by the render-thread apparatus in `components/testing/TaskLedgerBench.bs` (numbers now recorded in `docs/architecture/threading.md`), and a printout that asserts nothing does not belong in a per-PR device suite. The one real gate — a thread-local node field read staying under 10 µs, the premise the whole production ledger rests on — is folded into `tests/source/unit/utils/tasks.spec.bs`, where it now runs in `test:tdd` as well as `test:unit` and ASSERTS `Len(sink) > 0` so a loop that never executed cannot pass as a cheap measurement.
-- 2026-08-23 — Bound Task fan-out structurally with a `no-task-fanout` BSC plugin
-- 2026-08-23 — Retire `SceneManager`'s dialog machinery for the `JRDialog` family
-- 2026-08-22 — ci(rta): pin `cellSweepHome`'s workload; Home's variance is app-side
-- 2026-08-22 — ci(rta): Instrument cell pop-in, and stop a screen suspend from inflating `appearances`
-- 2026-08-22 — Move `PlayerHostView` onto the standard dialogs and unify the chrome
-- 2026-08-21 — fix: stop `FontDownloadTask` crashing on servers that omit `EnableFallbackFont`
-- 2026-08-21 — fix: Stop posters blinking on the Cast & Crew row as you scroll it
-- 2026-08-21 — Give `cell-load` rates a denominator with scripted RTA sweeps
 
 ## Open followups
 
@@ -113,6 +102,8 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 - **Analyze and optimize the library grid's lazy loading (`components/ItemGrid`).** Home's loading path now has a validated cost model (render cost is per-row and saturates at the visible window; task-thread transform is ~1.6 ms per item, linear and uncapped — see `docs/dev/home-first-paint-performance.md`), and nothing equivalent exists for the grid. The grid is a different shape — `MarkupGrid` with no horizontal buffer, `updateGridTextureBufferRange` instead of the `RowList` path — so the Home model does NOT carry over and must be re-derived rather than assumed. The `item-grid` measurement family and the `cell-load` counters already exist for it. **Scope:** deliberately deferred by the user 2026-08-25 as NOT part of `task-thread-budget`; pick it up as its own piece of work once the Home limit/windowing work lands.
 - **Both `remove-phase` arms sat at an at-gate `loadsStarted` band of 90-91 (29 of 40) against the 100-102 band published from the previous campaign, and nothing separates probe overhead from the app-version change** (2.26.0 here against 2.25.x then). A ~10% move in the number this project CLASSIFIES launches by, so it is not cosmetic — Home's high/low bind mode is defined at that gate. **The discriminating experiment is one n=20 arm on 2.26.0 WITHOUT the probe** (~11 min on `.177`): if the band stays at 90-91 the probe is exonerated and the shift belongs to the app version. ⚠️ **The old 100-102 band cannot be re-derived to compare against** — that campaign's at-gate values were console-only and `measure.js` discards the console on a healthy run, so the comparison arm has to be taken fresh rather than re-read. Surfaced 2026-08-25 reviewing `perf/home-row-removal-phase-probe`; [`home-first-paint-performance.md`](dev/home-first-paint-performance.md) marks it Open, but a dev-doc paragraph is not a surface `/catchup` reads, which is why it is here.
 - **Next Up now sends NO `limit`, and nobody has measured what that returns on a large library.** It sent an arbitrary 69 until 2026-08-26, when it was uncapped so a worklist always shows the full list (Continue Watching has always been uncapped, which is the precedent). The unknown is the SIZE: we send `disableFirstEpisode: false`, which may mean Next Up approaches one episode per series in the library rather than only series the user has started — unverified either way, and the cached spec fingerprint carries parameter names without defaults so it cannot answer it. Not believed to be a problem: texture memory saturates at `TEXTURE_BUFFER_THRESHOLD` (20) per row and `RowList` virtualizes attach, so the only cost that grows is task-thread `emit` at ~1.6 ms/item plus network — ~480 ms on a hypothetical 300-item row, off the render thread. **How to settle it:** count `#homeRows.content.<nextUpRow>.getChildCount()` on a large real-world library, or read the row width vector `reportSweep` already prints. If it comes back in the hundreds, give Next Up a generous cap — it would not be serving a user who cannot scroll to the end of it. Surfaced 2026-08-26 while collapsing the Home feed limits onto `uiHomeRowLimit`.
+- **`JRDialog` caps its button row at 3 (`MAX_BUTTONS`) but only WARNS when exceeded — the same overflow family as #788, one surface over.** Enforcement was deliberately left out of #757 and the epic's own closing note flags it as wanting a consistent answer. #788 settled the row case with a derived cap plus a `More` menu (`source/utils/buttonOverflow.bs`); the dialog case is different enough not to reuse it directly — a button ROW has no menu to spill into and `showChoiceDialog` already falls back to `JRListDialog` when labels are too wide — so the open question is whether the warn should become an error, a fallback, or stay advisory.
+- **`bufferCheck` reports a false stall two different ways, and either one kills a healthy buffer with an error dialog.** `onState`'s `buffering` branch registers `m.bufferCheckTimer.ObserveField("fire", "bufferCheck")` with no preceding unobserve, and the `playing` / `paused` branches never unobserve, so two buffering episodes inside one 30s timer window (two seeks) leave two registrations — invocation 1 raises `m.bufferPercentage`, invocation 2 compares equal and takes the stall branch. **Separately and reachable with a single observer:** `m.bufferPercentage` is set to `0` at init and only ever raised inside `bufferCheck`, never reset per episode, while Roku's `bufferingStatus.percentage` is per-episode and the field goes invalid between episodes — so a later episode legitimately at 10% compares against a stale high-water mark of 80% and loses. Both routes end at `showPlaybackErrorDialog(...)` + `m.top.control = "stop"`. Found while fixing the duplicate `state` observer; the observer half is the same class as that fix, the high-water mark is its own bug. **Fix both in one PR** — one symptom, one function, two doors — and measure the accumulation on device first (probe `bufferCheck` entries, two seeks inside 30s), since the symptom itself needs a >30s buffering episode to observe. Related invariant: [`onstate-error-branch-not-reentrant`](architecture/tech-debt.md#onstate-error-branch-not-reentrant).
 
 ### source
 

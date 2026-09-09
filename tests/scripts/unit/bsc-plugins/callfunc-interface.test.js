@@ -10,7 +10,7 @@
 // #551 Batch 2.
 
 import { describe, it, expect } from 'vitest';
-import { runPluginOnSource, diagnosticsByCode } from '../_helpers/run-plugin.js';
+import { runPluginOnSource, runPluginOnEdits, diagnosticsByCode } from '../_helpers/run-plugin.js';
 import callfuncInterfacePlugin from '../../../../scripts/bsc-plugins/callfunc-interface.cjs';
 
 const CODE = 'callfunc-interface';
@@ -164,5 +164,54 @@ describe('callfunc-interface — escape hatches', () => {
       `,
     });
     expect(diagnosticsByCode(diagnostics, CODE)).toHaveLength(0);
+  });
+});
+
+// The verdict for a call site lives in a DIFFERENT file — the target component's
+// <interface>. So adding the <function> declaration this diagnostic asks for has
+// to clear the error on the caller's .bs, and before the plugin moved onto the
+// shared program-rule lifecycle it did not: the author performed the exact fix
+// the message prescribes and the error stayed put.
+describe('incremental re-validation', () => {
+  const undeclared = {
+    'components/Foo.xml': xml('Foo'),
+    'components/Foo.bs': 'sub doThing()\nend sub',
+    'source/caller.bs': 'sub go()\n  m.foo.callFunc("doThing")\nend sub',
+  };
+  const declared = { 'components/Foo.xml': xml('Foo', { functions: ['doThing'] }) };
+  const count = (d) => diagnosticsByCode(d, CODE).length;
+
+  it('clears when the target component declares the function — the prescribed fix', () => {
+    const [before, after] = runPluginOnEdits(callfuncInterfacePlugin, [undeclared, declared]);
+    expect(count(before)).toBe(1);
+    expect(count(after)).toBe(0);
+  });
+
+  it('appears when a declaration is removed from the XML', () => {
+    const [before, after] = runPluginOnEdits(callfuncInterfacePlugin, [
+      { ...undeclared, ...declared },
+      { 'components/Foo.xml': xml('Foo') },
+    ]);
+    expect(count(before)).toBe(0);
+    expect(count(after)).toBe(1);
+  });
+
+  it('clears when the call site itself goes away', () => {
+    const [before, after] = runPluginOnEdits(callfuncInterfacePlugin, [
+      undeclared,
+      { 'source/caller.bs': 'sub go()\nend sub' },
+    ]);
+    expect(count(before)).toBe(1);
+    expect(count(after)).toBe(0);
+  });
+
+  it('keeps the finding across an unrelated edit and a repeated validation', () => {
+    const [, afterUnrelated, afterNoop] = runPluginOnEdits(callfuncInterfacePlugin, [
+      { ...undeclared, 'source/unrelated.bs': 'sub other()\nend sub' },
+      { 'source/unrelated.bs': 'sub other()\n  x = 1\nend sub' },
+      {},
+    ]);
+    expect(count(afterUnrelated)).toBe(1);
+    expect(count(afterNoop)).toBe(1);
   });
 });

@@ -19,7 +19,7 @@ namespace tests
     ' is the gate for it, so the next value someone adds cannot quietly break it.
     @it("every spacing constant survives the 720p downscale as an integer")
     function _()
-      for each value in [PANEL_PADDING, TITLE_GAP, BODY_GAP, SUBHEADING_GAP, SEPARATOR_ACCENT_WIDTH, LIST_ROW_HEIGHT, LIST_ROW_SPACING, LIST_ROW_PADDING, LIST_ROW_CHECK_GUTTER, DIALOG_BUTTON_MIN_WIDTH, DIALOG_BUTTON_PADDING]
+      for each value in [PANEL_PADDING, TITLE_GAP, BODY_GAP, SUBHEADING_GAP, ANCHOR_GAP, SEPARATOR_ACCENT_WIDTH, LIST_ROW_HEIGHT, LIST_ROW_SPACING, LIST_ROW_PADDING, LIST_ROW_ICON_SIZE, LIST_ROW_CHECK_GUTTER, DIALOG_BUTTON_MIN_WIDTH, DIALOG_BUTTON_PADDING]
         m.assertEqual(value mod 6, 0)
         m.assertEqual((value * 2) mod 3, 0)
       end for
@@ -283,6 +283,210 @@ namespace tests
 
       m.assertFalse(ok.overflows)
       m.assertTrue(tooTall.overflows)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("anchored placement")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The overflow menus (#788) hang off the LAST button of a row that runs
+    ' left-to-right and sits near the bottom of the screen. Placement is
+    ' preferred-plus-fallback: LEFT-aligned to that button where the panel fits,
+    ' RIGHT-aligned where it does not, growing upward either way. Everything else
+    ' in the family stays centred, which this block's regression test guards.
+    '
+    ' Real geometry throughout. ItemDetails' row starts at x=90, y=800 with 136px
+    ' buttons and 18px spacing, so its 8th slot spans 1168..1304 and leaves 704px
+    ' to the right margin. The OSD's row uses 24px spacing and its 10th slot spans
+    ' 1530..1666, leaving 342px.
+
+    @it("prefers LEFT-aligned to the anchor, where the panel fits")
+    function _()
+      layout = computeDialogLayout({
+        panelWidth: 402,
+        bodyHeight: 300,
+        anchor: { x: 1170, y: 800, width: 138 }
+      })
+
+      m.assertEqual(layout.panel.x, 1170)
+    end function
+
+    ' Both surfaces' menus are narrow today, so both open leftward under their
+    ' button. This is the case that actually ships.
+    @it("opens leftward on BOTH surfaces at the widths they actually build")
+    function _()
+      itemDetails = computeDialogLayout({
+        panelWidth: 300,
+        bodyHeight: 300,
+        anchor: { x: 1168, y: 800, width: 136 }
+      })
+      osd = computeDialogLayout({
+        panelWidth: 300,
+        bodyHeight: 300,
+        anchor: { x: 1530, y: 932, width: 136 }
+      })
+
+      ' Snapped DOWN onto the grid, so up to one step left of the anchor's edge.
+      m.assertTrue(1168 - itemDetails.panel.x < PIXEL_GRID, "ItemDetails did not open leftward")
+      m.assertTrue(1530 - osd.panel.x < PIXEL_GRID, "the OSD did not open leftward")
+    end function
+
+    ' THE FLIP. A panel too wide to clear the right margin goes the other way,
+    ' toward the room — 1256px on ItemDetails against the 704px it just failed.
+    @it("flips to RIGHT-aligned when the panel will not fit leftward")
+    function _()
+      layout = computeDialogLayout({
+        panelWidth: 900,
+        bodyHeight: 300,
+        anchor: { x: 1168, y: 800, width: 136 }
+      })
+
+      drift = 1304 - (layout.panel.x + layout.panel.width)
+      m.assertTrue(drift >= 0 and drift < PIXEL_GRID, "flipped panel drifted " + drift.toStr() + " from the anchor")
+    end function
+
+    ' The boundary itself, swept across it rather than sampled either side: the
+    ' panel must stay on screen at every width, whichever side it lands on.
+    @it("keeps the panel on screen either side of the flip boundary")
+    function _()
+      for panelWidth = 300 to 900 step 6
+        layout = computeDialogLayout({
+          panelWidth: panelWidth,
+          bodyHeight: 300,
+          anchor: { x: 1168, y: 800, width: 136 }
+        })
+
+        m.assertTrue(layout.panel.x >= PANEL_PADDING, "ran off the left at width " + panelWidth.toStr())
+        m.assertTrue(layout.panel.x + layout.panel.width <= SCREEN_WIDTH - PANEL_PADDING, "ran off the right at width " + panelWidth.toStr())
+        m.assertEqual(layout.panel.x mod 3, 0, "panel.x off-grid at width " + panelWidth.toStr())
+      end for
+    end function
+
+    ' The OSD flips far sooner than ItemDetails, from the same rule — its anchor
+    ' sits 362px further right. This is the whole point of deriving the side from
+    ' the anchor rather than assigning it per surface.
+    @it("flips at a different width on each surface, from one rule")
+    function _()
+      ' 400 fits rightward on ItemDetails (1168 + 400 = 1568) but not on the OSD
+      ' (1530 + 400 = 1930, past the 1872 margin).
+      itemDetails = computeDialogLayout({
+        panelWidth: 400,
+        bodyHeight: 300,
+        anchor: { x: 1168, y: 800, width: 136 }
+      })
+      osd = computeDialogLayout({
+        panelWidth: 400,
+        bodyHeight: 300,
+        anchor: { x: 1530, y: 932, width: 136 }
+      })
+
+      m.assertTrue(itemDetails.panel.x >= 1168 - PIXEL_GRID, "ItemDetails should still open leftward at 400")
+      m.assertTrue(osd.panel.x < 1530, "the OSD should have flipped at 400")
+    end function
+
+    @it("grows UPWARD, leaving at least ANCHOR_GAP above the anchor")
+    function _()
+      layout = computeDialogLayout({
+        panelWidth: 402,
+        bodyHeight: 300,
+        anchor: { x: 1168, y: 800, width: 136 }
+      })
+
+      gap = 800 - (layout.panel.y + layout.panel.height)
+      m.assertTrue(gap >= ANCHOR_GAP, "gap " + gap.toStr() + " is tighter than ANCHOR_GAP")
+      m.assertTrue(gap < ANCHOR_GAP + PIXEL_GRID, "gap " + gap.toStr() + " is more than a snap wider than ANCHOR_GAP")
+    end function
+
+    ' An anchor near the LEFT edge is the preferred side's natural home — the
+    ' panel simply opens rightward from it, no flip and no clamp.
+    @it("opens leftward from a left-edge anchor without clamping")
+    function _()
+      layout = computeDialogLayout({
+        panelWidth: 402,
+        bodyHeight: 300,
+        anchor: { x: 90, y: 800, width: 136 }
+      })
+
+      m.assertTrue(90 - layout.panel.x < PIXEL_GRID, "did not open from the anchor")
+    end function
+
+    @it("clamps to the right margin rather than running off the screen")
+    function _()
+      layout = computeDialogLayout({
+        panelWidth: 402,
+        bodyHeight: 300,
+        anchor: { x: 1800, y: 800, width: 136 }
+      })
+
+      m.assertEqual(layout.panel.x + layout.panel.width, SCREEN_WIDTH - PANEL_PADDING)
+    end function
+
+    ' The ceiling is the whole reason an anchored caller needs no new overflow
+    ' handling: the body is clamped to the band above the anchor, and `overflows`
+    ' reports it through the same field JRListDialog already reacts to.
+    @it("bounds the body by the room ABOVE the anchor, not by the full ceiling")
+    function _()
+      high = computeDialogLayout({
+        panelWidth: 402,
+        bodyHeight: 600,
+        anchor: { x: 1168, y: 400, width: 136 }
+      })
+
+      m.assertTrue(high.overflows)
+      m.assertTrue(high.panel.y >= PANEL_PADDING)
+      m.assertTrue(high.panel.y + high.panel.height <= 400 - ANCHOR_GAP)
+    end function
+
+    ' An anchor low on the screen leaves more room above it than a centred panel
+    ' is ever allowed to use. Without this an overflow menu would be a
+    ' full-height panel that happens to be right-aligned.
+    @it("never grows past the centred ceiling, however low the anchor sits")
+    function _()
+      layout = computeDialogLayout({
+        panelWidth: 402,
+        bodyHeight: 2000,
+        anchor: { x: 1168, y: 1000, width: 136 }
+      })
+
+      m.assertTrue(layout.panel.height <= PANEL_MAX_HEIGHT)
+    end function
+
+    ' A caller assembling an anchor from node geometry can hand over a half-built
+    ' one. It must lay out somewhere discardable, not fault on the render thread.
+    @it("treats a half-built anchor as a position rather than faulting")
+    function _()
+      layout = computeDialogLayout({ panelWidth: 402, bodyHeight: 120, anchor: { y: 800 } })
+
+      ' x defaults to 0, so the preferred side puts it at the left margin.
+      m.assertEqual(layout.panel.x, PANEL_PADDING)
+      m.assertTrue(layout.panel.y + layout.panel.height <= 800 - ANCHOR_GAP)
+    end function
+
+    ' REGRESSION GUARD. Every other dialog in the family passes no anchor and must
+    ' be laid out byte-for-byte as it was before anchoring existed.
+    @it("leaves an unanchored panel centred, exactly as before")
+    function _()
+      layout = computeDialogLayout({ panelWidth: 900, titleHeight: 50, bodyHeight: 120, footerHeight: 60 })
+
+      m.assertEqual(layout.panel.x, int((1920 - 900) / 2))
+      m.assertEqual(layout.panel.y, int((1080 - layout.panel.height) / 2))
+    end function
+
+    ' The grid gate above sweeps the centred path. Anchoring introduces two new
+    ' origins, so it needs its own sweep over measured heights.
+    @it("puts an anchored panel's edges on the output-row boundary too")
+    function _()
+      for bodyHeight = 60 to 400 step 7
+        layout = computeDialogLayout({
+          panelWidth: 402,
+          bodyHeight: bodyHeight,
+          anchor: { x: 1168, y: 800, width: 136 }
+        })
+
+        m.assertEqual(layout.panel.x mod 3, 0, "panel.x off-grid at body " + bodyHeight.toStr())
+        m.assertEqual(layout.panel.y mod 3, 0, "panel.y off-grid at body " + bodyHeight.toStr())
+        m.assertEqual(layout.body.y mod 3, 0, "body.y off-grid at body " + bodyHeight.toStr())
+      end for
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

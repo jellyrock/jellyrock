@@ -328,3 +328,4 @@ this table automatically.
 | `folder_filled.svg` | `folder` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `book_filled.svg` | `menu_book` | Rounded | 500 | 1 | `24px` | 2026-05-15 |
 | `studio_filled.svg` | `domain` | Rounded | 500 | 1 | `24px` | 2026-05-15 |
+| `more_horiz.svg` | `more_horiz` | Rounded | 500 | 1 | `24px` | 2026-09-04 |

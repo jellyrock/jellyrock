@@ -29,6 +29,15 @@ sub init()
   m.hideStatusAnimation = m.top.findNode("hideStatusAnimation")
 
   onItemContentChanged()
+
+  ' Interface observers are registered HERE rather than declared as XML onChange
+  ' attributes: this component releases node references in onDestroy and these
+  ' handlers dereference them, so the registrations have to be detachable. An XML
+  ' onChange does not appear to be removable by unobserveField — see the wiring
+  ' rule in components/CLAUDE.md.
+  m.top.observeField("isSlideshow", "onIsSlideshowChanged")
+  m.top.observeField("isRandom", "onIsRandomChanged")
+  m.top.observeField("itemIndex", "onItemContentChanged")
 end sub
 
 ' The router creates this view; its launch data arrives as route.context (set by
@@ -228,6 +237,12 @@ end function
 ' onDestroy: Full teardown releasing all resources before component removal
 ' Called automatically via JRScreen.beforeViewClose when sgRouter permanently closes this view.
 sub onDestroy()
+  ' Detach the interface observers registered in init(). Must precede every
+  ' reference release below — these handlers dereference them.
+  m.top.unobserveField("isSlideshow")
+  m.top.unobserveField("isRandom")
+  m.top.unobserveField("itemIndex")
+
   m.log.verbose("onDestroy")
 
   ' Unobserve timer observers

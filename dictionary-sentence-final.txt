@@ -248,6 +248,7 @@
 (?:ECP-disabled)\.
 (?:EDID)\.
 (?:editorconfig)\.
+(?:enablement)\.
 (?:enrichment)\.
 (?:Enrichment)\.
 (?:enrichments)\.
@@ -471,6 +472,7 @@
 (?:PNG)\.
 (?:PNGs)\.
 (?:portal-UI)\.
+(?:positionally)\.
 (?:post-auth)\.
 (?:postcondition)\.
 (?:postconditions)\.
@@ -500,6 +502,7 @@
 (?:pre-ship)\.
 (?:pre-show)\.
 (?:pre-test)\.
+(?:prebuilt)\.
 (?:Prefetch)\.
 (?:preflight)\.
 (?:preloading)\.

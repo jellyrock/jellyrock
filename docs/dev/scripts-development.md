@@ -6,7 +6,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-09-05
+last-reviewed: 2026-09-07
 ---
 
 # Working in `scripts/`
@@ -18,7 +18,7 @@ outside the BSC project.
 
 | I want to… | Do this |
 |---|---|
-| Add a BSC plugin | `scripts/bsc-plugins/<name>.cjs` + register in [`bsconfig.json`](../../bsconfig.json) |
+| Add a BSC plugin | `scripts/bsc-plugins/<name>.cjs` built on [`scripts/lib/bsc-rule.cjs`](../../scripts/lib/bsc-rule.cjs) + register in [`bsconfig.json`](../../bsconfig.json) |
 | Add a doc/code validator | `scripts/lint/<name>.cjs`, expose `npm run lint:<name>` |
 | Add an output generator | `scripts/generate/<name>.cjs`, expose `npm run docs:<name>` or similar |
 | Add a one-off CLI tool | `scripts/<name>.js` (ESM) at root |
@@ -113,11 +113,24 @@ long fixtures, or fixtures shared across multiple test cases), the next step
 is `.bs` fixture files alongside the tests — but the pattern hasn't been
 needed yet, so we haven't standardized a layout.
 
+**Build a diagnostic plugin from [`scripts/lib/bsc-rule.cjs`](../../scripts/lib/bsc-rule.cjs)** —
+`createScopeRule` for a rule about one component (its XML plus its codebehind),
+`createProgramRule` for one that needs the whole program before it can judge a
+single site. They own the diagnostic lifecycle: a rule reading two files has to
+CLEAR its previous findings before re-deriving them, or editing the half that is
+not the diagnostic's anchor leaves a stale finding on screen. Four plugins got
+that wrong before the module existed. See
+[build-and-tooling.md → Convention plugins](../architecture/build-and-tooling.md#convention-plugins).
+
+Any such plugin also needs `runPluginOnEdits` alongside the usual cases:
+`runPluginOnSource` validates ONCE, so it cannot observe behavior across
+validations, which is exactly where the staleness class lives.
+
 Three harnesses cover three plugin shapes:
 
 | Harness | Used for | Returns |
 |---|---|---|
-| `_helpers/run-plugin.js` | Diagnostic-emitting plugins (Tier 1) | flat diagnostic array from `program.validate()` |
+| `_helpers/run-plugin.js` | Diagnostic-emitting plugins (Tier 1) | `runPluginOnSource` → flat diagnostic array from one `program.validate()`; `runPluginOnEdits` → one array per step of an edit SEQUENCE |
 | `_helpers/transpile-with-plugin.js` | Transpile-mutating plugins (Tier 2 — `roku-log`) | `{pkgPath: transpiledCode}` from `program.getTranspiledFileContents()` |
 | `_helpers/run-plugin-with-temp-locale.js` | Virtual-file-injecting plugins (Tier 2 — `translation-keys`) | builder-style helper exposing `setup`/`regenerate`/`writeLocale`/`teardown` |
 

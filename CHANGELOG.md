@@ -7,8 +7,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Cap `ItemDetails` and `OSD` button rows with a `More` overflow menu ([#890](https://github.com/jellyrock/jellyrock/pull/890))
+
+### Changed
+
+- Refresh the `rooibos-roku` patch for the installed version ([#894](https://github.com/jellyrock/jellyrock/pull/894))
+
+### Fixed
+
+- Register the `state` observer exactly once ([#898](https://github.com/jellyrock/jellyrock/pull/898))
+- Register the `position` observer exactly once ([#896](https://github.com/jellyrock/jellyrock/pull/896))
+- Gate interface-field observer wiring; fix stale cross-file findings ([#895](https://github.com/jellyrock/jellyrock/pull/895))
+- Observe each interface field exactly once in `OSD` and `IconButton` ([#891](https://github.com/jellyrock/jellyrock/pull/891))
+
 ### Dependencies
 
+- Update spellchecker-cli from v7.0.3 to v7.0.4 ([#893](https://github.com/jellyrock/jellyrock/pull/893))
+- Update ropm from v0.11.9 to v0.11.10 ([#880](https://github.com/jellyrock/jellyrock/pull/880))
+- Update promises from v0.7.1 to v0.7.2 ([#878](https://github.com/jellyrock/jellyrock/pull/878))
+- Update brighterscript-formatter from v1.8.1 to v1.8.2 ([#877](https://github.com/jellyrock/jellyrock/pull/877))
 - Update roku-deploy from v3.18.3 to v3.18.4 ([#879](https://github.com/jellyrock/jellyrock/pull/879))
 
 ## [2.28.0](https://github.com/jellyrock/jellyrock/compare/v2.27.0...v2.28.0) - 2026-09-04

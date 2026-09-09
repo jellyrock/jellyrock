@@ -547,6 +547,12 @@ sub onAllowCaptionsChange()
   m.captionTask = createObject("roSGNode", "captionTask")
   m.captionTask.observeField("currentCaption", "updateCaption")
   m.captionTask.observeField("useThis", "checkCaptionMode")
+  ' Unobserve first: this is an observer handler, so it re-registers if
+  ' shouldAllowCaptions is ever notified again. Today it is written once and
+  ' never reset, so these remove nothing — the point is that the registration
+  ' stays single by construction rather than by that accident.
+  m.top.unobserveField("subtitleTrack")
+  m.top.unobserveField("globalCaptionMode")
   m.top.observeField("subtitleTrack", "loadCaption")
   m.top.observeField("globalCaptionMode", "toggleCaption")
 
@@ -1001,6 +1007,11 @@ sub onVideoContentLoaded()
   end if
 
 
+  ' Unobserve before observing: this function re-runs on every reload path
+  ' (audio/subtitle/source change, retry), and Roku does not dedupe identical
+  ' observeField registrations, so each reload would otherwise add another
+  ' onState invocation per state change. Same idiom as audioIndex below.
+  m.top.unobserveField("state")
   m.top.observeField("state", "onState")
 
   ' The second half of the wait starts here: handing `content` to the Video node is what
@@ -1208,6 +1219,11 @@ end sub
 sub onContentChange()
   if not isValid(m.top.content) then return
 
+  ' Unobserve before observing: `content` is re-set on every reload path
+  ' (audio/subtitle/source change, retry), and Roku does not dedupe identical
+  ' observeField registrations — each one fires the handler again per notify.
+  ' Same idiom as audioIndex and selectedSubtitle above.
+  m.top.unobserveField("position")
   m.top.observeField("position", "onPositionChanged")
 end sub
 
@@ -1234,8 +1250,6 @@ sub fetchNextEpisode()
       onNextEpisodeFetchFailed()
       return
     end if
-
-    m.top.observeField("position", "onPositionChanged")
 
     ' BuildGetEpisodesRequest(Limit 2) returns [current, next]; a count other
     ' than 2 means there is no next episode, so disable the Next Episode button.

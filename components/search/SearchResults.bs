@@ -82,6 +82,13 @@ sub init()
   ' usable, which is exactly what `focus` above measures; collapsing the two into one
   ' number would hide the wait between a screen appearing and it accepting a keystroke.
   screenLoad.paint("open")
+
+  ' Interface observers are registered HERE rather than declared as XML onChange
+  ' attributes: this component releases node references in onDestroy and these
+  ' handlers dereference them, so the registrations have to be detachable. An XML
+  ' onChange does not appear to be removable by unobserveField — see the wiring
+  ' rule in components/CLAUDE.md.
+  m.top.observeField("searchAlpha", "searchMedias")
 end sub
 
 sub onScreenShown()
@@ -387,6 +394,10 @@ end function
 ' onDestroy: Full teardown releasing all resources before component removal
 ' Called automatically via JRScreen.beforeViewClose when sgRouter permanently closes this view.
 sub onDestroy()
+  ' Detach the interface observers registered in init(). Must precede every
+  ' reference release below — these handlers dereference them.
+  m.top.unobserveField("searchAlpha")
+
   m.log.verbose("onDestroy")
   destroyTextureManager(m.searchSelect.content)
 
