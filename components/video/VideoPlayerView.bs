@@ -1724,12 +1724,14 @@ sub onState()
     m.bufferPercentage = 0
     ' When buffering, start timer to monitor buffering process
     if isValid(m.bufferCheckTimer)
-      m.bufferCheckTimer.control = "start"
-      ' Unobserve first: this branch runs once per buffering episode and the `playing`
-      ' and `paused` exits never unobserve, so two episodes inside one timer window
-      ' would otherwise leave two registrations on `fire`.
+      ' Wire before starting, and unobserve first. Every other state branch drops this
+      ' observer on the way out, but the `else` (unhandled state) does not, so a
+      ' buffering -> unhandled -> buffering cycle would otherwise leave two
+      ' registrations on `fire` and `bufferCheck` would run twice per tick. Same
+      ' observe-on-enter / unobserve-on-every-exit toggle as OSD's `inactivityTimer`.
       m.bufferCheckTimer.unobserveField("fire")
-      m.bufferCheckTimer.ObserveField("fire", "bufferCheck")
+      m.bufferCheckTimer.observeField("fire", "bufferCheck")
+      m.bufferCheckTimer.control = "start"
     end if
     ' Show non-blocking spinner for mid-playback buffering (seek, network stall)
     if m.isPlayReported
@@ -1773,6 +1775,15 @@ sub onState()
     end if
   else if m.top.state = "playing"
     stopLoadingSpinner()
+
+    ' Buffering is over: end this episode's stall window. Left running, the timer
+    ' carries a partially-elapsed 30s window into the NEXT buffering episode, which
+    ' could then be stall-checked seconds after it begins instead of 30s in. Whether
+    ' `control = "start"` re-arms an already-running timer is undocumented (rokudev
+    ' `timer.md` defines `start` only as "starts the Timer node operation"), so the
+    ' stop is what makes each episode's window fresh rather than that assumption.
+    m.bufferCheckTimer.control = "stop"
+    m.bufferCheckTimer.unobserveField("fire")
 
     ' Un-park. A `play` that did not come through onVideoContentLoaded — a voice or
     ' remote-control resume of a stopped player — is the one route back from
@@ -1823,6 +1834,10 @@ sub onState()
   else if m.top.state = "paused"
     stopLoadingSpinner()
     m.playbackTimer.control = "stop"
+    ' Same reason as `playing`: a paused player is not stalling, and the stall window
+    ' must not carry into the next buffering episode.
+    m.bufferCheckTimer.control = "stop"
+    m.bufferCheckTimer.unobserveField("fire")
     reportPlayback()
   else if m.top.state = "stopped"
     ' Skip during channel switch; the incoming VideoPlayerView will hide the spinner
