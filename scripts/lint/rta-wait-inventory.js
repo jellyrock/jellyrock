@@ -46,7 +46,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { ESLint } from 'eslint';
 import baseConfig from '../../eslint.config.js';
-import rule, { classifyWait, WAIT_CATEGORIES } from './eslint-rules/rta-wait-justified.js';
+import { classifyWait, WAIT_CATEGORIES } from './eslint-rules/rta-wait-justified.js';
 
 const DOC_REL = 'tests/rta/CLAUDE.md';
 const START = '<!-- rta-wait-inventory:start -->';
@@ -120,7 +120,7 @@ const counter = {
 };
 
 /** Count every wait the gate can see, bucketed by inventory row. */
-export async function countWaits({ cwd = process.cwd(), targets = LINT_TARGETS } = {}) {
+async function countWaits({ cwd = process.cwd(), targets = LINT_TARGETS } = {}) {
   const eslint = new ESLint({
     cwd,
     overrideConfigFile: true,
@@ -244,8 +244,6 @@ async function main() {
   console.log(`[rta-waits] OK — all ${rows.length} inventory rows match (${total} waits).`);
   return 0;
 }
-
-export { rule, START, END, DOC_REL };
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   try {
