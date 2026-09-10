@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-09-10 — fix: Keep `playbackTimer`'s observer across a stopped → playing cycle
 - 2026-09-10 — ci: Bound RTA poll waits to their own timeout, cutting pre-push time
 - 2026-09-10 — ci(rta): Justify every RTA wait and make its failures attributable
 - 2026-09-09 — The pre-push hook no longer rewrites icon PNGs; fixed upstream: `icons:check` now compares DECODED PIXELS via `scripts/lib/png-compare.js` instead of raw bytes, so a sharp/libvips encoder bump no longer rewrites 55 pixel-identical files on every branch. This is the second of the two fix shapes that followup named. The 55 PNGs `e8be35fd` had rewritten are reverted to base on this branch and `icons:check` accepts them (60 sources, 120 files), which is the check that proves the new comparator sees them as unchanged.
