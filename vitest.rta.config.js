@@ -17,6 +17,10 @@ export default defineConfig({
     // longest: hardRelaunch 14s (exitMs + bootMs) + waitHome 65s (45s login + 20s rows) +
     // walkHomeToFirstRow 10s + overhang focus 15s + version label 20s + 1s settle = ~125s.
     // The OSD playback wait alone is ~90s. Re-do this arithmetic when a gate's timeout moves.
+    // That sum is a REAL bound as of the `nextTickMs` fix in `lib/steps.js`: `waitFor` and
+    // `waitFocused` used to sleep a full poll interval after deciding to give up, so each
+    // gate in the chain could overshoot its stated timeout by its own interval and the true
+    // worst case sat above this arithmetic rather than at it.
     testTimeout: 180_000,
     hookTimeout: 120_000, // deploy + boot in globalSetup/beforeAll
     // One real device — everything must run serially (Vitest 4: no poolOptions).
