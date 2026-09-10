@@ -114,6 +114,34 @@ beforeEach(() => {
   getFocusedNode.mockReset().mockResolvedValue(null);
 });
 
+/**
+ * Settle a poll-driven wait on a FAKE clock, so its intervals cost no real time.
+ *
+ * Used only by the handful of cases that genuinely need SEVERAL polls to make their point —
+ * "keeps re-pressing when a key is swallowed" needs three ticks of a 2 s interval, and
+ * asserting that on a real clock costs four seconds per run of `test:scripts`, which
+ * pre-push runs on any JS change.
+ *
+ * The rest of this file stays on the real clock deliberately. Faking time everywhere would
+ * mean every future test here has to know about the clock, and two cases below assert on
+ * real `Date.now()` deltas and would silently change meaning.
+ *
+ * The `.catch()` is not optional: while the clock is being advanced the wait may reject,
+ * and an unobserved rejection in that window is an unhandled-rejection crash rather than a
+ * test failure. The caller still awaits the same promise and still sees the rejection.
+ */
+async function onFakeClock(start, { budgetMs = 200_000 } = {}) {
+  vi.useFakeTimers();
+  try {
+    const settled = start();
+    settled.catch(() => {});
+    await vi.advanceTimersByTimeAsync(budgetMs);
+    return await settled;
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
 describe('getActiveVals', () => {
   it('returns values positionally aligned with the keyPaths given', () => {
     getValues.mockResolvedValue({
@@ -560,7 +588,7 @@ describe("walkHomeToFirstRow — the precondition Home's Up-to-overhang escape r
       row -= 1;
     });
 
-    await expect(walkHomeToFirstRow()).resolves.toEqual({ walked: 3, from: 3 });
+    await expect(onFakeClock(() => walkHomeToFirstRow())).resolves.toEqual({ walked: 3, from: 3 });
     expect(sendKeypress).toHaveBeenCalledTimes(3);
     expect(sendKeypress).toHaveBeenLastCalledWith('Up');
   });
@@ -1758,6 +1786,43 @@ describe('waitRowsSettled', () => {
   });
 });
 
+describe('a wait does not outlive its own timeout', () => {
+  beforeEach(() => {
+    getValue.mockReset().mockResolvedValue({ found: true, value: 'never-matches' });
+    getFocusedNode.mockReset().mockResolvedValue(null);
+    getValues.mockReset().mockResolvedValue({ results: {} });
+  });
+
+  // Both loops used to sleep a FULL interval after the tick had already failed, and only
+  // then re-check the deadline — so `timeout` was a floor rather than a bound, overshooting
+  // by up to one interval. `waitOsdUp`'s OSD gate is 30 s at a 2 s interval, so "30 s" could
+  // be 32 s, and a caller budgeting a chain of waits was budgeting against a number that was
+  // not true. Asserted on the real clock deliberately: a fake one cannot catch a real sleep.
+  it('waitFor gives up within its budget, not a full interval past it', async () => {
+    const start = Date.now();
+    await expect(
+      waitFor('#x', (v) => v === 'match', { timeout: 50, interval: 5000 }),
+    ).rejects.toThrow();
+    // Generous against CI jitter and still ~100x under the 5 s interval it used to burn.
+    expect(Date.now() - start).toBeLessThan(1000);
+  });
+
+  it('waitFocused gives up within its budget too', async () => {
+    const start = Date.now();
+    await expect(waitFocused(() => false, { timeout: 50, interval: 5000 })).rejects.toThrow();
+    expect(Date.now() - start).toBeLessThan(1000);
+  });
+
+  it('still polls more than once when the budget allows it', async () => {
+    // The bound must not have been bought by turning a poll into a single read.
+    getValue.mockClear();
+    await expect(
+      waitFor('#x', (v) => v === 'match', { timeout: 120, interval: 20 }),
+    ).rejects.toThrow();
+    expect(getValue.mock.calls.length).toBeGreaterThan(2);
+  });
+});
+
 describe("waitFor's caller-supplied observed", () => {
   // The failure that motivated it: a confirm dialog that never appeared, where the
   // throw-time dump was taken 10s late and could not say what the press had landed on.
@@ -2177,7 +2242,9 @@ describe('waitOsdUp — no input before the app will accept it', () => {
     // whole ~5-7 s stream-start window, into a player designed not to answer.
     const p = player({ states: ['buffering', 'buffering', 'playing'] });
     // The state gate polls at 1 s, so three answers need room for three ticks.
-    await waitOsdUp('osd visible', { itemId: 'hero1', playableTimeout: 5000, timeout: 2000 });
+    await onFakeClock(() =>
+      waitOsdUp('osd visible', { itemId: 'hero1', playableTimeout: 5000, timeout: 2000 }),
+    );
     // Every Up was sent against a playable player — not merely "one Up was sent", which
     // stays true with the gate removed and is what let an earlier version of this test
     // pass a mutation that deleted the guard outright.
@@ -2213,7 +2280,9 @@ describe('waitOsdUp — no input before the app will accept it', () => {
 
   it('keeps re-pressing when a key is swallowed, rather than failing on one drop', async () => {
     player({ states: ['playing'], upPressesToOpen: 3 });
-    await waitOsdUp('osd visible', { itemId: 'hero1', playableTimeout: 2000, timeout: 12000 });
+    await onFakeClock(() =>
+      waitOsdUp('osd visible', { itemId: 'hero1', playableTimeout: 2000, timeout: 12000 }),
+    );
     expect(sendKeypress.mock.calls.filter(([k]) => k === 'Up').length).toBeGreaterThanOrEqual(3);
   });
 
