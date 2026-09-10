@@ -17,6 +17,33 @@ import js from '@eslint/js';
 import nodePlugin from 'eslint-plugin-n';
 import prettierConfig from 'eslint-config-prettier';
 
+import rtaWaitJustified from './scripts/lint/eslint-rules/rta-wait-justified.js';
+import rtaSleepBudgeted from './scripts/lint/eslint-rules/rta-sleep-budgeted.js';
+import rtaHomeListResolved from './scripts/lint/eslint-rules/rta-home-list-resolved.js';
+import orderingAssertsPresence from './scripts/lint/eslint-rules/ordering-asserts-presence.js';
+
+/**
+ * Focus is WALKED, never teleported.
+ *
+ * `odc.focusNode` sets focus straight onto a node, which skips the key handler that
+ * would have moved it there — so a spec can arrange a state the remote cannot actually
+ * reach and still pass green. Four sites used it; all four now press real keys via
+ * `walkFocusInto`, and the ladders they walk (`UserSelect.bs:564`,
+ * `ItemDetails.bs:4271` / `:3898`) had no coverage at all while the teleports stood in
+ * for them. Reasoning: `docs/decisions.md` -> `rta-focus-walked-not-teleported`.
+ *
+ * Declared once and applied in TWO blocks below because ESLint flat config REPLACES a
+ * rule's options rather than merging them: a second `no-restricted-syntax` covering a
+ * file the first one also covers would silently drop the `diagnosedError` selector.
+ * The two blocks' file sets are therefore disjoint, and this constant is what keeps
+ * them from drifting apart.
+ */
+const NO_FOCUS_TELEPORT = {
+  selector: "CallExpression[callee.object.name='odc'][callee.property.name='focusNode']",
+  message:
+    'RTA focus: walk with `walkFocusInto(key, containerId)` instead of `odc.focusNode`. A teleport skips the key handler under test, so a spec can pass on a state the remote cannot reach.',
+};
+
 export default [
   {
     ignores: [
@@ -86,12 +113,18 @@ export default [
   // REGISTRY, not a spec, so the "spec throws are assertions, not timeouts" carve-out
   // that keeps `specs/` out does not cover it: an assertion that reads device state
   // and finds it wrong is exactly the case that needs the state dumped.
+  //
+  // `scripts/capture-screenshots.js` joined for the same reason `screens.js` did: it
+  // imports the same `waitFor` and drives the same device, so a wait that hangs there
+  // burns a device run and reports nothing attributable. It lives outside `tests/rta/`
+  // only because its OUTPUT is the store image set rather than a test result.
   {
     files: [
       'tests/rta/lib/nav.js',
       'tests/rta/lib/steps.js',
       'tests/rta/screens.js',
       'tests/rta/demos/**/*.{js,mjs}',
+      'scripts/capture-screenshots.js',
     ],
     rules: {
       'no-restricted-syntax': [
@@ -103,7 +136,77 @@ export default [
           message:
             'RTA waits: throw via `diagnosedError` so the failure reports the device state it saw. A fail-fast that already names its cause may disable this with a reason.',
         },
+        NO_FOCUS_TELEPORT,
       ],
+    },
+  },
+
+  // The same focus-teleport ban for the RTA files the block above does not list —
+  // `specs/`, `capture.js`, and the lib modules other than `nav`/`steps`. It is a
+  // SEPARATE block, with a file set disjoint from that one, because re-declaring
+  // `no-restricted-syntax` for an already-covered file would replace its
+  // `diagnosedError` selector rather than add to it. `specs/` deliberately stays out of
+  // that selector: a spec's `throw new Error` is a fixture assertion, not a timeout.
+  {
+    files: ['tests/rta/**/*.{js,mjs}'],
+    ignores: [
+      'tests/rta/**/*.test.js',
+      'tests/rta/lib/nav.js',
+      'tests/rta/lib/steps.js',
+      'tests/rta/screens.js',
+      'tests/rta/demos/**/*.{js,mjs}',
+    ],
+    rules: {
+      'no-restricted-syntax': ['error', NO_FOCUS_TELEPORT],
+    },
+  },
+
+  // RTA waits — every `waitFor` must fall in a justified category.
+  //
+  // The harness polls where `roku-test-automation` offers an observer
+  // (`onFieldChangeOnce`), which is a deviation from the library's documented practice.
+  // The project's bar is that each such wait carries a written justification; the four
+  // categories that supply them are in tests/rta/CLAUDE.md → "Why every wait polls".
+  // This rule fails a wait that lands in none of them, so the inventory cannot silently
+  // grow a member nobody reasoned about.
+  //
+  // Rationale, the field allowlist and how to extend it live in the rule module. Why a
+  // rule module rather than a `no-restricted-syntax` selector: expressing "matches none
+  // of four shapes" in esquery needs stacked `:not(:has(...))` plus a long alternation
+  // for the allowlist, which produces a line nobody can safely edit.
+  //
+  // `*.test.js` is excluded — steps.test.js calls `waitFor` against a mocked device to
+  // test the wait itself, which is not a wait on real app state.
+  //
+  // The sibling rule in the same block — `sleep-budgeted` — covers the OTHER half of the
+  // same bar. `wait-justified` asks why a wait polls where the library offers an
+  // observer; `sleep-budgeted` asks why a wait is a fixed duration where the app offers a
+  // signal. Same scope and same exclusion, because a `sleep` in a `*.test.js` paces a
+  // mocked clock rather than a real device.
+  //
+  // `home-list-resolved` is the third, and it is a BAN with one named exemption rather than an
+  // inventory: naming Home's row list by id reads a node that is absent under the other tab,
+  // so only `tests/rta/lib/home-list.js` may do it. Same scope and same exclusion again —
+  // a `*.test.js` naming `#homeRows` is asserting on a mocked keyPath, not driving a
+  // device. All three share this block because ESLint flat config REPLACES a rule's
+  // options rather than merging them, so a second block re-declaring the plugin for an
+  // already-covered file is the shape that silently drops a rule.
+  {
+    files: ['tests/rta/**/*.{js,mjs}', 'scripts/capture-screenshots.js'],
+    ignores: ['tests/rta/**/*.test.js'],
+    plugins: {
+      'jellyrock-rta': {
+        rules: {
+          'wait-justified': rtaWaitJustified,
+          'sleep-budgeted': rtaSleepBudgeted,
+          'home-list-resolved': rtaHomeListResolved,
+        },
+      },
+    },
+    rules: {
+      'jellyrock-rta/wait-justified': 'error',
+      'jellyrock-rta/sleep-budgeted': 'error',
+      'jellyrock-rta/home-list-resolved': 'error',
     },
   },
 
@@ -114,6 +217,21 @@ export default [
     rules: {
       // Tests sometimes redeclare common identifiers; tolerate.
       'no-shadow': 'off',
+    },
+  },
+
+  // Every test file, RTA specs included. `ordering-asserts-presence` is repo-wide rather
+  // than RTA-scoped because the defect is a property of `indexOf` returning -1, not of
+  // driving a device: the 2026-09-07 audit proved twelve vacuous sites, and only two of
+  // them were in `tests/rta/`. It is a separate plugin namespace from `jellyrock-rta` for
+  // the same reason — nothing about it is RTA-specific.
+  {
+    files: ['tests/**/*.{test,spec}.js'],
+    plugins: {
+      'jellyrock-tests': { rules: { 'ordering-asserts-presence': orderingAssertsPresence } },
+    },
+    rules: {
+      'jellyrock-tests/ordering-asserts-presence': 'error',
     },
   },
 

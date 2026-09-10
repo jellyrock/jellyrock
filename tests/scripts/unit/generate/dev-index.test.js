@@ -56,6 +56,11 @@ describe('dev-index', () => {
     const alphaIdx = readme.indexOf('alpha.md');
     const midIdx = readme.indexOf('mid.md');
     const zetaIdx = readme.indexOf('zeta.md');
+    // All three asserted PRESENT first: a missing entry answers -1, which is less than
+    // every real index, so the ordering alone passes when an entry was never emitted.
+    expect(alphaIdx).toBeGreaterThan(-1);
+    expect(midIdx).toBeGreaterThan(-1);
+    expect(zetaIdx).toBeGreaterThan(-1);
     expect(alphaIdx).toBeLessThan(midIdx);
     expect(midIdx).toBeLessThan(zetaIdx);
   });

@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-08-15
+last-updated: 2026-09-09
 ---
 
 # Signals backlog
@@ -90,4 +90,24 @@ Schema is enforced by `npm run lint:docs` (`signals-schema-invalid` category). A
 - **latest_acknowledged**: 10.11.11
 - **last_checked**: 2026-07-13
 - **action_when_moves**: re-pin the plugin's `Jellyfin.Controller`/`Jellyfin.Model` + `build.yaml` `targetAbi` to the new line, rebuild in the SDK container, and re-verify the cast and closed app liveness gate on a test server (12.0 RC restructures the API — check `ISessionController` / `SessionInfo` shapes)
+- **status**: watching
+
+### rta-odc-connect-hang: `roku-test-automation` ODC socket setup never settles, and orphans its own rejection
+
+- **watching**: `roku-test-automation` releases after 2.2.2 (including the `next` 3.0.0-alpha line) that fix EITHER half of `setupClientSocket` — settling its promise when the post-connect handshake fails, and attaching a handler to the promise its own `.finally()` returns
+- **current**: pinned to 2.2.2. In `client/dist/OnDeviceComponent.js`, `setupClientSocket` resolves its cached `clientSocketPromise` from the socket's `connect` handler only after a `setSettings` handshake succeeds; the rejection arm of that `.then()` calls `debugLog` and **never settles the promise**. So a handshake that fails leaves every later ODC call awaiting a dead promise, and no timeout can fire — the per-request `promiseTimeout` wraps the request, not the socket setup, so no `defaultTimeout` / `timeoutMultiplier` value would help. Still present on upstream HEAD (verified 2026-09-04; the 3.0.0-alpha refactor to `RokuDeploySocket` kept the same handler). Observed once on `.178`: SIGINT mid-suite left `restoreRegistry` hung 8+ minutes on an ESTABLISHED socket to port 9000 with zero bytes queued and no timeout, after which the device refused new ODC connections and its debug console reported "already in use". The code defect is certain; that it is what hung that process is consistent with the evidence but not proven. Recovery is `kill` + a re-deploy — `npm run test:rta` does it automatically, since `snapshotRegistry()` restores from the stranded snapshot first. **The hang is now bounded on our side** (2026-09-06): reproduced deterministically with no device — a socket that accepts and never answers leaves `readRegistry()` still pending at 45 s — and `REGISTRY_READ_TIMEOUT_MS` in [`tests/rta/lib/registry.js`](../tests/rta/lib/registry.js) now caps it at 60 s with a message naming this row. **A SECOND defect in the same function, found 2026-09-06 and the reason this row was widened rather than closed:** line 1080 attaches a `.finally()` to clear the cached promise and never handles the promise `.finally()` RETURNS, so ANY connect rejection goes unhandled — and an unhandled rejection is a hard `exit 1`. Measured against the real client: a caller that awaits, catches and carries on still dies. Proven by control — patching `.catch(() => {})` onto that one derived promise removes the crash and changes nothing else. It **cannot be suppressed from outside the library** (`setupClientSocket` returns the ORIGINAL promise, not the derived one), which is why the in-repo answer is `ensureOdcReachable` in [`tests/rta/lib/driver.js`](../tests/rta/lib/driver.js) — not making the call — rather than a `.catch()` anywhere
+- **latest_upstream**: 2.2.2
+- **latest_acknowledged**: 2.2.2
+- **last_checked**: 2026-09-06
+- **action_when_moves**: read `setupClientSocket`'s `connect` handler in the new release — if the rejection arm now rejects (or the setup is wrapped in a timeout), take the bump and drop the recovery note from [`docs/dev/rta-tests.md`](dev/rta-tests.md). ALSO check line 1080's `.finally()` — the two halves are independent and either may land alone, so a release that fixes one leaves this row `watching` for the other. If the orphan is fixed, `ensureOdcReachable`'s reason for existing narrows but does not vanish (it still turns a 10 s refusal into a 1 ms one and names the cause). The watchdog this field used to defer to a second occurrence was built on 2026-09-06 instead, on the strength of a deterministic reproduction — see `current`
+- **status**: watching
+
+### jellyfin-demo-single-mediasource: demo server has no movie with two video sources
+
+- **watching**: `demo.jellyfin.org/stable` regaining any movie that reports `numVideoSources >= 2` — or JellyRock standing up its own demo server, which is the plan (owner, 2026-09-07) and would let the fixture be seeded rather than waited on
+- **current**: `tests/rta/specs/dialogs.spec.js`'s `osd video-source button opens the list dialog; back cancels it` skips at runtime, because `components/video/OSD.bs:204` correctly removes `#showVideoSourceMenu` when `numVideoSources < 2`. Jellyfin **`v12`** landed on the demo server and dropped Dracula's color version, so the hero reports one `MediaSource` and **0 of its 11 movies** carry more than one (checked 2026-09-08). The skip is therefore not conditional — the test **cannot run against the only fixture the suite has**, and has not run since `v12` landed. That is coverage which reads as present in the suite listing and is inert, which is the same "green for a reason nobody chose" class the rest of this harness work is about; it is tracked here rather than as a followup because the trigger is an EXTERNAL fixture change nobody here controls. The four `#showVideoInfoPopup` callers beside it still throw on a missing button — they have no content precondition, so a missing button there is a real defect
+- **latest_upstream**: Jellyfin `v12` on demo.jellyfin.org/stable — 0 of 11 movies with >1 `MediaSource`
+- **latest_acknowledged**: Jellyfin `v12` on demo.jellyfin.org/stable — 0 of 11 movies with >1 `MediaSource`
+- **last_checked**: 2026-09-09
+- **action_when_moves**: re-point the test at whichever item reports two sources and DELETE the `testCtx.skip` — a skip that outlives its cause is worse than a red, because nothing reports it. If the fixture moves to a `JellyRock`-owned demo server instead, seed one item with two video sources and delete the skip the same way. Either move also invalidates the run-count figures in the RTA timing followup in `docs/progress.md`, which counts this skip
 - **status**: watching

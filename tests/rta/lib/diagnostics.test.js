@@ -47,6 +47,15 @@ describe('the FAILURE_KINDS re-export', () => {
 describe('diagnosedError — the message a human reads and the record a baseline reads', () => {
   let tmpDir;
 
+  /** ECP's `query/active-app` on a device running the channel and nothing else. */
+  const NO_SCREENSAVER = { app: { id: 'dev', type: 'appl', title: 'JellyRock' } };
+
+  /** The same, plus the element Roku adds while a screensaver is up. */
+  const WITH_SCREENSAVER = {
+    ...NO_SCREENSAVER,
+    screensaver: { id: '261525', type: 'ssvr', version: '3.1.27', title: 'Aquatic Life' },
+  };
+
   /** The shape ODC's batch read returns: every key path answers `found` or not. */
   const found = (values) =>
     Object.fromEntries(Object.entries(values).map(([k, value]) => [k, { found: true, value }]));
@@ -75,7 +84,7 @@ describe('diagnosedError — the message a human reads and the record a baseline
   const diagnose = async (
     message,
     opts = {},
-    { results = HEALTHY, focused, meta, mediaPlayer = null } = {},
+    { results = HEALTHY, focused, meta, mediaPlayer = null, activeApp = NO_SCREENSAVER } = {},
   ) => {
     vi.resetModules();
     vi.doMock('roku-test-automation', () => ({
@@ -86,7 +95,16 @@ describe('diagnosedError — the message a human reads and the record a baseline
       // The OS media player is read from ECP, not ODC. Defaulting to null keeps
       // every existing case describing a run with no playback, which is what they
       // were written against.
-      ecp: { getMediaPlayer: async () => mediaPlayer },
+      // `getActiveApp` is the screensaver detector and is read over ECP for the same
+      // reason `getMediaPlayer` is: it answers from the OS rather than from inside the
+      // channel. Defaulting to an app with no screensaver keeps every case written
+      // before it describing the run it was written against.
+      ecp: {
+        getMediaPlayer: async () => mediaPlayer,
+        // An Error rejects, matching how `results` above expresses a failed read.
+        getActiveApp: async () =>
+          activeApp instanceof Error ? Promise.reject(activeApp) : activeApp,
+      },
     }));
     process.env.RTA_RECORD_DIR = tmpDir;
     if (meta) fs.writeFileSync(path.join(tmpDir, 'run-meta.json'), JSON.stringify(meta));
@@ -234,6 +252,55 @@ describe('diagnosedError — the message a human reads and the record a baseline
     expect(error.message).toContain('device did not answer ODC: ECONNREFUSED');
     expect(error.message).not.toContain('server=?');
     expect(record.state.unreachable).toBe('ECONNREFUSED');
+  });
+
+  it('names a running screensaver, which nothing else in the record can explain', async () => {
+    // The attribution case this exists for. A screensaver runs in its own BrightScript
+    // context, so every ODC read fails and the record otherwise says only "did not
+    // answer ODC" — indistinguishable from a crashed app or a dead device, and the one
+    // reading that is none of the three.
+    const { error, record } = await diagnose('timed out', BASE, {
+      results: new Error('ECONNREFUSED'),
+      activeApp: WITH_SCREENSAVER,
+    });
+    expect(error.message).toContain('a SCREENSAVER is running ("Aquatic Life")');
+    expect(record.state.screensaver).toEqual({ title: 'Aquatic Life', id: '261525' });
+  });
+
+  it('puts the screensaver ABOVE the ODC line, because it explains it', async () => {
+    // Order is the whole value: read the other way round, the record sends you hunting
+    // through the app for a transport error the line below already accounts for.
+    const { error } = await diagnose('timed out', BASE, {
+      results: new Error('ECONNREFUSED'),
+      activeApp: WITH_SCREENSAVER,
+    });
+    const lines = error.message.split('\n');
+    const screensaverAt = lines.findIndex((l) => l.includes('SCREENSAVER'));
+    const odcAt = lines.findIndex((l) => l.includes('did not answer ODC'));
+    // Both asserted PRESENT first. `findIndex` returns -1 for a missing line, and -1 is
+    // less than every real index — so an ordering assertion alone passes when the
+    // screensaver line is absent entirely, which is the regression it exists to catch.
+    // Caught by mutation: deleting the line left this test green.
+    expect(screensaverAt).toBeGreaterThanOrEqual(0);
+    expect(odcAt).toBeGreaterThanOrEqual(0);
+    expect(screensaverAt).toBeLessThan(odcAt);
+  });
+
+  it('stays silent about the screensaver when none is running', async () => {
+    // The field's PRESENCE is the finding, so an ordinary failure must not carry it.
+    const { error, record } = await diagnose('timed out', BASE);
+    expect(error.message).not.toContain('SCREENSAVER');
+    expect(record.state.screensaver).toBeUndefined();
+  });
+
+  it('still reports the rest when the screensaver probe itself fails', async () => {
+    // ECP carries no timeout, so this read is the one most likely to fail on a sick
+    // device. It must cost a line of context and nothing else.
+    const { error } = await diagnose('timed out', BASE, {
+      activeApp: new Error('ECP unreachable'),
+    });
+    expect(error.message).not.toContain('SCREENSAVER');
+    expect(error.message).toContain('view=BaseGridView');
   });
 
   it('never throws, even when every device read fails', async () => {

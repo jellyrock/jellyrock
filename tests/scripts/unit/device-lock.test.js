@@ -196,6 +196,21 @@ describe('device-lock: acquiring', () => {
       mod.acquireDeviceLock({ what: 'screenshots', deviceHost: DEVICE }),
     ).rejects.toThrow(/in use by test:rta/);
   });
+
+  it('points at the device it is REFUSING, not at whatever ROKU_IP says', async () => {
+    // The refusal names one device and then says "run `npm run device:status`",
+    // but `status` resolves its host from ROKU_IP. On a LAN with three Rokus,
+    // following that advice literally after a `ROKU_IP=<other> npm run test:rta`
+    // reported on the wrong device — and said `free` about one that was not the
+    // one refusing. The invocation has to carry the host the error is about.
+    const gh = fakeGitHub();
+    mod._internals.setTransport(gh.handler);
+    await mod.acquireDeviceLock({ what: 'test:rta', deviceHost: DEVICE });
+
+    await expect(
+      mod.acquireDeviceLock({ what: 'screenshots', deviceHost: DEVICE }),
+    ).rejects.toThrow(`ROKU_IP=${DEVICE} npm run device:status`);
+  });
 });
 
 describe('device-lock: no CI-yield', () => {
@@ -491,6 +506,49 @@ describe('device-lock: stranded-snapshot report', () => {
     fs.mkdirSync(path.join(dir, 'rta'));
     write('runs.jsonl', '{}');
     expect(lines()).toEqual([]);
+  });
+
+  // The defect this report was rewritten for. `rta-run.js` writes the snapshot
+  // right after the deploy and clears it only after the suite, so the file is
+  // present for the whole of a HEALTHY ~21min run — and this said "left
+  // mid-restore, run rta:restore" about every one of them. Following that advice
+  // would have reverted the registry underneath the live run and relaunched the
+  // channel mid-suite: the exact inverse of the right move.
+  it('reports a live run as in-progress, and does NOT advise a restore', () => {
+    write(
+      `registry-${DEVICE}.json`,
+      JSON.stringify({ host: DEVICE, takenAt: '2026-09-05T20:00:00Z', ownerPid: process.pid }),
+    );
+    const [line] = lines();
+    expect(line).toContain('IN PROGRESS');
+    expect(line).toContain(String(process.pid));
+    expect(line).toContain(DEVICE);
+    // The point of the whole change: the destructive command must not appear.
+    expect(line).not.toContain('rta:restore');
+    expect(line).not.toContain('mid-restore');
+  });
+
+  it('still advises a restore once the owning run is gone', () => {
+    // The genuinely stranded case, and the one the report exists for. 2**30 is
+    // above any pid Linux hands out, so this is not a race against a real one.
+    write(
+      `registry-${DEVICE}.json`,
+      JSON.stringify({ host: DEVICE, takenAt: '2026-09-05T20:00:00Z', ownerPid: 2 ** 30 }),
+    );
+    const [line] = lines();
+    expect(line).toContain('was left mid-restore');
+    expect(line).toContain(`ROKU_IP=${DEVICE} npm run rta:restore`);
+  });
+
+  it('treats a snapshot with no ownerPid as stranded', () => {
+    // Written before the field existed. Stranded is the safe default: the wrong
+    // answer here withholds a recovery command from a device that needs it,
+    // where the opposite wrong answer destroys a live run.
+    write(
+      `registry-${DEVICE}.json`,
+      JSON.stringify({ host: DEVICE, takenAt: '2026-08-11T20:00:00Z' }),
+    );
+    expect(lines()[0]).toContain(`ROKU_IP=${DEVICE} npm run rta:restore`);
   });
 
   it('does not claim an accepted-residue record as a stranded snapshot', () => {

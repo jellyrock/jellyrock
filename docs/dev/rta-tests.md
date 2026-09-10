@@ -25,7 +25,7 @@ related-files:
   - scripts/flake-baseline.js
   - tests/rta/demos/run.mjs
   - .github/workflows/rta-functional-tests.yml
-last-reviewed: 2026-08-27
+last-reviewed: 2026-09-08
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -142,6 +142,17 @@ branch to find it.
   getActiveVal })`), which scopes to `m.global.activeRoutedView` (the app's own "view the
   user is on"). Focus-based assertions (`waitFocused`) are inherently unambiguous — there
   is only one focused node — so prefer them when "did this open/land?" is the question.
+- **"Is focus inside X?" goes through `focusIsInside` / `waitFocusInside`, never a
+  hand-rolled `keyPath.includes(...)`.** One focused node makes the *reading* unambiguous;
+  it does not make the *predicate* unambiguous. RTA composes a `keyPath` as one segment per
+  ancestor — `"#" + node.id`, or the child index when the node has no id — so an id always
+  occupies a whole segment and a substring test is strictly weaker than the question being
+  asked. `#options` is a substring of `#optionsPanelOverlay` (the re-parenting host in
+  `components/JRScene.xml`), so the grid-options gate could have reported the dialog focused
+  for focus anywhere in that overlay: the north-star failure, succeeding early, with the
+  blame landing on whatever times out next. `focusIsInside` matches whole segments and
+  normalizes a missing `#`, and `waitFocusInside` takes `label` / `timeout` / `interval` /
+  `action`, so there is no call site that needs its own predicate.
 
 ## When a wait times out, it reports what it SAW
 
@@ -153,7 +164,9 @@ harness throws through `diagnosedError`
 state the device was actually in.
 
 Both samples below are **real captured output** from forced failures on `.177`, not
-illustrations. A detail screen first:
+illustrations — and they are kept verbatim rather than edited, so note that they
+**predate `readErrors=`** (see [below](#a-failed-read-and-an-unchanged-field-are-not-the-same-timeout)),
+which now prints beside `actionErrors=` on every dump. A detail screen first:
 
 ```text
 nav timed out waiting for a detail row count that can never happen (last=3)
@@ -170,6 +183,118 @@ nav timed out waiting for a grid item count that can never happen (last=11)
         ↳ home=5 · keyPath="#itemGrid.content.getChildCount()" · last=11 · actionErrors=0
         ↳ server=https://demo.jellyfin.org/stable (id f0b33816…) user=4ed1b8b4…
 ```
+
+## A green wait can still have read the wrong node (`RTA_AUDIT_RESOLUTION=1`)
+
+Every section above is about a wait that FAILED. This one is about the opposite, and it
+is the harder case: `getVal('#homeRows…')` is `scene.findNode("homeRows")`, a recursive
+search of the whole scene rather than of the screen the test is standing on. So a read
+can succeed against something other than what the call site names, and nothing in the
+result says so — the gate goes green, there is no retry, no dump, no line to notice.
+
+Two ways it happens, and they are different defects:
+
+- **DUPLICATE** — several nodes carry the id, so which one answers is a property of tree
+  order rather than of the test. Seven components declare a node with id `buttons`.
+- **NOT PRESENTED** — exactly one node carries it, and it sits in a view sgRouter has
+  parked off-screen. `suspendMode` defaults to `"hide"`, which keeps a COVERED view in
+  the tree, so the read resolves happily against a screen nobody is looking at.
+
+**The second is the one that has actually bitten, and counting ids does not find it.**
+`waitHome()` passed from a library grid because a scene-rooted `#homeRows` read found a
+SUSPENDED Home — there was only ever one `#homeRows` — and
+the same mechanism ran across 30 more sites that named Home's row list by id. Those are
+converted now ([`lib/home-list.js`](../../tests/rta/lib/home-list.js)), but the audit is what
+found which of them actually executed against a suspended Home.
+
+Set `RTA_AUDIT_RESOLUTION=1` and every scene-rooted read is checked against a census of
+the live scene ([`lib/resolution.js`](../../tests/rta/lib/resolution.js)). One
+`storeNodeReferences` call answers both questions — uniqueness by counting ids,
+whether it is presented by walking `parentRef` for a hidden ANCESTOR — so it costs one round trip,
+a median 30 ms on `.177`. Findings land in the run's `resolutions.jsonl` and fold onto the
+ledger line, and the run summary prints them **on a passing run**, which is the only time
+they can appear:
+
+```text
+[rta] 4 scene-rooted read(s) did not resolve to what the call site names, out of 538 audited.
+      The suite is green either way — that is the defect, not the reassurance.
+[rta]   OFF-SCREEN #homeRows.content.0.0.id (#homeRows) — hidden at #routerOutlet.#viewTarget.#d5e10d7e-…
+```
+
+Three things about it are deliberate and easy to get wrong on a second pass:
+
+- **It is REPORT-ONLY and throws nothing.** It runs inside the wait path of the only
+  per-PR feedback nav changes get, so it may not red a healthy suite until its
+  false-alarm rate is known — the same rule `probeFixture` was built under.
+- **The predicate is "presented", NOT "inside `activeRoutedView`".** `#jrDialog` — the
+  most-read id in the suite — is appended to the SCENE by `presentOverlayDialog`, and
+  `#imageFader` sits at scene level too. An active-view rule would false-fail both.
+- **A node hidden in its OWN right is not flagged, only one hidden by an ancestor.**
+  `waitFor('#osd.visible', v => v === false)` is a gate whose job is to wait until the
+  OSD is hidden; flagging it reports a node for the exact state the caller asserted. The
+  first audited suite produced 14 such false alarms out of 19 records.
+
+`waitFocusInside` is out of scope by construction: it tests the FOCUSED node's `keyPath`
+for a segment match, not a scene-rooted find, so it always names the real focus chain.
+
+### A failed read and an unchanged field are not the same timeout
+
+`getVal` / `getActiveVal` swallow a failed read to `undefined`. That is **correct for a
+poll** — the loop retries, and a persistent miss ends in the diagnosed timeout above — but
+on its own it makes two very different failures print identically as `last=undefined`:
+
+- the app never set the field (a real app or nav problem), and
+- **the device stopped answering** (an ODC timeout — the client's default is 10 s and
+  nothing here overrides it — or a transport error).
+
+So the waits now **count** reads that did not complete, exactly as they already count a
+throwing `action`, and name them:
+
+```text
+… (last=undefined) — 12 read(s) did not complete; the device may have stopped answering
+```
+
+`readErrors=<n>` also rides in the `observed` payload, so a flake baseline aggregates the
+same number a human reads. The distinction is real on the wire rather than guessed: ODC
+answers `found: false` for a `keyPath` it resolved and did not find, and only *rejects* when
+the request itself failed — so an ordinary "not there yet" timeout still reports
+`readErrors=0`.
+
+**Why it exists:** [#785](https://github.com/jellyrock/jellyrock/issues/785) recorded four
+back-to-back suites degrading into *"`last=undefined` ODC reads in different specs each
+run"* and could not attribute them — the harness had thrown the evidence away. This does
+not explain that episode, and is not claimed to; it makes the next one answerable.
+The per-tick swallow is unchanged, so nothing on the success path moves.
+
+### A screensaver looks exactly like a dead device
+
+Roku runs a screensaver in its **own BrightScript context**
+([Roku's screensaver guide](https://github.com/rokudev/dev-doc/blob/v2.0/docs/DEVELOPER/media-playback/screensavers.md)),
+and `roku-test-automation`'s README states that ODC communication is not possible while one
+is up. The app is still installed, still launched and still fine — but the ODC reads in the
+dump fail, so the record says `device did not answer ODC: …` and nothing in it separates
+that from a crashed app or a device off the network.
+
+So the capture also asks ECP what is actually in front:
+
+```text
+nav timed out waiting for home rows (last=undefined)
+        ↳ a SCREENSAVER is running ("Aquatic Life") — the app is not on screen, so treat every reading below as describing a backgrounded app
+        ↳ device did not answer ODC: timed out after 5000ms
+```
+
+It is read over **ECP, not ODC**, and that is the whole point: ECP answers from the OS
+rather than from inside the channel, so it keeps working exactly when ODC may not.
+Verified 2026-09-05 on `.178` — `query/active-app` named the running screensaver
+(`type="ssvr"`) while ODC requests to the same host were not completing. The line prints
+**only when one is actually up**, and prints **above** the ODC line, because it explains it.
+
+A screensaver only starts after the device's configured idle timeout — **10 minutes on both
+test devices** — which a healthy run never reaches, because the suite is sending key presses
+throughout. It becomes reachable when a run has *already* stalled (a hung ODC handshake, a
+long teardown), which is precisely when this dump is the only account of the failure anyone
+gets. The suite deliberately does **not** suppress the screensaver; that was weighed and
+declined — see [`decisions.md` → `rta-screensaver-detect-not-suppress`](../decisions.md).
 
 ### `loadState=—` on a detail screen is correct, not a broken capture
 
@@ -201,17 +326,22 @@ only be inferred. Both print **only when set**, so an ordinary failure stays as
 short as the samples above and the flag keeps its signal value.
 
 - **It costs nothing on the success path.** The capture runs *after* a poll loop
-  has given up, at the throw site, never inside a tick — deliberately, because
-  [#785](https://github.com/jellyrock/jellyrock/issues/785) may replace those loops
-  with `onFieldChangeOnce` and diagnostics must not entrench a shape it might
-  delete. At the boundary it is three round-trips issued in parallel
-  (`getFocusedNode` and `getMediaPlayer()` each have no batch form; everything else
-  rides one `getValues` of 11 key paths).
+  has given up, at the throw site, never inside a tick. That was originally hedged
+  against [#785](https://github.com/jellyrock/jellyrock/issues/785) replacing those
+  loops with `onFieldChangeOnce`; **that migration is not happening** — #785 is closed
+  and the observer was ruled out for the whole harness (see
+  [`tests/rta/CLAUDE.md` → Why every wait polls](../../tests/rta/CLAUDE.md#why-every-wait-polls)).
+  The placement is still right, now for its own reason rather than a hedge: keeping the
+  capture off the tick is what makes it free on the success path. At the boundary it is
+  four round-trips issued in parallel
+  (`getFocusedNode`, `getMediaPlayer()` and `getActiveApp()` each have no batch form;
+  everything else rides one `getValues` of 11 key paths).
   **Measured at TWO round-trips: median 21 ms, 18–30 ms typical** on `.177` (n=20 on
   `ItemDetails`), with occasional spikes to ~70 ms when the render thread is busy.
-  **That figure predates `getMediaPlayer()` and has not been re-taken** — the three
+  **That figure predates `getMediaPlayer()` and `getActiveApp()` and has not been
+  re-taken** — the three
   shell fields it does cover were genuinely free (they ride the existing `getValues`),
-  but the third round-trip is unmeasured. The calls go out in parallel, so the
+  but the third and fourth round-trips are unmeasured. The calls go out in parallel, so the
   expectation is that the slowest one still sets the floor; that is an expectation,
   not a reading. And it is the reading that matters here, because
   [the platform cost model](../architecture/async.md#crossing-the-thread-boundary-costs-a-rendezvous--budget-crossings-not-bytes)
@@ -239,11 +369,14 @@ short as the samples above and the flag keeps its signal value.
     should not have a hole in it. It is still only a **tripwire** — `const e = new
     Error(…); throw e` slips it — so a green `lint:js` means "nobody wrote the
     obvious shape", not "no unattributable timeout exists".
-  - The gate covers `lib/nav.js`, `lib/steps.js` and **all of `demos/`**. The other
-    lib modules throw fail-fasts that already name their cause (a snapshot from the
-    wrong device, a seed that did not take), so gating them would buy four disable
-    comments and no signal. **A new lib file that grows a wait belongs in that
-    glob** — adding it is one reviewable line.
+  - The gate covers `lib/nav.js`, `lib/steps.js`, `screens.js`, **all of `demos/`**
+    and `scripts/capture-screenshots.js`. The other lib modules throw fail-fasts that
+    already name their cause (a snapshot from the wrong device, a seed that did not
+    take), so gating them would buy four disable comments and no signal. **A new lib
+    file that grows a wait belongs in that glob** — adding it is one reviewable line.
+    `capture-screenshots.js` is in it because it imports the same `waitFor` and drives
+    the same device, so a wait that hangs there burns a device run identically; it
+    lives outside `tests/rta/` only because its output is the store image set.
   - `demos/` is in the glob on evidence, not symmetry: while it was outside, it
     accumulated two unconverted waits — the runner's own playback timeout and a
     take's 15 s dialog poll. It is also the directory that grows by adding
@@ -260,6 +393,18 @@ short as the samples above and the flag keeps its signal value.
     `waitMediaPlaying` lives in `lib/steps.js` and is shared by `deeplink.spec.js`
     and the demo runner, because "media player never started" cannot otherwise
     distinguish a stream that failed to open from a cast the app never routed.
+- **A new WAIT must land in a justified category**, and that is gated too. The harness
+  polls where `roku-test-automation` offers `onFieldChangeOnce`, so each wait says why
+  it deviates; `jellyrock-rta/wait-justified`
+  ([`scripts/lint/eslint-rules/rta-wait-justified.js`](../../scripts/lint/eslint-rules/rta-wait-justified.js))
+  fails `lint:js` on a `waitFor` that fits none of them. Three categories it proves from
+  the call's syntax (a function `keyPath`, a test for absence, an `action:` retry loop);
+  the fourth — a plain field settle — it cannot, because "this field is not a one-shot
+  pulse" is a fact about how the APP writes it. So it ratchets on the FIELD: a `keyPath` in
+  `VERIFIED_SETTLE_KEYPATHS` inherits its check, and one that is not there trips the gate
+  at exactly the moment the verification is owed. The categories and the argument behind
+  each are in
+  [`tests/rta/CLAUDE.md` → Why every wait polls](../../tests/rta/CLAUDE.md#why-every-wait-polls).
 - **Register the `kind` first.** It is the key a flake baseline aggregates by, so it
   comes from the frozen `FAILURE_KINDS` set in `diagnostics.js`, never an inline
   string. An unregistered slug is recorded as-is and called out in the run summary
@@ -346,17 +491,18 @@ It is **not** a second run ledger, and the two files are deliberately not joinab
 of `.device-runs/rta/runs.jsonl`, not "remember to copy a file aside after each
 run" — each line is a complete `summarizeRun` including that run's failure records.
 
-**Scope a baseline by FILTERING, not by deleting.** Every line carries four keys
-for exactly that, and all four are always present (`null` when unknown) so a
-filter can never silently drop a row:
+**Scope a baseline by FILTERING, not by deleting.** Every line carries six keys
+for exactly that, and all six are always present (`null` when unknown, `[]` for
+`runnerArgs`) so a filter can never silently drop a row:
 
 | Key | Is | Why a baseline needs it |
 |---|---|---|
 | `variant` | the npm script that ran (`test:rta`, `test:rta:fast`, `test:unit`, …) | run kinds are SHARED — `:fast` skips the deploy, `:capture` adds per-screen PNG work, and `test:unit`/`test:all` are different suites. Pooling their durations compares incomparable runs |
+| `runnerArgs` | what the run FORWARDED to its test runner, verbatim — `[]` for a full suite | `variant` names the npm script, not the scope. `rta-run.js` passes its own passthrough through to Vitest, so `test:rta:fast -- -t "moviesLibraryGenres"` runs ONE test and, without this, appended a line identical in every other key to a full suite. Hit live 2026-08-12: three targeted single-screen runs each wrote a line a baseline would have counted as clean, and only a moved `HEAD` excluded them — by accident, not by design |
 | `commit` | short SHA at the start of the run | "are these N runs even the same code?" |
 | `dirty` | working tree not clean at that SHA (untracked files included — they get compiled in) | during RTA work the tree is usually dirty, and a bare SHA would over-claim reproducibility |
 | `deviceKey` | **which Roku** — the lock's own `sha256(device-id)`, not an address | there are three on this LAN and they are not interchangeable. A baseline is specified on one device, so `variant` and `commit` are IDENTICAL across its runs and cannot separate a stray run on another one. `null` on the degraded lock path, which never resolves a device |
-| `outcome` | `passed` / `failed` / `interrupted` / `crashed` / `blocked` — what became of the run | the other four describe the INVOCATION; this is the only one about the run itself. See below — without it, a run that never executed a test is indistinguishable from a perfect one, and a run the fixture broke is indistinguishable from app flake |
+| `outcome` | `passed` / `failed` / `interrupted` / `crashed` / `blocked` — what became of the run | the other five describe the INVOCATION; this is the only one about the run itself. See below — without it, a run that never executed a test is indistinguishable from a perfect one, and a run the fixture broke is indistinguishable from app flake |
 
 Plus one field that is **provenance, not a filter key**:
 
@@ -378,11 +524,12 @@ $ npm run flake-baseline
   commit      27279e75 ×3   f45eebd7 ×2   ad1908cb ×2   …
   outcome     (unrecorded) ×6   crashed ×2   passed ×1   failed ×1
   tree        dirty ×9   clean ×1
+  scope       full suite ×9   -t moviesLibraryGenres ×1
   hour        inside one hour ×10
 
 $ npm run flake-baseline -- --commit HEAD --device ac4701ca4a5d8a0b
   samples     6   (6 passed, 0 failed)
-  excluded    4   2 dirty tree · 1 other device · 1 not a sample (1 crashed)
+  excluded    4   1 dirty tree · 1 other device · 1 scoped run (-t moviesLibraryGenres) · 1 not a sample (1 crashed)
 
   flake rate  0/6 = 0.0%   95% upper bound 39.3%
   ⚠ 4 of 6 samples crossed the top of the hour.
@@ -415,6 +562,35 @@ the bound without saying why. An **absent** flag is counted separately rather th
 as "did not cross": `summarizeRun` writes it on every close, so a missing one means a
 hand-edited or truncated line, and treating unknown as the good case is the move this
 whole field exists to prevent.
+
+**A scoped run is EXCLUDED, not warned — the opposite call from the hour row above,
+and for a reason that does not transfer.** An hour-crossing run *is* a sample of the
+whole suite, just a contaminated one, so how much it matters is a proportion only you
+can judge. A `-t` run is not a weak sample of the suite; it is a sample of something
+else. There is nothing to weigh.
+
+**It excludes on ANY forwarded argument, not on a list of the narrowing ones.** Vitest
+4.1.10 narrows scope eight ways — positional filters, `-t`, `--dir`, `--shard`,
+`--changed`, `--exclude`, `--project`, `--tagsFilter` — and that set MOVES between
+majors (`--tagsFilter` is new in v4; `--related` is gone). An allowlist in our code
+would be a list that silently stops matching, which is the exact failure `runnerArgs`
+exists to close. The conservative rule fails the other way instead: a purely
+non-narrowing flag (`--reporter=verbose`) costs you a sample **loudly**, with the args
+printed beside the count, and the fix is to re-take the run without it. Losing a
+visible sample beats counting an invisible one-test run as a clean suite. It also
+catches `--bail`, which truncates execution without narrowing intent — an allowlist
+would not have.
+
+**There is deliberately no `--include-scoped`.** The recovery for a lost sample is one
+re-run; the recovery for a wrong number nobody questioned is nothing. Everything above
+about why this is a command rather than a snippet applies to selection knobs too.
+
+**An absent `runnerArgs` counts as a full suite** — the opposite reading from an absent
+`outcome`, which is a non-sample. That is a checked backfill, not an assumption: every
+one of the 26 lines in the ledger on 2026-09-07 was a full suite, so nothing historical
+is being admitted that should not be, and treating them as unknown would instead
+invalidate every baseline taken to date. The `scope` row in describe mode shows them as
+`(unrecorded)` so the assumption stays visible rather than buried.
 
 **The rate reads `outcome`, never `failures.length`** — see the three-way conflation
 below.
@@ -828,6 +1004,47 @@ Two habits that came out of the same investigation:
   In a single afternoon the stick surfaced a rendering bug (#777), a render-thread cost
   regression, and this harness gap. A device with headroom hides all three.
 
+## "nothing is listening on <host>:9000" — the run refused to start
+
+Every RTA entry point now proves the on-device component is THERE before its first ODC
+call, and says so in those words when it is not. It is a precondition failure, not a
+timeout: the run stopped in about a second rather than doing anything to the device.
+
+Three things produce it, and the message lists all three because they are indistinguishable
+from the outside:
+
+- **The resident build has no ODC.** A Rooibos test build (`npm run test:unit`) and a
+  `build:prod` both leave a perfectly working channel on the device with no component
+  inside it. Redeploy the dev build — `npm run test:rta` does it for you unless you passed
+  `RTA_NO_DEPLOY=1`.
+- **The channel is closed.** The component lives INSIDE the app, so port 9000 goes quiet
+  the moment the app exits, even with the RTA build still sideloaded. This is also why
+  `npm run device:check` reporting "ODC not answering" is never on its own a reason to
+  redeploy.
+- **The device is asleep, off, or `ROKU_IP` names another host.** Run
+  `npm run device:check`.
+
+**Why it is a gate and not a longer timeout.** Making the call anyway does not fail
+cleanly: `roku-test-automation` rejects the connect and then orphans its own rejection
+through an unattached `.finally()`, and an unhandled rejection is a hard `exit 1` — so a
+run that caught the error correctly still died, at whatever unrelated point the connect
+gave up, losing its run record. That orphan cannot be reached from our code, so the call
+has to not be made. Full mechanism in
+[`scripts/lib/odc-probe.js`](../../scripts/lib/odc-probe.js); the reasoning and the
+alternatives that were ruled out are in [`decisions.md`](../decisions.md) →
+`rta-odc-gated-before-bounded`.
+
+**The gate is deliberately more patient than what it replaces** — it polls for 30 s where
+RTA's own connect retry gives up at 10 s — so a slow-but-working boot cannot fail here. If
+you see this on a device that is genuinely coming up, that is a bug in the gate, not a
+device you need to wait longer for.
+
+A companion bound covers the case this gate cannot see: a port that is open while the
+component never answers. That one surfaces as *"the ODC port is open but the component
+never answered ... within 60 s"* and names
+[`signals-backlog.md`](../signals-backlog.md) → `rta-odc-connect-hang`, an upstream defect
+whose recovery is a kill plus a re-deploy.
+
 ## Leaving the device as you found it
 
 Every RTA entry point drives a device someone actually uses, so the run owns the
@@ -866,6 +1083,17 @@ runs Vitest **as a child process**, and restores. `npm run test:rta` (and `:fast
   - `npm run rta:restore` reapplies it on demand.
   - The next run repairs the device automatically — it restores from the leftover file
     *before* taking its own snapshot, so a stranded run can't become the new baseline.
+  - **Unless the run that wrote it is still alive**, which is the one case where the
+    repair above would be the damage. The file records an `ownerPid`, and a snapshot is
+    present for the *whole* of a healthy run — so "a file exists" and "a run is in
+    progress" look identical on disk. `snapshotRegistry()` therefore refuses outright
+    when that process is still alive, rather than reverting the registry underneath the
+    running suite (and rather than capturing *its* seeded state as your session, which is
+    the same corruption from the other end). The device lock normally keeps two runs
+    apart, but it degrades to advisory on `RTA_SKIP_LOCK=1`, on a missing GitHub token
+    and on an unreachable GitHub, so this is an ordinary local condition. If the recorded
+    process is gone but its number has been reused, `npm run rta:restore -- --force`
+    repairs and clears the file.
   - **It is outside `out/` for the same reason the run ledger is**, and this one was a
     live bug rather than a precaution: while it lived in `out/rta/`, the sequence
     "abandon a run → re-run `npm run test:rta`" deleted the snapshot *before* the
@@ -904,6 +1132,17 @@ runs Vitest **as a child process**, and restores. `npm run test:rta` (and `:fast
     you are *not* currently pointed at (stranded by `npm run demo` on one Roku, then
     a run against another). Before this the file had no operator-facing surface at
     all, which is how one got destroyed by an `rm -rf` aimed at the ledger beside it.
+  - **A snapshot on disk does not mean the device was stranded** — the file is
+    written before any seeding and removed only by a verified restore, so it is
+    present for the *whole* of a healthy run. `status` used to report a live
+    `test:rta` as "left mid-restore" and hand you `rta:restore`, which would have
+    put the registry back underneath the run and relaunched the channel mid-suite:
+    the exact inverse of the right move. The snapshot now records the `pid` that
+    wrote it, so `status` reports a live run as `IN PROGRESS` and withholds the
+    recovery command, and `rta:restore` refuses outright (`-- --force` overrides).
+    The device lock is deliberately *not* the signal used for this: a degraded run
+    holds no lock while very much running, and a stale lease outlives a run that
+    finished cleanly.
     It reports accepted differences on the same terms, and that line matters more,
     not less: accepting is what *cleared* the snapshot, so it is the one dirty state
     no later run can rediscover on its own. Deleting `accepted-<host>.json` is how you
@@ -948,7 +1187,9 @@ The split of responsibility is the part worth knowing:
   concurrent run's `snapshotRegistry()` would adopt *our seed* as that user's state and
   then restore it faithfully forever. The restore afterwards deliberately does **not** take
   the lock: `rta:restore` is the documented repair for a device stranded by a dead run, and
-  a repair tool blocked by that run's leftover lock fails exactly when you need it.
+  a repair tool blocked by that run's leftover lock fails exactly when you need it. That is
+  why its one refusal keys on the snapshot's owning `pid` rather than on the lock — a dead
+  run's leftover lock must not block the repair, while a live run must.
 - **`hardRelaunch()` runs before the first registry read**, and that ordering is not
   stylistic: the on-device component lives INSIDE the app, so an ODC read against a device
   that is not running it HANGS rather than failing, and presents like a network problem.

@@ -23,7 +23,7 @@ import { authenticate, getLibraries, libraryIdFor, getJson, tokenHeader } from '
 import { seedHome, seedLibraryLanding, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch, ecp } from '../lib/driver.js';
 import { openLibraryByType } from '../lib/nav.js';
-import { getVal, getActiveVal, waitFor, press, sleep } from '../lib/steps.js';
+import { getVal, getActiveVal, waitFor, press, scrollFocus, sleep } from '../lib/steps.js';
 
 const LOCALE = RTA_CONFIG.languages[0];
 const HOLD_MS = 5000;
@@ -90,22 +90,37 @@ it('genre skeleton window: select is a no-op, scroll survives the fill, backdrop
   expect(await getActiveVal('currentView')).toBe('Genres');
   expect(await getActiveVal('loadState')).toBe('skeleton');
 
-  // (3) Scroll down while skeletons are up (bounded by the row count). The press
-  // loop can overshoot by a row (a press lands after the predicate read), so the
-  // contract asserted is "position immediately before the fill === position after",
-  // not "landed exactly on targetRow" — the overshoot is the test's, not the app's.
+  // (3) Scroll down while skeletons are up (bounded by the row count).
+  //
+  // `scrollFocus` rather than a press-per-tick loop, because the position recorded here
+  // has to be the SETTLED one — the assertion below compares it against the position
+  // after the fill, so a key still in flight when it is read fails a test the app passed.
+  // The old loop pressed once per poll without knowing how many presses were already in
+  // flight, so it could overshoot by a row, and it covered that with a fixed 600 ms dwell
+  // before reading. `scrollFocus` removes the cause instead of out-waiting it: it sends
+  // exactly the distance as one burst and only ever presses again for a key it can prove
+  // was DROPPED (the index observed unchanged across a tick), which is why its returned
+  // `to` is an index that has stopped moving rather than one sampled mid-flight.
+  //
+  // The budget is deliberately short. Everything here happens inside the 5 s
+  // `rtaSkeletonHoldMs` window, and a walk that outlives the hold would be read after the
+  // fill — failing later, on the position assertion, with nothing pointing at the walk.
+  // Timing out here instead names the step that actually ran long.
   const targetRow = Math.min(2, skeletonRows - 1);
-  await waitFor('#genreList.rowItemFocused', (v) => Array.isArray(v) && v[0] >= targetRow, {
-    interval: 300,
+  const walk = await scrollFocus({
+    keyPath: '#genreList.rowItemFocused',
+    target: targetRow,
+    forwardKey: ecp.Key.Down,
+    // Supplied for the corrective press only. The burst cannot overshoot (it sends the
+    // exact distance), but without a back key an overshoot would press `null`; a walk
+    // that can correct in both directions fails as a timeout rather than as a TypeError.
+    backKey: ecp.Key.Up,
+    select: (v) => (Array.isArray(v) ? v[0] : undefined),
     label: `skeleton scroll to row ${targetRow}`,
-    action: async () => {
-      const v = await getVal('#genreList.rowItemFocused');
-      if (Array.isArray(v) && v[0] < targetRow) await press(ecp.Key.Down);
-    },
+    timeout: 2500,
   });
-  await sleep(600); // let any in-flight keypress land before recording the position
-  const rowBeforeFill = (await getVal('#genreList.rowItemFocused'))?.[0];
-  expect(rowBeforeFill).toBeGreaterThanOrEqual(targetRow);
+  const rowBeforeFill = walk.to;
+  expect(rowBeforeFill).toBe(targetRow);
 
   // The fill: hold expires, samples land, revealGenreList swaps content.
   await waitFor('loadState', (v) => v === 'loaded', {

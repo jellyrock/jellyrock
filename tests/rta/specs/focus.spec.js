@@ -7,7 +7,7 @@
  * Home -> Library -> Detail and two Backs, focus must return to exactly where it
  * was at each level — the suspended library grid's tile, then Home's content.
  *
- * The waitFocused gates ARE the assertions (they throw on timeout). Run:
+ * The waitFocusInside gates ARE the assertions (they throw on timeout). Run:
  *   npx vitest run --config vitest.rta.config.js -t 'focus'
  */
 import { beforeAll, it, expect } from 'vitest';
@@ -16,7 +16,14 @@ import { authenticate, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch, ecp, odc } from '../lib/driver.js';
 import { navLibraryByType } from '../lib/nav.js';
-import { press, resendIfSwallowed, waitFor, waitFocused, waitHome } from '../lib/steps.js';
+import {
+  press,
+  resendIfSwallowed,
+  waitFor,
+  waitFocusInside,
+  waitFocusInHomeContent,
+  waitHome,
+} from '../lib/steps.js';
 
 const LOCALE = RTA_CONFIG.languages[0]; // en_US
 
@@ -47,9 +54,10 @@ it('focus restoration: Home -> Library -> Detail -> back -> back', async () => {
     label: 'detail title',
     timeout: 20000,
   });
-  await waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes('#buttons'), {
+  await waitFocusInside('#buttons', {
     label: 'detail buttons focused',
     timeout: 20000,
+    interval: 500,
   });
 
   // Back -> library grid resumes: focus must return INTO the grid, not be lost. (We assert
@@ -57,19 +65,21 @@ it('focus restoration: Home -> Library -> Detail -> back -> back', async () => {
   // view leaves the tree on suspend and is re-attached on resume, which shifts the absolute
   // keyPath even when the same tile is focused.)
   await press(ecp.Key.Back);
-  await waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes('#itemGrid'), {
+  await waitFocusInside('#itemGrid', {
     label: 'library grid focus restored',
     timeout: 15000,
+    interval: 500,
   });
 
-  // Back -> Home resumes: focus must land back in Home's content (#homeRows), not lost.
+  // Back -> Home resumes: focus must land back in Home's content, not lost. Asked by subtype
+  // rather than by id, because which list holds Home's content depends on the selected tab.
   //
   // The press is GUARDED rather than fired once: the gate above is a proxy for the state
   // this press needs, so the Back can arrive mid-navigation and be swallowed. Mechanism,
   // detection and the safety argument live with the helper in lib/steps.js.
   await press(ecp.Key.Back);
   await waitHome();
-  await waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes('#homeRows'), {
+  await waitFocusInHomeContent({
     label: 'home content focus restored',
     timeout: 15000,
     interval: 500,

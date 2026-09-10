@@ -9,16 +9,57 @@
  * Node lookups use RTA's `#id` keyPath (a recursive findNode from the scene root).
  */
 import { ecp, odc } from 'roku-test-automation';
+import { recordRecovery } from '../../../scripts/run-record.js';
 import { diagnosedError, FAILURE_KINDS } from './diagnostics.js';
+import { auditSceneResolution, auditSceneResolutions } from './resolution.js';
+import {
+  HOME_ROW_LIST_IDS,
+  HOME_ROW_LIST_SUBTYPES,
+  focusIsInHomeContent,
+  homeListKeyPaths,
+} from './home-list.js';
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export const press = (key) => ecp.sendKeypress(key);
 export const hasChildren = (n) => typeof n === 'number' && n > 0;
 
+/**
+ * One single read, reporting WHY there is no value: `{ value, failed }`.
+ *
+ * `failed` is true only when the request itself did not complete — a transport error, or
+ * an ODC timeout (the client's default is 10 s, and nothing here overrides it). A keyPath
+ * the device answered about and did not find comes back `{ value: undefined, failed:
+ * false }`, because `processGetValueRequest` returns `found: false` for an unresolved
+ * keyPath and only errors on an unresolvable `base`. Those two are genuinely different on
+ * the wire, which is what makes this distinction reportable rather than guessed.
+ *
+ * Internal on purpose: the public readers below keep swallowing to `undefined`, which is
+ * the right contract for a poll. What this exists for is ATTRIBUTION at the timeout —
+ * see `waitFor`.
+ */
+async function readOnce(request) {
+  try {
+    const res = await odc.getValue(request);
+    return { value: res.found ? res.value : undefined, failed: false };
+  } catch {
+    return { value: undefined, failed: true };
+  }
+}
+
+const readScene = (keyPath) => readOnce({ base: 'scene', keyPath });
+const readActive = (keyPath) =>
+  readOnce({ base: 'global', keyPath: `activeRoutedView.${keyPath}` });
+
 /** Read a scene-rooted keyPath; returns the value or undefined if not present. */
 export async function getVal(keyPath) {
-  const res = await odc.getValue({ base: 'scene', keyPath }).catch(() => ({ found: false }));
-  return res.found ? res.value : undefined;
+  const { value } = await readScene(keyPath);
+  // A one-shot read is audited too, not just a wait's resolution: half the scene-rooted
+  // sites in the suite are `expect(await getVal(...))`, and an assertion reading the
+  // wrong node is the same defect as a gate doing it. Note `waitFor` does NOT come
+  // through here on its ticks — it holds `readScene` directly — so this cannot make a
+  // poll census once per tick.
+  await auditSceneResolution(keyPath);
+  return value;
 }
 
 /**
@@ -32,11 +73,83 @@ export async function getVal(keyPath) {
  * reads of ids that recur across views — it holds whichever suspendMode a route carries.
  */
 export async function getActiveVal(keyPath) {
-  const res = await odc
-    .getValue({ base: 'global', keyPath: `activeRoutedView.${keyPath}` })
-    .catch(() => ({ found: false }));
-  return res.found ? res.value : undefined;
+  return (await readActive(keyPath)).value;
 }
+
+/**
+ * `readOnce`'s twin for Home's active row list: batch-read `suffix` off BOTH candidate ids
+ * and answer with whichever list is actually in the scene.
+ *
+ * Private, and non-auditing, for exactly the reason `readScene` is: `waitFor` holds this
+ * directly on every tick, and running a `storeNodeReferences` census per tick would turn a
+ * poll into a whole-tree walk. The public `readHomeList` below audits, like `getVal` does.
+ *
+ * `find` rather than an index because absence is the normal answer for one of the two: under
+ * the Home tab `#favoritesRows` resolves to nothing at all, and vice versa. If both ever
+ * answered, the first wins — but they cannot, because `onTabChanged` removes the outgoing
+ * list before building the incoming one.
+ */
+async function readHomeListOnce(suffix) {
+  try {
+    const values = await batchRead(homeListKeyPaths(suffix), (keyPath) => ({
+      base: 'scene',
+      keyPath,
+    }));
+    return { value: values.find((v) => v !== undefined), failed: false };
+  } catch {
+    return { value: undefined, failed: true };
+  }
+}
+
+/**
+ * Read `suffix` off Home's ACTIVE row list, whichever tab is selected — the reader to pass
+ * as `waitFor`'s `read` for anything below Home's rows.
+ *
+ * One device round trip, not two: both candidate keyPaths go in a single `getValues`, so this
+ * costs the same as the hardcoded single read it replaces (~5.4 ms on `.177`) and cannot be
+ * wrong about which list is live.
+ *
+ * Returns `undefined` while NEITHER list is in the tree — the window `waitHome`'s own docblock
+ * describes between launch and Home — which is the right answer for a poll: keep waiting. A
+ * caller that needs absence to be an ERROR should use `homeListId`, which names it.
+ */
+async function readHomeList(suffix) {
+  const { value } = await readHomeListOnce(suffix);
+  await auditSceneResolutions(homeListKeyPaths(suffix));
+  return value;
+}
+
+/**
+ * The readers a SCENE census actually describes.
+ *
+ * `waitFor` audits the keyPath it settled on, but that census walks from the scene ROOT —
+ * so it describes what the wait read only if the read was scene-rooted too. `getActiveVal`
+ * resolves under `m.global.activeRoutedView` SPECIFICALLY to dodge the cross-view id
+ * collisions this audit hunts for: every ItemDetails declares `#extrasGrid`, and sgRouter's
+ * default `suspendMode: "hide"` keeps prior views in the tree during a drill-down. Censusing
+ * its keyPath would report an ambiguity that read was never exposed to.
+ *
+ * That is not cosmetic noise. A false AMBIGUOUS lands in the very false-alarm count
+ * `resolution.js` names as the bar for promoting this audit from report-only to a throw — so
+ * an audit that cries wolf about scoped reads would be measured as signal at exactly the
+ * moment that call is made.
+ *
+ * A reader not in this set simply gets no audit, which is the safe default: a census cannot
+ * be trusted to describe a read whose base it does not know. `readHomeList` is deliberately
+ * absent — it audits its OWN scene-rooted keyPaths (it is handed a suffix, not a keyPath).
+ */
+const SCENE_ROOTED_READS = new Set([getVal]);
+
+/**
+ * The attributing twin of each public reader, keyed BY the reader a caller passes as
+ * `read`. A custom reader is not in the map and simply gets no attribution — the wait
+ * behaves exactly as it did before.
+ */
+const ATTRIBUTING_READS = new Map([
+  [getVal, readScene],
+  [getActiveVal, readActive],
+  [readHomeList, readHomeListOnce],
+]);
 
 /**
  * `getActiveVal` for MANY keyPaths in one device round trip. Returns an array
@@ -103,7 +216,9 @@ export async function getActiveVals(keyPaths) {
  * different frames, which is the failure the reader would be trying to diagnose.
  */
 export async function getVals(keyPaths) {
-  return batchRead(keyPaths, (keyPath) => ({ base: 'scene', keyPath }));
+  const values = await batchRead(keyPaths, (keyPath) => ({ base: 'scene', keyPath }));
+  await auditSceneResolutions(keyPaths);
+  return values;
 }
 
 async function batchRead(keyPaths, toRequest) {
@@ -134,29 +249,85 @@ async function batchRead(keyPaths, toRequest) {
  * produce the same "timed out waiting for X" otherwise, and telling those apart
  * after the fact costs hours.
  *
+ * **A failing READ is counted the same way, and for the same reason.** `getVal` /
+ * `getActiveVal` swallow a transport failure to `undefined` — correct for a poll, since
+ * the loop retries — but it leaves a device that stopped answering indistinguishable
+ * from a field the app never set: both report `last=undefined`. That ambiguity is not
+ * hypothetical; it is what
+ * [#785](https://github.com/jellyrock/jellyrock/issues/785) recorded as
+ * *"`last=undefined` ODC reads in different specs each run"* and could not attribute.
+ * The per-tick swallow is unchanged, so nothing about the success path moves.
+ *
  * On timeout the throw carries a dump of what the device actually looked like
  * (see [`diagnostics.js`](diagnostics.js)) — the poll loop itself is untouched,
  * so this costs nothing on the success path.
+ *
+ * **`kind` names the flake-baseline bucket the timeout aggregates under**, and defaults
+ * to `WAIT_FOR_TIMEOUT`. It exists so a wait that already HAS its own failure class can
+ * route through this loop without dissolving into that default. `FAILURE_KINDS`' own
+ * docblock names the hazard: one name for two classes MERGES the count, and it reads a
+ * copy-pasted entry as the way that happens — but converting a hand-rolled poll loop to
+ * `waitFor` does it just as effectively, and with nothing in the diff to show for it.
+ * `waitGridLoaded` ([`nav.js`](nav.js)) is the case this was added for: a grid that never
+ * finishes loading and a wait that timed out on any other field are different failures
+ * with different fixes, and the baseline can only tell them apart if the slug survives
+ * the conversion.
+ *
+ * Pass a `FAILURE_KINDS` member, never a literal. An unregistered slug is not corrected
+ * here — `diagnosedError` records it as `kindUnknown` and the run summary reports it,
+ * which is the guard against the opposite error (two names for one class, SPLITTING the
+ * count).
  */
 export async function waitFor(
   keyPath,
   predicate,
-  { timeout = 30000, interval = 500, action, label, read = getVal, observed } = {},
+  {
+    timeout = 30000,
+    interval = 500,
+    action,
+    label,
+    read = getVal,
+    observed,
+    kind = FAILURE_KINDS.WAIT_FOR_TIMEOUT,
+  } = {},
 ) {
   const start = Date.now();
   let last;
   let actionErrors = 0;
+  let readErrors = 0;
+  const attributingRead = ATTRIBUTING_READS.get(read);
   while (Date.now() - start < timeout) {
     if (action) await action().catch(() => actionErrors++);
-    last = await read(keyPath);
-    if (predicate(last)) return last;
+    if (attributingRead) {
+      const r = await attributingRead(keyPath);
+      if (r.failed) readErrors++;
+      last = r.value;
+    } else {
+      last = await read(keyPath);
+    }
+    if (predicate(last)) {
+      // The wait PASSED — which is the only moment a vacuous pass can be caught, and the
+      // reason this is here rather than beside the throw below. Report-only and awaited:
+      // it cannot fail the wait (see `resolution.js`), and letting it run after the
+      // return would race the next step's presses against the census it is reading.
+      //
+      // Gated on the READER, because a scene census only describes a scene-rooted read —
+      // see `SCENE_ROOTED_READS`.
+      if (SCENE_ROOTED_READS.has(read)) await auditSceneResolution(keyPath, { label });
+      return last;
+    }
     await sleep(interval);
   }
   throw await diagnosedError(
     `nav timed out waiting for ${label || keyPath} (last=${JSON.stringify(last)})` +
-      (actionErrors ? ` — ${actionErrors} action(s) threw; input may not have been delivered` : ''),
+      (actionErrors
+        ? ` — ${actionErrors} action(s) threw; input may not have been delivered`
+        : '') +
+      (readErrors
+        ? ` — ${readErrors} read(s) did not complete; the device may have stopped answering`
+        : ''),
     {
-      kind: FAILURE_KINDS.WAIT_FOR_TIMEOUT,
+      kind,
       label: label || keyPath,
       waitedMs: Date.now() - start,
       // The caller's own context, merged over the loop's. `tests/rta/CLAUDE.md` already
@@ -169,7 +340,7 @@ export async function waitFor(
       // `diagnosedError` follows for its own dump. It must not be able to replace the
       // failure with its own: a throwing or slow reader loses its contribution and the
       // timeout still reports.
-      observed: { keyPath, last, actionErrors, ...(await resolveObserved(observed)) },
+      observed: { keyPath, last, actionErrors, readErrors, ...(await resolveObserved(observed)) },
     },
   );
 }
@@ -198,23 +369,71 @@ export async function waitFocused(
   const start = Date.now();
   let last;
   let actionErrors = 0;
+  let readErrors = 0;
   while (Date.now() - start < timeout) {
     if (action) await action().catch(() => actionErrors++);
-    const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+    // Counted for the same reason `waitFor` counts its reads: a device that stopped
+    // answering and a focus that never arrived both leave `last=undefined@undefined`.
+    let f = null;
+    try {
+      f = await odc.getFocusedNode({ includeNode: true });
+    } catch {
+      readErrors++;
+    }
     last = `${f?.node?.subtype}@${f?.keyPath}`;
     if (f && predicate(f)) return f;
     await sleep(interval);
   }
   throw await diagnosedError(
     `nav timed out waiting for focus (${label || 'predicate'}); last=${last}` +
-      (actionErrors ? ` — ${actionErrors} action(s) threw; input may not have been delivered` : ''),
+      (actionErrors
+        ? ` — ${actionErrors} action(s) threw; input may not have been delivered`
+        : '') +
+      (readErrors
+        ? ` — ${readErrors} read(s) did not complete; the device may have stopped answering`
+        : ''),
     {
       kind: FAILURE_KINDS.WAIT_FOCUSED_TIMEOUT,
       label: label || 'predicate',
       waitedMs: Date.now() - start,
-      observed: { last, actionErrors },
+      observed: { last, actionErrors, readErrors },
     },
   );
+}
+
+/**
+ * Is the node with id `containerId` in the focused node's ancestry (or the focused node
+ * itself)? The ONE place that answers "is focus inside X", so every gate agrees.
+ *
+ * ## Why a whole SEGMENT and not a substring
+ *
+ * RTA builds the keyPath one segment per ancestor — `"#" + node.id` while the id is
+ * non-empty, the child INDEX otherwise — and joins them with `.`
+ * (`processGetFocusedNodeRequest` in `RTA_OnDeviceComponent.brs`). So an id always
+ * occupies a whole segment, which makes a segment test EXACTLY "this node is in the
+ * focus chain" and a substring test strictly weaker: `#options` is a substring of
+ * `#optionsPanelOverlay` (the reparenting host in `components/JRScene.xml`), so the
+ * grid-options gate could report the dialog focused for focus anywhere in that overlay.
+ *
+ * That is the north-star failure mode — succeeding EARLY — and it has no failure of its
+ * own to notice: the gate passes, the next step acts against a screen that is not there
+ * yet, and whatever times out afterwards gets the blame. A prefix collision is also
+ * invisible to review, because it is introduced by NAMING a node, not by touching a test.
+ *
+ * ## The `#` is normalised, not required
+ *
+ * `dialogs.spec.js` asks for `jrDialog` without one. Rejecting that would trade a silent
+ * over-match for a silent under-match — the same class of bug, failing the other way.
+ *
+ * Ids containing a `.` would break the split; the app has none, and one would break RTA's
+ * own keyPath addressing long before it reached here.
+ *
+ * @param {unknown} keyPath the focused node's `keyPath`, however it was read
+ * @param {string} containerId the container's id, with or without a leading `#`
+ */
+export function focusIsInside(keyPath, containerId) {
+  const want = containerId.startsWith('#') ? containerId : `#${containerId}`;
+  return typeof keyPath === 'string' && keyPath.split('.').includes(want);
 }
 
 /**
@@ -226,14 +445,29 @@ export async function waitFocused(
  * then times out blaming the list. "Loaded" is not "focused". Named rather than
  * hand-rolled at each call site so its ABSENCE is visible in review.
  *
- * No key presses on purpose: focus arrives on its own once the view settles, and
- * pressing at a component we have not located yet is the mistake this guards against.
+ * No key presses of its OWN on purpose: focus arrives once the view settles, and pressing
+ * at a component we have not located yet is the mistake this guards against. `action` is
+ * for the separate case where a press already sent may have been SWALLOWED — pass
+ * `resendIfSwallowed` / `resendUntilFocusInside`, which sit out the first tick and stop
+ * once focus lands.
+ *
+ * `label` overrides the default so a call site can name the thing it is waiting for
+ * ("grid options dialog") rather than the container it happens to live in; the timeout
+ * message is the first thing read when this fails.
+ *
+ * ⚠️ **The defaults here are NOT `waitFocused`'s** (15000/500) — they are deliberately
+ * tighter. A site moved over from a bare `waitFocused` must therefore state the cadence it
+ * already had, or it silently starts polling the device more often than anyone chose.
  */
-export async function waitFocusInside(containerId, { timeout = 12000, interval = 300 } = {}) {
-  return waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes(containerId), {
+export async function waitFocusInside(
+  containerId,
+  { timeout = 12000, interval = 300, label, action } = {},
+) {
+  return waitFocused((f) => focusIsInside(f.keyPath, containerId), {
     timeout,
     interval,
-    label: `focus inside ${containerId}`,
+    action,
+    label: label || `focus inside ${containerId}`,
   });
 }
 
@@ -276,13 +510,29 @@ export async function waitFocusInside(containerId, { timeout = 12000, interval =
  */
 export function resendIfSwallowed(key, containerId) {
   let ticked = false;
+  let resends = 0;
   return async () => {
     if (!ticked) {
       ticked = true;
       return;
     }
     const focused = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
-    if (typeof focused?.keyPath === 'string' && focused.keyPath.includes(containerId)) {
+    if (focusIsInside(focused?.keyPath, containerId)) {
+      resends += 1;
+      // RECORDED, not merely re-sent — the argument `navLibraryByType` already makes where
+      // it calls `recordRecovery`, applied to the guard that recovers most often. A harness
+      // that quietly recovers masks the regression a run exists to catch, and a silent
+      // success is indistinguishable in the record from the event never happening. Until
+      // this was recorded, nothing could answer the two questions this guard raises: how
+      // often is a press actually swallowed, and does re-sending it help?
+      recordRecovery({
+        at: new Date().toISOString(),
+        what: `swallowed ${key} at ${containerId}`,
+        detail:
+          `focus was still inside ${containerId} a full tick after ${key} was sent, so the ` +
+          `press was swallowed and has been re-sent (resend ${resends} within this wait).`,
+        observed: { key, containerId, resends, keyPath: focused?.keyPath ?? null },
+      });
       await press(key);
     }
   };
@@ -308,6 +558,23 @@ export function resendIfSwallowed(key, containerId) {
  * @returns {() => Promise<void>} a fresh, single-use action (it carries per-wait state)
  */
 export function resendUntilFocusInside(key, containerId) {
+  return resendUntilFocused(key, (f) => focusIsInside(f.keyPath, containerId));
+}
+
+/**
+ * `resendUntilFocusInside` with the destination given as a PREDICATE rather than an id.
+ *
+ * Exists because not every destination is nameable by id: Home's content is whichever of
+ * `HomeRows` / `FavoritesRows` the selected tab put in the scene, so the arrival test is
+ * `focusIsInHomeContent`, not a container id. Everything else is unchanged and shared rather
+ * than copied — the first-tick skip, and the rule that an unreadable focus sends NOTHING
+ * rather than guessing, which is what keeps an over-press off Home's exit-confirm dialog.
+ *
+ * @param {string} key - an `ecp.Key` value to re-send
+ * @param {(focused: object) => boolean} arrived - true once focus is where it belongs
+ * @returns {() => Promise<void>} a fresh, single-use action (it carries per-wait state)
+ */
+export function resendUntilFocused(key, arrived) {
   let ticked = false;
   return async () => {
     if (!ticked) {
@@ -316,8 +583,241 @@ export function resendUntilFocusInside(key, containerId) {
     }
     const focused = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
     if (typeof focused?.keyPath !== 'string') return;
-    if (!focused.keyPath.includes(containerId)) await press(key);
+    if (!arrived(focused)) await press(key);
   };
+}
+
+/**
+ * An `action` for `waitFocused` / `waitFocusInside` that WALKS focus to `containerId`
+ * by pressing `key` until it arrives — the app's own navigation, rather than
+ * `odc.focusNode`.
+ *
+ * ## Why this exists instead of a teleport
+ *
+ * `focusNode` sets focus directly on the device, which skips the key handler that would
+ * have moved it — so a spec can arrange a state the remote cannot actually reach and
+ * still pass. Walking presses the same keys a viewer does, which means the ladder itself
+ * is covered rather than bypassed. See `tests/rta/CLAUDE.md` → *Focus is walked, never
+ * teleported*; `jellyrock-rta`'s `no-restricted-syntax` ban is what keeps it that way.
+ *
+ * ## Eager, unlike the two `resend*` actions beside it
+ *
+ * Those sit out the first tick because their caller has ALREADY pressed and needs a
+ * window to see whether it landed. This one has pressed nothing, so waiting a tick
+ * would only add an interval of latency to every walk. Same distinction
+ * `resendIfSwallowed` documents for `focusGridTile` / `focusOverhangIcon`.
+ *
+ * ## The guard is the overshoot protection
+ *
+ * It presses only while focus is NOT yet inside, so arriving stops the walk and it
+ * cannot press on into whatever the target opens. An unreadable keyPath sends nothing
+ * rather than guessing — the rule `walkHomeToFirstRow` and `resendUntilFocusInside`
+ * already follow, for the same reason.
+ *
+ * The containment test goes through `focusIsInside` rather than a hand-rolled
+ * `keyPath.includes(...)`, which is the whole point of having one predicate: substring
+ * matching reports `#options` as inside `#optionsPanelOverlay`, and consolidating those
+ * sites was its own phase of work. A third copy here would walk it straight back.
+ *
+ * **Presses cost real time.** A walk needs one tick per rung of the ladder, so a call
+ * site converted from a teleport must budget for the presses rather than inherit the
+ * timeout an instant `focusNode` was happy with.
+ *
+ * @param {string} key - an `ecp.Key` value to press until focus arrives
+ * @param {string} containerId - `#id` of the container focus should end up INSIDE
+ * @returns {() => Promise<void>} an action for the wait's `action` option
+ */
+export function walkFocusInto(key, containerId) {
+  return walkFocusUntil(key, (f) => focusIsInside(f.keyPath, containerId));
+}
+
+/**
+ * `walkFocusInto` with the destination as a PREDICATE, and — the part that matters — with
+ * an ORIGIN gate: it presses only while focus is still inside the view the router says is
+ * active.
+ *
+ * ## Why the destination test alone is not enough
+ *
+ * A walk written as *"press until focus is X"* presses wherever focus actually is. That is
+ * fine while focus is on the screen the walk belongs to, and it is a bug the moment focus
+ * is anywhere else: the walk cannot reach X by pressing at a different screen, so it spends
+ * its whole budget driving a screen nobody asked it to touch, and then blames X.
+ *
+ * **Measured, not reasoned.** `.177`, 2026-09-09 13:15 UTC: `navSearch`'s off-keyboard walk
+ * timed out after 12.4 s with `view=SearchResults` (`#269f4e88…`) but focus on **Home's**
+ * row list, inside the suspended Home (`#routerOutlet.#viewTarget.#c0d84208….#homeRows`).
+ * `actionErrors: 0`, `readErrors: 0` — so ~34 Right presses were DELIVERED, every one of
+ * them to whatever held focus on a screen the walk was not on.
+ *
+ * ## The gate is the ACTIVE ROUTED VIEW, not a container id
+ *
+ * `m.global.activeRoutedView` is the app's own statement of which screen the user is on,
+ * and comparing focus against its `id` is what separates the two cases: focus at
+ * `#c0d84208…` while the active view is `#269f4e88…` is not "focus has not arrived yet",
+ * it is "focus is on another screen". A container id cannot express that — `#searchSelect`
+ * is equally absent from Home whether the walk is one press away or on the wrong screen
+ * entirely.
+ *
+ * An UNREADABLE view id sends nothing, the same rule `walkHomeToFirstRow` and
+ * `resendUntilFocused` follow for an unreadable focus: a walk that cannot establish where
+ * it is must not press. The cost of that is one extra ODC read per tick (~5 ms against a
+ * 350 ms interval); the cost of not doing it is measured above.
+ *
+ * ## ⚠️ What this is NOT
+ *
+ * **It does not explain why focus left the search view, and it is not known to fix that
+ * run.** Two mechanisms were proposed for the 2026-09-09 failure and BOTH were disproved
+ * rather than left hanging: a stale suspended `SearchResults` satisfying the results gate
+ * is impossible, because `/search` is routed `suspendMode: "detach"`
+ * (`components/JRScene.bs`) so a covered SearchResults leaves the tree entirely; and the
+ * dump's `rowItemFocused: [0,1]` is NOT evidence the walk moved Home's index, because
+ * `rowItemFocused` retains its last value while a list is unfocused — the very property
+ * `scrollFocus` is written around.
+ *
+ * What is left is narrow and solid: presses were delivered to a screen the walk was not on.
+ * This stops that, and `recordRecovery` below is what turns the NEXT occurrence into an
+ * answer — the record names the active view, where focus actually was, and when it left,
+ * which is the evidence this failure did not leave behind. Same argument
+ * `resendIfSwallowed` makes for recording rather than silently recovering.
+ *
+ * @param {string} key - an `ecp.Key` value to press until focus arrives
+ * @param {(focused: object) => boolean} arrived - true once focus is where it belongs
+ * @returns {() => Promise<void>} an action for the wait's `action` option
+ */
+export function walkFocusUntil(key, arrived) {
+  let reported = false;
+  return async () => {
+    const focused = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+    // Unreadable focus sends nothing rather than guessing.
+    if (typeof focused?.keyPath !== 'string') return;
+    // Already there — never press on into whatever the destination opens.
+    if (arrived(focused)) return;
+    // ORIGIN gate. Read after the arrival test so an arrived walk pays nothing for it.
+    const viewId = await getActiveVal('id');
+    if (typeof viewId !== 'string' || !viewId) return;
+    if (!focusIsInside(focused.keyPath, viewId)) {
+      // ONCE per wait, not per tick: the departure is one event, and a record per tick
+      // would bury it under 30-odd copies of itself. Recorded rather than merely declined
+      // because a harness that quietly does nothing is indistinguishable in the ledger
+      // from one that had nothing to do — and the open question here is exactly WHEN and
+      // WHERE focus left, which the 2026-09-09 dump could not say.
+      if (!reported) {
+        reported = true;
+        recordRecovery({
+          at: new Date().toISOString(),
+          what: `focus left the active view during a ${key} walk`,
+          detail:
+            `the walk declined to press ${key}: focus is at ${focused.keyPath}, which is ` +
+            `outside the active routed view #${viewId}. Pressing here would drive a screen ` +
+            'the walk is not on. See `walkFocusUntil`.',
+          observed: { key, activeViewId: viewId, focusKeyPath: focused.keyPath },
+        });
+      }
+      return;
+    }
+    await press(key);
+  };
+}
+
+/**
+ * Wait until the shared dialog overlay has left the scene.
+ *
+ * Shared rather than copied per caller, the same reason `waitMediaPlaying` is: ten call
+ * sites across `dialogs.spec.js`, `quick-connect.spec.js` and a demo take carried a
+ * byte-identical `waitFor('#jrDialog.id', (v) => v === undefined, …)`, differing only in
+ * what they called it. Every dialog in the app closes by REMOVING itself from the scene,
+ * so "the overlay's id no longer resolves" is the one honest signal that a dismiss
+ * landed — and spelling that out per site invited each one to drift.
+ *
+ * **Why this polls rather than observing the field.** This is the "waits for absence"
+ * category (`tests/rta/CLAUDE.md` → *Why every wait polls*, and
+ * `rta-waits-poll-not-observe` in `docs/decisions.md`): `roku-test-automation`'s
+ * `onFieldChangeOnce` observes a field ON A NODE, and the whole point of this wait is
+ * that the node is gone. There is nothing left to attach an observer to, so the library's
+ * primitive cannot express it at all. That argument lives here, at the helper the ten
+ * sites now route through, because folding them in took their `waitFor` calls — and with
+ * them their individually-provable absence check — out of `jellyrock-rta/wait-justified`'s
+ * view. The gate still classifies the single `waitFor` below as ABS from its own syntax.
+ *
+ * `label` names the dismiss being verified ('confirm dialog dismissed'), not the node —
+ * it is the first thing read when this times out, and `#jrDialog` alone says nothing
+ * about which of the eleven dialogs failed to close.
+ *
+ * The default matches the cadence every existing spec site already used. Pass `timeout`
+ * explicitly anyway: a helper's default is not the default a converted call site had, and
+ * adopting one silently is exactly what cost `waitFocusInside` a site's 3 s of budget.
+ *
+ * @param {string} label what to call this dismiss in the timeout message and the record
+ * @param {object} [opts]
+ * @param {number} [opts.timeout] budget for the overlay to leave the scene
+ */
+export async function waitDialogClosed(label, { timeout = 10000 } = {}) {
+  return waitFor('#jrDialog.id', (v) => v === undefined, { label, timeout });
+}
+
+/**
+ * Which of Home's two row lists is in the scene right now — `#homeRows` or `#favoritesRows`.
+ *
+ * The answer to *"where do I read Home's content?"*, asked instead of assumed. Home's active
+ * list is `m.activeContent`, and `onTabChanged` `removeChild`s the outgoing list before
+ * building the incoming one, so exactly one of the two ids resolves at any moment and which
+ * one is a property of the SELECTED TAB rather than of Home.
+ *
+ * ## Why it waits rather than reading once
+ *
+ * `steps.js` documents a window between launch and Home where NEITHER list is in the tree.
+ * A single read taken inside it answers "neither", which is true and useless. A bounded wait
+ * spends the same one round trip in the overwhelmingly common case — the list is already
+ * there, so the first tick returns — and turns the rare case into a wait instead of a throw.
+ *
+ * ## Why absence is an ERROR here and `undefined` elsewhere
+ *
+ * Every caller runs after `waitHome()` has proved Home is the active routed view, so "Home is
+ * up and neither of its row lists exists" is a genuine failure with no recovery. Reporting it
+ * under its own `HOME_LIST_ABSENT` kind is the whole point of the conversion: the shape this
+ * replaces did not fail at all — a hardcoded `#homeRows.content.getChildCount()` resolved to
+ * `undefined` in 8 ms, callers turned that into `|| 0` rows, and the run blamed a tile.
+ *
+ * Reads `subtype()` rather than `id` as the presence probe deliberately. It costs the same
+ * round trip and proves more: that the node found by that id really IS a row list, not some
+ * other node carrying the id — the "right id, wrong node" class Phase 9a's audit was built
+ * for. The returned id comes from `HOME_ROW_LIST_SUBTYPES`' positional alignment with
+ * `HOME_ROW_LIST_IDS`, which `home-list.js` states and its unit tests pin.
+ *
+ * @returns {Promise<string>} the `#id` of the list that is in the scene
+ */
+export async function homeListId({ timeout = 5000, interval = 300 } = {}) {
+  const subtype = await waitFor('subtype()', (v) => HOME_ROW_LIST_SUBTYPES.includes(v), {
+    read: readHomeList,
+    timeout,
+    interval,
+    kind: FAILURE_KINDS.HOME_LIST_ABSENT,
+    label: "Home's active row list to be in the scene (neither #id resolved)",
+  });
+  return HOME_ROW_LIST_IDS[HOME_ROW_LIST_SUBTYPES.indexOf(subtype)];
+}
+
+/**
+ * Wait until focus is inside Home's content, whichever tab is selected.
+ *
+ * The `waitFocusInside` of Home's rows, with the id question removed: it asks the focused
+ * node its `subtype` (see `focusIsInHomeContent`) rather than testing a keyPath for an id
+ * that is absent under the other tab. Defaults match `waitFocusInside`'s deliberately tighter
+ * 12000/300 rather than `waitFocused`'s, so a site moved across does not silently change how
+ * often it polls the device.
+ */
+export async function waitFocusInHomeContent({
+  timeout = 12000,
+  interval = 300,
+  label,
+  action,
+} = {}) {
+  return waitFocused(focusIsInHomeContent, {
+    timeout,
+    interval,
+    action,
+    label: label || "focus inside Home's content",
+  });
 }
 
 /**
@@ -342,17 +842,66 @@ export function resendUntilFocusInside(key, containerId) {
  * Gating on a view existing first means a slow login is WAITED for and, if it never
  * arrives, is reported as itself instead of as a missing Home. The login phase carries the
  * larger budget because it is the one bound by a remote server rather than by rendering.
+ *
+ * ## Why the first gate asks for Home BY NAME, and not merely for a mounted view
+ *
+ * It used to ask only that `activeRoutedView.subtype()` be non-EMPTY, and that made this a
+ * FALSE GATE: a library grid answers `BaseGridView`, which is non-empty, and the second
+ * gate is scene-rooted, so it finds Home's rows sitting suspended in the tree under
+ * sgRouter's default `suspendMode: "hide"`. Both gates therefore passed from a grid, and
+ * this reported "we are on Home" for an app that was not.
+ *
+ * That bit: a Back swallowed by the router (`sgrouter_showView`'s `finally` restores focus
+ * BEFORE dispatching `NavigationEnd`, so a key sent in that window is rejected by
+ * `_goBack` — see `resendIfSwallowed`) leaves the app on the grid, sailed through both
+ * gates, and the caller's NEXT step timed out blaming focus one nav later. Observed on
+ * `.178` 2026-09-06: `navCellSweepExtras` reported `focus inside #homeRows` timing out
+ * while the failure dump showed the active view was still a `BaseGridView`.
+ *
+ * Naming Home closes it — and `subtype()` is the read that can, because `JRScreen`
+ * publishes `m.global.activeRoutedView = m.top` in both `onViewOpen` and `onViewResume`,
+ * so a resumed Home re-announces itself. Dialogs do NOT disturb it (`JRDialog` extends
+ * `JRGroup`, not `JRScreen`), so a gate placed after dismissing one still reads Home.
+ *
+ * ## ⚠️ It DETECTS a lost Back; it does not RECOVER from one — and that is deliberate
+ *
+ * This helper sends no keys. Detection is all 30-odd call sites can safely share, because
+ * the recovery — re-pressing the owed Back — is destructive off the path to Home:
+ * `UserSelect.onKeyEvent` treats Back as *change server* and the coordinator DELETES the
+ * saved server. Routing four navs through the re-pressing `backToHome` was tried on
+ * 2026-09-06 and came back signed out on `SetServerScreen`; see that helper's JSDoc in
+ * [`lib/nav.js`](nav.js), which is the one site where the re-press is provably safe.
+ *
+ * So a swallowed Back now fails HERE, by name, instead of one nav later — which is the
+ * charter's attribution bar, not a recovery.
+ *
+ * @param {number} [opts.viewTimeout] budget for Home to become the active view. Bounded by
+ *   a remote login rather than by rendering, which is why it is the larger of the two.
+ * @param {number} [opts.rowsTimeout] budget for HomeRows to have content.
+ *
+ * Both are exposed so the hardware-free gate in `steps.test.js` can drive the false-gate
+ * case in milliseconds instead of 45 s. The poll INTERVAL is deliberately not exposed —
+ * tuning intervals is out of scope for this suite (`tests/rta/CLAUDE.md`).
  */
-export async function waitHome() {
-  await waitFor('subtype()', (v) => typeof v === 'string' && v !== '', {
+export async function waitHome({ viewTimeout = 45000, rowsTimeout = 20000 } = {}) {
+  await waitFor('subtype()', (v) => v === 'Home', {
     read: getActiveVal,
-    label: 'app past the login flow (a routed view mounted)',
-    timeout: 45000,
+    label: 'Home to be the active routed view (past the login flow, and actually arrived)',
+    timeout: viewTimeout,
     interval: 500,
   });
-  await waitFor('#homeRows.content.getChildCount()', hasChildren, {
+  // Resolved rather than named. The read below is otherwise unchanged — same keyPath shape,
+  // same reader, same attribution and same resolution audit — so this gate keeps every
+  // property it had, minus the assumption that the Home tab is the selected one.
+  const list = await homeListId();
+  // FN — `content.getChildCount()` is a CALL, and ODC observes a field, so no observer can
+  // apply here whatever `list` resolves to. The rule cannot see that through the
+  // interpolation; the interpolation is there so the audit and the failure dump get the real
+  // `#id`, which a static-suffix reader would cost this gate on ~30 navs a run.
+  // eslint-disable-next-line jellyrock-rta/wait-justified -- FN: see this helper's docblock
+  await waitFor(`${list}.content.getChildCount()`, hasChildren, {
     label: 'home rows',
-    timeout: 20000,
+    timeout: rowsTimeout,
   });
 }
 
@@ -414,12 +963,6 @@ export async function walkHomeToFirstRow({ timeout = 10000, interval = 400 } = {
 }
 
 /**
- * Subtypes Home uses for `m.activeContent`, its active row list (`components/home/Home.bs`).
- * Focus resting on one of these means the app is still inside Home's content.
- */
-const HOME_ROW_LIST_SUBTYPES = Object.freeze(['HomeRows', 'FavoritesRows']);
-
-/**
  * Which key advances the overhang walk, given where focus ACTUALLY is right now.
  *
  * ## The defect this exists to fix
@@ -449,19 +992,23 @@ const HOME_ROW_LIST_SUBTYPES = Object.freeze(['HomeRows', 'FavoritesRows']);
  *
  * ## Why it reads `subtype`, and not the id or the keyPath
  *
- * `Home.xml` declares `<HomeRows id="homeRows" />`, so on a fresh launch the focused node
- * does carry that id. But `Home.onTabChanged` RE-CREATES both lists with `CreateObject` and
- * never assigns an id — and RTA builds a keyPath segment from `node.id` only while it is
- * non-empty, falling back to the child INDEX otherwise. So after one favorites round trip
- * an id/keyPath match silently stops matching and falls straight through to Right, which is
- * the exact defect above, reinstated and invisible. `subtype` is set by the component rather
- * than by the call site, so it holds across that path.
+ * RTA builds a keyPath segment from `node.id` only while it is non-empty, falling back to
+ * the child INDEX otherwise — so an id/keyPath match stops matching the moment a node is
+ * created without one, falling straight through to Right, which is the exact defect above
+ * reinstated and invisible. `subtype` is set by the component rather than by the call site,
+ * so it cannot be lost that way.
+ *
+ * The app does create such nodes: `JROverhang` appends its `JRTabBar` with `CreateObject`
+ * and assigns no id (`components/JROverhang.bs`), which is on this very walk's path. Home's
+ * row lists are the other example and a sharper one, for a different reason: #864
+ * (2026-08-26) made `onTabChanged` assign both ids, so a tab ROUND TRIP no longer loses
+ * them — but only one list is in the scene at a time, so under the other tab the id is not
+ * stale, it is absent. Both cases defeat an id-keyed predicate; only `subtype` survives both.
  *
  * The favorites half is future-proofing, not coverage: nothing in `specs/` selects a tab, so
- * `FavoritesRows` is unreachable from here today (see the `rta-home-active-list-hardcoded`
- * entry in `docs/architecture/tech-debt.md`, whose sibling call sites still match by name).
- * It is here because the predicate should agree with the app — `getActiveRows()` returns
- * `m.activeContent` — not because a test exercises it.
+ * `FavoritesRows` is unreachable from here today. It is here because the predicate should
+ * agree with the app — `getActiveRows()` returns `m.activeContent` — not because a test
+ * exercises it.
  *
  * Kept pure, and here rather than in `nav.js`, so it can be unit-tested directly: `nav.js`
  * IS importable under a mocked device, but its walk is wrapped in the unexported
@@ -475,8 +1022,9 @@ const HOME_ROW_LIST_SUBTYPES = Object.freeze(['HomeRows', 'FavoritesRows']);
 export function overhangWalkKey(focused, iconId) {
   if (focused?.node?.id === iconId) return null;
   // Home's active list is `m.activeContent` — `HomeRows` or `FavoritesRows` depending on the
-  // selected tab — so either subtype means "the escape has not happened yet".
-  if (HOME_ROW_LIST_SUBTYPES.includes(focused?.node?.subtype)) return ecp.Key.Up;
+  // selected tab — so either subtype means "the escape has not happened yet". Shared with
+  // every Home focus gate via `home-list.js`, so there is one definition of the question.
+  if (focusIsInHomeContent(focused)) return ecp.Key.Up;
   // Unknown focus (a failed read) keeps the pre-existing behaviour rather than inventing a
   // new one: Right is inert on most of the overhang chain, Up from it is inert by design.
   return ecp.Key.Right;
@@ -516,6 +1064,97 @@ export async function waitMediaPlaying(label, timeout = 30000) {
     label: `media player (${label})`,
     waitedMs: Date.now() - start,
     observed: { lastPlayerState: last, expected: PLAYING_STATES },
+  });
+}
+
+/**
+ * Read a field on the player node. The player's `id` IS the item id (`m.top.id =
+ * m.currentItem.id` in
+ * [`VideoPlayerView.bs`](../../../components/video/VideoPlayerView.bs), which is also how
+ * `navOsd` addresses its `seek`), so read it by id rather than via `focusedNode`: focus is
+ * not guaranteed to be on the player at any given tick, and a focus-based read silently
+ * returns another node's field (or `state="none"`) when it isn't.
+ *
+ * Deliberately outside `ATTRIBUTING_READS`: it is a custom reader, so a wait using it gets
+ * no read-failure attribution. Recorded as still-owed rather than silently accepted.
+ */
+const readPlayer = (itemId) => async (keyPath) =>
+  (
+    await odc
+      .getValue(
+        itemId
+          ? { base: 'scene', keyPath: `#${itemId}.${keyPath}` }
+          : { base: 'focusedNode', keyPath },
+      )
+      .catch(() => ({}))
+  ).value;
+
+/**
+ * Wait for the OSD to come up after playback starts.
+ *
+ * Found when `osd` + `trickplay` failed on a Roku Stick `3600X` (720p UI) while the
+ * same build passed on a Roku Ultra. The app was never at fault — its `onKeyEvent`
+ * behaved correctly on both:
+ *
+ * 1. **Don't send input while the player is still loading.** The app deliberately
+ *    swallows Up until the video is playable (`stateAllowsOSD` excludes
+ *    `buffering`), so the old loop spent that whole window pressing a player that
+ *    is designed not to answer. Measured, the window is ~5-7 s on BOTH devices
+ *    (stick 5.6/5.8 s, Ultra 7.2 s) — it is bound by stream start against a remote
+ *    server, NOT by device speed, so this was never a slow-device-only hazard; the
+ *    stick is just where it surfaced.
+ * 2. **Don't keep pressing into an OSD that is already up.** Up only OPENS the
+ *    OSD (it is not a toggle), and once open the key goes to the OSD itself,
+ *    where it moves focus between controls — so a stray press perturbs the state
+ *    the following steps assert on. Read first, press only while it is down —
+ *    the same guard the focus-walk navs use.
+ * (A dropped key press masquerading as "the screen never loaded" was the third
+ * hazard here; that one is fixed for every nav in `waitFor`/`waitFocused`, which
+ * now count failing actions and name them in the timeout message.)
+ *
+ * ## Why the first wait is the app's OWN state field, and why there is no settle after it
+ *
+ * Three call sites carried this sequence, and all three followed it with
+ * `await sleep(1500) // let the just-started player settle before sending any input` —
+ * a fixed wait for a state that turns out to be readable. The app's gate is
+ * `stateAllowsOSD()`, which is `m.top.state` in `playing | paused | stopped` and not
+ * parked; `onKeyEvent` consults exactly that before opening the OSD for Up, Down, OK or
+ * Play. So the honest precondition for sending Up is the app's own `state`, and this
+ * wait reads it — no dwell needed once it answers.
+ *
+ * That mattered unequally across the three. `nav.js` already waited on this field, so its
+ * settle was buying nothing. The two `dialogs.spec.js` helpers gated on
+ * `waitMediaPlaying` instead, which reads the **OS** media player over ECP — a different
+ * observation of a different thing, true well before the app's own field flips. Their
+ * 1500 ms was covering exactly that gap, and covering it by guess.
+ *
+ * `m.playerParked` is the one clause of `stateAllowsOSD()` that cannot be read: it is a
+ * private `m.` variable, not an interface field. It is only set by
+ * `parkPlayerAfterSupersede` on a superseded error, which is not a state a healthy
+ * playback start reaches — and the OSD wait below re-presses for 30 s, so a parked player
+ * fails as a timeout naming the OSD rather than as a silent wrong answer.
+ *
+ * @param {string} label what to call the OSD wait in the timeout message and the record
+ * @param {object} [opts]
+ * @param {string} [opts.itemId] the item being played, so the player is read by id
+ * @param {number} [opts.playableTimeout] budget for the app to report a playable state
+ * @param {number} [opts.timeout] budget for the OSD to come up once input is accepted
+ */
+export async function waitOsdUp(label, { itemId, playableTimeout = 90000, timeout = 30000 } = {}) {
+  await waitFor('state', (v) => v === 'playing' || v === 'paused', {
+    timeout: playableTimeout,
+    interval: 1000,
+    label: 'player playable (pre-OSD)',
+    read: readPlayer(itemId),
+  });
+
+  await waitFor('#osd.visible', (v) => v === true, {
+    timeout,
+    interval: 2000,
+    action: async () => {
+      if ((await getVal('#osd.visible')) !== true) await press(ecp.Key.Up);
+    },
+    label,
   });
 }
 
@@ -636,6 +1275,11 @@ export async function scrollFocus({
   // their retained value (or as undefined) until the list holds focus, and a burst sent at
   // that moment goes to whatever does. This is `waitFocusInside`'s rule applied to the field
   // the walk actually reads — a caller that established focus pays one read for it.
+  // The keyPath is a runtime value, so `wait-justified` cannot classify it here. Every
+  // caller passes `itemFocused` or `rowItemFocused`, which RETAIN their last value rather
+  // than pulsing — the property the comment above depends on, and the one
+  // `waitFocusInside` exists to guard.
+  // eslint-disable-next-line jellyrock-rta/wait-justified -- justified in the comment above
   const from = await waitFor(keyPath, (v) => typeof select(v) === 'number', {
     read,
     timeout: 12000,

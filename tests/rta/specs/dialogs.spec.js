@@ -27,9 +27,15 @@ import { relaunch, hardRelaunch, ecp, odc } from '../lib/driver.js';
 import { navSeriesDetails, navMovieDetails } from '../lib/nav.js';
 import {
   waitFor,
+  waitDialogClosed,
   waitFocused,
+  waitFocusInside,
+  walkFocusInto,
+  walkFocusUntil,
+  focusIsInside,
   waitHome,
   waitMediaPlaying,
+  waitOsdUp,
   stopPlayback,
   PLAYING_STATES,
   getVal,
@@ -124,17 +130,13 @@ async function pausedOsd(userSettings = null) {
   // Cast rather than walk the grid: this spec is about the dialogs, and every
   // press between Home and the player is a chance to fail for another reason.
   await ecp.sendInput({ params: { contentId: `id=${heroId}|action=play` } });
+  // Both gates, because they answer different questions. `waitMediaPlaying` reads the OS
+  // media player over ECP and reports `media-player-not-started` — "did a stream open at
+  // all". `waitOsdUp` then reads the APP's own `state`, which is what `stateAllowsOSD()`
+  // consults before it will open the OSD for an Up. Dropping the first would report a
+  // stream that never opened as an OSD timeout.
   await waitMediaPlaying('osd dialogs');
-  await sleep(1500); // let the just-started player settle before sending any input
-
-  await waitFor('#osd.visible', (v) => v === true, {
-    timeout: 30000,
-    interval: 2000,
-    action: async () => {
-      if ((await getVal('#osd.visible')) !== true) await press(ecp.Key.Up);
-    },
-    label: 'osd visible',
-  });
+  await waitOsdUp('osd visible', { itemId: heroId });
   await press(ecp.Key.Back);
   await waitFor('#osd.visible', (v) => v === false, { timeout: 8000, label: 'osd hidden' });
   await press(ecp.Key.Play); // pause + re-show the OSD
@@ -153,18 +155,23 @@ async function pausedOsd(userSettings = null) {
  * show (see the file header), so a missing target is checked for FIRST — otherwise
  * "this item has one audio track" arrives as an unexplained focus timeout.
  */
+async function osdHasButton(buttonId) {
+  return (await getVal(`#${buttonId}.id`)) === buttonId;
+}
+
 async function pressOsdButton(buttonId) {
-  if ((await getVal(`#${buttonId}.id`)) !== buttonId) {
+  if (!(await osdHasButton(buttonId))) {
     throw new Error(
       `OSD has no #${buttonId} — the item this spec plays no longer has enough streams/sources for it`,
     );
   }
-  await waitFocused((f) => f.node?.id === buttonId, {
+  // Same origin gate as `navSearch`'s walk: press Right only while focus is still inside
+  // the active routed view. The hand-rolled form pressed wherever focus was, which on the
+  // player means driving whatever took focus instead of the OSD.
+  const arrivedAtButton = (f) => f.node?.id === buttonId;
+  await waitFocused(arrivedAtButton, {
     timeout: 20000,
-    action: async () => {
-      const focused = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
-      if (focused?.node?.id !== buttonId) await press(ecp.Key.Right);
-    },
+    action: walkFocusUntil(ecp.Key.Right, arrivedAtButton),
     label: `osd button ${buttonId} focused`,
   });
   await press(ecp.Key.Ok);
@@ -187,16 +194,7 @@ async function playingOsd(userSettings = null) {
 
   await ecp.sendInput({ params: { contentId: `id=${heroId}|action=play` } });
   await waitMediaPlaying('osd auto-hide');
-  await sleep(1500);
-
-  await waitFor('#osd.visible', (v) => v === true, {
-    timeout: 30000,
-    interval: 2000,
-    action: async () => {
-      if ((await getVal('#osd.visible')) !== true) await press(ecp.Key.Up);
-    },
-    label: 'osd visible (playing)',
-  });
+  await waitOsdUp('osd visible (playing)', { itemId: heroId });
 }
 
 it('series watched button opens the standard confirm dialog; back cancels it', async () => {
@@ -219,8 +217,27 @@ it('series watched button opens the standard confirm dialog; back cancels it', a
   }
   if (watchedIndex < 0) throw new Error('watchedButton not found in detail button group');
 
-  await odc.focusNode({ base: 'scene', keyPath: '#buttons' });
-  await sleep(300);
+  // WALKED, not teleported. `ItemDetails.bs:281-285` focuses the button group on a fresh
+  // mount, so the guard normally presses NOTHING and this is just the gate below. What it
+  // is not is a source-proven precondition: `openFirstGridTileDetail` gates on the title
+  // rendering, never on focus, and the group is mutated asynchronously as data lands
+  // (`removeChild` of the loading/trailer/resume buttons). Down is the recovery from the
+  // description or a track dropdown; recovering with a real press beats asserting the
+  // app's focus behaviour from reading it.
+  //
+  // Gate on FOCUS ARRIVING, not on `buttonFocused` being readable. The obvious wait —
+  // poll until `#buttons.buttonFocused` is a number — cannot fail: `JRButtonGroup.bs`
+  // sets it to 0 in `init()`, so it answers long before the teleport lands and the wait
+  // returns on its first tick having proven nothing. That is the north star's "succeeding
+  // too early", and the read below would then describe the group's PREVIOUS index.
+  // `onGroupFocusChanged` is what re-asserts the index, and it runs on the group taking
+  // focus — so focus being inside `#buttons` is the state that makes the read meaningful.
+  await waitFocusInside('#buttons', {
+    label: 'detail button group focused (pre-index read)',
+    timeout: 8000,
+    interval: 300,
+    action: walkFocusInto(ecp.Key.Down, '#buttons'),
+  });
   const groupIndex = await getVal('#buttons.buttonFocused');
   if (typeof groupIndex !== 'number')
     throw new Error(`cannot read #buttons.buttonFocused (got ${groupIndex})`);
@@ -290,6 +307,26 @@ it('series watched button opens the standard confirm dialog; back cancels it', a
   const cancelLabel = await getVal('#buttonRow.0.text');
   const confirmLabel = await getVal('#buttonRow.1.text');
 
+  // Both labels asserted READ, and asserted DIFFERENT, before anything is compared to
+  // them — otherwise every wait below is vacuous. An absent read answers `undefined`, and
+  // a focused node with no `text` field reads `undefined` too, so `f.node?.text ===
+  // confirmLabel` would be satisfied by focus sitting on ANY node without text: all three
+  // waits pass on their first tick and the wrap behaviour is never exercised. Two labels
+  // that merely matched each other would break the wrap assertion the same way. Same guard
+  // the colour comparison at the bottom of this file carries, and the one
+  // `demos/takes/server-switch.js` carries over the identical pair of reads.
+  expect(
+    cancelLabel,
+    'dialog button labels must be readable or the waits below prove nothing',
+  ).toBeTruthy();
+  expect(
+    confirmLabel,
+    'dialog button labels must be readable or the waits below prove nothing',
+  ).toBeTruthy();
+  expect(cancelLabel, 'the two labels must differ or focus cannot be told apart').not.toBe(
+    confirmLabel,
+  );
+
   // showConfirmDialog focuses the SAFE side first
   await waitFocused((f) => f.node?.text === cancelLabel, {
     label: 'cancel focused on open',
@@ -312,13 +349,20 @@ it('series watched button opens the standard confirm dialog; back cancels it', a
 
   // Back cancels: the overlay removes itself from the scene
   await press(ecp.Key.Back);
-  await waitFor('#jrDialog.id', (v) => v === undefined, {
-    label: 'confirm dialog dismissed',
-    timeout: 10000,
-  });
+  await waitDialogClosed('confirm dialog dismissed', { timeout: 10000 });
 
-  // Focus is restored to the opener
-  await sleep(500);
+  // Focus is restored to the opener — asserted as a POSITIVE signal, which is also what
+  // makes the wait honest. A poll for "focus is no longer on the dialog" would be
+  // satisfied by focus being nowhere in particular, so it could pass on the very state it
+  // is meant to catch; waiting for focus to arrive back in the detail button group can
+  // only pass by the restoration actually happening, and fails as a diagnosed timeout
+  // naming this step when it does not.
+  await waitFocusInside('#buttons', {
+    label: 'focus restored to the opener after dismiss',
+    timeout: 8000,
+  });
+  // Kept as well as the wait: the wait proves focus ARRIVED, this proves it did not stay
+  // on a dismissed overlay that is somehow still in the chain. Different failures.
   const afterCloseFocusId = await getVal('focusedChild.id');
   if (afterCloseFocusId === 'jrDialog') throw new Error('focus stuck on dismissed dialog');
 });
@@ -345,10 +389,21 @@ it('item description opens the overview overlay; back restores focus to it', asy
     );
 
   // Not a JRButtonGroup, so teleporting focus here sticks — no index to re-assert.
-  await odc.focusNode({ base: 'scene', keyPath: '#itemDescription' });
+  // WALKED up the ladder, not teleported. Up from the button group targets an interactive
+  // track dropdown if there is one and falls through to the description if there is not
+  // (`ItemDetails.bs:4271`); Up from a CLOSED dropdown gets there via `requestFocusReturn`
+  // -> `onDropdownRequestUp` (`ItemDetails.bs:3898`). So the rung count is a property of
+  // the fixture's tracks, and a fixed number of presses would be wrong on one server or
+  // the other — pressing until focus ARRIVES is right on both, which is why this is a
+  // guarded walk rather than a counted one.
+  //
+  // 8000/500 rather than the 5000 a teleport was happy with: this now spends a tick per
+  // rung, and the budget has to cover the presses (see `walkFocusInto`).
   await waitFocused((f) => f.node?.id === 'itemDescription', {
     label: 'item description focused',
-    timeout: 5000,
+    timeout: 8000,
+    interval: 500,
+    action: walkFocusInto(ecp.Key.Up, '#itemDescription'),
   });
 
   await press(ecp.Key.Ok);
@@ -362,10 +417,7 @@ it('item description opens the overview overlay; back restores focus to it', asy
   if (CAPTURE) await captureRawUI('overviewDialog');
 
   await press(ecp.Key.Back);
-  await waitFor('#jrDialog.id', (v) => v === undefined, {
-    label: 'overview overlay dismissed',
-    timeout: 10000,
-  });
+  await waitDialogClosed('overview overlay dismissed', { timeout: 10000 });
 
   // returnFocusTo was passed explicitly as the FocusableOverview itself.
   await waitFocused((f) => f.node?.id === 'itemDescription', {
@@ -409,10 +461,21 @@ it('a scrolling overview overlay opens focused on the text, not on OK', async ()
   const long = `${overview} `.repeat(40);
   await odc.setValue({ base: 'scene', keyPath: '#itemDescription.text', value: long });
 
-  await odc.focusNode({ base: 'scene', keyPath: '#itemDescription' });
+  // WALKED up the ladder, not teleported. Up from the button group targets an interactive
+  // track dropdown if there is one and falls through to the description if there is not
+  // (`ItemDetails.bs:4271`); Up from a CLOSED dropdown gets there via `requestFocusReturn`
+  // -> `onDropdownRequestUp` (`ItemDetails.bs:3898`). So the rung count is a property of
+  // the fixture's tracks, and a fixed number of presses would be wrong on one server or
+  // the other — pressing until focus ARRIVES is right on both, which is why this is a
+  // guarded walk rather than a counted one.
+  //
+  // 8000/500 rather than the 5000 a teleport was happy with: this now spends a tick per
+  // rung, and the budget has to cover the presses (see `walkFocusInto`).
   await waitFocused((f) => f.node?.id === 'itemDescription', {
     label: 'item description focused',
-    timeout: 5000,
+    timeout: 8000,
+    interval: 500,
+    action: walkFocusInto(ecp.Key.Up, '#itemDescription'),
   });
   await press(ecp.Key.Ok);
 
@@ -441,18 +504,31 @@ it('a scrolling overview overlay opens focused on the text, not on OK', async ()
   });
 
   await press(ecp.Key.Back);
-  await waitFor('#jrDialog.id', (v) => v === undefined, {
-    label: 'overview overlay dismissed',
-    timeout: 10000,
-  });
+  await waitDialogClosed('overview overlay dismissed', { timeout: 10000 });
 });
 
 // The playback-time pickers moved off SceneManager's shared returnData onto
 // JRListDialog, whose result is per-instance. This drives the one picker the demo
 // server can populate and proves the overlay opens over the player, lists the real
 // options, and cancels cleanly without disturbing playback.
-it('osd video-source button opens the list dialog; back cancels it', async () => {
+it('osd video-source button opens the list dialog; back cancels it', async (testCtx) => {
   await pausedOsd();
+
+  // The ONE button in this file whose presence is a FIXTURE precondition rather than an
+  // app invariant: `OSD.bs` removes #showVideoSourceMenu when `numVideoSources < 2`, so a
+  // single-source item correctly has no button and there is nothing for this test to drive.
+  // Skipped rather than failed, on the same grounds as quick-connect's
+  // `server reports Quick Connect disabled` — a precondition the server has to supply is
+  // not an app defect, and a red suite that means "the demo library changed" is the
+  // run-to-run inconsistency this suite exists to remove.
+  //
+  // Verified 2026-09-08: the demo server's hero (`Dracula`) reports 1 MediaSource, and
+  // 0 of its 11 movies carry more than one — so this is not retunable to another item.
+  // `pressOsdButton` still THROWS for the four #showVideoInfoPopup callers below, which
+  // have no content precondition and where a missing button is a real defect.
+  if (!(await osdHasButton('showVideoSourceMenu'))) {
+    testCtx.skip('demo item has a single video source — the OSD correctly drops the button');
+  }
   await pressOsdButton('showVideoSourceMenu');
 
   // The overlay mounts on the SCENE (not on the player), with one row per source.
@@ -465,9 +541,10 @@ it('osd video-source button opens the list dialog; back cancels it', async () =>
 
   // Focus opens ON the list — the picker's job is picking, and there is no
   // footer button to compete for it.
-  await waitFocused((f) => typeof f.keyPath === 'string' && f.keyPath.includes('#optionList'), {
+  await waitFocusInside('#optionList', {
     label: 'list focused on open',
     timeout: 5000,
+    interval: 500,
   });
 
   // The list wraps in BOTH directions and Back is the only exit. This is the one
@@ -501,10 +578,7 @@ it('osd video-source button opens the list dialog; back cancels it', async () =>
 
   // Back is the only exit, so it has to work from anywhere in the list.
   await press(ecp.Key.Back);
-  await waitFor('#jrDialog.id', (v) => v === undefined, {
-    label: 'Back dismissed the dialog',
-    timeout: 10000,
-  });
+  await waitDialogClosed('Back dismissed the dialog', { timeout: 10000 });
   await waitFocused((f) => f.node?.id === 'showVideoSourceMenu', {
     label: 'focus restored to the osd button',
     timeout: 8000,
@@ -583,10 +657,7 @@ it('osd info button opens the playback-info report; back dismisses it', async ()
   if (CAPTURE) await captureRawUI('playbackInfoDialog');
 
   await press(ecp.Key.Back);
-  await waitFor('#jrDialog.id', (v) => v === undefined, {
-    label: 'playback info dismissed',
-    timeout: 10000,
-  });
+  await waitDialogClosed('playback info dismissed', { timeout: 10000 });
 
   await stopPlayback();
 }, 240000);
@@ -653,10 +724,7 @@ it('a user-capped bitrate transcodes, and the report says which setting did it',
   expect(await getVal('#jrDialog.id'), 'the dialog must survive its own refresh').toBe('jrDialog');
 
   await press(ecp.Key.Back);
-  await waitFor('#jrDialog.id', (v) => v === undefined, {
-    label: 'playback info dismissed',
-    timeout: 10000,
-  });
+  await waitDialogClosed('playback info dismissed', { timeout: 10000 });
 
   await stopPlayback();
 }, 240000);
@@ -723,10 +791,7 @@ it('the playback report scrolls, hands focus to OK, and only closes from the but
   expect(await getVal('#jrDialog.id'), 'still open after the focusing press').toBe('jrDialog');
 
   await press(ecp.Key.Ok);
-  await waitFor('#jrDialog.id', (v) => v === undefined, {
-    label: 'OK from the button closed the dialog',
-    timeout: 10000,
-  });
+  await waitDialogClosed('OK from the button closed the dialog', { timeout: 10000 });
 
   await stopPlayback();
 }, 240000);
@@ -758,15 +823,17 @@ it('a dialog keeps focus when the osd auto-hides underneath it', async () => {
   // so presence alone would have passed while the dialog was already dead.
   const focused = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
   const keyPath = typeof focused?.keyPath === 'string' ? focused.keyPath : '';
-  if (!keyPath.includes('jrDialog'))
+  // Through the shared predicate rather than a local `includes`, so this one-shot check
+  // reads focus the same way every waiting gate does (`#jrDialog` is a whole keyPath
+  // segment; the `#` is normalised in).
+  if (!focusIsInside(keyPath, 'jrDialog'))
     throw new Error(
       `focus left the dialog while the osd auto-hid (focused: ${keyPath || 'unknown'})`,
     );
 
   // ...and Back still closes the dialog rather than leaving playback.
   await press(ecp.Key.Back);
-  await waitFor('#jrDialog.id', (v) => v === undefined, {
-    label: 'back closed the dialog after the osd auto-hide window',
+  await waitDialogClosed('back closed the dialog after the osd auto-hide window', {
     timeout: 10000,
   });
 

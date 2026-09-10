@@ -22,7 +22,7 @@
  *
  * ## Why the exclusions are output, not a silent `filter`
  *
- * The selection is deliberately strict — five keys, and a run must satisfy all of
+ * The selection is deliberately strict — six keys, and a run must satisfy all of
  * them — so the ordinary failure is selecting FEWER runs than you think, or none.
  * A bare `filter` reports that as a small number or a `NaN`, both of which read as
  * an answer. Every excluded row is therefore counted and attributed, and a
@@ -59,8 +59,16 @@ export const ledgerFor = (run) =>
  */
 export function selectBaseline(runs, { commit, deviceKey, variants } = {}) {
   const wanted = variants ? new Set(variants) : undefined;
-  const excluded = { otherCommit: 0, otherDevice: 0, otherVariant: 0, dirty: 0, nonSample: 0 };
+  const excluded = {
+    otherCommit: 0,
+    otherDevice: 0,
+    otherVariant: 0,
+    dirty: 0,
+    scoped: 0,
+    nonSample: 0,
+  };
   const nonSampleOutcomes = {};
+  const scopedArgs = [];
   const samples = [];
 
   for (const r of runs) {
@@ -71,7 +79,35 @@ export function selectBaseline(runs, { commit, deviceKey, variants } = {}) {
     // carries no content hash: two dirty runs are not provably the same code, which
     // is the one thing a baseline's `commit` key exists to establish.
     else if (r.dirty) excluded.dirty++;
-    else if (!SAMPLE_OUTCOMES.has(r.outcome)) {
+    // A run that forwarded ANY argument to the test runner did not run the suite this
+    // rate is about. Sits between `dirty` and `nonSample` because that is the
+    // progression: wrong code, then wrong SUITE, then no verdict.
+    //
+    // ANY argument, not a list of the scope-narrowing ones. Vitest 4.1.10 narrows on
+    // eight (positional filters, `-t`, `--dir`, `--shard`, `--changed`, `--exclude`,
+    // `--project`, `--tagsFilter`) and the set moves between majors, so an allowlist
+    // here would quietly stop matching and count a one-test run as a clean suite —
+    // silently, which is the failure `runnerArgs` was added to close. The conservative
+    // rule fails the other way: a purely non-narrowing flag costs a sample, LOUDLY,
+    // with the args printed beside the count. (It also catches `--bail`, which
+    // truncates execution without narrowing intent — an allowlist would not have.)
+    //
+    // NOT overridable, deliberately. The recovery for a lost sample is to re-run
+    // without the flag; the recovery for a wrong number nobody questioned is nothing.
+    // This file's own header is a list of three selection recipes that each produced a
+    // plausible number rather than an error, and a fourth knob is a fourth chance.
+    //
+    // An ABSENT `runnerArgs` is a line written before the key existed and counts as
+    // unscoped. Checked rather than assumed: every one of the 26 lines in
+    // `.device-runs/rta/runs.jsonl` on 2026-09-07 was a full suite (1239–1390 s, plus
+    // one 31 s `interrupted` and two `blocked`, all already non-samples), so no
+    // historical line is being silently admitted. This is the opposite reading from
+    // `outcome`, where absent means unknown and therefore NOT a sample — there the
+    // population was genuinely mixed.
+    else if (r.runnerArgs?.length) {
+      excluded.scoped++;
+      scopedArgs.push(r.runnerArgs.join(' '));
+    } else if (!SAMPLE_OUTCOMES.has(r.outcome)) {
       excluded.nonSample++;
       const key = r.outcome ?? 'unrecorded';
       nonSampleOutcomes[key] = (nonSampleOutcomes[key] || 0) + 1;
@@ -88,6 +124,10 @@ export function selectBaseline(runs, { commit, deviceKey, variants } = {}) {
     rate: samples.length ? failed / samples.length : null,
     excluded,
     nonSampleOutcomes,
+    // Distinct, in first-seen order: the operator needs to know WHICH filter cost them
+    // a sample, and a series carries few distinct arg sets. De-duplicated because three
+    // takes of the same `-t` should read as one reason, not three.
+    scopedArgs: [...new Set(scopedArgs)],
   };
 }
 
@@ -162,6 +202,17 @@ export function describeLedger(runs) {
     `  commit      ${tally(runs, (r) => r.commit)}`,
     `  outcome     ${tally(runs, (r) => r.outcome)}`,
     `  tree        ${tally(runs, (r) => (r.dirty == null ? null : r.dirty ? 'dirty' : 'clean'))}`,
+    // WHAT each run ran, which `variant` cannot say — see `runnerArgs` in
+    // `summarizeRun`. `(unrecorded)` here is a line from before the key existed, not a
+    // run that declared nothing; the rate mode counts those as full suites, and this
+    // row is where that assumption is visible rather than buried.
+    `  scope       ${tally(runs, (r) =>
+      r.runnerArgs === undefined
+        ? null
+        : r.runnerArgs.length
+          ? r.runnerArgs.join(' ')
+          : 'full suite',
+    )}`,
     // Not a selection key like the four above — you cannot filter on it, and the
     // rate mode warns rather than excludes. It is here because it is the one
     // property of a run that invalidates a series without changing any of them.
@@ -198,12 +249,18 @@ export function hourCrossings(samples) {
 
 /** Lines reporting a selected series: what counted, what did not, and the rate. */
 export function reportBaseline(result) {
-  const { samples, passed, failed, rate, excluded, nonSampleOutcomes } = result;
+  const { samples, passed, failed, rate, excluded, nonSampleOutcomes, scopedArgs = [] } = result;
   const reasons = [
     [excluded.otherCommit, 'other commit'],
     [excluded.otherDevice, 'other device'],
     [excluded.otherVariant, 'other variant'],
     [excluded.dirty, 'dirty tree'],
+    // The args are named, not just counted, because "scoped" is the ONE exclusion an
+    // operator may believe is wrong — they know what they typed. Printing it lets them
+    // confirm it in the line rather than re-reading the ledger, and it is also what
+    // keeps the word honest on the case it over-claims: a run excluded for a purely
+    // non-narrowing flag says so, right there.
+    [excluded.scoped, `scoped run${scopedArgs.length ? ` (${scopedArgs.join(', ')})` : ''}`],
     [
       excluded.nonSample,
       `not a sample (${Object.entries(nonSampleOutcomes)

@@ -17,6 +17,9 @@
  * shapes at the module boundary. What needs a real Roku is whether a given keyPath
  * resolves — that stays hardware-verified via `npm run test:rta`.
  */
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const getValues = vi.fn();
@@ -37,16 +40,41 @@ vi.mock('roku-test-automation', () => ({
     // captureFailureState reads the OS media player, so the mock has to answer it
     // or every diagnosed failure throws instead of reporting.
     getMediaPlayer: async () => null,
+    // Same reason: it also asks ECP whether a screensaver is up, which is the one
+    // device state that explains an all-ODC-reads-failed record. `app` with no
+    // `screensaver` is the ordinary case — the channel in the foreground.
+    getActiveApp: async () => ({ app: { id: 'dev', title: 'JellyRock' } }),
     Key: { Up: 'Up', Down: 'Down', Left: 'Left', Right: 'Right' },
   },
 }));
 
+// `resolution.js` is stubbed so these assert WHICH reads `waitFor` hands to the audit,
+// without standing up a census. The real module is a no-op unless `RTA_AUDIT_RESOLUTION=1`,
+// so replacing it changes nothing for every other case in this file.
+const auditSceneResolution = vi.fn();
+const auditSceneResolutions = vi.fn();
+vi.mock('./resolution.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  auditSceneResolution: (...a) => auditSceneResolution(...a),
+  auditSceneResolutions: (...a) => auditSceneResolutions(...a),
+}));
+
 const {
+  getActiveVal,
   getActiveVals,
   getVals,
   waitFor,
+  waitFocused,
+  focusIsInside,
+  waitFocusInside,
+  waitDialogClosed,
+  waitOsdUp,
   resendIfSwallowed,
   resendUntilFocusInside,
+  resendUntilFocused,
+  homeListId,
+  waitFocusInHomeContent,
+  walkFocusInto,
   walkHomeToFirstRow,
   overhangWalkKey,
   waitHome,
@@ -59,6 +87,14 @@ const {
   axisEnd,
   sweepBudget,
 } = await import('./steps.js');
+// The closed set the failure records group by. Imported from its owning module
+// rather than through `diagnostics.js` so a test asserting a slug cannot agree
+// with a re-export that has drifted.
+const { FAILURE_KINDS, readRecoveries } = await import('../../../scripts/run-record.js');
+// The predicate `resendUntilFocused` is driven with here, imported from the module that
+// owns it rather than redefined — a test asserting against a hand-copied predicate would
+// agree with a copy that had drifted.
+const { focusIsInHomeContent } = await import('./home-list.js');
 
 /** A `getFocusedNode` answer resting on a row list at `[row, item]`. */
 const onRow = (row) => ({
@@ -145,6 +181,256 @@ describe('getActiveVals', () => {
 });
 
 /**
+ * Read-failure ATTRIBUTION in the waits.
+ *
+ * The single-read swallow stays (a poll retries; that contract is unchanged and is
+ * asserted below). What is gated here is that the timeout can still say WHICH of the two
+ * causes it hit, because `last=undefined` alone cannot: a device that stopped answering
+ * and a field the app never set produce byte-identical messages otherwise. That is the
+ * ambiguity #785 recorded and could not resolve after the fact.
+ *
+ * The distinction is real on the wire, not inferred: ODC answers `found: false` for a
+ * keyPath it resolved and did not find, and only REJECTS when the request itself failed.
+ * So these drive the two shapes separately and assert they are not conflated.
+ */
+describe('wait read-failure attribution', () => {
+  beforeEach(() => {
+    getValue.mockReset();
+  });
+
+  it('names failed reads in the timeout when the device stops answering', async () => {
+    getValue.mockRejectedValue(new Error('odc timeout'));
+    await expect(
+      waitFor('#a.loadState', (v) => v === 'loaded', { timeout: 120, interval: 10 }),
+    ).rejects.toThrow(/read\(s\) did not complete/);
+  });
+
+  it('does NOT count a found:false answer as a failed read', async () => {
+    // THE case that keeps the signal worth having. The device answered — the field is
+    // simply not there — so a timeout here must read as a real absence, not as an
+    // infrastructure fault. Conflating these would make the new clause fire on every
+    // ordinary "not there yet" timeout and mean nothing.
+    getValue.mockResolvedValue({ found: false });
+    const err = await waitFor('#a.loadState', (v) => v === 'loaded', {
+      timeout: 120,
+      interval: 10,
+    }).catch((e) => e);
+    expect(err.message).toMatch(/timed out waiting for/);
+    expect(err.message).not.toMatch(/read\(s\) did not complete/);
+    expect(err.message).toMatch(/readErrors=0/);
+  });
+
+  it('still swallows a failed read per tick, so a recovering wait passes', async () => {
+    // The swallow is the POINT of the single-read form and must survive: one dropped
+    // read cannot fail a wait the very next tick satisfies.
+    getValue
+      .mockRejectedValueOnce(new Error('odc timeout'))
+      .mockResolvedValue({ found: true, value: 'loaded' });
+    await expect(
+      waitFor('#a.loadState', (v) => v === 'loaded', { timeout: 500, interval: 10 }),
+    ).resolves.toBe('loaded');
+  });
+
+  it('carries readErrors in the observed payload, beside actionErrors', async () => {
+    // `observed` is what `diagnosedError` both renders into the message and hands to
+    // `recordFailure`, so a flake baseline aggregates the same number a human reads.
+    // Asserted through the rendered message because that is the shared surface.
+    // Both counters appear so the two causes stay separable rather than merged.
+    getValue.mockRejectedValue(new Error('odc timeout'));
+    const err = await waitFor('#a.loadState', (v) => v === 'loaded', {
+      timeout: 120,
+      interval: 10,
+    }).catch((e) => e);
+    expect(err.message).toMatch(/readErrors=[1-9]/);
+    expect(err.message).toMatch(/actionErrors=0/);
+  });
+
+  it('attributes a failed focus read in waitFocused too', async () => {
+    // Same defect, same fix, different reader: `last=undefined@undefined` is otherwise
+    // identical whether focus never arrived or the device went away. The capture at the
+    // throw site needs getFocusedNode to answer, so only the polled reads reject.
+    getFocusedNode
+      .mockReset()
+      .mockRejectedValueOnce(new Error('odc timeout'))
+      .mockRejectedValueOnce(new Error('odc timeout'))
+      .mockResolvedValue(null);
+    await expect(
+      waitFocused(() => true, { timeout: 60, interval: 10, label: 'anything' }),
+    ).rejects.toThrow(/read\(s\) did not complete/);
+  });
+});
+
+/**
+ * `focusIsInside` — the one predicate every "is focus inside X" gate now shares.
+ *
+ * The property under test is that a container id is matched as a whole keyPath SEGMENT,
+ * never as a substring. It is a red/green gate rather than a review note on purpose: the
+ * substring form fails by succeeding EARLY, which produces no failure of its own — the
+ * gate passes, the next step acts against a screen that has not arrived, and whatever
+ * times out later gets the blame. And a prefix collision is introduced by NAMING a node,
+ * so nothing in a test diff reveals it.
+ *
+ * The keyPaths below are the real ones, captured off `.178` on 2026-09-04 (a full green
+ * suite, 214 focused-node reads) rather than invented — an invented shape is exactly how
+ * a predicate ends up agreeing with a fixture and disagreeing with the device.
+ */
+describe('focusIsInside', () => {
+  it('matches a container that is an ancestor segment of the focused node', () => {
+    expect(focusIsInside('#routerOutlet.#viewTarget.#5d412eb3.#itemGrid', '#itemGrid')).toBe(true);
+    expect(
+      focusIsInside('#routerOutlet.#viewTarget.#a957cebb.#buttons.#resumeButton', '#buttons'),
+    ).toBe(true);
+  });
+
+  it('matches through index segments, which ids-less nodes contribute', () => {
+    // `...#extrasGrp.0.#extrasGrid` and `...#options.1.1.#buttons` are both real: RTA
+    // falls back to the child index whenever a node carries no id.
+    expect(
+      focusIsInside(
+        '#routerOutlet.#viewTarget.#0d5a08a5.#itemExtras.#extrasGrp.0.#extrasGrid',
+        '#extrasGrid',
+      ),
+    ).toBe(true);
+    expect(
+      focusIsInside('#routerOutlet.#viewTarget.#fddf1216.#options.1.1.#buttons', '#options'),
+    ).toBe(true);
+  });
+
+  it('does NOT match a container whose id merely PREFIXES the one asked for', () => {
+    // The live collision this helper was written for: `#optionsPanelOverlay` is the
+    // reparenting host in `components/JRScene.xml` and `#options` is a substring of it,
+    // so the substring form reported the grid options dialog focused for focus anywhere
+    // in that overlay. Segment matching is what makes the two distinguishable.
+    expect(focusIsInside('#routerOutlet.#optionsPanelOverlay.2', '#options')).toBe(false);
+    expect(focusIsInside('#routerOutlet.#itemGridTitles', '#itemGrid')).toBe(false);
+  });
+
+  it('still matches the real node when the overlay IS in the path', () => {
+    // `OptionsSlider` reparents itself into that overlay when opened, and its own id is
+    // `options` — so the overlay being present must not be read as the collision above.
+    expect(focusIsInside('#optionsPanelOverlay.#options.0', '#options')).toBe(true);
+  });
+
+  it('normalises a container id given without its `#`', () => {
+    // `dialogs.spec.js` asks for `jrDialog`; the real path is `#jrDialog.#optionList`.
+    // Rejecting the bare form would trade a silent over-match for a silent under-match.
+    expect(focusIsInside('#jrDialog.#optionList', 'jrDialog')).toBe(true);
+    expect(focusIsInside('#jrDialog.#okButton', '#jrDialog')).toBe(true);
+  });
+
+  it('matches the FOCUSED node itself, not only its ancestors', () => {
+    expect(focusIsInside('#routerOutlet.#viewTarget.#59354e77.#homeRows', '#homeRows')).toBe(true);
+  });
+
+  it('is false for a keyPath that was never read', () => {
+    // A failed `getFocusedNode` must not read as "focus is somewhere else" OR as a match.
+    for (const bad of [undefined, null, '', 0, {}])
+      expect(focusIsInside(bad, '#itemGrid')).toBe(false);
+  });
+});
+
+describe('waitFocusInside', () => {
+  beforeEach(() => {
+    getFocusedNode.mockReset().mockResolvedValue(null);
+    sendKeypress.mockReset();
+  });
+
+  it('resolves once focus is inside the container', async () => {
+    getFocusedNode.mockResolvedValue({ keyPath: '#routerOutlet.#viewTarget.#x.#itemGrid' });
+    await expect(waitFocusInside('#itemGrid', { timeout: 200, interval: 10 })).resolves.toEqual({
+      keyPath: '#routerOutlet.#viewTarget.#x.#itemGrid',
+    });
+  });
+
+  it('does not resolve on a container that merely prefixes the one asked for', async () => {
+    // The on-device consequence of the collision above, at the wait rather than the
+    // predicate: this must TIME OUT, not report the dialog open.
+    getFocusedNode.mockResolvedValue({ keyPath: '#routerOutlet.#optionsPanelOverlay.2' });
+    await expect(waitFocusInside('#options', { timeout: 60, interval: 10 })).rejects.toThrow(
+      /timed out waiting for focus/,
+    );
+  });
+
+  it("names the caller's label in the timeout, not the container", async () => {
+    // The label is the first thing read when a gate fails, and "grid options dialog" says
+    // what was being waited for where "focus inside #options" only says where it lives.
+    await expect(
+      waitFocusInside('#options', { timeout: 60, interval: 10, label: 'grid options dialog' }),
+    ).rejects.toThrow(/grid options dialog/);
+  });
+
+  it('falls back to naming the container when no label is given', async () => {
+    await expect(waitFocusInside('#itemGrid', { timeout: 60, interval: 10 })).rejects.toThrow(
+      /focus inside #itemGrid/,
+    );
+  });
+
+  it('passes an action through, so a swallowed press can still be re-sent', async () => {
+    // `navCellSweepExtras` and `focus.spec` both gate on focus ARRIVING after a Back that
+    // the router may have swallowed; routing them through this helper must not cost them
+    // the retry.
+    getFocusedNode.mockResolvedValue({ keyPath: '#routerOutlet.#viewTarget.#x.#extrasGrid' });
+    await waitFocusInside('#itemGrid', {
+      timeout: 80,
+      interval: 10,
+      action: resendIfSwallowed('back', '#extrasGrid'),
+    }).catch(() => {});
+    expect(sendKeypress).toHaveBeenCalledWith('back');
+  });
+});
+
+/**
+ * The shared dialog-dismiss wait, gated because it is now a SINGLE point of failure for
+ * ten call sites across two specs and a demo take. Before Phase 3b each of those spelled
+ * out its own `#jrDialog.id` / `=== undefined` pair, so a typo could only break one site;
+ * now a wrong keyPath or an inverted predicate breaks every dialog test at once, and it
+ * would present as ten unrelated timeouts rather than as one broken helper.
+ */
+describe('waitDialogClosed', () => {
+  beforeEach(() => {
+    getValue.mockReset();
+  });
+
+  it('resolves once the overlay has left the scene', async () => {
+    // ODC answers `found: false` for a keyPath it resolved and did not find, which is
+    // exactly what a removed overlay looks like on the wire.
+    getValue.mockResolvedValue({ found: false });
+    await expect(
+      waitDialogClosed('confirm dialog dismissed', { timeout: 200 }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('reads the scene-rooted overlay id, not an active-view-scoped one', async () => {
+    // The keyPath is the helper's whole contract. `#jrDialog` is a top-level overlay
+    // parented to the scene, not into the routed view, so a `getActiveVal` read would
+    // miss it and every dismiss would report as still-open.
+    getValue.mockResolvedValue({ found: false });
+    await waitDialogClosed('x', { timeout: 200 });
+    expect(getValue).toHaveBeenCalledWith(
+      expect.objectContaining({ base: 'scene', keyPath: '#jrDialog.id' }),
+    );
+  });
+
+  it('does NOT resolve while the dialog is still open', async () => {
+    // The inverse of the first case, and the one that matters: a predicate flipped to
+    // truthy would make all ten sites pass the instant the dialog OPENED.
+    getValue.mockResolvedValue({ found: true, value: 'jrDialog' });
+    await expect(waitDialogClosed('confirm dialog dismissed', { timeout: 60 })).rejects.toThrow(
+      /confirm dialog dismissed/,
+    );
+  });
+
+  it("honours the caller's timeout rather than its own default", async () => {
+    // Landmine from Phase 2, gated rather than remembered: routing sites onto a helper
+    // silently adopted ITS defaults and re-polled six of them every 300 ms. A default
+    // that quietly overrode the 60 ms asked for here would show up as ~1000 reads.
+    getValue.mockResolvedValue({ found: true, value: 'jrDialog' });
+    await waitDialogClosed('still open', { timeout: 60 }).catch(() => {});
+    expect(getValue.mock.calls.length).toBeLessThan(20);
+  });
+});
+
+/**
  * The resend guard, gated without hardware.
  *
  * Two behaviours carry the whole helper and neither is visible by reading a call site:
@@ -200,6 +486,39 @@ describe('resendIfSwallowed', () => {
     await action();
     await action();
     expect(sendKeypress).not.toHaveBeenCalled();
+  });
+
+  it('RECORDS the resend, so a silent recovery cannot look like the event never happening', async () => {
+    // Read back through the module's own accessor rather than a mock: with no run context
+    // `recordDir()` returns a throwaway per-pid tmpdir and keeps read/write symmetric,
+    // which is the property that makes this assertable without stubbing the writer.
+    const before = readRecoveries().length;
+    focusedAt('scene.#itemGrid.0');
+    const action = resendIfSwallowed('back', '#itemGrid');
+    await action(); // first tick, sits out
+    await action(); // swallow detected -> re-send
+    const added = readRecoveries().slice(before);
+    expect(added).toHaveLength(1);
+    expect(added[0].what).toBe('swallowed back at #itemGrid');
+    expect(added[0].observed).toMatchObject({
+      key: 'back',
+      containerId: '#itemGrid',
+      resends: 1,
+      keyPath: 'scene.#itemGrid.0',
+    });
+  });
+
+  it('records NOTHING when the press landed — the guard is silent on the happy path', async () => {
+    // The counterpart that matters: an instrument firing on every wait would drown the
+    // signal it exists to carry. Verified on device 2026-09-08 (a full green suite recorded
+    // `recoveries: 0`), and pinned here so it stays true.
+    focusedAt('scene.#homeRows.2'); // focus already left the grid: the Back landed
+    const before = readRecoveries().length;
+    const action = resendIfSwallowed('back', '#itemGrid');
+    await action();
+    await action();
+    expect(sendKeypress).not.toHaveBeenCalled();
+    expect(readRecoveries()).toHaveLength(before);
   });
 
   it('gives each wait its own first-tick budget', async () => {
@@ -318,7 +637,7 @@ describe('overhangWalkKey — the key is chosen from where focus IS', () => {
     // Home's active list is `m.activeContent`, which is the favorites list under that tab.
     // Nothing in `specs/` selects a tab, so this state is unreachable from `focusOverhangIcon`
     // today — asserted so the predicate agrees with the app, NOT as evidence it is exercised.
-    // See `rta-home-active-list-hardcoded` in docs/architecture/tech-debt.md.
+    // See `focusIsInHomeContent` in ./home-list.js, which owns this question.
     const inFavorites = {
       node: { subtype: 'FavoritesRows', id: '', rowItemFocused: [0, 0] },
       keyPath: '#routerOutlet.#viewTarget.#abc.0',
@@ -346,10 +665,195 @@ describe('overhangWalkKey — the key is chosen from where focus IS', () => {
   });
 });
 
+describe('homeListId — which row list Home actually has in the scene', () => {
+  beforeEach(() => {
+    getValue.mockReset();
+    getFocusedNode.mockReset().mockResolvedValue(null);
+    getValues.mockReset();
+  });
+
+  /** A batch answer where candidate `i` resolved to `subtype`. */
+  const resolves = (i, subtype) => ({
+    results: { [`k${i}`]: { found: true, value: subtype }, [`k${1 - i}`]: { found: false } },
+  });
+
+  it('asks about BOTH candidate ids in ONE round trip', async () => {
+    getValues.mockResolvedValue(resolves(0, 'HomeRows'));
+
+    await homeListId();
+
+    // One batch, not two reads. Asking sequentially would cost a second round trip AND
+    // straddle a tab change, so the two answers could describe different moments.
+    expect(getValues).toHaveBeenCalledTimes(1);
+    const sent = Object.values(getValues.mock.calls[0][0].requests).map((r) => r.keyPath);
+    expect(sent).toEqual(['#homeRows.subtype()', '#favoritesRows.subtype()']);
+    // Scene-rooted, not `activeRoutedView`-scoped: `selectionProbe` reads Home's rows AFTER
+    // a drill-down has opened, when Home is suspended but still in the tree.
+    expect(Object.values(getValues.mock.calls[0][0].requests).map((r) => r.base)).toEqual([
+      'scene',
+      'scene',
+    ]);
+  });
+
+  it('returns the id of whichever list answered', async () => {
+    getValues.mockResolvedValue(resolves(0, 'HomeRows'));
+    await expect(homeListId()).resolves.toBe('#homeRows');
+  });
+
+  it('resolves the FAVORITES list when that is the tab in the scene', async () => {
+    // The case no spec reaches today and the whole reason the conversion happened: under
+    // the Favorites tab, `#homeRows` is not stale, it is absent.
+    getValues.mockResolvedValue(resolves(1, 'FavoritesRows'));
+    await expect(homeListId()).resolves.toBe('#favoritesRows');
+  });
+
+  it('probes `subtype()` rather than `id`, so the right id on the wrong node cannot pass', async () => {
+    // Costs the same round trip and proves more. A node carrying the id but a different
+    // subtype is not a row list, and reading it would be the "right id, wrong node" class.
+    getValues.mockResolvedValue({
+      results: { k0: { found: true, value: 'Group' }, k1: { found: false } },
+    });
+    await expect(homeListId({ timeout: 1 })).rejects.toThrow(/active row list to be in the scene/);
+  });
+
+  it('fails under its OWN kind when neither list is there, rather than answering undefined', async () => {
+    // The defect this whole conversion exists to remove. The shape it replaces did not fail
+    // at all: `#homeRows.content.getChildCount()` resolved in 8 ms to `undefined`, a
+    // caller's `|| 0` read that as an empty Home, and the run blamed a tile.
+    getValues.mockResolvedValue({ results: { k0: { found: false }, k1: { found: false } } });
+
+    // The slug it aggregates under is asserted against the RECORD, in the failure-kind
+    // describe below — the message never carries it.
+    await expect(homeListId({ timeout: 1 })).rejects.toThrow(/neither #id resolved/);
+  });
+
+  it('keeps waiting through a dead batch instead of throwing the transport error', async () => {
+    // A poll must swallow a transport failure per tick — the loop retries, and a persistent
+    // miss ends in the diagnosed timeout above. Letting `getVals`' batch throw escape here
+    // would turn one ODC hiccup into a failed nav.
+    getValues.mockRejectedValue(new Error('odc timeout'));
+    await expect(homeListId({ timeout: 1 })).rejects.toThrow(/neither #id resolved/);
+  });
+});
+
+describe('resendUntilFocused — the resend whose destination is a predicate', () => {
+  beforeEach(() => {
+    getFocusedNode.mockReset();
+    sendKeypress.mockReset();
+  });
+
+  it('sits out the first tick, like its id-keyed sibling', async () => {
+    // The press may still be in flight; spending the poll interval as the "did it land?"
+    // window is the whole mechanism.
+    getFocusedNode.mockResolvedValue({ keyPath: 'x', node: { subtype: 'BaseGridView' } });
+    const action = resendUntilFocused('back', focusIsInHomeContent);
+
+    await action();
+    expect(sendKeypress).not.toHaveBeenCalled();
+
+    await action();
+    expect(sendKeypress).toHaveBeenCalledTimes(1);
+  });
+
+  it('STOPS pressing once the predicate is satisfied', async () => {
+    // Over-pressing Back on Home raises the exit-confirm dialog, and off the path to Home it
+    // is worse than that: `UserSelect.onKeyEvent` treats Back as *change server*.
+    getFocusedNode.mockResolvedValue({ keyPath: 'x', node: { subtype: 'HomeRows' } });
+    const action = resendUntilFocused('back', focusIsInHomeContent);
+
+    await action();
+    await action();
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+
+  it('sends NOTHING when focus cannot be read, rather than guessing', async () => {
+    // The same rule `walkHomeToFirstRow` follows: an unreadable focus is not a licence to
+    // press at an unidentified component.
+    getFocusedNode.mockResolvedValue(null);
+    const action = resendUntilFocused('back', focusIsInHomeContent);
+
+    await action();
+    await action();
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+});
+
+describe('waitFocusInHomeContent — Home focus, asked by subtype', () => {
+  beforeEach(() => {
+    getFocusedNode.mockReset();
+    getValue.mockReset();
+    sendKeypress.mockReset();
+  });
+
+  it('accepts focus on EITHER row list', async () => {
+    getFocusedNode.mockResolvedValue({ keyPath: 'x', node: { subtype: 'FavoritesRows' } });
+    await expect(waitFocusInHomeContent({ timeout: 1000 })).resolves.toBeTruthy();
+  });
+
+  it('does not accept focus that merely sits under a matching keyPath', async () => {
+    // The id half is gone on purpose: a keyPath naming the container is exactly what stops
+    // being true when the other tab is selected.
+    getFocusedNode.mockResolvedValue({
+      keyPath: 'a.#homeRows.b',
+      node: { subtype: 'JRTabBar' },
+    });
+    await expect(waitFocusInHomeContent({ timeout: 1 })).rejects.toThrow(/focus inside Home/);
+  });
+});
+
 describe('waitHome — the login flow is a separate question, asked first', () => {
   beforeEach(() => {
     getValue.mockReset();
-    getFocusedNode.mockReset();
+    // Re-arm rather than bare-reset: the refusal tests below take the THROW path, which
+    // runs `diagnosedError` -> `captureFailureState` -> its own `getFocusedNode`, and the
+    // capture `.catch()`es the result. A bare `mockReset()` returns undefined and the
+    // diagnostic dies on `.catch` of undefined, replacing the real failure with a mock
+    // artifact. Same coupling the file-level `beforeEach` documents.
+    getFocusedNode.mockReset().mockResolvedValue(null);
+    sendKeypress.mockReset();
+    // Home's active list resolves to `HomeRows`. `waitHome` no longer NAMES a row list — it
+    // asks `homeListId` which of the two is in the scene, which is one batched read of both
+    // candidate ids. These cases are about the LOGIN gate, so the resolution is arranged to
+    // succeed; `homeListId`'s own behaviour is tested separately below.
+    getValues.mockReset().mockResolvedValue({
+      results: { k0: { found: true, value: 'HomeRows' }, k1: { found: false } },
+    });
+  });
+
+  it('resolves the row list only AFTER the view gate has named Home', async () => {
+    // The ordering that makes a throwing resolver safe here. `steps.js` documents a window
+    // between launch and Home where NEITHER list is in the tree, so asking which list is
+    // active before Home is up would fail on a login that had simply not finished — the
+    // exact misattribution the view gate exists to prevent, reintroduced one layer down.
+    const order = [];
+    let mounted = false;
+    getValue.mockImplementation(async ({ keyPath }) => {
+      if (keyPath === 'activeRoutedView.subtype()') {
+        order.push('view');
+        const res = mounted ? { found: true, value: 'Home' } : { found: false };
+        mounted = true;
+        return res;
+      }
+      order.push('rows');
+      return { found: true, value: 3 };
+    });
+    getValues.mockImplementation(async () => {
+      order.push('resolve');
+      return { results: { k0: { found: true, value: 'HomeRows' }, k1: { found: false } } };
+    });
+
+    await waitHome();
+
+    // Presence FIRST: `indexOf` answers -1 for an absent step, and -1 is below every real
+    // index, so the ordering assertions below would pass on a `waitHome` that never resolved
+    // or never read the rows at all. (`jellyrock-tests/ordering-asserts-presence` catches
+    // exactly this — it caught this very test.)
+    expect(order).toContain('view');
+    expect(order).toContain('resolve');
+    expect(order).toContain('rows');
+    // Every view read precedes the resolution, and the rows read follows it.
+    expect(order.lastIndexOf('view')).toBeLessThan(order.indexOf('resolve'));
+    expect(order.indexOf('resolve')).toBeLessThan(order.indexOf('rows'));
   });
 
   it('waits for a routed view BEFORE it ever reads Home rows', async () => {
@@ -388,6 +892,52 @@ describe('waitHome — the login flow is a separate question, asked first', () =
       ([a]) => a.keyPath === 'activeRoutedView.subtype()',
     );
     expect(viewReads.length).toBeGreaterThan(1);
+  });
+
+  it('REFUSES a library grid — the false gate this helper used to be', async () => {
+    // The whole point. Before 2026-09-06 both gates passed from a grid: the view gate only
+    // asked that `subtype()` be non-EMPTY and a grid answers `BaseGridView`, while the rows
+    // gate is scene-rooted and finds Home's rows SUSPENDED in the tree under sgRouter's
+    // `suspendMode: "hide"`. So a Back swallowed by the router reported as an arrival, and
+    // the caller's next step timed out blaming focus one nav later (.178, 2026-09-06).
+    //
+    // Both device answers below are the ones a real grid gives, including the rows read
+    // succeeding — so this fails ONLY because the view is named.
+    getValue.mockImplementation(async ({ keyPath }) =>
+      keyPath === 'activeRoutedView.subtype()'
+        ? { found: true, value: 'BaseGridView' }
+        : { found: true, value: 7 },
+    );
+
+    await expect(waitHome({ viewTimeout: 1 })).rejects.toThrow(/Home to be the active/);
+  });
+
+  it('does not fall through to the rows gate when the app is not on Home', async () => {
+    // Attribution, not just failure: the run must blame the view it is actually on, never
+    // "home rows". A rows read here would mean the helper had gone on to ask a question
+    // whose answer cannot be trusted.
+    const seen = [];
+    getValue.mockImplementation(async ({ base, keyPath }) => {
+      seen.push(`${base}:${keyPath}`);
+      return keyPath === 'activeRoutedView.subtype()'
+        ? { found: true, value: 'BaseGridView' }
+        : { found: true, value: 7 };
+    });
+
+    await expect(waitHome({ viewTimeout: 1 })).rejects.toThrow();
+    expect(seen).not.toContain('scene:#homeRows.content.getChildCount()');
+  });
+
+  it('sends no keys — it detects a lost Back, it does not recover from one', async () => {
+    // Deliberate, and load-bearing. The recovery is a re-pressed Back, which is
+    // destructive off the path to Home: `UserSelect.onKeyEvent` treats Back as CHANGE
+    // SERVER and the coordinator DELETES the saved server. Routing four navs through the
+    // re-pressing `backToHome` was tried on 2026-09-06 and came back signed out on
+    // `SetServerScreen`. 30-odd call sites share this helper; only detection is safe here.
+    getValue.mockImplementation(async () => ({ found: true, value: 'BaseGridView' }));
+
+    await expect(waitHome({ viewTimeout: 1 })).rejects.toThrow();
+    expect(sendKeypress).not.toHaveBeenCalled();
   });
 });
 
@@ -1289,6 +1839,132 @@ describe('getVals', () => {
   });
 });
 
+describe('walkFocusInto', () => {
+  // Every keyPath below sits under `#view`, and the active routed view reads `view`, so
+  // the origin gate is satisfied and these cases test the DESTINATION behaviour they were
+  // written for. The gate itself is exercised in the `walkFocusUntil` block below.
+  const ACTIVE_VIEW = 'view';
+
+  beforeEach(() => {
+    getFocusedNode.mockReset();
+    sendKeypress.mockReset();
+    getValue.mockReset();
+    getValue.mockResolvedValue({ found: true, value: ACTIVE_VIEW });
+  });
+
+  const focusedAt = (keyPath) => getFocusedNode.mockResolvedValue({ keyPath });
+
+  it('presses on the FIRST tick — a walk has sent nothing to wait and see about', async () => {
+    // The one behaviour that separates this from both `resend*` helpers. They sit out a
+    // tick because their caller already pressed; a walk that did the same would add an
+    // interval of latency to every call for no reading.
+    focusedAt('scene.#view.#userRow.0');
+    await walkFocusInto('down', '#buttons')();
+    expect(sendKeypress).toHaveBeenCalledTimes(1);
+    expect(sendKeypress).toHaveBeenCalledWith('down');
+  });
+
+  it("keeps pressing while focus has not arrived — the rung count is the fixture's, not ours", async () => {
+    focusedAt('scene.#view.#buttons.1');
+    const action = walkFocusInto('up', '#itemDescription');
+    await action();
+    await action();
+    await action();
+    expect(sendKeypress).toHaveBeenCalledTimes(3);
+  });
+
+  it('stops the moment focus arrives, so it cannot press on into what the target opens', async () => {
+    focusedAt('scene.#view.#buttons.1');
+    const action = walkFocusInto('up', '#itemDescription');
+    await action();
+    expect(sendKeypress).toHaveBeenCalledTimes(1);
+    focusedAt('scene.#view.#itemDetails.#itemDescription');
+    await action();
+    await action();
+    expect(sendKeypress).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends NOTHING when focus is on ANOTHER routed view — the 2026-09-09 over-press', async () => {
+    // The failure this gate was built from. `navSearch`'s walk timed out after 12.4 s with
+    // the active view SearchResults and focus on Home's row list inside the suspended Home,
+    // every press delivered (`actionErrors: 0`) — ~34 Rights into a screen the walk was not
+    // on. A destination-only guard cannot tell "not arrived yet" from "on the wrong
+    // screen"; this one can. It does NOT explain why focus left, which is still open.
+    getFocusedNode.mockResolvedValue({
+      keyPath: '#routerOutlet.#viewTarget.#c0d84208.#homeRows',
+    });
+    getValue.mockResolvedValue({ found: true, value: '269f4e88' });
+    const action = walkFocusInto('right', '#searchSelect');
+    await action();
+    await action();
+    await action();
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+
+  it('presses again once focus returns to the active view', async () => {
+    // The gate must not latch: a walk that gave up permanently would turn a recoverable
+    // blip into a guaranteed timeout.
+    getValue.mockResolvedValue({ found: true, value: 'view' });
+    getFocusedNode.mockResolvedValue({ keyPath: '#routerOutlet.#other.#homeRows' });
+    const action = walkFocusInto('right', '#searchSelect');
+    await action();
+    expect(sendKeypress).not.toHaveBeenCalled();
+    getFocusedNode.mockResolvedValue({ keyPath: '#routerOutlet.#view.#searchKey' });
+    await action();
+    expect(sendKeypress).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends nothing when the active view id cannot be read', async () => {
+    // Same rule an unreadable FOCUS already follows: a walk that cannot establish where it
+    // is must not press. Pressing on an unknown screen is the failure being prevented.
+    getFocusedNode.mockResolvedValue({ keyPath: '#routerOutlet.#view.#buttons' });
+    getValue.mockResolvedValue({ found: false });
+    await walkFocusInto('right', '#searchSelect')();
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+
+  it('does not pay for the view read once focus has ARRIVED', async () => {
+    // Arrival is checked before the origin gate, so a settled walk costs one ODC read per
+    // tick rather than two.
+    getFocusedNode.mockResolvedValue({ keyPath: '#routerOutlet.#view.#searchSelect' });
+    getValue.mockReset();
+    await walkFocusInto('right', '#searchSelect')();
+    expect(sendKeypress).not.toHaveBeenCalled();
+    expect(getValue).not.toHaveBeenCalled();
+  });
+
+  it('counts the container itself as arrived, not only its descendants', async () => {
+    // `#itemDescription` is a leaf the app focuses directly — if containment did not
+    // include the node itself this would press forever at a target already reached.
+    focusedAt('scene.#itemDescription');
+    await walkFocusInto('up', '#itemDescription')();
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+
+  it('matches a whole keyPath SEGMENT, never a substring', async () => {
+    // Phase 2's fix, restated as a gate on this helper: substring matching reports
+    // `#options` as inside `#optionsPanelOverlay`. A walk that believed that would stop
+    // one container short and hand the press budget to the wrong node.
+    focusedAt('scene.#view.#optionsPanelOverlay.0');
+    await walkFocusInto('up', '#options')();
+    expect(sendKeypress).toHaveBeenCalledTimes(1);
+  });
+
+  it('normalises a missing `#` the same way the predicate does', async () => {
+    focusedAt('scene.#itemDescription');
+    await walkFocusInto('up', 'itemDescription')();
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+
+  it('does not press when the focus read fails — an unknown state is not a reason to walk', async () => {
+    getFocusedNode.mockRejectedValue(new Error('odc down'));
+    const action = walkFocusInto('down', '#buttons');
+    await action();
+    await action();
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+});
+
 describe('resendUntilFocusInside', () => {
   beforeEach(() => {
     getFocusedNode.mockReset();
@@ -1356,5 +2032,234 @@ describe('resendUntilFocusInside', () => {
     const second = resendUntilFocusInside('back', '#homeRows');
     await second();
     expect(sendKeypress).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The failure KIND a timeout is recorded under.
+ *
+ * `FAILURE_KINDS` is a closed set because the flake baseline groups by it, and its own
+ * docblock names the two ways that goes wrong: two slugs for one class SPLIT the count,
+ * one slug for two classes MERGES it. Routing a hand-rolled poll loop through `waitFor`
+ * causes the merge — silently, since a converted loop's diff shows the loop leaving and
+ * nothing about the bucket it used to report. That is why `waitFor` takes a `kind` at
+ * all, and it is only worth taking if it actually reaches the record.
+ *
+ * Asserted against `failures.jsonl` rather than the thrown Error, because the record is
+ * the artifact the baseline reads — the message never carries the slug. `RTA_RECORD_DIR`
+ * points it at a tmpdir, the same channel `diagnostics.test.js` uses and the same one a
+ * spawned Vitest child gets in production.
+ */
+describe('waitFor — the failure kind that reaches the record', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rta-steps-kind-'));
+    process.env.RTA_RECORD_DIR = tmpDir;
+    getValue.mockReset().mockResolvedValue({ found: true, value: 'never' });
+  });
+
+  afterEach(() => {
+    delete process.env.RTA_RECORD_DIR;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  /** The last failure record this tmpdir received. */
+  const lastRecord = () => {
+    const lines = fs
+      .readFileSync(path.join(tmpDir, 'failures.jsonl'), 'utf8')
+      .split('\n')
+      .filter(Boolean);
+    return JSON.parse(lines.at(-1));
+  };
+
+  it('defaults to wait-for-timeout, so the 61 existing call sites are unmoved', async () => {
+    await waitFor('#a.loadState', () => false, { timeout: 60, interval: 10 }).catch(() => {});
+    const record = lastRecord();
+    expect(record.kind).toBe('wait-for-timeout');
+    expect(record.kindUnknown).toBeUndefined();
+  });
+
+  it("records the CALLER's kind when it has one, instead of merging into the default", async () => {
+    await waitFor('loadState', () => false, {
+      timeout: 60,
+      interval: 10,
+      label: 'movies grid',
+      kind: FAILURE_KINDS.GRID_LOAD_TIMEOUT,
+    }).catch(() => {});
+    const record = lastRecord();
+    expect(record.kind).toBe('grid-load-timeout');
+    expect(record.label).toBe('movies grid');
+    expect(record.kindUnknown).toBeUndefined();
+  });
+
+  it('records home-list-absent for an unresolvable Home list, not the shared default', async () => {
+    // Its own bucket because the fix is different in kind: a wait timeout says a field never
+    // reached a value; this says the node that field lives on is not in the scene, so no
+    // amount of waiting on Home's content is the answer. Merging them would hide that.
+    getValues.mockResolvedValue({ results: { k0: { found: false }, k1: { found: false } } });
+
+    await homeListId({ timeout: 60, interval: 10 }).catch(() => {});
+
+    const record = lastRecord();
+    expect(record.kind).toBe('home-list-absent');
+    expect(record.kind).toBe(FAILURE_KINDS.HOME_LIST_ABSENT);
+    // The guard against the opposite error: a slug that is not in the registry is reported
+    // rather than silently corrected, which would SPLIT the bucket instead of merging it.
+    expect(record.kindUnknown).toBeUndefined();
+  });
+
+  it('flags an unregistered slug rather than correcting it, so a SPLIT bucket is visible', async () => {
+    // The opposite error to the merge above, and the reason the parameter takes a
+    // `FAILURE_KINDS` member rather than a string: an invented slug must not quietly
+    // become a new bucket. `diagnosedError` owns this guard; the point here is that
+    // routing a kind through `waitFor` does not bypass it.
+    await waitFor('#a.loadState', () => false, {
+      timeout: 60,
+      interval: 10,
+      kind: 'grid-loading-timeout',
+    }).catch(() => {});
+    expect(lastRecord().kindUnknown).toBe(true);
+  });
+});
+
+/**
+ * `waitOsdUp` — the OSD-open sequence the three call sites used to each carry a copy of.
+ *
+ * ## What is actually being gated
+ *
+ * The app swallows Up until `stateAllowsOSD()` says otherwise, and that predicate reads
+ * `m.top.state` on the player node — the same field this reads back over ODC, because
+ * `VideoPlayerView` stamps itself with the item id it is playing. All three sites used to
+ * follow their playable gate with `await sleep(1500)`, and the two in `dialogs.spec.js`
+ * NEEDED something there: they gate on `waitMediaPlaying`, which reads the OS media
+ * player over ECP and goes true well before the app's own field does.
+ *
+ * So the property under test is not "it opens the OSD" — it is that no input is sent
+ * until the app would accept it, with no fixed dwell standing in for that fact. A
+ * regression here is silent: pressing early just wastes presses, the retry loop still
+ * gets there, and the suite stays green while the guard is gone.
+ *
+ * The device is faked at the `odc`/`ecp` boundary. Whether `#osd.visible` is the right
+ * keyPath stays hardware-verified via `npm run test:rta`.
+ */
+describe('waitOsdUp — no input before the app will accept it', () => {
+  /**
+   * A device whose player reports `state` from `states` (one per read, last value
+   * sticking) and whose OSD becomes visible once `upPressesToOpen` Ups have landed.
+   */
+  const player = ({ states, upPressesToOpen = 1 }) => {
+    const queue = [...states];
+    let last = queue[0];
+    let ups = 0;
+    // The state the player was in AT THE MOMENT of each Up. Counting presses is not
+    // enough: with the gate removed the OSD still opens on the first press, so the count
+    // is identical and only the state it was sent in differs. That state is the property.
+    const pressedWhile = [];
+    sendKeypress.mockReset().mockImplementation(async (key) => {
+      if (key !== 'Up') return;
+      ups++;
+      pressedWhile.push(last);
+    });
+    getValue.mockReset().mockImplementation(async ({ keyPath }) => {
+      if (keyPath === '#hero1.state') {
+        if (queue.length) last = queue.shift();
+        return { found: true, value: last };
+      }
+      if (keyPath === '#osd.visible') return { found: true, value: ups >= upPressesToOpen };
+      return { found: false };
+    });
+    return { ups: () => ups, pressedWhile: () => pressedWhile };
+  };
+
+  it('sends NOTHING while the player is still buffering', async () => {
+    // The regression that produced this helper: the old loop pressed Up through the
+    // whole ~5-7 s stream-start window, into a player designed not to answer.
+    const p = player({ states: ['buffering', 'buffering', 'playing'] });
+    // The state gate polls at 1 s, so three answers need room for three ticks.
+    await waitOsdUp('osd visible', { itemId: 'hero1', playableTimeout: 5000, timeout: 2000 });
+    // Every Up was sent against a playable player — not merely "one Up was sent", which
+    // stays true with the gate removed and is what let an earlier version of this test
+    // pass a mutation that deleted the guard outright.
+    expect(p.pressedWhile()).not.toHaveLength(0);
+    expect(p.pressedWhile().every((state) => state === 'playing')).toBe(true);
+  });
+
+  it("reads the app's OWN player field, not the OS media player", async () => {
+    // `dialogs.spec.js` gates on ECP before calling this. If this read moved to ECP too,
+    // both sites would gate on the same early signal and the guard would be gone.
+    player({ states: ['playing'] });
+    await waitOsdUp('osd visible', { itemId: 'hero1', playableTimeout: 2000, timeout: 2000 });
+    const keyPaths = getValue.mock.calls.map(([req]) => req.keyPath);
+    expect(keyPaths).toContain('#hero1.state');
+  });
+
+  it('does not dwell once the player answers — the 1500 ms settle is gone', async () => {
+    // The assertion the conversion exists for. A restored `sleep(1500)` between the two
+    // waits pushes this well past the bound; the gated path costs one poll interval.
+    player({ states: ['playing'] });
+    const start = Date.now();
+    await waitOsdUp('osd visible', { itemId: 'hero1', playableTimeout: 2000, timeout: 2000 });
+    expect(Date.now() - start).toBeLessThan(1200);
+  });
+
+  it('does not press into an OSD that is already up', async () => {
+    // Up OPENS the OSD; it is not a toggle. Once open the key reaches the OSD itself and
+    // moves focus between its controls, perturbing the state the caller asserts on.
+    player({ states: ['playing'], upPressesToOpen: 0 });
+    await waitOsdUp('osd visible', { itemId: 'hero1', playableTimeout: 2000, timeout: 2000 });
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+
+  it('keeps re-pressing when a key is swallowed, rather than failing on one drop', async () => {
+    player({ states: ['playing'], upPressesToOpen: 3 });
+    await waitOsdUp('osd visible', { itemId: 'hero1', playableTimeout: 2000, timeout: 12000 });
+    expect(sendKeypress.mock.calls.filter(([k]) => k === 'Up').length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('times out under the OSD label when the player never becomes playable', async () => {
+    player({ states: ['buffering'] });
+    await expect(
+      waitOsdUp('osd visible', { itemId: 'hero1', playableTimeout: 150, timeout: 150 }),
+    ).rejects.toThrow(/player playable \(pre-OSD\)/);
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+});
+
+// A scene census walks from the scene ROOT, so it only describes a read that was
+// scene-rooted too. `getActiveVal` resolves under `m.global.activeRoutedView` precisely to
+// dodge the cross-view id collisions the audit hunts for, so auditing ITS keyPath reports an
+// ambiguity that read was never exposed to — and a false positive lands in the same
+// false-alarm count `resolution.js` names as the bar for promoting the audit to a throw.
+describe('waitFor audits only the reads a scene census can describe', () => {
+  beforeEach(() => {
+    auditSceneResolution.mockClear();
+    getValue.mockResolvedValue({ found: true, value: 'ready' });
+  });
+
+  it('audits a scene-rooted read', async () => {
+    await waitFor('#itemGrid.type', (v) => v === 'ready', { interval: 1 });
+    expect(auditSceneResolution).toHaveBeenCalledWith('#itemGrid.type', expect.anything());
+  });
+
+  it('does NOT audit an activeVal-scoped read', async () => {
+    // `#extrasGrid` is the real instance of the collision: every ItemDetails declares one,
+    // and sgRouter keeps suspended views in the tree through a Series -> Season -> Episode
+    // drill-down, which is exactly why this site reads activeVal-scoped in the first place.
+    await waitFor('#extrasGrid.type', (v) => v === 'ready', {
+      read: getActiveVal,
+      interval: 1,
+    });
+    expect(auditSceneResolution).not.toHaveBeenCalled();
+  });
+
+  it('does NOT audit a reader it cannot characterise', async () => {
+    // The safe default: a census cannot be trusted to describe a read whose base it does
+    // not know, so an unknown reader gets no audit rather than a scene-rooted guess.
+    await waitFor('#itemGrid.type', (v) => v === 'ready', {
+      read: async () => 'ready',
+      interval: 1,
+    });
+    expect(auditSceneResolution).not.toHaveBeenCalled();
   });
 });

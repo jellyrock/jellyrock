@@ -59,6 +59,12 @@
  * across the six round trips); post-fix the walk ends flat, and below the cold-Home
  * baseline it started from.
  *
+ * That argument has a hole worth naming: `getRoots()` sees an island by its ROOT, so a
+ * stranded content root reads as ~1 whether it drags 5 cells behind it or 50, and the
+ * per-visit budget below is 20. `getAllCount` — the same primitive over `getAll()`
+ * instead of `getRoots()` — counts the whole island, and `retainedAfter` now records it
+ * alongside. It is deliberately NOT asserted on yet; see the note at that call.
+ *
  * ## What a failure here means
  *
  * Some screen's `onDestroy` no longer releases everything, OR a route regained a
@@ -113,6 +119,8 @@ let session;
 let ctx;
 /** `totalNodes` from the one-screen walk; the six-screen walk is compared against it. */
 let bareWalkRoots;
+/** The same, from `getAll()` — the census the roots figure structurally under-counts. */
+let bareWalkAll;
 
 beforeAll(async () => {
   session = await authenticate(RTA_CONFIG.server, { role: 'rta-leaks' });
@@ -144,31 +152,65 @@ async function retainedAfter(walk, label) {
   await sleep(3000);
 
   const roots = await odc.getRootsCount();
+
+  // Second census, RECORDED BUT NOT ASSERTED — it measures the blind spot named above.
+  // `getRoots()` counts unparented nodes, so a retained island whose members stay parented
+  // to one another (a cached content root and its cells) contributes ~1 to it whatever its
+  // size; `getAll()` counts the whole island. Measured on `.177` 2026-09-08 as the reason
+  // to believe that gap is real, not theoretical: on a settled Home `ContentNode` and
+  // `JellyfinBaseItem` read roots 0 / all 8 and 14 — entirely parented, hence invisible to
+  // the census above.
+  //
+  // No assertion, on purpose, and for the same reason PER_VISIT_ROOT_BUDGET was landed
+  // loose: nobody has measured how `getAll()` totals spread across these walks, and a
+  // threshold guessed here would buy flakes on the one suite whose job is consistency.
+  // Landing the number in the run record makes a few green runs enough to set that budget
+  // from data. Cost is one extra round trip per walk — 9 ms device / 15 ms wall, n=10.
+  const all = await odc.getAllCount();
+  // Per-walk detail into the raw stream. NOTE it does not reach `run-meta.json` or the
+  // ledger: `foldAssertions` keeps a record only when `verified` is a NUMBER, so an
+  // object-valued one is written here and dropped there. The durable figure is the
+  // scalar `perVisitAllDelta` below — this line is the working, not the record.
+  recordAssertion({
+    name: 'nodeCensus',
+    label,
+    verified: { roots: roots.totalNodes, all: all.totalNodes },
+  });
+
   return {
     byType: Object.fromEntries(ROUTED_VIEWS.map((t) => [t, roots.nodeCountByType?.[t] ?? 0])),
     total: roots.totalNodes,
+    allTotal: all.totalNodes,
   };
 }
 
 /**
- * The one-screen walk's root total, which the six-screen walk is measured against.
+ * The one-screen walk's two census totals, which the six-screen walk is measured against.
  *
  * Normally set as a side effect of the first test, which already runs that walk. When
  * that test did NOT run — `-t 'six distinct'`, a reorder, a `.only` — this recomputes it
  * rather than failing on a missing baseline, so a filtered run still measures a real
- * delta. Costs nothing in a full-file run, where the value is already cached.
+ * delta. Costs nothing in a full-file run, where the values are already cached.
  */
-async function baselineRoots() {
+async function baselineCensus() {
   if (typeof bareWalkRoots !== 'number') {
-    const { total } = await retainedAfter(navHomeReturnBare, 'leak: per-visit delta baseline');
+    const { total, allTotal } = await retainedAfter(
+      navHomeReturnBare,
+      'leak: per-visit delta baseline',
+    );
     bareWalkRoots = total;
+    bareWalkAll = allTotal;
   }
-  return bareWalkRoots;
+  return { roots: bareWalkRoots, all: bareWalkAll };
 }
 
 it('retains no views after a library round trip', async () => {
-  const { byType, total } = await retainedAfter(navHomeReturnBare, 'leak: library round trip');
-  bareWalkRoots = total; // the per-visit comparison below reads this
+  const { byType, total, allTotal } = await retainedAfter(
+    navHomeReturnBare,
+    'leak: library round trip',
+  );
+  bareWalkRoots = total; // the per-visit comparisons below read these
+  bareWalkAll = allTotal;
   // One object compare rather than three: a failure then reports every view's count,
   // so "which one leaked" is in the diff instead of being the next thing to go find.
   expect(byType, 'Home -> library -> back should leave nothing alive').toEqual(NOTHING_RETAINED);
@@ -179,7 +221,7 @@ it('retains no views after six distinct detail round trips', async () => {
   // the same item resumed one cached view and the count never grew — the leak was only
   // visible across different paths. A regression that reintroduces path-keyed caching
   // would pass a same-item walk and fail this one.
-  const { byType, total } = await retainedAfter(
+  const { byType, total, allTotal } = await retainedAfter(
     navHomeReturnAfterDetails,
     'leak: six detail round trips',
   );
@@ -189,7 +231,7 @@ it('retains no views after six distinct detail round trips', async () => {
 
   // The class-level half of the gate (see the header): six screens opened and closed
   // must not cost meaningfully more unparented roots than one, whatever type they are.
-  const baseline = await baselineRoots();
+  const { roots: baseline, all: baselineAll } = await baselineCensus();
   const delta = total - baseline;
 
   // Recorded BEFORE the assertion, and on every outcome. PER_VISIT_ROOT_BUDGET is
@@ -198,6 +240,19 @@ it('retains no views after six distinct detail round trips', async () => {
   // (`assertions` in run-meta.json / runs.jsonl) means a few green runs are enough to
   // tighten the budget from data instead of from guesswork.
   recordAssertion({ name: 'perVisitRootDelta', verified: delta });
+
+  // The same comparison over `getAll()`, and the reason the second census is taken at all:
+  // it counts a retained island's whole membership where the roots figure sees only its
+  // root. Recorded, NOT asserted — there is no measured noise floor for it yet, and a
+  // threshold guessed here would buy flakes on the suite whose job is consistency. Scalar
+  // and uniquely named so `foldAssertions` carries it into runs.jsonl, which is what makes
+  // "set the budget from a few green runs" true rather than merely intended.
+  //
+  // First reading, `.177` 2026-09-08: roots 500 -> 526 over the six extra visits while
+  // perVisitRootDelta was 0. Non-zero, and NOT yet attributable — n=1, no noise floor, and
+  // recycled cell/texture pools are an equally good explanation. It is the signal this
+  // census exists to make visible, not yet evidence of a leak.
+  recordAssertion({ name: 'perVisitAllDelta', verified: allTotal - baselineAll });
 
   expect(
     delta,

@@ -58,7 +58,19 @@ jobs:
           # it lands, with no branch-protection change. package-lock.json (above)
           # is what makes it fire on a Renovate bump of sharp — the case that
           # broke the check for three months.
-          pattern: '^scripts/|^tests/scripts/|^images/gradients/|^resources/icons/|^images/icons/|^resources/placeholders/|^images/placeholders/|^vitest\.config\.js$|^package(-lock)?\.json$|^\.lintstagedrc\.cjs$|^\.spellcheckerrc\.ya?ml$|^dictionary(-sentence-final)?\.txt$'
+          # tests/rta/ is here for the same shape, and the whole tree rather than
+          # one file. Two gates in this job read it: lint:rta-capabilities reads
+          # the ODC capability inventory in tests/rta/CLAUDE.md, and
+          # lint:rta-waits counts the suite's waits across tests/rta/**. A PR
+          # adding a wait in a spec, or deleting an inventory row, would
+          # otherwise skip the only checks that notice. It also closes a
+          # pre-existing hole unrelated to either: tests/rta/lib/*.test.js are
+          # part of `npm run test:scripts`, so editing one used to skip the job
+          # that runs it. (This job is both gates' CI home because it is the
+          # nearest one that runs `npm ci` — lint:rta-capabilities reads the
+          # installed roku-test-automation client and skips when it is absent,
+          # and lint:rta-waits drives ESLint with the repo's own config.)
+          pattern: '^scripts/|^tests/scripts/|^tests/rta/|^images/gradients/|^resources/icons/|^images/icons/|^resources/placeholders/|^images/placeholders/|^vitest\.config\.js$|^package(-lock)?\.json$|^\.lintstagedrc\.cjs$|^\.spellcheckerrc\.ya?ml$|^dictionary(-sentence-final)?\.txt$|^eslint\.config\.js$'
           force: ${{ inputs.force }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: steps.detect.outputs.relevant == 'true'
@@ -69,3 +81,9 @@ jobs:
         run: npm ci
       - if: steps.detect.outputs.relevant == 'true'
         run: npm run test:scripts
+      - name: Validate the ODC capability inventory covers the installed client
+        if: steps.detect.outputs.relevant == 'true'
+        run: npm run lint:rta-capabilities
+      - name: Validate the RTA wait inventory matches the suite
+        if: steps.detect.outputs.relevant == 'true'
+        run: npm run lint:rta-waits

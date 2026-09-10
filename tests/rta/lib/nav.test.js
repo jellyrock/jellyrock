@@ -29,10 +29,15 @@ const getActiveVal = vi.fn();
 const getActiveVals = vi.fn();
 const waitFor = vi.fn();
 const waitFocusInside = vi.fn();
+const waitFocusInHomeContent = vi.fn();
+// Home's active list, already resolved. `homeListId` is exercised for real in
+// `steps.test.js`; here it stands in so nav's own logic is what these cases test.
+const homeListId = vi.fn(async () => '#homeRows');
 const waitHome = vi.fn();
 const sleep = vi.fn();
 const formatCellCounts = vi.fn();
 const readCellCounts = vi.fn();
+const scrollFocus = vi.fn();
 
 vi.mock('./steps.js', () => ({
   press: (...a) => press(...a),
@@ -43,13 +48,15 @@ vi.mock('./steps.js', () => ({
   waitFor: (...a) => waitFor(...a),
   waitFocused: vi.fn(),
   waitFocusInside: (...a) => waitFocusInside(...a),
+  waitFocusInHomeContent: (...a) => waitFocusInHomeContent(...a),
+  homeListId: (...a) => homeListId(...a),
   waitHome: (...a) => waitHome(...a),
   walkHomeToFirstRow: vi.fn(),
   overhangWalkKey: vi.fn(),
   hasChildren: (v) => typeof v === 'number' && v > 0,
   resendIfSwallowed: vi.fn(() => vi.fn()),
-  resendUntilFocusInside: vi.fn(() => vi.fn()),
-  scrollFocus: vi.fn(),
+  resendUntilFocused: vi.fn(() => vi.fn()),
+  scrollFocus: (...a) => scrollFocus(...a),
   waitCellsQuiet: vi.fn(),
   waitRowsSettled: vi.fn(),
   readCellCounts: (...a) => readCellCounts(...a),
@@ -101,8 +108,10 @@ function homeWithShowsAt(row, col) {
     if (keyPath === `#homeRows.content.${row}.${col}.id`) return SHOWS;
     return undefined;
   });
-  // The focus walk gates via `waitFor`; it has nothing to prove here, so let it pass.
+  // The focus walk gates via `waitFor` (row half) and `scrollFocus` (column half);
+  // neither has anything to prove here, so let both pass.
   waitFor.mockResolvedValue(undefined);
+  scrollFocus.mockResolvedValue({ from: 0, to: col, pressed: col, recovered: 0 });
   getVals.mockResolvedValue([[row, col], col + 1]);
 }
 
@@ -169,6 +178,112 @@ describe('navLibraryByType — which library actually opened', () => {
     expect(recordRecovery).not.toHaveBeenCalled();
   });
 
+  it('walks the COLUMN through scrollFocus, which cannot press on an in-flight key', async () => {
+    // The fix for the mechanism captured on .177 2026-09-07. The loop this replaced
+    // decided whether to press from its own read of a LAGGING field, so it could send a
+    // Right on top of one already in flight: focus reported [0,2], the tile there was the
+    // library asked for, Home's rows were unchanged — and `rowItemSelected` came back
+    // [0,3]. `scrollFocus` sends the exact distance once and re-presses only for a key it
+    // can prove was dropped.
+    opensInOrder(SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+
+    expect(scrollFocus).toHaveBeenCalledTimes(1);
+    const [opts] = scrollFocus.mock.calls[0];
+    expect(opts).toMatchObject({
+      keyPath: '#homeRows.rowItemFocused',
+      target: 1,
+      forwardKey: 'Right',
+      backKey: 'Left',
+    });
+  });
+
+  it('selects the COLUMN component of rowItemFocused, not the row', async () => {
+    // `rowItemFocused` is [row, item]. Selecting index 0 here would walk the vertical axis
+    // with horizontal keys — it would still terminate, on the wrong cell, and the failure
+    // would surface somewhere else entirely.
+    opensInOrder(SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+    const [{ select }] = scrollFocus.mock.calls[0];
+    expect(select([7, 3])).toBe(3);
+    expect(select(undefined)).toBeUndefined();
+  });
+
+  it('leaves the ROW walk hand-rolled — Up from row 0 escapes Home entirely', async () => {
+    // The asymmetry is deliberate. `Home.onKeyEvent` releases focus to the OVERHANG on Up
+    // from row 0, so a single row overshoot does not land on the wrong tile, it leaves the
+    // screen. The measured defect was a COLUMN over-press; converting the riskier axis on
+    // that evidence would be speculation. This fails if someone converts it anyway.
+    opensInOrder(SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+    const rowWalks = waitFor.mock.calls.filter(([kp]) => kp === '#homeRows.rowItemFocused');
+    expect(rowWalks).toHaveLength(1);
+    expect(rowWalks[0][2].label).toContain('home library row');
+  });
+
+  it('carries the column walk’s recovered count into the record, so the fix stays measurable', async () => {
+    // `recovered` counts keys the walk had to re-send. After this fix it should be the only
+    // source of drift on this path, so a record without it cannot show the fix working.
+    scrollFocus.mockResolvedValue({ from: 0, to: 1, pressed: 1, recovered: 2 });
+    opensInOrder(MOVIES, SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+    const [entry] = recordRecovery.mock.calls[0];
+    expect(entry.observed.probe[0]).toMatchObject({ colPressed: 1, colRecovered: 2 });
+  });
+
+  it('BRACKETS the press — the selection reading is taken after Ok, not before', async () => {
+    // The whole reason this instrument exists. A gate on the tile's content at the
+    // walked-to coordinates was tried here and PASSED while the press still opened
+    // Movies, so whatever moves does so in a window no pre-press reading can see.
+    // Ordering is therefore the property under test, not the field list.
+    const order = [];
+    press.mockImplementation(async (k) => order.push(`press:${k}`));
+    getVals.mockImplementation(async (keyPaths) => {
+      order.push(keyPaths.includes('#homeRows.rowItemSelected') ? 'read:selected' : 'read:pre');
+      return keyPaths.map(() => undefined);
+    });
+    opensInOrder(SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+
+    // All three asserted PRESENT first. `indexOf` answers -1 for a step that never ran,
+    // and -1 is less than every real index — so the ordering alone passes when the press
+    // or either read is missing entirely, which is the regression this test exists for.
+    expect(order).toContain('read:pre');
+    expect(order).toContain('press:Ok');
+    expect(order).toContain('read:selected');
+    expect(order.indexOf('read:pre')).toBeLessThan(order.indexOf('press:Ok'));
+    expect(order.indexOf('press:Ok')).toBeLessThan(order.indexOf('read:selected'));
+  });
+
+  it('records what it AIMED AT beside what Home SELECTED, so the two can disagree', async () => {
+    // The discriminator. Same coordinates with a different id means the row's content
+    // changed under fixed coordinates (a row swap); different coordinates means focus
+    // moved between the probe and the press. A record carrying only one of the two
+    // cannot tell those apart, which is the state this replaces.
+    getVals.mockImplementation(async (keyPaths) =>
+      keyPaths.includes('#homeRows.rowItemSelected')
+        ? [[0, 5]]
+        : keyPaths.map((k) => (k.endsWith('.id') ? MOVIES : undefined)),
+    );
+    opensInOrder(MOVIES, SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+
+    const [entry] = recordRecovery.mock.calls[0];
+    expect(entry.observed.probe[0]).toMatchObject({ aimedAt: [0, 1], selected: [0, 5] });
+  });
+
+  it('does not let a failed SELECTION read fail a nav either', async () => {
+    // The second probe is a second chance to break a healthy nav. It runs after the
+    // press, when Home is suspended, so it is the likelier of the two to come back
+    // empty — and it still may not turn instrumentation into a failure.
+    getVals.mockImplementation(async (keyPaths) => {
+      if (keyPaths.includes('#homeRows.rowItemSelected')) throw new Error('odc timeout');
+      return keyPaths.map(() => undefined);
+    });
+    opensInOrder(SHOWS);
+    await expect(navLibraryByType('tvshows', SHOWS)).resolves.toBeUndefined();
+  });
+
   it('does not let a failed probe read fail a nav that was otherwise fine', async () => {
     // `getVals` throws on a batch failure by design. That is right for an assertion
     // and wrong for instrumentation on the SUCCESS path of every library nav:
@@ -221,6 +336,69 @@ describe('navLibraryByType — which library actually opened', () => {
     opensInOrder(MOVIES);
     await navLibraryByType('tvshows');
     expect(press.mock.calls.map(([k]) => k)).toEqual(['Ok']);
+  });
+});
+
+/**
+ * `waitGridLoaded`'s conversion to `waitFor`, and the bucket it must not fall into.
+ *
+ * It hand-rolled its own poll loop until 2026-09-05. Routing it through the shared
+ * primitive buys read-failure attribution and brings it inside
+ * `jellyrock-rta/wait-justified`'s view — but a naive conversion would also have taken
+ * its failure slug, because `waitFor` recorded `wait-for-timeout` unconditionally.
+ *
+ * That merge is the regression this gates, and it is invisible by construction: the
+ * suite stays green (the wait still works), the diff shows a loop leaving and says
+ * nothing about the record, and the cost lands weeks later in a flake baseline where a
+ * grid that never loads is indistinguishable from every other timeout in the suite.
+ * `FAILURE_KINDS`' own docblock names one-slug-for-two-classes as the failure; this is
+ * the assertion that the conversion did not cause it.
+ *
+ * The reader and cadence are asserted for the same reason Phase 3b stated every
+ * converted site's timeout: a helper's defaults are not the defaults the call site had.
+ * `loadState` recurs on every BaseGridView, so a scene-rooted read could answer from a
+ * SUSPENDED view and pass this wait against the screen the user just left.
+ */
+describe('waitGridLoaded — converted to waitFor without losing its own failure bucket', () => {
+  /** The `waitFor` call the grid wait issued, out of the several a nav makes. */
+  const gridWait = () => waitFor.mock.calls.find(([keyPath]) => keyPath === 'loadState');
+
+  it('reports grid-load-timeout, not the shared wait-for-timeout bucket', async () => {
+    opensInOrder(SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+    expect(gridWait()?.[2]).toMatchObject({ kind: FAILURE_KINDS.GRID_LOAD_TIMEOUT });
+  });
+
+  it('keeps the 20 s budget and 500 ms cadence the hand-rolled loop had', async () => {
+    opensInOrder(SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+    expect(gridWait()?.[2]).toMatchObject({ timeout: 20000, interval: 500 });
+  });
+
+  it('polls the ACTIVE routed view, so a suspended grid cannot satisfy it', async () => {
+    opensInOrder(SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+    // Asserted by DELEGATION, not by reference: `steps.js` is mocked with wrappers, so
+    // the reader `nav.js` holds is never the same object as the spy here. Calling it is
+    // the stronger check anyway — it proves which reader RUNS. Passing the scene-rooted
+    // `getVal` instead would leave this spy untouched, which is the mistake being gated.
+    getActiveVal.mockClear();
+    await gridWait()[2].read('loadState');
+    expect(getActiveVal).toHaveBeenCalledWith('loadState');
+    expect(getVal).not.toHaveBeenCalledWith('loadState');
+  });
+
+  it('accepts loaded and empty, and nothing else — an empty library is a real screen', async () => {
+    // "empty" means zero ITEMS, not a failed load: the "No Items" view is capture-worthy
+    // and this nav is shared with the store-screenshot path, which would otherwise time
+    // out on every legitimately empty library.
+    opensInOrder(SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+    const predicate = gridWait()?.[1];
+    expect(predicate('loaded')).toBe(true);
+    expect(predicate('empty')).toBe(true);
+    expect(predicate('skeleton')).toBe(false);
+    expect(predicate(undefined)).toBe(false);
   });
 });
 
@@ -343,5 +521,45 @@ describe('reportSweep — the BEFORE segment, and when it must not print', () =>
     expect(logged[0]).toContain('over 5 row(s) / 22 item(s) at sweep start (settled in 1763 ms)');
     expect(logged[0]).not.toContain('before the sweep');
     expect(warned).toEqual([]);
+  });
+});
+
+// The instrument `walkHomeRowsTo`'s docblock defers to. That docblock declines to convert
+// the row half until a row over-press is CAPTURED — and until this comparison existed,
+// nothing could capture one. The recovery record asserted above is outcome-level and
+// strictly narrower: it fires only when a wrong library actually OPENED and the caller
+// supplied an id, so drift that still landed on the right library left no trace at all.
+//
+// Hardware-free for the same reason as the rest of this file: what is asserted is the
+// comparison, which is pure control flow over a reading `pressProbe` already takes.
+describe('navHomeLibraryTile — did the walk land where it aimed', () => {
+  it('records a ROW drift, which is the reading the row-axis decision is waiting on', async () => {
+    // Aimed at [0,1]; focus sits at [1,1] one read before the press — a Down that landed
+    // after the row wait that sent it had already returned. This is the shape the column
+    // axis was measured producing, on the axis that is still walked by a press loop.
+    getVals.mockResolvedValue([[1, 1], 2]);
+    opensInOrder(SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+    expect(recordRecovery).toHaveBeenCalledTimes(1);
+    const [entry] = recordRecovery.mock.calls[0];
+    expect(entry.what).toContain('home tile walk drift');
+    expect(entry.observed).toMatchObject({ axis: 'row', aimedAt: [0, 1], landedOn: [1, 1] });
+  });
+
+  it('names the COLUMN axis when only the column drifted', async () => {
+    // Same instrument, the axis that already has a fix — kept so the field cannot silently
+    // start reporting one axis for both, which would make the row evidence unreadable.
+    getVals.mockResolvedValue([[0, 2], 3]);
+    opensInOrder(SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+    expect(recordRecovery.mock.calls[0][0].observed.axis).toBe('column');
+  });
+
+  it('stays silent when focus is exactly where the walk aimed', async () => {
+    // A clean nav must leave NO drift record. An instrument that fires on the success path
+    // is noise, and the decision it feeds would be unreadable.
+    opensInOrder(SHOWS);
+    await navLibraryByType('tvshows', SHOWS);
+    expect(recordRecovery).not.toHaveBeenCalled();
   });
 });
