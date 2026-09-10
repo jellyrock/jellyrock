@@ -42,8 +42,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { beforeAll, afterAll, it, expect } from 'vitest';
-import { odc } from '../lib/driver.js';
-import { sleep } from '../lib/steps.js';
+import { odc, waitSceneAnswering } from '../lib/driver.js';
 
 const ITERATIONS = 200;
 const DEPTHS = [0, 10, 25, 50];
@@ -76,28 +75,11 @@ async function runCell(args) {
   return value;
 }
 
-/**
- * Wait for the scene to answer, NOT for Home.
- *
- * The bench needs a render-owned parent and nothing else — no server, no library,
- * no signed-in user. Gating on `waitHome()` would make this spec depend on seeded
- * demo-server content it never reads, and would make it unrunnable on its own
- * (`npm run test:rta -- task-ledger-bench`), which is the way a measurement
- * actually gets re-taken. An empty keyPath resolves to the base node, so this
- * polls for the scene itself.
- */
-async function waitForScene(timeout = 60000) {
-  const deadline = Date.now() + timeout;
-  for (;;) {
-    const res = await odc.getValue({ base: 'scene', keyPath: '' }).catch(() => ({ found: false }));
-    if (res.found) return;
-    if (Date.now() > deadline) throw new Error('scene never answered — is the app running?');
-    await sleep(500);
-  }
-}
-
 beforeAll(async () => {
-  await waitForScene();
+  // Shared with `gaa-thread-scope.spec.js`, which had written out its own copy. The
+  // argument for waiting on the scene rather than on Home, and for it being a hand-rolled
+  // loop rather than a `waitFor`, lives on the helper.
+  await waitSceneAnswering();
   // Created under the scene, so the render thread owns it — which is the whole
   // point. `createChild` is itself processed on the render thread.
   await odc.createChild({ base: 'scene', keyPath: '', subtype: 'TaskLedgerBench' });

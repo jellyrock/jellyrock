@@ -134,6 +134,7 @@ import https from 'node:https';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { isProcessAlive } from './lib/process-liveness.cjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -616,7 +617,7 @@ export async function acquireDeviceLock({
       if (tookRef) await releaseRef(repo, token, ref, true);
       throw new Error(
         `The Roku at ${deviceHost} is in use by ${describeHolder(contender)}.\n` +
-          `        Wait for it, or run \`npm run device:status\` for detail.\n` +
+          `        Wait for it, or run \`ROKU_IP=${deviceHost} npm run device:status\` for detail.\n` +
           `        Another Roku on the LAN is free game: ROKU_IP=<other-ip> npm run <script>` +
           (isCI() ? '' : '\n        Override (at your own risk): RTA_SKIP_LOCK=1'),
       );
@@ -777,6 +778,24 @@ export const _internals = {
  * so the glob answers for every device with no second copy of the naming convention
  * — `tests/rta/lib/registry.js` owns that, and importing it here would drag the
  * whole `roku-test-automation` client into a module that only knows about locks.
+ *
+ * ## A snapshot is not evidence of a STRANDED run on its own
+ *
+ * This reported every snapshot as mid-restore, and the file is present for the
+ * WHOLE of a healthy run (`rta-run.js` writes it right after the deploy and clears
+ * it after the suite), so a live ~21min `test:rta` was reported as "left
+ * mid-restore" and handed `rta:restore` — which would have restored the registry
+ * out from under it and relaunched the channel mid-suite. The advice was the exact
+ * inverse of the right move, and `status` held the facts to know better.
+ *
+ * `ownerPid` is what separates them; see `writeSnapshotFile`. The device lock is
+ * NOT the signal to use even though it is right here: a degraded run (no token)
+ * holds no lock while very much running, and a stale lease outlives a run that
+ * finished cleanly — both wrong, in both directions.
+ *
+ * The in-progress case is still REPORTED, never suppressed. An operator asking
+ * about a device wants to know a run owns it, and the auth token in that file is
+ * on disk either way. Only the recommended action changes.
  */
 function strandedSnapshotLines(dir = '.device-runs') {
   const out = [];
@@ -798,16 +817,31 @@ function strandedSnapshotLines(dir = '.device-runs') {
     // the timestamp.
     let host = hostFromName;
     let takenAt = null;
+    let ownerPid = null;
     try {
       const parsed = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
       host = parsed.host || host;
       takenAt = parsed.takenAt || null;
+      ownerPid = parsed.ownerPid ?? null;
     } catch {
       // A truncated or unreadable snapshot is still a stranded one — say so with
-      // what we have rather than staying silent about the file that is sitting there.
+      // what we have rather than staying silent about the file that is sitting
+      // there. It also has no readable `ownerPid`, which is correct: a killed
+      // write is exactly the case where the run is gone.
+    }
+    const when = takenAt ? ` (snapshot taken ${takenAt})` : '';
+    if (isProcessAlive(ownerPid)) {
+      out.push(
+        `▶️  ${host} has a run IN PROGRESS (pid ${ownerPid}` +
+          `${takenAt ? `, snapshot taken ${takenAt}` : ''}) — this snapshot is that ` +
+          "run's safety net, not a stranded one.\n" +
+          `    Do NOT restore: it would put the registry back underneath the live run. The ` +
+          `run clears the file itself when it finishes.`,
+      );
+      continue;
     }
     out.push(
-      `⚠️  ${host} was left mid-restore${takenAt ? ` (snapshot taken ${takenAt})` : ''} — ` +
+      `⚠️  ${host} was left mid-restore${when} — ` +
         'its registry is NOT as you found it, and the snapshot holds an auth token.\n' +
         `    Recover: ROKU_IP=${host} npm run rta:restore`,
     );

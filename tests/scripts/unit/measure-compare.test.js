@@ -821,6 +821,10 @@ describe('the report', () => {
   it('prints the workload line ABOVE the timing line', () => {
     const [a, b] = armsFrom(twoArms());
     const text = reportComparison(a, b, comparability(a, b)).join('\n');
+    // Both asserted PRESENT first — an absent line answers -1, which is less than every
+    // real index, so the ordering alone passes when a line is missing from the report.
+    expect(text).toContain('workload');
+    expect(text).toContain('rank test');
     expect(text.indexOf('workload')).toBeLessThan(text.indexOf('rank test'));
     expect(text).toMatch(/identical: the delta below is not a run that did less work/);
     expect(text).toMatch(/Δ -500 ms \(-19.6%\)/);

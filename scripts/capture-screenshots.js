@@ -210,6 +210,10 @@ async function capture(name, folder) {
   const stats = await sharp(shot.path).stats();
   const maxChannel = Math.max(...stats.channels.map((ch) => ch.max));
   if (maxChannel < 8) {
+    // A fail-fast whose cause is already named — it reports the measured channel max,
+    // and `captureScreen` catches it to retry the whole nav. A retry signal, not a
+    // timeout with unexplained state.
+    // eslint-disable-next-line no-restricted-syntax -- fail-fast, cause already named
     throw new Error(`capture of ${folder}/${name} is essentially black (max=${maxChannel})`);
   }
   const destDir = path.join(CONFIG.outDir, folder);

@@ -177,7 +177,11 @@ describe('applyShipEdit', () => {
     // Older shipment still there, after the new entry
     const newIdx = r.content.indexOf('- 2026-05-10 — feat: ship widget');
     const oldIdx = r.content.indexOf('- 2026-05-01 — older shipment');
+    // "Still there" is the claim, so it is asserted rather than implied: `indexOf`
+    // answers -1 for a pruned bullet, and -1 is less than every real index, so the
+    // ordering alone passes when the older shipment was dropped entirely.
     expect(newIdx).toBeGreaterThan(0);
+    expect(oldIdx).toBeGreaterThan(-1);
     expect(oldIdx).toBeGreaterThan(newIdx);
   });
 

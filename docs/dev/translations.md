@@ -1,7 +1,6 @@
 ---
 topic: translations-howto
 related-files:
-  - locale/custom/en_US.json
   - locale/languages.json
   - source/utils/translate.bs
   - source/utils/translateLocale.bs

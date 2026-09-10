@@ -547,6 +547,12 @@ sub onAllowCaptionsChange()
   m.captionTask = createObject("roSGNode", "captionTask")
   m.captionTask.observeField("currentCaption", "updateCaption")
   m.captionTask.observeField("useThis", "checkCaptionMode")
+  ' Unobserve first: this is an observer handler, so it re-registers if
+  ' shouldAllowCaptions is ever notified again. Today it is written once and
+  ' never reset, so these remove nothing — the point is that the registration
+  ' stays single by construction rather than by that accident.
+  m.top.unobserveField("subtitleTrack")
+  m.top.unobserveField("globalCaptionMode")
   m.top.observeField("subtitleTrack", "loadCaption")
   m.top.observeField("globalCaptionMode", "toggleCaption")
 
@@ -1001,6 +1007,11 @@ sub onVideoContentLoaded()
   end if
 
 
+  ' Unobserve before observing: this function re-runs on every reload path
+  ' (audio/subtitle/source change, retry), and Roku does not dedupe identical
+  ' observeField registrations, so each reload would otherwise add another
+  ' onState invocation per state change. Same idiom as audioIndex below.
+  m.top.unobserveField("state")
   m.top.observeField("state", "onState")
 
   ' The second half of the wait starts here: handing `content` to the Video node is what
@@ -1208,6 +1219,11 @@ end sub
 sub onContentChange()
   if not isValid(m.top.content) then return
 
+  ' Unobserve before observing: `content` is re-set on every reload path
+  ' (audio/subtitle/source change, retry), and Roku does not dedupe identical
+  ' observeField registrations — each one fires the handler again per notify.
+  ' Same idiom as audioIndex and selectedSubtitle above.
+  m.top.unobserveField("position")
   m.top.observeField("position", "onPositionChanged")
 end sub
 
@@ -1234,8 +1250,6 @@ sub fetchNextEpisode()
       onNextEpisodeFetchFailed()
       return
     end if
-
-    m.top.observeField("position", "onPositionChanged")
 
     ' BuildGetEpisodesRequest(Limit 2) returns [current, next]; a count other
     ' than 2 means there is no next episode, so disable the Next Episode button.
@@ -1703,10 +1717,21 @@ sub onState()
   m.osd.playbackState = m.top.state
 
   if m.top.state = "buffering"
+    ' Each buffering episode gets its own progress baseline. `bufferingStatus` is
+    ' per-episode — Roku invalidates it once buffering completes — so carrying the
+    ' previous episode's high-water mark forward compares a fresh 10% against an old
+    ' 80% and reports a stall that never happened.
+    m.bufferPercentage = 0
     ' When buffering, start timer to monitor buffering process
     if isValid(m.bufferCheckTimer)
+      ' Wire before starting, and unobserve first. Every other state branch drops this
+      ' observer on the way out, but the `else` (unhandled state) does not, so a
+      ' buffering -> unhandled -> buffering cycle would otherwise leave two
+      ' registrations on `fire` and `bufferCheck` would run twice per tick. Same
+      ' observe-on-enter / unobserve-on-every-exit toggle as OSD's `inactivityTimer`.
+      m.bufferCheckTimer.unobserveField("fire")
+      m.bufferCheckTimer.observeField("fire", "bufferCheck")
       m.bufferCheckTimer.control = "start"
-      m.bufferCheckTimer.ObserveField("fire", "bufferCheck")
     end if
     ' Show non-blocking spinner for mid-playback buffering (seek, network stall)
     if m.isPlayReported
@@ -1750,6 +1775,15 @@ sub onState()
     end if
   else if m.top.state = "playing"
     stopLoadingSpinner()
+
+    ' Buffering is over: end this episode's stall window. Left running, the timer
+    ' carries a partially-elapsed 30s window into the NEXT buffering episode, which
+    ' could then be stall-checked seconds after it begins instead of 30s in. Whether
+    ' `control = "start"` re-arms an already-running timer is undocumented (rokudev
+    ' `timer.md` defines `start` only as "starts the Timer node operation"), so the
+    ' stop is what makes each episode's window fresh rather than that assumption.
+    m.bufferCheckTimer.control = "stop"
+    m.bufferCheckTimer.unobserveField("fire")
 
     ' Un-park. A `play` that did not come through onVideoContentLoaded — a voice or
     ' remote-control resume of a stopped player — is the one route back from
@@ -1800,6 +1834,10 @@ sub onState()
   else if m.top.state = "paused"
     stopLoadingSpinner()
     m.playbackTimer.control = "stop"
+    ' Same reason as `playing`: a paused player is not stalling, and the stall window
+    ' must not carry into the next buffering episode.
+    m.bufferCheckTimer.control = "stop"
+    m.bufferCheckTimer.unobserveField("fire")
     reportPlayback()
   else if m.top.state = "stopped"
     ' Skip during channel switch; the incoming VideoPlayerView will hide the spinner
@@ -1807,7 +1845,6 @@ sub onState()
       stopLoadingSpinner()
     end if
     m.playbackTimer.control = "stop"
-    m.playbackTimer.unobserveField("fire")
     m.bufferCheckTimer.control = "stop"
     m.bufferCheckTimer.unobserveField("fire")
     reportPlayback("stop")
@@ -1819,7 +1856,6 @@ sub onState()
   else if m.top.state = "finished"
     stopLoadingSpinner()
     m.playbackTimer.control = "stop"
-    m.playbackTimer.unobserveField("fire")
     m.bufferCheckTimer.control = "stop"
     m.bufferCheckTimer.unobserveField("fire")
     reportPlayback("finished")

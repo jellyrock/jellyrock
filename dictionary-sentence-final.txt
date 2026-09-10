@@ -53,6 +53,7 @@
 (?:APIs)\.
 (?:arg)\.
 (?:args)\.
+(?:argv)\.
 (?:assignees)\.
 (?:AST)\.
 (?:async)\.
@@ -153,6 +154,7 @@
 (?:codecs)\.
 (?:codegen)\.
 (?:CommonJS)\.
+(?:comparator)\.
 (?:config)\.
 (?:Config)\.
 (?:configs)\.
@@ -247,6 +249,7 @@
 (?:ECP-disabled)\.
 (?:EDID)\.
 (?:editorconfig)\.
+(?:enablement)\.
 (?:enrichment)\.
 (?:Enrichment)\.
 (?:enrichments)\.
@@ -357,6 +360,7 @@
 (?:last-checked)\.
 (?:last-updated)\.
 (?:lexically)\.
+(?:libvips)\.
 (?:lifecycle)\.
 (?:Lifecycle)\.
 (?:linter)\.
@@ -402,6 +406,7 @@
 (?:Namespaces)\.
 (?:natively)\.
 (?:nav)\.
+(?:navs)\.
 (?:Niklas)\.
 (?:no-ODC)\.
 (?:nodearray)\.
@@ -469,6 +474,7 @@
 (?:PNG)\.
 (?:PNGs)\.
 (?:portal-UI)\.
+(?:positionally)\.
 (?:post-auth)\.
 (?:postcondition)\.
 (?:postconditions)\.
@@ -498,6 +504,7 @@
 (?:pre-ship)\.
 (?:pre-show)\.
 (?:pre-test)\.
+(?:prebuilt)\.
 (?:Prefetch)\.
 (?:preflight)\.
 (?:preloading)\.
@@ -722,10 +729,12 @@
 (?:UX)\.
 (?:v1)\.
 (?:V1)\.
+(?:v12)\.
 (?:v2)\.
 (?:V2)\.
 (?:v2\.0)\.
 (?:v3)\.
+(?:v4)\.
 (?:validator)\.
 (?:validators)\.
 (?:vendored)\.

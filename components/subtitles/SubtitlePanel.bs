@@ -193,6 +193,15 @@ sub init()
   m.pendingDeleteName = ""
   m.subtitlesChangedPending = false
   m.focusTarget = "search"
+
+  ' Interface observers are registered HERE rather than declared as XML onChange
+  ' attributes: this component defines onDestroy, and an XML onChange does not appear
+  ' to be removable by unobserveField, so a write landing after teardown (the host
+  ' re-feeding existingStreams, a late close) would still run a handler. Same shape
+  ' as JRTabBar — see the wiring rule in components/CLAUDE.md.
+  m.top.observeField("filePath", "onFilePathChanged")
+  m.top.observeField("existingStreams", "onExistingStreamsChanged")
+  m.top.observeField("isOpen", "onIsOpenChanged")
 end sub
 
 ' ── Inputs ───────────────────────────────────────────────────────────────────
@@ -375,6 +384,12 @@ end sub
 ' abandonApiPromises() here, which detaches every in-flight pool response so a
 ' late reply can't fire into a node that no longer exists.
 sub onDestroy()
+  ' Detach the interface observers registered in init() first, so nothing written to
+  ' this node during or after teardown can re-enter the panel.
+  m.top.unobserveField("filePath")
+  m.top.unobserveField("existingStreams")
+  m.top.unobserveField("isOpen")
+
   m.pollTimer.control = "stop"
   abandonDeleteConfirm()
 end sub

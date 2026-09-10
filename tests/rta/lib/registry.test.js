@@ -12,11 +12,21 @@
  * `.spec.js` files under `specs/`, which drive real hardware.
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, it, expect } from 'vitest';
-import { planRestore, compareRegistries, snapshotDir, buildAcceptedRecord } from './registry.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import {
+  planRestore,
+  compareRegistries,
+  snapshotDir,
+  buildAcceptedRecord,
+  writeSnapshotFile,
+  snapshotRegistry,
+} from './registry.js';
 import { runsLedgerPath } from '../../../scripts/run-record.js';
+import { _internals as lockInternals } from '../../../scripts/device-lock.js';
+import { setupRtaEnv } from './driver.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
@@ -317,5 +327,128 @@ describe('the snapshot survives a build', () => {
     // going quiet at exactly the moment it should speak. This pins the two that CAN
     // see each other, which is the cheaper half of closing that.
     expect(runsLedgerPath().startsWith(`${snapshotDir()}${path.sep}`)).toBe(true);
+  });
+});
+
+// The snapshot file is present for the WHOLE of a healthy run — written before any
+// seeding, removed only by a verified restore — so on disk it is indistinguishable
+// from one a killed run stranded. `device:status` read it as stranded and told you
+// to run `rta:restore`, which during a live run would revert the registry underneath
+// it. `ownerPid` is the field that separates the two cases.
+//
+// Pinned END TO END rather than as "the writer writes a pid", because the failure
+// that costs something is the two modules disagreeing about the field: this writer
+// lives here and the reader below lives in `device-lock.js`, which cannot import this
+// module (it would drag the whole roku-test-automation client into a module that only
+// knows about locks). Nothing but a test spans that gap, and a disagreement would be
+// SILENT in the dangerous direction — a live run reported as stranded, with the
+// destructive command attached.
+//
+// It is not the only consequential reader, though it was described as one while it was
+// the only one gated: `snapshotRegistry()` reads the same field and ACTS on it, and is
+// covered separately at the bottom of this file.
+describe('a snapshot says which process owns it', () => {
+  const HOST = '192.168.1.178';
+  let dir;
+  let realEnv;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'snapshot-owner-'));
+    // The writer stamps the host from the live RTA config. Feed it a synthetic
+    // one rather than the developer's `.env`, so this asserts the same thing in
+    // CI (no ROKU_IP, no device) as it does on a machine with hardware. Pure
+    // config — `setupRtaEnv` builds an in-memory config and touches no network.
+    realEnv = { ip: process.env.ROKU_IP, password: process.env.ROKU_PASSWORD };
+    process.env.ROKU_IP = HOST;
+    process.env.ROKU_PASSWORD = 'not-a-real-password';
+    setupRtaEnv();
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+    for (const [key, value] of [
+      ['ROKU_IP', realEnv.ip],
+      ['ROKU_PASSWORD', realEnv.password],
+    ]) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  // The real writer, into a temp dir — `.device-runs/` belongs to real device runs
+  // and the suite fails if anything here writes there.
+  const writeInto = () => writeSnapshotFile({}, path.join(dir, `registry-${HOST}.json`));
+
+  it('records the writing process, so a reader can tell live from stranded', () => {
+    const parsed = JSON.parse(fs.readFileSync(writeInto(), 'utf8'));
+    expect(parsed.ownerPid).toBe(process.pid);
+    expect(parsed.host).toBe(HOST);
+  });
+
+  it('is read as a live run by device:status, which then withholds the restore', () => {
+    // This test process IS the owner, so the snapshot it just wrote is "live".
+    writeInto();
+    const [line] = lockInternals.strandedSnapshotLines(dir);
+    expect(line).toContain('IN PROGRESS');
+    expect(line).not.toContain('rta:restore');
+  });
+});
+
+// The destructive sibling of the reader above. `device:status` only REPORTS on a
+// live-owned snapshot; `snapshotRegistry()` runs at the start of every single run
+// and, before this gate, restored from one unconditionally — reverting the registry
+// underneath a live run and relaunching its channel. The device lock normally keeps
+// two runs apart, but it degrades to advisory on `RTA_SKIP_LOCK=1`, on a missing
+// GitHub token and on an unreachable GitHub, so "two runs at once" is an ordinary
+// local condition rather than an exotic one.
+//
+// Drives the REAL `snapshotRegistry()` rather than a re-implementation of its
+// branch, because what has to hold is that the guard sits ahead of the restore —
+// a test of the predicate alone would still pass if the call moved below it.
+describe('snapshotRegistry refuses a device another run still owns', () => {
+  const HOST = '192.168.1.178';
+  let dir;
+  let cwd;
+  let realEnv;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(fs.realpathSync(os.tmpdir()) + path.sep + 'snapshot-live-');
+    cwd = process.cwd();
+    realEnv = { ip: process.env.ROKU_IP, password: process.env.ROKU_PASSWORD };
+    process.env.ROKU_IP = HOST;
+    process.env.ROKU_PASSWORD = 'not-a-real-password';
+    setupRtaEnv();
+    // `SNAPSHOT_DIR` is relative, so the snapshot a run finds is the one under CWD.
+    // That is what lets this exercise the real function without writing into the
+    // repo's `.device-runs/` — which `no-durable-writes.js` fails the suite over.
+    process.chdir(dir);
+  });
+  afterEach(() => {
+    process.chdir(cwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+    for (const [key, value] of [
+      ['ROKU_IP', realEnv.ip],
+      ['ROKU_PASSWORD', realEnv.password],
+    ]) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  it('throws instead of restoring when the snapshot owner is alive', async () => {
+    // This test process IS the owner, so what it writes is a LIVE snapshot — the
+    // same lever the `device:status` test above pulls.
+    const file = writeSnapshotFile(
+      { JellyRock: { server: 'http://home:8098' } },
+      path.join(dir, snapshotDir(), `registry-${HOST}.json`),
+    );
+
+    await expect(snapshotRegistry()).rejects.toThrow(/STILL RUNNING/);
+
+    // It must refuse BEFORE the device is touched: reaching ODC would mean the
+    // guard is merely first in the message, not first in the sequence. No RTA
+    // build is resident under this temp CWD, so an ODC call could not succeed —
+    // a rejection naming the registry read rather than the owner would say so.
+    expect(fs.existsSync(file)).toBe(true);
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).ownerPid).toBe(process.pid);
   });
 });

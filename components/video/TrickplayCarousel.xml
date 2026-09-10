@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="TrickplayCarousel" extends="Group">
   <interface>
-    <field id="trickplayConfig" type="assocarray" onChange="onConfigChanged" />
-    <field id="thumbnailIndex" type="integer" value="-1" onChange="onThumbnailIndexChanged" />
-    <field id="playbackPosition" type="float" value="0" onChange="onPlaybackPositionChanged" />
+    <field id="trickplayConfig" type="assocarray" />
+    <field id="thumbnailIndex" type="integer" value="-1" />
+    <field id="playbackPosition" type="float" value="0" />
     <field id="videoDuration" type="float" />
-    <field id="isVisible" type="boolean" value="false" onChange="onIsVisibleChanged" />
+    <field id="isVisible" type="boolean" value="false" />
     <function name="onDestroy" />
     <function name="reset" />
   </interface>

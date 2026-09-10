@@ -20,29 +20,40 @@
 //   - One file per orientation; the "180" variants are the flipped ramps used
 //     for rotateDegrees=180/270 (opaque end at the far edge).
 //
-// Deterministic: fixed PNG_OPTIONS + exact-pinned sharp devDependency give
-// byte-identical output across runs; --check mode's byte compare relies on it
-// (same contract as icons-build.js).
+// Deterministic in the IMAGE, not in the bytes: sharp's prebuilt binary bundles
+// its own libvips (and zlib), so the PNG encoder's output moves when sharp does.
+// --check therefore compares decoded pixels (scripts/lib/png-compare.js), the
+// same contract as icons-build.js.
 //
 // Usage:
 //   node scripts/generate/gradient-assets.js [rootDir]         # write assets
 //   node scripts/generate/gradient-assets.js [rootDir] --check # drift gate
+//   node scripts/generate/gradient-assets.js [rootDir] --force # re-encode all
+//
+// --force is the deliberate escape hatch for the freeze that pixel comparison
+// implies: write mode leaves a pixel-identical asset alone (which is what stops
+// cross-machine churn), so the committed bytes stay on whatever encoder wrote
+// them until someone asks for a re-encode. Same flag, same reason, in
+// icons-build.js.
 
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
+import { matchesRenderedOutput } from '../lib/png-compare.js';
 
 const args = process.argv.slice(2);
 const CHECK_MODE = args.includes('--check');
+// Rewrite every asset even when it already matches. Ignored in --check mode.
+const REWRITE_ALL = args.includes('--force') && !CHECK_MODE;
 const rootArg = args.find((a) => !a.startsWith('--'));
 const ROOT_DIR = rootArg ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const OUT_DIR = join(ROOT_DIR, 'images', 'gradients');
 
 const RAMP_STEPS = 270;
 const THICKNESS = 4;
-// Locked for deterministic byte-identical output across runs given a fixed
-// sharp version (drift detection in --check mode relies on this).
+// Locked so a given ramp renders to the same IMAGE every run; drift detection
+// compares pixels rather than bytes, for the reason in png-compare.js.
 const PNG_OPTIONS = { compressionLevel: 9, palette: false, effort: 10, progressive: false };
 
 // alpha(x, y) returns 0..1; ramps run along the long axis.
@@ -76,7 +87,8 @@ for (const [name, spec] of Object.entries(ASSETS)) {
   const outPath = join(OUT_DIR, name);
   const buffer = await renderAsset(spec);
   const exists = existsSync(outPath);
-  const upToDate = exists && readFileSync(outPath).equals(buffer);
+  const upToDate =
+    exists && !REWRITE_ALL && (await matchesRenderedOutput(readFileSync(outPath), buffer));
   if (upToDate) continue;
 
   if (CHECK_MODE) {

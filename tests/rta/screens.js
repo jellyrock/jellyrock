@@ -290,9 +290,12 @@ export const SCREENS = [
     // honest image to take today. Marking it `capture: { eligible: true }` would
     // also list `subtitlePanel` in the generated `screenshots.json`, claiming a
     // file that does not exist and would 404 wherever the docs render it.
-    // Everything else is wired: when a fixture can show the panel, adding
-    // `capture: { eligible: true }` here is the whole change — the nav, the
-    // capability probe and both registry consumers already handle it.
+    // Everything else is wired, and enabling it is two changes: add
+    // `capture: { eligible: true }` here, and give `navSubtitlePanel` a paint
+    // settle before it returns (budgeted in rta-sleep-budgeted.js, the way
+    // `navMovieDetails` carries one). It has none today on purpose — a nav that
+    // only ever skips would spend a budgeted slot on a wait that never runs. The
+    // capability probe and both registry consumers already honor `requires`.
     // Tracked as `subtitle-panel-rta-fixture-gated` in tech-debt.md.
     name: 'subtitlePanel',
     state: 'home',

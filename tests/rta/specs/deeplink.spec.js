@@ -20,6 +20,7 @@ import {
   press,
   waitFor,
   getActiveVal,
+  homeListId,
   waitHome,
   sleep,
   hasChildren,
@@ -64,7 +65,11 @@ async function castFromHome(contentId) {
 it('invalid id leaves the session undisturbed (stays Home)', async () => {
   await castFromHome('deadbeefdeadbeefdeadbeefdeadbeef');
   await sleep(VALIDATION_FETCH_BUDGET_MS); // let the (failed) validation fetch resolve — it must NOT navigate
-  expect(await getActiveVal('#homeRows.content.getChildCount()')).toBeGreaterThan(0);
+  // Resolved rather than named — the list id is a property of Home's selected tab. Still read
+  // through `getActiveVal`: the assertion is that Home is the ACTIVE view and populated, and a
+  // scene-rooted read would also be satisfied by a suspended Home sitting behind another screen.
+  const list = await homeListId();
+  expect(await getActiveVal(`${list}.content.getChildCount()`)).toBeGreaterThan(0);
 }, 60000);
 
 // Bare id (action defaults to open) → the item's details springboard, loaded with that id.

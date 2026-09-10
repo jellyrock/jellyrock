@@ -15,6 +15,19 @@
  *
  * Skips `components/JRScreen.xml` itself (the no-op base lives there by design).
  *
+ * CROSS-FILE, so it runs on the shared scope lifecycle: the diagnostic anchors on
+ * the XML's component name, but the verdict comes from the CODEBEHIND's function
+ * list. BrighterScript clears a file's diagnostics by `location.uri` when that
+ * file re-validates, so before this ran on a scope, adding the `onDestroy()` the
+ * message asks for left the warning on screen until the XML was touched — the
+ * author does exactly what the diagnostic says and the IDE keeps saying no. See
+ * `scripts/lib/bsc-rule.cjs`.
+ *
+ * `requiresCodebehind: false` because a component with NO codebehind cannot
+ * declare `onDestroy` and so is the strongest instance of this finding, not an
+ * absent one. That case has no live example today (13 JRScreen descendants, all
+ * with a codebehind), but dropping it would silently narrow the gate.
+ *
  * Escape hatch:
  *  - `' bsc-disable-file jrscreen-on-destroy` anywhere in the XML or its codebehind
  *    (rare — only for components that legitimately extend JRScreen but never
@@ -23,52 +36,42 @@
 'use strict';
 
 const brighterscript = require('brighterscript');
+const { createScopeRule, isSuppressed } = require('../lib/bsc-rule.cjs');
 
 const TARGET_BASE = 'JRScreen';
 const REQUIRED_LIFECYCLE_FUNCTION = 'onDestroy';
 const MAX_PARENT_CHAIN_DEPTH = 32;
-const DISABLE_FILE_MARKER = /'\s*bsc-disable-file\s+jrscreen-on-destroy\b/i;
+const DIAGNOSTIC_CODE = 'jrscreen-on-destroy';
 
-class JRScreenOnDestroyPlugin {
-  constructor() {
-    this.name = 'jellyrock-jrscreen-on-destroy';
-  }
-
-  afterValidateFile(event) {
-    try {
-      const file = event.file;
-      if (!brighterscript.isXmlFile(file)) return;
-
-      const componentName = file.componentName?.text;
+module.exports = () =>
+  createScopeRule({
+    name: 'jellyrock-jrscreen-on-destroy',
+    requiresCodebehind: false,
+    analyze({ xmlFile, brsFile, report }) {
+      const componentName = xmlFile.componentName?.text;
       if (!componentName || componentName === TARGET_BASE) return;
+      if (!descendsFromJRScreen(xmlFile)) return;
 
-      if (!descendsFromJRScreen(file)) return;
+      // The marker is honoured in EITHER half — the reason to exempt a component
+      // may be stated where its interface is or where its code is. `report` only
+      // ever inspects one file, so both are checked here rather than relying on it.
+      if (isSuppressed(xmlFile, DIAGNOSTIC_CODE)) return;
+      if (brsFile && isSuppressed(brsFile, DIAGNOSTIC_CODE)) return;
 
-      const xmlContents = file.fileContents;
-      if (typeof xmlContents === 'string' && DISABLE_FILE_MARKER.test(xmlContents)) return;
+      if (brsFile && hasTopLevelOnDestroyFunction(brsFile)) return;
 
-      const codebehind = findCodebehind(event.program, file);
-      if (codebehind) {
-        const bsContents = codebehind.fileContents;
-        if (typeof bsContents === 'string' && DISABLE_FILE_MARKER.test(bsContents)) return;
-        if (hasTopLevelOnDestroyFunction(codebehind)) return;
-      }
-
-      const location = file.componentName?.location;
+      const location = xmlFile.componentName?.location;
       if (!location) return;
 
-      event.program.diagnostics.register({
+      report({
         code: 'jrscreen-on-destroy-required',
         severity: 2, // Warning
-        source: this.name,
         message: `Component '${componentName}' extends JRScreen (transitively) but its codebehind does not declare a top-level 'onDestroy' function. JRScreen subclasses must override onDestroy() to release observers and Tasks (otherwise they leak across navigation). The function name is case-sensitive — 'OnDestroy' / 'destroy' will not satisfy this.`,
-        location: location,
+        location,
+        file: xmlFile,
       });
-    } catch (_e) {
-      // Never crash the build — plugin is build-time advisory.
-    }
-  }
-}
+    },
+  });
 
 function descendsFromJRScreen(xmlFile) {
   let current = xmlFile;
@@ -83,16 +86,6 @@ function descendsFromJRScreen(xmlFile) {
   return false;
 }
 
-function findCodebehind(program, xmlFile) {
-  const baseSrc = xmlFile.srcPath?.replace(/\.xml$/i, '');
-  if (!baseSrc) return null;
-  for (const ext of ['.bs', '.brs']) {
-    const f = program.getFile(baseSrc + ext);
-    if (f && brighterscript.isBrsFile(f)) return f;
-  }
-  return null;
-}
-
 function hasTopLevelOnDestroyFunction(brsFile) {
   const statements = brsFile?.parser?.ast?.statements;
   if (!Array.isArray(statements)) return false;
@@ -104,5 +97,3 @@ function hasTopLevelOnDestroyFunction(brsFile) {
   }
   return false;
 }
-
-module.exports = () => new JRScreenOnDestroyPlugin();

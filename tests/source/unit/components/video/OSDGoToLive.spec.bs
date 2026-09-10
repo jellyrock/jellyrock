@@ -1,0 +1,186 @@
+namespace tests
+
+  ' Regression gate for the goToLive attach model (#788).
+  '
+  ' This suite started as a probe that asserted the OLD behaviour and PASSED: the
+  ' button was inserted at index 3 mid-playback, buttonFocused was never repaired,
+  ' and the index ended up naming a different node than the one holding focus.
+  ' Confirmed on a Roku Ultra (OS 15.3.4) before anything was changed.
+  '
+  ' The assertions below are that same evidence inverted. Membership is now decided
+  ' once per item and only `isEnabled` moves, so there is no insert to desync from.
+  @suite("OSD - goToLive membership and focus integrity")
+  class OSDGoToLiveTests extends tests.BaseTestSuite
+
+    private osd as object
+    private buttonMenuLeft as object
+
+    protected override sub beforeEach()
+      super.beforeEach()
+
+      ' OSD.init() -> setButtonStates() reads m.global.queueManager
+      if not m.global.doesExist("queueManager")
+        m.global.addField("queueManager", "node", false)
+      end if
+      m.global.queueManager = CreateObject("roSGNode", "QueueManager")
+
+      ' SceneManager is required by JRScreen (OSD's parent)
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+
+      m.osd = CreateObject("roSGNode", "OSD")
+      m.buttonMenuLeft = m.osd.findNode("buttonMenuLeft")
+    end sub
+
+    protected override sub afterEach()
+      m.buttonMenuLeft = invalid
+      m.osd = invalid
+      super.afterEach()
+    end sub
+
+    ' A live channel carrying 2 audio streams and subtitles, so setButtonStates keeps
+    ' showAudioMenu + showSubtitleMenu and the row is long enough to have an index
+    ' past goToLive's old insertion point (3).
+    private function liveChannel() as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.setFields({
+        ' onItemDataChanged returns early on a blank id, which would leave the
+        ' XML-declared row untouched and make every assertion below meaningless.
+        id: "test-channel-1",
+        type: "TvChannel",
+        audioStreamCount: 2,
+        hasSubtitles: true,
+        chapterCount: 0,
+        hasMultipleVideoSources: false
+      })
+      return item
+    end function
+
+    private function movie() as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.setFields({
+        id: "test-movie-1",
+        type: "Movie",
+        audioStreamCount: 2,
+        hasSubtitles: true,
+        chapterCount: 4,
+        hasMultipleVideoSources: false
+      })
+      return item
+    end function
+
+    ' Drive the OSD behind the live edge the way VideoPlayerView does: pause, then
+    ' push a position tick. updateLiveTvDisplay flips liveTvIsAtLiveEdge false on any
+    ' non-"playing" state.
+    private sub goBehindLive()
+      m.osd.playbackState = "paused"
+      m.osd.progressPercentage = 0.5
+    end sub
+
+    private function buttonIds(group as object) as object
+      ids = []
+      for i = 0 to group.getChildCount() - 1
+        ids.push(group.getChild(i).id)
+      end for
+      return ids
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("membership is decided per item")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps goToLive in a live channel's row, greyed, while at the live edge")
+    function _()
+      m.osd.itemData = m.liveChannel()
+
+      goToLive = m.buttonMenuLeft.findNode("goToLive")
+      m.assertNotInvalid(goToLive, "a live channel keeps the button as a member")
+      m.assertTrue(goToLive.visible)
+      m.assertFalse(goToLive.isEnabled, "playback starts at the live edge, so it starts greyed")
+      m.assertEqual(m.buttonMenuLeft.getChildCount(), 6)
+    end function
+
+    @it("drops goToLive entirely for a non-live item")
+    function _()
+      m.osd.itemData = m.movie()
+
+      m.assertInvalid(m.buttonMenuLeft.findNode("goToLive"), "a movie must not carry a greyed live button")
+    end function
+
+    @it("does not change the row's membership when the user falls behind live")
+    function _()
+      m.osd.itemData = m.liveChannel()
+      before = m.buttonIds(m.buttonMenuLeft)
+
+      m.goBehindLive()
+
+      m.assertArrayCount(m.buttonIds(m.buttonMenuLeft), before.count())
+      m.assertEqual(m.buttonIds(m.buttonMenuLeft), before, "the row must be identical before and after")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("enablement is decided per moment")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("enables goToLive once the user falls behind the live edge")
+    function _()
+      m.osd.itemData = m.liveChannel()
+      m.assertFalse(m.buttonMenuLeft.findNode("goToLive").isEnabled)
+
+      m.goBehindLive()
+
+      m.assertTrue(m.buttonMenuLeft.findNode("goToLive").isEnabled)
+    end function
+
+    @it("greys goToLive again once the user is back at the live edge")
+    function _()
+      m.osd.itemData = m.liveChannel()
+      m.goBehindLive()
+      m.assertTrue(m.buttonMenuLeft.findNode("goToLive").isEnabled)
+
+      ' Playing AND caught up is the only combination that reads as "at live edge".
+      m.osd.playbackState = "playing"
+      m.osd.progressPercentage = 0.6
+
+      m.assertFalse(m.buttonMenuLeft.findNode("goToLive").isEnabled)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the defect this replaced - buttonFocused desync")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves buttonFocused naming the SAME button after falling behind live")
+    function _()
+      m.osd.itemData = m.liveChannel()
+
+      ' Park the focus index past goToLive's old insertion point. Under the old
+      ' attach model this assertion failed: the index stayed 4 and came to name
+      ' showAudioMenu, one slot to the left of the button actually focused.
+      m.buttonMenuLeft.buttonFocused = 5
+      focusedBefore = m.buttonMenuLeft.getChild(m.buttonMenuLeft.buttonFocused)
+      m.assertEqual(focusedBefore.id, "showSubtitleMenu")
+
+      m.goBehindLive()
+
+      m.assertEqual(m.buttonMenuLeft.buttonFocused, 5)
+      focusedAfter = m.buttonMenuLeft.getChild(m.buttonMenuLeft.buttonFocused)
+      m.assertTrue(focusedBefore.isSameNode(focusedAfter), "the focus index must survive a live-edge transition")
+    end function
+
+    @it("holds every index steady across the transition, not just the focused one")
+    function _()
+      m.osd.itemData = m.liveChannel()
+      before = m.buttonIds(m.buttonMenuLeft)
+
+      m.goBehindLive()
+
+      for i = 0 to before.count() - 1
+        m.assertEqual(m.buttonMenuLeft.getChild(i).id, before[i], "index " + stri(i).trim() + " changed identity")
+      end for
+    end function
+
+  end class
+
+end namespace

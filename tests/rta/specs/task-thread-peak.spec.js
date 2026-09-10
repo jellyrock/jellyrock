@@ -162,6 +162,28 @@ it("keeps peak live Task threads far below Roku's cap across a real journey", as
     console.log(`[PEAK] wrote ${outFile}`);
   }
 
+  // THE JOURNEY HAS TO HAVE HAPPENED. Every number below is measured ACROSS the walk this
+  // test is named for, so a phase that bailed early leaves a peak taken over an app that
+  // sat still — and the bound would pass on it, reporting a green gate that gated nothing.
+  //
+  // That is not hypothetical. `.177`, 2026-09-08: both phases timed out returning to Home
+  // (a swallowed Back, now guarded in `navHomeReturn`), the test PASSED, and it recorded
+  // `peakLive: 7` with `seven-screens: 7 / extras-sweep: 5`. The same test on the same
+  // commit minutes later, with the journey actually running, measured 9 / 9 / 8 — and
+  // `docs/architecture/global-state.md` documents the real peak as 9-11, so the run that
+  // proved nothing was also the one that looked BEST. A quiet 7 is the failure signature.
+  //
+  // Asserted HERE, after the `finally` above has written the sample series to disk, so the
+  // deliverable survives the throw. That is the whole reason the phases record errors
+  // instead of throwing (see `phaseErrors` above) — losing every sample to one missed
+  // focus gate is the worse trade, and it is not the trade this makes.
+  expect(
+    Object.entries(phaseErrors).map(([k, v]) => `${k}: ${v}`),
+    'a journey phase did not complete, so the peak below was measured over an app that ' +
+      'was not being driven. The measurement is void, not passing — see phaseErrors in ' +
+      '.device-runs/task-thread-peak-*.json.',
+  ).toEqual([]);
+
   // The ledger has to have RECORDED something for any of this to mean anything.
   // `tracked` 0 reads identically to a peak of 0 — "not measured" vs "no threads"
   // are opposite findings and the bound below would pass on either.

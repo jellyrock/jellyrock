@@ -36,6 +36,7 @@ import {
   foldAssertions,
   recordAssertion,
   readAssertions,
+  foldResolutions,
 } from '../../../scripts/run-record.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -534,6 +535,29 @@ describe('the run lifecycle — where a run s records actually land', () => {
       expect(ledger(runsLedgerPath())[0].variant).toBe('test:rta');
     });
 
+    it('records what the run FORWARDED to its test runner, which variant cannot say', async () => {
+      // `rta-run.js` forwards its passthrough to Vitest, so a `-t` run appends a line
+      // identical in every other filter key to a full suite. Hit live 2026-08-12:
+      // three targeted single-screen runs each wrote a line `flake-baseline` would
+      // have counted as a clean sample.
+      const { beginRun, readRuns: ledger, runsLedgerPath } = await fresh();
+      beginRun({ lock: LOCK, run: 'test:rta', runnerArgs: ['-t', 'moviesLibraryGenres'] }).close();
+      expect(ledger(runsLedgerPath())[0].runnerArgs).toEqual(['-t', 'moviesLibraryGenres']);
+    });
+
+    it('always emits the key, as `[]`, for a run that forwarded nothing', async () => {
+      // A SELECTION key, so it follows the four around it and NOT the "omitted when
+      // empty" rule `assertions` / `recoveries` / `fixture` use. `[]` is a positive
+      // statement — this run declared no filter — where an absent key would mean
+      // "written before this existed", and a key that vanishes at its default is how
+      // a row gets silently mis-selected.
+      const { beginRun, readRuns: ledger, runsLedgerPath } = await fresh();
+      beginRun({ lock: LOCK, run: 'test:rta' }).close();
+      const [line] = ledger(runsLedgerPath());
+      expect(line).toHaveProperty('runnerArgs');
+      expect(line.runnerArgs).toEqual([]);
+    });
+
     it('records the device the run drove, off the lock', async () => {
       // The ledger is the only record that survives the next run, and `run-meta.json`
       // is NOT a fallback for this: it is per-run and lives under `out/`, which the
@@ -667,12 +691,13 @@ describe('the process-exit net — the fold nobody calls', () => {
   const runRecord = pathToFileURL(path.join(repoRoot, 'scripts', 'run-record.js')).href;
 
   /** Run `body` in a fresh node process rooted at the temp dir, and read its ledger back. */
-  const inSubprocess = (body, { exitCode = 0 } = {}) => {
+  const inSubprocess = (body, { exitCode = 0, open = {} } = {}) => {
     const probe = path.join(tmpDir, 'probe.mjs');
+    const opts = { lock: LOCK, run: 'test:rta', ...open };
     fs.writeFileSync(
       probe,
       `import { beginRun } from ${JSON.stringify(runRecord)};\n` +
-        `const run = beginRun({ lock: ${JSON.stringify(LOCK)}, run: 'test:rta' });\n` +
+        `const run = beginRun(${JSON.stringify(opts)});\n` +
         `${body}\n`,
     );
     const result = spawnSync(process.execPath, [probe], {
@@ -707,6 +732,17 @@ describe('the process-exit net — the fold nobody calls', () => {
     // `beginRun`, and a baseline filters on the result.
     const { lines } = inSubprocess('process.exit(0);');
     expect(lines[0].variant).toBe('test:rta:fast');
+  });
+
+  it('carries the open s runnerArgs, so a SCOPED run that crashed still reads as scoped', () => {
+    // Same argument as `variant` above, on the key that says what actually ran. A
+    // crashed run is already excluded from a baseline as a non-sample — but the net
+    // also folds the INTERRUPT path, and an operator who Ctrl-Cs a `-t` debugging run
+    // must not leave a line that reads like an abandoned full suite.
+    const { lines } = inSubprocess('process.exit(0);', {
+      open: { runnerArgs: ['-t', 'moviesLibraryGenres'] },
+    });
+    expect(lines[0].runnerArgs).toEqual(['-t', 'moviesLibraryGenres']);
   });
 
   it('folds on an uncaught throw too, not only on an explicit exit', () => {
@@ -1394,5 +1430,107 @@ describe('formatRunSummary', () => {
     ).join('\n');
     expect(lines).toContain('home rows');
     expect(lines).toContain('wait-for-timeout');
+  });
+});
+
+describe('foldResolutions — coverage first, then the two defects', () => {
+  const at = { startedAt: '2026-08-12T01:07:47Z', endedAt: '2026-08-12T01:07:48Z' };
+
+  it('reports the audited COUNT even when nothing was wrong', () => {
+    // The count is the first thing to read: "no anomalies" means nothing if the audit
+    // only ever ran twice. A clean result is only interpretable next to its coverage.
+    expect(
+      foldResolutions([
+        { id: 'homeRows', count: 1, presented: true },
+        { id: 'jrDialog', count: 1, presented: true },
+      ]),
+    ).toEqual({ audited: 2, ambiguous: [], notPresented: [] });
+  });
+
+  it('separates a DUPLICATE from a NOT-PRESENTED read', () => {
+    // They are different defects with different fixes — a shared list would merge them
+    // the way a shared failure-kind slug merges two failure classes.
+    const folded = foldResolutions([
+      {
+        id: 'buttons',
+        count: 2,
+        presented: true,
+        subtypes: ['JRButtonGroup', 'JRButtons'],
+        label: 'a',
+      },
+      { id: 'homeRows', count: 1, presented: false, hiddenAt: '#view', label: 'b' },
+    ]);
+    expect(folded.ambiguous).toEqual([
+      { at: 'a (#buttons)', count: 2, subtypes: ['JRButtonGroup', 'JRButtons'] },
+    ]);
+    expect(folded.notPresented).toEqual([{ at: 'b (#homeRows)', hiddenAt: '#view' }]);
+  });
+
+  it('lists a site ONCE however many times it fired', () => {
+    // A nav helper runs on ~30 navigations a suite. Thirty copies of one finding is a
+    // wall to scroll past; the actionable question is WHICH read is wrong, not how often
+    // the same one repeated.
+    const folded = foldResolutions([
+      { id: 'homeRows', count: 1, presented: false, hiddenAt: '#view', label: 'home rows' },
+      { id: 'homeRows', count: 1, presented: false, hiddenAt: '#view', label: 'home rows' },
+    ]);
+    expect(folded.audited).toBe(2);
+    expect(folded.notPresented).toHaveLength(1);
+  });
+
+  it('can report BOTH defects for one read', () => {
+    const folded = foldResolutions([
+      { id: 'buttons', count: 2, presented: false, hiddenAt: '#view', subtypes: ['A'], label: 'x' },
+    ]);
+    expect(folded.ambiguous).toHaveLength(1);
+    expect(folded.notPresented).toHaveLength(1);
+  });
+
+  it('ignores malformed records rather than throwing', () => {
+    // Bookkeeping must never fail the run it is bookkeeping about.
+    expect(foldResolutions([null, {}, { count: 2 }])).toEqual({
+      audited: 0,
+      ambiguous: [],
+      notPresented: [],
+    });
+    expect(foldResolutions(undefined)).toEqual({ audited: 0, ambiguous: [], notPresented: [] });
+  });
+
+  it('carries a truncation marker through, and does not count it as an audited read', () => {
+    // `audited` is a COVERAGE claim, so it must not be possible to read a capped audit as
+    // a complete one. The marker is a record on the same stream rather than a counter,
+    // because the counter would live in a Vitest worker and the fold happens in the parent.
+    const folded = foldResolutions([
+      { id: 'homeRows', count: 1, presented: true },
+      { truncated: true, budget: 200 },
+      { id: 'osd', count: 1, presented: true },
+    ]);
+    expect(folded.audited).toBe(2);
+    expect(folded.truncated).toBe(true);
+  });
+
+  it('omits `truncated` entirely when the audit ran to completion', () => {
+    // Same rule as the optional keys around it: an ordinary line keeps the shape it had,
+    // so older ledger entries stay comparable.
+    expect(foldResolutions([{ id: 'homeRows', count: 1, presented: true }])).not.toHaveProperty(
+      'truncated',
+    );
+  });
+
+  it('leaves no `resolutions` key in the LEDGER LINE when the audit did not run', () => {
+    // Asserted on the serialized line for the same reason `assertions` is: older ledger
+    // entries have to stay comparable, and the audit is env-gated so most runs have none.
+    const s = summarizeRun({ ...at, run: 'test:rta', outcome: RUN_OUTCOMES.PASSED });
+    expect(JSON.parse(JSON.stringify(s))).not.toHaveProperty('resolutions');
+  });
+
+  it('carries a CLEAN audit onto the summary — zero anomalies is a result', () => {
+    const s = summarizeRun({
+      ...at,
+      run: 'test:rta',
+      outcome: RUN_OUTCOMES.PASSED,
+      resolutions: { audited: 87, ambiguous: [], notPresented: [] },
+    });
+    expect(s.resolutions).toEqual({ audited: 87, ambiguous: [], notPresented: [] });
   });
 });

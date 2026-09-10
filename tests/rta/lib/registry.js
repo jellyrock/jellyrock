@@ -41,7 +41,57 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { odc, device, hardRelaunch } from './driver.js';
+import { odc, device, hardRelaunch, ensureOdcReachable, withTimeout } from './driver.js';
+import { isProcessAlive } from '../../../scripts/lib/process-liveness.cjs';
+
+/**
+ * Wall clock on a registry read, covering the one failure the reachability gate cannot see.
+ *
+ * The gate answers "is the port open"; this answers "did the component ANSWER". They are
+ * different questions and the gap between them is a real hang: RTA's `setupClientSocket`
+ * resolves its cached promise only after a post-connect `setSettings` handshake succeeds,
+ * and the rejection arm of that `.then()` only calls `debugLog` — so a failed handshake
+ * leaves every later ODC call awaiting a promise that never settles, and no RTA timeout can
+ * fire (the per-request one wraps the request, not the socket setup). Measured 2026-09-06:
+ * still pending at 45 s against a socket that accepts and never replies. Observed for real
+ * once, on `.178` after a SIGINT, at 8+ minutes. `docs/signals-backlog.md` →
+ * `rta-odc-connect-hang`.
+ *
+ * 60 s is ~10,000x a healthy ODC round trip (~5.4 ms on the slower of the two devices), so
+ * it bounds the hang without being reachable by a slow-but-working read. It is a diagnosis,
+ * not a performance gate — the same posture as `DEPLOY_TIMEOUT_MS`.
+ *
+ * Only the reads are wrapped. The writes in between run on a socket the read just
+ * established, so they are covered by RTA's own per-request timeout; a read is the call
+ * that may have to CONNECT, which is the unbounded part.
+ */
+const REGISTRY_READ_TIMEOUT_MS = 60 * 1000;
+
+/** Why a registry read gave up, said in terms of what to do about it. */
+const readTimedOut = (what, timeoutMs) =>
+  `the ODC port is open but the component never answered ${what} within ` +
+  `${timeoutMs / 1000}s. This is roku-test-automation's setupClientSocket ` +
+  'defect (docs/signals-backlog.md -> rta-odc-connect-hang): a failed post-connect ' +
+  'handshake leaves the cached socket promise unsettled, so every later ODC call awaits a ' +
+  'dead promise and no RTA timeout can fire. Recovery is a kill plus a re-deploy — ' +
+  '`npm run test:rta` does it for you, since snapshotRegistry restores from the stranded ' +
+  'snapshot first.';
+
+/**
+ * A registry read that cannot hang, and cannot be reached without a live component.
+ *
+ * The ORDER carries the whole point and is not interchangeable: the gate runs FIRST because
+ * the failure it prevents is not a slow read, it is RTA crashing the process out from under
+ * us on a connect it cannot complete (`scripts/lib/odc-probe.js`). Reading first and
+ * bounding afterwards would leave that crash exactly where it was.
+ */
+const readRegistryBounded = async (what, { timeoutMs = REGISTRY_READ_TIMEOUT_MS } = {}) => {
+  await ensureOdcReachable();
+  return withTimeout(odc.readRegistry(), timeoutMs, readTimedOut(what, timeoutMs));
+};
+
+/** Test seams — the bound above is the point of this module's ODC handling, so it has a gate. */
+export const _internals = { readRegistryBounded, REGISTRY_READ_TIMEOUT_MS };
 
 /**
  * Where the snapshot lives — deliberately NOT under `out/`, and gitignored.
@@ -323,12 +373,39 @@ function writeAcceptedRecord(diffs, label) {
   return file;
 }
 
-function writeSnapshotFile(values) {
-  const file = snapshotPath();
+/**
+ * `ownerPid` is what makes this file's PRESENCE readable.
+ *
+ * The file is written before any seeding and removed only by a verified restore,
+ * so it sits on disk for the whole of a run — which means "a snapshot exists" and
+ * "a run is in progress" look identical from outside. They are opposite
+ * instructions: one wants `npm run rta:restore`, the other would be destroyed by
+ * it. Nothing else on disk separates them (`.device-runs/` is not per-run, and a
+ * device lock is absent in degraded mode and can outlive its run as a stale
+ * lease), so the writer records itself and readers ask whether it is still alive.
+ *
+ * Readers must treat a MISSING `ownerPid` as stranded, not as live — that is both
+ * the safe default and the truth for any snapshot written before this field.
+ *
+ * Three readers act on it, and they escalate: `device-lock.js` only REPORTS
+ * (withholds the restore command), `rta-restore.js` REFUSES a manual restore
+ * behind `--force`, and `snapshotRegistry` in this module THROWS — it is the one
+ * that runs unattended at the start of every run, so it is the one a wrong answer
+ * costs the most. Adding a fourth means deciding which of those three it is.
+ *
+ * `file` is a test seam. The reader in `device-lock.js` lives in another module, so
+ * what has to be pinned is that the two agree on the field — and a test can only do
+ * that by producing a real snapshot somewhere other than the real `.device-runs/`.
+ */
+export function writeSnapshotFile(values, file = snapshotPath()) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(
     file,
-    JSON.stringify({ host: deviceHost(), takenAt: new Date().toISOString(), values }, null, 2),
+    JSON.stringify(
+      { host: deviceHost(), takenAt: new Date().toISOString(), ownerPid: process.pid, values },
+      null,
+      2,
+    ),
   );
   return file;
 }
@@ -368,17 +445,43 @@ export function readSnapshotFile(file) {
 }
 
 /**
+ * Why a run refuses a device another run is already using.
+ *
+ * Says BOTH halves of the damage on purpose: a reader who knows only one of them
+ * "fixes" this by deleting the file, which re-enables the other. Restoring would
+ * revert the registry underneath the live run; snapshotting would capture that
+ * run's SEEDED state as the user's session and then preserve it forever (the
+ * second half is the hazard `scripts/measure-devices.js` names).
+ */
+const ownerStillRunning = (stranded) =>
+  `${stranded.file} belongs to pid ${stranded.ownerPid}, which is STILL RUNNING — ` +
+  'another RTA run owns this device. Refusing to restore from that snapshot (it would ' +
+  'revert the registry underneath the live run) and refusing to snapshot over it (this ' +
+  "run would adopt the other run's seeded state as the user's session and keep it " +
+  'forever). Wait for that run to finish. If that pid is NOT an RTA run — pids get ' +
+  'recycled — `npm run rta:restore -- --force` repairs the device and clears the file.';
+
+/**
  * Snapshot the device's ENTIRE registry, persisting it before returning.
  *
- * If a snapshot file is already sitting there, the previous run never completed
- * its restore (killed, crashed, or a restore that threw). Restore from it FIRST,
- * so this run's snapshot captures the user's state rather than the last run's
- * seeded leftovers. Without this the damage compounds silently: run N leaks, run
- * N+1 adopts the leak as the baseline and faithfully restores it forever.
+ * A snapshot file is present for the WHOLE of a healthy run, so its EXISTENCE does
+ * not mean the previous run died — `ownerPid` is the field that separates the two,
+ * and this is the reader that acts destructively on the difference. A dead owner
+ * means the run was killed, crashed, or threw mid-restore: restore from it FIRST, so
+ * this run's snapshot captures the user's state rather than the last run's seeded
+ * leftovers. Without that the damage compounds silently: run N leaks, run N+1 adopts
+ * the leak as the baseline and faithfully restores it forever.
+ *
+ * A LIVE owner is the opposite case and neither branch above is safe for it, so this
+ * refuses instead — see `ownerStillRunning`. The device lock normally keeps two runs
+ * apart, but it degrades to advisory whenever `RTA_SKIP_LOCK=1` is set, no GitHub
+ * token is available, or GitHub is unreachable (`scripts/device-lock.js`), and those
+ * are ordinary local conditions rather than edge cases.
  */
 export async function snapshotRegistry() {
   const stranded = readSnapshotFile();
   if (stranded) {
+    if (isProcessAlive(stranded.ownerPid)) throw new Error(ownerStillRunning(stranded));
     console.warn(
       `\n[registry] ${stranded.file} exists — the previous run never restored this device.` +
         `\n[registry] Restoring from it first so this run does not snapshot its leftovers.`,
@@ -387,7 +490,7 @@ export async function snapshotRegistry() {
     clearSnapshotFile();
   }
 
-  const { values } = await odc.readRegistry();
+  const { values } = await readRegistryBounded('the registry snapshot read');
   const file = writeSnapshotFile(values);
   console.log(
     `[registry] snapshot: ${Object.keys(values).length} sections -> ${file} (restore: npm run rta:restore)`,
@@ -416,7 +519,7 @@ export async function restoreRegistry(saved, { attempts = 3, accept = false } = 
 
 async function applyRestore(saved, { attempts, label, accept = false }) {
   for (let attempt = 1; attempt <= attempts; attempt++) {
-    const { values: live } = await odc.readRegistry();
+    const { values: live } = await readRegistryBounded(`the ${label} read`);
     const { sectionsToDelete, writes } = planRestore(saved, live);
 
     if (sectionsToDelete.length) await odc.deleteRegistrySections({ sections: sectionsToDelete });
@@ -426,7 +529,15 @@ async function applyRestore(saved, { attempts, label, accept = false }) {
     // just wrote over a still-running app.
     await hardRelaunch();
 
-    const { values: after } = await odc.readRegistry().catch(() => ({ values: {} }));
+    // Bounded like the read above, but its failure is still swallowed into "nothing came
+    // back" so the retry semantics do not move: this loop exists to converge a restore that
+    // did not take, and a device that vanished mid-restore should be reported by the NEXT
+    // attempt's gate — which throws the real diagnosis — rather than by this line guessing
+    // at one. Costs one extra iteration (~30 s) before that diagnosis lands, against an
+    // unbounded wait before this change.
+    const { values: after } = await readRegistryBounded(`the ${label} verify read`).catch(() => ({
+      values: {},
+    }));
     const diffs = compareRegistries(saved, after);
     if (diffs.length === 0) return;
 

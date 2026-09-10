@@ -19,10 +19,20 @@ import "pkg:/source/utils/translate.bs"
 const PANEL_WIDTH = 900
 const MAX_VISIBLE_ROWS = 8
 
+' Floor for a `sizeToContent` panel. Derived, not picked: DIALOG_BUTTON_MIN_WIDTH
+' is already this app's answer to "how narrow may a focusable control get before
+' it stops reading as one", and a menu row is exactly that. A three-letter label
+' would otherwise produce a ~180px panel that looks broken rather than compact.
+const MIN_CONTENT_PANEL_WIDTH = DIALOG_BUTTON_MIN_WIDTH + (PANEL_PADDING * 2)
+
 sub init()
   m.log = new log.Logger("JRListDialog")
 
   m.chrome = m.top.findNode("chrome")
+  m.widthProbe = m.top.findNode("widthProbe")
+  ' contentWidth is published from applyLayout rather than pinned here, because a
+  ' `sizeToContent` panel does not know its width until it has measured its rows.
+  ' The fixed-width path still lands on exactly this value.
   m.chrome.contentWidth = PANEL_WIDTH - (PANEL_PADDING * 2)
   ' The chrome measures the title and publishes its height; layout can only be
   ' computed once that exists.
@@ -50,8 +60,15 @@ sub init()
   m.hasNarrated = false
 end sub
 
+' Drives the panel's title, which is the DRAWN one. `m.top.title` is left alone
+' because narration reads it (see onOpeningAnnouncementDue) — a menu with no
+' visible heading still announces "More" before its focused row.
 sub onTitleChanged()
-  m.chrome.title = m.top.title
+  if m.top.titleVisible
+    m.chrome.title = m.top.title
+  else
+    m.chrome.title = ""
+  end if
 end sub
 
 sub onTitleMeasured()
@@ -72,11 +89,16 @@ sub onItemsChanged()
   ' which row to focus and falls back to 0. -1 marks nothing, which is what a
   ' choice dialog and a picker with no matching track both want.
   selectedIndex = m.top.selectedIndex
+  ' Optional and positionally paired with `items` — see the field comment in the
+  ' XML for why it is a parallel array rather than a richer `items` shape.
+  icons = m.top.icons
   index = 0
   for each item in items
     row = CreateObject("roSGNode", "ContentNode")
     row.title = toString(item)
-    row.addFields({ isSelected: index = selectedIndex })
+    rowIconUri = ""
+    if isValid(icons) and index < icons.count() then rowIconUri = toString(icons[index])
+    row.addFields({ isSelected: index = selectedIndex, icon: rowIconUri })
 
     ' The three visual markers (check glyph, surface, hue) are all sighted-only,
     ' so the current option is also announced. AUDIO_GUIDE_SUFFIX is a PREDEFINED
@@ -110,11 +132,23 @@ sub applyLayout()
   visibleRows = items.count()
   if visibleRows > MAX_VISIBLE_ROWS then visibleRows = MAX_VISIBLE_ROWS
 
+  panelWidth = resolvePanelWidth(items)
+  ' Guarded because the chrome re-measures its title whenever this changes, which
+  ' comes back here through onTitleMeasured. Setting it unconditionally would make
+  ' every layout pass schedule another one.
+  contentWidth = panelWidth - (PANEL_PADDING * 2)
+  if m.chrome.contentWidth <> contentWidth then m.chrome.contentWidth = contentWidth
+
+  ' invalid when unset, which computeDialogLayout reads as "centre it" — so the
+  ' fixed-width dialogs reach exactly the layout they always did.
+  anchor = m.top.anchor
+
   layout = computeDialogLayout({
-    panelWidth: PANEL_WIDTH,
+    panelWidth: panelWidth,
     titleHeight: m.chrome.titleHeight,
     bodyHeight: listHeightFor(visibleRows),
-    footerHeight: 0
+    footerHeight: 0,
+    anchor: anchor
   })
 
   ' The flow CLAMPS the body at the ceiling, so a body that did not fit comes
@@ -128,10 +162,11 @@ sub applyLayout()
   if layout.overflows
     visibleRows = rowsThatFit(layout.body.height)
     layout = computeDialogLayout({
-      panelWidth: PANEL_WIDTH,
+      panelWidth: panelWidth,
       titleHeight: m.chrome.titleHeight,
       bodyHeight: listHeightFor(visibleRows),
-      footerHeight: 0
+      footerHeight: 0,
+      anchor: anchor
     })
 
     ' Dropping rows fixes a body that was too tall; it cannot fix a TITLE that
@@ -152,6 +187,42 @@ sub applyLayout()
   m.optionList.numRows = visibleRows
   m.optionList.translation = [layout.body.x, layout.body.y]
 end sub
+
+' The panel's width. Fixed at PANEL_WIDTH unless the caller opted into
+' `sizeToContent`, in which case it is derived from the widest row label.
+'
+' The row's own arithmetic, inverted. JRListDialogRow puts its label at
+' LIST_ROW_CHECK_GUTTER and gives it `rowWidth - LIST_ROW_CHECK_GUTTER -
+' LIST_ROW_PADDING`, so the width that makes the longest label exactly fit is
+' that expression solved for rowWidth. Reading it off the row rather than
+' inventing a padding figure is what keeps the two from drifting.
+'
+' Snapped onto the 6px scale for the same reason every other panel width is:
+' anchored placement does not halve it, but the panel's RIGHT edge is
+' panelX + panelWidth, and only a width divisible by 3 keeps that edge on the
+' grid once panelX is there.
+function resolvePanelWidth(items as object) as integer
+  if not m.top.sizeToContent then return PANEL_WIDTH
+
+  ' Every item, not just the visible ones: a list taller than MAX_VISIBLE_ROWS
+  ' scrolls, and a row that scrolls into view must not be wider than the panel
+  ' holding it. At overflow-menu sizes this is a handful of measurements on the
+  ' render thread, where they are thread-local and cheap.
+  widestLabel = 0
+  for each item in items
+    m.widthProbe.text = toString(item)
+    labelWidth = m.widthProbe.localBoundingRect().width
+    if labelWidth > widestLabel then widestLabel = labelWidth
+  end for
+
+  width = snapPanelWidthToScale(int(widestLabel) + LIST_ROW_CHECK_GUTTER + LIST_ROW_PADDING + (PANEL_PADDING * 2))
+
+  if width < MIN_CONTENT_PANEL_WIDTH then return MIN_CONTENT_PANEL_WIDTH
+  ' Never WIDER than the fixed width either. Past that the menu has stopped being
+  ' a menu, and the centred list dialog is the surface that suits it.
+  if width > PANEL_WIDTH then return PANEL_WIDTH
+  return width
+end function
 
 ' A row is LIST_ROW_HEIGHT tall and the gaps sit BETWEEN rows, so n rows occupy
 ' n * height + (n - 1) * spacing. The two helpers below are inverses of each

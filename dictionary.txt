@@ -62,6 +62,7 @@ api-patterns
 APIs
 arg
 args
+argv
 assignees
 AST
 async
@@ -162,6 +163,7 @@ codec-capability
 codecs
 codegen
 CommonJS
+comparator
 config
 Config
 configs
@@ -256,6 +258,7 @@ ECP
 ECP-disabled
 EDID
 editorconfig
+enablement
 enrichment
 Enrichment
 enrichments
@@ -366,6 +369,7 @@ keepalive
 last-checked
 last-updated
 lexically
+libvips
 lifecycle
 Lifecycle
 linter
@@ -411,6 +415,7 @@ namespaces
 Namespaces
 natively
 nav
+navs
 Niklas
 no-ODC
 nodearray
@@ -478,6 +483,7 @@ Plex
 PNG
 PNGs
 portal-UI
+positionally
 post-auth
 postcondition
 postconditions
@@ -507,6 +513,7 @@ pre-roll
 pre-ship
 pre-show
 pre-test
+prebuilt
 Prefetch
 preflight
 preloading
@@ -731,10 +738,12 @@ utils
 UX
 v1
 V1
+v12
 v2
 V2
 v2\.0
 v3
+v4
 validator
 validators
 vendored

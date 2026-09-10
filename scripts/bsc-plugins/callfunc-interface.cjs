@@ -35,6 +35,14 @@
  * Targets we don't own (X defined only in `roku_modules` vendored components,
  * e.g. the log library's `logItem`) are out of scope and never flagged.
  *
+ * Runs once per validation via `scripts/lib/bsc-rule.cjs`'s program-rule
+ * lifecycle, which drops the previous run's findings before this one re-derives
+ * them. That matters here more than anywhere: the verdict for a call site lives
+ * in a DIFFERENT file (the target component's `<interface>`), so adding the
+ * `<function>` declaration this message asks for used to leave the error sitting
+ * on the caller's `.bs` until that file was separately touched — the author does
+ * exactly what the diagnostic says and the IDE keeps saying no.
+ *
  * Escape hatches (rare — an undeclared target is normally a real bug):
  *  - `' bsc-disable-line callfunc-interface` on the callFunc line
  *  - `' bsc-disable-next-line callfunc-interface` on the line above
@@ -43,25 +51,19 @@
 'use strict';
 
 const brighterscript = require('brighterscript');
+const { createProgramRule, stringLiteralValue } = require('../lib/bsc-rule.cjs');
 
 const CALLFUNC = 'callFunc';
 const DIAGNOSTIC_CODE = 'callfunc-interface';
-const DISABLE_FILE_MARKER = /'\s*bsc-disable-file\s+callfunc-interface\b/i;
-const DISABLE_LINE_MARKER = /'\s*bsc-disable-line\s+callfunc-interface\b/i;
-const DISABLE_NEXT_LINE_MARKER = /'\s*bsc-disable-next-line\s+callfunc-interface\b/i;
 const VENDORED = /(^|[\\/])roku_modules([\\/])/;
 
-class CallFuncInterfacePlugin {
-  constructor() {
-    this.name = 'jellyrock-callfunc-interface';
-  }
-
-  // Program-wide cross-check: needs every interface decl + every component
-  // method name before it can judge a single callFunc site, so it runs once
-  // after all files validate (see Program.js: "use afterValidateProgram").
-  afterValidateProgram(event) {
-    try {
-      const program = event.program;
+// Program-wide cross-check: needs every interface decl + every component method
+// name before it can judge a single callFunc site, so it runs once after all
+// files validate (see Program.js: "use afterValidateProgram").
+module.exports = () =>
+  createProgramRule({
+    name: 'jellyrock-callfunc-interface',
+    analyze({ program, report }) {
       const files = Object.values(program.files || {});
 
       // 1. DECLARED — every <function name> across ALL component interfaces
@@ -89,35 +91,23 @@ class CallFuncInterfacePlugin {
       //    declared in no interface (the silent no-op).
       for (const file of files) {
         if (!brighterscript.isBrsFile(file) || isVendored(file)) continue;
-        const contents = file.fileContents;
-        if (typeof contents === 'string' && DISABLE_FILE_MARKER.test(contents)) continue;
-        const sourceLines = (contents || '').split(/\r?\n/);
 
         for (const site of findCallFuncSites(file)) {
           const key = site.method.toLowerCase();
           if (!definedInComponents.has(key)) continue; // external/vendored target — out of scope
           if (declared.has(key)) continue; // exposed somewhere — fine
 
-          const srcLine = sourceLines[site.line] ?? '';
-          if (DISABLE_LINE_MARKER.test(srcLine)) continue;
-          const prevLine = site.line > 0 ? (sourceLines[site.line - 1] ?? '') : '';
-          if (DISABLE_NEXT_LINE_MARKER.test(prevLine)) continue;
-          if (!site.location) continue;
-
-          program.diagnostics.register({
+          report({
             code: DIAGNOSTIC_CODE,
             severity: 1, // Error — an undeclared callFunc target is a silent no-op.
-            source: this.name,
-            message: `callFunc("${site.method}") targets a method defined in a component codebehind but declared in NO component <interface>. callFunc only dispatches to functions exposed via <function name="${site.method}" />; without that line the call is a SILENT no-op (the transpiler does not catch it). Add <function name="${site.method}" /> to the target component's <interface>. Suppress with ' bsc-disable-next-line callfunc-interface only if this is deliberate.`,
+            file,
             location: site.location,
+            message: `callFunc("${site.method}") targets a method defined in a component codebehind but declared in NO component <interface>. callFunc only dispatches to functions exposed via <function name="${site.method}" />; without that line the call is a SILENT no-op (the transpiler does not catch it). Add <function name="${site.method}" /> to the target component's <interface>. Suppress with ' bsc-disable-next-line callfunc-interface only if this is deliberate.`,
           });
         }
       }
-    } catch (_e) {
-      // Never crash the build — the plugin is a guard, not a hard dependency.
-    }
-  }
-}
+    },
+  });
 
 // All `<function name="...">` names declared in a component's <interface>.
 function interfaceFunctionNames(xmlFile) {
@@ -157,7 +147,7 @@ function findCallFuncSites(brsFile) {
       if (callee.tokens?.name?.text !== CALLFUNC) return;
       const arg = call.args?.[0];
       if (!brighterscript.isLiteralExpression(arg)) return;
-      const method = unwrapStringLiteral(arg.tokens?.value?.text);
+      const method = stringLiteralValue(arg.tokens?.value?.text);
       if (!method) return;
       sites.push({
         method,
@@ -186,13 +176,3 @@ function hasSiblingComponentXml(program, brsFile) {
 function isVendored(file) {
   return VENDORED.test(file?.srcPath || '') || VENDORED.test(file?.pkgPath || '');
 }
-
-function unwrapStringLiteral(raw) {
-  if (typeof raw !== 'string') return null;
-  if (raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"')) {
-    return raw.slice(1, -1);
-  }
-  return raw;
-}
-
-module.exports = () => new CallFuncInterfacePlugin();

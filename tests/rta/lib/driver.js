@@ -10,7 +10,9 @@ import 'dotenv/config';
 import fs from 'node:fs';
 import { ecp, odc, device, utils } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
+import { ODC_PORT, odcIsResident } from '../../../scripts/lib/odc-probe.js';
 import { sleep } from './steps.js';
+import { withTimeout } from './timeout.js';
 
 export { ecp, odc, device, utils };
 export const BOOT_MS = RTA_CONFIG.bootMs;
@@ -155,35 +157,84 @@ export async function deployRtaBuild() {
  */
 const DEPLOY_TIMEOUT_MS = 5 * 60 * 1000;
 
+// Re-exported from its own leaf module so `registry.js` and `scripts/measure-signin.js`
+// keep their import site. It moved because `diagnostics.js` needs it too and cannot
+// import this file — see `timeout.js`.
+export { withTimeout };
+
 /**
- * Race `promise` against a wall clock, so an unbounded wait fails with a DIAGNOSIS.
+ * How long to wait for the on-device component to start answering on its port.
  *
- * Exported because the deploy is not the only step here that can wait forever, and the
- * second caller proved the shape general rather than deploy-specific. RTA's own timeouts
- * do not cover this class: `sendRequest` races the request against `getTimeOut(options)`,
- * but it `await`s `setupClientSocket()` FIRST — and that promise only self-rejects on
- * `ECONNREFUSED`/`EPIPE`. A connect to port 9000 that neither connects nor errors leaves
- * it unsettled, and `clientSocketPromise` is cached, so it stays that way. Read out of
- * `client/dist/OnDeviceComponent.js` on 2026-08-16, not inferred from a symptom.
- *
- * So a caller that needs a bound on "the on-device component answers at all" has to put
- * it OUTSIDE the ODC call. That is what this is for.
- *
- * @param {Promise} promise the work to bound.
- * @param {number} ms the cap.
- * @param {string} message what to throw — say the likely CAUSE, not just the elapsed time.
+ * Deliberately LONGER than the thing it stands in front of: RTA's own `setupClientSocket`
+ * retries a refused connect for `defaultTimeout` (10 s) before giving up, so a 30 s budget
+ * cannot fail a boot that RTA would have survived. That is the whole no-regression
+ * argument for putting a gate here — it is strictly more patient than today, and only the
+ * cases that were already lost get a different answer.
  */
-export async function withTimeout(promise, ms, message) {
-  let timer;
-  const timeout = new Promise((_resolve, reject) => {
-    timer = setTimeout(() => reject(new Error(message)), ms);
-    // Never hold the process open on the timer alone.
-    timer.unref?.();
-  });
-  try {
-    return await Promise.race([promise, timeout]);
-  } finally {
-    clearTimeout(timer);
+const ODC_REACHABLE_TIMEOUT_MS = 30 * 1000;
+
+/** Cadence of the probe. One TCP round trip, so the interval is the cost, not the probe. */
+const ODC_REACHABLE_POLL_MS = 500;
+
+/**
+ * Refuse to make the first ODC call of a run until the component is actually THERE.
+ *
+ * ## Why a precondition and not a timeout on the call
+ *
+ * An ODC call against a device with no on-device component does not fail cleanly, and it
+ * fails three different ways that a single `withTimeout` cannot cover (all measured
+ * 2026-09-06 against the real client, no device):
+ *
+ *  - **port closed** (no RTA build resident, or the channel simply exited): RTA rejects at
+ *    10 s and then **hard-crashes the process, `exit 1`**, from an orphaned rejection no
+ *    `catch` of ours can reach. See `scripts/lib/odc-probe.js` for the mechanism and the
+ *    control that proved it. `withTimeout` cannot help — the crash is not on our promise.
+ *  - **host unreachable** (device asleep, wrong `ROKU_IP`, firewall): the connect neither
+ *    connects nor errors, `setupClientSocket` never calls `socket.setTimeout`, and the call
+ *    hangs unbounded — 40 s+ with no bound in evidence.
+ *  - **port open, handshake unanswered**: hangs unbounded too (45 s+). This probe returns
+ *    `true` here and is BLIND to it by construction, which is why the registry reads are
+ *    also wrapped in `withTimeout` — the two cover different halves and neither is
+ *    sufficient alone.
+ *
+ * So the first two are answered by not making the call at all, which is both faster (~1 ms
+ * / 2 s instead of 10 s / forever) and the only thing that avoids the crash.
+ *
+ * ## What it must NOT do
+ *
+ * Report a device that is merely still booting. `odcIsResident` answers `false` the instant
+ * a port is refused, so a one-shot gate would turn a slow-but-working launch into a
+ * spurious failure — the same trap `DEPLOY_TIMEOUT_MS` above is sized against. Hence the
+ * poll: callers have already slept `bootMs`, and this adds 30 s of patience on top of it.
+ *
+ * @param {string} [options.host] device to probe; defaults to the configured one.
+ * @param {number} [options.port] the component's port. Only the tests pass this — binding
+ *   the real 9000 in a unit test would collide with an actual on-device component.
+ */
+export async function ensureOdcReachable({
+  host = device.getCurrentDeviceConfig().host,
+  port = ODC_PORT,
+  timeoutMs = ODC_REACHABLE_TIMEOUT_MS,
+  pollMs = ODC_REACHABLE_POLL_MS,
+} = {}) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (await odcIsResident(host, { port })) return;
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `nothing is listening on ${host}:${port} after ${timeoutMs / 1000}s, so the RTA ` +
+          'on-device component is not there. It runs INSIDE the app, so this is one of:\n' +
+          '  - the resident build has no ODC — a Rooibos test build and a `build:prod` both ' +
+          'present exactly this way. Redeploy the dev build.\n' +
+          '  - the channel is closed. The port goes quiet the moment the app exits, even ' +
+          'with the RTA build still sideloaded.\n' +
+          '  - the device is asleep, powered off, or ROKU_IP names another host. Run ' +
+          '`npm run device:check`.\n' +
+          'This is a PRECONDITION, not a timeout on your call: it is deliberately more ' +
+          "patient than RTA's own 10s connect retry, so a slow boot cannot fail here.",
+      );
+    }
+    await sleep(pollMs);
   }
 }
 
@@ -209,6 +260,63 @@ const withDeployTimeout = (deployPromise) =>
 export async function relaunch() {
   await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false });
   await sleep(RTA_CONFIG.bootMs);
+}
+
+/**
+ * Wait until the scene ANSWERS — not until Home is ready, and not for a field.
+ *
+ * An empty keyPath resolves to the base node, so this asks the one question that has a
+ * meaningful answer before the app has a screen: is there a scene there at all. Callers
+ * are the render-thread benches, which need a render-owned parent to `createChild` under
+ * and nothing else — no server, no library, no signed-in user. Gating them on `waitHome()`
+ * would make a measurement depend on seeded demo content it never reads, and make it
+ * unrunnable on its own (`npm run test:rta -- task-ledger-bench`), which is how a
+ * measurement actually gets re-taken.
+ *
+ * ## Why this is a hand-rolled loop and not a `waitFor`
+ *
+ * `waitFor` throws through `diagnosedError`, which READS THE DEVICE to attach a state
+ * dump. That is exactly what cannot be assumed here: the thing being waited for is the
+ * device becoming answerable, so the diagnostic would fail on the same condition as the
+ * wait and replace a clear "the scene never answered" with a transport error. Every other
+ * loop in the suite that stays hand-rolled has a structural reason of this kind
+ * (`tests/rta/CLAUDE.md` → *The loops that are not `waitFor`*).
+ *
+ * ## Why it is shared, and why it THROWS
+ *
+ * Two specs had each written this out. They were recorded as byte-identical duplicates
+ * and were not: `task-ledger-bench.spec.js` threw on timeout, while
+ * `gaa-thread-scope.spec.js` ran a bounded `for` and simply fell through — so a scene
+ * that never answered went on to `createChild` anyway and failed there, blaming the
+ * child. Sharing the version that throws is the point of sharing it; the difference was
+ * in the one property a duplicate is most likely to get wrong.
+ *
+ * **Not a replacement for `bootMs`.** `relaunch()` is also used against `ENABLE_RTA=false`
+ * builds, where ODC never answers at all — polling there would burn the full timeout on
+ * every call instead of sleeping once. The lifecycle sleeps stay.
+ *
+ * @param {object} [opts]
+ * @param {number} [opts.timeout] how long to wait for the scene to answer
+ * @param {number} [opts.interval] poll cadence
+ */
+export async function waitSceneAnswering({ timeout = 60000, interval = 500 } = {}) {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    const res = await odc.getValue({ base: 'scene', keyPath: '' }).catch(() => ({ found: false }));
+    if (res.found) return;
+    // Deadline checked AFTER a read, so the full budget is spent on reads rather than
+    // ending on a sleep that is never followed by an attempt.
+    if (Date.now() > deadline) {
+      // A plain `Error`, not `diagnosedError`: the diagnostic reads the very device that
+      // is not answering, so it would fail on the same condition and replace this message
+      // with a transport error. The message carries the two things worth checking.
+      throw new Error(
+        `scene never answered within ${timeout} ms — is the app running, and is this an ` +
+          'ENABLE_RTA build?',
+      );
+    }
+    await sleep(interval);
+  }
 }
 
 /**

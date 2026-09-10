@@ -1,0 +1,554 @@
+import "pkg:/source/utils/buttonOverflow.bs"
+import "pkg:/source/utils/misc.bs"
+
+namespace tests
+
+  @suite("buttonOverflow.bs")
+  class ButtonOverflowTests extends tests.BaseTestSuite
+
+    ' The two real geometries, as the call sites derive them. Repeated here rather
+    ' than imported because the source constants live in component scope, which a
+    ' source-scope spec cannot see. That the SURFACES pass these numbers is asserted
+    ' in their own specs; what is asserted here is the arithmetic they feed.
+    '
+    '   ItemDetails  origin 90 (ItemDetails.xml), spacing 18 (JRButtonGroup.bs),
+    '                bound 1324 = 1824 right-anchor - 500 LOGO_MAX_DISPLAY_WIDTH
+    '   OSD          origin 90 (OSD.xml), spacing 24 (OSDButtonGroup.bs),
+    '                bound 1670 = 1830 right group - 136 info button - 24 gap
+    private itemDetailsOriginX = 90
+    private itemDetailsSpacing = 18
+    private itemDetailsBound = 1324
+    private osdOriginX = 90
+    private osdSpacing = 24
+    private osdBound = 1670
+
+    ' What a row of n items actually occupies. The gaps sit BETWEEN items, so this
+    ' is deliberately NOT n * (width + spacing) — reproducing the off-by-one-gap
+    ' here is how a spec ends up agreeing with a bug.
+    private function rowWidth(n as integer, itemWidth as integer, spacing as integer) as integer
+      if n <= 0 then return 0
+      return (n * itemWidth) + ((n - 1) * spacing)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("IconButton metrics")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sizes the background plate from the icon plus four paddings")
+    function _()
+      m.assertEqual(iconButtonBackgroundWidth(ICON_BUTTON_ICON_SIZE), 124)
+    end function
+
+    @it("reports a layout footprint wider than the plate, because the caption overhangs")
+    function _()
+      plate = iconButtonBackgroundWidth(ICON_BUTTON_ICON_SIZE)
+      layout = iconButtonLayoutWidth(ICON_BUTTON_ICON_SIZE)
+
+      m.assertEqual(layout, 136)
+      m.assertTrue(layout > plate, "the caption, not the plate, sets the footprint")
+      m.assertEqual(layout - plate, ICON_BUTTON_TEXT_EXTENSION)
+    end function
+
+    @it("scales with the icon it is given rather than assuming one size")
+    function _()
+      m.assertEqual(iconButtonLayoutWidth(48), 48 + 60 + 12)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("maxVisibleButtons() - the two real surfaces")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("caps the ItemDetails row at 8")
+    function _()
+      cap = maxVisibleButtons(m.itemDetailsOriginX, m.itemDetailsSpacing, iconButtonLayoutWidth(ICON_BUTTON_ICON_SIZE), m.itemDetailsBound)
+      m.assertEqual(cap, 8)
+    end function
+
+    @it("caps the OSD row at 10 - a DIFFERENT number from the same function")
+    function _()
+      cap = maxVisibleButtons(m.osdOriginX, m.osdSpacing, iconButtonLayoutWidth(ICON_BUTTON_ICON_SIZE), m.osdBound)
+      m.assertEqual(cap, 10)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("maxVisibleButtons() - the cap is a consequence, not a copy")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns a count whose row ends before the bound, and whose successor does not")
+    function _()
+      width = iconButtonLayoutWidth(ICON_BUTTON_ICON_SIZE)
+
+      geometries = [
+        { name: "ItemDetails", originX: m.itemDetailsOriginX, spacing: m.itemDetailsSpacing, bound: m.itemDetailsBound },
+        { name: "OSD", originX: m.osdOriginX, spacing: m.osdSpacing, bound: m.osdBound }
+      ]
+
+      for each g in geometries
+        cap = maxVisibleButtons(g.originX, g.spacing, width, g.bound)
+
+        fits = g.originX + m.rowWidth(cap, width, g.spacing)
+        m.assertTrue(fits <= g.bound, g.name + ": " + stri(cap).trim() + " buttons must end at or before the bound")
+
+        spills = g.originX + m.rowWidth(cap + 1, width, g.spacing)
+        m.assertTrue(spills > g.bound, g.name + ": one more must NOT fit, or the cap is too low")
+      end for
+    end function
+
+    @it("moves the cap when the bound moves")
+    function _()
+      width = iconButtonLayoutWidth(ICON_BUTTON_ICON_SIZE)
+      tighter = maxVisibleButtons(m.itemDetailsOriginX, m.itemDetailsSpacing, width, m.itemDetailsBound - 154)
+      m.assertEqual(tighter, 7)
+    end function
+
+    @it("charges no trailing gap after the last item")
+    function _()
+      ' Exactly two strides of room past the origin. Charging a gap after the last
+      ' item would report 1 here.
+      m.assertEqual(maxVisibleButtons(0, 20, 100, 220), 2)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("maxVisibleButtons() - degenerate geometry")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns 0 when the bound is at or behind the origin")
+    function _()
+      m.assertEqual(maxVisibleButtons(1324, 18, 136, 1324), 0)
+      m.assertEqual(maxVisibleButtons(1324, 18, 136, 900), 0)
+    end function
+
+    @it("returns 0 rather than dividing by a zero stride")
+    function _()
+      m.assertEqual(maxVisibleButtons(90, 0, 0, 1324), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("moreButtonAnchor() - where the menu hangs from")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The anchor is derived from the SAME arithmetic as the cap, which is the
+    ' property worth gating: it is why the menu cannot end up pointing at a slot
+    ' the row does not have. These assert against the row-occupancy helper above
+    ' rather than against restated coordinates, so a change to the stride breaks
+    ' them the same way it breaks the cap.
+
+    @it("puts the anchor on the LAST slot the cap allows")
+    function _()
+      itemWidth = iconButtonLayoutWidth(ICON_BUTTON_ICON_SIZE)
+      cap = maxVisibleButtons(m.itemDetailsOriginX, m.itemDetailsSpacing, itemWidth, m.itemDetailsBound)
+
+      anchor = moreButtonAnchor(m.itemDetailsOriginX, m.itemDetailsSpacing, itemWidth, 800, cap)
+
+      ' A full row of `cap` items ends at originX + rowWidth(cap). The last item
+      ' starts one width before that.
+      rowEnd = m.itemDetailsOriginX + m.rowWidth(cap, itemWidth, m.itemDetailsSpacing)
+      m.assertEqual(anchor.x + anchor.width, rowEnd)
+      m.assertEqual(anchor.width, itemWidth)
+    end function
+
+    @it("never reaches past the bound the cap was derived from")
+    function _()
+      itemWidth = iconButtonLayoutWidth(ICON_BUTTON_ICON_SIZE)
+
+      for each surface in [{ originX: m.itemDetailsOriginX, spacing: m.itemDetailsSpacing, bound: m.itemDetailsBound }, { originX: m.osdOriginX, spacing: m.osdSpacing, bound: m.osdBound }]
+        cap = maxVisibleButtons(surface.originX, surface.spacing, itemWidth, surface.bound)
+        anchor = moreButtonAnchor(surface.originX, surface.spacing, itemWidth, 800, cap)
+
+        m.assertTrue(anchor.x + anchor.width <= surface.bound, "anchor overruns the bound at origin " + surface.originX.toStr())
+      end for
+    end function
+
+    @it("passes the row's y through as the anchor's y")
+    function _()
+      anchor = moreButtonAnchor(90, 18, 136, 932, 10)
+      m.assertEqual(anchor.y, 932)
+    end function
+
+    ' The OSD's stride differs from ItemDetails', so the two anchors land in
+    ' different places from the same function — the same property the cap has.
+    @it("lands somewhere DIFFERENT for the OSD, from the same arithmetic")
+    function _()
+      itemWidth = iconButtonLayoutWidth(ICON_BUTTON_ICON_SIZE)
+      itemDetails = moreButtonAnchor(m.itemDetailsOriginX, m.itemDetailsSpacing, itemWidth, 800, 8)
+      osd = moreButtonAnchor(m.osdOriginX, m.osdSpacing, itemWidth, 932, 10)
+
+      m.assertNotEqual(itemDetails.x, osd.x)
+    end function
+
+    ' A degenerate cap must still produce a usable rect. Anchoring at the row's
+    ' own origin puts the menu at the start of the row, which is visibly wrong
+    ' rather than off-screen — the same direction every other guard here takes.
+    @it("falls back to the row origin when the cap is degenerate")
+    function _()
+      for each cap in [0, -3]
+        anchor = moreButtonAnchor(90, 18, 136, 800, cap)
+        m.assertEqual(anchor.x, 90, "cap " + cap.toStr() + " moved the anchor off the row origin")
+      end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("splitForOverflow() - the cap is a ceiling, not a quota")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows every button AT the cap, with no More")
+    function _()
+      split = splitForOverflow(8, 8)
+      m.assertFalse(split.hasOverflow)
+      m.assertEqual(split.visibleCount, 8)
+    end function
+
+    @it("shows every button below the cap, with no More")
+    function _()
+      split = splitForOverflow(4, 8)
+      m.assertFalse(split.hasOverflow)
+      m.assertEqual(split.visibleCount, 4)
+    end function
+
+    @it("spends one slot on More the moment the cap is exceeded")
+    function _()
+      split = splitForOverflow(9, 8)
+      m.assertTrue(split.hasOverflow)
+      m.assertEqual(split.visibleCount, 7)
+    end function
+
+    @it("keeps the visible count fixed however far past the cap the row goes")
+    function _()
+      for each count in [9, 12, 20]
+        split = splitForOverflow(count, 8)
+        m.assertEqual(split.visibleCount, 7, "visible count must not grow with the overflow")
+        m.assertTrue(split.hasOverflow)
+      end for
+    end function
+
+    @it("never produces a one-item menu")
+    function _()
+      ' The interesting boundary is the SMALLEST overflowing row at each cap: if a
+      ' menu of one is reachable at all, it is reachable there.
+      for each cap in [3, 8, 10]
+        split = splitForOverflow(cap + 1, cap)
+        hidden = (cap + 1) - split.visibleCount
+        m.assertTrue(hidden >= 2, "cap " + stri(cap).trim() + " left only " + stri(hidden).trim() + " in the menu")
+      end for
+    end function
+
+    @it("accounts for every button - visible plus hidden is the whole row")
+    function _()
+      ' `visibleCount` is also the index the menu starts at, so the hidden tail is
+      ' whatever sits past it. Sweeping both sides of the cap is what makes this an
+      ' accounting check rather than a restatement of the split.
+      for each count in [0, 1, 7, 8, 9, 20]
+        split = splitForOverflow(count, 8)
+        hidden = count - split.visibleCount
+
+        m.assertTrue(hidden >= 0, "cannot show more than it was given")
+        if split.hasOverflow
+          m.assertTrue(hidden >= 2, "an overflowing row must leave at least two behind")
+        else
+          m.assertEqual(hidden, 0, "a row that fits must hide nothing")
+        end if
+      end for
+    end function
+
+    @it("handles an empty row")
+    function _()
+      split = splitForOverflow(0, 8)
+      m.assertFalse(split.hasOverflow)
+      m.assertEqual(split.visibleCount, 0)
+    end function
+
+    @it("never reports a negative visible count when the cap is degenerate")
+    function _()
+      split = splitForOverflow(5, 0)
+      m.assertTrue(split.hasOverflow)
+      m.assertEqual(split.visibleCount, 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("applying it to a real row")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A real JRButtonGroup and a plain Group stash, the same pair both surfaces
+    ' hand these functions. Built here so the SHARED implementation is exercised
+    ' directly, not only through ItemDetails and the OSD.
+    private function makeRow(count as integer) as object
+      row = {
+        group: CreateObject("roSGNode", "JRButtonGroup"),
+        stash: CreateObject("roSGNode", "Group")
+      }
+      for i = 0 to count - 1
+        button = CreateObject("roSGNode", "IconButton")
+        button.id = "btn" + stri(i).trim()
+        button.text = "Label " + stri(i).trim()
+        button.icon = "pkg:/images/icons/refresh_$$RES$$.png"
+        row.group.appendChild(button)
+      end for
+      return row
+    end function
+
+    private function idsOf(node as object) as object
+      ids = []
+      for i = 0 to node.getChildCount() - 1
+        ids.push(node.getChild(i).id)
+      end for
+      return ids
+    end function
+
+    @it("moves the tail into the stash and stands More in its place")
+    function _()
+      row = m.makeRow(5)
+      applyButtonOverflow(row.group, row.stash, 3, "More", "pkg:/more.png")
+
+      m.assertEqual(m.idsOf(row.group), ["btn0", "btn1", "moreButton"])
+      m.assertEqual(m.idsOf(row.stash), ["btn2", "btn3", "btn4"])
+    end function
+
+    @it("leaves a row that fits completely alone")
+    function _()
+      row = m.makeRow(3)
+      applyButtonOverflow(row.group, row.stash, 3, "More", "pkg:/more.png")
+
+      m.assertEqual(m.idsOf(row.group), ["btn0", "btn1", "btn2"])
+      m.assertEqual(row.stash.getChildCount(), 0)
+    end function
+
+    @it("restores the original order exactly")
+    function _()
+      row = m.makeRow(5)
+      before = m.idsOf(row.group)
+
+      applyButtonOverflow(row.group, row.stash, 3, "More", "pkg:/more.png")
+      restoreOverflowedButtons(row.group, row.stash)
+
+      m.assertEqual(m.idsOf(row.group), before)
+      m.assertEqual(row.stash.getChildCount(), 0)
+    end function
+
+    ' The ordering hazard the restore-at-More's-index rule exists for. A caller
+    ' that mutates the row WITHOUT restoring first leaves a newer button sitting
+    ' after More; the tail must still come back ahead of it, because that is
+    ' where it was cut from.
+    @it("restores the tail ahead of anything appended while the row was split")
+    function _()
+      row = m.makeRow(5)
+      applyButtonOverflow(row.group, row.stash, 3, "More", "pkg:/more.png")
+
+      latecomer = CreateObject("roSGNode", "IconButton")
+      latecomer.id = "latecomer"
+      row.group.appendChild(latecomer)
+
+      restoreOverflowedButtons(row.group, row.stash)
+
+      m.assertEqual(m.idsOf(row.group), ["btn0", "btn1", "btn2", "btn3", "btn4", "latecomer"])
+    end function
+
+    @it("is idempotent - re-applying derives the same split")
+    function _()
+      row = m.makeRow(6)
+      applyButtonOverflow(row.group, row.stash, 3, "More", "pkg:/more.png")
+      firstGroup = m.idsOf(row.group)
+      firstStash = m.idsOf(row.stash)
+
+      applyButtonOverflow(row.group, row.stash, 3, "More", "pkg:/more.png")
+
+      m.assertEqual(m.idsOf(row.group), firstGroup)
+      m.assertEqual(m.idsOf(row.stash), firstStash)
+      m.assertEqual(row.group.findNode("moreButton").getParent().id, row.group.id)
+    end function
+
+    ' An open More menu holds this node as its returnFocusTo. Recreating it on a
+    ' re-apply — which happens on every row mutation — would leave the dialog
+    ' restoring focus to a node no longer in the tree.
+    @it("re-uses the SAME More node across re-applications")
+    function _()
+      row = m.makeRow(6)
+      applyButtonOverflow(row.group, row.stash, 3, "More", "pkg:/more.png")
+      first = row.group.findNode("moreButton")
+
+      applyButtonOverflow(row.group, row.stash, 3, "More", "pkg:/more.png")
+      second = row.group.findNode("moreButton")
+
+      m.assertTrue(first.isSameNode(second), "the More button must survive a re-derive")
+    end function
+
+    @it("refreshes the re-used More node's label and icon")
+    function _()
+      row = m.makeRow(6)
+      applyButtonOverflow(row.group, row.stash, 3, "More", "pkg:/first.png")
+      applyButtonOverflow(row.group, row.stash, 3, "Mehr", "pkg:/second.png")
+
+      moreButton = row.group.findNode("moreButton")
+      m.assertEqual(moreButton.text, "Mehr")
+      m.assertEqual(moreButton.icon, "pkg:/second.png")
+    end function
+
+    @it("collapses the split when the cap grows past the row")
+    function _()
+      row = m.makeRow(5)
+      applyButtonOverflow(row.group, row.stash, 3, "More", "pkg:/more.png")
+      applyButtonOverflow(row.group, row.stash, 8, "More", "pkg:/more.png")
+
+      m.assertEqual(m.idsOf(row.group), ["btn0", "btn1", "btn2", "btn3", "btn4"])
+      m.assertEqual(row.stash.getChildCount(), 0)
+    end function
+
+    @it("carries the More label and icon it was given")
+    function _()
+      row = m.makeRow(5)
+      applyButtonOverflow(row.group, row.stash, 3, "Mehr", "pkg:/custom.png")
+
+      moreButton = row.group.findNode("moreButton")
+      m.assertEqual(moreButton.text, "Mehr")
+      m.assertEqual(moreButton.icon, "pkg:/custom.png")
+    end function
+
+    @it("keeps the focus index on a button that stays visible")
+    function _()
+      row = m.makeRow(6)
+      row.group.buttonFocused = 1
+      applyButtonOverflow(row.group, row.stash, 4, "More", "pkg:/more.png")
+
+      m.assertEqual(row.group.getChild(row.group.buttonFocused).id, "btn1")
+    end function
+
+    @it("hands the focus index to More when its button moves into the stash")
+    function _()
+      row = m.makeRow(6)
+      row.group.buttonFocused = 5
+      applyButtonOverflow(row.group, row.stash, 4, "More", "pkg:/more.png")
+
+      m.assertEqual(row.group.getChild(row.group.buttonFocused).id, "moreButton")
+    end function
+
+    ' The focus id is read AFTER the restore, so when focus was sitting on More
+    ' the index momentarily names whichever button the restore put back in that
+    ' slot. It must still land on More once the row re-splits, not follow that
+    ' button into the menu.
+    @it("keeps focus on More when the row re-derives beneath it")
+    function _()
+      row = m.makeRow(6)
+      applyButtonOverflow(row.group, row.stash, 4, "More", "pkg:/more.png")
+      row.group.buttonFocused = row.group.getChildCount() - 1
+      m.assertEqual(row.group.getChild(row.group.buttonFocused).id, "moreButton")
+
+      applyButtonOverflow(row.group, row.stash, 4, "More", "pkg:/more.png")
+
+      m.assertEqual(row.group.getChild(row.group.buttonFocused).id, "moreButton")
+    end function
+
+    @it("does nothing, and does not crash, on invalid nodes")
+    function _()
+      applyButtonOverflow(invalid, invalid, 3, "More", "pkg:/more.png")
+      restoreOverflowedButtons(invalid, invalid)
+      m.assertTrue(true, "reached without faulting")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("overflowMenuEntries()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The menu wears what the buttons wore, and resolves back to a button ID —
+    ' which is what lets a selection run through each surface's existing dispatch
+    ' instead of a second copy of it. The three arrays must stay index-aligned.
+    @it("reads label, icon and id off the stashed buttons in order")
+    function _()
+      row = m.makeRow(5)
+      applyButtonOverflow(row.group, row.stash, 3, "More", "pkg:/more.png")
+
+      entries = overflowMenuEntries(row.stash)
+
+      m.assertEqual(entries.ids, ["btn2", "btn3", "btn4"])
+      m.assertEqual(entries.labels, ["Label 2", "Label 3", "Label 4"])
+      m.assertEqual(entries.icons.count(), 3)
+      m.assertEqual(entries.icons[0], "pkg:/images/icons/refresh_$$RES$$.png")
+    end function
+
+    @it("keeps the three arrays the same length so an index maps across them")
+    function _()
+      row = m.makeRow(9)
+      applyButtonOverflow(row.group, row.stash, 4, "More", "pkg:/more.png")
+
+      entries = overflowMenuEntries(row.stash)
+      m.assertEqual(entries.labels.count(), entries.ids.count())
+      m.assertEqual(entries.icons.count(), entries.ids.count())
+      m.assertEqual(entries.ids.count(), row.stash.getChildCount())
+    end function
+
+    @it("returns empty arrays for an empty stash")
+    function _()
+      entries = overflowMenuEntries(CreateObject("roSGNode", "Group"))
+      m.assertEqual(entries.ids.count(), 0)
+      m.assertEqual(entries.labels.count(), 0)
+      m.assertEqual(entries.icons.count(), 0)
+    end function
+
+    @it("returns empty arrays for an invalid stash rather than faulting")
+    function _()
+      entries = overflowMenuEntries(invalid)
+      m.assertEqual(entries.ids.count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("overflowMenuSelection() - which id a result may act on")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Both surfaces' menu handlers ACT, and the OSD's is unreachable from a spec
+    ' (its OK press arrives via onKeyEvent). This is the one place the decline
+    ' rules are gated, which is why they are gated exhaustively.
+    private menuIds = ["refreshButton", "deleteButton", "trailerButton"]
+
+    private function pick(index as integer) as object
+      return { cancelled: false, externallyCancelled: false, optionIndex: index }
+    end function
+
+    @it("resolves a chosen row to its button id")
+    function _()
+      m.assertEqual(overflowMenuSelection(m.pick(0), m.menuIds), "refreshButton")
+      m.assertEqual(overflowMenuSelection(m.pick(2), m.menuIds), "trailerButton")
+    end function
+
+    ' The mapping is positional, so an off-by-one here fires the WRONG item action
+    ' — picking Refresh and getting Delete. Asserted per index rather than in bulk.
+    @it("maps every index to the id at that position, with no drift")
+    function _()
+      for i = 0 to m.menuIds.count() - 1
+        m.assertEqual(overflowMenuSelection(m.pick(i), m.menuIds), m.menuIds[i], "index " + stri(i).trim())
+      end for
+    end function
+
+    @it("declines a close that CODE made, not the user")
+    function _()
+      result = m.pick(0)
+      result.externallyCancelled = true
+      m.assertEqual(overflowMenuSelection(result, m.menuIds), "")
+    end function
+
+    @it("declines a user cancel")
+    function _()
+      result = m.pick(0)
+      result.cancelled = true
+      m.assertEqual(overflowMenuSelection(result, m.menuIds), "")
+    end function
+
+    @it("declines an index outside the id list rather than faulting")
+    function _()
+      m.assertEqual(overflowMenuSelection(m.pick(-1), m.menuIds), "")
+      m.assertEqual(overflowMenuSelection(m.pick(3), m.menuIds), "")
+      m.assertEqual(overflowMenuSelection(m.pick(99), m.menuIds), "")
+    end function
+
+    @it("declines an empty id list")
+    function _()
+      m.assertEqual(overflowMenuSelection(m.pick(0), []), "")
+    end function
+
+    @it("declines invalid inputs rather than faulting")
+    function _()
+      m.assertEqual(overflowMenuSelection(invalid, m.menuIds), "")
+      m.assertEqual(overflowMenuSelection(m.pick(0), invalid), "")
+      m.assertEqual(overflowMenuSelection({ cancelled: false, externallyCancelled: false }, m.menuIds), "")
+    end function
+
+  end class
+
+end namespace

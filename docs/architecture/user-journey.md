@@ -9,7 +9,7 @@ related-files:
   - components/manager/QueueManager.bs
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
-last-reviewed: 2026-09-01
+last-reviewed: 2026-09-04
 ---
 
 # The User Journey
@@ -186,6 +186,7 @@ The component contains:
   - **Shuffle** — for collections and playlists
   - **Trailer** — if a remote trailer URL is available
   - **Mark Watched / Unwatched**, **Mark Favorite / Unfavorite**
+  - The row is **capped at what fits before the logo** (8 buttons today — see [`buttonOverflow.bs`](../../source/utils/buttonOverflow.bs)). Past the cap the last slot becomes a **More** button and the remainder move to an off-layout stash, reachable through a `showListDialog` menu whose rows carry the same label and glyph. Nothing overflows at present: the busiest item types reach exactly 8.
 - An inline **`TrackDropdown` cluster** (`trackCluster`) — three side-by-side dropdowns for Video / Audio / Subtitle source selection, replacing the older modal `ItemOptions` popup. Track titles localize via the `languages.bs` 3-tier resolver (alias → `translationKey` → English fallback). Slots auto-hide when no choices exist (e.g., the Video slot is hidden when only one source is available).
 - An "extras" panel (revealed by pressing DOWN) — `extrasGrid` shows related items: cast, episodes (for series), parts (for split media), recommendations, similar items
 

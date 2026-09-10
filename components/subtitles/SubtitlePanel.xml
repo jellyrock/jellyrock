@@ -179,16 +179,16 @@
   <interface>
     <!-- ── Inputs, set by the host screen ── -->
     <field id="itemId" type="string" />
-    <field id="filePath" type="string" onChange="onFilePathChanged" />
+    <field id="filePath" type="string" />
     <!-- MediaStreams from the host's most recent item fetch. Also the baseline
          the download-completion diff is taken against. -->
-    <field id="existingStreams" type="array" onChange="onExistingStreamsChanged" />
+    <field id="existingStreams" type="array" />
     <!-- Whether this user may delete (admin only, every server version). The
          host resolves it so the panel needs no policy knowledge. -->
     <field id="canDelete" type="boolean" value="false" />
 
     <!-- ── Control ── -->
-    <field id="isOpen" type="boolean" value="false" onChange="onIsOpenChanged" />
+    <field id="isOpen" type="boolean" value="false" />
 
     <!-- ── Outputs, observed by the host ── -->
     <!-- Fires when the item's subtitle streams changed on the server. The host

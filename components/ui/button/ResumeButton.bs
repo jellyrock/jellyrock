@@ -19,7 +19,14 @@ sub onIconLoaded()
   ' Icon is loaded, buttonBackground should now have valid dimensions
   updateProgressBar()
 
-  ' Clean up observer to prevent memory leaks
+  ' Clean up observer to prevent memory leaks. This is a genuine ONE-SHOT: the icon
+  ' URI is set in the XML and never reassigned, and a ResumeButton is created and
+  ' removed per use (ItemDetails.manageResumeButton) rather than recycled as a list
+  ' cell — so `loadStatus` reaches "ready" exactly once for this node and there is
+  ' nothing further to hear. Those two facts are what make detaching here safe, and
+  ' neither is visible to the gate, which is why this is suppressed rather than
+  ' carved out of the rule.
+  ' bsc-disable-next-line register-once-observer
   m.buttonIcon.unobserveField("loadStatus")
 end sub
 

@@ -28,7 +28,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { beforeAll, afterAll, it, expect } from 'vitest';
-import { odc } from '../lib/driver.js';
+import { odc, waitSceneAnswering } from '../lib/driver.js';
 import { sleep } from '../lib/steps.js';
 
 const BENCH = '#gaaProbeBench';
@@ -49,11 +49,11 @@ async function call(funcName) {
 }
 
 beforeAll(async () => {
-  for (let i = 0; i < 120; i++) {
-    const res = await odc.getValue({ base: 'scene', keyPath: '' }).catch(() => ({ found: false }));
-    if (res.found) break;
-    await sleep(500);
-  }
+  // Was an inlined copy of the bench spec's scene wait, and differed from it in the one
+  // way that mattered: its bounded `for` fell THROUGH on timeout instead of throwing, so
+  // a scene that never answered went on to `createChild` anyway and failed there, blaming
+  // the child for the app not being up. The shared helper throws.
+  await waitSceneAnswering();
   await odc.createChild({
     base: 'scene',
     keyPath: '',

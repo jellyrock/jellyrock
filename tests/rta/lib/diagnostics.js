@@ -74,6 +74,8 @@
  * the RTA-specific capture that goes INTO it.
  */
 import { odc, ecp } from 'roku-test-automation';
+import { homeListKeyPaths } from './home-list.js';
+import { withTimeout } from './timeout.js';
 import {
   crossesHourBoundary,
   FAILURE_KINDS,
@@ -88,10 +90,13 @@ import {
  *
  * Scoped to `activeRoutedView` (the app's own "view the user is on") wherever the
  * id recurs across views, for the same reason `getActiveVal` exists: a suspended view can
- * still be in the scene tree, so a scene-rooted `#id` read can answer for the wrong screen. `#homeRows` is deliberately scene-rooted
+ * still be in the scene tree, so a scene-rooted `#id` read can answer for the wrong screen. Home's row list is deliberately scene-rooted
  * — on a failure deep in a drill-down, "is Home still populated behind me?" is
  * itself a signal.
  */
+/** Both candidate keyPaths for Home's row count — see `homeRowCount` below. */
+const HOME_ROW_COUNT_PATHS = homeListKeyPaths('content.getChildCount()');
+
 const CORE_REQUESTS = {
   viewSubtype: { base: 'global', keyPath: 'activeRoutedView.subtype()' },
   viewId: { base: 'global', keyPath: 'activeRoutedView.id' },
@@ -103,7 +108,13 @@ const CORE_REQUESTS = {
   isLoading: { base: 'scene', keyPath: 'isLoading' },
   loadingText: { base: 'scene', keyPath: 'loadingText' },
   isRemoteDisabled: { base: 'scene', keyPath: 'isRemoteDisabled' },
-  homeRowCount: { base: 'scene', keyPath: '#homeRows.content.getChildCount()' },
+  // BOTH candidate row lists, because only one of them is in the scene and which one is a
+  // property of Home's selected tab, not of Home. They cost nothing extra: this is already
+  // one batched `getValues`, so a second keyPath adds no round trip — and asking only about
+  // `#homeRows` would report "Home has no rows" under the Favorites tab, misinforming a
+  // diagnosis with a confident wrong number, which is the one thing a failure dump must not do.
+  homeRowCount: { base: 'scene', keyPath: HOME_ROW_COUNT_PATHS[0] },
+  favoritesRowCount: { base: 'scene', keyPath: HOME_ROW_COUNT_PATHS[1] },
   detailRowCount: {
     base: 'global',
     keyPath: 'activeRoutedView.#extrasGrid.content.getChildCount()',
@@ -124,8 +135,38 @@ const unwrap = (results, key) => (results?.[key]?.found ? results[key].value : u
  * ever bites when the device has stopped answering — and there it is the point:
  * a suite failing N times against a dead device would otherwise spend 10 s per
  * failure re-confirming the same thing. The unanswered read is still recorded.
+ *
+ * It bounds the two ECP readings below as well, but from OUTSIDE the call rather than
+ * as an option, because ECP has no timeout to pass — see `ecpReading`.
  */
 const CAPTURE_TIMEOUT_MS = 5000;
+
+/**
+ * An ECP reading that cannot hang, which it otherwise can — indefinitely.
+ *
+ * `HttpRequestOptions` carries `retryCount` and nothing else, and the client's
+ * `getNeedleOptions()` sets only auth and proxy, so needle's own defaults stand:
+ * `open_timeout` 10 s, but `response_timeout` and `read_timeout` both 0 — DISABLED.
+ * So a device that accepts the socket and then never answers leaves the request
+ * pending forever, and `retryCount` bounds the number of attempts, not the length of
+ * one. (Read out of `roku-test-automation/client/dist/RokuDevice.js` and
+ * `needle/lib/needle.js` on 2026-09-08, not inferred from a symptom.)
+ *
+ * Unbounded matters more here than at a normal call site: both readings sit in the
+ * `Promise.all` below, where ONE unsettled promise withholds the whole capture — and
+ * this runs on every wait timeout, which is precisely when the device is least likely
+ * to be healthy. The failure that would produce is the worst shape available: a suite
+ * that hangs instead of reporting the timeout it had already detected.
+ *
+ * The rejection is caught by the caller's `.catch(() => null)` like any other, so a
+ * bounded-out reading costs one line of context and never the capture.
+ */
+const ecpReading = (promise, what) =>
+  withTimeout(
+    promise,
+    CAPTURE_TIMEOUT_MS,
+    `ECP ${what} did not answer within ${CAPTURE_TIMEOUT_MS / 1000}s`,
+  );
 
 /**
  * One batched read of device state, plus the focused node.
@@ -138,7 +179,7 @@ const CAPTURE_TIMEOUT_MS = 5000;
 export async function captureFailureState() {
   const started = Date.now();
   const opts = { timeout: CAPTURE_TIMEOUT_MS };
-  const [focused, batch, mediaPlayer] = await Promise.all([
+  const [focused, batch, mediaPlayer, activeApp] = await Promise.all([
     // `includeNode` already defaults to true; we need the node for its subtype.
     // Only the four fields below are kept — the rest never reaches a record.
     odc.getFocusedNode({}, opts).catch(() => null),
@@ -153,7 +194,29 @@ export async function captureFailureState() {
     // playing/paused/stopped. Three separate investigations read that as a dialog
     // fault and had to be settled by a control run. One field ends that: a stalled
     // stream now says so in the record.
-    ecp.getMediaPlayer().catch(() => null),
+    ecpReading(ecp.getMediaPlayer(), 'getMediaPlayer').catch(() => null),
+    // ECP, and on the failure path deliberately: a screensaver is the one device state
+    // that can make every ODC read in this record fail while nothing is wrong with the
+    // app. Roku runs a screensaver in its own BrightScript context
+    // (`DEVELOPER/media-playback/screensavers.md`), and roku-test-automation's README
+    // states ODC communication is not possible while one is up — so without this field a
+    // screensaver presents as `device did not answer ODC`, which reads as a harness or
+    // app fault and is neither.
+    //
+    // ECP is what makes it readable: it answers from the OS, not from inside the
+    // channel, so it keeps working exactly when ODC may not. Verified 2026-09-05 —
+    // `query/active-app` named the running screensaver (`type="ssvr"`) on an idle
+    // device whose ODC was not answering at all. That a screensaver CAUSES the ODC
+    // failure is NOT claimed: the one host showing both had a fault of its own, and
+    // the mechanism above is cited to the two docs, not measured here. See
+    // `docs/decisions.md` → `rta-screensaver-detect-not-suppress`.
+    //
+    // `retryCount: 0` because this is a diagnostic, not a measurement: one attempt is
+    // enough context and three would triple the delay on an unreachable device. It is NOT
+    // what bounds the call — retries and duration are different things, and `ecpReading`
+    // is what makes a single attempt unable to hang. A missed reading costs one line of
+    // context; a slow one delays every failure in the run.
+    ecpReading(ecp.getActiveApp({ retryCount: 0 }), 'getActiveApp').catch(() => null),
   ]);
 
   const results = batch?.results;
@@ -193,7 +256,8 @@ export async function captureFailureState() {
       isRemoteDisabled: unwrap(results, 'isRemoteDisabled'),
     },
     counts: {
-      homeRows: unwrap(results, 'homeRowCount'),
+      // Whichever list answered. Absence is the normal reading for one of the two.
+      homeRows: unwrap(results, 'homeRowCount') ?? unwrap(results, 'favoritesRowCount'),
       detailRows: unwrap(results, 'detailRowCount'),
     },
     identity: {
@@ -210,6 +274,11 @@ export async function captureFailureState() {
           state: mediaPlayer.state,
           error: mediaPlayer.error || undefined,
         }
+      : undefined,
+    // Present ONLY when one is actually running, so the field's existence is the
+    // finding and every other record stays the shape it was.
+    screensaver: activeApp?.screensaver
+      ? { title: activeApp.screensaver.title, id: activeApp.screensaver.id }
       : undefined,
     unreachable: batch?.error,
     captureMs: Date.now() - started,
@@ -275,6 +344,15 @@ const short = (v) => (typeof v === 'string' && v.length > 12 ? `${v.slice(0, 8)}
  */
 function formatState(state, observed) {
   const lines = [];
+  // BEFORE the ODC line, because it explains it. On its own `device did not answer ODC`
+  // invites a hunt through the app; with this line above it the record has already named
+  // the cause, which is the whole point of reading it.
+  if (state.screensaver) {
+    lines.push(
+      `a SCREENSAVER is running ("${state.screensaver.title}") — the app is not on ` +
+        'screen, so treat every reading below as describing a backgrounded app',
+    );
+  }
   if (state.unreachable) lines.push(`device did not answer ODC: ${state.unreachable}`);
   // Source field name verbatim (`rowItemFocused`), for the same reason the shell fields
   // are: a record greps back to the component that wrote it. Printed only when the

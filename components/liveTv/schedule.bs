@@ -48,6 +48,14 @@ sub init()
 
   ' Guard: onChange handlers must not start tasks before startLoading() configures paging
   m.loadingInitialized = false
+
+  ' Interface observers are registered HERE rather than declared as XML onChange
+  ' attributes: this component releases node references in onDestroy and these
+  ' handlers dereference them, so the registrations have to be detachable. An XML
+  ' onChange does not appear to be removable by unobserveField — see the wiring
+  ' rule in components/CLAUDE.md.
+  m.top.observeField("filter", "channelFilterSet")
+  m.top.observeField("searchTerm", "channelsearchTermSet")
 end sub
 
 ' Called by BaseGridView after setting filter/searchTerm to avoid double-fire.
@@ -470,6 +478,11 @@ end function
 ' onDestroy: Full teardown releasing all resources before component removal
 ' Called automatically via JRScreen.beforeViewClose when sgRouter permanently closes this view.
 sub onDestroy()
+  ' Detach the interface observers registered in init(). Must precede every
+  ' reference release below — these handlers dereference them.
+  m.top.unobserveField("filter")
+  m.top.unobserveField("searchTerm")
+
   m.log.verbose("onDestroy")
 
   ' Unobserve child node observers

@@ -19,11 +19,11 @@
   </children>
   <interface>
     <!-- Input -->
-    <field id="triggerText" type="string" onChange="onTriggerTextChanged" />
-    <field id="triggerIconUri" type="string" onChange="onTriggerIconChanged" />
-    <field id="triggerIconBlendColor" type="color" value="0xFFFFFFFF" onChange="onTriggerIconBlendColorChanged" />
-    <field id="items" type="array" onChange="onItemsChanged" />
-    <field id="selectedItemId" type="string" onChange="onSelectedItemChanged" />
+    <field id="triggerText" type="string" />
+    <field id="triggerIconUri" type="string" />
+    <field id="triggerIconBlendColor" type="color" value="0xFFFFFFFF" />
+    <field id="items" type="array" />
+    <field id="selectedItemId" type="string" />
     <field id="menuWidth" type="integer" value="300" />
     <field id="padding" type="integer" value="15" />
 

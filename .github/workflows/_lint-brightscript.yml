@@ -18,6 +18,21 @@ jobs:
         uses: ./.github/actions/changed-paths
         with:
           # Mirrors the previous event-time paths filter (**/*.brs, **/*.bs), plus
+          # component XML: several BSC plugins run by `npm run validate` read a
+          # component's XML half, so an XML-only edit could otherwise weaken a gate
+          # without ever re-running it. `field-observer-wiring` is the sharpest case
+          # — it reads `<field onChange="...">`, so adding an onChange to a field the
+          # codebehind already observes is a duplicate registration expressed
+          # ENTIRELY in XML. `.husky/pre-push` has always triggered validate on
+          # `\.(bs|brs|xml)$|^bsconfig.*\.json$`; this job now matches that set
+          # exactly, and tests/scripts/unit/lint/brightscript-trigger-parity.test.js
+          # fails if the two drift apart again. Plus `scripts/bsc-plugins/` and
+          # `scripts/lib/`: `npm run validate` loads every plugin, and the three
+          # cross-file gates share `scripts/lib/bsc-rule.cjs`, so an edit to any of
+          # them changes what this job enforces while matching no source file.
+          # `scripts/lib/` is matched whole rather than by an enumerated list — a
+          # stale list is the same drift this comment already describes twice, and
+          # an over-trigger costs a job run while a miss costs a silent gap. Plus
           # the non-source inputs the checks below read: the promise-ratchet's
           # committed baseline (a PR that only edits the integer must re-run the
           # ratchet), the ratchet script itself, and the three source-shape guards
@@ -26,7 +41,7 @@ jobs:
           # i.e. the guard could be weakened by a change that never re-runs it. The
           # thread-release check additionally imports its helpers from the
           # auth-binding check, so an edit to either can change what both gate.
-          pattern: '\.(brs|bs)$|^\.promise-ratchet-baseline$|^scripts/lint/(promise-ratchet\.cjs|socket-auth-binding-check\.js|socket-thread-release-check\.js|log-manager-init-check\.js)$'
+          pattern: '\.(brs|bs|xml)$|^bsconfig.*\.json$|^scripts/(bsc-plugins|lib)/|^\.promise-ratchet-baseline$|^scripts/lint/(promise-ratchet\.cjs|socket-auth-binding-check\.js|socket-thread-release-check\.js|log-manager-init-check\.js)$'
           force: ${{ inputs.force }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: steps.detect.outputs.relevant == 'true'

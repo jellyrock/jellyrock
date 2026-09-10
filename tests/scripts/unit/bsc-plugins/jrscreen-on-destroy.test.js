@@ -9,9 +9,15 @@
 // `OnDestroy` / `ondestroy` / `destroy`). The base JRScreen.xml is skipped
 // by name. Three escape hatches exist (`' bsc-disable-file jrscreen-on-destroy`
 // in the XML or in the codebehind).
+//
+// It is a CROSS-FILE rule — the diagnostic anchors on the XML's component name
+// but the verdict comes from the codebehind's function list — so it runs on the
+// shared scope lifecycle in scripts/lib/bsc-rule.cjs. The incremental block at
+// the bottom is what guards that: before the migration, adding the onDestroy()
+// the message asks for did not clear the warning until the XML was touched.
 
 import { describe, it, expect } from 'vitest';
-import { runPluginOnSource, diagnosticsByCode } from '../_helpers/run-plugin.js';
+import { runPluginOnSource, runPluginOnEdits, diagnosticsByCode } from '../_helpers/run-plugin.js';
 import jrscreenOnDestroyPlugin from '../../../../scripts/bsc-plugins/jrscreen-on-destroy.cjs';
 
 const CODE = 'jrscreen-on-destroy-required';
@@ -165,5 +171,83 @@ describe('jrscreen-on-destroy', () => {
     const flagged = diagnosticsByCode(diagnostics, CODE);
     expect(flagged).toHaveLength(1);
     expect(flagged[0].message).toMatch(/TestScreen/);
+  });
+});
+
+describe('jrscreen-on-destroy — incremental validation (the staleness the lifecycle fixes)', () => {
+  const XML = xml('TestScreen', 'JRScreen');
+  const withoutOnDestroy = {
+    'components/TestScreen.xml': XML,
+    'components/TestScreen.bs': 'sub init()\nend sub',
+  };
+  const withOnDestroy = {
+    'components/TestScreen.bs': 'sub init()\nend sub\nsub onDestroy()\nend sub',
+  };
+  const count = (diagnostics) => diagnosticsByCode(diagnostics, CODE).length;
+
+  // The regression this migration exists for: the fix is made in the codebehind,
+  // but the diagnostic is anchored on the XML, so nothing cleared it.
+  it('clears when onDestroy is added to the codebehind alone', () => {
+    const [before, after] = runPluginOnEdits(jrscreenOnDestroyPlugin, [
+      withoutOnDestroy,
+      withOnDestroy,
+    ]);
+    expect(count(before)).toBe(1);
+    expect(count(after)).toBe(0);
+  });
+
+  it('reappears when onDestroy is removed again', () => {
+    const [, , third] = runPluginOnEdits(jrscreenOnDestroyPlugin, [
+      withoutOnDestroy,
+      withOnDestroy,
+      { 'components/TestScreen.bs': 'sub init()\nend sub' },
+    ]);
+    expect(count(third)).toBe(1);
+  });
+
+  it('does not accumulate duplicates across repeated validations', () => {
+    const [, second, third] = runPluginOnEdits(jrscreenOnDestroyPlugin, [withoutOnDestroy, {}, {}]);
+    expect(count(second)).toBe(1);
+    expect(count(third)).toBe(1);
+  });
+
+  // The other half of the verdict lives in the XML: stop extending JRScreen and
+  // the rule no longer applies, even though the codebehind never changed.
+  it('clears when the component stops extending JRScreen', () => {
+    const [before, after] = runPluginOnEdits(jrscreenOnDestroyPlugin, [
+      withoutOnDestroy,
+      { 'components/TestScreen.xml': xml('TestScreen', 'Group') },
+    ]);
+    expect(count(before)).toBe(1);
+    expect(count(after)).toBe(0);
+  });
+
+  it("leaves an unrelated component's finding alone when another is fixed", () => {
+    const two = {
+      'components/AScreen.xml': xml('AScreen', 'JRScreen'),
+      'components/AScreen.bs': 'sub init()\nend sub',
+      'components/BScreen.xml': xml('BScreen', 'JRScreen'),
+      'components/BScreen.bs': 'sub init()\nend sub',
+    };
+    const [before, after] = runPluginOnEdits(jrscreenOnDestroyPlugin, [
+      two,
+      { 'components/AScreen.bs': 'sub init()\nend sub\nsub onDestroy()\nend sub' },
+    ]);
+    expect(count(before)).toBe(2);
+    const remaining = diagnosticsByCode(after, CODE);
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].message).toMatch(/BScreen/);
+  });
+
+  // requiresCodebehind:false — a component with no codebehind at all cannot
+  // declare onDestroy, so it is the strongest instance of this finding, not an
+  // absent one. No live example today; the gate would narrow silently without it.
+  it('flags a JRScreen subclass that has no codebehind at all', () => {
+    const diagnostics = runPluginOnSource(jrscreenOnDestroyPlugin, {
+      'components/NoCodebehind.xml': `<?xml version="1.0" encoding="utf-8" ?>
+<component name="NoCodebehind" extends="JRScreen">
+</component>`,
+    });
+    expect(diagnosticsByCode(diagnostics, CODE)).toHaveLength(1);
   });
 });

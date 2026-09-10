@@ -8,5 +8,12 @@
     <field id="shouldForceFiltersFail" type="boolean" value="false" />
     <field id="shouldForceFavoriteFail" type="boolean" value="false" />
     <field id="shouldForceWatchedFail" type="boolean" value="false" />
+
+    <!-- Button-row overflow (#788). A COUNT, not a toggle: the interesting cases
+         are the boundary (a row exactly at its cap, no More button) and past it
+         (More plus a menu), and the cap differs per surface - 8 on ItemDetails,
+         10 on the OSD. Neither row can reach either state from real item data
+         yet, so this is the only way to see the feature on a device. -->
+    <field id="extraButtonCount" type="integer" value="0" />
   </interface>
 </component>

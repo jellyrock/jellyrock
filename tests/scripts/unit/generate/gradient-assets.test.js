@@ -101,6 +101,39 @@ describe('gradient-assets', () => {
     expect(readFileSync(target).toString()).toBe('not a png'); // check mode never writes
   });
 
+  // Same escape hatch, same reason, as icons-build.js's --force: write mode
+  // leaves a pixel-identical asset alone, so without this the committed bytes
+  // are frozen on whatever encoder produced them.
+  it('--force re-encodes a pixel-identical asset that write mode would skip', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'jellyrock-gradient-assets-'));
+    spawnScript(SCRIPT, [dir]);
+
+    const target = join(dir, 'images', 'gradients', 'fade-v.png');
+    const canonical = readFileSync(target);
+    const reencoded = await sharp(canonical).png({ compressionLevel: 0 }).toBuffer();
+    writeFileSync(target, reencoded);
+    expect(reencoded.equals(canonical)).toBe(false);
+
+    // Write mode leaves it alone; --force restores the canonical encoding.
+    spawnScript(SCRIPT, [dir]);
+    expect(readFileSync(target).equals(reencoded)).toBe(true);
+
+    expect(spawnScript(SCRIPT, [dir, '--force']).exitCode).toBe(0);
+    expect(readFileSync(target).equals(canonical)).toBe(true);
+  });
+
+  it('--check ignores --force and never writes', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'jellyrock-gradient-assets-'));
+    spawnScript(SCRIPT, [dir]);
+
+    const target = join(dir, 'images', 'gradients', 'fade-v.png');
+    const reencoded = await sharp(readFileSync(target)).png({ compressionLevel: 0 }).toBuffer();
+    writeFileSync(target, reencoded);
+
+    expect(spawnScript(SCRIPT, [dir, '--check', '--force']).exitCode).toBe(0);
+    expect(readFileSync(target).equals(reencoded)).toBe(true);
+  });
+
   it('committed assets match the generator (repo drift gate)', () => {
     const check = spawnScript(SCRIPT, ['--check']);
     expect(check.exitCode).toBe(0);

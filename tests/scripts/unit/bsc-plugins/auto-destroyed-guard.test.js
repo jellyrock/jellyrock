@@ -65,6 +65,10 @@ describe('auto-destroyed-guard — injection', () => {
       'components/Ord.bs': guardable(),
     });
     const code = out['components/Ord.bs'];
+    // Both asserted PRESENT first — an un-emitted guard answers -1, and -1 is less than
+    // every real index, so the ordering alone passes when the plugin emits nothing.
+    expect(code).toContain('if m.isDestroyed = true then');
+    expect(code).toContain('m.menu.focusedChild');
     expect(code.indexOf('if m.isDestroyed = true then')).toBeLessThan(
       code.indexOf('m.menu.focusedChild'),
     );
@@ -147,6 +151,7 @@ describe('auto-destroyed-guard — injection', () => {
     });
     const code = out['components/Bare.bs'];
     expect(code).toContain('if m.isDestroyed = true then');
+    expect(code).toContain('if m.isDestroyed then');
     expect(code.indexOf('if m.isDestroyed = true then')).toBeLessThan(
       code.indexOf('if m.isDestroyed then'),
     );
@@ -176,6 +181,7 @@ describe('auto-destroyed-guard — injection', () => {
     });
     const code = out['components/Late.bs'];
     expect(code).toContain('if m.isDestroyed = true then');
+    expect(code).toContain('m.menu.focusedChild');
     expect(code.indexOf('if m.isDestroyed = true then')).toBeLessThan(
       code.indexOf('m.menu.focusedChild'),
     );
