@@ -36,9 +36,9 @@ Schema is enforced by `npm run lint:docs` (`signals-schema-invalid` category). A
 
 - **watching**: latest stable release on api.jellyfin.org/openapi/stable/
 - **current**: 10.7.0 minimum supported; latest tested per [user/jellyfin-server-feature-matrix.md](user/jellyfin-server-feature-matrix.md)
-- **latest_upstream**: 10.11.11
+- **latest_upstream**: 12.0
 - **latest_acknowledged**: 10.11.8
-- **last_checked**: 2026-06-07
+- **last_checked**: 2026-09-09
 - **action_when_moves**: run [`/server-upgrade`](../.claude/skills/server-upgrade/SKILL.md) to triage the release (mechanical report → agent investigation → human-gated issue filing); the proactive tracker issue maintained by [.github/workflows/server-upgrade-tracker.yml](../.github/workflows/server-upgrade-tracker.yml) nudges this with candidate counts. If a new minor introduces a breaking endpoint shape, the triage adds a v3 dispatcher per [dev/jellyfin-server-versioning.md](dev/jellyfin-server-versioning.md)'s "Adding Support for New Server Versions" section
 - **status**: watching
 
@@ -48,7 +48,7 @@ Schema is enforced by `npm run lint:docs` (`signals-schema-invalid` category). A
 - **current**: n/a (we don't pre-test against RCs by default)
 - **latest_upstream**: (no RC in flight)
 - **latest_acknowledged**: (no RC in flight)
-- **last_checked**: 2026-06-07
+- **last_checked**: 2026-09-09
 - **action_when_moves**: spin up the RC against a test library; file findings as GitHub issues if breakage is detected before the stable release
 - **status**: watching
 
@@ -56,9 +56,9 @@ Schema is enforced by `npm run lint:docs` (`signals-schema-invalid` category). A
 
 - **watching**: rokudev/dev-doc release notes — the first `## Roku OS X.Y` heading wins (file order is newest-first)
 - **current**: not pinned in source; we run on whatever Roku OS the device ships — review when the latest jumps a major
-- **latest_upstream**: 15.2
+- **latest_upstream**: 15.3
 - **latest_acknowledged**: 15.2
-- **last_checked**: 2026-06-07
+- **last_checked**: 2026-09-09
 - **action_when_moves**: review video pipeline + scene graph capability changes; update [architecture/playback.md](architecture/playback.md) if a codec / DRM / OSD change affects JellyRock
 - **status**: watching
 
