@@ -24,7 +24,8 @@
     "./scripts/bsc-plugins/no-hand-rolled-dialog.cjs",
     "./scripts/bsc-plugins/callfunc-interface.cjs",
     "./scripts/bsc-plugins/button-row-bracket.cjs",
-    "./scripts/bsc-plugins/field-observer-wiring.cjs"
+    "./scripts/bsc-plugins/field-observer-wiring.cjs",
+    "./scripts/bsc-plugins/register-once-observer.cjs"
   ],
   "lintConfig": "bslint.json",
   "rokuLog": {
