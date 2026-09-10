@@ -24,6 +24,41 @@ export const press = (key) => ecp.sendKeypress(key);
 export const hasChildren = (n) => typeof n === 'number' && n > 0;
 
 /**
+ * How long the next poll tick may sleep: one `interval`, or whatever is left of the budget,
+ * or 0 when the budget is spent and the caller should stop.
+ *
+ * ## Why this exists
+ *
+ * `waitFor` and `waitFocused` slept a FULL interval after deciding the tick had failed, and
+ * only then re-checked the loop condition — so a wait overshot its own stated `timeout` by up
+ * to one interval. `waitOsdUp`'s OSD gate is `timeout: 30000, interval: 2000`, so "30 s"
+ * could be 32 s, and a caller budgeting a chain of waits was budgeting against a number that
+ * was not the truth. It is also pure waste: the loop has already read, already failed the
+ * predicate, and the remaining budget cannot fit another read, so the sleep buys nothing and
+ * only delays the diagnosis.
+ *
+ * Found from the other end — `steps.test.js` cases passing `timeout: 1` still cost 500 ms
+ * each, the default interval, which made that file the slowest in `test:scripts`.
+ *
+ * ## Why this returns a DURATION rather than doing the sleeping
+ *
+ * The obvious shape was a `sleepWithinBudget()` that awaited internally, and
+ * `jellyrock-rta/sleep-budgeted` rejected it — correctly by its own rule, which counts a
+ * `sleep()` as a poll tick only when it is lexically inside a loop. Moving the tick into a
+ * helper hid it from that test and it read as a bare arbitrary wait. Returning the duration
+ * keeps the `await sleep(...)` in the loop where the rule can see it, and keeps the part
+ * that is actually subtle — the arithmetic — in one place. The alternative was an
+ * `eslint-disable`, which would have been routing around a gate this suite added on purpose.
+ *
+ * The two SETTLE loops (`waitRowsSettled`, `waitCellsQuiet`) deliberately do NOT use this:
+ * their sleep sits at the TOP of the loop and IS the quiet window being measured, so
+ * truncating it would change what they detect rather than only when they give up.
+ */
+function nextTickMs(interval, deadline) {
+  return Math.max(0, Math.min(interval, deadline - Date.now()));
+}
+
+/**
  * One single read, reporting WHY there is no value: `{ value, failed }`.
  *
  * `failed` is true only when the request itself did not complete — a transport error, or
@@ -316,7 +351,9 @@ export async function waitFor(
       if (SCENE_ROOTED_READS.has(read)) await auditSceneResolution(keyPath, { label });
       return last;
     }
-    await sleep(interval);
+    const tick = nextTickMs(interval, start + timeout);
+    if (!tick) break;
+    await sleep(tick);
   }
   throw await diagnosedError(
     `nav timed out waiting for ${label || keyPath} (last=${JSON.stringify(last)})` +
@@ -382,7 +419,9 @@ export async function waitFocused(
     }
     last = `${f?.node?.subtype}@${f?.keyPath}`;
     if (f && predicate(f)) return f;
-    await sleep(interval);
+    const tick = nextTickMs(interval, start + timeout);
+    if (!tick) break;
+    await sleep(tick);
   }
   throw await diagnosedError(
     `nav timed out waiting for focus (${label || 'predicate'}); last=${last}` +
