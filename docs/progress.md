@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-09-09
+last-updated: 2026-09-10
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-09-10 — ci(rta): Justify every RTA wait and make its failures attributable
 - 2026-09-09 — The pre-push hook no longer rewrites icon PNGs; fixed upstream: `icons:check` now compares DECODED PIXELS via `scripts/lib/png-compare.js` instead of raw bytes, so a sharp/libvips encoder bump no longer rewrites 55 pixel-identical files on every branch. This is the second of the two fix shapes that followup named. The 55 PNGs `e8be35fd` had rewritten are reverted to base on this branch and `icons:check` accepts them (60 sources, 120 files), which is the check that proves the new comparator sees them as unchanged.
 - 2026-09-09 — fix: Close all three routes to a false buffer stall
 - 2026-09-09 — ci: cancel superseded PR device runs to drain the Roku queue
@@ -45,8 +46,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-08-29 — feat: rebuild the playback-info report as a `source → target` readout
 - 2026-08-29 — fix: MPEG-2 transcoded despite its setting; AV1 ignored its level cap
 - 2026-08-27 — fix(setting): Honor a non-default Maximum Resolution instead of capping at 1080p
-- 2026-08-26 — Size Home's browse feeds with one setting and measure its ceiling
-- 2026-08-26 — ci(rta): Stamp the phase of Home's immediate row removal
 
 ## Open followups
 
