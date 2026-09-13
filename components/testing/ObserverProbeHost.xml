@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ObserverProbeHost — the OBSERVING PARENT in tests/source/unit/platform/ObserverRegistry.spec.bs.
+
+  Plays the part of PlayerHostView: it owns an ObserverProbeSubject child and observes a
+  field on it from its own, separate component scope.
+-->
+<component name="ObserverProbeHost" extends="Group">
+  <interface>
+    <field id="subject" type="node" />
+    <field id="hostCount" type="integer" value="0" />
+    <function name="hostObserve" />
+    <function name="hostUnobserve" />
+  </interface>
+</component>

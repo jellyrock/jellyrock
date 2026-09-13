@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ObserverProbeSubject — the OBSERVED node in tests/source/unit/platform/ObserverRegistry.spec.bs.
+
+  Plays the part of a component that observes its own interface field (VideoPlayerView
+  observing its own `state`). Every call runs through callFunc, so it executes in this
+  component's scope on the render thread — the thread production code writes its own
+  m.top from. Rooibos itself does not run there (see TaskLedgerBench.xml), so anything
+  thread-sensitive must be measured from inside a component, not from the spec body.
+-->
+<component name="ObserverProbeSubject" extends="Group">
+  <interface>
+    <field id="value" type="string" alwaysNotify="true" />
+    <field id="selfCount" type="integer" value="0" />
+    <field id="readBack" type="integer" value="-1" />
+    <function name="selfObserve" />
+    <function name="selfUnobserve" />
+    <function name="writeAndReadBack" />
+  </interface>
+</component>

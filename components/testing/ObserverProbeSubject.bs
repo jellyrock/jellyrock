@@ -1,0 +1,31 @@
+' Observe this node's own `value` field from this component's scope.
+' form: "plain" (observeField) or "scoped" (observeFieldScoped)
+sub selfObserve(form as string)
+  if form = "scoped"
+    m.top.observeFieldScoped("value", "onSelfValueChanged")
+  else
+    m.top.observeField("value", "onSelfValueChanged")
+  end if
+end sub
+
+' Remove observers on this node's own `value` field, from this component's scope.
+sub selfUnobserve(form as string)
+  if form = "scoped"
+    m.top.unobserveFieldScoped("value")
+  else
+    m.top.unobserveField("value")
+  end if
+end sub
+
+' Write this node's own field, then record how many handler runs happened BEFORE the
+' next statement: 1 means dispatch is synchronous for a same-thread self-write, 0 means
+' it was deferred.
+sub writeAndReadBack(newValue as string)
+  before = m.top.selfCount
+  m.top.value = newValue
+  m.top.readBack = m.top.selfCount - before
+end sub
+
+sub onSelfValueChanged()
+  m.top.selfCount = m.top.selfCount + 1
+end sub
