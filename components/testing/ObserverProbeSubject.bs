@@ -1,3 +1,9 @@
+' This component exists to register and remove observers on its own node at arbitrary
+' points, so the platform spec can measure what each call removes. It is the one place
+' the m.top observer lifecycle rules are wrong by design; no other component observes it.
+' bsc-disable-file top-unobserve-outside-ondestroy
+' bsc-disable-file top-observer-outside-init
+
 ' Observe this node's own `value` field from this component's scope.
 ' form: "plain" (observeField) or "scoped" (observeFieldScoped)
 sub selfObserve(form as string)

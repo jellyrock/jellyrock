@@ -8,79 +8,55 @@ sub init()
 
   ' Track previous state for change detection
   m.previousDisplaySettings = {}
-end sub
 
-' Enable automatic syncing of settings changes to registry
-' Call this AFTER loading initial settings from registry/server
-' This starts field observers that write changes back to registry
-sub enableAutoSync()
-  m.log.info("Enabling auto-sync - setting up field observers")
+  ' Registry sync stays OFF until enableAutoSync(): the settings are bulk-loaded first
+  ' (defaults at startup, the user's values at login, defaults again on reset), and none
+  ' of those writes may be persisted back.
+  m.isAutoSyncEnabled = false
 
-  ' Capture current displaySettings state BEFORE enabling observers
-  ' This prevents initial observer fire from writing to registry
-  if isValid(m.top.displaySettings)
-    m.previousDisplaySettings = deepCopyAA(m.top.displaySettings)
-  end if
-
-  ' Set up observers for all settings fields
-  observeAllSettings()
-
-  m.log.info("Auto-sync enabled - settings changes will be saved to registry")
-end sub
-
-' Disable automatic syncing (optional, for cleanup or testing)
-sub disableAutoSync()
-  m.log.info("Disabling auto-sync - removing field observers")
-
-  ' Get all fields to unobserve
-  allFields = m.top.getFields()
-
-  ' Fields that were excluded from observing
-  excludedFields = [
-    "id",
-    "isLoaded",
-    "loadedAt",
-    "rawSettings"
-  ]
-
-  ' Remove observers from all observed fields
-  for each fieldName in allFields
-    if not inArray(excludedFields, fieldName)
-      m.top.unobserveField(fieldName)
-    end if
-  end for
-
-  m.log.info("Auto-sync disabled")
-end sub
-
-' Dynamically set up observers for all user setting fields
-' This automatically handles new fields added to the XML without code changes
-sub observeAllSettings()
-  ' IMPORTANT: displaySettings must be observed explicitly
+  ' Every setting is observed ONCE, here, for the life of the node; enableAutoSync and
+  ' disableAutoSync only flip the flag above. Do not toggle the observers instead:
+  ' m.top.unobserveField removes EVERY component's observer on the field, not just this
+  ' one's, and this node is the shared m.global.user.settings
+  ' (tests/source/unit/platform/ObserverRegistry.spec.bs).
   m.top.observeField("displaySettings", "onDisplaySettingsChanged")
 
-  ' Get ALL field names defined in the XML interface (not just fields with values)
-  allFieldNames = m.top.getFields()
-
-  ' Fields that should NOT be observed (internal/system fields)
+  ' Fields that are not user settings, plus displaySettings (observed above with its
+  ' own handler). Everything else is picked up from the XML automatically, so a new
+  ' setting needs no change here.
   excludedFields = [
     "id",
     "isLoaded",
     "loadedAt",
     "rawSettings", ' Debug-only field, don't observe
-    "displaySettings" ' Already observed above with custom handler
+    "displaySettings"
   ]
-
-  ' Loop through all field names
-  for each fieldName in allFieldNames
-    ' Skip excluded fields
-    if inArray(excludedFields, fieldName)
-      continue for
+  for each fieldName in m.top.getFields()
+    if not inArray(excludedFields, fieldName)
+      m.top.observeField(fieldName, "onSettingChanged")
     end if
-
-    ' All other fields use the standard handler
-    m.top.observeField(fieldName, "onSettingChanged")
   end for
+end sub
+
+' Enable automatic syncing of settings changes to registry
+' Call this AFTER loading initial settings from registry/server
+' Safe to call more than once.
+sub enableAutoSync()
+  ' Capture current displaySettings state BEFORE enabling sync, so the next change is
+  ' diffed against what was loaded rather than against an empty baseline
+  if isValid(m.top.displaySettings)
+    m.previousDisplaySettings = deepCopyAA(m.top.displaySettings)
+  end if
+
+  m.isAutoSyncEnabled = true
+  m.log.info("Auto-sync enabled - settings changes will be saved to registry")
+end sub
+
+' Disable automatic syncing (settings reset uses this around its bulk rewrite)
+' Safe to call more than once.
+sub disableAutoSync()
+  m.isAutoSyncEnabled = false
+  m.log.info("Auto-sync disabled")
 end sub
 
 ' Called when any individual setting field changes
@@ -94,6 +70,8 @@ end sub
 ' - Understanding what users have customized
 ' - "Reset all settings" feature can delete entire registry section
 sub onSettingChanged(event as object)
+  if not m.isAutoSyncEnabled then return
+
   fieldName = event.getField()
   newValue = event.getData()
 
@@ -119,6 +97,8 @@ end sub
 ' Called when displaySettings field changes
 ' Only syncs the specific settings that changed, not the entire object
 sub onDisplaySettingsChanged()
+  if not m.isAutoSyncEnabled then return
+
   newDisplaySettings = m.top.displaySettings
 
   if not isValid(newDisplaySettings)

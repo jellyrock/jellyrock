@@ -108,9 +108,22 @@ sub init()
 
   m.playbackTimer = m.top.findNode("playbackTimer")
   m.bufferCheckTimer = m.top.findNode("bufferCheckTimer")
-  m.top.observeField("content", "onContentChange")
+
+  ' Every m.top observer is registered here, once, and released only in onDestroy.
+  ' Never unobserve an m.top field mid-life: that also removes the observers OTHER
+  ' components hold on this node — PlayerHostView advances the queue from `state` —
+  ' (tests/source/unit/platform/ObserverRegistry.spec.bs). Handlers ignore what they
+  ' must not act on instead, using these three flags.
+  m.isContentLoaded = false ' true from the first stream handed to the Video node
+  m.isApplyingOwnSelection = false ' raised while the player writes its own track fields
+  m.hasPlaybackFailed = false ' raised by onState's terminal `error` branch
+  m.top.observeField("state", "onState")
+  m.top.observeField("position", "onPositionChanged")
   m.top.observeField("selectedSubtitle", "onSubtitleChange")
   m.top.observeField("audioIndex", "onAudioIndexChange")
+  m.top.observeField("mediaSourceId", "onVideoSourceChange")
+  m.top.observeField("subtitleTrack", "loadCaption")
+  m.top.observeField("globalCaptionMode", "toggleCaption")
 
   ' Custom Caption Function
   m.top.observeField("shouldAllowCaptions", "onAllowCaptionsChange")
@@ -547,19 +560,13 @@ sub onAllowCaptionsChange()
   m.captionTask = createObject("roSGNode", "captionTask")
   m.captionTask.observeField("currentCaption", "updateCaption")
   m.captionTask.observeField("useThis", "checkCaptionMode")
-  ' Unobserve first: this is an observer handler, so it re-registers if
-  ' shouldAllowCaptions is ever notified again. Today it is written once and
-  ' never reset, so these remove nothing — the point is that the registration
-  ' stays single by construction rather than by that accident.
-  m.top.unobserveField("subtitleTrack")
-  m.top.unobserveField("globalCaptionMode")
-  m.top.observeField("subtitleTrack", "loadCaption")
-  m.top.observeField("globalCaptionMode", "toggleCaption")
-
 end sub
 
 ' Set caption url to server subtitle track and run the fetch task
 sub loadCaption()
+  ' Observed from init(), but there is nothing to load into until captions are allowed.
+  if not isValid(m.captionTask) then return
+
   m.log.debug("loadCaption() called", m.top.subtitleTrack, m.top.suppressCaptions)
   if m.top.suppressCaptions and isValid(m.top.subtitleTrack) and m.top.subtitleTrack <> ""
     m.log.debug("Setting captionTask.url", m.top.subtitleTrack)
@@ -571,6 +578,9 @@ end sub
 
 ' Toggles visibility of custom subtitles and sets captionTask's player state
 sub toggleCaption()
+  ' Observed from init(), but there is nothing to toggle until captions are allowed.
+  if not isValid(m.captionTask) then return
+
   m.captionTask.playerState = m.top.state + m.top.globalCaptionMode
   if LCase(m.top.globalCaptionMode) = "on"
     m.captionTask.playerState = m.top.state + m.top.globalCaptionMode + "w"
@@ -588,6 +598,8 @@ end sub
 
 ' Event handler for when selectedSubtitle changes
 sub onSubtitleChange()
+  if m.isApplyingOwnSelection then return
+
   shouldSwitchWithoutRefresh = true
 
   if m.top.SelectedSubtitle <> SubtitleSelection.NONE
@@ -660,6 +672,8 @@ end sub
 ' capability (e.g. switching from stereo back to an 8ch track on a stereo Roku) —
 ' must reload so the server transcodes the new selection.
 sub onAudioIndexChange()
+  if m.isApplyingOwnSelection then return
+
   m.log.info("Audio index changed by user", "newIndex", m.top.audioIndex, "isTranscoded", m.top.isTranscoded, "position", m.top.position, "currentAudioTrack", m.top.audioTrack)
 
   ' Direct play: all audio tracks are in the container — just switch the Roku track,
@@ -697,6 +711,8 @@ end sub
 ' Saves position, stops playback, re-selects audio for the new source's streams,
 ' and reloads video content with the new MediaSource ID.
 sub onVideoSourceChange()
+  if m.isApplyingOwnSelection or not m.isContentLoaded then return
+
   newSourceId = m.top.mediaSourceId
   if not isValidAndNotEmpty(newSourceId) then return
 
@@ -1007,12 +1023,10 @@ sub onVideoContentLoaded()
   end if
 
 
-  ' Unobserve before observing: this function re-runs on every reload path
-  ' (audio/subtitle/source change, retry), and Roku does not dedupe identical
-  ' observeField registrations, so each reload would otherwise add another
-  ' onState invocation per state change. Same idiom as audioIndex below.
-  m.top.unobserveField("state")
-  m.top.observeField("state", "onState")
+  ' From here this player acts on its own `state` and `position` (observed since init).
+  ' Anything the Video node reported before a stream existed — a Back pressed while
+  ' loading surfaces as `stopped` — is not a playback this player has to report.
+  m.isContentLoaded = true
 
   ' The second half of the wait starts here: handing `content` to the Video node is what
   ' sets it buffering. Declared after the early return above, so a playback that failed
@@ -1027,9 +1041,10 @@ sub onVideoContentLoaded()
   m.top.isTranscoded = isValid(videoContent[0].isTranscoded) and videoContent[0].isTranscoded
   m.top.fullSubtitleData = videoContent[0].fullSubtitleData
   m.top.fullAudioData = videoContent[0].fullAudioData
-  m.top.unobserveField("audioIndex")
+  ' The loaded track is not a user selection, so onAudioIndexChange must not reload for it.
+  m.isApplyingOwnSelection = true
   m.top.audioIndex = videoContent[0].audioIndex
-  m.top.observeField("audioIndex", "onAudioIndexChange")
+  m.isApplyingOwnSelection = false
   m.top.transcodeParams = videoContent[0].transcodeparams
   m.chapters = videoContent[0].chapters
   m.top.showID = videoContent[0].showID
@@ -1037,10 +1052,10 @@ sub onVideoContentLoaded()
   m.top.isDoviDirectPlayFallbackAvailable = isValid(videoContent[0].isDoviDirectPlayFallbackAvailable) and videoContent[0].isDoviDirectPlayFallbackAvailable
   m.top.isTranscodeAvailable = isValid(videoContent[0].isTranscodeAvailable) and videoContent[0].isTranscodeAvailable
 
-  ' Unobserve mediaSourceId before setting to prevent observer loop
-  m.top.unobserveField("mediaSourceId")
+  ' Not a user selection either — without this, onVideoSourceChange reloads in a loop.
+  m.isApplyingOwnSelection = true
   m.top.mediaSourceId = videoContent[0].mediaSourceId
-  m.top.observeField("mediaSourceId", "onVideoSourceChange")
+  m.isApplyingOwnSelection = false
 
   ' Reset retry flags so subsequent reloads (audio/subtitle changes) use fresh evaluation.
   m.LoadMetaDataTask.shouldBypassDoviPreservation = false
@@ -1123,8 +1138,10 @@ sub onVideoContentLoaded()
   ' Allow custom captions for all videos including intro videos
   m.top.shouldAllowCaptions = true
 
-  ' Allow default subtitles
-  m.top.unobserveField("selectedSubtitle")
+  ' Allow default subtitles. The player's own subtitle writes below are not a user
+  ' selection, so onSubtitleChange ignores them until the flag drops again. The caption
+  ' observers (loadCaption / toggleCaption) are NOT suppressed — they must see these.
+  m.isApplyingOwnSelection = true
 
   ' Set subtitleTrack property if subs are natively supported by Roku
   selectedSubtitle = invalid
@@ -1166,7 +1183,7 @@ sub onVideoContentLoaded()
     end if
   end if
 
-  m.top.observeField("selectedSubtitle", "onSubtitleChange")
+  m.isApplyingOwnSelection = false
 
   if isValid(m.top.audioIndex)
     if isValid(videoContent[0].isTranscoded) and videoContent[0].isTranscoded
@@ -1213,18 +1230,6 @@ sub populateChapterMenu()
     chapterItem.playstart = chapter.StartPositionTicks / 10000000#
     m.chapterContent.appendChild(chapterItem)
   end for
-end sub
-
-' Event handler for when video content field changes
-sub onContentChange()
-  if not isValid(m.top.content) then return
-
-  ' Unobserve before observing: `content` is re-set on every reload path
-  ' (audio/subtitle/source change, retry), and Roku does not dedupe identical
-  ' observeField registrations — each one fires the handler again per notify.
-  ' Same idiom as audioIndex and selectedSubtitle above.
-  m.top.unobserveField("position")
-  m.top.observeField("position", "onPositionChanged")
 end sub
 
 ' Fetches the current + next episode (Limit 2) to decide whether the Next
@@ -1548,6 +1553,7 @@ sub onPositionChanged()
   ' so this observer can fire mid-teardown when m.osd / m.*Notification refs are
   ' being cleared. Bail out rather than dot into a torn-down reference.
   if m.isDestroyed = true then return
+  if not m.isContentLoaded then return
 
   ' Without the content.length fallback (see getEffectiveDuration), progressPercentage stays
   ' pinned at 0 on live-transcoded MKV, and since the OSD only observes progressPercentage,
@@ -1699,6 +1705,10 @@ end sub
 '
 ' When Video Player state changes
 sub onState()
+  ' Before a stream: see onVideoContentLoaded. After a terminal error: the error
+  ' dialog owns what happens next, see the `error` branch below.
+  if not m.isContentLoaded or m.hasPlaybackFailed then return
+
   ' On first play, verify audioTrack matches the intended Jellyfin selection using
   ' Roku's availableAudioTracks (now populated). The Index + 1 fallback set during
   ' onVideoContentLoaded may be wrong for non-standard MKV track numbering.
@@ -1761,8 +1771,10 @@ sub onState()
       m.top.isTranscodeAvailable = false ' prevent retry loop if transcode also fails
       retryPlayback(false, true)
     else
-      ' If an error was encountered, stop timers and display dialog
-      m.top.unobserveField("state")
+      ' If an error was encountered, stop timers and display dialog. From here the dialog
+      ' owns the exit, and this player stops reacting to its own state. That is a FLAG,
+      ' not unobserveField("state"), which would also remove PlayerHostView's observer.
+      m.hasPlaybackFailed = true
       m.playbackTimer.control = "stop"
       m.bufferCheckTimer.control = "stop"
       m.bufferCheckTimer.unobserveField("fire")
@@ -2230,7 +2242,6 @@ sub onDestroy()
   m.isDestroyed = true
   ' Unobserve all fields first to prevent callbacks during teardown
   m.top.unobserveField("state")
-  m.top.unobserveField("content")
   m.top.unobserveField("selectedSubtitle")
   m.top.unobserveField("audioIndex")
   m.top.unobserveField("mediaSourceId")

@@ -17,7 +17,7 @@ sub init()
 
   ' Voice follows visibility — only the shown keyboard is voice-enabled, so the router's
   ' hidden-then-reveal mount can't expose >1 voice box to Roku's single-voice arbiter at once.
-  ' See IntegerKeyboard.enableVoiceWithVisibility for the full rationale.
+  ' See the voice-follows-visibility comment in IntegerKeyboard's init() for the full rationale.
   m.top.textEditBox.voiceEnabled = m.top.visible
   m.top.observeField("visible", "onVoiceVisibilityChanged")
 end sub

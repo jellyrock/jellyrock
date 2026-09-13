@@ -468,6 +468,31 @@ namespace tests
 
     end function
 
+    ' Settings reset brackets its bulk rewrite with disableAutoSync / enableAutoSync, so
+    ' nothing written while disabled may reach the registry — and sync must come back.
+    @it("disableAutoSync stops registry writes, and enableAutoSync resumes them")
+    function _()
+      testUserId = "test-autosync-toggle-001"
+      m.global.user.id = testUserId
+      localSettings = m.getTestUserSettings()
+      reg = CreateObject("roRegistrySection", testUserId)
+
+      localSettings.callFunc("enableAutoSync")
+      user.settings.Save("playbackBitrateLimit", 1000)
+      m.assertEqual(reg.read("playbackBitrateLimit"), "1000", "Should sync while enabled")
+
+      localSettings.callFunc("disableAutoSync")
+      user.settings.Save("playbackBitrateLimit", 2000)
+      m.assertEqual(localSettings.playbackBitrateLimit, 2000, "The node itself still takes the value")
+      m.assertEqual(reg.read("playbackBitrateLimit"), "1000", "Should NOT sync while disabled")
+
+      ' Twice: enabling is a flag, so repeating it must neither fail nor double anything up
+      localSettings.callFunc("enableAutoSync")
+      localSettings.callFunc("enableAutoSync")
+      user.settings.Save("playbackBitrateLimit", 3000)
+      m.assertEqual(reg.read("playbackBitrateLimit"), "3000", "Should sync again once re-enabled")
+    end function
+
   end class
 
 end namespace
