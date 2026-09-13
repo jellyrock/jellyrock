@@ -1852,7 +1852,10 @@ sub onState()
     m.playbackTimer.control = "stop"
     m.bufferCheckTimer.control = "stop"
     m.bufferCheckTimer.unobserveField("fire")
-    reportPlayback("stop")
+    ' A force-finish stops the stream and then sets `finished`, and both reports go to the
+    ' same stopped endpoint — Jellyfin records each as a separate "finished playing". The
+    ' `finished` report that follows is the one that closes the session, so skip this one.
+    if not m.forceFinished then reportPlayback("stop")
     m.isPlayReported = false
     if isValid(m.trickplayCarousel)
       m.trickplayCarousel.isVisible = false
