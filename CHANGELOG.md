@@ -24,6 +24,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Gate interface-field observer wiring; fix stale cross-file findings ([#895](https://github.com/jellyrock/jellyrock/pull/895))
 - Observe each interface field exactly once in `OSD` and `IconButton` ([#891](https://github.com/jellyrock/jellyrock/pull/891))
 
+### Removed
+
+- Unused `Section` and `SectionScroller` components ([#911](https://github.com/jellyrock/jellyrock/pull/911))
+
 ### Dependencies
 
 - Update promises from v0.7.1 to v0.7.4 ([#878](https://github.com/jellyrock/jellyrock/pull/878), [#904](https://github.com/jellyrock/jellyrock/pull/904))
