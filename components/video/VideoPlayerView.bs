@@ -1404,8 +1404,8 @@ sub checkMediaSegments()
       ' Auto-skip: seek to end of segment immediately
       seekPosition = segmentTicksToSeconds(segment.EndTicks)
 
-      ' Outro ending near video end: force finish for watched-status and auto-play
-      if segmentType = MediaSegmentType.OUTRO and m.top.duration > 0 and seekPosition >= m.top.duration - 5
+      ' Nothing left to play after this segment: finish for watched-status and auto-play
+      if skipEndsPlayback(seekPosition, getEffectiveDuration())
         forceFinishPlayback()
         return
       end if
@@ -1488,10 +1488,9 @@ sub onSegmentNotificationAction()
     segment = findSegmentById(m.mediaSegments, m.activeSegmentId)
     if isValid(segment)
       seekPosition = segmentTicksToSeconds(segment.EndTicks)
-      segmentType = segment.Type ?? ""
 
-      ' Outro ending near video end: force finish for watched-status and auto-play
-      if segmentType = MediaSegmentType.OUTRO and m.top.duration > 0 and seekPosition >= m.top.duration - 5
+      ' Nothing left to play after this segment: finish for watched-status and auto-play
+      if skipEndsPlayback(seekPosition, getEffectiveDuration())
         forceFinishPlayback()
         return
       end if
@@ -1530,6 +1529,18 @@ sub onNotificationStateChanged()
   end if
 end sub
 
+' The media duration in seconds, or 0 when it is not known.
+'
+' Falls back to content.length (which Jellyfin populates from mediaSource.RunTimeTicks)
+' when Roku's own duration probe returns 0. This happens with live-transcoded progressive
+' MKV: ffmpeg can't know the final duration while encoding, so it writes 0 into the
+' MKV SegmentInfo header, and Roku's probe inherits that.
+function getEffectiveDuration() as float
+  if m.top.duration > 0 then return m.top.duration
+  if isValid(m.top.content) and m.top.content.length > 0 then return m.top.content.length
+  return 0
+end function
+
 ' When Video Player state changes
 sub onPositionChanged()
   ' The native playback engine can emit a final position update as it stops
@@ -1538,16 +1549,10 @@ sub onPositionChanged()
   ' being cleared. Bail out rather than dot into a torn-down reference.
   if m.isDestroyed = true then return
 
-  ' Fall back to content.length (which Jellyfin populates from mediaSource.RunTimeTicks)
-  ' when Roku's own duration probe returns 0. This happens with live-transcoded progressive
-  ' MKV: ffmpeg can't know the final duration while encoding, so it writes 0 into the
-  ' MKV SegmentInfo header, and Roku's probe inherits that. Without this fallback,
-  ' progressPercentage stays pinned at 0, and since the OSD only observes progressPercentage,
+  ' Without the content.length fallback (see getEffectiveDuration), progressPercentage stays
+  ' pinned at 0 on live-transcoded MKV, and since the OSD only observes progressPercentage,
   ' the progress bar never advances and timestamps never refresh.
-  effectiveDuration = m.top.duration
-  if effectiveDuration <= 0 and isValid(m.top.content) and m.top.content.length > 0
-    effectiveDuration = m.top.content.length
-  end if
+  effectiveDuration = getEffectiveDuration()
 
   if effectiveDuration <= 0
     m.osd.progressPercentage = 0
@@ -2491,10 +2496,9 @@ function tryActiveSegmentSkip() as boolean
   if not isValid(segment) then return false
 
   seekPosition = segmentTicksToSeconds(segment.EndTicks)
-  segmentType = segment.Type ?? ""
 
-  ' Outro near end-of-content: force-finish so watched-state and auto-play fire.
-  if segmentType = MediaSegmentType.OUTRO and m.top.duration > 0 and seekPosition >= m.top.duration - 5
+  ' Nothing left to play after this segment: force-finish so watched-state and auto-play fire.
+  if skipEndsPlayback(seekPosition, getEffectiveDuration())
     forceFinishPlayback()
   else
     m.top.seek = seekPosition
