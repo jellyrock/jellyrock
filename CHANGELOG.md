@@ -30,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update adm-zip from v0.6.0 to v0.6.1 ([#908](https://github.com/jellyrock/jellyrock/pull/908))
 - Update promises from v0.7.1 to v0.7.4 ([#878](https://github.com/jellyrock/jellyrock/pull/878), [#904](https://github.com/jellyrock/jellyrock/pull/904))
 - Update ropm from v0.11.9 to v0.11.11 ([#880](https://github.com/jellyrock/jellyrock/pull/880), [#903](https://github.com/jellyrock/jellyrock/pull/903))
 - Update eslint from v10.9.1 to v10.10.0 ([#886](https://github.com/jellyrock/jellyrock/pull/886))
