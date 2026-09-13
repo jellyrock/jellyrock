@@ -1,17 +1,26 @@
 namespace tests
 
-  ' Platform facts the observer rules in components/CLAUDE.md and the observer BSC plugins
-  ' rest on. These are assertions about Roku OS, not about JellyRock code, and they exist
-  ' because rokudev's own ifSGNodeField page is wrong in both directions: `unobserveField`
-  ' does NOT remove another component's scoped registration, and `unobserveFieldScoped`
-  ' called by a node on ITSELF is not caller-only.
+  ' A RECORD of what Roku OS did in one narrow configuration — not a model of how observer
+  ' registration, and in particular observeFieldScoped, works. First run on a Roku Ultra
+  ' and a Streaming Stick 4K, both OS 15.3.4.
   '
-  ' If a firmware release changes any of these, this suite goes red and the rules built on
-  ' it need re-deriving — do not "fix" the expectation without doing that.
+  ' What it covers, and nothing else: a parent component observing ONE field on a child
+  ' component it created, with a function-name handler, plain or scoped; the child
+  ' observing that same field on itself; every call made through callFunc, so it runs in
+  ' the owning component's scope on the render thread. NOT covered: message-port observers,
+  ' Task threads, siblings or unrelated components, m.global nodes, observeFieldScopedEx,
+  ' infoFields, and every OS version below 15.3.4 the app supports. Do not generalise a
+  ' row past that — in particular, do not read the scoped rows as "how scoped works".
   '
-  ' Every observe/unobserve runs through callFunc so it executes in the component's own
-  ' scope on the render thread, which is where production code does it. The spec body
-  ' itself does not run on the render thread (see components/testing/TaskLedgerBench.xml).
+  ' The one result the observer rules DEPEND on is the first @it below: a component
+  ' unobserving its own field removed the parent's plain observer, which is the #898
+  ' regression. The rules treat observeField and observeFieldScoped identically so that
+  ' nothing rests on the rest. The other rows are kept as tripwires: they disagree with
+  ' rokudev's ifSGNodeField page, and a firmware change that alters them is worth knowing
+  ' about — if one goes red, re-examine, don't just flip the expectation.
+  '
+  ' The spec body itself does not run on the render thread (see
+  ' components/testing/TaskLedgerBench.xml), which is why every call goes through callFunc.
   @suite("Platform - observer registry semantics")
   class ObserverRegistryTests extends tests.BaseTestSuite
 
@@ -57,7 +66,7 @@ namespace tests
 
     ' The #898 regression: VideoPlayerView's m.top.unobserveField("state") removed
     ' PlayerHostView's plain observer, so `finished` never reached the host.
-    @it("removes another component's PLAIN observer — either unobserve form")
+    @it("host observeField: removed when the child unobserves its own field, either form")
     function _()
       m.assertCase("plain", "plain", "subject-plain", false, false)
       m.assertCase("plain", "plain", "subject-scoped", false, false)
@@ -65,7 +74,7 @@ namespace tests
       m.assertCase("plain", "scoped", "subject-scoped", false, false)
     end function
 
-    @it("does NOT remove another component's SCOPED observer — either unobserve form")
+    @it("host observeFieldScoped: still fires after the child unobserves its own field, either form")
     function _()
       m.assertCase("scoped", "plain", "subject-plain", true, false)
       m.assertCase("scoped", "plain", "subject-scoped", true, false)
@@ -74,10 +83,10 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("a component unobserving ANOTHER node's field")
+    @describe("the host unobserving the child's field")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("unobserveField removes plain observers and the node's self-observers, not the caller's own scoped observer")
+    @it("host unobserveField: removed the host's plain and the child's self observers; the host's scoped one still fired")
     function _()
       m.assertCase("plain", "plain", "host-plain", false, false)
       m.assertCase("plain", "scoped", "host-plain", false, false)
@@ -85,7 +94,7 @@ namespace tests
       m.assertCase("scoped", "scoped", "host-plain", true, false)
     end function
 
-    @it("unobserveFieldScoped removes only the caller's own scoped observer")
+    @it("host unobserveFieldScoped: removed the host's scoped observer only")
     function _()
       m.assertCase("plain", "plain", "host-scoped", true, true)
       m.assertCase("plain", "scoped", "host-scoped", true, true)
@@ -94,12 +103,12 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("dispatch timing of a self-write on the render thread")
+    @describe("dispatch timing of a self-write made through callFunc")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    ' A component writing its own m.top field has already run its handler by the next
-    ' statement, so a flag set around the write does suppress that handler.
-    @it("runs the component's own handler before the next statement — either form")
+    ' The flags that gate VideoPlayerView and JRPoster handlers around their own writes
+    ' rely on this: those writes are made on the render thread, from inside the component.
+    @it("the component's own handler has run before the next statement, either form")
     function _()
       for each selfForm in ["plain", "scoped"]
         subject = CreateObject("roSGNode", "ObserverProbeSubject")

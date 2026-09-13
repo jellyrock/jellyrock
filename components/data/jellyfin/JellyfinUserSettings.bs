@@ -16,8 +16,8 @@ sub init()
 
   ' Every setting is observed ONCE, here, for the life of the node; enableAutoSync and
   ' disableAutoSync only flip the flag above. Do not toggle the observers instead:
-  ' m.top.unobserveField removes EVERY component's observer on the field, not just this
-  ' one's, and this node is the shared m.global.user.settings
+  ' m.top.unobserveField can remove observers OTHER components hold on the field, and
+  ' this node is the shared m.global.user.settings
   ' (tests/source/unit/platform/ObserverRegistry.spec.bs).
   m.top.observeField("displaySettings", "onDisplaySettingsChanged")
 

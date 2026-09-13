@@ -43,14 +43,16 @@
  * 4. `top-unobserve-outside-ondestroy` (error) — `m.top.unobserveField()` or
  *    `m.top.unobserveFieldScoped()` anywhere but `onDestroy()`.
  *
- *    A registration belongs to the observed node's FIELD, not to the component
- *    that made it. Measured on device (`tests/source/unit/platform/
- *    ObserverRegistry.spec.bs`): a component unobserving its own field, in EITHER
- *    form, removes every plain observer on it — including ones another component
- *    registered. That is how #898's "unobserve before observe" re-registration in
- *    `VideoPlayerView` removed `PlayerHostView`'s `state` observer, so no natural
- *    episode end ever reached the host. Mid-life, a component cannot know who else
- *    is listening; at teardown, the node is going away with its observers anyway.
+ *    A registration is not private to the component that made it. On device
+ *    (`tests/source/unit/platform/ObserverRegistry.spec.bs`), a component
+ *    unobserving its own field — with either form — removed the plain observer
+ *    its parent held on that field. That is how #898's "unobserve before observe"
+ *    re-registration in `VideoPlayerView` removed `PlayerHostView`'s `state`
+ *    observer, so no natural episode end ever reached the host. Mid-life, a
+ *    component cannot know who else is listening; at teardown, the node is going
+ *    away with its observers anyway. Both forms are banned alike, deliberately:
+ *    how `observeFieldScoped` registrations behave is NOT understood beyond the one
+ *    configuration that spec records, so nothing here relies on it.
  *
  *    The field argument is NOT required to be a literal: which field is named does
  *    not change who loses their observer (`JellyfinUserSettings.disableAutoSync`
@@ -92,12 +94,12 @@
  *    variable holding a handler NAME from one holding a port.
  *  - Two PROGRAMMATIC observers of the same field, with no XML `onChange` — also
  *    a duplicate registration, but not this pairing.
- *  - (Not a gap, recorded because an earlier version of this header claimed one.)
- *    `m.top.observeFieldScoped` + `m.top.unobserveField` suppressing
- *    `ineffective-unobserve` is correct: on a component's OWN node the plain
- *    unobserve does remove the scoped self-registration (measured in
- *    `ObserverRegistry.spec.bs`). Scoped and unscoped only behave as separate lists
- *    when one component observes ANOTHER node.
+ *  - `m.top.observeFieldScoped` + `m.top.unobserveField` suppresses
+ *    `ineffective-unobserve` (a programmatic observe exists). Whether that plain
+ *    unobserve removes the scoped registration is not established in general — it
+ *    did in the one configuration `ObserverRegistry.spec.bs` records — so this
+ *    diagnostic does not reason about mixed forms. Nothing goes silent:
+ *    `duplicate-field-observer` still fires on the observe.
  *
  * Escape hatches (per diagnostic, on the offending BrightScript line):
  *  - `' bsc-disable-line <code>`
@@ -206,7 +208,7 @@ function reportTopLifecycle(brsFile, report) {
             report({
               code: TOP_UNOBSERVE,
               location: call.location,
-              message: `m.top.${method}(${field}) in '${fn}' removes every plain observer on that field, not just this component's — including one another component registered on this node (measured in tests/source/unit/platform/ObserverRegistry.spec.bs; #898 removed PlayerHostView's "state" observer exactly this way, and no episode end reached it). Register this component's own observer once in init(), make its handler ignore the notifications it must not act on (a readiness flag, or a value the component applied itself), and unobserve only in onDestroy(). Suppress with ' bsc-disable-next-line ${TOP_UNOBSERVE} only if no other component can ever observe this node.`,
+              message: `m.top.${method}(${field}) in '${fn}' can remove observers ANOTHER component registered on this node, not just this component's (#898 removed PlayerHostView's "state" observer exactly this way, and no episode end reached it; see tests/source/unit/platform/ObserverRegistry.spec.bs). Register this component's own observer once in init(), make its handler ignore the notifications it must not act on (a readiness flag, or a value the component applied itself), and unobserve only in onDestroy(). Suppress with ' bsc-disable-next-line ${TOP_UNOBSERVE} only if no other component can ever observe this node.`,
             });
             return;
           }

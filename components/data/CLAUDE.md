@@ -19,7 +19,7 @@ See [docs/architecture/global-state.md](../../docs/architecture/global-state.md)
 - The Jellyfin schema files should be data-only — fields and their types, no behavior.
 - Population belongs in **the transformer** (`source/data/SessionDataTransformer.bs`, `source/data/JellyfinDataTransformer.bs`).
 - Settings-loading orchestration (`SaveDefaults`, `LoadGlobals`, etc.) lives in the **`user.settings` namespace in `source/utils/session.bs`** — called as `user.settings.SaveDefaults()` from `main.bs`. Despite the dotted call syntax, that's a namespaced BrighterScript sub, not a method on the `JellyfinUserSettings` node.
-- The single deliberate exception is **`JellyfinUserSettings.bs`** — it implements the auto-sync settings observer and display/library-settings sync (`enableAutoSync`, `disableAutoSync`, `observeAllSettings`, `onSettingChanged`, `onDisplaySettingsChanged`, plus library-settings sync helpers). The XML interface declares only `enableAutoSync` and `disableAutoSync` as `<function>`; everything else is internal.
+- The single deliberate exception is **`JellyfinUserSettings.bs`** — it implements the auto-sync settings observer and display/library-settings sync (`enableAutoSync`, `disableAutoSync`, `onSettingChanged`, `onDisplaySettingsChanged`, plus library-settings sync helpers). The XML interface declares only `enableAutoSync` and `disableAutoSync` as `<function>`; everything else is internal.
 
 ## Parent-folder nodes (`components/data/*`) — more permissive
 

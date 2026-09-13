@@ -100,8 +100,8 @@ module.exports = () =>
       if (bound.size === 0) return;
 
       // 2. Every observe/unobserve on those members, with its enclosing function.
-      // Scoped and unscoped are tracked separately: Roku keeps them on different
-      // observer lists, so one does not release the other.
+      // Scoped and unscoped are tracked separately: a mismatched pair is not trusted to
+      // release the other's registration (observe-without-on-destroy explains why).
       const observes = []; // { member, field, scoped, fn }
       const unobserves = []; // { member, field, scoped, fn, location }
 

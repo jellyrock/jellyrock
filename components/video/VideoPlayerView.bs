@@ -110,10 +110,10 @@ sub init()
   m.bufferCheckTimer = m.top.findNode("bufferCheckTimer")
 
   ' Every m.top observer is registered here, once, and released only in onDestroy.
-  ' Never unobserve an m.top field mid-life: that also removes the observers OTHER
-  ' components hold on this node — PlayerHostView advances the queue from `state` —
-  ' (tests/source/unit/platform/ObserverRegistry.spec.bs). Handlers ignore what they
-  ' must not act on instead, using these three flags.
+  ' Never unobserve an m.top field mid-life: it can remove observers OTHER components
+  ' hold on this node — it removed PlayerHostView's `state` observer, which advances the
+  ' queue (#898; tests/source/unit/platform/ObserverRegistry.spec.bs). Handlers ignore
+  ' what they must not act on instead, using these three flags.
   m.isContentLoaded = false ' true from the first stream handed to the Video node
   m.isApplyingOwnSelection = false ' raised while the player writes its own track fields
   m.hasPlaybackFailed = false ' raised by onState's terminal `error` branch

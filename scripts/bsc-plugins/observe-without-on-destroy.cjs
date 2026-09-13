@@ -22,10 +22,12 @@
  * and never tore it down anywhere".
  *
  * Scoped/unscoped strictness: `observeField` pairs only with `unobserveField`,
- * and `observeFieldScoped` pairs only with `unobserveFieldScoped`. Roku tracks
- * the two on separate observer lists, so a mismatched pair leaves the
- * registration alive even though the code looks correct. The plugin keeps the
- * two scopes in separate maps and won't cross-match.
+ * and `observeFieldScoped` pairs only with `unobserveFieldScoped`. Whether a
+ * mismatched pair releases the registration is not understood in general — one
+ * configuration is recorded in tests/source/unit/platform/ObserverRegistry.spec.bs,
+ * and it did not release there when the target was another node — so the plugin
+ * requires the forms to match rather than guessing, and keeps them in separate
+ * maps. Matching them costs nothing.
  *
  * Runs per component SCOPE (`scripts/lib/bsc-rule.cjs`). The JRScreen-ness half
  * of the verdict comes from the XML while the warning is anchored in the `.bs`,
@@ -57,9 +59,8 @@ module.exports = () =>
       const aliases = new UnionFind();
       const observes = [];
       // Two separate maps so observeField and observeFieldScoped can't
-      // accidentally satisfy each other — Roku stores them on different
-      // observer lists, so an unobserveField won't release an
-      // observeFieldScoped (and vice versa).
+      // accidentally satisfy each other — see the header for why a mismatched
+      // pair is not trusted to release.
       const unobserveByField = new Map(); // fieldName → Set<canonicalTarget>
       const unobserveByFieldScoped = new Map(); // fieldName → Set<canonicalTarget>
 

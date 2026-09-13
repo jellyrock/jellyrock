@@ -513,11 +513,11 @@ describe('undetachable-observer', () => {
   });
 });
 
-// A node's observer registrations belong to the NODE'S FIELD, not to the component that
-// made them. Measured (tests/source/unit/platform/ObserverRegistry.spec.bs): a component
-// calling m.top.unobserveField — or m.top.unobserveFieldScoped — removes every plain
-// observer ANOTHER component registered on that field. #898 did exactly that to
-// PlayerHostView's `state` observer, and every natural episode end stranded the player.
+// A registration is not private to the component that made it. On device
+// (tests/source/unit/platform/ObserverRegistry.spec.bs), a component calling
+// m.top.unobserveField — or m.top.unobserveFieldScoped — removed the plain observer its
+// parent held on that field. #898 did exactly that to PlayerHostView's `state` observer,
+// and every natural episode end stranded the player.
 // So m.top observers are wired once in init() and released once in onDestroy(), and
 // these two diagnostics hold both ends of that.
 const TOP_UNOBSERVE = 'top-unobserve-outside-ondestroy';
@@ -542,8 +542,8 @@ describe('top-unobserve-outside-ondestroy — the bug it catches', () => {
     expect(flagged[0].message).toMatch(/other component/i);
   });
 
-  // Measured, and the reason the scoped form gets no pass: called on its own node, the
-  // scoped unobserve removed the host's plain observer too.
+  // The scoped form gets no pass: in the one configuration measured it removed the
+  // parent's plain observer too, and scoped behaviour is not understood beyond that.
   it('errors on the unobserveFieldScoped form as well', () => {
     const diagnostics = run({
       'components/Player.xml': xml('Player'),

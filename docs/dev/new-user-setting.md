@@ -49,7 +49,7 @@ This guide covers **User Settings** and **Global Settings**.
 ```text
 App Startup
   → user.settings.SaveDefaults()  (loads ALL defaults from settings.json)
-  → enableAutoSync                 (turns on per-field registry-write observers)
+  → enableAutoSync                 (turns on registry sync; the per-field observers exist from node creation)
   → migrations run
   → User logs in → SessionDataTransformer reads user's registry section
                    and overlays saved values on top of defaults
