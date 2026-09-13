@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-09-13 — fix: Finish playback when a segment skip lands at the end of the media
 - 2026-09-13 — remove: Unused `Section` and `SectionScroller` components
 - 2026-09-10 — fix: Keep `playbackTimer`'s observer across a stopped → playing cycle
 - 2026-09-10 — ci: Bound RTA poll waits to their own timeout, cutting pre-push time
