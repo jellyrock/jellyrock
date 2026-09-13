@@ -405,6 +405,48 @@ export async function firstItemId(session, includeItemTypes) {
 }
 
 /**
+ * An episode that has a NEXT episode in the same series, resolved at runtime:
+ * `{ id, nextId, seriesName, runTimeSeconds }`, or `null` when the server answered and no
+ * series has two.
+ *
+ * Found by capability rather than by name, so a spec built on it runs against any
+ * configured server — see #910 for why that matters. Each series is asked for its
+ * first two episodes through `/Shows/<id>/Episodes`, the same endpoint and ordering
+ * `LoadVideoContentTask.addNextEpisodesToQueue` uses to queue what plays next, so
+ * `nextId` is the episode the app itself will advance to.
+ *
+ * `runTimeSeconds` comes from the SERVER's `RunTimeTicks`, not the player's `duration`.
+ * Roku reports `duration = 0` for some live-transcoded streams (the fallback in
+ * `VideoPlayerView.onPositionChanged` exists for exactly that), so a caller waiting on the
+ * device for it could wait forever on such a fixture. An episode with no known runtime is
+ * skipped for the same reason.
+ *
+ * Series are checked in SortName order and the first match wins, which keeps the pick
+ * stable across runs against an unchanged library.
+ */
+export async function findEpisodeWithNext(session) {
+  const seriesUrl =
+    `${session.serverUrl}/Items?UserId=${session.userId}` +
+    `&IncludeItemTypes=Series&Recursive=true&SortBy=SortName&SortOrder=Ascending&Limit=50`;
+  // Throws on a failed request; `null` below is only ever reached from answered queries.
+  const series = (await getJson(seriesUrl, tokenHeader(session.token)))?.Items ?? [];
+
+  for (const show of series) {
+    const episodesUrl = `${session.serverUrl}/Shows/${show.Id}/Episodes?UserId=${session.userId}&Limit=2`;
+    const episodes = (await getJson(episodesUrl, tokenHeader(session.token)))?.Items ?? [];
+    if (episodes.length === 2 && episodes[0].RunTimeTicks > 0) {
+      return {
+        id: episodes[0].Id,
+        nextId: episodes[1].Id,
+        seriesName: show.Name,
+        runTimeSeconds: Math.floor(episodes[0].RunTimeTicks / 10_000_000),
+      };
+    }
+  }
+  return null;
+}
+
+/**
  * Is Quick Connect switched on for this server?
  *
  * `GET /QuickConnect/Enabled` returns a bare JSON boolean, and 404s on servers

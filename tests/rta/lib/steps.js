@@ -1117,7 +1117,7 @@ export async function waitMediaPlaying(label, timeout = 30000) {
  * Deliberately outside `ATTRIBUTING_READS`: it is a custom reader, so a wait using it gets
  * no read-failure attribution. Recorded as still-owed rather than silently accepted.
  */
-const readPlayer = (itemId) => async (keyPath) =>
+export const readPlayer = (itemId) => async (keyPath) =>
   (
     await odc
       .getValue(
