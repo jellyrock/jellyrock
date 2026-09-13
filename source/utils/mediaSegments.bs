@@ -112,6 +112,29 @@ function findSegmentById(segments as object, segmentId as string) as dynamic
   return invalid
 end function
 
+' How close to the end of the media a skip may land before it counts as reaching the end.
+const SEGMENT_SKIP_END_OF_MEDIA_SECONDS = 5
+
+' skipEndsPlayback: Whether skipping to a segment's end would leave nothing left to play.
+'
+' A skip seeks to the segment's end. When that is at or near the end of the media, the
+' stream has nothing left to buffer: the player sits in `buffering` until the stall check
+' reports a playback error, instead of ever reaching `finished` and moving on. So the
+' caller finishes playback rather than seeking.
+'
+' Deliberately independent of the segment TYPE. Any segment can run to the end of the
+' file — a Preview after the Outro, credits, a commercial — and what makes the seek
+' unplayable is where it lands, not what the segment was called.
+'
+' @param {float} segmentEndSeconds - Where the skip would seek to
+' @param {float} durationSeconds - Media duration; 0 or less when unknown
+' @returns {boolean} - true to finish playback, false to seek
+function skipEndsPlayback(segmentEndSeconds as float, durationSeconds as float) as boolean
+  ' No known end to compare against, so seeking is the only safe reading.
+  if durationSeconds <= 0 then return false
+  return segmentEndSeconds >= durationSeconds - SEGMENT_SKIP_END_OF_MEDIA_SECONDS
+end function
+
 ' segmentTicksToSeconds: Converts Jellyfin ticks (100-nanosecond units) to seconds.
 '
 ' @param {dynamic} ticks - Tick count (10,000,000 ticks = 1 second)

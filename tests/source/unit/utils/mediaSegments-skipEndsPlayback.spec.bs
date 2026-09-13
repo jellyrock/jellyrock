@@ -1,0 +1,74 @@
+import "pkg:/source/utils/mediaSegments.bs"
+
+namespace tests
+
+  @suite("mediaSegments.bs - skipEndsPlayback()")
+  class SkipEndsPlaybackTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a skip that lands at the end of the media")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Fruits Basket (2019) S2E5 on a real server: the Preview segment ends at 1437.0719999 s
+    ' and so does the episode. Seeking there left a transcoded stream buffering until the
+    ' stall dialog fired, so this is the case the helper exists for.
+    @it("ends playback when the segment ends exactly at the end of the media")
+    function _()
+      m.assertTrue(skipEndsPlayback(1437.0719999, 1437.0719999))
+    end function
+
+    @it("ends playback when the segment ends inside the end-of-media window")
+    function _()
+      m.assertTrue(skipEndsPlayback(1432.5, 1437.0))
+    end function
+
+    @it("ends playback at the window's exact edge")
+    function _()
+      m.assertTrue(skipEndsPlayback(1437.0 - SEGMENT_SKIP_END_OF_MEDIA_SECONDS, 1437.0))
+    end function
+
+    @it("ends playback when the segment end overshoots the duration")
+    function _()
+      m.assertTrue(skipEndsPlayback(1440.0, 1437.0))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a skip that leaves media to play")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The Outro on that same episode ends 12 s before the end, followed by the Preview.
+    ' Skipping it must seek, not finish — the user still has the Preview to skip or watch.
+    @it("seeks when the segment ends before the end-of-media window")
+    function _()
+      m.assertFalse(skipEndsPlayback(1425.049, 1437.0719999))
+    end function
+
+    @it("seeks just outside the window's edge")
+    function _()
+      m.assertFalse(skipEndsPlayback(1437.0 - SEGMENT_SKIP_END_OF_MEDIA_SECONDS - 0.01, 1437.0))
+    end function
+
+    @it("seeks for an intro near the start")
+    function _()
+      m.assertFalse(skipEndsPlayback(161.036, 1437.0719999))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("unknown duration")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' With no duration there is no end to compare against; seeking is the only safe
+    ' reading, and it is what every skip did before this helper existed.
+    @it("seeks when the duration is zero")
+    function _()
+      m.assertFalse(skipEndsPlayback(90.0, 0.0))
+    end function
+
+    @it("seeks when the duration is negative")
+    function _()
+      m.assertFalse(skipEndsPlayback(90.0, -1.0))
+    end function
+
+  end class
+
+end namespace
