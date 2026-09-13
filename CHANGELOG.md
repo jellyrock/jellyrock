@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Report a force-finished playback as stopped once, not twice ([#914](https://github.com/jellyrock/jellyrock/pull/914))
 - Finish playback when a segment skip lands at the end of the media ([#912](https://github.com/jellyrock/jellyrock/pull/912))
 - Keep `playbackTimer`'s observer across a stopped → playing cycle ([#907](https://github.com/jellyrock/jellyrock/pull/907))
 - Close all three routes to a false buffer stall ([#899](https://github.com/jellyrock/jellyrock/pull/899))
