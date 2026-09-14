@@ -436,6 +436,78 @@ namespace tests
       m.assertEqual(row.group.getChild(row.group.buttonFocused).id, "moreButton")
     end function
 
+    ' THE REGRESSION: OK dispatches the button at buttonFocused. A late insert to
+    ' the LEFT of the focused button (ItemDetails' Trailer, a subtitle button) used
+    ' to leave the index naming the new button, so OK ran the wrong action. The
+    ' row fits here on purpose — the old early return skipped exactly this case.
+    @it("keeps the focus index on the same button across an insert to its left, when the row fits")
+    function _()
+      row = m.makeRow(3)
+      row.group.buttonFocused = 1
+
+      restoreOverflowedButtons(row.group, row.stash)
+      inserted = CreateObject("roSGNode", "IconButton")
+      inserted.id = "latecomer"
+      row.group.insertChild(inserted, 0)
+      applyButtonOverflow(row.group, row.stash, 8, "More", "pkg:/more.png")
+
+      m.assertEqual(row.group.getChild(row.group.buttonFocused).id, "btn1")
+    end function
+
+    @it("keeps the focus index on the same button across a removal to its left, when the row fits")
+    function _()
+      row = m.makeRow(4)
+      row.group.buttonFocused = 3
+
+      restoreOverflowedButtons(row.group, row.stash)
+      row.group.removeChild(row.group.getChild(0))
+      applyButtonOverflow(row.group, row.stash, 8, "More", "pkg:/more.png")
+
+      m.assertEqual(row.group.getChild(row.group.buttonFocused).id, "btn3")
+    end function
+
+    @it("follows the focused button into More when an insert pushes it past the cap")
+    function _()
+      row = m.makeRow(4)
+      row.group.buttonFocused = 3
+
+      restoreOverflowedButtons(row.group, row.stash)
+      inserted = CreateObject("roSGNode", "IconButton")
+      inserted.id = "latecomer"
+      row.group.insertChild(inserted, 0)
+      applyButtonOverflow(row.group, row.stash, 4, "More", "pkg:/more.png")
+
+      m.assertEqual(row.group.getChild(row.group.buttonFocused).id, "moreButton")
+    end function
+
+    ' The caller's own choice stands when the focused button is gone — this is
+    ' what setupButtons' "fall back to index 0 when Delete is gone" relies on.
+    @it("leaves the focus index alone when the focused button was removed")
+    function _()
+      row = m.makeRow(4)
+      row.group.buttonFocused = 2
+
+      restoreOverflowedButtons(row.group, row.stash)
+      row.group.removeChild(row.group.getChild(2))
+      row.group.buttonFocused = 0
+      applyButtonOverflow(row.group, row.stash, 8, "More", "pkg:/more.png")
+
+      m.assertEqual(row.group.buttonFocused, 0)
+    end function
+
+    @it("uses a capture once, so a later apply without a restore does not replay it")
+    function _()
+      row = m.makeRow(3)
+      row.group.buttonFocused = 1
+      restoreOverflowedButtons(row.group, row.stash)
+      applyButtonOverflow(row.group, row.stash, 8, "More", "pkg:/more.png")
+
+      row.group.buttonFocused = 2
+      applyButtonOverflow(row.group, row.stash, 8, "More", "pkg:/more.png")
+
+      m.assertEqual(row.group.buttonFocused, 2)
+    end function
+
     @it("does nothing, and does not crash, on invalid nodes")
     function _()
       applyButtonOverflow(invalid, invalid, 3, "More", "pkg:/more.png")
