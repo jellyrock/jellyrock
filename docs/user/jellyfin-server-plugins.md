@@ -38,9 +38,18 @@ leaving the detail screen.
 ### What you need
 
 A subtitle provider plugin installed on the server **and given credentials**.
-Open Subtitles is the common choice. A provider plugin that is installed but
-never signed in returns results for nobody — see the warning below about why
-that is hard to tell apart from "there genuinely are no subtitles".
+Open Subtitles is the common choice.
+
+**If no subtitle provider plugin is installed, JellyRock hides the Manage
+Subtitles button** — the server reports which plugins it has, so the app does
+not offer a search that can never find anything. JellyRock checks this once each
+time you sign in. If you install a provider while JellyRock is open, sign out and
+back in (or restart the app) to see the button.
+
+A provider plugin that is installed but never signed in *does* show the button,
+because the server cannot tell JellyRock whether a plugin has credentials — and
+it returns results for nobody. See the warning below about why that is hard to
+tell apart from "there genuinely are no subtitles".
 
 ### Who can use it
 
@@ -83,9 +92,9 @@ button is not shown for them.
 ### ⚠️ Why "no subtitles found" can mean several different things
 
 Jellyfin's subtitle search returns an **empty list**, with a success status, for
-all of these:
+all of these (a server with no provider plugin at all does not get this far — the
+button is hidden):
 
-- no subtitle provider plugin is installed
 - a provider is installed but has no credentials
 - the credentials are wrong
 - the provider genuinely has no subtitles for this release
@@ -174,9 +183,9 @@ These depend only on your **server version** — see the
 
 | Symptom | Likely cause |
 | --- | --- |
-| No **Manage Subtitles** button on a movie or episode | On 10.9+: a regular user without `Enable subtitle management` |
+| No **Manage Subtitles** button on a movie or episode | No subtitle provider plugin installed on the server; or, on 10.9+, a regular user without `Enable subtitle management` |
 | No **Manage Subtitles** button on a series, collection or album | Expected — search supports movies and episodes only |
-| Subtitle search always returns nothing | No provider plugin, or no/invalid provider credentials |
+| Subtitle search always returns nothing | Provider plugin has no, or invalid, credentials |
 | Subtitle downloads never appear | Provider daily download limit reached |
 | No delete affordance on a downloaded subtitle | Deleting requires an administrator account |
 | No skip-intro button | Server has no segment provider, or segments not yet detected |

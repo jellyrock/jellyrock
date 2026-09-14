@@ -39,6 +39,13 @@
          reports it disabled. -->
     <field id="isQuickConnectEnabled" type="boolean" value="true" />
 
+    <!-- Whether the server has a subtitle provider plugin installed, which Manage
+         Subtitles needs. A string rather than a boolean because "not checked yet"
+         must differ from "checked, none installed": "" = unknown, "available",
+         "unavailable" (constants in source/utils/serverCapabilities.bs). Reset with
+         the rest of this node on a server switch. -->
+    <field id="subtitleProviderStatus" type="string" value="" />
+
     <!-- DEBUG ONLY: Raw server info for debugging - only populated when bs_const=debug=true -->
     <field id="rawServerInfo" type="assocarray" />
   </interface>

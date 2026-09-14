@@ -271,6 +271,18 @@
       ]
     },
     {
+      "path": "/Libraries/AvailableOptions",
+      "normalized": "/libraries/availableoptions",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
       "path": "/livetv/channels",
       "normalized": "/livetv/channels",
       "methods": [
@@ -3100,7 +3112,7 @@
       }
     },
     "counts": {
-      "endpoints": 73,
+      "endpoints": 74,
       "requestFields": 41,
       "responseFields": 214,
       "unresolvedEndpointSinks": 2

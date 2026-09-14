@@ -23,7 +23,7 @@
  */
 import { waitFor, waitHome, hasChildren, getActiveVal, getActiveVals } from './lib/steps.js';
 import { diagnosedError, FAILURE_KINDS } from './lib/diagnostics.js';
-import { genreItemNames, libraryIdFor, subtitleManagementAllowed } from './lib/jellyfin.js';
+import { genreItemNames, libraryIdFor, manageSubtitlesOffered } from './lib/jellyfin.js';
 import {
   navLibraryGrid,
   navMovieDetails,
@@ -304,8 +304,8 @@ export const SCREENS = [
     // the same two reasons every library-dependent entry does.
     view: MOVIES_GRID,
     requires: {
-      probe: (ctx) => subtitleManagementAllowed(ctx.session),
-      reason: 'user cannot manage subtitles on this server',
+      probe: (ctx) => manageSubtitlesOffered(ctx.session),
+      reason: 'user cannot manage subtitles, or the server has no subtitle provider plugin',
     },
   },
 

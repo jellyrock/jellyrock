@@ -9,7 +9,7 @@ related-files:
   - components/data/Constants.xml
   - components/data/jellyfin/AppInfo.xml
   - components/data/jellyfin/DeviceInfo.xml
-last-reviewed: 2026-09-13
+last-reviewed: 2026-09-14
 ---
 
 # Global State
@@ -46,6 +46,7 @@ m.global  (the global roSGNode)
 ├── server            JellyfinServer node                   ← phase 1
 │   ├── serverUrl, name, version, id, apiVersion, isConnected
 │   ├── isQuickConnectEnabled bool                          ← fail-open default true; UserSelect's probe sets false
+│   ├── subtitleProviderStatus string                       ← "" unknown / "available" / "unavailable"; Home's session check (serverCapabilities.bs)
 │   └── ...
 │
 ├── user              JellyfinUser node                     ← phase 1

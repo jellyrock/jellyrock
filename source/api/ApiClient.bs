@@ -786,6 +786,24 @@ class ApiClient
     return m.validatedReq("GET", buildURL("/Localization/Cultures"))
   end function
 
+  ' Build a request AA for the server's library options, for use with fetchRes()
+  ' or fetchJson(). Returns a LibraryOptionsResultDto.
+  '
+  ' Used to learn which metadata PLUGINS the server has installed — SubtitleFetchers
+  ' lists every installed subtitle provider by name — so a feature that needs one
+  ' can be hidden rather than offered and then fail empty. Read by
+  ' source/utils/serverCapabilities.bs.
+  '
+  ' Unchanged from 10.7.0 through 12.0, and authorized for ANY signed-in user
+  ' (Policies.FirstTimeSetupOrDefault), so it needs no V1/V2 branch and no admin.
+  ' libraryContentType is deliberately omitted: the server then reports plugins for
+  ' Series, Season, Episode and Movie — exactly the types subtitle search supports.
+  '
+  ' @returns Request AA: { method, url } or invalid if server URL not set
+  function BuildGetLibraryOptionsInfoRequest() as dynamic
+    return m.validatedReq("GET", buildURL("/Libraries/AvailableOptions"))
+  end function
+
   ' ═══════════════════════════════════════════════════════════════════════════
   ' FILTERS ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════

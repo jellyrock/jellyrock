@@ -852,7 +852,7 @@ Add one entry to [`tests/rta/screens.js`](../../tests/rta/screens.js):
   user or server may not grant. `probe` is an async `(ctx) => boolean`; when it answers
   false the screen skips with `reason` — in both `specs/screens.spec.js` and
   `scripts/capture-screenshots.js` — instead of failing its nav. Reference: `subtitlePanel`,
-  probed by `subtitleManagementAllowed()` in [`tests/rta/lib/jellyfin.js`](../../tests/rta/lib/jellyfin.js),
+  probed by `manageSubtitlesOffered()` in [`tests/rta/lib/jellyfin.js`](../../tests/rta/lib/jellyfin.js),
   which skips on the public demo user. A probe must throw on a failed request rather than
   answer false, so an auth error can't masquerade as "not granted".
 

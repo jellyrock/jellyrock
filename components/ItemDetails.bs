@@ -17,6 +17,7 @@ import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/placeholderImage.bs"
 import "pkg:/source/utils/remoteSubtitles.bs"
 import "pkg:/source/utils/screenReadiness.bs"
+import "pkg:/source/utils/serverCapabilities.bs"
 import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
@@ -202,6 +203,8 @@ sub init()
   ' Monotonic counter giving each trailer-availability fetch a unique requestId, so a
   ' rapid content refresh can never collide two in-flight requests on the same key.
   m.trailerCheckSeq = 0
+  ' Same, for the subtitle-provider check that gates Manage Subtitles.
+  m.subtitleProviderCheckSeq = 0
 
   m.isFirstRun = true
   m.isDeepLinkLaunch = false
@@ -1024,6 +1027,70 @@ sub checkTrailerAvailability(itemId as string)
   end sub)
 end sub
 
+' canOfferManageSubtitles: Everything but the plugin — a Movie or Episode, and a
+' user the server would let search. canSearchSubtitles() carries the permission
+' rule and the measurements behind it.
+function canOfferManageSubtitles(item as object) as boolean
+  if not isValid(item) then return false
+  if not remoteSubtitles.isSearchableItemType(item.type) then return false
+  return remoteSubtitles.canSearchSubtitles(m.global.user.policy, getApiVersionFromGlobal())
+end function
+
+function newManageSubtitlesButton() as object
+  button = CreateObject("roSGNode", "IconButton")
+  button.id = "manageSubtitlesButton"
+  button.icon = "pkg:/images/icons/closedCaptions_$$RES$$.png"
+  button.text = translate(translationKeys.LabelManageSubtitles)
+  return button
+end function
+
+' checkSubtitleProviders: Ask the server whether a subtitle provider is installed,
+' and insert Manage Subtitles if so.
+'
+' Reached only when Home's session check has not answered yet. A failed check
+' fails OPEN (the button is offered and the answer stays unknown, so the next screen
+' asks again) — a transport error is not evidence the plugin is missing, and an
+' empty search already explains itself.
+sub checkSubtitleProviders(itemId as string)
+  req = GetApi().BuildGetLibraryOptionsInfoRequest()
+  if not isValid(req) then return
+
+  m.subtitleProviderCheckSeq += 1
+  promises.chain(fetchAsync(req, "subtitleProviderCheck-" + m.subtitleProviderCheckSeq.toStr()), { itemId: itemId }).then(sub(res as object, ctx as object)
+    if ctx.itemId <> m.top.itemId then return ' stale — content changed under us
+    status = serverCapabilities.recordSubtitleProviderStatus(res)
+    if serverCapabilities.shouldOfferSubtitleSearch(status) then insertManageSubtitlesButton()
+  end sub).catch(sub(err as object, ctx as object)
+    if ctx.itemId <> m.top.itemId then return
+    m.log.warn("subtitle-provider check failed; offering Manage Subtitles", err.reason)
+    insertManageSubtitlesButton()
+  end sub)
+end sub
+
+' insertManageSubtitlesButton: Add the button to a row that is already built.
+'
+' In setupButtons() order: after Trailer, before Delete / Refresh. Inside the
+' unsplit/applyOverflow bracket, which keeps focus on the button the user is on
+' when this lands to its left — see captureRowFocus() in buttonOverflow.bs.
+sub insertManageSubtitlesButton()
+  ' findNode also sees the overflow stash, so a button moved into More counts.
+  if isValid(m.top.findNode("manageSubtitlesButton")) then return
+  if not canOfferManageSubtitles(m.top.itemContent) then return
+
+  unsplitButtons()
+
+  button = newManageSubtitlesButton()
+  insertAt = getButtonIndex("deleteButton")
+  if insertAt < 0 then insertAt = getButtonIndex("refreshButton")
+  if insertAt >= 0
+    m.buttonGrp.insertChild(button, insertAt)
+  else
+    m.buttonGrp.appendChild(button)
+  end if
+
+  applyOverflow()
+end sub
+
 ' callFunc entry — toggles the favorite state of the current item. Invoked from main.bs's
 ' button router; because callFunc rendezvouses to this render-thread-owned node, the body
 ' (and the fetchAsync().then() promise delivery + auto-abandon) runs on this component's
@@ -1184,8 +1251,7 @@ sub onRefreshItemDetailsData()
       ' Whole row around the index-0 insert, then re-split. See applyOverflow().
       unsplitButtons()
       m.buttonGrp.insertChild(m.resumeLoadingButton, 0)
-      ' Shift focus index to account for the new button at position 0
-      m.buttonGrp.buttonFocused = m.buttonGrp.buttonFocused + 1
+      ' applyOverflow() re-points the focus index at the same button by ID.
       applyOverflow()
     end if
   end if
@@ -1234,17 +1300,15 @@ sub onTrailerAvailableChanged()
       trailerButton.id = "trailerButton"
       trailerButton.icon = "pkg:/images/icons/playOutline_$$RES$$.png"
       trailerButton.text = translate(translationKeys.LabelPlayTrailer)
-      ' Insert before Delete (if present) to match setupButtons() ordering, else before Refresh
-      deleteButtonIndex = getButtonIndex("deleteButton")
-      if deleteButtonIndex >= 0
-        m.buttonGrp.insertChild(trailerButton, deleteButtonIndex)
+      ' Insert in setupButtons() order: before Manage Subtitles, else Delete, else
+      ' Refresh. Manage Subtitles can itself arrive late, so it may already be here.
+      insertAt = getButtonIndex("manageSubtitlesButton")
+      if insertAt < 0 then insertAt = getButtonIndex("deleteButton")
+      if insertAt < 0 then insertAt = getButtonIndex("refreshButton")
+      if insertAt >= 0
+        m.buttonGrp.insertChild(trailerButton, insertAt)
       else
-        refreshButtonIndex = getButtonIndex("refreshButton")
-        if refreshButtonIndex >= 0
-          m.buttonGrp.insertChild(trailerButton, refreshButtonIndex)
-        else
-          m.buttonGrp.appendChild(trailerButton)
-        end if
+        m.buttonGrp.appendChild(trailerButton)
       end if
     end if
   else
@@ -3943,13 +4007,16 @@ sub setupButtons(item as object)
   ' allowed through by the server anyway, and the flag does not exist at all on
   ' 10.7-10.8 where the endpoints are open to any user. canSearchSubtitles()
   ' carries the whole rule (and the measurements behind it).
-  if remoteSubtitles.isSearchableItemType(itemType)
-    if remoteSubtitles.canSearchSubtitles(m.global.user.policy, getApiVersionFromGlobal())
-      manageSubtitlesButton = CreateObject("roSGNode", "IconButton")
-      manageSubtitlesButton.id = "manageSubtitlesButton"
-      manageSubtitlesButton.icon = "pkg:/images/icons/closedCaptions_$$RES$$.png"
-      manageSubtitlesButton.text = translate(translationKeys.LabelManageSubtitles)
-      m.buttonGrp.appendChild(manageSubtitlesButton)
+  '
+  ' It also needs a subtitle provider PLUGIN on the server, or every search comes
+  ' back empty. When that is not known yet the button is left out here and inserted
+  ' when checkSubtitleProviders() answers — see serverCapabilities.bs.
+  if canOfferManageSubtitles(item)
+    providerStatus = m.global.server.subtitleProviderStatus
+    if providerStatus = serverCapabilities.STATUS_AVAILABLE
+      m.buttonGrp.appendChild(newManageSubtitlesButton())
+    else if providerStatus = serverCapabilities.STATUS_UNKNOWN
+      checkSubtitleProviders(item.id)
     end if
   end if
 
