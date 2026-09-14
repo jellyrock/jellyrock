@@ -32,8 +32,18 @@ namespace tests
       try
         ' Initialize global constants, app info, and device info
         ' This creates: m.global.appLoaded, m.global.constants, m.global.app, m.global.device
-        setGlobals()
-        ' Load en_US translations so component tests get resolved strings
+        '
+        ' Once per test session, not once per group. Rooibos runs setup() for every
+        ' @describe group, and setGlobals() writes only through m.global.addFields, which
+        ' leaves an existing field's value untouched — so every call after the first built
+        ' nodes and read device/app info only to throw them away. `device` is its last
+        ' write, so a call that threw partway still retries in the next group.
+        if not m.global.doesExist("device")
+          setGlobals()
+        end if
+        ' Load en_US translations so component tests get resolved strings. This one DOES
+        ' reset per group (setFields overwrites): translate.spec.bs installs its own
+        ' translations, and reloading here is what stops them leaking into the next suite.
         ' (mirrors Main.bs which calls loadTranslations() right after setGlobals())
         loadTranslations("en_US")
       catch e

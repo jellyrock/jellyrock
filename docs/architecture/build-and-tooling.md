@@ -92,7 +92,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-09-10
+last-reviewed: 2026-09-13
 ---
 
 # Build & Tooling
@@ -117,10 +117,10 @@ Several `bsconfig*.json` files exist, one per build target:
 |---|---|
 | `bsconfig.json` | Standard dev build — log strip OFF, source maps ON, all plugins active |
 | `bsconfig-prod.json` | Production build — log strip ON (`rokuLog.strip = true`), source maps OFF, comments removed |
-| `bsconfig-tests.json` | All test suites |
+| `bsconfig-tests.json` | All test suites except `migration` / `registry` tags; no code coverage — the gating build (`test:all`, CI) |
 | `bsconfig-tests-unit.json` | Unit tests only (faster for iteration) |
 | `bsconfig-tests-integration.json` | Integration tests only |
-| `bsconfig-tests-complete.json` | Complete coverage variant |
+| `bsconfig-tests-complete.json` | Every tag, **with code coverage recorded** (`test:complete`, CI `complete` dispatch) |
 | `bsconfig-tdd-sample.json` | Sample TDD config — devs copy to `bsconfig-tdd.json` and customize what suites/tests to run |
 
 The `bsconfig.json` (dev) entry shape:
