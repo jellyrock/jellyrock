@@ -601,17 +601,32 @@ end sub
 
 ' openSubtitlePanel: Hand the panel everything it needs and raise it.
 '
-' filePath and the stream list come from the item we already hold, so opening
-' costs no round-trip. canDelete is resolved HERE rather than inside the panel
-' so the panel stays free of policy knowledge (delete is admin-only on every
-' server version, a strictly tighter gate than search).
+' The panel targets the SELECTED VERSION, not the item. Jellyfin builds each
+' MediaSource from its own item (source Id = that version's item id), and the
+' subtitle endpoints act on the item in the URL: delete resolves the stream index
+' on it and removes that stream's file, download saves beside its video. So the
+' id, the path and the stream list must all come from the same source — an index
+' from one version sent to another version's id can delete that version's media
+' file. A single-version item is unaffected: its only source's Id is the item id.
+'
+' Everything comes from data we already hold, so opening costs no round-trip.
+' canDelete is resolved HERE rather than inside the panel so the panel stays free
+' of policy knowledge (delete is admin-only on every server version).
 sub openSubtitlePanel(item as object)
   if not (isValid(item) and isValidAndNotEmpty(item.id)) then return
   if m.subtitlePanelOpen then return
 
-  m.subtitlePanel.itemId = item.id
-  m.subtitlePanel.filePath = item.path
-  m.subtitlePanel.existingStreams = currentMediaStreams()
+  ' All three from ONE place. Falling back per-field would recreate the mismatch.
+  source = selectedMediaSource()
+  if isValid(source) and isValidAndNotEmpty(source.Id)
+    m.subtitlePanel.itemId = source.Id
+    m.subtitlePanel.filePath = source.Path ?? ""
+    m.subtitlePanel.existingStreams = source.MediaStreams ?? []
+  else
+    m.subtitlePanel.itemId = item.id
+    m.subtitlePanel.filePath = item.path
+    m.subtitlePanel.existingStreams = []
+  end if
   m.subtitlePanel.canDelete = remoteSubtitles.canDeleteSubtitles(m.global.user.policy)
 
   m.subtitlePanelOpen = true
@@ -661,18 +676,16 @@ sub onSubtitlesChanged()
   m.top.refreshItemDetailsData = not m.top.refreshItemDetailsData
 end sub
 
-' currentMediaStreams: The MediaStreams of the currently selected source, or an
-' empty array. Mirrors the resolution used when building the track dropdowns so
-' the panel and the dropdowns can never disagree about which source is in play.
-function currentMediaStreams() as object
+' selectedMediaSource: The currently selected MediaSource AA, or invalid. Uses the
+' same resolution as the track dropdowns (findSelectedSource), so the panel and
+' the dropdowns can never disagree about which version is in play.
+function selectedMediaSource() as dynamic
   item = m.top.itemContent
-  if not isValid(item) then return []
-  if not isValid(item.mediaSourcesData) then return []
-  if not isValidAndNotEmpty(item.mediaSourcesData.mediaSources) then return []
+  if not isValid(item) then return invalid
+  if not isValid(item.mediaSourcesData) then return invalid
+  if not isValidAndNotEmpty(item.mediaSourcesData.mediaSources) then return invalid
 
-  streams = getStreamsForSelectedSource(item.mediaSourcesData.mediaSources)
-  if not isValid(streams) then return []
-  return streams
+  return findSelectedSource(item.mediaSourcesData.mediaSources)
 end function
 
 ' Delete button. Confirm, then delete and leave the now-gone routed detail via the router.
@@ -2979,18 +2992,26 @@ end function
 ' matches m.top.selectedVideoStreamId. Falls back to mediaSources[0] when the selected
 ' id isn't found (e.g. first load before selection).
 function getStreamsForSelectedSource(mediaSources as object) as object
-  if not isValid(mediaSources) then return []
+  source = findSelectedSource(mediaSources)
+  if not isValid(source) then return []
+  return source.MediaStreams
+end function
+
+' findSelectedSource: The MediaSource AA getStreamsForSelectedSource reads from, or
+' invalid. Only a source carrying MediaStreams qualifies, including the fallback.
+function findSelectedSource(mediaSources as object) as dynamic
+  if not isValid(mediaSources) then return invalid
 
   for each source in mediaSources
     if source.Id = m.top.selectedVideoStreamId and isValid(source.MediaStreams)
-      return source.MediaStreams
+      return source
     end if
   end for
 
   if isValid(mediaSources[0]) and isValid(mediaSources[0].MediaStreams)
-    return mediaSources[0].MediaStreams
+    return mediaSources[0]
   end if
-  return []
+  return invalid
 end function
 
 ' SetDefaultAudioTrack: Auto-select the best audio stream based on user language prefs,
