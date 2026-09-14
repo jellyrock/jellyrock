@@ -25,7 +25,7 @@ related-files:
   - scripts/flake-baseline.js
   - tests/rta/demos/run.mjs
   - .github/workflows/rta-functional-tests.yml
-last-reviewed: 2026-09-08
+last-reviewed: 2026-09-14
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -848,6 +848,13 @@ Add one entry to [`tests/rta/screens.js`](../../tests/rta/screens.js):
   `eligible` to capture, `store: true` to ALSO include in the curated Roku-store / homepage
   set (see split below), `backdrop: true` to composite the in-film frame behind the OSD,
   `scope: 'shared'` for language-agnostic screens (captured once, copied to all locales).
+- `requires`: optional `{ probe, reason }` for a screen that needs a CAPABILITY the fixture's
+  user or server may not grant. `probe` is an async `(ctx) => boolean`; when it answers
+  false the screen skips with `reason` — in both `specs/screens.spec.js` and
+  `scripts/capture-screenshots.js` — instead of failing its nav. Reference: `subtitlePanel`,
+  probed by `subtitleManagementAllowed()` in [`tests/rta/lib/jellyfin.js`](../../tests/rta/lib/jellyfin.js),
+  which skips on the public demo user. A probe must throw on a failed request rather than
+  answer false, so an auth error can't masquerade as "not granted".
 
 The new screen is automatically a functional test (the spec loops over `SCREENS`) and, if
 `capture.eligible`, a captured screenshot.
