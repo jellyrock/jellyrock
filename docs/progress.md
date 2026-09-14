@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-09-13
+last-updated: 2026-09-14
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-09-14 — ci: Run device tests without code coverage, and set up test globals once per session
 - 2026-09-13 — fix: Report a force-finished playback as stopped once, not twice
 - 2026-09-13 — fix: Finish playback when a segment skip lands at the end of the media
 - 2026-09-13 — remove: Unused `Section` and `SectionScroller` components
@@ -47,7 +48,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-09-03 — Stop the playback error dialog exiting on a close it did not cause
 - 2026-09-01 — Migrate the playback error dialog onto `JRDialog` and make it diagnostic
 - 2026-08-31 — fix(playback): Direct-play music instead of transcoding it
-- 2026-08-30 — Audio direct play now covers `wav`, `aiff`, elementary `.aac`, `ogg` (vorbis/opus/flac, covering `.ogg` / `.oga` / `.opus`) and `mka`, each gated on a real `CanDecodeAudio` probe and verified end to end at `PlayMethod=DirectPlay` on a Streaming Stick 4K; closes the followup the m4a fix opened.
 
 ## Open followups
 
