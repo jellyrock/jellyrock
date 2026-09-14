@@ -1,0 +1,121 @@
+namespace tests
+
+  ' A RECORD of what Roku OS did in one narrow configuration — not a model of how observer
+  ' registration, and in particular observeFieldScoped, works. First run on a Roku Ultra
+  ' and a Streaming Stick 4K, both OS 15.3.4.
+  '
+  ' What it covers, and nothing else: a parent component observing ONE field on a child
+  ' component it created, with a function-name handler, plain or scoped; the child
+  ' observing that same field on itself; every call made through callFunc, so it runs in
+  ' the owning component's scope on the render thread. NOT covered: message-port observers,
+  ' Task threads, siblings or unrelated components, m.global nodes, observeFieldScopedEx,
+  ' infoFields, and every OS version below 15.3.4 the app supports. Do not generalise a
+  ' row past that — in particular, do not read the scoped rows as "how scoped works".
+  '
+  ' The one result the observer rules DEPEND on is the first @it below: a component
+  ' unobserving its own field removed the parent's plain observer, which is the #898
+  ' regression. The rules treat observeField and observeFieldScoped identically so that
+  ' nothing rests on the rest. The other rows are kept as tripwires: they disagree with
+  ' rokudev's ifSGNodeField page, and a firmware change that alters them is worth knowing
+  ' about — if one goes red, re-examine, don't just flip the expectation.
+  '
+  ' The spec body itself does not run on the render thread (see
+  ' components/testing/TaskLedgerBench.xml), which is why every call goes through callFunc.
+  @suite("Platform - observer registry semantics")
+  class ObserverRegistryTests extends tests.BaseTestSuite
+
+    ' Host observes subject.value in `hostForm`, subject observes its own value in
+    ' `selfForm`, `remover` runs, then the field is written once. Returns who still fired.
+    private function runCase(hostForm as string, selfForm as string, remover as string) as object
+      host = CreateObject("roSGNode", "ObserverProbeHost")
+      subject = host.getField("subject")
+      host.callFunc("hostObserve", hostForm)
+      subject.callFunc("selfObserve", selfForm)
+
+      if remover = "subject-plain" then subject.callFunc("selfUnobserve", "plain")
+      if remover = "subject-scoped" then subject.callFunc("selfUnobserve", "scoped")
+      if remover = "host-plain" then host.callFunc("hostUnobserve", "plain")
+      if remover = "host-scoped" then host.callFunc("hostUnobserve", "scoped")
+
+      subject.setField("value", "x")
+      return { host: host.getField("hostCount"), self: subject.getField("selfCount") }
+    end function
+
+    private sub assertCase(hostForm as string, selfForm as string, remover as string, hostFires as boolean, selfFires as boolean)
+      fired = m.runCase(hostForm, selfForm, remover)
+      label = "host=" + hostForm + " self=" + selfForm + " remover=" + remover
+      m.assertEqual(fired.host = 1, hostFires, label + ": host observer")
+      m.assertEqual(fired.self = 1, selfFires, label + ": self observer")
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("control")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("every registration form fires once when nothing is removed")
+    function _()
+      m.assertCase("plain", "plain", "none", true, true)
+      m.assertCase("plain", "scoped", "none", true, true)
+      m.assertCase("scoped", "plain", "none", true, true)
+      m.assertCase("scoped", "scoped", "none", true, true)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a node unobserving its OWN field (m.top.unobserveField*)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The #898 regression: VideoPlayerView's m.top.unobserveField("state") removed
+    ' PlayerHostView's plain observer, so `finished` never reached the host.
+    @it("host observeField: removed when the child unobserves its own field, either form")
+    function _()
+      m.assertCase("plain", "plain", "subject-plain", false, false)
+      m.assertCase("plain", "plain", "subject-scoped", false, false)
+      m.assertCase("plain", "scoped", "subject-plain", false, false)
+      m.assertCase("plain", "scoped", "subject-scoped", false, false)
+    end function
+
+    @it("host observeFieldScoped: still fires after the child unobserves its own field, either form")
+    function _()
+      m.assertCase("scoped", "plain", "subject-plain", true, false)
+      m.assertCase("scoped", "plain", "subject-scoped", true, false)
+      m.assertCase("scoped", "scoped", "subject-plain", true, false)
+      m.assertCase("scoped", "scoped", "subject-scoped", true, false)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the host unobserving the child's field")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("host unobserveField: removed the host's plain and the child's self observers; the host's scoped one still fired")
+    function _()
+      m.assertCase("plain", "plain", "host-plain", false, false)
+      m.assertCase("plain", "scoped", "host-plain", false, false)
+      m.assertCase("scoped", "plain", "host-plain", true, false)
+      m.assertCase("scoped", "scoped", "host-plain", true, false)
+    end function
+
+    @it("host unobserveFieldScoped: removed the host's scoped observer only")
+    function _()
+      m.assertCase("plain", "plain", "host-scoped", true, true)
+      m.assertCase("plain", "scoped", "host-scoped", true, true)
+      m.assertCase("scoped", "plain", "host-scoped", false, true)
+      m.assertCase("scoped", "scoped", "host-scoped", false, true)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("dispatch timing of a self-write made through callFunc")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The flags that gate VideoPlayerView and JRPoster handlers around their own writes
+    ' rely on this: those writes are made on the render thread, from inside the component.
+    @it("the component's own handler has run before the next statement, either form")
+    function _()
+      for each selfForm in ["plain", "scoped"]
+        subject = CreateObject("roSGNode", "ObserverProbeSubject")
+        subject.callFunc("selfObserve", selfForm)
+        subject.callFunc("writeAndReadBack", "y")
+        m.assertEqual(subject.getField("readBack"), 1, "self=" + selfForm)
+      end for
+    end function
+  end class
+end namespace

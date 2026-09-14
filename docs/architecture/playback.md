@@ -22,7 +22,7 @@ related-files:
   - components/ItemGrid/LoadVideoContentTask.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-09-04
+last-reviewed: 2026-09-13
 ---
 
 # Video & Audio Playback
@@ -241,10 +241,12 @@ for a dialog shown without a claim.
 The claim is set inside `showPlaybackErrorDialog`, not at its call sites, so none of the four
 can order it wrong — it lands after the dialog is on screen and before any caller's stop. Only
 `bufferCheck` issues one: `onState`'s `error` branch stops the two timers and not the stream,
-and the two content-load failures never started one. Note that the `error` branch's
-`m.top.unobserveField("state")` drops only `VideoPlayerView`'s own observer — `PlayerHostView`
-holds a separate one from `mountPlayer()` — so the host can still receive a later `finished`
-from that branch, which is why the claim covers all four rather than the stall alone.
+and the two content-load failures never started one. The `error` branch stops `onState` from
+reacting with a flag (`m.hasPlaybackFailed`), not with `m.top.unobserveField("state")`: that
+call would also remove the observer `PlayerHostView` holds from `mountPlayer()` (see
+[the player owns its observers once](#the-player-registers-its-own-observers-once)). So the host
+does keep receiving `state` from that branch, which is why the claim covers all four rather than
+the stall alone.
 
 ### A superseded error parks the player
 
@@ -391,6 +393,34 @@ Note: the `OSD`'s `inactiveTimeout` is **5 seconds**, not 10 as some sources may
    - Becomes `visible = true`
 4. **Steady state** — `playbackTimer.fire` → `reportPlayback("update")` every 10 seconds with current position. User interactions (pause, seek, OSD open) are all handled by `onKeyEvent` and the inherited `Video` machinery.
 5. **End / transition** — `state = "finished"` → `PlayerHostView.onPlayerStateChange` handles next-item / restart / exit logic (host-internal remount or `goBack`). If the user backs out, the router closes the host (`beforeViewClose` → `onDestroy` → `destroyPlayer`). Either way the stop is reported to Jellyfin via `m.view.control = "stop"` in `destroyPlayer()`.
+
+#### The player registers its own observers once
+
+Step 5 only happens if the host HEARS `finished`, and the player can silently take that away.
+An observer registration is not private to the component that made it: when `VideoPlayerView`
+calls `m.top.unobserveField("state")` it removes `PlayerHostView`'s observer too (reproduced on
+device, and recorded for that parent/child configuration only in
+[`ObserverRegistry.spec.bs`](../../tests/source/unit/platform/ObserverRegistry.spec.bs)).
+That is exactly what #898's "unobserve before observe" re-registration did, and every natural
+episode end then left a stopped player mounted on a black screen, with the Next Episode
+notification still holding focus.
+
+So every `m.top` observer in `VideoPlayerView` — `state`, `position`, the three track fields and
+the two caption fields — is registered once in `init()` and removed only in `onDestroy()`, and
+the handlers ignore what they must not act on with three flags instead:
+
+| Flag | Raised | Why a handler ignores the notification |
+|---|---|---|
+| `m.isContentLoaded` | once, where `onVideoContentLoaded` hands the first stream to the `Video` node | Before a stream exists there is no playback to report. A Back pressed while loading surfaces as `stopped` (measured), and `onState` would otherwise report a stop for a session that never started. |
+| `m.isApplyingOwnSelection` | around the player's own writes to `audioIndex`, `mediaSourceId` and `selectedSubtitle` | Those writes apply the loaded selection; treating them as user choices reloads the stream. The caption handlers are deliberately not gated — they must see the same writes. |
+| `m.hasPlaybackFailed` | in `onState`'s terminal `error` branch; cleared when `onVideoContentLoaded` hands over a new stream | The error dialog owns what happens next. |
+
+A self-write made on the render thread from inside the component ran its handler before the
+next statement in that spec, which is what lets a flag raised around the write suppress it. Both halves are build errors
+— `top-observer-outside-init` and `top-unobserve-outside-ondestroy` in
+[`field-observer-wiring`](./build-and-tooling.md#convention-plugins) — and
+[`playback-advance.spec.js`](../../tests/rta/specs/playback-advance.spec.js) plays an episode to
+its end on a device and waits for the next one.
 
 ### `reportPlayback` — server-side reporting
 

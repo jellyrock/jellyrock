@@ -269,8 +269,8 @@ describe('unobserve-before-release — precision', () => {
   });
 
   it('keeps scoped and unscoped observers on separate lists', () => {
-    // Roku tracks them separately, so an unobserveField does not release an
-    // observeFieldScoped — pairing them here would report the wrong site.
+    // An unobserveField is not trusted to release an observeFieldScoped — pairing them
+    // here would report the wrong site.
     expect(
       run(
         'Scoped',

@@ -512,3 +512,301 @@ describe('undetachable-observer', () => {
     expect(diagnosticsByCode(afterFix, UNDETACHABLE)).toHaveLength(0);
   });
 });
+
+// A registration is not private to the component that made it. On device
+// (tests/source/unit/platform/ObserverRegistry.spec.bs), a component calling
+// m.top.unobserveField — or m.top.unobserveFieldScoped — removed the plain observer its
+// parent held on that field. #898 did exactly that to PlayerHostView's `state` observer,
+// and every natural episode end stranded the player.
+// So m.top observers are wired once in init() and released once in onDestroy(), and
+// these two diagnostics hold both ends of that.
+const TOP_UNOBSERVE = 'top-unobserve-outside-ondestroy';
+const TOP_OBSERVE = 'top-observer-outside-init';
+
+describe('top-unobserve-outside-ondestroy — the bug it catches', () => {
+  it('errors on m.top.unobserveField outside onDestroy', () => {
+    const diagnostics = run({
+      'components/Player.xml': xml('Player'),
+      'components/Player.bs': `
+        sub onContentLoaded()
+          m.top.unobserveField("state")
+          m.top.observeField("state", "onState")
+        end sub
+      `,
+    });
+    const flagged = diagnosticsByCode(diagnostics, TOP_UNOBSERVE);
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0].severity).toBe(1); // Error
+    expect(flagged[0].message).toMatch(/"state"/);
+    expect(flagged[0].message).toMatch(/onContentLoaded/);
+    expect(flagged[0].message).toMatch(/other component/i);
+  });
+
+  // The scoped form gets no pass: in the one configuration measured it removed the
+  // parent's plain observer too, and scoped behaviour is not understood beyond that.
+  it('errors on the unobserveFieldScoped form as well', () => {
+    const diagnostics = run({
+      'components/Player.xml': xml('Player'),
+      'components/Player.bs': `
+        sub onContentLoaded()
+          m.top.unobserveFieldScoped("state")
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, TOP_UNOBSERVE)).toHaveLength(1);
+  });
+
+  // JellyfinUserSettings.disableAutoSync loops over getFields(). The field name does not
+  // change who loses their observer, so a non-literal argument is flagged, not skipped.
+  it('errors when the field argument is not a literal', () => {
+    const diagnostics = run({
+      'components/Settings.xml': xml('Settings'),
+      'components/Settings.bs': `
+        sub disableAutoSync()
+          for each fieldName in m.top.getFields()
+            m.top.unobserveField(fieldName)
+          end for
+        end sub
+      `,
+    });
+    const flagged = diagnosticsByCode(diagnostics, TOP_UNOBSERVE);
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0].message).toMatch(/disableAutoSync/);
+  });
+
+  // BrightScript is case-insensitive; an error-level gate must not be a spelling away
+  // from silent. `ObserveField` casing is already in use elsewhere in the tree.
+  it('errors whatever the casing of m.top and the method', () => {
+    const diagnostics = run({
+      'components/Player.xml': xml('Player'),
+      'components/Player.bs': `
+        sub onContentLoaded()
+          M.Top.UnobserveField("state")
+          m.top.UNOBSERVEFIELDSCOPED("position")
+          m.top.ObserveField("state", "onState")
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, TOP_UNOBSERVE)).toHaveLength(2);
+    expect(diagnosticsByCode(diagnostics, TOP_OBSERVE)).toHaveLength(1);
+  });
+
+  it('errors inside a function literal nested in another function', () => {
+    const diagnostics = run({
+      'components/Player.xml': xml('Player'),
+      'components/Player.bs': `
+        sub fetch()
+          callback = sub()
+            m.top.unobserveField("position")
+          end sub
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, TOP_UNOBSERVE)).toHaveLength(1);
+  });
+
+  // The regression the plugin's old early return would have hidden: neither player nor
+  // settings node declares an XML onChange.
+  it('runs for a component that declares no XML onChange at all', () => {
+    const diagnostics = run({
+      'components/Player.xml': xml('Player', [{ id: 'plain' }]),
+      'components/Player.bs': `
+        sub stop()
+          m.top.unobserveField("plain")
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, TOP_UNOBSERVE)).toHaveLength(1);
+  });
+});
+
+describe('top-unobserve-outside-ondestroy — what it must NOT flag', () => {
+  it('is silent in onDestroy, whatever its casing', () => {
+    const diagnostics = run({
+      'components/Player.xml': xml('Player'),
+      'components/Player.bs': `
+        sub ONDESTROY()
+          m.top.unobserveField("state")
+          m.top.unobserveFieldScoped("position")
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, TOP_UNOBSERVE)).toHaveLength(0);
+  });
+
+  // A timer the component owns is a legitimate balanced toggle (bufferCheckTimer).
+  it('is silent for an unobserve on a node other than m.top', () => {
+    const diagnostics = run({
+      'components/Player.xml': xml('Player'),
+      'components/Player.bs': `
+        sub onPaused()
+          m.bufferCheckTimer.unobserveField("fire")
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, TOP_UNOBSERVE)).toHaveLength(0);
+  });
+
+  it('skips both vendored trees', () => {
+    const body = `
+      sub runLoop()
+        m.top.unobserveField("buffer_size")
+      end sub
+    `;
+    const diagnostics = run({
+      'components/vendor/Socket/SocketTask.xml': xml('SocketTask'),
+      'components/vendor/Socket/SocketTask.bs': body,
+      'components/roku_modules/log/LogNode.xml': xml('LogNode'),
+      'components/roku_modules/log/LogNode.bs': body,
+    });
+    expect(diagnosticsByCode(diagnostics, TOP_UNOBSERVE)).toHaveLength(0);
+  });
+
+  it('honours bsc-disable-next-line', () => {
+    const diagnostics = run({
+      'components/Probe.xml': xml('Probe'),
+      'components/Probe.bs': `
+        sub selfUnobserve()
+          ' bsc-disable-next-line top-unobserve-outside-ondestroy
+          m.top.unobserveField("value")
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, TOP_UNOBSERVE)).toHaveLength(0);
+  });
+
+  it('clears when the unobserve moves into onDestroy', () => {
+    const [before, after] = runPluginOnEdits(fieldObserverWiringPlugin, [
+      {
+        'components/Player.xml': xml('Player'),
+        'components/Player.bs': 'sub stop()\n  m.top.unobserveField("state")\nend sub',
+      },
+      { 'components/Player.bs': 'sub onDestroy()\n  m.top.unobserveField("state")\nend sub' },
+    ]);
+    expect(diagnosticsByCode(before, TOP_UNOBSERVE)).toHaveLength(1);
+    expect(diagnosticsByCode(after, TOP_UNOBSERVE)).toHaveLength(0);
+  });
+});
+
+describe('top-observer-outside-init — the bug it catches', () => {
+  // With a mid-life unobserve banned, a re-running observe can no longer be de-duplicated
+  // — it accumulates, and the handler runs N times per write (#896, #898). Deleting the
+  // unobserve that the diagnostic above flags would produce exactly this.
+  it('errors on m.top.observeField with a handler outside init', () => {
+    const diagnostics = run({
+      'components/Player.xml': xml('Player'),
+      'components/Player.bs': `
+        sub onContentChange()
+          m.top.observeField("position", "onPositionChanged")
+        end sub
+      `,
+    });
+    const flagged = diagnosticsByCode(diagnostics, TOP_OBSERVE);
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0].severity).toBe(1); // Error
+    expect(flagged[0].message).toMatch(/"position"/);
+    expect(flagged[0].message).toMatch(/onContentChange/);
+  });
+
+  it('errors on the observeFieldScoped form as well', () => {
+    const diagnostics = run({
+      'components/Player.xml': xml('Player'),
+      'components/Player.bs': `
+        sub later()
+          m.top.observeFieldScoped("state", "onState")
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, TOP_OBSERVE)).toHaveLength(1);
+  });
+
+  // Placement is the rule, not reachability: a helper called only from init today can
+  // be called from anywhere tomorrow, and nothing would notice. Inline it.
+  it('errors in a helper even when init is its only caller', () => {
+    const diagnostics = run({
+      'components/Keyboard.xml': xml('Keyboard'),
+      'components/Keyboard.bs': `
+        sub init()
+          enableVoice()
+        end sub
+        sub enableVoice()
+          m.top.observeField("visible", "onVisible")
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, TOP_OBSERVE)).toHaveLength(1);
+  });
+
+  it('errors when the field argument is not a literal', () => {
+    const diagnostics = run({
+      'components/Settings.xml': xml('Settings'),
+      'components/Settings.bs': `
+        sub enableAutoSync()
+          for each fieldName in m.top.getFields()
+            m.top.observeField(fieldName, "onSettingChanged")
+          end for
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, TOP_OBSERVE)).toHaveLength(1);
+  });
+});
+
+describe('top-observer-outside-init — what it must NOT flag', () => {
+  it('is silent in init, whatever its casing', () => {
+    const diagnostics = run({
+      'components/Player.xml': xml('Player'),
+      'components/Player.bs': `
+        sub INIT()
+          m.top.observeField("state", "onState")
+          m.top.observeFieldScoped("position", "onPositionChanged")
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, TOP_OBSERVE)).toHaveLength(0);
+  });
+
+  // The pool Tasks (ApiTask, ApiQueueTask, SideEffectTask) observe their own request
+  // fields on a message port inside the Task's run function. Out of this rule's
+  // population: no handler runs in a component scope, and no defect is on record.
+  it('is silent for a message-port observer', () => {
+    const diagnostics = run({
+      'components/ApiTask.xml': xml('ApiTask'),
+      'components/ApiTask.bs': `
+        sub runApiLoop()
+          port = CreateObject("roMessagePort")
+          m.top.observeField("request", port)
+          m.top.observeField("cancel", m.port)
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, TOP_OBSERVE)).toHaveLength(0);
+  });
+
+  it('is silent for an observe on a node other than m.top', () => {
+    const diagnostics = run({
+      'components/Player.xml': xml('Player'),
+      'components/Player.bs': `
+        sub onBuffering()
+          m.bufferCheckTimer.observeField("fire", "bufferCheck")
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, TOP_OBSERVE)).toHaveLength(0);
+  });
+
+  it('skips both vendored trees', () => {
+    const body = `
+      sub runLoop()
+        m.top.observeField("__updateNow", "onUpdate")
+      end sub
+    `;
+    const diagnostics = run({
+      'components/vendor/Socket/SocketTask.xml': xml('SocketTask'),
+      'components/vendor/Socket/SocketTask.bs': body,
+      'components/roku_modules/log/LogNode.xml': xml('LogNode'),
+      'components/roku_modules/log/LogNode.bs': body,
+    });
+    expect(diagnosticsByCode(diagnostics, TOP_OBSERVE)).toHaveLength(0);
+  });
+});
