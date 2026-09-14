@@ -22,7 +22,9 @@ import "pkg:/source/utils/cellLoad.bs"
 '
 ' Horizontal buffer (focusedColumns + textureVisibleWidth + textureItemSpacing):
 '   Only applies to RowList rows with > TEXTURE_BUFFER_THRESHOLD items.
-'   Visible columns ± 1 buffer item keep textures loaded; rest unloaded.
+'   A window of TEXTURE_BUFFER_THRESHOLD columns keeps textures loaded — the visible slots
+'   plus the rest of the budget split left/right, wrapping — and the rest unload. See
+'   isColumnInTextureWindow.
 '   Not used for MarkupGrid (all columns fit on screen).
 '
 ' Flow (RowList):
@@ -121,6 +123,61 @@ function calculateTextureItemSpacing(rowItemSpacing as dynamic) as integer
     end if
   end if
   return spacing
+end function
+
+' How many item slots of one row are visible at once. A partly visible slot at the right
+' edge counts, because it renders.
+'
+' @param visibleWidth - usable row width, from calculateTextureVisibleWidth
+' @param slotWidth - the row's item width (the cell's own `width`)
+' @param itemSpacing - horizontal gap between items, from calculateTextureItemSpacing
+' @return visible slot count; 0 when the slot width cannot be used
+function calculateTextureVisibleItemCount(visibleWidth as integer, slotWidth as integer, itemSpacing as integer) as integer
+  itemStride = slotWidth + itemSpacing
+  if slotWidth <= 0 or itemStride <= 0 then return 0
+  numVisible = int(visibleWidth / itemStride)
+  if visibleWidth mod itemStride > 0 then numVisible++
+  return numVisible
+end function
+
+' Whether one column of a long RowList row belongs to the horizontal texture window.
+'
+' The window keeps TEXTURE_BUFFER_THRESHOLD textures loaded: the visible slots plus the
+' remaining budget split around them, the odd item going to the right. It wraps, because
+' Home's rows use `fixedFocusWrap` — at column 0 the left half sits at the row's TAIL, which
+' is the item drawn in the `focusXOffset` gap and one Left press away.
+'
+' Pure so the geometry can be pinned by unit tests. The column sets those tests assert were
+' read off a Stick 4K with an RTA cell census (32- and 100-item portrait rows), so a change
+' here that moves the window fails a test rather than needing a device to notice.
+'
+' @param colIndex - the column being asked about
+' @param focusedCol - the row's focused column
+' @param totalItems - item count of the row
+' @param numVisible - from calculateTextureVisibleItemCount
+' @return true when the column's texture should stay loaded
+function isColumnInTextureWindow(colIndex as integer, focusedCol as integer, totalItems as integer, numVisible as integer) as boolean
+  ' Rows that fit the budget keep everything loaded.
+  if totalItems <= TEXTURE_BUFFER_THRESHOLD then return true
+  if colIndex < 0 then return false
+
+  bufferBudget = TEXTURE_BUFFER_THRESHOLD - numVisible
+  if bufferBudget < 2 then bufferBudget = 2
+  leftBuffer = int(bufferBudget / 2)
+  rightBuffer = bufferBudget - leftBuffer
+
+  bufferStart = (focusedCol - leftBuffer + totalItems) mod totalItems
+  bufferEnd = focusedCol + numVisible - 1 + rightBuffer
+
+  if bufferEnd >= totalItems
+    ' Wraps past the end — in range at the tail OR the head
+    return colIndex >= bufferStart or colIndex <= (bufferEnd mod totalItems)
+  else if bufferStart > focusedCol
+    ' Wraps before the start (focus near column 0, start near the end)
+    return colIndex >= bufferStart or colIndex <= bufferEnd
+  end if
+
+  return colIndex >= bufferStart and colIndex <= bufferEnd
 end function
 
 ' Calculates and sets the loaded row range and focused column based on current focus.

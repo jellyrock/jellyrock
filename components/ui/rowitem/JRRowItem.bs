@@ -580,10 +580,9 @@ function getRowItemCount() as integer
   return rowNode.getChildCount()
 end function
 
-' Checks whether this cell is in the horizontal buffer zone for its row.
-' The buffer keeps up to TEXTURE_BUFFER_THRESHOLD items loaded, split evenly
-' around the visible items: (threshold - numVisible) / 2 on each side.
-' Wrap-aware for fixedFocusWrap rows where items wrap around the end.
+' Checks whether this cell is in the horizontal buffer zone for its row. Reads the node
+' state; the geometry itself is isColumnInTextureWindow (textureManager.bs), where it is
+' unit-tested.
 ' Only applies to rows with > TEXTURE_BUFFER_THRESHOLD items.
 function isInHorizontalBuffer() as boolean
   if not isValid(m.contentRoot) then return false
@@ -603,46 +602,15 @@ function isInHorizontalBuffer() as boolean
     focusedCol = cols[rowIndex]
   end if
 
-  ' Calculate how many items fit in the visible area.
-  ' Ceiling via integer math — partial items at the edge still render.
   slotWidth = int(m.top.width)
   if slotWidth <= 0 then return false
+  numVisible = calculateTextureVisibleItemCount(int(m.contentRoot.textureVisibleWidth), slotWidth, int(m.contentRoot.textureItemSpacing))
 
-  visibleWidth = int(m.contentRoot.textureVisibleWidth)
-  itemSpacing = int(m.contentRoot.textureItemSpacing)
-  itemStride = slotWidth + itemSpacing
-  numVisible = int(visibleWidth / itemStride)
-  if itemStride > 0 and visibleWidth mod itemStride > 0 then numVisible++
-
+  ' Short-circuit before getMyColumnIndex(), which walks the row.
   totalItems = getRowItemCount()
-
-  ' If all items fit within the threshold, everything stays loaded
   if totalItems <= TEXTURE_BUFFER_THRESHOLD then return true
 
-  ' Split the remaining budget evenly: half on the left, half on the right.
-  ' e.g. threshold=20, numVisible=5 → 7 items buffered on each side, 19 total loaded.
-  ' Extra item (from odd remainder) goes to the right to favour forward scroll.
-  bufferBudget = TEXTURE_BUFFER_THRESHOLD - numVisible
-  if bufferBudget < 2 then bufferBudget = 2
-  leftBuffer = int(bufferBudget / 2)
-  rightBuffer = bufferBudget - leftBuffer
-
-  ' Wrap-aware range using modular arithmetic for fixedFocusWrap rows.
-  bufferStart = (focusedCol - leftBuffer + totalItems) mod totalItems
-  bufferEnd = focusedCol + numVisible - 1 + rightBuffer
-
-  colIndex = getMyColumnIndex()
-  if colIndex < 0 then return false
-
-  if bufferEnd >= totalItems
-    ' Buffer wraps around the end — item is in range if at the tail OR head
-    return colIndex >= bufferStart or colIndex <= (bufferEnd mod totalItems)
-  else if bufferStart > focusedCol
-    ' Buffer wraps around the start (focusedCol near 0, bufferStart near end)
-    return colIndex >= bufferStart or colIndex <= bufferEnd
-  end if
-
-  return colIndex >= bufferStart and colIndex <= bufferEnd
+  return isColumnInTextureWindow(getMyColumnIndex(), focusedCol, totalItems, numVisible)
 end function
 
 ' Determines whether this cell should load its texture during initial render.
@@ -715,7 +683,8 @@ sub evaluateTextureState()
   rowPosition = getRowPosition()
 
   if rowPosition = "buffer"
-    ' Buffer rows (±1 from visible): ALL items stay loaded for seamless scroll.
+    ' Buffer rows (±2 from visible): ALL items stay loaded for seamless scroll. Bounded
+    ' in practice by the cells RowList has created for the row, not by its item count.
     reloadTexture()
     return
   end if

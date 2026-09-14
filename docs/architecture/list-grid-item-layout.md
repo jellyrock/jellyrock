@@ -8,7 +8,8 @@ related-files:
   - components/ItemGrid/BaseGridView.xml
   - components/home/HomeRows.bs
   - source/utils/listTheme.bs
-last-reviewed: 2026-09-05
+  - source/utils/textureManager.bs
+last-reviewed: 2026-09-14
 ---
 
 # `RowList` / grid item layout & the focus indicator
@@ -90,6 +91,49 @@ Stick 4K:
    with two, the idle one shows a permanent `colorBackgroundSecondary` fill — the
    color that means _focused_ on a `TextButton`. Set it to
    `pkg:/images/1px-transparent.png`, as `Alpha.bs` does.
+
+## Texture lifecycle — which cells hold a poster
+
+Cells free their poster texture when the user cannot see it soon, and restore it when they
+can. [`textureManager.bs`](../../source/utils/textureManager.bs) owns the decision inputs on
+the list's content root; each cell ([`JRRowItem`](../../components/ui/rowitem/JRRowItem.bs),
+[`GridItem`](../../components/ItemGrid/GridItem.bs)) observes them and decides for itself.
+
+**State machine** (`textureManagerState` on the content root):
+
+| State | Cells do | Set by |
+|---|---|---|
+| `init` | nothing — layout is still moving, and `renderTracking` flips are spurious | `initTextureManager` |
+| `active` | apply the ranges below | `activateTextureManager` (first content, and every return to the screen) |
+| `hidden` | nothing — textures stay loaded so returning is instant | `hideTextureManager` in `onScreenHidden` |
+| `destroyed` | force-unload unconditionally | `destroyTextureManager` in `onDestroy` |
+
+**Vertical range** — `loadedRowRange = [bufferStart, visibleStart, visibleEnd, bufferEnd]`,
+the visible rows plus **2 rows each side**. A cell in a buffer row keeps its texture; a cell
+outside the range follows `renderTracking`.
+
+**Horizontal window** — only on a `RowList` row with more than `TEXTURE_BUFFER_THRESHOLD`
+(20) items, and only while that row is visible. The window is exactly 20 columns: the visible
+slots (`calculateTextureVisibleItemCount`, counting a partly visible slot) plus the remaining
+budget split left/right, the odd item to the right, **wrapping** because `JRRowList` uses
+`fixedFocusWrap`. At column 0 the left half is the row's tail — the item drawn in the
+`focusXOffset` gap and one Left press away. The geometry is `isColumnInTextureWindow`, and
+its unit tests assert the column sets read off a device, so change the tests only with a new
+device reading. Every shape loads 20: portrait/square show 7 and buffer 6 left / 7 right;
+wide shows 4 and buffers 8 / 8.
+
+**What bounds memory is the cell pool, not the item count.** `RowList` creates cells only
+around focus (~28-30 on a 32- or 100-item row), and a texture can only live on a cell. A
+buffer row has no 20-column cap, yet on a 100-item row it held 7 textures across its 8 cells.
+Counting evictions by items therefore over-predicts: a cell `RowList` reuses for another item
+takes its new poster without ever passing through `unloadTexture`, so `unloadsWindow` reads
+below "items that left the window".
+
+**Three paths clear a poster URI** — `unloadTexture(reason)` (range or window eviction; the
+only one the ledger counts), `forceUnloadTexture` (teardown), and `deferTextureLoad` (a cell
+bound outside its window never requests the image). After an unload Roku reports the poster's
+`loadStatus` as `failed`; that is the cleared URI, not a broken image — both load-status
+observers return early on `isTextureUnloaded`, and `loadsFailed` does not move.
 
 ## Canonical examples
 
