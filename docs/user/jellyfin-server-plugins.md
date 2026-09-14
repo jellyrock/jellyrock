@@ -45,8 +45,12 @@ that is hard to tell apart from "there genuinely are no subtitles".
 ### Who can use it
 
 Subtitle permissions in Jellyfin are not obvious, and JellyRock deliberately does
-not simply mirror the permission checkbox. Measured against a live 10.11.11
-server:
+not simply mirror the permission checkbox.
+
+**On Jellyfin 10.7 and 10.8**, any signed-in user can search and download — the
+`Enable subtitle management` permission does not exist on those versions.
+
+**On Jellyfin 10.9 and newer** (measured against a live 10.11.11 server):
 
 | Account | `Enable subtitle management` | Search & download | Delete |
 | --- | --- | --- | --- |
@@ -105,7 +109,8 @@ That is why a download reports one of three outcomes:
 
 - **Added** — the subtitle is confirmed present on the item.
 - **Still processing** — the server accepted it but the file had not appeared
-  within about 15 seconds. It may still arrive; reopen the panel to check.
+  within about 15 seconds. It may still arrive: wait a moment, then press
+  **Refresh** on the detail screen to reload the item's subtitles.
 - **Couldn't add** — the request itself was rejected.
 
 Most free provider accounts have a daily download cap. Hitting it looks like a
@@ -169,7 +174,7 @@ These depend only on your **server version** — see the
 
 | Symptom | Likely cause |
 | --- | --- |
-| No **Manage Subtitles** button on a movie or episode | Regular user without `Enable subtitle management` |
+| No **Manage Subtitles** button on a movie or episode | On 10.9+: a regular user without `Enable subtitle management` |
 | No **Manage Subtitles** button on a series, collection or album | Expected — search supports movies and episodes only |
 | Subtitle search always returns nothing | No provider plugin, or no/invalid provider credentials |
 | Subtitle downloads never appear | Provider daily download limit reached |
