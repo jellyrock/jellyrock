@@ -7,14 +7,13 @@
 ' line-for-line in SubtitleResultRow, so the extraction that removes that
 ' duplication needs a red/green gate rather than an eyeball.
 '
-' What is testable here and what is not is decided by one thing: this row's
-' geometry is pure arithmetic over subtitleLayout and m.top.rowWidth, with no
-' localBoundingRect() call, so a detached node computes real values. (TextButton
-' is the counter-example — it measures its label and early-returns when there has
-' been no render pass, so its geometry is unreachable from a unit test by
-' construction and only RTA or a device pass can cover it.)
+' The row's geometry is arithmetic over subtitleLayout, m.top.rowWidth and its
+' badge labels' localBoundingRect() — font metrics, which a detached node
+' answers (the first badge test below fails loudly if that stops being true).
 
 import "pkg:/source/constants/subtitleLayout.bs"
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/translate.bs"
 
 namespace tests
 
@@ -49,8 +48,7 @@ namespace tests
         hearingImpaired: false,
         forced: false,
         streamIndex: 0,
-        rowWidth: subtitleLayout.EXISTING_WIDTH,
-        badgeZoneWidth: 0
+        rowWidth: subtitleLayout.EXISTING_WIDTH
       }
       for each key in fields
         base[key] = fields[key]
@@ -61,6 +59,26 @@ namespace tests
 
     private function badgeSlot(index as integer) as object
       return m.row.findNode("existingBadgeSlot" + index.toStr())
+    end function
+
+    ' The badge label of a slot (children: icon holder, then label).
+    private function badgeLabel(index as integer) as object
+      return m.badgeSlot(index).getChild(1)
+    end function
+
+    ' Rendered width of a badge's text, measured with the badge labels' own font.
+    private function textWidth(text as string) as float
+      label = createObject("roSGNode", "LabelSecondarySmallest")
+      label.text = text
+      return label.localBoundingRect().width
+    end function
+
+    private function hearingImpairedWidth() as float
+      return subtitleLayout.badgeWidth(22, m.textWidth(translate(translationKeys.LabelHearingImpaired)))
+    end function
+
+    private function forcedWidth() as float
+      return subtitleLayout.badgeWidth(0, m.textWidth(translate(translationKeys.LabelForcedSubtitle)))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -106,8 +124,16 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("badges - only the flags that change what the track IS")
+    @describe("badges - right-aligned, measured, dropped whole")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("measures badge text on a detached row")
+    function _()
+      ' Every geometry test below depends on this. If localBoundingRect() ever
+      ' answers 0 here, fail HERE with the reason, not as a confusing width
+      ' mismatch further down.
+      m.assertTrue(m.forcedWidth() > 0, "a detached LabelSecondarySmallest must measure its text")
+    end function
 
     @it("draws no badge slots for a plain track")
     function _()
@@ -116,29 +142,55 @@ namespace tests
       m.assertFalse(m.badgeSlot(1).visible)
     end function
 
-    @it("fills one slot for hearing-impaired")
+    @it("a single badge takes the LAST slot, which sits on the right edge")
     function _()
-      m.row.itemContent = m.rowContent({ hearingImpaired: true, badgeZoneWidth: 200 })
-      m.assertTrue(m.badgeSlot(0).visible)
-      m.assertFalse(m.badgeSlot(1).visible)
+      ' badgeRow is right-aligned, and a hidden slot still takes its place in a
+      ' LayoutGroup — so unused slots must be the leading ones.
+      m.row.itemContent = m.rowContent({ forced: true })
+      m.assertFalse(m.badgeSlot(0).visible)
+      m.assertTrue(m.badgeSlot(1).visible)
+      m.assertEqual(m.badgeLabel(1).text, translate(translationKeys.LabelForcedSubtitle))
     end function
 
-    @it("fills both slots, hearing-impaired first - significance order")
+    @it("two badges read in significance order, left to right")
     function _()
-      ' Order is load-bearing: the badge zone is clipped to the row's right edge,
-      ' so an overflowing badge is dropped from the least significant end.
-      m.row.itemContent = m.rowContent({ hearingImpaired: true, forced: true, badgeZoneWidth: 280 })
+      m.row.itemContent = m.rowContent({ hearingImpaired: true, forced: true })
+      m.assertEqual(m.badgeLabel(0).text, translate(translationKeys.LabelHearingImpaired))
+      m.assertEqual(m.badgeLabel(1).text, translate(translationKeys.LabelForcedSubtitle))
       m.assertTrue(m.badgeSlot(0).visible)
       m.assertTrue(m.badgeSlot(1).visible)
     end function
 
-    @it("a forced-only track uses the FIRST slot, not the second")
+    @it("an icon-less badge carries no icon gap")
     function _()
-      ' Slots are filled in append order, not reserved per flag — a forced-only
-      ' row must not leave a hole where the CC badge would have gone.
-      m.row.itemContent = m.rowContent({ forced: true, badgeZoneWidth: 120 })
-      m.assertTrue(m.badgeSlot(0).visible)
-      m.assertFalse(m.badgeSlot(1).visible)
+      ' THE REGRESSION: the gap beside an empty icon slot indented "Forced" and
+      ' clipped it.
+      m.row.itemContent = m.rowContent({ forced: true })
+      m.assertEqual(int(m.badgeSlot(1).itemSpacings[0]), 0)
+
+      m.row.itemContent = m.rowContent({ hearingImpaired: true })
+      m.assertEqual(int(m.badgeSlot(1).itemSpacings[0]), subtitleLayout.BADGE_ICON_GAP, "a badge with an icon keeps its gap")
+    end function
+
+    @it("anchors the badges on the row's right padding edge, right-aligned")
+    function _()
+      m.row.itemContent = m.rowContent({ forced: true })
+      badgeRow = m.row.findNode("badgeRow")
+      m.assertEqual(badgeRow.horizAlignment, "right")
+      m.assertEqual(int(badgeRow.translation[0]), subtitleLayout.EXISTING_WIDTH - subtitleLayout.ROW_H_PADDING)
+    end function
+
+    @it("drops the least significant badge whole when the row cannot fit both")
+    function _()
+      ' One pixel short of fitting both: the text floor wins, and "Forced" goes
+      ' entirely rather than being cut to "Forc".
+      bothWidth = m.hearingImpairedWidth() + subtitleLayout.BADGE_SPACING + m.forcedWidth()
+      rowWidth = int((subtitleLayout.ROW_H_PADDING * 2) + subtitleLayout.ROW_BADGE_GUTTER + subtitleLayout.ROW_DETAIL_MIN_WIDTH + bothWidth) - 1
+
+      m.row.itemContent = m.rowContent({ hearingImpaired: true, forced: true, rowWidth: rowWidth })
+      m.assertFalse(m.badgeSlot(0).visible, "only one badge fits")
+      m.assertTrue(m.badgeSlot(1).visible)
+      m.assertEqual(m.badgeLabel(1).text, translate(translationKeys.LabelHearingImpaired), "the MORE significant badge is the one kept")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -149,10 +201,17 @@ namespace tests
     function _()
       ' The failure this guards is invisible in a build and only shows while
       ' scrolling: a pooled slot left visible from the row before.
-      m.row.itemContent = m.rowContent({ hearingImpaired: true, forced: true, badgeZoneWidth: 280 })
+      m.row.itemContent = m.rowContent({ hearingImpaired: true, forced: true })
       m.row.itemContent = m.rowContent({})
       m.assertFalse(m.badgeSlot(0).visible)
       m.assertFalse(m.badgeSlot(1).visible)
+    end function
+
+    @it("gives the title its full width back when badges are recycled away")
+    function _()
+      m.row.itemContent = m.rowContent({ forced: true })
+      m.row.itemContent = m.rowContent({})
+      m.assertEqual(int(m.row.findNode("titleLabel").maxWidth), subtitleLayout.EXISTING_WIDTH - (subtitleLayout.ROW_H_PADDING * 2))
     end function
 
     @it("drops the second line when a downloaded row is recycled into a built-in one")
@@ -232,12 +291,14 @@ namespace tests
       m.assertEqual(m.row.findNode("titleLabel").maxWidth, wide, "the title must not pay for the icon")
     end function
 
-    @it("hands the title the whole row when the section reserves no badge zone")
+    @it("the title gives up exactly the measured badges plus one gutter")
     function _()
-      m.row.itemContent = m.rowContent({ badgeZoneWidth: 0 })
-      noBadges = m.row.findNode("titleLabel").maxWidth
-      m.row.itemContent = m.rowContent({ badgeZoneWidth: 280 })
-      m.assertTrue(m.row.findNode("titleLabel").maxWidth < noBadges, "a badge zone must cost the title width")
+      ' The title ends where the right-aligned badges begin, so it can never run
+      ' underneath them — whatever the translation's width.
+      usable = subtitleLayout.EXISTING_WIDTH - (subtitleLayout.ROW_H_PADDING * 2)
+      m.row.itemContent = m.rowContent({ forced: true })
+      expected = usable - m.forcedWidth() - subtitleLayout.ROW_BADGE_GUTTER
+      m.assertTrue(Abs(m.row.findNode("titleLabel").maxWidth - expected) < 1, "title width must be the row minus the badge run and gutter")
     end function
 
   end class

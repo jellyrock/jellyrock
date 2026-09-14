@@ -20,7 +20,6 @@ const BADGE_POOL_SIZE = 2
 sub init()
   m.titleLabel = m.top.findNode("titleLabel")
   m.sourceLabel = m.top.findNode("sourceLabel")
-  m.badgeClip = m.top.findNode("badgeClip")
   m.badgeRow = m.top.findNode("badgeRow")
   m.deleteIcon = m.top.findNode("deleteIcon")
 
@@ -29,12 +28,21 @@ sub init()
   ' Until a content node says otherwise, assume the compact shape — a row sized
   ' for two lines that only ever draws one leaves a visible gap.
   m.isExternal = false
-  ' No badges until a content node says otherwise, so a row measured before its
-  ' content arrives gives the title the full width rather than an empty strip.
-  m.badgeZoneWidth = 0
   ' Likewise assume no action: a row that reserves space for an affordance it
   ' never draws is indistinguishable from one that is simply misaligned.
   m.canDelete = false
+  ' Badges this row's content asks for, each { text, color, iconKind, width },
+  ' and the width of the ones actually shown. Empty until content arrives, so a
+  ' row measured before then gives the title the full width.
+  m.wantedBadges = []
+  m.badgesWidth = 0
+
+  m.badgeRow.itemSpacings = [subtitleLayout.BADGE_SPACING]
+
+  ' Measures badge text with the badge labels' own font. Never drawn; kept out of
+  ' badgeRow so it takes no slot in the layout.
+  m.badgeMeasure = m.top.createChild("LabelSecondarySmallest")
+  m.badgeMeasure.visible = false
 
   m.deleteIcon.width = subtitleLayout.ROW_ACTION_ICON_SIZE
   m.deleteIcon.height = subtitleLayout.ROW_ACTION_ICON_SIZE
@@ -65,7 +73,6 @@ end sub
 ' Nodes are now created once; only their text, colour and visibility change.
 sub buildBadgePool()
   m.badges = []
-  m.badgeCount = 0
 
   for i = 0 to BADGE_POOL_SIZE - 1
     badge = m.badgeRow.createChild("LayoutGroup")
@@ -74,7 +81,6 @@ sub buildBadgePool()
     ' row was populated?" unanswerable without a screenshot.
     badge.id = "existingBadgeSlot" + i.toStr()
     badge.layoutDirection = "horiz"
-    badge.itemSpacings = [6]
     badge.vertAlignment = "center"
     badge.visible = false
 
@@ -123,11 +129,6 @@ sub onItemContentChanged()
   if not isValid(content) then return
 
   if isValid(content.rowWidth) and content.rowWidth > 0 then m.top.rowWidth = content.rowWidth
-  ' Decided per SECTION by the panel, so every row in a section reserves the same
-  ' width and the right-anchored badges line up. Zero when the section carries no
-  ' badges at all, which hands the title the whole row.
-  m.badgeZoneWidth = 0
-  if isValid(content.badgeZoneWidth) then m.badgeZoneWidth = content.badgeZoneWidth
 
   m.titleLabel.text = titleLineFor(content)
 
@@ -143,8 +144,7 @@ sub onItemContentChanged()
   ' Explicitly `= true` so an absent field reads as "no action", never as one.
   m.canDelete = content.canDelete = true
 
-  rebuildBadges(content)
-  hideUnusedBadges()
+  m.wantedBadges = badgesFor(content)
   onSizeChanged()
 end sub
 
@@ -172,98 +172,114 @@ function titleLineFor(content as object) as string
   return line
 end function
 
-' rebuildBadges: Only the flags that change what the track IS.
+' badgesFor: Only the flags that change what the track IS, most significant first.
 '
-' Slots are ordered by significance and the badge zone is clipped to the row's
-' right edge, so anything that overflows is dropped from the least significant
-' end. Each kind has its own slot — see the slot constants.
+' Order is load-bearing: when a row cannot fit every badge, the ones dropped are
+' the last in this list (see placeBadges).
 '
 ' No "perfect match" here — that is a property of a provider search result, not
 ' of a file already on disk — and no download count, which an installed subtitle
 ' does not have. Rendering those was what made the first draft's right-hand
 ' column read as broken.
-sub rebuildBadges(content as object)
-  m.badgeCount = 0
+function badgesFor(content as object) as object
+  wanted = []
   constants = m.global.constants
 
   if content.hearingImpaired = true
-    appendBadge(translate(translationKeys.LabelHearingImpaired), constants.colorTextSecondary, BADGE_ICON_CC)
+    wanted.push(newBadge(translate(translationKeys.LabelHearingImpaired), constants.colorTextSecondary, BADGE_ICON_CC))
   end if
   if content.forced = true
-    appendBadge(translate(translationKeys.LabelForcedSubtitle), constants.colorTextSecondary, BADGE_ICON_NONE)
+    wanted.push(newBadge(translate(translationKeys.LabelForcedSubtitle), constants.colorTextSecondary, BADGE_ICON_NONE))
   end if
+
+  return wanted
+end function
+
+' newBadge: A wanted badge with its rendered width, measured once per content.
+function newBadge(text as string, color as string, iconKind as string) as object
+  m.badgeMeasure.text = text
+  iconWidth = 0
+  if iconKind <> BADGE_ICON_NONE then iconWidth = BADGE_ICON_SIZE
+  width = subtitleLayout.badgeWidth(iconWidth, m.badgeMeasure.localBoundingRect().width)
+  return { text: text, color: color, iconKind: iconKind, width: width }
+end function
+
+' placeBadges: Show as many wanted badges as the row allows, right-aligned.
+'
+' Filled into the LAST slots of the pool, in order, and the unused slots are
+' hidden. badgeRow is right-aligned, so the last slot sits on the row's right
+' edge; a hidden slot still takes its place in a LayoutGroup, so leaving the
+' unused ones at the FRONT keeps them out of the way instead of pushing the
+' visible badges in from the edge.
+sub placeBadges()
+  widths = []
+  for each badge in m.wantedBadges
+    widths.push(badge.width)
+  end for
+
+  count = subtitleLayout.badgesThatFit(widths, subtitleLayout.maxBadgeRunWidth(m.top.rowWidth))
+  if count > m.badges.count() then count = m.badges.count()
+  m.badgesWidth = subtitleLayout.badgeRunWidth(widths, count)
+
+  first = m.badges.count() - count
+  for i = 0 to m.badges.count() - 1
+    if i < first
+      m.badges[i].group.visible = false
+    else
+      fillBadgeSlot(m.badges[i], m.wantedBadges[i - first])
+    end if
+  end for
 end sub
 
-' appendBadge: Fill the next slot. Chooses WHICH resident icon shows; never
-' assigns a uri, which is what keeps a recycled row from rebinding a texture.
-sub appendBadge(text as string, color as string, iconKind as string)
-  if m.badgeCount >= m.badges.count() then return
-
-  slot = m.badges[m.badgeCount]
-  slot.label.text = text
-  slot.label.color = color
+' fillBadgeSlot: Draw one badge in a slot. Chooses WHICH resident icon shows;
+' never assigns a uri, which is what keeps a recycled row from rebinding a texture.
+sub fillBadgeSlot(slot as object, badge as object)
+  slot.label.text = badge.text
+  slot.label.color = badge.color
 
   for each kind in slot.icons
     icon = slot.icons[kind]
-    wanted = (kind = iconKind)
+    wanted = (kind = badge.iconKind)
     icon.visible = wanted
     if wanted
       icon.width = BADGE_ICON_SIZE
-      icon.blendColor = color
+      icon.blendColor = badge.color
     else
       icon.width = 0
     end if
   end for
 
+  ' The icon gap only exists beside an icon. Applied beside an empty holder it
+  ' indents the label, which is what clipped "Forced".
+  if badge.iconKind = BADGE_ICON_NONE
+    slot.group.itemSpacings = [0]
+  else
+    slot.group.itemSpacings = [subtitleLayout.BADGE_ICON_GAP]
+  end if
+
   slot.group.visible = true
-  m.badgeCount++
 end sub
-
-' hideUnusedBadges: Blank the tail of the pool this row did not need.
-sub hideUnusedBadges()
-  for i = m.badgeCount to m.badges.count() - 1
-    m.badges[i].group.visible = false
-  end for
-end sub
-
-' badgeZoneWidth: What this row reserves for badges, defaulting to nothing.
-'
-' A separate accessor because onSizeChanged() runs from init() too, before any
-' itemContent exists -- reading the field raw would be `invalid` there.
-function badgeZoneWidth() as integer
-  if not isValid(m.badgeZoneWidth) then return 0
-  return m.badgeZoneWidth
-end function
 
 sub onSizeChanged()
   rowWidth = m.top.rowWidth
   constants = m.global.constants
 
-  ' One line for a built-in track, two for a downloaded file. The list this row
-  ' sits in sizes its slot with the same helper, so the two cannot disagree.
-  if m.isExternal = true
-    rowHeight = subtitleLayout.rowHeight(constants.fontSizeSmaller, constants.fontSizeSmallest)
-  else
-    rowHeight = subtitleLayout.rowHeightCompact(constants.fontSizeSmaller)
-  end if
+  ' Before any geometry below: the title's width depends on what fits.
+  placeBadges()
 
-
-  ' Line 1: language and codec on the left, badges anchored right. Badges live on
+  ' Line 1: language and codec on the left, badges right-aligned. Badges live on
   ' the FIRST line for both shapes so they align down the column regardless of
   ' whether a row has a second line.
   '
   ' The action icon takes NOTHING from this line — it lives on line 2. Reserving
   ' here instead ellipsized the title on a real row (see actionZoneWidth).
   firstLineY = subtitleLayout.ROW_V_PADDING
-  zones = subtitleLayout.secondLineZones(rowWidth, badgeZoneWidth())
 
   ' ScrollingLabel viewports are driven by maxWidth, not width.
-  m.titleLabel.maxWidth = zones.detailWidth
+  m.titleLabel.maxWidth = subtitleLayout.detailWidthBeside(rowWidth, m.badgesWidth)
   m.titleLabel.translation = [subtitleLayout.ROW_H_PADDING, firstLineY]
 
-  m.badgeClip.clippingRect = [0, 0, zones.badgeWidth, rowHeight]
-  m.badgeClip.translation = [zones.badgeX, 0]
-  m.badgeRow.translation = [0, firstLineY]
+  m.badgeRow.translation = [rowWidth - subtitleLayout.ROW_H_PADDING, firstLineY]
 
   ' Line 2: the filename, and the action icon at the far right. This line has no
   ' badges, so the icon is the only thing competing with the text here — and the
@@ -274,8 +290,8 @@ sub onSizeChanged()
   m.sourceLabel.translation = [subtitleLayout.ROW_H_PADDING, secondLineY]
 
   ' Centred on line 2 rather than on the row, which is what keeps it clear of the
-  ' right-anchored badge zone above: both are pinned to the same right edge, so
-  ' they would collide on any row that carries a badge.
+  ' right-aligned badges above: both are pinned to the same right edge, so they
+  ' would collide on any row that carries a badge.
   m.deleteIcon.translation = [
     rowWidth - subtitleLayout.ROW_H_PADDING - subtitleLayout.ROW_ACTION_ICON_SIZE,
     secondLineY + (constants.fontSizeSmallest - subtitleLayout.ROW_ACTION_ICON_SIZE) / 2

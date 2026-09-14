@@ -180,118 +180,80 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("secondLineZones() - detail text left, badges right")
+    @describe("badges - measured, right-aligned, dropped whole")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("splits the results row into a detail width and a right-anchored badge zone")
+    @it("a badge without an icon is exactly its label")
     function _()
-      zones = subtitleLayout.secondLineZones(subtitleLayout.RESULTS_WIDTH, subtitleLayout.RESULTS_BADGE_WIDTH)
-
-      m.assertEqual(zones.badgeWidth, subtitleLayout.RESULTS_BADGE_WIDTH)
-      ' The badge zone ends exactly on the row's right padding edge.
-      m.assertEqual(zones.badgeX + zones.badgeWidth, subtitleLayout.RESULTS_WIDTH - subtitleLayout.ROW_H_PADDING)
-      ' Detail text, gutter and badges together fill the row's usable width.
-      m.assertEqual(zones.detailWidth + subtitleLayout.ROW_BADGE_GUTTER + zones.badgeWidth, subtitleLayout.RESULTS_WIDTH - (subtitleLayout.ROW_H_PADDING * 2))
+      ' THE REGRESSION THIS EXISTS FOR: the icon gap was charged beside an empty
+      ' icon slot, which indented "Forced" and clipped it.
+      m.assertEqual(int(subtitleLayout.badgeWidth(0, 57)), 57)
     end function
 
-    @it("splits the narrower current-subtitles row the same way")
+    @it("a badge with an icon adds the icon and one gap")
     function _()
-      zones = subtitleLayout.secondLineZones(subtitleLayout.EXISTING_WIDTH, subtitleLayout.EXISTING_BADGE_WIDTH)
+      m.assertEqual(int(subtitleLayout.badgeWidth(22, 100)), 22 + subtitleLayout.BADGE_ICON_GAP + 100)
+    end function
 
-      m.assertEqual(zones.badgeWidth, subtitleLayout.EXISTING_BADGE_WIDTH)
-      m.assertEqual(zones.badgeX + zones.badgeWidth, subtitleLayout.EXISTING_WIDTH - subtitleLayout.ROW_H_PADDING)
-      m.assertTrue(zones.detailWidth > 0, "the filename tail must have room to render")
+    @it("fits every badge when there is room, spacing only BETWEEN badges")
+    function _()
+      widths = [100, 50]
+      exact = 100 + subtitleLayout.BADGE_SPACING + 50
+      m.assertEqual(subtitleLayout.badgesThatFit(widths, exact), 2, "an exact fit fits")
+      m.assertEqual(int(subtitleLayout.badgeRunWidth(widths, 2)), exact)
+      m.assertEqual(int(subtitleLayout.badgeRunWidth(widths, 1)), 100, "a lone badge pays no spacing")
+    end function
+
+    @it("drops the least significant badge whole rather than cutting it")
+    function _()
+      widths = [100, 50]
+      m.assertEqual(subtitleLayout.badgesThatFit(widths, 100 + subtitleLayout.BADGE_SPACING + 49), 1)
+    end function
+
+    @it("stops at the first badge that does not fit instead of skipping to a smaller one")
+    function _()
+      ' Skipping would show a less significant badge while hiding a more
+      ' significant one, breaking the significance order.
+      m.assertEqual(subtitleLayout.badgesThatFit([100, 200, 10], 130), 1)
+    end function
+
+    @it("shows nothing when there is no room or nothing to show")
+    function _()
+      m.assertEqual(subtitleLayout.badgesThatFit([100], 0), 0)
+      m.assertEqual(subtitleLayout.badgesThatFit([], 500), 0)
+      m.assertEqual(int(subtitleLayout.badgeRunWidth([100], 0)), 0)
+    end function
+
+    @it("gives a row with no badges its whole usable width, with no gutter")
+    function _()
+      for each rowWidth in [subtitleLayout.RESULTS_WIDTH, subtitleLayout.EXISTING_WIDTH]
+        m.assertEqual(int(subtitleLayout.detailWidthBeside(rowWidth, 0)), rowWidth - (subtitleLayout.ROW_H_PADDING * 2))
+      end for
+    end function
+
+    @it("takes exactly the badge run plus one gutter from the text")
+    function _()
+      usable = subtitleLayout.EXISTING_WIDTH - (subtitleLayout.ROW_H_PADDING * 2)
+      m.assertEqual(int(subtitleLayout.detailWidthBeside(subtitleLayout.EXISTING_WIDTH, 150)), usable - 150 - subtitleLayout.ROW_BADGE_GUTTER)
+    end function
+
+    @it("never lets the widest allowed badge run push the text below its floor")
+    function _()
+      for each rowWidth in [subtitleLayout.RESULTS_WIDTH, subtitleLayout.EXISTING_WIDTH]
+        widestRun = subtitleLayout.maxBadgeRunWidth(rowWidth)
+        m.assertEqual(int(subtitleLayout.detailWidthBeside(rowWidth, widestRun)), subtitleLayout.ROW_DETAIL_MIN_WIDTH)
+      end for
     end function
 
     @it("never hands a Label a width of zero or less, at any row width")
     function _()
-      ' A Label with width <= 0 renders its text UNCLIPPED, so a bad split would
-      ' silently draw the detail line straight through the badges instead of
-      ' ellipsizing. This has to hold even at widths no column actually uses —
-      ' the guard is worthless if it only survives the two inputs we pass today.
+      ' A Label with width <= 0 renders its text UNCLIPPED. This has to hold even
+      ' at widths no column uses — the guard is worthless if it only survives the
+      ' two inputs we pass today.
       for each rowWidth in [subtitleLayout.RESULTS_WIDTH, subtitleLayout.EXISTING_WIDTH, 400, 200, 100, 24, 0]
-        zones = subtitleLayout.secondLineZones(rowWidth, subtitleLayout.RESULTS_BADGE_WIDTH)
-        m.assertTrue(zones.detailWidth > 0, "detail width must stay positive")
-        m.assertTrue(zones.badgeWidth >= 0, "badge width must never go negative")
-      end for
-    end function
-
-    @it("honours the detail floor at both real column widths")
-    function _()
-      for each pair in [[subtitleLayout.RESULTS_WIDTH, subtitleLayout.RESULTS_BADGE_WIDTH], [subtitleLayout.EXISTING_WIDTH, subtitleLayout.EXISTING_BADGE_WIDTH]]
-        zones = subtitleLayout.secondLineZones(pair[0], pair[1])
-        m.assertTrue(zones.detailWidth >= subtitleLayout.ROW_DETAIL_MIN_WIDTH, "detail width must stay at or above its floor")
-      end for
-    end function
-
-    @it("drops the gutter with the badge zone rather than leaving a gap to nothing")
-    function _()
-      ' Too narrow for any badges at all: the detail line takes the whole usable
-      ' width instead of stopping short of an edge that is not there.
-      zones = subtitleLayout.secondLineZones(100, subtitleLayout.RESULTS_BADGE_WIDTH)
-
-      m.assertEqual(zones.badgeWidth, 0)
-      m.assertEqual(zones.detailWidth, 100 - (subtitleLayout.ROW_H_PADDING * 2))
-    end function
-
-    @it("gives the badge zone whatever is left once the detail floor is met")
-    function _()
-      ' A row too narrow for the full badge zone shrinks the badges, not the
-      ' text: the text is the row's content, the badges are qualifiers on it.
-      narrow = subtitleLayout.ROW_DETAIL_MIN_WIDTH + subtitleLayout.ROW_BADGE_GUTTER + 40 + (subtitleLayout.ROW_H_PADDING * 2)
-      zones = subtitleLayout.secondLineZones(narrow, subtitleLayout.RESULTS_BADGE_WIDTH)
-
-      m.assertEqual(zones.detailWidth, subtitleLayout.ROW_DETAIL_MIN_WIDTH)
-      m.assertEqual(zones.badgeWidth, 40)
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("existingBadgeZoneWidth() - a section reserves only what it carries")
-
-    @it("reserves nothing for a section with no badges at all")
-    function _()
-      m.assertEqual(subtitleLayout.existingBadgeZoneWidth(false, false), 0)
-    end function
-
-    @it("gives a badge-free section's title the whole row")
-    function _()
-      ' THE REGRESSION THIS EXISTS FOR. The flat 300px zone was charged to every
-      ' row whether or not its section had a single badge, leaving 222px of a
-      ' 570px column for the title — measured on a 28-track film, that ellipsized
-      ' "Portuguese · PGSSUB" to "Portuguese · PGS…" on rows with nothing beside
-      ' them. A section with no badges must hand the title everything.
-      zones = subtitleLayout.secondLineZones(subtitleLayout.EXISTING_WIDTH, subtitleLayout.existingBadgeZoneWidth(false, false))
-
-      m.assertEqual(zones.badgeWidth, 0, "nothing is reserved")
-      m.assertEqual(zones.detailWidth, subtitleLayout.EXISTING_WIDTH - (subtitleLayout.ROW_H_PADDING * 2), "the title gets the row's whole usable width")
-    end function
-
-    @it("charges only for the badges that are actually present")
-    function _()
-      hiOnly = subtitleLayout.existingBadgeZoneWidth(true, false)
-      forcedOnly = subtitleLayout.existingBadgeZoneWidth(false, true)
-      both = subtitleLayout.existingBadgeZoneWidth(true, true)
-
-      m.assertEqual(hiOnly, subtitleLayout.BADGE_WIDTH_HEARING_IMPAIRED)
-      m.assertEqual(forcedOnly, subtitleLayout.BADGE_WIDTH_FORCED)
-      ' One gap, and only between two badges — a lone badge must not be charged
-      ' for a separator it has nothing to be separated from.
-      m.assertEqual(both, hiOnly + subtitleLayout.BADGE_GAP + forcedOnly)
-    end function
-
-    @it("never reserves more than the column's stated ceiling")
-    function _()
-      ' EXISTING_BADGE_WIDTH is what the column was sized against, so the
-      ' worst case has to still fit inside it or the two disagree.
-      m.assertTrue(subtitleLayout.existingBadgeZoneWidth(true, true) <= subtitleLayout.EXISTING_BADGE_WIDTH)
-    end function
-
-    @it("leaves the title above its floor at every badge combination")
-    function _()
-      for each pair in [[false, false], [true, false], [false, true], [true, true]]
-        zones = subtitleLayout.secondLineZones(subtitleLayout.EXISTING_WIDTH, subtitleLayout.existingBadgeZoneWidth(pair[0], pair[1]))
-        m.assertTrue(zones.detailWidth >= subtitleLayout.ROW_DETAIL_MIN_WIDTH, "the title must stay at or above its floor")
-        m.assertTrue(zones.badgeX + zones.badgeWidth <= subtitleLayout.EXISTING_WIDTH - subtitleLayout.ROW_H_PADDING, "badges must stay inside the row's padding edge")
+        m.assertTrue(subtitleLayout.maxBadgeRunWidth(rowWidth) >= 0, "the badge budget must never go negative")
+        m.assertTrue(subtitleLayout.detailWidthBeside(rowWidth, subtitleLayout.maxBadgeRunWidth(rowWidth)) > 0, "text width must stay positive")
+        m.assertTrue(subtitleLayout.detailWidthBeside(rowWidth, 1000) > 0, "even beside an oversized run")
       end for
     end function
 
@@ -324,23 +286,6 @@ namespace tests
       m.assertTrue(sourceWidth > subtitleLayout.EXISTING_WIDTH / 2, "the filename must keep most of the row")
     end function
 
-    @it("takes nothing from the first line, so the title cannot be ellipsized by it")
-    function _()
-      ' THE REGRESSION THIS EXISTS FOR. Reserving the icon out of the row as a
-      ' whole narrowed the title by the icon's width, which on device truncated
-      ' "English · SUBRIP" to "English · SUB…" on a row carrying no badges at
-      ' all. Line 1's split must be identical whether or not the row is
-      ' deletable — the icon is a second-line citizen.
-      zones = subtitleLayout.secondLineZones(subtitleLayout.EXISTING_WIDTH, subtitleLayout.EXISTING_BADGE_WIDTH)
-
-      ' Derived, not restated: this asserted a literal 222 and went red the moment
-      ' the row's padding was trimmed, even though the property it cares about —
-      ' the icon takes nothing from line 1 — was still true.
-      usable = subtitleLayout.EXISTING_WIDTH - (subtitleLayout.ROW_H_PADDING * 2)
-      m.assertEqual(zones.detailWidth, usable - subtitleLayout.EXISTING_BADGE_WIDTH - subtitleLayout.ROW_BADGE_GUTTER, "the title keeps the full first-line width")
-      m.assertEqual(zones.badgeWidth, subtitleLayout.EXISTING_BADGE_WIDTH, "the badge zone is untouched too")
-    end function
-
     @it("fits the icon between the filename and the row's edge, one gutter apart")
     function _()
       sourceWidth = subtitleLayout.EXISTING_WIDTH - (subtitleLayout.ROW_H_PADDING * 2) - subtitleLayout.actionZoneWidth(true)
@@ -350,12 +295,11 @@ namespace tests
       m.assertEqual(iconLeft - filenameRight, subtitleLayout.ROW_ACTION_GUTTER, "exactly the gutter separates them")
     end function
 
-    @it("keeps the icon below the badge zone it shares a right edge with")
+    @it("keeps the icon below the badges it shares a right edge with")
     function _()
       ' Both are pinned to the row's right padding edge, so the ONLY thing
       ' keeping them apart is that the badges sit on line 1 and the icon on
-      ' line 2. If the icon ever rose into line 1 it would land underneath a
-      ' badge, and the badge zone clips its overflow rather than complaining.
+      ' line 2. If the icon ever rose into line 1 it would land on a badge.
       firstLineY = subtitleLayout.ROW_V_PADDING
       firstLineBottom = firstLineY + 25
       secondLineY = firstLineY + 25 + subtitleLayout.ROW_LINE_GAP

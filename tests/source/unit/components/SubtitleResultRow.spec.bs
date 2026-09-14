@@ -1,0 +1,127 @@
+' Unit tests for SubtitleResultRow — one search result in SubtitlePanel's
+' "Available to download" column. Covers the badge run beside the meta line:
+' right-aligned, measured, and dropped whole when it cannot fit.
+
+import "pkg:/source/constants/subtitleLayout.bs"
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/translate.bs"
+
+namespace tests
+
+  @suite("SubtitleResultRow - badges beside the meta line")
+  class SubtitleResultRowTests extends tests.BaseTestSuite
+
+    private row as object
+
+    protected override function beforeEach()
+      super.beforeEach()
+      m.row = createObject("roSGNode", "SubtitleResultRow")
+    end function
+
+    protected override function afterEach()
+      m.row = invalid
+      super.afterEach()
+    end function
+
+    ' rowContent: shaped exactly as SubtitlePanel.renderResults builds one.
+    private function rowContent(fields as object) as object
+      content = createObject("roSGNode", "ContentNode")
+      base = {
+        name: "Sintel.2010.1080p.BluRay.x264",
+        author: "someone",
+        format: "srt",
+        providerName: "Open Subtitles",
+        dateCreated: "2012-01-01T00:00:00Z",
+        threeLetterIsoLanguageName: "eng",
+        downloadCount: 10,
+        isHashMatch: false,
+        hearingImpaired: false,
+        forced: false,
+        aiTranslated: false,
+        machineTranslated: false,
+        showProvider: false,
+        showFormat: false,
+        rowWidth: subtitleLayout.RESULTS_WIDTH
+      }
+      for each key in fields
+        base[key] = fields[key]
+      end for
+      content.addFields(base)
+      return content
+    end function
+
+    private function badgeSlot(index as integer) as object
+      return m.row.findNode("resultBadgeSlot" + index.toStr())
+    end function
+
+    private function visibleBadgeTexts() as object
+      texts = []
+      for i = 0 to 3
+        slot = m.badgeSlot(i)
+        if slot.visible then texts.push(slot.getChild(1).text)
+      end for
+      return texts
+    end function
+
+    private function textWidth(text as string) as float
+      label = createObject("roSGNode", "LabelSecondarySmallest")
+      label.text = text
+      return label.localBoundingRect().width
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("badges")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a result with no badges gives the meta line the whole row")
+    function _()
+      m.row.itemContent = m.rowContent({})
+      m.assertEqual(m.visibleBadgeTexts().count(), 0)
+      m.assertEqual(int(m.row.findNode("metaLabel").width), subtitleLayout.RESULTS_WIDTH - (subtitleLayout.ROW_H_PADDING * 2))
+    end function
+
+    @it("fills the LAST slots, in significance order, right-aligned on the padding edge")
+    function _()
+      m.row.itemContent = m.rowContent({ isHashMatch: true, forced: true })
+      m.assertFalse(m.badgeSlot(0).visible)
+      m.assertFalse(m.badgeSlot(1).visible)
+      texts = m.visibleBadgeTexts()
+      m.assertEqual(texts[0], translate(translationKeys.LabelPerfectMatch))
+      m.assertEqual(texts[1], translate(translationKeys.LabelForcedSubtitle))
+
+      badgeRow = m.row.findNode("badgeRow")
+      m.assertEqual(badgeRow.horizAlignment, "right")
+      m.assertEqual(int(badgeRow.translation[0]), subtitleLayout.RESULTS_WIDTH - (subtitleLayout.ROW_H_PADDING))
+    end function
+
+    @it("the meta line gives up exactly the measured badge plus one gutter")
+    function _()
+      m.row.itemContent = m.rowContent({ forced: true })
+      forced = subtitleLayout.badgeWidth(0, m.textWidth(translate(translationKeys.LabelForcedSubtitle)))
+      m.assertTrue(forced > 0, "a detached label must measure its text")
+      expected = subtitleLayout.RESULTS_WIDTH - (subtitleLayout.ROW_H_PADDING * 2) - forced - subtitleLayout.ROW_BADGE_GUTTER
+      m.assertTrue(Abs(m.row.findNode("metaLabel").width - expected) < 1, "meta width must be the row minus the badge run and gutter")
+    end function
+
+    @it("drops whole badges from the least significant end on a narrow row")
+    function _()
+      ' Wide enough for perfect match alone, not for hearing impaired beside it.
+      perfect = subtitleLayout.badgeWidth(22, m.textWidth(translate(translationKeys.LabelPerfectMatch)))
+      rowWidth = int((subtitleLayout.ROW_H_PADDING * 2) + subtitleLayout.ROW_BADGE_GUTTER + subtitleLayout.ROW_DETAIL_MIN_WIDTH + perfect) + 1
+
+      m.row.itemContent = m.rowContent({ isHashMatch: true, hearingImpaired: true, forced: true, rowWidth: rowWidth })
+      texts = m.visibleBadgeTexts()
+      m.assertEqual(texts.count(), 1)
+      m.assertEqual(texts[0], translate(translationKeys.LabelPerfectMatch), "the most significant badge is the one kept")
+    end function
+
+    @it("forgets the previous row's badges when recycled")
+    function _()
+      m.row.itemContent = m.rowContent({ isHashMatch: true, hearingImpaired: true, forced: true, machineTranslated: true })
+      m.row.itemContent = m.rowContent({})
+      m.assertEqual(m.visibleBadgeTexts().count(), 0)
+    end function
+
+  end class
+
+end namespace

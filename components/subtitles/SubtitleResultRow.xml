@@ -14,7 +14,7 @@
   strip and read as broken next to a row with them. Now a badge-free row is
   correctly spaced by construction, and the row lost 26px of height with it.
 
-  The badge zone is anchored to the row's right padding edge, not flowed after
+  Badges are right-aligned on the row's right padding edge, not flowed after
   the meta text: uploader names in the sampled results ran from 4 to 20
   characters, so a flowed badge lands at a different x on every row and reads as
   jitter while scrolling. Geometry is in source/constants/subtitleLayout.bs.
@@ -42,21 +42,20 @@
     <ScrollingLabelPrimarySmaller id="nameLabel" repeatCount="0" />
     <LabelSecondarySmallest id="metaLabel" />
 
-    <!-- Clips the badge zone to the row's right padding edge. A third or fourth
-         badge is rare but possible, and translations run longer than English:
-         without this it would overrun the 40px gutter and draw over the
-         "Current subtitles" column beside it. Badges are appended in order of
-         significance, so the one that gets cut is always the least important. -->
-    <Group id="badgeClip">
-      <!-- vertAlignment is deliberately left at its default of "top". A HORIZ
-           LayoutGroup set to "center" puts its local y-origin at the group's
-           vertical CENTRE, not its top edge, so translating it to the second
-           line's y drew the badges half their height too high — measured at 12px
-           above the detail text's baseline on a Stick 4K. The inner per-badge
-           groups DO use center, which is what keeps each icon aligned with its
-           own label. -->
-      <LayoutGroup id="badgeRow" layoutDirection="horiz" itemSpacings="[16]" />
-    </Group>
+    <!-- Right-aligned on the row's right padding edge, so badges grow leftward.
+         The row measures them and drops whole badges that would not fit rather
+         than drawing past the gutter into the column beside it — see
+         subtitleLayout.badgesThatFit(). itemSpacings is set from
+         subtitleLayout.BADGE_SPACING in init().
+
+         vertAlignment is deliberately left at its default of "top". A HORIZ
+         LayoutGroup set to "center" puts its local y-origin at the group's
+         vertical CENTRE, not its top edge, so translating it to the second
+         line's y drew the badges half their height too high — measured at 12px
+         above the detail text's baseline on a Stick 4K. The inner per-badge
+         groups DO use center, which is what keeps each icon aligned with its
+         own label. -->
+    <LayoutGroup id="badgeRow" layoutDirection="horiz" horizAlignment="right" />
   </children>
 
   <interface>

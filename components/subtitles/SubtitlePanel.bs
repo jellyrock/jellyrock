@@ -828,21 +828,10 @@ sub renderExistingList()
   downloaded = createObject("roSGNode", "ContentNode")
   embedded = createObject("roSGNode", "ContentNode")
 
-  ' How wide each section's badge zone is, decided BEFORE any row is built —
-  ' every row in a section must reserve the same width or the right-anchored
-  ' badges stop lining up, so it cannot be a per-row answer. A section with no
-  ' badges reserves nothing and its titles get the whole row.
-  downloadedZone = badgeZoneFor(streams, true)
-  embeddedZone = badgeZoneFor(streams, false)
-
   for each stream in streams
     isExternal = stream.IsExternal = true
     parent = embedded
-    zone = embeddedZone
-    if isExternal
-      parent = downloaded
-      zone = downloadedZone
-    end if
+    if isExternal then parent = downloaded
 
     row = parent.createChild("ContentNode")
     row.addFields({
@@ -861,8 +850,7 @@ sub renderExistingList()
       hearingImpaired: stream.IsHearingImpaired = true,
       forced: stream.IsForced = true,
       streamIndex: intOrZero(stream.Index),
-      rowWidth: subtitleLayout.EXISTING_WIDTH,
-      badgeZoneWidth: zone
+      rowWidth: subtitleLayout.EXISTING_WIDTH
     })
   end for
 
@@ -870,30 +858,6 @@ sub renderExistingList()
   m.embeddedList.content = embedded
   layoutExistingSections(downloaded.getChildCount(), embedded.getChildCount())
 end sub
-
-' badgeZoneFor: The badge-zone width one section of the column needs.
-'
-' Scans only the streams belonging to that section — external for the downloaded
-' list, the rest for the built-in one — because the two sections are separate
-' MarkupLists with separate geometry, and a badge on a downloaded file should not
-' cost a built-in track any of its title width.
-'
-' @param {object} streams - every subtitle stream on the item
-' @param {boolean} wantExternal - true for the downloaded section, false for built-in
-' @return {integer} width to reserve at each of that section's right edges
-function badgeZoneFor(streams as object, wantExternal as boolean) as integer
-  hearingImpaired = false
-  forced = false
-
-  for each stream in streams
-    if (stream.IsExternal = true) = wantExternal
-      if stream.IsHearingImpaired = true then hearingImpaired = true
-      if stream.IsForced = true then forced = true
-    end if
-  end for
-
-  return subtitleLayout.existingBadgeZoneWidth(hearingImpaired, forced)
-end function
 
 ' subtitleFileLine: The filename line for a downloaded subtitle, "" for a built-in one.
 function subtitleFileLine(stream as object, isExternal as boolean) as string

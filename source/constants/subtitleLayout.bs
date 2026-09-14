@@ -44,74 +44,102 @@ namespace subtitleLayout
   ' Gap between the row's two lines.
   const ROW_LINE_GAP = 6
 
-  ' Gap between the detail text and the badge zone on the second line. Wide
-  ' enough that an ellipsized detail line never looks joined to the first badge.
+  ' Gap between a row's text and the badges beside it. Wide enough that an
+  ' ellipsized line never looks joined to the first badge.
   const ROW_BADGE_GUTTER = 24
 
-  ' Width reserved for badges at the right of a row's second line.
+  ' ── Badges ─────────────────────────────────────────────────────────────────
   '
-  ' Sized by the BADGE STRINGS, not by the column: the same words are drawn
-  ' whatever the column's width, and the two row types carry different sets.
-  ' Measured off a device capture at fontSizeSmallest — ~10.3px per character
-  ' plus 28px for an icon and its gap, 16px between badges:
-  '
-  '   results   "Perfect match" 162 + "Hearing impaired" 193 + "Forced" 62,
-  '             with two 16px gaps = 449
-  '   existing  "Hearing impaired" 193 + "Forced" 62 + one gap = 271
-  '
-  ' So each holds every badge its row type can carry IN ENGLISH, with a little
-  ' slack. A longer translation, or a results row that also carries
-  ' "Machine translated", will exceed it — and that is handled rather than
-  ' prevented: badges are appended most-significant first and the zone is
-  ' clipped to the row's right padding edge, so the overflow is cut instead of
-  ' overrunning the neighbouring column, and what is lost is always the least
-  ' significant badge. Widening these to fit every language would cost the
-  ' common two-badge row a large dead gap, which is the worse trade.
-  const RESULTS_BADGE_WIDTH = 460
-  const EXISTING_BADGE_WIDTH = 300
+  ' Badges are RIGHT-ALIGNED: a row's badge LayoutGroup has horizAlignment="right"
+  ' and sits on the row's right padding edge, so badges grow leftward and line up
+  ' down a column whatever their widths. Each row measures its own badge labels
+  ' (localBoundingRect — font metrics, so any translation fits) and gives its text
+  ' whatever is left. Nothing here guesses at how wide a word renders.
 
-  ' ── Per-badge widths, for the "on this item" column ────────────────────────
-  ' Same measurement basis as the totals above (~10.3px per character at
-  ' fontSizeSmallest, plus 28px where a badge carries an icon and its gap).
-  const BADGE_WIDTH_HEARING_IMPAIRED = 193
-  const BADGE_WIDTH_FORCED = 62
-  const BADGE_GAP = 16
+  ' Between two badges. Applied to the badge LayoutGroup in each row's init(), so
+  ' the arithmetic below and the rendered layout use the same number.
+  const BADGE_SPACING = 16
 
-  ' existingBadgeZoneWidth: How much of a row's width the badge zone should take.
+  ' Between a badge's icon and its label. Only a badge WITH an icon pays it — a
+  ' spacing applied beside an empty icon slot is what indented, and clipped, an
+  ' icon-less badge like "Forced".
+  const BADGE_ICON_GAP = 6
+
+  ' The text keeps at least this much beside the badges; badges that would push
+  ' it narrower are dropped whole. Also keeps a Label's width positive (a Label
+  ' with width <= 0 renders its text unclipped).
+  const ROW_DETAIL_MIN_WIDTH = 120
+
+  ' badgeWidth: One badge's rendered width from its measured parts.
   '
-  ' Asked of the SECTION, not of the row — the zone is right-anchored so the
-  ' badges line up down the column, which only works if every row in the section
-  ' reserves the same width. That makes "how wide" a property of the whole set,
-  ' the same way showProvider / showFormat are properties of a result set rather
-  ' than of a result.
-  '
-  ' The flat EXISTING_BADGE_WIDTH it replaces was charged to every row whether or
-  ' not the section had any badges at all, and at 300px out of a 570px column it
-  ' left the title 222px. Measured on a 28-track film: "Portuguese · PGSSUB"
-  ' ellipsized to "Portuguese · PGS…" on rows carrying no badges whatsoever,
-  ' while the reserved strip beside them sat empty — the same mistake, in the same
-  ' column, that actionZoneWidth() already documents for the delete icon.
-  '
-  ' Returning 0 for a section with no badges is the case that matters most: the
-  ' built-in tracks are the long-named ones and are usually badge-free, so they
-  ' get the entire row.
-  '
-  ' @param {boolean} hasHearingImpaired - any row in the section is hearing-impaired
-  ' @param {boolean} hasForced - any row in the section is forced
-  ' @return {integer} width to reserve at the row's right edge
-  function existingBadgeZoneWidth(hasHearingImpaired as boolean, hasForced as boolean) as integer
-    width = 0
-    if hasHearingImpaired then width += subtitleLayout.BADGE_WIDTH_HEARING_IMPAIRED
-    if hasForced
-      if width > 0 then width += subtitleLayout.BADGE_GAP
-      width += subtitleLayout.BADGE_WIDTH_FORCED
-    end if
-    return width
+  ' @param {float} iconWidth - 0 for a badge without an icon
+  ' @param {float} labelWidth - the label's measured width
+  ' @return {float} width the badge occupies in the row
+  function badgeWidth(iconWidth as float, labelWidth as float) as float
+    if iconWidth > 0 then return iconWidth + subtitleLayout.BADGE_ICON_GAP + labelWidth
+    return labelWidth
   end function
 
-  ' Floor for the detail text so a hypothetical narrow row can never be handed a
-  ' negative width (a Label with width <= 0 renders its text unclipped).
-  const ROW_DETAIL_MIN_WIDTH = 120
+  ' badgesThatFit: How many LEADING badges fit in `available`, spacing included.
+  '
+  ' Badges arrive in significance order, so stopping at the first one that does
+  ' not fit always drops the least significant. Whole badges only — a badge is
+  ' shown in full or not at all, never cut mid-word.
+  '
+  ' @param {object} widths - badge widths, most significant first
+  ' @param {float} available - the widest run the row allows
+  ' @return {integer} number of badges to show
+  function badgesThatFit(widths as object, available as float) as integer
+    used = 0
+    count = 0
+    for each width in widths
+      nextUsed = used + width
+      if count > 0 then nextUsed += subtitleLayout.BADGE_SPACING
+      if nextUsed > available then exit for
+      used = nextUsed
+      count++
+    end for
+    return count
+  end function
+
+  ' badgeRunWidth: Total width of the first `count` badges, spacing included.
+  '
+  ' @param {object} widths - badge widths, most significant first
+  ' @param {integer} count - how many are shown (from badgesThatFit)
+  ' @return {float} width of the right-aligned badge run
+  function badgeRunWidth(widths as object, count as integer) as float
+    total = 0
+    for i = 0 to count - 1
+      if i > 0 then total += subtitleLayout.BADGE_SPACING
+      total += widths[i]
+    end for
+    return total
+  end function
+
+  ' maxBadgeRunWidth: The widest badge run a row allows before its text would
+  ' drop below ROW_DETAIL_MIN_WIDTH.
+  '
+  ' @param {integer} rowWidth - full width of the row
+  ' @return {float} available width for badges, never negative
+  function maxBadgeRunWidth(rowWidth as integer) as float
+    available = rowWidth - (subtitleLayout.ROW_H_PADDING * 2) - subtitleLayout.ROW_BADGE_GUTTER - subtitleLayout.ROW_DETAIL_MIN_WIDTH
+    if available < 0 then return 0
+    return available
+  end function
+
+  ' detailWidthBeside: Width left for a row's text beside its badge run.
+  '
+  ' No badges means no gutter: the text takes the row's whole usable width.
+  '
+  ' @param {integer} rowWidth - full width of the row
+  ' @param {float} runWidth - badgeRunWidth() of what the row shows
+  ' @return {float} text width, always at least 1
+  function detailWidthBeside(rowWidth as integer, runWidth as float) as float
+    width = rowWidth - (subtitleLayout.ROW_H_PADDING * 2)
+    if runWidth > 0 then width -= runWidth + subtitleLayout.ROW_BADGE_GUTTER
+    if width < 1 then return 1
+    return width
+  end function
 
   ' ── Row action affordance ──────────────────────────────────────────────────
   ' The delete icon on a downloaded-subtitle row. 24px matches the app's other
@@ -376,51 +404,6 @@ namespace subtitleLayout
   ' @return {integer} pixels from the top of a section to the top of its rows
   function sectionHeadingSpace() as integer
     return subtitleLayout.SECTION_HEADING_TOP_GAP + subtitleLayout.SECTION_HEADING_HEIGHT
-  end function
-
-  ' secondLineZones: Where the detail text and the badges go on a row's second line.
-  '
-  ' Returned together, from one function, because the two are complementary
-  ' halves of the same split — computing them separately is how the panel's
-  ' first draft ended up with a row component and a list slot that disagreed.
-  '
-  ' The badge zone is anchored to the row's right padding edge rather than
-  ' flowing after the detail text. Flowing would waste nothing, but the detail
-  ' line's width swings widely (uploader names in the sampled results ran from 4
-  ' to 20 characters), so a flowed badge would land at a different x on every
-  ' row and read as jitter while scrolling. A fixed anchor also means the row
-  ' needs no text measurement, which a MarkupList row cannot do cheaply — it is
-  ' recycled on every scroll step and localBoundingRect() is only valid after a
-  ' render pass.
-  '
-  ' @param {integer} rowWidth - full width of the row
-  ' @param {integer} badgeZoneWidth - width to reserve for badges (RESULTS_/EXISTING_BADGE_WIDTH)
-  ' @return {object} { detailWidth, badgeX, badgeWidth }
-  function secondLineZones(rowWidth as integer, badgeZoneWidth as integer) as object
-    usable = rowWidth - (subtitleLayout.ROW_H_PADDING * 2)
-
-    ' Badges give way to the detail text, not the other way round: the text is
-    ' the row's content and the badges only qualify it.
-    badgeWidth = badgeZoneWidth
-    maxBadgeWidth = usable - subtitleLayout.ROW_BADGE_GUTTER - subtitleLayout.ROW_DETAIL_MIN_WIDTH
-    if badgeWidth > maxBadgeWidth then badgeWidth = maxBadgeWidth
-    if badgeWidth < 0 then badgeWidth = 0
-
-    ' No badge zone means no gap to leave before it — the detail line takes the
-    ' whole row rather than ending short of an edge that isn't there.
-    gutter = subtitleLayout.ROW_BADGE_GUTTER
-    if badgeWidth = 0 then gutter = 0
-
-    detailWidth = usable - badgeWidth - gutter
-    ' A Label with width <= 0 renders UNCLIPPED, so the degenerate row has to end
-    ' up with a positive width even when it is too narrow to honour the floor.
-    if detailWidth < 1 then detailWidth = 1
-
-    return {
-      detailWidth: detailWidth,
-      badgeX: rowWidth - subtitleLayout.ROW_H_PADDING - badgeWidth,
-      badgeWidth: badgeWidth
-    }
   end function
 
 end namespace
