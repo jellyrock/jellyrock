@@ -1405,6 +1405,16 @@ Recorded because the constant's original comment claimed 64 was "the FHD icon as
 
 The same change **supersedes the recorded finding that this class could not be gated**. `components/CLAUDE.md` had documented a lint attempt that flagged 143 sites (16 after narrowing, 3 of 3 spot-checked false positives) and concluded a useful gate needed control-flow-aware analysis nobody had built. That conclusion was wrong about the cause: the problem was the POPULATION, not the analysis. Asking "is there a preceding unobserve in the same function" puts every balanced toggle in scope, and toggles are what the false positives were. Identifying the register-once SHAPE first — a member bound from `m.top.findNode()` in `init()` and observed exactly once, there — excludes toggles by construction, because a toggle's observe is not a lone call in `init()`. Measured over 292 files: 53 pass, 20 toggles ignored, 2 flagged (the defect, and one genuine one-shot). A carve-out for self-detaching one-shots was **considered and rejected** — legitimate as a shape, but it occurs exactly once in this population, so a general clause would buy one known-good site while silently admitting every future one, including a handler that detaches on a path where notifications were still needed. `ResumeButton.buttonIcon` carries an explicit suppression instead, naming the two facts no linter can see. Only the register-once half is gated; the balanced-toggle half still needs real control-flow analysis and is tracked as [`observer-balanced-toggle-ungated`](architecture/tech-debt.md#observer-balanced-toggle-ungated).
 
+## decision-id: device-test-gate-without-coverage
+
+**date**: 2026-09-13
+**status**: accepted
+**related-files**: `bsconfig-tests.json`, `bsconfig-tests-complete.json`, `.github/workflows/device-unit-tests.yml`, `tests/source/BaseTestSuite.spec.bs`, `docs/architecture/testing.md`
+
+The gating device test build (`bsconfig-tests.json` — `npm run test:all`, and CI's default `device-unit-tests` run) does not record Rooibos code coverage. Coverage is recorded only by `bsconfig-tests-complete.json` (`npm run test:complete`, the workflow's `complete` dispatch type); recording it on `main` and posting an on-demand PR delta is #541. Measured on a Streaming Stick 4K, the CI device's model: `test:all` on `main` took 602 s with coverage and 68 s without, so instrumentation was ~89% of device test time. It multiplies the cost of every executed line — #913's ~10 ms of extra work per `@describe` group became ~430 ms per group — which is what pushed #913 past the 15-minute job timeout; it also runs the code under test with different timing than the shipped app. Nothing consumed the coverage output: the report only printed a total at the end of the log.
+
+Ruled out: **raising the job timeout** (hides a measured +57% regression and lengthens the single device's queue); **per-PR coverage in a separate job** (doubles device time with one CI device); **excluding the slow component from coverage** (hides the cost rather than removing it). **Re-evaluate if a second CI device is added** — per-PR coverage then stops competing with the gate for the same hardware.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
