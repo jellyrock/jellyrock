@@ -33,6 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update actions/setup-java action to v6.0.1 ([#917](https://github.com/jellyrock/jellyrock/pull/917))
 - Update rooibos-roku to v6.0.0 ([#905](https://github.com/jellyrock/jellyrock/pull/905))
 - Update adm-zip from v0.6.0 to v0.6.1 ([#908](https://github.com/jellyrock/jellyrock/pull/908))
 - Update promises from v0.7.1 to v0.7.4 ([#878](https://github.com/jellyrock/jellyrock/pull/878), [#904](https://github.com/jellyrock/jellyrock/pull/904))
