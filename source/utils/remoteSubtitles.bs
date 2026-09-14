@@ -130,6 +130,23 @@ namespace remoteSubtitles
     return isValidAndNotEmpty(languageCode)
   end function
 
+  ' shouldShowOpeningSpinner: Whether an opening panel should show the results wait.
+  '
+  ' Only while a language can still ARRIVE — the culture list is in flight. Once it
+  ' has loaded without the user's preference in it, no language is coming, and the
+  ' panel is showing "choose a language" instead; a spinner there spins forever,
+  ' because nothing will ever stop it.
+  '
+  ' @param {integer} resultCount - results already held for this panel lifetime
+  ' @param {string} languageCode - resolved search language, "" when none
+  ' @param {boolean} culturesLoaded - /Localization/Cultures has answered
+  ' @return {boolean} true when the spinner should show
+  function shouldShowOpeningSpinner(resultCount as integer, languageCode as string, culturesLoaded as boolean) as boolean
+    if resultCount > 0 then return false
+    if isValidAndNotEmpty(languageCode) then return false
+    return not culturesLoaded
+  end function
+
   ' shouldStartSearch: Whether a search request should be issued right now.
   '
   ' The panel holds the language a search is IN FLIGHT FOR rather than a bare
@@ -285,6 +302,26 @@ namespace remoteSubtitles
     language = ""
     if isValidAndNotEmpty(stream.Language) then language = stream.Language
     return LCase(title + "|" + language)
+  end function
+
+  ' findSubtitleStreamByKey: The subtitle stream in a FRESH stream list that is the
+  ' same file as `key`, or invalid.
+  '
+  ' What makes a delete safe against renumbering. The server deletes the subtitle at
+  ' an INDEX, and a download or delete since the list was fetched shifts every index —
+  ' so an index read from an older list can name a different subtitle file. Resolving
+  ' the stream the user chose by its stable key against a list fetched just before
+  ' the delete is what guarantees the index sent is the file they saw.
+  '
+  ' @param {object} streams - MediaStreams from a fresh item fetch
+  ' @param {string} key - subtitleStreamKey() of the stream the user chose
+  ' @return {dynamic} the matching subtitle stream AA, or invalid when it is gone
+  function findSubtitleStreamByKey(streams as object, key as string) as dynamic
+    if key = "" then return invalid
+    for each stream in remoteSubtitles.subtitleStreams(streams)
+      if remoteSubtitles.subtitleStreamKey(stream) = key then return stream
+    end for
+    return invalid
   end function
 
   ' subtitleFileTail: The part of an installed subtitle's filename that actually

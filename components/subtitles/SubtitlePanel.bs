@@ -189,8 +189,9 @@ sub init()
   m.pendingDownloadName = ""
   m.streamsBeforeDownload = []
   m.deleteConfirmDialog = invalid
-  m.pendingDeleteRequest = invalid
+  m.pendingDeleteKey = ""
   m.pendingDeleteName = ""
+  m.suppressLanguageSelected = false
   m.subtitlesChangedPending = false
   m.focusTarget = "search"
 
@@ -276,7 +277,7 @@ sub openPanel()
   ' column shows the wait from the moment it opens rather than sitting blank
   ' through the cultures round-trip. maybeAutoSearch() has already raised the
   ' spinner if it started a search; this covers the case where it could not yet.
-  if m.allResults.count() = 0 and not isValidAndNotEmpty(m.selectedLanguageCode)
+  if remoteSubtitles.shouldShowOpeningSpinner(m.allResults.count(), m.selectedLanguageCode, isValid(m.cultures))
     showResultsSpinner()
   end if
 
@@ -428,7 +429,7 @@ sub abandonDeleteConfirm()
     releaseMutation()
   end if
   m.deleteConfirmDialog = invalid
-  m.pendingDeleteRequest = invalid
+  m.pendingDeleteKey = ""
   m.pendingDeleteName = ""
 end sub
 
@@ -557,6 +558,9 @@ function languageLabelFor(code as string) as string
 end function
 
 sub onLanguageSelected()
+  ' A pre-select from showLanguageOverlay(), not a user's choice — see there.
+  if m.suppressLanguageSelected = true then return
+
   selected = m.languagePicker.selectedCode
   if not isValidAndNotEmpty(selected) then return
 
@@ -586,7 +590,13 @@ sub showLanguageOverlay()
   keyboard = m.languagePicker.findNode("keyboard")
   if isValid(keyboard) then keyboard.text = ""
 
+  ' Pre-select the current language WITHOUT it counting as a choice. selectedCode is
+  ' alwaysNotify, so this write fires onLanguageSelected, which would close the
+  ' picker and re-run the search it is about to replace. Same guard, for the same
+  ' field, as settings.bs's suppressLanguagePicker.
+  m.suppressLanguageSelected = true
   m.languagePicker.selectedCode = m.selectedLanguageCode
+  m.suppressLanguageSelected = false
   m.languageOverlay.visible = true
   if isValid(keyboard) then keyboard.setFocus(true)
 end sub
@@ -1030,6 +1040,10 @@ sub schedulePoll()
     ' Holding it past the schedule's ceiling would strand the panel.
     releaseMutation()
     displayToast(translate(translationKeys.MessageSubtitleStillProcessing), "info")
+    ' The download may still land, and would renumber the host's stream indices,
+    ' so let it re-fetch rather than assume nothing changed. Deletes stay safe
+    ' either way: deleteConfirmedSubtitle re-reads the item before acting.
+    notifySubtitlesChanged()
     return
   end if
 
@@ -1142,7 +1156,10 @@ sub startDelete(stream as object)
     return
   end if
 
-  m.pendingDeleteRequest = req
+  ' The KEY, not this request: the request carries this list's index, which a
+  ' download or delete can renumber before the user answers. The delete re-resolves
+  ' the key against a fresh fetch — see deleteConfirmedSubtitle().
+  m.pendingDeleteKey = remoteSubtitles.subtitleStreamKey(stream)
   m.pendingDeleteName = deleteTargetName(stream)
 
   m.deleteConfirmDialog = showConfirmDialog(
@@ -1182,15 +1199,15 @@ end function
 sub onDeleteConfirmResponse()
   dialog = m.deleteConfirmDialog
   m.deleteConfirmDialog = invalid
-  req = m.pendingDeleteRequest
-  m.pendingDeleteRequest = invalid
+  key = m.pendingDeleteKey
+  m.pendingDeleteKey = ""
   name = m.pendingDeleteName
   m.pendingDeleteName = ""
 
   ' Every path out of here that is NOT an issued request has to hand the claim
   ' back — a declined or superseded confirmation must not leave the panel
   ' believing it is still mutating.
-  if not isValid(dialog) or not isValid(dialog.result) or not isValid(req)
+  if not isValid(dialog) or not isValid(dialog.result) or key = ""
     releaseMutation()
     return
   end if
@@ -1199,6 +1216,63 @@ sub onDeleteConfirmResponse()
     return
   end if
 
+  deleteConfirmedSubtitle(key, name)
+end sub
+
+' deleteConfirmedSubtitle: Re-read the item, then delete the chosen file at its
+' CURRENT index.
+'
+' The list the user chose from can be out of date — a download that confirmed after
+' the poll gave up, a re-fetch that failed after an earlier delete, a reopen before
+' the host's refresh landed — and the server deletes by index, so an index from that
+' list can name a different subtitle file. Resolving the chosen file by its key
+' against a list fetched right now closes all of those at once; BuildDeleteSubtitleRequest
+' still refuses anything that is not explicitly external.
+sub deleteConfirmedSubtitle(key as string, name as string)
+  req = GetApi().BuildGetItemRequest(m.top.itemId)
+  if not isValid(req)
+    releaseMutation()
+    displayToast(translate(translationKeys.MessageSubtitleDeleteFailed), "error")
+    return
+  end if
+
+  promises.chain(fetchAsync(req, "subtitleDeleteResolve-" + m.top.itemId), { itemId: m.top.itemId, key: key, name: name }).then(sub(res as object, ctx as object)
+    if ctx.itemId <> m.top.itemId
+      releaseMutation()
+      return
+    end if
+    if not res.ok or not isValid(res.json)
+      releaseMutation()
+      m.log.warn("subtitle delete: item re-read failed", res.statusCode)
+      displayToast(translate(translationKeys.MessageSubtitleDeleteFailed), "error")
+      return
+    end if
+
+    streams = res.json.MediaStreams
+    stream = remoteSubtitles.findSubtitleStreamByKey(streams, ctx.key)
+    deleteReq = GetApi().BuildDeleteSubtitleRequest(m.top.itemId, stream)
+    if not isValid(deleteReq)
+      ' Gone, or no longer an external file: the list on screen was out of date.
+      ' Show the current one, and tell the host its stream indices changed.
+      releaseMutation()
+      m.log.warn("subtitle delete: chosen file no longer on the item")
+      m.top.existingStreams = streams
+      notifySubtitlesChanged()
+      displayToast(translate(translationKeys.MessageSubtitleDeleteFailed), "error")
+      return
+    end if
+
+    issueSubtitleDelete(deleteReq, ctx.name)
+  end sub).catch(sub(err as object, ctx as object)
+    releaseMutation()
+    if ctx.itemId <> m.top.itemId then return
+    m.log.warn("subtitle delete: item re-read error", err.reason)
+    displayToast(translate(translationKeys.MessageSubtitleDeleteFailed), "error")
+  end sub)
+end sub
+
+' issueSubtitleDelete: Send a delete built from a freshly resolved stream.
+sub issueSubtitleDelete(req as object, name as string)
   ' Unlike download, delete is SYNCHRONOUS end to end: the server's controller
   ' awaits the metadata refresh before responding, so the next GET already
   ' reflects the new stream list. No poll schedule is needed here — the one the
@@ -1244,10 +1318,12 @@ sub refreshAfterDelete(name as string)
     ' so none of the four ways out of this handler can strand the claim.
     releaseMutation()
     if ctx.itemId <> m.top.itemId then return
-    if not res.ok then return
+    if not res.ok or not isValid(res.json)
+      reportDeletedWithoutRefresh(ctx.name, res.statusCode)
+      return
+    end if
 
     item = res.json
-    if not isValid(item) then return
 
     ' Move focus out of the list BEFORE re-rendering it.
     '
@@ -1280,8 +1356,20 @@ sub refreshAfterDelete(name as string)
   end sub).catch(sub(err as object, ctx as object)
     releaseMutation()
     if ctx.itemId <> m.top.itemId then return
-    m.log.warn("subtitle delete refresh error", err.reason)
+    reportDeletedWithoutRefresh(ctx.name, err.reason)
   end sub)
+end sub
+
+' reportDeletedWithoutRefresh: The delete succeeded but the re-read after it failed.
+'
+' The file IS gone, so say so rather than showing nothing, and tell the host: its
+' stream indices shifted whether or not this panel managed to see the new list. The
+' panel's own list stays stale, which is safe — the next delete re-reads the item
+' before acting (deleteConfirmedSubtitle).
+sub reportDeletedWithoutRefresh(name as string, reason as dynamic)
+  m.log.warn("subtitle deleted, but the item re-read failed", reason)
+  displayToast(translate(translationKeys.MessageSubtitleDeleted, [name]), "success")
+  notifySubtitlesChanged()
 end sub
 
 ' ── List position counters ───────────────────────────────────────────────────

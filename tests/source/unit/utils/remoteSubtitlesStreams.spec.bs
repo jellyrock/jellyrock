@@ -307,6 +307,40 @@ namespace tests
       m.assertEqual(remoteSubtitles.fileNameWithoutExtension(".srt"), ".srt")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("findSubtitleStreamByKey() - a delete resolves the file against a FRESH list")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("finds the chosen file at its NEW index after a renumber")
+    function _()
+      ' THE REGRESSION: the server deletes by index, and a download inserts at
+      ' index 0 — so the index from the list the user chose from names a different
+      ' file. The key is the path, which does not move.
+      chosen = { Type: "Subtitle", Index: 0, IsExternal: true, Path: "/m/movie.en.srt" }
+      fresh = [
+        { Type: "Subtitle", Index: 0, IsExternal: true, Path: "/m/movie.fr.srt" },
+        { Type: "Subtitle", Index: 1, IsExternal: true, Path: "/m/movie.en.srt" },
+        { Type: "Video", Index: 2 }
+      ]
+      found = remoteSubtitles.findSubtitleStreamByKey(fresh, remoteSubtitles.subtitleStreamKey(chosen))
+      m.assertNotInvalid(found)
+      m.assertEqual(found.Index, 1)
+    end function
+
+    @it("returns invalid when the file is no longer on the item")
+    function _()
+      fresh = [{ Type: "Subtitle", Index: 0, IsExternal: true, Path: "/m/movie.fr.srt" }]
+      m.assertInvalid(remoteSubtitles.findSubtitleStreamByKey(fresh, "/m/movie.en.srt"))
+    end function
+
+    @it("never matches a non-subtitle stream, an empty key, or an invalid list")
+    function _()
+      fresh = [{ Type: "Video", Index: 0, Path: "/m/movie.mkv" }]
+      m.assertInvalid(remoteSubtitles.findSubtitleStreamByKey(fresh, "/m/movie.mkv"))
+      m.assertInvalid(remoteSubtitles.findSubtitleStreamByKey(fresh, ""))
+      m.assertInvalid(remoteSubtitles.findSubtitleStreamByKey(invalid, "/m/movie.en.srt"))
+    end function
+
   end class
 
 end namespace

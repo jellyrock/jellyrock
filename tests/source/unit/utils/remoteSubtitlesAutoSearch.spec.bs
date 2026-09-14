@@ -125,6 +125,28 @@ namespace tests
       m.assertTrue(remoteSubtitles.shouldStartSearch("pt", "pt-br"))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("shouldShowOpeningSpinner() - only while a language can still arrive")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows the wait while the culture list is in flight")
+    function _()
+      m.assertTrue(remoteSubtitles.shouldShowOpeningSpinner(0, "", false))
+    end function
+
+    @it("does not spin once cultures loaded without the user's language")
+    function _()
+      ' THE REGRESSION: on a reopen with cultures cached, the panel showed "choose a
+      ' language" and then this spinner replaced it — and nothing ever stopped it.
+      m.assertFalse(remoteSubtitles.shouldShowOpeningSpinner(0, "", true))
+    end function
+
+    @it("does not spin when a language is resolved or results are already held")
+    function _()
+      m.assertFalse(remoteSubtitles.shouldShowOpeningSpinner(0, "en", false))
+      m.assertFalse(remoteSubtitles.shouldShowOpeningSpinner(3, "", false))
+    end function
+
   end class
 
 end namespace
