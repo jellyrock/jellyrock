@@ -25,18 +25,36 @@ Roku Scene Graph (RSG) components — XML interface + paired BrighterScript back
 
 ## Observing a field on a long-lived node
 
-A node that outlives the function observing it — `m.top`, or a member bound once from `m.top.findNode()` — must have its observer wired in **exactly one** of two shapes. Anything else accumulates registrations, and the handler then runs N times per notification. It is silent whenever the handler is idempotent, which is why these survive for months.
+**An observer registration is not private to the component that made it.** On device, a component calling `m.top.unobserveField` — or `unobserveFieldScoped` — on its own field removed the plain observer its **parent** held on that field. That is the #898 regression, and [`ObserverRegistry.spec.bs`](../tests/source/unit/platform/ObserverRegistry.spec.bs) records it.
+
+⚠️ **That spec is a record of one narrow configuration, not a model of how observers work** — its header lists what it does and does not cover. In particular **`observeFieldScoped` is not understood here**: some scoped rows in that spec disagree with Roku's `ifSGNodeField` page, but one configuration is not grounds for a rule. So the rules below treat `observeField` and `observeFieldScoped` identically, and nothing may be designed to depend on scoped semantics (e.g. "switch the parent to scoped so it survives") without first measuring the actual case.
+
+So who ELSE can observe the node decides what you may do.
+
+### `m.top` — register in `init()`, release in `onDestroy()`, nothing in between
+
+Any parent can observe your node, and nothing inside the component can tell. #898 is what that costs: `VideoPlayerView` re-registered `state` with "unobserve, then observe" to avoid duplicates, which also removed `PlayerHostView`'s `state` observer — the one that advances the queue — so every natural episode end left a stopped player mounted on a black screen.
+
+- `m.top.observeField` / `observeFieldScoped` with a handler: **only in `init()`**, which runs once per node — that placement is the single-registration guarantee. A helper called from `init()` still counts as outside it; inline it.
+- `m.top.unobserveField` / `unobserveFieldScoped`: **only in `onDestroy()`**, where the node is going away with its observers anyway.
+- When a handler must sometimes NOT act, gate the handler with a flag instead of toggling the observer: readiness (`VideoPlayerView`'s `m.isContentLoaded`), the component's own write (`m.isApplyingOwnSelection`, `JRPoster`'s `m.isResettingBadge`), or a mode (`JellyfinUserSettings`' `m.isAutoSyncEnabled`).
+
+**Both halves are build errors** — `top-observer-outside-init` and `top-unobserve-outside-ondestroy` in [`field-observer-wiring`](../docs/architecture/build-and-tooling.md#convention-plugins). Message-port observers (the pool Tasks' request loops) are outside that population.
+
+### A child node only this component observes — two shapes
+
+A member bound once from `m.top.findNode()` (a `Timer`, say) is private to the component, so toggling its observer is legitimate. It must still be wired in **exactly one** of two shapes. Anything else accumulates registrations, and the handler then runs N times per notification. It is silent whenever the handler is idempotent, which is why these survive for months.
 
 - **Register once in `init()`**, never re-register; drive lifecycle with `control` alone, and unobserve only at teardown. [`PhotoDetails.slideshowTimer`](photos/PhotoDetails.bs) is the reference: observed in `init()`, started and stopped from four places, unobserved only in `onDestroy()`. `VideoPlayerView`'s `playbackTimer` is now a second example, and was the motivating defect: it registered once in `init()` but unobserved in the `stopped` and `finished` branches of `onState` and never re-registered, so any reload path (audio / subtitle / source change, `retryPlayback`) left the 10 s progress timer running with no listener.
 - **Balanced toggle** — observe on the way in, `unobserveField` on **every** exit path, not just the common one. [`OSD.inactivityTimer`](video/OSD.bs) is the reference: `onVisibleChanged` observes in the `true` arm and unobserves in the `false` arm.
 
-If a toggle has an exit that cannot unobserve (an unhandled-state `else`, an early return), put an `unobserveField` immediately before the `observeField` so the registration is single by construction rather than by the caller's discipline — `VideoPlayerView`'s `bufferCheckTimer` does both.
+If a toggle has an exit that cannot unobserve (an unhandled-state `else`, an early return), put an `unobserveField` immediately before the `observeField` so the registration is single by construction rather than by the caller's discipline — `VideoPlayerView`'s `bufferCheckTimer` does both. **This is only safe on a node nobody else observes; never on `m.top`** (see above).
 
-**Half of this is now a build gate.** [`register-once-observer`](../scripts/bsc-plugins/register-once-observer.cjs) errors when a member bound from `m.top.findNode()` in `init()` and observed exactly once **there** is `unobserveField`'d anywhere but `onDestroy()` — the register-once half of the rule above. It identifies the register-once *shape* first and only then checks where the detach lives, which is why toggles never enter its population: their observe is not a lone call in `init()`, so `bufferCheckTimer` is invisible to it. Over 292 `.bs` files: 53 register-once members pass, 20 toggles ignored, 1 flagged (`ResumeButton.buttonIcon`, a genuine one-shot carrying an explicit suppression that states the two facts — static URI, node not recycled — the gate cannot see).
+**Half of this is a build gate.** [`register-once-observer`](../scripts/bsc-plugins/register-once-observer.cjs) errors when a member bound from `m.top.findNode()` in `init()` and observed exactly once **there** is `unobserveField`'d anywhere but `onDestroy()` — the register-once half of the rule above. It identifies the register-once *shape* first and only then checks where the detach lives, which is why toggles never enter its population: their observe is not a lone call in `init()`, so `bufferCheckTimer` is invisible to it. Over 292 `.bs` files: 53 register-once members pass, 20 toggles ignored, 1 flagged (`ResumeButton.buttonIcon`, a genuine one-shot carrying an explicit suppression that states the two facts — static URI, node not recycled — the gate cannot see).
 
 This supersedes the earlier finding that a gate was impractical. That attempt asked "is there a preceding `unobserveField` of the same field in the same function", which flagged **143** sites, 16 after narrowing to long-lived receivers, 3 of 3 spot-checked being false positives — toggles paired across an `if`/`else`, across a handler boundary, or in `start`/`stop` helper pairs. The population, not the analysis, was the problem.
 
-**The balanced-toggle half is still convention only** — deciding whether *every* exit path unobserves needs real control-flow analysis, and nothing gates it. Real instances so far: #896 (`position`), #898 (`state`), #899 (`bufferCheckTimer.fire`), and `playbackTimer.fire` above.
+**The balanced-toggle half is still convention only** — deciding whether *every* exit path unobserves needs real control-flow analysis, and nothing gates it. Real instances so far: #899 (`bufferCheckTimer.fire`) and `playbackTimer.fire` above. (#896 `position` and #898 `state` were the same accumulation on `m.top`, which the section above now gates outright.)
 
 ## Render thread protection
 

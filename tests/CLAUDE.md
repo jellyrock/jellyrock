@@ -26,18 +26,19 @@ Every test suite extends `tests.BaseTestSuite` (which extends `rooibos.BaseTestS
 To split a growing suite, keep the base name and add the aspect — `remoteSubtitles.spec.bs`, `remoteSubtitlesStreams.spec.bs`, `remoteSubtitlesResults.spec.bs` — matching the existing `misc.spec.bs` / `miscAudioStreams.spec.bs` pair.
 
 > A green `npm run validate` says nothing about this: the crash is a runtime fault in the generated runner, so it only surfaces on hardware.
-## Lifecycle hooks — `setup()` is per SUITE, `beforeEach()` is per TEST
 
-rooibos gives `BaseTestSuite` four distinct hooks, and the two pairs run at different frequencies:
+## Lifecycle hooks — `setup()` is per `@describe` GROUP, `beforeEach()` is per TEST
+
+rooibos gives `BaseTestSuite` four distinct hooks, and the two pairs run at different frequencies (read from `rooibos-roku` 6.0.0-alpha.54, `TestGroup.runSync`):
 
 | Hook | Runs |
 |---|---|
-| `setup()` / `teardown()` | **once per suite** |
+| `setup()` / `teardown()` | **once per `@describe` group** — every test in a group shares one `setup()` |
 | `beforeEach()` / `afterEach()` | **once per test** |
 
-- **Build anything a test MUTATES in `beforeEach()`, never `setup()`.** A node created in `setup()` is shared by every test in the suite, so each one inherits whatever the last left behind. Chain `super.beforeEach()` / `super.afterEach()` — the project base class overrides all four.
+- **Build anything a test MUTATES in `beforeEach()`, never `setup()`.** A node created in `setup()` is shared by every test in its `@describe` group, so each one inherits whatever the last left behind. Chain `super.beforeEach()` / `super.afterEach()` — the project base class overrides all four.
 - `setup()` is still right for genuinely immutable per-suite fixtures (read-only mock data, constants). The rule is about *mutated* state, not about relocating everything.
-- **This is not theoretical.** In #781 a `rotateDegrees = 270` set by one test leaked into the next one *in the same `@describe`* and made a correct component look broken — grouping by `@describe` does not re-run `setup()` either. The worse direction is silent: a test that never sets a field it reads can pass on a neighbor's leftovers, and stays green until someone reorders or deletes that neighbor.
+- **This is not theoretical.** In #781 a `rotateDegrees = 270` set by one test leaked into the next one *in the same `@describe`* and made a correct component look broken — `setup()` runs once per group, not per test. The worse direction is silent: a test that never sets a field it reads can pass on a neighbor's leftovers, and stays green until someone reorders or deletes that neighbor.
 - **Cheap check:** reverse the order of the tests in a suite and re-run. A suite that only passes in declaration order is not isolated.
 - ~23 existing suites predate this rule — see [`rooibos-setup-not-per-test`](../docs/architecture/tech-debt.md#rooibos-setup-not-per-test) and epic [#786](https://github.com/jellyrock/jellyrock/issues/786). Fix them in passing when you touch one; don't copy their shape into a new spec.
 
@@ -56,8 +57,8 @@ Agents *can* and *should* run tests to verify fixes — do NOT commit changes ba
 | `npm run test:tdd` | Build + run TDD config (single-suite iteration; copy `bsconfig-tdd-sample.json` to `bsconfig-tdd.json` and edit `files`) |
 | `npm run test:unit` | All unit tests |
 | `npm run test:integration` | All integration tests |
-| `npm run test:all` | Everything |
-| `npm run test:complete` | Complete coverage suite |
+| `npm run test:all` | Every suite except `migration` / `registry` tags, no code coverage — what CI's gating run uses |
+| `npm run test:complete` | Everything including `migration` / `registry` tags, **with code coverage recorded**. Much slower — the only build that instruments code; the others, CI's gating run included, do not |
 | `npm run test:rta` | **RTA functional tests** (Vitest, drives a real device) — build + deploy + assert each screen loads. See [`docs/dev/rta-tests.md`](../docs/dev/rta-tests.md). |
 
 The Rooibos runner (`scripts/run-roku-tests.js`) zips the build, sideloads to the Roku at `ROKU_IP`, and tails the debug console for `[Rooibos Result]: PASS|FAIL`. The RTA tests instead run under Vitest (`vitest.rta.config.js`) and assert in Node.

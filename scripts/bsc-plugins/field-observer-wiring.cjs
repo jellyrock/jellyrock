@@ -1,8 +1,9 @@
 /**
  * BrighterScript plugin — how an interface field is wired to its handler.
  *
- * Two diagnostics, both driven from a component's XML `<field onChange="...">`
- * declarations cross-referenced against its codebehind. Unlike the sibling
+ * Five diagnostics. The first three are driven from a component's XML
+ * `<field onChange="...">` declarations cross-referenced against its codebehind;
+ * the last two from where the codebehind observes and unobserves `m.top`. Unlike the sibling
  * `observe-without-on-destroy` plugin, these are NOT scoped to `JRScreen`
  * subclasses: a duplicate registration is not screen-specific, and both known
  * instances were leaf widgets.
@@ -39,12 +40,40 @@
  *    It reports ONCE per component, listing the fields, because the fix is one
  *    edit to that component rather than one per field.
  *
- *    ⚠️ Known false positive: a component that calls `m.top.unobserveField()` to
- *    clear observers registered by OTHER nodes is doing something legal but
- *    exotic. There is no instance in the tree; suppress with the escape hatch
- *    below and say why in the comment.
+ * 4. `top-unobserve-outside-ondestroy` (error) — `m.top.unobserveField()` or
+ *    `m.top.unobserveFieldScoped()` anywhere but `onDestroy()`.
  *
- * Both attach to the BrightScript line that should change, matching
+ *    A registration is not private to the component that made it. On device
+ *    (`tests/source/unit/platform/ObserverRegistry.spec.bs`), a component
+ *    unobserving its own field — with either form — removed the plain observer
+ *    its parent held on that field. That is how #898's "unobserve before observe"
+ *    re-registration in `VideoPlayerView` removed `PlayerHostView`'s `state`
+ *    observer, so no natural episode end ever reached the host. Mid-life, a
+ *    component cannot know who else is listening; at teardown, the node is going
+ *    away with its observers anyway. Both forms are banned alike, deliberately:
+ *    how `observeFieldScoped` registrations behave is NOT understood beyond the one
+ *    configuration that spec records, so nothing here relies on it.
+ *
+ *    The field argument is NOT required to be a literal: which field is named does
+ *    not change who loses their observer (`JellyfinUserSettings.disableAutoSync`
+ *    loops over `getFields()`).
+ *
+ * 5. `top-observer-outside-init` (error) — `m.top.observeField()` or
+ *    `m.top.observeFieldScoped()` with a HANDLER NAME anywhere but `init()`.
+ *
+ *    The other half of the same lifecycle. Once (4) forbids de-duplicating with a
+ *    mid-life unobserve, an observe in a function that runs more than once simply
+ *    accumulates, and Roku runs the handler once per registration (#896, #898) —
+ *    deleting the unobserve (4) flags is exactly how you would get there. `init()`
+ *    runs once per node, so placement there IS the single-registration guarantee.
+ *
+ *    Placement, not reachability: a helper called only from `init()` is still
+ *    flagged, because nothing would notice the day it gains a second caller.
+ *    Inline it. A MESSAGE-PORT observer is out of the population — the pool Tasks
+ *    observe their own request fields on a port inside the Task function, no
+ *    handler runs in a component scope, and no defect is on record for the shape.
+ *
+ * All five attach to the BrightScript line that should change, matching
  * `observe-without-on-destroy`'s convention — the XML half is named in the
  * message. The rule runs per component SCOPE, so editing either half re-derives
  * the verdict and a fix made on the XML side clears the diagnostic on the `.bs`
@@ -57,13 +86,20 @@
  *  - An `onChange` INHERITED from an ancestor component: only the component's own
  *    `<interface>` is read.
  *  - An `m.top` reached through a local alias (`top = m.top`); the sibling plugin
- *    does union-find aliasing, this one matches the written form.
+ *    does union-find aliasing, this one matches the written form. Applies to (4)
+ *    and (5) too — `captionTask`'s alias is the one instance, and it observes nothing.
+ *  - (4) and (5) read the component's own codebehind only. An observe or unobserve
+ *    on `m.top` inside a `source/` helper it imports is invisible; there is none today.
+ *  - (5) treats a non-literal second argument as a port, since it cannot tell a
+ *    variable holding a handler NAME from one holding a port.
  *  - Two PROGRAMMATIC observers of the same field, with no XML `onChange` — also
  *    a duplicate registration, but not this pairing.
- *  - `observeFieldScoped` + `unobserveField` suppresses `ineffective-unobserve`
- *    (a programmatic observe exists) even though Roku tracks scoped and unscoped
- *    on separate lists, so that unobserve removes nothing either. Nothing goes
- *    silent — `duplicate-field-observer` still fires on the observe.
+ *  - `m.top.observeFieldScoped` + `m.top.unobserveField` suppresses
+ *    `ineffective-unobserve` (a programmatic observe exists). Whether that plain
+ *    unobserve removes the scoped registration is not established in general — it
+ *    did in the one configuration `ObserverRegistry.spec.bs` records — so this
+ *    diagnostic does not reason about mixed forms. Nothing goes silent:
+ *    `duplicate-field-observer` still fires on the observe.
  *
  * Escape hatches (per diagnostic, on the offending BrightScript line):
  *  - `' bsc-disable-line <code>`
@@ -78,11 +114,20 @@ const { createScopeRule, stringLiteralValue, referenceText } = require('../lib/b
 const DUPLICATE = 'duplicate-field-observer';
 const INEFFECTIVE = 'ineffective-unobserve';
 const UNDETACHABLE = 'undetachable-observer';
+const TOP_UNOBSERVE = 'top-unobserve-outside-ondestroy';
+const TOP_OBSERVE = 'top-observer-outside-init';
+
+// Third-party code we cannot edit. Both vendored trees, for the reason
+// no-hand-rolled-dialog gives: excluding only one leaves the other to be suppressed
+// line by line.
+const VENDORED_PREFIXES = ['components/vendor/', 'components/roku_modules/'];
 
 module.exports = () =>
   createScopeRule({
     name: 'jellyrock-field-observer-wiring',
     analyze({ xmlFile, brsFile, report }) {
+      if (!isVendored(brsFile)) reportTopLifecycle(brsFile, report);
+
       const onChangeFields = xmlOnChangeFields(xmlFile);
       if (onChangeFields.size === 0) return;
 
@@ -131,6 +176,78 @@ module.exports = () =>
       }
     },
   });
+
+/**
+ * Diagnostics (4) and (5): every `m.top` observe outside `init()` that names a handler,
+ * and every `m.top` unobserve outside `onDestroy()`, attributed to the TOP-LEVEL function
+ * that contains it — a function literal nested inside `fetch()` runs on `fetch()`'s
+ * schedule, not once per node, so it gets no pass.
+ */
+function reportTopLifecycle(brsFile, report) {
+  const statements = brsFile?.parser?.ast?.statements;
+  if (!Array.isArray(statements)) return;
+
+  for (const stmt of statements) {
+    if (!brighterscript.isFunctionStatement(stmt)) continue;
+    const fn = stmt.tokens?.name?.text;
+    const body = stmt.func?.body;
+    if (!fn || !body?.walk) continue;
+    const lowerFn = fn.toLowerCase();
+
+    body.walk(
+      brighterscript.createVisitor({
+        CallExpression: (call) => {
+          const callee = call?.callee;
+          if (!brighterscript.isDottedGetExpression(callee)) return;
+          // BrightScript identifiers are case-insensitive, so `M.Top.UnobserveField` must
+          // not slip past an error-level rule.
+          if (referenceText(callee.obj)?.toLowerCase() !== 'm.top') return;
+          const method = callee.tokens?.name?.text;
+          const lowerMethod = method?.toLowerCase();
+          const field = argumentText(call.args?.[0]);
+
+          if (lowerMethod === 'unobservefield' || lowerMethod === 'unobservefieldscoped') {
+            if (lowerFn === 'ondestroy') return;
+            report({
+              code: TOP_UNOBSERVE,
+              location: call.location,
+              message: `m.top.${method}(${field}) in '${fn}' can remove observers ANOTHER component registered on this node, not just this component's (#898 removed PlayerHostView's "state" observer exactly this way, and no episode end reached it; see tests/source/unit/platform/ObserverRegistry.spec.bs). Register this component's own observer once in init(), make its handler ignore the notifications it must not act on (a readiness flag, or a value the component applied itself), and unobserve only in onDestroy(). Suppress with ' bsc-disable-next-line ${TOP_UNOBSERVE} only if no other component can ever observe this node.`,
+            });
+            return;
+          }
+
+          if (lowerMethod === 'observefield' || lowerMethod === 'observefieldscoped') {
+            if (lowerFn === 'init') return;
+            // A port observer carries no handler name; see the header for why it is
+            // outside the population.
+            const handler = stringLiteralValue(call.args?.[1]?.tokens?.value?.text);
+            if (!brighterscript.isLiteralExpression(call.args?.[1]) || handler === null) return;
+            report({
+              code: TOP_OBSERVE,
+              location: call.location,
+              message: `m.top.${method}(${field}, "${handler}") in '${fn}' adds another registration every time '${fn}' runs, and Roku does not de-duplicate them — ${handler}() then runs once per registration (#896, #898). Move it into init(), which runs once per node, and have the handler ignore the notifications that made a later registration look necessary. A helper called only from init() still counts: inline it, since nothing would notice the day it gains a second caller. Suppress with ' bsc-disable-next-line ${TOP_OBSERVE}.`,
+            });
+          }
+        },
+      }),
+      { walkMode: brighterscript.WalkMode.visitAllRecursive },
+    );
+  }
+}
+
+/** A call argument as the author wrote it: `"state"` for a literal, else its reference text. */
+function argumentText(arg) {
+  if (brighterscript.isLiteralExpression(arg)) {
+    const value = stringLiteralValue(arg.tokens?.value?.text);
+    if (value !== null) return `"${value}"`;
+  }
+  return referenceText(arg) ?? '<computed>';
+}
+
+function isVendored(brsFile) {
+  const dest = (brsFile?.destPath || brsFile?.pkgPath || '').replace(/\\/g, '/');
+  return VENDORED_PREFIXES.some((prefix) => dest.startsWith(prefix));
+}
 
 /**
  * Lower-cased field id → onChange handler name, for every `<field onChange="...">`

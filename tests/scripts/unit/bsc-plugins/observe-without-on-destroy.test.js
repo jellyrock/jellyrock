@@ -98,8 +98,8 @@ describe('observe-without-on-destroy', () => {
   });
 
   it('flags observeField paired with unobserveFieldScoped (mismatched scope)', () => {
-    // Roku tracks scoped vs unscoped observers on separate lists, so the
-    // mismatched pair leaks even though the code looks correct.
+    // A mismatched pair is not trusted to release the registration (see the plugin
+    // header), so it is flagged even though the code looks correct.
     const diagnostics = runOnBody(`
       sub init()
         m.button.observeField("buttonSelected", "onSelect")

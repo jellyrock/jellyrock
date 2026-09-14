@@ -17,6 +17,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Register `m.top` observers once so the player cannot silence its host ([#913](https://github.com/jellyrock/jellyrock/pull/913))
+- Report a force-finished playback as stopped once, not twice ([#914](https://github.com/jellyrock/jellyrock/pull/914))
+- Finish playback when a segment skip lands at the end of the media ([#912](https://github.com/jellyrock/jellyrock/pull/912))
 - Keep `playbackTimer`'s observer across a stopped → playing cycle ([#907](https://github.com/jellyrock/jellyrock/pull/907))
 - Close all three routes to a false buffer stall ([#899](https://github.com/jellyrock/jellyrock/pull/899))
 - Register the `state` observer exactly once ([#898](https://github.com/jellyrock/jellyrock/pull/898))
@@ -24,12 +27,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Gate interface-field observer wiring; fix stale cross-file findings ([#895](https://github.com/jellyrock/jellyrock/pull/895))
 - Observe each interface field exactly once in `OSD` and `IconButton` ([#891](https://github.com/jellyrock/jellyrock/pull/891))
 
+### Removed
+
+- Unused `Section` and `SectionScroller` components ([#911](https://github.com/jellyrock/jellyrock/pull/911))
+
 ### Dependencies
 
+- Update rooibos-roku to v6.0.0 ([#905](https://github.com/jellyrock/jellyrock/pull/905))
+- Update adm-zip from v0.6.0 to v0.6.1 ([#908](https://github.com/jellyrock/jellyrock/pull/908))
+- Update promises from v0.7.1 to v0.7.4 ([#878](https://github.com/jellyrock/jellyrock/pull/878), [#904](https://github.com/jellyrock/jellyrock/pull/904))
+- Update ropm from v0.11.9 to v0.11.11 ([#880](https://github.com/jellyrock/jellyrock/pull/880), [#903](https://github.com/jellyrock/jellyrock/pull/903))
 - Update eslint from v10.9.1 to v10.10.0 ([#886](https://github.com/jellyrock/jellyrock/pull/886))
 - Update spellchecker-cli from v7.0.3 to v7.0.4 ([#893](https://github.com/jellyrock/jellyrock/pull/893))
-- Update ropm from v0.11.9 to v0.11.10 ([#880](https://github.com/jellyrock/jellyrock/pull/880))
-- Update promises from v0.7.1 to v0.7.2 ([#878](https://github.com/jellyrock/jellyrock/pull/878))
 - Update brighterscript-formatter from v1.8.1 to v1.8.2 ([#877](https://github.com/jellyrock/jellyrock/pull/877))
 - Update roku-deploy from v3.18.3 to v3.18.4 ([#879](https://github.com/jellyrock/jellyrock/pull/879))
 

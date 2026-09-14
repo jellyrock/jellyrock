@@ -7,7 +7,7 @@ related-files:
   - source/data/SessionDataTransformer.bs
   - components/data/jellyfin/JellyfinUserSettings.xml
   - components/data/jellyfin/JellyfinUserSettings.bs
-last-reviewed: 2026-08-26
+last-reviewed: 2026-09-13
 ---
 
 # Settings
@@ -194,25 +194,41 @@ After this, all reads happen via `m.global.user.settings.<fieldName>` directly (
 
 ## Auto-sync — `JellyfinUserSettings.bs`
 
-`enableAutoSync` is a method on the `JellyfinUserSettings` node that wires per-field observers:
+Every setting field is observed once, in the node's `init()`, for the life of the node.
+`enableAutoSync` / `disableAutoSync` do not touch the observers — they flip a flag the handlers
+check, so the bulk loads that run before sync is enabled (defaults at startup, the user's values
+at login, defaults again on reset) are never written back:
 
 ```brightscript
-sub enableAutoSync()
-  ' For every settable field on this node, observe changes and write to registry
-  fields = m.top.getFields()
-  for each fieldName in fields
-    if isSettable(fieldName)
+sub init()
+  m.isAutoSyncEnabled = false
+  m.top.observeField("displaySettings", "onDisplaySettingsChanged")
+  for each fieldName in m.top.getFields()
+    if not inArray(excludedFields, fieldName)
       m.top.observeField(fieldName, "onSettingChanged")
     end if
   end for
 end sub
 
-sub onSettingChanged(msg)
-  fieldName = msg.getField()
-  newValue = msg.getData()
-  setUserSetting(fieldName, newValue)        ' persist to registry
+sub enableAutoSync()
+  m.previousDisplaySettings = deepCopyAA(m.top.displaySettings) ' diff baseline
+  m.isAutoSyncEnabled = true
+end sub
+
+sub onSettingChanged(event as object)
+  if not m.isAutoSyncEnabled then return
+  registryWrite(event.getField(), valueToString(event.getData()), ...) ' persist
 end sub
 ```
+
+**Why a flag, rather than observing in `enableAutoSync` and unobserving in `disableAutoSync`.** This node is the shared
+`m.global.user.settings`, and `m.top.unobserveField` can remove observers other components hold
+on the field, not only this node's own — it did in the configuration
+[`ObserverRegistry.spec.bs`](../../tests/source/unit/platform/ObserverRegistry.spec.bs) records — so
+toggling risks silently disconnecting anything else watching a setting. The flag costs nothing
+measurable: on a Roku Ultra, `SaveDefaults()` took a median 779 ms with the fields unobserved and
+781 ms with every field observed (58 handler runs per call), and calling either function twice is
+now harmless rather than a double registration.
 
 So application code never has to think about persistence:
 

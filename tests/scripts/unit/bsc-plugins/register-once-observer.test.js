@@ -119,7 +119,8 @@ describe('register-once-observer', () => {
   });
 
   it('does not let unobserveField satisfy an observeFieldScoped registration', () => {
-    // Roku keeps scoped and unscoped registrations on separate observer lists.
+    // A mismatched pair is not trusted to release the registration, so scoped and plain
+    // are judged separately.
     const diagnostics = runOnBody(`
       sub init()
         m.timer = m.top.findNode("timer")

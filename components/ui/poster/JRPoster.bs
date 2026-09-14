@@ -15,25 +15,18 @@ sub init()
   m.unplayedVideosCount = m.top.findNode("unplayedVideosCount")
   m.checkmark = m.top.findNode("checkmark")
 
-  startFieldObservers()
-end sub
-
-sub startFieldObservers()
+  ' Observed once for the life of the poster. A recycled cell's resetBadge() must not
+  ' re-render while it clears, so it raises this instead of toggling the observers.
+  m.isResettingBadge = false
   m.top.observeField("playedPercentage", "onPlayedPercentageChanged")
-  if m.disableWatchBadge then return
-  m.top.observeField("unplayedCount", "onUnplayedCountChanged")
-  m.top.observeField("isWatched", "onIsWatchedChanged")
-end sub
-
-sub stopFieldObservers()
-  m.top.unobserveField("playedPercentage")
-  if m.disableWatchBadge then return
-  m.top.unobserveField("unplayedCount")
-  m.top.unobserveField("isWatched")
+  if not m.disableWatchBadge
+    m.top.observeField("unplayedCount", "onUnplayedCountChanged")
+    m.top.observeField("isWatched", "onIsWatchedChanged")
+  end if
 end sub
 
 sub onUnplayedCountChanged()
-  if m.disableWatchBadge then return
+  if m.isResettingBadge or m.disableWatchBadge then return
   if m.top.isWatched then return
 
   if m.top.unplayedCount > 0
@@ -50,7 +43,7 @@ sub onUnplayedCountChanged()
 end sub
 
 sub onIsWatchedChanged()
-  if m.disableWatchBadge then return
+  if m.isResettingBadge or m.disableWatchBadge then return
   if m.top.unplayedCount > 0 then return
 
   if m.top.isWatched
@@ -65,6 +58,8 @@ sub onIsWatchedChanged()
 end sub
 
 sub onPlayedPercentageChanged()
+  if m.isResettingBadge then return
+
   progressBar = m.top.findNode("progressBar")
 
   if not isValid(progressBar)
@@ -85,10 +80,13 @@ sub onPlayedPercentageChanged()
 end sub
 
 sub resetBadge()
-  stopFieldObservers()
+  ' Handlers run synchronously on these writes, so the flag only has to span them.
+  m.isResettingBadge = true
   m.top.unplayedCount = 0
   m.top.isWatched = false
   m.top.playedPercentage = 0
+  m.isResettingBadge = false
+
   m.watchBadgeBackground.visible = false
   m.unplayedVideosCount.text = ""
   m.checkmark.visible = false
@@ -100,8 +98,6 @@ sub resetBadge()
   if isValid(progressBar)
     m.top.removeChild(progressBar)
   end if
-
-  startFieldObservers()
 end sub
 
 sub updateBadgeSize()

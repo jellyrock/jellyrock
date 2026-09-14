@@ -25,6 +25,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import {
   JellyfinRequestError,
   authenticate,
+  findEpisodeWithNext,
   findMovie,
   getBuffer,
   getJson,
@@ -231,5 +232,71 @@ describe('authenticate', () => {
 
     server.removeAllListeners('request');
     server.on('request', prev);
+  });
+});
+
+describe('findEpisodeWithNext', () => {
+  it('skips a single-episode series and returns the first series with a next episode', async () => {
+    routes['/Items'] = [
+      200,
+      {
+        Items: [
+          { Id: 's1', Name: 'Pilot Only' },
+          { Id: 's2', Name: 'Two Parter' },
+        ],
+      },
+    ];
+    routes['/Shows/s1/'] = [200, { Items: [{ Id: 'e1' }] }];
+    routes['/Shows/s2/'] = [
+      200,
+      { Items: [{ Id: 'e2', RunTimeTicks: 18_600_000_000 }, { Id: 'e3' }] },
+    ];
+
+    await expect(findEpisodeWithNext(session())).resolves.toEqual({
+      id: 'e2',
+      nextId: 'e3',
+      seriesName: 'Two Parter',
+      runTimeSeconds: 1860,
+    });
+  });
+
+  it('skips a series whose first episode has no known runtime', async () => {
+    // A caller seeks relative to the end, and the device's own `duration` can read 0 on
+    // live-transcoded streams — so an episode the server cannot size is not usable.
+    routes['/Items'] = [
+      200,
+      {
+        Items: [
+          { Id: 's1', Name: 'Unsized' },
+          { Id: 's2', Name: 'Sized' },
+        ],
+      },
+    ];
+    routes['/Shows/s1/'] = [200, { Items: [{ Id: 'e1' }, { Id: 'e2' }] }];
+    routes['/Shows/s2/'] = [
+      200,
+      { Items: [{ Id: 'e3', RunTimeTicks: 600_000_000 }, { Id: 'e4' }] },
+    ];
+
+    await expect(findEpisodeWithNext(session())).resolves.toMatchObject({
+      id: 'e3',
+      runTimeSeconds: 60,
+    });
+  });
+
+  it('returns null only when the server answered and no series has two episodes', async () => {
+    routes['/Items'] = [200, { Items: [{ Id: 's1', Name: 'Pilot Only' }] }];
+    routes['/Shows/s1/'] = [200, { Items: [{ Id: 'e1' }] }];
+
+    await expect(findEpisodeWithNext(session())).resolves.toBeNull();
+  });
+
+  it('throws when an episode query fails instead of skipping that series', async () => {
+    // Skipping would turn a dropped request into "this series has no next episode",
+    // and on a one-series fixture into a confident "the server cannot run this test".
+    routes['/Items'] = [200, { Items: [{ Id: 's1', Name: 'Two Parter' }] }];
+    routes['/Shows/s1/'] = [500, {}];
+
+    await expect(findEpisodeWithNext(session())).rejects.toThrow(JellyfinRequestError);
   });
 });
