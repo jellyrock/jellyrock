@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-14 — feat: Add subtitle search, download and delete to item details
 - 2026-09-14 — Subtitle panel badges in both columns are now right-aligned and sized from their measured text (`subtitleLayout.badgesThatFit` / `detailWidthBeside`), dropping whole badges that would not fit — replacing the guessed per-section and flat `460px` badge widths. Closes the "subtitle RESULTS column reserves a flat badge width" followup (#750); also fixed "Forced" being clipped in the "On this item" column.
 - 2026-09-10 — Shipped [`docs/user/jellyfin-server-plugins.md`](user/jellyfin-server-plugins.md) (#750): one user-facing page for the server-side setup JellyRock features need — subtitle providers, media-segment (intro/outro) providers, and `jellyfin-plugin-jellyrock` for casting over `https` — cross-linked from the README. Closes the "Jellyfin server plugins JellyRock uses" followup.
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
