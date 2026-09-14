@@ -574,6 +574,23 @@ describe('top-unobserve-outside-ondestroy — the bug it catches', () => {
     expect(flagged[0].message).toMatch(/disableAutoSync/);
   });
 
+  // BrightScript is case-insensitive; an error-level gate must not be a spelling away
+  // from silent. `ObserveField` casing is already in use elsewhere in the tree.
+  it('errors whatever the casing of m.top and the method', () => {
+    const diagnostics = run({
+      'components/Player.xml': xml('Player'),
+      'components/Player.bs': `
+        sub onContentLoaded()
+          M.Top.UnobserveField("state")
+          m.top.UNOBSERVEFIELDSCOPED("position")
+          m.top.ObserveField("state", "onState")
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, TOP_UNOBSERVE)).toHaveLength(2);
+    expect(diagnosticsByCode(diagnostics, TOP_OBSERVE)).toHaveLength(1);
+  });
+
   it('errors inside a function literal nested in another function', () => {
     const diagnostics = run({
       'components/Player.xml': xml('Player'),

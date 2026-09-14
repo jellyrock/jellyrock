@@ -199,11 +199,14 @@ function reportTopLifecycle(brsFile, report) {
         CallExpression: (call) => {
           const callee = call?.callee;
           if (!brighterscript.isDottedGetExpression(callee)) return;
-          if (referenceText(callee.obj) !== 'm.top') return;
+          // BrightScript identifiers are case-insensitive, so `M.Top.UnobserveField` must
+          // not slip past an error-level rule.
+          if (referenceText(callee.obj)?.toLowerCase() !== 'm.top') return;
           const method = callee.tokens?.name?.text;
+          const lowerMethod = method?.toLowerCase();
           const field = argumentText(call.args?.[0]);
 
-          if (method === 'unobserveField' || method === 'unobserveFieldScoped') {
+          if (lowerMethod === 'unobservefield' || lowerMethod === 'unobservefieldscoped') {
             if (lowerFn === 'ondestroy') return;
             report({
               code: TOP_UNOBSERVE,
@@ -213,7 +216,7 @@ function reportTopLifecycle(brsFile, report) {
             return;
           }
 
-          if (method === 'observeField' || method === 'observeFieldScoped') {
+          if (lowerMethod === 'observefield' || lowerMethod === 'observefieldscoped') {
             if (lowerFn === 'init') return;
             // A port observer carries no handler name; see the header for why it is
             // outside the population.

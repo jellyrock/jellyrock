@@ -129,7 +129,7 @@ module.exports = () =>
           code: DIAGNOSTIC_CODE,
           severity: 2, // Warning
           location: obs.location,
-          message: `${observeMethod}("${obs.fieldText}") on '${obs.targetRef}' has no matching ${unobserveMethod}("${obs.fieldText}") on this target (or a known alias) anywhere in this file. JRScreen subclasses must release every observer (typically in onDestroy()); scoped/unscoped pairs are tracked separately by Roku, so an ${obs.scoped ? 'unobserveField' : 'unobserveFieldScoped'} won't satisfy this. Add ' bsc-disable-next-line observe-without-on-destroy to suppress.`,
+          message: `${observeMethod}("${obs.fieldText}") on '${obs.targetRef}' has no matching ${unobserveMethod}("${obs.fieldText}") on this target (or a known alias) anywhere in this file. JRScreen subclasses must release every observer (typically in onDestroy()); a mismatched scoped/unscoped pair is not trusted to release the registration, so an ${obs.scoped ? 'unobserveField' : 'unobserveFieldScoped'} won't satisfy this. Add ' bsc-disable-next-line observe-without-on-destroy to suppress.`,
         });
       }
     },

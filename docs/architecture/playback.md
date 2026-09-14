@@ -413,7 +413,7 @@ the handlers ignore what they must not act on with three flags instead:
 |---|---|---|
 | `m.isContentLoaded` | once, where `onVideoContentLoaded` hands the first stream to the `Video` node | Before a stream exists there is no playback to report. A Back pressed while loading surfaces as `stopped` (measured), and `onState` would otherwise report a stop for a session that never started. |
 | `m.isApplyingOwnSelection` | around the player's own writes to `audioIndex`, `mediaSourceId` and `selectedSubtitle` | Those writes apply the loaded selection; treating them as user choices reloads the stream. The caption handlers are deliberately not gated — they must see the same writes. |
-| `m.hasPlaybackFailed` | in `onState`'s terminal `error` branch | The error dialog owns what happens next. |
+| `m.hasPlaybackFailed` | in `onState`'s terminal `error` branch; cleared when `onVideoContentLoaded` hands over a new stream | The error dialog owns what happens next. |
 
 A self-write made on the render thread from inside the component ran its handler before the
 next statement in that spec, which is what lets a flag raised around the write suppress it. Both halves are build errors

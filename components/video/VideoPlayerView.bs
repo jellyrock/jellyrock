@@ -1026,7 +1026,9 @@ sub onVideoContentLoaded()
   ' From here this player acts on its own `state` and `position` (observed since init).
   ' Anything the Video node reported before a stream existed — a Back pressed while
   ' loading surfaces as `stopped` — is not a playback this player has to report.
+  ' A stream loaded after a terminal error is a fresh playback, so onState acts on it again.
   m.isContentLoaded = true
+  m.hasPlaybackFailed = false
 
   ' The second half of the wait starts here: handing `content` to the Video node is what
   ' sets it buffering. Declared after the early return above, so a playback that failed
