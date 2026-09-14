@@ -7,7 +7,7 @@ related-files:
   - bsconfig-tests.json
   - bsconfig-tests-unit.json
   - bsconfig-tests-integration.json
-last-reviewed: 2026-08-12
+last-reviewed: 2026-09-13
 ---
 
 # Testing
@@ -63,7 +63,7 @@ end namespace
 
 `tests.BaseTestSuite` (in `tests/source/BaseTestSuite.spec.bs`) extends `rooibos.BaseTestSuite` and provides:
 
-- **`m.global` initialization** — pulls a real global node from the test scene, populates app/device/server/user content nodes, loads en_US translations
+- **`m.global` initialization** — pulls a real global node from the test scene, populates app/device/server/user content nodes, loads en_US translations. Rooibos runs `setup()` once per **`@describe` group**, not once per suite, so this is per-test-group work: the server/user mock data and en_US translations are re-applied for every group (that re-application is what isolates groups from each other), while `setGlobals()` runs only once per test session — its `m.global.addFields` writes leave existing fields untouched, so repeating it only built nodes to discard
 - **Registry teardown** — between tests, clears `test-*` sections so each test starts fresh (only if `m.needsRegistrySetup = true`)
 - **Test mode flag** — sections start with `test-` so production migration code skips real user data
 
@@ -76,12 +76,14 @@ npm run build:tests               # build everything
 
 npm run test:unit                 # build + run on configured device (uses ROKU_DEV_TARGET env var)
 npm run test:integration
-npm run test:all
-npm run test:complete
+npm run test:all                  # what CI's gating run uses — no code coverage recorded
+npm run test:complete             # adds the migration/registry tags and records code coverage (much slower)
 
 npm run test:tdd                  # build + run TDD config (single-suite iteration; uses bsconfig-tdd.json)
 npm run build:tdd                 # watch mode build only (no run)
 ```
+
+**Code coverage is not recorded in the gating build.** Instrumentation multiplies the cost of every executed line — `test:all` on a Streaming Stick 4K took 602 s with coverage and 68 s without — and runs the code under test with different timing than the shipped app. Coverage comes from `test:complete` (or the workflow's `complete` dispatch type); reporting it on `main` and on demand is tracked in #541.
 
 The TDD workflow expects you to copy `bsconfig-tdd-sample.json` to `bsconfig-tdd.json` (gitignored) and edit it to scope which suites/tests get built.
 
