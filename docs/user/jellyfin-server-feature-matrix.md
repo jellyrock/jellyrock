@@ -16,6 +16,7 @@ This document shows which JellyRock features require specific Jellyfin server ve
 | **Trickplay Thumbnails**  | ❌     | ❌     | ✅     | ✅       | Video preview scrubbing         |
 | **Quick Connect**         | ✅     | ✅     | ✅     | ✅       | Auto-dispatches per server API  |
 | **Media Segments**        | ❌     | ❌     | ❌     | ✅       | Skip intro/outro/recap/etc.     |
+| **Song Lyrics**           | ❌     | ❌     | ✅     | ✅       | Lyrics your library already has |
 
 ## Legend
 
@@ -46,7 +47,7 @@ Media Segments enable skip functionality for detected intros, outros, recaps, pr
 - **10.9 and below**: ❌ Not available (the API endpoint does not exist)
 - **10.10+**: ✅ Fully supported
 
-Requires the Jellyfin server to have media segment detection configured (e.g., via intro/outro detection plugins). Per-segment-type action preferences (auto-skip, show skip button, do nothing) can be configured in the Jellyfin web client and optionally overridden in JellyRock's Settings > Playback > Media Segments.
+Requires a media segment provider plugin on the server to detect the segments. See [Media Segments](media-segments.md) for the plugins JellyRock is tested with, how to choose what happens for each segment type, and troubleshooting.
 
 ## Upgrade Recommendations
 
