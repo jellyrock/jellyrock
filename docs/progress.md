@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-09-14 — fix: Register `m.top` observers once so the player cannot silence its host
 - 2026-09-14 — ci: Run device tests without code coverage, and set up test globals once per session
 - 2026-09-13 — fix: Report a force-finished playback as stopped once, not twice
 - 2026-09-13 — fix: Finish playback when a segment skip lands at the end of the media
