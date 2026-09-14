@@ -489,12 +489,114 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("calculateTextureVisibleItemCount()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("counts a partly visible portrait slot (fullwidth: 1824 / 264 = 6.9 -> 7)")
+    function _()
+      m.assertEqual(calculateTextureVisibleItemCount(1824, 234, 30), 7)
+    end function
+
+    @it("counts a partly visible wide slot (fullwidth: 1824 / 498 = 3.7 -> 4)")
+    function _()
+      m.assertEqual(calculateTextureVisibleItemCount(1824, 468, 30), 4)
+    end function
+
+    @it("does not round up an exact fit")
+    function _()
+      m.assertEqual(calculateTextureVisibleItemCount(528, 234, 30), 2)
+    end function
+
+    @it("returns 0 for an unusable slot width")
+    function _()
+      m.assertEqual(calculateTextureVisibleItemCount(1824, 0, 30), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isColumnInTextureWindow()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The expected sets below are what an RTA cell census read on a Stick 4K (Home, fullwidth,
+    ' portrait row, 3 launches identical) — not derived from this function.
+
+    @it("keeps every column of a row at the threshold")
+    function _()
+      m.assertEqual(m.windowColumns(10, 20, 7), m.range(0, 19))
+    end function
+
+    @it("32-item row, focus column 0: wraps to the tail (device: 26-31 + 0-13)")
+    function _()
+      expected = m.range(0, 13)
+      expected.append(m.range(26, 31))
+      m.assertEqual(m.windowColumns(0, 32, 7), expected)
+    end function
+
+    @it("32-item row, focus column 12: no wrap (device: 6-25)")
+    function _()
+      m.assertEqual(m.windowColumns(12, 32, 7), m.range(6, 25))
+    end function
+
+    @it("100-item row, focus column 0: wraps to the tail (device: 94-99 + 0-13)")
+    function _()
+      expected = m.range(0, 13)
+      expected.append(m.range(94, 99))
+      m.assertEqual(m.windowColumns(0, 100, 7), expected)
+    end function
+
+    @it("wide row keeps 8 each side of 4 visible")
+    function _()
+      m.assertEqual(m.windowColumns(12, 100, 4), m.range(4, 23))
+    end function
+
+    @it("wraps past the end when focus is near the last column")
+    function _()
+      expected = m.range(0, 11)
+      expected.append(m.range(92, 99))
+      m.assertEqual(m.windowColumns(98, 100, 7), expected)
+    end function
+
+    @it("always holds exactly the threshold for a long row")
+    function _()
+      for each focus in [0, 5, 31, 50, 99]
+        m.assertEqual(m.windowColumns(focus, 100, 7).count(), TEXTURE_BUFFER_THRESHOLD, "focus " + focus.toStr())
+      end for
+    end function
+
+    @it("keeps a minimum budget of 2 when the visible slots exceed the threshold")
+    function _()
+      ' 25 visible: budget floors at 2 -> 1 left + 25 visible + 1 right
+      m.assertEqual(m.windowColumns(10, 100, 25), m.range(9, 35))
+    end function
+
+    @it("returns false for an unknown column")
+    function _()
+      m.assertFalse(isColumnInTextureWindow(-1, 0, 32, 7))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("TEXTURE_BUFFER_THRESHOLD constant")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("is set to 20")
     function _()
       m.assertEqual(TEXTURE_BUFFER_THRESHOLD, 20)
+    end function
+
+    ' Columns isColumnInTextureWindow keeps loaded, ascending.
+    private function windowColumns(focusedCol as integer, totalItems as integer, numVisible as integer) as object
+      cols = []
+      for c = 0 to totalItems - 1
+        if isColumnInTextureWindow(c, focusedCol, totalItems, numVisible) then cols.push(c)
+      end for
+      return cols
+    end function
+
+    private function range(first as integer, last as integer) as object
+      out = []
+      for i = first to last
+        out.push(i)
+      end for
+      return out
     end function
 
   end class

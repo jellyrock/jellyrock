@@ -47,7 +47,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 '
 ' `appearances` / `popIns` / `popInsCold` and the `loadMs` trio answer a different question
 ' from the counters above, and it is the one the texture buffer exists for. The buffer
-' (±2 rows, ±1 column) loads a cell's image BEFORE the cell is on screen so the user never
+' (±2 rows, and a 20-column window inside a long row) loads a cell's image BEFORE the cell is on screen so the user never
 ' watches a placeholder turn into a poster. Nothing observed whether it wins that race:
 ' every counter above measures work DONE, none measures work done IN TIME.
 '
