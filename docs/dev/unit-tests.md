@@ -384,15 +384,22 @@ end namespace
 ## Test Lifecycle
 
 ```text
-Suite Setup (override setup())
-    └── BeforeEach (override beforeEach())
-        └── Test 1
-    └── AfterEach (override afterEach())
-    └── BeforeEach
-        └── Test 2
-    └── AfterEach
-Suite TearDown (override teardown())
+@describe group A
+  Setup (override setup())
+      └── BeforeEach (override beforeEach())
+          └── Test 1
+      └── AfterEach (override afterEach())
+      └── BeforeEach
+          └── Test 2
+      └── AfterEach
+  TearDown (override teardown())
+@describe group B
+  Setup … TearDown again
 ```
+
+`setup()` and `teardown()` run once per `@describe` group, not once per suite (`rooibos-roku`
+`TestGroup.runSync`). Tests inside one group share the state `setup()` built — see the lifecycle
+rule in [`tests/CLAUDE.md`](../../tests/CLAUDE.md).
 
 ### Suite-Level Lifecycle
 
