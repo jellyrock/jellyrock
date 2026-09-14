@@ -255,12 +255,12 @@ sub openPanel()
   m.searchInFlightLanguage = ""
   m.searchButton.isLoading = false
 
-  ' m.mutationInFlight is deliberately NOT reset here. A download's POST is not
-  ' abandoned by closePanel(), so it can still land and resume polling after a
-  ' close — clearing the flag on reopen would let a second download start beside
-  ' the first, which is the collision the flag exists to prevent. It is cleared
-  ' only by its own terminal outcomes, and the poll schedule is bounded, so the
-  ' worst case is a few seconds of "still working" on reopen, which is true.
+  ' m.mutationInFlight is deliberately NOT reset here. A download or delete keeps
+  ' running after closePanel() — its request, and a download's poll schedule — so
+  ' clearing the flag on reopen would let a second mutation start beside the
+  ' first, which is the collision the flag exists to prevent. It is cleared only
+  ' by the operation's own terminal outcomes, and the poll schedule is bounded,
+  ' so the worst case is a few seconds of "still working" on reopen, which is true.
 
   seedDefaultLanguage()
   ensureCulturesLoaded()
@@ -341,10 +341,12 @@ end sub
 
 sub closePanel()
   m.languageOverlay.visible = false
-  m.pollTimer.control = "stop"
+  ' The poll timer is NOT stopped. A download in flight must still confirm after
+  ' the user closes the panel — stopping it stranded the mutation claim and never
+  ' told the host its stream indices had shifted. onDestroy stops it.
   abandonDeleteConfirm()
 
-  ' Hand the host its re-sync on the way out.
+  ' Hand the host any re-sync that was deferred while the panel was open.
   '
   ' DEFERRED ON PURPOSE, and the reason is focus rather than efficiency. Setting
   ' subtitlesChanged makes ItemDetails re-fetch and rebuild itself, and that
@@ -378,6 +380,20 @@ sub closePanel()
   m.top.findNode("panelSlide").reverse = true
   m.top.findNode("panelTint").reverse = true
   m.panelAnime.control = "start"
+end sub
+
+' notifySubtitlesChanged: Tell the host the item's subtitle streams changed.
+'
+' While the panel is OPEN this is deferred to closePanel(), because the host's
+' refresh takes focus (see there). Once it is CLOSED there is nothing to protect —
+' focus is already back on the host — and deferring would strand the notice until
+' some later open-and-close, leaving the host playing with stale stream indices.
+sub notifySubtitlesChanged()
+  if m.top.isOpen
+    m.subtitlesChangedPending = true
+  else
+    m.top.subtitlesChanged = true
+  end if
 end sub
 
 ' onDestroy: Cleanup hook. The auto-abandon-promises BSC plugin injects
@@ -1098,12 +1114,8 @@ sub onPollTimerFired()
     m.top.existingStreams = streams
     displayToast(translate(translationKeys.MessageSubtitleAdded, [m.pendingDownloadName]), "success")
 
-    ' Deferred to closePanel(), exactly as the delete path is — see the comment
-    ' there. Setting subtitlesChanged makes ItemDetails re-fetch and rebuild, and
-    ' that rebuild takes focus away from this panel while the user is still in
-    ' it. The delete path proved that by isolation; this path has the same
-    ' exposure, differing only in which list focus is sitting on when it happens.
-    m.subtitlesChangedPending = true
+    ' May land after the user closed the panel — see notifySubtitlesChanged().
+    notifySubtitlesChanged()
   end sub).catch(sub(err as object, ctx as object)
     if ctx.itemId <> m.top.itemId
       releaseMutation()
@@ -1281,17 +1293,23 @@ sub refreshAfterDelete(name as string)
     ' re-render rather than after is hygiene, not the bug fix: the focus loss
     ' this path actually had was caused by the HOST REFRESH, which is why that is
     ' now deferred to closePanel(). Do not read this as the cure for it.
-    m.focusTarget = "search"
-    applyFocus()
+    '
+    ' Only while OPEN: the delete can finish after the user closed the panel, and
+    ' setFocus on a closed panel would pull focus off the host's buttons into it.
+    panelOpen = m.top.isOpen
+    if panelOpen
+      m.focusTarget = "search"
+      applyFocus()
+    end if
 
     m.top.existingStreams = item.MediaStreams
     displayToast(translate(translationKeys.MessageSubtitleDeleted, [ctx.name]), "success")
 
-    ' Tell the host when the panel CLOSES, not now — see closePanel().
-    m.subtitlesChangedPending = true
+    ' May land after the user closed the panel — see notifySubtitlesChanged().
+    notifySubtitlesChanged()
 
     ' Back to the list only if it still has something left to act on.
-    if canFocusDownloaded()
+    if panelOpen and canFocusDownloaded()
       m.focusTarget = "downloaded"
       applyFocus()
     end if
