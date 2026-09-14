@@ -135,6 +135,15 @@ bound outside its window never requests the image). After an unload Roku reports
 `loadStatus` as `failed`; that is the cleared URI, not a broken image — both load-status
 observers return early on `isTextureUnloaded`, and `loadsFailed` does not move.
 
+**A fourth path clears it too, and must NOT reload: a failed image.** `showPlaceholder`
+clears the URI to reveal the type glyph underneath, with the real URL still cached — so from
+`currentUri <> cachedUri` a failed cell looks exactly like an evicted one. `isTextureUnloaded`
+separates them: the three paths above set it and `showPlaceholder` does not, and
+`shouldReloadTexture` gates the reload on it. Re-requesting a known-broken image would wipe
+the glyph off a cell that is sitting still and then fail again, so a failed image retries only
+at its next unload or rebind, never on scroll — see `failed-poster-no-scroll-retry` in
+[`decisions.md`](../decisions.md).
+
 ## Canonical examples
 
 - [`JRRowItem`](../../components/ui/rowitem/JRRowItem.bs) + [`HomeRows`](../../components/home/HomeRows.bs):
