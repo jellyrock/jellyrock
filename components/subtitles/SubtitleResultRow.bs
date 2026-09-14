@@ -1,0 +1,383 @@
+' SubtitleResultRow: one remote subtitle search result inside SubtitlePanel.
+'
+' See SubtitleResultRow.xml for the layout rationale and the measurements the
+' row shape is derived from. This file owns the content -> visuals mapping and
+' the focus chrome; it holds no API or selection logic.
+import "pkg:/source/constants/subtitleLayout.bs"
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+
+
+' Badge icons render at the badge line's cap height so they optically match the
+' label beside them rather than towering over it.
+const BADGE_ICON_SIZE = 22
+
+' Which icon a badge draws. A slot can show either, so both Posters exist in
+' every slot with their uri assigned ONCE — see buildBadgePool.
+const BADGE_ICON_NONE = ""
+const BADGE_ICON_STAR = "star"
+const BADGE_ICON_CC = "cc"
+
+' Badge slots pre-allocated per row, sized to the most badges a single
+' row of this type can carry so the pool never grows mid-scroll.
+const BADGE_POOL_SIZE = 4
+
+sub init()
+  m.badgeRow = m.top.findNode("badgeRow")
+  m.nameLabel = m.top.findNode("nameLabel")
+  m.metaLabel = m.top.findNode("metaLabel")
+
+  m.nameLabel.color = m.global.constants.colorTextPrimary
+  m.nameLabel.repeatCount = 0
+
+  ' Badges this row's content asks for, each { text, color, iconKind, width },
+  ' and the width of the ones actually shown.
+  m.wantedBadges = []
+  m.badgesWidth = 0
+
+  m.badgeRow.itemSpacings = [subtitleLayout.BADGE_SPACING]
+
+  ' Measures badge text with the badge labels' own font. Never drawn; kept out of
+  ' badgeRow so it takes no slot in the layout.
+  m.badgeMeasure = m.top.createChild("LabelSecondarySmallest")
+  m.badgeMeasure.visible = false
+
+  buildBadgePool()
+  onSizeChanged()
+end sub
+
+' buildBadgePool: Create the badge nodes ONCE.
+'
+' MarkupList recycles a small set of row components as the list scrolls, writing
+' a new itemContent into each. The first draft tore down and rebuilt every badge
+' child on each of those writes, so a single scroll step cost a burst of node
+' create/destroy per visible row -- which is what made scrolling feel heavy.
+' Nodes are now created once; only their text, colour and visibility change.
+sub buildBadgePool()
+  m.badges = []
+
+  for i = 0 to BADGE_POOL_SIZE - 1
+    badge = m.badgeRow.createChild("LayoutGroup")
+    ' Named so the slot is addressable from RTA/odc. Pooled nodes are otherwise
+    ' anonymous, which makes a layout question like "did this badge move after the
+    ' row was populated?" unanswerable without a screenshot.
+    badge.id = "resultBadgeSlot" + i.toStr()
+    badge.layoutDirection = "horiz"
+    badge.vertAlignment = "center"
+    badge.visible = false
+
+    ' ONE holder, TWO overlapping Posters, and a uri that is never reassigned.
+    '
+    ' A slot shows whichever icon its badge needs, so the free-pool version just
+    ' wrote the uri it wanted onto the slot's single Poster. That churned: a
+    ' result WITH a perfect match put the star in slot 0 and one without put the
+    ' CC icon there, so every recycle that changed which kind came first rebound
+    ' slot 0's texture — and a Poster draws nothing until the new bitmap is
+    ' bound, which is the icon visibly popping in mid-scroll even though the
+    ' asset was already in Roku's texture cache. Keeping both Posters resident
+    ' and switching which one is SHOWN costs two nodes and rebinds nothing.
+    '
+    ' They overlap inside a holder rather than sitting side by side because
+    ' LayoutGroup would otherwise lay them out in sequence.
+    holder = badge.createChild("Group")
+    icons = {}
+    icons[BADGE_ICON_STAR] = newBadgeIcon(holder, "pkg:/images/icons/star_$$RES$$.png")
+    icons[BADGE_ICON_CC] = newBadgeIcon(holder, "pkg:/images/icons/closedCaptions_$$RES$$.png")
+
+    label = badge.createChild("LabelSecondarySmallest")
+
+    m.badges.push({ group: badge, holder: holder, icons: icons, label: label })
+  end for
+end sub
+
+' newBadgeIcon: one resident, pre-bound badge Poster, collapsed until used.
+'
+' Starts at zero SIZE, not merely hidden, and that distinction is load-bearing:
+' measured on device, an invisible LayoutGroup child still occupies its slot in
+' the layout — hiding a 22px icon left a 22px hole plus its spacing, which is
+' how a badge with no icon ends up indented from one that has it. Width is
+' therefore what this row toggles; `visible` just follows it.
+function newBadgeIcon(holder as object, uri as string) as object
+  icon = holder.createChild("Poster")
+  ' Downscale into TEXTURE MEMORY, not just on the way to the screen.
+  '
+  ' All THREE fields are required and none is optional: loadWidth/loadHeight
+  ' state the cap, and loadDisplayMode is what makes the cap apply at load time
+  ' -- the Poster docs are explicit that the scaling capability is used "by
+  ' setting the loadWidth and loadHeight field values" and then "select the
+  ' scaling option you want as the value of the loadDisplayMode field", whose
+  ' default noScale loads "at the image's original resolution". Set the first
+  ' two alone and nothing happens at all.
+  '
+  ' It matters here because the badge assets are not uniform:
+  ' closedCaptions_fhd.png is 64x64 and star_fhd.png is 36x36, both drawn at
+  ' 22px, so the CC icon was holding ~3.2x the texture of the star for the same
+  ' pixels. limitSize (the mode CommunityRating already uses for that same star)
+  ' preserves aspect ratio and leaves an already-small image alone.
+  icon.loadWidth = BADGE_ICON_SIZE
+  icon.loadHeight = BADGE_ICON_SIZE
+  icon.loadDisplayMode = "limitSize"
+  ' Load the bitmap SYNCHRONOUSLY, and set this BEFORE uri so it governs the load
+  ' that assigning uri kicks off.
+  '
+  ' This is the pop-in, and it is documented rather than inferred. Poster.loadSync
+  ' defaults to FALSE, which the Roku docs define as "loaded asynchronously in a
+  ' background thread, and may not appear immediately"; with true "and the uri
+  ' field specifies a local file (in the pkg:/images directory), the image is
+  ' loaded synchronously, and appears immediately". Every icon here is a local
+  ' pkg:/images file, so the async default was buying nothing and costing a frame.
+  '
+  ' It also explains the SHIFT that came with it, which is the more telling half:
+  ' until the bitmap arrives the Poster has no content to contribute, so the
+  ' LayoutGroup lays the row out as though the icon were not there and re-flows
+  ' when it lands — measured as a badge after it jumping right by ~28px, which is
+  ' exactly this icon (22) plus its gutter (6). A label measuring late would have
+  ' moved it by a label's width; 28px names the icon specifically.
+  '
+  ' The docs' caveat ("might cause brief glitches in the rendering while the image
+  ' is being fetched and loaded") is about paying the fetch on the render thread.
+  ' That is the right trade for a handful of tiny local PNGs already in the
+  ' package, and the load happens once per uri at row construction rather than
+  ' per scroll — NOT the trade to copy for a remote poster.
+  icon.loadSync = true
+  ' Assigned once, here, for the row component's whole life.
+  icon.uri = uri
+  icon.width = 0
+  icon.height = BADGE_ICON_SIZE
+  icon.visible = false
+  return icon
+end function
+
+sub onItemContentChanged()
+  content = m.top.itemContent
+  if not isValid(content) then return
+
+  if isValid(content.rowWidth) and content.rowWidth > 0 then m.top.rowWidth = content.rowWidth
+
+  m.nameLabel.text = titleFor(content)
+  m.metaLabel.text = metaLineFor(content)
+
+  m.wantedBadges = badgesFor(content)
+  onSizeChanged()
+end sub
+
+' titleFor: The release name, which is what a user actually matches against
+' their file. Falls back to the language when a provider returns no Name.
+function titleFor(content as object) as string
+  if isValidAndNotEmpty(content.name) then return content.name
+  if isValidAndNotEmpty(content.threeLetterIsoLanguageName) then return content.threeLetterIsoLanguageName
+  return translate(translationKeys.LabelSubtitles)
+end function
+
+' metaLineFor: "561,277 downloads . pirosasz . 2012", dropping any segment whose
+' value is missing rather than rendering an empty gap.
+'
+' Provider and format join the line only when the panel flagged them as varying
+' across the result set.
+function metaLineFor(content as object) as string
+  parts = []
+
+  downloads = 0
+  if isValid(content.downloadCount) then downloads = content.downloadCount
+  parts.push(translatePlural(translationKeys.LabelDownloadsCount, downloads, [groupThousands(downloads)]))
+
+  if isValidAndNotEmpty(content.author) then parts.push(content.author)
+
+  year = yearFrom(content.dateCreated)
+  if year <> "" then parts.push(year)
+
+  if content.showFormat = true and isValidAndNotEmpty(content.format) then parts.push(UCase(content.format))
+  if content.showProvider = true and isValidAndNotEmpty(content.providerName) then parts.push(content.providerName)
+
+  line = ""
+  for each part in parts
+    if line <> "" then line = line + "  ·  "
+    line = line + part
+  end for
+  return line
+end function
+
+' yearFrom: The year out of an ISO-8601 timestamp, or "" when absent/malformed.
+' Upload year is a useful staleness cue (sampled results ranged 2012..2015) and
+' is cheaper to read at a glance than a full date.
+function yearFrom(dateCreated as dynamic) as string
+  if not isValidAndNotEmpty(dateCreated) then return ""
+  if Len(dateCreated) < 4 then return ""
+
+  year = Left(dateCreated, 4)
+  if year.toInt() <= 0 then return ""
+  return year
+end function
+
+' groupThousands: 561277 -> "561,277". Download counts span four orders of
+' magnitude in real result sets, and unpunctuated six-digit numbers are hard to
+' size up at 10 feet.
+function groupThousands(value as integer) as string
+  digits = stri(value).trim()
+  if Len(digits) <= 3 then return digits
+
+  grouped = ""
+  count = 0
+  for i = Len(digits) to 1 step -1
+    grouped = Mid(digits, i, 1) + grouped
+    count++
+    if count = 3 and i > 1
+      grouped = "," + grouped
+      count = 0
+    end if
+  end for
+  return grouped
+end function
+
+' badgesFor: The flags that sit at the right of the meta line, most significant
+' first.
+'
+' Order is significance order, and that is load-bearing rather than cosmetic:
+' when a row cannot fit every badge, the ones dropped are the last in this list
+' (see placeBadges).
+'
+' Only truths worth acting on get a badge. "Perfect match" leads because a
+' hash-matched subtitle is the one signal that reliably predicts sync; the
+' translation/impairment flags follow because they change whether the file is
+' the right KIND of subtitle, not just whether it fits.
+'
+' Each badge is an icon plus its label. The icons carry the meaning at a glance
+' and the words disambiguate them, which matters because "perfect match" is not
+' self-evident from a star alone. Colour does the ranking: the star takes
+' colorPrimary because it is the signal worth acting on, everything else takes
+' colorTextSecondary so it reads as a qualifier rather than a recommendation.
+function badgesFor(content as object) as object
+  wanted = []
+  constants = m.global.constants
+
+  if content.isHashMatch = true
+    ' colorSecondary, not colorPrimary. The theme encodes interaction state: primary
+    ' is for what you can focus or act on (it is the focus ring on this very row),
+    ' secondary is for non-focusable emphasis. A perfect-match mark is emphasis on a
+    ' property of the result, not something you can move focus to — and tinting it
+    ' primary put the same colour on the badge and the focus ring in one frame.
+    wanted.push(newBadge(translate(translationKeys.LabelPerfectMatch), constants.colorSecondary, BADGE_ICON_STAR))
+  end if
+  if content.hearingImpaired = true
+    ' Closed-captioning mark for hearing-impaired subtitles: broadcast CC has
+    ' always meant SDH, so it is the icon viewers already know for this.
+    wanted.push(newBadge(translate(translationKeys.LabelHearingImpaired), constants.colorTextSecondary, BADGE_ICON_CC))
+  end if
+  if content.forced = true
+    wanted.push(newBadge(translate(translationKeys.LabelForcedSubtitle), constants.colorTextSecondary, BADGE_ICON_NONE))
+  end if
+  if content.aiTranslated = true
+    wanted.push(newBadge(translate(translationKeys.LabelAiTranslated), constants.colorTextSecondary, BADGE_ICON_NONE))
+  else if content.machineTranslated = true
+    wanted.push(newBadge(translate(translationKeys.LabelMachineTranslated), constants.colorTextSecondary, BADGE_ICON_NONE))
+  end if
+
+  return wanted
+end function
+
+' newBadge: A wanted badge with its rendered width, measured once per content.
+function newBadge(text as string, color as string, iconKind as string) as object
+  m.badgeMeasure.text = text
+  iconWidth = 0
+  if iconKind <> BADGE_ICON_NONE then iconWidth = BADGE_ICON_SIZE
+  width = subtitleLayout.badgeWidth(iconWidth, m.badgeMeasure.localBoundingRect().width)
+  return { text: text, color: color, iconKind: iconKind, width: width }
+end function
+
+' placeBadges: Show as many wanted badges as the row allows, right-aligned.
+'
+' Filled into the LAST slots of the pool, in order, and the unused slots are
+' hidden. badgeRow is right-aligned, so the last slot sits on the row's right
+' edge; a hidden slot still takes its place in a LayoutGroup, so leaving the
+' unused ones at the FRONT keeps them out of the way instead of pushing the
+' visible badges in from the edge.
+sub placeBadges()
+  widths = []
+  for each badge in m.wantedBadges
+    widths.push(badge.width)
+  end for
+
+  count = subtitleLayout.badgesThatFit(widths, subtitleLayout.maxBadgeRunWidth(m.top.rowWidth))
+  if count > m.badges.count() then count = m.badges.count()
+  m.badgesWidth = subtitleLayout.badgeRunWidth(widths, count)
+
+  first = m.badges.count() - count
+  for i = 0 to m.badges.count() - 1
+    if i < first
+      m.badges[i].group.visible = false
+    else
+      fillBadgeSlot(m.badges[i], m.wantedBadges[i - first])
+    end if
+  end for
+end sub
+
+' fillBadgeSlot: Draw one badge in a slot. Chooses WHICH resident icon shows;
+' never assigns a uri, which is what keeps a recycled row from rebinding a texture.
+sub fillBadgeSlot(slot as object, badge as object)
+  slot.label.text = badge.text
+  slot.label.color = badge.color
+
+  ' Collapse every icon in this slot, then open the one asked for. Width rather
+  ' than visibility is what takes it out of the layout — see newBadgeIcon.
+  for each kind in slot.icons
+    icon = slot.icons[kind]
+    wanted = (kind = badge.iconKind)
+    icon.visible = wanted
+    if wanted
+      icon.width = BADGE_ICON_SIZE
+      icon.blendColor = badge.color
+    else
+      icon.width = 0
+    end if
+  end for
+
+  ' The icon gap only exists beside an icon. Applied beside an empty holder it
+  ' indents the label.
+  if badge.iconKind = BADGE_ICON_NONE
+    slot.group.itemSpacings = [0]
+  else
+    slot.group.itemSpacings = [subtitleLayout.BADGE_ICON_GAP]
+  end if
+
+  slot.group.visible = true
+end sub
+
+sub onSizeChanged()
+  rowWidth = m.top.rowWidth
+  constants = m.global.constants
+
+  ' Before any geometry below: the meta line's width depends on what fits.
+  placeBadges()
+
+  ' Line 1: the release name, across the row's full text width.
+  ' ScrollingLabel viewports are driven by maxWidth, not width.
+  m.nameLabel.maxWidth = rowWidth - (subtitleLayout.ROW_H_PADDING * 2)
+  m.nameLabel.translation = [subtitleLayout.ROW_H_PADDING, subtitleLayout.ROW_V_PADDING]
+
+  ' Line 2: meta text on the left, badges right-aligned.
+  secondLineY = subtitleLayout.ROW_V_PADDING + constants.fontSizeSmaller + subtitleLayout.ROW_LINE_GAP
+
+  ' A Label with wrap off and a width ellipsizes what does not fit, so a long
+  ' meta line degrades to "…" instead of running under the badges.
+  m.metaLabel.width = subtitleLayout.detailWidthBeside(rowWidth, m.badgesWidth)
+  m.metaLabel.translation = [subtitleLayout.ROW_H_PADDING, secondLineY]
+
+  m.badgeRow.translation = [rowWidth - subtitleLayout.ROW_H_PADDING, secondLineY]
+end sub
+
+
+' onFocusChanged: the marquee, and nothing else.
+'
+' The focus BORDER and surface are the list's now (see the XML), so all that is
+' left here is the one thing a shared indicator cannot do: start and stop this
+' row's own scrolling label. The colour used to be re-applied in both branches to
+' the same value it is already given in init(), which is a write per focus change
+' that could never change anything.
+sub onFocusChanged()
+  if m.top.itemHasFocus
+    m.nameLabel.repeatCount = -1
+  else
+    m.nameLabel.repeatCount = 0
+  end if
+end sub

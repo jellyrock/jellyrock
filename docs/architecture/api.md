@@ -12,7 +12,7 @@ related-files:
   - components/api/ApiResultNode.xml
   - components/api/SideEffectTask.bs
   - components/home/LoadLatestRowsTask.bs
-last-reviewed: 2026-08-23
+last-reviewed: 2026-09-06
 ---
 
 # API Layer & Task Pool
@@ -69,6 +69,7 @@ Internally, `Build*Request` methods:
 - Apply image defaults (`EnableImageTypes: "Primary,Backdrop,Logo,Thumb"`, `ImageTypeLimit: 1`)
 - Route between `V1` and `V2` endpoints based on `getApiVersionFromGlobal()` (which reads `m.global.server.apiVersion`)
 - Return `invalid` if there's no user (so callers don't have to null-check globals)
+- **May REFUSE to build a request that would be unsafe, and may take a domain object instead of an id in order to check.** This is a second, narrower meaning of the `invalid` return above: not "I lack a prerequisite" but "I will not build this". `BuildDeleteSubtitleRequest(itemId, stream)` is the reference — it takes the subtitle `MediaStream` rather than a stream index, and returns `invalid` unless `IsExternal` is explicitly `true`, because the server deletes `MediaStream.Path` unconditionally and an embedded subtitle's path is the media container. Put a safety rule here, once, when getting it wrong destroys user data; a rule stated in prose for callers to honor is not a guard, and callers already treat an `invalid` request as "cannot do this", so a refusal degrades into an inert control rather than a crash.
 
 Example of `V1/V2` routing (one method shown — the same pattern repeats per endpoint; canonical source: `source/api/ApiClient.bs`):
 

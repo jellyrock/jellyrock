@@ -15,7 +15,9 @@ import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/placeholderImage.bs"
+import "pkg:/source/utils/remoteSubtitles.bs"
 import "pkg:/source/utils/screenReadiness.bs"
+import "pkg:/source/utils/serverCapabilities.bs"
 import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
@@ -122,6 +124,13 @@ sub init()
   ' Focus stays on the component (scene manager sets it) until buttons are ready.
   m.buttonGrp.visible = false
 
+  ' Subtitle management panel (#750). Self-contained — it owns its own API calls
+  ' and focus; we only feed it inputs and react to its two outbound fields.
+  m.subtitlePanel = m.top.findNode("subtitlePanel")
+  m.subtitlePanel.observeField("requestClose", "onSubtitlePanelRequestClose")
+  m.subtitlePanel.observeField("subtitlesChanged", "onSubtitlesChanged")
+  m.subtitlePanelOpen = false
+
   ' Item logo - positioned at fixed Y position
   m.itemLogo = m.top.findNode("itemLogo")
   m.itemLogo.observeField("loadStatus", "onLogoLoadStatusChanged")
@@ -194,6 +203,8 @@ sub init()
   ' Monotonic counter giving each trailer-availability fetch a unique requestId, so a
   ' rapid content refresh can never collide two in-flight requests on the same key.
   m.trailerCheckSeq = 0
+  ' Same, for the subtitle-provider check that gates Manage Subtitles.
+  m.subtitleProviderCheckSeq = 0
 
   m.isFirstRun = true
   m.isDeepLinkLaunch = false
@@ -536,6 +547,8 @@ sub dispatchDetailButtonAction(buttonId as string)
     onWatchedButtonPressed(item)
   else if buttonId = "deleteButton"
     onDeleteButtonPressed(item)
+  else if buttonId = "manageSubtitlesButton"
+    openSubtitlePanel(item)
   else if buttonId = "recordButton"
     onRecordButtonPressed(item)
   else if buttonId = "watchChannelButton"
@@ -580,6 +593,103 @@ sub onWatchedConfirmResponse()
     toggleWatched()
   end if
 end sub
+
+' ── Subtitle management panel (#750) ─────────────────────────────────────────
+'
+' The panel shares the extras pane's slide gesture: it rises to
+' extrasLayout.PANEL_OPEN_Y while itemDetails lifts its metadata block above it,
+' so the title / year / director rows stay visible as grounding. The two panels
+' are mutually exclusive — extras opens on DOWN-from-buttons, this on a button
+' press — and neither may be open while the other is.
+
+' openSubtitlePanel: Hand the panel everything it needs and raise it.
+'
+' The panel targets the SELECTED VERSION, not the item. Jellyfin builds each
+' MediaSource from its own item (source Id = that version's item id), and the
+' subtitle endpoints act on the item in the URL: delete resolves the stream index
+' on it and removes that stream's file, download saves beside its video. So the
+' id, the path and the stream list must all come from the same source — an index
+' from one version sent to another version's id can delete that version's media
+' file. A single-version item is unaffected: its only source's Id is the item id.
+'
+' Everything comes from data we already hold, so opening costs no round-trip.
+' canDelete is resolved HERE rather than inside the panel so the panel stays free
+' of policy knowledge (delete is admin-only on every server version).
+sub openSubtitlePanel(item as object)
+  if not (isValid(item) and isValidAndNotEmpty(item.id)) then return
+  if m.subtitlePanelOpen then return
+
+  ' All three from ONE place. Falling back per-field would recreate the mismatch.
+  source = selectedMediaSource()
+  if isValid(source) and isValidAndNotEmpty(source.Id)
+    m.subtitlePanel.itemId = source.Id
+    m.subtitlePanel.filePath = source.Path ?? ""
+    m.subtitlePanel.existingStreams = source.MediaStreams ?? []
+  else
+    m.subtitlePanel.itemId = item.id
+    m.subtitlePanel.filePath = item.path
+    m.subtitlePanel.existingStreams = []
+  end if
+  m.subtitlePanel.canDelete = remoteSubtitles.canDeleteSubtitles(m.global.user.policy)
+
+  m.subtitlePanelOpen = true
+
+  ' Same measure-then-slide order the extras pane uses: the target depends on
+  ' the settled text layout, so it must be computed immediately before the run.
+  updateItemDetailsAnimationTarget()
+  m.itemDescription.opacity = 0
+  m.trackCluster.opacity = 0
+  m.itemDetailsSliderInterp.reverse = false
+  m.itemDetailsSlider.control = "start"
+
+  m.subtitlePanel.visible = true
+  m.subtitlePanel.isOpen = true
+end sub
+
+' closeSubtitlePanel: Lower the panel and give the buttons back the remote.
+sub closeSubtitlePanel()
+  if not m.subtitlePanelOpen then return
+  m.subtitlePanelOpen = false
+
+  m.subtitlePanel.isOpen = false
+
+  m.itemDescription.opacity = 1
+  m.trackCluster.opacity = 1
+  m.itemDetailsSliderInterp.reverse = true
+  m.itemDetailsSlider.control = "start"
+
+  m.top.lastFocus = m.buttonGrp
+  m.buttonGrp.setFocus(true)
+end sub
+
+sub onSubtitlePanelRequestClose()
+  closeSubtitlePanel()
+end sub
+
+' onSubtitlesChanged: The server's subtitle set for this item changed.
+'
+' This is NOT cosmetic. An added subtitle is inserted at stream index 0 and
+' renumbers every other stream, so selectedAudioStreamIndex /
+' selectedSubtitleStreamIndex — which are server stream indices, and which get
+' handed to playback — are now pointing at the wrong tracks. Re-fetching the
+' item is what makes them right again, and it also repopulates the subtitle
+' dropdown so the newly added track is selectable the moment the panel closes.
+sub onSubtitlesChanged()
+  m.subtitleUserOverridden = false
+  m.top.refreshItemDetailsData = not m.top.refreshItemDetailsData
+end sub
+
+' selectedMediaSource: The currently selected MediaSource AA, or invalid. Uses the
+' same resolution as the track dropdowns (findSelectedSource), so the panel and
+' the dropdowns can never disagree about which version is in play.
+function selectedMediaSource() as dynamic
+  item = m.top.itemContent
+  if not isValid(item) then return invalid
+  if not isValid(item.mediaSourcesData) then return invalid
+  if not isValidAndNotEmpty(item.mediaSourcesData.mediaSources) then return invalid
+
+  return findSelectedSource(item.mediaSourcesData.mediaSources)
+end function
 
 ' Delete button. Confirm, then delete and leave the now-gone routed detail via the router.
 ' Standard showConfirmDialog helper (see onWatchedButtonPressed).
@@ -917,6 +1027,70 @@ sub checkTrailerAvailability(itemId as string)
   end sub)
 end sub
 
+' canOfferManageSubtitles: Everything but the plugin — a Movie or Episode, and a
+' user the server would let search. canSearchSubtitles() carries the permission
+' rule and the measurements behind it.
+function canOfferManageSubtitles(item as object) as boolean
+  if not isValid(item) then return false
+  if not remoteSubtitles.isSearchableItemType(item.type) then return false
+  return remoteSubtitles.canSearchSubtitles(m.global.user.policy, getApiVersionFromGlobal())
+end function
+
+function newManageSubtitlesButton() as object
+  button = CreateObject("roSGNode", "IconButton")
+  button.id = "manageSubtitlesButton"
+  button.icon = "pkg:/images/icons/closedCaptions_$$RES$$.png"
+  button.text = translate(translationKeys.LabelManageSubtitles)
+  return button
+end function
+
+' checkSubtitleProviders: Ask the server whether a subtitle provider is installed,
+' and insert Manage Subtitles if so.
+'
+' Reached only when Home's session check has not answered yet. A failed check
+' fails OPEN (the button is offered and the answer stays unknown, so the next screen
+' asks again) — a transport error is not evidence the plugin is missing, and an
+' empty search already explains itself.
+sub checkSubtitleProviders(itemId as string)
+  req = GetApi().BuildGetLibraryOptionsInfoRequest()
+  if not isValid(req) then return
+
+  m.subtitleProviderCheckSeq += 1
+  promises.chain(fetchAsync(req, "subtitleProviderCheck-" + m.subtitleProviderCheckSeq.toStr()), { itemId: itemId }).then(sub(res as object, ctx as object)
+    if ctx.itemId <> m.top.itemId then return ' stale — content changed under us
+    status = serverCapabilities.recordSubtitleProviderStatus(res)
+    if serverCapabilities.shouldOfferSubtitleSearch(status) then insertManageSubtitlesButton()
+  end sub).catch(sub(err as object, ctx as object)
+    if ctx.itemId <> m.top.itemId then return
+    m.log.warn("subtitle-provider check failed; offering Manage Subtitles", err.reason)
+    insertManageSubtitlesButton()
+  end sub)
+end sub
+
+' insertManageSubtitlesButton: Add the button to a row that is already built.
+'
+' In setupButtons() order: after Trailer, before Delete / Refresh. Inside the
+' unsplit/applyOverflow bracket, which keeps focus on the button the user is on
+' when this lands to its left — see captureRowFocus() in buttonOverflow.bs.
+sub insertManageSubtitlesButton()
+  ' findNode also sees the overflow stash, so a button moved into More counts.
+  if isValid(m.top.findNode("manageSubtitlesButton")) then return
+  if not canOfferManageSubtitles(m.top.itemContent) then return
+
+  unsplitButtons()
+
+  button = newManageSubtitlesButton()
+  insertAt = getButtonIndex("deleteButton")
+  if insertAt < 0 then insertAt = getButtonIndex("refreshButton")
+  if insertAt >= 0
+    m.buttonGrp.insertChild(button, insertAt)
+  else
+    m.buttonGrp.appendChild(button)
+  end if
+
+  applyOverflow()
+end sub
+
 ' callFunc entry — toggles the favorite state of the current item. Invoked from main.bs's
 ' button router; because callFunc rendezvouses to this render-thread-owned node, the body
 ' (and the fetchAsync().then() promise delivery + auto-abandon) runs on this component's
@@ -1077,8 +1251,7 @@ sub onRefreshItemDetailsData()
       ' Whole row around the index-0 insert, then re-split. See applyOverflow().
       unsplitButtons()
       m.buttonGrp.insertChild(m.resumeLoadingButton, 0)
-      ' Shift focus index to account for the new button at position 0
-      m.buttonGrp.buttonFocused = m.buttonGrp.buttonFocused + 1
+      ' applyOverflow() re-points the focus index at the same button by ID.
       applyOverflow()
     end if
   end if
@@ -1127,17 +1300,15 @@ sub onTrailerAvailableChanged()
       trailerButton.id = "trailerButton"
       trailerButton.icon = "pkg:/images/icons/playOutline_$$RES$$.png"
       trailerButton.text = translate(translationKeys.LabelPlayTrailer)
-      ' Insert before Delete (if present) to match setupButtons() ordering, else before Refresh
-      deleteButtonIndex = getButtonIndex("deleteButton")
-      if deleteButtonIndex >= 0
-        m.buttonGrp.insertChild(trailerButton, deleteButtonIndex)
+      ' Insert in setupButtons() order: before Manage Subtitles, else Delete, else
+      ' Refresh. Manage Subtitles can itself arrive late, so it may already be here.
+      insertAt = getButtonIndex("manageSubtitlesButton")
+      if insertAt < 0 then insertAt = getButtonIndex("deleteButton")
+      if insertAt < 0 then insertAt = getButtonIndex("refreshButton")
+      if insertAt >= 0
+        m.buttonGrp.insertChild(trailerButton, insertAt)
       else
-        refreshButtonIndex = getButtonIndex("refreshButton")
-        if refreshButtonIndex >= 0
-          m.buttonGrp.insertChild(trailerButton, refreshButtonIndex)
-        else
-          m.buttonGrp.appendChild(trailerButton)
-        end if
+        m.buttonGrp.appendChild(trailerButton)
       end if
     end if
   else
@@ -2794,14 +2965,23 @@ sub applyDropdown(dropdown as object, items as object, selectedId as string, app
 end sub
 
 ' triggerTextForSelection: Look up the currently-selected item's display title.
+' Prefers triggerTitle where an item carries one — the subtitle slot uses it to
+' keep the collapsed trigger free of a disambiguator that only reads correctly
+' beside the other entries. Video and audio items have no triggerTitle and fall
+' through to title unchanged.
 function triggerTextForSelection(items as object, selectedId as string) as string
   if not isValid(items) or items.count() = 0 then return ""
   for each item in items
     if isValid(item.id) and item.id = selectedId
-      return item.title
+      return triggerTextForItem(item)
     end if
   end for
-  return items[0].title
+  return triggerTextForItem(items[0])
+end function
+
+function triggerTextForItem(item as object) as string
+  if isValidAndNotEmpty(item.triggerTitle) then return item.triggerTitle
+  return item.title
 end function
 
 ' buildVideoDropdownItems: Convert MediaSources into dropdown items. "Video" here is the
@@ -2835,8 +3015,7 @@ function buildAudioDropdownItems(streams as object) as object
   return items
 end function
 
-' buildSubtitleDropdownItems: Convert the MediaStreams array into dropdown items for
-' subtitles.
+' buildSubtitleDropdownItems: Subtitle rows for the track cluster.
 '
 ' Two shapes are returned depending on whether the item actually has subtitle streams:
 '   * No subtitle streams at all → [{ id:"-1", title:"None" }]. Rendered as a static
@@ -2846,23 +3025,29 @@ end function
 '   * One or more subtitle streams → [{ id:"-1", title:"Off" }, ...tracks]. The
 '     "Off" entry lets the user disable subtitles when tracks ARE present. id "-1"
 '     is the SubtitleSelection.NONE sentinel used by m.top.selectedSubtitleStreamIndex.
+'
+' Titles come from remoteSubtitles.subtitleDropdownEntries() rather than straight
+' from formatSubtitleDisplayTitle(), because language + codec + flags does not
+' separate two English SRTs — measured on a 6-stream movie, this dropdown offered
+' "English SUBRIP" three times, so a freshly downloaded subtitle was impossible
+' to pick out from the built-in ones. The helper marks the downloaded ones and
+' leaves the rest plain, which is the one question worth answering here.
+'
+' Each item carries triggerTitle as well: the collapsed trigger is a narrow slot
+' that already ellipsizes, and the marker is only meaningful beside the entries
+' it distinguishes FROM, so the trigger shows the plain form.
 function buildSubtitleDropdownItems(streams as object) as object
-  tracks = []
-  if isValid(streams)
-    for each stream in streams
-      if isValid(stream) and isValid(stream.Type) and LCase(stream.Type) = "subtitle" and isValid(stream.index)
-        tracks.push({ id: str(stream.index).trim(), title: formatSubtitleDisplayTitle(stream) })
-      end if
-    end for
+  entries = remoteSubtitles.subtitleDropdownEntries(streams)
+
+  if entries.count() = 0
+    noneLabel = translate(translationKeys.LabelNone)
+    return [{ id: "-1", title: noneLabel, triggerTitle: noneLabel }]
   end if
 
-  if tracks.count() = 0
-    return [{ id: "-1", title: translate(translationKeys.LabelNone) }]
-  end if
-
-  items = [{ id: "-1", title: translate(translationKeys.LabelOff) }]
-  for each track in tracks
-    items.push(track)
+  offLabel = translate(translationKeys.LabelOff)
+  items = [{ id: "-1", title: offLabel, triggerTitle: offLabel }]
+  for each entry in entries
+    items.push({ id: str(entry.index).trim(), title: entry.title, triggerTitle: entry.triggerTitle })
   end for
   return items
 end function
@@ -2871,18 +3056,26 @@ end function
 ' matches m.top.selectedVideoStreamId. Falls back to mediaSources[0] when the selected
 ' id isn't found (e.g. first load before selection).
 function getStreamsForSelectedSource(mediaSources as object) as object
-  if not isValid(mediaSources) then return []
+  source = findSelectedSource(mediaSources)
+  if not isValid(source) then return []
+  return source.MediaStreams
+end function
+
+' findSelectedSource: The MediaSource AA getStreamsForSelectedSource reads from, or
+' invalid. Only a source carrying MediaStreams qualifies, including the fallback.
+function findSelectedSource(mediaSources as object) as dynamic
+  if not isValid(mediaSources) then return invalid
 
   for each source in mediaSources
     if source.Id = m.top.selectedVideoStreamId and isValid(source.MediaStreams)
-      return source.MediaStreams
+      return source
     end if
   end for
 
   if isValid(mediaSources[0]) and isValid(mediaSources[0].MediaStreams)
-    return mediaSources[0].MediaStreams
+    return mediaSources[0]
   end if
-  return []
+  return invalid
 end function
 
 ' SetDefaultAudioTrack: Auto-select the best audio stream based on user language prefs,
@@ -3806,6 +3999,27 @@ sub setupButtons(item as object)
     m.buttonGrp.appendChild(trailerButton)
   end if
 
+  ' Manage Subtitles button (#750) — Movie and Episode only, when the server
+  ' would actually let this user search.
+  '
+  ' The permission clause is NOT just the enableSubtitleManagement flag: that
+  ' defaults to false for every account including administrators, yet admins are
+  ' allowed through by the server anyway, and the flag does not exist at all on
+  ' 10.7-10.8 where the endpoints are open to any user. canSearchSubtitles()
+  ' carries the whole rule (and the measurements behind it).
+  '
+  ' It also needs a subtitle provider PLUGIN on the server, or every search comes
+  ' back empty. When that is not known yet the button is left out here and inserted
+  ' when checkSubtitleProviders() answers — see serverCapabilities.bs.
+  if canOfferManageSubtitles(item)
+    providerStatus = m.global.server.subtitleProviderStatus
+    if providerStatus = serverCapabilities.STATUS_AVAILABLE
+      m.buttonGrp.appendChild(newManageSubtitlesButton())
+    else if providerStatus = serverCapabilities.STATUS_UNKNOWN
+      checkSubtitleProviders(item.id)
+    end if
+  end if
+
   ' Delete button — when server grants permission
   if item.canDelete
     deleteButton = CreateObject("roSGNode", "IconButton")
@@ -4419,6 +4633,10 @@ function onKeyEvent(key as string, press as boolean) as boolean
     return true
   end if
 
+  ' DOWN: buttonGrp -> extrasGrid. Blocked while the subtitle panel occupies the
+  ' same screen region — the two panels are mutually exclusive.
+  if key = "down" and m.buttonGrp.isInFocusChain() and m.subtitlePanelOpen then return true
+
   ' DOWN: buttonGrp -> extrasGrid
   if key = "down" and m.buttonGrp.isInFocusChain()
     ' Guard: don't open the extras pane when there are no rows — focus would be lost in an empty grid.
@@ -4525,6 +4743,14 @@ sub onDestroy()
   ' LoadChannelProgramsTask started by onProgramsExpired) and unobserves all
   ' fields before we destroy the texture manager or null out references.
   m.extrasGrid.callFunc("onDestroy")
+
+  ' Subtitle panel owns its own in-flight pool requests; SceneGraph does not run
+  ' onDestroy on a plain child, so drive it explicitly.
+  if isValid(m.subtitlePanel)
+    m.subtitlePanel.unobserveField("requestClose")
+    m.subtitlePanel.unobserveField("subtitlesChanged")
+    m.subtitlePanel.callFunc("teardown")
+  end if
 
   ' Unobserve m.port observers set by showScenes.bs CreateItemDetailsGroup().
   ' These persist until the node is garbage collected, so explicit cleanup

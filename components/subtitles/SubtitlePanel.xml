@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SubtitlePanel: search for, download and remove subtitles for one item (#750).
+
+  A bottom panel rather than a routed screen, and that is a correctness choice
+  rather than a stylistic one. Downloading a subtitle makes the server insert it
+  at stream index 0 and RENUMBER every other stream, so the item's audio/video
+  stream indices shift underneath whatever launched this. ItemDetails holds
+  those indices in selectedAudioStreamIndex / selectedSubtitleStreamIndex and
+  hands them to playback, so they must be re-synced from a fresh fetch the
+  moment a download lands. Staying mounted on the same screen makes that a call
+  to the populateTrackDropdowns() that already exists; a separate route would
+  have to plumb the result back through a pop.
+
+  It also means the loop closes where the user is looking: download, confirm,
+  close, and the new track is already selectable in the subtitle dropdown that
+  sits directly beneath this panel.
+
+  Geometry mirrors the extras pane exactly (see source/constants/extrasLayout.bs)
+  so the two read as the same gesture: the panel slides up to y=306 while
+  ItemDetails slides its metadata block up above it, leaving the title/year/
+  director rows visible as grounding. Everything below y=306 belongs to us,
+  down to the 5% action-safe bottom at y=1026.
+
+  SELF-CONTAINED BY DESIGN. This component owns its own API calls, focus model
+  and state; ItemDetails only sets inputs and observes two outbound fields. That
+  boundary is what makes the deferred OSD variant cheap — the player can mount
+  this same component — and it is a deliberate departure from ExtrasSlider,
+  which is a dumb container whose logic all lives in ItemDetails and is a
+  meaningful part of why that file is the repo's largest.
+-->
+<component name="SubtitlePanel" extends="JRGroup">
+  <children>
+    <!-- Panel surface. Starts off-screen at extrasLayout.PANEL_CLOSED_Y; the
+         slide is driven by panelAnime, set up in init() from the same constants
+         the extras pane uses. -->
+    <Rectangle id="panelSurface" width="1920" height="900">
+      <Group id="panelClip" clippingRect="[0, 0, 1920, 720]">
+
+        <!-- ── Header ─────────────────────────────────────────────────────
+             File name first: subtitle sync depends on the RELEASE, not the
+             title, so the filename is the single most useful thing to keep in
+             front of the user while they scan results. The title/year stay
+             visible above the panel, so this line adds what they can't see. -->
+        <LayoutGroup id="headerGroup" layoutDirection="vert" itemSpacings="[6]" translation="[96, 24]">
+          <!-- The panel's own title. Without it the results column's heading was
+               doing double duty as the dialog title while sitting over a list,
+               which made the two columns read as the same kind of list. -->
+          <LabelPrimaryMedium id="panelTitle" width="1728" />
+          <LabelSecondarySmallest id="fileLabel" width="1728" />
+          <LayoutGroup id="controlRow" layoutDirection="horiz" itemSpacings="[24]">
+            <!-- The chevron is the same affordance TrackDropdown uses, and for
+                 the same reason: nothing else about this button says its value
+                 is changeable rather than an action to trigger. iconSide="right"
+                 makes it a trailing disclosure marker pinned to the button's
+                 edge, not a leading icon that reads as part of the language name. -->
+            <TextButton id="languageButton" padding="24" minWidth="420" icon="pkg:/images/icons/expand_$$RES$$.png" iconSide="right" />
+            <TextButton id="searchButton" padding="24" minWidth="220" />
+            <!-- A toggle, not a momentary action: TextButton draws the selected
+                 underline while isButtonSelected is on. -->
+            <TextButton id="perfectMatchButton" padding="24" minWidth="360" showSelectedIndicator="true" visible="false" />
+          </LayoutGroup>
+        </LayoutGroup>
+
+        <!-- ── Results (left) ─────────────────────────────────────────────
+             1120px wide. Release names ran to 85 characters in the sampled
+             results, so width here directly buys fewer marquees. -->
+        <!-- Plain Groups with hard-coded child translations, NOT LayoutGroups.
+             A LayoutGroup aligns children by their boundingRect, and a
+             MarkupList's rect is offset by its focus-footprint margins even
+             with drawFocusFeedback off — so the list gets nudged right and the
+             rows stop lining up with the heading above them. ItemDetails hit
+             the same class of drift on the vertical axis with its trackCluster
+             and resolved it the same way; see the comment there. -->
+        <Group id="resultsGroup" translation="[96, 190]">
+          <LabelPrimaryMedium id="resultsHeading" translation="[0, 0]" />
+          <!-- "3 of 47", right-aligned on the heading's own line. A MarkupList has
+               no counter of its own — showRowCounter is a RowList field — so this
+               is hand-built, but the STRING is the app's existing Message1Of2, the
+               same one the grid overhang and the audio player use, so a position
+               readout means the same thing wherever it appears. On the heading
+               line rather than below the list: it costs no row, and the question
+               it answers ("is there more?") is asked while looking at the top. -->
+          <LabelSecondarySmall id="resultsCount" translation="[0, 0]" width="1120" horizAlign="right" visible="false" />
+          <!-- drawFocusFeedback is LEFT AT ITS DEFAULT (true) so the list draws the
+               one focus indicator that FLOATS between rows, which is what every
+               other list in the app does. The rows previously hand-drew their own
+               border and surface from the same two 9-patches and the same two
+               theme colours, toggled per row — identical pixels, but a static
+               indicator that can only appear, never travel. Chrome comes from
+               applyListFocusChrome() in SubtitlePanel.init(). -->
+          <MarkupList id="resultsList"
+            translation="[0, 44]"
+            itemComponentName="SubtitleResultRow"
+            vertFocusAnimationStyle="floatingFocus" />
+        </Group>
+
+        <!-- Loading indicator for the results column, in place of the rows.
+             Sized in init(): 64px, chosen the way every other Spinner in the app
+             is — for legibility in ITS region, not from a ratio. The column is
+             1120x486, so the scene-level 125px reads as content rather than as
+             a wait, and skeleton's 48px is tuned for one recycled cell. Nothing
+             in the app derives a spinner size from its container: skeleton draws
+             the same 48px in grid cells and row cells of different heights. -->
+        <Spinner id="resultsSpinner" visible="false" />
+
+        <!-- Empty / status line, shown in place of the results list. Covers
+             both real emptiness and the several server states that are
+             indistinguishable from it (no provider plugin, missing provider
+             credentials, exhausted download quota all return 200 []). -->
+        <LabelSecondarySmall id="statusLabel" width="1120" wrap="true" translation="[96, 240]" visible="false" />
+
+        <!-- ── On this item (right) ───────────────────────────────────────
+             The subtitles already present, and where deletion happens. Sitting
+             beside the results rather than behind a tab is the one piece of the
+             official client's information architecture worth keeping: it lets
+             you see whether you already have what you're searching for.
+
+             TWO SECTIONS, not one list. Downloaded files and tracks built into
+             the video differ in what you can do with them (only a file can be
+             deleted) and in what there is to say about them (only a file has a
+             name). Tagging every row with its category instead made the word
+             "Embedded" the most repeated text in the column while telling the
+             user nothing — a heading says it once.
+
+             BOTH sections take focus, and the built-in one must keep doing so.
+             It was once excluded on the grounds that a track you cannot act on
+             is dead travel, which missed that SCROLLING is the travel's purpose:
+             sectionRowCounts() rations visible rows on the promise that a
+             trimmed section still scrolls to the rest, and a MarkupList that
+             cannot be focused cannot be scrolled. Re-narrowing this silently
+             hides content — see the warning on sectionRowCounts() and
+             canFocusDownloaded / canFocusEmbedded.
+
+             Section positions and row counts are computed in layoutExistingSections()
+             because both sections vary in length; only the column heading is fixed. -->
+        <Group id="existingGroup" translation="[1256, 190]">
+          <LabelPrimaryMedium id="existingHeading" translation="[0, 0]" />
+
+          <LabelSecondarySmaller id="downloadedHeading" visible="false" />
+          <LabelSecondarySmall id="downloadedCount" width="570" horizAlign="right" visible="false" />
+          <MarkupList id="downloadedList"
+            itemComponentName="CurrentSubtitleRow"
+            vertFocusAnimationStyle="floatingFocus"
+            visible="false" />
+
+          <LabelSecondarySmaller id="embeddedHeading" visible="false" />
+          <LabelSecondarySmall id="embeddedCount" width="570" horizAlign="right" visible="false" />
+          <MarkupList id="embeddedList"
+            itemComponentName="CurrentSubtitleRow"
+            vertFocusAnimationStyle="floatingFocus"
+            visible="false" />
+
+          <LabelSecondarySmallest id="existingEmptyLabel" width="570" wrap="true" translation="[0, 44]" visible="false" />
+        </Group>
+
+      </Group>
+
+      <!-- Slide, mirroring ExtrasSlider's pplAnime: position plus a background
+           colour ramp so the panel darkens as it arrives. keyValues are set in
+           init() from extrasLayout so the two panels can never drift apart. -->
+      <Animation id="panelAnime" duration="0.4" repeat="false">
+        <Vector2DFieldInterpolator id="panelSlide" key="[0.0, 1.0]" fieldToInterp="panelSurface.translation" />
+        <ColorFieldInterpolator id="panelTint" key="[0.0, 1.0]" fieldToInterp="panelSurface.color" />
+      </Animation>
+    </Rectangle>
+
+    <!-- Language picker overlay. Reuses components/settings/LanguagePicker
+         UNCHANGED — it already pairs a type-to-filter mini keyboard with an
+         8-row RadioButtonList, which is the only sane way to pick from 192
+         cultures on a remote. Reusing it also means the language picker here
+         behaves identically to the one in Settings. -->
+    <Rectangle id="languageOverlay" width="1920" height="1080" translation="[0, 0]" visible="false">
+      <LabelPrimaryLarge id="languageOverlayHeading" translation="[96, 120]" />
+      <LanguagePicker id="languagePicker" translation="[96, 200]" />
+    </Rectangle>
+  </children>
+
+  <interface>
+    <!-- ── Inputs, set by the host screen ── -->
+    <field id="itemId" type="string" />
+    <field id="filePath" type="string" />
+    <!-- MediaStreams from the host's most recent item fetch. Also the baseline
+         the download-completion diff is taken against. -->
+    <field id="existingStreams" type="array" />
+    <!-- Whether this user may delete (admin only, every server version). The
+         host resolves it so the panel needs no policy knowledge. -->
+    <field id="canDelete" type="boolean" value="false" />
+
+    <!-- ── Control ── -->
+    <field id="isOpen" type="boolean" value="false" />
+
+    <!-- ── Outputs, observed by the host ── -->
+    <!-- Fires when the item's subtitle streams changed on the server. The host
+         MUST re-fetch the item and repopulate any stream-index-bearing UI. -->
+    <field id="subtitlesChanged" type="boolean" alwaysNotify="true" />
+    <!-- Fires when the panel wants to hand focus back (BACK from the root). -->
+    <field id="requestClose" type="boolean" alwaysNotify="true" />
+
+    <!-- Host calls this from its own onDestroy so in-flight pool responses
+         can't fire into a torn-down node. -->
+    <function name="teardown" />
+  </interface>
+</component>

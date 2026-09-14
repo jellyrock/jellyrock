@@ -405,6 +405,69 @@ export async function firstItemId(session, includeItemTypes) {
 }
 
 /**
+ * Would the app offer "Manage Subtitles" to THIS user on THIS server?
+ *
+ * A capability probe, in the same family as `quickConnectEnabled` and read the
+ * same way: a false answer is a fact about the fixture that the caller acts on
+ * by SKIPPING, never a regression.
+ *
+ * It mirrors the app's two gates deliberately rather than approximating them,
+ * because neither is the obvious rule:
+ *
+ * 1. PERMISSION — `remoteSubtitles.canSearchSubtitles()`.
+ *    - Below 10.9 the endpoints carry only DefaultAuthorization, so ANY
+ *      authenticated user may search and the permission does not exist yet.
+ *    - From 10.9 they carry Policies.SubtitleManagement — but
+ *      EnableSubtitleManagement defaults to FALSE for every account INCLUDING
+ *      administrators, and Jellyfin lets admins through regardless. So the flag
+ *      alone is the wrong question; admin OR the flag is the right one.
+ *    The 10.9 boundary is `resolveApiVersion()` in `source/utils/misc.bs`.
+ * 2. A SUBTITLE PROVIDER PLUGIN — `serverCapabilities.subtitleProviderStatusFrom()`:
+ *    `/Libraries/AvailableOptions` must list at least one `SubtitleFetchers` entry.
+ *
+ * Keep both in step with the app: the app deciding the button exists while the
+ * suite believes it does not (or the reverse) shows up as a nav timeout that
+ * blames the screen.
+ *
+ * Measured against the public demo (10.11.11) on 2026-09-06: user `demo` is
+ * IsAdministrator=false with EnableSubtitleManagement=false. And on 12.0 on
+ * 2026-09-14 it reports `SubtitleFetchers: []`. Either alone means the button does
+ * NOT render there, so `subtitlePanel` skips on the default fixture — expected, not
+ * a broken probe.
+ *
+ * Throws on any failed request, like every other helper here: a 401 must not be
+ * read as "this user cannot manage subtitles". (The APP fails open on a failed
+ * provider check; the suite cannot, because it has to know whether to press.)
+ *
+ * @param {{serverUrl: string, userId: string, token: string}} session
+ * @returns {Promise<boolean>}
+ */
+export async function manageSubtitlesOffered(session) {
+  const info = await getJson(`${session.serverUrl}/System/Info/Public`, {});
+  // Same boundary as resolveApiVersion(): >= 10.9.0 is apiVersion 2.
+  const [maj, min] = String(info?.Version ?? '')
+    .split('.')
+    .map((n) => Number.parseInt(n, 10));
+  const isV2 =
+    Number.isFinite(maj) && Number.isFinite(min) && (maj > 10 || (maj === 10 && min >= 9));
+
+  if (isV2) {
+    const user = await getJson(
+      `${session.serverUrl}/Users/${session.userId}`,
+      tokenHeader(session.token),
+    );
+    const policy = user?.Policy ?? {};
+    if (policy.IsAdministrator !== true && policy.EnableSubtitleManagement !== true) return false;
+  }
+
+  const options = await getJson(
+    `${session.serverUrl}/Libraries/AvailableOptions`,
+    tokenHeader(session.token),
+  );
+  return Array.isArray(options?.SubtitleFetchers) && options.SubtitleFetchers.length > 0;
+}
+
+/**
  * An episode that has a NEXT episode in the same series, resolved at runtime:
  * `{ id, nextId, seriesName, runTimeSeconds }`, or `null` when the server answered and no
  * series has two.

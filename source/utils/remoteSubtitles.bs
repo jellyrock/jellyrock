@@ -1,0 +1,566 @@
+' Remote subtitle search / download helpers (issue #750).
+'
+' Pure functions backing the subtitle-management panel. They live here rather
+' than inside the panel component so every judgment call — the permission gate,
+' the item-type gate, the download-completion diff, the result-row shaping — is
+' directly unit-testable without a device or a server.
+'
+' Every claim in the comments below was MEASURED against a live Jellyfin
+' 10.11.11 server with the Open Subtitles plugin (24.0.0.0) installed, plus the
+' 10.7.0/10.11.8 spec fingerprints in docs/architecture/spec-fingerprints/.
+' Where the server's behaviour is surprising it is called out at the function
+' that compensates for it.
+
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/mediaDisplayTitle.bs"
+import "pkg:/source/utils/translate.bs"
+
+namespace remoteSubtitles
+
+  ' Item types the server can actually search subtitles for.
+  '
+  ' SubtitleManager.SearchSubtitles maps the item to a VideoContentType and
+  ' bails to an EMPTY ARRAY for anything that isn't a Movie or an Episode. A
+  ' non-Video item (BoxSet, Series, MusicAlbum, …) doesn't even get that far —
+  ' the controller resolves it via GetItemById<Video>, so it 404s. Either way
+  ' the entry point must not be offered for these types.
+  const SEARCHABLE_TYPES = ["Movie", "Episode"]
+
+  ' canSearchSubtitles: Whether this user may search + download remote subtitles.
+  '
+  ' The gate is version-dependent, and the boundary lands exactly on JellyRock's
+  ' existing V1/V2 split:
+  '
+  '   10.7.x - 10.8.x (apiVersion 1): the endpoints carry only
+  '     Policies.DefaultAuthorization — ANY authenticated user may search. The
+  '     EnableSubtitleManagement permission does not exist in UserPolicy at all
+  '     on these versions (confirmed absent from the 10.7.0 spec fingerprint),
+  '     so gating on it would hide the feature from everyone.
+  '
+  '   10.9+ (apiVersion 2): the endpoints carry Policies.SubtitleManagement.
+  '
+  ' The admin clause is NOT a convenience — it is required for correctness.
+  ' EnableSubtitleManagement defaults to FALSE for every account including
+  ' administrators (Jellyfin's AddDefaultPermissions), yet admins are allowed
+  ' through anyway: UserPermissionRequirement subclasses
+  ' DefaultAuthorizationRequirement, and DefaultAuthorizationHandler short
+  ' circuits with "Admins can do everything". Measured truth table on 10.11.11:
+  '
+  '   admin,     EnableSubtitleManagement=false (the default) -> 200 / 204
+  '   non-admin, EnableSubtitleManagement=false (the default) -> 403
+  '   non-admin, EnableSubtitleManagement=true                -> 200 / 204
+  '
+  ' So gating purely on the permission flag — as the official Roku client does —
+  ' hides the feature from every administrator who never ticked the box, which
+  ' is the default state and the majority of self-hosted installs.
+  '
+  ' @param {object} policy - m.global.user.policy (JellyfinUserPolicy node or AA)
+  ' @param {integer} apiVersion - getApiVersionFromGlobal(); 1 = 10.7-10.8, 2 = 10.9+
+  ' @return {boolean} true when search + download are permitted
+  function canSearchSubtitles(policy as object, apiVersion as integer) as boolean
+    ' Pre-permission server line: the endpoints are open to any authenticated user.
+    if apiVersion < 2 then return true
+
+    if not isValid(policy) then return false
+    if policy.isAdministrator = true then return true
+    return policy.enableSubtitleManagement = true
+  end function
+
+  ' canDeleteSubtitles: Whether this user may delete an external subtitle file.
+  '
+  ' DELETE /Videos/{id}/Subtitles/{index} carries Policies.RequiresElevation on
+  ' EVERY supported version (checked at 10.7.7, 10.8.13, 10.9.11, 10.10.7,
+  ' 10.11.11 and master) — that is a straight administrator role check, NOT the
+  ' subtitle-management permission. Measured: a non-admin holding
+  ' EnableSubtitleManagement=true still gets 403 on delete while search and
+  ' download return 200/204. Delete is therefore gated separately and more
+  ' tightly than search, and does not vary by apiVersion.
+  '
+  ' @param {object} policy - m.global.user.policy (JellyfinUserPolicy node or AA)
+  ' @return {boolean} true when the user is an administrator
+  function canDeleteSubtitles(policy as object) as boolean
+    if not isValid(policy) then return false
+    return policy.isAdministrator = true
+  end function
+
+  ' isSearchableItemType: Whether the subtitle entry point applies to this type.
+  '
+  ' @param {string} itemType - BaseItem type string ("Movie", "Episode", …)
+  ' @return {boolean} true for Movie and Episode only
+  function isSearchableItemType(itemType as string) as boolean
+    if not isValidAndNotEmpty(itemType) then return false
+    for each searchable in remoteSubtitles.SEARCHABLE_TYPES
+      if itemType = searchable then return true
+    end for
+    return false
+  end function
+
+  ' shouldAutoSearch: Whether the panel should start a search by itself.
+  '
+  ' The seeded language is not always available at the moment the panel opens —
+  ' /Localization/Cultures may still be in flight — so the decision has to be
+  ' re-asked when the language lands. That makes it an IDEMPOTENT predicate
+  ' called from both points rather than a "remember to search later" flag: the
+  ' flag shape is what failed here, having been armed on open and never read by
+  ' anything (two writes, zero readers), so no first open ever searched.
+  '
+  ' Each guard earns its place:
+  '   * isOpen        - cultures can land AFTER the user has backed out, and a
+  '                     search costs a real provider round-trip through the
+  '                     server. Never search a panel nobody is looking at.
+  '   * searchInFlight - openPanel() resolves the language and then asks this
+  '                     question, so without it the seed path and the open path
+  '                     both fire for the same open.
+  '   * resultCount   - results are kept for the panel's lifetime, so a reopen
+  '                     shows what was already found instead of re-querying.
+  '                     A search that came back EMPTY leaves this at 0 and so
+  '                     retries on the next open, which is the wanted behaviour:
+  '                     an empty result is indistinguishable from an
+  '                     unconfigured provider, and that is worth re-asking.
+  '
+  ' @param {boolean} isOpen - the panel's current isOpen state
+  ' @param {integer} resultCount - results already held for this panel lifetime
+  ' @param {string} languageCode - resolved 2-letter/regional search language
+  ' @param {boolean} searchInFlight - a search has been issued and not answered
+  ' @return {boolean} true when a search should be started now
+  function shouldAutoSearch(isOpen as boolean, resultCount as integer, languageCode as string, searchInFlight as boolean) as boolean
+    if not isOpen then return false
+    if searchInFlight then return false
+    if resultCount > 0 then return false
+    return isValidAndNotEmpty(languageCode)
+  end function
+
+  ' shouldShowOpeningSpinner: Whether an opening panel should show the results wait.
+  '
+  ' Only while a language can still ARRIVE — the culture list is in flight. Once it
+  ' has loaded without the user's preference in it, no language is coming, and the
+  ' panel is showing "choose a language" instead; a spinner there spins forever,
+  ' because nothing will ever stop it.
+  '
+  ' @param {integer} resultCount - results already held for this panel lifetime
+  ' @param {string} languageCode - resolved search language, "" when none
+  ' @param {boolean} culturesLoaded - /Localization/Cultures has answered
+  ' @return {boolean} true when the spinner should show
+  function shouldShowOpeningSpinner(resultCount as integer, languageCode as string, culturesLoaded as boolean) as boolean
+    if resultCount > 0 then return false
+    if isValidAndNotEmpty(languageCode) then return false
+    return not culturesLoaded
+  end function
+
+  ' shouldStartSearch: Whether a search request should be issued right now.
+  '
+  ' The panel holds the language a search is IN FLIGHT FOR rather than a bare
+  ' "busy" boolean, because the two things a user can do here need opposite
+  ' answers and a boolean cannot tell them apart:
+  '
+  '   * the SAME language again — a held-down OK on Search — is a repeat, and
+  '     costs a real provider round-trip through the server for an answer
+  '     already on its way. Refused.
+  '   * a DIFFERENT language is a new question, and the old answer is now
+  '     unwanted. Allowed, superseding whatever is running.
+  '
+  ' A boolean refused both, which is what deadlocked the panel: picking a
+  ' language mid-search started nothing, and then the original reply was
+  ' discarded by the stale-language guard without clearing the flag — because
+  ' that guard's premise is "a newer search already owns it", and the refusal is
+  ' precisely what stopped a newer search existing. Nothing could search again
+  ' until the panel was closed and reopened.
+  '
+  ' Superseding is only SAFE because each search carries its own requestId
+  ' (fetchAsync keys its pending registry by it, and apiPool documents the
+  ' parameter as unique). Two searches sharing one id cross-wire: the first
+  ' reply settles the second's registry entry, reading a result that has not
+  ' arrived and rejecting it as a timeout. See runSearch's m.searchSeq.
+  '
+  ' @param {string} inFlightLanguage - language a search is running for; "" when idle
+  ' @param {string} requestedLanguage - language being asked for now
+  ' @return {boolean} true when a search should be issued
+  function shouldStartSearch(inFlightLanguage as string, requestedLanguage as string) as boolean
+    if not isValidAndNotEmpty(requestedLanguage) then return false
+    return inFlightLanguage <> requestedLanguage
+  end function
+
+  ' externalSubtitleStreams: The subtitle streams that are safe to offer for
+  ' deletion, in server-index order.
+  '
+  ' Filtering on IsExternal is a SAFETY guard, not a cosmetic one. The server's
+  ' DeleteSubtitles resolves the stream by index and unconditionally deletes
+  ' MediaStream.Path — for an EMBEDDED subtitle that path is the media container
+  ' itself. Never offer a stream whose IsExternal is not explicitly true.
+  '
+  ' @param {object} streams - MediaStreams array from a fresh item fetch
+  ' @return {object} array of external subtitle stream AAs (may be empty)
+  function externalSubtitleStreams(streams as object) as object
+    result = []
+    if not isValid(streams) then return result
+
+    for each stream in streams
+      if isValid(stream) and isValid(stream.Type) and LCase(stream.Type) = "subtitle"
+        if stream.IsExternal = true and isValid(stream.Index)
+          result.push(stream)
+        end if
+      end if
+    end for
+
+    return result
+  end function
+
+  ' subtitleStreams: Every subtitle stream on the item, in server-index order.
+  '
+  ' The DISPLAY set, and deliberately wider than externalSubtitleStreams(),
+  ' which is the DELETE set. The panel used to render only external streams, so
+  ' an item whose subtitles are all embedded reported "no subtitles on item"
+  ' while the detail screen's own dropdown listed several — measured on a
+  ' 4-stream movie where 3 of the 4 were embedded, which is the ordinary case
+  ' for a remuxed release. A column headed "Current subtitles" has to describe
+  ' the item; whether a given row may be DELETED is a property of that row
+  ' (IsExternal), not a reason to hide it from the list.
+  '
+  ' ⚠️ Anything that acts on a row from THIS set must re-check IsExternal.
+  ' Deleting an embedded stream deletes the media container — see
+  ' externalSubtitleStreams() for why.
+  '
+  ' @param {object} streams - MediaStreams array from a fresh item fetch
+  ' @return {object} array of subtitle stream AAs, external and embedded alike
+  function subtitleStreams(streams as object) as object
+    result = []
+    if not isValid(streams) then return result
+
+    for each stream in streams
+      if isValid(stream) and isValid(stream.Type) and LCase(stream.Type) = "subtitle" and isValid(stream.Index)
+        result.push(stream)
+      end if
+    end for
+
+    return result
+  end function
+
+  ' subtitleDropdownEntries: An item's subtitle tracks, made distinguishable.
+  '
+  ' The detail screen rendered every track through formatSubtitleDisplayTitle()
+  ' alone, which describes a stream by language, codec and flags — nothing that
+  ' separates two English SRTs. Measured on a real 6-stream movie, the dropdown
+  ' offered "English SUBRIP" three times, so after downloading a subtitle there
+  ' was no way to tell which entry was the file just fetched.
+  '
+  ' ONE RULE, statable in a sentence: a downloaded file is marked, and everything
+  ' else came with the video. That is the question a user is actually asking here
+  ' — "which one did I just add?" — and answering only that keeps the list quiet.
+  '
+  ' What this deliberately does NOT do is number the built-in tracks. An earlier
+  ' cut appended a source segment wherever two entries collided and an ordinal
+  ' where they still collided, which produced "English SUBRIP · Embedded 1" /
+  ' "Embedded 2": jargon, and arbitrary-looking because the suffix appeared on
+  ' some rows and not others. Two built-in English tracks really are identical in
+  ' every field the API returns, and the collapsed trigger shows the same text
+  ' whichever is picked, so the ordinal bought nothing it did not also cost.
+  '
+  ' triggerTitle is the unmarked form, for the collapsed dropdown trigger: it is a
+  ' narrow slot that already ellipsizes, and the marker only means anything beside
+  ' the entries it is distinguishing FROM.
+  '
+  ' @param {object} streams - MediaStreams array (mixed types; subtitles are picked out)
+  ' @return {object} array of { index, title, triggerTitle } in server order
+  function subtitleDropdownEntries(streams as object) as object
+    entries = []
+    subs = remoteSubtitles.subtitleStreams(streams)
+    if subs.count() = 0 then return entries
+
+    downloadedMark = translate(translationKeys.LabelDownloadedSubtitle)
+
+    for each stream in subs
+      base = formatSubtitleDisplayTitle(stream)
+      title = base
+      if stream.IsExternal = true then title = base + "  ·  " + downloadedMark
+
+      index = 0
+      if isValid(stream.Index) then index = stream.Index
+      entries.push({ index: index, title: title, triggerTitle: base })
+    end for
+
+    return entries
+  end function
+
+  ' subtitleStreamKey: A stable identity for a subtitle stream that survives
+  ' re-indexing.
+  '
+  ' Index CANNOT be used as an identity across a download. External subtitles
+  ' are inserted at index 0 and push every other stream down — measured on
+  ' 10.11.11, a file that was [0 Video, 1 Audio] became
+  ' [0 Subtitle, 1 Subtitle, 2 Video, 3 Audio] after two sidecars appeared. So
+  ' the diff keys on path (unique per external file) and falls back to the
+  ' display title plus language for streams without a readable path.
+  '
+  ' @param {object} stream - A MediaStream AA
+  ' @return {string} stable-ish key for set comparison
+  function subtitleStreamKey(stream as object) as string
+    if not isValid(stream) then return ""
+    if isValidAndNotEmpty(stream.Path) then return LCase(stream.Path)
+
+    title = ""
+    if isValidAndNotEmpty(stream.DisplayTitle) then title = stream.DisplayTitle
+    language = ""
+    if isValidAndNotEmpty(stream.Language) then language = stream.Language
+    return LCase(title + "|" + language)
+  end function
+
+  ' findSubtitleStreamByKey: The subtitle stream in a FRESH stream list that is the
+  ' same file as `key`, or invalid.
+  '
+  ' What makes a delete safe against renumbering. The server deletes the subtitle at
+  ' an INDEX, and a download or delete since the list was fetched shifts every index —
+  ' so an index read from an older list can name a different subtitle file. Resolving
+  ' the stream the user chose by its stable key against a list fetched just before
+  ' the delete is what guarantees the index sent is the file they saw.
+  '
+  ' @param {object} streams - MediaStreams from a fresh item fetch
+  ' @param {string} key - subtitleStreamKey() of the stream the user chose
+  ' @return {dynamic} the matching subtitle stream AA, or invalid when it is gone
+  function findSubtitleStreamByKey(streams as object, key as string) as dynamic
+    if key = "" then return invalid
+    for each stream in remoteSubtitles.subtitleStreams(streams)
+      if remoteSubtitles.subtitleStreamKey(stream) = key then return stream
+    end for
+    return invalid
+  end function
+
+  ' subtitleFileTail: The part of an installed subtitle's filename that actually
+  ' tells it apart from another subtitle on the same item.
+  '
+  ' Jellyfin records NO provenance for a subtitle. A subtitle MediaStream
+  ' carries only Codec, Language, IsForced, IsHearingImpaired, IsDefault,
+  ' IsExternal, Index, DisplayTitle and Path — no provider, no download date, no
+  ' rating. Two English SRTs are therefore identical in every field the API
+  ' returns EXCEPT Path, which makes the filename the only discriminator the
+  ' client can offer, and the sidecar suffix (".en.hi.srt" vs ".en.sdh.srt") the
+  ' only part of it that differs.
+  '
+  ' The media file's own basename is stripped when the subtitle sits beside it,
+  ' because that name is already on screen in the panel header and repeating it
+  ' per row would push the differing tail off the end of a 570px column. When
+  ' the subtitle does NOT share the media basename — a Subs/ folder, a manually
+  ' placed file — there is no redundancy to strip and the whole filename is
+  ' returned, since then it IS the discriminator.
+  '
+  ' @param {dynamic} subtitlePath - MediaStream.Path of the subtitle
+  ' @param {dynamic} mediaPath - Path of the media file the item plays from
+  ' @return {string} the distinguishing tail, or "" when the subtitle has no path
+  function subtitleFileTail(subtitlePath as dynamic, mediaPath as dynamic) as string
+    subtitleName = remoteSubtitles.fileNameFrom(subtitlePath)
+    if subtitleName = "" then return ""
+
+    stem = remoteSubtitles.fileNameWithoutExtension(remoteSubtitles.fileNameFrom(mediaPath))
+    if stem = "" then return subtitleName
+    if Len(subtitleName) <= Len(stem) then return subtitleName
+    if LCase(Left(subtitleName, Len(stem))) <> LCase(stem) then return subtitleName
+
+    return Mid(subtitleName, Len(stem) + 1)
+  end function
+
+  ' fileNameFrom: The last path segment of a server-side path.
+  '
+  ' Deliberately string-based rather than roPath: the paths here come from the
+  ' SERVER, so they are in the server host's format (a Windows install reports
+  ' backslashes), and roPath expects a Roku volume like pkg:/ or tmp:/. Handling
+  ' both separators here also keeps the function pure and unit-testable off
+  ' device.
+  '
+  ' @param {dynamic} path - a file path in any host's format
+  ' @return {string} the filename, or "" when there is no usable path
+  function fileNameFrom(path as dynamic) as string
+    name = textOrEmpty(path).trim()
+    if name = "" then return ""
+
+    for each separator in ["/", "\"]
+      segments = name.split(separator)
+      name = segments[segments.count() - 1]
+    end for
+
+    return name
+  end function
+
+  ' fileNameWithoutExtension: "Sintel.2010.mkv" -> "Sintel.2010".
+  '
+  ' Only the LAST dot is treated as the extension boundary, so a release name
+  ' full of dots keeps all of them.
+  '
+  ' @param {string} fileName - a bare filename, no directory part
+  ' @return {string} the filename with its final extension removed
+  function fileNameWithoutExtension(fileName as string) as string
+    if fileName = "" then return ""
+
+    lastDot = 0
+    for i = 1 to Len(fileName)
+      if Mid(fileName, i, 1) = "." then lastDot = i
+    end for
+
+    if lastDot <= 1 then return fileName
+    return Left(fileName, lastDot - 1)
+  end function
+
+  ' newSubtitleStreams: Subtitle streams present in `after` but not in `before`.
+  '
+  ' This is the ONLY honest completion signal for a download. The server's
+  ' DownloadRemoteSubtitles wraps the provider call in try/catch, logs any
+  ' failure, and returns 204 regardless — then queues the metadata refresh
+  ' asynchronously. Measured on a server with no providers configured, a
+  ' download of a nonexistent subtitle id still returned 204. A missing plugin,
+  ' absent credentials, and an exhausted daily quota are all indistinguishable
+  ' from success at the HTTP layer.
+  '
+  ' @param {object} before - MediaStreams array captured before the download
+  ' @param {object} after - MediaStreams array from a later item fetch
+  ' @return {object} array of subtitle stream AAs that are newly present
+  function newSubtitleStreams(before as object, after as object) as object
+    added = []
+    if not isValid(after) then return added
+
+    seen = {}
+    if isValid(before)
+      for each stream in before
+        if isValid(stream) and isValid(stream.Type) and LCase(stream.Type) = "subtitle"
+          seen[remoteSubtitles.subtitleStreamKey(stream)] = true
+        end if
+      end for
+    end if
+
+    for each stream in after
+      if isValid(stream) and isValid(stream.Type) and LCase(stream.Type) = "subtitle"
+        key = remoteSubtitles.subtitleStreamKey(stream)
+        if key <> "" and not isValid(seen[key])
+          added.push(stream)
+        end if
+      end if
+    end for
+
+    return added
+  end function
+
+  ' hasAnyHashMatch: Whether a result set contains at least one file-hash match.
+  '
+  ' Gates the "perfect matches only" affordance. The isPerfectMatch=true query
+  ' returns exactly the hash-matched subset, so offering the control against a
+  ' set with no hash matches gives the user a switch whose only effect is to
+  ' empty the list. Measured hit rates vary wildly by title — 0 of 50 for both
+  ' The Dark Knight and Die Hard, but 6 of 20 for Mrs. Doubtfire and 5 of 24 for
+  ' DodgeBall — so this must be computed per search, never assumed.
+  '
+  ' @param {object} results - RemoteSubtitleInfo array
+  ' @return {boolean} true when any result has IsHashMatch set
+  function hasAnyHashMatch(results as object) as boolean
+    if not isValid(results) then return false
+    for each info in results
+      if isValid(info) and info.IsHashMatch = true then return true
+    end for
+    return false
+  end function
+
+  ' hasMixedProviders / hasMixedFormats: Whether the provider or format is worth
+  ' spending a line of row real estate on.
+  '
+  ' With a single provider installed every row reports the same ProviderName and
+  ' the same Format ("Open Subtitles" / "srt" across all 50 results measured), so
+  ' rendering them is pure noise. They become informative only once an admin has
+  ' more than one subtitle provider configured.
+  '
+  ' @param {object} results - RemoteSubtitleInfo array
+  ' @return {boolean} true when the set contains more than one distinct value
+  function hasMixedProviders(results as object) as boolean
+    return remoteSubtitles.hasMixedField(results, "ProviderName")
+  end function
+
+  function hasMixedFormats(results as object) as boolean
+    return remoteSubtitles.hasMixedField(results, "Format")
+  end function
+
+  function hasMixedField(results as object, field as string) as boolean
+    if not isValid(results) then return false
+
+    firstValue = invalid
+    for each info in results
+      if isValid(info) and isValidAndNotEmpty(info[field])
+        if firstValue = invalid
+          firstValue = info[field]
+        else if info[field] <> firstValue
+          return true
+        end if
+      end if
+    end for
+
+    return false
+  end function
+
+  ' cultureOptions: Map the server's CultureDto list onto the shape
+  ' components/settings/LanguagePicker already consumes — { code, name,
+  ' nativeName } — so the subtitle panel reuses that component unchanged
+  ' (type-to-filter keyboard + RadioButtonList) instead of growing a second
+  ' language picker.
+  '
+  ' `code` is the TWO-letter form on purpose. It is what the server ultimately
+  ' hands the provider (SubtitleManager resolves our path param through
+  ' FindLanguageInfo and passes culture.TwoLetterISOLanguageName onward), and it
+  ' is the only form that preserves regional variants: 192 cultures collapse to
+  ' 187 distinct three-letter codes, and the collisions are exactly the ones
+  ' users care about — zh-tw / zh-cn / zh-hk all share "zho", and es-419 shares
+  ' "spa" with Castilian. Measured that regional codes return genuinely
+  ' different result sets (en 50, fr 22, pt-br 50, zh-tw 6).
+  '
+  ' `nativeName` prefers JellyRock's own translated language names so the picker
+  ' reads in the user's UI language; the server's DisplayName is English-only.
+  '
+  ' @param {object} cultures - CultureDto array from /Localization/Cultures
+  ' @return {object} array of { code, name, nativeName } sorted as the server sent them
+  function cultureOptions(cultures as object) as object
+    options = []
+    if not isValid(cultures) then return options
+
+    for each culture in cultures
+      if isValid(culture) and isValidAndNotEmpty(culture.TwoLetterISOLanguageName)
+        displayName = ""
+        if isValidAndNotEmpty(culture.DisplayName) then displayName = culture.DisplayName
+
+        options.push({
+          code: culture.TwoLetterISOLanguageName,
+          name: displayName,
+          nativeName: remoteSubtitles.localizedLanguageName(culture, displayName)
+        })
+      end if
+    end for
+
+    return options
+  end function
+
+  ' localizedLanguageName: JellyRock's translated name for a culture, falling
+  ' back to the server's English DisplayName.
+  '
+  ' Regional variants deliberately keep the server's DisplayName. The shared
+  ' resolver, resolveLanguageName(), normalizes away any region/script suffix by
+  ' design — it exists to label media STREAMS, where "pt-BR" and "pt" should
+  ' both read "Portuguese". Here that normalization is lossy in a way that
+  ' matters: it would collapse "Portuguese (Brazil)" and "Portuguese (Portugal)"
+  ' into two identical rows in the picker, and those are exactly the entries a
+  ' user reaches for. So when the culture carries a region we show the server's
+  ' English name rather than a translated-but-ambiguous one.
+  '
+  ' For plain languages the resolver is keyed by the app's canonical codes, so
+  ' the three-letter form is the right lookup key there even though we SEND the
+  ' two-letter one.
+  '
+  ' @param {object} culture - A CultureDto AA
+  ' @param {string} fallback - The server's DisplayName
+  ' @return {string} a display name, never empty when fallback is non-empty
+  function localizedLanguageName(culture as object, fallback as string) as string
+    if not isValid(culture) then return fallback
+    if not isValidAndNotEmpty(culture.ThreeLetterISOLanguageName) then return fallback
+
+    ' Regional variant (pt-br, zh-tw, es-419, fr-ca, …) — keep the region.
+    if isValidAndNotEmpty(culture.TwoLetterISOLanguageName)
+      if inStr(1, culture.TwoLetterISOLanguageName, "-") > 0 then return fallback
+    end if
+
+    localized = resolveLanguageName(culture.ThreeLetterISOLanguageName)
+    if isValidAndNotEmpty(localized) then return localized
+    return fallback
+  end function
+
+end namespace

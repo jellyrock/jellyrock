@@ -19,17 +19,13 @@ sub init()
   m.top.focusBackground = constants.colorBackgroundSecondary
   m.top.textFocusColor = constants.colorTextPrimary
 
-  ' Create underline indicator programmatically (positioned after sizing in onReady)
-  m.indicator = createObject("roSGNode", "Rectangle")
-  m.indicator.height = 6
-  m.indicator.color = constants.colorSecondary
-  m.indicator.visible = false
-  m.top.appendChild(m.indicator)
+  ' Selected state is shown as the underline TextButton owns — it draws and
+  ' positions it from its own measured geometry, so there is nothing to place here.
+  m.top.showSelectedIndicator = true
 
-  ' Position indicator after TextButton finishes sizing
-  m.top.observeField("isReady", "onReady")
-
-  ' isButtonSelected and isFocused are declared by TextButton (parent) without onChange — observe here
+  ' isFocused is declared by TextButton (parent) without onChange — observe here.
+  ' isButtonSelected only affects the text colour from this class's point of view;
+  ' the underline's own visibility is TextButton's business.
   m.top.observeField("isButtonSelected", "onStateChanged")
   m.top.observeField("isFocused", "onStateChanged")
 end sub
@@ -37,25 +33,6 @@ end sub
 ' Maps tabTitle to TextButton's text field, triggering TextButton's sizing flow
 sub onTitleChanged()
   m.top.text = m.top.tabTitle
-end sub
-
-' Positions the underline indicator inside the button after TextButton sizes itself.
-' The indicator sits below the text at text width, inside the background bounds.
-' When focused, the TextButton border naturally wraps around it (ResumeButton pattern).
-sub onReady()
-  if not m.top.isReady then return
-
-  padding = m.top.padding
-  bgWidth = m.buttonBackground.width
-  bgHeight = m.buttonBackground.height
-
-  ' Text sits from y=padding to y=bgHeight-padding inside the background
-  textWidth = bgWidth - (padding * 2)
-  textBottom = bgHeight - padding
-
-  m.indicator.width = textWidth
-  m.indicator.translation = [padding, textBottom + 12]
-  m.indicator.visible = m.top.isButtonSelected
 end sub
 
 ' Overrides TextButton.onFocusChanged to use the virtual isFocused field.
@@ -84,5 +61,4 @@ end sub
 ' Called when isFocused or isButtonSelected changes — updates all visual state
 sub onStateChanged()
   onFocusChanged()
-  m.indicator.visible = m.top.isButtonSelected
 end sub

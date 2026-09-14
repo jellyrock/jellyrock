@@ -26,6 +26,29 @@ Keys are PascalCase with a category prefix:
 
 The convention is enforced by `npm run lint:translations`. Keys must be alphabetically sorted (canonical).
 
+## Value casing — buttons Title Case, everything else sentence case
+
+**A button label is Title Case** (`"Mark Watched"`, `"Quick Connect"`, `"Manage Subtitles"`). **Everything else is sentence case** — headings, status phrases, badges and prose (`"On this item"`, `"Direct playing"`, `"Hearing impaired"`, `"Blur images of unwatched episodes."`).
+
+This is **not** checked by any lint, so it rests on the convention being written
+down. It was derived from the file rather than imposed on it: `Button*` values
+are 7 Title Case to 1 sentence case, while the sentence-case `Label*` mass is
+dominated by descriptions and status phrases where Title Case reads wrong. The
+split follows what the file already does in each role.
+
+Two things the rule does **not** claim:
+
+- **It is not a mandate to retrofit.** `Label*` overall is roughly 135 Title /
+  66 sentence / 23 mixed, because it drifted for a long time before anyone stated
+  a rule. Fix a value's casing when you are already editing that key; a sweep is
+  its own change, not a rider on a feature.
+- **The prefix does not decide it, the ROLE does.** `LabelManageSubtitles` is
+  Title Case because it labels an `IconButton`, not because of its prefix. Ask
+  what the string *is* on screen.
+
+Known outlier, deliberately left: `ButtonSignOut` is `"Sign out"` next to
+`ButtonSignIn`'s `"Sign In"`.
+
 ## Plurals
 
 Use `Zero` / `One` / `Many` suffixes — three keys per logical phrase:

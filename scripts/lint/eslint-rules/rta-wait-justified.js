@@ -100,6 +100,14 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   '#rtaBackdrop.loadStatus',
   '#extrasGrid.rowItemFocused',
   '#imageFader.uri',
+  // `ItemDetails.openSubtitlePanel` sets it true before raising `isOpen`, and
+  // `SubtitlePanel.openPanel` sets it true again on open; the ONLY write back to false
+  // is `SubtitlePanel.onPanelAnimeStateChanged`, at the end of the close slide. So
+  // `true` holds for as long as the panel is open — terminal until the user backs out,
+  // not a pulse. Read against the app source 2026-09-10, all three write sites. Its one
+  // gate is `navSubtitlePanel`, which only runs on a fixture whose user can manage
+  // subtitles (see `subtitlePanel` in tests/rta/screens.js).
+  '#subtitlePanel.visible',
   '#jrDialog.#okButton.#buttonBorder.blendColor',
   '#jrDialog.#scrollContent.translation',
   '#jrDialog.id',

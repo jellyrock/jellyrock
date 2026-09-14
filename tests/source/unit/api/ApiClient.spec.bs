@@ -742,6 +742,43 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("BuildDeleteSubtitleRequest() - refuses to aim at a media container")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("builds a delete for an external subtitle stream")
+    function _()
+      stream = { Type: "Subtitle", Index: 3, IsExternal: true, Path: "/m/movie.en.srt" }
+      result = m.apiClient.BuildDeleteSubtitleRequest(m.testItemId, stream)
+      m.assertNotInvalid(result)
+      m.assertEqual(result.method, "DELETE")
+      m.assertTrue(result.url.inStr("/Subtitles/3") >= 0, "must address the stream's own index: " + result.url)
+    end function
+
+    @it("refuses an EMBEDDED stream - the server would delete the media file")
+    function _()
+      ' The server unlinks MediaStream.Path unconditionally, and an embedded
+      ' subtitle's Path IS the container. This is the whole reason the builder
+      ' takes a stream instead of an integer.
+      stream = { Type: "Subtitle", Index: 3, IsExternal: false, Path: "/m/movie.mkv" }
+      m.assertInvalid(m.apiClient.BuildDeleteSubtitleRequest(m.testItemId, stream))
+    end function
+
+    @it("refuses a stream whose IsExternal is absent rather than assuming")
+    function _()
+      m.assertInvalid(m.apiClient.BuildDeleteSubtitleRequest(m.testItemId, { Type: "Subtitle", Index: 3 }))
+    end function
+
+    @it("refuses an external stream with no index to address")
+    function _()
+      m.assertInvalid(m.apiClient.BuildDeleteSubtitleRequest(m.testItemId, { Type: "Subtitle", IsExternal: true }))
+    end function
+
+    @it("refuses an invalid stream")
+    function _()
+      m.assertInvalid(m.apiClient.BuildDeleteSubtitleRequest(m.testItemId, invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("ApiClient Instantiation")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

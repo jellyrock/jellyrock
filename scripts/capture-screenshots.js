@@ -345,9 +345,13 @@ async function main() {
   );
   // `libraries` rides along so library navs resolve the SAME library the seed
   // picked (see findHomeLibraryTile) rather than the first tile of that type.
+  // `session` rides along so this ctx matches the one specs/screens.spec.js builds.
+  // Both hand it to the same registry entries, so a `requires` probe (or any future
+  // server-reading nav) must find the same fields whichever consumer called it.
   const targetFor = (screen) => ({
     ...(screen.name === 'trickplay' ? trickTarget : heroTarget),
     libraries,
+    session,
   });
   console.log(
     `  hero=${CONFIG.heroMovie} tile#${heroTarget.heroIndex}; ` +
@@ -406,6 +410,16 @@ async function main() {
   // playback stall, a demo-server blip) is recoverable by simply retrying — and
   // one bad screen should never abandon a ~15-minute matrix run.
   const captureScreen = async (screen, locale, folder, attempts = 3) => {
+    // A capability-gated screen the fixture cannot grant is SKIPPED, never retried.
+    // `wanted` is not filtered by `capture`, so every registry entry's nav runs here
+    // — and a nav whose button the fixture never renders would burn all three
+    // attempts and then abandon a ~15-minute matrix run. Mirrors the same `requires`
+    // gate in specs/screens.spec.js: one predicate, honored by both consumers of
+    // the registry, so the two cannot disagree about what a screen needs.
+    if (screen.requires && !(await screen.requires.probe(targetFor(screen)))) {
+      console.log(`  - ${folder}/${screen.name} skipped: ${screen.requires.reason}`);
+      return;
+    }
     for (let i = 1; i <= attempts; i++) {
       // Labels each failure record with the screen and which attempt produced it.
       // Without the attempt number a screen that RECOVERED on retry leaves records

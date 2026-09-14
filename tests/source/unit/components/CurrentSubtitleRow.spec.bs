@@ -1,0 +1,306 @@
+' Unit tests for CurrentSubtitleRow — the "On this item" row in SubtitlePanel.
+'
+' This component had no coverage at all when it shipped, which matters more than
+' the usual gap for two reasons: it is a MarkupList itemComponent, so it is
+' RECYCLED on every scroll step and each write to itemContent has to leave no
+' trace of the previous row; and its badge-pool machinery is duplicated almost
+' line-for-line in SubtitleResultRow, so the extraction that removes that
+' duplication needs a red/green gate rather than an eyeball.
+'
+' The row's geometry is arithmetic over subtitleLayout, m.top.rowWidth and its
+' badge labels' localBoundingRect() — font metrics, which a detached node
+' answers (the first badge test below fails loudly if that stops being true).
+
+import "pkg:/source/constants/subtitleLayout.bs"
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/translate.bs"
+
+namespace tests
+
+  @suite("CurrentSubtitleRow - content mapping, badges and recycling")
+  class CurrentSubtitleRowTests extends tests.BaseTestSuite
+
+    private row as object
+
+    ' Built per TEST, not per suite: every case writes itemContent, and a shared
+    ' node would let one test's badges and heights leak into the next.
+    protected override function beforeEach()
+      super.beforeEach()
+      m.row = createObject("roSGNode", "CurrentSubtitleRow")
+    end function
+
+    protected override function afterEach()
+      m.row = invalid
+      super.afterEach()
+    end function
+
+    ' rowContent: a content node shaped exactly as SubtitlePanel.renderExistingList
+    ' builds one, so a change to that shape breaks these tests rather than
+    ' silently drifting from it.
+    private function rowContent(fields as object) as object
+      content = createObject("roSGNode", "ContentNode")
+      base = {
+        language: "English",
+        codec: "SUBRIP",
+        source: "",
+        isExternal: false,
+        canDelete: false,
+        hearingImpaired: false,
+        forced: false,
+        streamIndex: 0,
+        rowWidth: subtitleLayout.EXISTING_WIDTH
+      }
+      for each key in fields
+        base[key] = fields[key]
+      end for
+      content.addFields(base)
+      return content
+    end function
+
+    private function badgeSlot(index as integer) as object
+      return m.row.findNode("existingBadgeSlot" + index.toStr())
+    end function
+
+    ' The badge label of a slot (children: icon holder, then label).
+    private function badgeLabel(index as integer) as object
+      return m.badgeSlot(index).getChild(1)
+    end function
+
+    ' Rendered width of a badge's text, measured with the badge labels' own font.
+    private function textWidth(text as string) as float
+      label = createObject("roSGNode", "LabelSecondarySmallest")
+      label.text = text
+      return label.localBoundingRect().width
+    end function
+
+    private function hearingImpairedWidth() as float
+      return subtitleLayout.badgeWidth(22, m.textWidth(translate(translationKeys.LabelHearingImpaired)))
+    end function
+
+    private function forcedWidth() as float
+      return subtitleLayout.badgeWidth(0, m.textWidth(translate(translationKeys.LabelForcedSubtitle)))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the title line")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads language then codec, uppercased")
+    function _()
+      m.row.itemContent = m.rowContent({ language: "English", codec: "subrip" })
+      m.assertEqual(m.row.findNode("titleLabel").text, "English  ·  SUBRIP")
+    end function
+
+    @it("falls back to Unknown rather than rendering an empty row")
+    function _()
+      m.row.itemContent = m.rowContent({ language: "", codec: "" })
+      m.assertNotEqual(m.row.findNode("titleLabel").text, "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("two shapes, chosen by isExternal")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a downloaded file shows its filename tail on a second line")
+    function _()
+      m.row.itemContent = m.rowContent({ isExternal: true, source: ".en.sdh.srt" })
+      sourceLabel = m.row.findNode("sourceLabel")
+      m.assertTrue(sourceLabel.visible, "a downloaded file has a second line")
+      m.assertEqual(sourceLabel.text, ".en.sdh.srt")
+    end function
+
+    @it("a built-in track hides the second line rather than filling it")
+    function _()
+      ' The draft before this put the word "Embedded" here on every row, which
+      ' made the least informative text on screen the most repeated.
+      m.row.itemContent = m.rowContent({ isExternal: false })
+      m.assertFalse(m.row.findNode("sourceLabel").visible)
+    end function
+
+    @it("hides the second line for a downloaded file the server gave no tail")
+    function _()
+      m.row.itemContent = m.rowContent({ isExternal: true, source: "" })
+      m.assertFalse(m.row.findNode("sourceLabel").visible)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("badges - right-aligned, measured, dropped whole")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("measures badge text on a detached row")
+    function _()
+      ' Every geometry test below depends on this. If localBoundingRect() ever
+      ' answers 0 here, fail HERE with the reason, not as a confusing width
+      ' mismatch further down.
+      m.assertTrue(m.forcedWidth() > 0, "a detached LabelSecondarySmallest must measure its text")
+    end function
+
+    @it("draws no badge slots for a plain track")
+    function _()
+      m.row.itemContent = m.rowContent({})
+      m.assertFalse(m.badgeSlot(0).visible)
+      m.assertFalse(m.badgeSlot(1).visible)
+    end function
+
+    @it("a single badge takes the LAST slot, which sits on the right edge")
+    function _()
+      ' badgeRow is right-aligned, and a hidden slot still takes its place in a
+      ' LayoutGroup — so unused slots must be the leading ones.
+      m.row.itemContent = m.rowContent({ forced: true })
+      m.assertFalse(m.badgeSlot(0).visible)
+      m.assertTrue(m.badgeSlot(1).visible)
+      m.assertEqual(m.badgeLabel(1).text, translate(translationKeys.LabelForcedSubtitle))
+    end function
+
+    @it("two badges read in significance order, left to right")
+    function _()
+      m.row.itemContent = m.rowContent({ hearingImpaired: true, forced: true })
+      m.assertEqual(m.badgeLabel(0).text, translate(translationKeys.LabelHearingImpaired))
+      m.assertEqual(m.badgeLabel(1).text, translate(translationKeys.LabelForcedSubtitle))
+      m.assertTrue(m.badgeSlot(0).visible)
+      m.assertTrue(m.badgeSlot(1).visible)
+    end function
+
+    @it("an icon-less badge carries no icon gap")
+    function _()
+      ' THE REGRESSION: the gap beside an empty icon slot indented "Forced" and
+      ' clipped it.
+      m.row.itemContent = m.rowContent({ forced: true })
+      m.assertEqual(int(m.badgeSlot(1).itemSpacings[0]), 0)
+
+      m.row.itemContent = m.rowContent({ hearingImpaired: true })
+      m.assertEqual(int(m.badgeSlot(1).itemSpacings[0]), subtitleLayout.BADGE_ICON_GAP, "a badge with an icon keeps its gap")
+    end function
+
+    @it("anchors the badges on the row's right padding edge, right-aligned")
+    function _()
+      m.row.itemContent = m.rowContent({ forced: true })
+      badgeRow = m.row.findNode("badgeRow")
+      m.assertEqual(badgeRow.horizAlignment, "right")
+      m.assertEqual(int(badgeRow.translation[0]), subtitleLayout.EXISTING_WIDTH - subtitleLayout.ROW_H_PADDING)
+    end function
+
+    @it("drops the least significant badge whole when the row cannot fit both")
+    function _()
+      ' One pixel short of fitting both: the text floor wins, and "Forced" goes
+      ' entirely rather than being cut to "Forc".
+      bothWidth = m.hearingImpairedWidth() + subtitleLayout.BADGE_SPACING + m.forcedWidth()
+      rowWidth = int((subtitleLayout.ROW_H_PADDING * 2) + subtitleLayout.ROW_BADGE_GUTTER + subtitleLayout.ROW_DETAIL_MIN_WIDTH + bothWidth) - 1
+
+      m.row.itemContent = m.rowContent({ hearingImpaired: true, forced: true, rowWidth: rowWidth })
+      m.assertFalse(m.badgeSlot(0).visible, "only one badge fits")
+      m.assertTrue(m.badgeSlot(1).visible)
+      m.assertEqual(m.badgeLabel(1).text, translate(translationKeys.LabelHearingImpaired), "the MORE significant badge is the one kept")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("recycling - the row must forget the previous item")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("clears badges when a badged row is recycled into a plain one")
+    function _()
+      ' The failure this guards is invisible in a build and only shows while
+      ' scrolling: a pooled slot left visible from the row before.
+      m.row.itemContent = m.rowContent({ hearingImpaired: true, forced: true })
+      m.row.itemContent = m.rowContent({})
+      m.assertFalse(m.badgeSlot(0).visible)
+      m.assertFalse(m.badgeSlot(1).visible)
+    end function
+
+    @it("gives the title its full width back when badges are recycled away")
+    function _()
+      m.row.itemContent = m.rowContent({ forced: true })
+      m.row.itemContent = m.rowContent({})
+      m.assertEqual(int(m.row.findNode("titleLabel").maxWidth), subtitleLayout.EXISTING_WIDTH - (subtitleLayout.ROW_H_PADDING * 2))
+    end function
+
+    @it("drops the second line when a downloaded row is recycled into a built-in one")
+    function _()
+      m.row.itemContent = m.rowContent({ isExternal: true, source: ".en.srt" })
+      m.row.itemContent = m.rowContent({ isExternal: false })
+      m.assertFalse(m.row.findNode("sourceLabel").visible)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the delete affordance")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is hidden while the row is not focused, even when deletable")
+    function _()
+      m.row.itemContent = m.rowContent({ isExternal: true, source: ".en.srt", canDelete: true })
+      m.assertFalse(m.row.findNode("deleteIcon").visible)
+    end function
+
+    @it("appears on focus for a deletable row")
+    function _()
+      m.row.itemContent = m.rowContent({ isExternal: true, source: ".en.srt", canDelete: true })
+      m.row.itemHasFocus = true
+      m.assertTrue(m.row.findNode("deleteIcon").visible)
+    end function
+
+    @it("never appears on a row the panel said cannot be deleted")
+    function _()
+      ' canDelete is resolved by the panel from BOTH the user's admin permission
+      ' and the stream being external, so the row must never advertise an action
+      ' the panel will refuse. The API layer guards this again independently.
+      m.row.itemContent = m.rowContent({ isExternal: true, source: ".en.srt", canDelete: false })
+      m.row.itemHasFocus = true
+      m.assertFalse(m.row.findNode("deleteIcon").visible)
+    end function
+
+    @it("never appears on a built-in track")
+    function _()
+      m.row.itemContent = m.rowContent({ isExternal: false, canDelete: false })
+      m.row.itemHasFocus = true
+      m.assertFalse(m.row.findNode("deleteIcon").visible)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("geometry - the row and its list must agree")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reserves the action zone by DELETABILITY, not by focus")
+    function _()
+      ' Focusing a row must not shift its filename sideways, so the icon's strip
+      ' is held whether or not the icon is currently drawn.
+      m.row.itemContent = m.rowContent({ isExternal: true, source: ".en.srt", canDelete: true })
+      unfocused = m.row.findNode("sourceLabel").width
+      m.row.itemHasFocus = true
+      m.assertEqual(m.row.findNode("sourceLabel").width, unfocused, "the second line must not resize on focus")
+    end function
+
+    @it("gives a non-deletable row's second line the width the icon would have taken")
+    function _()
+      ' int() because a SceneGraph width is a float and these constants are
+      ' integers — the values are exact, the types are not.
+      fullTextWidth = subtitleLayout.EXISTING_WIDTH - (subtitleLayout.ROW_H_PADDING * 2)
+
+      m.row.itemContent = m.rowContent({ isExternal: true, source: ".en.srt", canDelete: false })
+      m.assertEqual(int(m.row.findNode("sourceLabel").width), fullTextWidth, "a row with no action spans the full text width")
+
+      m.row.itemContent = m.rowContent({ isExternal: true, source: ".en.srt", canDelete: true })
+      m.assertEqual(int(m.row.findNode("sourceLabel").width), fullTextWidth - subtitleLayout.actionZoneWidth(true), "a deletable row gives up exactly the action zone")
+    end function
+
+    @it("takes nothing from the FIRST line for the action icon")
+    function _()
+      ' Reserving on line 1 ellipsized real titles — see actionZoneWidth().
+      m.row.itemContent = m.rowContent({ isExternal: true, source: ".en.srt", canDelete: false })
+      wide = m.row.findNode("titleLabel").maxWidth
+      m.row.itemContent = m.rowContent({ isExternal: true, source: ".en.srt", canDelete: true })
+      m.assertEqual(m.row.findNode("titleLabel").maxWidth, wide, "the title must not pay for the icon")
+    end function
+
+    @it("the title gives up exactly the measured badges plus one gutter")
+    function _()
+      ' The title ends where the right-aligned badges begin, so it can never run
+      ' underneath them — whatever the translation's width.
+      usable = subtitleLayout.EXISTING_WIDTH - (subtitleLayout.ROW_H_PADDING * 2)
+      m.row.itemContent = m.rowContent({ forced: true })
+      expected = usable - m.forcedWidth() - subtitleLayout.ROW_BADGE_GUTTER
+      m.assertTrue(Abs(m.row.findNode("titleLabel").maxWidth - expected) < 1, "title width must be the row minus the badge run and gutter")
+    end function
+
+  end class
+
+end namespace

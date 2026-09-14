@@ -1,0 +1,83 @@
+' Server capabilities that depend on something INSTALLED on the server — a plugin —
+' rather than on the server's version.
+'
+' Version-gated features read m.global.server.apiVersion; these cannot, because two
+' servers on the same version differ by what the admin installed. A feature that
+' needs a plugin should be hidden when the plugin is absent, not offered and then
+' fail empty.
+'
+' THE PATTERN, for the next plugin-dependent feature:
+'   * One field per capability on JellyfinServer, as a THREE-state string —
+'     unknown / available / unavailable. session.server.Delete() resets every field
+'     on a server switch, so an answer can never outlive the server it describes.
+'   * Checked once per sign-in (Home's first run — Home is remounted on every
+'     sign-in), and again by a consumer that finds it still unknown.
+'   * A FAILED check is not recorded, so it stays unknown and is retried.
+'   * What a consumer does with a failed check is decided PER CAPABILITY, never here.
+'     Ask what happens when a user reaches the feature and the plugin is not there:
+'     fail OPEN (offer it) only when that degrades safely and explains itself; fail
+'     CLOSED when it would error confusingly, silently not work, or do something
+'     that cannot be undone. Put that decision, and its reason, beside the
+'     capability — see shouldOfferSubtitleSearch().
+'
+' Not every capability fits: Quick Connect's probe runs before login and needs no
+' auth, and the JellyRock companion plugin is re-probed on each reconnect by
+' RemoteControlTask on a Task thread. Both are correctly placed where they are.
+
+namespace serverCapabilities
+
+  const STATUS_UNKNOWN = ""
+  const STATUS_AVAILABLE = "available"
+  const STATUS_UNAVAILABLE = "unavailable"
+
+  ' subtitleProviderStatusFrom: What a /Libraries/AvailableOptions reply says about
+  ' subtitle providers.
+  '
+  ' SubtitleFetchers lists every installed subtitle provider plugin by name. It
+  ' cannot tell whether a provider has CREDENTIALS — an installed but unconfigured
+  ' provider counts as available, and the panel's empty-state message covers that.
+  '
+  ' @param {object} res - fetchAsync result { ok, json }
+  ' @return {string} STATUS_AVAILABLE / STATUS_UNAVAILABLE, or STATUS_UNKNOWN when
+  '                  the reply does not answer the question (non-ok, malformed)
+  function subtitleProviderStatusFrom(res as object) as string
+    if not isValid(res) or res.ok <> true then return serverCapabilities.STATUS_UNKNOWN
+    if not isValid(res.json) then return serverCapabilities.STATUS_UNKNOWN
+
+    fetchers = res.json.SubtitleFetchers
+    if type(fetchers) <> "roArray" then return serverCapabilities.STATUS_UNKNOWN
+    if fetchers.count() > 0 then return serverCapabilities.STATUS_AVAILABLE
+    return serverCapabilities.STATUS_UNAVAILABLE
+  end function
+
+  ' recordSubtitleProviderStatus: Store a reply's answer on m.global.server.
+  '
+  ' An unknown answer is NOT stored, so a failed check is retried by the next
+  ' consumer instead of being remembered for the rest of the session.
+  '
+  ' @param {object} res - fetchAsync result { ok, json }
+  ' @return {string} the status the reply gave, stored or not
+  function recordSubtitleProviderStatus(res as object) as string
+    status = serverCapabilities.subtitleProviderStatusFrom(res)
+    if status <> serverCapabilities.STATUS_UNKNOWN then m.global.server.subtitleProviderStatus = status
+    return status
+  end function
+
+  ' shouldOfferSubtitleSearch: Whether to offer Manage Subtitles once the provider
+  ' check has settled.
+  '
+  ' This capability FAILS OPEN: only a definite "unavailable" hides the button, and
+  ' an unknown result here (the check failed) offers it. Safe for this feature
+  ' specifically — a search without a provider returns an empty success, the panel
+  ' says so and points at provider setup, and nothing is changed on the server. A
+  ' transport error is not evidence the plugin is missing, so hiding a working
+  ' feature on a network blip would be the worse outcome. Not a default for other
+  ' capabilities; see the header.
+  '
+  ' @param {string} status - the status the check produced
+  ' @return {boolean}
+  function shouldOfferSubtitleSearch(status as string) as boolean
+    return status <> serverCapabilities.STATUS_UNAVAILABLE
+  end function
+
+end namespace

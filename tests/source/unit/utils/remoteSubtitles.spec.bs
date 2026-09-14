@@ -1,0 +1,106 @@
+import "pkg:/source/utils/remoteSubtitles.bs"
+
+' Unit tests for the remote-subtitle helpers (issue #750).
+'
+' The permission expectations below are not guesses — they encode a truth table
+' measured against a live Jellyfin 10.11.11 server, plus the [Authorize] policy
+' attributes read at the v10.7.7 / v10.8.13 / v10.9.11 / v10.10.7 / v10.11.11
+' tags. If a future server release changes the gate, these are the tests that
+' should fail first.
+
+namespace tests
+
+  @suite("remoteSubtitles - permission + item-type gates")
+  class RemoteSubtitlesGateTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("canSearchSubtitles() - apiVersion 1 (10.7 - 10.8)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("allows any authenticated user - the permission does not exist yet")
+    function _()
+      policy = { isAdministrator: false, enableSubtitleManagement: false }
+      m.assertTrue(remoteSubtitles.canSearchSubtitles(policy, 1))
+    end function
+
+    @it("allows even when the policy object is missing entirely")
+    function _()
+      m.assertTrue(remoteSubtitles.canSearchSubtitles(invalid, 1))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("canSearchSubtitles() - apiVersion 2 (10.9+)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("allows a non-admin holding EnableSubtitleManagement")
+    function _()
+      policy = { isAdministrator: false, enableSubtitleManagement: true }
+      m.assertTrue(remoteSubtitles.canSearchSubtitles(policy, 2))
+    end function
+
+    @it("denies a non-admin without EnableSubtitleManagement")
+    function _()
+      policy = { isAdministrator: false, enableSubtitleManagement: false }
+      m.assertFalse(remoteSubtitles.canSearchSubtitles(policy, 2))
+    end function
+
+    @it("allows an admin whose EnableSubtitleManagement is false - the server default")
+    function _()
+      ' Jellyfin seeds EnableSubtitleManagement=false for EVERY account, admins
+      ' included, but DefaultAuthorizationHandler lets admins through anyway.
+      ' Gating purely on the flag would hide the feature from most installs.
+      policy = { isAdministrator: true, enableSubtitleManagement: false }
+      m.assertTrue(remoteSubtitles.canSearchSubtitles(policy, 2))
+    end function
+
+    @it("denies when the policy object is missing")
+    function _()
+      m.assertFalse(remoteSubtitles.canSearchSubtitles(invalid, 2))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("canDeleteSubtitles() - RequiresElevation on every version")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("allows an administrator")
+    function _()
+      m.assertTrue(remoteSubtitles.canDeleteSubtitles({ isAdministrator: true, enableSubtitleManagement: false }))
+    end function
+
+    @it("denies a non-admin even with EnableSubtitleManagement - measured 403")
+    function _()
+      m.assertFalse(remoteSubtitles.canDeleteSubtitles({ isAdministrator: false, enableSubtitleManagement: true }))
+    end function
+
+    @it("denies when the policy object is missing")
+    function _()
+      m.assertFalse(remoteSubtitles.canDeleteSubtitles(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isSearchableItemType()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("accepts Movie and Episode")
+    function _()
+      m.assertTrue(remoteSubtitles.isSearchableItemType("Movie"))
+      m.assertTrue(remoteSubtitles.isSearchableItemType("Episode"))
+    end function
+
+    @it("rejects types the server cannot search")
+    function _()
+      ' BoxSet 404s (not a Video); Series/Season/MusicAlbum are not Movie or
+      ' Episode so SearchSubtitles returns an empty array.
+      for each itemType in ["BoxSet", "Series", "Season", "MusicAlbum", "Audio", "Photo", "Person", "TvChannel", "Program"]
+        m.assertFalse(remoteSubtitles.isSearchableItemType(itemType), itemType + " should not be searchable")
+      end for
+    end function
+
+    @it("rejects an empty type")
+    function _()
+      m.assertFalse(remoteSubtitles.isSearchableItemType(""))
+    end function
+
+  end class
+
+end namespace

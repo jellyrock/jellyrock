@@ -88,6 +88,7 @@ npm run build # OR npm run build:prod
 - [App Settings](docs/user/app-settings.md)
 - [Deep Linking & Casting](docs/user/deep-linking.md)
 - [Jellyfin Server Feature Matrix](docs/user/jellyfin-server-feature-matrix.md)
+- [Jellyfin Server Plugins & Server-Side Setup](docs/user/jellyfin-server-plugins.md)
 - [Playback Troubleshooting](docs/user/playback-troubleshooting.md)
 
 ## Dev Docs

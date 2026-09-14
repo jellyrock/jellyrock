@@ -210,6 +210,19 @@
       ]
     },
     {
+      "path": "/Items/{0}/RemoteSearch/Subtitles/{1}",
+      "normalized": "/items/{}/remotesearch/subtitles/{}",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
       "path": "/Items/{0}/Similar",
       "normalized": "/items/{}/similar",
       "methods": [
@@ -252,6 +265,18 @@
         "GET"
       ],
       "minApiVersion": 2,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/Libraries/AvailableOptions",
+      "normalized": "/libraries/availableoptions",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
       "maxApiVersion": null,
       "sourceFiles": [
         "source/api/ApiClient.bs"
@@ -380,6 +405,18 @@
     {
       "path": "/LiveTv/Timers/Defaults",
       "normalized": "/livetv/timers/defaults",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/Localization/Cultures",
+      "normalized": "/localization/cultures",
       "methods": [
         "GET"
       ],
@@ -843,6 +880,18 @@
       "normalized": "/videos/{}/additionalparts",
       "methods": [
         "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/Videos/{0}/Subtitles/{1}",
+      "normalized": "/videos/{}/subtitles/{}",
+      "methods": [
+        "DELETE"
       ],
       "minApiVersion": 1,
       "maxApiVersion": null,
@@ -3063,7 +3112,7 @@
       }
     },
     "counts": {
-      "endpoints": 70,
+      "endpoints": 74,
       "requestFields": 41,
       "responseFields": 214,
       "unresolvedEndpointSinks": 2

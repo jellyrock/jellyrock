@@ -29,6 +29,7 @@ import {
   waitFor,
   waitFocused,
   waitFocusInside,
+  walkFocusInto,
   waitFocusInHomeContent,
   homeListId,
   waitHome,
@@ -1134,6 +1135,108 @@ async function focusGridTile(target) {
 }
 
 /** grid -> focus the hero tile (Right x heroIndex) -> OK -> ItemDetails. */
+/**
+ * Put focus on a named button in `ItemDetails`' action-button group.
+ *
+ * SHARED rather than inlined, and the reason is the comment block below: this
+ * walk carries lessons from four recorded failures in 63 ledger runs, and a
+ * second copy of it is a second place for them to rot out. `dialogs.spec.js`
+ * exercises it on every suite run, which is also what keeps it honest for the
+ * callers whose own screens are fixture-gated and skip by default.
+ *
+ * ## Why the group is ENTERED and walked rather than focused directly
+ *
+ * `JRButtonGroup` tracks its own focused index and re-asserts it whenever the
+ * group gains focus, so teleporting focus onto a child gets reverted — and the
+ * suite does not teleport anyway (`odc.focusNode` is banned). Focus is walked into
+ * the GROUP with real presses (`walkFocusInto`), then right along it.
+ *
+ * ## Why the wait gates on IDENTITY, never on the index
+ *
+ * The index is resolved by scanning the group, but `ItemDetails` mutates that
+ * group ASYNCHRONOUSLY as data lands — `removeChild(loadingButton)` when the
+ * trailer check resolves, `removeChild(trailerButton)` when there is none,
+ * `removeChild(resumeButton)`. Every removal shifts the indices after it, so a
+ * gate on `buttonFocused === index` can be satisfied by a DIFFERENT button and
+ * the caller's OK then lands on it: nothing happens, and by the time the next
+ * wait gives up the group has settled and the failure dump looks innocent —
+ * focus on the right button, no effect. Recorded 4 times in 63 ledger runs,
+ * always as `wait-for-timeout` on whatever the caller checked next.
+ *
+ * Same defect as the library-nav wrong turn (`openLibraryByType`): commit to an
+ * index, act later, index means something else.
+ *
+ * @param {string} buttonId - the button's `id` (e.g. `watchedButton`)
+ * @param {{maxButtons?: number, timeout?: number}} [opts]
+ * @returns {Promise<{pressedOn: object|null, pressedIndex: number|undefined,
+ *   wantedIndex: number}>} what focus was ACTUALLY standing on at the moment the
+ *   caller may press, plus the index the scan resolved. Both are worth carrying
+ *   into a caller's failure record: a dump taken after a later timeout cannot
+ *   answer the first, and `pressedIndex !== wantedIndex` is the signature of the
+ *   group having mutated between the scan and the press.
+ */
+export async function focusDetailButton(buttonId, { maxButtons = 12, timeout = 8000 } = {}) {
+  const ids = [];
+  let targetIndex = -1;
+  for (let i = 0; i < maxButtons; i++) {
+    const id = await getVal(`#buttons.${i}.id`);
+    if (id === undefined) break;
+    ids.push(id);
+    if (id === buttonId) {
+      targetIndex = i;
+      break;
+    }
+  }
+  if (targetIndex < 0) {
+    throw await diagnosedError(`button "${buttonId}" not found in detail button group`, {
+      kind: FAILURE_KINDS.DETAIL_BUTTON_NOT_FOUND,
+      label: `detail button ${buttonId}`,
+      // The buttons that WERE there. Absent-because-ungranted and
+      // absent-because-still-loading look identical without this.
+      observed: { wanted: buttonId, present: ids },
+    });
+  }
+
+  // WALKED, not teleported — `odc.focusNode` is banned suite-wide because it skips
+  // the key handler a remote would exercise. On a fresh detail mount the group
+  // usually already holds focus, so the walk presses nothing and this is just the
+  // gate; Down is the recovery from the description or a track dropdown.
+  //
+  // Gate on FOCUS ARRIVING, not on `buttonFocused` being readable: `JRButtonGroup`
+  // sets it to 0 in `init()`, so a readability wait passes on its first tick and the
+  // read below would describe the group's PREVIOUS index. `onGroupFocusChanged`
+  // re-asserts the index when the group takes focus, so focus inside `#buttons` is
+  // the state that makes that read meaningful. Carried over verbatim in substance
+  // from #900, which replaced the settle this helper used to hold.
+  await waitFocusInside('#buttons', {
+    label: 'detail button group focused (pre-index read)',
+    timeout: 8000,
+    interval: 300,
+    action: walkFocusInto(ecp.Key.Down, '#buttons'),
+  });
+  const groupIndex = await getVal('#buttons.buttonFocused');
+  if (typeof groupIndex !== 'number') {
+    throw await diagnosedError(`cannot read #buttons.buttonFocused (got ${groupIndex})`, {
+      kind: FAILURE_KINDS.DETAIL_BUTTON_NOT_FOUND,
+      label: `detail button group focus (${buttonId})`,
+      observed: { wanted: buttonId, present: ids, buttonFocused: groupIndex },
+    });
+  }
+  for (let i = groupIndex; i < targetIndex; i++) await press(ecp.Key.Right);
+
+  await waitFocused((f) => f.node?.id === buttonId, {
+    label: `${buttonId} focused in group`,
+    timeout,
+  });
+
+  // What we are standing on NOW. A dump taken at a later timeout cannot answer
+  // this: the group has settled by then and focus reads as the wanted button
+  // whether or not that is where a press would have landed.
+  const pressedOn = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+  const pressedIndex = await getVal('#buttons.buttonFocused');
+  return { pressedOn, pressedIndex, wantedIndex: targetIndex };
+}
+
 export async function navMovieDetails(ctx) {
   await navLibraryGrid(ctx);
   await focusGridTile(ctx?.heroIndex || 0);
@@ -1143,6 +1246,40 @@ export async function navMovieDetails(ctx) {
     timeout: 20000,
   });
   await sleep(1500); // let backdrop + logo paint
+}
+
+/**
+ * Home -> Movies grid -> movie details -> the subtitle management panel (#750).
+ *
+ * FIXTURE-GATED. The button only exists when the server would let this user
+ * search subtitles, which on 10.9+ means administrator OR
+ * EnableSubtitleManagement — and the public demo's `demo` user is neither
+ * (measured 2026-09-06). `screens.js` carries the `requires` probe that skips
+ * this screen there rather than letting the walk below fail obscurely, so this
+ * nav does NOT re-check: by the time it runs, its precondition is established.
+ *
+ * The panel is a child of ItemDetails rather than a routed screen, so there is
+ * no view to gate on — `#subtitlePanel` is present in the tree from mount and
+ * only becomes VISIBLE when it opens. Gate on visibility plus the results
+ * column having something in it, which is what "open and populated" means here.
+ */
+export async function navSubtitlePanel(ctx) {
+  await navMovieDetails(ctx);
+  await focusDetailButton('manageSubtitlesButton');
+  await press(ecp.Key.Ok);
+
+  // Visibility is the open signal. `ItemDetails.openSubtitlePanel` sets it inside the
+  // button's own handler, before any network, so this proves the press landed and the
+  // panel mounted — it deliberately does NOT wait for search results, which depend on
+  // the server's subtitle provider rather than on the app.
+  //
+  // No paint settle follows, on purpose: nothing photographs this screen yet (it has
+  // no `capture` key), and a nav that only ever skips on the default fixture would
+  // spend a budgeted sleep on a wait that never runs. Add one with `capture`.
+  await waitFor('#subtitlePanel.visible', (v) => v === true, {
+    label: 'subtitle panel open',
+    timeout: 10000,
+  });
 }
 
 /**

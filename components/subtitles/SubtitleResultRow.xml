@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SubtitleResultRow: one remote subtitle search result inside SubtitlePanel's
+  results MarkupList.
+
+  Exactly two lines — identity, then detail:
+
+    Sintel.2010.1080p.BluRay.x264-CtrlHD                             <- release name, marquees on focus
+    561,277 downloads · pirosasz · 2012      * Perfect match  CC HI  <- meta line, badges right-anchored
+
+  Badges sit BESIDE the meta line rather than on a line of their own. The first
+  draft gave them a third line that was reserved on every row so both columns
+  stayed a uniform height, which meant a row with no badges rendered an empty
+  strip and read as broken next to a row with them. Now a badge-free row is
+  correctly spaced by construction, and the row lost 26px of height with it.
+
+  Badges are right-aligned on the row's right padding edge, not flowed after
+  the meta text: uploader names in the sampled results ran from 4 to 20
+  characters, so a flowed badge lands at a different x on every row and reads as
+  jitter while scrolling. Geometry is in source/constants/subtitleLayout.bs.
+
+  The shape is driven by what the API actually returns, measured across 9 films
+  and 6 episodes on a real server (see source/utils/remoteSubtitles.bs):
+
+    * DownloadCount is populated on 100% of results and spans 130..561,277, so
+      it leads the meta line — it is the only broadly-available quality signal.
+    * CommunityRating is deliberately ABSENT from this row: it was 0 on 44 of 50
+      results in the sample, so a rating column would read "0" almost always.
+    * IsHashMatch is a badge, never the sort key or the layout's organising
+      principle — hit rate swings from 0/50 to 6/20 depending on the title.
+    * Format and ProviderName are omitted unless the result set actually mixes
+      them (a single-provider install reports the same two values on every row).
+
+  Release names run long — 85 characters was the longest in the sample — so the
+  name line is a ScrollingLabel that marquees only while the row has focus.
+-->
+<component name="SubtitleResultRow" extends="Group">
+  <children>
+    <!-- No focus chrome here. The list draws the app's standard indicator
+         (source/utils/listTheme.bs, applied in SubtitlePanel.init), which is what
+         lets it FLOAT between rows instead of blinking on and off per row. -->
+    <ScrollingLabelPrimarySmaller id="nameLabel" repeatCount="0" />
+    <LabelSecondarySmallest id="metaLabel" />
+
+    <!-- Right-aligned on the row's right padding edge, so badges grow leftward.
+         The row measures them and drops whole badges that would not fit rather
+         than drawing past the gutter into the column beside it — see
+         subtitleLayout.badgesThatFit(). itemSpacings is set from
+         subtitleLayout.BADGE_SPACING in init().
+
+         vertAlignment is deliberately left at its default of "top". A HORIZ
+         LayoutGroup set to "center" puts its local y-origin at the group's
+         vertical CENTRE, not its top edge, so translating it to the second
+         line's y drew the badges half their height too high — measured at 12px
+         above the detail text's baseline on a Stick 4K. The inner per-badge
+         groups DO use center, which is what keeps each icon aligned with its
+         own label. -->
+    <LayoutGroup id="badgeRow" layoutDirection="horiz" horizAlignment="right" />
+  </children>
+
+  <interface>
+    <!-- The RemoteSubtitleInfo AA for this row, set by the MarkupList content node -->
+    <field id="itemContent" type="node" onChange="onItemContentChanged" />
+    <field id="itemHasFocus" type="boolean" value="false" onChange="onFocusChanged" />
+    <field id="rowWidth" type="integer" value="1120" onChange="onSizeChanged" />
+  </interface>
+</component>

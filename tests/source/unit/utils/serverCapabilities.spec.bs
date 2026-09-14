@@ -1,0 +1,59 @@
+import "pkg:/source/utils/serverCapabilities.bs"
+
+' Unit tests for server plugin capabilities.
+'
+' The reply shape is /Libraries/AvailableOptions' LibraryOptionsResultDto, whose
+' SubtitleFetchers lists installed subtitle provider plugins — read from Jellyfin's
+' LibraryController at 10.7.0 through 12.0, and confirmed live against the public
+' demo (12.0), which returns an empty list.
+
+namespace tests
+
+  @suite("serverCapabilities - plugin-dependent features")
+  class ServerCapabilitiesTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("subtitleProviderStatusFrom()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is available when any subtitle provider is installed")
+    function _()
+      res = { ok: true, json: { SubtitleFetchers: [{ Name: "Open Subtitles", DefaultEnabled: true }] } }
+      m.assertEqual(serverCapabilities.subtitleProviderStatusFrom(res), serverCapabilities.STATUS_AVAILABLE)
+    end function
+
+    @it("is unavailable when the server lists none")
+    function _()
+      res = { ok: true, json: { SubtitleFetchers: [] } }
+      m.assertEqual(serverCapabilities.subtitleProviderStatusFrom(res), serverCapabilities.STATUS_UNAVAILABLE)
+    end function
+
+    @it("is unknown when the reply does not answer the question")
+    function _()
+      ' Unknown is never stored, so a failed check is retried instead of hiding the
+      ' feature for the rest of the session.
+      m.assertEqual(serverCapabilities.subtitleProviderStatusFrom({ ok: false, json: invalid }), serverCapabilities.STATUS_UNKNOWN)
+      m.assertEqual(serverCapabilities.subtitleProviderStatusFrom({ ok: true, json: invalid }), serverCapabilities.STATUS_UNKNOWN)
+      m.assertEqual(serverCapabilities.subtitleProviderStatusFrom({ ok: true, json: {} }), serverCapabilities.STATUS_UNKNOWN)
+      m.assertEqual(serverCapabilities.subtitleProviderStatusFrom({ ok: true, json: { SubtitleFetchers: "x" } }), serverCapabilities.STATUS_UNKNOWN)
+      m.assertEqual(serverCapabilities.subtitleProviderStatusFrom(invalid), serverCapabilities.STATUS_UNKNOWN)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("shouldOfferSubtitleSearch() - this capability fails open")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("hides the feature only on a definite unavailable")
+    function _()
+      m.assertFalse(serverCapabilities.shouldOfferSubtitleSearch(serverCapabilities.STATUS_UNAVAILABLE))
+      m.assertTrue(serverCapabilities.shouldOfferSubtitleSearch(serverCapabilities.STATUS_AVAILABLE))
+    end function
+
+    @it("offers the feature when the check failed")
+    function _()
+      m.assertTrue(serverCapabilities.shouldOfferSubtitleSearch(serverCapabilities.STATUS_UNKNOWN))
+    end function
+
+  end class
+
+end namespace

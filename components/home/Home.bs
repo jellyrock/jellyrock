@@ -1,5 +1,6 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/enums/HomeAction.bs"
 import "pkg:/source/remotecontrol/remoteProtocol.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
@@ -7,6 +8,7 @@ import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/serverCapabilities.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/translate.bs"
@@ -223,6 +225,9 @@ sub onScreenShown()
     m.isFirstRun = false
     loadLibraries()
     SubmitSideEffect(GetApi().BuildPostSessionCapabilitiesRequest(getDeviceCapabilities()))
+    ' Learn which plugins the server has, so plugin-dependent buttons are known
+    ' before the user reaches a detail screen.
+    checkServerCapabilities()
     ' Report cold-launch cast pairing to the companion plugin (#668) so a CLOSED app can be ECP-woken.
     ' Fire-and-forget and transport-agnostic (fires on http + https), kept off the receiver's critical
     ' path so it can never delay the command channel. Skipped when there's no reportable wake address.
@@ -564,6 +569,27 @@ end sub
 ' ============================================
 ' TEARDOWN
 ' ============================================
+
+' checkServerCapabilities: Record which server plugins are installed, once per
+' sign-in. See source/utils/serverCapabilities.bs for the pattern.
+'
+' Re-checked even when an answer is already held: Home is torn down on every sign-out
+' and mounted fresh on sign-in, so this is what lets a plugin the admin installed since
+' the last check show up without restarting the app. A failed check never overwrites
+' a known answer (recordSubtitleProviderStatus stores only definite ones).
+'
+' Warms the answer only: a detail screen that finds it still unknown asks itself,
+' so nothing waits on this reply and a failure here costs nothing.
+sub checkServerCapabilities()
+  req = GetApi().BuildGetLibraryOptionsInfoRequest()
+  if not isValid(req) then return
+
+  promises.chain(fetchAsync(req, "serverCapabilities-home")).then(sub(res as object)
+    serverCapabilities.recordSubtitleProviderStatus(res)
+  end sub).catch(sub(err as object)
+    m.log.warn("server capability check failed", err.reason)
+  end sub)
+end sub
 
 ' onDestroy: Full teardown releasing all resources before component removal
 ' Called automatically via JRScreen.beforeViewClose when sgRouter permanently closes this view.

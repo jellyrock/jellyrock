@@ -1,0 +1,1706 @@
+' SubtitlePanel: search for and download subtitles for one item (#750).
+'
+' See SubtitlePanel.xml for why this is a panel rather than a routed screen and
+' for the layout rationale. This file owns the state machine, the API calls and
+' the focus model.
+'
+' The server behaviours this compensates for were all measured against a live
+' 10.11.11 server with the Open Subtitles plugin installed; the reasoning lives
+' next to the code that depends on it, and the pure parts are tested in
+' tests/source/unit/utils/remoteSubtitles*.spec.bs.
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPromise.bs"
+import "pkg:/source/constants/extrasLayout.bs"
+import "pkg:/source/constants/subtitleLayout.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/dialogs.bs"
+import "pkg:/source/utils/listTheme.bs"
+import "pkg:/source/utils/mediaDisplayTitle.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/remoteSubtitles.bs"
+import "pkg:/source/utils/translate.bs"
+
+' Poll schedule for confirming a download, in milliseconds between attempts.
+'
+' A download cannot be confirmed from its own response: the controller swallows
+' provider errors and returns 204 either way, then queues the metadata refresh
+' ASYNCHRONOUSLY. So the only honest signal is re-fetching the item and diffing
+' its subtitle streams. A local sidecar refresh completed in 0.59s when measured
+' directly, but a real download adds the provider round-trip ahead of that, so
+' the schedule backs off rather than hammering. Total ceiling ~15s, after which
+' the user is told it is still processing instead of being told it failed —
+' because we genuinely cannot tell those apart.
+const SUBTITLE_POLL_DELAYS_MS = [1000, 2000, 4000, 8000]
+
+sub init()
+  m.log = new log.Logger("SubtitlePanel")
+
+  m.panelSurface = m.top.findNode("panelSurface")
+  m.headerGroup = m.top.findNode("headerGroup")
+  m.fileLabel = m.top.findNode("fileLabel")
+  m.languageButton = m.top.findNode("languageButton")
+  m.searchButton = m.top.findNode("searchButton")
+  m.perfectMatchButton = m.top.findNode("perfectMatchButton")
+  m.resultsHeading = m.top.findNode("resultsHeading")
+  m.resultsCount = m.top.findNode("resultsCount")
+  m.downloadedCount = m.top.findNode("downloadedCount")
+  m.embeddedCount = m.top.findNode("embeddedCount")
+  m.resultsList = m.top.findNode("resultsList")
+  m.statusLabel = m.top.findNode("statusLabel")
+  m.resultsSpinner = m.top.findNode("resultsSpinner")
+  m.panelTitle = m.top.findNode("panelTitle")
+  m.existingHeading = m.top.findNode("existingHeading")
+  m.downloadedHeading = m.top.findNode("downloadedHeading")
+  m.downloadedList = m.top.findNode("downloadedList")
+  m.embeddedHeading = m.top.findNode("embeddedHeading")
+  m.embeddedList = m.top.findNode("embeddedList")
+  m.existingEmptyLabel = m.top.findNode("existingEmptyLabel")
+  m.languageOverlay = m.top.findNode("languageOverlay")
+  m.languagePicker = m.top.findNode("languagePicker")
+
+  constants = m.global.constants
+  m.panelSurface.color = constants.colorBlack + constants.alpha60
+  m.panelSurface.translation = [0, extrasLayout.PANEL_CLOSED_Y]
+
+  ' Slide + tint keyValues come from the same constants the extras pane uses, so
+  ' the two panels cannot drift apart visually.
+  m.top.findNode("panelSlide").keyValue = [[0, extrasLayout.PANEL_CLOSED_Y], [0, extrasLayout.PANEL_OPEN_Y]]
+  m.top.findNode("panelTint").keyValue = [constants.colorBlack + constants.alpha60, constants.colorBackgroundPrimary]
+  m.panelAnime = m.top.findNode("panelAnime")
+  ' The panel must stop being drawn once it has slid away, not merely be
+  ' off-screen: its language overlay is a full-screen child, so a still-visible
+  ' panel keeps painting over the detail screen's lower half. Visibility is
+  ' therefore tied to the END of the close animation, not to isOpen.
+  m.panelAnime.observeField("state", "onPanelAnimeStateChanged")
+
+  ' The panel's title, then what each column actually holds. "Search for
+  ' subtitles" used to sit over the RESULTS list while reading as the dialog's
+  ' title, so the two columns looked like the same kind of list; naming one by
+  ' what you can add and the other by what is already there is what makes the
+  ' downloaded / built-in split legible.
+  m.panelTitle.text = translate(translationKeys.LabelManageSubtitles)
+  m.resultsHeading.text = translate(translationKeys.LabelAvailableToDownload)
+  m.existingHeading.text = translate(translationKeys.LabelOnThisItem)
+  m.downloadedHeading.text = translate(translationKeys.LabelDownloadedFiles)
+  m.embeddedHeading.text = translate(translationKeys.LabelInTheVideoFile)
+  m.searchButton.text = translate(translationKeys.ButtonSearch)
+  m.existingEmptyLabel.text = translate(translationKeys.LabelNoSubtitlesOnItem)
+
+  ' The app's one definition of a focused list row — a 6px colorPrimary border
+  ' over a colorBackgroundSecondary footprint. Both rows used to draw exactly this
+  ' themselves, per row, which is the duplication listTheme.bs exists to prevent
+  ' AND the reason focus could not travel: a per-row toggle can only switch on and
+  ' off, while the list's own indicator floats to the row you moved to.
+  ' ALL THREE lists, including the built-in-tracks one. That list became a focus
+  ' target when both sections were made reachable; leaving it unthemed gave it
+  ' focus with nothing drawn, so the remote moved and the screen did not.
+  applyListFocusChrome(m.resultsList)
+  applyListFocusChrome(m.downloadedList)
+  applyListFocusChrome(m.embeddedList)
+
+  ' …then suppress the FOOTPRINT on both, which is where this panel genuinely
+  ' differs from every other consumer of that helper.
+  '
+  ' focusFootprintBitmapUri is the fill Roku draws on a list's focused item WHILE
+  ' THE LIST ITSELF DOES NOT HAVE FOCUS. Every existing caller has exactly one
+  ' focusable list on screen, so it never renders and the shared default is free.
+  ' This panel has TWO, so one of them always lacks focus — and the footprint is
+  ' colorBackgroundSecondary, the same fill that means FOCUS on a TextButton or a
+  ' JRDropdownItem. Left on, the "On this item" row sat there permanently filled
+  ' while the user was in the results list, reading as selected. The 1px
+  ' transparent stand-in is how Alpha.bs turns the same thing off; focus here is
+  ' the 6px colorPrimary border alone, which nothing else can be mistaken for.
+  m.resultsList.focusFootprintBitmapUri = "pkg:/images/1px-transparent.png"
+  m.downloadedList.focusFootprintBitmapUri = "pkg:/images/1px-transparent.png"
+  m.embeddedList.focusFootprintBitmapUri = "pkg:/images/1px-transparent.png"
+
+  ' Row heights are computed by SubtitleResultRow from the live font metrics, so
+  ' the list asks the same helper rather than duplicating the arithmetic.
+  sizeLists()
+
+  m.languageOverlay.color = constants.colorBackgroundPrimary
+  m.top.findNode("languageOverlayHeading").text = translate(translationKeys.LabelSearchLanguages)
+  m.languagePicker.observeField("selectedCode", "onLanguageSelected")
+
+  ' Active-state affordance for the filter toggle is the 6px colorSecondary
+  ' underline TextButton draws for any button with showSelectedIndicator on (set
+  ' in the XML) — the same signal the overhang uses for the selected tab, so it
+  ' means the same thing in both places. The panel used to hand-build and
+  ' position that bar itself, copying JRTab's arithmetic; the copy was wrong at
+  ' this button's padding, which is why the geometry now lives in one component.
+  m.perfectMatchButton.text = translate(translationKeys.LabelPerfectMatchesOnly)
+
+  ' Centre the 64px spinner in the results list's own rect — the area whose
+  ' content it stands in for — not in the panel. The list starts below the column
+  ' heading and runs to the bottom of the clipped panel. The 96 is the panel's
+  ' left margin, hard-coded in the XML for resultsGroup and statusLabel too;
+  ' XML cannot read a BrighterScript constant, so there is nothing to share.
+  spinnerSize = 64
+  listTop = subtitleLayout.COLUMNS_Y + subtitleLayout.COLUMN_HEADING_HEIGHT
+  listHeight = subtitleLayout.PANEL_CONTENT_HEIGHT - listTop
+  m.resultsSpinner.poster.width = spinnerSize
+  m.resultsSpinner.poster.height = spinnerSize
+  m.resultsSpinner.translation = [
+    96 + (subtitleLayout.RESULTS_WIDTH - spinnerSize) / 2,
+    listTop + (listHeight - spinnerSize) / 2
+  ]
+
+  ' Nothing has been searched yet, so the results list is not a focus target.
+  ' A MarkupList is visible by default, so without this DOWN on first open moves
+  ' focus into an empty list and strands the remote until BACK.
+  m.resultsList.visible = false
+
+  ' Each list keeps its own counter honest. itemFocused is an index into the
+  ' CONTENT, so it answers "where am I in all of it", not "where am I on screen".
+  m.resultsList.observeField("itemFocused", "onResultsFocusMoved")
+  m.downloadedList.observeField("itemFocused", "onDownloadedFocusMoved")
+  m.embeddedList.observeField("itemFocused", "onEmbeddedFocusMoved")
+
+  m.resultsList.observeField("itemSelected", "onResultSelected")
+  ' Only the downloaded list is wired. The embedded list IS focusable — it has to
+  ' be, or its surplus rows cannot be scrolled to — but focus there buys the right
+  ' to read a track, not to act on one, so OK on it resolves to nothing.
+  m.downloadedList.observeField("itemSelected", "onExistingSelected")
+
+  ' Poll timer for confirming a download. One timer reused across attempts; the
+  ' attempt counter drives the backoff.
+  m.pollTimer = createObject("roSGNode", "Timer")
+  m.pollTimer.repeat = false
+  m.pollTimer.observeField("fire", "onPollTimerFired")
+
+  m.cultures = invalid
+  m.selectedLanguageCode = ""
+  m.results = []
+  m.allResults = []
+  m.perfectMatchOnly = false
+  m.pollAttempt = 0
+  ' The language a search is running for, "" when idle — NOT a boolean. Which of
+  ' the two it is decides whether picking a new language supersedes the running
+  ' search or is silently refused; see remoteSubtitles.shouldStartSearch().
+  m.searchInFlightLanguage = ""
+  ' Uniquifies each search's requestId so a superseded search and its replacement
+  ' cannot share a registry slot in fetchAsync. Same shape as ItemDetails'
+  ' m.trailerCheckSeq, the app's other supersede-rather-than-refuse case.
+  m.searchSeq = 0
+  ' One item-mutating operation at a time — see startDownload().
+  m.mutationInFlight = false
+  m.closing = false
+  m.pendingDownloadName = ""
+  m.streamsBeforeDownload = []
+  m.deleteConfirmDialog = invalid
+  m.pendingDeleteKey = ""
+  m.pendingDeleteName = ""
+  m.suppressLanguageSelected = false
+  m.subtitlesChangedPending = false
+  m.focusTarget = "search"
+
+  ' Interface observers are registered HERE rather than declared as XML onChange
+  ' attributes: this component defines onDestroy, and an XML onChange does not appear
+  ' to be removable by unobserveField, so a write landing after teardown (the host
+  ' re-feeding existingStreams, a late close) would still run a handler. Same shape
+  ' as JRTabBar — see the wiring rule in components/CLAUDE.md.
+  m.top.observeField("filePath", "onFilePathChanged")
+  m.top.observeField("existingStreams", "onExistingStreamsChanged")
+  m.top.observeField("isOpen", "onIsOpenChanged")
+end sub
+
+' ── Inputs ───────────────────────────────────────────────────────────────────
+
+' onFilePathChanged: Show the file name, not the full path.
+'
+' Sync depends on which RELEASE the subtitle was timed against, so the filename
+' is the thing worth keeping on screen while scanning results. The directory is
+' noise at this width, and on some deployments it leaks server-side layout.
+sub onFilePathChanged()
+  ' remoteSubtitles.fileNameFrom rather than roPath: these paths come from the
+  ' SERVER, so a Windows install reports backslashes and roPath expects a Roku
+  ' volume (pkg:/, tmp:/). The old roPath call fell back to printing the whole
+  ' path when it could not parse one. It also has to be the same splitter the
+  ' per-row filename tail uses, or the header and the rows can disagree about
+  ' where the media filename starts.
+  m.fileLabel.text = remoteSubtitles.fileNameFrom(m.top.filePath)
+
+  ' The tail shown on each existing-subtitle row is computed against this path,
+  ' so a path arriving after the streams did has to re-render them. ItemDetails
+  ' happens to set filePath first today; nothing enforces that.
+  renderExistingList()
+end sub
+
+sub onExistingStreamsChanged()
+  renderExistingList()
+end sub
+
+' ── Open / close ─────────────────────────────────────────────────────────────
+
+sub onIsOpenChanged()
+  if m.top.isOpen
+    openPanel()
+  else
+    closePanel()
+  end if
+end sub
+
+sub openPanel()
+  m.top.visible = true
+
+  ' Start unblocked, whatever the last open left behind.
+  '
+  ' The in-flight language is deliberately NOT cleared when a STALE reply lands —
+  ' a stale reply means a newer search already owns it, which is now TRUE by
+  ' construction rather than by hope: a language change supersedes rather than
+  ' being refused, so the newer search always exists. Closing the panel
+  ' mid-search is the one case that still breaks it — the reply returns early on
+  ' the itemId guard and nothing newer was ever started — so reopening remains
+  ' the moment that can say for certain nothing this panel began is still wanted.
+  m.searchInFlightLanguage = ""
+  m.searchButton.isLoading = false
+
+  ' m.mutationInFlight is deliberately NOT reset here. A download or delete keeps
+  ' running after closePanel() — its request, and a download's poll schedule — so
+  ' clearing the flag on reopen would let a second mutation start beside the
+  ' first, which is the collision the flag exists to prevent. It is cleared only
+  ' by the operation's own terminal outcomes, and the poll schedule is bounded,
+  ' so the worst case is a few seconds of "still working" on reopen, which is true.
+
+  seedDefaultLanguage()
+  ensureCulturesLoaded()
+  renderExistingList()
+
+  ' Search the seeded language straight away rather than making the user press
+  ' Search to see the obvious default — they have already told us their subtitle
+  ' language via their Jellyfin preference. If the language is not resolved yet
+  ' this is a no-op and applyLanguageFromCultures() asks again when it lands.
+  maybeAutoSearch()
+
+  ' The panel is committed to searching as soon as it has a language, so the
+  ' column shows the wait from the moment it opens rather than sitting blank
+  ' through the cultures round-trip. maybeAutoSearch() has already raised the
+  ' spinner if it started a search; this covers the case where it could not yet.
+  if remoteSubtitles.shouldShowOpeningSpinner(m.allResults.count(), m.selectedLanguageCode, isValid(m.cultures))
+    showResultsSpinner()
+  end if
+
+  m.panelSlideReverse = false
+  m.top.findNode("panelSlide").reverse = false
+  m.top.findNode("panelTint").reverse = false
+  m.panelAnime.control = "start"
+
+  m.closing = false
+  m.focusTarget = "search"
+  applyFocus()
+end sub
+
+' maybeAutoSearch: The one place that decides to search without being asked.
+'
+' Called from BOTH ends of the open path — openPanel() and the cultures reply —
+' because whichever happens last is the one that can act. The decision itself is
+' remoteSubtitles.shouldAutoSearch(), a pure predicate, so its guards are swept
+' by tests instead of resting on the order these two callers happen to run in.
+sub maybeAutoSearch()
+  if remoteSubtitles.shouldAutoSearch(m.top.isOpen, m.allResults.count(), m.selectedLanguageCode, m.searchInFlightLanguage <> "")
+    runSearch()
+  end if
+end sub
+
+' showResultsSpinner / hideResultsSpinner: the results column's wait state.
+'
+' A LOCAL spinner, deliberately not the scene-level startLoadingSpinner(). That
+' one is full-screen and disables the remote by default, and this wait is a
+' provider round-trip of several seconds: it would cover the "On this item"
+' column — which has content worth reading meanwhile — and take away the Back
+' that closes the panel. The scene spinner belongs to routed screens loading
+' their whole content; this is one column of one panel.
+sub showResultsSpinner()
+  if m.resultsSpinner.visible then return
+  setStatus("")
+  m.resultsSpinner.visible = true
+  m.resultsSpinner.control = "start"
+end sub
+
+sub hideResultsSpinner()
+  if not m.resultsSpinner.visible then return
+  m.resultsSpinner.visible = false
+  m.resultsSpinner.control = "stop"
+end sub
+
+' showCannotSearch: a terminal state where no search is coming, so the wait
+' indicator would be a lie. Text is right here and a spinner is not: nothing is
+' in flight and nothing will start on its own.
+sub showCannotSearch(message as string)
+  hideResultsSpinner()
+  setStatus(message)
+end sub
+
+' onPanelAnimeStateChanged: Stop drawing once the outbound slide has finished.
+sub onPanelAnimeStateChanged()
+  if m.panelAnime.state = "stopped" and m.closing
+    m.top.visible = false
+    m.closing = false
+  end if
+end sub
+
+sub closePanel()
+  m.languageOverlay.visible = false
+  ' The poll timer is NOT stopped. A download in flight must still confirm after
+  ' the user closes the panel — stopping it stranded the mutation claim and never
+  ' told the host its stream indices had shifted. onDestroy stops it.
+  abandonDeleteConfirm()
+
+  ' Hand the host any re-sync that was deferred while the panel was open.
+  '
+  ' DEFERRED ON PURPOSE, and the reason is focus rather than efficiency. Setting
+  ' subtitlesChanged makes ItemDetails re-fetch and rebuild itself, and that
+  ' rebuild TAKES FOCUS — measured on device: after a delete, focus left the open
+  ' panel and landed on ItemDetails' own manageSubtitlesButton behind it, where
+  ' neither UP nor DOWN could recover it because the panel was no longer in the
+  ' focus chain. Proven by isolation rather than argument: with this one line
+  ' removed from the delete path, focus stayed in the panel across the same
+  ' sequence; with it restored, it did not.
+  '
+  ' Deferring is also the more honest moment. The host needs the re-sync because
+  ' adding or deleting renumbers every stream index it holds, and the only
+  ' consumer of those indices is the detail screen the user is about to be handed
+  ' back to. Nothing behind the panel is reachable in the meantime, and a user
+  ' who removes three subtitles and adds one now costs a single item re-fetch
+  ' instead of four.
+  '
+  ' BOTH paths defer here. The download path fired inline for a while, justified
+  ' as not wanting to disturb a shipped, working path — but neither path had
+  ' shipped, and the mechanism the delete path established by isolation is the
+  ' HOST REFRESH, which download triggers identically. The only difference was
+  ' which list focus happened to be on when it fired, which is not a difference
+  ' in exposure.
+  if m.subtitlesChangedPending
+    m.subtitlesChangedPending = false
+    m.top.subtitlesChanged = true
+  end if
+
+  m.closing = true
+
+  m.top.findNode("panelSlide").reverse = true
+  m.top.findNode("panelTint").reverse = true
+  m.panelAnime.control = "start"
+end sub
+
+' notifySubtitlesChanged: Tell the host the item's subtitle streams changed.
+'
+' While the panel is OPEN this is deferred to closePanel(), because the host's
+' refresh takes focus (see there). Once it is CLOSED there is nothing to protect —
+' focus is already back on the host — and deferring would strand the notice until
+' some later open-and-close, leaving the host playing with stale stream indices.
+sub notifySubtitlesChanged()
+  if m.top.isOpen
+    m.subtitlesChangedPending = true
+  else
+    m.top.subtitlesChanged = true
+  end if
+end sub
+
+' onDestroy: Cleanup hook. The auto-abandon-promises BSC plugin injects
+' abandonApiPromises() here, which detaches every in-flight pool response so a
+' late reply can't fire into a node that no longer exists.
+sub onDestroy()
+  ' Detach the interface observers registered in init() first, so nothing written to
+  ' this node during or after teardown can re-enter the panel.
+  m.top.unobserveField("filePath")
+  m.top.unobserveField("existingStreams")
+  m.top.unobserveField("isOpen")
+
+  m.pollTimer.control = "stop"
+  abandonDeleteConfirm()
+end sub
+
+' abandonDeleteConfirm: Drop an open confirmation without resolving it.
+'
+' ABANDON, not cancel. A cancelled result is indistinguishable from the user
+' pressing Back, so anything that clears the screen while our dialog is up would
+' otherwise deliver a result into a handler whose panel is closing. Abandoning
+' detaches the node and its observer, so there is nothing left to fire. The
+' pending request goes with it — a confirmation the user never answered must not
+' survive to be answered by the next one.
+sub abandonDeleteConfirm()
+  if isValid(m.deleteConfirmDialog)
+    abandonDialog(m.deleteConfirmDialog)
+    ' Abandoning delivers NOTHING, so onDeleteConfirmResponse will never run to
+    ' hand back the claim startDelete took at the prompt. Released here, and
+    ' ONLY when a dialog was actually open — an unconditional release would let
+    ' a close during a download's poll drop that download's claim instead.
+    releaseMutation()
+  end if
+  m.deleteConfirmDialog = invalid
+  m.pendingDeleteKey = ""
+  m.pendingDeleteName = ""
+end sub
+
+' teardown: The host's explicit hand-off, called from ItemDetails.onDestroy.
+' SceneGraph does not invoke onDestroy on a plain child component, so the host
+' drives it rather than trusting the lifecycle.
+sub teardown() as void
+  onDestroy()
+end sub
+
+' ── Language ─────────────────────────────────────────────────────────────────
+
+' seedDefaultLanguage: Start from the user's subtitle-language preference rather
+' than making them pick every time. Their preference is stored as a 3-letter
+' code (it matches MediaStream.Language), so it is resolved against the culture
+' list to the 2-letter form the search actually wants.
+sub seedDefaultLanguage()
+  if isValidAndNotEmpty(m.selectedLanguageCode) then return
+
+  preferred = ""
+  if isChainValid(m.global.user, "config.subtitleLanguagePreference")
+    preferred = m.global.user.config.subtitleLanguagePreference
+  end if
+  if not isValidAndNotEmpty(preferred) then preferred = "eng"
+
+  m.preferredThreeLetter = LCase(preferred)
+
+  ' Label the button NOW, from the preference itself, instead of leaving it blank
+  ' until /Localization/Cultures answers. Every other button in this row gets its
+  ' text in init(); this one was the only control that rendered as an empty 420px
+  ' box with a lone chevron for the whole round-trip.
+  '
+  ' This is not an approximation of the eventual label — it is the SAME
+  ' computation. cultureOptions() labels each entry with localizedLanguageName(),
+  ' which for a non-regional culture returns resolveLanguageName() of that
+  ' culture's THREE-letter code, and the preference we hold here is that same
+  ' three-letter code. So the string does not change when the list lands.
+  '
+  ' It can change in one case, by design: if the preference first matches a
+  ' REGIONAL culture (pt-br, zh-tw, es-419), localizedLanguageName() keeps the
+  ' server's DisplayName so the region is not lost, and that more specific name
+  ' replaces this one. Refining to the more precise value is the right direction.
+  seededLabel = resolveLanguageName(m.preferredThreeLetter)
+  if isValidAndNotEmpty(seededLabel) then m.languageButton.text = seededLabel
+
+  applyLanguageFromCultures()
+end sub
+
+' ensureCulturesLoaded: Fetch /Localization/Cultures once per panel lifetime.
+' It is static per server (192 entries) and only feeds the picker.
+sub ensureCulturesLoaded()
+  if isValid(m.cultures) then return
+
+  req = GetApi().BuildGetCulturesRequest()
+  if not isValid(req) then return
+
+  promises.chain(fetchAsync(req, "subtitleCultures"), { serverUrl: m.global.server.serverUrl }).then(sub(res as object, ctx as object)
+    ' Guard a reply that outlived a server switch — the culture list is
+    ' server-specific and a stale one would mislabel every language.
+    if ctx.serverUrl <> m.global.server.serverUrl then return
+    if not res.ok
+      m.log.warn("cultures fetch failed", res.statusCode)
+      ' Only when nothing else got us a language — a manual pick before this
+      ' landed means the panel is working and this reply is irrelevant.
+      if not isValidAndNotEmpty(m.selectedLanguageCode)
+        showCannotSearch(translate(translationKeys.MessageSubtitleLanguagesUnavailable))
+      end if
+      return
+    end if
+    m.cultures = res.json
+    m.languagePicker.languages = remoteSubtitles.cultureOptions(m.cultures)
+    applyLanguageFromCultures()
+  end sub).catch(sub(err as object, ctx as object)
+    ' Not fatal: the language button keeps whatever it already had, and the
+    ' next open retries because m.cultures stays invalid.
+    m.log.warn("cultures fetch error", err.reason, "server", ctx.serverUrl)
+    if not isValidAndNotEmpty(m.selectedLanguageCode)
+      showCannotSearch(translate(translationKeys.MessageSubtitleLanguagesUnavailable))
+    end if
+  end sub)
+end sub
+
+' applyLanguageFromCultures: Resolve the seeded 3-letter preference to a culture
+' once the list is available, and label the button.
+sub applyLanguageFromCultures()
+  if not isValid(m.cultures) then return
+  if isValidAndNotEmpty(m.selectedLanguageCode) then return
+  if not isValidAndNotEmpty(m.preferredThreeLetter) then return
+
+  for each culture in m.cultures
+    if isValid(culture) and isValidAndNotEmpty(culture.ThreeLetterISOLanguageName)
+      if LCase(culture.ThreeLetterISOLanguageName) = m.preferredThreeLetter
+        setSelectedLanguage(culture.TwoLetterISOLanguageName)
+        ' The language may have arrived after the panel opened, which is the
+        ' case openPanel() could not act on.
+        maybeAutoSearch()
+        return
+      end if
+    end if
+  end for
+
+  ' The list loaded but the user's preference is not in it, so no language will
+  ' ever resolve on its own and the auto-search can never fire. The picker DOES
+  ' work here, so this is recoverable — point at the control that recovers it
+  ' rather than leaving the column waiting on something that is not coming.
+  if m.top.isOpen
+    showCannotSearch(translate(translationKeys.LabelChooseSubtitleLanguage))
+  end if
+end sub
+
+sub setSelectedLanguage(code as string)
+  if not isValidAndNotEmpty(code) then return
+
+  m.selectedLanguageCode = code
+  m.languageButton.text = languageLabelFor(code)
+end sub
+
+function languageLabelFor(code as string) as string
+  options = m.languagePicker.languages
+  if isValid(options)
+    for each option in options
+      if option.code = code then return option.nativeName
+    end for
+  end if
+  return code
+end function
+
+sub onLanguageSelected()
+  ' A pre-select from showLanguageOverlay(), not a user's choice — see there.
+  if m.suppressLanguageSelected = true then return
+
+  selected = m.languagePicker.selectedCode
+  if not isValidAndNotEmpty(selected) then return
+
+  setSelectedLanguage(selected)
+  m.languageOverlay.visible = false
+  m.focusTarget = "search"
+  applyFocus()
+
+  ' Picking a language IS the request to search it — the alternative is
+  ' choosing a language and then being shown the previous one's results.
+  runSearch()
+end sub
+
+sub showLanguageOverlay()
+  if not isValid(m.languagePicker.languages) or m.languagePicker.languages.count() = 0
+    ' What failed here is the CULTURE LIST, not the search. Saying "no subtitles
+    ' found — ask your admin to set up a provider" sends the user to configure
+    ' something that is working, for a picker that is empty because
+    ' /Localization/Cultures has not answered.
+    displayToast(translate(translationKeys.MessageSubtitleLanguagesUnavailable), "error")
+    return
+  end if
+
+  ' Clear the previous query. A retained filter means reopening the picker shows
+  ' whatever was typed last time, so changing your mind costs a manual delete
+  ' before you can even see the full list again.
+  keyboard = m.languagePicker.findNode("keyboard")
+  if isValid(keyboard) then keyboard.text = ""
+
+  ' Pre-select the current language WITHOUT it counting as a choice. selectedCode is
+  ' alwaysNotify, so this write fires onLanguageSelected, which would close the
+  ' picker and re-run the search it is about to replace. Same guard, for the same
+  ' field, as settings.bs's suppressLanguagePicker.
+  m.suppressLanguageSelected = true
+  m.languagePicker.selectedCode = m.selectedLanguageCode
+  m.suppressLanguageSelected = false
+  m.languageOverlay.visible = true
+  if isValid(keyboard) then keyboard.setFocus(true)
+end sub
+
+' ── Search ───────────────────────────────────────────────────────────────────
+
+sub runSearch()
+  if not isValidAndNotEmpty(m.top.itemId) then return
+  ' Refused HERE rather than by greying the button out, and refused only for a
+  ' REPEAT of the query already running — a different language supersedes it.
+  '
+  ' The button used to carry the refusal itself (isEnabled = false), which
+  ' protected correctly and explained nothing: the panel auto-searches on open,
+  ' so the first thing a user saw was a disabled, focused Search button with no
+  ' stated reason — read on device as broken rather than as busy. isLoading says
+  ' the same thing in the affirmative (this is working) while keeping the button's
+  ' normal colours and focus border, and it is what IconButton has done for
+  ' ItemDetails' favourite / watched / record buttons all along (it never touches
+  ' isEnabled either — the two fields are orthogonal there and here).
+  '
+  ' Which press is a repeat and which is a new question is the whole judgment,
+  ' so it lives in a pure predicate rather than in this flag's truthiness.
+  if not remoteSubtitles.shouldStartSearch(m.searchInFlightLanguage, m.selectedLanguageCode) then return
+
+  ' Drop the previous results BEFORE the status line goes up. The status label
+  ' sits at the results list's own origin, so a search started over a populated
+  ' list drew "Searching…" straight through the first row — and the rows under it
+  ' were answers to the PREVIOUS query, which the user is in the middle of
+  ' replacing. Clearing content as well as hiding also resets the scroll offset,
+  ' so the new results always arrive at the top.
+  clearResults()
+  showResultsSpinner()
+  m.searchButton.isLoading = true
+
+  ' isPerfectMatch is deliberately NOT sent to the server. The Open Subtitles
+  ' plugin forwards it upstream as moviehash_match=only, and that filter is
+  ' inconsistent with the IsHashMatch flag the same query returns: measured on a
+  ' real episode, the unfiltered search returned two results BOTH reporting
+  ' IsHashMatch=true while isPerfectMatch=true returned zero. Filtering here
+  ' instead keeps the toggle consistent with the badges the user can see, and
+  ' makes it instant rather than a network round-trip.
+  req = GetApi().BuildSearchRemoteSubtitlesRequest(m.top.itemId, m.selectedLanguageCode, false)
+  if not isValid(req)
+    m.searchButton.isLoading = false
+    return
+  end if
+
+  ' Set once the request is genuinely on the wire — the bail above returns
+  ' without searching. Cleared alongside the Search button in both handlers, and
+  ' deliberately NOT cleared on a stale reply: a stale reply means a newer search
+  ' is already in flight and owns this language slot.
+  m.searchInFlightLanguage = m.selectedLanguageCode
+
+  ' A UNIQUE id per search, not one per item. fetchAsync keys its pending
+  ' registry by requestId and overwrites on collision, so two searches sharing an
+  ' id cross-wire: the first reply settles the SECOND's entry, reads a result
+  ' that has not arrived yet, and rejects it as a timeout — a superseding search
+  ' would report "no subtitles found" for an answer that was on its way. The
+  ' itemId stays in the string so the id remains greppable in a pool log.
+  m.searchSeq += 1
+  searchRequestId = "subtitleSearch-" + m.top.itemId + "-" + m.searchSeq.toStr()
+
+  promises.chain(fetchAsync(req, searchRequestId), { itemId: m.top.itemId, language: m.selectedLanguageCode }).then(sub(res as object, ctx as object)
+    ' A search takes real time (a provider round-trip through the server), so
+    ' the user can change language — or the host can swap items — before it
+    ' lands. Render only the reply that matches what is on screen now.
+    if ctx.itemId <> m.top.itemId or ctx.language <> m.selectedLanguageCode then return
+    m.searchInFlightLanguage = ""
+    m.searchButton.isLoading = false
+    if not res.ok
+      ' A non-Video item 404s here rather than returning an empty list; the
+      ' entry point is type-gated, so this is a genuine failure.
+      m.log.warn("subtitle search failed", res.statusCode)
+      setStatus(translate(translationKeys.MessageNoSubtitlesFound))
+      m.allResults = []
+      renderResults([])
+      return
+    end if
+    results = res.json
+    if not isValid(results) then results = []
+    m.allResults = results
+    renderResults(applyPerfectMatchFilter(results))
+  end sub).catch(sub(err as object, ctx as object)
+    ' Guarded on the language as well as the item, exactly as the success path
+    ' is. A superseded search that fails in TRANSPORT must not clear the flag the
+    ' newer one now owns, nor blank the results column the newer one is filling.
+    if ctx.itemId <> m.top.itemId or ctx.language <> m.selectedLanguageCode then return
+    m.searchInFlightLanguage = ""
+    m.searchButton.isLoading = false
+    m.log.warn("subtitle search error", err.reason)
+    setStatus(translate(translationKeys.MessageNoSubtitlesFound))
+    m.allResults = []
+    renderResults([])
+  end sub)
+end sub
+
+' renderResults: Build the results list.
+'
+' Deliberately preserves the server's ordering. The provider already returns
+' results sorted by download count descending (verified across the sample), and
+' the alternative sort keys are worse: CommunityRating was 0 on 44 of 50 results
+' in the same sample, so sorting by it would be close to sorting by noise.
+sub renderResults(results as object)
+  m.results = results
+  hideResultsSpinner()
+
+  ' Provider and format earn a place on each row only if they actually vary —
+  ' a single-provider install repeats the same two values on every row.
+  showProvider = remoteSubtitles.hasMixedProviders(results)
+  showFormat = remoteSubtitles.hasMixedFormats(results)
+
+  content = createObject("roSGNode", "ContentNode")
+  for each info in results
+    row = content.createChild("ContentNode")
+    row.addFields({
+      name: valueOrEmpty(info.Name),
+      author: valueOrEmpty(info.Author),
+      format: valueOrEmpty(info.Format),
+      providerName: valueOrEmpty(info.ProviderName),
+      dateCreated: valueOrEmpty(info.DateCreated),
+      threeLetterIsoLanguageName: valueOrEmpty(info.ThreeLetterISOLanguageName),
+      downloadCount: intOrZero(info.DownloadCount),
+      isHashMatch: info.IsHashMatch = true,
+      hearingImpaired: info.HearingImpaired = true,
+      forced: info.Forced = true,
+      aiTranslated: info.AiTranslated = true,
+      machineTranslated: info.MachineTranslated = true,
+      showProvider: showProvider,
+      showFormat: showFormat,
+      rowWidth: subtitleLayout.RESULTS_WIDTH
+    })
+  end for
+
+  m.resultsList.content = content
+  m.resultsList.visible = results.count() > 0
+
+  if results.count() = 0
+    ' Names the provider-configuration possibility on purpose: an unconfigured
+    ' provider, absent credentials and a genuine no-match all return 200 [], so
+    ' a bare "no results" would send people looking in the wrong place.
+    setStatus(translate(translationKeys.MessageNoSubtitlesFound))
+  else
+    setStatus("")
+  end if
+
+  m.perfectMatchButton.visible = shouldOfferPerfectMatchFilter()
+  updateListCounter(m.resultsCount, m.resultsList)
+end sub
+
+' togglePerfectMatch: Re-filter the results already in hand. No re-search — the
+' flag every row's badge is drawn from is right here, so the toggle is instant
+' and can never disagree with what is on screen.
+sub togglePerfectMatch()
+  m.perfectMatchOnly = not m.perfectMatchOnly
+  m.perfectMatchButton.isButtonSelected = m.perfectMatchOnly
+  renderResults(applyPerfectMatchFilter(m.allResults))
+end sub
+
+' shouldOfferPerfectMatchFilter: Whether the toggle earns its place in the header.
+'
+' Offered only when using it would CHANGE what the user sees, and when they
+' cannot already see everything:
+'
+'   * no hash matches      -> filtering empties the screen
+'   * every result matches -> filtering removes nothing
+'   * whole set fits       -> nothing to narrow; scrolling is not required
+'
+' The middle case matters more than it looks: the provider plugin already sorts
+' hash matches to the top, so for a set the user can see at once the filter adds
+' nothing the ordering has not already done.
+'
+' Kept visible while the filter is ON regardless, so the control that produced
+' the current view can always be switched back off.
+function shouldOfferPerfectMatchFilter() as boolean
+  if m.perfectMatchOnly then return true
+  if not isValid(m.allResults) then return false
+
+  total = m.allResults.count()
+  if total <= subtitleLayout.VISIBLE_ROWS then return false
+
+  matches = 0
+  for each info in m.allResults
+    if isValid(info) and info.IsHashMatch = true then matches++
+  end for
+
+  return matches > 0 and matches < total
+end function
+
+function applyPerfectMatchFilter(results as object) as object
+  if not m.perfectMatchOnly then return results
+  if not isValid(results) then return []
+
+  filtered = []
+  for each info in results
+    if isValid(info) and info.IsHashMatch = true then filtered.push(info)
+  end for
+  return filtered
+end function
+
+sub setStatus(text as string)
+  m.statusLabel.text = text
+  m.statusLabel.visible = text <> ""
+end sub
+
+' clearResults: Empty the results column so the status line is the only thing in it.
+'
+' Both halves matter. Hiding the list stops it drawing under the status label;
+' emptying its content stops a stale row flashing back when the list is shown
+' again, and drops the ContentNode a slow response would otherwise keep alive.
+sub clearResults()
+  m.results = []
+  m.resultsList.content = createObject("roSGNode", "ContentNode")
+  m.resultsList.visible = false
+  ' The counter describes the list, so it goes with it — leaving "3 of 47" over
+  ' the spinner would be counting results that are no longer on screen.
+  m.resultsCount.visible = false
+end sub
+
+' ── Existing subtitles ───────────────────────────────────────────────────────
+
+' renderExistingList: Show the subtitles already on the item.
+'
+' EVERY subtitle stream is listed, embedded ones included. Listing only the
+' external ones made this column disagree with the detail screen's own subtitle
+' dropdown directly above it — measured on a 4-stream movie where 3 were
+' embedded, so the dropdown offered four tracks while a column headed "Current
+' subtitles" said the item had none.
+'
+' ⚠️ DELETE IS STILL EXTERNAL-ONLY, and this list is no longer pre-filtered into
+' safety. That guarantee moved rather than vanished:
+' ApiClient.BuildDeleteSubtitleRequest() now takes the STREAM and returns invalid
+' for anything whose IsExternal is not true, so a row wired up wrongly here
+' produces an inert button rather than a deleted media container. isExternal is
+' carried on each row so the UI can also decline to OFFER delete — but the
+' correctness of that decision does not depend on the UI getting it right.
+sub renderExistingList()
+  streams = remoteSubtitles.subtitleStreams(m.top.existingStreams)
+
+  downloaded = createObject("roSGNode", "ContentNode")
+  embedded = createObject("roSGNode", "ContentNode")
+
+  for each stream in streams
+    isExternal = stream.IsExternal = true
+    parent = embedded
+    if isExternal then parent = downloaded
+
+    row = parent.createChild("ContentNode")
+    row.addFields({
+      language: resolveLanguageName(valueOrEmpty(stream.Language)),
+      codec: valueOrEmpty(stream.Codec),
+      ' Only a downloaded file has a name of its own, and only the part that
+      ' differs from the media file's is worth the width — the rest is already in
+      ' the panel header. A built-in track leaves this empty and gets one line.
+      source: subtitleFileLine(stream, isExternal),
+      isExternal: isExternal,
+      ' Both halves must hold: the SERVER only lets an admin delete, and the
+      ' server only lets ANY of us delete an external file. Resolved here rather
+      ' than in the row so the row never has to know a policy rule — it just
+      ' draws the affordance it is given.
+      canDelete: isExternal and m.top.canDelete,
+      hearingImpaired: stream.IsHearingImpaired = true,
+      forced: stream.IsForced = true,
+      streamIndex: intOrZero(stream.Index),
+      rowWidth: subtitleLayout.EXISTING_WIDTH
+    })
+  end for
+
+  m.downloadedList.content = downloaded
+  m.embeddedList.content = embedded
+  layoutExistingSections(downloaded.getChildCount(), embedded.getChildCount())
+end sub
+
+' subtitleFileLine: The filename line for a downloaded subtitle, "" for a built-in one.
+function subtitleFileLine(stream as object, isExternal as boolean) as string
+  if not isExternal then return ""
+
+  tail = remoteSubtitles.subtitleFileTail(stream.Path, m.top.filePath)
+  if tail <> "" then return tail
+  ' A downloaded file the server reports without a readable path. Rare, but the
+  ' row still has a second line to fill, and saying what it IS beats blank.
+  return translate(translationKeys.LabelExternalSubtitle)
+end function
+
+' layoutExistingSections: Stack whichever sections have content, and hide the rest.
+'
+' Both sections vary in length, so their positions cannot live in the XML. Each
+' section is a heading plus its list; an empty one contributes nothing at all
+' rather than an empty heading and a gap.
+'
+' How many rows each section gets is subtitleLayout.sectionRowCounts()' problem,
+' not this function's — that is where the judgment lives (who yields to whom when
+' they cannot both fit) and it is unit-tested there. This function only places
+' what it is told to.
+sub layoutExistingSections(downloadedCount as integer, embeddedCount as integer)
+  constants = m.global.constants
+  downloadedRowHeight = subtitleLayout.rowHeight(constants.fontSizeSmaller, constants.fontSizeSmallest)
+  embeddedRowHeight = subtitleLayout.rowHeightCompact(constants.fontSizeSmaller)
+
+  counts = subtitleLayout.sectionRowCounts(downloadedCount, embeddedCount, downloadedRowHeight, embeddedRowHeight)
+
+  y = placeSection(m.downloadedHeading, m.downloadedCount, m.downloadedList, counts.downloadedRows, downloadedRowHeight, subtitleLayout.ROW_SPACING, subtitleLayout.COLUMN_HEADING_HEIGHT)
+  if counts.downloadedRows > 0 and counts.embeddedRows > 0 then y += subtitleLayout.SECTION_GAP
+  placeSection(m.embeddedHeading, m.embeddedCount, m.embeddedList, counts.embeddedRows, embeddedRowHeight, subtitleLayout.ROW_SPACING_COMPACT, y)
+
+  m.existingEmptyLabel.visible = (downloadedCount + embeddedCount) = 0
+
+  updateListCounter(m.downloadedCount, m.downloadedList)
+  updateListCounter(m.embeddedCount, m.embeddedList)
+end sub
+
+' placeSection: Position one heading + list pair, and return the y below it.
+'
+' Returns the incoming y untouched for a section with no rows, so an absent
+' section leaves no trace behind it.
+function placeSection(heading as object, counter as object, list as object, rows as integer, rowHeight as integer, spacing as integer, y as integer) as integer
+  if rows <= 0
+    heading.visible = false
+    counter.visible = false
+    list.visible = false
+    return y
+  end if
+
+  ' The heading is pushed down by its top gap so it sits nearer the rows it names
+  ' than the column heading above it — sectionHeadingSpace() is the same total
+  ' sectionRowCounts() rationed against, and they have to stay the same total.
+  y += subtitleLayout.SECTION_HEADING_TOP_GAP
+  heading.translation = [0, y]
+  heading.visible = true
+  ' Right-aligned on the heading's own line, so a section says what it holds and
+  ' how far through it you are in one place.
+  counter.translation = [0, y]
+  y += subtitleLayout.SECTION_HEADING_HEIGHT
+
+  list.translation = [0, y]
+  ' A section trimmed to fit still SCROLLS to the rest of its content, so
+  ' rationing visible rows never makes a track unreachable — which holds only
+  ' because both sections are focus targets (canFocusDownloaded /
+  ' canFocusEmbedded). It did not hold while the built-in section was
+  ' unfocusable, and this comment asserted it anyway.
+  list.numRows = rows
+  list.visible = true
+  list.itemSpacing = [0, spacing]
+  return y + subtitleLayout.rowsHeight(rows, rowHeight, spacing)
+end function
+
+' ── Download + confirmation ──────────────────────────────────────────────────
+
+sub onResultSelected()
+  index = m.resultsList.itemSelected
+  if index < 0 or index >= m.results.count() then return
+
+  info = m.results[index]
+  if not isValid(info) or not isValidAndNotEmpty(info.Id) then return
+
+  startDownload(info)
+end sub
+
+' startDownload: Ask the server to fetch this subtitle, then begin confirming.
+'
+' The POST's own response is not evidence of anything — a missing provider, bad
+' credentials and an exhausted quota all return 204 exactly like a success — so
+' the baseline stream set is captured here and diffed against later fetches.
+sub startDownload(info as object)
+  if not claimMutation() then return
+
+  req = GetApi().BuildDownloadRemoteSubtitleRequest(m.top.itemId, info.Id)
+  if not isValid(req)
+    releaseMutation()
+    return
+  end if
+
+  m.pendingDownloadName = valueOrEmpty(info.Name)
+  m.streamsBeforeDownload = m.top.existingStreams
+  m.pollAttempt = 0
+
+  displayToast(translate(translationKeys.MessageSubtitleDownloading), "info")
+
+  promises.chain(fetchAsync(req, "subtitleDownload-" + m.top.itemId), { itemId: m.top.itemId }).then(sub(res as object, ctx as object)
+    if ctx.itemId <> m.top.itemId
+      ' The host moved to another item; this download's confirmation goes with it.
+      releaseMutation()
+      return
+    end if
+    ' res.ok is 204 whether or not the download actually worked, so it is only
+    ' checked to catch a rejected REQUEST (403, 404) — not a failed download.
+    if not res.ok
+      releaseMutation()
+      m.log.warn("subtitle download rejected", res.statusCode)
+      displayToast(translate(translationKeys.MessageSubtitleDownloadFailed), "error")
+      return
+    end if
+    ' Still held: the POST is not the end of the operation, the poll is.
+    schedulePoll()
+  end sub).catch(sub(err as object, ctx as object)
+    releaseMutation()
+    if ctx.itemId <> m.top.itemId then return
+    m.log.warn("subtitle download error", err.reason)
+    displayToast(translate(translationKeys.MessageSubtitleDownloadFailed), "error")
+  end sub)
+end sub
+
+' claimMutation / releaseMutation: one item-mutating operation at a time.
+'
+' Downloads and deletes share ONE claim rather than guarding each other
+' separately, and that is a correctness requirement rather than tidiness. Both
+' renumber every stream index on the item, and a download confirms itself by
+' diffing the CURRENT streams against the baseline it captured before starting
+' (see newSubtitleStreams) — so a delete landing mid-poll mutates the very set
+' that diff is measured against, and the download would report the wrong file,
+' or none.
+'
+' The claim is also what keeps each operation's requestId unique. fetchAsync
+' keys its pending registry by requestId and overwrites on collision, so two
+' downloads sharing "subtitleDownload-<itemId>" would cross-wire: the first
+' reply settles the SECOND's entry, reads a result that has not arrived, and
+' rejects it as a timeout — the user's second press reporting a failure while
+' the first download quietly succeeded. The app's other repeatable requests are
+' safe for the same reason, via their buttons' own isLoading guards
+' (ItemDetails' favourite / watched / record); this panel drives its actions
+' from list selections, which have no such button, so the guard lives here.
+'
+' NOT reset by open or close — see openPanel().
+function claimMutation() as boolean
+  if m.mutationInFlight
+    displayToast(translate(translationKeys.MessageSubtitleBusy), "info")
+    return false
+  end if
+  m.mutationInFlight = true
+  return true
+end function
+
+sub releaseMutation()
+  m.mutationInFlight = false
+end sub
+
+sub schedulePoll()
+  if m.pollAttempt >= SUBTITLE_POLL_DELAYS_MS.count()
+    ' Out of attempts. The server may still be refreshing, and we cannot
+    ' distinguish "slow" from "failed", so say the true thing — and let go of the
+    ' claim, because this is where the operation ends whether or not it worked.
+    ' Holding it past the schedule's ceiling would strand the panel.
+    releaseMutation()
+    displayToast(translate(translationKeys.MessageSubtitleStillProcessing), "info")
+    ' The download may still land, and would renumber the host's stream indices,
+    ' so let it re-fetch rather than assume nothing changed. Deletes stay safe
+    ' either way: deleteConfirmedSubtitle re-reads the item before acting.
+    notifySubtitlesChanged()
+    return
+  end if
+
+  m.pollTimer.control = "stop"
+  m.pollTimer.duration = SUBTITLE_POLL_DELAYS_MS[m.pollAttempt] / 1000.0
+  m.pollAttempt++
+  m.pollTimer.control = "start"
+end sub
+
+sub onPollTimerFired()
+  req = GetApi().BuildGetItemRequest(m.top.itemId)
+  if not isValid(req)
+    ' No request means no further poll will ever be scheduled, so this is where
+    ' the download ends — the claim has to go with it or the panel refuses every
+    ' later download for the rest of its life.
+    releaseMutation()
+    return
+  end if
+
+  promises.chain(fetchAsync(req, "subtitlePoll-" + m.top.itemId), { itemId: m.top.itemId }).then(sub(res as object, ctx as object)
+    ' Abandon the confirmation entirely if the host moved to another item;
+    ' rescheduling would poll the wrong item forever.
+    if ctx.itemId <> m.top.itemId
+      releaseMutation()
+      return
+    end if
+    if not res.ok
+      schedulePoll()
+      return
+    end if
+
+    item = res.json
+    streams = invalid
+    if isValid(item) then streams = item.MediaStreams
+
+    added = remoteSubtitles.newSubtitleStreams(m.streamsBeforeDownload, streams)
+    if added.count() = 0
+      schedulePoll()
+      return
+    end if
+
+    ' Confirmed. Adopt the fresh stream list — note this also means every
+    ' stream index the host is holding is now stale, which is exactly what
+    ' subtitlesChanged tells it to go fix.
+    releaseMutation()
+    m.top.existingStreams = streams
+    displayToast(translate(translationKeys.MessageSubtitleAdded, [m.pendingDownloadName]), "success")
+
+    ' May land after the user closed the panel — see notifySubtitlesChanged().
+    notifySubtitlesChanged()
+  end sub).catch(sub(err as object, ctx as object)
+    if ctx.itemId <> m.top.itemId
+      releaseMutation()
+      return
+    end if
+    m.log.warn("subtitle poll error", err.reason)
+    ' Still held — a transport failure on one poll is not the end of the
+    ' operation, and schedulePoll() releases it when the attempts run out.
+    schedulePoll()
+  end sub)
+end sub
+
+' ── Delete ───────────────────────────────────────────────────────────────────
+
+' onExistingSelected: OK on a downloaded subtitle — confirm, then delete.
+'
+' OK carries the action here because this row has no other one. That is the
+' condition, not a preference: on the server and user pickers OK already means
+' connect / sign in, so their delete belongs on the options key instead. The
+' rule and its enforcement are tracked in #889.
+sub onExistingSelected()
+  ' Re-checked here even though canFocusDownloaded() should have kept the list
+  ' out of the focus chain entirely. Two separate places already have to agree
+  ' for the row to be reachable, and the API layer guards IsExternal for exactly
+  ' this reason — a permission check that lives only in the focus model is one
+  ' refactor away from being the thing that was quietly dropped.
+  if not m.top.canDelete then return
+
+  index = m.downloadedList.itemSelected
+  ' The rendered rows are externalSubtitleStreams() of the same array, in the
+  ' same order, so the row's position IS its index into that set. Recomputing
+  ' from m.top.existingStreams rather than trusting a streamIndex copied onto
+  ' the row means the stream handed to the API layer is always the one currently
+  ' on screen — and a download renumbers every index on the item.
+  deletable = remoteSubtitles.externalSubtitleStreams(m.top.existingStreams)
+  if index < 0 or index >= deletable.count() then return
+
+  startDelete(deletable[index])
+end sub
+
+' startDelete: Ask before doing it.
+'
+' A subtitle file is cheap to lose and cheap to re-download, so the confirmation
+' is not about gravity — it is about a single OK press on a focused row being
+' too easy to do by accident. showConfirmDialog focuses the cancel side, so a
+' reflexive second press cancels.
+sub startDelete(stream as object)
+  ' Claimed at the PROMPT, not at the request. A download landing between the
+  ' question and the answer would renumber the very stream this dialog names, so
+  ' the index the user agreed to delete would no longer be the file they saw.
+  ' Released on cancel, so declining costs nothing.
+  if not claimMutation() then return
+
+  ' Ask the API layer to build the request BEFORE showing a dialog, so a stream
+  ' it refuses (anything not explicitly IsExternal) never produces a prompt for
+  ' an action that cannot happen.
+  req = GetApi().BuildDeleteSubtitleRequest(m.top.itemId, stream)
+  if not isValid(req)
+    releaseMutation()
+    return
+  end if
+
+  ' The KEY, not this request: the request carries this list's index, which a
+  ' download or delete can renumber before the user answers. The delete re-resolves
+  ' the key against a fresh fetch — see deleteConfirmedSubtitle().
+  m.pendingDeleteKey = remoteSubtitles.subtitleStreamKey(stream)
+  m.pendingDeleteName = deleteTargetName(stream)
+
+  m.deleteConfirmDialog = showConfirmDialog(
+    translate(translationKeys.ButtonDelete),
+    translate(translationKeys.MessageSubtitleDeleteConfirm, [m.pendingDeleteName]),
+    "onDeleteConfirmResponse",
+    translate(translationKeys.ButtonDelete),
+    translate(translationKeys.ButtonCancel)
+  )
+end sub
+
+' deleteTargetName: What to call the file in the confirmation.
+'
+' The filename tail, because it is the ONLY thing that separates two subtitles
+' in the same language and codec — Jellyfin records no provenance for a subtitle
+' (no provider, no date, no rating), so "English SUBRIP" can name three rows at
+' once and a confirmation that says it names none of them. Falls back to the
+' row's own first line when the server reports no readable path.
+function deleteTargetName(stream as object) as string
+  tail = remoteSubtitles.subtitleFileTail(stream.Path, m.top.filePath)
+  if tail <> "" then return tail
+
+  language = resolveLanguageName(valueOrEmpty(stream.Language))
+  codec = valueOrEmpty(stream.Codec)
+  if language <> "" and codec <> "" then return language + " " + UCase(codec)
+  if language <> "" then return language
+  return translate(translationKeys.LabelExternalSubtitle)
+end function
+
+' onDeleteConfirmResponse: Act only on an explicit confirm.
+'
+' Gating positively on `confirmed` is what makes this safe against being
+' SUPERSEDED — presentOverlayDialog cancels an incumbent dialog with a result
+' its owner cannot distinguish from Back, so any handler that acted on the
+' cancel path would fire from inside someone else's dialog mount. Nothing here
+' runs unless the user chose Delete, so there is no such path to protect.
+sub onDeleteConfirmResponse()
+  dialog = m.deleteConfirmDialog
+  m.deleteConfirmDialog = invalid
+  key = m.pendingDeleteKey
+  m.pendingDeleteKey = ""
+  name = m.pendingDeleteName
+  m.pendingDeleteName = ""
+
+  ' Every path out of here that is NOT an issued request has to hand the claim
+  ' back — a declined or superseded confirmation must not leave the panel
+  ' believing it is still mutating.
+  if not isValid(dialog) or not isValid(dialog.result) or key = ""
+    releaseMutation()
+    return
+  end if
+  if not dialog.result.confirmed
+    releaseMutation()
+    return
+  end if
+
+  deleteConfirmedSubtitle(key, name)
+end sub
+
+' deleteConfirmedSubtitle: Re-read the item, then delete the chosen file at its
+' CURRENT index.
+'
+' The list the user chose from can be out of date — a download that confirmed after
+' the poll gave up, a re-fetch that failed after an earlier delete, a reopen before
+' the host's refresh landed — and the server deletes by index, so an index from that
+' list can name a different subtitle file. Resolving the chosen file by its key
+' against a list fetched right now closes all of those at once; BuildDeleteSubtitleRequest
+' still refuses anything that is not explicitly external.
+sub deleteConfirmedSubtitle(key as string, name as string)
+  req = GetApi().BuildGetItemRequest(m.top.itemId)
+  if not isValid(req)
+    releaseMutation()
+    displayToast(translate(translationKeys.MessageSubtitleDeleteFailed), "error")
+    return
+  end if
+
+  promises.chain(fetchAsync(req, "subtitleDeleteResolve-" + m.top.itemId), { itemId: m.top.itemId, key: key, name: name }).then(sub(res as object, ctx as object)
+    if ctx.itemId <> m.top.itemId
+      releaseMutation()
+      return
+    end if
+    if not res.ok or not isValid(res.json)
+      releaseMutation()
+      m.log.warn("subtitle delete: item re-read failed", res.statusCode)
+      displayToast(translate(translationKeys.MessageSubtitleDeleteFailed), "error")
+      return
+    end if
+
+    streams = res.json.MediaStreams
+    stream = remoteSubtitles.findSubtitleStreamByKey(streams, ctx.key)
+    deleteReq = GetApi().BuildDeleteSubtitleRequest(m.top.itemId, stream)
+    if not isValid(deleteReq)
+      ' Gone, or no longer an external file: the list on screen was out of date.
+      ' Show the current one, and tell the host its stream indices changed.
+      releaseMutation()
+      m.log.warn("subtitle delete: chosen file no longer on the item")
+      m.top.existingStreams = streams
+      notifySubtitlesChanged()
+      displayToast(translate(translationKeys.MessageSubtitleDeleteFailed), "error")
+      return
+    end if
+
+    issueSubtitleDelete(deleteReq, ctx.name)
+  end sub).catch(sub(err as object, ctx as object)
+    releaseMutation()
+    if ctx.itemId <> m.top.itemId then return
+    m.log.warn("subtitle delete: item re-read error", err.reason)
+    displayToast(translate(translationKeys.MessageSubtitleDeleteFailed), "error")
+  end sub)
+end sub
+
+' issueSubtitleDelete: Send a delete built from a freshly resolved stream.
+sub issueSubtitleDelete(req as object, name as string)
+  ' Unlike download, delete is SYNCHRONOUS end to end: the server's controller
+  ' awaits the metadata refresh before responding, so the next GET already
+  ' reflects the new stream list. No poll schedule is needed here — the one the
+  ' download path carries exists purely because that endpoint returns 204 before
+  ' the work has happened.
+  promises.chain(fetchAsync(req, "subtitleDelete-" + m.top.itemId), { itemId: m.top.itemId, name: name }).then(sub(res as object, ctx as object)
+    if ctx.itemId <> m.top.itemId
+      releaseMutation()
+      return
+    end if
+    if not res.ok
+      releaseMutation()
+      m.log.warn("subtitle delete rejected", res.statusCode)
+      displayToast(translate(translationKeys.MessageSubtitleDeleteFailed), "error")
+      return
+    end if
+    ' Still held: the refresh that follows is part of this delete, and it is
+    ' what re-reads the stream list a second delete would need.
+    refreshAfterDelete(ctx.name)
+  end sub).catch(sub(err as object, ctx as object)
+    releaseMutation()
+    if ctx.itemId <> m.top.itemId then return
+    m.log.warn("subtitle delete error", err.reason)
+    displayToast(translate(translationKeys.MessageSubtitleDeleteFailed), "error")
+  end sub)
+end sub
+
+' refreshAfterDelete: Re-read the item and re-sync everything holding an index.
+'
+' Deleting renumbers the item's streams exactly as downloading does, so the host
+' has to be told even though nothing was added — selectedAudioStreamIndex and
+' selectedSubtitleStreamIndex are server indices and are now pointing one place
+' to the left of where they were.
+sub refreshAfterDelete(name as string)
+  req = GetApi().BuildGetItemRequest(m.top.itemId)
+  if not isValid(req)
+    releaseMutation()
+    return
+  end if
+
+  promises.chain(fetchAsync(req, "subtitleDeleteRefresh-" + m.top.itemId), { itemId: m.top.itemId, name: name }).then(sub(res as object, ctx as object)
+    ' The delete ENDS here however this settles — released before any branching
+    ' so none of the four ways out of this handler can strand the claim.
+    releaseMutation()
+    if ctx.itemId <> m.top.itemId then return
+    if not res.ok or not isValid(res.json)
+      reportDeletedWithoutRefresh(ctx.name, res.statusCode)
+      return
+    end if
+
+    item = res.json
+
+    ' Move focus out of the list BEFORE re-rendering it.
+    '
+    ' The dialog hands focus back to downloadedList on close, and deleting the
+    ' last downloaded file empties and hides that list — so without this, focus
+    ' sits on a hidden node until something else moves it. Ordering it before the
+    ' re-render rather than after is hygiene, not the bug fix: the focus loss
+    ' this path actually had was caused by the HOST REFRESH, which is why that is
+    ' now deferred to closePanel(). Do not read this as the cure for it.
+    '
+    ' Only while OPEN: the delete can finish after the user closed the panel, and
+    ' setFocus on a closed panel would pull focus off the host's buttons into it.
+    panelOpen = m.top.isOpen
+    if panelOpen
+      m.focusTarget = "search"
+      applyFocus()
+    end if
+
+    m.top.existingStreams = item.MediaStreams
+    displayToast(translate(translationKeys.MessageSubtitleDeleted, [ctx.name]), "success")
+
+    ' May land after the user closed the panel — see notifySubtitlesChanged().
+    notifySubtitlesChanged()
+
+    ' Back to the list only if it still has something left to act on.
+    if panelOpen and canFocusDownloaded()
+      m.focusTarget = "downloaded"
+      applyFocus()
+    end if
+  end sub).catch(sub(err as object, ctx as object)
+    releaseMutation()
+    if ctx.itemId <> m.top.itemId then return
+    reportDeletedWithoutRefresh(ctx.name, err.reason)
+  end sub)
+end sub
+
+' reportDeletedWithoutRefresh: The delete succeeded but the re-read after it failed.
+'
+' The file IS gone, so say so rather than showing nothing, and tell the host: its
+' stream indices shifted whether or not this panel managed to see the new list. The
+' panel's own list stays stale, which is safe — the next delete re-reads the item
+' before acting (deleteConfirmedSubtitle).
+sub reportDeletedWithoutRefresh(name as string, reason as dynamic)
+  m.log.warn("subtitle deleted, but the item re-read failed", reason)
+  displayToast(translate(translationKeys.MessageSubtitleDeleted, [name]), "success")
+  notifySubtitlesChanged()
+end sub
+
+' ── List position counters ───────────────────────────────────────────────────
+
+sub onResultsFocusMoved()
+  updateListCounter(m.resultsCount, m.resultsList)
+end sub
+
+sub onDownloadedFocusMoved()
+  updateListCounter(m.downloadedCount, m.downloadedList)
+end sub
+
+sub onEmbeddedFocusMoved()
+  updateListCounter(m.embeddedCount, m.embeddedList)
+end sub
+
+' updateListCounter: "3 of 47" beside a list's heading, or nothing.
+'
+' SHOWN ONLY WHEN THE LIST CAN SCROLL, which is the only time the question it
+' answers exists. A count beside a list you can already see in full states
+' something the eye has, and this panel has three lists sharing a 720px clip —
+' three permanent counters would be three pieces of furniture earning nothing.
+' The same test the perfect-match toggle uses ("can the user already see the whole
+' set?"), asked of each list's own numRows rather than a shared constant, because
+' the two "on this item" sections are sized per render by sectionRowCounts().
+'
+' The string is Message1Of2, the app's existing "{0} of {1}" — already what the
+' library grid's overhang and the audio player's track line use, so a position
+' readout means the same thing wherever it turns up. Roku's own list counter is a
+' RowList field (showRowCounter) and MarkupList does not have it, which is why
+' this is built by hand rather than switched on.
+sub updateListCounter(counter as object, list as object)
+  if not isValid(counter) or not isValid(list) then return
+
+  total = 0
+  if isValid(list.content) then total = list.content.getChildCount()
+
+  if not list.visible or total <= list.numRows
+    counter.visible = false
+    return
+  end if
+
+  ' itemFocused indexes the CONTENT, so this reads as a position in the whole
+  ' list rather than in the visible window. It is -1 before the list has ever
+  ' been focused, where the honest answer is the first row.
+  position = list.itemFocused + 1
+  if position < 1 then position = 1
+
+  counter.text = translate(translationKeys.Message1Of2, [position.toStr(), total.toStr()])
+  counter.visible = true
+end sub
+
+' ── Focus + keys ─────────────────────────────────────────────────────────────
+
+sub sizeLists()
+  ' Ask the row component for its height rather than restating it. The first
+  ' draft hardcoded 96 here while the row derived its own height from live font
+  ' metrics; the two disagreed, which is what pushed rows out of their slots and
+  ' left the two columns unaligned.
+  constants = m.global.constants
+  m.resultsList.itemSize = [subtitleLayout.RESULTS_WIDTH, subtitleLayout.rowHeight(constants.fontSizeSmaller, constants.fontSizeSmallest)]
+  m.resultsList.numRows = subtitleLayout.VISIBLE_ROWS
+
+  ' Without a gap the focus indicator — which the list draws ~10px OUTSIDE the
+  ' row — lands on the neighbouring row's text. The two "on this item" lists get
+  ' theirs from placeSection(), which is the only place that knows which of the
+  ' two row shapes, and therefore which rhythm, each section is stacking.
+  m.resultsList.itemSpacing = [0, subtitleLayout.ROW_SPACING]
+
+  ' The two existing-subtitle sections hold different row SHAPES — a downloaded
+  ' file has a filename line, a built-in track has nothing to put on one — so
+  ' their slots are sized separately. numRows is set per render by
+  ' layoutExistingSections(), which is the only place that knows how many of each
+  ' there are.
+  m.downloadedList.itemSize = [subtitleLayout.EXISTING_WIDTH, subtitleLayout.rowHeight(constants.fontSizeSmaller, constants.fontSizeSmallest)]
+  m.embeddedList.itemSize = [subtitleLayout.EXISTING_WIDTH, subtitleLayout.rowHeightCompact(constants.fontSizeSmaller)]
+end sub
+
+' hasRows: A list is only a focus target when it actually has rows. Guarding on
+' `visible` alone is not enough — the flag and the content are set from
+' different paths, so they can disagree for a frame.
+function hasRows(list as object) as boolean
+  if not isValid(list) or not list.visible then return false
+  if not isValid(list.content) then return false
+  return list.content.getChildCount() > 0
+end function
+
+' canFocusDownloaded / canFocusEmbedded: Whether a section is worth landing on.
+'
+' ROWS ALONE, and deliberately not permission or actionability. Both earlier
+' rules — the downloaded list requiring canDelete, the embedded list never being
+' a stop at all — were justified as avoiding "dead travel" to a row whose OK does
+' nothing. That reasoning missed that SCROLLING is the travel's purpose whenever
+' a section holds more rows than it can show: sectionRowCounts() rations visible
+' rows on the stated promise that "a section trimmed to fit still SCROLLS to the
+' rest of its content", and a list that cannot take focus cannot scroll, so the
+' promise was false and the surplus rows were simply unreachable.
+'
+' Measured when it bit, against the row heights of the time (486px column, 45px
+' built-in row, 72px downloaded row — both rows are shorter now that the double
+' padding is gone): a 3-downloaded/8-embedded item showed 4 built-in tracks and
+' hid 4 with no way to reach them. The permission half had the same shape for a
+' non-admin, who could not focus the downloaded list at all. Shorter rows move
+' the threshold; they do not remove it, because any item can hold more tracks
+' than the column can show.
+'
+' What actionability still governs is what OK DOES — see onExistingSelected,
+' which is wired only to the downloaded list — and whether a row draws the delete
+' icon, which renderExistingList still resolves from canDelete. A row therefore
+' still never advertises an action the panel will not perform; it is only the
+' right to LOOK at it that is no longer rationed.
+function canFocusDownloaded() as boolean
+  return hasRows(m.downloadedList)
+end function
+
+function canFocusEmbedded() as boolean
+  return hasRows(m.embeddedList)
+end function
+
+sub applyFocus()
+  if m.focusTarget = "results" and not hasRows(m.resultsList) then m.focusTarget = "search"
+  if m.focusTarget = "downloaded" and not canFocusDownloaded() then m.focusTarget = "search"
+  if m.focusTarget = "embedded" and not canFocusEmbedded() then m.focusTarget = "search"
+
+  if m.focusTarget = "language"
+    m.languageButton.setFocus(true)
+  else if m.focusTarget = "perfect"
+    m.perfectMatchButton.setFocus(true)
+  else if m.focusTarget = "results"
+    m.resultsList.setFocus(true)
+  else if m.focusTarget = "downloaded"
+    m.downloadedList.setFocus(true)
+  else if m.focusTarget = "embedded"
+    m.embeddedList.setFocus(true)
+  else
+    m.searchButton.setFocus(true)
+  end if
+end sub
+
+' firstExistingTarget: Whichever section of the "on this item" column can be
+' landed on first, or "" when neither can.
+'
+' Both callers that ENTER the column (RIGHT from the results, DOWN from the
+' header) want the same answer, and asking it in one place is what stops the two
+' drifting apart when a section is empty.
+function firstExistingTarget() as string
+  if canFocusDownloaded() then return "downloaded"
+  if canFocusEmbedded() then return "embedded"
+  return ""
+end function
+
+function onKeyEvent(key as string, press as boolean) as boolean
+  if not press then return false
+  if not m.top.isOpen then return false
+
+  ' The language overlay owns every key while it is up, except BACK. Anything
+  ' the picker itself declines stops here rather than bubbling — see the trap at
+  ' the bottom of this function.
+  if m.languageOverlay.visible
+    if key = "back"
+      m.languageOverlay.visible = false
+      m.focusTarget = "search"
+      applyFocus()
+      return true
+    end if
+    return true
+  end if
+
+  if key = "back"
+    ' BACK is a step BACK through the panel, not an exit from it. Closing the
+    ' whole panel from deep in the results list loses the user's search and is
+    ' the opposite of what BACK means everywhere else in the app.
+    if not inHeader()
+      m.focusTarget = "search"
+      applyFocus()
+      return true
+    end if
+    m.top.requestClose = true
+    return true
+  end if
+
+  if key = "OK"
+    if m.languageButton.hasFocus()
+      showLanguageOverlay()
+      return true
+    end if
+    if m.searchButton.hasFocus()
+      runSearch()
+      return true
+    end if
+    if m.perfectMatchButton.hasFocus()
+      togglePerfectMatch()
+      return true
+    end if
+    ' The results and downloaded lists raise itemSelected themselves, handled by
+    ' onResultSelected / onExistingSelected. Nothing else in the panel answers OK
+    ' — including a built-in track, which is focusable only so it can be scrolled
+    ' to. Consumed rather than bubbled, for the reason at the end of this function.
+    return true
+  end if
+
+  if key = "right"
+    if m.languageButton.hasFocus()
+      m.focusTarget = "search"
+      applyFocus()
+      return true
+    end if
+    if m.searchButton.hasFocus() and m.perfectMatchButton.visible
+      m.focusTarget = "perfect"
+      applyFocus()
+      return true
+    end if
+    if m.resultsList.hasFocus()
+      target = firstExistingTarget()
+      if target <> ""
+        m.focusTarget = target
+        applyFocus()
+      end if
+      return true
+    end if
+    return true
+  end if
+
+  if key = "left"
+    if m.perfectMatchButton.hasFocus()
+      m.focusTarget = "search"
+      applyFocus()
+      return true
+    end if
+    if m.searchButton.hasFocus()
+      m.focusTarget = "language"
+      applyFocus()
+      return true
+    end if
+    ' Either section of the right-hand column returns to the results, so the
+    ' column behaves as one destination however the user entered it.
+    if m.downloadedList.hasFocus() or m.embeddedList.hasFocus()
+      m.focusTarget = "results"
+      applyFocus()
+      return true
+    end if
+    return true
+  end if
+
+  if key = "down"
+    if inHeader()
+      if hasRows(m.resultsList)
+        m.focusTarget = "results"
+        applyFocus()
+        return true
+      end if
+      target = firstExistingTarget()
+      if target <> ""
+        m.focusTarget = target
+        applyFocus()
+      end if
+      return true
+    end if
+    ' The two "on this item" sections are separate lists stacked in one column,
+    ' so the seam between them is ours to bridge: the downloaded list declines
+    ' DOWN at its last row and the built-in tracks below it would otherwise be
+    ' unreachable. This is the other half of the fix that made them focusable —
+    ' being a focus target is no use without a key that reaches it.
+    if m.downloadedList.hasFocus() and atLastRow(m.downloadedList) and canFocusEmbedded()
+      m.focusTarget = "embedded"
+      applyFocus()
+      return true
+    end if
+    return true
+  end if
+
+  if key = "up"
+    ' floatingFocus (not fixedFocusWrap) is what makes this reachable: a
+    ' wrapping list swallows UP at the top and traps the user in the results.
+    if m.resultsList.hasFocus() and m.resultsList.itemFocused = 0
+      m.focusTarget = "search"
+      applyFocus()
+      return true
+    end if
+    if m.downloadedList.hasFocus() and m.downloadedList.itemFocused = 0
+      m.focusTarget = "search"
+      applyFocus()
+      return true
+    end if
+    ' Back up the same seam DOWN crossed, to the section above if there is one.
+    if m.embeddedList.hasFocus() and m.embeddedList.itemFocused = 0
+      m.focusTarget = "search"
+      if canFocusDownloaded() then m.focusTarget = "downloaded"
+      applyFocus()
+      return true
+    end if
+    return true
+  end if
+
+  ' NOTHING ELSE ESCAPES. The panel is modal for as long as it is open, so every
+  ' remaining press stops here rather than bubbling to ItemDetails behind it.
+  '
+  ' Returning false instead let UP off the header walk out of the panel entirely
+  ' and land on ItemDetails' own description — reported from device. ItemDetails
+  ' carries a patch for one such route (a DOWN guard on m.subtitlePanelOpen), but
+  ' enumerating exits from the OTHER side is the wrong layer: it fixes the routes
+  ' someone happened to try and leaves the rest. A modal panel owning its own keys
+  ' has no routes to enumerate.
+  '
+  ' Safe for the lists, which are FOCUSED and therefore see every key before this
+  ' function does — anything reaching here is something nothing inside the panel
+  ' wanted.
+  return true
+end function
+
+' atLastRow: Whether a list's focus is on its final row.
+'
+' itemFocused is an index into the CONTENT, not into the visible window, so this
+' is the true end of the section rather than the bottom of what is on screen.
+function atLastRow(list as object) as boolean
+  if not isValid(list) or not isValid(list.content) then return false
+  return list.itemFocused >= list.content.getChildCount() - 1
+end function
+
+function inHeader() as boolean
+  return m.languageButton.hasFocus() or m.searchButton.hasFocus() or m.perfectMatchButton.hasFocus()
+end function
+
+' ── Small helpers ────────────────────────────────────────────────────────────
+
+function valueOrEmpty(value as dynamic) as string
+  if isValidAndNotEmpty(value) then return value
+  return ""
+end function
+
+function intOrZero(value as dynamic) as integer
+  if isValid(value) then return value
+  return 0
+end function

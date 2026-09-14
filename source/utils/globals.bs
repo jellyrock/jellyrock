@@ -273,8 +273,8 @@ end sub
 '
 ' Handled automatically:
 '   - Labels: subtype containing "Primary"/"Secondary"/"Disabled" → matching text color
-'   - TextButton subtypes: focusBorder, focusBackground, textFocusColor
-'   - JRTab indicator: Rectangle child → colorSecondary
+'   - TextButton subtypes: focusBorder, focusBackground, textFocusColor, plus the
+'     buttonIndicator underline → colorSecondary
 '   - JROverhangIcon: buttonIcon poster → colorTextSecondary (unfocused default)
 '
 ' Components that cache theme colors (JRTab, JRDropdown, JRDropdownItem,
@@ -308,15 +308,10 @@ sub refreshThemeOnNode(node as object, constants as object)
     node.focusBackground = constants.colorBackgroundSecondary
     node.textFocusColor = constants.colorTextPrimary
 
-    ' JRTab: also update the underline indicator (Rectangle child)
-    if subtype = "JRTab"
-      children = node.getChildren(-1, 0)
-      for each child in children
-        if child.isSubType("Rectangle")
-          child.color = constants.colorSecondary
-        end if
-      end for
-    end if
+    ' Selected-state underline, owned by TextButton itself. Present on every
+    ' TextButton (hidden unless showSelectedIndicator is on), so no subtype check.
+    indicator = node.findNode("buttonIndicator")
+    if isValid(indicator) then indicator.color = constants.colorSecondary
 
     ' JROverhangIcon — update the icon poster's unfocused blend color
   else if subtype = "JROverhangIcon"

@@ -9,7 +9,7 @@ related-files:
   - components/manager/QueueManager.bs
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
-last-reviewed: 2026-09-04
+last-reviewed: 2026-09-14
 ---
 
 # The User Journey
@@ -189,6 +189,7 @@ The component contains:
   - The row is **capped at what fits before the logo** (8 buttons today — see [`buttonOverflow.bs`](../../source/utils/buttonOverflow.bs)). Past the cap the last slot becomes a **More** button and the remainder move to an off-layout stash, reachable through a `showListDialog` menu whose rows carry the same label and glyph. Nothing overflows at present: the busiest item types reach exactly 8.
 - An inline **`TrackDropdown` cluster** (`trackCluster`) — three side-by-side dropdowns for Video / Audio / Subtitle source selection, replacing the older modal `ItemOptions` popup. Track titles localize via the `languages.bs` 3-tier resolver (alias → `translationKey` → English fallback). Slots auto-hide when no choices exist (e.g., the Video slot is hidden when only one source is available).
 - An "extras" panel (revealed by pressing DOWN) — `extrasGrid` shows related items: cast, episodes (for series), parts (for split media), recommendations, similar items
+- A **subtitle management panel** (`SubtitlePanel`, #750), opened by the **Manage Subtitles** button on a Movie or Episode the server lets this user search. It slides up in the extras pane's region (the two are mutually exclusive) and is self-contained: it owns its API calls, focus and keys, targets the **selected version** (a `MediaSource` is its own item), and hands back only `subtitlesChanged` — which makes `ItemDetails` re-fetch, because adding or deleting a subtitle renumbers every stream index the track dropdowns hold
 
 There are two distinct launch shapes in `ItemDetails`:
 

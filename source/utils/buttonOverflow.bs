@@ -225,7 +225,96 @@ end sub
 ' since the split is precisely the case a caller creates by forgetting to restore
 ' before it mutates. Appending would have put that newer button ahead of the
 ' older tail and silently reordered the row.
+'
+' This is also the START of the mutation bracket, so it records which button has
+' focus — see captureRowFocus(). applyButtonOverflow() re-restores the row
+' internally and must not re-record, which is why the body lives in restoreRow().
 sub restoreOverflowedButtons(group as object, stash as object)
+  if not isValid(group) or not isValid(stash) then return
+
+  captureRowFocus(group, stash)
+  restoreRow(group, stash)
+end sub
+
+' The row focus, carried by BUTTON ID across one mutation bracket.
+'
+' JRButtonGroup tracks focus as an INDEX, and OK dispatches whatever button sits at
+' that index. A mutation that inserts or removes a button to the LEFT of the focused
+' one leaves the highlight where it was while the index now names a different button
+' — so OK runs the wrong action (a late Trailer insert turns "Delete" into "Play
+' Trailer"), or nothing when the index runs past the end. Recording the ID here,
+' before the caller mutates, and re-pointing the index at the end of the bracket is
+' what keeps the two in agreement.
+'
+' The button that really HAS focus wins over the index, since the index may already
+' be wrong from an earlier mutation. The index is the fallback for a row that is
+' not focused (it is still what the group restores focus to later).
+sub captureRowFocus(group as object, stash as object)
+  if not isValid(group) or not isValid(stash) then return
+
+  focusedId = ""
+  for i = 0 to group.getChildCount() - 1
+    child = group.getChild(i)
+    if isValid(child) and child.hasFocus()
+      focusedId = child.id
+      exit for
+    end if
+  end for
+
+  if focusedId = ""
+    focusIndex = rowFocusIndex(group)
+    if focusIndex >= 0 and focusIndex < group.getChildCount()
+      focusedNode = group.getChild(focusIndex)
+      if isValid(focusedNode) then focusedId = focusedNode.id
+    end if
+  end if
+
+  if not stash.hasField("focusCaptureId") then stash.addFields({ focusCaptureId: "", focusCaptureHadFocus: false, focusCapturePending: false })
+  stash.setFields({
+    focusCaptureId: focusedId,
+    focusCaptureHadFocus: group.isInFocusChain(),
+    focusCapturePending: true
+  })
+end sub
+
+' Re-point the row's focus at the captured button, and consume the capture.
+'
+' Acts ONLY when that button is still in the row, or has moved into the stash (More
+' then stands in for it). When it is gone — the caller removed it — the caller's own
+' choice stands: ItemDetails.setupButtons() deliberately falls back to index 0 when
+' the focused button no longer exists, and removeResumeButtonWithFocus() hands focus
+' on itself. Real focus is moved only if the row had it when the bracket began, so a
+' refresh can never pull focus out of a child panel the user is in.
+'
+' @return true when it set the focus index, false when it left the row alone
+function consumeRowFocusCapture(group as object, stash as object) as boolean
+  if not stash.hasField("focusCapturePending") or not stash.focusCapturePending then return false
+  stash.focusCapturePending = false
+
+  focusedId = stash.focusCaptureId
+  if focusedId = "" then return false
+
+  restoredIndex = -1
+  for i = 0 to group.getChildCount() - 1
+    if group.getChild(i).id = focusedId
+      restoredIndex = i
+      exit for
+    end if
+  end for
+
+  if restoredIndex < 0
+    ' Moved into the menu: More stands in for it.
+    if not isValid(group.findNode("moreButton")) or not isValid(stash.findNode(focusedId)) then return false
+    restoredIndex = group.getChildCount() - 1
+  end if
+
+  setRowFocusIndex(group, restoredIndex)
+  if stash.focusCaptureHadFocus then group.getChild(restoredIndex).setFocus(true)
+  return true
+end function
+
+' The restore itself, without recording focus. See restoreOverflowedButtons().
+sub restoreRow(group as object, stash as object)
   if not isValid(group) or not isValid(stash) then return
 
   ' Default to the end, which is where the tail belongs when More is missing
@@ -313,10 +402,15 @@ sub applyButtonOverflow(group as object, stash as object, cap as integer, moreTe
   ' `wasButtonGroupFocused` at the head of ItemDetails.setupButtons().
   wasFocused = group.isInFocusChain()
 
-  restoreOverflowedButtons(group, stash)
+  restoreRow(group, stash)
 
   split = splitForOverflow(group.getChildCount(), cap)
-  if not split.hasOverflow then return
+  if not split.hasOverflow
+    ' A row that fits still has to re-point focus after a bracketed mutation — this
+    ' early return used to skip it, which is the common case, not the rare one.
+    consumeRowFocusCapture(group, stash)
+    return
+  end if
 
   focusedId = ""
   focusIndex = rowFocusIndex(group)
@@ -345,6 +439,10 @@ sub applyButtonOverflow(group as object, stash as object, cap as integer, moreTe
   end if
   moreButton.setFields({ icon: moreIcon, text: moreText })
   group.appendChild(moreButton)
+
+  ' A capture from the start of the bracket knows which button the user was on
+  ' BEFORE the caller mutated; the index read above does not.
+  if consumeRowFocusCapture(group, stash) then return
 
   restoredIndex = 0
   if focusedId <> ""

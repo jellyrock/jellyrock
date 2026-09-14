@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  CurrentSubtitleRow: one subtitle already attached to the item, in SubtitlePanel's
+  "On this item" column.
+
+  Deliberately NOT the same component as SubtitleResultRow. The first draft reused
+  that row for both columns and the mismatch showed immediately: an installed
+  subtitle has no download count, so every entry read "no downloads"; it has no
+  upload date or uploader, so the meta line was mostly empty; and it can never be a
+  provider "perfect match".
+
+  TWO SHAPES, chosen by isExternal, because the two genuinely have different
+  amounts to say:
+
+    English · SUBRIP              CC Hearing impaired    <- a downloaded file
+    .en.sdh.srt
+
+    English · SUBRIP              CC Hearing impaired    <- built into the video
+
+  A built-in track has no filename of its own, and the section heading above it
+  already says where it came from — so it gets ONE line. The draft before this gave
+  it the two-line height anyway and filled the spare line with the word "Embedded",
+  which put the least informative text on screen in the most repeated position: on
+  a six-stream movie the column read "Embedded" five times. Worse, that slot also
+  held the downloaded row's FILENAME, so the eye was asked to compare a category
+  word against an instance identifier and could not tell the rows apart at a
+  glance. Grouping under headings says the category once and frees the slot for the
+  only thing that varies within a group.
+
+  Badges sit on the FIRST line for both shapes, so they align down the column
+  whatever a row's height. (SubtitleResultRow puts them on its second line instead —
+  its first line is a long release name that marquees and cannot share the width.)
+
+  The filename tail is the tiebreaker between two downloaded files: Jellyfin records
+  no provenance for a subtitle — no provider, no download date, no rating — so two
+  English SRTs are identical in every field the API returns except Path. Only the
+  part that differs from the media file's own name is shown; the rest is already in
+  the panel header. See remoteSubtitles.subtitleFileTail().
+
+  The server's DisplayTitle ("English - Hearing Impaired - SUBRIP - External") is NOT
+  used verbatim: it repeats what the badges and the section heading carry, and it is
+  not localized.
+-->
+<component name="CurrentSubtitleRow" extends="Group">
+  <children>
+    <!-- No focus chrome here. The list draws the app's standard indicator
+         (source/utils/listTheme.bs, applied in SubtitlePanel.init), which is what
+         lets it FLOAT between rows instead of blinking on and off per row. -->
+    <ScrollingLabelPrimarySmaller id="titleLabel" repeatCount="0" />
+
+    <!-- Second line, downloaded rows only: the part of the filename that differs
+         from the media file's. Hidden entirely for a built-in track rather than
+         filled with a placeholder. -->
+    <LabelSecondarySmallest id="sourceLabel" visible="false" />
+
+    <!-- Right-aligned: translated to the row's right padding edge, the badges
+         grow leftward, so they line up down the column whatever their widths.
+         The row measures them and drops whole badges that would not fit — see
+         subtitleLayout.badgesThatFit(). itemSpacings is set from
+         subtitleLayout.BADGE_SPACING in init(). -->
+    <LayoutGroup id="badgeRow" layoutDirection="horiz" horizAlignment="right" />
+
+    <!-- What OK will do to this row, shown only while it is focused.
+         Deliberately NOT a badge: the badges say what the track IS, and an
+         action that appears in the same strip would read as another property.
+         Space for it is reserved by subtitleLayout.actionZoneWidth() whenever
+         the row is deletable, so focusing a row never shifts its text. -->
+    <Poster id="deleteIcon" uri="pkg:/images/icons/delete_$$RES$$.png" visible="false" />
+  </children>
+
+  <interface>
+    <field id="itemContent" type="node" onChange="onItemContentChanged" />
+    <field id="itemHasFocus" type="boolean" value="false" onChange="onFocusChanged" />
+    <field id="rowWidth" type="integer" value="570" onChange="onSizeChanged" />
+  </interface>
+</component>

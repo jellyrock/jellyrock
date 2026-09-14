@@ -1,0 +1,346 @@
+import "pkg:/source/utils/remoteSubtitles.bs"
+
+' Unit tests for the remote-subtitle helpers (issue #750).
+'
+' The permission expectations below are not guesses — they encode a truth table
+' measured against a live Jellyfin 10.11.11 server, plus the [Authorize] policy
+' attributes read at the v10.7.7 / v10.8.13 / v10.9.11 / v10.10.7 / v10.11.11
+' tags. If a future server release changes the gate, these are the tests that
+' should fail first.
+
+namespace tests
+
+  @suite("remoteSubtitles - stream diffing")
+  class RemoteSubtitlesStreamTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("externalSubtitleStreams() - the delete safety guard")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns only external subtitle streams")
+    function _()
+      streams = [
+        { Type: "Subtitle", Index: 0, IsExternal: true, Path: "/m/a.eng.srt" },
+        { Type: "Subtitle", Index: 1, IsExternal: false },
+        { Type: "Video", Index: 2, IsExternal: false },
+        { Type: "Audio", Index: 3, IsExternal: false }
+      ]
+      result = remoteSubtitles.externalSubtitleStreams(streams)
+      m.assertEqual(result.count(), 1)
+      m.assertEqual(result[0].Index, 0)
+    end function
+
+    @it("excludes an embedded subtitle - deleting it would delete the container")
+    function _()
+      streams = [{ Type: "Subtitle", Index: 0, IsExternal: false, Path: "/m/movie.mkv" }]
+      m.assertEqual(remoteSubtitles.externalSubtitleStreams(streams).count(), 0)
+    end function
+
+    @it("excludes a stream whose IsExternal is absent rather than assuming")
+    function _()
+      streams = [{ Type: "Subtitle", Index: 0, Path: "/m/a.srt" }]
+      m.assertEqual(remoteSubtitles.externalSubtitleStreams(streams).count(), 0)
+    end function
+
+    @it("returns an empty array for invalid input")
+    function _()
+      m.assertEqual(remoteSubtitles.externalSubtitleStreams(invalid).count(), 0)
+      m.assertEqual(remoteSubtitles.externalSubtitleStreams([]).count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("newSubtitleStreams() - the download completion signal")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("detects an added subtitle even though every index shifted")
+    function _()
+      ' Measured on 10.11.11: an external subtitle is inserted at index 0 and
+      ' pushes video/audio down. A diff keyed on Index would report nonsense.
+      before = [
+        { Type: "Subtitle", Index: 0, IsExternal: true, Path: "/m/a.eng.srt" },
+        { Type: "Video", Index: 1 },
+        { Type: "Audio", Index: 2 }
+      ]
+      after = [
+        { Type: "Subtitle", Index: 0, IsExternal: true, Path: "/m/a.eng.srt" },
+        { Type: "Subtitle", Index: 1, IsExternal: true, Path: "/m/a.fra.srt" },
+        { Type: "Video", Index: 2 },
+        { Type: "Audio", Index: 3 }
+      ]
+      added = remoteSubtitles.newSubtitleStreams(before, after)
+      m.assertEqual(added.count(), 1)
+      m.assertEqual(added[0].Path, "/m/a.fra.srt")
+    end function
+
+    @it("returns empty when nothing was added - the silent-failure case")
+    function _()
+      ' A failed download still returns 204, so 'no new stream' is how the panel
+      ' learns it did not work.
+      streams = [
+        { Type: "Subtitle", Index: 0, IsExternal: true, Path: "/m/a.eng.srt" },
+        { Type: "Video", Index: 1 }
+      ]
+      m.assertEqual(remoteSubtitles.newSubtitleStreams(streams, streams).count(), 0)
+    end function
+
+    @it("ignores non-subtitle streams appearing in the after set")
+    function _()
+      before = [{ Type: "Video", Index: 0 }]
+      after = [{ Type: "Video", Index: 0 }, { Type: "Audio", Index: 1 }]
+      m.assertEqual(remoteSubtitles.newSubtitleStreams(before, after).count(), 0)
+    end function
+
+    @it("treats every subtitle as new when the before set is empty")
+    function _()
+      after = [{ Type: "Subtitle", Index: 0, IsExternal: true, Path: "/m/a.eng.srt" }]
+      m.assertEqual(remoteSubtitles.newSubtitleStreams([], after).count(), 1)
+      m.assertEqual(remoteSubtitles.newSubtitleStreams(invalid, after).count(), 1)
+    end function
+
+    @it("falls back to title and language when a stream has no path")
+    function _()
+      before = [{ Type: "Subtitle", Index: 0, DisplayTitle: "English", Language: "eng" }]
+      after = [
+        { Type: "Subtitle", Index: 0, DisplayTitle: "English", Language: "eng" },
+        { Type: "Subtitle", Index: 1, DisplayTitle: "French", Language: "fra" }
+      ]
+      added = remoteSubtitles.newSubtitleStreams(before, after)
+      m.assertEqual(added.count(), 1)
+      m.assertEqual(added[0].Language, "fra")
+    end function
+
+    @it("returns empty when the after set is invalid")
+    function _()
+      m.assertEqual(remoteSubtitles.newSubtitleStreams([], invalid).count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("subtitleFileTail() - the only discriminator between two subtitles")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("strips the media basename so only the differing suffix is left")
+    function _()
+      media = "/media/Movies/Sintel (2010)/Sintel.2010.1080p.BluRay.x264-CtrlHD.mkv"
+      m.assertEqual(remoteSubtitles.subtitleFileTail("/media/Movies/Sintel (2010)/Sintel.2010.1080p.BluRay.x264-CtrlHD.en.hi.srt", media), ".en.hi.srt")
+      m.assertEqual(remoteSubtitles.subtitleFileTail("/media/Movies/Sintel (2010)/Sintel.2010.1080p.BluRay.x264-CtrlHD.en.sdh.srt", media), ".en.sdh.srt")
+    end function
+
+    @it("matches the basename case-insensitively - servers do not agree on case")
+    function _()
+      m.assertEqual(remoteSubtitles.subtitleFileTail("/m/MOVIE.NAME.en.srt", "/m/movie.name.mkv"), ".en.srt")
+    end function
+
+    @it("handles Windows server paths, which roPath cannot parse")
+    function _()
+      m.assertEqual(remoteSubtitles.subtitleFileTail("D:\Media\Movies\Sintel.2010.en.srt", "D:\Media\Movies\Sintel.2010.mkv"), ".en.srt")
+    end function
+
+    @it("returns the whole filename when the subtitle does not sit beside the media file")
+    function _()
+      ' A Subs/ folder or a hand-placed file: there is no redundant prefix to
+      ' strip, and the whole name IS what tells it apart.
+      m.assertEqual(remoteSubtitles.subtitleFileTail("/media/Movies/Sintel (2010)/Subs/English.srt", "/media/Movies/Sintel (2010)/Sintel.2010.mkv"), "English.srt")
+    end function
+
+    @it("returns the whole filename when the media path is missing")
+    function _()
+      m.assertEqual(remoteSubtitles.subtitleFileTail("/m/a.en.srt", ""), "a.en.srt")
+      m.assertEqual(remoteSubtitles.subtitleFileTail("/m/a.en.srt", invalid), "a.en.srt")
+    end function
+
+    @it("returns empty when the subtitle has no path at all")
+    function _()
+      m.assertEqual(remoteSubtitles.subtitleFileTail("", "/m/movie.mkv"), "")
+      m.assertEqual(remoteSubtitles.subtitleFileTail(invalid, "/m/movie.mkv"), "")
+    end function
+
+    @it("does not strip when the subtitle name merely starts with the same letters")
+    function _()
+      ' "Sintel.2010" is not a prefix of "Sintel.2011...", so nothing is stripped.
+      m.assertEqual(remoteSubtitles.subtitleFileTail("/m/Sintel.2011.en.srt", "/m/Sintel.2010.mkv"), "Sintel.2011.en.srt")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("subtitleStreams() - the DISPLAY set, wider than the delete set")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("includes embedded subtitles, which externalSubtitleStreams() excludes")
+    function _()
+      ' The real shape that exposed this: 4 subtitle streams, only 1 external.
+      ' Listing the external one alone made the panel claim the item had no
+      ' subtitles while the detail screen's dropdown offered four.
+      streams = [
+        { Type: "Video", Index: 0 },
+        { Type: "Subtitle", Index: 1, IsExternal: false, Language: "eng" },
+        { Type: "Subtitle", Index: 2, IsExternal: false, Language: "eng" },
+        { Type: "Subtitle", Index: 3, IsExternal: true, Language: "eng", Path: "/m/movie.en.sdh.srt" },
+        { Type: "Subtitle", Index: 4, IsExternal: false, Language: "spa" }
+      ]
+      m.assertEqual(remoteSubtitles.subtitleStreams(streams).count(), 4)
+      m.assertEqual(remoteSubtitles.externalSubtitleStreams(streams).count(), 1)
+    end function
+
+    @it("keeps server order and skips non-subtitle streams")
+    function _()
+      streams = [
+        { Type: "Subtitle", Index: 5, IsExternal: true },
+        { Type: "Audio", Index: 6 },
+        { Type: "Subtitle", Index: 7, IsExternal: false }
+      ]
+      result = remoteSubtitles.subtitleStreams(streams)
+      m.assertEqual(result.count(), 2)
+      m.assertEqual(result[0].Index, 5)
+      m.assertEqual(result[1].Index, 7)
+    end function
+
+    @it("returns empty for an invalid stream list")
+    function _()
+      m.assertEqual(remoteSubtitles.subtitleStreams(invalid).count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("subtitleDropdownEntries() - mark what you added, leave the rest")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("marks a downloaded file and leaves built-in tracks plain")
+    function _()
+      streams = [
+        { Type: "Subtitle", Index: 1, IsExternal: false, Language: "eng", Codec: "subrip" },
+        { Type: "Subtitle", Index: 2, IsExternal: true, Language: "eng", Codec: "subrip", IsHearingImpaired: true, Path: "/m/movie.en.sdh.srt" },
+        { Type: "Subtitle", Index: 3, IsExternal: false, Language: "spa", Codec: "subrip" }
+      ]
+      entries = remoteSubtitles.subtitleDropdownEntries(streams)
+      m.assertEqual(entries[0].title, "English SUBRIP")
+      m.assertEqual(entries[1].title, "English SUBRIP (Hearing impaired)  ·  Downloaded")
+      m.assertEqual(entries[2].title, "Spanish SUBRIP")
+    end function
+
+    @it("does NOT number built-in tracks that read alike")
+    function _()
+      ' An earlier cut appended "Embedded 1" / "Embedded 2" here. Two built-in
+      ' English tracks are identical in every field the API returns, the trigger
+      ' shows the same text whichever is picked, and a suffix that appears on
+      ' some rows but not others reads as arbitrary. The ordinal cost more than
+      ' it bought, so its absence is the assertion.
+      streams = [
+        { Type: "Subtitle", Index: 1, IsExternal: false, Language: "eng", Codec: "subrip" },
+        { Type: "Subtitle", Index: 2, IsExternal: false, Language: "eng", Codec: "subrip" }
+      ]
+      entries = remoteSubtitles.subtitleDropdownEntries(streams)
+      m.assertEqual(entries[0].title, "English SUBRIP")
+      m.assertEqual(entries[1].title, "English SUBRIP")
+    end function
+
+    @it("marks every downloaded file, so two of them are still both marked")
+    function _()
+      streams = [
+        { Type: "Subtitle", Index: 1, IsExternal: true, Language: "eng", Codec: "subrip", Path: "/m/movie.en.srt" },
+        { Type: "Subtitle", Index: 2, IsExternal: true, Language: "spa", Codec: "subrip", Path: "/m/movie.es.srt" }
+      ]
+      entries = remoteSubtitles.subtitleDropdownEntries(streams)
+      m.assertEqual(entries[0].title, "English SUBRIP  ·  Downloaded")
+      m.assertEqual(entries[1].title, "Spanish SUBRIP  ·  Downloaded")
+    end function
+
+    @it("keeps the collapsed trigger free of the marker")
+    function _()
+      streams = [{ Type: "Subtitle", Index: 1, IsExternal: true, Language: "eng", Codec: "subrip", Path: "/m/movie.en.srt" }]
+      entries = remoteSubtitles.subtitleDropdownEntries(streams)
+      m.assertEqual(entries[0].title, "English SUBRIP  ·  Downloaded")
+      m.assertEqual(entries[0].triggerTitle, "English SUBRIP")
+    end function
+
+    @it("carries the server stream index through for selection")
+    function _()
+      streams = [{ Type: "Subtitle", Index: 7, IsExternal: false, Language: "eng", Codec: "subrip" }]
+      m.assertEqual(remoteSubtitles.subtitleDropdownEntries(streams)[0].index, 7)
+    end function
+
+    @it("returns empty when the item has no subtitle streams")
+    function _()
+      m.assertEqual(remoteSubtitles.subtitleDropdownEntries([{ Type: "Audio", Index: 0 }]).count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("fileNameFrom() - server paths, not Roku paths")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("takes the last segment of a posix path")
+    function _()
+      m.assertEqual(remoteSubtitles.fileNameFrom("/media/Movies/x/Sintel.2010.mkv"), "Sintel.2010.mkv")
+    end function
+
+    @it("takes the last segment of a windows path")
+    function _()
+      m.assertEqual(remoteSubtitles.fileNameFrom("D:\Media\Movies\Sintel.2010.mkv"), "Sintel.2010.mkv")
+    end function
+
+    @it("returns a bare filename unchanged")
+    function _()
+      m.assertEqual(remoteSubtitles.fileNameFrom("Sintel.2010.mkv"), "Sintel.2010.mkv")
+    end function
+
+    @it("returns empty for a missing or blank path")
+    function _()
+      m.assertEqual(remoteSubtitles.fileNameFrom(invalid), "")
+      m.assertEqual(remoteSubtitles.fileNameFrom(""), "")
+      m.assertEqual(remoteSubtitles.fileNameFrom("   "), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("fileNameWithoutExtension() - only the LAST dot is the extension")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps every dot a release name carries")
+    function _()
+      m.assertEqual(remoteSubtitles.fileNameWithoutExtension("Sintel.2010.1080p.BluRay.mkv"), "Sintel.2010.1080p.BluRay")
+    end function
+
+    @it("returns the name unchanged when there is no extension")
+    function _()
+      m.assertEqual(remoteSubtitles.fileNameWithoutExtension("Sintel"), "Sintel")
+      m.assertEqual(remoteSubtitles.fileNameWithoutExtension(""), "")
+    end function
+
+    @it("keeps a leading-dot name whole rather than reducing it to nothing")
+    function _()
+      m.assertEqual(remoteSubtitles.fileNameWithoutExtension(".srt"), ".srt")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("findSubtitleStreamByKey() - a delete resolves the file against a FRESH list")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("finds the chosen file at its NEW index after a renumber")
+    function _()
+      ' THE REGRESSION: the server deletes by index, and a download inserts at
+      ' index 0 — so the index from the list the user chose from names a different
+      ' file. The key is the path, which does not move.
+      chosen = { Type: "Subtitle", Index: 0, IsExternal: true, Path: "/m/movie.en.srt" }
+      fresh = [
+        { Type: "Subtitle", Index: 0, IsExternal: true, Path: "/m/movie.fr.srt" },
+        { Type: "Subtitle", Index: 1, IsExternal: true, Path: "/m/movie.en.srt" },
+        { Type: "Video", Index: 2 }
+      ]
+      found = remoteSubtitles.findSubtitleStreamByKey(fresh, remoteSubtitles.subtitleStreamKey(chosen))
+      m.assertNotInvalid(found)
+      m.assertEqual(found.Index, 1)
+    end function
+
+    @it("returns invalid when the file is no longer on the item")
+    function _()
+      fresh = [{ Type: "Subtitle", Index: 0, IsExternal: true, Path: "/m/movie.fr.srt" }]
+      m.assertInvalid(remoteSubtitles.findSubtitleStreamByKey(fresh, "/m/movie.en.srt"))
+    end function
+
+    @it("never matches a non-subtitle stream, an empty key, or an invalid list")
+    function _()
+      fresh = [{ Type: "Video", Index: 0, Path: "/m/movie.mkv" }]
+      m.assertInvalid(remoteSubtitles.findSubtitleStreamByKey(fresh, "/m/movie.mkv"))
+      m.assertInvalid(remoteSubtitles.findSubtitleStreamByKey(fresh, ""))
+      m.assertInvalid(remoteSubtitles.findSubtitleStreamByKey(invalid, "/m/movie.en.srt"))
+    end function
+
+  end class
+
+end namespace

@@ -1,0 +1,164 @@
+import "pkg:/source/utils/remoteSubtitles.bs"
+
+' Unit tests for the remote-subtitle helpers (issue #750).
+'
+' The permission expectations below are not guesses — they encode a truth table
+' measured against a live Jellyfin 10.11.11 server, plus the [Authorize] policy
+' attributes read at the v10.7.7 / v10.8.13 / v10.9.11 / v10.10.7 / v10.11.11
+' tags. If a future server release changes the gate, these are the tests that
+' should fail first.
+
+namespace tests
+
+  @suite("remoteSubtitles - result-set shaping")
+  class RemoteSubtitlesResultTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("hasAnyHashMatch() - gates the perfect-match control")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true when at least one result is a hash match")
+    function _()
+      results = [{ IsHashMatch: false }, { IsHashMatch: true }, { IsHashMatch: false }]
+      m.assertTrue(remoteSubtitles.hasAnyHashMatch(results))
+    end function
+
+    @it("is false when no result is a hash match - measured 0 of 50 for some titles")
+    function _()
+      ' Offering 'perfect matches only' here would give the user a control whose
+      ' only effect is to empty the list.
+      results = [{ IsHashMatch: false }, { IsHashMatch: false }]
+      m.assertFalse(remoteSubtitles.hasAnyHashMatch(results))
+    end function
+
+    @it("is false for an empty or invalid set")
+    function _()
+      m.assertFalse(remoteSubtitles.hasAnyHashMatch([]))
+      m.assertFalse(remoteSubtitles.hasAnyHashMatch(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("hasMixedProviders() / hasMixedFormats()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is false with a single provider - the common single-plugin install")
+    function _()
+      results = [{ ProviderName: "Open Subtitles" }, { ProviderName: "Open Subtitles" }]
+      m.assertFalse(remoteSubtitles.hasMixedProviders(results))
+    end function
+
+    @it("is true once a second provider appears")
+    function _()
+      results = [{ ProviderName: "Open Subtitles" }, { ProviderName: "Subscene" }]
+      m.assertTrue(remoteSubtitles.hasMixedProviders(results))
+    end function
+
+    @it("is false when every result reports the same format")
+    function _()
+      m.assertFalse(remoteSubtitles.hasMixedFormats([{ Format: "srt" }, { Format: "srt" }]))
+    end function
+
+    @it("is true for mixed formats")
+    function _()
+      m.assertTrue(remoteSubtitles.hasMixedFormats([{ Format: "srt" }, { Format: "ass" }]))
+    end function
+
+    @it("ignores missing values rather than counting them as a distinct value")
+    function _()
+      results = [{ ProviderName: "Open Subtitles" }, { ProviderName: "" }, {}]
+      m.assertFalse(remoteSubtitles.hasMixedProviders(results))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("cultureOptions() - LanguagePicker feed")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("maps a culture onto the picker's code/name/nativeName shape")
+    function _()
+      cultures = [{
+        Name: "French",
+        DisplayName: "French",
+        TwoLetterISOLanguageName: "fr",
+        ThreeLetterISOLanguageName: "fra",
+        ThreeLetterISOLanguageNames: ["fra", "fre"]
+      }]
+      options = remoteSubtitles.cultureOptions(cultures)
+      m.assertEqual(options.count(), 1)
+      m.assertEqual(options[0].code, "fr")
+      m.assertEqual(options[0].name, "French")
+    end function
+
+    @it("emits the two-letter code so regional variants stay distinct")
+    function _()
+      ' zh-tw / zh-cn / zh-hk all share the three-letter code 'zho'; using it
+      ' would collapse them into identical rows.
+      cultures = [
+        { DisplayName: "Chinese (Traditional)", TwoLetterISOLanguageName: "zh-tw", ThreeLetterISOLanguageName: "zho" },
+        { DisplayName: "Chinese (Simplified)", TwoLetterISOLanguageName: "zh-cn", ThreeLetterISOLanguageName: "zho" }
+      ]
+      options = remoteSubtitles.cultureOptions(cultures)
+      m.assertEqual(options.count(), 2)
+      m.assertEqual(options[0].code, "zh-tw")
+      m.assertEqual(options[1].code, "zh-cn")
+    end function
+
+    @it("keeps the region in the display name for regional variants")
+    function _()
+      ' resolveLanguageName() strips the region by design (it labels media
+      ' streams), which would render both Portuguese rows identically.
+      cultures = [
+        { DisplayName: "Portuguese (Brazil)", TwoLetterISOLanguageName: "pt-br", ThreeLetterISOLanguageName: "pob" },
+        { DisplayName: "Portuguese (Portugal)", TwoLetterISOLanguageName: "pt-pt", ThreeLetterISOLanguageName: "pop" }
+      ]
+      options = remoteSubtitles.cultureOptions(cultures)
+      m.assertEqual(options[0].nativeName, "Portuguese (Brazil)")
+      m.assertEqual(options[1].nativeName, "Portuguese (Portugal)")
+    end function
+
+    @it("labels a non-regional culture with exactly resolveLanguageName() of its 3-letter code")
+    function _()
+      ' SubtitlePanel seeds the language BUTTON from the user's stored
+      ' three-letter preference before the culture list has loaded, so the button
+      ' is never an empty box during the round-trip. That seed is only safe while
+      ' this equality holds — otherwise the label would visibly change to a
+      ' different string a second after the panel opens.
+      cultures = [{
+        DisplayName: "German",
+        TwoLetterISOLanguageName: "de",
+        ThreeLetterISOLanguageName: "deu"
+      }]
+      options = remoteSubtitles.cultureOptions(cultures)
+      m.assertEqual(options[0].nativeName, resolveLanguageName("deu"))
+    end function
+
+    @it("REGIONAL cultures are the documented exception to that equality")
+    function _()
+      ' Here the seeded label and the final label legitimately differ: the seed
+      ' says "Portuguese" and the list says "Portuguese (Brazil)". Refining to
+      ' the more specific name is the wanted direction, and it is why the panel
+      ' seeds a label rather than a selected code.
+      cultures = [{
+        DisplayName: "Portuguese (Brazil)",
+        TwoLetterISOLanguageName: "pt-br",
+        ThreeLetterISOLanguageName: "por"
+      }]
+      options = remoteSubtitles.cultureOptions(cultures)
+      m.assertNotEqual(options[0].nativeName, resolveLanguageName("por"))
+      m.assertEqual(options[0].nativeName, "Portuguese (Brazil)")
+    end function
+
+    @it("skips cultures with no two-letter code")
+    function _()
+      cultures = [{ DisplayName: "Nothing", ThreeLetterISOLanguageName: "xxx" }]
+      m.assertEqual(remoteSubtitles.cultureOptions(cultures).count(), 0)
+    end function
+
+    @it("returns an empty array for invalid input")
+    function _()
+      m.assertEqual(remoteSubtitles.cultureOptions(invalid).count(), 0)
+      m.assertEqual(remoteSubtitles.cultureOptions([]).count(), 0)
+    end function
+
+  end class
+
+end namespace

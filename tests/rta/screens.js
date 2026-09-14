@@ -23,7 +23,7 @@
  */
 import { waitFor, waitHome, hasChildren, getActiveVal, getActiveVals } from './lib/steps.js';
 import { diagnosedError, FAILURE_KINDS } from './lib/diagnostics.js';
-import { genreItemNames, libraryIdFor } from './lib/jellyfin.js';
+import { genreItemNames, libraryIdFor, manageSubtitlesOffered } from './lib/jellyfin.js';
 import {
   navLibraryGrid,
   navMovieDetails,
@@ -49,6 +49,7 @@ import {
   navCellSweepGrid,
   navCellSweepExtras,
   navCellSweepSearch,
+  navSubtitlePanel,
 } from './lib/nav.js';
 
 /** User-select screen is ready once the user row has rendered its users. */
@@ -272,6 +273,41 @@ export const SCREENS = [
   },
   { name: 'settings', state: 'home', nav: navSettings, capture: { eligible: true } },
   { name: 'search', state: 'home', nav: navSearch, capture: { eligible: true } },
+  {
+    // Subtitle management panel (#750). A CHILD of ItemDetails, not a routed
+    // screen — it opens over the detail view rather than replacing it.
+    //
+    // FIXTURE-GATED, AND IT SKIPS ON THE DEFAULT SERVER. The Manage Subtitles
+    // button only exists when the server would let this user search subtitles;
+    // from 10.9 that means administrator OR EnableSubtitleManagement, and the
+    // public demo's `demo` user is neither (measured 2026-09-06 against
+    // 10.11.11). So on `demo.jellyfin.org/stable` this reports a visible skip,
+    // exactly as a screen whose library the fixture lacks does. Point the suite
+    // at a server that grants it (`RTA_SERVER_*` in `.env`) and it runs.
+    //
+    // NO `capture` KEY YET, DELIBERATELY. Screenshots must come from the demo
+    // stable server, and that server cannot render this panel — so there is no
+    // honest image to take today. Marking it `capture: { eligible: true }` would
+    // also list `subtitlePanel` in the generated `screenshots.json`, claiming a
+    // file that does not exist and would 404 wherever the docs render it.
+    // Everything else is wired, and enabling it is two changes: add
+    // `capture: { eligible: true }` here, and give `navSubtitlePanel` a paint
+    // settle before it returns (budgeted in rta-sleep-budgeted.js, the way
+    // `navMovieDetails` carries one). It has none today on purpose — a nav that
+    // only ever skips would spend a budgeted slot on a wait that never runs. The
+    // capability probe and both registry consumers already honor `requires`.
+    // Tracked as `subtitle-panel-rta-fixture-gated` in tech-debt.md.
+    name: 'subtitlePanel',
+    state: 'home',
+    nav: navSubtitlePanel,
+    // Reaches the panel through the Movies grid, so it needs that library for
+    // the same two reasons every library-dependent entry does.
+    view: MOVIES_GRID,
+    requires: {
+      probe: (ctx) => manageSubtitlesOffered(ctx.session),
+      reason: 'user cannot manage subtitles, or the server has no subtitle provider plugin',
+    },
+  },
 
   // --- Measurement navs: `npm run measure -- --nav <name>` --------------------
   // No `capture` — these are not screens, they are ROUND TRIPS that end back on
