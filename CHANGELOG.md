@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Version-gate the `ws://` socket token param for Jellyfin 12.0 ([#920](https://github.com/jellyrock/jellyrock/pull/920))
 - Refresh the `rooibos-roku` patch for the installed version ([#894](https://github.com/jellyrock/jellyrock/pull/894))
 
 ### Fixed
