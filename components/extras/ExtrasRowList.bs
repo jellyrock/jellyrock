@@ -1,7 +1,6 @@
 import "pkg:/source/constants/extrasLayout.bs"
 import "pkg:/source/constants/itemAspectRatio.bs"
-import "pkg:/source/constants/itemTypeOrder.bs"
-import "pkg:/source/translationKeys.bs"
+import "pkg:/source/extras/extrasRows.bs"
 import "pkg:/source/utils/chapterItems.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/rowListWrap.bs"
@@ -26,95 +25,41 @@ sub init()
   m.top.observeField("rowItemSelected", "onRowItemSelected")
   m.top.observeField("rowItemFocused", "onRowItemFocused")
 
-  ' Set up all tasks
-  m.LoadPeopleTask = CreateObject("roSGNode", "LoadItemsTask")
-  m.LoadPeopleTask.itemsToLoad = "people"
-  m.LikeThisTask = CreateObject("roSGNode", "LoadItemsTask")
-  m.LikeThisTask.itemsToLoad = "likethis"
-  m.SpecialFeaturesTask = CreateObject("roSGNode", "LoadItemsTask")
-  m.SpecialFeaturesTask.itemsToLoad = "specialfeatures"
-  m.LoadAdditionalPartsTask = CreateObject("roSGNode", "LoadItemsTask")
-  m.LoadAdditionalPartsTask.itemsToLoad = "additionalparts"
-  m.LoadSeasonsTask = CreateObject("roSGNode", "LoadItemsTask")
-  m.LoadSeasonsTask.itemsToLoad = "seasons"
-  m.LoadBoxSetItemsTask = CreateObject("roSGNode", "LoadItemsTask")
-  m.LoadBoxSetItemsTask.itemsToLoad = "boxsetitems"
-  m.LoadArtistAlbumsTask = CreateObject("roSGNode", "LoadItemsTask")
-  m.LoadArtistAlbumsTask.itemsToLoad = "artistAlbums"
-  m.LoadArtistAppearsOnTask = CreateObject("roSGNode", "LoadItemsTask")
-  m.LoadArtistAppearsOnTask.itemsToLoad = "artistAppearsOn"
-  m.LoadArtistSongsTask = CreateObject("roSGNode", "LoadItemsTask")
-  m.LoadArtistSongsTask.itemsToLoad = "artistSongs"
-  m.LoadArtistSimilarTask = CreateObject("roSGNode", "LoadItemsTask")
-  m.LoadArtistSimilarTask.itemsToLoad = "artistSimilar"
-  m.LoadAlbumSongsTask = CreateObject("roSGNode", "LoadItemsTask")
-  m.LoadAlbumSongsTask.itemsToLoad = "albumSongs"
-  m.LoadMoviesTask = CreateObject("roSGNode", "LoadItemsTask")
-  m.LoadMoviesTask.itemsToLoad = "personMovies"
-  m.LoadShowsTask = CreateObject("roSGNode", "LoadItemsTask")
-  m.LoadShowsTask.itemsToLoad = "personTVShows"
-  m.LoadSeriesTask = CreateObject("roSGNode", "LoadItemsTask")
-  m.LoadSeriesTask.itemsToLoad = "personSeries"
-
-  ' Season episodes task (Episode type — loads all episodes from the current season)
-  m.LoadSeasonEpisodesTask = CreateObject("roSGNode", "LoadItemsTask")
-  m.LoadSeasonEpisodesTask.itemsToLoad = "seasonEpisodes"
-
-  ' Season episodes task (Season type — loads all episodes for this season in order)
-  m.LoadSeasonAllEpisodesTask = CreateObject("roSGNode", "LoadItemsTask")
-  m.LoadSeasonAllEpisodesTask.itemsToLoad = "seasonEpisodes"
-
-  ' Playlist items task — loads all items in a Playlist sorted by date added descending
-  m.LoadPlaylistItemsTask = CreateObject("roSGNode", "LoadItemsTask")
-  m.LoadPlaylistItemsTask.itemsToLoad = "playlistItems"
-
-  ' PhotoAlbum items task — loads all photos in a PhotoAlbum
-  m.LoadPhotoAlbumItemsTask = CreateObject("roSGNode", "LoadItemsTask")
-  m.LoadPhotoAlbumItemsTask.itemsToLoad = "photoAlbumItems"
-
-  ' Channel programs task — loads upcoming programs on a Live TV channel
-  m.LoadChannelProgramsTask = CreateObject("roSGNode", "LoadItemsTask")
-  m.LoadChannelProgramsTask.itemsToLoad = "channelPrograms"
+  ' One orchestrator loads every row that needs a Task thread — see LoadExtrasRowsTask.
+  m.extrasTask = CreateObject("roSGNode", "LoadExtrasRowsTask")
 
   ' Permanent root content node — never replaced.
   m.top.content = CreateObject("roSGNode", "ContentNode")
   initTextureManager(m.top.content, m.top.itemSize, m.top.focusXOffset, m.top.rowItemSpacing)
 
-  ' Named row refs — reused across refreshes so the RowList never loses focus position.
-  ' Each ref is invalid until that row's data loads for the first time.
-  m.rowChapters = invalid
-  m.rowAdditionalParts = invalid
-  m.rowSeasons = invalid
-  m.rowEpisodes = invalid
-  m.rowSeasonEpisodes = invalid
-  m.rowCast = invalid
-  m.rowLikeThis = invalid
-  m.rowSpecialFeatures = invalid
-  m.rowBoxSetItems = invalid
-  m.rowMovies = invalid
-  m.rowTvShows = invalid
-  m.rowSeries = invalid
-  m.rowArtistAlbums = invalid
-  m.rowArtistAppearsOn = invalid
-  m.rowArtistSongs = invalid
-  m.rowAlbumSongs = invalid
-  m.rowAlbumArtistAlbums = invalid
-  m.rowPlaylistItems = invalid
-  m.rowPhotoAlbumItems = invalid
-  m.rowChannelPrograms = invalid
+  ' The item's full row plan (extrasRows.plan), each row carrying `slot`, its index. Rows on
+  ' screen are always a subsequence of it, in plan order.
+  m.plan = []
+  ' kind -> the row ContentNode on screen, the slot shape it was committed with, and the digest of
+  ' the content it was built from (extrasRows.digestOf). Rows are reused across refreshes so the
+  ' RowList never loses focus position.
+  m.rowsByKind = {}
+  m.shapeByKind = {}
+  m.digestByKind = {}
 
-  ' Track row heights for rowHeights array (per-row height customization)
+  ' The run in flight. Slots are indexed like m.plan: { status, count } — "pending", "ok",
+  ' "failed", or "unchanged" for a plan row this run does not load. Results hold each resolved
+  ' slot's finished { items, shape, digest } until it is committed.
+  m.runId = 0
+  m.isRunning = false
+  m.slots = []
+  m.results = []
+  m.resultCursor = 0
+
+  ' Row heights of the rows on screen, in order — read by updatePanelPosition.
   m.rowHeights = []
 
   ' Track the last focused row index so horizontal item scrolling within a row
   ' does not trigger an unnecessary panel position recalculation.
   m.lastFocusedRowIndex = -1
 
-  ' Refetch the Channel Programs row (TvChannel "Up Next" / Program "More on
-  ' this Channel") when the base class's progress tick detects an expired
-  ' broadcast. m.isRefetchingChannelPrograms debounces repeated expiry signals
-  ' while a refetch is already in flight.
-  m.isRefetchingChannelPrograms = false
+  ' Refetch the Channel Programs row (TvChannel "Up Next" / Program "More on this Channel")
+  ' when the base class's progress tick detects an expired broadcast.
   m.top.observeField("programsExpired", "onProgramsExpired")
 end sub
 
@@ -129,964 +74,312 @@ sub updateSize()
   m.top.vertFocusAnimationStyle = "floatingFocus"
 end sub
 
-' cancelInFlightChain: Stop all tasks and unobserve their content fields before starting a new chain.
-' Prevents observer stacking and halts unnecessary in-flight work (network, processing) when
-' loadParts() or loadPersonVideos() is called while a previous chain is still running.
-sub cancelInFlightChain()
-  m.LoadSeasonsTask.control = "STOP"
-  m.LoadSeasonsTask.unobserveField("content")
-  m.LoadSeasonAllEpisodesTask.control = "STOP"
-  m.LoadSeasonAllEpisodesTask.unobserveField("content")
-  m.LoadSeasonEpisodesTask.control = "STOP"
-  m.LoadSeasonEpisodesTask.unobserveField("content")
-  m.LoadAdditionalPartsTask.control = "STOP"
-  m.LoadAdditionalPartsTask.unobserveField("content")
-  m.LoadPeopleTask.control = "STOP"
-  m.LoadPeopleTask.unobserveField("content")
-  m.LikeThisTask.control = "STOP"
-  m.LikeThisTask.unobserveField("content")
-  m.SpecialFeaturesTask.control = "STOP"
-  m.SpecialFeaturesTask.unobserveField("content")
-  m.LoadMoviesTask.control = "STOP"
-  m.LoadMoviesTask.unobserveField("content")
-  m.LoadShowsTask.control = "STOP"
-  m.LoadShowsTask.unobserveField("content")
-  m.LoadSeriesTask.control = "STOP"
-  m.LoadSeriesTask.unobserveField("content")
-  m.LoadBoxSetItemsTask.control = "STOP"
-  m.LoadBoxSetItemsTask.unobserveField("content")
-  m.LoadArtistAlbumsTask.control = "STOP"
-  m.LoadArtistAlbumsTask.unobserveField("content")
-  m.LoadArtistAppearsOnTask.control = "STOP"
-  m.LoadArtistAppearsOnTask.unobserveField("content")
-  m.LoadArtistSongsTask.control = "STOP"
-  m.LoadArtistSongsTask.unobserveField("content")
-  m.LoadArtistSimilarTask.control = "STOP"
-  m.LoadArtistSimilarTask.unobserveField("content")
-  m.LoadAlbumSongsTask.control = "STOP"
-  m.LoadAlbumSongsTask.unobserveField("content")
-  m.LoadPlaylistItemsTask.control = "STOP"
-  m.LoadPlaylistItemsTask.unobserveField("content")
-  m.LoadPhotoAlbumItemsTask.control = "STOP"
-  m.LoadPhotoAlbumItemsTask.unobserveField("content")
-  m.LoadChannelProgramsTask.control = "STOP"
-  m.LoadChannelProgramsTask.unobserveField("content")
-end sub
-
-' markChainComplete: the extras chain has run to its end — no further task will be
-' launched for this load.
-'
-' Called from the FOUR handlers that launch nothing after them, which is the whole
-' inventory of the chain's tails:
-'
-'   onSpecialFeaturesLoaded  Movie / Video / Recording
-'   onLikeThisLoaded         every type in NO_SPECIAL_FEATURES (its else branch)
-'   onArtistSimilarLoaded    MusicArtist, which never reaches LikeThis
-'   onSeriesLoaded           Person, via loadPersonVideos' separate chain
-'
-' Deliberately marked at the tails rather than derived from a counter of in-flight
-' tasks: a counter has to be decremented at the END of every handler to know whether
-' that handler launched a successor, which is a line in all twenty-odd of them instead
-' of four — more places to forget, and each one silent when forgotten.
-'
-' The failure mode when a tail IS missed is loud rather than silent: the caller's
-' readiness ledger never settles, so `npm run measure` reports that item type as
-' producing no settled line instead of publishing a plausible wrong number. That is
-' the same partition `screenReadiness.bs` documents — unmeasurable beats averaged.
-sub markChainComplete()
-  m.top.contentReady = true
-end sub
-
-' loadParts: Start the extras loading chain appropriate for the item type.
-'
-' Chain by type:
-'   Movie / Video / Recording → Chapters → AdditionalParts → People → LikeThis → SpecialFeatures
-'   Episode                   → Chapters → SeasonEpisodes → People → LikeThis
-'   MusicVideo                → People → LikeThis
-'   Series                    → Seasons → People → LikeThis
-'   Season                    → Episodes ("Season X") → People → LikeThis
-'   BoxSet                    → BoxSetItems ("Movies") → People → LikeThis
-'   MusicArtist               → Albums → Appears On → Songs → ArtistSimilar
-'   Photo                     → LikeThis
-'   PhotoAlbum                → Album Photos → LikeThis
-'   TvChannel                 → Upcoming Programs → LikeThis
-'   Program                   → More on Channel → LikeThis
-' m.top.type must be set before calling this function (done by ShowScenes.bs).
+' loadParts: Load the extras rows for an item. m.top.type must be set first (ItemDetails does).
+' Rows per type are decided by extrasRows.plan.
 sub loadParts(data as object)
-  cancelInFlightChain()
-  m.top.contentReady = false
-  m.rowHeights = []
-  m.lastFocusedRowIndex = -1
-  m.top.translation = [0, EXTRAS_ROWLIST_DEFAULT_Y]
-  m.top.parentId = data.id
-  m.people = data.people
-
   itemType = m.top.type
-
-  if itemType = "Series"
-    ' Clear and repopulate the permanent root; seasons will be appended in onSeasonsLoaded
-    m.top.rowItemSize = [rowSlotSize.PORTRAIT]
-    m.LoadSeasonsTask.observeField("content", "onSeasonsLoaded")
-    m.LoadSeasonsTask.itemId = m.top.parentId
-    launchTask(m.LoadSeasonsTask)
-  else if itemType = "Season"
-    m.top.rowItemSize = [rowSlotSize.WIDE]
-    m.LoadSeasonAllEpisodesTask.observeField("content", "onSeasonAllEpisodesLoaded")
-    m.LoadSeasonAllEpisodesTask.itemId = data.seriesId
-    m.LoadSeasonAllEpisodesTask.metadata = { seasonId: data.id }
-    launchTask(m.LoadSeasonAllEpisodesTask)
-  else if itemType = "Episode"
-    m.currentEpisodeId = data.id
-    m.currentEpisodeSeasonNumber = data.parentIndexNumber
-    m.episodeSeriesId = data.seriesId
-
-    ' Chapters row (synchronous — chapter data already on the item node)
-    chapterItems = buildChapterItems(data)
-    if chapterItems.count() > 0
-      m.top.rowItemSize = [rowSlotSize.WIDE, rowSlotSize.PORTRAIT]
-      m.rowChapters = populateRow(m.rowChapters, translate(translationKeys.LabelChapters), chapterItems, rowSlotSize.ROW_HEIGHT_WIDE)
-    else
-      if isValid(m.rowChapters)
-        removeRow(m.rowChapters)
-        m.rowChapters = invalid
-      end if
-      m.top.rowItemSize = [rowSlotSize.PORTRAIT]
-    end if
-
-    m.LoadSeasonEpisodesTask.observeField("content", "onSeasonEpisodesLoaded")
-    m.LoadSeasonEpisodesTask.itemId = data.seriesId
-    m.LoadSeasonEpisodesTask.metadata = { seasonId: data.seasonId }
-    launchTask(m.LoadSeasonEpisodesTask)
-  else if itemType = "MusicVideo"
-    m.top.rowItemSize = [rowSlotSize.PORTRAIT]
-    m.LoadPeopleTask.observeField("content", "onPeopleLoaded")
-    m.LoadPeopleTask.peopleList = m.people
-    launchTask(m.LoadPeopleTask)
-  else if itemType = "BoxSet"
-    m.top.rowItemSize = [rowSlotSize.PORTRAIT]
-    m.LoadBoxSetItemsTask.itemId = m.top.parentId
-    m.LoadBoxSetItemsTask.observeField("content", "onBoxSetItemsLoaded")
-    launchTask(m.LoadBoxSetItemsTask)
-  else if itemType = "MusicArtist"
-    ' Chain: Albums → Appears On → Songs → More Like This
-    m.top.rowItemSize = [rowSlotSize.SQUARE]
-    m.LoadArtistAlbumsTask.itemId = m.top.parentId
-    m.LoadArtistAlbumsTask.observeField("content", "onArtistAlbumsLoaded")
-    launchTask(m.LoadArtistAlbumsTask)
-  else if itemType = "MusicAlbum"
-    ' Chain: Songs → More Albums by Artist → More Like This
-    ' Store current album ID so we can exclude it from the "More Albums by Artist" row
-    m.currentAlbumId = data.id
-    m.currentAlbumArtistId = ""
-    if isValid(data.albumArtists) and data.albumArtists.count() > 0
-      firstArtist = data.albumArtists[0]
-      if isValid(firstArtist) and isValid(firstArtist.Id)
-        m.currentAlbumArtistId = firstArtist.Id
-      end if
-    end if
-    m.top.rowItemSize = [rowSlotSize.SQUARE]
-    m.LoadAlbumSongsTask.itemId = m.top.parentId
-    m.LoadAlbumSongsTask.observeField("content", "onAlbumSongsLoaded")
-    launchTask(m.LoadAlbumSongsTask)
-  else if itemType = "Playlist"
-    m.top.playlistContentKind = "unknown" ' Reset before chain — prevents stale kind from a prior run
-    ' Chain: Playlist Items → More Like This
-    ' Slot type is determined by item content (Audio → SQUARE, mixed → PORTRAIT), so we cannot
-    ' set rowItemSize to a final value here. Reset to [] now so no stale values from a previous
-    ' chain can leak into addRowSize() calls later in onPlaylistItemsLoaded/onLikeThisLoaded.
-    m.top.rowItemSize = []
-    m.LoadPlaylistItemsTask.itemId = m.top.parentId
-    m.LoadPlaylistItemsTask.observeField("content", "onPlaylistItemsLoaded")
-    launchTask(m.LoadPlaylistItemsTask)
-  else if itemType = "Audio"
-    ' Chain: Album Tracklist (current track first) → More Like This
-    m.currentAudioId = data.id
-    m.currentAlbumName = data.albumName
-    m.top.rowItemSize = [rowSlotSize.SQUARE]
-    if isValidAndNotEmpty(data.albumId)
-      m.LoadAlbumSongsTask.itemId = data.albumId
-      m.LoadAlbumSongsTask.observeField("content", "onAudioAlbumTracksLoaded")
-      launchTask(m.LoadAlbumSongsTask)
-    else
-      ' No album — skip tracklist row and go straight to More Like This
-      m.LikeThisTask.itemId = m.top.parentId
-      m.LikeThisTask.observeField("content", "onLikeThisLoaded")
-      launchTask(m.LikeThisTask)
-    end if
-  else if itemType = "Photo"
-    ' Chain: More Like This
-    m.top.rowItemSize = [rowSlotSize.WIDE]
-    m.LikeThisTask.itemId = m.top.parentId
-    m.LikeThisTask.observeField("content", "onLikeThisLoaded")
-    launchTask(m.LikeThisTask)
-  else if itemType = "PhotoAlbum"
-    ' Chain: Album Photos → More Like This
-    m.top.rowItemSize = [rowSlotSize.WIDE]
-    m.LoadPhotoAlbumItemsTask.itemId = m.top.parentId
-    m.LoadPhotoAlbumItemsTask.observeField("content", "onPhotoAlbumItemsLoaded")
-    launchTask(m.LoadPhotoAlbumItemsTask)
-  else if itemType = "TvChannel"
-    ' Chain: Upcoming Programs → More Like This
-    m.top.rowItemSize = [rowSlotSize.SQUARE]
-    m.LoadChannelProgramsTask.itemId = m.top.parentId
-    m.LoadChannelProgramsTask.observeField("content", "onChannelProgramsLoaded")
-    launchTask(m.LoadChannelProgramsTask)
-  else if itemType = "Program"
-    ' Chain: More on this Channel → More Like This
-    m.programChannelId = data.channelId
-    m.top.rowItemSize = [rowSlotSize.SQUARE]
-    if isValidAndNotEmpty(data.channelId)
-      m.LoadChannelProgramsTask.itemId = data.channelId
-      m.LoadChannelProgramsTask.observeField("content", "onProgramChannelProgramsLoaded")
-      launchTask(m.LoadChannelProgramsTask)
-    else
-      ' No channel — skip to More Like This
-      m.LikeThisTask.itemId = m.top.parentId
-      m.LikeThisTask.observeField("content", "onLikeThisLoaded")
-      launchTask(m.LikeThisTask)
-    end if
-  else
-    ' Movie, Video, Recording: Chapters (sync) → AdditionalParts → People → LikeThis → SpecialFeatures
-    chapterItems = buildChapterItems(data)
-    if chapterItems.count() > 0
-      m.top.rowItemSize = [rowSlotSize.WIDE]
-      m.rowChapters = populateRow(m.rowChapters, translate(translationKeys.LabelChapters), chapterItems, rowSlotSize.ROW_HEIGHT_WIDE)
-    else if isValid(m.rowChapters)
-      removeRow(m.rowChapters)
-      m.rowChapters = invalid
-    end if
-
-    m.LoadAdditionalPartsTask.observeField("content", "onAdditionalPartsLoaded")
-    m.LoadAdditionalPartsTask.itemId = m.top.parentId
-    launchTask(m.LoadAdditionalPartsTask)
+  m.top.parentId = data.id
+  if itemType = "Playlist"
+    ' Reset before the run so a stale kind from a previous run can't stand.
+    m.top.playlistContentKind = "unknown"
   end if
+
+  setPlan(extrasRows.plan(itemType, data))
+  resetForLoad()
+  startRun(m.plan, data.people, data)
 end sub
 
 sub loadPersonVideos(personId)
-  cancelInFlightChain()
+  m.top.personHasMedia = false ' Reset before the run — prevents a stale true from a prior run
+  setPlan(extrasRows.plan("Person", { id: personId }))
+  resetForLoad()
+  startRun(m.plan, invalid, invalid)
+end sub
+
+' setPlan: Adopt a plan, stamping each row with `slot`, its index — the key results come back on.
+sub setPlan(plan as object)
+  for i = 0 to plan.count() - 1
+    plan[i].slot = i
+  end for
+  m.plan = plan
+end sub
+
+' resetForLoad: State a full load starts from. A targeted refetch (onProgramsExpired) skips
+' this — it must not move the panel or reopen the readiness signal.
+sub resetForLoad()
+  cancelRun()
   m.top.contentReady = false
-  m.rowHeights = []
   m.lastFocusedRowIndex = -1
   m.top.translation = [0, EXTRAS_ROWLIST_DEFAULT_Y]
-  m.personId = personId
-  m.top.personHasMedia = false ' Reset before new chain — prevents stale true from a prior run
-  m.LoadMoviesTask.itemId = m.personId
-  m.LoadMoviesTask.observeField("content", "onMoviesLoaded")
-  launchTask(m.LoadMoviesTask)
 end sub
 
-' onSeasonsLoaded: Build "Seasons" row then chain to People (Series only)
-sub onSeasonsLoaded()
-  seasons = m.LoadSeasonsTask.content
-  m.LoadSeasonsTask.unobserveField("content")
-
-  if isValid(seasons) and seasons.count() > 0
-    m.rowSeasons = populateRow(m.rowSeasons, translate(translationKeys.LabelSeasons), seasons, rowSlotSize.ROW_HEIGHT_PORTRAIT)
-  else if isValid(m.rowSeasons)
-    removeRow(m.rowSeasons)
-    m.rowSeasons = invalid
-  end if
-
-  m.LoadPeopleTask.observeField("content", "onPeopleLoaded")
-  m.LoadPeopleTask.peopleList = m.people
-  launchTask(m.LoadPeopleTask)
-end sub
-
-' onSeasonEpisodesLoaded: Build "More from Season X" row with current episode first,
-' then episodes that follow it in order, then episodes that precede it (wrapping around).
-' E.g. viewing ep 3 of 9 → [3, 4, 5, 6, 7, 8, 9, 1, 2]
-sub onSeasonEpisodesLoaded()
-  episodes = m.LoadSeasonEpisodesTask.content
-  m.LoadSeasonEpisodesTask.unobserveField("content")
-
-  if isValid(episodes) and episodes.count() > 0
-    ' Split into: current episode, episodes after it, episodes before it
-    current = invalid
-    before = []
-    after = []
-    isFoundCurrent = false
-    for each ep in episodes
-      if ep.id = m.currentEpisodeId
-        current = ep
-        isFoundCurrent = true
-      else if isFoundCurrent
-        after.push(ep)
-      else
-        before.push(ep)
-      end if
-    end for
-
-    orderedEpisodes = []
-    if isValid(current) then orderedEpisodes.push(current)
-    for each ep in after
-      orderedEpisodes.push(ep)
-    end for
-    for each ep in before
-      orderedEpisodes.push(ep)
-    end for
-
-    if orderedEpisodes.count() > 0
-      if isValid(m.currentEpisodeSeasonNumber) and m.currentEpisodeSeasonNumber > 0
-        rowTitle = translate(translationKeys.MessageMoreFromSeason1, [stri(m.currentEpisodeSeasonNumber).trim()])
-      else
-        rowTitle = translate(translationKeys.LabelMoreEpisodes)
-      end if
-      if isValid(m.rowChapters)
-        m.top.rowItemSize = [rowSlotSize.WIDE, rowSlotSize.WIDE, rowSlotSize.PORTRAIT]
-      else
-        m.top.rowItemSize = [rowSlotSize.WIDE, rowSlotSize.PORTRAIT]
-      end if
-      m.rowSeasonEpisodes = populateRow(m.rowSeasonEpisodes, rowTitle, orderedEpisodes, rowSlotSize.ROW_HEIGHT_WIDE)
-    else if isValid(m.rowSeasonEpisodes)
-      removeRow(m.rowSeasonEpisodes)
-      m.rowSeasonEpisodes = invalid
-    end if
-  else if isValid(m.rowSeasonEpisodes)
-    removeRow(m.rowSeasonEpisodes)
-    m.rowSeasonEpisodes = invalid
-  end if
-
-  m.LoadPeopleTask.observeField("content", "onPeopleLoaded")
-  m.LoadPeopleTask.peopleList = m.people
-  launchTask(m.LoadPeopleTask)
-end sub
-
-' onSeasonAllEpisodesLoaded: Build "Episodes" row then chain to People (Season only)
-sub onSeasonAllEpisodesLoaded()
-  episodes = m.LoadSeasonAllEpisodesTask.content
-  m.LoadSeasonAllEpisodesTask.unobserveField("content")
-
-  if isValid(episodes) and episodes.count() > 0
-    m.top.rowItemSize = [rowSlotSize.WIDE, rowSlotSize.PORTRAIT]
-    m.rowEpisodes = populateRow(m.rowEpisodes, translate(translationKeys.LabelEpisodes), episodes, rowSlotSize.ROW_HEIGHT_WIDE)
-  else if isValid(m.rowEpisodes)
-    removeRow(m.rowEpisodes)
-    m.rowEpisodes = invalid
-  end if
-
-  m.LoadPeopleTask.observeField("content", "onPeopleLoaded")
-  m.LoadPeopleTask.peopleList = m.people
-  launchTask(m.LoadPeopleTask)
-end sub
-
-' onBoxSetItemsLoaded: Build "Movies" row then chain to People → LikeThis (BoxSet only)
-sub onBoxSetItemsLoaded()
-  content = m.LoadBoxSetItemsTask.content
-  m.LoadBoxSetItemsTask.unobserveField("content")
-  m.LoadBoxSetItemsTask.content = []
-
-  if isValid(content) and content.count() > 0
-    m.rowBoxSetItems = populateRow(m.rowBoxSetItems, translate(translationKeys.LabelMovies), content, rowSlotSize.ROW_HEIGHT_PORTRAIT)
-  else if isValid(m.rowBoxSetItems)
-    removeRow(m.rowBoxSetItems)
-    m.rowBoxSetItems = invalid
-  end if
-
-  ' Continue chain: People → LikeThis
-  m.LoadPeopleTask.observeField("content", "onPeopleLoaded")
-  m.LoadPeopleTask.peopleList = m.people
-  launchTask(m.LoadPeopleTask)
-end sub
-
-sub onAdditionalPartsLoaded()
-  parts = m.LoadAdditionalPartsTask.content
-  m.LoadAdditionalPartsTask.unobserveField("content")
-
-  if isValid(parts) and parts.count() > 0
-    m.rowAdditionalParts = populateRow(m.rowAdditionalParts, translate(translationKeys.LabelAdditionalParts), parts, rowSlotSize.ROW_HEIGHT_PORTRAIT)
-  else if isValid(m.rowAdditionalParts)
-    removeRow(m.rowAdditionalParts)
-    m.rowAdditionalParts = invalid
-  end if
-
-  ' Rebuild rowItemSize: WIDE for chapters row (if present), PORTRAIT for everything after
-  if isValid(m.rowChapters)
-    m.top.rowItemSize = [rowSlotSize.WIDE, rowSlotSize.PORTRAIT]
-  else
-    m.top.rowItemSize = [rowSlotSize.PORTRAIT]
-  end if
-
-  ' Load Cast and Crew and everything else...
-  m.LoadPeopleTask.observeField("content", "onPeopleLoaded")
-  m.LoadPeopleTask.peopleList = m.people
-  launchTask(m.LoadPeopleTask)
-end sub
-
-' onPlaylistItemsLoaded: Build "Playlist Items" row then chain to More Like This (Playlist only).
-' Detects whether items are all audio, all video, or mixed, and selects SQUARE vs PORTRAIT slots accordingly.
-' Sets playlistContentKind ("audio"/"video"/"mixed"/"unknown") so ItemDetails can add the Watched button asynchronously.
-sub onPlaylistItemsLoaded()
-  items = m.LoadPlaylistItemsTask.content
-  m.LoadPlaylistItemsTask.unobserveField("content")
-  m.LoadPlaylistItemsTask.content = []
-
-  ' Reset before branching — ensures addRowSize() in onLikeThisLoaded() always starts from a
-  ' clean slate whether items are present or empty. The items branches below set the real value.
-  m.top.rowItemSize = []
-
-  hasVideos = false
-  isAllAudio = false
-  if isValid(items) and items.count() > 0
-    isAllAudio = true ' assume all-audio until a non-Audio item is found
-    for each item in items
-      if item.type <> "Audio"
-        isAllAudio = false
-        if item.type = "Movie" or item.type = "Episode" or item.type = "Video" or item.type = "MusicVideo" or item.type = "Recording"
-          hasVideos = true
-        end if
-      end if
-    end for
-  end if
-
-  if isValid(items) and items.count() > 0
-    if isAllAudio
-      m.top.rowItemSize = [rowSlotSize.SQUARE]
-      m.rowPlaylistItems = populateRow(m.rowPlaylistItems, translate(translationKeys.LabelPlaylistItems), items, rowSlotSize.ROW_HEIGHT_SQUARE)
-    else
-      m.top.rowItemSize = [rowSlotSize.PORTRAIT]
-      m.rowPlaylistItems = populateRow(m.rowPlaylistItems, translate(translationKeys.LabelPlaylistItems), items, rowSlotSize.ROW_HEIGHT_PORTRAIT)
-    end if
-  else if isValid(m.rowPlaylistItems)
-    removeRow(m.rowPlaylistItems)
-    m.rowPlaylistItems = invalid
-  end if
-
-  ' Derive content kind: "video" / "audio" / "mixed" / "unknown" (empty or load failure).
-  ' "unknown" keeps ItemDetails in the safe default state (no Watched button, "Items" label).
-  if not isValid(items) or items.count() = 0
-    kind = "unknown"
-  else if hasVideos
-    kind = "video"
-  else if isAllAudio
-    kind = "audio"
-  else
-    kind = "mixed"
-  end if
-  m.top.playlistContentKind = kind
-
-  m.LikeThisTask.itemId = m.top.parentId
-  m.LikeThisTask.observeField("content", "onLikeThisLoaded")
-  launchTask(m.LikeThisTask)
-end sub
-
-sub onPeopleLoaded()
-  people = m.LoadPeopleTask.content
-  m.loadPeopleTask.unobserveField("content")
-  if isValid(people) and people.count() > 0
-    m.rowCast = populateRow(m.rowCast, translate(translationKeys.LabelCastCrew), people, rowSlotSize.ROW_HEIGHT_PORTRAIT)
-    addRowSize(rowSlotSize.PORTRAIT)
-  else if isValid(m.rowCast)
-    removeRow(m.rowCast)
-    m.rowCast = invalid
-  end if
-  m.LikeThisTask.observeField("content", "onLikeThisLoaded")
-  ' For Episode, query similar items against the parent series since Jellyfin returns
-  ' no results for individual episode IDs.
-  if m.top.type = "Episode" and isValid(m.episodeSeriesId) and m.episodeSeriesId <> ""
-    m.LikeThisTask.itemId = m.episodeSeriesId
-  else
-    m.LikeThisTask.itemId = m.top.parentId
-  end if
-  launchTask(m.LikeThisTask)
-end sub
-
-sub onLikeThisLoaded()
-  data = m.LikeThisTask.content
-  m.LikeThisTask.unobserveField("content")
-  itemType = m.top.type
-  if isValid(data) and data.count() > 0
-    ' MusicVideo and Video items are always landscape (≥4:3) and have no portrait posters —
-    ' use a wide slot so the image URL logic fetches Thumb/Backdrop instead of Primary.
-    if itemType = "MusicVideo" or itemType = "Video"
-      m.rowLikeThis = populateRow(m.rowLikeThis, translate(translationKeys.LabelMoreLikeThis), data, rowSlotSize.ROW_HEIGHT_WIDE)
-      ' Cannot use addRowSize() here. loadParts() seeds rowItemSize with a phantom PORTRAIT
-      ' element before any rows exist, which offsets all addRowSize() indices by one and would
-      ' leave this row still mapped to PORTRAIT. Instead, rebuild the array from the actual
-      ' content child count: PORTRAIT for every preceding row, WIDE for this (final) row.
-      newSizes = []
-      childCount = m.top.content.getChildCount()
-      for i = 0 to childCount - 2
-        ' Chapters row (index 0 when present) uses WIDE; all other preceding rows use PORTRAIT
-        if i = 0 and isValid(m.rowChapters)
-          newSizes.push(rowSlotSize.WIDE)
-        else
-          newSizes.push(rowSlotSize.PORTRAIT)
-        end if
-      end for
-      newSizes.push(rowSlotSize.WIDE)
-      m.top.rowItemSize = newSizes
-    else if itemType = "Photo" or itemType = "PhotoAlbum"
-      ' Photo/PhotoAlbum use WIDE slots (landscape images). Rebuild from actual content child
-      ' count with WIDE for all rows — the preceding Photos row (if any) is also WIDE.
-      m.rowLikeThis = populateRow(m.rowLikeThis, translate(translationKeys.LabelMoreLikeThis), data, rowSlotSize.ROW_HEIGHT_WIDE)
-      newSizes = []
-      childCount = m.top.content.getChildCount()
-      for i = 0 to childCount - 1
-        newSizes.push(rowSlotSize.WIDE)
-      end for
-      m.top.rowItemSize = newSizes
-    else if itemType = "MusicArtist" or itemType = "MusicAlbum" or itemType = "Audio" or itemType = "Playlist" or itemType = "Program" or itemType = "TvChannel"
-      ' Music, Playlist, Program, and TvChannel rows use square slots — primary images are 1:1.
-      m.rowLikeThis = populateRow(m.rowLikeThis, translate(translationKeys.LabelMoreLikeThis), data, rowSlotSize.ROW_HEIGHT_SQUARE)
-      addRowSize(rowSlotSize.SQUARE)
-    else
-      m.rowLikeThis = populateRow(m.rowLikeThis, translate(translationKeys.LabelMoreLikeThis), data, rowSlotSize.ROW_HEIGHT_PORTRAIT)
-      addRowSize(rowSlotSize.PORTRAIT)
-    end if
-  else if isValid(m.rowLikeThis)
-    removeRow(m.rowLikeThis)
-    m.rowLikeThis = invalid
-  end if
-
-  ' SpecialFeatures only for Movie / Video / Recording
-  if not inArray(itemTypeOrder.NO_SPECIAL_FEATURES, itemType)
-    m.SpecialFeaturesTask.observeField("content", "onSpecialFeaturesLoaded")
-    m.SpecialFeaturesTask.itemId = m.top.parentId
-    launchTask(m.SpecialFeaturesTask)
-  else
-    ' The chain's tail for every type that has no special features — see markChainComplete.
-    markChainComplete()
-  end if
-end sub
-
-function onSpecialFeaturesLoaded()
-  data = m.SpecialFeaturesTask.content
-  m.SpecialFeaturesTask.unobserveField("content")
-  if isValid(data) and data.count() > 0
-    m.rowSpecialFeatures = populateRow(m.rowSpecialFeatures, translate(translationKeys.LabelSpecialFeatures), data, rowSlotSize.ROW_HEIGHT_WIDE)
-    m.top.visible = true
-    addRowSize(rowSlotSize.WIDE)
-  else if isValid(m.rowSpecialFeatures)
-    removeRow(m.rowSpecialFeatures)
-    m.rowSpecialFeatures = invalid
-  end if
-
-  ' The chain's tail for Movie / Video / Recording — see markChainComplete.
-  markChainComplete()
-
-  return m.top.content
-end function
-
-sub onMoviesLoaded()
-  data = m.LoadMoviesTask.content
-  m.LoadMoviesTask.unobserveField("content")
-  if isValid(data) and data.count() > 0
-    m.rowMovies = populateRow(m.rowMovies, translate(translationKeys.LabelMovies), data, rowSlotSize.ROW_HEIGHT_PORTRAIT)
-    m.top.rowItemSize = [rowSlotSize.PORTRAIT]
-    ' Signal early — we already know there is media, no need to wait for the full chain
-    m.top.personHasMedia = true
-  else if isValid(m.rowMovies)
-    removeRow(m.rowMovies)
-    m.rowMovies = invalid
-  end if
-  m.LoadShowsTask.itemId = m.personId
-  m.LoadShowsTask.observeField("content", "onShowsLoaded")
-  launchTask(m.LoadShowsTask)
-end sub
-
-sub onShowsLoaded()
-  data = m.LoadShowsTask.content
-  m.LoadShowsTask.unobserveField("content")
-  if isValid(data) and data.count() > 0
-    ' personTVShows loads Episode items — use WIDE slot for episode screenshots
-    m.rowTvShows = populateRow(m.rowTvShows, translate(translationKeys.LabelEpisodes), data, rowSlotSize.ROW_HEIGHT_WIDE)
-    addRowSize(rowSlotSize.WIDE)
-    ' Signal early — we already know there is media, no need to wait for the full chain
-    m.top.personHasMedia = true
-  else if isValid(m.rowTvShows)
-    removeRow(m.rowTvShows)
-    m.rowTvShows = invalid
-  end if
-  m.LoadSeriesTask.itemId = m.personId
-  m.LoadSeriesTask.observeField("content", "onSeriesLoaded")
-  launchTask(m.LoadSeriesTask)
-end sub
-
-sub onSeriesLoaded()
-  data = m.LoadSeriesTask.content
-  m.LoadSeriesTask.unobserveField("content")
-  if isValid(data) and data.count() > 0
-    m.rowSeries = populateRow(m.rowSeries, translate(translationKeys.LabelSeries), data, rowSlotSize.ROW_HEIGHT_PORTRAIT)
-    addRowSize(rowSlotSize.PORTRAIT)
-  else if isValid(m.rowSeries)
-    removeRow(m.rowSeries)
-    m.rowSeries = invalid
-  end if
-  m.top.visible = true
-  ' Final authoritative signal — covers the false case (no media at all) and the Series-only case.
-  ' onPersonHasMediaChanged guards against adding a duplicate button if already signalled true above.
-  m.top.personHasMedia = isValid(m.rowMovies) or isValid(m.rowTvShows) or isValid(m.rowSeries)
-
-  ' The chain's tail for Person — see markChainComplete. AFTER personHasMedia, so a
-  ' caller that treats "extras done" as permission to read the shuffle answer finds it
-  ' already written rather than one observer hop behind.
-  markChainComplete()
-end sub
-
-' onArtistAlbumsLoaded: Build "Albums" row then chain to Appears On (MusicArtist only)
-sub onArtistAlbumsLoaded()
-  content = m.LoadArtistAlbumsTask.content
-  m.LoadArtistAlbumsTask.unobserveField("content")
-  m.LoadArtistAlbumsTask.content = []
-
-  if isValid(content) and content.count() > 0
-    m.rowArtistAlbums = populateRow(m.rowArtistAlbums, translate(translationKeys.LabelAlbums), content, rowSlotSize.ROW_HEIGHT_SQUARE)
-    addRowSize(rowSlotSize.SQUARE)
-  else if isValid(m.rowArtistAlbums)
-    removeRow(m.rowArtistAlbums)
-    m.rowArtistAlbums = invalid
-  end if
-
-  m.LoadArtistAppearsOnTask.itemId = m.top.parentId
-  m.LoadArtistAppearsOnTask.observeField("content", "onArtistAppearsOnLoaded")
-  launchTask(m.LoadArtistAppearsOnTask)
-end sub
-
-' onArtistAppearsOnLoaded: Build "Appears On" row then chain to Songs (MusicArtist only)
-sub onArtistAppearsOnLoaded()
-  content = m.LoadArtistAppearsOnTask.content
-  m.LoadArtistAppearsOnTask.unobserveField("content")
-  m.LoadArtistAppearsOnTask.content = []
-
-  if isValid(content) and content.count() > 0
-    m.rowArtistAppearsOn = populateRow(m.rowArtistAppearsOn, translate(translationKeys.LabelAppearsOn), content, rowSlotSize.ROW_HEIGHT_SQUARE)
-    addRowSize(rowSlotSize.SQUARE)
-  else if isValid(m.rowArtistAppearsOn)
-    removeRow(m.rowArtistAppearsOn)
-    m.rowArtistAppearsOn = invalid
-  end if
-
-  m.LoadArtistSongsTask.itemId = m.top.parentId
-  m.LoadArtistSongsTask.observeField("content", "onArtistSongsLoaded")
-  launchTask(m.LoadArtistSongsTask)
-end sub
-
-' onArtistSongsLoaded: Build "Songs" row then chain to ArtistSimilar (MusicArtist only).
-' Uses ArtistIds (broad) so songs on compilation albums surface even when album-level
-' metadata doesn't associate the artist via AlbumArtistIds.
-sub onArtistSongsLoaded()
-  content = m.LoadArtistSongsTask.content
-  m.LoadArtistSongsTask.unobserveField("content")
-  m.LoadArtistSongsTask.content = []
-
-  if isValid(content) and content.count() > 0
-    m.rowArtistSongs = populateRow(m.rowArtistSongs, translate(translationKeys.LabelSongs), content, rowSlotSize.ROW_HEIGHT_SQUARE)
-    addRowSize(rowSlotSize.SQUARE)
-  else if isValid(m.rowArtistSongs)
-    removeRow(m.rowArtistSongs)
-    m.rowArtistSongs = invalid
-  end if
-
-  m.LoadArtistSimilarTask.itemId = m.top.parentId
-  m.LoadArtistSimilarTask.observeField("content", "onArtistSimilarLoaded")
-  launchTask(m.LoadArtistSimilarTask)
-end sub
-
-' onArtistSimilarLoaded: Build "More Like This" row (MusicArtist only, end of chain).
-' Uses Artists/{id}/Similar which is more reliable for MusicArtist than Items/{id}/Similar.
-sub onArtistSimilarLoaded()
-  data = m.LoadArtistSimilarTask.content
-  m.LoadArtistSimilarTask.unobserveField("content")
-  if isValid(data) and data.count() > 0
-    m.rowLikeThis = populateRow(m.rowLikeThis, translate(translationKeys.LabelMoreLikeThis), data, rowSlotSize.ROW_HEIGHT_SQUARE)
-    addRowSize(rowSlotSize.SQUARE)
-  else if isValid(m.rowLikeThis)
-    removeRow(m.rowLikeThis)
-    m.rowLikeThis = invalid
-  end if
-
-  ' The chain's tail for MusicArtist, which never reaches LikeThis — see markChainComplete.
-  markChainComplete()
-end sub
-
-' onAlbumSongsLoaded: Build "Songs" row then chain to More Albums by Artist → More Like This (MusicAlbum only)
-sub onAlbumSongsLoaded()
-  content = m.LoadAlbumSongsTask.content
-  m.LoadAlbumSongsTask.unobserveField("content")
-  m.LoadAlbumSongsTask.content = []
-
-  if isValid(content) and content.count() > 0
-    m.rowAlbumSongs = populateRow(m.rowAlbumSongs, translate(translationKeys.LabelSongs), content, rowSlotSize.ROW_HEIGHT_SQUARE)
-    addRowSize(rowSlotSize.SQUARE)
-  else if isValid(m.rowAlbumSongs)
-    removeRow(m.rowAlbumSongs)
-    m.rowAlbumSongs = invalid
-  end if
-
-  ' Chain to more albums by the same artist if we have an artist ID, otherwise skip to LikeThis
-  if isValidAndNotEmpty(m.currentAlbumArtistId)
-    m.LoadArtistAlbumsTask.itemId = m.currentAlbumArtistId
-    m.LoadArtistAlbumsTask.observeField("content", "onAlbumArtistAlbumsLoaded")
-    launchTask(m.LoadArtistAlbumsTask)
-  else
-    m.LikeThisTask.itemId = m.top.parentId
-    m.LikeThisTask.observeField("content", "onLikeThisLoaded")
-    launchTask(m.LikeThisTask)
-  end if
-end sub
-
-' onAlbumArtistAlbumsLoaded: Build "More Albums" row (excluding current album) then chain to More Like This (MusicAlbum only)
-sub onAlbumArtistAlbumsLoaded()
-  content = m.LoadArtistAlbumsTask.content
-  m.LoadArtistAlbumsTask.unobserveField("content")
-  m.LoadArtistAlbumsTask.content = []
-
-  ' Filter out the current album so it doesn't appear in its own "More Albums" row
-  filtered = []
-  if isValid(content)
-    for each album in content
-      if album.id <> m.currentAlbumId
-        filtered.push(album)
-      end if
-    end for
-  end if
-
-  if filtered.count() > 0
-    m.rowAlbumArtistAlbums = populateRow(m.rowAlbumArtistAlbums, translate(translationKeys.LabelMoreAlbums), filtered, rowSlotSize.ROW_HEIGHT_SQUARE)
-    addRowSize(rowSlotSize.SQUARE)
-  else if isValid(m.rowAlbumArtistAlbums)
-    removeRow(m.rowAlbumArtistAlbums)
-    m.rowAlbumArtistAlbums = invalid
-  end if
-
-  m.LikeThisTask.itemId = m.top.parentId
-  m.LikeThisTask.observeField("content", "onLikeThisLoaded")
-  launchTask(m.LikeThisTask)
-end sub
-
-' onAudioAlbumTracksLoaded: Build "More from {Album}" row with current track first,
-' then tracks that follow it in order, then tracks that preceded it (wrapping around).
-' E.g. viewing track 3 of 10 → [3, 4, 5, 6, 7, 8, 9, 10, 1, 2]
-sub onAudioAlbumTracksLoaded()
-  tracks = m.LoadAlbumSongsTask.content
-  m.LoadAlbumSongsTask.unobserveField("content")
-  m.LoadAlbumSongsTask.content = []
-
-  if isValid(tracks) and tracks.count() > 0
-    current = invalid
-    before = []
-    after = []
-    isFoundCurrent = false
-    for each track in tracks
-      if track.id = m.currentAudioId
-        current = track
-        isFoundCurrent = true
-      else if isFoundCurrent
-        after.push(track)
-      else
-        before.push(track)
-      end if
-    end for
-
-    orderedTracks = []
-    if isValid(current) then orderedTracks.push(current)
-    for each track in after
-      orderedTracks.push(track)
-    end for
-    for each track in before
-      orderedTracks.push(track)
-    end for
-
-    if orderedTracks.count() > 0
-      if isValidAndNotEmpty(m.currentAlbumName)
-        rowTitle = translate(translationKeys.MessageMoreFrom1, [m.currentAlbumName])
-      else
-        rowTitle = translate(translationKeys.LabelAlbumTracks)
-      end if
-      m.rowAlbumSongs = populateRow(m.rowAlbumSongs, rowTitle, orderedTracks, rowSlotSize.ROW_HEIGHT_SQUARE)
-      addRowSize(rowSlotSize.SQUARE)
-    else if isValid(m.rowAlbumSongs)
-      removeRow(m.rowAlbumSongs)
-      m.rowAlbumSongs = invalid
-    end if
-  else if isValid(m.rowAlbumSongs)
-    removeRow(m.rowAlbumSongs)
-    m.rowAlbumSongs = invalid
-  end if
-
-  m.LikeThisTask.itemId = m.top.parentId
-  m.LikeThisTask.observeField("content", "onLikeThisLoaded")
-  launchTask(m.LikeThisTask)
-end sub
-
-' onPhotoAlbumItemsLoaded: Build "Photos" row then chain to More Like This (PhotoAlbum only)
-sub onPhotoAlbumItemsLoaded()
-  items = m.LoadPhotoAlbumItemsTask.content
-  m.LoadPhotoAlbumItemsTask.unobserveField("content")
-  m.LoadPhotoAlbumItemsTask.content = []
-
-  if isValid(items) and items.count() > 0
-    m.rowPhotoAlbumItems = populateRow(m.rowPhotoAlbumItems, translate(translationKeys.LabelPhotos), items, rowSlotSize.ROW_HEIGHT_WIDE)
-  else if isValid(m.rowPhotoAlbumItems)
-    removeRow(m.rowPhotoAlbumItems)
-    m.rowPhotoAlbumItems = invalid
-  end if
-
-  ' Chain to More Like This
-  m.LikeThisTask.itemId = m.top.parentId
-  m.LikeThisTask.observeField("content", "onLikeThisLoaded")
-  launchTask(m.LikeThisTask)
-end sub
-
-' onChannelProgramsLoaded: Build "Up Next" row then chain to More Like This (TvChannel only)
-sub onChannelProgramsLoaded()
-  items = m.LoadChannelProgramsTask.content
-  m.LoadChannelProgramsTask.unobserveField("content")
-  m.LoadChannelProgramsTask.content = []
-
-  if isValid(items) and items.count() > 0
-    m.rowChannelPrograms = populateRow(m.rowChannelPrograms, translate(translationKeys.LabelUpNext), items, rowSlotSize.ROW_HEIGHT_SQUARE)
-  else if isValid(m.rowChannelPrograms)
-    removeRow(m.rowChannelPrograms)
-    m.rowChannelPrograms = invalid
-  end if
-
-  ' Chain to More Like This
-  m.LikeThisTask.itemId = m.top.parentId
-  m.LikeThisTask.observeField("content", "onLikeThisLoaded")
-  launchTask(m.LikeThisTask)
-end sub
-
-' onProgramChannelProgramsLoaded: Build "More on this Channel" row then chain to More Like This (Program only)
-sub onProgramChannelProgramsLoaded()
-  items = m.LoadChannelProgramsTask.content
-  m.LoadChannelProgramsTask.unobserveField("content")
-  m.LoadChannelProgramsTask.content = []
-
-  if isValid(items) and items.count() > 0
-    m.rowChannelPrograms = populateRow(m.rowChannelPrograms, translate(translationKeys.LabelMoreOnThisChannel), items, rowSlotSize.ROW_HEIGHT_SQUARE)
-    addRowSize(rowSlotSize.SQUARE)
-  else if isValid(m.rowChannelPrograms)
-    removeRow(m.rowChannelPrograms)
-    m.rowChannelPrograms = invalid
-  end if
-
-  ' Chain to More Like This
-  m.LikeThisTask.itemId = m.top.parentId
-  m.LikeThisTask.observeField("content", "onLikeThisLoaded")
-  launchTask(m.LikeThisTask)
-end sub
-
-' Fires when JRRowList's progress tick detects at least one expired Program
-' among this list's rows. Triggers a targeted refetch of the Channel Programs
-' row (TvChannel "Up Next" or Program "More on this Channel") so finished
-' broadcasts roll off and new ones take their place.
+' startRun: Load `runRows` (all of m.plan, or a subset of it for a targeted refetch).
 '
-' Deliberately does NOT re-chain to LikeThisTask — related content is stable
-' over a viewing session and should not be refetched just because a program
-' expired. m.isRefetchingChannelPrograms debounces repeated expiry signals.
-sub onProgramsExpired()
-  if m.isRefetchingChannelPrograms then return
-  if not isValid(m.rowChannelPrograms) then return
+' Nothing reaches the RowList until the WHOLE run has resolved; then commitRows applies every
+' change in one pass. That is the point of this component's shape, not an incidental: RowList
+' redraws its "X of Y" row counter on any write to rows already on screen — a row appended below
+' them, a live row's items replaced — even when the count it shows does not change, and that
+' redraw read as a flicker. Measured on device: committing rows as each resolved blinked once
+' per commit after the first, and one commit that rewrote unchanged rows still blinked once.
+'
+' @param runRows - plan rows to load this run
+' @param people - the item's People array, for a Cast row (invalid when there is none)
+' @param data - the item node, for rows built on this thread (Chapters)
+sub startRun(runRows as object, people as dynamic, data as dynamic)
+  cancelRun()
 
-  itemType = m.top.type
-  handlerName = ""
-  channelId = invalid
+  m.runId++
+  m.isRunning = true
 
-  if itemType = "TvChannel"
-    handlerName = "onChannelProgramsRefetched"
-    channelId = m.top.parentId
-  else if itemType = "Program"
-    handlerName = "onProgramChannelProgramsRefetched"
-    channelId = m.programChannelId
-  end if
-
-  if handlerName = "" or not isValidAndNotEmpty(channelId) then return
-
-  m.isRefetchingChannelPrograms = true
-  m.LoadChannelProgramsTask.control = "STOP"
-  m.LoadChannelProgramsTask.unobserveField("content")
-  m.LoadChannelProgramsTask.itemId = channelId
-  m.LoadChannelProgramsTask.observeField("content", handlerName)
-  launchTask(m.LoadChannelProgramsTask)
-end sub
-
-' Refetch handler for TvChannel "Up Next". Replaces the row content in place
-' without re-chaining to LikeThisTask (unlike the initial-load handler).
-sub onChannelProgramsRefetched()
-  items = m.LoadChannelProgramsTask.content
-  m.LoadChannelProgramsTask.unobserveField("content")
-  m.LoadChannelProgramsTask.content = []
-  m.isRefetchingChannelPrograms = false
-
-  if isValid(items) and items.count() > 0
-    m.rowChannelPrograms = populateRow(m.rowChannelPrograms, translate(translationKeys.LabelUpNext), items, rowSlotSize.ROW_HEIGHT_SQUARE)
-  else if isValid(m.rowChannelPrograms)
-    removeRow(m.rowChannelPrograms)
-    m.rowChannelPrograms = invalid
-  end if
-end sub
-
-' Refetch handler for Program "More on this Channel". Same in-place-update
-' pattern as onChannelProgramsRefetched — no chain to LikeThisTask.
-sub onProgramChannelProgramsRefetched()
-  items = m.LoadChannelProgramsTask.content
-  m.LoadChannelProgramsTask.unobserveField("content")
-  m.LoadChannelProgramsTask.content = []
-  m.isRefetchingChannelPrograms = false
-
-  if isValid(items) and items.count() > 0
-    m.rowChannelPrograms = populateRow(m.rowChannelPrograms, translate(translationKeys.LabelMoreOnThisChannel), items, rowSlotSize.ROW_HEIGHT_SQUARE)
-  else if isValid(m.rowChannelPrograms)
-    removeRow(m.rowChannelPrograms)
-    m.rowChannelPrograms = invalid
-  end if
-end sub
-
-' populateRow: Reuse an existing row ContentNode (clearing its children) or create a new one.
-' Creating appends the row to m.top.content at the current end — correct since the async chain
-' fires in display order. m.rowHeights is reset at chain start and rebuilt here on every call,
-' keeping it in sync with m.top.content across refreshes where rows may appear or disappear.
-' @param rowHeight - height for this specific row (from rowSlotSize.ROW_HEIGHT_* constants)
-' Returns the row for the caller to store as a named ref.
-function populateRow(rowRef as object, title as string, items as object, rowHeight as integer) as object
-  if isValid(rowRef)
-    rowRef.removeChildrenIndex(rowRef.getChildCount(), 0)
-  else
-    rowRef = m.top.content.createChild("ContentNode")
-  end if
-  ' Always push — m.rowHeights is reset at chain start so this rebuilds in display order each run.
-  ' Covers both reuse (row exists in content) and create (just appended) paths.
-  m.rowHeights.push(rowHeight)
-  m.top.rowHeights = m.rowHeights
-  ' numRows must always equal the actual row count so floatingFocus never needs to scroll.
-  ' If numRows < rowCount, navigation causes internal scrolling which changes the focused row's
-  ' RowList Y position unpredictably, breaking our translation formula.
-  ' Use content.getChildCount() (not m.rowHeights.count()) so that on a Refresh — where all
-  ' row nodes are reused in place and content.count() stays constant — numRows never dips
-  ' below content.count() during the incremental rebuild.
-  m.top.numRows = m.top.content.getChildCount()
-  rowRef.Title = title
-  for each item in items
-    rowRef.appendChild(item)
+  m.slots = []
+  m.results = []
+  for each row in m.plan
+    m.slots.push({ status: "unchanged", count: 0 })
+    m.results.push(invalid)
   end for
 
-  ' Activate texture management after the first row populates (layout is stable enough).
-  ' activateTextureManager from "init" → "active" only runs once; subsequent calls
-  ' when already "active" are harmless (state doesn't change, no observer fire).
-  if isValid(m.top.content) and m.top.content.hasField("textureManagerState") and m.top.content.textureManagerState = "init"
-    updateTextureBufferRange(m.top.content, m.top.rowItemFocused[0], m.top.rowItemFocused[1], m.top.numRows)
-    activateTextureManager(m.top.content)
+  taskRows = []
+  for each row in runRows
+    if row.kind = "chapters"
+      ' Built from the item on this thread, as it always was.
+      items = []
+      digest = ""
+      if isValid(data)
+        items = buildChapterItems(data)
+        ' The inputs buildChapterItems reads. runTimeTicks goes in as text: synthetic chapters
+        ' are derived from it, and FormatJSON's annotate flag would reduce a type it cannot
+        ' format to a placeholder that no longer changes with the value.
+        digest = extrasRows.digestOf(FormatJSON({ id: data.id, type: data.type, runTimeTicks: data.runTimeTicks.toStr(), chapters: data.chapters }, &h0200))
+      end if
+      resolveSlot(row.slot, "ok", row.shape, items, digest)
+    else
+      m.slots[row.slot] = { status: "pending", count: 0 }
+      taskRows.push(row)
+    end if
+  end for
+
+  if taskRows.count() > 0
+    m.extrasTask.setFields({ rows: taskRows, people: people ?? [], runId: m.runId })
+    m.extrasTask.observeField("rowReady", "onExtrasRowReady")
+    launchTask(m.extrasTask)
   end if
 
-  return rowRef
+  finishRunIfResolved()
+end sub
+
+' cancelRun: Drop the run in flight, if any. Its results are discarded by runId even if the
+' Task thread delivers after this.
+sub cancelRun()
+  m.extrasTask.unobserveField("rowReady")
+  m.extrasTask.control = "STOP"
+  m.extrasTask.removeChildrenIndex(m.extrasTask.getChildCount(), 0)
+  m.resultCursor = 0
+  m.isRunning = false
+end sub
+
+' onExtrasRowReady: Drain every result the orchestrator has appended since the last wake —
+' wake events coalesce, appended children don't.
+sub onExtrasRowReady()
+  childCount = m.extrasTask.getChildCount()
+  while m.resultCursor < childCount
+    child = m.extrasTask.getChild(m.resultCursor)
+    m.resultCursor++
+    if isValid(child) and child.runId = m.runId
+      resolveSlot(child.slot, child.status, child.shape, child.items, child.digest)
+    end if
+    ' This component holds the items now — drop the carrier's reference so an ItemDetails
+    ' session doesn't retain every batch it was delivered.
+    if isValid(child) then child.items = []
+  end while
+
+  finishRunIfResolved()
+end sub
+
+sub resolveSlot(slot as integer, status as string, shape as string, items as object, digest as string)
+  m.slots[slot] = { status: status, count: items.count() }
+  m.results[slot] = { items: items, shape: shape, digest: digest }
+
+  kind = m.plan[slot].kind
+  if kind = "playlistItems"
+    m.top.playlistContentKind = extrasRows.playlistContentKind(items)
+  else if items.count() > 0 and not m.top.personHasMedia and (kind = "personMovies" or kind = "personEpisodes" or kind = "personSeries")
+    ' Signal early — there is media, no need to wait for the whole run.
+    m.top.personHasMedia = true
+  end if
+end sub
+
+' finishRunIfResolved: Once every slot of the run has resolved, commit and close the run.
+sub finishRunIfResolved()
+  if not m.isRunning then return
+  if not extrasRows.isRunResolved(m.slots) then return
+
+  commitRows()
+
+  m.extrasTask.unobserveField("rowReady")
+  m.isRunning = false
+  m.results = []
+
+  if m.plan.count() > 0 and m.plan[0].kind = "personMovies"
+    ' Authoritative final answer — covers "no media at all". ItemDetails guards against
+    ' adding a duplicate button when the early signal already said true.
+    m.top.personHasMedia = m.top.content.getChildCount() > 0
+  end if
+
+  ' AFTER personHasMedia, so a caller treating "extras done" as permission to read the
+  ' shuffle answer finds it already written. ItemDetails' readiness ledger closes on this.
+  m.top.contentReady = true
+end sub
+
+' commitRows: Bring the rows on screen in line with the run's results in one pass — and write
+' NOTHING that has not changed, because every write to an on-screen row redraws the counter
+' (see startRun).
+'
+'   - A row whose title, slot shape and source-content digest match what is on screen is left
+'     untouched (extrasRows.isRowUnchanged).
+'   - A changed row that is already on screen is reused so focus position survives; its new
+'     items are appended BEFORE the old ones are removed, so it is never momentarily empty
+'     (the same rule HomeRows.populateRowFromData follows).
+'   - A row whose fetch failed is KEPT: no answer says nothing about what the item has, and
+'     removing it would delete good content on a flaky refresh. See extrasRows.rowDisposition.
+'   - The layout is written only when a row was added, removed or re-shaped.
+sub commitRows()
+  content = m.top.content
+  desired = []
+  isStructureChanged = false
+
+  for slot = 0 to m.plan.count() - 1
+    planRow = m.plan[slot]
+    kind = planRow.kind
+    existing = m.rowsByKind[kind]
+    status = m.slots[slot].status
+
+    disposition = "keep"
+    if status <> "unchanged"
+      disposition = extrasRows.rowDisposition(status, m.slots[slot].count, isValid(existing))
+    end if
+
+    if disposition = "fill"
+      result = m.results[slot]
+      title = translate(planRow.titleKey, planRow.titleArgs)
+      if isValid(existing) and m.shapeByKind[kind] = result.shape and extrasRows.isRowUnchanged(existing.title, m.digestByKind[kind] ?? "", title, result.digest)
+        desired.push(existing)
+      else
+        if not isValid(existing) or m.shapeByKind[kind] <> result.shape then isStructureChanged = true
+        desired.push(fillRow(existing, kind, title, result))
+      end if
+    else if disposition = "keep"
+      if isValid(existing) then desired.push(existing)
+    else if disposition = "remove"
+      isStructureChanged = true
+    end if
+  end for
+
+  ' Drop rows that are no longer wanted — including any whose kind the current plan no longer
+  ' has — then insert new rows at their positions. The rows that stay are already in plan order,
+  ' so only new rows ever need inserting.
+  for i = content.getChildCount() - 1 to 0 step -1
+    if not containsNode(desired, content.getChild(i))
+      content.removeChildIndex(i)
+      isStructureChanged = true
+    end if
+  end for
+  for i = 0 to desired.count() - 1
+    child = content.getChild(i)
+    if not isValid(child) or not child.isSameNode(desired[i])
+      content.insertChild(desired[i], i)
+      isStructureChanged = true
+    end if
+  end for
+
+  ' Forget rows that left the screen. Collected first: deleting from an AA while iterating it
+  ' is not safe.
+  dropped = []
+  for each kind in m.rowsByKind
+    if not containsNode(desired, m.rowsByKind[kind]) then dropped.push(kind)
+  end for
+  for each kind in dropped
+    m.rowsByKind.delete(kind)
+    m.shapeByKind.delete(kind)
+    m.digestByKind.delete(kind)
+  end for
+
+  if isStructureChanged then applyRowLayout()
+end sub
+
+' fillRow: The row node for `kind`, holding `result.items` — the row already on screen when there
+' is one, a new node otherwise.
+function fillRow(existing as dynamic, kind as string, title as string, result as object) as object
+  row = existing
+  if isValid(row)
+    ' Append first, then remove the old items: the row is never momentarily empty.
+    oldCount = row.getChildCount()
+    row.appendChildren(result.items)
+    row.removeChildrenIndex(oldCount, 0)
+    if row.title <> title then row.title = title
+  else
+    row = CreateObject("roSGNode", "ContentNode")
+    row.title = title
+    row.appendChildren(result.items)
+  end if
+
+  m.rowsByKind[kind] = row
+  m.shapeByKind[kind] = result.shape
+  m.digestByKind[kind] = result.digest
+  return row
 end function
 
-sub addRowSize(newRow)
-  sizeArray = m.top.rowItemSize
-  newSizeArray = []
-  for each size in sizeArray
-    newSizeArray.push(size)
+' applyRowLayout: Write the layout for the rows on screen in one setFields.
+'
+' numRows must always equal the actual row count so floatingFocus never needs to scroll: if
+' numRows < rowCount, navigation scrolls internally, which moves the focused row's RowList Y
+' unpredictably and breaks updatePanelPosition's translation formula.
+sub applyRowLayout()
+  shapes = []
+  for each planRow in m.plan
+    shape = m.shapeByKind[planRow.kind]
+    if isValid(shape) and isValid(m.rowsByKind[planRow.kind]) then shapes.push(shape)
   end for
-  newSizeArray.push(newRow)
-  m.top.rowItemSize = newSizeArray
+
+  sizes = extrasRows.rowSizes(shapes)
+  m.rowHeights = sizes.rowHeights
+  rowCount = m.top.content.getChildCount()
+  m.top.setFields({ rowItemSize: sizes.rowItemSize, rowHeights: sizes.rowHeights, numRows: rowCount })
+
+  ' Activate texture management once rows exist (layout is stable enough). activateTextureManager
+  ' only moves "init" → "active" once; later calls are skipped by the state check.
+  content = m.top.content
+  if rowCount > 0 and content.hasField("textureManagerState") and content.textureManagerState = "init"
+    updateTextureBufferRange(content, m.top.rowItemFocused[0], m.top.rowItemFocused[1], rowCount)
+    activateTextureManager(content)
+  end if
 end sub
 
-' removeRow: Remove a row ContentNode from content and keep numRows in sync with content.getChildCount().
-' Always call this instead of m.top.content.removeChild() directly; then null the caller's ref.
-sub removeRow(rowNode as object)
-  m.top.content.removeChild(rowNode)
-  m.top.numRows = m.top.content.getChildCount()
+function containsNode(nodes as object, node as dynamic) as boolean
+  if not isValid(node) then return false
+  for each candidate in nodes
+    if candidate.isSameNode(node) then return true
+  end for
+  return false
+end function
+
+' Fires when JRRowList's progress tick detects at least one expired Program among this list's
+' rows. Refetches ONLY the Channel Programs row (TvChannel "Up Next" / Program "More on this
+' Channel") so finished broadcasts roll off — related content is stable over a viewing session
+' and is not refetched.
+'
+' Skipped while any run is in flight: starting a run cancels the one in progress, which would
+' throw away its other rows. The tick raises the flag again on its next pass while a program is
+' still expired, so nothing is lost by waiting.
+sub onProgramsExpired()
+  if m.isRunning then return
+  if not isValid(m.rowsByKind["channelPrograms"]) then return
+
+  for each row in m.plan
+    if row.kind = "channelPrograms"
+      startRun([row], invalid, invalid)
+      return
+    end if
+  end for
 end sub
 
 sub onRowItemSelected()
@@ -1112,7 +405,7 @@ end sub
 ' updatePanelPosition: Set targetTranslationY so ItemDetails.bs can animate the RowList's
 ' translation within extrasGrp. extrasGrp stays fixed at extrasLayout.PANEL_OPEN_Y (306).
 '
-' numRows always equals the total row count (set in populateRow), so floatingFocus never scrolls
+' numRows always equals the total row count (set in applyRowLayout), so floatingFocus never scrolls
 ' internally. All rows stay at fixed RowList-relative Y positions:
 '   row 0 → RowList Y = 0
 '   row N → RowList Y = sum(heights[0..N-1]) + N * m.rowSpacing  (= focusedRowY)
@@ -1170,8 +463,9 @@ end sub
 ' onDestroy: Full teardown releasing all resources before component removal.
 ' Called by ItemDetails.onDestroy() before nulling the extrasGrid reference.
 sub onDestroy()
-  ' Stop all in-flight tasks and unobserve their content fields
-  cancelInFlightChain()
+  ' Detach every observer before releasing anything a handler could dereference.
+  m.extrasTask.unobserveField("rowReady")
+  m.extrasTask.control = "STOP"
 
   ' Stop and release the program progress timer (inherited from JRRowList)
   stopProgramProgressTicking(true)
@@ -1181,51 +475,14 @@ sub onDestroy()
   m.top.unobserveField("rowItemFocused")
   m.top.unobserveField("programsExpired")
 
-  ' Release task references
-  m.LoadSeasonsTask = invalid
-  m.LoadSeasonAllEpisodesTask = invalid
-  m.LoadSeasonEpisodesTask = invalid
-  m.LoadAdditionalPartsTask = invalid
-  m.LoadPeopleTask = invalid
-  m.LikeThisTask = invalid
-  m.SpecialFeaturesTask = invalid
-  m.LoadMoviesTask = invalid
-  m.LoadShowsTask = invalid
-  m.LoadSeriesTask = invalid
-  m.LoadBoxSetItemsTask = invalid
-  m.LoadArtistAlbumsTask = invalid
-  m.LoadArtistAppearsOnTask = invalid
-  m.LoadArtistSongsTask = invalid
-  m.LoadArtistSimilarTask = invalid
-  m.LoadAlbumSongsTask = invalid
-  m.LoadPlaylistItemsTask = invalid
-  m.LoadPhotoAlbumItemsTask = invalid
-  m.LoadChannelProgramsTask = invalid
-
-  ' Clear row references
-  m.rowChapters = invalid
-  m.rowAdditionalParts = invalid
-  m.rowSeasons = invalid
-  m.rowEpisodes = invalid
-  m.rowSeasonEpisodes = invalid
-  m.rowCast = invalid
-  m.rowLikeThis = invalid
-  m.rowSpecialFeatures = invalid
-  m.rowBoxSetItems = invalid
-  m.rowMovies = invalid
-  m.rowTvShows = invalid
-  m.rowSeries = invalid
-  m.rowArtistAlbums = invalid
-  m.rowArtistAppearsOn = invalid
-  m.rowArtistSongs = invalid
-  m.rowAlbumSongs = invalid
-  m.rowAlbumArtistAlbums = invalid
-  m.rowPlaylistItems = invalid
-  m.rowPhotoAlbumItems = invalid
-  m.rowChannelPrograms = invalid
-
-  ' Reset flags
-  m.isRefetchingChannelPrograms = false
+  m.isRunning = false
+  m.extrasTask = invalid
+  m.plan = []
+  m.slots = []
+  m.results = []
+  m.rowsByKind = {}
+  m.shapeByKind = {}
+  m.digestByKind = {}
 end sub
 
 ' onKeyEvent: Anticipate the next row on UP/DOWN so the panel translation animation starts

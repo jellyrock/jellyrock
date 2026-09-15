@@ -1,0 +1,271 @@
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPipeline.bs"
+import "pkg:/source/data/JellyfinDataTransformer.bs"
+import "pkg:/source/extras/extrasRows.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/misc.bs"
+
+sub init()
+  m.log = new log.Logger("LoadExtrasRowsTask")
+  m.top.functionName = "loadExtrasRows"
+end sub
+
+' One thread services every extras row an item shows. It replaced a serial chain of one
+' persistent LoadItemsTask per row kind, where each row launched the next from its observer —
+' so row k waited for the SUM of fetches 0..k, and every hop rewrote the RowList's layout
+' after rows already existed, which redraws its row counter.
+'
+' apiPipeline keeps up to apiPool.SLOT_COUNT requests in flight on this one thread, so rows now
+' arrive in completion order. Display order is restored by the consumer, which commits nothing
+' until every row has resolved — see ExtrasRowList.commitRows.
+'
+' Pool readiness: apiPipeline does not wait for the API pool to come up. That is safe here for
+' the same reason it is for LoadLatestRowsTask — ExtrasRowList is only asked to load once
+' ItemDetails holds the item, which arrived through a blocking fetch (loadDetailsTask, or the
+' deep-link resolver), so the pool is provably up.
+sub loadExtrasRows()
+  rows = m.top.rows
+  if not isValidAndNotEmpty(rows) then return
+
+  runId = m.top.runId
+  m.transformer = JellyfinDataTransformer()
+
+  ' Declared unconditionally so bslint (LINT1003) sees every path assign them.
+  runClock = invalid
+  stepClock = invalid
+  waitMs = 0
+  emitMs = 0
+  #if perfTiming
+    ' Same wait / emit split as LoadLatestRowsTask, so the two orchestrators' numbers read
+    ' the same way. See the comment there for why it is gated on perfTiming and not debug.
+    runClock = CreateObject("roTimespan")
+    stepClock = CreateObject("roTimespan")
+  #end if
+
+  ' Read once: m.global is render-owned, so each read from this thread is a rendezvous. The
+  ' server version is handed to every transform (which would otherwise re-read it per row) and
+  ' folded into each row's digest, because the transform's output depends on it.
+  userId = m.global.user.id
+  m.serverVersion = m.global.server.version
+  if m.serverVersion = "" then m.serverVersion = "unknown"
+
+  entries = []
+  for each row in rows
+    if row.kind = "cast"
+      ' No request — the people are already on the item. Emitted before the pipeline starts so
+      ' the row resolves as early as a local row can.
+      #if perfTiming
+        stepClock.mark()
+      #end if
+      people = m.top.people
+      ' &h0200: an unsupported value becomes a descriptive string rather than failing the whole
+      ' format to "" (which would still be safe — an empty digest always rewrites the row).
+      emitRow(runId, row, "ok", castItems(people), extrasRows.digestOf(FormatJSON(people, &h0200)))
+      #if perfTiming
+        emitMs += stepClock.totalMilliseconds()
+      #end if
+    else
+      entries.push({ requestId: "extras-" + row.kind, req: buildRowRequest(row, userId), row: row })
+    end if
+  end for
+
+  pipe = apiPipelineBegin(entries)
+  #if perfTiming
+    stepClock.mark()
+  #end if
+  result = apiPipelineNext(pipe)
+  #if perfTiming
+    waitMs += stepClock.totalMilliseconds()
+  #end if
+
+  while isValid(result)
+    #if perfTiming
+      stepClock.mark()
+    #end if
+    emitResponse(runId, result.entry.row, result.res)
+    #if perfTiming
+      emitMs += stepClock.totalMilliseconds()
+      stepClock.mark()
+    #end if
+    result = apiPipelineNext(pipe)
+    #if perfTiming
+      waitMs += stepClock.totalMilliseconds()
+    #end if
+  end while
+
+  #if perfTiming
+    #if debug
+      buildFlags = " [debug=true perfTiming=true]"
+    #else
+      buildFlags = " [debug=false perfTiming=true]"
+    #end if
+    m.log.info("extras-rows orchestrator done -" + buildFlags, "rows", rows.count(), "task", runClock.totalMilliseconds(), "wait", waitMs, "emit", emitMs)
+  #end if
+end sub
+
+' The request for one row. Mirrors what each LoadItemsTask branch sent, parameter for parameter.
+'
+' @return a request AA, or invalid when one cannot be built (e.g. no user on a V1 server) —
+'         apiPipeline yields such an entry as undelivered, which the row reports as failed.
+function buildRowRequest(row as object, userId as string) as dynamic
+  kind = row.kind
+  api = GetApi()
+
+  if kind = "additionalParts"
+    return api.BuildGetAdditionalPartsRequest(row.itemId)
+  else if kind = "specialFeatures"
+    return api.BuildGetSpecialFeaturesRequest(row.itemId)
+  else if kind = "likeThis"
+    return api.BuildGetSimilarItemsRequest(row.itemId, { "userId": userId, "limit": 16 })
+  else if kind = "artistSimilar"
+    return api.BuildGetArtistSimilarRequest(row.itemId, { "userId": userId, "limit": 16 })
+  else if kind = "seasons"
+    return api.BuildGetSeasonsRequest(row.itemId, { Fields: "PrimaryImageAspectRatio,Overview", EnableImages: true })
+  else if kind = "episodes" or kind = "seasonEpisodes"
+    return api.BuildGetEpisodesRequest(row.itemId, {
+      SeasonId: row.seasonId,
+      Fields: "PrimaryImageAspectRatio,Overview",
+      EnableImages: true
+    })
+  else if kind = "boxSetItems"
+    return api.BuildGetItemsByQueryRequest({
+      "ParentId": row.itemId,
+      "SortBy": "PremiereDate,ProductionYear,SortName",
+      "SortOrder": "Ascending",
+      "Fields": "PrimaryImageAspectRatio,Overview",
+      "EnableTotalRecordCount": false
+    })
+  else if kind = "artistAlbums" or kind = "moreAlbums"
+    ' Albums where this artist is the album artist, newest first.
+    return api.BuildGetItemsByQueryRequest({
+      "AlbumArtistIds": row.itemId,
+      "includeitemtypes": "MusicAlbum",
+      "sortBy": "PremiereDate,ProductionYear,SortName",
+      "SortOrder": "Descending",
+      "Recursive": true
+    })
+  else if kind = "artistAppearsOn"
+    ' Albums this artist contributes to but is not the album artist of — mutually exclusive
+    ' with artistAlbums by Jellyfin's definition of ContributingArtistIds.
+    return api.BuildGetItemsByQueryRequest({
+      "ContributingArtistIds": row.itemId,
+      "includeitemtypes": "MusicAlbum",
+      "sortBy": "PremiereDate,ProductionYear,SortName",
+      "SortOrder": "Descending",
+      "Recursive": true
+    })
+  else if kind = "artistSongs"
+    ' ArtistIds (album artist OR contributing) so songs on compilations surface too. Grouped by
+    ' album then track; capped at 100 for prolific artists.
+    return api.BuildGetItemsByQueryRequest({
+      "ArtistIds": row.itemId,
+      "includeitemtypes": "Audio",
+      "sortBy": "Album,ParentIndexNumber,IndexNumber,SortName",
+      "Recursive": true,
+      "Limit": 100,
+      "EnableTotalRecordCount": false
+    })
+  else if kind = "albumSongs" or kind = "albumTracks"
+    return api.BuildGetItemsByQueryRequest({
+      "parentId": row.itemId,
+      "includeitemtypes": "Audio",
+      "sortBy": "SortName"
+    })
+  else if kind = "playlistItems"
+    return api.BuildGetPlaylistItemsRequest(row.itemId, {
+      "SortBy": "DateCreated",
+      "SortOrder": "Descending",
+      "Fields": "PrimaryImageAspectRatio,Overview",
+      "EnableTotalRecordCount": false
+    })
+  else if kind = "photoAlbumItems"
+    return api.BuildGetItemsByQueryRequest({
+      "ParentId": row.itemId,
+      "IncludeItemTypes": "Photo",
+      "SortBy": "SortName",
+      "SortOrder": "Ascending",
+      "Fields": "PrimaryImageAspectRatio",
+      "EnableTotalRecordCount": false
+    })
+  else if kind = "channelPrograms"
+    ' Upcoming programs on the channel; ChannelInfo feeds the channel-name subtitle.
+    return api.BuildGetLiveTVProgramsRequest({
+      "ChannelIds": row.itemId,
+      "HasAired": false,
+      "SortBy": "StartDate",
+      "SortOrder": "Ascending",
+      "Limit": 20,
+      "Fields": "ChannelInfo,PrimaryImageAspectRatio,Overview",
+      "EnableTotalRecordCount": false
+    })
+  else if kind = "personMovies"
+    return personVideosRequest(row.itemId, "Movie")
+  else if kind = "personEpisodes"
+    return personVideosRequest(row.itemId, "Episode")
+  else if kind = "personSeries"
+    return personVideosRequest(row.itemId, "Series")
+  end if
+
+  m.log.warn("extras row kind has no request; reporting it failed", kind)
+  return invalid
+end function
+
+function personVideosRequest(personId as string, videoType as string) as dynamic
+  return GetApi().BuildGetItemsByQueryRequest({ personIds: personId, recursive: true, includeItemTypes: videoType, Limit: 50, SortBy: "Random" })
+end function
+
+' Transforms one pipeline response and emits its row.
+'
+' `res` is invalid when the request never got an answer; an HTTP error (`res.ok = false`) is
+' folded into the same "failed" status, because neither says what the item HAS. Only an "ok"
+' carries a list the UI may act on, including an empty one.
+sub emitResponse(runId as integer, row as object, res as dynamic)
+  if not isValid(res) or not res.ok
+    m.log.warn("extras row failed; leaving any existing row in place", row.kind)
+    emitRow(runId, row, "failed", [], "")
+    return
+  end if
+
+  apiItems = invalid
+  json = res.json
+  if row.kind = "specialFeatures"
+    ' The one endpoint here that answers with a bare array rather than { Items }.
+    apiItems = json
+  else if isValid(json)
+    apiItems = json.Items
+  end if
+  if type(apiItems) <> "roArray" then apiItems = []
+
+  ' The digest is taken over the response body exactly as the server sent it: it identifies the
+  ' row's content without comparing item nodes on the render thread (see extrasRows.digestOf).
+  ' An empty body digests to "", which always rewrites the row.
+  body = res.text ?? ""
+  digest = ""
+  if body <> "" then digest = extrasRows.digestOf(body + "|" + m.serverVersion)
+
+  emitRow(runId, row, "ok", m.transformer.transformBaseItemArray(apiItems, m.serverVersion), digest)
+end sub
+
+function castItems(people as dynamic) as object
+  items = []
+  if not isValid(people) then return items
+  for each person in people
+    node = m.transformer.transformPerson(person)
+    if isValid(node) then items.push(node)
+  end for
+  return items
+end function
+
+' Finishes a row (ordering, filtering, playlist shape) and appends its carrier.
+'
+' Everything before the append is thread-local — the item nodes and the carrier belong to this
+' thread until then. The append and the rowReady write are the row's two crossings.
+sub emitRow(runId as integer, row as object, status as string, items as object, digest as string)
+  finished = { items: items, shape: row.shape }
+  if status = "ok" then finished = extrasRows.finishRow(row, items)
+
+  child = CreateObject("roSGNode", "ContentNode")
+  child.addFields({ runId: runId, slot: row.slot, status: status, shape: finished.shape, items: finished.items, digest: digest })
+  m.top.appendChild(child)
+  m.top.rowReady = row.slot
+end sub

@@ -982,19 +982,19 @@ async function openChildDetailByRowType(tileType) {
     read: getActiveVal,
   });
   // Poll for the row rather than scanning once, for the same reason `findHomeLibraryTile`
-  // does: `ExtrasRowList.populateRow` APPENDS rows as its async load chain progresses, so
-  // the count gate above can pass on the first row while the requested type has not landed
-  // yet. A single pass then throws about a screen that is fine a moment later. (Seen once
-  // during this work: `detail row with tile type "Season" not found` on a run whose other
-  // 35 screens passed.) The old fixed `sleep(1200)` was papering over exactly this — a
-  // bounded poll replaces it, and returns as soon as the row exists rather than always
-  // paying the full delay.
+  // does. When this was written, `ExtrasRowList` APPENDED rows one task hop at a time, so the
+  // count gate above could pass on the first row while the requested type had not landed yet,
+  // and a single pass threw about a screen that was fine a moment later. (Seen once: `detail
+  // row with tile type "Season" not found` on a run whose other 35 screens passed.) It now
+  // commits every row of a load at once (`commitRows`), which removes that cause for a first
+  // load; the bounded poll stays because it costs nothing once the row exists, and it replaced
+  // a fixed `sleep(1200)` that always paid the full delay.
   //
   // THAT IS ONE OF TWO CAUSES, AND THE COMMENT ABOVE USED TO CLAIM IT WAS THE ONLY ONE.
   // The same message also comes out when the nav opened the WRONG ITEM, and then no
   // amount of waiting helps. Recurrence 2026-08-23, `seasonDetails`: rowTypes came back
-  // `[Chapter, Person]`, and `ExtrasRowList.loadParts` gives a Series the chain
-  // `Seasons -> People -> LikeThis` — a Series cannot emit a `Chapter` row at all, so the
+  // `[Chapter, Person]`, and `extrasRows.plan` gives a Series the rows
+  // `Seasons, Cast, More Like This` — a Series cannot emit a `Chapter` row at all, so the
   // screen under the assertion was a Movie or an Episode, not the series the nav asked
   // for. Reading `[Chapter, Person]` as "Season is still loading" costs an investigation
   // every time, because the fix it points at (wait longer) is for the other cause.
@@ -1002,7 +1002,7 @@ async function openChildDetailByRowType(tileType) {
   // So the throw below reads the three fields that separate them outright, rather than
   // leaving the next reader to know the row chains by heart:
   //   type          what ItemDetails is actually showing — the whole question
-  //   contentReady  ExtrasRowList's own chain-complete marker (`markChainComplete`).
+  //   contentReady  ExtrasRowList's own run-complete marker (set in `finishRunIfResolved`).
   //                 True with the row absent means ABSENT, not late; the poll can stop
   //                 being suspected.
   //   parentId      which item, so it can be looked up on the server afterwards

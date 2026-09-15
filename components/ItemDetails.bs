@@ -2857,9 +2857,9 @@ sub onItemContentChanged()
     ' Load extras rows on first content load only; explicit refresh via onRefreshExtrasData.
     if not m.extrasLoaded
       m.extrasLoaded = true
-      ' The extras chain is the one fill EVERY item type runs, and the largest — it is
-      ' a serial run of up to five task hops. Its completion is `contentReady`, a signal
-      ' ExtrasRowList did not previously expose; see markChainComplete there.
+      ' The extras rows are the one fill EVERY item type runs, and the largest — up to
+      ' five rows from one orchestrator run. Its completion is ExtrasRowList's
+      ' `contentReady`, set when the run's last row has resolved (see finishRunIfResolved).
       screenLoad.pending("extras")
       if item.type = "Person"
         m.extrasGrid.callFunc("loadPersonVideos", item.id)

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<component name="LoadExtrasRowsTask" extends="Task">
+  <interface>
+    <!-- The rows to load, in display order: extrasRows.plan() entries that need this thread,
+         each carrying `slot`, its index in the full plan. Chapters is built on the render
+         thread and never sent here. -->
+    <field id="rows" type="array" />
+    <!-- The item's People array, transformed here into the Cast row. -->
+    <field id="people" type="array" />
+    <!-- Stamped onto every result so a consumer can drop a stopped run's late results. -->
+    <field id="runId" type="integer" />
+    <!-- Wake signal only — the value is ignored. Results ride as appended children
+         ({ runId, slot, status, shape, items, digest } ContentNodes), so coalesced wake events
+         can't drop a row. status "ok" = authoritative (an empty items list means the item really
+         has none); status "failed" = no answer, so a row already on screen must stand. digest
+         identifies the row's source content ("" when unknown) — see extrasRows.digestOf. -->
+    <field id="rowReady" type="integer" alwaysNotify="true" />
+  </interface>
+</component>
