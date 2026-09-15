@@ -309,9 +309,9 @@ import "pkg:/source/utils/tasks.bs"
   '
   ' Pruning every launch is not gold-plating: `pruneTaskLedger` is what de-duplicates
   ' a relaunched node against the ledger, and a persistent Task node gets relaunched
-  ' many times (`ExtrasRowList` alone relaunches its nodes 38 times). Skip it and the
-  ' same live thread is counted 38 times, which would trip the watermark on an app
-  ' running 11 threads. So this measures the honest floor for a CORRECT ledger that
+  ' many times (when this was measured, `ExtrasRowList` alone relaunched its nodes 38
+  ' times). Skip it and the same live thread is counted 38 times, which would trip the
+  ' watermark on an app running 11 threads. So this measures the honest floor for a CORRECT ledger that
   ' pays no node-field cost.
   function benchAaRecord(depth as integer, iterations as integer, skipLCase as boolean) as float
     gaa = GetGlobalAA()

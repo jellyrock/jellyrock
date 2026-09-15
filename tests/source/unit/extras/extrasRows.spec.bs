@@ -1,0 +1,642 @@
+import "pkg:/source/constants/itemAspectRatio.bs"
+import "pkg:/source/extras/extrasRows.bs"
+import "pkg:/source/translationKeys.bs"
+
+namespace tests
+
+  ' Contract tests for the extras-row decision layer (source/extras/extrasRows.bs).
+  '
+  ' Two properties are load-bearing. The PLAN must reproduce, per item type, the row order,
+  ' slot shape and request identity the old observer chain produced — a wrong entry is a row
+  ' that silently disappears or renders at the wrong size. And the COMMIT rules must never write
+  ' to the RowList when nothing changed: every write to an on-screen row redraws its row
+  ' counter, which is the flicker this layer exists to remove.
+  @suite("extrasRows - extras row plan, commit rules and sizing")
+  class ExtrasRowsTests extends tests.BaseTestSuite
+
+    private function kindsOf(plan as object) as object
+      kinds = []
+      for each row in plan
+        kinds.push(row.kind)
+      end for
+      return kinds
+    end function
+
+    private function shapesOf(plan as object) as object
+      shapes = []
+      for each row in plan
+        shapes.push(row.shape)
+      end for
+      return shapes
+    end function
+
+    private function findRow(plan as object, kind as string) as dynamic
+      for each row in plan
+        if row.kind = kind then return row
+      end for
+      return invalid
+    end function
+
+    private function idsOf(items as object) as object
+      ids = []
+      for each item in items
+        ids.push(item.id)
+      end for
+      return ids
+    end function
+
+    private function pending() as object
+      return { status: "pending", count: 0 }
+    end function
+
+    private function ok(count as integer) as object
+      return { status: "ok", count: count }
+    end function
+
+    private function failed() as object
+      return { status: "failed", count: 0 }
+    end function
+
+    ' A row's record as commitActions sees it on screen.
+    private function onScreenRow(title as string, shape as string, digest as string, contentKind = "" as string) as object
+      return { title: title, shape: shape, digest: digest, contentKind: contentKind }
+    end function
+
+    ' A finished row as the run delivers it.
+    private function delivered(shape as string, digest as string, contentKind = "" as string) as object
+      return { items: [], shape: shape, digest: digest, contentKind: contentKind }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("plan: row order and slot shape per item type")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("Movie: chapters, additional parts, cast, more like this, special features")
+    function _()
+      plan = extrasRows.plan("Movie", { id: "m1" })
+
+      m.assertEqual(m.kindsOf(plan), ["chapters", "additionalParts", "cast", "likeThis", "specialFeatures"])
+      m.assertEqual(m.shapesOf(plan), ["WIDE", "PORTRAIT", "PORTRAIT", "PORTRAIT", "WIDE"])
+    end function
+
+    @it("Recording and unknown types take the Movie plan")
+    function _()
+      m.assertEqual(m.kindsOf(extrasRows.plan("Recording", { id: "r1" })), ["chapters", "additionalParts", "cast", "likeThis", "specialFeatures"])
+      m.assertEqual(m.kindsOf(extrasRows.plan("SomethingNew", { id: "x1" })), ["chapters", "additionalParts", "cast", "likeThis", "specialFeatures"])
+    end function
+
+    @it("Video: More Like This is WIDE, everything else matches Movie")
+    function _()
+      plan = extrasRows.plan("Video", { id: "v1" })
+
+      m.assertEqual(m.shapesOf(plan), ["WIDE", "PORTRAIT", "PORTRAIT", "WIDE", "WIDE"])
+    end function
+
+    @it("Episode: chapters, season episodes, cast, more like this")
+    function _()
+      plan = extrasRows.plan("Episode", { id: "e3", seriesId: "s1", seasonId: "sn1", parentIndexNumber: 2 })
+
+      m.assertEqual(m.kindsOf(plan), ["chapters", "seasonEpisodes", "cast", "likeThis"])
+      m.assertEqual(m.shapesOf(plan), ["WIDE", "WIDE", "PORTRAIT", "PORTRAIT"])
+    end function
+
+    @it("Episode: season episodes are fetched by series id and season id")
+    function _()
+      row = m.findRow(extrasRows.plan("Episode", { id: "e3", seriesId: "s1", seasonId: "sn1", parentIndexNumber: 2 }), "seasonEpisodes")
+
+      m.assertEqual(row.itemId, "s1")
+      m.assertEqual(row.seasonId, "sn1")
+      m.assertEqual(row.currentId, "e3")
+    end function
+
+    @it("Episode: the season row is omitted when the episode has no season id")
+    function _()
+      plan = extrasRows.plan("Episode", { id: "e3", seriesId: "s1", seasonId: "" })
+
+      m.assertEqual(m.kindsOf(plan), ["chapters", "cast", "likeThis"])
+    end function
+
+    @it("Episode: season row is titled with the season number when there is one")
+    function _()
+      withNumber = m.findRow(extrasRows.plan("Episode", { id: "e", seriesId: "s", seasonId: "sn", parentIndexNumber: 2 }), "seasonEpisodes")
+      withoutNumber = m.findRow(extrasRows.plan("Episode", { id: "e", seriesId: "s", seasonId: "sn", parentIndexNumber: 0 }), "seasonEpisodes")
+
+      m.assertEqual(withNumber.titleKey, translationKeys.MessageMoreFromSeason1)
+      m.assertEqual(withNumber.titleArgs, ["2"])
+      m.assertEqual(withoutNumber.titleKey, translationKeys.LabelMoreEpisodes)
+    end function
+
+    @it("Episode: More Like This is keyed on the series, falling back to the episode")
+    function _()
+      withSeries = m.findRow(extrasRows.plan("Episode", { id: "e", seriesId: "s", seasonId: "sn" }), "likeThis")
+      withoutSeries = m.findRow(extrasRows.plan("Episode", { id: "e", seriesId: "", seasonId: "sn" }), "likeThis")
+
+      m.assertEqual(withSeries.itemId, "s")
+      m.assertEqual(withoutSeries.itemId, "e")
+    end function
+
+    @it("MusicVideo: cast then a WIDE More Like This")
+    function _()
+      plan = extrasRows.plan("MusicVideo", { id: "mv" })
+
+      m.assertEqual(m.kindsOf(plan), ["cast", "likeThis"])
+      m.assertEqual(m.shapesOf(plan), ["PORTRAIT", "WIDE"])
+    end function
+
+    @it("Series: seasons, cast, more like this — all PORTRAIT")
+    function _()
+      plan = extrasRows.plan("Series", { id: "s1" })
+
+      m.assertEqual(m.kindsOf(plan), ["seasons", "cast", "likeThis"])
+      m.assertEqual(m.shapesOf(plan), ["PORTRAIT", "PORTRAIT", "PORTRAIT"])
+    end function
+
+    @it("Season: WIDE episodes fetched by series id and this season's id")
+    function _()
+      plan = extrasRows.plan("Season", { id: "sn1", seriesId: "s1" })
+      row = m.findRow(plan, "episodes")
+
+      m.assertEqual(m.kindsOf(plan), ["episodes", "cast", "likeThis"])
+      m.assertEqual(m.shapesOf(plan), ["WIDE", "PORTRAIT", "PORTRAIT"])
+      m.assertEqual(row.itemId, "s1")
+      m.assertEqual(row.seasonId, "sn1")
+    end function
+
+    @it("BoxSet: movies, cast, more like this")
+    function _()
+      plan = extrasRows.plan("BoxSet", { id: "b1" })
+
+      m.assertEqual(m.kindsOf(plan), ["boxSetItems", "cast", "likeThis"])
+      m.assertEqual(m.shapesOf(plan), ["PORTRAIT", "PORTRAIT", "PORTRAIT"])
+    end function
+
+    @it("MusicArtist: albums, appears on, songs, similar artists — all SQUARE, no likeThis")
+    function _()
+      plan = extrasRows.plan("MusicArtist", { id: "a1" })
+
+      m.assertEqual(m.kindsOf(plan), ["artistAlbums", "artistAppearsOn", "artistSongs", "artistSimilar"])
+      m.assertEqual(m.shapesOf(plan), ["SQUARE", "SQUARE", "SQUARE", "SQUARE"])
+    end function
+
+    @it("MusicAlbum: songs, more albums by the first album artist, more like this")
+    function _()
+      plan = extrasRows.plan("MusicAlbum", { id: "al1", albumArtists: [{ Id: "ar1" }] })
+      moreAlbums = m.findRow(plan, "moreAlbums")
+
+      m.assertEqual(m.kindsOf(plan), ["albumSongs", "moreAlbums", "likeThis"])
+      m.assertEqual(m.shapesOf(plan), ["SQUARE", "SQUARE", "SQUARE"])
+      m.assertEqual(moreAlbums.itemId, "ar1")
+      m.assertEqual(moreAlbums.excludeId, "al1")
+    end function
+
+    @it("MusicAlbum: more albums is omitted without an album artist id")
+    function _()
+      m.assertEqual(m.kindsOf(extrasRows.plan("MusicAlbum", { id: "al1", albumArtists: [] })), ["albumSongs", "likeThis"])
+      m.assertEqual(m.kindsOf(extrasRows.plan("MusicAlbum", { id: "al1" })), ["albumSongs", "likeThis"])
+      m.assertEqual(m.kindsOf(extrasRows.plan("MusicAlbum", { id: "al1", albumArtists: [{ Name: "no id" }] })), ["albumSongs", "likeThis"])
+    end function
+
+    @it("Audio: album tracks (current first) then more like this")
+    function _()
+      plan = extrasRows.plan("Audio", { id: "t3", albumId: "al1", albumName: "Blue" })
+      tracks = m.findRow(plan, "albumTracks")
+
+      m.assertEqual(m.kindsOf(plan), ["albumTracks", "likeThis"])
+      m.assertEqual(m.shapesOf(plan), ["SQUARE", "SQUARE"])
+      m.assertEqual(tracks.itemId, "al1")
+      m.assertEqual(tracks.currentId, "t3")
+      m.assertEqual(tracks.titleKey, translationKeys.MessageMoreFrom1)
+      m.assertEqual(tracks.titleArgs, ["Blue"])
+    end function
+
+    @it("Audio: without an album there is only more like this; without an album name the tracks row is Album Tracks")
+    function _()
+      m.assertEqual(m.kindsOf(extrasRows.plan("Audio", { id: "t3", albumId: "" })), ["likeThis"])
+      tracks = m.findRow(extrasRows.plan("Audio", { id: "t3", albumId: "al1", albumName: "" }), "albumTracks")
+      m.assertEqual(tracks.titleKey, translationKeys.LabelAlbumTracks)
+    end function
+
+    @it("Playlist: items (shape decided by content) then a SQUARE more like this")
+    function _()
+      plan = extrasRows.plan("Playlist", { id: "p1" })
+
+      m.assertEqual(m.kindsOf(plan), ["playlistItems", "likeThis"])
+      m.assertEqual(m.shapesOf(plan), ["PORTRAIT", "SQUARE"])
+    end function
+
+    @it("Photo: a WIDE more like this only")
+    function _()
+      plan = extrasRows.plan("Photo", { id: "ph" })
+
+      m.assertEqual(m.kindsOf(plan), ["likeThis"])
+      m.assertEqual(m.shapesOf(plan), ["WIDE"])
+    end function
+
+    @it("PhotoAlbum: WIDE photos then WIDE more like this")
+    function _()
+      plan = extrasRows.plan("PhotoAlbum", { id: "pa" })
+
+      m.assertEqual(m.kindsOf(plan), ["photoAlbumItems", "likeThis"])
+      m.assertEqual(m.shapesOf(plan), ["WIDE", "WIDE"])
+    end function
+
+    @it("TvChannel: Up Next for this channel then more like this — SQUARE")
+    function _()
+      plan = extrasRows.plan("TvChannel", { id: "ch1" })
+      programs = m.findRow(plan, "channelPrograms")
+
+      m.assertEqual(m.kindsOf(plan), ["channelPrograms", "likeThis"])
+      m.assertEqual(m.shapesOf(plan), ["SQUARE", "SQUARE"])
+      m.assertEqual(programs.itemId, "ch1")
+      m.assertEqual(programs.titleKey, translationKeys.LabelUpNext)
+    end function
+
+    @it("Program: More on this Channel for its channel, omitted without one")
+    function _()
+      plan = extrasRows.plan("Program", { id: "pr1", channelId: "ch1" })
+      programs = m.findRow(plan, "channelPrograms")
+
+      m.assertEqual(m.kindsOf(plan), ["channelPrograms", "likeThis"])
+      m.assertEqual(programs.itemId, "ch1")
+      m.assertEqual(programs.titleKey, translationKeys.LabelMoreOnThisChannel)
+      m.assertEqual(m.kindsOf(extrasRows.plan("Program", { id: "pr1", channelId: "" })), ["likeThis"])
+    end function
+
+    @it("Person: movies, episodes, series")
+    function _()
+      plan = extrasRows.plan("Person", { id: "pe1" })
+
+      m.assertEqual(m.kindsOf(plan), ["personMovies", "personEpisodes", "personSeries"])
+      m.assertEqual(m.shapesOf(plan), ["PORTRAIT", "WIDE", "PORTRAIT"])
+      m.assertEqual(plan[0].itemId, "pe1")
+    end function
+
+    @it("every row fetched by id is fetched for this item unless its type says otherwise")
+    function _()
+      plan = extrasRows.plan("Movie", { id: "m1" })
+
+      m.assertEqual(m.findRow(plan, "additionalParts").itemId, "m1")
+      m.assertEqual(m.findRow(plan, "likeThis").itemId, "m1")
+      m.assertEqual(m.findRow(plan, "specialFeatures").itemId, "m1")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("finishRow: per-row ordering, filtering and shape")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("puts the current item first, then those after it, then those before it")
+    function _()
+      row = { kind: "seasonEpisodes", shape: "WIDE", currentId: "3" }
+      items = [{ id: "1" }, { id: "2" }, { id: "3" }, { id: "4" }, { id: "5" }]
+
+      finished = extrasRows.finishRow(row, items)
+
+      m.assertEqual(m.idsOf(finished.items), ["3", "4", "5", "1", "2"])
+    end function
+
+    @it("keeps the server's order when the current item is not in the list")
+    function _()
+      row = { kind: "albumTracks", shape: "SQUARE", currentId: "missing" }
+
+      finished = extrasRows.finishRow(row, [{ id: "1" }, { id: "2" }])
+
+      m.assertEqual(m.idsOf(finished.items), ["1", "2"])
+    end function
+
+    @it("drops the excluded album from more albums")
+    function _()
+      row = { kind: "moreAlbums", shape: "SQUARE", excludeId: "al1" }
+
+      finished = extrasRows.finishRow(row, [{ id: "al0" }, { id: "al1" }, { id: "al2" }])
+
+      m.assertEqual(m.idsOf(finished.items), ["al0", "al2"])
+    end function
+
+    @it("an all-audio playlist is SQUARE, anything else PORTRAIT")
+    function _()
+      row = { kind: "playlistItems", shape: "PORTRAIT" }
+
+      m.assertEqual(extrasRows.finishRow(row, [{ id: "a", type: "Audio" }, { id: "b", type: "Audio" }]).shape, "SQUARE")
+      m.assertEqual(extrasRows.finishRow(row, [{ id: "a", type: "Audio" }, { id: "b", type: "Movie" }]).shape, "PORTRAIT")
+      m.assertEqual(extrasRows.finishRow(row, []).shape, "PORTRAIT")
+    end function
+
+    @it("rows without post-processing pass items and shape through")
+    function _()
+      row = { kind: "likeThis", shape: "WIDE" }
+
+      finished = extrasRows.finishRow(row, [{ id: "2" }, { id: "1" }])
+
+      m.assertEqual(m.idsOf(finished.items), ["2", "1"])
+      m.assertEqual(finished.shape, "WIDE")
+    end function
+
+    @it("classifies a playlist row's content, and no other row's")
+    function _()
+      playlist = { kind: "playlistItems", shape: "PORTRAIT" }
+      likeThis = { kind: "likeThis", shape: "SQUARE" }
+      items = [{ id: "a", type: "Movie" }]
+
+      m.assertEqual(extrasRows.finishRow(playlist, items).contentKind, "video")
+      m.assertEqual(extrasRows.finishRow(playlist, []).contentKind, "unknown")
+      m.assertEqual(extrasRows.finishRow(likeThis, items).contentKind, "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("playlistContentKind")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("video when any item is a video type")
+    function _()
+      m.assertEqual(extrasRows.playlistContentKind([{ type: "Audio" }, { type: "Episode" }]), "video")
+      for each videoType in ["Movie", "Episode", "Video", "MusicVideo", "Recording"]
+        m.assertEqual(extrasRows.playlistContentKind([{ type: videoType }]), "video")
+      end for
+    end function
+
+    @it("audio when every item is Audio")
+    function _()
+      m.assertEqual(extrasRows.playlistContentKind([{ type: "Audio" }, { type: "Audio" }]), "audio")
+    end function
+
+    @it("mixed when non-audio items include no video type")
+    function _()
+      m.assertEqual(extrasRows.playlistContentKind([{ type: "Audio" }, { type: "Photo" }]), "mixed")
+    end function
+
+    @it("unknown when empty or invalid")
+    function _()
+      m.assertEqual(extrasRows.playlistContentKind([]), "unknown")
+      m.assertEqual(extrasRows.playlistContentKind(invalid), "unknown")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isRunResolved: a run commits only once every slot has resolved")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is not resolved while any slot is pending, wherever it is")
+    function _()
+      m.assertFalse(extrasRows.isRunResolved([m.pending(), m.ok(3)]))
+      m.assertFalse(extrasRows.isRunResolved([m.ok(3), m.failed(), m.pending()]))
+    end function
+
+    @it("is resolved when every slot answered, failed or was not part of the run")
+    function _()
+      m.assertTrue(extrasRows.isRunResolved([m.ok(2), m.ok(0), m.failed(), { status: "unchanged", count: 0 }]))
+    end function
+
+    @it("an empty plan is resolved immediately")
+    function _()
+      m.assertTrue(extrasRows.isRunResolved([]))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isRowUnchanged: a refresh writes nothing to a row that did not change")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("the same title and the same content digest is unchanged")
+    function _()
+      m.assertTrue(extrasRows.isRowUnchanged("Cast & Crew", "abc", "Cast & Crew", "abc"))
+    end function
+
+    @it("a different digest is a change")
+    function _()
+      m.assertFalse(extrasRows.isRowUnchanged("Cast & Crew", "abc", "Cast & Crew", "abd"))
+    end function
+
+    @it("a different title is a change")
+    function _()
+      m.assertFalse(extrasRows.isRowUnchanged("More from Season 1", "abc", "More from Season 2", "abc"))
+    end function
+
+    @it("an empty digest is never unchanged — no digest means the content could not be identified")
+    function _()
+      m.assertFalse(extrasRows.isRowUnchanged("T", "", "T", ""))
+      m.assertFalse(extrasRows.isRowUnchanged("T", "abc", "T", ""))
+      m.assertFalse(extrasRows.isRowUnchanged("T", "", "T", "abc"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("digestOf: identifies a row's source content")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("the same text always digests the same")
+    function _()
+      body = FormatJSON({ Items: [{ Id: "a", Name: "Café", UserData: { Played: false } }] })
+
+      m.assertEqual(extrasRows.digestOf(body), extrasRows.digestOf(body))
+      m.assertNotEqual(extrasRows.digestOf(body), "")
+    end function
+
+    @it("a one-character change digests differently — a played flag is enough")
+    function _()
+      unplayed = FormatJSON({ Items: [{ Id: "a", UserData: { Played: false } }] })
+      played = FormatJSON({ Items: [{ Id: "a", UserData: { Played: true } }] })
+
+      m.assertNotEqual(extrasRows.digestOf(unplayed), extrasRows.digestOf(played))
+    end function
+
+    @it("non-ASCII text digests distinctly")
+    function _()
+      m.assertNotEqual(extrasRows.digestOf("Café"), extrasRows.digestOf("Cafe"))
+    end function
+
+    @it("empty text has no digest")
+    function _()
+      m.assertEqual(extrasRows.digestOf(""), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("rowDisposition: what a resolved row does to the list")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("an answered row with items fills, whether or not it exists")
+    function _()
+      m.assertEqual(extrasRows.rowDisposition("ok", 3, false), "fill")
+      m.assertEqual(extrasRows.rowDisposition("ok", 3, true), "fill")
+    end function
+
+    @it("an answered empty row removes an existing row and adds nothing otherwise")
+    function _()
+      m.assertEqual(extrasRows.rowDisposition("ok", 0, true), "remove")
+      m.assertEqual(extrasRows.rowDisposition("ok", 0, false), "skip")
+    end function
+
+    @it("a failed row keeps an existing row — no answer is not an empty answer")
+    function _()
+      m.assertEqual(extrasRows.rowDisposition("failed", 0, true), "keep")
+      m.assertEqual(extrasRows.rowDisposition("failed", 0, false), "skip")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("commitActions: what one commit does to each row")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a first load writes every row that has items, adds nothing for an empty one, and lays out")
+    function _()
+      plan = [{ kind: "cast" }, { kind: "likeThis" }, { kind: "specialFeatures" }]
+      slots = [m.ok(4), m.ok(0), m.failed()]
+      results = [m.delivered("PORTRAIT", "d1"), m.delivered("PORTRAIT", "d2"), m.delivered("WIDE", "")]
+
+      commit = extrasRows.commitActions(plan, slots, results, ["Cast", "More", "Special"], {})
+
+      m.assertEqual(commit.actions, ["write", "none", "none"])
+      m.assertTrue(commit.isStructureChanged)
+    end function
+
+    ' The flicker guarantee: every write to an on-screen row redraws RowList's row counter.
+    @it("a refresh whose rows are unchanged writes nothing and leaves the layout alone")
+    function _()
+      plan = [{ kind: "cast" }, { kind: "likeThis" }]
+      onScreen = { cast: m.onScreenRow("Cast", "PORTRAIT", "d1"), likeThis: m.onScreenRow("More", "PORTRAIT", "d2") }
+
+      commit = extrasRows.commitActions(plan, [m.ok(4), m.ok(2)], [m.delivered("PORTRAIT", "d1"), m.delivered("PORTRAIT", "d2")], ["Cast", "More"], onScreen)
+
+      m.assertEqual(commit.actions, ["leave", "leave"])
+      m.assertFalse(commit.isStructureChanged)
+    end function
+
+    @it("rewrites a row whose content changed, without touching the layout when its shape did not")
+    function _()
+      onScreen = { likeThis: m.onScreenRow("More", "PORTRAIT", "old") }
+
+      commit = extrasRows.commitActions([{ kind: "likeThis" }], [m.ok(2)], [m.delivered("PORTRAIT", "new")], ["More"], onScreen)
+
+      m.assertEqual(commit.actions, ["write"])
+      m.assertFalse(commit.isStructureChanged)
+    end function
+
+    @it("rewrites a row whose title changed even when its content did not")
+    function _()
+      onScreen = { seasonEpisodes: m.onScreenRow("More from Season 1", "WIDE", "d1") }
+
+      commit = extrasRows.commitActions([{ kind: "seasonEpisodes" }], [m.ok(5)], [m.delivered("WIDE", "d1")], ["More from Season 2"], onScreen)
+
+      m.assertEqual(commit.actions, ["write"])
+    end function
+
+    @it("a row that changes slot shape is rewritten and lays out again")
+    function _()
+      onScreen = { playlistItems: m.onScreenRow("Items", "PORTRAIT", "d1") }
+
+      commit = extrasRows.commitActions([{ kind: "playlistItems" }], [m.ok(3)], [m.delivered("SQUARE", "d1", "audio")], ["Items"], onScreen)
+
+      m.assertEqual(commit.actions, ["write"])
+      m.assertTrue(commit.isStructureChanged)
+    end function
+
+    @it("a row whose content cannot be identified is always rewritten")
+    function _()
+      onScreen = { cast: m.onScreenRow("Cast", "PORTRAIT", "") }
+
+      commit = extrasRows.commitActions([{ kind: "cast" }], [m.ok(4)], [m.delivered("PORTRAIT", "")], ["Cast"], onScreen)
+
+      m.assertEqual(commit.actions, ["write"])
+    end function
+
+    @it("a failed refresh keeps the row on screen and changes nothing")
+    function _()
+      onScreen = { likeThis: m.onScreenRow("More", "PORTRAIT", "d2") }
+      plan = [{ kind: "cast" }, { kind: "likeThis" }]
+
+      commit = extrasRows.commitActions(plan, [m.failed(), m.failed()], [m.delivered("PORTRAIT", ""), m.delivered("PORTRAIT", "")], ["Cast", "More"], onScreen)
+
+      m.assertEqual(commit.actions, ["none", "leave"])
+      m.assertFalse(commit.isStructureChanged)
+    end function
+
+    @it("an answered empty row removes the row on screen and lays out again")
+    function _()
+      onScreen = { specialFeatures: m.onScreenRow("Special", "WIDE", "d3") }
+
+      commit = extrasRows.commitActions([{ kind: "specialFeatures" }], [m.ok(0)], [m.delivered("WIDE", "d4")], ["Special"], onScreen)
+
+      m.assertEqual(commit.actions, ["remove"])
+      m.assertTrue(commit.isStructureChanged)
+    end function
+
+    ' A targeted refetch loads one row; the others are "unchanged" slots with no result.
+    @it("a row outside the run stays exactly as it is")
+    function _()
+      plan = [{ kind: "channelPrograms" }, { kind: "likeThis" }]
+      onScreen = { channelPrograms: m.onScreenRow("Up Next", "SQUARE", "p1"), likeThis: m.onScreenRow("More", "SQUARE", "d2") }
+      slots = [m.ok(6), { status: "unchanged", count: 0 }]
+
+      commit = extrasRows.commitActions(plan, slots, [m.delivered("SQUARE", "p2"), invalid], ["Up Next", "More"], onScreen)
+
+      m.assertEqual(commit.actions, ["write", "leave"])
+      m.assertFalse(commit.isStructureChanged)
+    end function
+
+    @it("a row on screen whose kind the plan no longer has lays out again")
+    function _()
+      onScreen = { cast: m.onScreenRow("Cast", "PORTRAIT", "d1"), additionalParts: m.onScreenRow("Parts", "PORTRAIT", "d0") }
+
+      commit = extrasRows.commitActions([{ kind: "cast" }], [m.ok(4)], [m.delivered("PORTRAIT", "d1")], ["Cast"], onScreen)
+
+      m.assertEqual(commit.actions, ["leave"])
+      m.assertTrue(commit.isStructureChanged)
+    end function
+
+    @it("the playlist kind is the committed row's: delivered when written, kept when left, unknown when gone")
+    function _()
+      plan = [{ kind: "playlistItems" }]
+      titles = ["Items"]
+      onScreen = { playlistItems: m.onScreenRow("Items", "PORTRAIT", "d1", "video") }
+
+      written = extrasRows.commitActions(plan, [m.ok(2)], [m.delivered("SQUARE", "d2", "audio")], titles, onScreen)
+      m.assertEqual(written.playlistContentKind, "audio")
+
+      unchanged = extrasRows.commitActions(plan, [m.ok(2)], [m.delivered("PORTRAIT", "d1", "video")], titles, onScreen)
+      m.assertEqual(unchanged.playlistContentKind, "video")
+
+      keptAfterFailure = extrasRows.commitActions(plan, [m.failed()], [m.delivered("PORTRAIT", "")], titles, onScreen)
+      m.assertEqual(keptAfterFailure.playlistContentKind, "video")
+
+      removed = extrasRows.commitActions(plan, [m.ok(0)], [m.delivered("PORTRAIT", "d3", "unknown")], titles, onScreen)
+      m.assertEqual(removed.playlistContentKind, "unknown")
+
+      neverLoaded = extrasRows.commitActions(plan, [m.failed()], [m.delivered("PORTRAIT", "")], titles, {})
+      m.assertEqual(neverLoaded.playlistContentKind, "unknown")
+    end function
+
+    @it("has no playlist kind to report when the plan has no playlist row")
+    function _()
+      commit = extrasRows.commitActions([{ kind: "likeThis" }], [m.ok(2)], [m.delivered("SQUARE", "d1")], ["More"], {})
+
+      m.assertInvalid(commit.playlistContentKind)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("rowSizes: layout from the committed rows")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("one slot and one height per committed row, in order")
+    function _()
+      sizes = extrasRows.rowSizes(["WIDE", "PORTRAIT", "SQUARE"])
+
+      m.assertEqual(sizes.rowItemSize, [rowSlotSize.WIDE, rowSlotSize.PORTRAIT, rowSlotSize.SQUARE])
+      m.assertEqual(sizes.rowHeights, [rowSlotSize.ROW_HEIGHT_WIDE, rowSlotSize.ROW_HEIGHT_PORTRAIT, rowSlotSize.ROW_HEIGHT_SQUARE])
+    end function
+
+    @it("Special Features after a missing Additional Parts row keeps its WIDE slot")
+    function _()
+      ' Chapters, Cast, More Like This, Special Features — no Additional Parts row. Sizes come
+      ' from the committed rows themselves, so a row that is absent cannot shift the ones below.
+      sizes = extrasRows.rowSizes(["WIDE", "PORTRAIT", "PORTRAIT", "WIDE"])
+
+      m.assertEqual(sizes.rowItemSize[3], rowSlotSize.WIDE)
+      m.assertEqual(sizes.rowHeights[3], rowSlotSize.ROW_HEIGHT_WIDE)
+    end function
+
+    @it("no rows, no sizes")
+    function _()
+      sizes = extrasRows.rowSizes([])
+
+      m.assertEqual(sizes.rowItemSize, [])
+      m.assertEqual(sizes.rowHeights, [])
+    end function
+
+  end class
+
+end namespace

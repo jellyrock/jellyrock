@@ -4,8 +4,6 @@
   <interface>
     <field id="itemsToLoad" type="string" value="libraries" />
     <field id="itemId" type="string" />
-    <field id="metadata" type="assocarray" />
-    <field id="peopleList" type="array" />
     <field id="content" type="array" />
     <field id="shouldForceRefresh" type="bool" value="false" />
   </interface>

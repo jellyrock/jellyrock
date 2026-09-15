@@ -1,0 +1,408 @@
+import "pkg:/source/constants/itemAspectRatio.bs"
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+
+' Decision layer for ItemDetails' extras rows — which rows an item type shows, in what order
+' and slot shape, how a delivered row is ordered and filtered, when a run may be committed to
+' the RowList and which rows it may skip, and the layout arrays for the rows on screen.
+'
+' It lives in source/ rather than in ExtrasRowList.bs because a component codebehind's
+' functions are scoped to that component: a Rooibos suite cannot call them without a callFunc
+' seam on the XML. Same move as source/home/latestRows.bs.
+'
+' Everything here is pure: no nodes are created, no fields written, no translation looked up.
+' A plan row names its title by translation key so the consumer resolves it on the render
+' thread, and the item argument may be a node or an AA.
+namespace extrasRows
+
+  ' The ordered rows for an item type.
+  '
+  ' Each row is an AA:
+  '   kind      - what to fetch; the orchestrator maps it to a request ("chapters" and "cast"
+  '               are built from the item itself, with no request)
+  '   shape     - "PORTRAIT" | "WIDE" | "SQUARE"; finishRow may revise it (playlists)
+  '   titleKey  - translation key; titleArgs holds its placeholders when it has any
+  '   itemId    - the id the request is keyed on
+  '   seasonId  - season rows only
+  '   currentId - rows that put the viewed item first
+  '   excludeId - rows that drop the viewed item
+  '
+  ' A row whose request cannot be formed for this item (an episode with no season, a track
+  ' with no album) is left out of the plan rather than planned and resolved empty.
+  '
+  ' @param itemType - the item's type, e.g. "Movie"
+  ' @param item - the item node or AA
+  ' @return array of row AAs in display order
+  function plan(itemType as string, item as object) as object
+    itemId = item.id ?? ""
+    rows = []
+
+    if itemType = "Person"
+      rows.push(planRow("personMovies", "PORTRAIT", translationKeys.LabelMovies, itemId))
+      rows.push(planRow("personEpisodes", "WIDE", translationKeys.LabelEpisodes, itemId))
+      rows.push(planRow("personSeries", "PORTRAIT", translationKeys.LabelSeries, itemId))
+      return rows
+    end if
+
+    if itemType = "Series"
+      rows.push(planRow("seasons", "PORTRAIT", translationKeys.LabelSeasons, itemId))
+      appendCastAndLikeThis(rows, itemType, item)
+    else if itemType = "Season"
+      row = planRow("episodes", "WIDE", translationKeys.LabelEpisodes, item.seriesId ?? "")
+      row.seasonId = itemId
+      rows.push(row)
+      appendCastAndLikeThis(rows, itemType, item)
+    else if itemType = "Episode"
+      rows.push(planRow("chapters", "WIDE", translationKeys.LabelChapters, itemId))
+      if isValidAndNotEmpty(item.seasonId)
+        rows.push(seasonEpisodesRow(item))
+      end if
+      appendCastAndLikeThis(rows, itemType, item)
+    else if itemType = "MusicVideo"
+      appendCastAndLikeThis(rows, itemType, item)
+    else if itemType = "BoxSet"
+      rows.push(planRow("boxSetItems", "PORTRAIT", translationKeys.LabelMovies, itemId))
+      appendCastAndLikeThis(rows, itemType, item)
+    else if itemType = "MusicArtist"
+      rows.push(planRow("artistAlbums", "SQUARE", translationKeys.LabelAlbums, itemId))
+      rows.push(planRow("artistAppearsOn", "SQUARE", translationKeys.LabelAppearsOn, itemId))
+      rows.push(planRow("artistSongs", "SQUARE", translationKeys.LabelSongs, itemId))
+      rows.push(planRow("artistSimilar", "SQUARE", translationKeys.LabelMoreLikeThis, itemId))
+    else if itemType = "MusicAlbum"
+      rows.push(planRow("albumSongs", "SQUARE", translationKeys.LabelSongs, itemId))
+      artistId = firstAlbumArtistId(item)
+      if artistId <> ""
+        row = planRow("moreAlbums", "SQUARE", translationKeys.LabelMoreAlbums, artistId)
+        row.excludeId = itemId
+        rows.push(row)
+      end if
+      rows.push(likeThisRow(itemType, item))
+    else if itemType = "Audio"
+      if isValidAndNotEmpty(item.albumId)
+        rows.push(albumTracksRow(item))
+      end if
+      rows.push(likeThisRow(itemType, item))
+    else if itemType = "Playlist"
+      ' PORTRAIT until the items are known — finishRow makes an all-audio playlist SQUARE.
+      rows.push(planRow("playlistItems", "PORTRAIT", translationKeys.LabelPlaylistItems, itemId))
+      rows.push(likeThisRow(itemType, item))
+    else if itemType = "Photo"
+      rows.push(likeThisRow(itemType, item))
+    else if itemType = "PhotoAlbum"
+      rows.push(planRow("photoAlbumItems", "WIDE", translationKeys.LabelPhotos, itemId))
+      rows.push(likeThisRow(itemType, item))
+    else if itemType = "TvChannel"
+      rows.push(planRow("channelPrograms", "SQUARE", translationKeys.LabelUpNext, itemId))
+      rows.push(likeThisRow(itemType, item))
+    else if itemType = "Program"
+      if isValidAndNotEmpty(item.channelId)
+        rows.push(planRow("channelPrograms", "SQUARE", translationKeys.LabelMoreOnThisChannel, item.channelId))
+      end if
+      rows.push(likeThisRow(itemType, item))
+    else
+      ' Movie, Video, Recording — and any type not named above, as the chain always did.
+      rows.push(planRow("chapters", "WIDE", translationKeys.LabelChapters, itemId))
+      rows.push(planRow("additionalParts", "PORTRAIT", translationKeys.LabelAdditionalParts, itemId))
+      appendCastAndLikeThis(rows, itemType, item)
+      rows.push(planRow("specialFeatures", "WIDE", translationKeys.LabelSpecialFeatures, itemId))
+    end if
+
+    return rows
+  end function
+
+  ' Orders, filters and (for playlists) re-shapes and classifies one delivered row.
+  '
+  ' @param row - the plan row the items were fetched for
+  ' @param items - array of item nodes or AAs, in server order
+  ' @return an AA { items, shape, contentKind } — contentKind is playlistContentKind's answer for
+  '         a playlist row, and "" for every other row
+  function finishRow(row as object, items as object) as object
+    shape = row.shape
+    contentKind = ""
+    result = items
+
+    if isValidAndNotEmpty(row.currentId)
+      result = currentFirst(items, row.currentId)
+    else if isValidAndNotEmpty(row.excludeId)
+      result = []
+      for each item in items
+        if item.id <> row.excludeId then result.push(item)
+      end for
+    end if
+
+    if row.kind = "playlistItems"
+      contentKind = playlistContentKind(items)
+      if contentKind = "audio" then shape = "SQUARE"
+    end if
+
+    return { items: result, shape: shape, contentKind: contentKind }
+  end function
+
+  ' What a playlist holds, for ItemDetails' Watched button and "Tracks"/"Items" label.
+  '
+  ' "unknown" covers both an empty playlist and one that failed to load — ItemDetails treats
+  ' it as the safe default (no Watched button, "Items" label).
+  '
+  ' @param items - array of item nodes or AAs, or invalid
+  ' @return "video" | "audio" | "mixed" | "unknown"
+  function playlistContentKind(items as dynamic) as string
+    if not isValidAndNotEmpty(items) then return "unknown"
+
+    isAllAudio = true
+    for each item in items
+      itemType = item.type
+      if itemType <> "Audio"
+        isAllAudio = false
+        if itemType = "Movie" or itemType = "Episode" or itemType = "Video" or itemType = "MusicVideo" or itemType = "Recording"
+          return "video"
+        end if
+      end if
+    end for
+
+    if isAllAudio then return "audio"
+    return "mixed"
+  end function
+
+  ' Has every slot of a run resolved? A run is committed to the RowList only then, in one pass.
+  '
+  ' @param slots - array of { status: "pending" | "ok" | "failed" | "unchanged", count }
+  ' @return true when no slot is still pending
+  function isRunResolved(slots as object) as boolean
+    for each slot in slots
+      if slot.status = "pending" then return false
+    end for
+    return true
+  end function
+
+  ' Is a delivered row identical to the one on screen? Such a row is not written at all: RowList
+  ' redraws its row counter on any write to an on-screen row, even one that changes nothing.
+  '
+  ' Identity is the title plus a digest of the row's SOURCE content — the server's response body,
+  ' or the item data a local row is built from — taken where that content is at hand (see
+  ' digestOf). Anything the server changes about the row, including a field on an item whose id
+  ' did not change (its played state, an image tag), changes the digest; so an unchanged digest
+  ' means the rebuilt row would be identical, and a tile can never be left showing stale data.
+  '
+  ' An empty digest means the content could not be identified, and is never treated as unchanged:
+  ' the row is rewritten, which is correct if it costs a counter redraw.
+  '
+  ' @param oldTitle - the title on screen
+  ' @param oldDigest - the digest the on-screen row was built from
+  ' @param newTitle - the delivered title
+  ' @param newDigest - the delivered row's digest
+  ' @return true when writing the delivered row would change nothing
+  function isRowUnchanged(oldTitle as string, oldDigest as string, newTitle as string, newDigest as string) as boolean
+    if oldDigest = "" or newDigest = "" then return false
+    return oldTitle = newTitle and oldDigest = newDigest
+  end function
+
+  ' A digest identifying a row's source content.
+  '
+  ' Taken over the exact text the row is built from (the HTTP response body, on the Task thread
+  ' that already holds it) rather than over the item nodes: comparing every field of every node on
+  ' the render thread measured 252-306 ms per Refresh on a Stick 4K for a three-row movie.
+  '
+  ' @param text - the source text; UTF-8 encoded before digesting
+  ' @return a hex MD5 digest, or "" for empty text
+  function digestOf(text as string) as string
+    if text = "" then return ""
+    bytes = CreateObject("roByteArray")
+    bytes.FromAsciiString(text)
+    digest = CreateObject("roEVPDigest")
+    digest.Setup("md5")
+    return digest.Process(bytes)
+  end function
+
+  ' What a resolved row does to the list.
+  '
+  ' A failed request says nothing about what the item HAS, so it never removes a row — the
+  ' same rule latestRows.drainReady applies to Home. Only an answered, empty row removes one.
+  '
+  ' @param status - "ok" | "failed"
+  ' @param itemCount - items the row resolved with
+  ' @param hasExistingRow - whether the list already shows this row
+  ' @return "fill" | "remove" | "keep" | "skip"
+  function rowDisposition(status as string, itemCount as integer, hasExistingRow as boolean) as string
+    if status = "ok" and itemCount > 0 then return "fill"
+    if not hasExistingRow then return "skip"
+    if status = "ok" then return "remove"
+    return "keep"
+  end function
+
+  ' What committing a resolved run does to each plan row. The caller applies it to the RowList;
+  ' nothing here touches a node.
+  '
+  ' @param plan - the plan rows, in display order
+  ' @param slots - one { status, count } per plan row ("ok" | "failed" | "unchanged")
+  ' @param results - one { items, shape, digest, contentKind } per plan row, invalid where the run
+  '                  did not load that row
+  ' @param titles - the title each plan row would be committed with
+  ' @param onScreen - kind -> { title, shape, digest, contentKind }, one entry per row on screen
+  ' @return an AA:
+  '   actions             - one per plan row:
+  '                           "write"  build the row from its result, or rewrite the one on screen
+  '                           "leave"  the row on screen stays exactly as it is
+  '                           "remove" the row on screen goes
+  '                           "none"   there is no row, before or after
+  '   isStructureChanged  - true when a row appears, disappears or changes slot shape, which is
+  '                         the only time the RowList layout needs writing
+  '   playlistContentKind - the kind of the playlist row as committed ("unknown" when it is not on
+  '                         screen), or invalid when the plan has no playlist row
+  function commitActions(plan as object, slots as object, results as object, titles as object, onScreen as object) as object
+    actions = []
+    isStructureChanged = false
+    committedPlaylistKind = invalid
+    plannedKinds = {}
+
+    for slot = 0 to plan.count() - 1
+      kind = plan[slot].kind
+      plannedKinds[kind] = true
+      existing = onScreen[kind]
+      hasExisting = isValid(existing)
+      status = slots[slot].status
+
+      disposition = "keep"
+      if status <> "unchanged" then disposition = rowDisposition(status, slots[slot].count, hasExisting)
+
+      action = "none"
+      if disposition = "fill"
+        result = results[slot]
+        if hasExisting and existing.shape = result.shape and isRowUnchanged(existing.title, existing.digest, titles[slot], result.digest)
+          action = "leave"
+        else
+          action = "write"
+          if not hasExisting or existing.shape <> result.shape then isStructureChanged = true
+        end if
+      else if disposition = "keep" and hasExisting
+        action = "leave"
+      else if disposition = "remove"
+        action = "remove"
+        isStructureChanged = true
+      end if
+      actions.push(action)
+
+      if kind = "playlistItems"
+        committedPlaylistKind = "unknown"
+        if action = "write"
+          committedPlaylistKind = results[slot].contentKind
+        else if action = "leave"
+          committedPlaylistKind = existing.contentKind
+        end if
+      end if
+    end for
+
+    ' A row whose kind this plan does not have at all is dropped too.
+    for each kind in onScreen
+      if not plannedKinds.doesExist(kind) then isStructureChanged = true
+    end for
+
+    return { actions: actions, isStructureChanged: isStructureChanged, playlistContentKind: committedPlaylistKind }
+  end function
+
+  ' RowList layout for the rows on screen: one slot and one row height per row, in order.
+  '
+  ' @param shapes - array of "PORTRAIT" | "WIDE" | "SQUARE", one per row on screen
+  ' @return an AA { rowItemSize, rowHeights }
+  function rowSizes(shapes as object) as object
+    rowItemSize = []
+    rowHeights = []
+    for each shape in shapes
+      if shape = "WIDE"
+        rowItemSize.push(rowSlotSize.WIDE)
+        rowHeights.push(rowSlotSize.ROW_HEIGHT_WIDE)
+      else if shape = "SQUARE"
+        rowItemSize.push(rowSlotSize.SQUARE)
+        rowHeights.push(rowSlotSize.ROW_HEIGHT_SQUARE)
+      else
+        rowItemSize.push(rowSlotSize.PORTRAIT)
+        rowHeights.push(rowSlotSize.ROW_HEIGHT_PORTRAIT)
+      end if
+    end for
+    return { rowItemSize: rowItemSize, rowHeights: rowHeights }
+  end function
+
+  ' ── Private helpers ──
+
+  function planRow(kind as string, shape as string, titleKey as string, itemId as string) as object
+    return { kind: kind, shape: shape, titleKey: titleKey, titleArgs: [], itemId: itemId }
+  end function
+
+  ' Cast, then More Like This — the tail every video-library type shares.
+  sub appendCastAndLikeThis(rows as object, itemType as string, item as object)
+    rows.push(planRow("cast", "PORTRAIT", translationKeys.LabelCastCrew, item.id ?? ""))
+    rows.push(likeThisRow(itemType, item))
+  end sub
+
+  function likeThisRow(itemType as string, item as object) as object
+    itemId = item.id ?? ""
+    ' Jellyfin returns no similar items for an individual episode, so ask about its series.
+    if itemType = "Episode" and isValidAndNotEmpty(item.seriesId)
+      itemId = item.seriesId
+    end if
+
+    ' Landscape-only types have no portrait posters: a WIDE slot makes the image URL logic
+    ' fetch Thumb/Backdrop instead of Primary. Music, playlists and Live TV use 1:1 primaries.
+    shape = "PORTRAIT"
+    if itemType = "MusicVideo" or itemType = "Video" or itemType = "Photo" or itemType = "PhotoAlbum"
+      shape = "WIDE"
+    else if itemType = "MusicAlbum" or itemType = "Audio" or itemType = "Playlist" or itemType = "Program" or itemType = "TvChannel"
+      shape = "SQUARE"
+    end if
+
+    return planRow("likeThis", shape, translationKeys.LabelMoreLikeThis, itemId)
+  end function
+
+  function seasonEpisodesRow(item as object) as object
+    row = planRow("seasonEpisodes", "WIDE", translationKeys.LabelMoreEpisodes, item.seriesId ?? "")
+    row.seasonId = item.seasonId
+    row.currentId = item.id ?? ""
+    seasonNumber = item.parentIndexNumber
+    if isValid(seasonNumber) and seasonNumber > 0
+      row.titleKey = translationKeys.MessageMoreFromSeason1
+      row.titleArgs = [stri(seasonNumber).trim()]
+    end if
+    return row
+  end function
+
+  function albumTracksRow(item as object) as object
+    row = planRow("albumTracks", "SQUARE", translationKeys.LabelAlbumTracks, item.albumId)
+    row.currentId = item.id ?? ""
+    if isValidAndNotEmpty(item.albumName)
+      row.titleKey = translationKeys.MessageMoreFrom1
+      row.titleArgs = [item.albumName]
+    end if
+    return row
+  end function
+
+  function firstAlbumArtistId(item as object) as string
+    artists = item.albumArtists
+    if not isValidAndNotEmpty(artists) then return ""
+    firstArtist = artists[0]
+    if not isValid(firstArtist) or not isValidAndNotEmpty(firstArtist.Id) then return ""
+    return firstArtist.Id
+  end function
+
+  ' The current item, then the items after it, then the items before it — e.g. viewing
+  ' episode 3 of 5 gives [3, 4, 5, 1, 2]. Server order is kept when the item is absent.
+  function currentFirst(items as object, currentId as string) as object
+    current = invalid
+    before = []
+    after = []
+    for each item in items
+      if item.id = currentId
+        current = item
+      else if isValid(current)
+        after.push(item)
+      else
+        before.push(item)
+      end if
+    end for
+
+    ordered = []
+    if isValid(current) then ordered.push(current)
+    ordered.append(after)
+    ordered.append(before)
+    return ordered
+  end function
+
+end namespace

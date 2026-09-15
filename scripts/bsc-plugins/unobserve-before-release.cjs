@@ -58,10 +58,9 @@
  *
  * Known gaps, all toward FALSE NEGATIVES (the safe direction for a rule whose
  * whole value is that a hit means something):
- *  - Detachment or release reached through a HELPER is invisible.
- *    `ExtrasRowList.onDestroy` calls `cancelInFlightChain()` as its first
- *    statement, which correctly stops 19 tasks and detaches their observers;
- *    this rule neither credits nor blames it.
+ *  - Detachment or release reached through a HELPER is invisible: an
+ *    `onDestroy` whose first statement is a helper that stops tasks and
+ *    detaches their observers is neither credited nor blamed.
  *  - A handler named by a non-literal, or observed on a target this file never
  *    names, is not bound to anything.
  *  - `isValid(m.X)` anywhere in a handler clears `m.X` for that handler, even

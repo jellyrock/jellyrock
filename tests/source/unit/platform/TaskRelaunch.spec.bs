@@ -1,0 +1,116 @@
+namespace tests
+
+  ' A RECORD of what Roku OS does when a Task is stopped and launched again — first run on a
+  ' Streaming Stick 4K, OS 15.3.4. Every control write happens inside
+  ' TaskRelaunchProbeHost through callFunc, so on the render thread, as the app's are.
+  '
+  ' The result the app DEPENDS on is the first @it: a Task stopped while its function is
+  ' running ignores a launch made in the same callback. So an orchestrator that can be
+  ' restarted mid-run must launch a NEW node (ExtrasRowList.startRun does), and must not rely
+  ' on "STOP, then RUN the same node" — the shape that silently did nothing on a Refresh
+  ' pressed during a run. The rest pin the neighbouring cases that make the everyday paths
+  ' safe; if one goes red on a firmware change, re-examine the callers before flipping it.
+  '
+  ' NOT covered: OS versions below 15.3.4, and how SOON after the stopping callback a relaunch
+  ' of the same node starts working — a later callback worked here, but nothing may be built
+  ' on a delay.
+  @suite("Platform - relaunching a stopped Task")
+  class TaskRelaunchTests extends tests.BaseTestSuite
+
+    ' Polls `node[field]` until it reaches `expected` or `timeoutMs` passes; returns the last value.
+    private function waitForCount(node as object, field as string, expected as integer, timeoutMs as integer) as integer
+      clock = CreateObject("roTimespan")
+      value = node.getField(field)
+      while value < expected and clock.totalMilliseconds() < timeoutMs
+        sleep(20)
+        value = node.getField(field)
+      end while
+      return value
+    end function
+
+    ' A host whose task function has started and is holding.
+    private function runningHost() as object
+      host = CreateObject("roSGNode", "TaskRelaunchProbeHost")
+      host.callFunc("launch")
+      m.assertEqual(m.waitForCount(host.getField("task"), "starts", 1, 2000), 1, "precondition: the task function started")
+      return host
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a task whose function is still running")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("ignores a launch made in the same callback that stopped it")
+    function _()
+      host = m.runningHost()
+      task = host.getField("task")
+
+      host.callFunc("stopAndRelaunch")
+
+      m.assertEqual(m.waitForCount(task, "starts", 2, 1000), 1, "the function must not have started again")
+      m.assertEqual(LCase(task.state), "stop")
+      host.callFunc("release")
+    end function
+
+    @it("makes no further progress once stopped, even when released")
+    function _()
+      host = m.runningHost()
+      task = host.getField("task")
+
+      host.callFunc("stopTask")
+      beatsAtStop = task.beats
+      sleep(300)
+      m.assertEqual(task.beats, beatsAtStop, "the hold loop kept running after STOP")
+
+      host.callFunc("release")
+      m.assertEqual(m.waitForCount(task, "ends", 1, 1000), 0, "the function returned after STOP")
+    end function
+
+    @it("starts a NEW node launched in the same callback that stopped the old one")
+    function _()
+      host = m.runningHost()
+
+      previous = host.callFunc("stopAndLaunchFresh")
+      fresh = host.getField("task")
+
+      m.assertFalse(fresh.isSameNode(previous))
+      m.assertEqual(m.waitForCount(fresh, "starts", 1, 1500), 1, "the new node's function did not start")
+      m.assertEqual(LCase(fresh.state), "run")
+      host.callFunc("release")
+    end function
+
+    @it("relaunches from a later callback")
+    function _()
+      host = m.runningHost()
+      task = host.getField("task")
+
+      host.callFunc("stopTask")
+      sleep(300)
+      host.callFunc("launch")
+
+      m.assertEqual(m.waitForCount(task, "starts", 2, 1500), 2)
+      host.callFunc("release")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a task whose function has returned")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The everyday Refresh: the previous run finished long before the press.
+    @it("relaunches from the same callback that stops it")
+    function _()
+      host = m.runningHost()
+      task = host.getField("task")
+      host.callFunc("release")
+      m.assertEqual(m.waitForCount(task, "ends", 1, 1500), 1, "precondition: the function returned")
+      task.release = false
+
+      host.callFunc("stopAndRelaunch")
+
+      m.assertEqual(m.waitForCount(task, "starts", 2, 1500), 2)
+      host.callFunc("release")
+    end function
+
+  end class
+
+end namespace

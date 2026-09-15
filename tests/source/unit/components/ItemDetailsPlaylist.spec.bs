@@ -20,8 +20,23 @@ namespace tests
       return item
     end function
 
-    protected override sub setup()
-      super.setup()
+    ' Loads `item`, waits for the extras run the first load starts to finish, then reports
+    ' `kind` as the extras' confirmed playlist kind — so nothing the run delivers later can
+    ' overwrite it.
+    private sub loadWithConfirmedKind(item as object, kind as string)
+      m.itemDetails.itemContent = item
+      extrasGrid = m.itemDetails.findNode("extrasGrid")
+      clock = CreateObject("roTimespan")
+      while not extrasGrid.contentReady and clock.totalMilliseconds() < 25000
+        sleep(50)
+      end while
+      m.assertTrue(extrasGrid.contentReady, "precondition: the first extras run finished")
+      extrasGrid.playlistContentKind = kind
+    end sub
+
+    ' beforeEach, not setup: every test mutates the screen (tests/CLAUDE.md).
+    protected override sub beforeEach()
+      super.beforeEach()
 
       if not m.global.doesExist("sceneManager")
         m.global.addField("sceneManager", "node", false)
@@ -32,10 +47,10 @@ namespace tests
       m.buttonGrp = m.itemDetails.findNode("buttons")
     end sub
 
-    protected override sub teardown()
-      super.teardown()
+    protected override sub afterEach()
       m.itemDetails = invalid
       m.buttonGrp = invalid
+      super.afterEach()
     end sub
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -112,6 +127,33 @@ namespace tests
 
       goToSeriesBtn = m.itemDetails.findNode("goToSeriesButton")
       m.assertInvalid(goToSeriesBtn)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("reloading the item content after the extras confirmed the playlist kind")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A reload is what returning to the screen does (onScreenShown -> refreshItemDetailsData):
+    ' it rebuilds the buttons and the info labels, and does NOT reload the extras.
+
+    @it("keeps the Watched button for a video playlist")
+    function _()
+      m.loadWithConfirmedKind(m.makePlaylist(), "video")
+      m.assertNotInvalid(m.itemDetails.findNode("watchedButton"), "precondition: the confirmed kind added Watched")
+
+      m.itemDetails.itemContent = m.makePlaylist()
+
+      m.assertNotInvalid(m.itemDetails.findNode("watchedButton"))
+    end function
+
+    @it("keeps the Tracks label for an all-audio playlist")
+    function _()
+      m.loadWithConfirmedKind(m.makePlaylist(), "audio")
+      m.assertEqual(m.itemDetails.findNode("itemCount").text, "12 Tracks", "precondition: the confirmed kind set Tracks")
+
+      m.itemDetails.itemContent = m.makePlaylist()
+
+      m.assertEqual(m.itemDetails.findNode("itemCount").text, "12 Tracks")
     end function
 
   end class

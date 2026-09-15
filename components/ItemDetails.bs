@@ -2810,6 +2810,13 @@ sub onItemContentChanged()
     populateInfoGroup()
     populateDescriptionGroup()
 
+    ' Playlist Watched button and "Tracks" label: same reason as Person Shuffle above — a reload
+    ' rebuilds the buttons and the info labels, and the extras do not re-run to restore them.
+    ' Here, AFTER populateInfoGroup, because the label it corrects is created there.
+    if item.type = "Playlist" and m.extrasLoaded
+      onPlaylistContentKindChanged()
+    end if
+
     setFieldText("videoTitle", item.name)
 
     updateFavoriteButton()
@@ -2857,9 +2864,9 @@ sub onItemContentChanged()
     ' Load extras rows on first content load only; explicit refresh via onRefreshExtrasData.
     if not m.extrasLoaded
       m.extrasLoaded = true
-      ' The extras chain is the one fill EVERY item type runs, and the largest — it is
-      ' a serial run of up to five task hops. Its completion is `contentReady`, a signal
-      ' ExtrasRowList did not previously expose; see markChainComplete there.
+      ' The extras rows are the one fill EVERY item type runs, and the largest — up to
+      ' five rows from one orchestrator run. Its completion is ExtrasRowList's
+      ' `contentReady`, set when the run's last row has resolved (see finishRunIfResolved).
       screenLoad.pending("extras")
       if item.type = "Person"
         m.extrasGrid.callFunc("loadPersonVideos", item.id)

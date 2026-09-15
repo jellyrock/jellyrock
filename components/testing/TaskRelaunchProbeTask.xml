@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  TaskRelaunchProbeTask — the Task in tests/source/unit/platform/TaskRelaunch.spec.bs.
+
+  Its function counts each time it starts and each time it returns, and holds the thread
+  open until `release` is set (or a safety timeout), so the spec can act on a Task whose
+  function is provably still executing.
+-->
+<component name="TaskRelaunchProbeTask" extends="Task">
+  <interface>
+    <field id="starts" type="integer" value="0" />
+    <field id="ends" type="integer" value="0" />
+    <field id="beats" type="integer" value="0" />
+    <field id="release" type="bool" value="false" />
+  </interface>
+</component>

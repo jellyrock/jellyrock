@@ -98,22 +98,4 @@ namespace itemTypeOrder
     "Program"
   ]
 
-  ' Types that cannot have special features (behind-the-scenes, etc.).
-  ' Controls: SpecialFeatures chain in ExtrasRowList onLikeThisLoaded.
-  const NO_SPECIAL_FEATURES = [
-    "MusicVideo",
-    "Episode",
-    "Series",
-    "Season",
-    "BoxSet",
-    "MusicArtist",
-    "MusicAlbum",
-    "Audio",
-    "Playlist",
-    "Photo",
-    "PhotoAlbum",
-    "TvChannel",
-    "Program"
-  ]
-
 end namespace

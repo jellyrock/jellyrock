@@ -1,0 +1,18 @@
+sub init()
+  m.top.functionName = "holdUntilReleased"
+end sub
+
+' Counts the start, holds until released, counts the return. `beats` advances every pass of
+' the hold loop, so a spec can tell whether the function is still executing. The timeout only
+' stops a failed spec from leaving a thread running for the rest of the suite.
+sub holdUntilReleased()
+  m.top.starts = m.top.starts + 1
+  ' Blocks in wait() on a port, as apiPipelineNext does, rather than in sleep().
+  port = CreateObject("roMessagePort")
+  clock = CreateObject("roTimespan")
+  while not m.top.release and clock.totalMilliseconds() < 5000
+    m.top.beats = m.top.beats + 1
+    wait(20, port)
+  end while
+  m.top.ends = m.top.ends + 1
+end sub
