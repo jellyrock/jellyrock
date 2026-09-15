@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-15 — ci: Fix server-upgrade handling of `12.0` labels and digest counts
 - 2026-09-15 — fix: Version-gate the `ws://` socket token param for Jellyfin 12.0
 - 2026-09-14 — ci(rta): Pin the texture window to device-measured column sets
 - 2026-09-14 — feat: Add subtitle search, download and delete to item details
