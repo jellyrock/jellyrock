@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-15 — chore: Drop the nonexistent `needs-triage` label from the issue templates
 - 2026-09-15 — fix: Stop the extras row counter flickering on `ItemDetails`
 - 2026-09-15 — chore: Acknowledge Jellyfin 12.0 after the `/server-upgrade` triage
 - 2026-09-15 — fix: Hide the series Resume button until an episode has been watched
