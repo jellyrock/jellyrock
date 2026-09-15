@@ -111,6 +111,5 @@
   "LanguageVi": "ভিয়েতনামী",
   "LanguageZh": "চীনা",
   "LanguageZu": "জুলু",
-  "MessageEndsAt1": "শেষ হয় {0}",
-  "MessageTheSourceFileIsEntirelyCompatible": "সোর্স ফাইলটি এই ক্লায়েন্টের সাথে সম্পূর্ণরূপে সামঞ্জস্যপূর্ণ, এবং সেশনটি পরিবর্তন ছাড়াই ফাইলটি গ্রহণ করছে।"
+  "MessageEndsAt1": "শেষ হয় {0}"
 }

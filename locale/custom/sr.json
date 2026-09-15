@@ -50,7 +50,6 @@
   "LabelHome": "Почетна",
   "LabelInstantMix": "Инстант микс",
   "LabelKids": "Деца",
-  "LabelLevel": "Ниво",
   "LabelLibraries": "Библиотеке",
   "LabelLive": "Уживо",
   "LabelMoreLikeThis": "Више оваквих",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "Нерепродуковано",
   "LabelUsername": "Корисничко име",
   "LabelVideo": "Видео",
-  "LabelVideoRangeType": "Тип распона видеа",
   "LabelVideos": "Видео датотеке",
   "LabelWatched": "Погледано",
   "LabelYears": "Године",
@@ -194,6 +192,5 @@
   "MessageDisc1": "Диск {0}",
   "MessageEndsAt1": "Завршава се у {0}",
   "MessageMoreFrom1": "Више од {0}",
-  "MessageSetTheMaximumAmountOfDays": "Подеси максимални број дана колико серија мође да остане у 'Следећим' листи без гледања.",
-  "MessageTheSourceFileIsEntirelyCompatible": "Изворна датотека је у потпуности компатибилна са овим клијентом и сесија прима датотеку без модификација."
+  "MessageSetTheMaximumAmountOfDays": "Подеси максимални број дана колико серија мође да остане у 'Следећим' листи без гледања."
 }

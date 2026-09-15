@@ -50,7 +50,6 @@
   "LabelHome": "Hem",
   "LabelInstantMix": "Direktmix",
   "LabelKids": "Barn",
-  "LabelLevel": "Nivå",
   "LabelLibraries": "Bibliotek",
   "LabelLive": "Direktsänt",
   "LabelMoreLikeThis": "Mer som detta",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "Inte spelad",
   "LabelUsername": "Användarnamn",
   "LabelVideo": "Video",
-  "LabelVideoRangeType": "Videointervallstyp",
   "LabelVideos": "Videor",
   "LabelWatch": "Titta",
   "LabelWatched": "Visat",
@@ -195,6 +193,5 @@
   "MessageDisc1": "Skiva {0}",
   "MessageEndsAt1": "Slutar vid: {0}",
   "MessageMoreFrom1": "Mer från {0}",
-  "MessageSetTheMaximumAmountOfDays": "Bestäm antal dagar en serie ska vara i \"Nästa på tur\"-listan utan att någon har tittat på den.",
-  "MessageTheSourceFileIsEntirelyCompatible": "Originalfilen är helt kompatibel med denna klient. Filen spelas upp utan omkodning."
+  "MessageSetTheMaximumAmountOfDays": "Bestäm antal dagar en serie ska vara i \"Nästa på tur\"-listan utan att någon har tittat på den."
 }

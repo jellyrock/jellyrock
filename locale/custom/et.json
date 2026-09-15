@@ -50,7 +50,6 @@
   "LabelHome": "Avakuva",
   "LabelInstantMix": "Kiirmiks",
   "LabelKids": "Lapsed",
-  "LabelLevel": "Tase",
   "LabelLibraries": "Meediakogud",
   "LabelLive": "Otse",
   "LabelMoreLikeThis": "Veel sarnaseid",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "Esitamata",
   "LabelUsername": "Kasutajanimi",
   "LabelVideo": "Video",
-  "LabelVideoRangeType": "Videovahemiku tüüp",
   "LabelVideos": "Videod",
   "LabelWatched": "Vaadatud",
   "LabelYears": "Aastat",
@@ -194,6 +192,5 @@
   "MessageDisc1": "Plaat {0}",
   "MessageEndsAt1": "Lõpeb kell {0}",
   "MessageMoreFrom1": "Veel {0}",
-  "MessageSetTheMaximumAmountOfDays": "Määra maksimaalne päevade arv, mille jooksul sari jääb jaotisesse 'Järgmiseks' ilma seda vaatamata.",
-  "MessageTheSourceFileIsEntirelyCompatible": "Lähtefail ühildub selle kliendiga täielikult ja seanss võtab faili vastu ilma muudatusteta."
+  "MessageSetTheMaximumAmountOfDays": "Määra maksimaalne päevade arv, mille jooksul sari jääb jaotisesse 'Järgmiseks' ilma seda vaatamata."
 }

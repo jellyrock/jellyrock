@@ -50,7 +50,6 @@
   "LabelHome": "Início",
   "LabelInstantMix": "Mix instantâneo",
   "LabelKids": "Crianças",
-  "LabelLevel": "Nível",
   "LabelLibraries": "Bibliotecas",
   "LabelLive": "Direto",
   "LabelMoreLikeThis": "Títulos semelhantes",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "Por reproduzir",
   "LabelUsername": "Nome de utilizador",
   "LabelVideo": "Vídeo",
-  "LabelVideoRangeType": "Tipo de gama de vídeo",
   "LabelVideos": "Vídeos",
   "LabelWatched": "Visto",
   "LabelYears": "Anos",
@@ -194,6 +192,5 @@
   "MessageDisc1": "Disco {0}",
   "MessageEndsAt1": "Termina às {0}",
   "MessageMoreFrom1": "Mais de {0}",
-  "MessageSetTheMaximumAmountOfDays": "Definir o número máximo de dias que um programa deve permanecer na lista 'Próximos' sem que seja visto.",
-  "MessageTheSourceFileIsEntirelyCompatible": "O ficheiro de origem é totalmente compatível com este cliente e a sessão está a receber o ficheiro sem modificações."
+  "MessageSetTheMaximumAmountOfDays": "Definir o número máximo de dias que um programa deve permanecer na lista 'Próximos' sem que seja visto."
 }

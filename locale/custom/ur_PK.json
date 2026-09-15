@@ -48,7 +48,6 @@
   "LabelHome": "گھر",
   "LabelInstantMix": "فوری مکس",
   "LabelKids": "بچے",
-  "LabelLevel": "سطح",
   "LabelLibraries": "لائبریریاں",
   "LabelLive": "جیو",
   "LabelMoreLikeThis": "مزید اس طرح",
@@ -97,7 +96,6 @@
   "LabelUnplayed": "کھیلا نہیں گیا",
   "LabelUsername": "صارف نام",
   "LabelVideo": "ویڈیو",
-  "LabelVideoRangeType": "ویڈیو رینج کی قسم",
   "LabelVideos": "ویڈیوز",
   "LabelWatched": "دیکھا",
   "LabelYears": "سال",
@@ -192,6 +190,5 @@
   "MessageDisc1": "ڈسک {0}",
   "MessageEndsAt1": "{0} پر ختم ہوتا ہے",
   "MessageMoreFrom1": "{0} سے مزید",
-  "MessageSetTheMaximumAmountOfDays": "ایک شو کو دیکھے بغیر 'نیکسٹ اپ' کی فہرست میں رہنے کے زیادہ سے زیادہ دن مقرر کریں۔",
-  "MessageTheSourceFileIsEntirelyCompatible": "سورس فائل اس کلائنٹ کے ساتھ مکمل طور پر مطابقت رکھتی ہے، اور سیشن بغیر کسی ترمیم کے فائل وصول کر رہا ہے۔"
+  "MessageSetTheMaximumAmountOfDays": "ایک شو کو دیکھے بغیر 'نیکسٹ اپ' کی فہرست میں رہنے کے زیادہ سے زیادہ دن مقرر کریں۔"
 }
