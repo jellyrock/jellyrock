@@ -908,12 +908,6 @@
       ]
     },
     {
-      "name": "ArtistIds",
-      "sourceFiles": [
-        "source/api/items.bs"
-      ]
-    },
-    {
       "name": "AudioCodec",
       "sourceFiles": [
         "source/api/items.bs"
@@ -962,12 +956,6 @@
       ]
     },
     {
-      "name": "ContributingArtistIds",
-      "sourceFiles": [
-        "source/api/items.bs"
-      ]
-    },
-    {
       "name": "DatePlayed",
       "sourceFiles": [
         "source/api/ApiClient.bs"
@@ -992,12 +980,6 @@
       ]
     },
     {
-      "name": "EnableTotalRecordCount",
-      "sourceFiles": [
-        "source/api/items.bs"
-      ]
-    },
-    {
       "name": "ImageTypeLimit",
       "sourceFiles": [
         "source/api/ApiClient.bs"
@@ -1017,12 +999,6 @@
     },
     {
       "name": "Items",
-      "sourceFiles": [
-        "source/api/items.bs"
-      ]
-    },
-    {
-      "name": "Limit",
       "sourceFiles": [
         "source/api/items.bs"
       ]
@@ -1089,12 +1065,6 @@
     },
     {
       "name": "SegmentLength",
-      "sourceFiles": [
-        "source/api/items.bs"
-      ]
-    },
-    {
-      "name": "SortOrder",
       "sourceFiles": [
         "source/api/items.bs"
       ]
@@ -3113,14 +3083,14 @@
     },
     "counts": {
       "endpoints": 74,
-      "requestFields": 41,
+      "requestFields": 36,
       "responseFields": 214,
       "unresolvedEndpointSinks": 2
     },
     "unresolvedEndpointSinks": [
       {
         "sourceFile": "source/api/items.bs",
-        "line": 423
+        "line": 329
       },
       {
         "sourceFile": "source/utils/subtitles.bs",
