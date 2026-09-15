@@ -50,7 +50,6 @@
   "LabelHome": "首页",
   "LabelInstantMix": "速成合辑",
   "LabelKids": "儿童",
-  "LabelLevel": "等级",
   "LabelLibraries": "媒体库",
   "LabelLive": "直播",
   "LabelMoreLikeThis": "更多类似的",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "未完播",
   "LabelUsername": "用户名",
   "LabelVideo": "视频",
-  "LabelVideoRangeType": "动态范围类型",
   "LabelVideos": "视频",
   "LabelWatch": "标记为已看过",
   "LabelWatched": "已观看",
@@ -195,6 +193,5 @@
   "MessageDisc1": "盘 {0}",
   "MessageEndsAt1": "结束于 {0}",
   "MessageMoreFrom1": "更多来自 {0}",
-  "MessageSetTheMaximumAmountOfDays": "设置节目在不观看的情况下应保留在“接下来”列表中的最大天数。",
-  "MessageTheSourceFileIsEntirelyCompatible": "源文件与此客户端完全兼容，会话正在接收文件而未做任何修改。"
+  "MessageSetTheMaximumAmountOfDays": "设置节目在不观看的情况下应保留在“接下来”列表中的最大天数。"
 }

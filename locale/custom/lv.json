@@ -52,7 +52,6 @@
   "LabelEnded": "Beidzies",
   "LabelEnterAPassword": "Ievadiet paroli",
   "LabelEnterAUsername": "Ievadiet lietotājvārdu",
-  "LabelEnterConfiguration": "Ievadīt Konfigurāciju",
   "LabelEpisodes": "Sērijas",
   "LabelFavorite": "Izlasē",
   "LabelFavorites": "Izlase",
@@ -64,7 +63,6 @@
   "LabelImdbRating": "IMDb Vērtējums",
   "LabelInstantMix": "Tūlītēja sajaukšana",
   "LabelKids": "Bērni",
-  "LabelLevel": "Līmenis",
   "LabelLibraries": "Bibliotēkas",
   "LabelLive": "Tiešraide",
   "LabelMoreLikeThis": "Līdzīgs saturs",
@@ -118,7 +116,6 @@
   "LabelUnplayed": "Neatskaņots",
   "LabelUsername": "Lietotājvārds",
   "LabelVideo": "Video",
-  "LabelVideoRangeType": "Video diapazona veids",
   "LabelVideos": "Video",
   "LabelWatched": "Skatīts",
   "LabelYears": "Gadi",
@@ -215,6 +212,5 @@
   "MessageMoreFrom1": "Vairāk no {0}",
   "MessageSaveCredentials": "Saglabāt Piekļuves Datus?",
   "MessageServerNotFoundIsItOnline": "Serveris nav atrasts, vai tas ir tiešsaistē?",
-  "MessageSetTheMaximumAmountOfDays": "Iestatiet maksimālo dienu skaitu, cik ilgi šovam, kurš nav skatīšanās procesā, jārādās sarakstā \"Nākamais\".",
-  "MessageTheSourceFileIsEntirelyCompatible": "Oriģinālais fails ir pilnībā saderīgs ar šo klientu un šī sesija saņem failu bez modifikācijas."
+  "MessageSetTheMaximumAmountOfDays": "Iestatiet maksimālo dienu skaitu, cik ilgi šovam, kurš nav skatīšanās procesā, jārādās sarakstā \"Nākamais\"."
 }

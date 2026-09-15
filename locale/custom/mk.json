@@ -130,6 +130,5 @@
   "LanguageVi": "виетнамски",
   "LanguageZh": "кинески",
   "LanguageZu": "зулу",
-  "MessageEndsAt1": "Завршува во {0}",
-  "MessageTheSourceFileIsEntirelyCompatible": "Изворната датотека е комплетно компатибилна со овој клиент, и сесијата ја прима оваа датотека без модификации."
+  "MessageEndsAt1": "Завршува во {0}"
 }

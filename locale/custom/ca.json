@@ -50,7 +50,6 @@
   "LabelHome": "Inici",
   "LabelInstantMix": "Mescla instantània",
   "LabelKids": "Infants",
-  "LabelLevel": "Nivell",
   "LabelLibraries": "Mediateques",
   "LabelLive": "Directe",
   "LabelMoreLikeThis": "Similars",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "No reproduït",
   "LabelUsername": "Nom d'usuari",
   "LabelVideo": "Vídeo",
-  "LabelVideoRangeType": "Tipus d'interval de vídeo",
   "LabelVideos": "Vídeos",
   "LabelWatch": "Visualitza",
   "LabelWatched": "Vist",
@@ -195,6 +193,5 @@
   "MessageDisc1": "Disc {0}",
   "MessageEndsAt1": "Acabaria a les {0}",
   "MessageMoreFrom1": "Més de {0}",
-  "MessageSetTheMaximumAmountOfDays": "Estableix la quantitat màxima de dies que una sèrie ha de romandre a la llista \"A continuació\" sense haver-la mirat.",
-  "MessageTheSourceFileIsEntirelyCompatible": "El fitxer font és totalment compatible amb aquest client i la sessió rep el fitxer sense modificacions."
+  "MessageSetTheMaximumAmountOfDays": "Estableix la quantitat màxima de dies que una sèrie ha de romandre a la llista \"A continuació\" sense haver-la mirat."
 }

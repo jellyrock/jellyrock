@@ -35,7 +35,7 @@ Both endpoints live under the plugin's MVC route prefix and require Jellyfin aut
 Authentication uses JellyRock's standard `Authorization: MediaBrowser …` header
 ([`buildAuthHeader()`](../../source/api/baseRequest.bs)), which already carries `Client="JellyRock"`,
 `DeviceId="<serverDeviceName>"`, and `Token`. **The token is never placed in the URL** — an improvement over
-the `ws` path's `?api_key=` (`roUrlTransfer` can set headers; `BrightWebSocket` could not).
+the `ws` path's token query param (`roUrlTransfer` can set headers; `BrightWebSocket` could not).
 
 The server resolves the target `SessionInfo` from the authenticated request's `DeviceId` claim — the same
 device that binds JellyRock's REST session. Any `deviceId` query argument is diagnostic only and MUST NOT be

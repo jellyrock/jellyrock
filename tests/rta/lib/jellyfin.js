@@ -222,6 +222,14 @@ export function sessionDeviceId(role, deviceKey) {
  * `role` names the tool, and rides into the DeviceId — see `sessionDeviceId` for why
  * two callers must never share one. Defaults to `rta` because the suite is the
  * caller that matters most; the other entry points name themselves.
+ *
+ * ⚠️ **Not usable for asserting "Cast to JellyRock" on servers older than 10.11.** The token
+ * this mints belongs to `Client="JellyRock-<role>"`, and before 10.11 Jellyfin binds the
+ * app's session socket to the session keyed on the TOKEN's app name — so the socket lands
+ * on a `JellyRock-rta` session while the app's capabilities sit on the `JellyRock` one, and
+ * the app never reports `SupportsRemoteControl`. Casting works for real users (their token
+ * is minted by the app itself); only this seeded token breaks it. A cast test must mint its
+ * token as `Client="JellyRock"` with the app's own `serverDeviceName` as DeviceId.
  */
 export async function authenticate(server, { role = 'rta', deviceKey } = {}) {
   const deviceId = sessionDeviceId(role, deviceKey);

@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-09-14
+last-updated: 2026-09-15
 ---
 
 # Progress
@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-15 — fix: Version-gate the `ws://` socket token param for Jellyfin 12.0
 - 2026-09-14 — `ExtrasRowList` extras completion is now DERIVED, not marked: one `LoadExtrasRowsTask` run fills a slot per planned row and `contentReady` is set when `extrasRows.isRunResolved` finds none pending, so no handler can forget to mark a chain tail (`markChainComplete` and its four call sites are gone). Closes the "four chain tails are a prose-only invariant" followup.
 - 2026-09-14 — ci(rta): Pin the texture window to device-measured column sets
 - 2026-09-14 — feat: Add subtitle search, download and delete to item details
@@ -53,7 +54,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-09-03 — fix: Guard `onKeyEvent` against key events delivered after teardown
 - 2026-09-03 — Stop the playback error dialog exiting on a close it did not cause
 - 2026-09-01 — Migrate the playback error dialog onto `JRDialog` and make it diagnostic
-- 2026-08-31 — fix(playback): Direct-play music instead of transcoding it
 
 ## Open followups
 

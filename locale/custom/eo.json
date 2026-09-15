@@ -48,7 +48,6 @@
   "LabelHome": "Hejmo",
   "LabelInstantMix": "Tujmiksaĵo",
   "LabelKids": "Infanoj",
-  "LabelLevel": "Nivelo",
   "LabelLibraries": "Plurmeditekoj",
   "LabelLive": "Etero",
   "LabelMoreLikeThis": "Pli Ĉi Tiel",
@@ -184,6 +183,5 @@
   "MessageDisc1": "Diskedo {0}",
   "MessageEndsAt1": "Finiĝas je {0}",
   "MessageMoreFrom1": "Pli de {0}",
-  "MessageSetTheMaximumAmountOfDays": "Starigi la maksimuman kvanton da tagoj, kiam serio devas resti en la listo de \"Sekva Plue\" sen spekti ĝin.",
-  "MessageTheSourceFileIsEntirelyCompatible": "La fontdosiero estas tute kongrua kun ĉi tiu kliento, kaj la seanco ricevas la dosieron sen modifoj."
+  "MessageSetTheMaximumAmountOfDays": "Starigi la maksimuman kvanton da tagoj, kiam serio devas resti en la listo de \"Sekva Plue\" sen spekti ĝin."
 }

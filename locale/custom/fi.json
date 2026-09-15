@@ -50,7 +50,6 @@
   "LabelHome": "Aloitusnäyttö",
   "LabelInstantMix": "Pikasekoitus",
   "LabelKids": "Lapset",
-  "LabelLevel": "Taso",
   "LabelLibraries": "Kirjastot",
   "LabelLive": "Suora",
   "LabelMoreLikeThis": "Lisää tällaista",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "Toistamattomat",
   "LabelUsername": "Käyttäjätunnus",
   "LabelVideo": "Video",
-  "LabelVideoRangeType": "Videon aluetyyppi",
   "LabelVideos": "Videot",
   "LabelWatched": "Katsotut",
   "LabelYears": "Vuodet",
@@ -194,6 +192,5 @@
   "MessageDisc1": "Levy {0}",
   "MessageEndsAt1": "Päättyy {0}",
   "MessageMoreFrom1": "Lisää kohteesta {0}",
-  "MessageSetTheMaximumAmountOfDays": "Määritä enimmäisaika päivinä, jonka katsomaton sarja pysyy 'Seuraavaksi'-osiossa.",
-  "MessageTheSourceFileIsEntirelyCompatible": "Lähdetiedosto on täysin yhteensopiva tämän päätesovelluksen kanssa ja istunto vastaanottaa tiedoston ilman muuntoa."
+  "MessageSetTheMaximumAmountOfDays": "Määritä enimmäisaika päivinä, jonka katsomaton sarja pysyy 'Seuraavaksi'-osiossa."
 }

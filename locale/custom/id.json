@@ -50,7 +50,6 @@
   "LabelHome": "Home",
   "LabelInstantMix": "Mix Instan",
   "LabelKids": "Anak-anak",
-  "LabelLevel": "Tingkat",
   "LabelLibraries": "Pustaka",
   "LabelLive": "Langsung",
   "LabelMoreLikeThis": "Lainnya Seperti Ini",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "Belum dimainkan",
   "LabelUsername": "Nama Pengguna",
   "LabelVideo": "Video",
-  "LabelVideoRangeType": "Jenis rentang video",
   "LabelVideos": "Video",
   "LabelWatched": "Ditonton",
   "LabelYears": "Tahun",
@@ -169,6 +167,5 @@
   "MessageDisc1": "Disk {0}",
   "MessageEndsAt1": "Berakhir pada {0}",
   "MessageMoreFrom1": "Lebih Dari {0}",
-  "MessageSetTheMaximumAmountOfDays": "Tetapkan jumlah hari maksimum acara harus tetap berada di daftar 'Berikutnya' tanpa menontonnya.",
-  "MessageTheSourceFileIsEntirelyCompatible": "File sumber sepenuhnya kompatibel dengan klien ini dan sesi ini menerima file tersebut tanpa modifikasi."
+  "MessageSetTheMaximumAmountOfDays": "Tetapkan jumlah hari maksimum acara harus tetap berada di daftar 'Berikutnya' tanpa menontonnya."
 }

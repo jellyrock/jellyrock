@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [2.29.0](https://github.com/jellyrock/jellyrock/compare/v2.28.0...v2.29.0) - 2026-09-15
 
 ### Added
 
@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Version-gate the `ws://` socket token param for Jellyfin 12.0 ([#920](https://github.com/jellyrock/jellyrock/pull/920))
 - Refresh the `rooibos-roku` patch for the installed version ([#894](https://github.com/jellyrock/jellyrock/pull/894))
 
 ### Fixed
@@ -34,6 +35,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update js-yaml from v5.4.1 to v5.4.2 ([#909](https://github.com/jellyrock/jellyrock/pull/909))
 - Update actions/setup-java action to v6.0.1 ([#917](https://github.com/jellyrock/jellyrock/pull/917))
 - Update rooibos-roku to v6.0.0 ([#905](https://github.com/jellyrock/jellyrock/pull/905))
 - Update adm-zip from v0.6.0 to v0.6.1 ([#908](https://github.com/jellyrock/jellyrock/pull/908))

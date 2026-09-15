@@ -50,7 +50,6 @@
   "LabelHome": "Αρχική",
   "LabelInstantMix": "Άμεση Mix",
   "LabelKids": "Παιδικά",
-  "LabelLevel": "Επίπεδο",
   "LabelLibraries": "Βιβλιοθήκες",
   "LabelLive": "Ζωντανά",
   "LabelMoreLikeThis": "Περισσότερα Σαν Αυτό",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "Δεν παίχθηκε",
   "LabelUsername": "Όνομα Χρήστη",
   "LabelVideo": "Βίντεο",
-  "LabelVideoRangeType": "Τύπος εύρους βίντεο",
   "LabelVideos": "Βίντεο",
   "LabelWatch": "Παρακολούθηση",
   "LabelWatched": "Έχει γίνει παρακολούθηση",
@@ -195,6 +193,5 @@
   "MessageDisc1": "Δίσκος {0}",
   "MessageEndsAt1": "Τελειώνει στις {0}",
   "MessageMoreFrom1": "Περισσότερα από {0}",
-  "MessageSetTheMaximumAmountOfDays": "Ορίστε τον μέγιστο αριθμό ημερών που μια σειρά θα πρέπει να παραμείνει στη λίστα \"Επόμενα\" χωρίς να την παρακολουθήσετε.",
-  "MessageTheSourceFileIsEntirelyCompatible": "Το πηγαίο αρχείο είναι απόλυτα συμβατό με αυτόν τον client και η συνεδρία λαμβάνει το αρχείο χωρίς αλλαγές."
+  "MessageSetTheMaximumAmountOfDays": "Ορίστε τον μέγιστο αριθμό ημερών που μια σειρά θα πρέπει να παραμείνει στη λίστα \"Επόμενα\" χωρίς να την παρακολουθήσετε."
 }

@@ -48,7 +48,6 @@
   "LabelHome": "Basqy",
   "LabelInstantMix": "Lezdık qospa",
   "LabelKids": "Balalyq",
-  "LabelLevel": "Deñgeiı",
   "LabelLibraries": "Tasyğyşhanalar",
   "LabelLive": "Tıkelei",
   "LabelMoreLikeThis": "Osy siaqty köbırek",
@@ -190,6 +189,5 @@
   "MessageDisc1": "{0}-diskı",
   "MessageEndsAt1": "Soñy {0} kezınde",
   "MessageMoreFrom1": "{0} arqyly köbırek",
-  "MessageSetTheMaximumAmountOfDays": "Körsetımdı körmei-aq \"Kelesı\" tızımınde qalatyn künderdıñ eñ köp sanyn ornatu.",
-  "MessageTheSourceFileIsEntirelyCompatible": "Qainar fail osy tūtynğyşpen tolyğymen üilesımdı, al seans osy faildy özgertusız qabyldaidy."
+  "MessageSetTheMaximumAmountOfDays": "Körsetımdı körmei-aq \"Kelesı\" tızımınde qalatyn künderdıñ eñ köp sanyn ornatu."
 }

@@ -112,6 +112,5 @@
   "LanguageVi": "ဗီယက်နမ်",
   "LanguageZh": "တရုတ်",
   "LanguageZu": "ဇူးလူး",
-  "MessageEndsAt1": "{0} တွင် ပြီးဆုံးသည်",
-  "MessageTheSourceFileIsEntirelyCompatible": "အရင်းအမြစ်ဖိုင်သည် ဤကလိုင်းယင့်နှင့် လုံးဝသဟဇာတဖြစ်ပြီး စက်ရှင်သည် ပြုပြင်မွမ်းမံမှုမရှိဘဲ ဖိုင်ကို လက်ခံရရှိနေပါသည်။"
+  "MessageEndsAt1": "{0} တွင် ပြီးဆုံးသည်"
 }
