@@ -1427,6 +1427,16 @@ Ruled out: **raising the job timeout** (hides a measured +57% regression and len
 
 **The cost accepted** is that Chapters and the Down key arrive with the whole run (~0.3-0.4 s after paint on `.177`) instead of immediately. Interleaved against `main` (n=10 per arm, `.177`): `settledMs` 1041 → 566.5 (−45.6%, p=0.0002), extras fill 751 → 295 (−60.7%, p=0.0002), paint 323.5 → 297 (not distinguishable, p=0.23). Sizes now come from the rows actually committed, which also fixes a Movie-path bug confirmed on device: the old `addRowSize` left a phantom entry that gave Special Features a PORTRAIT slot inside a WIDE-height row whenever the movie had no Additional Parts. **Re-evaluate** if Roku ships a way to update a `RowList` row without redrawing the counter, or if one endpoint proves much slower than the rest. Rows are fetched concurrently, so a uniformly slow server delays every row alike and the single commit still wins; only skewed latency makes the whole-run wait hold back rows that would otherwise be ready (the 295 ms extras fill above bounds that skew on `.177`). That case would favor committing the rows that are ready at a deadline, accepting one blink.
 
+## decision-id: home-screen-load-visible-span
+
+**date**: 2026-09-15
+**status**: accepted
+**related-files**: `components/home/HomeRows.bs`, `source/home/homeScreenLoad.bs`, `tests/source/unit/home/homeScreenLoad.spec.bs`, `docs/dev/measuring-performance.md`
+
+Home joins the `screen-load` family ([ADR 0027](adr/0027-screen-readiness-ledger.md)) with `paintMs` = the first moment every row in the **visible span** has landed, and `settledMs` = every row landed. Each row declares one fill, keyed by its `sectionId`, when its skeleton row is created. The fill resolves when the row's answer arrives: data, an empty result, or a failure (a failed latest row keeps its skeleton but its wait is over). Paint is not decided until the libraries answer, because before that the latest-media rows are not in the list. The visible span is the app's own `loadedRowRange` definition, `[focusedRow, focusedRow + numRows − 1]` with `numRows = 3`: the same signal texture loading uses and lazy row hydration would key on, not a pixel measurement (the third row is only partly on screen at 1080p). **Ruled out:** a third `visibleMs` milestone, which needs parser, report and compare changes for one screen when the two existing milestones fit; and declaring only the visible rows, which would make `settledMs` stop meaning "the screen stopped changing".
+
+**Consequence, read off a Stick 4K:** with the default section order (My Media, Continue Watching, Next Up, Active Recordings, On Now, Latest Media) the span is My Media, Continue Watching and Next Up, so **no latest-media row gates Home's `paintMs`**. Latest rows enter the span only with a reordered layout, or when rows above them come back empty and are removed. A Home `paintMs` is therefore only comparable across runs with the same section order. **Re-evaluate** if `numRows` or the default section order changes, or if paint should also wait for poster textures.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

@@ -10,7 +10,7 @@ related-files:
   - scripts/harden-prod-manifest.js
   - scripts/measurements.js
   - manifest
-last-reviewed: 2026-08-26
+last-reviewed: 2026-09-15
 ---
 
 # Measuring orchestrator wait-vs-emit on device
@@ -41,6 +41,15 @@ network-bound. Measure per orchestrator; do not carry one result to another.
 Opening Home fires one `LoadLatestRowsTask` run that fetches the latest items for every
 eligible library. Five log lines describe it, and all are permanent — they exist in dev
 builds only (see [Why this costs production nothing](#why-this-costs-production-nothing)):
+
+> **This run is not the same thing as "when Home became usable".** These lines split one
+> task's run. Home also emits the `screen-load` family (`--component homeRows`): `paintMs`
+> when the visible rows have landed, `settledMs` when every row has. See
+> [measuring-performance.md](measuring-performance.md#home--paint-is-the-visible-rows-landing-not-the-first-frame).
+> With the default section order no latest-media row is in the visible span, so `total`
+> below is what a user waits for to see the rows **below** the first screen, not the first
+> screen itself. Read off a Stick 4K with the default order (2026-09-15): the visible span
+> was My Media, Continue Watching and Next Up.
 
 The **format** they emit today. The first two are the top-level split; the rest break
 `emit` and the render-side work down a level, and are described under
@@ -90,7 +99,7 @@ Four numbers come out of the first two lines. **Three of them are measurements; 
 
 | Value | Meaning | Trust it? |
 |---|---|---|
-| `total` | `run complete` — what the user actually waits for | ✅ directly measured, ±10% over 30 runs |
+| `total` | `run complete` — every latest-media row delivered (which rows the user waits on first: see the note above) | ✅ directly measured, ±10% over 30 runs |
 | `wait` | blocked on the API pool — network + server | ✅ directly measured |
 | `emit` | transform items → `ContentNode`s → `appendChild` | ✅ directly measured |
 | `drain` | `total − task` | ❌ **derived; do not compare it** |
