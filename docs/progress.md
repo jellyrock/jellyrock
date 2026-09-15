@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-09-14
+last-updated: 2026-09-15
 ---
 
 # Progress
@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-15 — fix: Version-gate the `ws://` socket token param for Jellyfin 12.0
 - 2026-09-14 — ci(rta): Pin the texture window to device-measured column sets
 - 2026-09-14 — feat: Add subtitle search, download and delete to item details
 - 2026-09-14 — Subtitle panel badges in both columns are now right-aligned and sized from their measured text (`subtitleLayout.badgesThatFit` / `detailWidthBeside`), dropping whole badges that would not fit — replacing the guessed per-section and flat `460px` badge widths. Closes the "subtitle RESULTS column reserves a flat badge width" followup (#750); also fixed "Forced" being clipped in the "On this item" column.
@@ -52,7 +53,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-09-03 — fix: Guard `onKeyEvent` against key events delivered after teardown
 - 2026-09-03 — Stop the playback error dialog exiting on a close it did not cause
 - 2026-09-01 — Migrate the playback error dialog onto `JRDialog` and make it diagnostic
-- 2026-08-31 — fix(playback): Direct-play music instead of transcoding it
 
 ## Open followups
 
