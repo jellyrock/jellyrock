@@ -83,6 +83,11 @@ describe('decideVersionState', () => {
     );
   });
 
+  it('treats a patchless acknowledged release (12.0) as a real version, not a placeholder', () => {
+    expect(decideVersionState({ latestStable: '12.0', acknowledged: '12.0' })).toBe('caught-up');
+    expect(decideVersionState({ latestStable: '12.0.1', acknowledged: '12.0' })).toBe('ahead');
+  });
+
   it('is ahead when acknowledged is a non-semver placeholder (nudge rather than go quiet)', () => {
     expect(decideVersionState({ latestStable: '10.11.10', acknowledged: '(none)' })).toBe('ahead');
   });

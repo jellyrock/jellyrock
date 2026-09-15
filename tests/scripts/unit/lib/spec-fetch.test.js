@@ -140,7 +140,7 @@ describe('cache reads', () => {
 
   it('rejects a malformed version before any fetch', async () => {
     dir = mkdtempSync(join(tmpdir(), 'jellyrock-spec-fetch-'));
-    await expect(fetchSpec('latest', { rootDir: dir })).rejects.toThrow(/MAJOR\.MINOR\.PATCH/);
+    await expect(fetchSpec('latest', { rootDir: dir })).rejects.toThrow(/MAJOR\.MINOR\[\.PATCH\]/);
     expect(existsSync(join(dir, '.api-watch'))).toBe(false);
   });
 });

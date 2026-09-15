@@ -25,7 +25,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { httpGet } = require('./signals-fetch.cjs');
+const { httpGet, isUnstableVersion, isReleaseVersionBase } = require('./signals-fetch.cjs');
 
 const ARCHIVE_STABLE = 'https://api.jellyfin.org/openapi/stable/';
 const ARCHIVE_UNSTABLE = 'https://api.jellyfin.org/openapi/unstable/';
@@ -35,26 +35,13 @@ const CACHE_REL = '.api-watch/cache';
 // Specs are large; allow well beyond the signals-fetch 5s default.
 const SPEC_TIMEOUT_MS = 30000;
 
-// A stable-channel version: MAJOR.MINOR(.PATCH) with an optional pre-release suffix
-// (-rcN / -betaN / -alphaN). RCs ship in the stable dir alongside finals.
-//
-// PATCH is optional because the archive does not always publish one: the 10.x line
-// used three segments (10.12.0-rc1), but the 12.0 line ships its RCs as `12.0-rc4`.
-// Requiring three segments made every 12.0 RC unfetchable, which blocked triaging the
-// whole next major. The `!isUnstableVersion` guard keeps the now-looser shape from
-// also swallowing the legacy datestamp form (20240207.2), which must route to unstable/.
+// A stable-channel version: a release base (MAJOR.MINOR[.PATCH], see
+// isReleaseVersionBase) with an optional pre-release suffix (-rcN / -betaN /
+// -alphaN). RCs ship in the stable dir alongside finals. The base check excludes
+// the legacy datestamp form (20240207.2), which must route to unstable/.
 function isStableVersion(v) {
-  return (
-    typeof v === 'string' &&
-    /^\d+\.\d+(?:\.\d+)?(?:-(?:rc|beta|alpha)\d+)?$/.test(v) &&
-    !isUnstableVersion(v)
-  );
-}
-
-// An unstable-channel (master) build label: an 8-digit date, optionally followed
-// by a 6-digit time (20240402201942) or the legacy <YYYYMMDD>.<N> minor (20240207.2).
-function isUnstableVersion(v) {
-  return typeof v === 'string' && /^\d{8}(?:\d{6}|\.\d+)?$/.test(v);
+  if (typeof v !== 'string') return false;
+  return isReleaseVersionBase(v.replace(/-(?:rc|beta|alpha)\d+$/, ''));
 }
 
 // Any fetchable spec label across both channels.
@@ -102,7 +89,7 @@ async function fetchSpec(
 ) {
   if (!isSpecVersion(version)) {
     throw new Error(
-      `spec-fetch: version must be MAJOR.MINOR.PATCH (optionally -rcN/-betaN/-alphaN) ` +
+      `spec-fetch: version must be MAJOR.MINOR[.PATCH] (optionally -rcN/-betaN/-alphaN) ` +
         `or an unstable datestamp, got ${version}`,
     );
   }

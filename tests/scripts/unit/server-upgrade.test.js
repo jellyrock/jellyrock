@@ -682,11 +682,53 @@ describe('digest identity + render', () => {
     expect(body).toContain('🔴 **1** breaking');
     expect(body).toContain('**Standing floor findings**: 5 total');
     expect(body).toContain('🟡 4 coverage-gap + 🔵 1 symmetry');
-    expect(body).toContain('🔎 1 need investigation');
+    // The one candidate is a release change, so it counts on the release line and
+    // the floor line reports zero of its own.
+    expect(body).toContain(
+      '🔴 **1** breaking · 🟢 **0** new endpoint(s) · 🔎 **1** to investigate',
+    );
+    expect(body).toContain('🔎 0 need investigation');
     // Collapsible glyph legend + the maintainer action-needed nudge.
     expect(body).toContain('<details><summary>What the counts mean</summary>');
     expect(body).toContain('Maintainers — action needed');
     expect(body).toContain('`/server-upgrade`');
+  });
+
+  it('renderDigestBody counts each axis only against its own candidates', () => {
+    // The 12.0 shape: release candidates to investigate, every floor finding
+    // handled. The floor line used to print the TOTAL here and call it floor facts.
+    const candidate = (type) => ({
+      type,
+      needsInvestigation: true,
+      change: { kind: 'x', path: '/p', method: 'GET', detail: 'd' },
+      appUsage: { sites: [] },
+    });
+    const report = {
+      counts: {
+        breaking: 5,
+        opportunity: 1,
+        'coverage-gap': 4,
+        'symmetry-advisory': 1,
+        needsInvestigation: 7,
+        floorKnown: 4,
+      },
+      candidates: [
+        ...Array.from({ length: 5 }, () => candidate('breaking')),
+        candidate('opportunity'),
+        candidate('coverage-gap'),
+      ],
+    };
+    const body = renderDigestBody({
+      version: '12.0',
+      acknowledged: '10.11.8',
+      floor: '10.7.0',
+      report,
+    });
+    expect(body).toContain(
+      '🔴 **5** breaking · 🟢 **1** new endpoint(s) · 🔎 **6** to investigate',
+    );
+    expect(body).toContain('🔎 1 need investigation');
+    expect(body).not.toContain('🔎 7');
   });
 
   it('renderDigestBody renders the mechanically-clean record when 0 candidates', () => {
@@ -818,6 +860,14 @@ describe('clearedThroughFrom — resolved-through derived from the digest issues
     expect(clearedThroughFrom(withOpen10, '10.11.11')).toBe('10.11.9');
     // Nothing strictly below 10.11.9 → null.
     expect(clearedThroughFrom(withOpen10, '10.11.9')).toBe(null);
+  });
+
+  it('reads a patchless digest title (Jellyfin 12.0)', () => {
+    const next = [
+      { title: '[server-upgrade] Jellyfin 10.11.11 — release triage', state: 'CLOSED' },
+      { title: '[server-upgrade] Jellyfin 12.0 — release triage', state: 'CLOSED' },
+    ];
+    expect(clearedThroughFrom(next, '12.0.1')).toBe('12.0');
   });
 
   it('is case-insensitive on state and null-safe on bad input', () => {
