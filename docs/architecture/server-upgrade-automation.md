@@ -26,7 +26,7 @@ related-files:
   - docs/signals-backlog.md
   - docs/dev/jellyfin-server-versioning.md
   - source/api/ApiClient.bs
-last-reviewed: 2026-08-09
+last-reviewed: 2026-09-15
 ---
 
 # Jellyfin Server-Upgrade Automation
@@ -359,7 +359,7 @@ is a manual, maintainer-initiated surface; the daily CI tracker stays stable-onl
 
 | Channel | Dir | Filename | Mutability |
 | --- | --- | --- | --- |
-| stable + RC | `/openapi/stable/` | `jellyfin-openapi-<X.Y.Z>.json`, `…-rcN.json` | immutable per build |
+| stable + RC | `/openapi/stable/` | `jellyfin-openapi-<X.Y[.Z]>.json`, `…-rcN.json` (10.x: `10.11.8`; 12.0 line: `12.0`, `12.0-rc4`) | immutable per build |
 | unstable/master | `/openapi/unstable/` | `jellyfin-openapi-<datestamp>.json` (e.g. `20240402201942`) | immutable per build |
 | rolling pointers | `/openapi/` root | `jellyfin-openapi-unstable.json` | **mutable** — never pinned |
 
@@ -400,10 +400,16 @@ machine-enforced **offline** by `npm run lint:apiversion-consistency`
 in the floor-system CI lint), which parses `resolveApiVersion()` with the same
 BrighterScript AST the manifest generator uses and fails if its guards drift from the
 boundary map. No Roku hardware is needed to verify a tier split. A **cross-major jump**
-(e.g. `12.0.0` — Jellyfin dropping the `10.` prefix) needs no special-casing: version
-comparison is numeric-per-segment and the active tier is unbounded above, so the new
-major lands in the active tier and diffs against the prior stable normally. RCs can
-still change, so re-run `/server-upgrade` against the FINAL stable when it ships.
+(Jellyfin dropping the `10.` prefix) needs no tier special-casing: version comparison
+is numeric-per-segment and the active tier is unbounded above, so the new major lands
+in the active tier and diffs against the prior stable normally. What it DID need is
+format tolerance: the 12.0 line publishes **two-segment** labels (`12.0`, not `12.0.0`).
+Every check on a Jellyfin version therefore goes through one predicate,
+`signals-fetch.cjs` `isReleaseVersionBase` (MAJOR.MINOR[.PATCH], datestamp builds excluded).
+A private three-segment regex anywhere in the pipeline fails silently rather than
+loudly — `serverToTier('12.0')` returning `null` turned every breaking change on a
+`[1, ∞)` endpoint into `frozen-skip`, hiding it from the digest. RCs can still
+change, so re-run `/server-upgrade` against the FINAL stable when it ships.
 
 ## Roadmap
 

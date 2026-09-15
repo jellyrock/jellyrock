@@ -80,7 +80,11 @@ import {
 
 const require = createRequire(import.meta.url);
 const { fetchSpec } = require('./lib/spec-fetch.cjs');
-const { fetchJellyfinVersions, compareSemverBase } = require('./lib/signals-fetch.cjs');
+const {
+  fetchJellyfinVersions,
+  compareSemverBase,
+  isReleaseVersionBase,
+} = require('./lib/signals-fetch.cjs');
 const { loadBoundaries } = require('./lib/version-boundaries.cjs');
 
 const SIGNALS_REL = 'docs/signals-backlog.md';
@@ -135,8 +139,7 @@ export function parseStableSignal(markdown) {
 // (none/clean/triage) is derived from this plus the report (see main).
 export function decideVersionState({ latestStable, acknowledged }) {
   if (!latestStable) return 'caught-up';
-  const isSemver = (v) => typeof v === 'string' && /^\d+\.\d+\.\d+$/.test(v);
-  if (!isSemver(acknowledged)) return 'ahead';
+  if (!isReleaseVersionBase(acknowledged)) return 'ahead';
   return compareSemverBase(latestStable, acknowledged) > 0 ? 'ahead' : 'caught-up';
 }
 

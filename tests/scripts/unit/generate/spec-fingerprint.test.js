@@ -7,7 +7,7 @@
 // CLI --from-file write/--check drift gate against a temp tree via spawnScript.
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnScript } from '../_helpers/spawn-script.js';
@@ -177,5 +177,29 @@ describe('CLI --from-file write + --check drift gate', () => {
 
     const check2 = spawnScript(SCRIPT, [...args, '--check']);
     expect(check2.exitCode).toBe(0);
+  });
+
+  it('writes a patchless version (12.0) and the no-version refresh --check still sees it', () => {
+    dir = mkdtempSync(join(tmpdir(), 'jellyrock-spec-fp-'));
+    const specPath = join(dir, 'spec.json');
+    writeFileSync(specPath, JSON.stringify(fixtureSpec()));
+
+    const write = spawnScript(SCRIPT, ['12.0', '--from-file', specPath, dir]);
+    expect(write.exitCode).toBe(0);
+    const written = JSON.parse(
+      readFileSync(join(dir, 'docs/architecture/spec-fingerprints/jellyfin-12.0.json'), 'utf8'),
+    );
+    expect(written.specVersion).toBe('12.0');
+
+    // The refresh path enumerates committed files and refetches each; seed the
+    // offline cache so it resolves without network.
+    mkdirSync(join(dir, '.api-watch/cache'), { recursive: true });
+    writeFileSync(
+      join(dir, '.api-watch/cache/jellyfin-openapi-12.0.json'),
+      JSON.stringify(fixtureSpec()),
+    );
+    const check = spawnScript(SCRIPT, [dir, '--check']);
+    expect(check.exitCode).toBe(0);
+    expect(check.stdout).toMatch(/12\.0/);
   });
 });

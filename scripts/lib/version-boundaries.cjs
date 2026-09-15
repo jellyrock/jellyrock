@@ -18,15 +18,14 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const yaml = require('js-yaml');
-const { compareSemverBase } = require('./signals-fetch.cjs');
-const { isUnstableVersion } = require('./spec-fetch.cjs');
+const {
+  compareSemverBase,
+  isReleaseVersionBase,
+  isUnstableVersion,
+} = require('./signals-fetch.cjs');
 
 const MAP_REL = 'docs/dev/jellyfin-version-boundaries.yml';
 const VALID_STATUSES = new Set(['frozen', 'active']);
-
-function isSemverBase(v) {
-  return typeof v === 'string' && /^\d+\.\d+\.\d+$/.test(v);
-}
 
 // Validate the parsed map shape, throwing a one-line error on any violation.
 // Returns the validated object: { floor, tiers: { <n>: { minServer, maxServer,
@@ -35,8 +34,8 @@ function validateBoundaries(raw) {
   if (!raw || typeof raw !== 'object') {
     throw new Error('version-boundaries: map is empty or not an object');
   }
-  if (!isSemverBase(raw.floor)) {
-    throw new Error(`version-boundaries: floor must be MAJOR.MINOR.PATCH, got ${raw.floor}`);
+  if (!isReleaseVersionBase(raw.floor)) {
+    throw new Error(`version-boundaries: floor must be MAJOR.MINOR[.PATCH], got ${raw.floor}`);
   }
   if (!raw.tiers || typeof raw.tiers !== 'object') {
     throw new Error('version-boundaries: missing tiers map');
@@ -55,12 +54,12 @@ function validateBoundaries(raw) {
     if (!tier || typeof tier !== 'object') {
       throw new Error(`version-boundaries: tier ${key} is not an object`);
     }
-    if (!isSemverBase(tier.minServer)) {
-      throw new Error(`version-boundaries: tier ${key} minServer must be MAJOR.MINOR.PATCH`);
+    if (!isReleaseVersionBase(tier.minServer)) {
+      throw new Error(`version-boundaries: tier ${key} minServer must be MAJOR.MINOR[.PATCH]`);
     }
-    if (tier.maxServer !== null && !isSemverBase(tier.maxServer)) {
+    if (tier.maxServer !== null && !isReleaseVersionBase(tier.maxServer)) {
       throw new Error(
-        `version-boundaries: tier ${key} maxServer must be MAJOR.MINOR.PATCH or null`,
+        `version-boundaries: tier ${key} maxServer must be MAJOR.MINOR[.PATCH] or null`,
       );
     }
     if (!VALID_STATUSES.has(tier.status)) {
@@ -116,7 +115,7 @@ function activeTier(boundaries) {
 function serverToTier(boundaries, version) {
   if (isUnstableVersion(version)) return activeTier(boundaries);
   const base = typeof version === 'string' ? version.replace(/-.*$/, '') : version;
-  if (!isSemverBase(base)) return null;
+  if (!isReleaseVersionBase(base)) return null;
   if (compareSemverBase(base, boundaries.floor) < 0) return null;
   for (const [key, tier] of Object.entries(boundaries.tiers)) {
     const atOrAboveMin = compareSemverBase(base, tier.minServer) >= 0;

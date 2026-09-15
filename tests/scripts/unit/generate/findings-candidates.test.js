@@ -108,6 +108,33 @@ describe('forwardFindings — endpoint changes + tier relevance', () => {
     expect(candidates[0].appUsage).toMatchObject({ used: true, apiVersionRange: [2, null] });
   });
 
+  it('keeps a removal on a [1, ∞) endpoint active-tier when the release is patchless (12.0)', () => {
+    const m = manifest({
+      endpoints: [
+        endpoint({
+          path: '/Shows/NextUp',
+          normalized: '/shows/nextup',
+          minApiVersion: 1,
+          maxApiVersion: null,
+        }),
+      ],
+    });
+    const d = diff(
+      [
+        {
+          kind: 'param-removed',
+          path: '/Shows/NextUp',
+          method: 'GET',
+          name: 'disableFirstEpisode',
+          detail: 'gone',
+        },
+      ],
+      { toVersion: '12.0' },
+    );
+    const { candidates } = forwardFindings(d, m, BOUNDARIES);
+    expect(candidates[0]).toMatchObject({ relevance: 'active-tier', needsInvestigation: true });
+  });
+
   it('marks a frozen-only endpoint frozen-skip (self-excludes, no allowlist)', () => {
     const m = manifest({
       endpoints: [

@@ -820,6 +820,14 @@ describe('clearedThroughFrom — resolved-through derived from the digest issues
     expect(clearedThroughFrom(withOpen10, '10.11.9')).toBe(null);
   });
 
+  it('reads a patchless digest title (Jellyfin 12.0)', () => {
+    const next = [
+      { title: '[server-upgrade] Jellyfin 10.11.11 — release triage', state: 'CLOSED' },
+      { title: '[server-upgrade] Jellyfin 12.0 — release triage', state: 'CLOSED' },
+    ];
+    expect(clearedThroughFrom(next, '12.0.1')).toBe('12.0');
+  });
+
   it('is case-insensitive on state and null-safe on bad input', () => {
     expect(clearedThroughFrom([{ title: 'Jellyfin 10.11.10', state: 'closed' }], '10.11.11')).toBe(
       '10.11.10',

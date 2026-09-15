@@ -51,7 +51,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { normalizeSpecPath } from './lib/spec-path.cjs';
-import { compareSemverBase } from './lib/signals-fetch.cjs';
+import { compareSemverBase, isReleaseVersionBase } from './lib/signals-fetch.cjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -595,8 +595,8 @@ export function clearedThroughFrom(issues, version) {
   for (const iss of issues) {
     const state = String(iss?.state ?? '').toUpperCase();
     if (state !== 'CLOSED') continue;
-    const m = typeof iss?.title === 'string' && iss.title.match(/Jellyfin (\d+\.\d+\.\d+)/);
-    if (!m) continue;
+    const m = typeof iss?.title === 'string' && iss.title.match(/Jellyfin (\S+)/);
+    if (!m || !isReleaseVersionBase(m[1])) continue;
     const v = m[1];
     if (compareSemverBase(v, version) >= 0) continue; // at/after the current release
     if (best === null || compareSemverBase(v, best) > 0) best = v;

@@ -34,6 +34,7 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { fetchSpec } = require('../lib/spec-fetch.cjs');
+const { isReleaseVersionBase } = require('../lib/signals-fetch.cjs');
 
 const SCHEMA_VERSION = 1;
 const GENERATOR = 'scripts/generate/spec-fingerprint.js';
@@ -207,8 +208,8 @@ function committedVersions(rootDir) {
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
     .map((f) => {
-      const m = f.match(/^jellyfin-(\d+\.\d+\.\d+)\.json$/);
-      return m ? m[1] : null;
+      const m = f.match(/^jellyfin-(.+)\.json$/);
+      return m && isReleaseVersionBase(m[1]) ? m[1] : null;
     })
     .filter(Boolean)
     .sort();
@@ -254,8 +255,8 @@ async function main() {
     (a, i) => !a.startsWith('--') && !(fromFileIdx >= 0 && i === fromFileIdx + 1),
   );
   // First positional that looks like a version; otherwise root defaults to '.'.
-  const explicitVersion = positional.find((p) => /^\d+\.\d+\.\d+$/.test(p)) ?? null;
-  const rootDir = positional.find((p) => !/^\d+\.\d+\.\d+$/.test(p)) ?? '.';
+  const explicitVersion = positional.find((p) => isReleaseVersionBase(p)) ?? null;
+  const rootDir = positional.find((p) => !isReleaseVersionBase(p)) ?? '.';
 
   let versions;
   if (explicitVersion) {

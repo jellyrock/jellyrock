@@ -18,6 +18,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const yaml = require('js-yaml');
+const { isReleaseVersionBase } = require('./signals-fetch.cjs');
 
 const REGISTRY_REL = 'docs/dev/jellyfin-endpoint-availability.yml';
 
@@ -31,10 +32,6 @@ const HANDLING_TYPES = new Set([
 ]);
 
 const HTTP_METHODS = new Set(['GET', 'PUT', 'POST', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS', 'TRACE']);
-
-function isSemverBase(v) {
-  return typeof v === 'string' && /^\d+\.\d+\.\d+$/.test(v);
-}
 
 // Normalize a spec/registry path to the manifest's `normalized` form: collapse
 // every {placeholder} to {}, fold case, strip a trailing slash, ensure a leading
@@ -97,9 +94,9 @@ function validateRegistry(raw) {
         }
       }
     }
-    if (entry.minServer != null && !isSemverBase(entry.minServer)) {
+    if (entry.minServer != null && !isReleaseVersionBase(entry.minServer)) {
       throw new Error(
-        `endpoint-availability: ${where} minServer must be MAJOR.MINOR.PATCH or null`,
+        `endpoint-availability: ${where} minServer must be MAJOR.MINOR[.PATCH] or null`,
       );
     }
     const h = entry.handling;

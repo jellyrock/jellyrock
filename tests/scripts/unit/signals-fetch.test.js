@@ -14,7 +14,35 @@ const {
   parseUnstableIndex,
   parseRokuOsMarkdown,
   compareSemverBase,
+  isReleaseVersionBase,
+  isUnstableVersion,
 } = require('../../../scripts/lib/signals-fetch.cjs');
+
+describe('isReleaseVersionBase', () => {
+  it('accepts three-segment and the patchless two-segment labels the 12.0 line publishes', () => {
+    expect(isReleaseVersionBase('10.11.8')).toBe(true);
+    expect(isReleaseVersionBase('12.0')).toBe(true);
+    expect(isReleaseVersionBase('12.0.1')).toBe(true);
+  });
+
+  it('rejects a legacy unstable datestamp, which is also MAJOR.MINOR-shaped', () => {
+    expect(isReleaseVersionBase('20240207.2')).toBe(false);
+    expect(isReleaseVersionBase('20240402201942')).toBe(false);
+  });
+
+  it('rejects pre-release suffixes, bare majors, and non-strings', () => {
+    expect(isReleaseVersionBase('12.0-rc4')).toBe(false);
+    expect(isReleaseVersionBase('12')).toBe(false);
+    expect(isReleaseVersionBase('10.11.8.1')).toBe(false);
+    expect(isReleaseVersionBase('latest')).toBe(false);
+    expect(isReleaseVersionBase(null)).toBe(false);
+  });
+
+  it('keeps isUnstableVersion available here (spec-fetch re-exports it)', () => {
+    expect(isUnstableVersion('20240207.2')).toBe(true);
+    expect(isUnstableVersion('12.0')).toBe(false);
+  });
+});
 
 describe('parseJellyfinIndex', () => {
   it('returns latest stable + null rc when only stable filenames exist', () => {
