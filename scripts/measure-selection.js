@@ -250,6 +250,35 @@ export function selectColdSamples(samples = [], selector = {}) {
 }
 
 /**
+ * The mount identity a series RECORD is stamped with — `component` + `screenVariant`.
+ *
+ * These two fields are what `measure-compare.js` selects a record's cold samples by, so a
+ * pair no sample carries empties the series on read. That is what the first-with-a-variant
+ * rule produced for any screen reached THROUGH another mount: `--component homeRows`
+ * recorded Home with `preLogin`'s `start`, and `measure:compare` found 0 samples in every
+ * Home series (and `itemDetails` behind the same `preLogin` on a nav). So the variant comes
+ * from the component actually recorded when one was named.
+ *
+ * Unnamed, both fall back to the first stamped mount — the sample an unnamed series
+ * publishes. A named component that never stamped a variant records `null`, not a
+ * neighbour's.
+ *
+ * @returns {{component: string|null, screenVariant: string|null}}
+ */
+export function recordMountIdentity(samples = [], selector = {}) {
+  const component =
+    selector.component ??
+    samples.find((s) => s.dimensions?.component)?.dimensions.component ??
+    null;
+  const candidates = selector.component
+    ? samples.filter((s) => s.dimensions?.component === selector.component)
+    : samples;
+  const screenVariant =
+    selector.variant ?? candidates.find((s) => s.dimensions?.variant)?.dimensions.variant ?? null;
+  return { component, screenVariant };
+}
+
+/**
  * The mounts of one launch that were NOT selected, named rather than counted.
  *
  * They used to be described as "later runs", which was true only while the selected sample

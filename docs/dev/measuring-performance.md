@@ -129,7 +129,10 @@ npm run measure -- --measurement screen-load --component homeRows -n 5
 
 Home is landed on rather than navigated to, so it takes no `--nav`. It does need
 `--component homeRows`: every launch also mounts the `preLogin` coordinator, which emits
-its own run.
+its own run. The name does two jobs beyond selecting the median: each launch's watch stays
+open until the NAMED mount is complete (`preLogin` completes first, and a Home that begins
+more than the quiet interval later would otherwise be cut off), and the record is stamped
+with Home's own variant, so `measure:compare` can select the series back.
 
 Home's rows fill from several independent tasks, so no single handler is its paint.
 [`HomeRows`](../../components/home/HomeRows.bs) declares one fill per row, keyed by the row's

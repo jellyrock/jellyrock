@@ -17,6 +17,7 @@ import {
   launchAudit,
   mountIdOf,
   otherMountsIn,
+  recordMountIdentity,
   selectColdSamples,
   selectionRefusalFor,
   selectsMount,
@@ -312,5 +313,52 @@ describe('auditing which launches came back empty', () => {
     const audit = launchAudit([...playbackLaunch(0), ...playbackLaunch(1)], {}, 2);
     expect(audit.withoutAnySample).toBe(0);
     expect(audit.withoutNamedMount).toBe(0);
+  });
+});
+
+describe('the mount identity a record is stamped with', () => {
+  /** Home is reached THROUGH `preLogin`, whose variant is `start`; Home stamps `none`. */
+  const homeLaunch = (launch) => [
+    s(launch, 0, 'preLogin', 'start'),
+    s(launch, 1, 'homeRows', 'none'),
+  ];
+
+  it('takes the variant from the NAMED component, not from the first mount that has one', () => {
+    // The defect: `--component homeRows` recorded `homeRows` + `start`, a pair no sample
+    // carries, so `measure:compare` selected zero samples from every Home series.
+    const identity = recordMountIdentity([...homeLaunch(0), ...homeLaunch(1)], {
+      component: 'homeRows',
+    });
+    expect(identity).toEqual({ component: 'homeRows', screenVariant: 'none' });
+    // And the pair it records is one `selectColdSamples` can select again.
+    const picked = selectColdSamples(homeLaunch(0), {
+      component: identity.component,
+      variant: identity.screenVariant,
+    });
+    expect(picked.map((x) => x.dimensions.component)).toEqual(['homeRows']);
+  });
+
+  it('keeps an explicitly named variant as given', () => {
+    expect(
+      recordMountIdentity(playbackLaunch(0), { component: 'videoPlayer', variant: 'Movie' }),
+    ).toEqual({
+      component: 'videoPlayer',
+      screenVariant: 'Movie',
+    });
+  });
+
+  it('falls back to the first stamped mount when nothing is named', () => {
+    expect(recordMountIdentity(homeLaunch(0), {})).toEqual({
+      component: 'preLogin',
+      screenVariant: 'start',
+    });
+  });
+
+  it('records null rather than borrowing another mount when the named one never stamped a variant', () => {
+    const samples = [s(0, 0, 'preLogin', 'start'), s(0, 1, 'homeRows', undefined)];
+    expect(recordMountIdentity(samples, { component: 'homeRows' })).toEqual({
+      component: 'homeRows',
+      screenVariant: null,
+    });
   });
 });
