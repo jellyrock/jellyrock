@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Stop the extras row counter flickering on `ItemDetails` ([#922](https://github.com/jellyrock/jellyrock/pull/922))
 - Hide the series Resume button until an episode has been watched ([#927](https://github.com/jellyrock/jellyrock/pull/927))
 
 ### Dependencies
