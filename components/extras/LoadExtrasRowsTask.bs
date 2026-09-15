@@ -1,5 +1,6 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPipeline.bs"
+import "pkg:/source/api/items.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/extras/extrasRows.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
@@ -136,41 +137,13 @@ function buildRowRequest(row as object, userId as string) as dynamic
       "EnableTotalRecordCount": false
     })
   else if kind = "artistAlbums" or kind = "moreAlbums"
-    ' Albums where this artist is the album artist, newest first.
-    return api.BuildGetItemsByQueryRequest({
-      "AlbumArtistIds": row.itemId,
-      "includeitemtypes": "MusicAlbum",
-      "sortBy": "PremiereDate,ProductionYear,SortName",
-      "SortOrder": "Descending",
-      "Recursive": true
-    })
+    return BuildArtistAlbumsRequest(row.itemId)
   else if kind = "artistAppearsOn"
-    ' Albums this artist contributes to but is not the album artist of — mutually exclusive
-    ' with artistAlbums by Jellyfin's definition of ContributingArtistIds.
-    return api.BuildGetItemsByQueryRequest({
-      "ContributingArtistIds": row.itemId,
-      "includeitemtypes": "MusicAlbum",
-      "sortBy": "PremiereDate,ProductionYear,SortName",
-      "SortOrder": "Descending",
-      "Recursive": true
-    })
+    return BuildArtistAppearsOnRequest(row.itemId)
   else if kind = "artistSongs"
-    ' ArtistIds (album artist OR contributing) so songs on compilations surface too. Grouped by
-    ' album then track; capped at 100 for prolific artists.
-    return api.BuildGetItemsByQueryRequest({
-      "ArtistIds": row.itemId,
-      "includeitemtypes": "Audio",
-      "sortBy": "Album,ParentIndexNumber,IndexNumber,SortName",
-      "Recursive": true,
-      "Limit": 100,
-      "EnableTotalRecordCount": false
-    })
+    return BuildArtistSongsRequest(row.itemId)
   else if kind = "albumSongs" or kind = "albumTracks"
-    return api.BuildGetItemsByQueryRequest({
-      "parentId": row.itemId,
-      "includeitemtypes": "Audio",
-      "sortBy": "SortName"
-    })
+    return BuildAlbumSongsRequest(row.itemId)
   else if kind = "playlistItems"
     return api.BuildGetPlaylistItemsRequest(row.itemId, {
       "SortBy": "DateCreated",

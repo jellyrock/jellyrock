@@ -260,6 +260,61 @@ function ArtistOverview(name as string)
   return data.overview
 end function
 
+' ── Music extras requests ─────────────────────────────────────────────────
+' Request builders for ItemDetails' music extras rows, which LoadExtrasRowsTask pipelines.
+' They return a request AA rather than fetching, so the orchestrator owns the round trip —
+' but the params are built HERE, in the API layer, because that is the scope the API usage
+' manifest reads its request fields from (scripts/generate/api-usage-manifest.js). Built in
+' a component instead, these fields would silently drop out of server-upgrade triage.
+
+' Albums where this artist is the album artist (strict: AlbumArtistIds only), newest first.
+' Does NOT include albums the artist merely contributes to — see BuildArtistAppearsOnRequest.
+function BuildArtistAlbumsRequest(artistId as string) as dynamic
+  return GetApi().BuildGetItemsByQueryRequest({
+    "AlbumArtistIds": artistId,
+    "includeitemtypes": "MusicAlbum",
+    "sortBy": "PremiereDate,ProductionYear,SortName",
+    "SortOrder": "Descending",
+    "Recursive": true
+  })
+end function
+
+' Albums an artist appears on as a contributing artist but is NOT the album artist of —
+' Jellyfin's ContributingArtistIds, so mutually exclusive with BuildArtistAlbumsRequest.
+' Newest first.
+function BuildArtistAppearsOnRequest(artistId as string) as dynamic
+  return GetApi().BuildGetItemsByQueryRequest({
+    "ContributingArtistIds": artistId,
+    "includeitemtypes": "MusicAlbum",
+    "sortBy": "PremiereDate,ProductionYear,SortName",
+    "SortOrder": "Descending",
+    "Recursive": true
+  })
+end function
+
+' All Audio tracks by an artist in any capacity (album artist OR contributing), so songs on
+' compilations or with mismatched album-level tags still surface. Grouped by album then
+' track; capped at 100 for prolific artists.
+function BuildArtistSongsRequest(artistId as string) as dynamic
+  return GetApi().BuildGetItemsByQueryRequest({
+    "ArtistIds": artistId,
+    "includeitemtypes": "Audio",
+    "sortBy": "Album,ParentIndexNumber,IndexNumber,SortName",
+    "Recursive": true,
+    "Limit": 100,
+    "EnableTotalRecordCount": false
+  })
+end function
+
+' The Audio tracks on an album.
+function BuildAlbumSongsRequest(albumId as string) as dynamic
+  return GetApi().BuildGetItemsByQueryRequest({
+    "parentId": albumId,
+    "includeitemtypes": "Audio",
+    "sortBy": "SortName"
+  })
+end function
+
 ' Get list of songs belonging to an artist
 function GetSongsByArtist(id as string, params = {} as object)
   paramArray = {
