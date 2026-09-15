@@ -173,6 +173,24 @@ from 4 items to 253, and the series Resume button started targeting a Season ins
 of an episode. A clean spec diff was a true statement about the signature and a
 useless one about the app.
 
+The same wall has two more shapes, both from the 10.11.8 → 12.0 triage:
+
+- **A default authentication policy.** 12.0 sets `EnableLegacyAuthorization=false` on upgrade
+  (jellyfin/jellyfin#15559), so `?api_key=`, `X-Emby-Token` and the `Emby` scheme stop
+  authenticating. The spec's `components.securitySchemes` is byte-identical in 10.11.8 and
+  12.0, and the change is server *configuration*, not a declared contract, so the diff
+  cannot see it. It broke our remote-control socket's header-less fallback, fixed in
+  [#920](https://github.com/jellyrock/jellyrock/pull/920).
+- **A param that stops working long before it disappears.** 10.11.0 marked
+  `GET /Shows/NextUp`'s `disableFirstEpisode` `[ParameterObsolete]` and stopped reading it,
+  but kept it in the spec, so the diff for that release was clean. The break only surfaced
+  when 12.0 deleted the dead param and the diff finally reported a removal
+  ([#925](https://github.com/jellyrock/jellyrock/issues/925)): every 10.11+ server had been
+  showing a Resume button on series nobody had started. This is why the skill checks the
+  FROM-version controller before calling a removal "cleanup". A removal with no behavior
+  change in *this* release can still expose an app that relied on the param in an *earlier*
+  one.
+
 **2. How we call an endpoint, as opposed to which ones we call.**
 [`api-usage-manifest.json`](api-usage-manifest.json) does record a `requestFields`
 list, but two properties of it keep the obvious check out of reach. It is **flat and
