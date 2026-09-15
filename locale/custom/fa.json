@@ -49,7 +49,6 @@
   "LabelHome": "خانه",
   "LabelInstantMix": "درهم کردن فوری",
   "LabelKids": "بچه ها",
-  "LabelLevel": "سطح",
   "LabelLibraries": "کتابخانه‌ها",
   "LabelLive": "پخش زنده",
   "LabelMoreLikeThis": "موارد مشابه با این",
@@ -191,6 +190,5 @@
   "MessageDisc1": "دیسک {0}",
   "MessageEndsAt1": "تمام شده در {0}",
   "MessageMoreFrom1": "موارد بیشتر از {0}",
-  "MessageSetTheMaximumAmountOfDays": "تنظیم حداکثر روزهایی که یک نمایش بدون تماشا کردن باید در لیست 'بعدی' بماند.",
-  "MessageTheSourceFileIsEntirelyCompatible": "فایل منبع کاملاً با این سرویس گیرنده سازگار است و جلسه در حال دریافت فایل بدون تغییر است."
+  "MessageSetTheMaximumAmountOfDays": "تنظیم حداکثر روزهایی که یک نمایش بدون تماشا کردن باید در لیست 'بعدی' بماند."
 }

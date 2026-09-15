@@ -50,7 +50,6 @@
   "LabelHome": "בית",
   "LabelInstantMix": "מיקס מיידי",
   "LabelKids": "ילדים",
-  "LabelLevel": "רמה",
   "LabelLibraries": "ספריות",
   "LabelLive": "שידור חי",
   "LabelMoreLikeThis": "עוד כמו זה",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "לא נוגן",
   "LabelUsername": "שם משתמש",
   "LabelVideo": "וידאו",
-  "LabelVideoRangeType": "סוג טווח וידיאו",
   "LabelVideos": "וידאו",
   "LabelWatch": "סמן כנצפה",
   "LabelWatched": "נצפה",
@@ -195,6 +193,5 @@
   "MessageDisc1": "דיסק {0}",
   "MessageEndsAt1": "מסתיים ב {0}",
   "MessageMoreFrom1": "עוד מ{0}",
-  "MessageSetTheMaximumAmountOfDays": "הגדר את מספר הימים המקסימלי שתכנית צריכה להישאר ברשימת 'הבא בתור' מבלי לצפות בה.",
-  "MessageTheSourceFileIsEntirelyCompatible": "קובץ המקור תואם לחלוטין ללקוח זה וההפעלה מקבלת את הקובץ ללא שינויים."
+  "MessageSetTheMaximumAmountOfDays": "הגדר את מספר הימים המקסימלי שתכנית צריכה להישאר ברשימת 'הבא בתור' מבלי לצפות בה."
 }

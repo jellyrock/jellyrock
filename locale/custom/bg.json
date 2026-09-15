@@ -59,7 +59,6 @@
   "LabelEndsAt": "Приключва в",
   "LabelEnterAPassword": "Въведете паролата",
   "LabelEnterAUsername": "Въведете потребителско име",
-  "LabelEnterConfiguration": "Въведете настройки",
   "LabelEpisodes": "Епизоди",
   "LabelFavorite": "Любим",
   "LabelFavorites": "Любими",
@@ -72,7 +71,6 @@
   "LabelInstantMix": "Пускане на подобни",
   "LabelItemCount": "Преброени елементи",
   "LabelKids": "Деца",
-  "LabelLevel": "Ниво",
   "LabelLibraries": "Библиотеки",
   "LabelLive": "На живо",
   "LabelMoreLikeThis": "Подобни на тези",
@@ -137,7 +135,6 @@
   "LabelUserInterface": "Потребителски Интерфейс",
   "LabelUsername": "Потребителско име",
   "LabelVideo": "Видео",
-  "LabelVideoRangeType": "Тип на видео обхвата",
   "LabelVideos": "Видеоклипове",
   "LabelWatched": "Изгледани",
   "LabelYears": "Години",
@@ -236,8 +233,6 @@
   "MessageServerNotFoundIsItOnline": "Сървърът не е намерен. Сигурни ли сте, че е активен?",
   "MessageSetTheMaximumAmountOfDays": "Задайте максималния брой дни, през които едно шоу би трябвало да остане в списъка „Next Up“, без да го гледате.",
   "MessageShowItemCountInTheLibrary": "Показване на броя на елементите в библиотеката и индекса на избрания елемент.",
-  "MessageSupportDirectPlayOfMpeg2Content": "Поддържа директно възпроизвеждане на MPEG-2 съдържание (напр. телевизия на живо). Това ще предотврати прекодирането на MPEG-2 съдържание, но използва значително повече честотна лента.",
   "MessageSupportDirectPlayOfMpeg4Content": "Поддръжка на директно възпроизвеждане на MPEG-4 съдържание. Може да трябва да се изключи за възпроизвеждане на файлове с DIVX кодиране.",
-  "MessageTheSourceFileIsEntirelyCompatible": "Файлът е напълно съвместим с този клиент, затова го получава без никакви модификации.",
   "MessageYouCanSearchForTitlesPeople": "Можете да търсите заглавия, хора, TV канали на живо и други"
 }

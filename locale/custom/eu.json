@@ -50,7 +50,6 @@
   "LabelHome": "Hasiera",
   "LabelInstantMix": "Bat-bateko nahasketa",
   "LabelKids": "Haurrak",
-  "LabelLevel": "Maila",
   "LabelLibraries": "Liburutegiak",
   "LabelLive": "Zuzenekoa",
   "LabelMoreLikeThis": "Hau bezalakoa",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "Kopiatu gabe",
   "LabelUsername": "Erabiltzaile-izena",
   "LabelVideo": "Bideoa",
-  "LabelVideoRangeType": "Bideo-tarte mota",
   "LabelVideos": "Bideoak",
   "LabelWatched": "Ikusita",
   "LabelYears": "Urteak",
@@ -194,6 +192,5 @@
   "MessageDisc1": "{0}. diskoa",
   "MessageEndsAt1": "{0}(e)tan amaituko da",
   "MessageMoreFrom1": "{0}(r)en beste batzuk",
-  "MessageSetTheMaximumAmountOfDays": "Ezarri gehienez zenbat egunetan egongo den serie bat \"Nobedadeak\" atalean, ikusten ez duzun bitartean.",
-  "MessageTheSourceFileIsEntirelyCompatible": "Iturburu-fitxategia bezero honekin guztiz bateragarria da eta saioak fitxategia aldaketarik gabe jasotzen ari du."
+  "MessageSetTheMaximumAmountOfDays": "Ezarri gehienez zenbat egunetan egongo den serie bat \"Nobedadeak\" atalean, ikusten ez duzun bitartean."
 }

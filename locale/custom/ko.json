@@ -50,7 +50,6 @@
   "LabelHome": "홈",
   "LabelInstantMix": "인스턴스 믹스",
   "LabelKids": "어린이",
-  "LabelLevel": "수준",
   "LabelLibraries": "라이브러리",
   "LabelLive": "라이브",
   "LabelMoreLikeThis": "비슷한 작품",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "재생되지 않음",
   "LabelUsername": "사용자명",
   "LabelVideo": "비디오",
-  "LabelVideoRangeType": "비디오 레인지 타입",
   "LabelVideos": "비디오",
   "LabelWatched": "시청함",
   "LabelYears": "연도",
@@ -194,6 +192,5 @@
   "MessageDisc1": "디스크 {0}",
   "MessageEndsAt1": "{0}에 종료",
   "MessageMoreFrom1": "{0} 에서 더 자세히",
-  "MessageSetTheMaximumAmountOfDays": "에피소드를 시청하지 않고 '다음' 목록에 머무르는 최대 일 수를 설정합니다.",
-  "MessageTheSourceFileIsEntirelyCompatible": "소스 파일은 이 클라이언트와 완전히 호환되며 세션은 수정 없이 데이터를 수신하고 있습니다."
+  "MessageSetTheMaximumAmountOfDays": "에피소드를 시청하지 않고 '다음' 목록에 머무르는 최대 일 수를 설정합니다."
 }

@@ -50,7 +50,6 @@
   "LabelHome": "Heim",
   "LabelInstantMix": "Miks",
   "LabelKids": "Barn",
-  "LabelLevel": "Nivå",
   "LabelLibraries": "Bibliotek",
   "LabelLive": "Direkte",
   "LabelMoreLikeThis": "Meir som dette",
@@ -99,7 +98,6 @@
   "LabelUnplayed": "Ikkje avspelt",
   "LabelUsername": "Brukarnamn",
   "LabelVideo": "Video",
-  "LabelVideoRangeType": "Type videoområde",
   "LabelVideos": "Videoar",
   "LabelWatched": "Sett",
   "LabelYears": "År",
@@ -194,6 +192,5 @@
   "MessageDisc1": "Plate {0}",
   "MessageEndsAt1": "Slutter kl. {0}",
   "MessageMoreFrom1": "Meir frå {0}",
-  "MessageSetTheMaximumAmountOfDays": "Set maksimalt tal på dagar ein serie skal liggje i 'Neste'-lista utan at du ser på han.",
-  "MessageTheSourceFileIsEntirelyCompatible": "Kildefila er heilt kompatibel med denne klienten, og økta mottar fila utan endringar."
+  "MessageSetTheMaximumAmountOfDays": "Set maksimalt tal på dagar ein serie skal liggje i 'Neste'-lista utan at du ser på han."
 }
