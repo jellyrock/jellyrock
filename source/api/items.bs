@@ -469,6 +469,26 @@ function supportsLyrics() as boolean
   return versionChecker(m.global.server.version, "10.9.0")
 end function
 
+' hasWatchedRegularEpisode: Checks whether a series has a watched episode that is not a special.
+'
+' Mirrors Jellyfin's own "last watched" rule for Next Up (played, ParentIndexNumber <> 0 or
+' null), which is what decides whether a series counts as started. The client needs its own
+' copy because Next Up's disableFirstEpisode param, which used to apply that rule for us, is
+' ignored from Jellyfin 10.11 and removed in 12.0 (#925).
+'
+' The REST API has no "not equals" filter, so the caller fetches played episodes sorted
+' ParentIndexNumber,IndexNumber descending with Limit 1: specials (season 0) sort below
+' every regular season, so a special on top means no regular episode was watched.
+'
+' @param {dynamic} playedEpisodes - Items query result: { Items: [BaseItemDto] } or invalid
+' @returns {boolean} - true if the top played episode is not a special
+function hasWatchedRegularEpisode(playedEpisodes as dynamic) as boolean
+  if not isValid(playedEpisodes) or not isValidAndNotEmpty(playedEpisodes.Items) then return false
+  seasonNumber = playedEpisodes.Items[0].ParentIndexNumber
+  if not isValid(seasonNumber) then return true
+  return seasonNumber <> 0
+end function
+
 function BackdropImage(id as string)
   ' Use UI resolution for backdrop images
   localDevice = m.global.device
