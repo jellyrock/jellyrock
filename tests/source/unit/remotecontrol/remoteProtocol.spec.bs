@@ -27,21 +27,40 @@ namespace tests
     @describe("buildSocketUrl()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("builds the ws:// session-socket URL for an http server")
-    function _()
-      url = remoteProtocol.buildSocketUrl("http://192.0.2.10:8098", "tok123", "dev-abc")
+    @it("carries the token as ApiKey on servers >= 10.8.0 (api_key is legacy auth, off by default on 12.0)")
+    @params("10.8.0")
+    @params("10.11.11")
+    @params("12.0.0")
+    function _(serverVersion)
+      url = remoteProtocol.buildSocketUrl("http://192.0.2.10:8098", "tok123", "dev-abc", serverVersion)
+      m.assertEqual(url, "ws://192.0.2.10:8098/socket?ApiKey=tok123&deviceId=dev-abc")
+    end function
+
+    @it("carries the token as api_key on 10.7.x (its session socket reads only api_key + deviceId)")
+    @params("10.7.0")
+    @params("10.7.7")
+    function _(serverVersion)
+      url = remoteProtocol.buildSocketUrl("http://192.0.2.10:8098", "tok123", "dev-abc", serverVersion)
+      m.assertEqual(url, "ws://192.0.2.10:8098/socket?api_key=tok123&deviceId=dev-abc")
+    end function
+
+    @it("falls back to api_key when the server version is unknown")
+    @params("")
+    @params(invalid)
+    function _(serverVersion)
+      url = remoteProtocol.buildSocketUrl("http://192.0.2.10:8098", "tok123", "dev-abc", serverVersion)
       m.assertEqual(url, "ws://192.0.2.10:8098/socket?api_key=tok123&deviceId=dev-abc")
     end function
 
     @it("returns empty for an https server (never downgrades the token onto ws://)")
     function _()
-      m.assertEqual(remoteProtocol.buildSocketUrl("https://jellyfin.example.com", "tok", "dev"), "")
+      m.assertEqual(remoteProtocol.buildSocketUrl("https://jellyfin.example.com", "tok", "dev", "12.0.0"), "")
     end function
 
     @it("returns empty when a credential is missing")
     function _()
-      m.assertEqual(remoteProtocol.buildSocketUrl("http://x:8098", "", "dev"), "")
-      m.assertEqual(remoteProtocol.buildSocketUrl("http://x:8098", "tok", ""), "")
+      m.assertEqual(remoteProtocol.buildSocketUrl("http://x:8098", "", "dev", "12.0.0"), "")
+      m.assertEqual(remoteProtocol.buildSocketUrl("http://x:8098", "tok", "", "12.0.0"), "")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

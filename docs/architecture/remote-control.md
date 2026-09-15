@@ -14,7 +14,7 @@ related-files:
   - source/api/userAuth.bs
   - components/home/Home.bs
   - docs/architecture/remote-control-longpoll-contract.md
-last-reviewed: 2026-08-22
+last-reviewed: 2026-09-14
 ---
 
 # Remote control — "Cast to JellyRock"
@@ -168,10 +168,15 @@ the phantom and the live socket into two sessions.)
 **Jellyfin resolves `DeviceId` from the `Authorization` header and nowhere else.** It never reads it
 from a query string, and when the header omits it the server silently substitutes the `DeviceId` the
 auth **token was minted under** (`AuthorizationContext.GetAuthorizationInfoFromDictionary`; identical
-in 10.7 → 10.11). A token's device row is fixed at mint time and is never rewritten afterwards — only
+in 10.7 → 12.0). A token's device row is fixed at mint time and is never rewritten afterwards — only
 `DeviceName` / `AppVersion` are.
 
-Two consequences the original `ws://` receiver got wrong:
+That header rule governs the socket from **10.8.0** onward, where the upgrade is authenticated through
+`AuthorizationContext`. **10.7.x is the exception**: its `SessionWebSocketListener` binds the session
+from the query string alone, reading exactly `api_key` and `deviceId` — so on 10.7 both query params
+are load-bearing and the header is not consulted.
+
+Two consequences the original `ws://` receiver got wrong (on 10.8.0+):
 
 - The `&deviceId=` query parameter on the socket URL is **inert**. It looks like it binds the
   socket, but the server ignores it.
@@ -183,9 +188,13 @@ Two consequences the original `ws://` receiver got wrong:
 `RemoteControlTask` therefore sends `buildAuthHeader(false)` as an `Authorization` header on the
 upgrade handshake, which pins the socket to the same `DeviceId` everything else advertises. The
 device name is omitted (`false`) because the handshake is written as a raw string with no
-header-encoding layer and the server already has the name on the token's device row. `api_key` stays
-on the URL so a proxy that strips `Authorization` degrades to the old behavior instead of failing to
-connect.
+header-encoding layer and the server already has the name on the token's device row. The token also
+stays on the URL so a proxy that strips `Authorization` degrades to the old behavior instead of failing
+to connect. Its **parameter name is version-gated** (`remoteProtocol.buildSocketUrl`): `ApiKey` on
+10.8.0+, because `api_key` is *legacy authorization* — gated behind `EnableLegacyAuthorization` since
+10.11 and **disabled by default from Jellyfin 12.0** — so an `api_key` fallback would silently stop
+authenticating there; `api_key` on 10.7.x (and an unknown version), because that is the only name
+10.7's socket listener reads.
 
 Session identity is keyed `GetSessionKey(client, deviceId)`, so "same `Client` + same `DeviceId`" is
 the whole invariant. Any future channel that opens a Jellyfin session must send this header.
