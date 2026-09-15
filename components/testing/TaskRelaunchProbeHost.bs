@@ -1,0 +1,36 @@
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/tasks.bs"
+
+sub init()
+  m.top.task = CreateObject("roSGNode", "TaskRelaunchProbeTask")
+end sub
+
+sub launch()
+  launchTask(m.top.task)
+end sub
+
+sub stopTask()
+  m.top.task.control = "STOP"
+end sub
+
+' The app's sequence: STOP, then launchTask, with nothing in between.
+sub stopAndRelaunch()
+  task = m.top.task
+  task.control = "STOP"
+  launchTask(task)
+end sub
+
+' Stops the running task and launches a NEW node in its place, in one callback. `m.top.task`
+' then holds the new node; the stopped one is returned so the spec can still read it.
+function stopAndLaunchFresh() as object
+  previous = m.top.task
+  previous.control = "STOP"
+  m.top.task = CreateObject("roSGNode", "TaskRelaunchProbeTask")
+  launchTask(m.top.task)
+  return previous
+end function
+
+' Lets every invocation of the function return.
+sub release()
+  m.top.task.release = true
+end sub

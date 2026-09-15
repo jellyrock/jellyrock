@@ -25,8 +25,9 @@ sub init()
   m.top.observeField("rowItemSelected", "onRowItemSelected")
   m.top.observeField("rowItemFocused", "onRowItemFocused")
 
-  ' One orchestrator loads every row that needs a Task thread — see LoadExtrasRowsTask.
-  m.extrasTask = CreateObject("roSGNode", "LoadExtrasRowsTask")
+  ' The orchestrator Task of the run in flight — a new node per run (see startRun); invalid
+  ' until the first run.
+  m.extrasTask = invalid
 
   ' Permanent root content node — never replaced.
   m.top.content = CreateObject("roSGNode", "ContentNode")
@@ -35,17 +36,15 @@ sub init()
   ' The item's full row plan (extrasRows.plan), each row carrying `slot`, its index. Rows on
   ' screen are always a subsequence of it, in plan order.
   m.plan = []
-  ' kind -> the row ContentNode on screen, the slot shape it was committed with, and the digest of
-  ' the content it was built from (extrasRows.digestOf). Rows are reused across refreshes so the
-  ' RowList never loses focus position.
+  ' kind -> the row ContentNode on screen, and kind -> { title, shape, digest, contentKind } it
+  ' was committed with (the digest identifies its source content, see extrasRows.digestOf). Rows
+  ' are reused across refreshes so the RowList never loses focus position.
   m.rowsByKind = {}
-  m.shapeByKind = {}
-  m.digestByKind = {}
+  m.rowInfoByKind = {}
 
   ' The run in flight. Slots are indexed like m.plan: { status, count } — "pending", "ok",
   ' "failed", or "unchanged" for a plan row this run does not load. Results hold each resolved
-  ' slot's finished { items, shape, digest } until it is committed.
-  m.runId = 0
+  ' slot's finished { items, shape, digest, contentKind } until it is committed.
   m.isRunning = false
   m.slots = []
   m.results = []
@@ -79,10 +78,6 @@ end sub
 sub loadParts(data as object)
   itemType = m.top.type
   m.top.parentId = data.id
-  if itemType = "Playlist"
-    ' Reset before the run so a stale kind from a previous run can't stand.
-    m.top.playlistContentKind = "unknown"
-  end if
 
   setPlan(extrasRows.plan(itemType, data))
   resetForLoad()
@@ -128,7 +123,6 @@ end sub
 sub startRun(runRows as object, people as dynamic, data as dynamic)
   cancelRun()
 
-  m.runId++
   m.isRunning = true
 
   m.slots = []
@@ -151,7 +145,7 @@ sub startRun(runRows as object, people as dynamic, data as dynamic)
         ' format to a placeholder that no longer changes with the value.
         digest = extrasRows.digestOf(FormatJSON({ id: data.id, type: data.type, runTimeTicks: data.runTimeTicks.toStr(), chapters: data.chapters }, &h0200))
       end if
-      resolveSlot(row.slot, "ok", row.shape, items, digest)
+      resolveSlot(row.slot, "ok", { items: items, shape: row.shape, digest: digest, contentKind: "" })
     else
       m.slots[row.slot] = { status: "pending", count: 0 }
       taskRows.push(row)
@@ -159,7 +153,13 @@ sub startRun(runRows as object, people as dynamic, data as dynamic)
   end for
 
   if taskRows.count() > 0
-    m.extrasTask.setFields({ rows: taskRows, people: people ?? [], runId: m.runId })
+    ' A NEW node every run, never a relaunch of the previous one: a Task stopped while its
+    ' function is still running ignores a launch made in the same callback — measured on device,
+    ' pinned in tests/source/unit/platform/TaskRelaunch.spec.bs. Reusing the node left a Refresh
+    ' pressed mid-run with a run that never started and extras that never settled. The stopped
+    ' node's function makes no further progress, so this does not stack threads.
+    m.extrasTask = CreateObject("roSGNode", "LoadExtrasRowsTask")
+    m.extrasTask.setFields({ rows: taskRows, people: people ?? [] })
     m.extrasTask.observeField("rowReady", "onExtrasRowReady")
     launchTask(m.extrasTask)
   end if
@@ -167,12 +167,14 @@ sub startRun(runRows as object, people as dynamic, data as dynamic)
   finishRunIfResolved()
 end sub
 
-' cancelRun: Drop the run in flight, if any. Its results are discarded by runId even if the
-' Task thread delivers after this.
+' cancelRun: Drop the run in flight, if any. Its Task node is released with it, so nothing it
+' delivers later can reach onExtrasRowReady, which only ever drains the current node.
 sub cancelRun()
-  m.extrasTask.unobserveField("rowReady")
-  m.extrasTask.control = "STOP"
-  m.extrasTask.removeChildrenIndex(m.extrasTask.getChildCount(), 0)
+  if isValid(m.extrasTask)
+    m.extrasTask.unobserveField("rowReady")
+    m.extrasTask.control = "STOP"
+    m.extrasTask = invalid
+  end if
   m.resultCursor = 0
   m.isRunning = false
 end sub
@@ -180,12 +182,15 @@ end sub
 ' onExtrasRowReady: Drain every result the orchestrator has appended since the last wake —
 ' wake events coalesce, appended children don't.
 sub onExtrasRowReady()
+  ' A wake already queued when its run was cancelled can arrive after the node was released.
+  if not isValid(m.extrasTask) then return
+
   childCount = m.extrasTask.getChildCount()
   while m.resultCursor < childCount
     child = m.extrasTask.getChild(m.resultCursor)
     m.resultCursor++
-    if isValid(child) and child.runId = m.runId
-      resolveSlot(child.slot, child.status, child.shape, child.items, child.digest)
+    if isValid(child)
+      resolveSlot(child.slot, child.status, { items: child.items, shape: child.shape, digest: child.digest, contentKind: child.contentKind })
     end if
     ' This component holds the items now — drop the carrier's reference so an ItemDetails
     ' session doesn't retain every batch it was delivered.
@@ -195,14 +200,15 @@ sub onExtrasRowReady()
   finishRunIfResolved()
 end sub
 
-sub resolveSlot(slot as integer, status as string, shape as string, items as object, digest as string)
+' resolveSlot: Record one row's outcome for the commit.
+' @param result - the finished row: { items, shape, digest, contentKind }
+sub resolveSlot(slot as integer, status as string, result as object)
+  items = result.items
   m.slots[slot] = { status: status, count: items.count() }
-  m.results[slot] = { items: items, shape: shape, digest: digest }
+  m.results[slot] = result
 
   kind = m.plan[slot].kind
-  if kind = "playlistItems"
-    m.top.playlistContentKind = extrasRows.playlistContentKind(items)
-  else if items.count() > 0 and not m.top.personHasMedia and (kind = "personMovies" or kind = "personEpisodes" or kind = "personSeries")
+  if items.count() > 0 and not m.top.personHasMedia and (kind = "personMovies" or kind = "personEpisodes" or kind = "personSeries")
     ' Signal early — there is media, no need to wait for the whole run.
     m.top.personHasMedia = true
   end if
@@ -215,7 +221,8 @@ sub finishRunIfResolved()
 
   commitRows()
 
-  m.extrasTask.unobserveField("rowReady")
+  ' Invalid when the run needed no Task thread at all.
+  if isValid(m.extrasTask) then m.extrasTask.unobserveField("rowReady")
   m.isRunning = false
   m.results = []
 
@@ -242,35 +249,25 @@ end sub
 '   - A row whose fetch failed is KEPT: no answer says nothing about what the item has, and
 '     removing it would delete good content on a flaky refresh. See extrasRows.rowDisposition.
 '   - The layout is written only when a row was added, removed or re-shaped.
+'
+' Which of those applies to each row is decided by extrasRows.commitActions, which is unit-tested;
+' this applies its answer to the nodes.
 sub commitRows()
+  titles = []
+  for each planRow in m.plan
+    titles.push(translate(planRow.titleKey, planRow.titleArgs))
+  end for
+  commit = extrasRows.commitActions(m.plan, m.slots, m.results, titles, m.rowInfoByKind)
+
   content = m.top.content
   desired = []
-  isStructureChanged = false
-
   for slot = 0 to m.plan.count() - 1
-    planRow = m.plan[slot]
-    kind = planRow.kind
-    existing = m.rowsByKind[kind]
-    status = m.slots[slot].status
-
-    disposition = "keep"
-    if status <> "unchanged"
-      disposition = extrasRows.rowDisposition(status, m.slots[slot].count, isValid(existing))
-    end if
-
-    if disposition = "fill"
-      result = m.results[slot]
-      title = translate(planRow.titleKey, planRow.titleArgs)
-      if isValid(existing) and m.shapeByKind[kind] = result.shape and extrasRows.isRowUnchanged(existing.title, m.digestByKind[kind] ?? "", title, result.digest)
-        desired.push(existing)
-      else
-        if not isValid(existing) or m.shapeByKind[kind] <> result.shape then isStructureChanged = true
-        desired.push(fillRow(existing, kind, title, result))
-      end if
-    else if disposition = "keep"
-      if isValid(existing) then desired.push(existing)
-    else if disposition = "remove"
-      isStructureChanged = true
+    kind = m.plan[slot].kind
+    action = commit.actions[slot]
+    if action = "write"
+      desired.push(fillRow(m.rowsByKind[kind], kind, titles[slot], m.results[slot]))
+    else if action = "leave"
+      desired.push(m.rowsByKind[kind])
     end if
   end for
 
@@ -278,17 +275,11 @@ sub commitRows()
   ' has — then insert new rows at their positions. The rows that stay are already in plan order,
   ' so only new rows ever need inserting.
   for i = content.getChildCount() - 1 to 0 step -1
-    if not containsNode(desired, content.getChild(i))
-      content.removeChildIndex(i)
-      isStructureChanged = true
-    end if
+    if not containsNode(desired, content.getChild(i)) then content.removeChildIndex(i)
   end for
   for i = 0 to desired.count() - 1
     child = content.getChild(i)
-    if not isValid(child) or not child.isSameNode(desired[i])
-      content.insertChild(desired[i], i)
-      isStructureChanged = true
-    end if
+    if not isValid(child) or not child.isSameNode(desired[i]) then content.insertChild(desired[i], i)
   end for
 
   ' Forget rows that left the screen. Collected first: deleting from an AA while iterating it
@@ -299,11 +290,14 @@ sub commitRows()
   end for
   for each kind in dropped
     m.rowsByKind.delete(kind)
-    m.shapeByKind.delete(kind)
-    m.digestByKind.delete(kind)
+    m.rowInfoByKind.delete(kind)
   end for
 
-  if isStructureChanged then applyRowLayout()
+  if commit.isStructureChanged then applyRowLayout()
+
+  ' Taken from the row as committed, so the Watched button and "Tracks" label always describe the
+  ' playlist row on screen — including one a failed refresh kept.
+  if isValid(commit.playlistContentKind) then m.top.playlistContentKind = commit.playlistContentKind
 end sub
 
 ' fillRow: The row node for `kind`, holding `result.items` — the row already on screen when there
@@ -323,8 +317,7 @@ function fillRow(existing as dynamic, kind as string, title as string, result as
   end if
 
   m.rowsByKind[kind] = row
-  m.shapeByKind[kind] = result.shape
-  m.digestByKind[kind] = result.digest
+  m.rowInfoByKind[kind] = { title: title, shape: result.shape, digest: result.digest, contentKind: result.contentKind }
   return row
 end function
 
@@ -336,8 +329,8 @@ end function
 sub applyRowLayout()
   shapes = []
   for each planRow in m.plan
-    shape = m.shapeByKind[planRow.kind]
-    if isValid(shape) and isValid(m.rowsByKind[planRow.kind]) then shapes.push(shape)
+    info = m.rowInfoByKind[planRow.kind]
+    if isValid(info) then shapes.push(info.shape)
   end for
 
   sizes = extrasRows.rowSizes(shapes)
@@ -464,8 +457,10 @@ end sub
 ' Called by ItemDetails.onDestroy() before nulling the extrasGrid reference.
 sub onDestroy()
   ' Detach every observer before releasing anything a handler could dereference.
-  m.extrasTask.unobserveField("rowReady")
-  m.extrasTask.control = "STOP"
+  if isValid(m.extrasTask)
+    m.extrasTask.unobserveField("rowReady")
+    m.extrasTask.control = "STOP"
+  end if
 
   ' Stop and release the program progress timer (inherited from JRRowList)
   stopProgramProgressTicking(true)
@@ -481,8 +476,7 @@ sub onDestroy()
   m.slots = []
   m.results = []
   m.rowsByKind = {}
-  m.shapeByKind = {}
-  m.digestByKind = {}
+  m.rowInfoByKind = {}
 end sub
 
 ' onKeyEvent: Anticipate the next row on UP/DOWN so the panel translation animation starts

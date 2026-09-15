@@ -28,7 +28,6 @@ sub loadExtrasRows()
   rows = m.top.rows
   if not isValidAndNotEmpty(rows) then return
 
-  runId = m.top.runId
   m.transformer = JellyfinDataTransformer()
 
   ' Declared unconditionally so bslint (LINT1003) sees every path assign them.
@@ -61,7 +60,7 @@ sub loadExtrasRows()
       people = m.top.people
       ' &h0200: an unsupported value becomes a descriptive string rather than failing the whole
       ' format to "" (which would still be safe — an empty digest always rewrites the row).
-      emitRow(runId, row, "ok", castItems(people), extrasRows.digestOf(FormatJSON(people, &h0200)))
+      emitRow(row, "ok", castItems(people), extrasRows.digestOf(FormatJSON(people, &h0200)))
       #if perfTiming
         emitMs += stepClock.totalMilliseconds()
       #end if
@@ -83,7 +82,7 @@ sub loadExtrasRows()
     #if perfTiming
       stepClock.mark()
     #end if
-    emitResponse(runId, result.entry.row, result.res)
+    emitResponse(result.entry.row, result.res)
     #if perfTiming
       emitMs += stepClock.totalMilliseconds()
       stepClock.mark()
@@ -192,10 +191,10 @@ end function
 ' `res` is invalid when the request never got an answer; an HTTP error (`res.ok = false`) is
 ' folded into the same "failed" status, because neither says what the item HAS. Only an "ok"
 ' carries a list the UI may act on, including an empty one.
-sub emitResponse(runId as integer, row as object, res as dynamic)
+sub emitResponse(row as object, res as dynamic)
   if not isValid(res) or not res.ok
     m.log.warn("extras row failed; leaving any existing row in place", row.kind)
-    emitRow(runId, row, "failed", [], "")
+    emitRow(row, "failed", [], "")
     return
   end if
 
@@ -216,7 +215,7 @@ sub emitResponse(runId as integer, row as object, res as dynamic)
   digest = ""
   if body <> "" then digest = extrasRows.digestOf(body + "|" + m.serverVersion)
 
-  emitRow(runId, row, "ok", m.transformer.transformBaseItemArray(apiItems, m.serverVersion), digest)
+  emitRow(row, "ok", m.transformer.transformBaseItemArray(apiItems, m.serverVersion), digest)
 end sub
 
 function castItems(people as dynamic) as object
@@ -233,12 +232,12 @@ end function
 '
 ' Everything before the append is thread-local — the item nodes and the carrier belong to this
 ' thread until then. The append and the rowReady write are the row's two crossings.
-sub emitRow(runId as integer, row as object, status as string, items as object, digest as string)
-  finished = { items: items, shape: row.shape }
+sub emitRow(row as object, status as string, items as object, digest as string)
+  finished = { items: items, shape: row.shape, contentKind: "" }
   if status = "ok" then finished = extrasRows.finishRow(row, items)
 
   child = CreateObject("roSGNode", "ContentNode")
-  child.addFields({ runId: runId, slot: row.slot, status: status, shape: finished.shape, items: finished.items, digest: digest })
+  child.addFields({ slot: row.slot, status: status, shape: finished.shape, items: finished.items, digest: digest, contentKind: finished.contentKind })
   m.top.appendChild(child)
   m.top.rowReady = row.slot
 end sub

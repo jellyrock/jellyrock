@@ -110,13 +110,15 @@ namespace extrasRows
     return rows
   end function
 
-  ' Orders, filters and (for playlists) re-shapes one delivered row.
+  ' Orders, filters and (for playlists) re-shapes and classifies one delivered row.
   '
   ' @param row - the plan row the items were fetched for
   ' @param items - array of item nodes or AAs, in server order
-  ' @return an AA { items, shape }
+  ' @return an AA { items, shape, contentKind } — contentKind is playlistContentKind's answer for
+  '         a playlist row, and "" for every other row
   function finishRow(row as object, items as object) as object
     shape = row.shape
+    contentKind = ""
     result = items
 
     if isValidAndNotEmpty(row.currentId)
@@ -128,11 +130,12 @@ namespace extrasRows
       end for
     end if
 
-    if row.kind = "playlistItems" and playlistContentKind(items) = "audio"
-      shape = "SQUARE"
+    if row.kind = "playlistItems"
+      contentKind = playlistContentKind(items)
+      if contentKind = "audio" then shape = "SQUARE"
     end if
 
-    return { items: result, shape: shape }
+    return { items: result, shape: shape, contentKind: contentKind }
   end function
 
   ' What a playlist holds, for ItemDetails' Watched button and "Tracks"/"Items" label.
@@ -224,6 +227,76 @@ namespace extrasRows
     if not hasExistingRow then return "skip"
     if status = "ok" then return "remove"
     return "keep"
+  end function
+
+  ' What committing a resolved run does to each plan row. The caller applies it to the RowList;
+  ' nothing here touches a node.
+  '
+  ' @param plan - the plan rows, in display order
+  ' @param slots - one { status, count } per plan row ("ok" | "failed" | "unchanged")
+  ' @param results - one { items, shape, digest, contentKind } per plan row, invalid where the run
+  '                  did not load that row
+  ' @param titles - the title each plan row would be committed with
+  ' @param onScreen - kind -> { title, shape, digest, contentKind }, one entry per row on screen
+  ' @return an AA:
+  '   actions             - one per plan row:
+  '                           "write"  build the row from its result, or rewrite the one on screen
+  '                           "leave"  the row on screen stays exactly as it is
+  '                           "remove" the row on screen goes
+  '                           "none"   there is no row, before or after
+  '   isStructureChanged  - true when a row appears, disappears or changes slot shape, which is
+  '                         the only time the RowList layout needs writing
+  '   playlistContentKind - the kind of the playlist row as committed ("unknown" when it is not on
+  '                         screen), or invalid when the plan has no playlist row
+  function commitActions(plan as object, slots as object, results as object, titles as object, onScreen as object) as object
+    actions = []
+    isStructureChanged = false
+    committedPlaylistKind = invalid
+    plannedKinds = {}
+
+    for slot = 0 to plan.count() - 1
+      kind = plan[slot].kind
+      plannedKinds[kind] = true
+      existing = onScreen[kind]
+      hasExisting = isValid(existing)
+      status = slots[slot].status
+
+      disposition = "keep"
+      if status <> "unchanged" then disposition = rowDisposition(status, slots[slot].count, hasExisting)
+
+      action = "none"
+      if disposition = "fill"
+        result = results[slot]
+        if hasExisting and existing.shape = result.shape and isRowUnchanged(existing.title, existing.digest, titles[slot], result.digest)
+          action = "leave"
+        else
+          action = "write"
+          if not hasExisting or existing.shape <> result.shape then isStructureChanged = true
+        end if
+      else if disposition = "keep" and hasExisting
+        action = "leave"
+      else if disposition = "remove"
+        action = "remove"
+        isStructureChanged = true
+      end if
+      actions.push(action)
+
+      if kind = "playlistItems"
+        committedPlaylistKind = "unknown"
+        if action = "write"
+          committedPlaylistKind = results[slot].contentKind
+        else if action = "leave"
+          committedPlaylistKind = existing.contentKind
+        end if
+      end if
+    end for
+
+    ' A row whose kind this plan does not have at all is dropped too.
+    for each kind in onScreen
+      if not plannedKinds.doesExist(kind) then isStructureChanged = true
+    end for
+
+    return { actions: actions, isStructureChanged: isStructureChanged, playlistContentKind: committedPlaylistKind }
   end function
 
   ' RowList layout for the rows on screen: one slot and one row height per row, in order.

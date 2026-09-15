@@ -57,6 +57,16 @@ namespace tests
       return { status: "failed", count: 0 }
     end function
 
+    ' A row's record as commitActions sees it on screen.
+    private function onScreenRow(title as string, shape as string, digest as string, contentKind = "" as string) as object
+      return { title: title, shape: shape, digest: digest, contentKind: contentKind }
+    end function
+
+    ' A finished row as the run delivers it.
+    private function delivered(shape as string, digest as string, contentKind = "" as string) as object
+      return { items: [], shape: shape, digest: digest, contentKind: contentKind }
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("plan: row order and slot shape per item type")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -321,6 +331,17 @@ namespace tests
       m.assertEqual(finished.shape, "WIDE")
     end function
 
+    @it("classifies a playlist row's content, and no other row's")
+    function _()
+      playlist = { kind: "playlistItems", shape: "PORTRAIT" }
+      likeThis = { kind: "likeThis", shape: "SQUARE" }
+      items = [{ id: "a", type: "Movie" }]
+
+      m.assertEqual(extrasRows.finishRow(playlist, items).contentKind, "video")
+      m.assertEqual(extrasRows.finishRow(playlist, []).contentKind, "unknown")
+      m.assertEqual(extrasRows.finishRow(likeThis, items).contentKind, "")
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("playlistContentKind")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -445,6 +466,145 @@ namespace tests
     function _()
       m.assertEqual(extrasRows.rowDisposition("failed", 0, true), "keep")
       m.assertEqual(extrasRows.rowDisposition("failed", 0, false), "skip")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("commitActions: what one commit does to each row")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a first load writes every row that has items, adds nothing for an empty one, and lays out")
+    function _()
+      plan = [{ kind: "cast" }, { kind: "likeThis" }, { kind: "specialFeatures" }]
+      slots = [m.ok(4), m.ok(0), m.failed()]
+      results = [m.delivered("PORTRAIT", "d1"), m.delivered("PORTRAIT", "d2"), m.delivered("WIDE", "")]
+
+      commit = extrasRows.commitActions(plan, slots, results, ["Cast", "More", "Special"], {})
+
+      m.assertEqual(commit.actions, ["write", "none", "none"])
+      m.assertTrue(commit.isStructureChanged)
+    end function
+
+    ' The flicker guarantee: every write to an on-screen row redraws RowList's row counter.
+    @it("a refresh whose rows are unchanged writes nothing and leaves the layout alone")
+    function _()
+      plan = [{ kind: "cast" }, { kind: "likeThis" }]
+      onScreen = { cast: m.onScreenRow("Cast", "PORTRAIT", "d1"), likeThis: m.onScreenRow("More", "PORTRAIT", "d2") }
+
+      commit = extrasRows.commitActions(plan, [m.ok(4), m.ok(2)], [m.delivered("PORTRAIT", "d1"), m.delivered("PORTRAIT", "d2")], ["Cast", "More"], onScreen)
+
+      m.assertEqual(commit.actions, ["leave", "leave"])
+      m.assertFalse(commit.isStructureChanged)
+    end function
+
+    @it("rewrites a row whose content changed, without touching the layout when its shape did not")
+    function _()
+      onScreen = { likeThis: m.onScreenRow("More", "PORTRAIT", "old") }
+
+      commit = extrasRows.commitActions([{ kind: "likeThis" }], [m.ok(2)], [m.delivered("PORTRAIT", "new")], ["More"], onScreen)
+
+      m.assertEqual(commit.actions, ["write"])
+      m.assertFalse(commit.isStructureChanged)
+    end function
+
+    @it("rewrites a row whose title changed even when its content did not")
+    function _()
+      onScreen = { seasonEpisodes: m.onScreenRow("More from Season 1", "WIDE", "d1") }
+
+      commit = extrasRows.commitActions([{ kind: "seasonEpisodes" }], [m.ok(5)], [m.delivered("WIDE", "d1")], ["More from Season 2"], onScreen)
+
+      m.assertEqual(commit.actions, ["write"])
+    end function
+
+    @it("a row that changes slot shape is rewritten and lays out again")
+    function _()
+      onScreen = { playlistItems: m.onScreenRow("Items", "PORTRAIT", "d1") }
+
+      commit = extrasRows.commitActions([{ kind: "playlistItems" }], [m.ok(3)], [m.delivered("SQUARE", "d1", "audio")], ["Items"], onScreen)
+
+      m.assertEqual(commit.actions, ["write"])
+      m.assertTrue(commit.isStructureChanged)
+    end function
+
+    @it("a row whose content cannot be identified is always rewritten")
+    function _()
+      onScreen = { cast: m.onScreenRow("Cast", "PORTRAIT", "") }
+
+      commit = extrasRows.commitActions([{ kind: "cast" }], [m.ok(4)], [m.delivered("PORTRAIT", "")], ["Cast"], onScreen)
+
+      m.assertEqual(commit.actions, ["write"])
+    end function
+
+    @it("a failed refresh keeps the row on screen and changes nothing")
+    function _()
+      onScreen = { likeThis: m.onScreenRow("More", "PORTRAIT", "d2") }
+      plan = [{ kind: "cast" }, { kind: "likeThis" }]
+
+      commit = extrasRows.commitActions(plan, [m.failed(), m.failed()], [m.delivered("PORTRAIT", ""), m.delivered("PORTRAIT", "")], ["Cast", "More"], onScreen)
+
+      m.assertEqual(commit.actions, ["none", "leave"])
+      m.assertFalse(commit.isStructureChanged)
+    end function
+
+    @it("an answered empty row removes the row on screen and lays out again")
+    function _()
+      onScreen = { specialFeatures: m.onScreenRow("Special", "WIDE", "d3") }
+
+      commit = extrasRows.commitActions([{ kind: "specialFeatures" }], [m.ok(0)], [m.delivered("WIDE", "d4")], ["Special"], onScreen)
+
+      m.assertEqual(commit.actions, ["remove"])
+      m.assertTrue(commit.isStructureChanged)
+    end function
+
+    ' A targeted refetch loads one row; the others are "unchanged" slots with no result.
+    @it("a row outside the run stays exactly as it is")
+    function _()
+      plan = [{ kind: "channelPrograms" }, { kind: "likeThis" }]
+      onScreen = { channelPrograms: m.onScreenRow("Up Next", "SQUARE", "p1"), likeThis: m.onScreenRow("More", "SQUARE", "d2") }
+      slots = [m.ok(6), { status: "unchanged", count: 0 }]
+
+      commit = extrasRows.commitActions(plan, slots, [m.delivered("SQUARE", "p2"), invalid], ["Up Next", "More"], onScreen)
+
+      m.assertEqual(commit.actions, ["write", "leave"])
+      m.assertFalse(commit.isStructureChanged)
+    end function
+
+    @it("a row on screen whose kind the plan no longer has lays out again")
+    function _()
+      onScreen = { cast: m.onScreenRow("Cast", "PORTRAIT", "d1"), additionalParts: m.onScreenRow("Parts", "PORTRAIT", "d0") }
+
+      commit = extrasRows.commitActions([{ kind: "cast" }], [m.ok(4)], [m.delivered("PORTRAIT", "d1")], ["Cast"], onScreen)
+
+      m.assertEqual(commit.actions, ["leave"])
+      m.assertTrue(commit.isStructureChanged)
+    end function
+
+    @it("the playlist kind is the committed row's: delivered when written, kept when left, unknown when gone")
+    function _()
+      plan = [{ kind: "playlistItems" }]
+      titles = ["Items"]
+      onScreen = { playlistItems: m.onScreenRow("Items", "PORTRAIT", "d1", "video") }
+
+      written = extrasRows.commitActions(plan, [m.ok(2)], [m.delivered("SQUARE", "d2", "audio")], titles, onScreen)
+      m.assertEqual(written.playlistContentKind, "audio")
+
+      unchanged = extrasRows.commitActions(plan, [m.ok(2)], [m.delivered("PORTRAIT", "d1", "video")], titles, onScreen)
+      m.assertEqual(unchanged.playlistContentKind, "video")
+
+      keptAfterFailure = extrasRows.commitActions(plan, [m.failed()], [m.delivered("PORTRAIT", "")], titles, onScreen)
+      m.assertEqual(keptAfterFailure.playlistContentKind, "video")
+
+      removed = extrasRows.commitActions(plan, [m.ok(0)], [m.delivered("PORTRAIT", "d3", "unknown")], titles, onScreen)
+      m.assertEqual(removed.playlistContentKind, "unknown")
+
+      neverLoaded = extrasRows.commitActions(plan, [m.failed()], [m.delivered("PORTRAIT", "")], titles, {})
+      m.assertEqual(neverLoaded.playlistContentKind, "unknown")
+    end function
+
+    @it("has no playlist kind to report when the plan has no playlist row")
+    function _()
+      commit = extrasRows.commitActions([{ kind: "likeThis" }], [m.ok(2)], [m.delivered("SQUARE", "d1")], ["More"], {})
+
+      m.assertInvalid(commit.playlistContentKind)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

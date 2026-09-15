@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  TaskRelaunchProbeHost — drives TaskRelaunchProbeTask for tests/source/unit/platform/TaskRelaunch.spec.bs.
+
+  The app stops and relaunches its orchestrator Tasks from the RENDER thread, in one callback
+  (ExtrasRowList.cancelRun then startRun; HomeRows.resetLatestRowsRun then the launch). Rooibos
+  does not run on the render thread (see TaskLedgerBench.xml), so the spec calls these through
+  callFunc, which executes them in this component's scope on the render thread.
+-->
+<component name="TaskRelaunchProbeHost" extends="Node">
+  <interface>
+    <field id="task" type="node" />
+    <function name="launch" />
+    <function name="stopTask" />
+    <function name="stopAndRelaunch" />
+    <function name="stopAndLaunchFresh" />
+    <function name="release" />
+  </interface>
+</component>
