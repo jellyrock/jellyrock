@@ -1,0 +1,148 @@
+import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/misc.bs"
+
+' Resuming an item that has alternate versions (several MediaSources).
+'
+' Servers before Jellyfin 12.0 keep ONE position per item, whichever file played, so any
+' version resumes at it and JellyRock is free to pick the file that suits the device best.
+' From 12.0 each version keeps its OWN position, saved against the MediaSourceId a playback
+' report names (jellyfin#17044). That changes three things for a client:
+'
+'   * Resuming must continue the file that holds the position. Another version of the same
+'     item can be offset from it, even another release of the same cut, and neither names
+'     nor runtimes tell a re-encode from a different cut.
+'   * The item's own position no longer answers "is this in progress?": a primary whose
+'     alternate is in progress reports position 0. The server signals it instead by listing
+'     that version FIRST in the primary's MediaSources (its own source is first otherwise).
+'   * FINISHING any version marks every version played and clears every position. Carrying
+'     a position onto a version it would already count as watched for erases the place the
+'     user was resuming from.
+'
+' So: resume the file that holds the position, and carry a position onto a version the user
+' explicitly picked only while it stays inside that version's resumable window.
+namespace versionResume
+
+  ' The first release that keeps playback progress per version.
+  const PER_VERSION_MIN_SERVER = "12.0.0"
+
+  ' JellyfinServer.maxResumePct before the server configuration has been read.
+  const MAX_RESUME_PCT_UNKNOWN = -1
+
+  ' isPerVersionServer: Whether the server keeps a separate position per alternate version.
+  '
+  ' @param {string} serverVersion - m.global.server.version
+  ' @return {boolean}
+  function isPerVersionServer(serverVersion as string) as boolean
+    if not isValidAndNotEmpty(serverVersion) then return false
+    return versionChecker(serverVersion, versionResume.PER_VERSION_MIN_SERVER)
+  end function
+
+  ' sourceIndexById: Index of the MediaSource with this id.
+  '
+  ' @param {object} mediaSources - MediaSourceInfo array
+  ' @param {string} sourceId
+  ' @return {integer} the index, or -1 when absent
+  function sourceIndexById(mediaSources as dynamic, sourceId as string) as integer
+    if type(mediaSources) <> "roArray" or not isValidAndNotEmpty(sourceId) then return -1
+    for i = 0 to mediaSources.count() - 1
+      source = mediaSources[i]
+      if isValid(source) and source.Id = sourceId then return i
+    end for
+    return -1
+  end function
+
+  ' inProgressSourceIndex: Which version of an item the server says is in progress.
+  '
+  ' For a screen that can then read that version's own position (ItemDetails): it trusts the
+  ' server's source ORDER, which is only a signal on per-version servers — older servers sort
+  ' sources by width, so an alternate can lead with no progress at all.
+  '
+  ' @param {string} itemId - the item whose MediaSources these are
+  ' @param {longinteger} itemPositionTicks - the item's own UserData position
+  ' @param {object} mediaSources - the item's MediaSources, in server order
+  ' @param {boolean} isPerVersion - isPerVersionServer()
+  ' @return {integer} index of the in-progress version, or -1 when there is none to honor
+  function inProgressSourceIndex(itemId as string, itemPositionTicks as dynamic, mediaSources as dynamic, isPerVersion as boolean) as integer
+    if not isPerVersion then return -1
+    if type(mediaSources) <> "roArray" or mediaSources.count() < 2 then return -1
+
+    if isValid(itemPositionTicks) and itemPositionTicks > 0
+      return versionResume.sourceIndexById(mediaSources, itemId)
+    end if
+
+    first = mediaSources[0]
+    if isValid(first) and isValidAndNotEmpty(first.Id) and first.Id <> itemId then return 0
+    return -1
+  end function
+
+  ' resumeSourceIndex: Which version to play when starting an item from a known position.
+  '
+  ' For playback started without a details screen (quick play, a queue item with no
+  ' version chosen): the position being resumed belongs to the item's OWN version, so that
+  ' file is the only one it is exact for. A primary whose progress sits on an alternate
+  ' shows no progress, so it is started from the beginning like any unwatched item.
+  '
+  ' @param {string} itemId - the item being played
+  ' @param {dynamic} startTicks - the position playback starts from (0 = beginning)
+  ' @param {object} mediaSources - the item's MediaSources
+  ' @param {boolean} isPerVersion - isPerVersionServer()
+  ' @return {integer} index of the version to play, or -1 to leave the choice to the caller
+  function resumeSourceIndex(itemId as string, startTicks as dynamic, mediaSources as dynamic, isPerVersion as boolean) as integer
+    if not isPerVersion then return -1
+    if not isValid(startTicks) or startTicks <= 0 then return -1
+    if type(mediaSources) <> "roArray" or mediaSources.count() < 2 then return -1
+    return versionResume.sourceIndexById(mediaSources, itemId)
+  end function
+
+  ' resumeTicksFor: The position a version resumes from.
+  '
+  ' A version's own position always wins. Without one, the in-progress version's position is
+  ' carried over only while the server would still store it as a resume point for THIS
+  ' version — the same test the server applies when a playback report arrives
+  ' (UserDataManager.UpdatePlayState): more than maxResumePct percent in, or within a second
+  ' of the end, counts as watched. Past that, resuming would mark the item played and clear
+  ' the position being carried, so there is nothing to resume.
+  '
+  ' @param {dynamic} ownTicks - this version's own position
+  ' @param {dynamic} carriedTicks - the in-progress version's position (0 = none)
+  ' @param {dynamic} runtimeTicks - this version's runtime
+  ' @param {integer} maxResumePct - server MaxResumePct, or MAX_RESUME_PCT_UNKNOWN
+  ' @return {longinteger} ticks to resume from, 0 for no resume
+  function resumeTicksFor(ownTicks as dynamic, carriedTicks as dynamic, runtimeTicks as dynamic, maxResumePct as integer) as longinteger
+    if isValid(ownTicks) and ownTicks > 0 then return ownTicks
+
+    if not isValid(carriedTicks) or carriedTicks <= 0 then return 0
+    if not isValid(runtimeTicks) or runtimeTicks <= 0 then return 0
+    ' Unknown threshold: carrying could cross it, so don't.
+    if maxResumePct < 0 then return 0
+
+    if carriedTicks >= runtimeTicks - 10000000& then return 0
+    percentIn = (carriedTicks * 100#) / runtimeTicks
+    if percentIn > maxResumePct then return 0
+    return carriedTicks
+  end function
+
+  ' maxResumePctFrom: MaxResumePct from a GET /System/Configuration reply.
+  '
+  ' @param {object} res - fetchAsync result { ok, json }
+  ' @return {integer} 0-100, or MAX_RESUME_PCT_UNKNOWN when the reply does not answer it
+  function maxResumePctFrom(res as object) as integer
+    if not isValid(res) or res.ok <> true or not isValid(res.json) then return versionResume.MAX_RESUME_PCT_UNKNOWN
+    value = res.json.MaxResumePct
+    if not isIntSafe(value) then return versionResume.MAX_RESUME_PCT_UNKNOWN
+    if value < 0 or value > 100 then return versionResume.MAX_RESUME_PCT_UNKNOWN
+    return int(value)
+  end function
+
+  ' playbackPositionFrom: PlaybackPositionTicks from a GET /UserItems/{id}/UserData reply.
+  '
+  ' @param {object} res - fetchAsync result { ok, json }
+  ' @return {longinteger} the position (0 = none), or -1 when the reply does not answer it
+  function playbackPositionFrom(res as object) as longinteger
+    if not isValid(res) or res.ok <> true or not isValid(res.json) then return -1
+    ticks = res.json.PlaybackPositionTicks
+    if not isIntSafe(ticks) or ticks < 0 then return -1
+    return ticks
+  end function
+
+end namespace

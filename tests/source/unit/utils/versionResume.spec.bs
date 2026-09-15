@@ -1,0 +1,240 @@
+import "pkg:/source/utils/versionResume.bs"
+
+namespace tests
+
+  @suite("versionResume - resuming items with alternate versions")
+  class VersionResumeTests extends tests.BaseTestSuite
+
+    ' A primary with one alternate, in the order a 12.0 server lists them when nothing is in
+    ' progress: the queried item's own source first.
+    private function primaryFirst() as object
+      return [{ Id: "primary" }, { Id: "alternate" }]
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isPerVersionServer()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true from Jellyfin 12.0")
+    function _()
+      m.assertTrue(versionResume.isPerVersionServer("12.0.0"))
+      m.assertTrue(versionResume.isPerVersionServer("12.1.0"))
+      m.assertTrue(versionResume.isPerVersionServer("13.0.0"))
+    end function
+
+    @it("accepts the two-part 12.0 label")
+    function _()
+      m.assertTrue(versionResume.isPerVersionServer("12.0"))
+    end function
+
+    @it("is false for every 10.x line")
+    function _()
+      m.assertFalse(versionResume.isPerVersionServer("10.7.7"))
+      m.assertFalse(versionResume.isPerVersionServer("10.10.7"))
+      m.assertFalse(versionResume.isPerVersionServer("10.11.11"))
+    end function
+
+    @it("is false when the version is unknown")
+    function _()
+      m.assertFalse(versionResume.isPerVersionServer(""))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("inProgressSourceIndex()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns -1 on a server before 12.0, whatever the order")
+    function _()
+      ' 10.x sorts sources by width, so an alternate can lead with no progress at all.
+      sources = [{ Id: "alternate" }, { Id: "primary" }]
+      m.assertEqual(versionResume.inProgressSourceIndex("primary", 0, sources, false), -1)
+      m.assertEqual(versionResume.inProgressSourceIndex("primary", 5000&, sources, false), -1)
+    end function
+
+    @it("returns -1 for an item with a single source")
+    function _()
+      m.assertEqual(versionResume.inProgressSourceIndex("primary", 5000&, [{ Id: "primary" }], true), -1)
+    end function
+
+    @it("returns -1 when sources are missing")
+    function _()
+      m.assertEqual(versionResume.inProgressSourceIndex("primary", 5000&, invalid, true), -1)
+    end function
+
+    @it("returns the item's own source when the item has a position")
+    function _()
+      sources = [{ Id: "alternate" }, { Id: "primary" }]
+      m.assertEqual(versionResume.inProgressSourceIndex("primary", 5000&, sources, true), 1)
+    end function
+
+    @it("returns the leading alternate when the server moved it ahead of the item")
+    function _()
+      sources = [{ Id: "alternate" }, { Id: "primary" }]
+      m.assertEqual(versionResume.inProgressSourceIndex("primary", 0, sources, true), 0)
+    end function
+
+    @it("returns -1 when the item leads and has no position")
+    function _()
+      m.assertEqual(versionResume.inProgressSourceIndex("primary", 0, m.primaryFirst(), true), -1)
+    end function
+
+    @it("treats an invalid item position as none")
+    function _()
+      m.assertEqual(versionResume.inProgressSourceIndex("primary", invalid, m.primaryFirst(), true), -1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("resumeSourceIndex()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns the item's own source when resuming on a per-version server")
+    function _()
+      sources = [{ Id: "alternate" }, { Id: "primary" }]
+      m.assertEqual(versionResume.resumeSourceIndex("primary", 5000&, sources, true), 1)
+    end function
+
+    @it("leaves the choice to the caller when starting from the beginning")
+    function _()
+      ' Even with an alternate leading: a poster without progress starts over.
+      sources = [{ Id: "alternate" }, { Id: "primary" }]
+      m.assertEqual(versionResume.resumeSourceIndex("primary", 0, sources, true), -1)
+      m.assertEqual(versionResume.resumeSourceIndex("primary", invalid, sources, true), -1)
+    end function
+
+    @it("leaves the choice to the caller before 12.0")
+    function _()
+      m.assertEqual(versionResume.resumeSourceIndex("primary", 5000&, m.primaryFirst(), false), -1)
+    end function
+
+    @it("leaves the choice to the caller for a single source")
+    function _()
+      m.assertEqual(versionResume.resumeSourceIndex("primary", 5000&, [{ Id: "primary" }], true), -1)
+    end function
+
+    @it("returns -1 when the item's own source is not listed")
+    function _()
+      m.assertEqual(versionResume.resumeSourceIndex("other", 5000&, m.primaryFirst(), true), -1)
+    end function
+
+    @it("accepts a float starting point")
+    function _()
+      ' QueueManager starting points can arrive as floats.
+      sources = [{ Id: "alternate" }, { Id: "primary" }]
+      m.assertEqual(versionResume.resumeSourceIndex("primary", 6000000000.0, sources, true), 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("resumeTicksFor()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses the version's own position over a carried one")
+    function _()
+      m.assertEqual(versionResume.resumeTicksFor(3000&, 9000&, 100000000000&, 90), 3000&)
+    end function
+
+    @it("carries the in-progress position when the version has none")
+    function _()
+      ' 10:00 into a 30:00 version, MaxResumePct 90.
+      m.assertEqual(versionResume.resumeTicksFor(0, 6000000000&, 18000000000&, 90), 6000000000&)
+    end function
+
+    @it("carries a position exactly at MaxResumePct")
+    function _()
+      ' The server counts playback as finished only ABOVE the percentage.
+      m.assertEqual(versionResume.resumeTicksFor(0, 9000000000&, 10000000000&, 90), 9000000000&)
+    end function
+
+    @it("does not carry a position past MaxResumePct")
+    function _()
+      m.assertEqual(versionResume.resumeTicksFor(0, 9100000000&, 10000000000&, 90), 0&)
+    end function
+
+    @it("does not carry a position past the end of a shorter version")
+    function _()
+      m.assertEqual(versionResume.resumeTicksFor(0, 12000000000&, 10000000000&, 100), 0&)
+    end function
+
+    @it("does not carry a position within a second of the end")
+    function _()
+      ' Mirrors the server: positionTicks >= runtimeTicks - 1 s counts as finished.
+      m.assertEqual(versionResume.resumeTicksFor(0, 9995000000&, 10000000000&, 100), 0&)
+    end function
+
+    @it("does not carry when MaxResumePct is unknown")
+    function _()
+      m.assertEqual(versionResume.resumeTicksFor(0, 6000000000&, 18000000000&, versionResume.MAX_RESUME_PCT_UNKNOWN), 0&)
+    end function
+
+    @it("does not carry without a runtime")
+    function _()
+      m.assertEqual(versionResume.resumeTicksFor(0, 6000000000&, 0, 90), 0&)
+      m.assertEqual(versionResume.resumeTicksFor(0, 6000000000&, invalid, 90), 0&)
+    end function
+
+    @it("returns 0 when nothing is in progress")
+    function _()
+      m.assertEqual(versionResume.resumeTicksFor(0, 0, 18000000000&, 90), 0&)
+      m.assertEqual(versionResume.resumeTicksFor(invalid, invalid, 18000000000&, 90), 0&)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("maxResumePctFrom()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads MaxResumePct from an ok reply")
+    function _()
+      m.assertEqual(versionResume.maxResumePctFrom({ ok: true, json: { MaxResumePct: 90 } }), 90)
+    end function
+
+    @it("accepts the 0 and 100 bounds")
+    function _()
+      m.assertEqual(versionResume.maxResumePctFrom({ ok: true, json: { MaxResumePct: 0 } }), 0)
+      m.assertEqual(versionResume.maxResumePctFrom({ ok: true, json: { MaxResumePct: 100 } }), 100)
+    end function
+
+    @it("is unknown for a non-ok reply")
+    function _()
+      m.assertEqual(versionResume.maxResumePctFrom({ ok: false, json: { MaxResumePct: 90 } }), versionResume.MAX_RESUME_PCT_UNKNOWN)
+    end function
+
+    @it("is unknown when the field is missing, not a number, or out of range")
+    function _()
+      m.assertEqual(versionResume.maxResumePctFrom({ ok: true, json: {} }), versionResume.MAX_RESUME_PCT_UNKNOWN)
+      m.assertEqual(versionResume.maxResumePctFrom({ ok: true, json: { MaxResumePct: "90" } }), versionResume.MAX_RESUME_PCT_UNKNOWN)
+      m.assertEqual(versionResume.maxResumePctFrom({ ok: true, json: { MaxResumePct: 101 } }), versionResume.MAX_RESUME_PCT_UNKNOWN)
+      m.assertEqual(versionResume.maxResumePctFrom({ ok: true, json: { MaxResumePct: -5 } }), versionResume.MAX_RESUME_PCT_UNKNOWN)
+    end function
+
+    @it("is unknown without a reply body")
+    function _()
+      m.assertEqual(versionResume.maxResumePctFrom({ ok: true, json: invalid }), versionResume.MAX_RESUME_PCT_UNKNOWN)
+      m.assertEqual(versionResume.maxResumePctFrom(invalid), versionResume.MAX_RESUME_PCT_UNKNOWN)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("playbackPositionFrom()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads PlaybackPositionTicks from a parsed server reply")
+    function _()
+      ' Through ParseJson, so the number arrives in whatever type the platform gives a
+      ' value beyond the 32-bit range.
+      m.assertEqual(versionResume.playbackPositionFrom({ ok: true, json: ParseJson("{""PlaybackPositionTicks"":6000000000,""Played"":false}") }).toStr(), "6000000000")
+    end function
+
+    @it("reads a zero position as no position")
+    function _()
+      m.assertEqual(versionResume.playbackPositionFrom({ ok: true, json: { PlaybackPositionTicks: 0 } }), 0&)
+    end function
+
+    @it("is -1 when the reply does not answer")
+    function _()
+      m.assertEqual(versionResume.playbackPositionFrom({ ok: false, json: { PlaybackPositionTicks: 5 } }), -1&)
+      m.assertEqual(versionResume.playbackPositionFrom({ ok: true, json: {} }), -1&)
+      m.assertEqual(versionResume.playbackPositionFrom({ ok: true, json: { PlaybackPositionTicks: "5" } }), -1&)
+      m.assertEqual(versionResume.playbackPositionFrom(invalid), -1&)
+    end function
+
+  end class
+
+end namespace

@@ -665,6 +665,57 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Per-version resume requests")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("BuildGetItemUserDataRequest reads one item's UserData for the user on V2")
+    function _()
+      originalApiVersion = m.global.server.apiVersion
+      m.setApiVersion(2)
+
+      result = m.apiClient.BuildGetItemUserDataRequest("version-789")
+
+      m.setApiVersion(originalApiVersion)
+
+      m.assertEqual(result.method, "GET")
+      m.assertTrue(result.url.inStr("/UserItems/version-789/UserData") >= 0, "should target /UserItems/{id}/UserData")
+      m.assertTrue(result.url.inStr(m.testUserId) >= 0, "should carry the userId")
+    end function
+
+    @it("BuildGetItemUserDataRequest builds nothing for a V1 server")
+    function _()
+      originalApiVersion = m.global.server.apiVersion
+      m.setApiVersion(1)
+
+      result = m.apiClient.BuildGetItemUserDataRequest("version-789")
+
+      m.setApiVersion(originalApiVersion)
+
+      m.assertInvalid(result)
+    end function
+
+    @it("BuildGetItemUserDataRequest returns invalid when userId is empty")
+    function _()
+      localUser = m.global.user
+      originalId = localUser.id
+      localUser.id = ""
+
+      result = m.apiClient.BuildGetItemUserDataRequest("version-789")
+
+      localUser.id = originalId
+
+      m.assertInvalid(result)
+    end function
+
+    @it("BuildGetServerConfigurationRequest reads /System/Configuration")
+    function _()
+      result = m.apiClient.BuildGetServerConfigurationRequest()
+
+      m.assertEqual(result.method, "GET")
+      m.assertTrue(result.url.inStr("/System/Configuration") >= 0, "should target /System/Configuration")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Resume Items - media-type narrowing")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
