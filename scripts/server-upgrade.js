@@ -51,7 +51,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { normalizeSpecPath } from './lib/spec-path.cjs';
-import { compareSemverBase } from './lib/signals-fetch.cjs';
+import { compareSemverBase, isReleaseVersionBase } from './lib/signals-fetch.cjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -595,8 +595,8 @@ export function clearedThroughFrom(issues, version) {
   for (const iss of issues) {
     const state = String(iss?.state ?? '').toUpperCase();
     if (state !== 'CLOSED') continue;
-    const m = typeof iss?.title === 'string' && iss.title.match(/Jellyfin (\d+\.\d+\.\d+)/);
-    if (!m) continue;
+    const m = typeof iss?.title === 'string' && iss.title.match(/Jellyfin (\S+)/);
+    if (!m || !isReleaseVersionBase(m[1])) continue;
     const v = m[1];
     if (compareSemverBase(v, version) >= 0) continue; // at/after the current release
     if (best === null || compareSemverBase(v, best) > 0) best = v;
@@ -637,22 +637,33 @@ function digestHeader(version, acknowledged, floor, clearedThrough) {
 // coverage-gap/symmetry is the TYPE of a finding; floor-known is its DISPOSITION —
 // the same finding is counted under both, by design, not double-counting.
 
-// Line for axis 1: what the release delta touched.
-function digestReleaseLine(counts) {
+// The candidate types that belong to axis 2 (standing floor findings). Everything
+// else is axis 1 (the release delta). `counts.needsInvestigation` spans BOTH axes,
+// so each line must count its own candidates — printing the total on the floor
+// line labeled release changes as floor facts.
+const FLOOR_FINDING_TYPES = new Set(['coverage-gap', 'symmetry-advisory']);
+
+// Line for axis 1: what the release delta touched. `candidates` are the
+// investigation candidates (needsInvestigation) across both axes.
+function digestReleaseLine(counts, candidates) {
   if (!counts) return '';
-  return `🔴 **${counts.breaking ?? 0}** breaking · 🟢 **${counts.opportunity ?? 0}** new endpoint(s)`;
+  const investigate = candidates.filter((c) => !FLOOR_FINDING_TYPES.has(c.type)).length;
+  return (
+    `🔴 **${counts.breaking ?? 0}** breaking · 🟢 **${counts.opportunity ?? 0}** new endpoint(s)` +
+    ` · 🔎 **${investigate}** to investigate`
+  );
 }
 
 // Lines for axis 2: standing floor findings + their disposition. Returns an array
 // (may be empty when there are no floor findings at all).
-function digestFloorLines(counts) {
+function digestFloorLines(counts, candidates) {
   if (!counts) return [];
   const gap = counts['coverage-gap'] ?? 0;
   const sym = counts['symmetry-advisory'] ?? 0;
   const floorTotal = gap + sym;
   if (floorTotal === 0) return [];
   const handled = counts.floorKnown ?? 0;
-  const investigate = counts.needsInvestigation ?? 0;
+  const investigate = candidates.filter((c) => FLOOR_FINDING_TYPES.has(c.type)).length;
   const lines = [];
   lines.push(
     `**Standing floor findings**: ${floorTotal} total` +
@@ -711,9 +722,9 @@ export function renderDigestBody({ version, acknowledged, floor, report, cleared
     );
     lines.push('');
     lines.push(
-      `**This release's changes** (\`${acknowledged} → ${version}\`): ${digestReleaseLine(counts)}`,
+      `**This release's changes** (\`${acknowledged} → ${version}\`): ${digestReleaseLine(counts, candidates)}`,
     );
-    const floorLines = digestFloorLines(counts);
+    const floorLines = digestFloorLines(counts, candidates);
     if (floorLines.length) {
       lines.push('');
       lines.push(...floorLines);
@@ -737,9 +748,9 @@ export function renderDigestBody({ version, acknowledged, floor, report, cleared
     );
     lines.push('');
     lines.push(
-      `**This release's changes** (\`${acknowledged} → ${version}\`): ${digestReleaseLine(counts)}`,
+      `**This release's changes** (\`${acknowledged} → ${version}\`): ${digestReleaseLine(counts, candidates)}`,
     );
-    const floorLines = digestFloorLines(counts);
+    const floorLines = digestFloorLines(counts, candidates);
     if (floorLines.length) {
       lines.push('');
       lines.push(...floorLines);

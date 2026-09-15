@@ -70,6 +70,14 @@ describe('validateRegistry — schema', () => {
     ).toThrow(/dispatch-sibling handling requires a "sibling"/);
   });
 
+  it('accepts a patchless minServer and rejects a datestamp one', () => {
+    const entry = (minServer) => ({
+      endpoints: [{ path: '/x', method: 'GET', minServer, handling: { type: 'sdk-dispatch' } }],
+    });
+    expect(() => validateRegistry(entry('12.0'))).not.toThrow();
+    expect(() => validateRegistry(entry('20240207.2'))).toThrow(/minServer must be/);
+  });
+
   it('rejects an unknown HTTP method and a duplicate entry', () => {
     expect(() =>
       validateRegistry({

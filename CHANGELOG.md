@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- Hide the series Resume button until an episode has been watched ([#927](https://github.com/jellyrock/jellyrock/pull/927))
+
+### Dependencies
+
+- Update lint-staged from v17.4.1 to v17.5.1 ([#888](https://github.com/jellyrock/jellyrock/pull/888))
+- Brighterscript (patch) ([#902](https://github.com/jellyrock/jellyrock/pull/902))
+
 ## [2.29.0](https://github.com/jellyrock/jellyrock/compare/v2.28.0...v2.29.0) - 2026-09-15
 
 ### Added

@@ -61,6 +61,25 @@ function compareSemverBase(a, b) {
   return 0;
 }
 
+// An unstable-channel (master) build label: an 8-digit date, optionally followed
+// by a 6-digit time (20240402201942) or the legacy <YYYYMMDD>.<N> minor (20240207.2).
+// Lives here rather than in spec-fetch.cjs (which re-exports it) because
+// spec-fetch already requires this module — defining it there would force a cycle.
+function isUnstableVersion(v) {
+  return typeof v === 'string' && /^\d{8}(?:\d{6}|\.\d+)?$/.test(v);
+}
+
+// A Jellyfin release version with no pre-release suffix: MAJOR.MINOR with an
+// optional .PATCH. The single definition every server-version check uses.
+//
+// PATCH is optional because Jellyfin does not always publish one: the 10.x line
+// used three segments (10.11.8) but the 12.0 line ships as `12.0`. The datestamp
+// exclusion matters because the legacy unstable form (20240207.2) is also
+// MAJOR.MINOR-shaped, and ranked as a release its 8-digit major beats everything.
+function isReleaseVersionBase(v) {
+  return typeof v === 'string' && /^\d+\.\d+(?:\.\d+)?$/.test(v) && !isUnstableVersion(v);
+}
+
 // Pure parser for the api.jellyfin.org/openapi/stable/ index HTML.
 //
 // stable/ is an Apache-style directory listing. Filenames carry the version:
@@ -86,9 +105,7 @@ function parseJellyfinIndex(html) {
     // A two-segment base also matches the legacy unstable datestamp form
     // (20240207.2). Those belong to unstable/ and must never be ranked as a
     // stable version — an 8-digit MAJOR would out-sort every real release.
-    // Mirrors spec-fetch.cjs's isUnstableVersion, re-implemented rather than
-    // imported because spec-fetch already requires this module (cycle).
-    if (/^\d{8}(?:\.\d+)?$/.test(m[1])) continue;
+    if (!isReleaseVersionBase(m[1])) continue;
     const key = m[1] + (m[2] ? '-' + m[2] : '');
     if (seen.has(key)) continue;
     seen.add(key);
@@ -184,4 +201,6 @@ module.exports = {
   parseUnstableIndex,
   parseRokuOsMarkdown,
   compareSemverBase,
+  isUnstableVersion,
+  isReleaseVersionBase,
 };

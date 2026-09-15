@@ -44,6 +44,7 @@ const {
   fetchJellyfinVersions,
   fetchRokuOs,
   compareSemverBase,
+  isReleaseVersionBase,
 } = require('./lib/signals-fetch.cjs');
 const { signalStaleness, STABLE_SLUG } = require('./lib/signal-staleness.cjs');
 
@@ -418,8 +419,8 @@ function fetchStableDigest() {
     // ≤1 open digest is the norm; if several, pick the newest by title version.
     const versioned = open
       .map((iss) => {
-        const m = typeof iss.title === 'string' && iss.title.match(/Jellyfin (\d+\.\d+\.\d+)/);
-        return m ? { iss, version: m[1] } : { iss, version: null };
+        const m = typeof iss.title === 'string' && iss.title.match(/Jellyfin (\S+)/);
+        return m && isReleaseVersionBase(m[1]) ? { iss, version: m[1] } : { iss, version: null };
       })
       .sort((a, b) => {
         if (a.version && b.version) return compareSemverBase(b.version, a.version);

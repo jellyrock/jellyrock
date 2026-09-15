@@ -38,10 +38,19 @@ describe('validateBoundaries', () => {
     expect(() => validateBoundaries(validMap())).not.toThrow();
   });
 
-  it('rejects a non-semver floor', () => {
+  it('rejects a non-version floor', () => {
+    for (const bad of ['10', 'latest', '20240207.2']) {
+      const m = validMap();
+      m.floor = bad;
+      expect(() => validateBoundaries(m)).toThrow(/floor must be/);
+    }
+  });
+
+  it('accepts a patchless MAJOR.MINOR bound (the 12.0 line drops PATCH)', () => {
     const m = validMap();
-    m.floor = '10.7';
-    expect(() => validateBoundaries(m)).toThrow(/floor must be/);
+    m.tiers[1].maxServer = '10.8';
+    m.tiers[2].minServer = '12.0';
+    expect(() => validateBoundaries(m)).not.toThrow();
   });
 
   it('rejects a non-integer tier key', () => {
@@ -102,6 +111,13 @@ describe('serverToTier', () => {
     // so a new major lands in the active tier with no special-casing.
     expect(serverToTier(m, '12.0.0')).toBe(2);
     expect(serverToTier(m, '12.0.0-rc1')).toBe(2); // RC of the next major, suffix stripped
+  });
+
+  it('maps the patchless labels Jellyfin actually publishes for 12.0', () => {
+    // The archive names the release `12.0`, not `12.0.0`. A null here made every
+    // breaking change on a [1, ∞) endpoint read as frozen-skip, silently hiding it.
+    expect(serverToTier(m, '12.0')).toBe(2);
+    expect(serverToTier(m, '12.0-rc4')).toBe(2);
   });
 
   it('returns null below the floor', () => {
