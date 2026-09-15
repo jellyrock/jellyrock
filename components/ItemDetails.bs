@@ -2810,6 +2810,13 @@ sub onItemContentChanged()
     populateInfoGroup()
     populateDescriptionGroup()
 
+    ' Playlist Watched button and "Tracks" label: same reason as Person Shuffle above — a reload
+    ' rebuilds the buttons and the info labels, and the extras do not re-run to restore them.
+    ' Here, AFTER populateInfoGroup, because the label it corrects is created there.
+    if item.type = "Playlist" and m.extrasLoaded
+      onPlaylistContentKindChanged()
+    end if
+
     setFieldText("videoTitle", item.name)
 
     updateFavoriteButton()
