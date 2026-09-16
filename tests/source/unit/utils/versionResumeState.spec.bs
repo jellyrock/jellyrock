@@ -105,6 +105,21 @@ namespace tests
       m.assertEqual(state.ticks, m.secs(600))
     end function
 
+    @it("finds known positions regardless of GUID casing")
+    ' The cached positions are keyed by whatever spelling the reply used, while the ids
+    ' asked for come from MediaSource.Id and the in-progress id.
+    function _()
+      state = versionResume.resumeStateFor(m.ctx({
+        selectedId: "alternate",
+        positions: { ALTERNATE: 0, PRIMARY: m.secs(600) },
+        inProgressSourceId: "Primary"
+      }))
+
+      m.assertEqual(state.ticks, m.secs(600))
+      m.assertFalse(state.isLoading)
+      m.assertEqual(state.needsSourceId, "")
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("what it still needs")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -197,6 +212,35 @@ namespace tests
       }))
 
       m.assertEqual(state.ticks, 0&)
+    end function
+
+    @it("does not carry onto a version whose source declares no runtime")
+    ' The server reads a missing runtime as 0 and marks the version played. The item's
+    ' runtime still feeds the progress bar, but must not stand in for the guard.
+    function _()
+      state = versionResume.resumeStateFor(m.ctx({
+        mediaSources: [{ Id: "primary", RunTimeTicks: m.secs(1800) }, { Id: "alternate" }],
+        selectedId: "alternate",
+        positions: { primary: m.secs(600), alternate: 0 },
+        inProgressSourceId: "primary"
+      }))
+
+      m.assertEqual(state.ticks, 0&)
+      m.assertFalse(state.isLoading)
+      m.assertEqual(state.runtimeTicks, m.secs(1800))
+    end function
+
+    @it("guards a carry onto the item itself with the item's runtime")
+    ' The server applies the item's own runtime when the report names the item.
+    function _()
+      state = versionResume.resumeStateFor(m.ctx({
+        mediaSources: [{ Id: "alternate", RunTimeTicks: m.secs(1795) }, { Id: "primary" }],
+        selectedId: "primary",
+        positions: { primary: 0, alternate: m.secs(600) },
+        inProgressSourceId: "alternate"
+      }))
+
+      m.assertEqual(state.ticks, m.secs(600))
     end function
 
     @it("does not carry the in-progress version's position onto itself")

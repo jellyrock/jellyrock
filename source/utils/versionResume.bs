@@ -20,7 +20,7 @@ import "pkg:/source/utils/misc.bs"
 '
 ' So: resume the file that holds the position, and carry a position onto a version the user
 ' explicitly picked only while the server would still store it there rather than count it
-' finished — see wouldMarkPlayed(), which mirrors the server rule branch for branch.
+' finished — see wouldMarkPlayed(), which follows the server rule (stricter in one place).
 '
 ' This module is PURE: every function takes plain values and returns plain values, with no
 ' node, thread or network access. That is what lets the whole decision — including the
@@ -123,16 +123,19 @@ namespace versionResume
   ' wouldMarkPlayed: Would the server record this position as PLAYED instead of storing it
   ' as a resume point for this version?
   '
-  ' Mirrors Jellyfin's UserDataManager.UpdatePlayState (read at v12.0) branch for branch.
-  ' Every branch below is one the server uses to set `Played`, and `Played` is what makes
-  ' this matter: SessionManager then calls Video.PropagatePlayedState(user, true), which
-  ' marks EVERY alternate version played and clears EVERY version's position. So carrying a
-  ' position onto a version the server would count as finished does not just fail to
-  ' resume — it erases the position being carried from.
+  ' Follows Jellyfin's UserDataManager.UpdatePlayState (read at v12.0), with one deliberate
+  ' difference below. Every branch here is one the server uses to set `Played`, and `Played`
+  ' is what makes this matter: SessionManager then calls Video.PropagatePlayedState(user,
+  ' true), which marks EVERY alternate version played and clears EVERY version's position.
+  ' So carrying a position onto a version the server would count as finished does not just
+  ' fail to resume — it erases the position being carried from.
   '
-  ' MinResumePct is deliberately NOT a branch here. The server zeroes a position below it
-  ' too, but WITHOUT setting `Played`, so it cannot reach PropagatePlayedState and cannot
-  ' erase anything: the carry is simply not stored, exactly as a fresh start would not be.
+  ' The difference is MinResumePct, which this never checks. The server checks it FIRST:
+  ' below it a report is ignored (position zeroed, `Played` untouched) and the
+  ' MinResumeDuration branch is never reached. So on a version shorter than
+  ' MinResumeDurationSeconds this refuses even a carry the server would merely ignore. That
+  ' is stricter, not wrong: playing such a version past MinResumePct marks it played either
+  ' way, so allowing that carry would only have started playback a few seconds in.
   '
   ' @param {dynamic} positionTicks - the position that would be reported
   ' @param {dynamic} runtimeTicks - the runtime of the version it would be reported against
@@ -195,7 +198,8 @@ namespace versionResume
   ' @param {object} ctx - {
   '     itemId            string  the loaded item
   '     itemPositionTicks dynamic its own UserData position
-  '     itemRuntimeTicks  dynamic its runtime, used when the selected source has none
+  '     itemRuntimeTicks  dynamic its runtime; the progress bar's fallback when the selected
+  '                               source declares none
   '     mediaSources      dynamic its MediaSources, in server order
   '     selectedId        dynamic the version chosen in the Video dropdown ("" = none yet)
   '     positions         object  sourceId -> ticks already known (POSITION_UNREADABLE = failed)
@@ -219,12 +223,19 @@ namespace versionResume
     ' source the item still has — a refresh can return versions that were merged or split
     ' on the server while this screen was open, and a stale id would otherwise be fetched
     ' as if it were a version of this item.
+    '
+    ' Two runtimes: the progress bar falls back to the item's when a source declares none,
+    ' but the carry guard takes the one the server applies to the reported version — the
+    ' version's own RunTimeTicks, which the server reads as 0 ("no runtime", so played)
+    ' when it is absent.
     selectedId = ctx.itemId
+    guardRuntimeTicks = ctx.itemRuntimeTicks
     index = versionResume.sourceIndexById(ctx.mediaSources, ctx.selectedId)
     if index >= 0
       selectedId = ctx.mediaSources[index].Id
       sourceRuntime = ctx.mediaSources[index].RunTimeTicks
       if isValid(sourceRuntime) and sourceRuntime > 0 then state.runtimeTicks = sourceRuntime
+      if not versionResume.idsMatch(selectedId, ctx.itemId) then guardRuntimeTicks = sourceRuntime
     end if
 
     ownTicks = versionResume.knownPosition(ctx, selectedId)
@@ -258,7 +269,7 @@ namespace versionResume
       return state
     end if
 
-    state.ticks = versionResume.resumeTicksFor(ownTicks, carriedTicks, state.runtimeTicks, ctx.policy)
+    state.ticks = versionResume.resumeTicksFor(ownTicks, carriedTicks, guardRuntimeTicks, ctx.policy)
     return state
   end function
 
@@ -270,13 +281,9 @@ namespace versionResume
   function knownPosition(ctx as object, sourceId as string) as dynamic
     positions = ctx.positions
     if type(positions) <> "roAssociativeArray" or not isValidAndNotEmpty(sourceId) then return invalid
-    ' Case-insensitive for the same reason sourceIndexById is: the ids come from two
-    ' different server fields (Item.Id and MediaSource.Id) and the server treats them
-    ' as equal regardless of spelling.
-    for each key in positions
-      if versionResume.idsMatch(key, sourceId) then return positions[key]
-    end for
-    return invalid
+    ' Case-insensitive for the same reason sourceIndexById is — the ids come from two server
+    ' fields (Item.Id and MediaSource.Id) — which an associative-array lookup already is.
+    return positions[sourceId]
   end function
 
   ' resumePolicyFrom: The resume thresholds from a GET /System/Configuration reply.

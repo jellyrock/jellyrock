@@ -467,15 +467,22 @@ picks device-best as before.
   than the item, with the Resume slot's loading button meanwhile) or, for a version the user
   picked that has none, the in-progress position carried over.
 
-The carry is guarded by `versionResume.wouldMarkPlayed()`, which mirrors the server's
-`UserDataManager.UpdatePlayState` branch for branch — past `MaxResumePct`, inside the last
-second, or onto a version shorter than `MinResumeDurationSeconds`. All three set `Played`,
-and the server then propagates that to **every** version and clears **every** position, so a
-carry it would count as finished erases the place being carried from rather than resuming it.
-`MinResumePct` is deliberately not a branch: the server zeroes below it *without* setting
-`Played`, so it cannot erase anything. The thresholds are read once per server into
-`JellyfinServer.resumePolicy` (both or neither), and an unreadable policy answers "played",
-so nothing is carried.
+The carry is guarded by `versionResume.wouldMarkPlayed()`, which follows the server's
+`UserDataManager.UpdatePlayState` played branches — past `MaxResumePct`, inside the last
+second, onto a version shorter than `MinResumeDurationSeconds`, or onto a version with no
+runtime. Each sets `Played`, and the server then propagates that to **every** version and
+clears **every** position, so a carry it would count as finished erases the place being
+carried from rather than resuming it. The runtime it checks is the one the server applies:
+the version's own `RunTimeTicks`, never the item's (the Resume progress bar may fall back to
+the item's; the guard may not).
+
+It is deliberately stricter than the server in one place. The server checks `MinResumePct`
+first and merely ignores a report below it, never reaching the `MinResumeDuration` branch;
+the guard skips that check, so it refuses even a small carry onto a version shorter than
+`MinResumeDurationSeconds`. Playing such a version past `MinResumePct` marks it played
+either way, so the stricter answer costs the viewer a few seconds at most. The thresholds
+are read once per server into `JellyfinServer.resumePolicy` (both or neither), and an
+unreadable policy answers "played", so nothing is carried.
 
 Every choice above lives in `source/utils/versionResume.bs` as pure functions over plain
 values; `ItemDetails` holds only the shell that fetches what `resumeStateFor()` asks for.
