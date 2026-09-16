@@ -5,8 +5,19 @@ import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/mediaSegments.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/streamSelection.bs"
 
 function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean)
+  postData = buildPlaybackInfoPostData(mediaSourceId, audioTrackIndex, subtitleTrackIndex, startTimeTicks, videoMetadata, bypassDoviPreservation, forceTranscoding)
+  return fetchJson(GetApi().BuildPostPlaybackInfoRequest(id, postData), "playbackInfo")
+end function
+
+' buildPlaybackInfoPostData: The PlaybackInfo request body, tuned to the version being played.
+'
+' Split from ItemPostPlaybackInfo so the body can be tested without a server.
+'
+' @return {object} the POST body for BuildPostPlaybackInfoRequest
+function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean) as object
   globalUser = m.global.user
   postData = {
     "UserId": globalUser.id,
@@ -19,9 +30,16 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
   ' Dynamically adjust transcoding segment length and bitrate based on the video's
   ' bitrate, duration, and the device's video buffer size to prevent buffer overflow
   ' and playlist-too-large errors during HLS playback.
-  hasMediaSource = isValid(videoMetadata) and isValid(videoMetadata.mediaSourcesData) and isValidAndNotEmpty(videoMetadata.mediaSourcesData.mediaSources)
-  if hasMediaSource
-    mediaSource = videoMetadata.mediaSourcesData.mediaSources[0]
+  '
+  ' Everything below that reads the source — its bitrate and runtime here, its streams and
+  ' container for the Dolby Vision, H264 and audio decisions — reads the version this request
+  ' is for, not the server's default (mediaSourceForId).
+  playedSource = invalid
+  if isValid(videoMetadata) and isValid(videoMetadata.mediaSourcesData)
+    playedSource = mediaSourceForId(videoMetadata.mediaSourcesData.mediaSources, mediaSourceId)
+  end if
+  if isValid(playedSource)
+    mediaSource = playedSource
     sourceBitrate& = 0
     videoDurationSeconds = 0
 
@@ -69,8 +87,8 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
   applyMediaSourceToPostData(postData, mediaSourceId, forceTranscoding)
 
   mediaStreams = invalid
-  if isValid(videoMetadata) and isValid(videoMetadata.mediaSourcesData) and isValidAndNotEmpty(videoMetadata.mediaSourcesData.mediaSources) and isValid(videoMetadata.mediaSourcesData.mediaSources[0].MediaStreams)
-    mediaStreams = videoMetadata.mediaSourcesData.mediaSources[0].MediaStreams
+  if isValid(playedSource) and isValid(playedSource.MediaStreams)
+    mediaStreams = playedSource.MediaStreams
   end if
 
   ' DOVI not supported using MKV container, so force remux for DOVI content
@@ -93,17 +111,13 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
         ' always use the first video stream for now
         ' Note: don't force remux on AV1 codec - see #194
         if isValid(stream.Type) and stream.Type = "Video" and isValid(stream.Codec) and LCase(stream.Codec) <> "av1"
-          ' Determine container string
-          containerString = invalid
-          if isValid(videoMetadata.container)
-            containerString = LCase(videoMetadata.container)
-          end if
+          containerString = JDT_normalizeContainer(playedSource.Container ?? "")
 
           ' DOVI remux logic requires VideoRangeType which was added in Jellyfin 10.9
           ' Only apply this for API v2+ servers (10.9+)
           apiVersion = getApiVersionFromGlobal()
 
-          if apiVersion >= 2 and isValid(containerString) and containerString = "mkv" and isValid(stream.VideoRangeType) and stream.VideoRangeType <> ""
+          if apiVersion >= 2 and containerString = "mkv" and isValid(stream.VideoRangeType) and stream.VideoRangeType <> ""
             ' is DOVI in the string?
             if inStr(LCase(stream.VideoRangeType), "dovi") > 0
               ' add a condition to the mkv container profile to force remux (container swap)
@@ -231,7 +245,7 @@ function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioT
     end if
   end if
 
-  return fetchJson(GetApi().BuildPostPlaybackInfoRequest(id, postData), "playbackInfo")
+  return postData
 end function
 
 ' MetaData about an item — returns a JellyfinBaseItem node.

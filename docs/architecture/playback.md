@@ -585,6 +585,8 @@ This split is **intentional and clean** — the audio keeps playing even when th
 
 ## Transcoding decisions — `components/ItemGrid/LoadVideoContentTask.bs`
 
+Every fact about the file being played (runtime, bitrate, container, streams) comes from `mediaSourceForId(mediaSources, mediaSourceId)`, never `mediaSources[0]`. The first entry is only the server's default: a version picked in the Video dropdown sits elsewhere, and from Jellyfin 12.0 the in-progress version moves to the front. The `/PlaybackInfo` response is the exception, because the request names the version and the server returns only that one.
+
 Before `VideoPlayerView` starts the `Video` node, it needs a URL. The decision tree:
 
 1. **Direct Play** — try first. Check device codec capabilities (`m.global.device.videoBitDepth`, etc.) against the item's media streams.

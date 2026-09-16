@@ -25,6 +25,32 @@ namespace tests
       }
     end function
 
+    ' A default version whose subtitle is index 2, then a picked one whose subtitle is index 5.
+    private function createMetaWithVersions(pickedStreams as dynamic) as object
+      picked = { Id: "picked720" }
+      if isValid(pickedStreams) then picked.MediaStreams = pickedStreams
+      return {
+        id: "test-video-id",
+        mediaSourcesData: {
+          mediaSources: [
+            {
+              Id: "default1080",
+              MediaStreams: [
+                { Type: "Subtitle", index: 2, language: "eng", IsTextSubtitleStream: true, IsForced: false, displaytitle: "English", DeliveryUrl: "/default" }
+              ]
+            },
+            picked
+          ]
+        }
+      }
+    end function
+
+    private function useAlwaysEnglish()
+      m.global.user.settings.playbackSubsOnlyText = false
+      m.global.user.config.subtitleMode = "Always"
+      m.global.user.config.subtitleLanguagePreference = "eng"
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Edge cases - validation")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -378,6 +404,29 @@ namespace tests
       ' Smart mode correctly returns none when audio language is unknown (no forced/default to fall back to)
       result = defaultSubtitleTrackFromVid(meta, 99)
       m.assertEqual(result, SubtitleSelection.NONE)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a request that names a version")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("picks from the named version's subtitles, ignoring id casing")
+    function _()
+      m.useAlwaysEnglish()
+      meta = m.createMetaWithVersions([
+        { Type: "Subtitle", index: 5, language: "eng", IsTextSubtitleStream: true, IsForced: false, displaytitle: "English", DeliveryUrl: "/picked" }
+      ])
+
+      m.assertEqual(defaultSubtitleTrackFromVid(meta, 1, "picked720"), 5)
+      m.assertEqual(defaultSubtitleTrackFromVid(meta, 1, "PICKED720"), 5)
+    end function
+
+    @it("returns SubtitleSelection.NONE for a named version without streams, not the default version's subtitle")
+    function _()
+      m.useAlwaysEnglish()
+      meta = m.createMetaWithVersions(invalid)
+
+      m.assertEqual(defaultSubtitleTrackFromVid(meta, 1, "picked720"), SubtitleSelection.NONE)
     end function
 
   end class
