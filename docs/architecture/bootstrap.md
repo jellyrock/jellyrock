@@ -98,7 +98,7 @@ Defined in `source/utils/globals.bs` (`setGlobals` function). Creates the data n
 
 Defined in `source/utils/globals.bs` (`setGlobalNodes` function). Creates and starts the long-running nodes:
 
-- `m.global.apiPool0` … `apiPool<N-1>` — the `ApiTask` pool, each started with `launchTask()` to enter its infinite work loop. N is chosen here from the device class (`apiPool.widthFor(m.global.device.isLowMemoryDevice)` — 4 on 512 MB devices, 6 otherwise), which is why Phase 1's `SaveDeviceToGlobal()` must run first; it is stored as `m.global.apiPoolWidth`. See [api.md](api.md#pool-width)
+- `m.global.apiPool0` … `apiPool<N-1>` — the `ApiTask` pool, each started with `launchTask()` to enter its infinite work loop. N is chosen here from the device class (`apiPool.widthFor(m.global.device.isLowMemoryDevice)`), which is why Phase 1's `SaveDeviceToGlobal()` must run first; it is stored as `m.global.apiPoolWidth`. See [api.md](api.md#pool-width)
 - `m.global.apiQueue` — `ApiQueueTask`, the FIFO coordinator that dispatches into the pool
 - `m.global.sideEffectTask` — `SideEffectTask`, `control = "RUN"` to enter its FIFO children-as-vehicle loop for fire-and-forget POST/DELETE
 - `m.global.sceneManager` — now a shared **service node** (backdrop, theme, overhang passthrough fields, and the `isDialogOpen` query — the scene-stack was removed in #550, see `navigation.md`); observed by `main.bs` for `reloadHomeRequested` events. It no longer *shows* dialogs: every dialog goes through `source/utils/dialogs.bs` and answers on its own node

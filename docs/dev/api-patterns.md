@@ -20,7 +20,7 @@ All API calls must run on Task threads. The render thread and main thread (Main.
 
 JellyRock uses a two-tier API task pool:
 
-- **Tier 1 (`ApiTask` pool)**: persistent workers (`apiPool0` … — 4 on 512 MB devices, 6 otherwise; see [api.md](../architecture/api.md#pool-width)) coordinated by `ApiQueueTask` FIFO coordinator. Handles all GET/query requests.
+- **Tier 1 (`ApiTask` pool)**: persistent workers (`apiPool0` …, one per pool slot; the width is [chosen per device class](../architecture/api.md#pool-width)) coordinated by `ApiQueueTask` FIFO coordinator. Handles all GET/query requests.
 - **Tier 2 (`SideEffectTask`)**: Single persistent worker running a FIFO children-as-vehicle queue for fire-and-forget writes (POST/DELETE). Requests execute serially on its one thread.
 
 **Both tiers** use `ApiResultNode` per-request routing (a fresh child node per request), immune to SceneGraph event coalescing. Tier 2 adopted this in #744 — the earlier single shared `request` field could coalesce two back-to-back submits and silently drop one. The shared HTTP execution (auth header, timeout, Content-Type) lives once in `baseRequest.bs`'s `executeHttpRequest()`, called by both `ApiTask` and `SideEffectTask`.

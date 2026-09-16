@@ -67,7 +67,7 @@ m.global  (the global roSGNode)
 ├── translationsFallback  assoc array                       ← always en_US
 ├── translationLocale     string                            ← locale code (e.g. "fr_CA")
 │
-├── apiPoolWidth      integer                               ← phase 2 — 4 on low-memory devices, 6 otherwise (api.md#pool-width)
+├── apiPoolWidth      integer                               ← phase 2 — chosen per device class (api.md#pool-width)
 ├── apiPool0          ApiTask node                          ← phase 2 (control = "RUN")
 ├── ...               one per slot, apiPool0 … apiPool<apiPoolWidth-1>
 ├── apiQueue          ApiQueueTask node                     ← phase 2 (control = "RUN") — FIFO coordinator
