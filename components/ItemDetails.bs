@@ -1354,20 +1354,7 @@ sub onNextUpEpisodeChanged()
     end if
   else
     ' No resume data — remove the LoadingButton placeholder if still present
-    if isValid(loadingButton)
-      currentFocusIndex = m.buttonGrp.buttonFocused
-      loadingIndex = getButtonIndex("resumeLoadingButton")
-      m.buttonGrp.removeChild(loadingButton)
-      m.resumeLoadingButton = invalid
-      if isValid(loadingIndex) and loadingIndex >= 0 and currentFocusIndex >= loadingIndex
-        focusIdx = currentFocusIndex - 1
-        if focusIdx < 0 then focusIdx = 0
-        m.buttonGrp.buttonFocused = focusIdx
-      end if
-      if m.buttonGrp.isInFocusChain()
-        focusButtonGroupChild()
-      end if
-    end if
+    removeResumeLoadingButton()
     removeResumeButtonWithFocus(resumeButton)
   end if
 
