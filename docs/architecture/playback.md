@@ -438,10 +438,17 @@ This is what makes "Continue Watching" rows on the home screen accurate.
 Every report names the file that is playing as `MediaSourceId` (Live TV sends its own
 `MediaSourceId` / `LiveStreamId` from `transcodeParams`). Servers before Jellyfin 12.0 use it
 only for the now-playing display; from 12.0 it decides **which version the position is saved
-on**, because alternate versions keep their own progress. The value comes from
-`m.reportedMediaSourceId`, set when a stream finishes loading, and deliberately not from
-`m.top.mediaSourceId`: an in-player version switch writes that field *before* the old
-stream's `stop` report fires, which would save the old file's position on the new one.
+on**, because alternate versions keep their own progress. So an in-player version switch
+must not let the old stream's position land on the new file:
+
+- The value is `m.reportedMediaSourceId`, not `m.top.mediaSourceId` — the switch writes that
+  field *before* the old stream's `stop` report fires.
+- `start` and `update` reports adopt the most recently loaded source; `stop` and `finished`
+  keep naming the file reports have been naming. The old stream's stop can still be pending
+  once the new source has loaded, and keying on the report rather than on event order means
+  nothing depends on when — or whether — `stopped` arrives.
+- `onVideoSourceChange` stops the progress timer at the switch (the `playing` branch
+  restarts it), so no `update` can carry the old position under the new id in between.
 
 ### Alternate versions and resume — `source/utils/versionResume.bs`
 
