@@ -34,6 +34,14 @@ sub init()
   m.top.observeField("padding", "onPaddingChanged")
   m.top.observeField("focusedChild", "onFocusChanged")
 
+  ' Lay out at the load box now, not when the icon finishes loading: until then the
+  ' backdrop has no size, so a button added to a live row (a real Resume or Shuffle
+  ' replacing its placeholder, every button on first load) drew collapsed for a frame
+  ' and then popped out. The load box caps every icon at this size and every icon a
+  ' button uses fills it, so the layout it gets on load is the same one.
+  layoutForIconSize(ICON_BUTTON_ICON_SIZE, ICON_BUTTON_ICON_SIZE)
+  setFocusBorderSize()
+
   applyTheme()
 end sub
 
@@ -115,23 +123,25 @@ end sub
 sub setIconSize()
   ' determine size of icon
   if m.buttonIcon.bitmapWidth > 0 and m.buttonIcon.bitmapHeight > 0
-    iconWidth = m.buttonIcon.bitmapWidth
-    iconHeight = m.buttonIcon.bitmapHeight
-
-    ' Width goes through the shared function because the row-overflow cap is
-    ' computed from it; height does not, so it only shares the constant.
-    ' int() because bitmapWidth is a float field and the metric is in whole
-    ' design-space pixels — our icon assets are square whole numbers.
-    m.buttonBackground.width = iconButtonBackgroundWidth(int(iconWidth)) ' extra horiz padding for text
-    m.buttonBackground.height = iconHeight + (ICON_BUTTON_PADDING * 2)
-
-    ' Position icon centered in button background
-    buttonOffset = ICON_BUTTON_TEXT_EXTENSION / 2
-    m.buttonIcon.translation = [buttonOffset + ((m.buttonBackground.width - iconWidth) / 2), ((m.buttonBackground.height - iconHeight) / 2)]
-
-    ' Update button and text positioning using shared method
-    updateButtonPositioning()
+    layoutForIconSize(m.buttonIcon.bitmapWidth, m.buttonIcon.bitmapHeight)
   end if
+end sub
+
+' Size the backdrop around an icon of the given size, and center the icon in it.
+sub layoutForIconSize(iconWidth as float, iconHeight as float)
+  ' Width goes through the shared function because the row-overflow cap is
+  ' computed from it; height does not, so it only shares the constant.
+  ' int() because bitmapWidth is a float field and the metric is in whole
+  ' design-space pixels — our icon assets are square whole numbers.
+  m.buttonBackground.width = iconButtonBackgroundWidth(int(iconWidth)) ' extra horiz padding for text
+  m.buttonBackground.height = iconHeight + (ICON_BUTTON_PADDING * 2)
+
+  ' Position icon centered in button background
+  buttonOffset = ICON_BUTTON_TEXT_EXTENSION / 2
+  m.buttonIcon.translation = [buttonOffset + ((m.buttonBackground.width - iconWidth) / 2), ((m.buttonBackground.height - iconHeight) / 2)]
+
+  ' Update button and text positioning using shared method
+  updateButtonPositioning()
 end sub
 
 sub onPaddingChanged()
@@ -200,17 +210,6 @@ sub onLoadingChanged()
     ' Size the spinner
     m.buttonSpinner.poster.width = spinnerSize
     m.buttonSpinner.poster.height = spinnerSize
-
-    ' If icon hasn't loaded yet, the background has no dimensions — apply default layout
-    if m.buttonBackground.width < 1
-      btnWidth = iconButtonBackgroundWidth(ICON_BUTTON_ICON_SIZE)
-      btnHeight = ICON_BUTTON_ICON_SIZE + (ICON_BUTTON_PADDING * 2)
-      m.buttonBackground.width = btnWidth
-      m.buttonBackground.height = btnHeight
-      m.buttonBorder.width = btnWidth
-      m.buttonBorder.height = btnHeight
-      updateButtonPositioning()
-    end if
 
     ' Center spinner in button background
     buttonOffset = ICON_BUTTON_TEXT_EXTENSION / 2

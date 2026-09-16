@@ -58,6 +58,34 @@ namespace tests
       m.assertEqual(int(m.icon.height), ICON_BUTTON_ICON_SIZE)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("before its icon has loaded")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A button added to a live row used to draw with a collapsed backdrop until its icon
+    ' loaded, then pop out a frame later. No icon is set here, so none can load: this is
+    ' the layout a new button is drawn with.
+    @it("is already laid out at the size the row budget assumes")
+    function _()
+      background = m.button.findNode("buttonBackground")
+      border = m.button.findNode("buttonBorder")
+      label = m.button.findNode("buttonText")
+
+      m.assertEqual(int(background.width), iconButtonBackgroundWidth(ICON_BUTTON_ICON_SIZE))
+      m.assertEqual(int(background.height), ICON_BUTTON_ICON_SIZE + (ICON_BUTTON_PADDING * 2))
+      m.assertEqual(int(border.width), int(background.width))
+      m.assertEqual(int(border.height), int(background.height))
+      m.assertEqual(int(label.width), iconButtonLayoutWidth(ICON_BUTTON_ICON_SIZE))
+    end function
+
+    @it("already centers the icon slot in the backdrop")
+    function _()
+      background = m.button.findNode("buttonBackground")
+
+      m.assertEqual(int(m.icon.translation[0]), int(background.translation[0] + (background.width - ICON_BUTTON_ICON_SIZE) / 2))
+      m.assertEqual(int(m.icon.translation[1]), int((background.height - ICON_BUTTON_ICON_SIZE) / 2))
+    end function
+
   end class
 
 end namespace
