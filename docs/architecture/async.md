@@ -28,7 +28,7 @@ vocabulary: `fetchAsync(req, id).then(...).catch(...)`.
 The key architectural decision ([ADR 0012](../adr/0012-promise-native-interface-fetchres-exception.md))
 is that the promise is **only the interface**. The pool
 engine — the `ApiQueueTask` coordinator, the children-as-vehicles coalescing dodge, the
-ready-cascade, the three-slot `ApiTask` pool — is the cleverest, most regression-sensitive code in
+ready-cascade, the `ApiTask` pool — is the cleverest, most regression-sensitive code in
 the app and is **orthogonal** to promises. It is *not* rewritten. Promises sit on top.
 
 ## The adapter — `apiPromise.bs`

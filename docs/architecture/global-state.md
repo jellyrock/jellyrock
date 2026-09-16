@@ -227,7 +227,7 @@ It costs **555.7 µs per launch** at a ledger depth of 10 on a Stick 4K, render 
 
 ⚠️ **Reading a node's array field yields a COPY, so mutating it in place is a silent no-op.** `m.global.taskLedger.push(x)` measured a plausible-looking 58 µs and left the field at its original length — 200 pushes, zero growth. It was caught only because the bench asserted the resulting length. Anything that appears to mutate a node's array field without assigning back is doing nothing; same family as the undeclared-field silent no-op below.
 
-Unlike every other field above, it is **not declared in `setGlobalNodes()`** — it is created on first use. That is required, not stylistic: `setGlobalNodes()` starts five Task threads (the three `ApiTask`s, `ApiQueueTask`, `SideEffectTask`) before it would reach a declaration, and a write to an undeclared `roSGNode` field is a silent no-op, so declaring it there lost all five.
+Unlike every other field above, it is **not declared in `setGlobalNodes()`** — it is created on first use. That is required, not stylistic: `setGlobalNodes()` starts its Task threads (the `ApiTask` pool slots, `ApiQueueTask`, `SideEffectTask`) before it would reach a declaration, and a write to an undeclared `roSGNode` field is a silent no-op, so declaring it there lost them all.
 
 **A refusal leaves a durable trace only under `#if perfTiming`.** The `print` in `launchTask()` is
 `#if debug`, and the committed manifest ships `debug=false`, so seeing a refusal that way costs a

@@ -23,8 +23,8 @@ function fetchRes(req as dynamic, requestId as string) as dynamic
   apiQueue = m.global.apiQueue
   if not isValid(apiQueue) then return invalid
 
-  ' Startup ordering guard: the coordinator sets isReady=true only AFTER all 3 pool
-  ' tasks have registered their request observers AND the coordinator has registered
+  ' Startup ordering guard: the coordinator sets isReady=true only AFTER every pool
+  ' slot has registered their request observers AND the coordinator has registered
   ' its own observers. This guarantees the full pipeline (pool → coordinator →
   ' callers) is operational before any request flows.
   ' After the first request this check costs a single field-read rendezvous; it is

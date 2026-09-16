@@ -206,9 +206,9 @@ sub setGlobalNodes()
     '
     ' The `taskLedger` field is deliberately NOT declared here. `recordTaskLaunch`
     ' creates it on first use, which is the only ordering that can be right: the
-    ' five Task threads this sub starts above run BEFORE this point, and a write
-    ' to an undeclared roSGNode field is a silent no-op — declaring it here lost
-    ' all five from the readout.
+    ' Task threads this sub starts above (the pool slots, ApiQueueTask and
+    ' SideEffectTask) run BEFORE this point, and a write to an undeclared roSGNode
+    ' field is a silent no-op — declaring it here lost them all from the readout.
     print "[DEBUG] Task ledger active — printTaskThreads() for the live count"
   #end if
 end sub

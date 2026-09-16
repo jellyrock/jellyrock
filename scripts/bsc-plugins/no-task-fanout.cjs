@@ -110,7 +110,7 @@
  * ── The sanctioned fix ─────────────────────────────────────────────────────
  *
  * One orchestrator Task servicing every item, keeping a bounded number of
- * requests in flight on the 3-slot API pool — `LoadLatestRowsTask` is the
+ * requests in flight on the shared API pool — `LoadLatestRowsTask` is the
  * reference implementation, `source/api/apiPipeline.bs` the mechanism.
  * Mechanism is chosen per orchestrator from a measured wait/emit split, never
  * carried across; see `docs/architecture/tech-debt.md#task-thread-budget`.

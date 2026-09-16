@@ -52,4 +52,4 @@ Decision flow:
 
 - Don't add a new `Get*()` synchronous method on `ApiClient`. Sync exists for the bootstrap path; new endpoints use `Build*Request()`.
 - Don't write requests directly to a pool slot's field — go through `apiQueue` (children-as-vehicle dodge SceneGraph coalescing). See [docs/architecture/api.md](../../docs/architecture/api.md#the-coalescing-problem-why-children-not-fields).
-- Don't change the pool width (`source/constants/apiPool.bs`) without measuring on device — the two values are measured, per device class, and each slot is a thread for the whole session. See [docs/architecture/api.md](../../docs/architecture/api.md#pool-width).
+- Don't change the pool width (`source/constants/apiPool.bs`) without measuring on device — the two values are measured, per device class, and each slot is a thread for the whole session. See [docs/architecture/api.md](../../docs/architecture/api.md#pool-width). Don't restate the width (or a slot/thread count derived from it) in comments or docs elsewhere — it differs per device, so say "one per pool slot" or link that section.
