@@ -1247,18 +1247,9 @@ sub onRefreshItemDetailsData()
     if isValid(resumeButton)
       resumeButton.isLoading = true
     else if not isValid(m.top.findNode("resumeLoadingButton"))
-      m.resumeLoadingButton = CreateObject("roSGNode", "IconButton")
-      m.resumeLoadingButton.id = "resumeLoadingButton"
-      m.resumeLoadingButton.icon = "pkg:/images/icons/resume_$$RES$$.png"
-      if isValid(m.top.nextUpEpisode) and isValidAndNotEmpty(m.top.nextUpEpisode.id)
-        m.resumeLoadingButton.text = getResumeButtonText(m.top.nextUpEpisode)
-      else
-        m.resumeLoadingButton.text = translate(translationKeys.ButtonResume)
-      end if
-      m.resumeLoadingButton.isLoading = true
       ' Whole row around the index-0 insert, then re-split. See applyOverflow().
       unsplitButtons()
-      m.buttonGrp.insertChild(m.resumeLoadingButton, 0)
+      m.buttonGrp.insertChild(createResumeLoadingButton(seriesResumeLoadingText()), 0)
       ' applyOverflow() re-points the focus index at the same button by ID.
       applyOverflow()
     end if
@@ -1343,49 +1334,16 @@ sub onNextUpEpisodeChanged()
   if isValid(item) and isValidAndNotEmpty(item.id)
     resumeText = getResumeButtonText(item)
     if not isValid(resumeButton)
-      resumeButton = CreateObject("roSGNode", "ResumeButton")
-      resumeButton.id = "resumeButton"
-      resumeButton.icon = "pkg:/images/icons/resume_$$RES$$.png"
-      resumeButton.text = resumeText
-      resumeButton.playbackPositionTicks = item.playbackPositionTicks
-      resumeButton.runtimeTicks = item.runTimeTicks
+      resumeButton = createResumeButton(resumeText, item.playbackPositionTicks, item.runTimeTicks)
 
       if isValid(loadingButton)
-        ' Swap the LoadingButton placeholder for the real resume button.
-        ' The user may have moved focus to another button before async data arrived,
-        ' so capture which button has focus before the remove/insert.
-        loadingIndex = getButtonIndex("resumeLoadingButton")
-        wasFocused = loadingButton.isInFocusChain()
-        currentFocusIndex = m.buttonGrp.buttonFocused
-        m.buttonGrp.removeChild(loadingButton)
-        m.resumeLoadingButton = invalid
-        m.buttonGrp.insertChild(resumeButton, loadingIndex)
-        ' Remove then insert at same index is a net-zero index shift,
-        ' so the original focusIndex is still correct.
-        m.buttonGrp.buttonFocused = currentFocusIndex
-        if wasFocused
+        swapResumeLoadingButton(loadingButton, resumeButton)
+        if m.buttonGrp.isInFocusChain()
           focusButtonGroupChild()
         end if
       else
         ' No placeholder (refresh path) — insert at position 0
-        currentFocusIndex = m.buttonGrp.buttonFocused
-        currentFocusedButton = invalid
-        if isValid(currentFocusIndex) and currentFocusIndex >= 0 and currentFocusIndex < m.buttonGrp.getChildCount()
-          currentFocusedButton = m.buttonGrp.getChild(currentFocusIndex)
-        end if
-
-        m.buttonGrp.insertChild(resumeButton, 0)
-
-        if isValid(currentFocusedButton) and currentFocusedButton.id = "playButton"
-          m.buttonGrp.buttonFocused = 0
-        else if isValid(currentFocusIndex) and currentFocusIndex >= 0
-          m.buttonGrp.buttonFocused = currentFocusIndex + 1
-        else
-          m.buttonGrp.buttonFocused = 0
-        end if
-      end if
-      if m.buttonGrp.isInFocusChain()
-        focusButtonGroupChild()
+        insertButtonAtFront(resumeButton)
       end if
     else
       ' Resume button already present — update text and tick values
@@ -1466,51 +1424,17 @@ sub manageResumeButton()
       if isValid(resumeButton)
         resumeButton.isLoading = true
       else if not isValid(loadingButton)
-        insertResumeLoadingButton()
+        ' Resume leads the row, so its placeholder takes focus from Play as the real one would.
+        insertButtonAtFront(createResumeLoadingButton(translate(translationKeys.ButtonResume)))
       end if
     else if resumeState.ticks > 0
       if not isValid(resumeButton)
-        resumeButton = CreateObject("roSGNode", "ResumeButton")
-        resumeButton.id = "resumeButton"
-        resumeButton.icon = "pkg:/images/icons/resume_$$RES$$.png"
-        resumeButton.text = translate(translationKeys.ButtonResume)
-        resumeButton.playbackPositionTicks = resumeState.ticks
-        resumeButton.runtimeTicks = resumeState.runtimeTicks
+        resumeButton = createResumeButton(translate(translationKeys.ButtonResume), resumeState.ticks, resumeState.runtimeTicks)
 
         if isValid(loadingButton)
-          ' Swap the placeholder for the real button at the same index. The user may have
-          ' moved focus while the position loaded, so keep whatever index had it.
-          loadingIndex = getButtonIndex("resumeLoadingButton")
-          wasFocused = loadingButton.isInFocusChain()
-          currentFocusIndex = m.buttonGrp.buttonFocused
-          m.buttonGrp.removeChild(loadingButton)
-          m.resumeLoadingButton = invalid
-          m.buttonGrp.insertChild(resumeButton, loadingIndex)
-          m.buttonGrp.buttonFocused = currentFocusIndex
-          if wasFocused
-            focusButtonGroupChild()
-          end if
+          swapResumeLoadingButton(loadingButton, resumeButton)
         else
-          currentFocusIndex = m.buttonGrp.buttonFocused
-          currentFocusedButton = invalid
-          if isValid(currentFocusIndex) and currentFocusIndex >= 0 and currentFocusIndex < m.buttonGrp.getChildCount()
-            currentFocusedButton = m.buttonGrp.getChild(currentFocusIndex)
-          end if
-
-          m.buttonGrp.insertChild(resumeButton, 0)
-
-          if isValid(currentFocusedButton) and currentFocusedButton.id = "playButton"
-            m.buttonGrp.buttonFocused = 0
-          else if isValid(currentFocusIndex) and currentFocusIndex >= 0
-            m.buttonGrp.buttonFocused = currentFocusIndex + 1
-          else
-            m.buttonGrp.buttonFocused = 0
-          end if
-          ' Only move actual focus when the button group already owns it — avoid stealing
-          ' focus from the extras row when setupButtons() cleared and rebuilt buttons on refresh.
-          if m.buttonGrp.isInFocusChain()
-            focusButtonGroupChild()
-          end if
+          insertButtonAtFront(resumeButton)
         end if
       else
         resumeButton.playbackPositionTicks = resumeState.ticks
@@ -1550,9 +1474,89 @@ sub trackVersionResumeFill(isLoading as boolean)
   end if
 end sub
 
-' insertResumeLoadingButton: Put a loading Resume placeholder at the front of the row, where
-' the Resume button goes, keeping focus on the button that had it.
-sub insertResumeLoadingButton()
+' ============================================
+' RESUME SLOT — shared by the Series (next-up) and per-item Resume flows
+' ============================================
+'
+' The two that place a button are bracketed as LEAVES (unsplitButtons() / applyOverflow()),
+' like removeResumeButtonWithFocus: every index they use assumes the whole row is present,
+' and both halves are idempotent, so a caller that already brackets loses nothing.
+
+' createResumeButton: A Resume button, not yet placed in the row.
+'
+' @param {string} text - the label ("Resume", or "Resume S2E3" for a Series)
+' @param {dynamic} positionTicks - where it resumes, for its progress bar
+' @param {dynamic} runtimeTicks - the runtime that progress bar is measured against
+' @return {object} the ResumeButton node
+function createResumeButton(text as string, positionTicks as dynamic, runtimeTicks as dynamic) as object
+  resumeButton = CreateObject("roSGNode", "ResumeButton")
+  resumeButton.id = "resumeButton"
+  resumeButton.icon = "pkg:/images/icons/resume_$$RES$$.png"
+  resumeButton.text = text
+  resumeButton.playbackPositionTicks = positionTicks
+  resumeButton.runtimeTicks = runtimeTicks
+  return resumeButton
+end function
+
+' createResumeLoadingButton: The loading placeholder that holds the Resume slot while its
+' data loads, recorded in m.resumeLoadingButton. Not yet placed in the row.
+'
+' @param {string} text - the label the real button is expected to carry
+' @return {object} the IconButton node
+function createResumeLoadingButton(text as string) as object
+  m.resumeLoadingButton = CreateObject("roSGNode", "IconButton")
+  m.resumeLoadingButton.id = "resumeLoadingButton"
+  m.resumeLoadingButton.icon = "pkg:/images/icons/resume_$$RES$$.png"
+  m.resumeLoadingButton.text = text
+  m.resumeLoadingButton.isLoading = true
+  return m.resumeLoadingButton
+end function
+
+' seriesResumeLoadingText: The Series placeholder label — the episode-specific text (e.g.
+' "Resume S2E3") from prior data when there is some, so the label holds steady through a
+' reload, otherwise plain "Resume".
+'
+' @return {string}
+function seriesResumeLoadingText() as string
+  if isValid(m.top.nextUpEpisode) and isValidAndNotEmpty(m.top.nextUpEpisode.id)
+    return getResumeButtonText(m.top.nextUpEpisode)
+  end if
+  return translate(translationKeys.ButtonResume)
+end function
+
+' swapResumeLoadingButton: Replace the loading placeholder with the real Resume button at
+' the same index. The user may have moved focus while the data loaded; removing and then
+' inserting at one index is a net-zero shift, so the focus index read first still names the
+' same button. Real focus moves only if the placeholder itself had it.
+'
+' @param {object} loadingButton - the placeholder currently in the row
+' @param {object} resumeButton - createResumeButton()
+sub swapResumeLoadingButton(loadingButton as object, resumeButton as object)
+  unsplitButtons()
+
+  loadingIndex = getButtonIndex("resumeLoadingButton")
+  wasFocused = loadingButton.isInFocusChain()
+  currentFocusIndex = m.buttonGrp.buttonFocused
+  m.buttonGrp.removeChild(loadingButton)
+  m.resumeLoadingButton = invalid
+  m.buttonGrp.insertChild(resumeButton, loadingIndex)
+  m.buttonGrp.buttonFocused = currentFocusIndex
+  if wasFocused
+    focusButtonGroupChild()
+  end if
+
+  applyOverflow()
+end sub
+
+' insertButtonAtFront: Put a Resume-slot button at the front of the row. It takes focus
+' from Play, as a Resume button leads the row; any other focused button keeps focus, with
+' its index shifted past the insert.
+'
+' Real focus moves only when the row already owns it — an async insert must not steal
+' focus from the extras row, e.g. after setupButtons() cleared and rebuilt the row.
+'
+' @param {object} button - createResumeButton() or createResumeLoadingButton()
+sub insertButtonAtFront(button as object)
   unsplitButtons()
 
   currentFocusIndex = m.buttonGrp.buttonFocused
@@ -1561,14 +1565,8 @@ sub insertResumeLoadingButton()
     currentFocusedButton = m.buttonGrp.getChild(currentFocusIndex)
   end if
 
-  m.resumeLoadingButton = CreateObject("roSGNode", "IconButton")
-  m.resumeLoadingButton.id = "resumeLoadingButton"
-  m.resumeLoadingButton.icon = "pkg:/images/icons/resume_$$RES$$.png"
-  m.resumeLoadingButton.text = translate(translationKeys.ButtonResume)
-  m.resumeLoadingButton.isLoading = true
-  m.buttonGrp.insertChild(m.resumeLoadingButton, 0)
+  m.buttonGrp.insertChild(button, 0)
 
-  ' Resume leads the row, so it takes focus from Play exactly as the real button would.
   if isValid(currentFocusedButton) and currentFocusedButton.id = "playButton"
     m.buttonGrp.buttonFocused = 0
   else if isValid(currentFocusIndex) and currentFocusIndex >= 0
@@ -4122,16 +4120,7 @@ sub setupButtons(item as object)
   ' Preserves the episode-specific text (e.g. "Resume S2E3") from prior data if available
   ' so the user sees a consistent label through the loading transition.
   if itemType = "Series"
-    m.resumeLoadingButton = CreateObject("roSGNode", "IconButton")
-    m.resumeLoadingButton.id = "resumeLoadingButton"
-    m.resumeLoadingButton.icon = "pkg:/images/icons/resume_$$RES$$.png"
-    if isValid(m.top.nextUpEpisode) and isValidAndNotEmpty(m.top.nextUpEpisode.id)
-      m.resumeLoadingButton.text = getResumeButtonText(m.top.nextUpEpisode)
-    else
-      m.resumeLoadingButton.text = translate(translationKeys.ButtonResume)
-    end if
-    m.resumeLoadingButton.isLoading = true
-    m.buttonGrp.appendChild(m.resumeLoadingButton)
+    m.buttonGrp.appendChild(createResumeLoadingButton(seriesResumeLoadingText()))
   end if
 
   ' Photo: View button
