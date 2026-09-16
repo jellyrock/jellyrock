@@ -277,6 +277,21 @@ sub captureRowFocus(group as object, stash as object)
   })
 end sub
 
+' Hand the row's focus to `buttonId` when the bracket closes, instead of back to the
+' button that had it when the bracket opened.
+'
+' The capture above exists so a mutation does not MOVE focus by accident. A mutator
+' that moves it on purpose has to say so, or the closing half faithfully puts focus
+' back where it was: a new Resume that takes focus from Play (the lead action of the
+' row changes) was reverted to Play this way on every item with progress. Call it
+' between the two halves, next to the decision it records; outside a bracket there is
+' nothing to retarget, so it does nothing and the caller's own index stands.
+sub claimRowFocus(stash as object, buttonId as string)
+  if not isValid(stash) or not stash.hasField("focusCapturePending") then return
+  if not stash.focusCapturePending then return
+  stash.focusCaptureId = buttonId
+end sub
+
 ' Re-point the row's focus at the captured button, and consume the capture.
 '
 ' Acts ONLY when that button is still in the row, or has moved into the stash (More
@@ -304,7 +319,10 @@ function consumeRowFocusCapture(group as object, stash as object) as boolean
 
   if restoredIndex < 0
     ' Moved into the menu: More stands in for it.
-    if not isValid(group.findNode("moreButton")) or not isValid(stash.findNode(focusedId)) then return false
+    if not isValid(group.findNode("moreButton")) or not isValid(stash.findNode(focusedId))
+      handOnLostRowFocus(group, stash)
+      return false
+    end if
     restoredIndex = group.getChildCount() - 1
   end if
 
@@ -312,6 +330,26 @@ function consumeRowFocusCapture(group as object, stash as object) as boolean
   if stash.focusCaptureHadFocus then group.getChild(restoredIndex).setFocus(true)
   return true
 end function
+
+' The focused button was REMOVED by the caller, and the row held focus.
+'
+' Removing a focused node leaves no node focused anywhere in the scene, and the
+' remote goes dead until something calls setFocus. Mutators that remove a button
+' they know may be focused re-focus it themselves; one that does not (a Trailer
+' button withdrawn by a late check while the user sits on it) left the screen deaf.
+' The caller's index is kept — it is still the caller's choice — clamped to the
+' row, and real focus is put there only when nothing already holds it, so a caller
+' that did hand focus on is never overridden.
+sub handOnLostRowFocus(group as object, stash as object)
+  if not stash.focusCaptureHadFocus or group.isInFocusChain() then return
+  count = group.getChildCount()
+  if count = 0 then return
+  index = rowFocusIndex(group)
+  if index < 0 then index = 0
+  if index > count - 1 then index = count - 1
+  setRowFocusIndex(group, index)
+  group.getChild(index).setFocus(true)
+end sub
 
 ' The restore itself, without recording focus. See restoreOverflowedButtons().
 sub restoreRow(group as object, stash as object)

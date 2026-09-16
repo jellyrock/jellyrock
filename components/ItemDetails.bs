@@ -1247,11 +1247,9 @@ sub onRefreshItemDetailsData()
     if isValid(resumeButton)
       resumeButton.isLoading = true
     else if not isValid(m.top.findNode("resumeLoadingButton"))
-      ' Whole row around the index-0 insert, then re-split. See applyOverflow().
-      unsplitButtons()
-      m.buttonGrp.insertChild(createResumeLoadingButton(seriesResumeLoadingText()), 0)
-      ' applyOverflow() re-points the focus index at the same button by ID.
-      applyOverflow()
+      ' Resume leads the row, so its placeholder takes focus from Play — the rule every
+      ' other type follows. Any other focused button keeps focus.
+      insertButtonAtFront(createResumeLoadingButton(seriesResumeLoadingText()))
     end if
   end if
 
@@ -1556,6 +1554,8 @@ sub insertButtonAtFront(button as object)
 
   if isValid(currentFocusedButton) and currentFocusedButton.id = "playButton"
     m.buttonGrp.buttonFocused = 0
+    ' A deliberate move: without the claim, applyOverflow() puts focus back on Play.
+    claimRowFocus(m.buttonOverflow, button.id)
   else if isValid(currentFocusIndex) and currentFocusIndex >= 0
     m.buttonGrp.buttonFocused = currentFocusIndex + 1
   else
@@ -3929,6 +3929,11 @@ end function
 ' The two halves of the contract. Both delegate to source/utils/buttonOverflow.bs
 ' so the OSD's row runs the same implementation rather than a second copy of it;
 ' what stays here is only which nodes this screen's row is made of.
+'
+' The closing half puts focus back on the button that had it when the opening half
+' ran. A mutator that moves focus to a DIFFERENT button on purpose (a new Resume taking
+' over from Play) must say so with claimRowFocus(m.buttonOverflow, id) between the two,
+' or its choice is silently reverted — see ItemDetailsRowFocus.spec.bs.
 sub unsplitButtons()
   closeMoreMenuBeforeRowChanges()
   restoreOverflowedButtons(m.buttonGrp, m.buttonOverflow)
@@ -4452,6 +4457,9 @@ sub onPersonHasMediaChanged()
 
         if currentFocusIndex = 0
           m.buttonGrp.buttonFocused = 0
+          ' Shuffle now leads the row, as its placeholder did on first load. Only a claim
+          ' when it landed at the head: inserted further in, index 0 is still the same button.
+          if insertIndex = 0 then claimRowFocus(m.buttonOverflow, "shuffleButton")
         else
           m.buttonGrp.buttonFocused = currentFocusIndex + 1
         end if

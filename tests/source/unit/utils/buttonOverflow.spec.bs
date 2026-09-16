@@ -480,6 +480,68 @@ namespace tests
       m.assertEqual(row.group.getChild(row.group.buttonFocused).id, "moreButton")
     end function
 
+    ' A mutator that moves focus ON PURPOSE claims the target; without the claim the
+    ' closing half puts focus back on the button the bracket opened on.
+    @it("lands on a claimed button instead of the captured one, when the row fits")
+    function _()
+      row = m.makeRow(3)
+      row.group.buttonFocused = 0
+
+      restoreOverflowedButtons(row.group, row.stash)
+      lead = CreateObject("roSGNode", "IconButton")
+      lead.id = "newLead"
+      row.group.insertChild(lead, 0)
+      row.group.buttonFocused = 0
+      claimRowFocus(row.stash, "newLead")
+      applyButtonOverflow(row.group, row.stash, 8, "More", "pkg:/more.png")
+
+      m.assertEqual(row.group.getChild(row.group.buttonFocused).id, "newLead")
+    end function
+
+    @it("lands on a claimed button when the row splits")
+    function _()
+      row = m.makeRow(4)
+      row.group.buttonFocused = 0
+
+      restoreOverflowedButtons(row.group, row.stash)
+      lead = CreateObject("roSGNode", "IconButton")
+      lead.id = "newLead"
+      row.group.insertChild(lead, 0)
+      row.group.buttonFocused = 0
+      claimRowFocus(row.stash, "newLead")
+      applyButtonOverflow(row.group, row.stash, 4, "More", "pkg:/more.png")
+
+      m.assertNotInvalid(row.group.findNode("moreButton"), "precondition: the row split")
+      m.assertEqual(row.group.getChild(row.group.buttonFocused).id, "newLead")
+    end function
+
+    @it("still restores the captured button when nothing is claimed")
+    ' The control: the same insert without a claim keeps the original button.
+    function _()
+      row = m.makeRow(3)
+      row.group.buttonFocused = 0
+
+      restoreOverflowedButtons(row.group, row.stash)
+      lead = CreateObject("roSGNode", "IconButton")
+      lead.id = "newLead"
+      row.group.insertChild(lead, 0)
+      row.group.buttonFocused = 0
+      applyButtonOverflow(row.group, row.stash, 8, "More", "pkg:/more.png")
+
+      m.assertEqual(row.group.getChild(row.group.buttonFocused).id, "btn0")
+    end function
+
+    @it("ignores a claim made outside a bracket")
+    function _()
+      row = m.makeRow(3)
+      row.group.buttonFocused = 1
+
+      claimRowFocus(row.stash, "btn2")
+      applyButtonOverflow(row.group, row.stash, 8, "More", "pkg:/more.png")
+
+      m.assertEqual(row.group.buttonFocused, 1)
+    end function
+
     ' The caller's own choice stands when the focused button is gone — this is
     ' what setupButtons' "fall back to index 0 when Delete is gone" relies on.
     @it("leaves the focus index alone when the focused button was removed")
