@@ -1918,6 +1918,13 @@ sub reportPlayback(state = "update" as string)
   ' now-playing display. Not m.top.mediaSourceId: a version switch in the player writes
   ' that BEFORE the old stream's stop report, which would save the old file's position on
   ' the new one. m.reportedMediaSourceId changes only once the new stream is loaded.
+  '
+  ' What keeps the two in order is onVideoSourceChange: it sets control = "stop" (a local
+  ' state change, so the stop report is on the next message loop) and only THEN launches
+  ' LoadMetaDataTask, whose reply has to cross the network before onVideoContentLoaded can
+  ' reassign this. The stop report therefore wins by a network round trip rather than by a
+  ' guarantee -- if that ever stops holding, the symptom is the old position landing on the
+  ' newly selected version, not a crash.
   if m.reportedMediaSourceId <> "" then params.MediaSourceId = m.reportedMediaSourceId
   ' Live TV requires MediaSourceId/LiveStreamId for server-side stream tracking
   if isLiveTvPlayback() and isValid(m.top.transcodeParams)

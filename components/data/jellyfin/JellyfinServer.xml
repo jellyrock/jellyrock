@@ -46,12 +46,15 @@
          the rest of this node on a server switch. -->
     <field id="subtitleProviderStatus" type="string" value="" />
 
-    <!-- The server's MaxResumePct (0-100): past this percentage a playback report counts
-         as finished. -1 = not read yet (versionResume.MAX_RESUME_PCT_UNKNOWN). Read lazily
-         by ItemDetails, only when it would carry a resume position between alternate
-         versions; a failed read is not stored, so the next consumer retries. Reset with
-         the rest of this node on a server switch. -->
-    <field id="maxResumePct" type="integer" value="-1" />
+    <!-- The server's resume thresholds, from GET /System/Configuration:
+         { maxResumePct, minResumeDurationSeconds }. INVALID (unset) = not read yet — an
+         assocarray field declares no default, which is exactly the one "unknown" state
+         this wants. One field rather than one per threshold because the guard that uses
+         them (versionResume.wouldMarkPlayed) is only closed when it has ALL of them, and
+         two sentinels could disagree. Read lazily by ItemDetails, only when it would carry a
+         resume position between alternate versions; a failed read is not stored, so the
+         next consumer retries. Reset with the rest of this node on a server switch. -->
+    <field id="resumePolicy" type="assocarray" />
 
     <!-- DEBUG ONLY: Raw server info for debugging - only populated when bs_const=debug=true -->
     <field id="rawServerInfo" type="assocarray" />

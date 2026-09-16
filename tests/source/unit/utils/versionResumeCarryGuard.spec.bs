@@ -1,0 +1,206 @@
+import "pkg:/source/utils/versionResume.bs"
+
+namespace tests
+
+  ' The guard that decides whether one version's position may be carried onto another.
+  '
+  ' `wouldMarkPlayed` mirrors Jellyfin's UserDataManager.UpdatePlayState (read at v12.0),
+  ' and the tests below are organised as one @describe per branch the SERVER uses to set
+  ' `Played`, because `Played` is the whole stake: SessionManager then calls
+  ' Video.PropagatePlayedState(user, true), which marks every alternate version played and
+  ' clears every version's position. A carry the server would count as finished therefore
+  ' erases the position it was carried FROM.
+  '
+  ' Server thresholds are supplied explicitly rather than taken from a fixture, so each
+  ' branch is pinned to a value instead of to whatever a test server happens to be set to.
+  @suite("versionResume - the carry guard")
+  class VersionResumeCarryGuardTests extends tests.BaseTestSuite
+
+    ' A 12.0 server's defaults, confirmed live against GET /System/Configuration.
+    private function defaultPolicy() as object
+      return { maxResumePct: 90, minResumeDurationSeconds: 300 }
+    end function
+
+    ' Seconds as ticks. The `&` suffix makes the local a LongInteger, so the double
+    ' multiplication lands in 64 bits instead of overflowing a 32-bit integer.
+    private function secs(n as double) as longinteger
+      ticks& = n * 10000000#
+      return ticks&
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("wouldMarkPlayed() - the resumable band")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is false well inside a long version, which is what makes a carry legal")
+    function _()
+      ' 10:00 into 30:00.
+      m.assertFalse(versionResume.wouldMarkPlayed(m.secs(600), m.secs(1800), m.defaultPolicy()))
+    end function
+
+    @it("is false for a position of zero, which reports nothing")
+    function _()
+      m.assertFalse(versionResume.wouldMarkPlayed(0, m.secs(1800), m.defaultPolicy()))
+      m.assertFalse(versionResume.wouldMarkPlayed(invalid, m.secs(1800), m.defaultPolicy()))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("wouldMarkPlayed() - server branch: pctIn > MaxResumePct")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is false exactly AT the threshold, which the server counts as still resumable")
+    ' The server's test is strictly greater-than.
+    function _()
+      m.assertFalse(versionResume.wouldMarkPlayed(m.secs(900), m.secs(1000), m.defaultPolicy()))
+    end function
+
+    @it("is true past the threshold")
+    function _()
+      m.assertTrue(versionResume.wouldMarkPlayed(m.secs(910), m.secs(1000), m.defaultPolicy()))
+    end function
+
+    @it("follows a server configured with a different threshold")
+    function _()
+      strict = { maxResumePct: 50, minResumeDurationSeconds: 300 }
+      m.assertTrue(versionResume.wouldMarkPlayed(m.secs(600), m.secs(1000), strict))
+      m.assertFalse(versionResume.wouldMarkPlayed(m.secs(400), m.secs(1000), strict))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("wouldMarkPlayed() - server branch: within a second of the end")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true inside the final second")
+    ' Mirrors positionTicks >= runtimeTicks - TimeSpan.TicksPerSecond.
+    function _()
+      permissive = { maxResumePct: 100, minResumeDurationSeconds: 0 }
+      m.assertTrue(versionResume.wouldMarkPlayed(m.secs(999.5), m.secs(1000), permissive))
+    end function
+
+    @it("is true past the end of a shorter version")
+    ' The case this exists for: a position from a longer cut, landing beyond a short one.
+    function _()
+      permissive = { maxResumePct: 100, minResumeDurationSeconds: 0 }
+      m.assertTrue(versionResume.wouldMarkPlayed(m.secs(1200), m.secs(1000), permissive))
+    end function
+
+    @it("is false just outside the final second")
+    function _()
+      permissive = { maxResumePct: 100, minResumeDurationSeconds: 0 }
+      m.assertFalse(versionResume.wouldMarkPlayed(m.secs(998), m.secs(1000), permissive))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("wouldMarkPlayed() - server branch: runtime < MinResumeDurationSeconds")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for a version shorter than the minimum, at any position in the band")
+    ' The server enforces this INSIDE the resumable band: a short version is marked played
+    ' rather than given a resume point, whatever the position. Carrying onto one would
+    ' therefore mark every version played and clear the position being carried from.
+    function _()
+      ' 1:00 into a 2:00 version — half way, nowhere near MaxResumePct.
+      m.assertTrue(versionResume.wouldMarkPlayed(m.secs(60), m.secs(120), m.defaultPolicy()))
+    end function
+
+    @it("is false for a version exactly at the minimum")
+    ' The server's test is strictly less-than.
+    function _()
+      m.assertFalse(versionResume.wouldMarkPlayed(m.secs(60), m.secs(300), m.defaultPolicy()))
+    end function
+
+    @it("is false once the version is longer than the minimum")
+    function _()
+      m.assertFalse(versionResume.wouldMarkPlayed(m.secs(60), m.secs(301), m.defaultPolicy()))
+    end function
+
+    @it("follows a server configured with no minimum at all")
+    function _()
+      noMinimum = { maxResumePct: 90, minResumeDurationSeconds: 0 }
+      m.assertFalse(versionResume.wouldMarkPlayed(m.secs(60), m.secs(120), noMinimum))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("wouldMarkPlayed() - server branch: no runtime")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true without a runtime, as the server assumes fully played")
+    function _()
+      m.assertTrue(versionResume.wouldMarkPlayed(m.secs(600), 0, m.defaultPolicy()))
+      m.assertTrue(versionResume.wouldMarkPlayed(m.secs(600), invalid, m.defaultPolicy()))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("wouldMarkPlayed() - failing closed")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true when the thresholds are unknown")
+    ' Not knowing the rule must never authorize a carry: guessing wrong erases a position.
+    function _()
+      m.assertTrue(versionResume.wouldMarkPlayed(m.secs(600), m.secs(1800), invalid))
+    end function
+
+    @it("is true when the policy is only half-read")
+    function _()
+      m.assertTrue(versionResume.wouldMarkPlayed(m.secs(600), m.secs(1800), { maxResumePct: 90 }))
+      m.assertTrue(versionResume.wouldMarkPlayed(m.secs(600), m.secs(1800), { minResumeDurationSeconds: 300 }))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isResumePolicy()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("needs both thresholds present and numeric")
+    function _()
+      m.assertTrue(versionResume.isResumePolicy(m.defaultPolicy()))
+      m.assertFalse(versionResume.isResumePolicy({ maxResumePct: 90 }))
+      m.assertFalse(versionResume.isResumePolicy({ maxResumePct: "90", minResumeDurationSeconds: 300 }))
+      m.assertFalse(versionResume.isResumePolicy({}))
+      m.assertFalse(versionResume.isResumePolicy(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("resumeTicksFor()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses the version's own position over a carried one")
+    function _()
+      m.assertEqual(versionResume.resumeTicksFor(3000&, 9000&, m.secs(10000), m.defaultPolicy()), 3000&)
+    end function
+
+    @it("uses the version's own position even when the policy is unknown")
+    ' An own position is stored on THIS version already; nothing is being carried, so no
+    ' threshold applies.
+    function _()
+      m.assertEqual(versionResume.resumeTicksFor(3000&, 0, m.secs(1800), invalid), 3000&)
+    end function
+
+    @it("carries the in-progress position when the version has none")
+    function _()
+      m.assertEqual(versionResume.resumeTicksFor(0, m.secs(600), m.secs(1800), m.defaultPolicy()), m.secs(600))
+    end function
+
+    @it("does not carry onto a version the server would mark played")
+    ' One case per branch, so a regression in any of them fails here too.
+    function _()
+      policy = m.defaultPolicy()
+      m.assertEqual(versionResume.resumeTicksFor(0, m.secs(910), m.secs(1000), policy), 0&) ' > MaxResumePct
+      m.assertEqual(versionResume.resumeTicksFor(0, m.secs(1200), m.secs(1000), policy), 0&) ' past the end
+      m.assertEqual(versionResume.resumeTicksFor(0, m.secs(60), m.secs(120), policy), 0&) ' short version
+      m.assertEqual(versionResume.resumeTicksFor(0, m.secs(600), 0, policy), 0&) ' no runtime
+    end function
+
+    @it("does not carry when the thresholds are unknown")
+    function _()
+      m.assertEqual(versionResume.resumeTicksFor(0, m.secs(600), m.secs(1800), invalid), 0&)
+    end function
+
+    @it("returns 0 when nothing is in progress")
+    function _()
+      m.assertEqual(versionResume.resumeTicksFor(0, 0, m.secs(1800), m.defaultPolicy()), 0&)
+      m.assertEqual(versionResume.resumeTicksFor(invalid, invalid, m.secs(1800), m.defaultPolicy()), 0&)
+    end function
+
+  end class
+
+end namespace

@@ -19,14 +19,24 @@ import "pkg:/source/utils/misc.bs"
 '     user was resuming from.
 '
 ' So: resume the file that holds the position, and carry a position onto a version the user
-' explicitly picked only while it stays inside that version's resumable window.
+' explicitly picked only while the server would still store it there rather than count it
+' finished — see wouldMarkPlayed(), which mirrors the server rule branch for branch.
+'
+' This module is PURE: every function takes plain values and returns plain values, with no
+' node, thread or network access. That is what lets the whole decision — including the
+' carry guard and everything resumeStateFor() answers — be unit-tested without a seam for
+' HTTP, which the component specs have no way to provide. ItemDetails keeps only the
+' imperative shell: build the context, ask here, fetch whatever the answer names, ask again.
 namespace versionResume
 
   ' The first release that keeps playback progress per version.
   const PER_VERSION_MIN_SERVER = "12.0.0"
 
-  ' JellyfinServer.maxResumePct before the server configuration has been read.
-  const MAX_RESUME_PCT_UNKNOWN = -1
+  ' A version position that could not be read (the fetch failed, or the server declined).
+  ' Distinct from 0, which means "read, and this version has no position".
+  ' LongInteger, like every other value that travels through this module as ticks, so it
+  ' compares type-for-type against a position parsed out of a reply.
+  const POSITION_UNREADABLE = -1&
 
   ' isPerVersionServer: Whether the server keeps a separate position per alternate version.
   '
@@ -39,14 +49,20 @@ namespace versionResume
 
   ' sourceIndexById: Index of the MediaSource with this id.
   '
+  ' Case-insensitive, matching the server: it keys its own per-version lookup with
+  ' StringComparer.OrdinalIgnoreCase and compares source ids with StringComparison
+  ' .OrdinalIgnoreCase (MediaSourceManager), so it does not assume one spelling of a GUID
+  ' and neither should the one identity check every caller here depends on.
+  '
   ' @param {object} mediaSources - MediaSourceInfo array
   ' @param {string} sourceId
   ' @return {integer} the index, or -1 when absent
   function sourceIndexById(mediaSources as dynamic, sourceId as string) as integer
     if type(mediaSources) <> "roArray" or not isValidAndNotEmpty(sourceId) then return -1
+    wanted = lcase(sourceId)
     for i = 0 to mediaSources.count() - 1
       source = mediaSources[i]
-      if isValid(source) and source.Id = sourceId then return i
+      if isValid(source) and isValidAndNotEmpty(source.Id) and lcase(source.Id) = wanted then return i
     end for
     return -1
   end function
@@ -71,8 +87,18 @@ namespace versionResume
     end if
 
     first = mediaSources[0]
-    if isValid(first) and isValidAndNotEmpty(first.Id) and first.Id <> itemId then return 0
+    if isValid(first) and isValidAndNotEmpty(first.Id) and not versionResume.idsMatch(first.Id, itemId) then return 0
     return -1
+  end function
+
+  ' idsMatch: Whether two source/item ids name the same thing. See sourceIndexById.
+  '
+  ' @param {dynamic} left
+  ' @param {dynamic} right
+  ' @return {boolean}
+  function idsMatch(left as dynamic, right as dynamic) as boolean
+    if not isValidAndNotEmpty(left) or not isValidAndNotEmpty(right) then return false
+    return lcase(left) = lcase(right)
   end function
 
   ' resumeSourceIndex: Which version to play when starting an item from a known position.
@@ -94,54 +120,195 @@ namespace versionResume
     return versionResume.sourceIndexById(mediaSources, itemId)
   end function
 
+  ' wouldMarkPlayed: Would the server record this position as PLAYED instead of storing it
+  ' as a resume point for this version?
+  '
+  ' Mirrors Jellyfin's UserDataManager.UpdatePlayState (read at v12.0) branch for branch.
+  ' Every branch below is one the server uses to set `Played`, and `Played` is what makes
+  ' this matter: SessionManager then calls Video.PropagatePlayedState(user, true), which
+  ' marks EVERY alternate version played and clears EVERY version's position. So carrying a
+  ' position onto a version the server would count as finished does not just fail to
+  ' resume — it erases the position being carried from.
+  '
+  ' MinResumePct is deliberately NOT a branch here. The server zeroes a position below it
+  ' too, but WITHOUT setting `Played`, so it cannot reach PropagatePlayedState and cannot
+  ' erase anything: the carry is simply not stored, exactly as a fresh start would not be.
+  '
+  ' @param {dynamic} positionTicks - the position that would be reported
+  ' @param {dynamic} runtimeTicks - the runtime of the version it would be reported against
+  ' @param {dynamic} policy - resumePolicyFrom(), or invalid when the thresholds are unknown
+  ' @return {boolean} true when unknown, so an unreadable policy never authorizes a carry
+  function wouldMarkPlayed(positionTicks as dynamic, runtimeTicks as dynamic, policy as dynamic) as boolean
+    ' Fail CLOSED: without the thresholds there is no way to tell, and guessing wrong
+    ' erases a real position.
+    if not versionResume.isResumePolicy(policy) then return true
+    if not isValid(runtimeTicks) or runtimeTicks <= 0 then return true ' server: no runtime => played
+    if not isValid(positionTicks) or positionTicks <= 0 then return false ' nothing to report
+
+    ' "mark as completed close to the end"
+    if positionTicks >= runtimeTicks - 10000000& then return true
+    percentIn = (positionTicks * 100#) / runtimeTicks
+    if percentIn > policy.maxResumePct then return true
+
+    ' "Enforce MinResumeDuration" — inside the resumable band, a version SHORTER than this
+    ' is marked played rather than given a resume point, whatever the position.
+    runtimeSeconds = runtimeTicks / 10000000#
+    if runtimeSeconds < policy.minResumeDurationSeconds then return true
+
+    return false
+  end function
+
+  ' isResumePolicy: Whether a value is a usable policy (both thresholds present).
+  '
+  ' @param {dynamic} policy
+  ' @return {boolean}
+  function isResumePolicy(policy as dynamic) as boolean
+    if type(policy) <> "roAssociativeArray" then return false
+    return isIntSafe(policy.maxResumePct) and isIntSafe(policy.minResumeDurationSeconds)
+  end function
+
   ' resumeTicksFor: The position a version resumes from.
   '
   ' A version's own position always wins. Without one, the in-progress version's position is
   ' carried over only while the server would still store it as a resume point for THIS
-  ' version — the same test the server applies when a playback report arrives
-  ' (UserDataManager.UpdatePlayState): more than maxResumePct percent in, or within a second
-  ' of the end, counts as watched. Past that, resuming would mark the item played and clear
-  ' the position being carried, so there is nothing to resume.
+  ' version — see wouldMarkPlayed().
   '
   ' @param {dynamic} ownTicks - this version's own position
   ' @param {dynamic} carriedTicks - the in-progress version's position (0 = none)
   ' @param {dynamic} runtimeTicks - this version's runtime
-  ' @param {integer} maxResumePct - server MaxResumePct, or MAX_RESUME_PCT_UNKNOWN
+  ' @param {dynamic} policy - resumePolicyFrom(), or invalid when unknown
   ' @return {longinteger} ticks to resume from, 0 for no resume
-  function resumeTicksFor(ownTicks as dynamic, carriedTicks as dynamic, runtimeTicks as dynamic, maxResumePct as integer) as longinteger
+  function resumeTicksFor(ownTicks as dynamic, carriedTicks as dynamic, runtimeTicks as dynamic, policy as dynamic) as longinteger
     if isValid(ownTicks) and ownTicks > 0 then return ownTicks
-
     if not isValid(carriedTicks) or carriedTicks <= 0 then return 0
-    if not isValid(runtimeTicks) or runtimeTicks <= 0 then return 0
-    ' Unknown threshold: carrying could cross it, so don't.
-    if maxResumePct < 0 then return 0
-
-    if carriedTicks >= runtimeTicks - 10000000& then return 0
-    percentIn = (carriedTicks * 100#) / runtimeTicks
-    if percentIn > maxResumePct then return 0
+    if versionResume.wouldMarkPlayed(carriedTicks, runtimeTicks, policy) then return 0
     return carriedTicks
   end function
 
-  ' maxResumePctFrom: MaxResumePct from a GET /System/Configuration reply.
+  ' resumeStateFor: Where Resume starts for the SELECTED version of a loaded item, and what
+  ' the caller still has to fetch before that answer is final.
+  '
+  ' The whole per-version decision, as a pure function, so it can be tested without a seam
+  ' for the two requests it may ask for. The caller owns the fetching and the caching; this
+  ' owns every choice.
+  '
+  ' @param {object} ctx - {
+  '     itemId            string  the loaded item
+  '     itemPositionTicks dynamic its own UserData position
+  '     itemRuntimeTicks  dynamic its runtime, used when the selected source has none
+  '     mediaSources      dynamic its MediaSources, in server order
+  '     selectedId        dynamic the version chosen in the Video dropdown ("" = none yet)
+  '     positions         object  sourceId -> ticks already known (POSITION_UNREADABLE = failed)
+  '     inProgressSourceId string the version the server says is in progress ("" = none)
+  '     policy            dynamic resumePolicyFrom(), or invalid when not read yet
+  '   }
+  ' @return {object} {
+  '     ticks          longinteger  where Resume starts (0 = no Resume button)
+  '     runtimeTicks   longinteger  the selected version's runtime, for the progress bar
+  '     isLoading      boolean      the answer is not final yet
+  '     needsSourceId  string       fetch this version's UserData ("" = nothing to fetch)
+  '     needsPolicy    boolean      read GET /System/Configuration
+  '   }
+  function resumeStateFor(ctx as object) as object
+    state = { ticks: 0&, runtimeTicks: 0&, isLoading: false, needsSourceId: "", needsPolicy: false }
+    if not isValid(ctx) then return state
+
+    if isValid(ctx.itemRuntimeTicks) then state.runtimeTicks = ctx.itemRuntimeTicks
+
+    ' The selected version, falling back to the item's own when the selection names no
+    ' source the item still has — a refresh can return versions that were merged or split
+    ' on the server while this screen was open, and a stale id would otherwise be fetched
+    ' as if it were a version of this item.
+    selectedId = ctx.itemId
+    index = versionResume.sourceIndexById(ctx.mediaSources, ctx.selectedId)
+    if index >= 0
+      selectedId = ctx.mediaSources[index].Id
+      sourceRuntime = ctx.mediaSources[index].RunTimeTicks
+      if isValid(sourceRuntime) and sourceRuntime > 0 then state.runtimeTicks = sourceRuntime
+    end if
+
+    ownTicks = versionResume.knownPosition(ctx, selectedId)
+    if not isValid(ownTicks)
+      state.isLoading = true
+      state.needsSourceId = selectedId
+      return state
+    end if
+    ' Unreadable: no Resume, rather than a carried position over a version that may have
+    ' one of its own that we simply could not read.
+    if ownTicks = versionResume.POSITION_UNREADABLE then return state
+    if ownTicks > 0
+      state.ticks = ownTicks
+      return state
+    end if
+
+    inProgressId = ctx.inProgressSourceId
+    if not isValidAndNotEmpty(inProgressId) or versionResume.idsMatch(inProgressId, selectedId) then return state
+
+    carriedTicks = versionResume.knownPosition(ctx, inProgressId)
+    if not isValid(carriedTicks)
+      state.isLoading = true
+      state.needsSourceId = inProgressId
+      return state
+    end if
+    if carriedTicks <= 0 then return state
+
+    if not versionResume.isResumePolicy(ctx.policy)
+      state.isLoading = true
+      state.needsPolicy = true
+      return state
+    end if
+
+    state.ticks = versionResume.resumeTicksFor(ownTicks, carriedTicks, state.runtimeTicks, ctx.policy)
+    return state
+  end function
+
+  ' knownPosition: A version's already-known position, or invalid when it must be fetched.
+  '
+  ' @param {object} ctx - resumeStateFor() context
+  ' @param {string} sourceId
+  ' @return {dynamic} ticks, or invalid when unknown
+  function knownPosition(ctx as object, sourceId as string) as dynamic
+    positions = ctx.positions
+    if type(positions) <> "roAssociativeArray" or not isValidAndNotEmpty(sourceId) then return invalid
+    ' Case-insensitive for the same reason sourceIndexById is: the ids come from two
+    ' different server fields (Item.Id and MediaSource.Id) and the server treats them
+    ' as equal regardless of spelling.
+    for each key in positions
+      if versionResume.idsMatch(key, sourceId) then return positions[key]
+    end for
+    return invalid
+  end function
+
+  ' resumePolicyFrom: The resume thresholds from a GET /System/Configuration reply.
+  '
+  ' Both thresholds or neither: a half-read policy would leave wouldMarkPlayed() unable to
+  ' apply one of the server's branches while believing it knew the rule.
   '
   ' @param {object} res - fetchAsync result { ok, json }
-  ' @return {integer} 0-100, or MAX_RESUME_PCT_UNKNOWN when the reply does not answer it
-  function maxResumePctFrom(res as object) as integer
-    if not isValid(res) or res.ok <> true or not isValid(res.json) then return versionResume.MAX_RESUME_PCT_UNKNOWN
-    value = res.json.MaxResumePct
-    if not isIntSafe(value) then return versionResume.MAX_RESUME_PCT_UNKNOWN
-    if value < 0 or value > 100 then return versionResume.MAX_RESUME_PCT_UNKNOWN
-    return int(value)
+  ' @return {dynamic} { maxResumePct, minResumeDurationSeconds }, or invalid when the reply
+  '                   does not answer it
+  function resumePolicyFrom(res as object) as dynamic
+    if not isValid(res) or res.ok <> true or not isValid(res.json) then return invalid
+
+    maxResumePct = res.json.MaxResumePct
+    if not isIntSafe(maxResumePct) then return invalid
+    if maxResumePct < 0 or maxResumePct > 100 then return invalid
+
+    minResumeDurationSeconds = res.json.MinResumeDurationSeconds
+    if not isIntSafe(minResumeDurationSeconds) then return invalid
+    if minResumeDurationSeconds < 0 then return invalid
+
+    return { maxResumePct: int(maxResumePct), minResumeDurationSeconds: int(minResumeDurationSeconds) }
   end function
 
   ' playbackPositionFrom: PlaybackPositionTicks from a GET /UserItems/{id}/UserData reply.
   '
   ' @param {object} res - fetchAsync result { ok, json }
-  ' @return {longinteger} the position (0 = none), or -1 when the reply does not answer it
+  ' @return {longinteger} the position (0 = none), or POSITION_UNREADABLE
   function playbackPositionFrom(res as object) as longinteger
-    if not isValid(res) or res.ok <> true or not isValid(res.json) then return -1
+    if not isValid(res) or res.ok <> true or not isValid(res.json) then return versionResume.POSITION_UNREADABLE
     ticks = res.json.PlaybackPositionTicks
-    if not isIntSafe(ticks) or ticks < 0 then return -1
+    if not isIntSafe(ticks) or ticks < 0 then return versionResume.POSITION_UNREADABLE
     return ticks
   end function
 

@@ -1,0 +1,88 @@
+import "pkg:/source/utils/nodeUtils.bs"
+
+namespace tests
+
+  ' `JellyfinServer.resumePolicy` — the server's resume thresholds, and the two properties
+  ' the per-version resume guard depends on (source/utils/versionResume.bs).
+  '
+  ' The guard fails CLOSED: it carries a position between alternate versions only when it
+  ' knows EVERY threshold the server would apply. That makes "unknown" load-bearing, and
+  ' "unknown" is spelled as an UNSET assocarray field — INVALID, not an empty AA, which is
+  ' what an assocarray field with no declared default actually holds. One state that cannot
+  ' half-disagree with itself, and `isValid()` is the whole test.
+  '
+  ' Both properties are asserted rather than described because neither is visible in the
+  ' code that relies on them: the XML default is in another file, and the server-switch
+  ' reset happens in session.bs through a generic helper that copies a fresh node's fields.
+  ' An `assocarray` field going through that helper is the specific thing being pinned —
+  ' a scalar field's default is written in the XML, an assocarray's is implied, and the
+  ' helper restoring it is a property of `getFields()` that no call site states.
+  @suite("JellyfinServer.resumePolicy")
+  class JellyfinServerResumePolicyTests extends tests.BaseTestSuite
+
+    private serverNode as object
+
+    ' beforeEach, not setup: every test here mutates the node (tests/CLAUDE.md).
+    ' A local node, not m.global.server — resetting the global one would strip the
+    ' serverUrl the base class installs for every other suite.
+    protected override function beforeEach()
+      super.beforeEach()
+      m.serverNode = CreateObject("roSGNode", "JellyfinServer")
+    end function
+
+    protected override function afterEach()
+      m.serverNode = invalid
+      super.afterEach()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the unknown state")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is invalid on a freshly created node, which is how 'not read yet' is spelled")
+    function _()
+      m.assertInvalid(m.serverNode.resumePolicy)
+    end function
+
+    @it("holds a read policy until something clears it")
+    function _()
+      m.serverNode.resumePolicy = { maxResumePct: 90, minResumeDurationSeconds: 300 }
+
+      m.assertNotInvalid(m.serverNode.resumePolicy)
+      m.assertEqual(m.serverNode.resumePolicy.maxResumePct, 90)
+      m.assertEqual(m.serverNode.resumePolicy.minResumeDurationSeconds, 300)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the server switch")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns to unknown when the node is reset, so one server's thresholds never answer for another")
+    ' session.bs resets this node on a server switch. MaxResumePct is per-server
+    ' configuration, so carrying the previous server's value forward would silently
+    ' apply the wrong threshold to the new one's items.
+    function _()
+      m.serverNode.resumePolicy = { maxResumePct: 50, minResumeDurationSeconds: 900 }
+      m.assertNotInvalid(m.serverNode.resumePolicy) ' precondition: it really was set
+
+      nodeUtils.resetNodeToDefaults(m.serverNode, "JellyfinServer", [])
+
+      m.assertInvalid(m.serverNode.resumePolicy)
+    end function
+
+    @it("is reset even when other fields are explicitly preserved")
+    ' The preserve list is how session.bs keeps selected fields across a switch; the
+    ' thresholds must never be on it by accident.
+    function _()
+      m.serverNode.resumePolicy = { maxResumePct: 50, minResumeDurationSeconds: 900 }
+      m.serverNode.serverUrl = "http://example.invalid:8096"
+
+      nodeUtils.resetNodeToDefaults(m.serverNode, "JellyfinServer", ["serverUrl"])
+
+      m.assertEqual(m.serverNode.serverUrl, "http://example.invalid:8096")
+      m.assertInvalid(m.serverNode.resumePolicy)
+    end function
+
+  end class
+
+end namespace

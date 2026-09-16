@@ -1,0 +1,294 @@
+import "pkg:/source/utils/versionResume.bs"
+
+namespace tests
+
+  ' `resumeStateFor` — the whole per-version Resume decision, as one pure function.
+  '
+  ' This is the coverage the component itself cannot give: ItemDetails reaches this logic
+  ' only after up to two HTTP replies, and no component spec in this repo has a way to stub
+  ' fetchAsync. Expressing the decision over plain values is what makes the carry guard,
+  ' the loading states and the fallbacks checkable at all — ItemDetails is left holding
+  ' only "fetch what the answer names, then ask again".
+  @suite("versionResume - the resume decision")
+  class VersionResumeStateTests extends tests.BaseTestSuite
+
+    ' Seconds as ticks. The `&` suffix makes the local a LongInteger, so the double
+    ' multiplication lands in 64 bits instead of overflowing a 32-bit integer.
+    private function secs(n as double) as longinteger
+      ticks& = n * 10000000#
+      return ticks&
+    end function
+
+    private function defaultPolicy() as object
+      return { maxResumePct: 90, minResumeDurationSeconds: 300 }
+    end function
+
+    ' A primary (30:00) with one alternate (29:55), in the order a 12.0 server lists them
+    ' when nothing is in progress: the queried item's own source first.
+    private function sources() as object
+      return [{ Id: "primary", RunTimeTicks: m.secs(1800) }, { Id: "alternate", RunTimeTicks: m.secs(1795) }]
+    end function
+
+    ' The context ItemDetails builds, with nothing known yet beyond the item itself.
+    private function ctx(overrides as object) as object
+      base = {
+        itemId: "primary",
+        itemPositionTicks: 0,
+        itemRuntimeTicks: m.secs(1800),
+        mediaSources: m.sources(),
+        selectedId: "primary",
+        positions: { primary: 0, alternate: 0 },
+        inProgressSourceId: "",
+        policy: m.defaultPolicy()
+      }
+      for each key in overrides
+        base[key] = overrides[key]
+      end for
+      return base
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("nothing in progress")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("offers no Resume and asks for nothing")
+    ' The server leads a primary's sources with the in-progress version, so an unchanged
+    ' order means there is nothing to resume — no request, no loading placeholder.
+    function _()
+      state = versionResume.resumeStateFor(m.ctx({}))
+
+      m.assertEqual(state.ticks, 0&)
+      m.assertFalse(state.isLoading)
+      m.assertEqual(state.needsSourceId, "")
+      m.assertFalse(state.needsPolicy)
+    end function
+
+    @it("reports the selected version's runtime for the progress bar")
+    function _()
+      state = versionResume.resumeStateFor(m.ctx({ selectedId: "alternate" }))
+
+      m.assertEqual(state.runtimeTicks, m.secs(1795))
+    end function
+
+    @it("falls back to the item's runtime when the selected source declares none")
+    function _()
+      state = versionResume.resumeStateFor(m.ctx({ mediaSources: [{ Id: "primary" }, { Id: "alternate" }] }))
+
+      m.assertEqual(state.runtimeTicks, m.secs(1800))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the selected version has its own position")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("resumes from it, without consulting the in-progress version")
+    function _()
+      state = versionResume.resumeStateFor(m.ctx({
+        selectedId: "alternate",
+        positions: { primary: m.secs(300), alternate: m.secs(600) },
+        inProgressSourceId: "primary"
+      }))
+
+      m.assertEqual(state.ticks, m.secs(600))
+      m.assertFalse(state.isLoading)
+      m.assertEqual(state.needsSourceId, "")
+    end function
+
+    @it("matches the selection regardless of GUID casing")
+    function _()
+      state = versionResume.resumeStateFor(m.ctx({
+        selectedId: "ALTERNATE",
+        positions: { alternate: m.secs(600) },
+        inProgressSourceId: "primary"
+      }))
+
+      m.assertEqual(state.ticks, m.secs(600))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("what it still needs")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("asks for the selected version's position when it is unknown")
+    function _()
+      state = versionResume.resumeStateFor(m.ctx({
+        selectedId: "alternate",
+        positions: { primary: 0 },
+        inProgressSourceId: "primary"
+      }))
+
+      m.assertTrue(state.isLoading)
+      m.assertEqual(state.needsSourceId, "alternate")
+    end function
+
+    @it("asks for the in-progress version's position once the selected one is known to be zero")
+    function _()
+      state = versionResume.resumeStateFor(m.ctx({
+        selectedId: "alternate",
+        positions: { alternate: 0 },
+        inProgressSourceId: "primary"
+      }))
+
+      m.assertTrue(state.isLoading)
+      m.assertEqual(state.needsSourceId, "primary")
+    end function
+
+    @it("asks for the server thresholds only when a carry actually depends on them")
+    function _()
+      carrying = versionResume.resumeStateFor(m.ctx({
+        selectedId: "alternate",
+        positions: { primary: m.secs(600), alternate: 0 },
+        inProgressSourceId: "primary",
+        policy: invalid
+      }))
+      m.assertTrue(carrying.isLoading)
+      m.assertTrue(carrying.needsPolicy)
+
+      ' Same missing policy, but the selected version has its own position, so no carry.
+      notCarrying = versionResume.resumeStateFor(m.ctx({
+        selectedId: "alternate",
+        positions: { primary: m.secs(600), alternate: m.secs(120) },
+        inProgressSourceId: "primary",
+        policy: invalid
+      }))
+      m.assertFalse(notCarrying.isLoading)
+      m.assertFalse(notCarrying.needsPolicy)
+      m.assertEqual(notCarrying.ticks, m.secs(120))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("carrying a position onto an explicitly picked version")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("carries it when the server would still store it there")
+    function _()
+      state = versionResume.resumeStateFor(m.ctx({
+        selectedId: "alternate",
+        positions: { primary: m.secs(600), alternate: 0 },
+        inProgressSourceId: "primary"
+      }))
+
+      m.assertEqual(state.ticks, m.secs(600))
+      m.assertFalse(state.isLoading)
+    end function
+
+    @it("does not carry onto a version shorter than MinResumeDurationSeconds")
+    ' The branch that would otherwise mark every version played and clear the position
+    ' being carried from.
+    function _()
+      state = versionResume.resumeStateFor(m.ctx({
+        mediaSources: [{ Id: "primary", RunTimeTicks: m.secs(1800) }, { Id: "clip", RunTimeTicks: m.secs(120) }],
+        selectedId: "clip",
+        positions: { primary: m.secs(600), clip: 0 },
+        inProgressSourceId: "primary"
+      }))
+
+      m.assertEqual(state.ticks, 0&)
+      m.assertFalse(state.isLoading)
+    end function
+
+    @it("does not carry a position past the end of a shorter version")
+    function _()
+      state = versionResume.resumeStateFor(m.ctx({
+        mediaSources: [{ Id: "primary", RunTimeTicks: m.secs(1800) }, { Id: "short", RunTimeTicks: m.secs(700) }],
+        selectedId: "short",
+        positions: { primary: m.secs(1700), short: 0 },
+        inProgressSourceId: "primary"
+      }))
+
+      m.assertEqual(state.ticks, 0&)
+    end function
+
+    @it("does not carry the in-progress version's position onto itself")
+    function _()
+      state = versionResume.resumeStateFor(m.ctx({
+        selectedId: "primary",
+        positions: { primary: 0 },
+        inProgressSourceId: "primary"
+      }))
+
+      m.assertEqual(state.ticks, 0&)
+      m.assertFalse(state.isLoading)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a position that could not be read")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("offers no Resume rather than a carried position over a version that may have its own")
+    function _()
+      state = versionResume.resumeStateFor(m.ctx({
+        selectedId: "alternate",
+        positions: { primary: m.secs(600), alternate: versionResume.POSITION_UNREADABLE },
+        inProgressSourceId: "primary"
+      }))
+
+      m.assertEqual(state.ticks, 0&)
+      m.assertFalse(state.isLoading)
+    end function
+
+    @it("stops waiting when the in-progress version's position cannot be read")
+    function _()
+      state = versionResume.resumeStateFor(m.ctx({
+        selectedId: "alternate",
+        positions: { primary: versionResume.POSITION_UNREADABLE, alternate: 0 },
+        inProgressSourceId: "primary"
+      }))
+
+      m.assertEqual(state.ticks, 0&)
+      m.assertFalse(state.isLoading)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a selection the item no longer has")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("falls back to the item's own version rather than fetching a stale id")
+    ' A refresh can return versions that were merged or split on the server while this
+    ' screen was open.
+    function _()
+      state = versionResume.resumeStateFor(m.ctx({
+        selectedId: "a-version-that-is-gone",
+        positions: { primary: m.secs(420) },
+        inProgressSourceId: "primary"
+      }))
+
+      m.assertEqual(state.ticks, m.secs(420))
+      m.assertEqual(state.needsSourceId, "")
+    end function
+
+    @it("falls back when no version has been selected yet")
+    function _()
+      state = versionResume.resumeStateFor(m.ctx({
+        selectedId: "",
+        positions: { primary: m.secs(420) },
+        inProgressSourceId: "primary"
+      }))
+
+      m.assertEqual(state.ticks, m.secs(420))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("degenerate input")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("offers no Resume without a context")
+    function _()
+      state = versionResume.resumeStateFor(invalid)
+
+      m.assertEqual(state.ticks, 0&)
+      m.assertFalse(state.isLoading)
+      m.assertEqual(state.needsSourceId, "")
+    end function
+
+    @it("asks for the item's own position when no positions are known at all")
+    function _()
+      state = versionResume.resumeStateFor(m.ctx({ positions: {}, inProgressSourceId: "alternate" }))
+
+      m.assertTrue(state.isLoading)
+      m.assertEqual(state.needsSourceId, "primary")
+    end function
+
+  end class
+
+end namespace

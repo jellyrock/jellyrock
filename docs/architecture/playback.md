@@ -23,7 +23,7 @@ related-files:
   - source/utils/versionResume.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-09-15
+last-reviewed: 2026-09-16
 ---
 
 # Video & Audio Playback
@@ -465,10 +465,22 @@ picks device-best as before.
 - **`ItemDetails`** auto-selects the in-progress version, and the Resume button follows the
   selected version: its own position (one `GET /UserItems/{id}/UserData` for a version other
   than the item, with the Resume slot's loading button meanwhile) or, for a version the user
-  picked that has none, the in-progress position carried over. The carry stops at the server's
-  `MaxResumePct` (read once per server into `JellyfinServer.maxResumePct`) and fails closed
-  when that cannot be read: finishing any version marks every version played and clears every
-  position, so resuming past the threshold would erase the place being carried.
+  picked that has none, the in-progress position carried over.
+
+The carry is guarded by `versionResume.wouldMarkPlayed()`, which mirrors the server's
+`UserDataManager.UpdatePlayState` branch for branch — past `MaxResumePct`, inside the last
+second, or onto a version shorter than `MinResumeDurationSeconds`. All three set `Played`,
+and the server then propagates that to **every** version and clears **every** position, so a
+carry it would count as finished erases the place being carried from rather than resuming it.
+`MinResumePct` is deliberately not a branch: the server zeroes below it *without* setting
+`Played`, so it cannot erase anything. The thresholds are read once per server into
+`JellyfinServer.resumePolicy` (both or neither), and an unreadable policy answers "played",
+so nothing is carried.
+
+Every choice above lives in `source/utils/versionResume.bs` as pure functions over plain
+values; `ItemDetails` holds only the shell that fetches what `resumeStateFor()` asks for.
+That split is what makes the rules testable — a component spec has no way to stub the two
+requests, so a rule expressed inside `ItemDetails` could only ever be checked by hand.
 
 ## OSD — `components/video/OSD.bs/.xml`
 

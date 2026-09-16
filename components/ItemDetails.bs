@@ -1562,13 +1562,21 @@ end sub
 ' PER-VERSION RESUME (Jellyfin 12.0+)
 ' ============================================
 '
-' From Jellyfin 12.0 each alternate version keeps its own position (the model and its
-' reasons are in source/utils/versionResume.bs), so the Resume button describes the
-' SELECTED version: its own position, or — when the user picked a version that has none —
-' the in-progress version's position, carried only while the server would still store it
-' as a resume point for this version. Positions of versions other than the item itself,
-' and the server's MaxResumePct a carry needs, are fetched on demand and at most once per
-' content load; resolveResumeState() reports isLoading until they arrive.
+' From Jellyfin 12.0 each alternate version keeps its own position, so the Resume button
+' describes the SELECTED version: its own position, or — when the user picked a version
+' that has none — the in-progress version's position, carried only while the server would
+' still store it there rather than count it finished.
+'
+' Every CHOICE in that lives in source/utils/versionResume.bs, as pure functions over plain
+' values; what is left here is the shell that feeds them. resumeStateFor() answers with the
+' state AND with what it still needs (needsSourceId / needsPolicy); this file fetches that,
+' caches it for the content load, and asks again. Keeping the decision out of the component
+' is what makes it testable: a component spec has no way to stub the two requests, so any
+' rule expressed here could only ever be checked by hand on a device.
+'
+' Positions of versions other than the item itself, and the server's resume thresholds, are
+' fetched on demand and at most once per content load; Resume shows the loading placeholder
+' until they arrive.
 
 ' resetVersionResume: Start per-version resume state for newly loaded content. Leaves
 ' m.versionResume invalid — "use the item's own position", as before 12.0 — unless the
@@ -1586,6 +1594,15 @@ sub resetVersionResume(item as object, mediaSources as dynamic)
   if inProgressIndex >= 0 then inProgressSourceId = mediaSources[inProgressIndex].Id
 
   if inProgressSourceId = ""
+    ' The item holds a position but names no source of its own: nothing here can say WHICH
+    ' version that position belongs to, so leave per-version resume off entirely and let
+    ' the item's own position answer, exactly as it does before 12.0. Zeroing below would
+    ' instead report "no progress" and silently drop a Resume button that works today.
+    ' Not reachable on any multi-version item checked on a 12.0 server — GetAllItemsForMedia
+    ' Sources always leads with the queried item and GetStaticMediaSources exempts it from
+    ' the permission filter — so this is a floor under an assumption, not a fix.
+    if isValid(item.playbackPositionTicks) and item.playbackPositionTicks > 0 then return
+
     ' No version is in progress: the server leads a primary's sources with the most recently
     ' played in-progress version, so an unchanged order means there is nothing to resume —
     ' no request, no loading button. Opened AS an alternate version (search, a link), that
@@ -1604,7 +1621,7 @@ sub resetVersionResume(item as object, mediaSources as dynamic)
     generation: m.versionResumeSeq,
     itemId: item.id,
     inProgressSourceId: inProgressSourceId,
-    positions: positions, ' sourceId -> ticks (0 = none, -1 = could not be read)
+    positions: positions, ' sourceId -> ticks (0 = none, POSITION_UNREADABLE = could not read)
     pending: {}, ' sourceId -> true while its fetch is in flight
     isConfigPending: false,
     hasConfigFailed: false
@@ -1657,69 +1674,49 @@ function resolveResumeState() as object
   resumeState.runtimeTicks = item.runTimeTicks
 
   state = m.versionResume
-  if not isValid(state) or state.itemId <> item.id
+  if not isValid(state) or not versionResume.idsMatch(state.itemId, item.id)
     if item.playbackPositionTicks > 0 then resumeState.ticks = item.playbackPositionTicks
     return resumeState
   end if
 
-  ' The selected version, falling back to the item's own when the selection names no source
-  ' the item still has — a refresh can return versions that were merged or split on the
-  ' server while this screen was open, and a stale id would otherwise be fetched as if it
-  ' were a version of this item.
-  selectedId = m.top.selectedVideoStreamId
-  index = -1
-  if isValid(item.mediaSourcesData) then index = versionResume.sourceIndexById(item.mediaSourcesData.mediaSources, selectedId)
-  if index < 0
-    selectedId = item.id
-  else
-    sourceRuntime = item.mediaSourcesData.mediaSources[index].RunTimeTicks
-    if isValid(sourceRuntime) and sourceRuntime > 0 then resumeState.runtimeTicks = sourceRuntime
-  end if
+  mediaSources = invalid
+  if isValid(item.mediaSourcesData) then mediaSources = item.mediaSourcesData.mediaSources
 
-  ownTicks = versionPosition(selectedId)
-  if not isValid(ownTicks)
-    resumeState.isLoading = true
-    return resumeState
-  end if
-  ' Unreadable: no Resume rather than a carried position over a version that may have its own.
-  if ownTicks < 0 then return resumeState
-  if ownTicks > 0
-    resumeState.ticks = ownTicks
-    return resumeState
-  end if
+  answer = versionResume.resumeStateFor({
+    itemId: item.id,
+    itemPositionTicks: item.playbackPositionTicks,
+    itemRuntimeTicks: item.runTimeTicks,
+    mediaSources: mediaSources,
+    selectedId: m.top.selectedVideoStreamId,
+    positions: state.positions,
+    inProgressSourceId: state.inProgressSourceId,
+    policy: serverResumePolicy()
+  })
 
-  inProgressId = state.inProgressSourceId
-  if inProgressId = "" or inProgressId = selectedId then return resumeState
-  carriedTicks = versionPosition(inProgressId)
-  if not isValid(carriedTicks)
-    resumeState.isLoading = true
-    return resumeState
-  end if
-  if carriedTicks <= 0 then return resumeState
+  resumeState.ticks = answer.ticks
+  resumeState.runtimeTicks = answer.runtimeTicks
+  resumeState.isLoading = answer.isLoading
 
-  maxResumePct = serverMaxResumePct()
-  if not isValid(maxResumePct)
-    resumeState.isLoading = true
-    return resumeState
-  end if
+  ' Start whatever the answer says is missing. Each is a no-op once in flight or already
+  ' failed, so re-asking on every redraw costs nothing.
+  if answer.needsSourceId <> "" then requestVersionPosition(answer.needsSourceId)
+  if answer.needsPolicy then requestServerResumePolicy()
 
-  resumeState.ticks = versionResume.resumeTicksFor(ownTicks, carriedTicks, resumeState.runtimeTicks, maxResumePct)
   return resumeState
 end function
 
-' versionPosition: A version's own position for the loaded content, fetching it if unknown.
+' requestVersionPosition: Fetch one version's own position, once per content load.
 '
 ' @param {string} sourceId - the version (MediaSource) id
-' @return {dynamic} ticks (0 = none, -1 = could not be read), or invalid while loading
-function versionPosition(sourceId as string) as dynamic
+sub requestVersionPosition(sourceId as string)
   state = m.versionResume
-  if state.positions.doesExist(sourceId) then return state.positions[sourceId]
-  if state.pending.doesExist(sourceId) then return invalid
+  if not isValid(state) or state.pending.doesExist(sourceId) then return
 
   req = GetApi().BuildGetItemUserDataRequest(sourceId)
   if not isValid(req)
-    state.positions[sourceId] = -1
-    return -1
+    state.positions[sourceId] = versionResume.POSITION_UNREADABLE
+    manageResumeButton()
+    return
   end if
 
   state.pending[sourceId] = true
@@ -1728,10 +1725,9 @@ function versionPosition(sourceId as string) as dynamic
     onVersionPositionLoaded(ctx, versionResume.playbackPositionFrom(res))
   end sub).catch(sub(err as object, ctx as object)
     m.log.warn("version user data fetch failed", "sourceId", ctx.sourceId, "reason", err.reason)
-    onVersionPositionLoaded(ctx, -1)
+    onVersionPositionLoaded(ctx, versionResume.POSITION_UNREADABLE)
   end sub)
-  return invalid
-end function
+end sub
 
 ' onVersionPositionLoaded: Record a fetched version position and redraw Resume, unless the
 ' content has been reloaded since the fetch started.
@@ -1743,50 +1739,51 @@ sub onVersionPositionLoaded(ctx as object, ticks as dynamic)
   manageResumeButton()
 end sub
 
-' serverMaxResumePct: The server's MaxResumePct, reading the configuration the first time a
-' carry needs it.
+' serverResumePolicy: The server's resume thresholds, if they have been read.
 '
-' Fails CLOSED: when the configuration cannot be read the answer is
-' MAX_RESUME_PCT_UNKNOWN, and resumeTicksFor() then carries nothing — a carried position
-' past the threshold would mark the item watched and erase the place being resumed from.
-' The failure is not stored on the server node, so the next content load asks again.
-'
-' @return {dynamic} integer, or invalid while loading
-function serverMaxResumePct() as dynamic
-  maxResumePct = m.global.server.maxResumePct
-  if maxResumePct <> versionResume.MAX_RESUME_PCT_UNKNOWN then return maxResumePct
+' @return {dynamic} { maxResumePct, minResumeDurationSeconds }, or invalid when unknown
+function serverResumePolicy() as dynamic
+  policy = m.global.server.resumePolicy
+  if versionResume.isResumePolicy(policy) then return policy
+  return invalid
+end function
 
+' requestServerResumePolicy: Read GET /System/Configuration the first time a carry needs it.
+'
+' Fails CLOSED: while the thresholds are unknown wouldMarkPlayed() answers "played", so
+' nothing is carried — a carried position past a threshold would mark the item played and
+' erase the place being resumed from. A failed read is remembered only for this content
+' load, not on the server node, so the next one asks again.
+sub requestServerResumePolicy()
   state = m.versionResume
-  if state.hasConfigFailed then return versionResume.MAX_RESUME_PCT_UNKNOWN
-  if state.isConfigPending then return invalid
+  if not isValid(state) or state.isConfigPending or state.hasConfigFailed then return
 
   req = GetApi().BuildGetServerConfigurationRequest()
   if not isValid(req)
     state.hasConfigFailed = true
-    return versionResume.MAX_RESUME_PCT_UNKNOWN
+    return
   end if
 
   state.isConfigPending = true
   m.versionResumeSeq += 1
   promises.chain(fetchAsync(req, "serverConfiguration-" + m.versionResumeSeq.toStr()), { generation: state.generation }).then(sub(res as object, ctx as object)
-    onServerMaxResumePctLoaded(ctx, versionResume.maxResumePctFrom(res))
+    onServerResumePolicyLoaded(ctx, versionResume.resumePolicyFrom(res))
   end sub).catch(sub(err as object, ctx as object)
     m.log.warn("server configuration fetch failed", "reason", err.reason)
-    onServerMaxResumePctLoaded(ctx, versionResume.MAX_RESUME_PCT_UNKNOWN)
+    onServerResumePolicyLoaded(ctx, invalid)
   end sub)
-  return invalid
-end function
+end sub
 
-' onServerMaxResumePctLoaded: Store a read MaxResumePct for the session and redraw Resume.
-sub onServerMaxResumePctLoaded(ctx as object, maxResumePct as integer)
-  ' A server-wide value, still true if the content changed meanwhile.
-  if maxResumePct <> versionResume.MAX_RESUME_PCT_UNKNOWN then m.global.server.maxResumePct = maxResumePct
+' onServerResumePolicyLoaded: Store read thresholds for the session and redraw Resume.
+sub onServerResumePolicyLoaded(ctx as object, policy as dynamic)
+  ' Server-wide values, still true if the content changed meanwhile.
+  if versionResume.isResumePolicy(policy) then m.global.server.resumePolicy = policy
 
   state = m.versionResume
   if not isValid(state) or state.generation <> ctx.generation then return ' stale
   state.isConfigPending = false
-  if maxResumePct = versionResume.MAX_RESUME_PCT_UNKNOWN
-    m.log.warn("server MaxResumePct unreadable; not carrying resume positions between versions")
+  if not versionResume.isResumePolicy(policy)
+    m.log.warn("server resume thresholds unreadable; not carrying resume positions between versions")
     state.hasConfigFailed = true
   end if
   manageResumeButton()
