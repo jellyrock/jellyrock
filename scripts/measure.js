@@ -249,6 +249,7 @@ import { parseMeasureArgs, MeasureArgError } from './measure-args.js';
 import {
   analyseMounts,
   launchAudit,
+  recordMountIdentity,
   selectColdSamples,
   selectionRefusalFor,
 } from './measure-selection.js';
@@ -998,20 +999,15 @@ const record = {
   // Naming the first sample instead would be the same wrong answer the median refuses to
   // publish, written into the field a comparison selects on: a launch that mounted
   // `itemDetails` and then `videoPlayer` would record `component: "itemDetails"`.
-  component: selectionRefusal
-    ? null
-    : (args.component ??
-      samples.find((s) => s.dimensions?.component)?.dimensions.component ??
-      null),
+  component: selectionRefusal ? null : recordMountIdentity(samples, selector).component,
   // `screenVariant`, NOT `variant`: `runProvenance()` already spreads a `variant` of its
   // own — `process.env.npm_lifecycle_event`, i.e. WHICH NPM SCRIPT launched the run — and
   // it is spread BELOW this, so a field named `variant` here is silently overwritten by
   // the string "measure". Caught on hardware: the record read `variant: "measure"` while
   // the samples plainly carried `Series` and `Season`. Two unrelated senses of one word,
   // one of them load-bearing for the run ledger, so the new one takes the distinct name.
-  screenVariant: selectionRefusal
-    ? null
-    : (args.variant ?? samples.find((s) => s.dimensions?.variant)?.dimensions.variant ?? null),
+  // Derived from the NAMED component's samples — see `recordMountIdentity`.
+  screenVariant: selectionRefusal ? null : recordMountIdentity(samples, selector).screenVariant,
   // How the screen was reached, and against which library. Neither is recoverable after
   // the fact, and on the server that motivated `--library` (four movie libraries) a
   // comparison cannot otherwise show that both arms opened the same one.

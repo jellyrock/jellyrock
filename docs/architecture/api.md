@@ -4,6 +4,7 @@ related-files:
   - source/api/ApiClient.bs
   - source/api/apiPool.bs
   - source/api/apiPipeline.bs
+  - source/constants/apiPool.bs
   - source/api/baseRequest.bs
   - source/api/image.bs
   - source/api/imageHelpers.bs
@@ -12,7 +13,7 @@ related-files:
   - components/api/ApiResultNode.xml
   - components/api/SideEffectTask.bs
   - components/home/LoadLatestRowsTask.bs
-last-reviewed: 2026-09-06
+last-reviewed: 2026-09-16
 ---
 
 # API Layer & Task Pool
@@ -23,7 +24,7 @@ How JellyRock talks to Jellyfin: the layered API model, the persistent task pool
 
 Roku has a hard rule: anything that does I/O **must not run on the render thread**, or the UI freezes. All HTTP requests therefore have to run on a Task thread (an `roSGNode` of type `Task` with a `functionName` that runs in a separate BrightScript interpreter).
 
-Naive implementations spawn a new Task per request. That's slow (Task creation is expensive on Roku) and gets tangled when many UI components want to fetch in parallel. JellyRock instead runs a **persistent pool** of three Task threads, with a FIFO coordinator that dispatches requests into them. The coordinator and its result vehicles are designed to be immune to `SceneGraph`'s event-coalescing quirks (which can silently drop events when multiple writers hit the same field).
+Naive implementations spawn a new Task per request. That's slow (Task creation is expensive on Roku) and gets tangled when many UI components want to fetch in parallel. JellyRock instead runs a **persistent pool** of Task threads — four on 512 MB devices, six on everything else (see [Pool width](#pool-width)) — with a FIFO coordinator that dispatches requests into them. The coordinator and its result vehicles are designed to be immune to `SceneGraph`'s event-coalescing quirks (which can silently drop events when multiple writers hit the same field).
 
 This is one of the more clever pieces of the codebase. It mostly Just Works once you understand the shape.
 
@@ -141,13 +142,36 @@ Equivalent helpers exist for backdrops (`GetBackdropURLFromItem`) and logos (`Ge
 The pool consists of:
 
 ```brightscript
-m.global.apiPool0, apiPool1, apiPool2    3 × ApiTask Task nodes (workers)
+m.global.apiPool0 … apiPool<N-1>         N × ApiTask Task nodes (workers), N = m.global.apiPoolWidth
 m.global.apiQueue                         1 × ApiQueueTask Task node (FIFO coordinator)
 m.global.sideEffectTask                   1 × SideEffectTask Task node (fire-and-forget)
                                           per-request: ApiResultNode (data vehicle)
 ```
 
-All four Task nodes are created in `setGlobalNodes()` (in `globals.bs`) and live for the entire app lifetime. Each is a continuously-running infinite loop (`while true / wait(0, port)`) that processes work as it arrives.
+All of these Task nodes are created in `setGlobalNodes()` (in `globals.bs`) and live for the entire app lifetime. Each is a continuously-running infinite loop (`while true / wait(0, port)`) that processes work as it arrives.
+
+### Pool width
+
+How many slots the coordinator can dispatch to at once ([ADR 0036](../adr/0036-api-pool-width-by-device-class.md)). It is chosen **once, at startup, by device class** — `apiPool.widthFor(m.global.device.isLowMemoryDevice)` in [`source/constants/apiPool.bs`](../../source/constants/apiPool.bs) — and stored as `m.global.apiPoolWidth`, which `ApiQueueTask` and `apiPipeline` read (`apiPool.currentWidth()`).
+
+| Device class | Width | Why |
+|---|---|---|
+| Low-memory (512 MB, the `LOW_MEMORY_DEVICE_PREFIXES` list in `globals.bs`) | **4** | On a slow connection it already gets the device's whole speedup; wider gains nothing and, on a moderate connection, makes Home's first rows appear later |
+| Everything else | **6** | Keeps cutting Home's full-load time on slow connections, costs nothing on fast ones, and matches the six connections per server a browser opens — the load Jellyfin's own web client already generates |
+
+**What the width buys.** Home issues one request per row; with more rows than slots, requests queue, and on a slow connection the queue is the wait. Measured on Home (11 libraries, 16 rows) through a proxy that delays every response, widths 3 / 4 / 6 / 8, n = 10 per cell (30 on the 512 MB device at +150 ms), full-load time vs width 3:
+
+| Device | +0 ms | +150 ms (4 / 6 / 8) | +400 ms (4 / 6 / 8) |
+|---|---|---|---|
+| Streaming Stick 4K (1 GB) | no significant difference | −18 % / −18 % / −22 % | −16 % / −23 % / −28 % |
+| Ultra `4850X` (2 GB) | no significant difference | −18 % / −21 % / −27 % | −21 % / −30 % / −30 % |
+| Streaming Stick `3600X` (512 MB) | no significant difference | −4 % / −1 % / −2 %; first paint +12 % later at 6 and at 8 | −12 % / −12 % / −13 % |
+
+No comparison where a wider width was worse survives a Holm correction across the sweep's 54 comparisons. The 512 MB first-paint delay at +150 ms is acted on anyway, because it was predicted before the run and appeared at the same size three times (width 6 in an earlier run, +15 %; widths 6 and 8 here, +12 % each, raw p = 0.03 and 0.13). The one other raw p < 0.05 — width 4 at +0 ms on the same device, +10 % — was not predicted, contradicts widths 6 and 8 there (both faster), and is about what 54 comparisons produce by chance.
+
+**Why not wider than 6 on fast devices.** Width 8 beat 6 by 0–7 %, never significantly, and above 6 the app would send more concurrent requests than the web client does over plain HTTP — a server-load question nothing here measured. **Why not one number.** The 512 MB device pays a first-paint cost at 6 and gains nothing from it. **Why not by connection speed or library count.** No width hurt on a fast connection, so there is nothing to switch off; and the coordinator only uses as many slots as there are queued requests, so a small library leaves the extra slots idle.
+
+**Changing it.** Each slot is its own guarded block in `setGlobalNodes()` (no loop — `no-task-fanout`), up to 6, so any width from 1 to 6 is a constants change; above 6 needs more blocks. `ApiQueueTask` checks the created slots against `apiPoolWidth` at startup and logs an error in either direction, and `tests/source/unit/constants/apiPool.spec.bs` pins both values. Measure on device before changing either (`npm run measure`) — and note that a width is a thread for the whole session: the peak live-thread count is gated by `tests/rta/specs/task-thread-peak.spec.js`.
 
 ### How a request flows
 
@@ -207,7 +231,7 @@ If `fetchRes()` writes to a pool slot's `.request` field *before* that slot has 
 The fix is a three-step ready cascade:
 
 1. Each `ApiTask` slot sets `m.top.isReady = true` only **after** registering its request observer.
-2. `ApiQueueTask` waits for all 3 pool slots to be ready before registering its own observers and setting **its own** `isReady = true`.
+2. `ApiQueueTask` waits for every pool slot to be ready before registering its own observers and setting **its own** `isReady = true`.
 3. `fetchRes()` waits for `apiQueue.isReady` before appending any children.
 
 This eliminates the startup race. After the first request, the `isReady` check is just a single field read.
@@ -313,7 +337,7 @@ So the test for "does this need a Task?" is *I/O, or a thread-restricted compone
 
 ### Pattern 5 — `apiPipeline` (N independent requests, still one Task thread)
 
-Pattern 1 with several requests in flight instead of one at a time. When an orchestrator has **N independent** requests — one per library, per season, per whatever the server returns — Pattern 1 in a loop pays the full round trip N times, and spawning a Task per request is the fan-out that produced the `&h29` "too many task threads" crashes on big libraries (epic #728). [`source/api/apiPipeline.bs`](../../source/api/apiPipeline.bs) is the third option: one thread, up to `apiPool.SLOT_COUNT` requests riding the pool at once.
+Pattern 1 with several requests in flight instead of one at a time. When an orchestrator has **N independent** requests — one per library, per season, per whatever the server returns — Pattern 1 in a loop pays the full round trip N times, and spawning a Task per request is the fan-out that produced the `&h29` "too many task threads" crashes on big libraries (epic #728). [`source/api/apiPipeline.bs`](../../source/api/apiPipeline.bs) is the third option: one thread, one request per pool slot riding the pool at once.
 
 ```brightscript
 entries = []
@@ -338,7 +362,7 @@ Three things worth knowing before you use it:
 - **`res = invalid` means "no answer", not "the server said no."** An HTTP error is a valid `res` with `ok = false`. A caller that removes UI on an empty result must branch on the difference, or a timeout will delete good content — see `LoadLatestRowsTask` / `HomeRows`, where a failed row is left standing.
 - **Leaving the UI alone means leaving its *placeholder* alone too.** Where a caller drew a skeleton before the run, the cheapest correct thing on failure is usually to do nothing at all: the placeholder stays, and the next successful run fills it *in place*. Clearing it instead forces the later success to re-create and re-insert the element, which visibly pops in and shifts everything after it. `HomeRows` leaves a failed latest row exactly as it found it, for that reason.
 
-A run is also a *budget*, not a promise of coverage: it services roughly `PIPELINE_RUN_MS ÷ per-request-latency × apiPool.SLOT_COUNT` requests before expiring, so on a large, distant server the tail of a run legitimately comes back undelivered. Design the call site for that, don't tune the constant for it.
+A run is also a *budget*, not a promise of coverage: it services roughly `PIPELINE_RUN_MS ÷ per-request-latency × pool width` requests before expiring, so on a large, distant server the tail of a run legitimately comes back undelivered. Design the call site for that, don't tune the constant for it.
 
 Canonical example: `LoadLatestRowsTask` (Home's latest-media rows). Its state machine is split pure-core / I/O-shell for the same reason `apiPromise.bs` is — see [async.md](./async.md).
 

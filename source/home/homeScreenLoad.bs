@@ -1,0 +1,54 @@
+import "pkg:/source/utils/misc.bs"
+
+' Decision layer for Home's screen-load milestones — when has Home PAINTED?
+'
+' Home's rows fill from several independent tasks, so no single handler is "the" paint. The
+' ledger (source/utils/screenReadiness.bs) declares one fill per row, keyed by sectionId, and
+' this decides when the rows the user is LOOKING AT have all landed:
+'
+'   paint    - every row in the visible span has resolved (data, empty, or failed)
+'   settled  - every row has resolved; the ledger derives that on its own
+'
+' "Visible" is the span textureManager already maintains in `loadedRowRange` — the same
+' signal cells use to decide which textures to load, and the one lazy row hydration would key
+' on. It is `[focusedRow, focusedRow + numRows - 1]`, which is the app's definition of the
+' viewport rather than a measurement of pixels on screen.
+'
+' Lives in source/ rather than in HomeRows.bs for the same reason as latestRows.bs: a Rooibos
+' suite cannot call a component's functions without a callFunc seam on the XML.
+namespace homeScreenLoad
+
+  ' Have all rows in the visible span resolved?
+  '
+  ' Rows only get SHORTER between the range being computed and this being asked — nothing
+  ' recomputes `loadedRowRange` when a row is removed, only on focus changes — so the end of
+  ' the span is clamped to the rows that exist now. Rows that shift up into the span after a
+  ' removal are therefore counted, which is what the user sees.
+  '
+  ' An unset range on a non-empty row list answers false rather than true: painting on a
+  ' range nobody computed would publish a paint time that describes no viewport. The run then
+  ' never settles, which the measurement tooling reports as unmeasurable — the loud failure.
+  '
+  ' @param loadedRowRange - the content root's [bufferStart, visibleStart, visibleEnd, bufferEnd]
+  ' @param rowSectionIds - every row's sectionId, in content order
+  ' @param openFills - the ledger's outstanding fills, keyed by id
+  ' @return true when no row in the visible span is still outstanding
+  function visibleRowsResolved(loadedRowRange as dynamic, rowSectionIds as object, openFills as object) as boolean
+    rowCount = rowSectionIds.count()
+    if rowCount = 0 then return true
+
+    if not isValid(loadedRowRange) or loadedRowRange.count() < 4 then return false
+    visibleStart = loadedRowRange[1]
+    visibleEnd = loadedRowRange[2]
+    if visibleStart < 0 or visibleEnd < 0 then return false
+
+    if visibleEnd > rowCount - 1 then visibleEnd = rowCount - 1
+
+    for i = visibleStart to visibleEnd
+      if openFills.doesExist(rowSectionIds[i]) then return false
+    end for
+
+    return true
+  end function
+
+end namespace

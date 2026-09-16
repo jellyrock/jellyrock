@@ -77,10 +77,16 @@ namespace tests
       m.assertInvalid(apiPipelineBegin(invalid))
     end function
 
-    @it("seeds the slot count from apiPool.SLOT_COUNT")
+    @it("seeds the slot count from the session's pool width")
     function _()
+      ' 5 is neither the fallback nor a shipped width, so only a real read of the stored
+      ' width can produce it. Removed before asserting so a failure cannot leak it into
+      ' later suites through the shared global node.
+      m.assertFalse(m.global.hasField("apiPoolWidth"), "precondition: no width stored")
+      m.global.addFields({ apiPoolWidth: 5 })
       pipe = apiPipelineBegin([{ requestId: "a", req: {} }])
-      m.assertEqual(pipe.slotCount, apiPool.SLOT_COUNT)
+      m.global.removeField("apiPoolWidth")
+      m.assertEqual(pipe.slotCount, 5)
     end function
 
     @it("defaults the budget to the whole-run deadline, and honours an override")

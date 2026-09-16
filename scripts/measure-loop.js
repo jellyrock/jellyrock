@@ -169,7 +169,19 @@ export async function runSeries(
     while (now() < deadline) {
       await sleep(1000);
       assembled = assembleSamples(measurement, linesSince(from));
-      const complete = assembled.filter((s) => s.complete);
+      // Only the sample this launch will PUBLISH may end the watch — the one the selector
+      // picks, by the same rule the series uses. Any complete sample was the old test, and a
+      // launch reached THROUGH another mount (Home through `preLogin`) completed that mount
+      // first: a named screen starting more than `quietMs` later was never seen at all.
+      const complete = selectColdSamples(
+        assembled.map((sample, indexInLaunch) => ({
+          launch: i,
+          indexInLaunch,
+          complete: sample.complete,
+          dimensions: splitWorkload(measurement, sample.fields).dimensions,
+        })),
+        selector,
+      );
       // Only THIS launch's silence may end the watch. Nothing clears the reader's clock
       // between launches, so gating on the window instant makes that a property of the loop
       // rather than a rule the caller has to remember — a second caller inherits it. Stale

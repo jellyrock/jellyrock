@@ -1,6 +1,9 @@
+import "pkg:/source/constants/apiPool.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
+  m.log = new log.Logger("ApiQueueTask")
   m.top.functionName = "runQueueLoop"
 end sub
 
@@ -30,12 +33,15 @@ end sub
 '   no TOCTOU race. Child appends from other threads go through SceneGraph rendezvous.
 sub runQueueLoop()
   m.queue = []
-  ' One slot per pool node: invalid = free, AA entry = in-flight
-  m.inFlight = [invalid, invalid, invalid]
   ' Index of the next unprocessed child node (children accumulate, never re-processed)
   m.processedIndex = 0
 
-  pool = [m.global.apiPool0, m.global.apiPool1, m.global.apiPool2]
+  pool = resolvePoolSlots()
+  ' One entry per pool slot: invalid = free, AA entry = in-flight
+  m.inFlight = []
+  for each slot in pool
+    m.inFlight.push(invalid)
+  end for
 
   ' ── Wait for all pool tasks to register their request observers ──
   ' Without this, dispatching a request to a slot that hasn't called
@@ -53,7 +59,7 @@ sub runQueueLoop()
       slot.observeField("isReady", waitPort)
     end if
   end for
-  ' Check actual state until all 3 are ready. Events just wake us up.
+  ' Check actual state until every slot is ready. Events just wake us up.
   for attempts = 0 to 50
     allReady = true
     for each slot in pool
@@ -81,7 +87,10 @@ sub runQueueLoop()
 
   ' Store node IDs so we can match response events back to slot indices.
   ' msg.getNode() returns the ID string of the node whose field changed.
-  m.slotNodeIds = [pool[0].id, pool[1].id, pool[2].id]
+  m.slotNodeIds = []
+  for each slot in pool
+    m.slotNodeIds.push(slot.id)
+  end for
 
   ' Observe each pool slot's response field so we know when a slot completes.
   for each slot in pool
@@ -108,7 +117,7 @@ sub runQueueLoop()
         ' A pool slot finished. Find which slot by matching node ID.
         nodeId = msg.getNode()
         slotIdx = -1
-        for i = 0 to 2
+        for i = 0 to m.slotNodeIds.count() - 1
           if m.slotNodeIds[i] = nodeId
             slotIdx = i
             exit for
@@ -134,6 +143,31 @@ sub runQueueLoop()
     processNewChildren(pool)
   end while
 end sub
+
+' The pool's width is chosen per device class (apiPool.widthFor, stored as
+' m.global.apiPoolWidth), but its slots are separately named globals (apiPool0,
+' apiPool1, ...) that setGlobalNodes() in source/utils/globals.bs creates one guarded
+' block at a time — `no-task-fanout` rejects launching fresh Task nodes in a loop.
+' Nothing else ties those blocks to the width, so they are checked against it here, in
+' both directions. A slot the width expects but globals.bs never created (a width raised
+' past the blocks that exist) would dispatch to invalid; one created beyond the width is a
+' thread that runs for the whole session and is never used.
+function resolvePoolSlots() as object
+  width = apiPool.currentWidth()
+  pool = []
+  for i = 0 to width - 1
+    slot = m.global.getField("apiPool" + i.toStr())
+    if not isValid(slot)
+      m.log.error("API pool slot missing: globals.bs creates fewer slots than the pool width", { missingSlot: i, width: width })
+      exit for
+    end if
+    pool.push(slot)
+  end for
+  if m.global.hasField("apiPool" + width.toStr())
+    m.log.error("API pool slot unused: globals.bs creates more slots than the pool width", { width: width })
+  end if
+  return pool
+end function
 
 ' Read all unprocessed children (ApiResultNodes appended by fetchRes callers),
 ' extract their request AAs, add to the internal FIFO queue, and dispatch.
@@ -164,7 +198,7 @@ end sub
 sub tryDispatch(pool as object)
   while m.queue.Count() > 0
     freeSlot = -1
-    for i = 0 to 2
+    for i = 0 to m.inFlight.count() - 1
       if not isValid(m.inFlight[i])
         freeSlot = i
         exit for

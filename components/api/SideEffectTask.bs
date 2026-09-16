@@ -8,7 +8,7 @@ sub init()
 end sub
 
 ' Tier 2 fire-and-forget writer — FIFO children-as-vehicle queue (Architecture C,
-' continuous-server). Mirrors ApiQueueTask, minus the 3-slot pool and response routing:
+' continuous-server). Mirrors ApiQueueTask, minus the slot pool and response routing:
 ' side effects have no response to deliver, so each request executes inline on this single
 ' thread in append order (serialised, must-complete: mark watched, playstate, favorite, …).
 '

@@ -1,5 +1,6 @@
 ' bsc-disable-file print-locations — legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements
 import "pkg:/source/constants/itemAspectRatio.bs"
+import "pkg:/source/home/homeScreenLoad.bs"
 import "pkg:/source/home/latestRows.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
@@ -7,6 +8,7 @@ import "pkg:/source/utils/backdrop.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/rowListWrap.bs"
+import "pkg:/source/utils/screenReadiness.bs"
 import "pkg:/source/utils/skeleton.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
@@ -155,6 +157,11 @@ end sub
 ' loadLibraries: Entry point called by Home.bs via callFunc.
 ' Builds ordered section plan, creates skeleton rows, then fires data tasks.
 sub loadLibraries()
+  ' One ledger per HomeRows instance: this runs once per instance (Home's first show, or a
+  ' tab switch back to Home, which mounts a fresh HomeRows). Every row declares a fill when
+  ' its skeleton is created and resolves when its data lands; paint is when the visible span
+  ' has landed (see checkVisibleRowsFilled), settled when every row has.
+  screenLoad.begin("homeRows")
   m.sectionPlan = buildSectionPlan()
 
   ' Create skeleton rows for all non-latestmedia sections
@@ -237,6 +244,7 @@ sub createSkeletonRows()
     row = createSkeletonRow(section.type)
     if isValid(row)
       m.top.content.appendChild(row)
+      screenLoad.pending(row.sectionId)
     end if
   end for
 
@@ -348,6 +356,11 @@ sub onLibrariesLoaded()
     ' when the content root had 0 children, leaving loadedRowRange at [-1,-1,-1,-1].
     updateTextureBufferRange(m.top.content, m.top.rowItemFocused[0], m.top.rowItemFocused[1], m.top.numRows)
     activateTextureManager(m.top.content)
+
+    ' The first moment the visible span describes the final row layout, so the first moment
+    ' paint may be decided. Rows that already landed before the libraries did (Continue
+    ' Watching, Next Up, the library row just above) are counted from here.
+    checkVisibleRowsFilled()
   end if
 
   ' Fire off the latest-media orchestrator
@@ -357,10 +370,13 @@ end sub
 ' populateLibraryRow: Fills the library row with filtered library items.
 ' Uses populateRowFromData for consistent in-place update behavior.
 sub populateLibraryRow()
-  if not isValidAndNotEmpty(m.libraryData) then return
-
-  filteredMedia = filterNodeArray(m.libraryData, "id", m.global.user.config.myMediaExcludes)
-  populateRowFromData("library", filteredMedia)
+  if isValidAndNotEmpty(m.libraryData)
+    filteredMedia = filterNodeArray(m.libraryData, "id", m.global.user.config.myMediaExcludes)
+    populateRowFromData("library", filteredMedia)
+  end if
+  ' Resolved on the no-data path too: the libraries answer has landed either way, and a fill
+  ' left open here would leave Home unsettled forever.
+  resolveRowFill("library")
 end sub
 
 ' insertLatestMediaSkeletons: Creates skeleton rows for each non-excluded library
@@ -397,6 +413,7 @@ sub insertLatestMediaSkeletons()
       row.appendChild(skeleton.createPlaceholder())
 
       m.top.content.insertChild(row, insertIndex)
+      screenLoad.pending(sectionId)
       insertIndex++
     end if
   end for
@@ -509,6 +526,7 @@ sub onLatestRowsReady()
 
   ' The failure-vs-empty rule and the cursor arithmetic live in source/home/latestRows.bs
   ' so they can be unit-tested without a callFunc seam on this component.
+  drainStart = m.latestRowsProcessedIndex
   drained = latestRows.drainReady(m.latestRowsTask, m.latestRowsProcessedIndex)
   m.latestRowsProcessedIndex = drained.nextIndex
   #if perfTiming
@@ -521,6 +539,17 @@ sub onLatestRowsReady()
     ' Home session doesn't retain every batch it has ever delivered.
     child.items = []
   end for
+
+  ' Every child the drain walked past has landed, FAILED ones included: drainReady skips
+  ' those so their skeleton stays, but the wait for them is over and an open fill would
+  ' leave Home unsettled forever. Walked here rather than returned by drainReady so a
+  ' release build does no extra work for the instrument.
+  #if perfTiming
+    for i = drainStart to drained.nextIndex - 1
+      delivered = m.latestRowsTask.getChild(i)
+      if isValid(delivered) then resolveRowFill("latest_" + delivered.libId)
+    end for
+  #end if
 
   ' A failed row is deliberately left alone — it keeps the skeleton placeholder
   ' insertLatestMediaSkeletons gave it and fills in place on the next refresh, so nothing
@@ -540,6 +569,8 @@ sub onLatestRowsReady()
     #if perfTiming
       m.popOtherMs += m.popClock.totalMilliseconds()
     #end if
+    ' The deferred removals just shifted rows up, possibly into the visible span.
+    checkVisibleRowsFilled()
     ' "No slower first paint than today" is a success criterion of the task-thread work,
     ' and this run IS Home's first paint for latest media. Log the wall clock so a
     ' regression is a number someone can compare, not a feeling. Stripped in prod builds.
@@ -782,6 +813,7 @@ sub updateContinueWatchingItems()
   m.isLoadingResume = false
 
   populateRowFromData("resume", itemData)
+  resolveRowFill("resume")
 end sub
 
 sub updateNextUpItems()
@@ -792,6 +824,7 @@ sub updateNextUpItems()
   m.isLoadingNextUp = false
 
   populateRowFromData("nextup", itemData)
+  resolveRowFill("nextup")
 end sub
 
 sub updateOnNowItems()
@@ -801,6 +834,7 @@ sub updateOnNowItems()
   m.isLoadingOnNow = false
 
   populateRowFromData("livetv", itemData)
+  resolveRowFill("livetv")
 end sub
 
 sub updateActiveRecordingsItems()
@@ -810,6 +844,48 @@ sub updateActiveRecordingsItems()
   m.isLoadingActiveRecordings = false
 
   populateRowFromData("activeRecordings", itemData)
+  resolveRowFill("activeRecordings")
+end sub
+
+' resolveRowFill: A row's data has landed — close its screen-load fill, then see whether that
+' completed the visible span.
+'
+' Resolves only a fill that is still OPEN. The same handlers serve every later load, and one
+' can deliver a second time before Home settles — a return to Home mid-load refreshes, and
+' onProgramsExpired re-fires On Now — so an unguarded resolve would raise the ledger's
+' "unbalanced" warning on ordinary use, the warning that is meant to signal real drift.
+'
+' @param {string} sectionId - The sectionId the fill was declared under
+sub resolveRowFill(sectionId as string)
+  #if perfTiming
+    ledger = screenLoad.state()
+    if not isValid(ledger) or not isValid(ledger.open[sectionId]) then return
+    screenLoad.resolve(sectionId)
+    checkVisibleRowsFilled()
+  #end if
+end sub
+
+' checkVisibleRowsFilled: Mark Home painted once every row in the visible span has landed.
+'
+' Waits for the final row layout (m.initialLoadComplete): before the libraries answer, the
+' latest-media rows are not in the list yet, so the span would describe rows that are about to
+' be pushed down. Called after every resolve and after every structural change that can shift
+' rows into the span. The decision itself is homeScreenLoad.visibleRowsResolved.
+sub checkVisibleRowsFilled()
+  #if perfTiming
+    if not m.initialLoadComplete then return
+    ledger = screenLoad.state()
+    if not isValid(ledger) or ledger.painted then return
+
+    sectionIds = []
+    for each row in m.top.content.getChildren(-1, 0)
+      sectionIds.push(row.sectionId)
+    end for
+
+    if homeScreenLoad.visibleRowsResolved(m.top.content.loadedRowRange, sectionIds, ledger.open)
+      screenLoad.paint()
+    end if
+  #end if
 end sub
 
 ' Fires when JRRowList's progress tick detects at least one expired Program

@@ -1,21 +1,49 @@
-' @fileoverview Shape constants for the API request pool.
+' @fileoverview Width of the API request pool (how many ApiTask slots the queue
+' coordinator can dispatch to at once), chosen per device class at startup.
 '
-' The pool's width (how many ApiTask slots the coordinator can dispatch to at
-' once) is a number several layers need to agree on. Two of those layers encode
-' it STRUCTURALLY and cannot read this constant:
+' Two widths, because the measured best differs by device class. On a 512 MB
+' device a wider pool gains nothing past 4 on a slow connection, and at 6 or more
+' makes Home's first rows appear later on a moderate one; on 1 GB and 2 GB devices
+' widths up to 6 keep cutting Home's full-load time on slow connections and cost
+' nothing on fast ones. 6 is also how many connections a browser opens to one
+' server over plain HTTP, so it matches the load Jellyfin's own web client already
+' generates. See docs/architecture/api.md ("Pool width") for the measurements.
 '
-'   - source/utils/globals.bs      — three separately named globals (apiPool0/1/2)
-'   - components/api/ApiQueueTask.bs — the matching 3-element m.inFlight array
-'
-' Changing the pool width therefore still means editing those two sites by hand.
-' This constant exists so every OTHER consumer — code that only needs to know how
-' many requests can usefully be in flight — reads one number instead of
-' re-hardcoding it. See docs/architecture/api.md for why three slots.
+' The slots themselves are separately named globals (apiPool0, apiPool1, ...)
+' created in setGlobalNodes() (source/utils/globals.bs), one guarded block per
+' slot because `no-task-fanout` rejects launching fresh Task nodes in a loop.
+' Those blocks go up to 6: raising either width above that means adding blocks
+' there too. components/api/ApiQueueTask.bs checks the created slots against the
+' chosen width at startup and logs an error if they disagree.
 
 namespace apiPool
 
-  ' ApiTask slots served by the queue coordinator. Do not raise without
-  ' measuring — see source/api/CLAUDE.md ("Don't increase the pool size").
-  const SLOT_COUNT = 3
+  ' Width for devices not on the low-memory list. Do not change without
+  ' measuring on device (npm run measure) — see the doc above.
+  const DEFAULT_WIDTH = 6
+
+  ' Width for 512 MB devices (m.global.device.isLowMemoryDevice).
+  const LOW_MEMORY_WIDTH = 4
+
+  ' The pool width for a device class. Called once, in setGlobalNodes().
+  function widthFor(isLowMemoryDevice as boolean) as integer
+    if isLowMemoryDevice then return apiPool.LOW_MEMORY_WIDTH
+    return apiPool.DEFAULT_WIDTH
+  end function
+
+  ' The width this session's pool was created with (m.global.apiPoolWidth).
+  ' Falls back to LOW_MEMORY_WIDTH when the field is absent — before
+  ' setGlobalNodes() has run, or in a unit test — because asking for fewer slots
+  ' than exist only queues requests, while asking for more would count slots
+  ' that were never created. On a Task thread each call is a cross-thread read:
+  ' call it once per run, not once per request.
+  function currentWidth() as integer
+    width = m.global.apiPoolWidth
+    ' A node integer field reads back as "roInt"; the other two spellings are
+    ' what a boxed or literal integer reports.
+    widthType = type(width)
+    if (widthType = "roInt" or widthType = "roInteger" or widthType = "Integer") and width > 0 then return width
+    return apiPool.LOW_MEMORY_WIDTH
+  end function
 
 end namespace

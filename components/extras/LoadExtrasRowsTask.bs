@@ -16,7 +16,7 @@ end sub
 ' so row k waited for the SUM of fetches 0..k, and every hop rewrote the RowList's layout
 ' after rows already existed, which redraws its row counter.
 '
-' apiPipeline keeps up to apiPool.SLOT_COUNT requests in flight on this one thread, so rows now
+' apiPipeline keeps one request per pool slot in flight on this one thread, so rows now
 ' arrive in completion order. Display order is restored by the consumer, which commits nothing
 ' until every row has resolved — see ExtrasRowList.commitRows.
 '

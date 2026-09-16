@@ -19,8 +19,9 @@ related-files:
   - scripts/roku-devices.js
   - scripts/data/roku-hardware.json
   - source/utils/screenReadiness.bs
+  - source/home/homeScreenLoad.bs
   - tests/rta/screens.js
-last-reviewed: 2026-08-26
+last-reviewed: 2026-09-15
 ---
 
 # Measuring performance on device
@@ -121,7 +122,43 @@ npm run measure -- --measurement screen-load --nav settings -n 5
 npm run measure -- --measurement screen-load --nav osd --component videoPlayer -n 5
 npm run measure -- --measurement screen-load --nav seasonDetails --variant Season -n 5
 npm run measure -- --measurement screen-load --nav search --variant query -n 5
+npm run measure -- --measurement screen-load --component homeRows -n 5
 ```
+
+### Home — `paint` is the visible rows landing, not the first frame
+
+Home is landed on rather than navigated to, so it takes no `--nav`. It does need
+`--component homeRows`: every launch also mounts the `preLogin` coordinator, which emits
+its own run. The name does two jobs beyond selecting the median: each launch's watch stays
+open until the NAMED mount is complete (`preLogin` completes first, and a Home that begins
+more than the quiet interval later would otherwise be cut off), and the record is stamped
+with Home's own variant, so `measure:compare` can select the series back.
+
+Home's rows fill from several independent tasks, so no single handler is its paint.
+[`HomeRows`](../../components/home/HomeRows.bs) declares one fill per row, keyed by the row's
+`sectionId`, and the milestones mean:
+
+- **`paintMs`**: every row in the **visible span** has landed. The span is `loadedRowRange`'s
+  `[visibleStart, visibleEnd]`, the same one texture loading uses: `[focusedRow, focusedRow +
+  numRows − 1]` with `numRows = 3`. The decision is
+  [`homeScreenLoad.visibleRowsResolved`](../../source/home/homeScreenLoad.bs).
+- **`settledMs`**: every row has landed.
+
+What that definition does and does not say:
+
+- **A row "lands" when its answer arrives: data, an empty result, or a failure.** A failed
+  latest row keeps its skeleton on screen but still counts as landed. The wait is over, and
+  counting it as open would leave Home unsettled forever.
+- **Paint is not decided before the libraries answer.** Until then the latest-media rows are
+  not in the list, so the span would describe rows about to be pushed down.
+- **The third row of the span is only partly on screen** on a 1080p Stick 4K: row 2 starts at
+  y≈882 with the default section order. The span is the app's definition of the viewport,
+  not a pixel measurement.
+- **Which rows the span holds depends on the user's section order.** With the default order
+  (My Media, Continue Watching, Next Up, Active Recordings, On Now, Latest Media) the span is
+  My Media, Continue Watching and Next Up, so **no latest-media row gates `paintMs`**. Latest
+  rows enter the span only with a reordered layout, or when rows above them come back empty
+  and are removed. Read a Home `paintMs` together with the layout it was taken on.
 
 ### ⚠️ A library grid on a multi-library server needs `--library`
 

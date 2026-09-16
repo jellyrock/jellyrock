@@ -10,7 +10,7 @@ related-files:
   - scripts/harden-prod-manifest.js
   - scripts/measurements.js
   - manifest
-last-reviewed: 2026-08-26
+last-reviewed: 2026-09-15
 ---
 
 # Measuring orchestrator wait-vs-emit on device
@@ -41,6 +41,15 @@ network-bound. Measure per orchestrator; do not carry one result to another.
 Opening Home fires one `LoadLatestRowsTask` run that fetches the latest items for every
 eligible library. Five log lines describe it, and all are permanent — they exist in dev
 builds only (see [Why this costs production nothing](#why-this-costs-production-nothing)):
+
+> **This run is not the same thing as "when Home became usable".** These lines split one
+> task's run. Home also emits the `screen-load` family (`--component homeRows`): `paintMs`
+> when the visible rows have landed, `settledMs` when every row has. See
+> [measuring-performance.md](measuring-performance.md#home--paint-is-the-visible-rows-landing-not-the-first-frame).
+> With the default section order no latest-media row is in the visible span, so `total`
+> below is what a user waits for to see the rows **below** the first screen, not the first
+> screen itself. Read off a Stick 4K with the default order (2026-09-15): the visible span
+> was My Media, Continue Watching and Next Up.
 
 The **format** they emit today. The first two are the top-level split; the rest break
 `emit` and the render-side work down a level, and are described under
@@ -90,7 +99,7 @@ Four numbers come out of the first two lines. **Three of them are measurements; 
 
 | Value | Meaning | Trust it? |
 |---|---|---|
-| `total` | `run complete` — what the user actually waits for | ✅ directly measured, ±10% over 30 runs |
+| `total` | `run complete` — every latest-media row delivered (which rows the user waits on first: see the note above) | ✅ directly measured, ±10% over 30 runs |
 | `wait` | blocked on the API pool — network + server | ✅ directly measured |
 | `emit` | transform items → `ContentNode`s → `appendChild` | ✅ directly measured |
 | `drain` | `total − task` | ❌ **derived; do not compare it** |
@@ -945,6 +954,14 @@ is that **`emit` hides latency** — `apiPipeline` keeps requests in flight
 while the thread transforms, so added latency is nearly free until it exceeds the emit
 shadow. The naive "requests ÷ slots × round-trip" arithmetic badly overstates the cost
 of a distant server.
+
+> **Superseded on current code (2026-09-16).** After attach batching and #799 shrank the emit
+> shadow, width became a real lever at remote latency: on the full 11-library Home, widths
+> 4–8 cut full-load time 16–30 % at +150 ms and +400 ms on 1 GB and 2 GB devices, with no
+> difference on a LAN. The pool is now sized per device class (4 on 512 MB, 6 otherwise) —
+> the measurements and the reasoning are in
+> [api.md → Pool width](../architecture/api.md#pool-width) and [ADR 0036](../adr/0036-api-pool-width-by-device-class.md). The paragraph above is kept as the
+> record of what was true at the time.
 
 **"The render-thread drain dominates on weak hardware."** It doesn't — `emit` is the largest
 directly-measured component on every tier. This one survives only in that weakened form: it

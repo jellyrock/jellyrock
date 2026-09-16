@@ -1,0 +1,91 @@
+import "pkg:/source/home/homeScreenLoad.bs"
+
+namespace tests
+
+  ' Contract tests for Home's paint decision (source/home/homeScreenLoad.bs).
+  '
+  ' Wrong in one direction, Home reports paint while the user is still looking at skeleton
+  ' rows — an optimistic number every comparison would inherit. Wrong in the other, Home never
+  ' paints and every sample reads as unmeasurable. Both are pinned here.
+  @suite("homeScreenLoad - Home visible-rows paint decision")
+  class HomeScreenLoadTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("rows inside the visible span")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is not resolved while any visible row is still open")
+    function _()
+      rows = ["resume", "nextup", "latest_a", "latest_b"]
+      open = { "nextup": {} }
+
+      m.assertFalse(homeScreenLoad.visibleRowsResolved([0, 0, 2, 3], rows, open))
+    end function
+
+    @it("is resolved when every visible row has landed, even with rows below still open")
+    function _()
+      rows = ["resume", "nextup", "latest_a", "latest_b", "latest_c"]
+      open = { "latest_b": {}, "latest_c": {} }
+
+      m.assertTrue(homeScreenLoad.visibleRowsResolved([0, 0, 2, 4], rows, open))
+    end function
+
+    @it("counts both ends of the span")
+    function _()
+      rows = ["resume", "nextup", "latest_a", "latest_b"]
+
+      m.assertFalse(homeScreenLoad.visibleRowsResolved([0, 0, 2, 3], rows, { "resume": {} }))
+      m.assertFalse(homeScreenLoad.visibleRowsResolved([0, 0, 2, 3], rows, { "latest_a": {} }))
+      m.assertTrue(homeScreenLoad.visibleRowsResolved([0, 0, 2, 3], rows, { "latest_b": {} }))
+    end function
+
+    @it("follows the span when focus is not on the first row")
+    function _()
+      rows = ["resume", "nextup", "latest_a", "latest_b", "latest_c"]
+      open = { "resume": {} }
+
+      m.assertTrue(homeScreenLoad.visibleRowsResolved([0, 2, 4, 4], rows, open))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a row list shorter than the span it was computed for")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("clamps the span to the rows that exist after a removal")
+    function _()
+      ' Range computed over 5 rows; two were removed since. Nothing recomputes the range on a
+      ' removal, so the stale end index must not be read past the list.
+      rows = ["resume", "latest_a", "latest_b"]
+
+      m.assertTrue(homeScreenLoad.visibleRowsResolved([0, 0, 4, 4], rows, {}))
+    end function
+
+    @it("counts a row that shifted up into the span")
+    function _()
+      rows = ["resume", "latest_a", "latest_c"]
+      open = { "latest_c": {} }
+
+      m.assertFalse(homeScreenLoad.visibleRowsResolved([0, 0, 2, 4], rows, open))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("no rows, and a range nobody computed")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is resolved when Home has no rows at all")
+    function _()
+      m.assertTrue(homeScreenLoad.visibleRowsResolved([-1, -1, -1, -1], [], {}))
+    end function
+
+    @it("is NOT resolved on an unset range while rows exist")
+    function _()
+      rows = ["resume"]
+
+      m.assertFalse(homeScreenLoad.visibleRowsResolved([-1, -1, -1, -1], rows, {}))
+      m.assertFalse(homeScreenLoad.visibleRowsResolved(invalid, rows, {}))
+      m.assertFalse(homeScreenLoad.visibleRowsResolved([], rows, {}))
+    end function
+
+  end class
+
+end namespace

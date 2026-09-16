@@ -67,9 +67,9 @@ m.global  (the global roSGNode)
 ├── translationsFallback  assoc array                       ← always en_US
 ├── translationLocale     string                            ← locale code (e.g. "fr_CA")
 │
+├── apiPoolWidth      integer                               ← phase 2 — chosen per device class (api.md#pool-width)
 ├── apiPool0          ApiTask node                          ← phase 2 (control = "RUN")
-├── apiPool1          ApiTask node                          ← phase 2 (control = "RUN")
-├── apiPool2          ApiTask node                          ← phase 2 (control = "RUN")
+├── ...               one per slot, apiPool0 … apiPool<apiPoolWidth-1>
 ├── apiQueue          ApiQueueTask node                     ← phase 2 (control = "RUN") — FIFO coordinator
 ├── sideEffectTask    SideEffectTask node                   ← phase 2 (re-RUN per request)
 │
@@ -227,7 +227,7 @@ It costs **555.7 µs per launch** at a ledger depth of 10 on a Stick 4K, render 
 
 ⚠️ **Reading a node's array field yields a COPY, so mutating it in place is a silent no-op.** `m.global.taskLedger.push(x)` measured a plausible-looking 58 µs and left the field at its original length — 200 pushes, zero growth. It was caught only because the bench asserted the resulting length. Anything that appears to mutate a node's array field without assigning back is doing nothing; same family as the undeclared-field silent no-op below.
 
-Unlike every other field above, it is **not declared in `setGlobalNodes()`** — it is created on first use. That is required, not stylistic: `setGlobalNodes()` starts five Task threads (the three `ApiTask`s, `ApiQueueTask`, `SideEffectTask`) before it would reach a declaration, and a write to an undeclared `roSGNode` field is a silent no-op, so declaring it there lost all five.
+Unlike every other field above, it is **not declared in `setGlobalNodes()`** — it is created on first use. That is required, not stylistic: `setGlobalNodes()` starts its Task threads (the `ApiTask` pool slots, `ApiQueueTask`, `SideEffectTask`) before it would reach a declaration, and a write to an undeclared `roSGNode` field is a silent no-op, so declaring it there lost them all.
 
 **A refusal leaves a durable trace only under `#if perfTiming`.** The `print` in `launchTask()` is
 `#if debug`, and the committed manifest ships `debug=false`, so seeing a refusal that way costs a
@@ -244,7 +244,7 @@ from every store build, and readable from the port-8085 console with no rebuild:
 `FirstRefused` rather than most-recent on purpose: the node that tipped the app over the watermark
 names the fan-out, and every refusal after it is a consequence.
 
-It is the only `m.global` field holding node references in an array rather than a single node. `tests/source/unit/utils/tasks.spec.bs` pins the safety bound (watermark + untracked threads < Roku's 100-thread cap) so a future edit to either constant cannot quietly break it, and `tests/rta/specs/task-thread-peak.spec.js` gates the real peak on device (measured 9-11). **That band is conditional on the fixture's library count, which the spec records as `libraryCount` in its artifact and this sentence previously did not state.** The two readings behind it are not interchangeable: `.178` at 4 libraries peaked at 10, in the extras sweep; `.177` at 3 libraries peaked at 9, in the seven-screens phase. Device and library count both changed between them, so the difference is not attributable to either — read a peak against the `libraryCount` its own artifact records, and re-derive the band rather than assuming it if the demo server's library set moves again.
+It is the only `m.global` field holding node references in an array rather than a single node. `tests/source/unit/utils/tasks.spec.bs` pins the safety bound (watermark + untracked threads < Roku's 100-thread cap) so a future edit to either constant cannot quietly break it, and `tests/rta/specs/task-thread-peak.spec.js` gates the real peak on device (measured 9-11). **That band is conditional on the fixture's library count, which the spec records as `libraryCount` in its artifact and this sentence previously did not state.** The two readings behind it are not interchangeable: `.178` at 4 libraries peaked at 10, in the extras sweep; `.177` at 3 libraries peaked at 9, in the seven-screens phase. Device and library count both changed between them, so the difference is not attributable to either — read a peak against the `libraryCount` its own artifact records, and re-derive the band rather than assuming it if the demo server's library set moves again. **The band is also conditional on the pool width** (`apiPoolWidth`, one persistent thread per slot), and the 9-11 above was measured at the old fixed width of 3. With the per-device widths (2026-09-16, 4-library demo fixture): a Streaming Stick `3600X` at width 4 peaked at 8 and an Ultra `4850X` at width 6 at 10, and the previous day's width-6 test on a Streaming Stick 4K peaked at 11 — the widening adds its slots to the idle floor (boot/Home 6 and 8) without moving the journey peak outside the old band. Run-to-run, the same build on the same fixture moves by about two.
 
 ## Known cruft
 

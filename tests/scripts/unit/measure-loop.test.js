@@ -61,6 +61,7 @@ function harness({
   let windowFrom = Infinity;
   let matchAt = 0;
   let stamped = false;
+  let seenLines = 0;
   let navCalls = 0;
   const logs = [];
   const relaunches = [];
@@ -92,21 +93,25 @@ function harness({
       if (resetsQuietClock) {
         matchAt = 0;
         stamped = false;
+        seenLines = 0;
       }
     },
     // The socket stamps `lastMatchAt` when a MATCHING LINE ARRIVES, then stops — the
     // lines stay in the buffer and keep being returned, but the quiet clock does not
     // keep advancing. Modelling that is the whole point: a clock that re-stamped on
-    // every poll would never go quiet and the break could never fire.
+    // every poll would never go quiet and the break could never fire. A line arriving
+    // LATER stamps again, as `measure.js` does for every matching line — which only an
+    // emitter whose output grows over the launch (a second mount) can observe.
     linesSince: (from) => {
       // One poll of the watch loop. Counted per launch because "did this launch break early"
       // is not answerable from the sample list — a launch cut short still records whatever
       // it had already assembled, so the only evidence of a truncated watch is the count.
       polls[opened.length - 1] = (polls[opened.length - 1] || 0) + 1;
       const lines = emit(from, clock, opened.length - 1);
-      if (lines.length && !stamped && clock >= windowFrom) {
+      if (lines.length && (!stamped || lines.length > seenLines) && clock >= windowFrom) {
         matchAt = clock;
         stamped = true;
+        seenLines = lines.length;
       }
       return lines;
     },
@@ -266,6 +271,38 @@ describe('runSeries', () => {
     // assembled. 45 = the window budget, one poll per second.
     expect(stubborn.polls[1]).toBe(45);
     expect(samples.map((s) => s.launch)).toEqual([0, 1]);
+  });
+
+  describe('when an earlier mount completes before the named one', () => {
+    // Home is reached through `preLogin`, which completes its own sample within a second of
+    // boot. On a launch where Home's rows took longer than `quietMs` to begin, a break keyed
+    // on ANY complete sample ended the watch in that gap and Home's sample was never seen —
+    // "no complete sample in the window", on a launch that was merely slow (1 of 65 launches
+    // on a Stick 4K, 2026-09-15).
+    const HOME_DELAY_MS = 8000; // > quietMs, < the watch budget
+    const loginThenHome = (from, clock) => [
+      ...triple('preLogin', 'start', 550, 552),
+      ...(clock >= from + BOOT_MS + HOME_DELAY_MS ? triple('homeRows', 'none', 1200, 1900) : []),
+    ];
+
+    it('keeps watching until the NAMED mount is complete', async () => {
+      const h = harness({ sampleCount: 1, emit: loginThenHome });
+      h.config.selector = { component: 'homeRows' };
+      const { samples } = await runSeries(h.config, h.deps);
+
+      expect(samples.map((s) => s.dimensions.component)).toEqual(['preLogin', 'homeRows']);
+      // And still on the quiet-break once it has arrived, not the 45 s cap.
+      expect(h.polls[0]).toBeLessThan(45);
+    });
+
+    it('breaks on the first mount when no mount is named, as the published sample is the first', async () => {
+      // Unnamed, the series publishes `indexInLaunch === 0` — so that is the sample whose
+      // completion may end the watch, and the behavior for every single-mount family is unchanged.
+      const h = harness({ sampleCount: 1, emit: loginThenHome });
+      const { samples } = await runSeries(h.config, h.deps);
+
+      expect(samples.map((s) => s.dimensions.component)).toEqual(['preLogin']);
+    });
   });
 
   it('aborts the whole series on a nav failure instead of retrying, naming the launch', async () => {
