@@ -210,6 +210,8 @@ sub init()
   ' counter that keys its fetches and tells a stale reply from a current one.
   m.versionResume = invalid
   m.versionResumeSeq = 0
+  ' Whether the readiness ledger holds an open Resume fill (see trackVersionResumeFill).
+  m.isVersionResumeFillOpen = false
 
   m.isFirstRun = true
   m.isDeepLinkLaunch = false
@@ -1450,6 +1452,7 @@ sub manageResumeButton()
   if isValid(m.top.itemContent) and isValidAndNotEmpty(m.top.itemContent.id)
     item = m.top.itemContent
     if item.runTimeTicks <= 0
+      trackVersionResumeFill(false)
       removeResumeLoadingButton()
       removeResumeButtonWithFocus(resumeButton)
       applyOverflow()
@@ -1457,6 +1460,7 @@ sub manageResumeButton()
     end if
 
     resumeState = resolveResumeState()
+    trackVersionResumeFill(resumeState.isLoading)
 
     if resumeState.isLoading
       if isValid(resumeButton)
@@ -1518,11 +1522,32 @@ sub manageResumeButton()
       removeResumeButtonWithFocus(resumeButton)
     end if
   else
+    trackVersionResumeFill(false)
     removeResumeLoadingButton()
     removeResumeButtonWithFocus(resumeButton)
   end if
 
   applyOverflow()
+end sub
+
+' trackVersionResumeFill: Declare the Resume slot's loading state to the readiness ledger.
+'
+' A Movie's Resume button is otherwise built synchronously from the item, but on a
+' per-version server it can wait on a version's position or the server's thresholds, and
+' `settled` must not fire while it does. Declared on the first loading answer and resolved
+' on the first final one; the flag lives on `m`, not on m.versionResume, so a content
+' reload that drops that state cannot orphan the declaration. After the screen has
+' settled (a version switch, a refresh) the ledger ignores both sides.
+'
+' @param {boolean} isLoading - whether the Resume slot is still waiting
+sub trackVersionResumeFill(isLoading as boolean)
+  if isLoading = m.isVersionResumeFillOpen then return
+  m.isVersionResumeFillOpen = isLoading
+  if isLoading
+    screenLoad.pending("versionResume")
+  else
+    screenLoad.resolve("versionResume")
+  end if
 end sub
 
 ' insertResumeLoadingButton: Put a loading Resume placeholder at the front of the row, where
