@@ -754,6 +754,7 @@
 (?:wakeup-signal)\.
 (?:walkthrough)\.
 (?:wav)\.
+(?:WCAG)\.
 (?:Weblate)\.
 (?:WebP)\.
 (?:webp)\.
