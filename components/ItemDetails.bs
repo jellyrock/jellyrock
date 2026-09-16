@@ -1662,14 +1662,18 @@ function resolveResumeState() as object
     return resumeState
   end if
 
+  ' The selected version, falling back to the item's own when the selection names no source
+  ' the item still has — a refresh can return versions that were merged or split on the
+  ' server while this screen was open, and a stale id would otherwise be fetched as if it
+  ' were a version of this item.
   selectedId = m.top.selectedVideoStreamId
-  if not isValidAndNotEmpty(selectedId) then selectedId = item.id
-  if isValid(item.mediaSourcesData)
-    index = versionResume.sourceIndexById(item.mediaSourcesData.mediaSources, selectedId)
-    if index >= 0
-      sourceRuntime = item.mediaSourcesData.mediaSources[index].RunTimeTicks
-      if isValid(sourceRuntime) and sourceRuntime > 0 then resumeState.runtimeTicks = sourceRuntime
-    end if
+  index = -1
+  if isValid(item.mediaSourcesData) then index = versionResume.sourceIndexById(item.mediaSourcesData.mediaSources, selectedId)
+  if index < 0
+    selectedId = item.id
+  else
+    sourceRuntime = item.mediaSourcesData.mediaSources[index].RunTimeTicks
+    if isValid(sourceRuntime) and sourceRuntime > 0 then resumeState.runtimeTicks = sourceRuntime
   end if
 
   ownTicks = versionPosition(selectedId)
