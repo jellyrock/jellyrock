@@ -608,6 +608,18 @@
       ]
     },
     {
+      "path": "/System/Configuration",
+      "normalized": "/system/configuration",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
       "path": "/system/configuration/{0}",
       "normalized": "/system/configuration/{}",
       "methods": [
@@ -654,6 +666,18 @@
       "maxApiVersion": null,
       "sourceFiles": [
         "source/api/sdkV2.bs"
+      ]
+    },
+    {
+      "path": "/UserItems/{0}/UserData",
+      "normalized": "/useritems/{}/userdata",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 2,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
       ]
     },
     {
@@ -3112,7 +3136,7 @@
       }
     },
     "counts": {
-      "endpoints": 74,
+      "endpoints": 76,
       "requestFields": 41,
       "responseFields": 214,
       "unresolvedEndpointSinks": 2

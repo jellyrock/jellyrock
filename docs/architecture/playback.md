@@ -20,9 +20,10 @@ related-files:
   - components/mediaPlayers/AudioPlayer.bs
   - components/music/AudioPlayerView.bs
   - components/ItemGrid/LoadVideoContentTask.bs
+  - source/utils/versionResume.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-09-13
+last-reviewed: 2026-09-16
 ---
 
 # Video & Audio Playback
@@ -433,6 +434,67 @@ States reported:
 - `"stop"` — once on `finished` or `stopped`
 
 This is what makes "Continue Watching" rows on the home screen accurate.
+
+Every report names the file that is playing as `MediaSourceId` (Live TV sends its own
+`MediaSourceId` / `LiveStreamId` from `transcodeParams`). Servers before Jellyfin 12.0 use it
+only for the now-playing display; from 12.0 it decides **which version the position is saved
+on**, because alternate versions keep their own progress. So an in-player version switch
+must not let the old stream's position land on the new file:
+
+- The value is `m.reportedMediaSourceId`, not `m.top.mediaSourceId` — the switch writes that
+  field *before* the old stream's `stop` report fires.
+- `start` and `update` reports adopt the most recently loaded source; `stop` and `finished`
+  keep naming the file reports have been naming. The old stream's stop can still be pending
+  once the new source has loaded, and keying on the report rather than on event order means
+  nothing depends on when — or whether — `stopped` arrives.
+- `onVideoSourceChange` stops the progress timer at the switch (the `playing` branch
+  restarts it), so no `update` can carry the old position under the new id in between.
+
+### Alternate versions and resume — `source/utils/versionResume.bs`
+
+An item with several `MediaSources` (alternate versions) resumes differently by server line:
+
+| | Before 12.0 | 12.0+ |
+|---|---|---|
+| Position stored | once per item, whichever file played | per version, on the reported `MediaSourceId` |
+| Version picked to resume | device-best (`findBestVideoSource`) | the version that holds the position |
+| In-progress signal | the item's own position | the item's own position, **or** an alternate listed first in the primary's `MediaSources` |
+
+Resuming continues the file that holds the position because another version can be offset
+from it, and neither the names nor the runtime lengths tell a re-encode from a different cut. Upgrading to a
+better file is left to an explicit choice or a fresh start: with nothing in progress, playback
+picks device-best as before.
+
+- **Quick play and queue items without a chosen version** (`quickplay.video`,
+  `LoadVideoContentTask`) resume on the item's own version when starting from a position;
+  otherwise device-best. A primary whose progress sits on an alternate shows no progress
+  bar, so it starts from the beginning.
+- **`ItemDetails`** auto-selects the in-progress version, and the Resume button follows the
+  selected version: its own position (one `GET /UserItems/{id}/UserData` for a version other
+  than the item, with the Resume slot's loading button meanwhile) or, for a version the user
+  picked that has none, the in-progress position carried over.
+
+The carry is guarded by `versionResume.wouldMarkPlayed()`, which follows the server's
+`UserDataManager.UpdatePlayState` played branches — past `MaxResumePct`, inside the last
+second, onto a version shorter than `MinResumeDurationSeconds`, or onto a version with no
+runtime. Each sets `Played`, and the server then propagates that to **every** version and
+clears **every** position, so a carry it would count as finished erases the place being
+carried from rather than resuming it. The runtime it checks is the one the server applies:
+the version's own `RunTimeTicks`, never the item's (the Resume progress bar may fall back to
+the item's; the guard may not).
+
+It is deliberately stricter than the server in one place. The server checks `MinResumePct`
+first and merely ignores a report below it, never reaching the `MinResumeDuration` branch;
+the guard skips that check, so it refuses even a small carry onto a version shorter than
+`MinResumeDurationSeconds`. Playing such a version past `MinResumePct` marks it played
+either way, so the stricter answer costs the viewer a few seconds at most. The thresholds
+are read once per server into `JellyfinServer.resumePolicy` (both or neither), and an
+unreadable policy answers "played", so nothing is carried.
+
+Every choice above lives in `source/utils/versionResume.bs` as pure functions over plain
+values; `ItemDetails` holds only the shell that fetches what `resumeStateFor()` asks for.
+That split is what makes the rules testable — a component spec has no way to stub the two
+requests, so a rule expressed inside `ItemDetails` could only ever be checked by hand.
 
 ## OSD — `components/video/OSD.bs/.xml`
 
