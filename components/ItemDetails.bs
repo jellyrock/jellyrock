@@ -119,7 +119,7 @@ sub init()
 
   m.buttonGrp = m.top.findNode("buttons")
   ' Holds the buttons that did not fit, while "More" stands in for them.
-  ' See applyOverflow() for the contract the nine row mutators bracket with.
+  ' See applyOverflow() for the contract the row mutators bracket with.
   m.buttonOverflow = m.top.findNode("buttonOverflow")
   ' Button group starts hidden — no buttons until setupButtons() builds the real set.
   ' Focus stays on the component (scene manager sets it) until buttons are ready.
@@ -175,7 +175,6 @@ sub init()
   m.shuffleButton = invalid
   m.shuffleLoadingButton = invalid
   m.resumeLoadingButton = invalid
-  m.personMediaFireCount = 0
 
   ' First episode task (Series Play button)
   m.loadFirstEpisodeTask = CreateObject("roSGNode", "LoadItemsTask")
@@ -236,12 +235,12 @@ sub init()
   ' unobserves quickPlayNode.
   m.top.observeField("quickPlayNode", "onQuickPlayLaunch")
 
-  ' Observe personHasMedia to show/hide Shuffle button after Person media chain completes
+  ' Observe personHasMedia to show the Shuffle button as soon as the Person media chain finds media
   m.extrasGrid.observeField("personHasMedia", "onPersonHasMediaChanged")
 
   ' Observe contentReady to close the extras fill in the readiness ledger — the extras
   ' chain is the largest and most universal of this screen's async fills, so `settled`
-  ' is almost always waiting on this one.
+  ' is almost always waiting on this one. Also where a Person's "no media" answer lands.
   m.extrasGrid.observeField("contentReady", "onExtrasContentReady")
 
   ' Observe playlistContentKind to show/hide Watched button and set "Tracks"/"Items" label
@@ -1369,6 +1368,9 @@ end sub
 sub onExtrasContentReady()
   if not m.extrasGrid.contentReady then return
   screenLoad.resolve("extras")
+  ' The run is over, so its personHasMedia is final — the only point a false can be
+  ' trusted to mean "no media". A no-op for every type but Person.
+  updatePersonShuffle(true)
 end sub
 
 ' getResumeButtonText: Return "Resume S{n}E{n}" when season and episode numbers are known,
@@ -3080,11 +3082,11 @@ sub onItemContentChanged()
 
     setupButtons(item)
 
-    ' Person Shuffle: on refresh (extras already loaded), the extras chain won't re-fire
-    ' because only refreshItemDetailsData was toggled. Resolve the loading placeholder
-    ' immediately from the already-known personHasMedia value.
-    if item.type = "Person" and m.extrasLoaded
-      onPersonHasMediaChanged()
+    ' Person Shuffle: the rebuild above put the placeholder back. When the media chain has
+    ' already finished, nothing else will answer it, so resolve it now from the known
+    ' answer. While a run is still going (Refresh starts one), that run's answer does.
+    if item.type = "Person" and m.extrasGrid.contentReady
+      updatePersonShuffle(true)
     end if
 
     ' Media tracks and stream options are only relevant for playable types.
@@ -3875,7 +3877,7 @@ end sub
 ' itemDetailsButtonCap) rather than written down, so it follows the logo when
 ' the logo moves.
 '
-' THE CONTRACT, and the reason it is two functions rather than one: nine places
+' THE CONTRACT, and the reason it is two functions rather than one: the places
 ' in this file mutate the row after setupButtons has built it — inserting Resume
 ' at 0, swapping a loading placeholder for a real button, adding Trailer relative
 ' to Delete or Refresh — and every one computes an index or looks a button up by
@@ -4250,7 +4252,7 @@ sub setupButtons(item as object)
   end if
 
   ' Person Shuffle placeholder — shows a loading IconButton while the extras chain determines
-  ' whether this person has playable media. onPersonHasMediaChanged() replaces or removes it.
+  ' whether this person has playable media. updatePersonShuffle() replaces or removes it.
   if itemType = "Person"
     m.shuffleLoadingButton = CreateObject("roSGNode", "IconButton")
     m.shuffleLoadingButton.id = "shuffleLoadingButton"
@@ -4258,10 +4260,6 @@ sub setupButtons(item as object)
     m.shuffleLoadingButton.text = translate(translationKeys.ButtonShuffle)
     m.shuffleLoadingButton.isLoading = true
     m.buttonGrp.appendChild(m.shuffleLoadingButton)
-    ' Guard counter: the ExtrasRowList observer fires multiple times — first a reset
-    ' (personHasMedia=false at chain start), then the definitive answer(s). We skip the
-    ' first fire (the reset) so the placeholder stays visible until a real answer arrives.
-    m.personMediaFireCount = 0
   end if
 
   ' Instant Mix button — MusicArtist, MusicAlbum, Audio (grouped with play buttons before Favorite)
@@ -4409,11 +4407,24 @@ sub setupButtons(item as object)
   applyOverflow()
 end sub
 
-' onPersonHasMediaChanged: Show or hide the Shuffle button once the person extras chain completes.
-' On first load, replaces the LoadingButton placeholder from setupButtons().
-' On refresh, inserts/removes the Shuffle button directly.
-' Fires via alwaysNotify so it triggers even when personHasMedia stays the same value (e.g. on refresh).
+' onPersonHasMediaChanged: Show Shuffle as soon as the person media chain finds media.
+'
+' Only a TRUE is acted on here. Every run starts by resetting the field to false, so a
+' false on its own is not an answer — acting on it removed Shuffle on every Refresh. The
+' run's "no media" answer is read when the run finishes (onExtrasContentReady).
+' alwaysNotify, so the run's final true is delivered even when an early true already was.
 sub onPersonHasMediaChanged()
+  updatePersonShuffle(false)
+end sub
+
+' updatePersonShuffle: Bring the Person row's Shuffle slot in line with the media chain.
+' Shows Shuffle when the chain has found media — replacing the setupButtons() placeholder,
+' or inserting before Favorite when there is none. Removes the placeholder, or a Shuffle
+' whose media has gone, only on the chain's FINAL answer.
+'
+' @param {boolean} isFinalAnswer - true when the chain has finished, so a false
+'   personHasMedia means "no media"; false when that false may be a run's reset
+sub updatePersonShuffle(isFinalAnswer as boolean)
   if not isValid(m.top.itemContent) or m.top.itemContent.type <> "Person" then return
 
   ' Whole row first — this swaps a placeholder and inserts relative to Favorite,
@@ -4421,8 +4432,6 @@ sub onPersonHasMediaChanged()
   unsplitButtons()
 
   loadingButton = m.top.findNode("shuffleLoadingButton")
-
-  m.personMediaFireCount++
 
   if m.extrasGrid.personHasMedia
     if not isValid(m.shuffleButton)
@@ -4455,12 +4464,10 @@ sub onPersonHasMediaChanged()
         if favoriteButtonIndex >= 0 then insertIndex = favoriteButtonIndex
         m.buttonGrp.insertChild(m.shuffleButton, insertIndex)
 
-        if currentFocusIndex = 0
-          m.buttonGrp.buttonFocused = 0
-          ' Shuffle now leads the row, as its placeholder did on first load. Only a claim
-          ' when it landed at the head: inserted further in, index 0 is still the same button.
-          if insertIndex = 0 then claimRowFocus(m.buttonOverflow, "shuffleButton")
-        else
+        ' Focus stays on the button the user is on. Unlike Resume taking over from Play,
+        ' Shuffle replaces no action here, so moving onto it would turn a pending OK into
+        ' shuffled playback.
+        if currentFocusIndex >= insertIndex
           m.buttonGrp.buttonFocused = currentFocusIndex + 1
         end if
       end if
@@ -4469,9 +4476,9 @@ sub onPersonHasMediaChanged()
         focusButtonGroupChild()
       end if
     end if
-  else if m.personMediaFireCount > 1
-    ' Skip the first false (ExtrasRowList reset at chain start). Any subsequent false is
-    ' a definitive answer from the completed chain — safe to remove the placeholder.
+  else if isFinalAnswer
+    ' The finished chain found no media: drop the placeholder, or a Shuffle from an
+    ' earlier answer.
     if isValid(loadingButton)
       currentFocusIndex = m.buttonGrp.buttonFocused
       loadingIndex = getButtonIndex("shuffleLoadingButton")

@@ -212,9 +212,9 @@ namespace tests
     @describe("a person whose media appears after load")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("hands focus to Shuffle when it is inserted at the head of the row")
+    @it("keeps focus on Favorite when Shuffle is inserted ahead of it")
     ' The refresh path: no placeholder any more, Favorite leads, then media shows up.
-    ' Shuffle leads the Person row, as its placeholder did on first load.
+    ' The user went to Favorite; Shuffle replaces no action, so focus stays put.
     function _()
       m.itemDetails.itemContent = m.makeItem("Person", "person-1", 0)
       extras = m.itemDetails.findNode("extrasGrid")
@@ -226,8 +226,9 @@ namespace tests
 
       extras.personHasMedia = true
 
-      m.assertEqual(m.indexedId(), "shuffleButton")
-      m.assertEqual(m.focusedId(), "shuffleButton")
+      m.assertEqual(m.buttonGrp.getChild(0).id, "shuffleButton", "precondition: Shuffle leads")
+      m.assertEqual(m.indexedId(), "favoriteButton")
+      m.assertEqual(m.focusedId(), "favoriteButton")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
