@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-16 — Widen the API request pool for faster loading (up to 30% on Home)
 - 2026-09-16 — fix: Stabilize `ItemDetails` row focus and prevent buttons from popping in
 - 2026-09-16 — fix: Save and resume progress per version on Jellyfin 12.0
 - 2026-09-15 — chore: Drop the nonexistent `needs-triage` label from the issue templates
