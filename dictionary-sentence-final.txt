@@ -315,6 +315,7 @@
 (?:HIG)\.
 (?:HK-specific)\.
 (?:HLS)\.
+(?:Holm)\.
 (?:hostname)\.
 (?:hotfix)\.
 (?:how-tos)\.
@@ -388,6 +389,7 @@
 (?:marshalling)\.
 (?:Marshalling)\.
 (?:Mbps)\.
+(?:MiB)\.
 (?:mixin)\.
 (?:Mixin)\.
 (?:mka)\.
