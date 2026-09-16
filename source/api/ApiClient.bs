@@ -406,6 +406,27 @@ class ApiClient
     return m.validatedReq("DELETE", buildURL(Substitute("users/{0}/playeditems/{1}", userId, itemId)))
   end function
 
+  ' Build a request AA for one item's UserData (position, played, favorite), for use with
+  ' fetchRes() or fetchAsync(). Returns a UserItemDataDto — about 150 bytes, where the full
+  ' item is kilobytes.
+  '
+  ' It reads the play state of an ALTERNATE VERSION, which no item query returns on
+  ' Jellyfin 12.0 (/Items?ids= filters versions out). Only per-version servers need that,
+  ' so callers gate on versionResume.isPerVersionServer(). The route is not in the 10.7.0
+  ' floor spec, so a V1 server gets no request rather than a guessed path.
+  '
+  ' @param itemId - The item (or alternate version) ID
+  ' @returns Request AA: { method, url } or invalid if no user or a V1 server
+  function BuildGetItemUserDataRequest(itemId as string) as dynamic
+    userId = m.getUserId()
+    if userId = "" then return invalid
+
+    if m.getApiVersion() >= 2
+      return m.validatedReq("GET", buildURL(Substitute("/UserItems/{0}/UserData", itemId), { userId: userId }))
+    end if
+    return invalid
+  end function
+
   ' Build a request AA to delete an item, for use with SubmitSideEffect().
   ' @param itemId - The item ID to delete
   ' @returns Request AA: { method, url }
@@ -802,6 +823,19 @@ class ApiClient
   ' @returns Request AA: { method, url } or invalid if server URL not set
   function BuildGetLibraryOptionsInfoRequest() as dynamic
     return m.validatedReq("GET", buildURL("/Libraries/AvailableOptions"))
+  end function
+
+  ' Build a request AA for the server configuration, for use with fetchRes() or
+  ' fetchAsync(). Returns a ServerConfiguration.
+  '
+  ' Read for MaxResumePct — the percentage past which the server records playback as
+  ' finished instead of storing a resume position (source/utils/versionResume.bs).
+  ' Authorized for ANY signed-in user, not only admins: a non-admin account got 200 on
+  ' 10.7.7, 10.10.7, 10.11.11 and 12.0.0.
+  '
+  ' @returns Request AA: { method, url } or invalid if server URL not set
+  function BuildGetServerConfigurationRequest() as dynamic
+    return m.validatedReq("GET", buildURL("/System/Configuration"))
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════

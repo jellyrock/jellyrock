@@ -20,9 +20,10 @@ related-files:
   - components/mediaPlayers/AudioPlayer.bs
   - components/music/AudioPlayerView.bs
   - components/ItemGrid/LoadVideoContentTask.bs
+  - source/utils/versionResume.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-09-13
+last-reviewed: 2026-09-15
 ---
 
 # Video & Audio Playback
@@ -433,6 +434,41 @@ States reported:
 - `"stop"` — once on `finished` or `stopped`
 
 This is what makes "Continue Watching" rows on the home screen accurate.
+
+Every report names the file that is playing as `MediaSourceId` (Live TV sends its own
+`MediaSourceId` / `LiveStreamId` from `transcodeParams`). Servers before Jellyfin 12.0 use it
+only for the now-playing display; from 12.0 it decides **which version the position is saved
+on**, because alternate versions keep their own progress. The value comes from
+`m.reportedMediaSourceId`, set when a stream finishes loading, and deliberately not from
+`m.top.mediaSourceId`: an in-player version switch writes that field *before* the old
+stream's `stop` report fires, which would save the old file's position on the new one.
+
+### Alternate versions and resume — `source/utils/versionResume.bs`
+
+An item with several `MediaSources` (alternate versions) resumes differently by server line:
+
+| | Before 12.0 | 12.0+ |
+|---|---|---|
+| Position stored | once per item, whichever file played | per version, on the reported `MediaSourceId` |
+| Version picked to resume | device-best (`findBestVideoSource`) | the version that holds the position |
+| In-progress signal | the item's own position | the item's own position, **or** an alternate listed first in the primary's `MediaSources` |
+
+Resuming continues the file that holds the position because another version can be offset
+from it, and neither the names nor the runtime lengths tell a re-encode from a different cut. Upgrading to a
+better file is left to an explicit choice or a fresh start: with nothing in progress, playback
+picks device-best as before.
+
+- **Quick play and queue items without a chosen version** (`quickplay.video`,
+  `LoadVideoContentTask`) resume on the item's own version when starting from a position;
+  otherwise device-best. A primary whose progress sits on an alternate shows no progress
+  bar, so it starts from the beginning.
+- **`ItemDetails`** auto-selects the in-progress version, and the Resume button follows the
+  selected version: its own position (one `GET /UserItems/{id}/UserData` for a version other
+  than the item, with the Resume slot's loading button meanwhile) or, for a version the user
+  picked that has none, the in-progress position carried over. The carry stops at the server's
+  `MaxResumePct` (read once per server into `JellyfinServer.maxResumePct`) and fails closed
+  when that cannot be read: finishing any version marks every version played and clears every
+  position, so resuming past the threshold would erase the place being carried.
 
 ## OSD — `components/video/OSD.bs/.xml`
 

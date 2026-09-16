@@ -18,6 +18,7 @@ import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/subtitles.bs"
 import "pkg:/source/utils/translate.bs"
 import "pkg:/source/utils/trickplay.bs"
+import "pkg:/source/utils/versionResume.bs"
 
 sub init()
   m.top.functionName = "loadItems"
@@ -94,11 +95,21 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     mediaSources = meta.mediaSourcesData.mediaSources
   end if
 
-  ' Select best video source if no specific source was requested
+  playbackPosition = 0!
+  currentItem = queueManager.callFunc("getCurrentItem")
+  if isValid(currentItem) and isValid(currentItem.startingPoint)
+    playbackPosition = currentItem.startingPoint
+  end if
+
+  ' Select a video source if no specific source was requested: the item's own version when
+  ' resuming on a per-version server (the position belongs to that file), otherwise the
+  ' best one for the device.
   if not isValid(mediaSourceId) and isValid(mediaSources) and mediaSources.Count() > 1
-    bestSourceIndex = findBestVideoSource(mediaSources)
+    isPerVersion = versionResume.isPerVersionServer(m.global.server.version)
+    bestSourceIndex = versionResume.resumeSourceIndex(video.id, playbackPosition, mediaSources, isPerVersion)
+    if bestSourceIndex < 0 then bestSourceIndex = findBestVideoSource(mediaSources)
     mediaSourceId = mediaSources[bestSourceIndex].Id
-    m.log.info("Auto-selected video source", "index", bestSourceIndex, "mediaSourceId", mediaSourceId)
+    m.log.info("Auto-selected video source", "index", bestSourceIndex, "mediaSourceId", mediaSourceId, "isPerVersion", isPerVersion)
   end if
 
   ' Re-determine audio stream index if no manual selection was made
@@ -249,14 +260,6 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     if userSettings.playbackPlayNextEpisode = "enabled" or userSettings.playbackPlayNextEpisode = "webclient" and userSession.config.enableNextEpisodeAutoPlay
       addNextEpisodesToQueue(meta.seriesId)
     end if
-  end if
-
-  playbackPosition = 0!
-
-  currentItem = queueManager.callFunc("getCurrentItem")
-
-  if isValid(currentItem) and isValid(currentItem.startingPoint)
-    playbackPosition = currentItem.startingPoint
   end if
 
   ' Determine final subtitleIdx BEFORE calling ItemPostPlaybackInfo to avoid duplicate API calls.

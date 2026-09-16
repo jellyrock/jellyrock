@@ -131,6 +131,7 @@ sub init()
   m.playbackTimer.observeField("fire", "reportPlayback")
   m.bufferPercentage = 0 ' Track whether content is being loaded
   m.isPlayReported = false
+  m.reportedMediaSourceId = "" ' the source reports name — see reportPlayback
   m.playerParked = false ' see parkPlayerAfterSupersede
   m.top.transcodeReasons = []
   m.bufferCheckTimer.duration = 30
@@ -1058,6 +1059,7 @@ sub onVideoContentLoaded()
   m.isApplyingOwnSelection = true
   m.top.mediaSourceId = videoContent[0].mediaSourceId
   m.isApplyingOwnSelection = false
+  m.reportedMediaSourceId = videoContent[0].mediaSourceId ?? ""
 
   ' Reset retry flags so subsequent reloads (audio/subtitle changes) use fresh evaluation.
   m.LoadMetaDataTask.shouldBypassDoviPreservation = false
@@ -1911,6 +1913,12 @@ sub reportPlayback(state = "update" as string)
     "PositionTicks": int(positionSeconds) * 10000000&, 'Ensure a LongInteger is used
     "IsPaused": (m.top.state = "paused")
   }
+  ' Name the file that is playing. Jellyfin 12.0+ saves progress against this version
+  ' (alternate versions keep their own positions); older servers use it only for the
+  ' now-playing display. Not m.top.mediaSourceId: a version switch in the player writes
+  ' that BEFORE the old stream's stop report, which would save the old file's position on
+  ' the new one. m.reportedMediaSourceId changes only once the new stream is loaded.
+  if m.reportedMediaSourceId <> "" then params.MediaSourceId = m.reportedMediaSourceId
   ' Live TV requires MediaSourceId/LiveStreamId for server-side stream tracking
   if isLiveTvPlayback() and isValid(m.top.transcodeParams)
     params.append({
