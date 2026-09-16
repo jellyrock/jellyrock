@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-16 — fix: Save and resume progress per version on Jellyfin 12.0
 - 2026-09-15 — chore: Drop the nonexistent `needs-triage` label from the issue templates
 - 2026-09-15 — fix: Stop the extras row counter flickering on `ItemDetails`
 - 2026-09-15 — chore: Acknowledge Jellyfin 12.0 after the `/server-upgrade` triage
@@ -58,7 +59,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-09-04 — chore: Retire the calendar stale-docs backlog; cover `docs/dev/` contextually
 - 2026-09-03 — fix: Guard `onKeyEvent` against key events delivered after teardown
 - 2026-09-03 — Stop the playback error dialog exiting on a close it did not cause
-- 2026-09-01 — Migrate the playback error dialog onto `JRDialog` and make it diagnostic
 
 ## Open followups
 
