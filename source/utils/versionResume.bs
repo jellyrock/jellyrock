@@ -1,5 +1,6 @@
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/streamSelection.bs"
 
 ' Resuming an item that has alternate versions (several MediaSources).
 '
@@ -47,24 +48,16 @@ namespace versionResume
     return versionChecker(serverVersion, versionResume.PER_VERSION_MIN_SERVER)
   end function
 
-  ' sourceIndexById: Index of the MediaSource with this id.
+  ' sourceIndexById: Index of the MediaSource with this id, ignoring case.
   '
-  ' Case-insensitive, matching the server: it keys its own per-version lookup with
-  ' StringComparer.OrdinalIgnoreCase and compares source ids with StringComparison
-  ' .OrdinalIgnoreCase (MediaSourceManager), so it does not assume one spelling of a GUID
-  ' and neither should the one identity check every caller here depends on.
+  ' The lookup is mediaSourceIndexForId (streamSelection.bs), shared with playback start so
+  ' both match an id the same way; that is where the case rule is explained.
   '
   ' @param {object} mediaSources - MediaSourceInfo array
   ' @param {string} sourceId
   ' @return {integer} the index, or -1 when absent
   function sourceIndexById(mediaSources as dynamic, sourceId as string) as integer
-    if type(mediaSources) <> "roArray" or not isValidAndNotEmpty(sourceId) then return -1
-    wanted = lcase(sourceId)
-    for i = 0 to mediaSources.count() - 1
-      source = mediaSources[i]
-      if isValid(source) and isValidAndNotEmpty(source.Id) and lcase(source.Id) = wanted then return i
-    end for
-    return -1
+    return mediaSourceIndexForId(mediaSources, sourceId)
   end function
 
   ' inProgressSourceIndex: Which version of an item the server says is in progress.
@@ -91,7 +84,8 @@ namespace versionResume
     return -1
   end function
 
-  ' idsMatch: Whether two source/item ids name the same thing. See sourceIndexById.
+  ' idsMatch: Whether two source/item ids name the same thing, ignoring case as
+  ' mediaSourceIndexForId does.
   '
   ' @param {dynamic} left
   ' @param {dynamic} right

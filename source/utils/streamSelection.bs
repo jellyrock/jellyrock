@@ -860,8 +860,7 @@ end function
 ' mediaSources[0] is only the server's default. A version picked in the Video dropdown sits
 ' elsewhere in the list, and from Jellyfin 12.0 the server moves the in-progress version to
 ' the front, so anything about the file being PLAYED — its runtime, bitrate, container or
-' streams — has to be read from the source the request names. Ids are compared ignoring
-' case, as the server compares them.
+' streams — has to be read from the source the request names (mediaSourceIndexForId).
 '
 ' @param {dynamic} mediaSources - MediaSourceInfo array
 ' @param {dynamic} mediaSourceId - the id the request names ("" or invalid = the default)
@@ -869,13 +868,29 @@ end function
 '                   are no sources
 function mediaSourceForId(mediaSources as dynamic, mediaSourceId as dynamic) as dynamic
   if type(mediaSources) <> "roArray" or mediaSources.count() = 0 then return invalid
-  if isValidAndNotEmpty(mediaSourceId)
-    wanted = LCase(mediaSourceId)
-    for each source in mediaSources
-      if isValid(source) and isValidAndNotEmpty(source.Id) and LCase(source.Id) = wanted then return source
-    end for
-  end if
-  return mediaSources[0]
+  index = mediaSourceIndexForId(mediaSources, mediaSourceId)
+  if index < 0 then index = 0
+  return mediaSources[index]
+end function
+
+' mediaSourceIndexForId: Index of the MediaSource with this id.
+'
+' Case-insensitive, matching the server: it keys its own per-version lookup with
+' StringComparer.OrdinalIgnoreCase and compares source ids with StringComparison
+' .OrdinalIgnoreCase (MediaSourceManager), so it does not assume one spelling of a GUID
+' and neither should any caller that matches one.
+'
+' @param {dynamic} mediaSources - MediaSourceInfo array
+' @param {dynamic} mediaSourceId
+' @return {integer} the index, or -1 when absent
+function mediaSourceIndexForId(mediaSources as dynamic, mediaSourceId as dynamic) as integer
+  if type(mediaSources) <> "roArray" or not isValidAndNotEmpty(mediaSourceId) then return -1
+  wanted = LCase(mediaSourceId)
+  for i = 0 to mediaSources.count() - 1
+    source = mediaSources[i]
+    if isValid(source) and isValidAndNotEmpty(source.Id) and LCase(source.Id) = wanted then return i
+  end for
+  return -1
 end function
 
 ' findBestVideoSource: Selects the optimal MediaSource for the device's capabilities
