@@ -614,46 +614,6 @@ sub addSubtitlesToVideo(video, meta)
 end sub
 
 
-function directPlaySupported(meta as object) as boolean
-  devinfo = CreateObject("roDeviceInfo")
-  mediaSources = invalid
-  if isValid(meta.mediaSourcesData) and isValidAndNotEmpty(meta.mediaSourcesData.mediaSources)
-    mediaSources = meta.mediaSourcesData.mediaSources
-  end if
-  if not isValid(mediaSources) then return false
-  mediaSource = mediaSources[0]
-  if not isValid(mediaSource) then return false
-
-  if isValid(mediaSource.SupportsDirectPlay) and mediaSource.SupportsDirectPlay = false
-    return false
-  end if
-
-  ' Get the first video stream instead of blindly using MediaStreams[0]
-  ' which could be a subtitle or audio stream
-  videoStream = getFirstVideoStream(mediaSource.MediaStreams)
-  if not isValid(videoStream)
-    return false
-  end if
-
-  streamInfo = { Codec: videoStream.codec }
-  if isValid(videoStream.Profile) and videoStream.Profile.len() > 0
-    streamInfo.Profile = LCase(videoStream.Profile)
-  end if
-  if isValid(mediaSource.container) and mediaSource.container.len() > 0
-    'CanDecodeVideo() requires the .container to be format: "mp4", "hls", "mkv", "ism", "dash", "ts" if its to direct stream
-    if mediaSource.container = "mov"
-      streamInfo.Container = "mp4"
-    else
-      streamInfo.Container = mediaSource.container
-    end if
-  end if
-
-  decodeResult = devinfo.CanDecodeVideo(streamInfo)
-  return isValid(decodeResult) and decodeResult.result
-
-end function
-
-
 ' Add next episodes to the playback queue
 sub addNextEpisodesToQueue(showID)
   queueManager = m.global.queueManager
