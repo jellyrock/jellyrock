@@ -1,0 +1,79 @@
+import "pkg:/source/api/items.bs"
+import "pkg:/source/enums/SubtitleSelection.bs"
+
+namespace tests
+
+  ' buildPlaybackInfoPostData — the PlaybackInfo body is tuned to the version being played,
+  ' not to mediaSources[0], the server's default.
+  @suite("Items.bs - buildPlaybackInfoPostData() played version")
+  class ItemsPlaybackInfoSourceTests extends tests.BaseTestSuite
+
+    ' A default version first, then the one being played. They differ in the audio stream
+    ' index and in runtime: 40,000 s is past what 6 s segments can list (5,000 playlist
+    ' entries), so the played version needs 8 s segments on any buffer size at 1 Mbps.
+    private function versions() as object
+      return {
+        mediaSourcesData: {
+          mediaSources: [
+            {
+              Id: "default1080",
+              Bitrate: 1000000,
+              RunTimeTicks: 18000000000&,
+              MediaStreams: [{ Type: "Audio", index: 1, Codec: "ac3", Channels: 2 }]
+            },
+            {
+              Id: "picked720",
+              Bitrate: 1000000,
+              RunTimeTicks: 400000000000&,
+              MediaStreams: [{ Type: "Audio", index: 3, Codec: "ac3", Channels: 2 }]
+            }
+          ]
+        }
+      }
+    end function
+
+    private function build(mediaSourceId as string, audioTrackIndex as integer) as object
+      return buildPlaybackInfoPostData(mediaSourceId, audioTrackIndex, SubtitleSelection.NONE, 0&, m.versions())
+    end function
+
+    private function videoSegmentLength(postData as object) as dynamic
+      for each profile in postData.DeviceProfile.TranscodingProfiles
+        if profile.Type = "Video" then return profile.SegmentLength
+      end for
+      return invalid
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a request that names a version")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sends an audio track that only the named version has")
+    function _()
+      m.assertEqual(m.build("picked720", 3).AudioStreamIndex, 3)
+    end function
+
+    @it("sizes transcode segments from the named version's runtime")
+    function _()
+      m.assertEqual(m.videoSegmentLength(m.build("picked720", -1)), 8)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a request that names no version")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads the default version")
+    function _()
+      postData = m.build("", 1)
+
+      m.assertEqual(postData.AudioStreamIndex, 1)
+      m.assertEqual(m.videoSegmentLength(postData), 6)
+    end function
+
+    @it("does not send a track the default version lacks")
+    function _()
+      m.assertFalse(m.build("", 3).doesExist("AudioStreamIndex"))
+    end function
+
+  end class
+
+end namespace

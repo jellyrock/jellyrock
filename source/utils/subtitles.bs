@@ -1,4 +1,5 @@
 import "pkg:/source/enums/SubtitleSelection.bs"
+import "pkg:/source/utils/streamSelection.bs"
 
 ' defaultSubtitleTrackFromVid: Identifies the default subtitle track given metadata and audio index
 '
@@ -19,22 +20,11 @@ function defaultSubtitleTrackFromVid(meta as object, selectedAudioIndex as integ
   end if
   if not isValid(mediaSources) then return SubtitleSelection.NONE
 
-  ' Use the selected source's MediaStreams when a specific mediaSourceId is provided,
-  ' matching the pattern used for audio stream selection in LoadVideoContentTask.
-  allStreams = invalid
-  if isValidAndNotEmpty(mediaSourceId)
-    for each source in mediaSources
-      if source.Id = mediaSourceId and isValidAndNotEmpty(source.MediaStreams)
-        allStreams = source.MediaStreams
-        exit for
-      end if
-    end for
-  end if
-  ' Fall back to first source if no match or no mediaSourceId provided
-  if not isValid(allStreams)
-    if not isValidAndNotEmpty(mediaSources[0].MediaStreams) then return SubtitleSelection.NONE
-    allStreams = mediaSources[0].MediaStreams
-  end if
+  ' The streams of the version being played (mediaSourceForId), as for audio selection in
+  ' LoadVideoContentTask.
+  playedSource = mediaSourceForId(mediaSources, mediaSourceId)
+  if not isValid(playedSource) or not isValidAndNotEmpty(playedSource.MediaStreams) then return SubtitleSelection.NONE
+  allStreams = playedSource.MediaStreams
 
   subtitles = sortSubtitles(allStreams)
 

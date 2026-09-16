@@ -115,24 +115,14 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   ' Re-determine audio stream index if no manual selection was made
   ' Task field = 0 means no manual selection (default value)
   ' Task field > 0 means user manually selected from MovieDetails/TVListDetails - preserve it
+  ' Read the version that is actually PLAYING, not the server's default (mediaSourceForId).
+  playedSource = mediaSourceForId(mediaSources, mediaSourceId)
+
   if m.top.selectedAudioStreamIndex = 0
-    ' Use the selected source's MediaStreams for audio selection when available
-    selectedSourceStreams = invalid
-    if isValid(mediaSourceId) and isValid(mediaSources)
-      for each source in mediaSources
-        if source.Id = mediaSourceId and isValid(source.MediaStreams)
-          selectedSourceStreams = source.MediaStreams
-          exit for
-        end if
-      end for
-    end if
-    if isValid(selectedSourceStreams)
+    if isValid(playedSource) and isValid(playedSource.MediaStreams)
       ' Resolve playDefaultAudioTrack setting (JellyRock override or web client)
       playDefault = resolvePlayDefaultAudioTrack(userSettings, userSession.config)
-      audioStreamIdx = findBestAudioStreamIndex(selectedSourceStreams, playDefault, resolveAudioLanguagePreference(userSettings, userSession.config))
-    else if isValid(mediaSources) and isValid(mediaSources[0].MediaStreams)
-      playDefault = resolvePlayDefaultAudioTrack(userSettings, userSession.config)
-      audioStreamIdx = findBestAudioStreamIndex(mediaSources[0].MediaStreams, playDefault, resolveAudioLanguagePreference(userSettings, userSession.config))
+      audioStreamIdx = findBestAudioStreamIndex(playedSource.MediaStreams, playDefault, resolveAudioLanguagePreference(userSettings, userSession.config))
     else
       ' MediaStreams not available - keep existing behavior of using 0
       ' This should never happen since ItemMetaData() just fetched metadata
@@ -144,10 +134,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   end if
 
   ' Early metadata extraction - MediaSources may not exist yet for Live TV
-  if isValid(mediaSources) and isValidAndNotEmpty(mediaSources)
-    ' Read the version that is actually PLAYING, not the server's default (mediaSourceForId).
-    playedSource = mediaSourceForId(mediaSources, mediaSourceId)
-
+  if isValid(playedSource)
     ' Duration source priority for setting video.content.length (needed for seeking):
     '   1. mediaSource.RunTimeTicks  — file's probed duration (authoritative when available)
     '   2. Size × 8 / Bitrate        — actual file duration estimate (good for recordings
@@ -558,19 +545,9 @@ end sub
 sub addAudioStreamsToVideo(video as object, meta as dynamic, mediaSourceId as dynamic)
   mediaStreams = invalid
 
-  if isValid(meta) and isValid(meta.mediaSourcesData) and isValid(meta.mediaSourcesData.mediaSources)
-    sources = meta.mediaSourcesData.mediaSources
-    if isValidAndNotEmpty(mediaSourceId)
-      for each source in sources
-        if isValid(source) and source.Id = mediaSourceId and isValid(source.MediaStreams)
-          mediaStreams = source.MediaStreams
-          exit for
-        end if
-      end for
-    end if
-    if not isValid(mediaStreams) and isValid(sources[0]) and isValid(sources[0].MediaStreams)
-      mediaStreams = sources[0].MediaStreams
-    end if
+  if isValid(meta) and isValid(meta.mediaSourcesData)
+    playedSource = mediaSourceForId(meta.mediaSourcesData.mediaSources, mediaSourceId)
+    if isValid(playedSource) then mediaStreams = playedSource.MediaStreams
   end if
 
   ' Defensive fallback if metadata is unavailable (shouldn't happen — ItemMetaData ran above)

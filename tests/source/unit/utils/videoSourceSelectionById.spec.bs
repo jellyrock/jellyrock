@@ -6,8 +6,8 @@ namespace tests
   '
   ' Playback used to read the file being played from mediaSources[0], the server's default.
   ' A version picked in the Video dropdown sits elsewhere in the list, and from Jellyfin 12.0
-  ' the in-progress version moves to the front, so [0] can be a different file: on a Stick 4K
-  ' a 1843 s 1080p version played with "Duration resolved seconds 1795", its 720p sibling's.
+  ' the in-progress version moves to the front, so [0] can be a different file, with its own
+  ' runtime, bitrate and streams.
   @suite("videoSourceSelection - mediaSourceForId()")
   class VideoSourceSelectionByIdTests extends tests.BaseTestSuite
 
