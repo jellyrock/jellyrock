@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Widen the API request pool for faster loading (up to 30% on Home) ([#944](https://github.com/jellyrock/jellyrock/pull/944))
+
 ### Fixed
 
 - Stabilize `ItemDetails` row focus and prevent buttons from popping in ([#942](https://github.com/jellyrock/jellyrock/pull/942))
