@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Read the version being played when starting playback ([#943](https://github.com/jellyrock/jellyrock/pull/943))
 - Stabilize `ItemDetails` row focus and prevent buttons from popping in ([#942](https://github.com/jellyrock/jellyrock/pull/942))
 - Save and resume progress per version on Jellyfin 12.0 ([#940](https://github.com/jellyrock/jellyrock/pull/940))
 
