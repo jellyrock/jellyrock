@@ -955,6 +955,14 @@ while the thread transforms, so added latency is nearly free until it exceeds th
 shadow. The naive "requests ÷ slots × round-trip" arithmetic badly overstates the cost
 of a distant server.
 
+> **Superseded on current code (2026-09-16).** After attach batching and #799 shrank the emit
+> shadow, width became a real lever at remote latency: on the full 11-library Home, widths
+> 4–8 cut full-load time 16–30 % at +150 ms and +400 ms on 1 GB and 2 GB devices, with no
+> difference on a LAN. The pool is now sized per device class (4 on 512 MB, 6 otherwise) —
+> the measurements and the reasoning are in
+> [api.md → Pool width](../architecture/api.md#pool-width) and [ADR 0036](../adr/0036-api-pool-width-by-device-class.md). The paragraph above is kept as the
+> record of what was true at the time.
+
 **"The render-thread drain dominates on weak hardware."** It doesn't — `emit` is the largest
 directly-measured component on every tier. This one survives only in that weakened form: it
 was originally argued from `drain` figures, and `drain` has since been shown to be an

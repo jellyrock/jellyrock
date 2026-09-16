@@ -47,3 +47,4 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0033](0033-contextual-doc-freshness.md) | Doc-freshness pressure is contextual; there is no calendar backlog of stale docs | Accepted | 2026-09-04 |
 | [0034](0034-component-observers-init-to-ondestroy.md) | A component's own observers live from `init()` to `onDestroy()`; handlers gate, observers never toggle | Accepted | 2026-09-13 |
 | [0035](0035-server-plugin-capabilities.md) | Features that need a server plugin are gated by a per-sign-in capability check; each capability chooses its own failure policy | Accepted | 2026-09-14 |
+| [0036](0036-api-pool-width-by-device-class.md) | The API pool width is chosen per device class — 4 on low-memory devices, 6 elsewhere | Accepted | 2026-09-16 |

@@ -12,8 +12,8 @@ import "pkg:/source/utils/misc.bs"
 ' times. One Task per request is a thread fan-out — the mechanism behind the
 ' `&h29` "too many threads" crashes on large libraries (epic #728).
 '
-' This is the third option: keep ONE thread, and keep up to `apiPool.SLOT_COUNT`
-' requests riding the pool concurrently. The pool's own width bounds the real
+' This is the third option: keep ONE thread, and keep as many requests riding the
+' pool concurrently as the pool has slots. The pool's own width bounds the real
 ' parallelism either way, so pipelining costs nothing extra and adds no threads.
 '
 ' ── Shape: an iterator, not a callback ─────────────────────────────────────
@@ -97,7 +97,8 @@ function apiPipelineBegin(entries as dynamic, budgetMs = timeouts.PIPELINE_RUN_M
     nextIndex: 0,
     ' requestId -> { entry, index, node } for every request currently in flight.
     pending: {},
-    slotCount: apiPool.SLOT_COUNT,
+    ' One cross-thread read per run (see apiPool.currentWidth).
+    slotCount: apiPool.currentWidth(),
     budgetMs: budgetMs,
     expired: false,
     port: CreateObject("roMessagePort"),

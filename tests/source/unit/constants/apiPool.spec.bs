@@ -1,0 +1,77 @@
+import "pkg:/source/constants/apiPool.bs"
+
+' Highest width setGlobalNodes() has a slot block for.
+const API_POOL_SLOT_BLOCKS = 6
+
+' Unit tests for the API pool width (source/constants/apiPool.bs).
+'
+' The widths are measured values, so they are pinned here: a change to either has to
+' be a deliberate edit to this file too, next to the doc that holds the measurements.
+' The range assertion ties them to the slot blocks in setGlobalNodes(), which stop at
+' 6 — a width above that would otherwise only surface as a startup error on device.
+'
+' ⚠️ currentWidth() reads the SHARED global node. Every test that writes
+' `apiPoolWidth` is undone in afterEach(), so no later suite inherits it.
+
+namespace tests
+
+  @suite("apiPool - request pool width")
+  class ApiPoolWidthTests extends tests.BaseTestSuite
+
+    protected override function afterEach()
+      if m.global.hasField("apiPoolWidth") then m.global.removeField("apiPoolWidth")
+      super.afterEach()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("widthFor() - the width chosen per device class")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("gives low-memory devices the measured low-memory width")
+    function _()
+      m.assertEqual(apiPool.widthFor(true), 4, "LOW_MEMORY_WIDTH is a measured value — see docs/architecture/api.md before changing it")
+      m.assertEqual(apiPool.widthFor(true), apiPool.LOW_MEMORY_WIDTH)
+    end function
+
+    @it("gives every other device the measured default width")
+    function _()
+      m.assertEqual(apiPool.widthFor(false), 6, "DEFAULT_WIDTH is a measured value — see docs/architecture/api.md before changing it")
+      m.assertEqual(apiPool.widthFor(false), apiPool.DEFAULT_WIDTH)
+    end function
+
+    @it("keeps both widths within the slot blocks globals.bs creates")
+    function _()
+      for each width in [apiPool.LOW_MEMORY_WIDTH, apiPool.DEFAULT_WIDTH]
+        m.assertTrue(width >= 1, "a pool needs at least one slot")
+        m.assertTrue(width <= API_POOL_SLOT_BLOCKS, "width " + width.toStr() + " has no slot blocks in setGlobalNodes() — add them there first")
+      end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("currentWidth() - the width this session's pool was created with")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns the width setGlobalNodes() stored")
+    function _()
+      m.global.addFields({ apiPoolWidth: 5 })
+      m.assertEqual(apiPool.currentWidth(), 5)
+    end function
+
+    @it("falls back to the low-memory width when no width was stored")
+    function _()
+      m.assertFalse(m.global.hasField("apiPoolWidth"), "precondition: no width stored")
+      m.assertEqual(apiPool.currentWidth(), apiPool.LOW_MEMORY_WIDTH)
+    end function
+
+    @it("falls back to the low-memory width for a stored value that is not a positive integer")
+    function _()
+      for each bad in ["6", 0, -2]
+        if m.global.hasField("apiPoolWidth") then m.global.removeField("apiPoolWidth")
+        m.global.addFields({ apiPoolWidth: bad })
+        m.assertEqual(apiPool.currentWidth(), apiPool.LOW_MEMORY_WIDTH, "stored value: " + FormatJson(bad))
+      end for
+    end function
+
+  end class
+
+end namespace

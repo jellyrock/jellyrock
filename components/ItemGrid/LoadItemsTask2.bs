@@ -348,7 +348,7 @@ sub loadItems()
 
   ' Pass 2 — the genre sample fetches, pipelined onto THIS thread rather than run
   ' back to back. Measured 78% wait / 22% emit, so the win is overlapping the round
-  ' trips: apiPipeline keeps up to apiPool.SLOT_COUNT of them in flight without
+  ' trips: apiPipeline keeps one per pool slot in flight without
   ' adding a thread, which a task-per-genre fan-out would (epic #728).
   '
   ' Safe to use submitApiRequest's non-blocking path here for the reason

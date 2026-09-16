@@ -31,7 +31,7 @@ Decision flow:
 | Dedicated `Task` + `roUrlTransfer` | Non-Jellyfin HTTP (font downloads, SSDP, …) | a Task component |
 | `apiPipelineBegin` / `apiPipelineNext` | N *independent* requests that scale with server data (per library, per season) | a Task thread |
 
-**Never spawn a Task per request** to parallelize N calls — that fan-out is what produced the `&h29` "too many task threads" crashes (#728). Use `apiPipeline`: one thread, up to `apiPool.SLOT_COUNT` requests in flight. Note `res = invalid` from it means *no answer*, not an error response — don't clear UI on it, including a skeleton/placeholder the caller drew before the run (clearing that makes the next success re-insert the element, which pops in and shifts the rows after it).
+**Never spawn a Task per request** to parallelize N calls — that fan-out is what produced the `&h29` "too many task threads" crashes (#728). Use `apiPipeline`: one thread, one request per pool slot in flight. Note `res = invalid` from it means *no answer*, not an error response — don't clear UI on it, including a skeleton/placeholder the caller drew before the run (clearing that makes the next success re-insert the element, which pops in and shifts the rows after it).
 
 ## `V1` vs `V2` dispatch
 
@@ -52,4 +52,4 @@ Decision flow:
 
 - Don't add a new `Get*()` synchronous method on `ApiClient`. Sync exists for the bootstrap path; new endpoints use `Build*Request()`.
 - Don't write requests directly to a pool slot's field — go through `apiQueue` (children-as-vehicle dodge SceneGraph coalescing). See [docs/architecture/api.md](../../docs/architecture/api.md#the-coalescing-problem-why-children-not-fields).
-- Don't increase the pool size without measuring; three slots is intentional.
+- Don't change the pool width (`source/constants/apiPool.bs`) without measuring on device — the two values are measured, per device class, and each slot is a thread for the whole session. See [docs/architecture/api.md](../../docs/architecture/api.md#pool-width).

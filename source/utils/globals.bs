@@ -1,3 +1,4 @@
+import "pkg:/source/constants/apiPool.bs"
 import "pkg:/source/utils/tasks.bs"
 ' Low memory device model prefixes (512MB RAM, ~50MB texture memory)
 ' These devices cannot load large textures (e.g., default trickplay 10x10 320 tiles) into memory
@@ -87,22 +88,48 @@ sub setGlobalNodes()
     m.global.addFields({ rtaSkeletonHoldMs: 0 })
   #end if
 
-  ' Tier 1 API pool — 3 persistent ApiTask instances (Architecture C continuous-server)
-  ' Each task runs an infinite while loop; control = "RUN" must be set once to start it.
+  ' Tier 1 API pool — persistent ApiTask instances (Architecture C continuous-server), as
+  ' many as apiPool.widthFor() picks for this device class. Each task runs an infinite while
+  ' loop; control = "RUN" must be set once to start it. One guarded block per slot (no loop:
+  ' `no-task-fanout`), so any width from 1 to 6 is a constants change; a width above 6 needs
+  ' more blocks. ApiQueueTask checks the slots created here against apiPoolWidth at startup.
+  apiPoolWidth = apiPool.widthFor(m.global.device.isLowMemoryDevice)
+  poolFields = { apiPoolWidth: apiPoolWidth }
   apiPool0 = CreateObject("roSGNode", "ApiTask")
   apiPool0.id = "apiPool0"
   launchTask(apiPool0)
-  apiPool1 = CreateObject("roSGNode", "ApiTask")
-  apiPool1.id = "apiPool1"
-  launchTask(apiPool1)
-  apiPool2 = CreateObject("roSGNode", "ApiTask")
-  apiPool2.id = "apiPool2"
-  launchTask(apiPool2)
-  m.global.addFields({
-    apiPool0: apiPool0,
-    apiPool1: apiPool1,
-    apiPool2: apiPool2
-  })
+  poolFields.apiPool0 = apiPool0
+  if apiPoolWidth > 1
+    apiPool1 = CreateObject("roSGNode", "ApiTask")
+    apiPool1.id = "apiPool1"
+    launchTask(apiPool1)
+    poolFields.apiPool1 = apiPool1
+  end if
+  if apiPoolWidth > 2
+    apiPool2 = CreateObject("roSGNode", "ApiTask")
+    apiPool2.id = "apiPool2"
+    launchTask(apiPool2)
+    poolFields.apiPool2 = apiPool2
+  end if
+  if apiPoolWidth > 3
+    apiPool3 = CreateObject("roSGNode", "ApiTask")
+    apiPool3.id = "apiPool3"
+    launchTask(apiPool3)
+    poolFields.apiPool3 = apiPool3
+  end if
+  if apiPoolWidth > 4
+    apiPool4 = CreateObject("roSGNode", "ApiTask")
+    apiPool4.id = "apiPool4"
+    launchTask(apiPool4)
+    poolFields.apiPool4 = apiPool4
+  end if
+  if apiPoolWidth > 5
+    apiPool5 = CreateObject("roSGNode", "ApiTask")
+    apiPool5.id = "apiPool5"
+    launchTask(apiPool5)
+    poolFields.apiPool5 = apiPool5
+  end if
+  m.global.addFields(poolFields)
 
   ' FIFO queue coordinator — dispatches queued requests to free pool slots.
   ' Must start after the pool nodes are on m.global so it can read them in runQueueLoop.

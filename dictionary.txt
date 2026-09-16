@@ -324,6 +324,7 @@ HDR
 HIG
 HK-specific
 HLS
+Holm
 hostname
 hotfix
 how-tos
@@ -397,6 +398,7 @@ markdownlint
 marshalling
 Marshalling
 Mbps
+MiB
 mixin
 Mixin
 mka
