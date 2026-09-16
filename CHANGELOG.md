@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Save and resume progress per version on Jellyfin 12.0 ([#940](https://github.com/jellyrock/jellyrock/pull/940))
+
 ## [2.29.1](https://github.com/jellyrock/jellyrock/compare/v2.29.0...v2.29.1) - 2026-09-16
 
 ### Fixed
