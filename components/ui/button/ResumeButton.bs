@@ -3,7 +3,7 @@ sub init()
   m.top.observeField("playbackPositionTicks", "onTicksChanged")
   m.top.observeField("runtimeTicks", "onTicksChanged")
 
-  ' Wait for icon to load before creating progress bar
+  ' The progress bar is drawn only once the icon has loaded — see updateProgressBar()
   m.buttonIcon = m.top.findNode("buttonIcon")
   if isValid(m.buttonIcon)
     m.buttonIcon.observeField("loadStatus", "onIconLoaded")
@@ -16,11 +16,11 @@ sub onIconLoaded()
   ' Only proceed if icon is fully loaded
   if m.buttonIcon.loadStatus <> "ready" then return
 
-  ' Icon is loaded, buttonBackground should now have valid dimensions
+  ' Ticks set before the icon loaded were held back; draw them now
   updateProgressBar()
 
   ' Clean up observer to prevent memory leaks. This is a genuine ONE-SHOT: the icon
-  ' URI is set in the XML and never reassigned, and a ResumeButton is created and
+  ' URI is set once when the button is built and never reassigned, and a ResumeButton is created and
   ' removed per use (ItemDetails.manageResumeButton) rather than recycled as a list
   ' cell — so `loadStatus` reaches "ready" exactly once for this node and there is
   ' nothing further to hear. Those two facts are what make detaching here safe, and
@@ -42,9 +42,12 @@ sub updateProgressBar()
   ' Need valid runtime to calculate percentage
   if m.top.runtimeTicks = 0 then return
 
-  ' Wait for buttonBackground to be ready (has valid dimensions)
+  ' The bar appears with the icon, not ahead of it. Asked of the icon itself: the
+  ' backdrop is sized from init() (IconButton), so its width no longer says whether the
+  ' icon has loaded. onIconLoaded() draws the bar once it has.
+  if not isValid(m.buttonIcon) or m.buttonIcon.loadStatus <> "ready" then return
   buttonBg = m.top.findNode("buttonBackground")
-  if not isValid(buttonBg) or buttonBg.width = 0 then return
+  if not isValid(buttonBg) then return
 
   ' Calculate percentage (0-100) - force float division to avoid integer truncation
   ' Multiply by 100.0 (float literal) first to maintain precision

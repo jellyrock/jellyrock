@@ -1,0 +1,263 @@
+namespace tests
+
+  ' Which button holds focus after ItemDetails changes its button row.
+  '
+  ' Every row change runs inside the unsplitButtons() / applyOverflow() bracket, and the
+  ' bracket puts focus back on the button that had it when the change began
+  ' (buttonOverflow.bs captureRowFocus). That is right for a change that should not move
+  ' focus, and it silently reverted every change that moves focus ON PURPOSE: a new
+  ' Resume taking focus from Play ended on Play on every item with progress. Measured
+  ' on a Streaming Stick 4K and an Ultra, and reproduced here: this suite fails on the
+  ' commit that introduced the bracket's focus capture and passes on the one before it.
+  '
+  ' Both properties are asserted where they differ. The INDEX is what OK dispatches; a
+  ' MOUNTED screen is needed to see which node really holds focus, since hasFocus() and
+  ' isInFocusChain() are false for a detached node whatever the code does.
+  '
+  ' Specs run on the MAIN thread while ItemDetails runs on the render thread, so the
+  ' background fetches a load starts (Series next-up, Person media) answer WHILE a test
+  ' is running and reshape the row under it. Measured: a Series test that acted
+  ' straight after loading failed or crashed in 2 of 3 runs, because the late "no
+  ' next-up" answer removed the placeholder it was looking at. So these tests wait for
+  ' the app's own answer before acting, rather than standing in for it.
+  @suite("ItemDetails - button row focus after a row change")
+  class ItemDetailsRowFocusTests extends tests.BaseTestSuite
+
+    private itemDetails as object
+    private buttonGrp as object
+    private mountedIn as object
+
+    ' beforeEach, not setup: every test loads content into the node (tests/CLAUDE.md).
+    protected override function beforeEach()
+      super.beforeEach()
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+      m.itemDetails = CreateObject("roSGNode", "ItemDetails")
+      m.buttonGrp = m.itemDetails.findNode("buttons")
+    end function
+
+    protected override function afterEach()
+      if isValid(m.mountedIn)
+        m.mountedIn.removeChild(m.itemDetails)
+        m.mountedIn = invalid
+      end if
+      m.buttonGrp = invalid
+      m.itemDetails = invalid
+      super.afterEach()
+    end function
+
+    private function makeItem(itemType as string, id as string, positionTicks as longinteger) as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = id
+      item.type = itemType
+      item.name = "Item " + id
+      item.runTimeTicks = 18000000000&
+      item.playbackPositionTicks = positionTicks
+      return item
+    end function
+
+    private function makeEpisode(id as string) as object
+      ep = CreateObject("roSGNode", "JellyfinBaseItem")
+      ep.id = id
+      ep.playbackPositionTicks = 6000000000&
+      ep.runTimeTicks = 18000000000&
+      return ep
+    end function
+
+    ' The id of the button the row's index names — what OK would run.
+    private function indexedId() as string
+      child = m.buttonGrp.getChild(m.buttonGrp.buttonFocused)
+      if not isValid(child) then return "<index " + m.buttonGrp.buttonFocused.toStr() + " outside the row>"
+      return child.id
+    end function
+
+    ' Poll from this (main) thread until `nodeId` has left the screen, which is how a
+    ' background answer that removes a placeholder becomes visible here.
+    ' @return true when it left within timeoutMs
+    private function waitForNodeGone(nodeId as string, timeoutMs as integer) as boolean
+      clock = CreateObject("roTimespan")
+      while isValid(m.itemDetails.findNode(nodeId))
+        if clock.totalMilliseconds() >= timeoutMs then return false
+        sleep(20)
+      end while
+      return true
+    end function
+
+    ' The id of the button that really holds focus, on a mounted screen.
+    private function focusedId() as string
+      for i = 0 to m.buttonGrp.getChildCount() - 1
+        if m.buttonGrp.getChild(i).hasFocus() then return m.buttonGrp.getChild(i).id
+      end for
+      return "<nothing focused>"
+    end function
+
+    ' Put the screen in the scene and give the row real focus on `buttonId`.
+    private sub mountAndFocus(buttonId as string)
+      m.mountedIn = m.top.getScene()
+      m.mountedIn.appendChild(m.itemDetails)
+      m.buttonGrp.visible = true
+      m.buttonGrp.setFocus(true)
+      for i = 0 to m.buttonGrp.getChildCount() - 1
+        if m.buttonGrp.getChild(i).id = buttonId
+          m.buttonGrp.buttonFocused = i
+          m.buttonGrp.getChild(i).setFocus(true)
+        end if
+      end for
+    end sub
+
+    ' A Series whose next-up fetch answered "nothing": the placeholder is gone and Play
+    ' leads the row. The fetch is real and fails (no server in a unit run), and its
+    ' answer is what removes the placeholder, so wait for it rather than race it.
+    private sub loadSeriesWithoutNextUp(id as string)
+      m.itemDetails.itemContent = m.makeItem("Series", id, 0)
+      m.assertTrue(m.waitForNodeGone("resumeLoadingButton", 5000), "precondition: the next-up fetch answered")
+      m.assertEqual(m.indexedId(), "playButton", "precondition: Play leads")
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("an item with playback progress")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("points the row at Resume, not Play, when it loads")
+    function _()
+      m.itemDetails.itemContent = m.makeItem("Movie", "movie-1", 6000000000&)
+
+      m.assertNotInvalid(m.itemDetails.findNode("resumeButton"), "precondition: Resume exists")
+      m.assertEqual(m.indexedId(), "resumeButton")
+    end function
+
+    @it("moves real focus from Play to Resume when a reload finds progress")
+    ' The return-from-playback path: the row is focused on Play, the reload brings
+    ' a position, and Resume becomes the row's lead action.
+    function _()
+      m.itemDetails.itemContent = m.makeItem("Movie", "movie-2", 0)
+      m.mountAndFocus("playButton")
+      m.assertEqual(m.focusedId(), "playButton", "precondition: Play holds focus")
+
+      m.itemDetails.itemContent = m.makeItem("Movie", "movie-2", 6000000000&)
+
+      m.assertEqual(m.indexedId(), "resumeButton")
+      m.assertEqual(m.focusedId(), "resumeButton")
+    end function
+
+    @it("keeps focus on a button other than Play when Resume appears")
+    ' Only Play hands over: a user on Favorite stays on Favorite.
+    function _()
+      m.itemDetails.itemContent = m.makeItem("Movie", "movie-3", 0)
+      m.mountAndFocus("favoriteButton")
+
+      m.itemDetails.itemContent = m.makeItem("Movie", "movie-3", 6000000000&)
+
+      m.assertEqual(m.indexedId(), "favoriteButton")
+      m.assertEqual(m.focusedId(), "favoriteButton")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a series with a next-up episode")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("points the row at Resume when next-up replaces the placeholder")
+    function _()
+      m.itemDetails.itemContent = m.makeItem("Series", "series-1", 0)
+
+      m.itemDetails.nextUpEpisode = m.makeEpisode("ep-1")
+
+      m.assertEqual(m.indexedId(), "resumeButton")
+    end function
+
+    @it("points the row at Resume when next-up arrives with no placeholder")
+    function _()
+      m.loadSeriesWithoutNextUp("series-2")
+
+      m.itemDetails.nextUpEpisode = m.makeEpisode("ep-2")
+
+      m.assertEqual(m.indexedId(), "resumeButton")
+    end function
+
+    @it("hands focus from Play to the Resume placeholder when a refresh starts")
+    ' onRefreshItemDetailsData inserts the placeholder at the head of the row, so the
+    ' Series row follows the same rule as every other type.
+    function _()
+      m.loadSeriesWithoutNextUp("series-3")
+      ' The id the route would carry; equal to the loaded content, so no fetch starts.
+      m.itemDetails.itemId = "series-3"
+      m.mountAndFocus("playButton")
+
+      m.itemDetails.refreshItemDetailsData = true
+
+      m.assertEqual(m.indexedId(), "resumeLoadingButton")
+      m.assertEqual(m.focusedId(), "resumeLoadingButton")
+
+      m.itemDetails.nextUpEpisode = m.makeEpisode("ep-3")
+
+      m.assertEqual(m.indexedId(), "resumeButton")
+      m.assertEqual(m.focusedId(), "resumeButton")
+    end function
+
+    @it("leaves focus alone when a refresh starts on another button")
+    function _()
+      m.loadSeriesWithoutNextUp("series-4")
+      m.itemDetails.itemId = "series-4"
+      m.mountAndFocus("favoriteButton")
+
+      m.itemDetails.refreshItemDetailsData = true
+
+      m.assertEqual(m.indexedId(), "favoriteButton")
+      m.assertEqual(m.focusedId(), "favoriteButton")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a person whose media appears after load")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps focus on Favorite when Shuffle is inserted ahead of it")
+    ' The refresh path: no placeholder any more, Favorite leads, then media shows up.
+    ' The user went to Favorite; Shuffle replaces no action, so focus stays put.
+    function _()
+      m.itemDetails.itemContent = m.makeItem("Person", "person-1", 0)
+      extras = m.itemDetails.findNode("extrasGrid")
+      ' The media chain is real and finds nothing (no server in a unit run); its answer
+      ' is what removes the placeholder.
+      m.assertTrue(m.waitForNodeGone("shuffleLoadingButton", 5000), "precondition: the media chain answered")
+      m.assertEqual(m.indexedId(), "favoriteButton", "precondition: Favorite leads")
+      m.mountAndFocus("favoriteButton")
+
+      extras.personHasMedia = true
+
+      m.assertEqual(m.buttonGrp.getChild(0).id, "shuffleButton", "precondition: Shuffle leads")
+      m.assertEqual(m.indexedId(), "favoriteButton")
+      m.assertEqual(m.focusedId(), "favoriteButton")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a button removed while it holds focus")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("hands focus to a neighbour when the focused Trailer button is withdrawn")
+    ' Removing the focused node leaves nothing focused in the whole scene, so the
+    ' remote stops working until something calls setFocus. No item is loaded: loading
+    ' one starts the real trailer check, whose async answer would race this test.
+    ' The row is stand-ins, exactly as ItemDetailsButtonOverflow.spec builds it.
+    function _()
+      for i = 0 to 2
+        button = CreateObject("roSGNode", "IconButton")
+        button.id = "btn" + stri(i).trim()
+        m.buttonGrp.appendChild(button)
+      end for
+      m.itemDetails.trailerAvailable = true
+      m.assertNotInvalid(m.itemDetails.findNode("trailerButton"), "precondition: Trailer added")
+      m.mountAndFocus("trailerButton")
+      m.assertEqual(m.focusedId(), "trailerButton", "precondition: Trailer holds focus")
+
+      m.itemDetails.trailerAvailable = false
+
+      m.assertInvalid(m.itemDetails.findNode("trailerButton"), "precondition: Trailer removed")
+      m.assertTrue(m.itemDetails.isInFocusChain(), "the screen must not go deaf")
+      m.assertEqual(m.focusedId(), m.indexedId(), "the focused button is the one OK runs")
+    end function
+
+  end class
+
+end namespace

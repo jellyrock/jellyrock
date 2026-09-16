@@ -277,6 +277,30 @@ sub captureRowFocus(group as object, stash as object)
   })
 end sub
 
+' Hand the row's focus to `buttonId` when the bracket closes, instead of back to the
+' button that had it when the bracket opened.
+'
+' The capture above exists so a mutation does not MOVE focus by accident. A mutator
+' that moves it on purpose has to say so, or the closing half faithfully puts focus
+' back where it was: a new Resume that takes focus from Play (the lead action of the
+' row changes) was reverted to Play this way on every item with progress. Call it
+' between the two halves, next to the decision it records.
+'
+' It must sit in the INNERMOST bracket. Brackets nest (a helper that brackets itself,
+' called inside a caller's bracket), and the inner closing half consumes the capture,
+' so a claim made in the outer bracket after such a helper returns is ignored. Outside
+' any open bracket there is nothing to retarget: debug builds print, since an ignored
+' claim is a deliberate focus move that silently never happens.
+sub claimRowFocus(stash as object, buttonId as string)
+  if not isValid(stash) or not stash.hasField("focusCapturePending") or not stash.focusCapturePending
+    #if debug
+      print "[buttonOverflow] claimRowFocus ignored, no open bracket: "; buttonId
+    #end if
+    return
+  end if
+  stash.focusCaptureId = buttonId
+end sub
+
 ' Re-point the row's focus at the captured button, and consume the capture.
 '
 ' Acts ONLY when that button is still in the row, or has moved into the stash (More
@@ -304,7 +328,10 @@ function consumeRowFocusCapture(group as object, stash as object) as boolean
 
   if restoredIndex < 0
     ' Moved into the menu: More stands in for it.
-    if not isValid(group.findNode("moreButton")) or not isValid(stash.findNode(focusedId)) then return false
+    if not isValid(group.findNode("moreButton")) or not isValid(stash.findNode(focusedId))
+      handOnLostRowFocus(group, stash)
+      return false
+    end if
     restoredIndex = group.getChildCount() - 1
   end if
 
@@ -312,6 +339,29 @@ function consumeRowFocusCapture(group as object, stash as object) as boolean
   if stash.focusCaptureHadFocus then group.getChild(restoredIndex).setFocus(true)
   return true
 end function
+
+' The focused button was REMOVED by the caller, and the row held focus.
+'
+' Removing a focused node leaves no node focused anywhere in the scene, and the
+' remote goes dead until something calls setFocus. Mutators that remove a button
+' they know may be focused re-focus it themselves; one that does not (a Trailer
+' button withdrawn by a late check while the user sits on it) left the screen deaf.
+' The caller's index is kept — it is still the caller's choice — clamped to the
+' row, and real focus is put there only when no node IN THE ROW holds it, so a caller
+' that re-focused the row is never overridden. A caller that sends focus somewhere
+' outside the row must do so after applyOverflow(): this cannot see focus elsewhere,
+' because isInFocusChain() covers only a node's own subtree and reading a node's
+' focusedChild is a script error.
+sub handOnLostRowFocus(group as object, stash as object)
+  if not stash.focusCaptureHadFocus or group.isInFocusChain() then return
+  count = group.getChildCount()
+  if count = 0 then return
+  index = rowFocusIndex(group)
+  if index < 0 then index = 0
+  if index > count - 1 then index = count - 1
+  setRowFocusIndex(group, index)
+  group.getChild(index).setFocus(true)
+end sub
 
 ' The restore itself, without recording focus. See restoreOverflowedButtons().
 sub restoreRow(group as object, stash as object)
@@ -335,7 +385,7 @@ sub restoreRow(group as object, stash as object)
     group.removeChild(moreButton)
     ' The stash takes CUSTODY of the detached More button, so applyButtonOverflow
     ' puts the same node back rather than building a fresh one. It cannot be
-    ' held in a local across the bracket: the nine row mutators call this half
+    ' held in a local across the bracket: the row mutators call this half
     ' directly and run arbitrary code before the other half, so the only place
     ' with a lifetime long enough to hold it is the row's own stash node.
     takeCustodyOfMoreButton(stash, moreButton)
@@ -354,7 +404,7 @@ sub restoreRow(group as object, stash as object)
   ' Detaching the focused node breaks the focus chain for the ENTIRE tree — not
   ' just this group — so without this the screen goes deaf: every later
   ' `if group.isInFocusChain()` guard answers false and silently skips its own
-  ' focus restore, including the ones the nine mutators already had. Measured on
+  ' focus restore, including the ones the row mutators already had. Measured on
   ' a Stick 4K / Ultra: after a mutation with More focused, no node in the scene
   ' held focus. Landing on More's old slot is the same rule the split itself
   ' uses — More stood in for the tail, so the tail's first button is where the
@@ -371,7 +421,7 @@ end sub
 '
 ' A `node` field on the stash rather than anything on `m`: it is per-row (a
 ' screen with two overflowing rows gets two, with no collision), it needs no
-' signature change at the nine call sites, and it keeps this file free of
+' signature change at the call sites, and it keeps this file free of
 ' component state.
 function custodiedMoreButton(stash as object) as object
   if not isValid(stash) or not stash.hasField("moreButton") then return invalid
@@ -428,7 +478,7 @@ sub applyButtonOverflow(group as object, stash as object, cap as integer, moreTe
   ' The same node every time, taken back from the stash's custody. Re-creating it
   ' is a BUG, not just churn: an open More menu holds this node as its
   ' returnFocusTo, so a fresh one would leave the dialog restoring focus to an
-  ' orphan. (Looking it up in the row here instead does not work — the nine
+  ' orphan. (Looking it up in the row here instead does not work — the row
   ' mutators call restoreOverflowedButtons() themselves before they mutate, so
   ' by the time this runs the button has already left the row.)
   moreButton = custodiedMoreButton(stash)

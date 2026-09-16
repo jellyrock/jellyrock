@@ -1441,6 +1441,18 @@ From Jellyfin 12.0 each alternate version of an item keeps its own playback posi
 
 **The cost accepted** is that an upgrade is never automatic: a viewer resuming a 1080p file on a 4K TV stays on it until they pick otherwise, so the version labels are what make the choice legible. Today those labels lead with the full `MediaSource.Name` and the stream info is cut off on screen, tracked as a #933 follow-up in [progress.md](progress.md). **Re-evaluate** if the server ever returns per-version positions in one item response — today a version other than the queried item costs its own `GET /UserItems/{id}/UserData` — or if it begins declaring which versions share a cut.
 
+## decision-id: row-focus-explicit-claim
+
+**date**: 2026-09-16
+**status**: accepted
+**related-files**: `source/utils/buttonOverflow.bs`, `components/ItemDetails.bs`, `tests/source/unit/components/ItemDetailsRowFocus.spec.bs`
+
+A button-row mutation that moves focus to a different button on purpose declares it with `claimRowFocus(stash, id)` between the two halves of the `unsplitButtons()` / `applyOverflow()` bracket. The bracket's focus capture (#918) puts focus back on the button that had it when the mutation began — right for changes that must not move focus, and it silently reverted every deliberate move: a new Resume never took focus from Play, on every item with progress, in v2.29.0 and v2.29.1.
+
+**Only a Resume-slot insert moves focus, and only off Play.** Resume taking over from Play swaps two actions that play the same item, so a mistimed OK costs nothing. Every other insert keeps focus on the button the user is on: a Person's Shuffle inserted ahead of Favorite shifts the index like the Playlist Watched insert instead of claiming, because Shuffle replaces no action and moving onto it would turn a pending OK into shuffled playback. This follows WCAG 2.2 SC 3.2.5 (Change on Request): focus moves only when the user asks it to.
+
+**Ruled out: setting focus after `applyOverflow()`.** It works today, but every future row change has to remember the ordering, and `button-row-bracket` proves only that both halves are present, not where the focus write sits — so nothing would catch the regression coming back. **Ruled out: skipping the restore when the focus index changed inside the bracket.** An index that shifts because a button was inserted or removed to its left is exactly what the capture exists to correct, so that rule reintroduces the bug #918 fixed. **The cost accepted** is one more per-call-site obligation that fails silently when missed — one claim in `ItemDetails` today, because every Resume-slot insert goes through one shared helper (`insertButtonAtFront`); `ItemDetailsRowFocus.spec.bs` pins it, and pins that Favorite keeps focus when Shuffle is inserted ahead of it. **Re-evaluate** with the [`button-row-model`](architecture/tech-debt.md#button-row-model) refactor, which removes the bracket and this obligation with it.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

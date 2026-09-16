@@ -1,0 +1,128 @@
+namespace tests
+
+  ' A Person's Shuffle button, which exists only when the person media chain finds media.
+  '
+  ' Every run of that chain starts by resetting ExtrasRowList.personHasMedia to false, so a
+  ' false on its own is not an answer: acting on it removed Shuffle on every Refresh.
+  ' ItemDetails removes Shuffle (or its placeholder) only once the run has FINISHED, which
+  ' ExtrasRowList.contentReady declares.
+  '
+  ' The chain here is real and finds nothing (no server in a unit run), so a test that
+  ' needs media sets personHasMedia itself after that answer — and waits for the answer
+  ' rather than racing it, since it arrives on another thread while the test runs.
+  @suite("ItemDetails - Person Shuffle button")
+  class ItemDetailsPersonTests extends tests.BaseTestSuite
+
+    private itemDetails as object
+    private extras as object
+
+    ' beforeEach, not setup: every test loads content into the node (tests/CLAUDE.md).
+    protected override function beforeEach()
+      super.beforeEach()
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+      m.itemDetails = CreateObject("roSGNode", "ItemDetails")
+      m.extras = m.itemDetails.findNode("extrasGrid")
+    end function
+
+    protected override function afterEach()
+      m.extras = invalid
+      m.itemDetails = invalid
+      super.afterEach()
+    end function
+
+    private function makePerson(id as string) as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = id
+      item.type = "Person"
+      item.name = "Person " + id
+      return item
+    end function
+
+    ' @return true when `nodeId` left the screen within timeoutMs
+    private function waitForNodeGone(nodeId as string, timeoutMs as integer) as boolean
+      clock = CreateObject("roTimespan")
+      while isValid(m.itemDetails.findNode(nodeId))
+        if clock.totalMilliseconds() >= timeoutMs then return false
+        sleep(20)
+      end while
+      return true
+    end function
+
+    ' A Person whose media chain has finished, then shown to have media.
+    private sub loadPersonWithShuffle(id as string)
+      m.itemDetails.itemContent = m.makePerson(id)
+      m.assertTrue(m.waitForNodeGone("shuffleLoadingButton", 5000), "precondition: the media chain answered")
+      m.assertTrue(m.extras.contentReady, "precondition: the media chain finished")
+      m.extras.personHasMedia = true
+      m.assertNotInvalid(m.itemDetails.findNode("shuffleButton"), "precondition: Shuffle shown")
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("while the media chain runs")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps Shuffle when a new run resets personHasMedia")
+    ' The reset every run starts with, delivered on its own — what Refresh does first.
+    function _()
+      m.loadPersonWithShuffle("person-1")
+
+      m.extras.personHasMedia = false
+
+      m.assertNotInvalid(m.itemDetails.findNode("shuffleButton"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("when the media chain finishes")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("removes the placeholder when the first run finds no media")
+    function _()
+      m.itemDetails.itemContent = m.makePerson("person-2")
+
+      m.assertTrue(m.waitForNodeGone("shuffleLoadingButton", 5000))
+      m.assertInvalid(m.itemDetails.findNode("shuffleButton"))
+    end function
+
+    @it("removes Shuffle when a Refresh run finds no media")
+    function _()
+      m.loadPersonWithShuffle("person-3")
+
+      m.itemDetails.refreshExtrasData = true
+
+      m.assertTrue(m.waitForNodeGone("shuffleButton", 5000))
+      m.assertInvalid(m.itemDetails.findNode("shuffleLoadingButton"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("when the row is rebuilt after the chain finished")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A reload (return from playback) rebuilds the row with a placeholder and does not
+    ' re-run the chain, so the known answer has to resolve it straight away.
+    @it("shows Shuffle straight away when the person has media")
+    function _()
+      m.loadPersonWithShuffle("person-4")
+
+      m.itemDetails.itemContent = m.makePerson("person-4")
+
+      m.assertNotInvalid(m.itemDetails.findNode("shuffleButton"))
+      m.assertInvalid(m.itemDetails.findNode("shuffleLoadingButton"))
+    end function
+
+    @it("drops the placeholder straight away when the person has no media")
+    function _()
+      m.itemDetails.itemContent = m.makePerson("person-5")
+      m.assertTrue(m.waitForNodeGone("shuffleLoadingButton", 5000), "precondition: the media chain answered")
+
+      m.itemDetails.itemContent = m.makePerson("person-5")
+
+      m.assertInvalid(m.itemDetails.findNode("shuffleLoadingButton"))
+      m.assertInvalid(m.itemDetails.findNode("shuffleButton"))
+    end function
+
+  end class
+
+end namespace

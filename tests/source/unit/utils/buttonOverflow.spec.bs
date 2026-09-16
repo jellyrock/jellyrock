@@ -286,6 +286,29 @@ namespace tests
       return row
     end function
 
+    ' Nodes a test put in the scene, removed after every test.
+    private mountedNodes = []
+
+    protected override function afterEach()
+      scene = m.top.getScene()
+      for each node in m.mountedNodes
+        scene.removeChild(node)
+      end for
+      m.mountedNodes = []
+      super.afterEach()
+    end function
+
+    ' Put the row in the scene and give real focus to the button at `focusIndex`.
+    private sub mountRow(row as object, focusIndex as integer)
+      scene = m.top.getScene()
+      scene.appendChild(row.group)
+      scene.appendChild(row.stash)
+      m.mountedNodes.push(row.group)
+      m.mountedNodes.push(row.stash)
+      row.group.buttonFocused = focusIndex
+      row.group.getChild(focusIndex).setFocus(true)
+    end sub
+
     private function idsOf(node as object) as object
       ids = []
       for i = 0 to node.getChildCount() - 1
@@ -480,6 +503,68 @@ namespace tests
       m.assertEqual(row.group.getChild(row.group.buttonFocused).id, "moreButton")
     end function
 
+    ' A mutator that moves focus ON PURPOSE claims the target; without the claim the
+    ' closing half puts focus back on the button the bracket opened on.
+    @it("lands on a claimed button instead of the captured one, when the row fits")
+    function _()
+      row = m.makeRow(3)
+      row.group.buttonFocused = 0
+
+      restoreOverflowedButtons(row.group, row.stash)
+      lead = CreateObject("roSGNode", "IconButton")
+      lead.id = "newLead"
+      row.group.insertChild(lead, 0)
+      row.group.buttonFocused = 0
+      claimRowFocus(row.stash, "newLead")
+      applyButtonOverflow(row.group, row.stash, 8, "More", "pkg:/more.png")
+
+      m.assertEqual(row.group.getChild(row.group.buttonFocused).id, "newLead")
+    end function
+
+    @it("lands on a claimed button when the row splits")
+    function _()
+      row = m.makeRow(4)
+      row.group.buttonFocused = 0
+
+      restoreOverflowedButtons(row.group, row.stash)
+      lead = CreateObject("roSGNode", "IconButton")
+      lead.id = "newLead"
+      row.group.insertChild(lead, 0)
+      row.group.buttonFocused = 0
+      claimRowFocus(row.stash, "newLead")
+      applyButtonOverflow(row.group, row.stash, 4, "More", "pkg:/more.png")
+
+      m.assertNotInvalid(row.group.findNode("moreButton"), "precondition: the row split")
+      m.assertEqual(row.group.getChild(row.group.buttonFocused).id, "newLead")
+    end function
+
+    @it("still restores the captured button when nothing is claimed")
+    ' The control: the same insert without a claim keeps the original button.
+    function _()
+      row = m.makeRow(3)
+      row.group.buttonFocused = 0
+
+      restoreOverflowedButtons(row.group, row.stash)
+      lead = CreateObject("roSGNode", "IconButton")
+      lead.id = "newLead"
+      row.group.insertChild(lead, 0)
+      row.group.buttonFocused = 0
+      applyButtonOverflow(row.group, row.stash, 8, "More", "pkg:/more.png")
+
+      m.assertEqual(row.group.getChild(row.group.buttonFocused).id, "btn0")
+    end function
+
+    @it("ignores a claim made outside a bracket")
+    function _()
+      row = m.makeRow(3)
+      row.group.buttonFocused = 1
+
+      claimRowFocus(row.stash, "btn2")
+      applyButtonOverflow(row.group, row.stash, 8, "More", "pkg:/more.png")
+
+      m.assertEqual(row.group.buttonFocused, 1)
+    end function
+
     ' The caller's own choice stands when the focused button is gone — this is
     ' what setupButtons' "fall back to index 0 when Delete is gone" relies on.
     @it("leaves the focus index alone when the focused button was removed")
@@ -493,6 +578,70 @@ namespace tests
       applyButtonOverflow(row.group, row.stash, 8, "More", "pkg:/more.png")
 
       m.assertEqual(row.group.buttonFocused, 0)
+    end function
+
+    ' Removing the focused node leaves nothing focused anywhere, so these need a MOUNTED
+    ' row: hasFocus() is false for a detached node whatever the code does.
+    @it("focuses the button at the caller's index when the focused button was removed")
+    function _()
+      row = m.makeRow(4)
+      m.mountRow(row, 2)
+
+      restoreOverflowedButtons(row.group, row.stash)
+      row.group.removeChild(row.group.getChild(2))
+      row.group.buttonFocused = 1
+      applyButtonOverflow(row.group, row.stash, 8, "More", "pkg:/more.png")
+
+      m.assertTrue(row.group.isInFocusChain(), "the row must not go deaf")
+      m.assertEqual(row.group.buttonFocused, 1)
+      m.assertTrue(row.group.getChild(1).hasFocus())
+    end function
+
+    @it("clamps the caller's index to the row when the removed button was the last")
+    function _()
+      row = m.makeRow(3)
+      m.mountRow(row, 2)
+
+      restoreOverflowedButtons(row.group, row.stash)
+      row.group.removeChild(row.group.getChild(2))
+      applyButtonOverflow(row.group, row.stash, 8, "More", "pkg:/more.png")
+
+      m.assertEqual(row.group.buttonFocused, 1)
+      m.assertTrue(row.group.getChild(1).hasFocus())
+    end function
+
+    @it("leaves focus inside the row where the caller put it")
+    ' A caller that re-focused the row itself is not second-guessed, even when its
+    ' index disagrees with the node it focused.
+    function _()
+      row = m.makeRow(4)
+      m.mountRow(row, 2)
+
+      restoreOverflowedButtons(row.group, row.stash)
+      row.group.removeChild(row.group.getChild(2))
+      row.group.buttonFocused = 1
+      row.group.getChild(0).setFocus(true)
+      applyButtonOverflow(row.group, row.stash, 8, "More", "pkg:/more.png")
+
+      m.assertTrue(row.group.getChild(0).hasFocus())
+      m.assertEqual(row.group.buttonFocused, 1)
+    end function
+
+    @it("takes no focus when the row did not have it")
+    function _()
+      row = m.makeRow(4)
+      m.mountRow(row, 2)
+      elsewhere = CreateObject("roSGNode", "IconButton")
+      m.mountedNodes.push(elsewhere)
+      m.top.getScene().appendChild(elsewhere)
+      elsewhere.setFocus(true)
+
+      restoreOverflowedButtons(row.group, row.stash)
+      row.group.removeChild(row.group.getChild(2))
+      applyButtonOverflow(row.group, row.stash, 8, "More", "pkg:/more.png")
+
+      m.assertTrue(elsewhere.hasFocus())
+      m.assertFalse(row.group.isInFocusChain())
     end function
 
     @it("uses a capture once, so a later apply without a restore does not replay it")
