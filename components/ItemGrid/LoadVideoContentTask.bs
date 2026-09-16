@@ -145,6 +145,9 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
 
   ' Early metadata extraction - MediaSources may not exist yet for Live TV
   if isValid(mediaSources) and isValidAndNotEmpty(mediaSources)
+    ' Read the version that is actually PLAYING, not the server's default (mediaSourceForId).
+    playedSource = mediaSourceForId(mediaSources, mediaSourceId)
+
     ' Duration source priority for setting video.content.length (needed for seeking):
     '   1. mediaSource.RunTimeTicks  — file's probed duration (authoritative when available)
     '   2. Size × 8 / Bitrate        — actual file duration estimate (good for recordings
@@ -155,11 +158,11 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     ' it reflects the actual recorded bytes, not the program's scheduled length.
     effectiveLengthSeconds = 0
     durationSource = "none"
-    if isValid(mediaSources[0].RunTimeTicks) and mediaSources[0].RunTimeTicks > 0
-      effectiveLengthSeconds = int(mediaSources[0].RunTimeTicks / 10000000)
+    if isValid(playedSource.RunTimeTicks) and playedSource.RunTimeTicks > 0
+      effectiveLengthSeconds = int(playedSource.RunTimeTicks / 10000000)
       durationSource = "mediaSource.RunTimeTicks"
-    else if isValid(mediaSources[0].Size) and mediaSources[0].Size > 0 and isValid(mediaSources[0].Bitrate) and mediaSources[0].Bitrate > 0
-      effectiveLengthSeconds = int((mediaSources[0].Size * 8) / mediaSources[0].Bitrate)
+    else if isValid(playedSource.Size) and playedSource.Size > 0 and isValid(playedSource.Bitrate) and playedSource.Bitrate > 0
+      effectiveLengthSeconds = int((playedSource.Size * 8) / playedSource.Bitrate)
       durationSource = "size/bitrate"
     else if isValid(meta.runTimeTicks) and meta.runTimeTicks > 0
       effectiveLengthSeconds = int(meta.runTimeTicks / 10000000)
@@ -171,8 +174,8 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     m.log.info("Duration resolved", "seconds", effectiveLengthSeconds, "source", durationSource)
 
     ' Find first video stream - MediaStreams[0] might be subtitle/audio
-    if isValid(mediaSources[0].MediaStreams)
-      videoStream = getFirstVideoStream(mediaSources[0].MediaStreams)
+    if isValid(playedSource.MediaStreams)
+      videoStream = getFirstVideoStream(playedSource.MediaStreams)
       if isValid(videoStream) and isValid(videoStream.Width) and isValid(videoStream.Height)
         video.MaxVideoDecodeResolution = [videoStream.Width, videoStream.Height]
       end if

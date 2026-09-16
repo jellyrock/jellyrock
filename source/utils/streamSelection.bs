@@ -855,6 +855,29 @@ function getDeviceVideoCapabilities(mockCapabilities = invalid as dynamic) as ob
   }
 end function
 
+' mediaSourceForId: The MediaSource a playback request is for.
+'
+' mediaSources[0] is only the server's default. A version picked in the Video dropdown sits
+' elsewhere in the list, and from Jellyfin 12.0 the server moves the in-progress version to
+' the front, so anything about the file being PLAYED — its runtime, bitrate, container or
+' streams — has to be read from the source the request names. Ids are compared ignoring
+' case, as the server compares them.
+'
+' @param {dynamic} mediaSources - MediaSourceInfo array
+' @param {dynamic} mediaSourceId - the id the request names ("" or invalid = the default)
+' @return {dynamic} the matching source; mediaSources[0] when none matches; invalid when there
+'                   are no sources
+function mediaSourceForId(mediaSources as dynamic, mediaSourceId as dynamic) as dynamic
+  if type(mediaSources) <> "roArray" or mediaSources.count() = 0 then return invalid
+  if isValidAndNotEmpty(mediaSourceId)
+    wanted = LCase(mediaSourceId)
+    for each source in mediaSources
+      if isValid(source) and isValidAndNotEmpty(source.Id) and LCase(source.Id) = wanted then return source
+    end for
+  end if
+  return mediaSources[0]
+end function
+
 ' findBestVideoSource: Selects the optimal MediaSource for the device's capabilities
 '
 ' Scoring algorithm:

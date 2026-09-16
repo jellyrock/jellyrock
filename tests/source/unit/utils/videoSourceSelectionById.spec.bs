@@ -1,0 +1,82 @@
+import "pkg:/source/utils/streamSelection.bs"
+
+namespace tests
+
+  ' mediaSourceForId — which MediaSource a playback request is for.
+  '
+  ' Playback used to read the file being played from mediaSources[0], the server's default.
+  ' A version picked in the Video dropdown sits elsewhere in the list, and from Jellyfin 12.0
+  ' the in-progress version moves to the front, so [0] can be a different file: on a Stick 4K
+  ' a 1843 s 1080p version played with "Duration resolved seconds 1795", its 720p sibling's.
+  @suite("videoSourceSelection - mediaSourceForId()")
+  class VideoSourceSelectionByIdTests extends tests.BaseTestSuite
+
+    ' A default version first, then the one being played.
+    private function versions() as object
+      return [
+        { Id: "default1080", RunTimeTicks: 18432170000&, Bitrate: 8304762 },
+        { Id: "picked720", RunTimeTicks: 17950000000&, Bitrate: 3170977 }
+      ]
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a request that names a version")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns the named version, not the first")
+    function _()
+      source = mediaSourceForId(m.versions(), "picked720")
+
+      m.assertEqual(source.Id, "picked720")
+      m.assertEqual(source.Bitrate, 3170977)
+    end function
+
+    @it("ignores GUID casing, as the server does")
+    function _()
+      m.assertEqual(mediaSourceForId(m.versions(), "PICKED720").Id, "picked720")
+    end function
+
+    @it("falls back to the first version when the named one is not listed")
+    ' A version merged or split on the server since the list was read.
+    function _()
+      m.assertEqual(mediaSourceForId(m.versions(), "gone").Id, "default1080")
+    end function
+
+    @it("skips sources that carry no id")
+    function _()
+      sources = [{ Name: "no id" }, { Id: "picked720" }]
+      m.assertEqual(mediaSourceForId(sources, "picked720").Id, "picked720")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a request that names no version")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns the first version for an empty id")
+    function _()
+      m.assertEqual(mediaSourceForId(m.versions(), "").Id, "default1080")
+    end function
+
+    @it("returns the first version for an invalid id")
+    function _()
+      m.assertEqual(mediaSourceForId(m.versions(), invalid).Id, "default1080")
+    end function
+
+    @it("returns the only version of a single-version item")
+    function _()
+      m.assertEqual(mediaSourceForId([{ Id: "only" }], "").Id, "only")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("no sources")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns invalid for an empty or missing list")
+    function _()
+      m.assertInvalid(mediaSourceForId([], "picked720"))
+      m.assertInvalid(mediaSourceForId(invalid, "picked720"))
+    end function
+
+  end class
+
+end namespace
