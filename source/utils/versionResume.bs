@@ -205,6 +205,7 @@ namespace versionResume
   '     positions         object  sourceId -> ticks already known (POSITION_UNREADABLE = failed)
   '     inProgressSourceId string the version the server says is in progress ("" = none)
   '     policy            dynamic resumePolicyFrom(), or invalid when not read yet
+  '     isPolicyUnreadable boolean the read was tried and failed (optional, default false)
   '   }
   ' @return {object} {
   '     ticks          longinteger  where Resume starts (0 = no Resume button)
@@ -264,6 +265,9 @@ namespace versionResume
     if carriedTicks <= 0 then return state
 
     if not versionResume.isResumePolicy(ctx.policy)
+      ' A read that failed will not be answered: carry nothing (wouldMarkPlayed fails
+      ' closed), rather than wait on the loading button forever.
+      if isValid(ctx.isPolicyUnreadable) and ctx.isPolicyUnreadable then return state
       state.isLoading = true
       state.needsPolicy = true
       return state

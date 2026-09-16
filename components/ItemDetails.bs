@@ -1682,7 +1682,7 @@ function resolveResumeState() as object
   mediaSources = invalid
   if isValid(item.mediaSourcesData) then mediaSources = item.mediaSourcesData.mediaSources
 
-  answer = versionResume.resumeStateFor({
+  ctx = {
     itemId: item.id,
     itemPositionTicks: item.playbackPositionTicks,
     itemRuntimeTicks: item.runTimeTicks,
@@ -1690,33 +1690,47 @@ function resolveResumeState() as object
     selectedId: m.top.selectedVideoStreamId,
     positions: state.positions,
     inProgressSourceId: state.inProgressSourceId,
-    policy: serverResumePolicy()
-  })
+    policy: serverResumePolicy(),
+    isPolicyUnreadable: state.hasConfigFailed
+  }
+
+  ' Ask, then start whatever the answer still needs. A request that cannot even be built
+  ' records its failure on the spot, which changes the answer, so ask again rather than
+  ' return a "loading" that no reply will ever finish. It can need at most three things —
+  ' this version's position, the in-progress version's, the thresholds — so at most three
+  ' can fail on the spot.
+  answer = versionResume.resumeStateFor(ctx)
+  for attempt = 1 to 3
+    if answer.needsSourceId <> ""
+      if requestVersionPosition(answer.needsSourceId) then exit for
+    else if answer.needsPolicy
+      if requestServerResumePolicy() then exit for
+      ctx.isPolicyUnreadable = state.hasConfigFailed
+    else
+      exit for
+    end if
+    answer = versionResume.resumeStateFor(ctx)
+  end for
 
   resumeState.ticks = answer.ticks
   resumeState.runtimeTicks = answer.runtimeTicks
   resumeState.isLoading = answer.isLoading
-
-  ' Start whatever the answer says is missing. Each is a no-op once in flight or already
-  ' failed, so re-asking on every redraw costs nothing.
-  if answer.needsSourceId <> "" then requestVersionPosition(answer.needsSourceId)
-  if answer.needsPolicy then requestServerResumePolicy()
-
   return resumeState
 end function
 
 ' requestVersionPosition: Fetch one version's own position, once per content load.
 '
 ' @param {string} sourceId - the version (MediaSource) id
-sub requestVersionPosition(sourceId as string)
+' @return {boolean} true while a reply is on its way; false when the request could not be
+'                   built, in which case the position is already recorded as unreadable
+function requestVersionPosition(sourceId as string) as boolean
   state = m.versionResume
-  if not isValid(state) or state.pending.doesExist(sourceId) then return
+  if not isValid(state) or state.pending.doesExist(sourceId) then return true
 
   req = GetApi().BuildGetItemUserDataRequest(sourceId)
   if not isValid(req)
     state.positions[sourceId] = versionResume.POSITION_UNREADABLE
-    manageResumeButton()
-    return
+    return false
   end if
 
   state.pending[sourceId] = true
@@ -1727,7 +1741,8 @@ sub requestVersionPosition(sourceId as string)
     m.log.warn("version user data fetch failed", "sourceId", ctx.sourceId, "reason", err.reason)
     onVersionPositionLoaded(ctx, versionResume.POSITION_UNREADABLE)
   end sub)
-end sub
+  return true
+end function
 
 ' onVersionPositionLoaded: Record a fetched version position and redraw Resume, unless the
 ' content has been reloaded since the fetch started.
@@ -1754,14 +1769,18 @@ end function
 ' nothing is carried — a carried position past a threshold would mark the item played and
 ' erase the place being resumed from. A failed read is remembered only for this content
 ' load, not on the server node, so the next one asks again.
-sub requestServerResumePolicy()
+'
+' @return {boolean} true while a reply is on its way; false when the read has already
+'                   failed for this content load, or its request could not be built
+function requestServerResumePolicy() as boolean
   state = m.versionResume
-  if not isValid(state) or state.isConfigPending or state.hasConfigFailed then return
+  if not isValid(state) or state.isConfigPending then return true
+  if state.hasConfigFailed then return false
 
   req = GetApi().BuildGetServerConfigurationRequest()
   if not isValid(req)
     state.hasConfigFailed = true
-    return
+    return false
   end if
 
   state.isConfigPending = true
@@ -1772,7 +1791,8 @@ sub requestServerResumePolicy()
     m.log.warn("server configuration fetch failed", "reason", err.reason)
     onServerResumePolicyLoaded(ctx, invalid)
   end sub)
-end sub
+  return true
+end function
 
 ' onServerResumePolicyLoaded: Store read thresholds for the session and redraw Resume.
 sub onServerResumePolicyLoaded(ctx as object, policy as dynamic)

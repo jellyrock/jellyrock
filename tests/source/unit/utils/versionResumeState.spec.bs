@@ -171,6 +171,23 @@ namespace tests
       m.assertEqual(notCarrying.ticks, m.secs(120))
     end function
 
+    @it("stops waiting and carries nothing once the server thresholds could not be read")
+    ' A failed read is not retried for this content load, so answering "loading" again
+    ' would leave the Resume slot spinning with nothing left to finish it.
+    function _()
+      state = versionResume.resumeStateFor(m.ctx({
+        selectedId: "alternate",
+        positions: { primary: m.secs(600), alternate: 0 },
+        inProgressSourceId: "primary",
+        policy: invalid,
+        isPolicyUnreadable: true
+      }))
+
+      m.assertEqual(state.ticks, 0&)
+      m.assertFalse(state.isLoading)
+      m.assertFalse(state.needsPolicy)
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("carrying a position onto an explicitly picked version")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
