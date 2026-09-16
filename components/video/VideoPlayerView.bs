@@ -131,6 +131,9 @@ sub init()
   m.playbackTimer.observeField("fire", "reportPlayback")
   m.bufferPercentage = 0 ' Track whether content is being loaded
   m.isPlayReported = false
+  ' The source reports name, and the source most recently loaded — see reportPlayback.
+  m.reportedMediaSourceId = ""
+  m.loadedMediaSourceId = ""
   m.playerParked = false ' see parkPlayerAfterSupersede
   m.top.transcodeReasons = []
   m.bufferCheckTimer.duration = 30
@@ -719,6 +722,9 @@ sub onVideoSourceChange()
   ' Save the current video position
   m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&)
 
+  ' No progress report until the new stream plays (the `playing` branch restarts this): a
+  ' tick after the new source loads would report the old stream's position against it.
+  m.playbackTimer.control = "stop"
   m.top.control = "stop"
 
   ' Re-determine best audio stream for the new source's MediaStreams
@@ -1058,6 +1064,7 @@ sub onVideoContentLoaded()
   m.isApplyingOwnSelection = true
   m.top.mediaSourceId = videoContent[0].mediaSourceId
   m.isApplyingOwnSelection = false
+  m.loadedMediaSourceId = videoContent[0].mediaSourceId ?? ""
 
   ' Reset retry flags so subsequent reloads (audio/subtitle changes) use fresh evaluation.
   m.LoadMetaDataTask.shouldBypassDoviPreservation = false
@@ -1911,6 +1918,20 @@ sub reportPlayback(state = "update" as string)
     "PositionTicks": int(positionSeconds) * 10000000&, 'Ensure a LongInteger is used
     "IsPaused": (m.top.state = "paused")
   }
+  ' Name the file that is playing. Jellyfin 12.0+ saves progress against this version
+  ' (alternate versions keep their own positions); older servers use it only for the
+  ' now-playing display.
+  '
+  ' On an in-player version switch the old stream's stop report can still be pending when
+  ' the new source has loaded, and naming the new file there would save the old file's
+  ' position on it. So a stop or finished report keeps naming the file reports have been
+  ' naming, and only start and update — sent by the stream that is playing — move on to
+  ' the loaded one. Keyed on the report, not on event order: nothing then depends on
+  ' `stopped` arriving before the new source loads, or arriving at all.
+  if (state <> "stop" and state <> "finished") or m.reportedMediaSourceId = ""
+    m.reportedMediaSourceId = m.loadedMediaSourceId
+  end if
+  if m.reportedMediaSourceId <> "" then params.MediaSourceId = m.reportedMediaSourceId
   ' Live TV requires MediaSourceId/LiveStreamId for server-side stream tracking
   if isLiveTvPlayback() and isValid(m.top.transcodeParams)
     params.append({

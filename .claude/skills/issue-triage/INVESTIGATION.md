@@ -9,7 +9,7 @@ If conversation context is intact, the prep is right there (gh issue view result
 ```text
 Issue #N: <title>
 Status: <open / closed>
-Labels: bug, needs-triage (etc.)
+Labels: bug (etc.)
 Reporter: @<login>
 
 Classification: bug | feature | enhancement | arch-decision-needed

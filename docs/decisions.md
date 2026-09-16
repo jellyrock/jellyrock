@@ -1437,6 +1437,20 @@ Home joins the `screen-load` family ([ADR 0027](adr/0027-screen-readiness-ledger
 
 **Consequence, read off a Stick 4K:** with the default section order (My Media, Continue Watching, Next Up, Active Recordings, On Now, Latest Media) the span is My Media, Continue Watching and Next Up, so **no latest-media row gates Home's `paintMs`**. Latest rows enter the span only with a reordered layout, or when rows above them come back empty and are removed. A Home `paintMs` is therefore only comparable across runs with the same section order. **Re-evaluate** if `numRows` or the default section order changes, or if paint should also wait for poster textures.
 
+## decision-id: per-version-resume-selection
+
+**date**: 2026-09-16
+**status**: accepted
+**related-files**: `source/utils/versionResume.bs`, `components/ItemDetails.bs`, `components/ItemGrid/LoadVideoContentTask.bs`, `source/utils/quickplay.bs`, `components/video/VideoPlayerView.bs`, `components/data/jellyfin/JellyfinServer.xml`
+
+From Jellyfin 12.0 each alternate version of an item keeps its own playback position (jellyfin#17044), so a client has to choose which version a Resume targets. **Quality decides fresh starts; position decides resumes.** With nothing in progress, playback picks the file that suits the device (`findBestVideoSource`, unchanged). Once a position exists, it continues the file that HOLDS it, and when several versions are in progress the most recently played one wins — the same rule the server applies (`VersionPlaybackSelector.SelectMostRecentlyPlayed`), so the details screen and the Continue Watching row never disagree about where an item resumes.
+
+**Ruled out: resuming the device-best file at another version's position.** Two releases of one episode measured 47 s apart in runtime on the 12.0 test server, and neither the names (user-controlled) nor the runtime lengths tell a re-encode from a different cut — so the app cannot know that a timestamp means the same moment in another file. Picking by quality when two versions are both in progress is worse still: their positions differ, so it silently moves the viewer to a different, and usually older, place in the story.
+
+**Ruled out: the never-carry rule `jellyfin-web` uses, and always-carry.** When the user EXPLICITLY picks a version that has no position of its own, the in-progress position is carried onto it; web instead offers nothing and leaves the viewer to scrub back, which is the common "started on the phone, finishing on the 4K TV" case. The carry is bounded by the server's own played rule, mirrored branch for branch from `UserDataManager.UpdatePlayState` (`versionResume.wouldMarkPlayed`): past `MaxResumePct`, inside the last second, or onto a version shorter than `MinResumeDurationSeconds`. Its thresholds are read once per server into `JellyfinServer.resumePolicy`, both or neither, and the guard fails closed when they cannot be read. Every one of those branches sets `Played`, and finishing ANY version marks every version played and clears every position (`Video.PropagatePlayedState`, verified on 12.0) — so an unguarded carry onto a shorter cut would erase the place being resumed from. `MinResumePct` is deliberately not a branch: the server zeroes a position below it without setting `Played`, so it cannot erase anything. The in-player version switch does not apply this guard yet; that is a #933 follow-up in [progress.md](progress.md).
+
+**The cost accepted** is that an upgrade is never automatic: a viewer resuming a 1080p file on a 4K TV stays on it until they pick otherwise, so the version labels are what make the choice legible. Today those labels lead with the full `MediaSource.Name` and the stream info is cut off on screen, tracked as a #933 follow-up in [progress.md](progress.md). **Re-evaluate** if the server ever returns per-version positions in one item response — today a version other than the queried item costs its own `GET /UserItems/{id}/UserData` — or if it begins declaring which versions share a cut.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

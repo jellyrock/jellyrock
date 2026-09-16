@@ -9,7 +9,7 @@ related-files:
   - components/manager/QueueManager.bs
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
-last-reviewed: 2026-09-14
+last-reviewed: 2026-09-15
 ---
 
 # The User Journey
@@ -181,7 +181,7 @@ The component contains:
 - A title block with metadata (year, runtime, rating, director, genres, tagline, overview)
 - A button row (`buttonGrp`) — buttons are dynamically generated based on item type and play state:
   - **Play** — primary action
-  - **Resume** — replaces Play if the item has playback progress
+  - **Resume** — replaces Play if the item has playback progress. On Jellyfin 12.0+ an item with alternate versions resumes per version: Resume follows the version selected in the Video dropdown and can load that version's position behind a loading button (see [`playback.md`](playback.md#alternate-versions-and-resume--sourceutilsversionresumebs))
   - **Series Play** — for series, plays from next-up episode
   - **Shuffle** — for collections and playlists
   - **Trailer** — if a remote trailer URL is available

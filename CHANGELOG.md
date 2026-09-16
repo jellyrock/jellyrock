@@ -9,6 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Save and resume progress per version on Jellyfin 12.0 ([#940](https://github.com/jellyrock/jellyrock/pull/940))
+
+## [2.29.1](https://github.com/jellyrock/jellyrock/compare/v2.29.0...v2.29.1) - 2026-09-16
+
+### Fixed
+
 - Stop the extras row counter flickering on `ItemDetails` ([#922](https://github.com/jellyrock/jellyrock/pull/922))
 - Hide the series Resume button until an episode has been watched ([#927](https://github.com/jellyrock/jellyrock/pull/927))
 

@@ -33,7 +33,8 @@ Wraps the YAML-form issue templates as a programmatic API. Pastes from Reddit / 
 - **Auto-submitting.** Never call `gh issue create` before the user has confirmed the rendered body, even if it looks complete.
 - **Auto-deciding a duplicate.** Surface candidates and let the user pick comment-vs-file-vs-proceed; duplicate calls are judgment.
 - **Paraphrasing the reporter into corporate-speak.** Lift the user's own wording verbatim where possible — a sanitized bug report loses diagnostic signal.
-- **Forgetting the explicit `--label`.** `gh issue create` does NOT trigger the YAML template's auto-labels (those fire only via the issue UI); without an explicit `--label` the issue lands without `bug` / `needs-triage` etc.
+- **Forgetting the explicit `--label`.** `gh issue create` does NOT trigger the YAML template's auto-labels (those fire only via the issue UI); without an explicit `--label` the issue lands without `bug` / `enhancement` etc.
+- **Passing a label the repo doesn't have.** `gh issue create --label <missing>` fails the WHOLE create (`could not add label: '<name>' not found`) and files nothing, while the issue UI silently drops the same label. Read the labels from the chosen template's `labels:` field (never from a list copied into this file) and confirm each exists before submitting.
 
 **When NOT to use.**
 
@@ -51,9 +52,11 @@ Wraps the YAML-form issue templates as a programmatic API. Pastes from Reddit / 
 
 Read [`.github/ISSUE_TEMPLATE/`](../../../.github/ISSUE_TEMPLATE/). Three templates exist:
 
-- `bug_report.yml` — auto-labels `bug` + `needs-triage`. Required: description, repro steps, JellyRock version, Roku device info, server connection type.
-- `feature_request.yml` — auto-labels `feature-request` + `needs-triage`. Required: problem, proposed solution.
-- `enhancement_request.yml` — auto-labels `enhancement` + `needs-triage`. Required: existing feature name, proposed change.
+- `bug_report.yml` — Required: description, repro steps, JellyRock version, Roku device info, server connection type.
+- `feature_request.yml` — Required: problem, proposed solution.
+- `enhancement_request.yml` — Required: existing feature name, proposed change.
+
+Each template's auto-labels live in its own `labels:` field — read them from the file you pick rather than from this list, so a template edit can't leave the skill passing a stale label.
 
 Classify the input:
 
@@ -142,6 +145,14 @@ Ask: "Submit this as a new issue, or revise?" Wait for confirmation. Don't auto-
 
 ### Step 7 — Submit
 
+Confirm every label exists first — a missing one makes `gh issue create` file nothing:
+
+```bash
+gh label list --limit 200 --json name --jq '.[].name' | grep -Fx -e <label> [-e <label> ...]
+```
+
+If a template label is missing, stop and surface it to the user (the template is stale) rather than dropping it silently.
+
 ```bash
 gh issue create \
   --title "<title>" \
@@ -152,7 +163,7 @@ EOF
   --label <auto-labels-comma-separated>
 ```
 
-Pass `--label` explicitly even though the template auto-applies them — `gh issue create` doesn't trigger the YAML-template labels (those only apply when the issue UI is used). Without the explicit `--label`, the issue lands without `bug` / `needs-triage` etc.
+Pass `--label` explicitly even though the template auto-applies them — `gh issue create` doesn't trigger the YAML-template labels (those only apply when the issue UI is used). Without the explicit `--label`, the issue lands without `bug` / `enhancement` etc.
 
 After creation, print the issue URL.
 

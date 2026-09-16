@@ -23,6 +23,7 @@ import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/trackClusterFocus.bs"
 import "pkg:/source/utils/translate.bs"
+import "pkg:/source/utils/versionResume.bs"
 
 ' Gap between bottom of itemInfoRows and top of extras pane when extras are open
 const ITEM_DETAILS_EXTRAS_PADDING = 24
@@ -205,6 +206,12 @@ sub init()
   m.trailerCheckSeq = 0
   ' Same, for the subtitle-provider check that gates Manage Subtitles.
   m.subtitleProviderCheckSeq = 0
+  ' Per-version resume state for the loaded content (see resetVersionResume), and the
+  ' counter that keys its fetches and tells a stale reply from a current one.
+  m.versionResume = invalid
+  m.versionResumeSeq = 0
+  ' Whether the readiness ledger holds an open Resume fill (see trackVersionResumeFill).
+  m.isVersionResumeFillOpen = false
 
   m.isFirstRun = true
   m.isDeepLinkLaunch = false
@@ -511,11 +518,11 @@ sub dispatchDetailButtonAction(buttonId as string)
     if item.type = "Series"
       resumeSeriesNextUp()
     else if not isPlayAllType(item.type)
-      resumeTicks = 0&
-      if isValid(item.playbackPositionTicks) and item.playbackPositionTicks > 0
-        resumeTicks = item.playbackPositionTicks
-      end if
-      startPlayFromDetail(resumeTicks)
+      ' The selected version's position, which on a per-version server may not be the
+      ' item's own. A press while that is still loading does nothing.
+      resumeState = resolveResumeState()
+      if resumeState.isLoading then return
+      startPlayFromDetail(resumeState.ticks)
     end if
   else if buttonId = "trailerButton"
     ' Play this item's trailer(s) via the QueueManager task path. Use itemContent.id (the
@@ -1186,6 +1193,7 @@ sub toggleWatched()
         m.top.refreshResumeData = not m.top.refreshResumeData
       else if ctx.newState
         ' Non-Series marking watched: server clears playback position — drop the stale resume button.
+        clearVersionResumePositions()
         removeResumeButtonWithFocus(m.top.findNode("resumeButton"))
       end if
     else
@@ -1239,18 +1247,9 @@ sub onRefreshItemDetailsData()
     if isValid(resumeButton)
       resumeButton.isLoading = true
     else if not isValid(m.top.findNode("resumeLoadingButton"))
-      m.resumeLoadingButton = CreateObject("roSGNode", "IconButton")
-      m.resumeLoadingButton.id = "resumeLoadingButton"
-      m.resumeLoadingButton.icon = "pkg:/images/icons/resume_$$RES$$.png"
-      if isValid(m.top.nextUpEpisode) and isValidAndNotEmpty(m.top.nextUpEpisode.id)
-        m.resumeLoadingButton.text = getResumeButtonText(m.top.nextUpEpisode)
-      else
-        m.resumeLoadingButton.text = translate(translationKeys.ButtonResume)
-      end if
-      m.resumeLoadingButton.isLoading = true
       ' Whole row around the index-0 insert, then re-split. See applyOverflow().
       unsplitButtons()
-      m.buttonGrp.insertChild(m.resumeLoadingButton, 0)
+      m.buttonGrp.insertChild(createResumeLoadingButton(seriesResumeLoadingText()), 0)
       ' applyOverflow() re-points the focus index at the same button by ID.
       applyOverflow()
     end if
@@ -1335,49 +1334,16 @@ sub onNextUpEpisodeChanged()
   if isValid(item) and isValidAndNotEmpty(item.id)
     resumeText = getResumeButtonText(item)
     if not isValid(resumeButton)
-      resumeButton = CreateObject("roSGNode", "ResumeButton")
-      resumeButton.id = "resumeButton"
-      resumeButton.icon = "pkg:/images/icons/resume_$$RES$$.png"
-      resumeButton.text = resumeText
-      resumeButton.playbackPositionTicks = item.playbackPositionTicks
-      resumeButton.runtimeTicks = item.runTimeTicks
+      resumeButton = createResumeButton(resumeText, item.playbackPositionTicks, item.runTimeTicks)
 
       if isValid(loadingButton)
-        ' Swap the LoadingButton placeholder for the real resume button.
-        ' The user may have moved focus to another button before async data arrived,
-        ' so capture which button has focus before the remove/insert.
-        loadingIndex = getButtonIndex("resumeLoadingButton")
-        wasFocused = loadingButton.isInFocusChain()
-        currentFocusIndex = m.buttonGrp.buttonFocused
-        m.buttonGrp.removeChild(loadingButton)
-        m.resumeLoadingButton = invalid
-        m.buttonGrp.insertChild(resumeButton, loadingIndex)
-        ' Remove then insert at same index is a net-zero index shift,
-        ' so the original focusIndex is still correct.
-        m.buttonGrp.buttonFocused = currentFocusIndex
-        if wasFocused
+        swapResumeLoadingButton(loadingButton, resumeButton)
+        if m.buttonGrp.isInFocusChain()
           focusButtonGroupChild()
         end if
       else
         ' No placeholder (refresh path) — insert at position 0
-        currentFocusIndex = m.buttonGrp.buttonFocused
-        currentFocusedButton = invalid
-        if isValid(currentFocusIndex) and currentFocusIndex >= 0 and currentFocusIndex < m.buttonGrp.getChildCount()
-          currentFocusedButton = m.buttonGrp.getChild(currentFocusIndex)
-        end if
-
-        m.buttonGrp.insertChild(resumeButton, 0)
-
-        if isValid(currentFocusedButton) and currentFocusedButton.id = "playButton"
-          m.buttonGrp.buttonFocused = 0
-        else if isValid(currentFocusIndex) and currentFocusIndex >= 0
-          m.buttonGrp.buttonFocused = currentFocusIndex + 1
-        else
-          m.buttonGrp.buttonFocused = 0
-        end if
-      end if
-      if m.buttonGrp.isInFocusChain()
-        focusButtonGroupChild()
+        insertButtonAtFront(resumeButton)
       end if
     else
       ' Resume button already present — update text and tick values
@@ -1388,20 +1354,7 @@ sub onNextUpEpisodeChanged()
     end if
   else
     ' No resume data — remove the LoadingButton placeholder if still present
-    if isValid(loadingButton)
-      currentFocusIndex = m.buttonGrp.buttonFocused
-      loadingIndex = getButtonIndex("resumeLoadingButton")
-      m.buttonGrp.removeChild(loadingButton)
-      m.resumeLoadingButton = invalid
-      if isValid(loadingIndex) and loadingIndex >= 0 and currentFocusIndex >= loadingIndex
-        focusIdx = currentFocusIndex - 1
-        if focusIdx < 0 then focusIdx = 0
-        m.buttonGrp.buttonFocused = focusIdx
-      end if
-      if m.buttonGrp.isInFocusChain()
-        focusButtonGroupChild()
-      end if
-    end if
+    removeResumeLoadingButton()
     removeResumeButtonWithFocus(resumeButton)
   end if
 
@@ -1431,61 +1384,439 @@ function getResumeButtonText(item as object) as string
   return translate(translationKeys.ButtonResume)
 end function
 
-' manageResumeButton: Add or remove Resume button based on playback position (non-Series types)
+' manageResumeButton: Add, update or remove the Resume button from the selected version's
+' resume position (non-Series types). While that position is still loading, the Resume
+' slot shows a loading button — the same placeholder Series uses for its next-up fetch.
 sub manageResumeButton()
   ' Whole row first — this inserts at index 0 and shifts every later index.
   unsplitButtons()
 
   resumeButton = m.top.findNode("resumeButton")
+  loadingButton = m.top.findNode("resumeLoadingButton")
 
   if isValid(m.top.itemContent) and isValidAndNotEmpty(m.top.itemContent.id)
     item = m.top.itemContent
     if item.runTimeTicks <= 0
+      trackVersionResumeFill(false)
+      removeResumeLoadingButton()
       removeResumeButtonWithFocus(resumeButton)
       applyOverflow()
       return
     end if
 
-    if item.playbackPositionTicks > 0
+    resumeState = resolveResumeState()
+    trackVersionResumeFill(resumeState.isLoading)
+
+    if resumeState.isLoading
+      if isValid(resumeButton)
+        resumeButton.isLoading = true
+      else if not isValid(loadingButton)
+        ' Resume leads the row, so its placeholder takes focus from Play as the real one would.
+        insertButtonAtFront(createResumeLoadingButton(translate(translationKeys.ButtonResume)))
+      end if
+    else if resumeState.ticks > 0
       if not isValid(resumeButton)
-        currentFocusIndex = m.buttonGrp.buttonFocused
-        currentFocusedButton = invalid
-        if isValid(currentFocusIndex) and currentFocusIndex >= 0 and currentFocusIndex < m.buttonGrp.getChildCount()
-          currentFocusedButton = m.buttonGrp.getChild(currentFocusIndex)
-        end if
+        resumeButton = createResumeButton(translate(translationKeys.ButtonResume), resumeState.ticks, resumeState.runtimeTicks)
 
-        resumeButton = CreateObject("roSGNode", "ResumeButton")
-        resumeButton.id = "resumeButton"
-        resumeButton.icon = "pkg:/images/icons/resume_$$RES$$.png"
-        resumeButton.text = translate(translationKeys.ButtonResume)
-        resumeButton.playbackPositionTicks = item.playbackPositionTicks
-        resumeButton.runtimeTicks = item.runTimeTicks
-        m.buttonGrp.insertChild(resumeButton, 0)
-
-        if isValid(currentFocusedButton) and currentFocusedButton.id = "playButton"
-          m.buttonGrp.buttonFocused = 0
-        else if isValid(currentFocusIndex) and currentFocusIndex >= 0
-          m.buttonGrp.buttonFocused = currentFocusIndex + 1
+        if isValid(loadingButton)
+          swapResumeLoadingButton(loadingButton, resumeButton)
         else
-          m.buttonGrp.buttonFocused = 0
-        end if
-        ' Only move actual focus when the button group already owns it — avoid stealing
-        ' focus from the extras row when setupButtons() cleared and rebuilt buttons on refresh.
-        if m.buttonGrp.isInFocusChain()
-          focusButtonGroupChild()
+          insertButtonAtFront(resumeButton)
         end if
       else
-        resumeButton.playbackPositionTicks = item.playbackPositionTicks
-        resumeButton.runtimeTicks = item.runTimeTicks
+        resumeButton.playbackPositionTicks = resumeState.ticks
+        resumeButton.runtimeTicks = resumeState.runtimeTicks
+        resumeButton.isLoading = false
       end if
     else
+      removeResumeLoadingButton()
       removeResumeButtonWithFocus(resumeButton)
     end if
   else
+    trackVersionResumeFill(false)
+    removeResumeLoadingButton()
     removeResumeButtonWithFocus(resumeButton)
   end if
 
   applyOverflow()
+end sub
+
+' trackVersionResumeFill: Declare the Resume slot's loading state to the readiness ledger.
+'
+' A Movie's Resume button is otherwise built synchronously from the item, but on a
+' per-version server it can wait on a version's position or the server's thresholds, and
+' `settled` must not fire while it does. Declared on the first loading answer and resolved
+' on the first final one; the flag lives on `m`, not on m.versionResume, so a content
+' reload that drops that state cannot orphan the declaration. After the screen has
+' settled (a version switch, a refresh) the ledger ignores both sides.
+'
+' @param {boolean} isLoading - whether the Resume slot is still waiting
+sub trackVersionResumeFill(isLoading as boolean)
+  if isLoading = m.isVersionResumeFillOpen then return
+  m.isVersionResumeFillOpen = isLoading
+  if isLoading
+    screenLoad.pending("versionResume")
+  else
+    screenLoad.resolve("versionResume")
+  end if
+end sub
+
+' ============================================
+' RESUME SLOT — shared by the Series (next-up) and per-item Resume flows
+' ============================================
+'
+' The two that place a button are bracketed as LEAVES (unsplitButtons() / applyOverflow()),
+' like removeResumeButtonWithFocus: every index they use assumes the whole row is present,
+' and both halves are idempotent, so a caller that already brackets loses nothing.
+
+' createResumeButton: A Resume button, not yet placed in the row.
+'
+' @param {string} text - the label ("Resume", or "Resume S2E3" for a Series)
+' @param {dynamic} positionTicks - where it resumes, for its progress bar
+' @param {dynamic} runtimeTicks - the runtime that progress bar is measured against
+' @return {object} the ResumeButton node
+function createResumeButton(text as string, positionTicks as dynamic, runtimeTicks as dynamic) as object
+  resumeButton = CreateObject("roSGNode", "ResumeButton")
+  resumeButton.id = "resumeButton"
+  resumeButton.icon = "pkg:/images/icons/resume_$$RES$$.png"
+  resumeButton.text = text
+  resumeButton.playbackPositionTicks = positionTicks
+  resumeButton.runtimeTicks = runtimeTicks
+  return resumeButton
+end function
+
+' createResumeLoadingButton: The loading placeholder that holds the Resume slot while its
+' data loads, recorded in m.resumeLoadingButton. Not yet placed in the row.
+'
+' @param {string} text - the label the real button is expected to carry
+' @return {object} the IconButton node
+function createResumeLoadingButton(text as string) as object
+  m.resumeLoadingButton = CreateObject("roSGNode", "IconButton")
+  m.resumeLoadingButton.id = "resumeLoadingButton"
+  m.resumeLoadingButton.icon = "pkg:/images/icons/resume_$$RES$$.png"
+  m.resumeLoadingButton.text = text
+  m.resumeLoadingButton.isLoading = true
+  return m.resumeLoadingButton
+end function
+
+' seriesResumeLoadingText: The Series placeholder label — the episode-specific text (e.g.
+' "Resume S2E3") from prior data when there is some, so the label holds steady through a
+' reload, otherwise plain "Resume".
+'
+' @return {string}
+function seriesResumeLoadingText() as string
+  if isValid(m.top.nextUpEpisode) and isValidAndNotEmpty(m.top.nextUpEpisode.id)
+    return getResumeButtonText(m.top.nextUpEpisode)
+  end if
+  return translate(translationKeys.ButtonResume)
+end function
+
+' swapResumeLoadingButton: Replace the loading placeholder with the real Resume button at
+' the same index. The user may have moved focus while the data loaded; removing and then
+' inserting at one index is a net-zero shift, so the focus index read first still names the
+' same button. Real focus moves only if the placeholder itself had it.
+'
+' @param {object} loadingButton - the placeholder currently in the row
+' @param {object} resumeButton - createResumeButton()
+sub swapResumeLoadingButton(loadingButton as object, resumeButton as object)
+  unsplitButtons()
+
+  loadingIndex = getButtonIndex("resumeLoadingButton")
+  wasFocused = loadingButton.isInFocusChain()
+  currentFocusIndex = m.buttonGrp.buttonFocused
+  m.buttonGrp.removeChild(loadingButton)
+  m.resumeLoadingButton = invalid
+  m.buttonGrp.insertChild(resumeButton, loadingIndex)
+  m.buttonGrp.buttonFocused = currentFocusIndex
+  if wasFocused
+    focusButtonGroupChild()
+  end if
+
+  applyOverflow()
+end sub
+
+' insertButtonAtFront: Put a Resume-slot button at the front of the row. It takes focus
+' from Play, as a Resume button leads the row; any other focused button keeps focus, with
+' its index shifted past the insert.
+'
+' Real focus moves only when the row already owns it — an async insert must not steal
+' focus from the extras row, e.g. after setupButtons() cleared and rebuilt the row.
+'
+' @param {object} button - createResumeButton() or createResumeLoadingButton()
+sub insertButtonAtFront(button as object)
+  unsplitButtons()
+
+  currentFocusIndex = m.buttonGrp.buttonFocused
+  currentFocusedButton = invalid
+  if isValid(currentFocusIndex) and currentFocusIndex >= 0 and currentFocusIndex < m.buttonGrp.getChildCount()
+    currentFocusedButton = m.buttonGrp.getChild(currentFocusIndex)
+  end if
+
+  m.buttonGrp.insertChild(button, 0)
+
+  if isValid(currentFocusedButton) and currentFocusedButton.id = "playButton"
+    m.buttonGrp.buttonFocused = 0
+  else if isValid(currentFocusIndex) and currentFocusIndex >= 0
+    m.buttonGrp.buttonFocused = currentFocusIndex + 1
+  else
+    m.buttonGrp.buttonFocused = 0
+  end if
+  if m.buttonGrp.isInFocusChain()
+    focusButtonGroupChild()
+  end if
+
+  applyOverflow()
+end sub
+
+' ============================================
+' PER-VERSION RESUME (Jellyfin 12.0+)
+' ============================================
+'
+' From Jellyfin 12.0 each alternate version keeps its own position, so the Resume button
+' describes the SELECTED version: its own position, or — when the user picked a version
+' that has none — the in-progress version's position, carried only while the server would
+' still store it there rather than count it finished.
+'
+' Every CHOICE in that lives in source/utils/versionResume.bs, as pure functions over plain
+' values; what is left here is the shell that feeds them. resumeStateFor() answers with the
+' state AND with what it still needs (needsSourceId / needsPolicy); this file fetches that,
+' caches it for the content load, and asks again. Keeping the decision out of the component
+' is what makes it testable: a component spec has no way to stub the two requests, so any
+' rule expressed here could only ever be checked by hand on a device.
+'
+' Positions of versions other than the item itself, and the server's resume thresholds, are
+' fetched on demand and at most once per content load; Resume shows the loading placeholder
+' until they arrive.
+
+' resetVersionResume: Start per-version resume state for newly loaded content. Leaves
+' m.versionResume invalid — "use the item's own position", as before 12.0 — unless the
+' server keeps positions per version and the item has alternate versions.
+'
+' @param {object} item - the loaded JellyfinBaseItem
+' @param {dynamic} mediaSources - its MediaSources, in server order
+sub resetVersionResume(item as object, mediaSources as dynamic)
+  m.versionResume = invalid
+  if not isValid(item) or type(mediaSources) <> "roArray" or mediaSources.count() < 2 then return
+  if not versionResume.isPerVersionServer(m.global.server.version) then return
+
+  inProgressSourceId = ""
+  inProgressIndex = versionResume.inProgressSourceIndex(item.id, item.playbackPositionTicks, mediaSources, true)
+  if inProgressIndex >= 0 then inProgressSourceId = mediaSources[inProgressIndex].Id
+
+  if inProgressSourceId = ""
+    ' The item holds a position but names no source of its own: nothing here can say WHICH
+    ' version that position belongs to, so leave per-version resume off entirely and let
+    ' the item's own position answer, exactly as it does before 12.0. Zeroing below would
+    ' instead report "no progress" and silently drop a Resume button that works today.
+    ' Not reachable on any multi-version item checked on a 12.0 server — GetAllItemsForMedia
+    ' Sources always leads with the queried item and GetStaticMediaSources exempts it from
+    ' the permission filter — so this is a floor under an assumption, not a fix.
+    if isValid(item.playbackPositionTicks) and item.playbackPositionTicks > 0 then return
+
+    ' No version is in progress: the server leads a primary's sources with the most recently
+    ' played in-progress version, so an unchanged order means there is nothing to resume —
+    ' no request, no loading button. Opened AS an alternate version (search, a link), that
+    ' order carries no signal about the other versions, and a position one of them holds is
+    ' not offered here; Continue Watching, where in-progress versions surface, opens the
+    ' version that holds it.
+    positions = zeroVersionPositions(item.id, mediaSources)
+  else
+    ' The item's own position arrived with it; every other version's is fetched on demand.
+    positions = {}
+    positions[item.id] = item.playbackPositionTicks
+  end if
+
+  m.versionResumeSeq += 1
+  m.versionResume = {
+    generation: m.versionResumeSeq,
+    itemId: item.id,
+    inProgressSourceId: inProgressSourceId,
+    positions: positions, ' sourceId -> ticks (0 = none, POSITION_UNREADABLE = could not read)
+    pending: {}, ' sourceId -> true while its fetch is in flight
+    isConfigPending: false,
+    hasConfigFailed: false
+  }
+end sub
+
+' clearVersionResumePositions: Record that no version has a position any more. Marking any
+' version watched marks every version played and clears every position on the server, so
+' switching version afterwards must not bring Resume back from positions read earlier.
+sub clearVersionResumePositions()
+  state = m.versionResume
+  item = m.top.itemContent
+  if not isValid(state) or not isValid(item) then return
+  mediaSources = invalid
+  if isValid(item.mediaSourcesData) then mediaSources = item.mediaSourcesData.mediaSources
+
+  ' A new generation drops replies still in flight — they describe the old state.
+  m.versionResumeSeq += 1
+  state.generation = m.versionResumeSeq
+  state.pending = {}
+  state.isConfigPending = false
+  state.inProgressSourceId = ""
+  state.positions = zeroVersionPositions(state.itemId, mediaSources)
+end sub
+
+' zeroVersionPositions: A positions map recording that no version has a position.
+'
+' @param {string} itemId
+' @param {dynamic} mediaSources - the item's MediaSources
+' @return {object} sourceId -> 0 for the item and every source
+function zeroVersionPositions(itemId as string, mediaSources as dynamic) as object
+  positions = {}
+  positions[itemId] = 0
+  if type(mediaSources) = "roArray"
+    for each source in mediaSources
+      if isValid(source) and isValidAndNotEmpty(source.Id) then positions[source.Id] = 0
+    end for
+  end if
+  return positions
+end function
+
+' resolveResumeState: Where Resume starts for the selected version, starting any fetch that
+' answer still needs.
+'
+' @return {object} { ticks, runtimeTicks, isLoading } — ticks 0 means no Resume
+function resolveResumeState() as object
+  item = m.top.itemContent
+  resumeState = { ticks: 0&, runtimeTicks: 0&, isLoading: false }
+  if not isValid(item) then return resumeState
+  resumeState.runtimeTicks = item.runTimeTicks
+
+  state = m.versionResume
+  if not isValid(state) or not versionResume.idsMatch(state.itemId, item.id)
+    if item.playbackPositionTicks > 0 then resumeState.ticks = item.playbackPositionTicks
+    return resumeState
+  end if
+
+  mediaSources = invalid
+  if isValid(item.mediaSourcesData) then mediaSources = item.mediaSourcesData.mediaSources
+
+  ctx = {
+    itemId: item.id,
+    itemPositionTicks: item.playbackPositionTicks,
+    itemRuntimeTicks: item.runTimeTicks,
+    mediaSources: mediaSources,
+    selectedId: m.top.selectedVideoStreamId,
+    positions: state.positions,
+    inProgressSourceId: state.inProgressSourceId,
+    policy: serverResumePolicy(),
+    isPolicyUnreadable: state.hasConfigFailed
+  }
+
+  ' Ask, then start whatever the answer still needs. A request that cannot even be built
+  ' records its failure on the spot, which changes the answer, so ask again rather than
+  ' return a "loading" that no reply will ever finish. It can need at most three things —
+  ' this version's position, the in-progress version's, the thresholds — so at most three
+  ' can fail on the spot.
+  answer = versionResume.resumeStateFor(ctx)
+  for attempt = 1 to 3
+    if answer.needsSourceId <> ""
+      if requestVersionPosition(answer.needsSourceId) then exit for
+    else if answer.needsPolicy
+      if requestServerResumePolicy() then exit for
+      ctx.isPolicyUnreadable = state.hasConfigFailed
+    else
+      exit for
+    end if
+    answer = versionResume.resumeStateFor(ctx)
+  end for
+
+  resumeState.ticks = answer.ticks
+  resumeState.runtimeTicks = answer.runtimeTicks
+  resumeState.isLoading = answer.isLoading
+  return resumeState
+end function
+
+' requestVersionPosition: Fetch one version's own position, once per content load.
+'
+' @param {string} sourceId - the version (MediaSource) id
+' @return {boolean} true while a reply is on its way; false when the request could not be
+'                   built, in which case the position is already recorded as unreadable
+function requestVersionPosition(sourceId as string) as boolean
+  state = m.versionResume
+  if not isValid(state) or state.pending.doesExist(sourceId) then return true
+
+  req = GetApi().BuildGetItemUserDataRequest(sourceId)
+  if not isValid(req)
+    state.positions[sourceId] = versionResume.POSITION_UNREADABLE
+    return false
+  end if
+
+  state.pending[sourceId] = true
+  m.versionResumeSeq += 1
+  promises.chain(fetchAsync(req, "versionUserData-" + m.versionResumeSeq.toStr()), { generation: state.generation, sourceId: sourceId }).then(sub(res as object, ctx as object)
+    onVersionPositionLoaded(ctx, versionResume.playbackPositionFrom(res))
+  end sub).catch(sub(err as object, ctx as object)
+    m.log.warn("version user data fetch failed", "sourceId", ctx.sourceId, "reason", err.reason)
+    onVersionPositionLoaded(ctx, versionResume.POSITION_UNREADABLE)
+  end sub)
+  return true
+end function
+
+' onVersionPositionLoaded: Record a fetched version position and redraw Resume, unless the
+' content has been reloaded since the fetch started.
+sub onVersionPositionLoaded(ctx as object, ticks as dynamic)
+  state = m.versionResume
+  if not isValid(state) or state.generation <> ctx.generation then return ' stale
+  state.pending.delete(ctx.sourceId)
+  state.positions[ctx.sourceId] = ticks
+  manageResumeButton()
+end sub
+
+' serverResumePolicy: The server's resume thresholds, if they have been read.
+'
+' @return {dynamic} { maxResumePct, minResumeDurationSeconds }, or invalid when unknown
+function serverResumePolicy() as dynamic
+  policy = m.global.server.resumePolicy
+  if versionResume.isResumePolicy(policy) then return policy
+  return invalid
+end function
+
+' requestServerResumePolicy: Read GET /System/Configuration the first time a carry needs it.
+'
+' Fails CLOSED: while the thresholds are unknown wouldMarkPlayed() answers "played", so
+' nothing is carried — a carried position past a threshold would mark the item played and
+' erase the place being resumed from. A failed read is remembered only for this content
+' load, not on the server node, so the next one asks again.
+'
+' @return {boolean} true while a reply is on its way; false when the read has already
+'                   failed for this content load, or its request could not be built
+function requestServerResumePolicy() as boolean
+  state = m.versionResume
+  if not isValid(state) or state.isConfigPending then return true
+  if state.hasConfigFailed then return false
+
+  req = GetApi().BuildGetServerConfigurationRequest()
+  if not isValid(req)
+    state.hasConfigFailed = true
+    return false
+  end if
+
+  state.isConfigPending = true
+  m.versionResumeSeq += 1
+  promises.chain(fetchAsync(req, "serverConfiguration-" + m.versionResumeSeq.toStr()), { generation: state.generation }).then(sub(res as object, ctx as object)
+    onServerResumePolicyLoaded(ctx, versionResume.resumePolicyFrom(res))
+  end sub).catch(sub(err as object, ctx as object)
+    m.log.warn("server configuration fetch failed", "reason", err.reason)
+    onServerResumePolicyLoaded(ctx, invalid)
+  end sub)
+  return true
+end function
+
+' onServerResumePolicyLoaded: Store read thresholds for the session and redraw Resume.
+sub onServerResumePolicyLoaded(ctx as object, policy as dynamic)
+  ' Server-wide values, still true if the content changed meanwhile.
+  if versionResume.isResumePolicy(policy) then m.global.server.resumePolicy = policy
+
+  state = m.versionResume
+  if not isValid(state) or state.generation <> ctx.generation then return ' stale
+  state.isConfigPending = false
+  if not versionResume.isResumePolicy(policy)
+    m.log.warn("server resume thresholds unreadable; not carrying resume positions between versions")
+    state.hasConfigFailed = true
+  end if
+  manageResumeButton()
 end sub
 
 ' removeResumeButtonWithFocus: Remove resume button while preserving focus position
@@ -2773,6 +3104,9 @@ sub onItemContentChanged()
     ' press picks the slot based on the current button column, not the prior item.
     m.lastFocusedDropdown = invalid
 
+    ' Rebuilt below for video content with alternate versions; nothing else has any.
+    m.versionResume = invalid
+
     if item.type = "Audio"
       ' Audio: no video source selection, no subtitle display. Audio dropdown still applies.
       allStreams = []
@@ -2790,9 +3124,17 @@ sub onItemContentChanged()
         mediaSources = item.mediaSourcesData.mediaSources
       end if
 
-      ' Select best video source based on device capabilities instead of always using first
+      resetVersionResume(item, mediaSources)
+
+      ' Select the video source: the version in progress on a per-version server (resuming
+      ' is exact only on the file that holds the position), otherwise the best one for the
+      ' device instead of always the first.
       if m.top.selectedVideoStreamId = "" and isValid(mediaSources) and mediaSources.Count() > 0
-        bestSourceIndex = findBestVideoSource(mediaSources)
+        bestSourceIndex = -1
+        if isValid(m.versionResume)
+          bestSourceIndex = versionResume.sourceIndexById(mediaSources, m.versionResume.inProgressSourceId)
+        end if
+        if bestSourceIndex < 0 then bestSourceIndex = findBestVideoSource(mediaSources)
         m.top.selectedVideoStreamId = mediaSources[bestSourceIndex].Id ?? item.mediaSourceId
       else if m.top.selectedVideoStreamId = "" and isValidAndNotEmpty(item.mediaSourceId)
         m.top.selectedVideoStreamId = item.mediaSourceId
@@ -3765,16 +4107,7 @@ sub setupButtons(item as object)
   ' Preserves the episode-specific text (e.g. "Resume S2E3") from prior data if available
   ' so the user sees a consistent label through the loading transition.
   if itemType = "Series"
-    m.resumeLoadingButton = CreateObject("roSGNode", "IconButton")
-    m.resumeLoadingButton.id = "resumeLoadingButton"
-    m.resumeLoadingButton.icon = "pkg:/images/icons/resume_$$RES$$.png"
-    if isValid(m.top.nextUpEpisode) and isValidAndNotEmpty(m.top.nextUpEpisode.id)
-      m.resumeLoadingButton.text = getResumeButtonText(m.top.nextUpEpisode)
-    else
-      m.resumeLoadingButton.text = translate(translationKeys.ButtonResume)
-    end if
-    m.resumeLoadingButton.isLoading = true
-    m.buttonGrp.appendChild(m.resumeLoadingButton)
+    m.buttonGrp.appendChild(createResumeLoadingButton(seriesResumeLoadingText()))
   end if
 
   ' Photo: View button
@@ -4281,6 +4614,9 @@ sub onVideoDropdownSelection()
   SetDefaultAudioTrack(allStreams)
   m.subtitleUserOverridden = false
   populateTrackDropdowns(mediaSources ?? [], allStreams, item.type)
+
+  ' On a per-version server each version resumes from its own position.
+  if isValid(m.versionResume) then manageResumeButton()
 end sub
 
 ' Audio dropdown selection: updates selectedAudioStreamIndex and re-seeds the subtitle

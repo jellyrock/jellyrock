@@ -47,6 +47,7 @@ m.global  (the global roSGNode)
 │   ├── serverUrl, name, version, id, apiVersion, isConnected
 │   ├── isQuickConnectEnabled bool                          ← fail-open default true; UserSelect's probe sets false
 │   ├── subtitleProviderStatus string                       ← "" unknown / "available" / "unavailable"; Home's session check (serverCapabilities.bs)
+│   ├── resumePolicy  assocarray                            ← server resume thresholds; invalid until ItemDetails first needs them (versionResume.bs)
 │   └── ...
 │
 ├── user              JellyfinUser node                     ← phase 1

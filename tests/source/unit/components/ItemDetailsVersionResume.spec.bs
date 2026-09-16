@@ -1,0 +1,118 @@
+namespace tests
+
+  ' ItemDetails' Resume button for an item with alternate versions (source/utils/versionResume.bs).
+  '
+  ' Only the paths that settle WITHOUT a request are covered here. A version other than the
+  ' item needs GET /UserItems/{id}/UserData, and component specs have no way to stub
+  ' fetchAsync — so the carry guard, the loading states and every other choice are tested
+  ' as a pure function in versionResumeState.spec.bs, and this suite checks only that the
+  ' component wires the no-request answers onto the real button row.
+  @suite("ItemDetails - per-version resume")
+  class ItemDetailsVersionResumeTests extends tests.BaseTestSuite
+
+    private itemDetails as object
+    private originalServerVersion as string
+
+    ' A two-version Movie as a 12.0 server returns it: 30:00 and 29:55.
+    private function makeMovie(position as longinteger, sources as object) as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "primary"
+      item.type = "Movie"
+      item.name = "Two Versions"
+      item.runTimeTicks = 18000000000&
+      item.playbackPositionTicks = position
+      item.mediaSourcesData = { mediaSources: sources }
+      return item
+    end function
+
+    private function primaryFirst() as object
+      return [{ Id: "primary", RunTimeTicks: 18000000000& }, { Id: "alternate", RunTimeTicks: 17950000000& }]
+    end function
+
+    ' beforeEach, not setup: each test loads content into the node and changes the server
+    ' version (tests/CLAUDE.md).
+    protected override function beforeEach()
+      super.beforeEach()
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+      m.originalServerVersion = m.global.server.version
+      m.global.server.version = "12.0.0"
+      m.itemDetails = CreateObject("roSGNode", "ItemDetails")
+    end function
+
+    protected override function afterEach()
+      m.itemDetails = invalid
+      m.global.server.version = m.originalServerVersion
+      super.afterEach()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("on a per-version server")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows no Resume and no loading placeholder when no version is in progress")
+    ' The item's own source leads and it has no position, so nothing is in progress and
+    ' nothing is fetched — a placeholder here would mean a request was started.
+    function _()
+      m.itemDetails.itemContent = m.makeMovie(0, m.primaryFirst())
+
+      m.assertInvalid(m.itemDetails.findNode("resumeButton"))
+      m.assertInvalid(m.itemDetails.findNode("resumeLoadingButton"))
+    end function
+
+    @it("resumes the item's own version from its own position, with no request")
+    function _()
+      sources = [{ Id: "alternate", RunTimeTicks: 17950000000& }, { Id: "primary", RunTimeTicks: 18000000000& }]
+      m.itemDetails.itemContent = m.makeMovie(6000000000&, sources)
+
+      ' The in-progress version is selected even though it is not listed first.
+      m.assertEqual(m.itemDetails.selectedVideoStreamId, "primary")
+      resumeButton = m.itemDetails.findNode("resumeButton")
+      m.assertNotInvalid(resumeButton)
+      m.assertEqual(resumeButton.playbackPositionTicks, 6000000000&)
+      m.assertInvalid(m.itemDetails.findNode("resumeLoadingButton"))
+    end function
+
+    @it("keeps the item's own position when the item names no source of its own")
+    ' Nothing can say which version such a position belongs to, so the pre-12.0 answer
+    ' stands rather than a silently missing Resume button.
+    function _()
+      sources = [{ Id: "version-a", RunTimeTicks: 18000000000& }, { Id: "version-b", RunTimeTicks: 17950000000& }]
+      m.itemDetails.itemContent = m.makeMovie(6000000000&, sources)
+
+      resumeButton = m.itemDetails.findNode("resumeButton")
+      m.assertNotInvalid(resumeButton)
+      m.assertEqual(resumeButton.playbackPositionTicks, 6000000000&)
+      m.assertInvalid(m.itemDetails.findNode("resumeLoadingButton"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("before Jellyfin 12.0")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("ignores source order and fetches nothing, even when an alternate leads")
+    ' 10.x sorts sources by width, so a leading alternate says nothing about progress.
+    function _()
+      m.global.server.version = "10.11.11"
+      sources = [{ Id: "alternate", RunTimeTicks: 17950000000& }, { Id: "primary", RunTimeTicks: 18000000000& }]
+      m.itemDetails.itemContent = m.makeMovie(0, sources)
+
+      m.assertInvalid(m.itemDetails.findNode("resumeButton"))
+      m.assertInvalid(m.itemDetails.findNode("resumeLoadingButton"))
+    end function
+
+    @it("resumes from the item's own position")
+    function _()
+      m.global.server.version = "10.11.11"
+      m.itemDetails.itemContent = m.makeMovie(6000000000&, m.primaryFirst())
+
+      resumeButton = m.itemDetails.findNode("resumeButton")
+      m.assertNotInvalid(resumeButton)
+      m.assertEqual(resumeButton.playbackPositionTicks, 6000000000&)
+    end function
+
+  end class
+
+end namespace
