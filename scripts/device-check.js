@@ -41,6 +41,7 @@
 import os from 'node:os';
 import path from 'node:path';
 
+import './lib/load-env.cjs';
 import envConfig from './lib/env-config.cjs';
 import { fetchDeviceInfo } from './device-lock.js';
 import { odcIsResident } from './measurement-guard.js';
@@ -83,7 +84,8 @@ export function hostOrigin(
   // Same branch as `hostsToCheck`: a set ROKU_DEVICES is the list, otherwise ROKU_IP.
   const key = env.ROKU_DEVICES ? 'ROKU_DEVICES' : 'ROKU_IP';
   const source = sourceOf(key);
-  if (!source) return key;
+  // No file named it, so if it has a value at all, that value came from the environment.
+  if (!source) return env[key] ? `${key}, set in the environment` : key;
   if (source === envConfig.PRESET) return `${key}, set in the environment`;
   const shown = source.startsWith(home + path.sep) ? `~${source.slice(home.length)}` : source;
   return `${key} in ${shown}`;
@@ -145,7 +147,7 @@ export function report(results) {
 export function verdict(results) {
   const up = results.filter((r) => r.reachable);
   if (!results.length) {
-    return 'No device configured — set ROKU_IP (or ROKU_DEVICES) in .env. Hardware tests cannot run, and that is now a checked fact rather than an assumption.';
+    return 'No device configured — set ROKU_IP (or ROKU_DEVICES) in .env or ~/.config/jellyrock/env. Hardware tests cannot run, and that is now a checked fact rather than an assumption.';
   }
   if (!up.length) {
     return `No device answered (${results.length} tried). Hardware tests cannot run — say so, and say the probe failed rather than that you lack access.`;

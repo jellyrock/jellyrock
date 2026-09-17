@@ -18,8 +18,10 @@ const require = createRequire(import.meta.url);
 const {
   PRESET,
   userEnvPath,
+  skipsUserFile,
   envFiles,
   applyEnvFiles,
+  readIfPresent,
 } = require('../../../../scripts/lib/env-config.cjs');
 
 const LOAD_ENV = fileURLToPath(new URL('../../../../scripts/lib/load-env.cjs', import.meta.url));
@@ -46,11 +48,35 @@ describe('userEnvPath', () => {
   it('ignores an empty XDG_CONFIG_HOME, as the XDG spec requires', () => {
     expect(userEnvPath({ XDG_CONFIG_HOME: '' }, HOME)).toBe(USER);
   });
+
+  it('ignores a relative XDG_CONFIG_HOME, as the XDG spec requires', () => {
+    expect(userEnvPath({ XDG_CONFIG_HOME: 'relative/config' }, HOME)).toBe(USER);
+  });
 });
 
 describe('envFiles', () => {
   it("lists the checkout's .env before the user file", () => {
     expect(envFiles({ cwd: CHECKOUT_DIR, env: {}, homedir: HOME })).toEqual([CHECKOUT, USER]);
+  });
+
+  it('leaves the user file out under GitHub Actions, so a runner home cannot change a CI run', () => {
+    const env = { GITHUB_ACTIONS: 'true' };
+    expect(skipsUserFile(env)).toBe(true);
+    expect(envFiles({ cwd: CHECKOUT_DIR, env, homedir: HOME })).toEqual([CHECKOUT]);
+  });
+
+  it('leaves the user file out when JELLYROCK_USER_ENV=off', () => {
+    const env = { JELLYROCK_USER_ENV: 'off' };
+    expect(envFiles({ cwd: CHECKOUT_DIR, env, homedir: HOME })).toEqual([CHECKOUT]);
+  });
+
+  it('keeps the user file for any other value of either switch', () => {
+    expect(skipsUserFile({ GITHUB_ACTIONS: 'false', JELLYROCK_USER_ENV: 'on' })).toBe(false);
+  });
+
+  it("is switched off for this suite's own run", () => {
+    // Set in vitest.config.js, so these tests never read the developer's real user file.
+    expect(process.env.JELLYROCK_USER_ENV).toBe('off');
   });
 });
 
@@ -123,6 +149,30 @@ describe('applyEnvFiles', () => {
     expect('ROKU_DEVICES' in env).toBe(false);
   });
 
+  it('keeps a blank password, where blank means a passwordless account', () => {
+    const env = {};
+    const { sources } = applyEnvFiles(
+      [CHECKOUT, USER],
+      env,
+      files({
+        [CHECKOUT]: 'MEASURE_SIGNIN_PASSWORD=\nRTA_SERVER_PASS=\n',
+        [USER]: 'MEASURE_SIGNIN_PASSWORD=secret\nRTA_SERVER_PASS=secret\n',
+      }),
+    );
+
+    expect(env.MEASURE_SIGNIN_PASSWORD).toBe('');
+    expect(env.RTA_SERVER_PASS).toBe('');
+    expect(sources.MEASURE_SIGNIN_PASSWORD).toBe(CHECKOUT);
+  });
+
+  it('handles a variable whose name is also an Object.prototype member', () => {
+    const env = {};
+    applyEnvFiles([USER], env, files({ [USER]: 'constructor=x\n' }));
+
+    expect(Object.prototype.hasOwnProperty.call(env, 'constructor')).toBe(true);
+    expect(env.constructor).toBe('x');
+  });
+
   it('ignores commented-out lines, so a device can be parked without deleting it', () => {
     const env = {};
     applyEnvFiles(
@@ -140,8 +190,25 @@ describe('applyEnvFiles', () => {
     const env = {};
     const result = applyEnvFiles([CHECKOUT, USER], env, files({}));
 
-    expect(result).toEqual({ loaded: [], sources: {} });
+    expect(result.loaded).toEqual([]);
+    expect(Object.keys(result.sources)).toEqual([]);
     expect(env).toEqual({});
+  });
+});
+
+describe('readIfPresent', () => {
+  it('reads an absent file as null', () => {
+    expect(readIfPresent(path.join(os.tmpdir(), 'jr-env-does-not-exist', 'env'))).toBeNull();
+  });
+
+  it('names the file when one exists but cannot be read', () => {
+    // A directory where the file should be: present, but not readable as a file.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jr-env-dir-'));
+    try {
+      expect(() => readIfPresent(dir)).toThrow(dir);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -190,6 +257,10 @@ describe('load-env.cjs in a real process', () => {
       devices: '10.0.0.7,10.0.0.8',
       password: 'from-user-file',
     });
+  });
+
+  it('ignores the user file under GitHub Actions', () => {
+    expect(run({ GITHUB_ACTIONS: 'true' })).toEqual({ ip: '10.0.0.1', password: undefined });
   });
 
   it('keeps a ROKU_IP handed down by a parent process, as measure-devices.js requires', () => {

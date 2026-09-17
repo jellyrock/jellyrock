@@ -13,7 +13,7 @@
 // still wins, so one folder can point at a different device without touching the
 // shared file.
 //
-// Two rules that are not obvious from the list above:
+// Rules that are not obvious from the list above:
 //
 // - **An already-set variable is never overwritten**, even when it is empty. That is
 //   dotenv's own rule, and `measure-devices.js` depends on it: it hands each child
@@ -22,7 +22,12 @@
 //   `ROKU_DEVICES=` blank, so a `.env` copied from it would otherwise hide the user
 //   file's list behind an empty string. To drop a user-level value for one checkout,
 //   set it to something else there; to drop it everywhere, comment it out in the
-//   user file.
+//   user file. The exception is `EMPTY_IS_A_VALUE`: passwords for which blank means
+//   "this account has no password", so a checkout can say so over a user-file value.
+// - **Automated runs skip the user file.** Under GitHub Actions a run is configured by
+//   its workflow alone, so a self-hosted runner's home directory cannot change it. The
+//   scripts' unit tests set `JELLYROCK_USER_ENV=off` (vitest.config.js) for the same
+//   reason; anyone can set it to run without the user file.
 //
 // Pure functions plus one loader. The pure half takes its inputs explicitly so the
 // tests never read or write the real environment; `loadEnv()` is the only thing that
@@ -39,16 +44,35 @@ const dotenv = require('dotenv');
 const PRESET = 'environment';
 
 /**
- * The per-user file. `XDG_CONFIG_HOME` is honored when set and non-empty, as the XDG
- * base-directory spec requires; otherwise `~/.config`.
+ * Keys whose blank value is meaningful rather than "not set": each is a password where
+ * blank means a passwordless account, and each consumer reads it with `?? ''`.
+ * `.env.example` ships them commented out, so copying it does not set them.
+ */
+const EMPTY_IS_A_VALUE = new Set(['MEASURE_SIGNIN_PASSWORD', 'RTA_SERVER_PASS']);
+
+/**
+ * The per-user file. `XDG_CONFIG_HOME` is honored when it is an absolute path, as the
+ * XDG base-directory spec requires (empty or relative is ignored); otherwise `~/.config`.
  *
  * @param {Record<string, string|undefined>} env
  * @param {string} homedir
  * @returns {string}
  */
 function userEnvPath(env, homedir) {
-  const base = env.XDG_CONFIG_HOME ? env.XDG_CONFIG_HOME : path.join(homedir, '.config');
+  const xdg = env.XDG_CONFIG_HOME;
+  const base = xdg && path.isAbsolute(xdg) ? xdg : path.join(homedir, '.config');
   return path.join(base, 'jellyrock', 'env');
+}
+
+/**
+ * Whether this run should ignore the per-user file: under GitHub Actions, or when
+ * `JELLYROCK_USER_ENV=off`.
+ *
+ * @param {Record<string, string|undefined>} env
+ * @returns {boolean}
+ */
+function skipsUserFile(env) {
+  return env.GITHUB_ACTIONS === 'true' || env.JELLYROCK_USER_ENV === 'off';
 }
 
 /**
@@ -58,7 +82,9 @@ function userEnvPath(env, homedir) {
  * @returns {string[]}
  */
 function envFiles({ cwd, env, homedir }) {
-  return [path.join(cwd, '.env'), userEnvPath(env, homedir)];
+  const files = [path.join(cwd, '.env')];
+  if (!skipsUserFile(env)) files.push(userEnvPath(env, homedir));
+  return files;
 }
 
 /**
@@ -73,7 +99,7 @@ function envFiles({ cwd, env, homedir }) {
  */
 function applyEnvFiles(files, env, readFile) {
   const loaded = [];
-  const sources = {};
+  const sources = Object.create(null);
   for (const file of files) {
     const text = readFile(file);
     if (text === null) continue;
@@ -84,7 +110,7 @@ function applyEnvFiles(files, env, readFile) {
         sources[key] = PRESET;
         continue;
       }
-      if (value === '') continue;
+      if (value === '' && !EMPTY_IS_A_VALUE.has(key)) continue;
       env[key] = value;
       sources[key] = file;
     }
@@ -97,6 +123,8 @@ const readIfPresent = (file) => {
     return fs.readFileSync(file, 'utf8');
   } catch (error) {
     if (error.code === 'ENOENT') return null;
+    // Rethrow the original (its code and stack) with the file named in the message.
+    error.message = `Could not read env file ${file}: ${error.message}`;
     throw error;
   }
 };
@@ -131,4 +159,14 @@ function envSource(key) {
   return loadEnv().sources[key];
 }
 
-module.exports = { PRESET, userEnvPath, envFiles, applyEnvFiles, loadEnv, envSource };
+module.exports = {
+  PRESET,
+  EMPTY_IS_A_VALUE,
+  userEnvPath,
+  skipsUserFile,
+  envFiles,
+  applyEnvFiles,
+  readIfPresent,
+  loadEnv,
+  envSource,
+};

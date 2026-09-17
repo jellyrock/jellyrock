@@ -84,8 +84,14 @@ describe('where the host list came from', () => {
     );
   });
 
-  it('falls back to the bare variable name when no file mentions it', () => {
-    expect(hostOrigin([], { ROKU_IP: '192.0.2.10' }, () => undefined, home)).toBe('ROKU_IP');
+  it('says the environment when a value is set but no file mentions it', () => {
+    expect(hostOrigin([], { ROKU_IP: '192.0.2.10' }, () => undefined, home)).toBe(
+      'ROKU_IP, set in the environment',
+    );
+  });
+
+  it('falls back to the bare variable name when nothing sets it', () => {
+    expect(hostOrigin([], {}, () => undefined, home)).toBe('ROKU_IP');
   });
 });
 
