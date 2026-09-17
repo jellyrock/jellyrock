@@ -36,12 +36,16 @@ namespace tests
     ' One trial: launch a task blocking `blockMode` for `blockMs`, wait until its function is
     ' provably running, then stop + write seq 2 + relaunch in one callback. Returns what the
     ' user would have got.
-    private function trial(blockMode as string, blockMs as integer) as object
+    private function trial(blockMode as string, blockMs as integer, settleMs = 0 as integer) as object
       host = CreateObject("roSGNode", "TaskRelaunchProbeHost")
       host.callFunc("configure", { blockMode: blockMode, blockMs: blockMs, seq: 1 })
       host.callFunc("launch")
       task = host.getField("task")
       m.assertEqual(m.waitForCount(task, "starts", 1, 2000), 1, "precondition: the function started")
+
+      ' How far INTO the run the relaunch lands. The app never relaunches at 0: a keystroke or
+      ' a refresh arrives while a request is in flight, hundreds of ms after the launch.
+      if settleMs > 0 then sleep(settleMs)
 
       host.callFunc("stopWriteRelaunch", 2)
 
@@ -59,17 +63,17 @@ namespace tests
       return { outcome: outcome, starts: task.starts, ends: task.ends, endSeq: task.endSeq, state: LCase(task.state) }
     end function
 
-    private function runMode(blockMode as string, trials as integer) as object
+    private function runMode(blockMode as string, trials as integer, settleMs = 0 as integer) as object
       counts = { honored: 0, "ignored-carry": 0, "ignored-lost": 0 }
       for i = 1 to trials
-        result = m.trial(blockMode, 700)
+        result = m.trial(blockMode, 700, settleMs)
         counts[result.outcome] = counts[result.outcome] + 1
         m.assertTrue(result.state = "stop" or result.state = "run", "task settled in a known state, got " + result.state)
         if result.ends >= 1
           m.assertTrue(result.endSeq = 1 or result.endSeq = 2, "a finished run read one of the two inputs")
         end if
       end for
-      print "[TaskRelaunchBlockModes] "; blockMode; " over "; trials; " trials: honored="; counts.honored; " ignored-carry="; counts["ignored-carry"]; " ignored-lost="; counts["ignored-lost"]
+      print "[TaskRelaunchBlockModes] "; blockMode; " settle="; settleMs; "ms over "; trials; " trials: honored="; counts.honored; " ignored-carry="; counts["ignored-carry"]; " ignored-lost="; counts["ignored-lost"]
       return counts
     end function
 
@@ -92,6 +96,22 @@ namespace tests
     @it("records the outcome for a task blocked in a wait() poll loop")
     function _()
       counts = m.runMode("pollLoop", 10)
+      m.assertEqual(counts.honored + counts["ignored-carry"] + counts["ignored-lost"], 10, "every trial classified")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("how far into the run the relaunch lands")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The app never relaunches at 0 ms. A keystroke or a refresh arrives hundreds of ms into a
+    ' request, so if the race is confined to the thread's start-up window, every app site is
+    ' safe and no migration is needed. This sweep is what separates those two worlds.
+    @it("records the outcome by how long the run had been going")
+    @params(100)
+    @params(300)
+    @params(600)
+    function _(settleMs)
+      counts = m.runMode("waitOnce", 10, settleMs)
       m.assertEqual(counts.honored + counts["ignored-carry"] + counts["ignored-lost"], 10, "every trial classified")
     end function
 
