@@ -89,6 +89,34 @@ export default [
     },
   },
 
+  // Environment loading goes through one module. `scripts/lib/env-config.cjs` reads the
+  // checkout's `.env` AND the per-user `~/.config/jellyrock/env`; a script that loads
+  // dotenv itself reads only the first, so it silently ignores the settings every other
+  // tool uses. Import `scripts/lib/load-env.cjs` instead.
+  {
+    ignores: ['scripts/lib/env-config.cjs'],
+    rules: {
+      'n/no-restricted-import': [
+        'error',
+        [
+          {
+            name: ['dotenv', 'dotenv/*'],
+            message: "Import 'scripts/lib/load-env.cjs' instead of dotenv.",
+          },
+        ],
+      ],
+      'n/no-restricted-require': [
+        'error',
+        [
+          {
+            name: ['dotenv', 'dotenv/*'],
+            message: "Require 'scripts/lib/load-env.cjs' instead of dotenv.",
+          },
+        ],
+      ],
+    },
+  },
+
   // ESM (`.js`, `.mjs`) — require `node:` protocol on built-in imports.
   {
     files: ['**/*.js', '**/*.mjs'],
