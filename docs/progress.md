@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-17 — Read device settings from a per-user env file as well as `.env`
 - 2026-09-17 — chore: Ask before an agent creates a git worktree
 - 2026-09-17 — chore: Charge the `apiPipeline` budget only while waiting on the server
 - 2026-09-17 — fix: Match the selected version ignoring case in `ItemDetails`, and drop the dead `MaxVideoDecodeResolution`
