@@ -30,10 +30,18 @@ namespace latestRows
   ' it. Measured on device (8 libraries, HTTP 500 forced on five): the skipped rows sat at their
   ' single placeholder child and nothing shifted. Keep it that way.
   '
+  ' Also resets `silenceClock` whenever the drain moves past at least one child — a failed
+  ' child included, since it is still the run reporting in. runIsStalled reads that clock, and
+  ' the reset lives here rather than at the call site because this is the one call every
+  ' delivered row goes through: a reset that could be dropped from the observer on its own
+  ' would silently turn the backstop back into "time since the run started", and reclaim a
+  ' long run that is still delivering.
+  '
   ' @param task - the LoadLatestRowsTask node holding { libId, items, status } children
   ' @param startIndex - first unprocessed child index
+  ' @param silenceClock - anything with a mark() method; HomeRows passes an roTimespan
   ' @return an AA { ready, nextIndex } - the children to populate, and the new cursor
-  function drainReady(task as object, startIndex as integer) as object
+  function drainReady(task as object, startIndex as integer, silenceClock as object) as object
     ready = []
     index = startIndex
     childCount = task.getChildCount()
@@ -44,6 +52,7 @@ namespace latestRows
       if isValid(child) and child.status = "ok" then ready.push(child)
     end while
 
+    if index > startIndex then silenceClock.mark()
     return { ready: ready, nextIndex: index }
   end function
 
@@ -80,15 +89,20 @@ namespace latestRows
   ' life of that Home instance. This is the backstop, and epic #728 is precisely a history of
   ' Task threads dying.
   '
-  ' The threshold is derived, not tuned: apiPipeline bounds a whole run at PIPELINE_RUN_MS,
-  ' and API_WAIT_MS is one request's own deadline — the largest overshoot a live run can post
-  ' between its last wait returning and the loop exiting. Anything past the two combined is
-  ' not a slow run, it is a dead one.
+  ' Measured from the last row the run DELIVERED, not from its start. apiPipeline charges its
+  ' budget only while waiting on the server, so a live run with many rows can legitimately
+  ' outlast PIPELINE_RUN_MS end to end — every row it hands over is its own proof of life. What
+  ' a live run cannot do is stay silent much longer than its whole budget, PIPELINE_RUN_MS: a
+  ' wait never outlasts what is left of it. API_WAIT_MS on top is slack for the silent time that
+  ' is NOT charged — the task thread starting, building its entries before the first row, and
+  ' one row's transform and hand-off to this thread. Past the two combined it is not a slow run,
+  ' it is a dead one.
   '
-  ' @param elapsedMs - milliseconds since the run was started
-  ' @return true when the run has outlived any legitimate duration
-  function runIsStalled(elapsedMs as integer) as boolean
-    return elapsedMs > timeouts.PIPELINE_RUN_MS + timeouts.API_WAIT_MS
+  ' @param msSinceLastRow - milliseconds since the run started or last delivered a row (the
+  '   clock drainReady resets)
+  ' @return true when the run has been silent longer than any live run can be
+  function runIsStalled(msSinceLastRow as integer) as boolean
+    return msSinceLastRow > timeouts.PIPELINE_RUN_MS + timeouts.API_WAIT_MS
   end function
 
 
