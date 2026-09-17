@@ -159,14 +159,6 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
       video.content.length = effectiveLengthSeconds
     end if
     m.log.info("Duration resolved", "seconds", effectiveLengthSeconds, "source", durationSource)
-
-    ' Find first video stream - MediaStreams[0] might be subtitle/audio
-    if isValid(playedSource.MediaStreams)
-      videoStream = getFirstVideoStream(playedSource.MediaStreams)
-      if isValid(videoStream) and isValid(videoStream.Width) and isValid(videoStream.Height)
-        video.MaxVideoDecodeResolution = [videoStream.Width, videoStream.Height]
-      end if
-    end if
   end if
 
   subtitleIdx = m.top.selectedSubtitleIndex
