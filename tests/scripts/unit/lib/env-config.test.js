@@ -24,34 +24,33 @@ const {
 
 const LOAD_ENV = fileURLToPath(new URL('../../../../scripts/lib/load-env.cjs', import.meta.url));
 
-const CHECKOUT = '/work/checkout/.env';
-const USER = '/home/dev/.config/jellyrock/env';
+// Built with path.join so the expectations hold on any platform's separator.
+const HOME = path.join(path.sep, 'home', 'dev');
+const CFG = path.join(path.sep, 'cfg');
+const CHECKOUT_DIR = path.join(path.sep, 'work', 'checkout');
+const CHECKOUT = path.join(CHECKOUT_DIR, '.env');
+const USER = path.join(HOME, '.config', 'jellyrock', 'env');
 
 /** A readFile over a fixed table; a missing entry reads as an absent file. */
 const files = (table) => (file) => (file in table ? table[file] : null);
 
 describe('userEnvPath', () => {
   it('defaults to ~/.config/jellyrock/env', () => {
-    expect(userEnvPath({}, '/home/dev')).toBe('/home/dev/.config/jellyrock/env');
+    expect(userEnvPath({}, HOME)).toBe(USER);
   });
 
   it('honors XDG_CONFIG_HOME', () => {
-    expect(userEnvPath({ XDG_CONFIG_HOME: '/cfg' }, '/home/dev')).toBe('/cfg/jellyrock/env');
+    expect(userEnvPath({ XDG_CONFIG_HOME: CFG }, HOME)).toBe(path.join(CFG, 'jellyrock', 'env'));
   });
 
   it('ignores an empty XDG_CONFIG_HOME, as the XDG spec requires', () => {
-    expect(userEnvPath({ XDG_CONFIG_HOME: '' }, '/home/dev')).toBe(
-      '/home/dev/.config/jellyrock/env',
-    );
+    expect(userEnvPath({ XDG_CONFIG_HOME: '' }, HOME)).toBe(USER);
   });
 });
 
 describe('envFiles', () => {
   it("lists the checkout's .env before the user file", () => {
-    expect(envFiles({ cwd: '/work/checkout', env: {}, homedir: '/home/dev' })).toEqual([
-      CHECKOUT,
-      USER,
-    ]);
+    expect(envFiles({ cwd: CHECKOUT_DIR, env: {}, homedir: HOME })).toEqual([CHECKOUT, USER]);
   });
 });
 

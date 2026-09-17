@@ -1463,6 +1463,16 @@ A button-row mutation that moves focus to a different button on purpose declares
 
 **Ruled out: setting focus after `applyOverflow()`.** It works today, but every future row change has to remember the ordering, and `button-row-bracket` proves only that both halves are present, not where the focus write sits — so nothing would catch the regression coming back. **Ruled out: skipping the restore when the focus index changed inside the bracket.** An index that shifts because a button was inserted or removed to its left is exactly what the capture exists to correct, so that rule reintroduces the bug #918 fixed. **The cost accepted** is one more per-call-site obligation that fails silently when missed — one claim in `ItemDetails` today, because every Resume-slot insert goes through one shared helper (`insertButtonAtFront`); `ItemDetailsRowFocus.spec.bs` pins it, and pins that Favorite keeps focus when Shuffle is inserted ahead of it. **Re-evaluate** with the [`button-row-model`](architecture/tech-debt.md#button-row-model) refactor, which removes the bracket and this obligation with it.
 
+## decision-id: per-user-env-file
+
+**date**: 2026-09-16
+**status**: accepted
+**related-files**: `scripts/lib/env-config.cjs`, `scripts/lib/load-env.cjs`, `eslint.config.js`, `.env.example`
+
+Tooling reads device settings and secrets from a per-user `~/.config/jellyrock/env` beneath each checkout's `.env`, so several checkouts share one device list and one set of credentials. Precedence is: variables already set, then the checkout's `.env`, then the user file — a local file overrides the global one, as with git config. An empty value in a file counts as unset, because `.env.example` ships blank keys that would otherwise hide the user file.
+
+Ruled out: **exporting the values from a shell profile** — shell variables outrank every checkout's `.env`, which removes the per-checkout override, and it puts secrets in shell startup files. **Making each checkout's `.env` a symbolic link to one file** — still a manual step for every new checkout or worktree, and a checkout can no longer override a single value. **Constraint:** every script must load settings through `load-env.cjs`; a direct `dotenv` import would silently ignore the user file, so ESLint now rejects one.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
