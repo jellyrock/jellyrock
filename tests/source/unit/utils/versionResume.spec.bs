@@ -100,24 +100,10 @@ namespace tests
       m.assertEqual(versionResume.inProgressSourceIndex("primary", 5000&, invalid, true), -1)
     end function
 
-    @it("returns the item's own source when the item has a position and leads")
-    function _()
-      m.assertEqual(versionResume.inProgressSourceIndex("primary", 5000&, m.primaryFirst(), true), 0)
-    end function
-
-    @it("returns the leading alternate even when the item has a position of its own")
-    ' Both versions in progress: the server leads with the most recently played one, which is
-    ' also the version Continue Watching opens. Measured on 12.0: 1080p (the item) at 318 s,
-    ' 720p watched after it at 319 s and listed first.
+    @it("returns the item's own source when the item has a position")
     function _()
       sources = [{ Id: "alternate" }, { Id: "primary" }]
-      m.assertEqual(versionResume.inProgressSourceIndex("primary", 5000&, sources, true), 0)
-    end function
-
-    @it("returns -1 when the item has a position but lists no source of its own")
-    function _()
-      sources = [{ Id: "version-a" }, { Id: "version-b" }]
-      m.assertEqual(versionResume.inProgressSourceIndex("primary", 5000&, sources, true), -1)
+      m.assertEqual(versionResume.inProgressSourceIndex("primary", 5000&, sources, true), 1)
     end function
 
     @it("returns the leading alternate when the server moved it ahead of the item")

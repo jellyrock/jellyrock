@@ -84,12 +84,14 @@ namespace tests
       m.assertEqual(m.titles(), ["720p  ·  In progress", "1080p"])
     end function
 
-    @it("marks the alternate the server lists first even when the item has a position too")
+    @it("marks the item's own version when the item has a position, like Resume")
+    ' Resume continues the item's own position even when an alternate is listed first, so
+    ' the mark follows it rather than the order.
     function _()
       sources = [m.version("alternate", "Movie - 720p", 1280, 720), m.version("primary", "Movie - 1080p", 1920, 1080)]
       m.itemDetails.itemContent = m.makeMovie(6000000000&, sources)
 
-      m.assertEqual(m.titles(), ["720p  ·  In progress", "1080p"])
+      m.assertEqual(m.titles(), ["720p", "1080p  ·  In progress"])
     end function
 
     @it("marks nothing when no version is in progress")

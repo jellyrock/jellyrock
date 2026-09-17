@@ -66,11 +66,6 @@ namespace versionResume
   ' server's source ORDER, which is only a signal on per-version servers — older servers sort
   ' sources by width, so an alternate can lead with no progress at all.
   '
-  ' Several versions can be in progress at once. The server moves the most recently played one
-  ' with a position to the front (MediaSourceManager.SetAlternateVersionResumeStates), so an
-  ' alternate ahead of the item's own source wins even when the item has a position of its own:
-  ' that alternate was watched more recently, and it is the version Continue Watching opens.
-  '
   ' @param {string} itemId - the item whose MediaSources these are
   ' @param {longinteger} itemPositionTicks - the item's own UserData position
   ' @param {object} mediaSources - the item's MediaSources, in server order
@@ -80,18 +75,12 @@ namespace versionResume
     if not isPerVersion then return -1
     if type(mediaSources) <> "roArray" or mediaSources.count() < 2 then return -1
 
-    ownIndex = versionResume.sourceIndexById(mediaSources, itemId)
-    first = mediaSources[0]
-    leadsWithAlternate = isValid(first) and isValidAndNotEmpty(first.Id) and not versionResume.idsMatch(first.Id, itemId)
-
     if isValid(itemPositionTicks) and itemPositionTicks > 0
-      ' An item that lists no source of its own gives the order nothing to be ahead of, so
-      ' its position cannot be placed on a version: -1.
-      if leadsWithAlternate and ownIndex > 0 then return 0
-      return ownIndex
+      return versionResume.sourceIndexById(mediaSources, itemId)
     end if
 
-    if leadsWithAlternate then return 0
+    first = mediaSources[0]
+    if isValid(first) and isValidAndNotEmpty(first.Id) and not versionResume.idsMatch(first.Id, itemId) then return 0
     return -1
   end function
 

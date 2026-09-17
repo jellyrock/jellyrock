@@ -459,7 +459,7 @@ An item with several `MediaSources` (alternate versions) resumes differently by 
 |---|---|---|
 | Position stored | once per item, whichever file played | per version, on the reported `MediaSourceId` |
 | Version picked to resume | device-best (`findBestVideoSource`) | the version that holds the position |
-| In-progress signal | the item's own position | an alternate listed first in the primary's `MediaSources` (the server leads with the most recently played version that has a position, so it wins even when the item has one too), otherwise the item's own position |
+| In-progress signal | the item's own position | the item's own position, **or** an alternate listed first in the primary's `MediaSources` |
 
 Resuming continues the file that holds the position because another version can be offset
 from it, and neither the names nor the runtime lengths tell a re-encode from a different cut. Upgrading to a
@@ -523,8 +523,8 @@ versions, and returns two forms because the places that name a version do differ
   the viewer chooses. The cost accepted: two editions that also differ in quality are named by
   quality alone once picked.
 - **The in-progress version is marked** (`· In progress`) in the `ItemDetails` menu only, on
-  12.0+. Only the version the server lists first is known without a request, so only it is
-  marked.
+  12.0+: the one `versionResume.inProgressSourceIndex()` names, which is the version the
+  screen selects and Resume continues, so the mark and Resume never disagree.
 - **The player shows the short form as its own segment on the line below the title**, right
   after what identifies the item (`S4E6 - Customer Service • 720p`, `2010 • 1080p`); a live TV
   channel shows none. The title line stays the title: an episode's is the series name, and a
