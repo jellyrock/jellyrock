@@ -22,11 +22,10 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Currently running
 
-task-thread-budget session 42: three PRs in sequence — (A) make `TaskRelaunch.spec`'s same-callback case accept either platform outcome (it is a race) and correct `threading.md`; (B) gate Next Up's `DisableFirstEpisode` to servers < 10.11, with a version-gated-parameter doc section and a server-matrix script; (F) a BSC check against STOP-then-relaunch of the same Task node in one function, plus migrating the call sites that need it. #948 (pipeline budget) and #949 (per-user env file) merged.
-
 ## Recently shipped
 
 - 2026-09-17 — `TaskRelaunch.spec`'s same-callback case now accepts both platform outcomes (the relaunch is a race: ignored when run alone, sometimes honored under a full suite) and fails only on a third, and the `threading.md` row says so. Closes the followup that it flaked on a Stick 4K and in CI.
+- 2026-09-17 — Read device settings from a per-user env file as well as `.env`
 - 2026-09-17 — chore: Ask before an agent creates a git worktree
 - 2026-09-17 — chore: Charge the `apiPipeline` budget only while waiting on the server
 - 2026-09-17 — fix: Match the selected version ignoring case in `ItemDetails`, and drop the dead `MaxVideoDecodeResolution`
