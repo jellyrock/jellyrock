@@ -913,6 +913,7 @@ sub onItemIdChanged()
   m.loadDetailsTask.itemId = itemId
   m.loadDetailsTask.shouldForceRefresh = false
   m.loadDetailsTask.observeField("content", "onDetailsLoaded")
+  ' bsc-disable-next-line no-same-node-relaunch pending: migrate to a new node per run (docs/progress.md, same-node relaunch followup)
   launchTask(m.loadDetailsTask)
 end sub
 
@@ -1228,6 +1229,7 @@ sub onRefreshResumeData()
   m.loadSeriesResumeTask.control = "STOP"
   m.loadSeriesResumeTask.itemId = item.id
   m.loadSeriesResumeTask.observeField("content", "onSeriesResumeLoaded")
+  ' bsc-disable-next-line no-same-node-relaunch pending: migrate to a new node per run (docs/progress.md, same-node relaunch followup)
   launchTask(m.loadSeriesResumeTask)
 end sub
 
@@ -1258,6 +1260,7 @@ sub onRefreshItemDetailsData()
   m.loadDetailsTask.itemId = itemId
   m.loadDetailsTask.shouldForceRefresh = true
   m.loadDetailsTask.observeField("content", "onRefreshDetailsLoaded")
+  ' bsc-disable-next-line no-same-node-relaunch pending: migrate to a new node per run (docs/progress.md, same-node relaunch followup)
   launchTask(m.loadDetailsTask)
 end sub
 
@@ -2050,6 +2053,7 @@ sub populateDescriptionGroup()
       m.loadLyricsTask.itemId = item.id
       m.loadLyricsTask.observeField("content", "onLyricsLoaded")
       screenLoad.pending("lyrics")
+      ' bsc-disable-next-line no-same-node-relaunch pending: migrate to a new node per run (docs/progress.md, same-node relaunch followup)
       launchTask(m.loadLyricsTask)
     end if
     return
@@ -3185,6 +3189,7 @@ sub onItemContentChanged()
       m.loadSeriesResumeTask.itemId = item.id
       m.loadSeriesResumeTask.observeField("content", "onSeriesResumeLoaded")
       screenLoad.pending("seriesResume")
+      ' bsc-disable-next-line no-same-node-relaunch pending: migrate to a new node per run (docs/progress.md, same-node relaunch followup)
       launchTask(m.loadSeriesResumeTask)
     end if
 

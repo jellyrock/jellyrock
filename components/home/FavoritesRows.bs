@@ -90,6 +90,7 @@ sub loadFavorites()
 
   m.isLoadingFavorites = true
   m.loadFavoritesTask.observeField("content", "onFavoritesLoaded")
+  ' bsc-disable-next-line no-same-node-relaunch pending: migrate to a new node per run (docs/progress.md, same-node relaunch followup)
   launchTask(m.loadFavoritesTask)
 end sub
 

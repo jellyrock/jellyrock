@@ -427,6 +427,7 @@ sub loadInitialItems()
   ' real rows for every view including this one.
   m.loadItemsTask.unobserveField("genreSkeletons")
   m.loadItemsTask.observeField("genreSkeletons", "onGenreSkeletonsReady")
+  ' bsc-disable-next-line no-same-node-relaunch pending: migrate to a new node per run (docs/progress.md, same-node relaunch followup)
   launchTask(m.loadItemsTask)
 
   SetUpOptions()
@@ -755,6 +756,7 @@ sub loadMoreData()
   m.loading = true
   m.loadItemsTask.startIndex = m.loadedItems
   m.loadItemsTask.observeField("content", "onItemDataLoaded")
+  ' bsc-disable-next-line no-same-node-relaunch pending: migrate to a new node per run (docs/progress.md, same-node relaunch followup)
   launchTask(m.loadItemsTask)
   m.log.debug("end loadMoreData()")
 end sub
@@ -1174,6 +1176,7 @@ sub onVoiceFilter()
     m.loadItemsTask.searchTerm = voiceSearchTerm
 
     m.loadItemsTask.observeField("content", "onItemDataLoaded")
+    ' bsc-disable-next-line no-same-node-relaunch pending: migrate to a new node per run (docs/progress.md, same-node relaunch followup)
     launchTask(m.loadItemsTask)
 
     if voiceSearchTerm.len() = 1
