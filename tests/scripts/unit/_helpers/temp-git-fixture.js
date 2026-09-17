@@ -11,12 +11,13 @@
 // tests offline and hermetic.
 
 import { execFileSync } from 'node:child_process';
+import { gitSafeEnv } from './git-env.js';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 function git(dir, ...args) {
-  return execFileSync('git', args, { cwd: dir, encoding: 'utf8' });
+  return execFileSync('git', args, { cwd: dir, encoding: 'utf8', env: gitSafeEnv() });
 }
 
 /**

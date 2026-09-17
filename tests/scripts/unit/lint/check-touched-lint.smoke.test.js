@@ -9,6 +9,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { gitSafeEnv } from '../_helpers/git-env.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnScript } from '../_helpers/spawn-script.js';
@@ -16,7 +17,7 @@ import { spawnScript } from '../_helpers/spawn-script.js';
 const SCRIPT = 'scripts/lint/check-touched-lint.cjs';
 
 function git(repoDir, ...args) {
-  return execFileSync('git', args, { cwd: repoDir, encoding: 'utf8' });
+  return execFileSync('git', args, { cwd: repoDir, encoding: 'utf8', env: gitSafeEnv() });
 }
 
 describe('check-touched-lint (smoke)', () => {
