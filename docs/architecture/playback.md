@@ -525,9 +525,10 @@ versions, and returns two forms because the places that name a version do differ
 - **The in-progress version is marked** (`· In progress`) in the `ItemDetails` menu only, on
   12.0+. Only the version the server lists first is known without a request, so only it is
   marked.
-- **The player shows the short form after the title for a movie, and as its own segment on the
-  episode line for an episode or recording** (`S4E6 - Customer Service • 720p`): an episode's
-  title line is the series name, and the version belongs to the episode.
+- **The player shows the short form as its own segment on the line below the title**, right
+  after what identifies the item (`S4E6 - Customer Service • 720p`, `2010 • 1080p`); a live TV
+  channel shows none. The title line stays the title: an episode's is the series name, and a
+  version appended to a movie's name reads as part of it (`AV-1 90mbps`).
 
 A single version keeps its plain stream summary, and the player shows no tag for it.
 

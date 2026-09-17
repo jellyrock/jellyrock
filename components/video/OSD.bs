@@ -365,21 +365,10 @@ sub setVideoTitle()
     ' Use preserved original name (m.originalItemName) to avoid alternate version names
     ' that may include year/edition suffixes (e.g., "Dracula (1931) [Colorized]").
     ' Falls back to item.name on first load before the original is cached.
-    title = m.originalItemName ?? item.name
-    ' Append the active version's label when there are several (e.g., "[B&W]"). An episode
-    ' shows it on the episode line instead (setVideoSubTitle): the version belongs to the
-    ' episode, and its title line is the series name.
-    if isValidAndNotEmpty(m.top.videoSourceTag) and not isEpisodeLike(item.type)
-      title += " " + m.top.videoSourceTag
-    end if
-    m.videoTitle.text = title
+    ' The active version is named on the line below (setVideoSubTitle), not here.
+    m.videoTitle.text = m.originalItemName ?? item.name
   end if
 end sub
-
-' isEpisodeLike: Whether the OSD titles this item by its series, with an episode line below.
-function isEpisodeLike(itemType as string) as boolean
-  return itemType = "Episode" or itemType = "Recording"
-end function
 
 sub setVideoSubTitle()
   ' start fresh by removing all subtitle nodes
@@ -398,7 +387,7 @@ sub setVideoSubTitle()
   end if
 
   ' EPISODE
-  if isEpisodeLike(itemType)
+  if itemType = "Episode" or itemType = "Recording"
     ' Title
     if isValidAndNotEmpty(item.seriesName)
       m.videoTitle.text = item.seriesName
@@ -435,13 +424,6 @@ sub setVideoSubTitle()
       episodeInfoNode = createSubtitleLabelNode("episodeInfo")
       episodeInfoNode.text = episodeInfoText
       displaySubtitleNode(episodeInfoNode)
-    end if
-
-    ' The active version, when there are several: "S4E6 - Customer Service • 720p"
-    if isValidAndNotEmpty(m.top.videoSourceTag)
-      versionNode = createSubtitleLabelNode("versionLabel")
-      versionNode.text = m.top.videoSourceTag
-      displaySubtitleNode(versionNode)
     end if
   else if itemType = "Movie"
     ' videoAirDate
@@ -497,6 +479,14 @@ sub setVideoSubTitle()
       channelNumberNode.text = channelParts.join(" - ")
       displaySubtitleNode(channelNumberNode)
     end if
+  end if
+
+  ' The active version, when there are several, right after what identifies the item:
+  ' "S4E6 - Customer Service • 720p", "2010 • 1080p". A channel never had one.
+  if isValidAndNotEmpty(m.top.videoSourceTag) and itemType <> "TvChannel"
+    versionNode = createSubtitleLabelNode("versionLabel")
+    versionNode.text = m.top.videoSourceTag
+    displaySubtitleNode(versionNode)
   end if
 
   ' append these to all video types

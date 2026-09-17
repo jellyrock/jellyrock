@@ -1,8 +1,9 @@
 namespace tests
 
-  ' Where the OSD names the active version (videoSourceTag). A movie's title line carries it;
-  ' an episode's title line is overwritten with the series name, so before this the version
-  ' never showed for an episode at all — it now has its own segment on the episode line.
+  ' Where the OSD names the active version (videoSourceTag): its own segment on the line
+  ' below the title, right after what identifies the item. The title line stays the title,
+  ' which for an episode is the series name (the version used to be appended to the title
+  ' line, where an episode's series name overwrote it, so it never showed for an episode).
   @suite("OSD - active version label")
   class OSDVersionLabelTests extends tests.BaseTestSuite
 
@@ -39,7 +40,7 @@ namespace tests
 
     private function movie() as object
       item = CreateObject("roSGNode", "JellyfinBaseItem")
-      item.setFields({ id: "mv-1", type: "Movie", name: "AV-1", isMovie: true })
+      item.setFields({ id: "mv-1", type: "Movie", name: "AV-1", isMovie: true, productionYear: 2024 })
       return item
     end function
 
@@ -87,12 +88,34 @@ namespace tests
     @describe("movie")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("appends the version to the title line, with no separate segment")
+    @it("shows the version as its own segment after the year, and keeps the title the title")
+    ' On the title line it read "AV-1 90mbps", where the movie's name looks like part of the
+    ' version.
     function _()
       m.osd.videoSourceTag = "90mbps"
       m.osd.itemData = m.movie()
 
-      m.assertEqual(m.osd.findNode("videoTitle").text, "AV-1 90mbps")
+      m.assertEqual(m.osd.findNode("videoTitle").text, "AV-1")
+      versionNode = m.osd.findNode("versionLabel")
+      m.assertNotInvalid(versionNode)
+      m.assertEqual(versionNode.text, "90mbps")
+      group = m.osd.findNode("videoSubtitleGroup")
+      m.assertEqual(group.getChild(0).id, "productionYear")
+      m.assertTrue(group.getChild(2).isSameNode(versionNode))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("live TV channel")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows no version, as before")
+    function _()
+      channel = CreateObject("roSGNode", "JellyfinBaseItem")
+      channel.setFields({ id: "ch-1", type: "TvChannel", name: "NHK World" })
+      m.osd.videoSourceTag = "720p"
+      m.osd.itemData = channel
+
+      m.assertEqual(m.osd.findNode("videoTitle").text, "NHK World")
       m.assertInvalid(m.osd.findNode("versionLabel"))
     end function
 
