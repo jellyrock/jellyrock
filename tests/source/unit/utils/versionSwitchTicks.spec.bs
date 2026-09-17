@@ -1,0 +1,123 @@
+import "pkg:/source/utils/versionResume.bs"
+
+namespace tests
+
+  ' `switchTicksFor` — where playback continues when the viewer switches version while
+  ' watching, which before this was an unguarded carry of the raw position.
+  '
+  ' The rule is time-first, percentage only as a fallback, and the reason is measurable: two
+  ' releases of one cut are offset by a CONSTANT, not stretched. The local mixed-release pair
+  ' runs 47 s apart (720p 29:55, 1080p 30:43) yet matches at 1080p = 720p + 4 s at the start,
+  ' middle and end, so the extra footage sits at the edges. Mapping by time is 4 s out
+  ' everywhere; mapping by percentage would be 19 s out at 15:00 and 35 s at 25:00.
+  @suite("versionResume - the in-player version switch")
+  class VersionSwitchTicksTests extends tests.BaseTestSuite
+
+    ' Seconds as ticks. The `&` suffix makes the local a LongInteger, so the double
+    ' multiplication lands in 64 bits instead of overflowing a 32-bit integer.
+    private function secs(n as double) as longinteger
+      ticks& = n * 10000000#
+      return ticks&
+    end function
+
+    ' Ticks back to whole seconds, which is the resolution the result is judged at — a
+    ' percentage mapping lands on a fraction of a tick and exact equality would be brittle.
+    private function inSeconds(ticks as longinteger) as integer
+      return int(ticks / 10000000)
+    end function
+
+    ' The two real versions of the local S04E06 pair.
+    private function shortRuntime() as longinteger
+      return m.secs(1795)
+    end function
+
+    private function longRuntime() as longinteger
+      return m.secs(1843)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("switchTicksFor() - the exact time, when the new version has one")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps the exact time switching to a LONGER version")
+    function _()
+      ' 5:19 in the 720p version, switching up to 1080p.
+      m.assertEqual(versionResume.switchTicksFor(m.secs(319), m.shortRuntime(), m.longRuntime()), m.secs(319))
+    end function
+
+    @it("keeps the exact time switching to a SHORTER version that still reaches it")
+    function _()
+      ' 5:18 in 1080p, switching down to 720p, which is 48 s shorter but far past 5:18.
+      m.assertEqual(versionResume.switchTicksFor(m.secs(318), m.longRuntime(), m.shortRuntime()), m.secs(318))
+    end function
+
+    ' The decided rule, and the one case that looks wrong at a glance: past the server's
+    ' MaxResumePct the item will count as watched. That is what finishing it would have done
+    ' anyway, and the alternative — dropping the viewer back to the start — is worse.
+    @it("keeps the exact time past the 90% mark, accepting that the item counts as watched")
+    function _()
+      ' 28:00 of 30:43 is 91% — inside the 720p file (29:55) all the same.
+      m.assertEqual(versionResume.switchTicksFor(m.secs(1680), m.longRuntime(), m.shortRuntime()), m.secs(1680))
+    end function
+
+    @it("keeps the exact time when the new version's runtime is unknown")
+    function _()
+      ' Nothing here can rule the time out, and it is the better answer whenever it holds.
+      m.assertEqual(versionResume.switchTicksFor(m.secs(600), m.longRuntime(), invalid), m.secs(600))
+      m.assertEqual(versionResume.switchTicksFor(m.secs(600), m.longRuntime(), 0), m.secs(600))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("switchTicksFor() - the percentage, when the time is past the new file's end")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("maps to the same percentage when the exact time does not exist in the new version")
+    function _()
+      ' 30:00 into the 1080p version (30:43) is past the whole 720p file (29:55), so the
+      ' time cannot be kept: 1800/1843 = 97.67%, and 97.67% of 1795 s is 1753 s.
+      result = versionResume.switchTicksFor(m.secs(1800), m.longRuntime(), m.shortRuntime())
+      m.assertEqual(m.inSeconds(result), 1753)
+    end function
+
+    @it("lands inside the new version, not at or past its end")
+    function _()
+      result = versionResume.switchTicksFor(m.secs(1800), m.longRuntime(), m.shortRuntime())
+      m.assertTrue(result < m.shortRuntime())
+    end function
+
+    @it("maps a half-length version to half the position")
+    function _()
+      ' 20:00 of a 40:00 version, switching to a 20:00 version: 50% of 20:00 is 10:00.
+      result = versionResume.switchTicksFor(m.secs(1200), m.secs(2400), m.secs(1200))
+      m.assertEqual(m.inSeconds(result), 600)
+    end function
+
+    @it("returns nothing when the time is past the new version AND the old runtime is unknown")
+    function _()
+      ' No percentage can be computed, and a position known to be outside the new file must
+      ' not be used as-is.
+      m.assertEqual(versionResume.switchTicksFor(m.secs(1800), invalid, m.shortRuntime()), 0&)
+      m.assertEqual(versionResume.switchTicksFor(m.secs(1800), 0, m.shortRuntime()), 0&)
+    end function
+
+    @it("returns nothing when the position is at or past the end of the version being left")
+    function _()
+      ' A fraction of 1.0 or more has no meaningful mapping — the viewer finished that file.
+      m.assertEqual(versionResume.switchTicksFor(m.longRuntime(), m.longRuntime(), m.shortRuntime()), 0&)
+      m.assertEqual(versionResume.switchTicksFor(m.secs(2000), m.longRuntime(), m.shortRuntime()), 0&)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("switchTicksFor() - nothing to carry")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns nothing for a position of zero or an unreadable one")
+    function _()
+      m.assertEqual(versionResume.switchTicksFor(0, m.longRuntime(), m.shortRuntime()), 0&)
+      m.assertEqual(versionResume.switchTicksFor(invalid, m.longRuntime(), m.shortRuntime()), 0&)
+      m.assertEqual(versionResume.switchTicksFor(-1&, m.longRuntime(), m.shortRuntime()), 0&)
+    end function
+
+  end class
+
+end namespace

@@ -1,4 +1,5 @@
 import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPipeline.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/api/image.bs"
@@ -34,8 +35,20 @@ sub loadItems()
 
   ' Only show preroll once per queue
   if queueManager.callFunc("isPrerollActive")
-    ' Prerolls not allowed if we're resuming video
-    if queueManager.callFunc("getCurrentItem").startingPoint = 0
+    ' Prerolls not allowed if we're resuming video.
+    '
+    ' startingPoint alone no longer answers that on a per-version server: the item's own
+    ' version can sit at 0 while an alternate is partway through, and which version resumes is
+    ' settled further down, after the metadata fetch — too late to un-queue an intro. So the
+    ' caller passes hasVersionInProgress, read from the server's source order for free.
+    ' jellyfin-web draws the same line (getIntros() bails on options.startPositionTicks), and
+    ' keys it on the position actually being played, which is what this restores.
+    ' Both reads are explicitly guarded rather than compared against 0: an absent field reads
+    ' `invalid`, and "is it resuming?" must not be decided by how invalid happens to compare.
+    currentItem = queueManager.callFunc("getCurrentItem")
+    startsFromAPosition = isValid(currentItem) and isValid(currentItem.startingPoint) and currentItem.startingPoint > 0
+    otherVersionInProgress = isValid(currentItem) and currentItem.hasVersionInProgress = true
+    if not startsFromAPosition and not otherVersionInProgress
       preRoll = GetIntroVideos(m.top.itemId)
       if isValid(preRoll) and preRoll.TotalRecordCount > 0 and isValid(preRoll.items[0])
         ' If an error is thrown in the Intros plugin, instead of passing the error they pass the entire rick roll music video.
@@ -58,6 +71,88 @@ sub loadItems()
   bypassDoviPreservation = m.top.shouldBypassDoviPreservation
 
   m.top.content = [LoadItems_VideoPlayer(id, mediaSourceId, audioStreamIdx, forceTranscoding, bypassDoviPreservation)]
+end sub
+
+' resolveResumeVersion: Which of an item's versions resumes, and from where.
+'
+' The imperative shell around versionResume.chooseResumeSource(): that function owns every
+' rule and says what it still needs; this fetches it and asks again. Same division as
+' ItemDetails, so both entry points reach an identical answer — the split between them is
+' what made the app name one version on the details screen and play another.
+'
+' Reads ride apiPipeline rather than a fetch loop: the pipeline keeps as many requests on the
+' pool as it has slots, so N versions cost roughly one round trip instead of N. Each reply is
+' ~150 bytes against the item's ~17 KB, and nothing is fetched at all unless something is
+' already in progress — so an item nobody has started costs no requests on the playback path.
+'
+' @param {string} itemId - the item being played
+' @param {object} meta - ItemMetaData() for it (its own UserData position comes from here)
+' @param {object} mediaSources - its MediaSources, in server order
+' @return {object} { sourceId, ticks } — sourceId "" when no version is in progress
+function resolveResumeVersion(itemId as string, meta as object, mediaSources as object) as object
+  ctx = {
+    itemId: itemId,
+    itemPositionTicks: meta.playbackPositionTicks,
+    mediaSources: mediaSources,
+    positions: {},
+    isPerVersion: true,
+    deviceBestId: ""
+  }
+
+  ' At most three passes: read the positions, settle a near-level tie, and take the answer. A
+  ' bounded loop rather than `while true` so a request that cannot be built cannot spin.
+  for attempt = 1 to 3
+    answer = versionResume.chooseResumeSource(ctx)
+
+    if answer.needsSourceIds.count() > 0
+      fetchVersionPositions(ctx.positions, answer.needsSourceIds)
+    else if answer.tiedIds.count() > 1
+      ' Equally far along, so quality decides — and that needs the device, which
+      ' versionResume deliberately knows nothing about.
+      ctx.deviceBestId = findBestVideoSourceAmongIds(mediaSources, answer.tiedIds)
+      if not isValidAndNotEmpty(ctx.deviceBestId) then exit for
+    else
+      return { sourceId: answer.sourceId, ticks: answer.ticks }
+    end if
+  end for
+
+  answer = versionResume.chooseResumeSource(ctx)
+  return { sourceId: answer.sourceId, ticks: answer.ticks }
+end function
+
+' fetchVersionPositions: Read each named version's own position into `positions`.
+'
+' A version that does not answer is recorded as POSITION_UNREADABLE rather than left absent,
+' so the caller's next pass cannot ask for it again and loop — and so an unread position is
+' never mistaken for "this version has no progress", which would silently restart the content.
+'
+' @param {object} positions - sourceId -> ticks, filled in place
+' @param {object} sourceIds - the versions to read
+sub fetchVersionPositions(positions as object, sourceIds as object)
+  api = GetApi()
+  entries = []
+  for each sourceId in sourceIds
+    req = api.BuildGetItemUserDataRequest(sourceId)
+    if isValid(req)
+      entries.push({ requestId: "version-position-" + sourceId, req: req, sourceId: sourceId })
+    else
+      positions[sourceId] = versionResume.POSITION_UNREADABLE
+    end if
+  end for
+  if entries.count() = 0 then return
+
+  pipe = apiPipelineBegin(entries)
+  result = apiPipelineNext(pipe)
+  while isValid(result)
+    positions[result.entry.sourceId] = versionResume.playbackPositionFrom(result.res)
+    result = apiPipelineNext(pipe)
+  end while
+
+  ' Anything the pipeline never delivered (budget expiry) is still absent — pin it so the
+  ' decision is made on what IS known instead of waiting on a reply that is not coming.
+  for each sourceId in sourceIds
+    if not isValid(positions[sourceId]) then positions[sourceId] = versionResume.POSITION_UNREADABLE
+  end for
 end sub
 
 function LoadItems_VideoPlayer(id as string, mediaSourceId as dynamic, audioStreamIdx = 1 as integer, forceTranscoding = false as boolean, bypassDoviPreservation = false as boolean) as dynamic
@@ -101,15 +196,30 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     playbackPosition = currentItem.startingPoint
   end if
 
-  ' Select a video source if no specific source was requested: the item's own version when
-  ' resuming on a per-version server (the position belongs to that file), otherwise the
-  ' best one for the device.
+  ' Select a video source if no specific source was requested. On a per-version server this is
+  ' the ONE place that choice is made for every entry point that did not make it on screen —
+  ' quick play, casts, a queued episode — because it is the only one that can read each
+  ' version's own position. The details screen still decides for itself and arrives with an
+  ' explicit id, which is honored untouched.
   if not isValid(mediaSourceId) and isValid(mediaSources) and mediaSources.Count() > 1
-    isPerVersion = versionResume.isPerVersionServer(m.global.server.version)
-    bestSourceIndex = versionResume.resumeSourceIndex(video.id, playbackPosition, mediaSources, isPerVersion)
-    if bestSourceIndex < 0 then bestSourceIndex = findBestVideoSource(mediaSources)
-    mediaSourceId = mediaSources[bestSourceIndex].Id
-    m.log.info("Auto-selected video source", "index", bestSourceIndex, "mediaSourceId", mediaSourceId, "isPerVersion", isPerVersion)
+    if versionResume.isPerVersionServer(m.global.server.version)
+      choice = resolveResumeVersion(video.id, meta, mediaSources)
+      if isValidAndNotEmpty(choice.sourceId)
+        mediaSourceId = choice.sourceId
+        ' The chosen version resumes at ITS OWN position, never the one the queue carried:
+        ' two versions of one item can be a minute apart in runtime, so reusing another
+        ' version's position would drop the viewer somewhere else in the content.
+        playbackPosition = choice.ticks
+        m.log.info("Resume version chosen", "mediaSourceId", mediaSourceId, "ticks", playbackPosition)
+      else
+        mediaSourceId = mediaSources[findBestVideoSource(mediaSources)].Id
+        m.log.info("Auto-selected video source (nothing in progress)", "mediaSourceId", mediaSourceId)
+      end if
+    else
+      ' One position per item, so any version resumes at it: take the best for the device.
+      mediaSourceId = mediaSources[findBestVideoSource(mediaSources)].Id
+      m.log.info("Auto-selected video source (single-position server)", "mediaSourceId", mediaSourceId)
+    end if
   end if
 
   ' Re-determine audio stream index if no manual selection was made

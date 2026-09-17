@@ -189,6 +189,73 @@ namespace tests
       m.assertEqual(findBestVideoSource(sources, caps), 1)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("findBestVideoSourceAmongIds() - the near-level resume tie-break")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The point of scoring a SUBSET: the best version overall is not the answer when only
+    ' some versions are in progress. A 4K version nobody has started must not win a tie
+    ' between two the viewer is partway through.
+    @it("ignores a better version that is not one of the candidates")
+    function _()
+      caps = m.createMockVideoCaps(2160, true, true)
+      sources = [
+        m.createMockSource("sd", 480, "mpeg2video", "SDR", true),
+        m.createMockSource("hd", 1080, "h264", "SDR", true),
+        m.createMockSource("uhd", 2160, "hevc", "SDR", true)
+      ]
+      m.assertEqual(findBestVideoSourceAmongIds(sources, ["sd", "hd"], caps), "hd")
+    end function
+
+    @it("returns the single candidate when only one id is given")
+    function _()
+      caps = m.createMockVideoCaps(2160, true, true)
+      sources = [
+        m.createMockSource("sd", 480, "mpeg2video", "SDR", true),
+        m.createMockSource("uhd", 2160, "hevc", "SDR", true)
+      ]
+      m.assertEqual(findBestVideoSourceAmongIds(sources, ["sd"], caps), "sd")
+    end function
+
+    ' Ids reach this from two different server fields, so the match is case-insensitive for
+    ' the same reason mediaSourceIndexForId is.
+    @it("matches candidate ids ignoring case")
+    function _()
+      caps = m.createMockVideoCaps(1080, false, false)
+      sources = [
+        m.createMockSource("aabbccdd", 480, "mpeg2video", "SDR", true),
+        m.createMockSource("eeff0011", 1080, "h264", "SDR", true)
+      ]
+      m.assertEqual(findBestVideoSourceAmongIds(sources, ["AABBCCDD", "EEFF0011"], caps), "eeff0011")
+    end function
+
+    @it("skips ids that name no source the item still has")
+    function _()
+      caps = m.createMockVideoCaps(2160, true, true)
+      sources = [
+        m.createMockSource("sd", 480, "mpeg2video", "SDR", true),
+        m.createMockSource("hd", 1080, "h264", "SDR", true)
+      ]
+      ' "merged-away" was split off on the server while the screen was open.
+      m.assertEqual(findBestVideoSourceAmongIds(sources, ["merged-away", "sd"], caps), "sd")
+    end function
+
+    @it("returns an empty string when no id names a source, so no version is chosen")
+    function _()
+      caps = m.createMockVideoCaps(1080, false, false)
+      sources = [m.createMockSource("hd", 1080, "h264", "SDR", true)]
+      m.assertEqual(findBestVideoSourceAmongIds(sources, ["gone"], caps), "")
+    end function
+
+    @it("returns an empty string for an absent or empty candidate list")
+    function _()
+      caps = m.createMockVideoCaps(1080, false, false)
+      sources = [m.createMockSource("hd", 1080, "h264", "SDR", true)]
+      m.assertEqual(findBestVideoSourceAmongIds(sources, [], caps), "")
+      m.assertEqual(findBestVideoSourceAmongIds(sources, invalid, caps), "")
+      m.assertEqual(findBestVideoSourceAmongIds(invalid, ["hd"], caps), "")
+    end function
+
   end class
 
 end namespace

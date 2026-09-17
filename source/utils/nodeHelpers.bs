@@ -43,6 +43,12 @@ namespace nodeHelpers
     optional startingPoint as longinteger
     optional selectedAudioStreamIndex as integer
     optional selectedSubtitleStreamIndex as integer
+    ' True when SOME version of this item holds a playback position, which startingPoint alone
+    ' cannot say: on a per-version server the item's own version can sit at 0 while an alternate
+    ' is partway through. Read from the server's source ORDER, so it costs no request. It exists
+    ' because "are we resuming?" is asked before the version is chosen — LoadVideoContentTask
+    ' gates the Cinema Mode preroll on it, since a preroll in front of a resume is wrong.
+    optional hasVersionInProgress as boolean
   end interface
 
   ' createQueueItem: Create a queue item AA from a source item.
