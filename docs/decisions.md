@@ -1515,6 +1515,16 @@ A query parameter whose effect differs by Jellyfin version is sent only to the v
 
 Ruled out: **sending it everywhere because newer servers ignore it**. An ignored parameter is still type-checked (a bad value returns HTTP 400 through 10.11), and nothing guarantees a later release will keep ignoring it. **Gating it through `api-usage-manifest.json`**: the manifest has no per-endpoint parameter binding and scans only `source/api/`, while request params are also built in `components/`. **Matching only quoted string literals in the lint**: BrightScript AA keys are case-insensitive and often unquoted (`{ Limit: 1 }`), so the lint matches the name case-insensitively in code with comments stripped. **Constraint:** the lint is per FILE. A file that calls the guard anywhere can still send the parameter unguarded elsewhere in that file.
 
+## decision-id: doc-citations-cite-symbols
+
+**date**: 2026-09-17
+**status**: accepted
+**related-files**: `.claude/rules/derive-dont-duplicate.md`, `scripts/lint/doc-citation-ratchet.js`, `.doc-citation-baseline.json`
+
+Tracked prose cites a **symbol**, never a line number, and does not store a quantity the repo can derive; a number that genuinely is the point is framed as a dated measurement instead. A line number rots on any edit above it rather than only on edits to the thing described, so it decays faster than review or the contextual freshness gates ([ADR 0033](adr/0033-contextual-doc-freshness.md)) can catch — a reader re-reading the prose cannot see that a number drifted underneath it. Of a 14-reference sample taken 2026-09-17, three were already wrong: two past end-of-file, and one citing the `quickPlayNode` self-observer at a line that reads `m.trailerCheckSeq = 0`, in a doc reviewed that same day. Citing the symbol is strictly better rather than merely more durable, because a human or an agent can search the codebase for a symbol and cannot search it for a line number.
+
+Enforced as a **per-file** ratchet ([`doc-citation-ratchet.js`](../scripts/lint/doc-citation-ratchet.js)) over the 55 grandfathered references, drained under issue #959. Ruled out: **one global total**, like `.promise-ratchet-baseline` — the population spans 13 files, so a single integer lets an unrelated cleanup fund a fresh citation elsewhere while the gate stays green, which is the slack-refill failure that ratchet's own advisory warns about. **A hard zero-tolerance gate**, which could not land without one mechanical PR rewriting 13 docs at once. **Convention with no gate**, which is what already failed — 55 accumulated under it. Deliberately NOT gated: whether a quantity is a live claim or a dated measurement, since telling them apart needs reading, so clauses 2 and 3 stay convention. Exempt by construction: fenced code blocks (a quoted transcript would be falsified by a rewrite), gitignored ephemeral prose, and append-only `AUDIT-LOG.md` records.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
