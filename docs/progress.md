@@ -25,7 +25,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 ## Recently shipped
 
 - 2026-09-16 — `ItemDetails.findSelectedSource` now matches the selected version ignoring case through `mediaSourceIndexForId`, as playback start does (closes the #943 follow-up).
-- 2026-09-16 — Removed `LoadVideoContentTask`'s never-applied `video.MaxVideoDecodeResolution` (closes the #943 follow-up): applying it to the player changed neither the texture budget nor channel memory on a Roku Stick 3600X, a Streaming Stick 4K or a Roku Ultra.
+- 2026-09-16 — Removed `LoadVideoContentTask`'s never-applied `video.MaxVideoDecodeResolution` (closes the #943 follow-up): applying it to the player changed neither the texture budget nor channel memory on a Roku Stick `3600X`, a Streaming Stick 4K or a Roku Ultra.
 - 2026-09-16 — Dropped the idle-freeze followup (the app stopped rendering after about an hour idle on User Select, `.178`, 2026-09-15): seen once and never reproduced, so judged a one-off rather than a defect to chase.
 - 2026-09-16 — fix: Read the version being played when starting playback
 - 2026-09-16 — Widen the API request pool for faster loading (up to 30% on Home)
