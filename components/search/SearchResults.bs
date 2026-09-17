@@ -260,7 +260,6 @@ sub searchMedias()
   m.searchTask.observeField("results", "loadResults")
   m.searchTask.query = query
   m.top.overhangTitle = translate(translationKeys.ButtonSearch) + ": " + query
-  ' bsc-disable-next-line no-same-node-relaunch pending: migrate to a new node per run (docs/progress.md, same-node relaunch followup)
   launchTask(m.searchTask)
 
 end sub

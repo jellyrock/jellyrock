@@ -546,7 +546,6 @@ sub pageContentChanged()
 
   m.LoadAudioStreamTask.itemId = currentItem.id
   m.LoadAudioStreamTask.observeField("content", "onAudioStreamLoaded")
-  ' bsc-disable-next-line no-same-node-relaunch pending: migrate to a new node per run (docs/progress.md, same-node relaunch followup)
   launchTask(m.LoadAudioStreamTask)
 end sub
 

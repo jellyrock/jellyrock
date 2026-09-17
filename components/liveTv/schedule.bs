@@ -104,7 +104,6 @@ sub channelFilterSet()
 
     m.LoadChannelsTask.filter = m.top.filter
     startLoadingSpinner()
-    ' bsc-disable-next-line no-same-node-relaunch pending: migrate to a new node per run (docs/progress.md, same-node relaunch followup)
     launchTask(m.LoadChannelsTask)
   end if
 end sub
@@ -150,7 +149,6 @@ sub channelsearchTermSet()
 
     m.LoadChannelsTask.searchTerm = m.top.searchTerm
     startLoadingSpinner()
-    ' bsc-disable-next-line no-same-node-relaunch pending: migrate to a new node per run (docs/progress.md, same-node relaunch followup)
     launchTask(m.LoadChannelsTask)
   end if
 end sub

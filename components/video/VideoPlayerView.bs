@@ -575,7 +575,6 @@ sub loadCaption()
     m.log.debug("Setting captionTask.url", m.top.subtitleTrack)
     m.captionTask.control = "STOP"
     m.captionTask.url = m.top.subtitleTrack
-    ' bsc-disable-next-line no-same-node-relaunch pending: migrate to a new node per run (docs/progress.md, same-node relaunch followup)
     launchTask(m.captionTask)
   end if
 end sub
@@ -632,7 +631,6 @@ sub onSubtitleChange()
         if isValid(m.captionTask) and isValid(m.top.subtitleTrack) and m.top.subtitleTrack <> ""
           m.captionTask.control = "STOP"
           m.captionTask.url = m.top.subtitleTrack
-          ' bsc-disable-next-line no-same-node-relaunch pending: migrate to a new node per run (docs/progress.md, same-node relaunch followup)
           launchTask(m.captionTask)
         end if
         toggleCaption()

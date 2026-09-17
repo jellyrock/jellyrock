@@ -15,17 +15,24 @@
  * source order):
  *   - writes `X.control = "STOP"` (any casing; also `X["control"] = "STOP"`,
  *     `X.setField("control", "STOP")` and a literal `X.setFields({ control: "STOP" })`), or
- *   - calls a function or sub declared in the SAME file whose body writes that
- *     STOP to `X`, where `X` is an `m.` path (one hop: `prepareDataLoad()` then
- *     `launchTask(m.loadItemsTask)`). A helper's locals mean nothing to its caller,
- *     so only `m.`-rooted paths cross the hop.
+ *   - calls a function or sub declared in the SAME file that STOPs `X` and does
+ *     not assign `X` (or a parent of it) afterwards, where `X` is an `m.` path
+ *     (one hop: `prepareDataLoad()` then `launchTask(m.loadItemsTask)`). A
+ *     helper's locals mean nothing to its caller, so only `m.`-rooted paths
+ *     cross the hop.
+ *
+ * Each function is checked on its own, and an inline `sub(...)` / `function(...)`
+ * is a function of its own: a promise callback runs in a later callback, so
+ * neither its STOPs, its launches nor its assignments belong to the function
+ * that wrote it.
  *
  * What is NOT flagged:
  *   - A STOP after the launch (a timeout that stops the task it just started).
  *   - A launch after `X`, or a parent of it, is assigned between the STOP and the
  *     launch — that is the new-node fix. All three write spellings count:
  *     `X = …` / `m.x = …`, the literal-key `m["x"] = …`, and a literal-AA
- *     `setFields` / `addFields`.
+ *     `setFields` / `addFields`. Assigning `invalid` counts too: launching
+ *     `invalid` fails every time rather than racing, and `launchTask` reports it.
  *   - A STOP in a different function from the launch, other than the one-hop
  *     helper above (e.g. a STOP in a completion handler, then a launch from a later
  *     callback). Those run in different callbacks, and a relaunch from a later
@@ -36,7 +43,12 @@
  *     another (`if a then stop else launch`) is flagged though they cannot both
  *     run; one suppression each. No such site exists today.
  *   - Helpers are followed one hop, within one file, by bare name. A helper
- *     reached through `m.someMethod()`, another file, or a second hop is missed.
+ *     reached through `m.someMethod()`, another file, or a second hop is missed,
+ *     and a namespaced function shares its bare name with any same-named
+ *     function in the file.
+ *   - Paths are compared as written. A STOP through a local alias
+ *     (`t = m.task` then `t.control = "STOP"`) followed by `launchTask(m.task)`
+ *     is missed.
  *   - A STOP guarded by `if X.state = "run"` is flagged like any other: the guard
  *     is exactly the running case the race needs.
  *
@@ -44,7 +56,11 @@
  *  - `source/utils/tasks.bs`   (the wrapper itself)
  *  - `components/vendor/**`    (vendored third-party code we don't author)
  *
- * Escape hatch (state the reason after the code):
+ * Sites that predate the rule are listed in PENDING_MIGRATIONS below rather than
+ * suppressed inline, so there is no marker to copy onto a new site. The list can
+ * only shrink: a listed site that no longer fires is itself an error.
+ *
+ * Escape hatch, for a relaunch that is intended (state the reason after the code):
  *  - `' bsc-disable-next-line no-same-node-relaunch <reason>` on the line above
  *    the launch, or `' bsc-disable-line …` on it. `bsc-disable-file` is
  *    deliberately NOT honored, as with `no-raw-run` and `no-task-fanout`.
@@ -60,6 +76,39 @@ const EXCLUDED_DEST_PREFIXES = ['components/vendor/'];
 // remove the guard from every launch in the file.
 const DISABLE_LINE_MARKER = /'\s*bsc-disable-line\s+no-same-node-relaunch\b/i;
 const DISABLE_NEXT_LINE_MARKER = /'\s*bsc-disable-next-line\s+no-same-node-relaunch\b/i;
+
+/**
+ * Sites that relaunched the same node before this rule existed, each awaiting a
+ * move to a new node per run (docs/progress.md, same-node relaunch followup).
+ * File → [function, launched path]. Delete an entry when its site is migrated;
+ * the build fails until you do.
+ */
+const PENDING_MIGRATIONS = {
+  'components/ItemDetails.bs': [
+    ['onItemIdChanged', 'm.loadDetailsTask'],
+    ['onRefreshResumeData', 'm.loadSeriesResumeTask'],
+    ['onRefreshItemDetailsData', 'm.loadDetailsTask'],
+    ['populateDescriptionGroup', 'm.loadLyricsTask'],
+    ['onItemContentChanged', 'm.loadSeriesResumeTask'],
+  ],
+  'components/ItemGrid/BaseGridView.bs': [
+    ['loadInitialItems', 'm.loadItemsTask'],
+    ['loadMoreData', 'm.loadItemsTask'],
+    ['onVoiceFilter', 'm.loadItemsTask'],
+  ],
+  'components/home/FavoritesRows.bs': [['loadFavorites', 'm.loadFavoritesTask']],
+  'components/home/HomeRows.bs': [['startLatestMediaLoads', 'm.latestRowsTask']],
+  'components/liveTv/schedule.bs': [
+    ['channelFilterSet', 'm.LoadChannelsTask'],
+    ['channelsearchTermSet', 'm.LoadChannelsTask'],
+  ],
+  'components/music/AudioPlayerView.bs': [['pageContentChanged', 'm.LoadAudioStreamTask']],
+  'components/search/SearchResults.bs': [['searchMedias', 'm.searchTask']],
+  'components/video/VideoPlayerView.bs': [
+    ['loadCaption', 'm.captionTask'],
+    ['onSubtitleChange', 'm.captionTask'],
+  ],
+};
 
 const LAUNCH_FUNCTION = 'launchtask';
 const CONTROL_FIELD = 'control';
@@ -125,18 +174,23 @@ function start(node) {
 }
 
 /**
- * Every STOP, launch, rebind and bare call in `body`, each with its source
- * position. The walk does not visit in source order, so callers sort.
+ * Every STOP, launch, rebind and bare call in `func`'s own body, each with its
+ * source position. Nested function expressions are skipped: they are checked as
+ * functions of their own. The walk does not visit in source order, so this sorts.
  */
-function collectEvents(body) {
+function collectEvents(func) {
   const events = [];
   const push = (kind, path, node, extra = {}) => {
     if (path === undefined) return;
     events.push({ kind, path, pos: start(node), node, ...extra });
   };
+  const skipper = new brighterscript.ChildrenSkipper();
 
-  body.walk(
+  func.body.walk(
     brighterscript.createVisitor({
+      FunctionExpression: () => {
+        skipper.skip();
+      },
       DottedSetStatement: (statement) => {
         const base = refPath(statement.obj);
         const field = statement.tokens?.name?.text?.toLowerCase();
@@ -200,7 +254,7 @@ function collectEvents(body) {
         }
       },
     }),
-    { walkMode: brighterscript.WalkMode.visitAllRecursive },
+    { walkMode: brighterscript.WalkMode.visitAllRecursive, skipChildren: skipper },
   );
   return events.sort((a, b) => a.pos - b.pos);
 }
@@ -214,19 +268,47 @@ function isRebound(path, rebound) {
   return false;
 }
 
-/** The functions declared in `file`, as { name, body } (name lowercased). */
+/**
+ * Replay `events` in order and call `onLaunch(event, via)` for each launch of a
+ * node that is still stopped — stopped, and not assigned anew since. A call to a
+ * function in `helperStops` stops the paths it lists. Returns the paths still
+ * stopped at the end, which is what a helper hands its caller.
+ */
+function trackStops(events, helperStops, onLaunch) {
+  // path -> { rebound: paths assigned since that path's last STOP, via: helper name }
+  const stopped = new Map();
+  for (const e of events) {
+    if (e.kind === 'stop') {
+      stopped.set(e.path, { rebound: new Set(), via: undefined });
+    } else if (e.kind === 'call') {
+      for (const path of helperStops.get(e.path) ?? []) {
+        stopped.set(path, { rebound: new Set(), via: e.path });
+      }
+    } else if (e.kind === 'rebind') {
+      for (const state of stopped.values()) state.rebound.add(e.path);
+    } else if (e.kind === 'launch') {
+      const state = stopped.get(e.path);
+      if (state && !isRebound(e.path, state.rebound)) onLaunch(e, state.via);
+    }
+  }
+  return [...stopped]
+    .filter(([path, state]) => !isRebound(path, state.rebound))
+    .map(([path]) => path);
+}
+
+/**
+ * Every function in `file`, named or inline, as { name, statement, func }.
+ * `name` is lowercased, and undefined for a method or an inline function, which
+ * nothing in the file can call by bare name.
+ */
 function functionsIn(file) {
   const found = [];
   file.parser.ast.walk(
     brighterscript.createVisitor({
-      FunctionStatement: (statement) => {
-        const name = statement.tokens?.name?.text;
-        const body = statement.func?.body;
-        if (body) found.push({ name: name?.toLowerCase(), body });
-      },
-      MethodStatement: (statement) => {
-        const body = statement.func?.body;
-        if (body) found.push({ name: undefined, body });
+      FunctionExpression: (func) => {
+        if (!func.body) return;
+        const statement = brighterscript.isFunctionStatement(func.parent) ? func.parent : undefined;
+        found.push({ name: statement?.tokens?.name?.text?.toLowerCase(), statement, func });
       },
     }),
     { walkMode: brighterscript.WalkMode.visitAllRecursive },
@@ -234,9 +316,17 @@ function functionsIn(file) {
   return found;
 }
 
+/** PENDING_MIGRATIONS for one file, as lowercased `function|path` keys. */
+function pendingFor(pending, destPath) {
+  return new Set(
+    (pending[destPath] || []).map(([fn, path]) => `${fn.toLowerCase()}|${path.toLowerCase()}`),
+  );
+}
+
 class NoSameNodeRelaunchPlugin {
-  constructor() {
+  constructor(pending = PENDING_MIGRATIONS) {
     this.name = 'jellyrock-no-same-node-relaunch';
+    this.pending = pending;
   }
 
   afterValidateFile(event) {
@@ -248,38 +338,30 @@ class NoSameNodeRelaunchPlugin {
       if (ALLOWED_DEST_PATHS.has(destPath)) return;
       if (EXCLUDED_DEST_PREFIXES.some((prefix) => destPath.startsWith(prefix))) return;
 
-      const functions = functionsIn(file).map((fn) => ({ ...fn, events: collectEvents(fn.body) }));
+      const functions = functionsIn(file).map((fn) => ({ ...fn, events: collectEvents(fn.func) }));
 
-      // One hop: the `m.` paths each named function STOPs directly.
+      // One hop: the `m.` paths each named function leaves stopped.
       const helperStops = new Map();
       for (const fn of functions) {
         if (!fn.name) continue;
-        const stops = fn.events
-          .filter((e) => e.kind === 'stop' && e.path.startsWith(`${SELF_REFERENCE}.`))
-          .map((e) => e.path);
+        const stops = trackStops(fn.events, new Map(), () => {}).filter((path) =>
+          path.startsWith(`${SELF_REFERENCE}.`),
+        );
         if (stops.length) helperStops.set(fn.name, new Set(stops));
       }
 
+      const unmigrated = pendingFor(this.pending, destPath);
       const reported = new Set();
       for (const fn of functions) {
-        // path -> set of paths rebound since that path's last STOP
-        const stopped = new Map();
-        for (const e of fn.events) {
-          if (e.kind === 'stop') {
-            stopped.set(e.path, { rebound: new Set(), via: undefined });
-          } else if (e.kind === 'call') {
-            for (const path of helperStops.get(e.path) ?? []) {
-              stopped.set(path, { rebound: new Set(), via: e.path });
-            }
-          } else if (e.kind === 'rebind') {
-            for (const state of stopped.values()) state.rebound.add(e.path);
-          } else if (e.kind === 'launch') {
-            const state = stopped.get(e.path);
-            if (!state || isRebound(e.path, state.rebound)) continue;
-            this.report(event.program, file, e.node, e.path, state.via, reported);
-          }
-        }
+        trackStops(fn.events, helperStops, (e, via) => {
+          const key = `${fn.name}|${e.path}`;
+          if (fn.name && unmigrated.delete(key)) return;
+          this.report(event.program, file, e.node, e.path, via, reported);
+        });
       }
+
+      // Whatever is left was listed but no longer relaunches: it has been migrated.
+      for (const key of unmigrated) this.reportMigrated(event.program, file, functions, key);
     } catch (_e) {
       // Never crash the build.
     }
@@ -310,6 +392,26 @@ class NoSameNodeRelaunchPlugin {
       location: call.location,
     });
   }
+
+  reportMigrated(program, file, functions, key) {
+    const [fnName, path] = key.split('|');
+    // Anchor on the function if it still exists, otherwise on the file's first statement.
+    const fn = functions.find((f) => f.name === fnName);
+    const location =
+      fn?.statement?.tokens?.name?.location ?? file.parser.ast.statements?.[0]?.location;
+    if (!location) return;
+    program.diagnostics.register({
+      code: CODE,
+      severity: 1, // Error
+      source: this.name,
+      message:
+        `\`${fnName}()\` no longer relaunches \`${path}\` after a STOP, so its migration is done. ` +
+        `Delete its entry from PENDING_MIGRATIONS in scripts/bsc-plugins/${CODE}.cjs.`,
+      location,
+    });
+  }
 }
 
 module.exports = () => new NoSameNodeRelaunchPlugin();
+// Tests pass their own list, so they do not depend on which sites are still pending.
+module.exports.withPendingMigrations = (pending) => () => new NoSameNodeRelaunchPlugin(pending);

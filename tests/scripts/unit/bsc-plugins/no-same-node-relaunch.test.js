@@ -8,7 +8,7 @@
 // restartable run must launch a NEW node. See docs/architecture/threading.md.
 
 import { describe, it, expect } from 'vitest';
-import { runPluginOnSource, diagnosticsByCode } from '../_helpers/run-plugin.js';
+import { runPluginOnSource, runPluginOnEdits, diagnosticsByCode } from '../_helpers/run-plugin.js';
 import plugin from '../../../../scripts/bsc-plugins/no-same-node-relaunch.cjs';
 
 const CODE = 'no-same-node-relaunch';
@@ -109,6 +109,7 @@ describe('no-same-node-relaunch — flagged', () => {
       `),
     ).toHaveLength(1);
   });
+
   it('checks class methods too', () => {
     expect(
       check(
@@ -122,6 +123,48 @@ describe('no-same-node-relaunch — flagged', () => {
       `,
         'source/Loader.bs',
       ),
+    ).toHaveLength(1);
+  });
+
+  it('checks an inline callback as a function of its own', () => {
+    expect(
+      check(`
+        sub a()
+          promises.chain(req, {}).then(sub(res as object, ctx as object)
+            m.t.control = "STOP"
+            launchTask(m.t)
+          end sub)
+        end sub
+      `),
+    ).toHaveLength(1);
+  });
+
+  it('does not count a new node assigned only inside a callback', () => {
+    expect(
+      check(`
+        sub a()
+          m.t.control = "STOP"
+          promises.chain(req, {}).then(sub(res as object, ctx as object)
+            m.t = createObject("roSGNode", "LoadTask")
+          end sub)
+          launchTask(m.t)
+        end sub
+      `),
+    ).toHaveLength(1);
+  });
+
+  it('follows a helper whose new node is assigned before its STOP, not after', () => {
+    expect(
+      check(`
+        sub resetRun()
+          m.task = createObject("roSGNode", "LoadTask")
+          m.task.control = "STOP"
+        end sub
+        sub start()
+          resetRun()
+          launchTask(m.task)
+        end sub
+      `),
     ).toHaveLength(1);
   });
 });
@@ -159,6 +202,72 @@ describe('no-same-node-relaunch — not flagged', () => {
           task.control = "STOP"
           task = createObject("roSGNode", "LoadTask")
           launchTask(task)
+        end sub
+      `),
+    ).toHaveLength(0);
+  });
+
+  it('passes a new node assigned through m["x"], setFields or addFields', () => {
+    expect(
+      check(`
+        sub a()
+          m.t.control = "STOP"
+          m["t"] = createObject("roSGNode", "LoadTask")
+          launchTask(m.t)
+        end sub
+        sub b()
+          m.t.control = "STOP"
+          m.setFields({ t: createObject("roSGNode", "LoadTask") })
+          launchTask(m.t)
+        end sub
+        sub c()
+          m.t.control = "STOP"
+          m.addFields({ t: createObject("roSGNode", "LoadTask") })
+          launchTask(m.t)
+        end sub
+      `),
+    ).toHaveLength(0);
+  });
+
+  it('passes a helper that stops the node and then assigns a new one', () => {
+    expect(
+      check(`
+        sub resetRun()
+          m.task.control = "STOP"
+          m.task = createObject("roSGNode", "LoadTask")
+        end sub
+        sub start()
+          resetRun()
+          launchTask(m.task)
+        end sub
+      `),
+    ).toHaveLength(0);
+  });
+
+  it('passes a helper that stops the node and releases it (ExtrasRowList.cancelRun)', () => {
+    expect(
+      check(`
+        sub cancelRun()
+          m.task.control = "STOP"
+          m.task = invalid
+        end sub
+        sub start()
+          cancelRun()
+          m.task = createObject("roSGNode", "LoadTask")
+          launchTask(m.task)
+        end sub
+      `),
+    ).toHaveLength(0);
+  });
+
+  it('passes a launch inside a callback after the outer function stopped the node', () => {
+    expect(
+      check(`
+        sub a()
+          m.t.control = "STOP"
+          promises.chain(req, {}).then(sub(res as object, ctx as object)
+            launchTask(m.t)
+          end sub)
         end sub
       `),
     ).toHaveLength(0);
@@ -264,5 +373,67 @@ describe('no-same-node-relaunch — not flagged', () => {
     `;
     expect(check(source, 'source/utils/tasks.bs')).toHaveLength(0);
     expect(check(source, 'components/vendor/x/Foo.bs')).toHaveLength(0);
+  });
+});
+
+describe('no-same-node-relaunch — pending migrations', () => {
+  const PATH = 'components/Foo.bs';
+  const pendingPlugin = plugin.withPendingMigrations({ [PATH]: [['search', 'm.searchTask']] });
+  const unmigrated = `
+    sub search()
+      m.searchTask.control = "STOP"
+      launchTask(m.searchTask)
+    end sub
+  `;
+  const migrated = `
+    sub search()
+      m.searchTask.control = "STOP"
+      m.searchTask = createObject("roSGNode", "SearchTask")
+      launchTask(m.searchTask)
+    end sub
+  `;
+  const run = (source, path = PATH) =>
+    diagnosticsByCode(runPluginOnSource(pendingPlugin, { [path]: source }), CODE);
+
+  it('does not flag a listed site', () => {
+    expect(run(unmigrated)).toHaveLength(0);
+  });
+
+  it('flags a listed site once it is migrated, naming the entry to delete', () => {
+    const found = run(migrated);
+    expect(found).toHaveLength(1);
+    expect(found[0].message).toMatch(/`search\(\)` no longer relaunches `m\.searchtask`/);
+    expect(found[0].message).toMatch(/PENDING_MIGRATIONS/);
+    expect(found[0].location.range.start.line).toBe(1);
+  });
+
+  it('flags a listed site whose function was deleted', () => {
+    expect(run(`sub other()\nend sub`)).toHaveLength(1);
+  });
+
+  it('covers only the listed launch: a second one in the same function is flagged', () => {
+    const found = run(`
+      sub search()
+        m.searchTask.control = "STOP"
+        launchTask(m.searchTask)
+        m.searchTask.control = "STOP"
+        launchTask(m.searchTask)
+      end sub
+    `);
+    expect(found).toHaveLength(1);
+    expect(found[0].location.range.start.line).toBe(5);
+  });
+
+  it('does not cover the same function and path in another file', () => {
+    expect(run(unmigrated, 'components/Bar.bs')).toHaveLength(1);
+  });
+
+  it('clears and re-raises the migrated finding as the file is edited', () => {
+    const steps = runPluginOnEdits(pendingPlugin, [
+      { [PATH]: unmigrated },
+      { [PATH]: migrated },
+      { [PATH]: unmigrated },
+    ]).map((diagnostics) => diagnosticsByCode(diagnostics, CODE).length);
+    expect(steps).toEqual([0, 1, 0]);
   });
 });
