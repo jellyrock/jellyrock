@@ -219,6 +219,7 @@ Ruled out: retry-in-place, which adds a second timeout budget to a path that alr
 
 **date**: 2026-08-02
 **status**: accepted
+**partially-superseded-by**: pipeline-budget-charges-wait-only (the stalled-run backstop now measures silence since the last delivered row, not time since the run started)
 **related-files**: `components/home/HomeRows.bs`, `source/home/latestRows.bs`, `source/constants/timeouts.bs`
 
 A Home refresh that lands while a latest-rows run is in flight now SKIPS, leaving the running orchestrator to finish, instead of STOPping it and setting `control = "RUN"` again on the same reused Task node — the rule `updateHomeRows()` already applies to the other five persistent tasks. Roku documents the hazard the old shape carried: "if a Task node is already in a given state as indicated by its state field, including RUN, setting its control field to that same state value has no effect" (dev-doc `DEVELOPER/core-concepts/threads.md`, "Re-running a task"). The restart therefore worked only if the STOP had already moved `state` to `stop` by the time the RUN was written; STOP-via-control is a documented path to that state, but nothing documents the transition as synchronous with the field write, and under the losing ordering the refresh silently did nothing. The guard removes the dependency — a running task is never STOPped, and a task that has returned is in `stop`, where RUN is documented to take.
@@ -1462,6 +1463,17 @@ A button-row mutation that moves focus to a different button on purpose declares
 **Only a Resume-slot insert moves focus, and only off Play.** Resume taking over from Play swaps two actions that play the same item, so a mistimed OK costs nothing. Every other insert keeps focus on the button the user is on: a Person's Shuffle inserted ahead of Favorite shifts the index like the Playlist Watched insert instead of claiming, because Shuffle replaces no action and moving onto it would turn a pending OK into shuffled playback. This follows WCAG 2.2 SC 3.2.5 (Change on Request): focus moves only when the user asks it to.
 
 **Ruled out: setting focus after `applyOverflow()`.** It works today, but every future row change has to remember the ordering, and `button-row-bracket` proves only that both halves are present, not where the focus write sits — so nothing would catch the regression coming back. **Ruled out: skipping the restore when the focus index changed inside the bracket.** An index that shifts because a button was inserted or removed to its left is exactly what the capture exists to correct, so that rule reintroduces the bug #918 fixed. **The cost accepted** is one more per-call-site obligation that fails silently when missed — one claim in `ItemDetails` today, because every Resume-slot insert goes through one shared helper (`insertButtonAtFront`); `ItemDetailsRowFocus.spec.bs` pins it, and pins that Favorite keeps focus when Shuffle is inserted ahead of it. **Re-evaluate** with the [`button-row-model`](architecture/tech-debt.md#button-row-model) refactor, which removes the bracket and this obligation with it.
+
+## decision-id: pipeline-budget-charges-wait-only
+
+**date**: 2026-09-16
+**status**: accepted
+**partially-supersedes**: latest-rows-no-mid-run-restart (the stalled-run backstop now measures silence since the last delivered row, not time since the run started)
+**related-files**: `source/api/apiPipeline.bs`, `source/home/latestRows.bs`, `components/home/HomeRows.bs`, `source/constants/timeouts.bs`
+
+`apiPipeline` charges its run budget only for time spent inside `apiPipelineNext`, waiting on the server — not for the caller's per-result work between calls. Charged by wall clock, a caller's legitimate per-row work (~200 ms/row on the 512 MB tier) spent the budget that exists to bound a slow or dead server, and the rows past it were silently left as `Loading` skeletons at large library counts. Proven on a Stick 4K with a forced 1.5 s budget and 400 ms of per-row work: 2–3 of 6 rows left as skeletons before, 0 after, in each of three rounds; a default-budget control read 0.
+
+Ruled out: **scaling `budgetMs` with the entry count** — a tuned constant tied to per-tier costs, which api.md already warns against. **Only improving the failed-row placeholder** — a real UX gap, but a separate followup that leaves the rows undelivered. **Constraint:** a live run can now outlast `PIPELINE_RUN_MS` end to end, so anything that watches a run from outside must judge it by silence since its last delivery — `latestRows.runIsStalled` does.
 
 ## decision-id: per-user-env-file
 

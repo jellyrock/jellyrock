@@ -750,6 +750,11 @@ the sweep `totalMs` 4637 sits against `PIPELINE_RUN_MS` 20000 — **4.3× headro
 
 ### The ceiling is TOTAL ITEMS, and the failure mode is silent
 
+> **Superseded in part (2026-09-16).** `apiPipeline` now charges `PIPELINE_RUN_MS` only for
+> time spent waiting on the server, not for `emit`. The extrapolation below used `taskMs`
+> (wait + emit), so it understates the ceiling; only `waitMs` counts against the budget now.
+> Its point about `waitMs` growing with request size, and so with the server, still stands.
+
 `apiPipeline` yields every undelivered entry with `res = invalid` when `PIPELINE_RUN_MS`
 (20 s) expires, and `HomeRows` leaves a failed row standing rather than emptying it. So past
 the ceiling Home does not error — **rows are just missing**. Extrapolating `taskMs`

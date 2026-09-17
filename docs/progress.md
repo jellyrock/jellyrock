@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-17 — chore: Charge the `apiPipeline` budget only while waiting on the server
 - 2026-09-17 — fix: Match the selected version ignoring case in `ItemDetails`, and drop the dead `MaxVideoDecodeResolution`
 - 2026-09-16 — `ItemDetails.findSelectedSource` now matches the selected version ignoring case through `mediaSourceIndexForId`, as playback start does (closes the #943 follow-up).
 - 2026-09-16 — Removed `LoadVideoContentTask`'s never-applied `video.MaxVideoDecodeResolution` (closes the #943 follow-up): applying it to the player changed neither the texture budget nor channel memory on a Roku Stick `3600X`, a Streaming Stick 4K or a Roku Ultra.

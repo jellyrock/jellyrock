@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [2.30.0](https://github.com/jellyrock/jellyrock/compare/v2.29.1...v2.30.0) - 2026-09-17
+
 ### Changed
 
 - Widen the API request pool for faster loading (up to 30% on Home) ([#944](https://github.com/jellyrock/jellyrock/pull/944))

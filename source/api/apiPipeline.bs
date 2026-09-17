@@ -47,14 +47,22 @@ import "pkg:/source/utils/misc.bs"
 ' of control, it reads like the `fetchRes` loop the team already knows, and it
 ' avoids depending on BrighterScript function-pointer params.
 '
-' ── The budget: one deadline for the whole run ─────────────────────────────
+' ── The budget: one allowance for the whole run ────────────────────────────
 '
-' `budgetMs` (default `timeouts.PIPELINE_RUN_MS`) is a WHOLE-RUN deadline, not a
-' per-request timeout. A per-request wait lets N slow requests stack into
+' `budgetMs` (default `timeouts.PIPELINE_RUN_MS`) is ONE budget for the whole run,
+' not a per-request timeout. A per-request wait lets N slow requests stack into
 ' N * API_WAIT_MS. When the budget expires the pipeline stops submitting and
 ' yields every remaining entry — in-flight first, then unsubmitted — with
 ' `res = invalid`. So budget expiry needs no special case at the call site: the
 ' loop just sees undelivered entries and ends.
+'
+' The budget is charged only for time spent INSIDE apiPipelineNext — the time the
+' run is waiting on the server. The caller's own work between calls (transforming
+' a response, handing a row to the render thread) is not charged. It bounds what
+' the budget exists to bound, a slow or dead server, and it keeps that bound from
+' shrinking as a caller's legitimate per-result work grows: charged by wall clock,
+' a Home with enough libraries spent its budget on its own rows and left the rest
+' undelivered.
 '
 ' `res = invalid` means "no answer" (never submitted, pool unavailable, or the
 ' budget ran out). It does NOT mean "the server said no" — an HTTP error is a
@@ -64,9 +72,11 @@ import "pkg:/source/utils/misc.bs"
 ' ── Pure core / I/O shell split ────────────────────────────────────────────
 '
 ' The state machine (slot accounting, take, drain, done) is pure: it takes the
-' pipe AA explicitly and touches no nodes, no ports, no clock. Only the shell
-' (`apiPipelineNext`) submits, waits, and unobserves. This mirrors
-' `apiPromise.bs`'s `settleApiPromiseIn` split, and for the same reason —
+' pipe AA explicitly and touches no nodes, no ports, no clock — the budget
+' helpers take the time as an argument. Only the shell (`apiPipelineNext` and
+' its `apiPipelineAdvance` body) reads the clock, submits, waits, and
+' unobserves. This mirrors `apiPromise.bs`'s `settleApiPromiseIn` split, and
+' for the same reason —
 ' bare global calls from a Rooibos class method don't share the instance `m`,
 ' so an explicitly-passed state AA is what a unit test can drive.
 ' See docs/architecture/async.md.
@@ -84,7 +94,7 @@ import "pkg:/source/utils/misc.bs"
 ' Starts a pipeline run over `entries`.
 '
 ' @param entries  - array of AAs, each { requestId: string, req: AA, ...payload }
-' @param budgetMs - whole-run deadline in ms; defaults to timeouts.PIPELINE_RUN_MS
+' @param budgetMs - whole-run budget in ms; defaults to timeouts.PIPELINE_RUN_MS
 ' @return an opaque pipe state AA to pass to apiPipelineNext(), or invalid if
 '         `entries` is empty / invalid
 function apiPipelineBegin(entries as dynamic, budgetMs = timeouts.PIPELINE_RUN_MS as integer) as dynamic
@@ -101,6 +111,10 @@ function apiPipelineBegin(entries as dynamic, budgetMs = timeouts.PIPELINE_RUN_M
     slotCount: apiPool.currentWidth(),
     budgetMs: budgetMs,
     expired: false,
+    ' Budget accounting (see apiPipelineBudgetUsedMs): wall time spent outside
+    ' apiPipelineNext so far, and when the current stretch outside began.
+    callerMs: 0,
+    pausedAtMs: invalid,
     port: CreateObject("roMessagePort"),
     clock: CreateObject("roTimespan")
   }
@@ -116,8 +130,17 @@ end function
 function apiPipelineNext(pipe as dynamic) as dynamic
   if not isValid(pipe) then return invalid
 
+  apiPipelineBudgetResume(pipe, pipe.clock.totalMilliseconds())
+  result = apiPipelineAdvance(pipe)
+  apiPipelineBudgetPause(pipe, pipe.clock.totalMilliseconds())
+  return result
+end function
+
+' The body of apiPipelineNext, between the budget resume and pause — split out so
+' every return below is charged the same way without repeating the pause at each.
+function apiPipelineAdvance(pipe as object) as dynamic
   while true
-    elapsedMs = pipe.clock.totalMilliseconds()
+    elapsedMs = apiPipelineBudgetUsedMs(pipe, pipe.clock.totalMilliseconds())
     remainingMs = pipe.budgetMs - elapsedMs
     if apiPipelineBudgetSpent(pipe.budgetMs, elapsedMs) then pipe.expired = true
 
@@ -244,17 +267,36 @@ function apiPipelineDrainOne(pipe as object) as dynamic
   return apiPipelineClaimNext(pipe)
 end function
 
-' Has the whole-run deadline passed?
+' Has the whole-run budget been used up?
 '
 ' Small enough to inline, but named and separate on purpose: the clock lives in
 ' the shell and is therefore untestable, whereas this predicate is pinned by unit
-' tests — including that the deadline counts as spent AT zero rather than one
+' tests — including that the budget counts as spent AT zero rather than one
 ' tick later. Any second budget check added later must call this rather than
 ' re-derive the comparison; two hand-written checks disagreeing is precisely the
 ' bug that a post-completion refill introduced here once.
 function apiPipelineBudgetSpent(budgetMs as integer, elapsedMs as integer) as boolean
   return budgetMs - elapsedMs <= 0
 end function
+
+' How much of the budget the run has used at `nowMs` on its clock: wall time
+' minus the time the caller has held a result.
+function apiPipelineBudgetUsedMs(pipe as object, nowMs as integer) as integer
+  return nowMs - pipe.callerMs
+end function
+
+' Stops charging the budget: a result is being handed back to the caller.
+sub apiPipelineBudgetPause(pipe as object, nowMs as integer)
+  pipe.pausedAtMs = nowMs
+end sub
+
+' Starts charging the budget again, crediting the time the caller held the result.
+' A no-op on the first call, before anything has been handed back.
+sub apiPipelineBudgetResume(pipe as object, nowMs as integer)
+  if not isValid(pipe.pausedAtMs) then return
+  pipe.callerMs += nowMs - pipe.pausedAtMs
+  pipe.pausedAtMs = invalid
+end sub
 
 ' How long to block on one wait: never past the run budget, never longer than a
 ' single request's own deadline.
