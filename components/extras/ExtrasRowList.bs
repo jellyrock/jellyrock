@@ -153,10 +153,11 @@ sub startRun(runRows as object, people as dynamic, data as dynamic)
   end for
 
   if taskRows.count() > 0
-    ' A NEW node every run, never a relaunch of the previous one: a Task stopped while its
-    ' function is still running ignores a launch made in the same callback — measured on device,
-    ' pinned in tests/source/unit/platform/TaskRelaunch.spec.bs. Reusing the node left a Refresh
-    ' pressed mid-run with a run that never started and extras that never settled. The stopped
+    ' A NEW node every run, never a relaunch of the previous one: whether a Task stopped while its
+    ' function is still running honors a launch made in the same callback is a race — measured on
+    ' device, pinned in tests/source/unit/platform/TaskRelaunch.spec.bs. Reusing the node left a
+    ' Refresh pressed mid-run, at least some of the time, with a run that never started and extras
+    ' that never settled. The stopped
     ' node's function makes no further progress, so this does not stack threads.
     m.extrasTask = CreateObject("roSGNode", "LoadExtrasRowsTask")
     m.extrasTask.setFields({ rows: taskRows, people: people ?? [] })
