@@ -38,8 +38,11 @@
  * still sideloaded on it. Absence therefore means "no RTA build **or** the channel is
  * closed", and it is never on its own a reason to redeploy.
  */
+import os from 'node:os';
 import path from 'node:path';
 
+import './lib/load-env.cjs';
+import envConfig from './lib/env-config.cjs';
 import { fetchDeviceInfo } from './device-lock.js';
 import { odcIsResident } from './measurement-guard.js';
 import { parseDeviceList } from './measure-matrix.js';
@@ -62,6 +65,30 @@ export function hostsToCheck(argv = [], env = process.env) {
     if (declared.length) return declared;
   }
   return env.ROKU_IP ? [env.ROKU_IP] : [];
+}
+
+/**
+ * Where `hostsToCheck` got its list, for the first line of output. The device list can come
+ * from the checkout's `.env`, the per-user env file, or the shell, and a device that was
+ * parked in one of them is only obvious if the output says which one was read.
+ *
+ * @param {(key: string) => string|undefined} sourceOf - `envSource` from `lib/env-config.cjs`
+ */
+export function hostOrigin(
+  argv = [],
+  env = process.env,
+  sourceOf = () => undefined,
+  home = os.homedir(),
+) {
+  if (argv.some((a) => !a.startsWith('-'))) return 'the command line';
+  // Same branch as `hostsToCheck`: a set ROKU_DEVICES is the list, otherwise ROKU_IP.
+  const key = env.ROKU_DEVICES ? 'ROKU_DEVICES' : 'ROKU_IP';
+  const source = sourceOf(key);
+  // No file named it, so if it has a value at all, that value came from the environment.
+  if (!source) return env[key] ? `${key}, set in the environment` : key;
+  if (source === envConfig.PRESET) return `${key}, set in the environment`;
+  const shown = source.startsWith(home + path.sep) ? `~${source.slice(home.length)}` : source;
+  return `${key} in ${shown}`;
 }
 
 /**
@@ -120,7 +147,7 @@ export function report(results) {
 export function verdict(results) {
   const up = results.filter((r) => r.reachable);
   if (!results.length) {
-    return 'No device configured — set ROKU_IP (or ROKU_DEVICES) in .env. Hardware tests cannot run, and that is now a checked fact rather than an assumption.';
+    return 'No device configured — set ROKU_IP (or ROKU_DEVICES) in .env or ~/.config/jellyrock/env. Hardware tests cannot run, and that is now a checked fact rather than an assumption.';
   }
   if (!up.length) {
     return `No device answered (${results.length} tried). Hardware tests cannot run — say so, and say the probe failed rather than that you lack access.`;
@@ -139,7 +166,8 @@ if (process.argv[1] && import.meta.url === `file://${path.resolve(process.argv[1
     console.log(`  ${verdict([])}`);
     process.exit(1);
   }
-  console.log(`[device:check] probing ${hosts.length} host(s) over ECP…\n`);
+  const origin = hostOrigin(process.argv.slice(2), process.env, envConfig.envSource);
+  console.log(`[device:check] probing ${hosts.length} host(s) over ECP (list: ${origin})…\n`);
   const results = await Promise.all(hosts.map(checkHost));
   for (const line of report(results)) console.log(line);
   console.log(`\n  ${verdict(results)}`);

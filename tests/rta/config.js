@@ -4,12 +4,13 @@
  * (scripts/capture-screenshots.js). Change a value once here and both paths pick
  * it up. The screenshot-only `outDir` lives in capture-screenshots.js.
  *
- * `import 'dotenv/config'` here rather than relying on an importer: this module
- * reads the environment at evaluation time, and several entry points import it
- * (rta-restore.js, capture-screenshots.js, measure.js) without loading .env
- * first. Loading it here makes the overrides work regardless of import order.
+ * The environment is loaded here rather than relying on an importer: this module
+ * reads it at evaluation time, and several entry points import it (rta-restore.js,
+ * capture-screenshots.js, measure.js) without loading it first. Loading it here
+ * makes the overrides work regardless of import order. `load-env.cjs` reads the
+ * checkout's `.env` and the per-user env file (see `scripts/lib/env-config.cjs`).
  */
-import 'dotenv/config';
+import '../../scripts/lib/load-env.cjs';
 
 /**
  * The public Jellyfin demo, pinned and NEVER overridable.
@@ -48,15 +49,17 @@ export const PUBLIC_DEMO_SERVER = Object.freeze({
  * `RTA_SERVER_*` rather than a second scheme of this repo's own: those names
  * arrived on `main` independently while this work was in flight, and two competing
  * override schemes for one value is worse than either. What this side adds is the
- * part `main`'s version lacked — the `dotenv` import above (so the variables work
+ * part `main`'s version lacked — the env import above (so the variables work
  * regardless of which entry point imports this first), `.env.example` documenting
  * them, and `PUBLIC_DEMO_SERVER` keeping the video demos pinned.
  *
  * EMPTY IS NOT AN OVERRIDE for the url or the username. `.env.example` ships
- * these keys, and dotenv turns a bare `RTA_SERVER_URL=` into the empty STRING —
+ * these keys, and a bare `RTA_SERVER_URL=` used to arrive as the empty STRING —
  * which `??` accepts, so a contributor who copied the example verbatim (the
  * documented onboarding step) got `url: ''` and a suite that drove nothing.
- * Neither field has a meaningful empty value, so empty reads as unset. The VALUE
+ * Neither field has a meaningful empty value, so empty reads as unset. The env
+ * loader now skips empty values in files too, but an empty value can still come
+ * from the shell, so this check stays. The VALUE
  * is trimmed as well as the test: dotenv strips whitespace around an unquoted
  * value but preserves it inside a quoted one, so `RTA_SERVER_URL="  http://x  "`
  * would otherwise reach the driver with its padding still attached.
@@ -66,8 +69,8 @@ export const PUBLIC_DEMO_SERVER = Object.freeze({
  *
  * Exported and parameterised so the resolution is unit-testable as a pure
  * function. Testing it through the module's own evaluation is not an option —
- * this file imports `dotenv/config`, so such a test would read whatever is in
- * the developer's own `.env` and pass or fail per machine.
+ * this file loads the environment on import, so such a test would read whatever
+ * is in the developer's own env files and pass or fail per machine.
  *
  * @param {Record<string, string | undefined>} env
  * @param {{url: string, username: string, password: string}} fallback

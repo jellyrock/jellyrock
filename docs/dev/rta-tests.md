@@ -53,8 +53,8 @@ RTA tests live in `tests/rta/` (Node/ESM, like `tests/scripts/`), NOT under
 | `RTA_BENCH=1 npm run test:rta` | Additionally run the opt-in **measurement** specs (`task-ledger-bench`, `task-ledger-screen-cost`). Skipped by default — they report numbers rather than asserting, and `task-ledger-screen-cost` costs a `hardRelaunch` + seed + `waitHome` for a run that would gate nothing. |
 | `RTA_SERVER_URL=… RTA_SERVER_USER=… RTA_SERVER_PASS=… npm run test:rta` | Point the run at a richer fixture than the demo server. The demo server is a **control**, not a substitute — ~3 libraries against a real server's ~10, so anything that scales with library count reads LOW on it. |
 
-Credentials: `ROKU_IP` / `ROKU_PASSWORD` from a gitignored `.env` (same as the
-Rooibos device tests). If no device is reachable, **say so** — don't claim a pass.
+Credentials: `ROKU_IP` / `ROKU_PASSWORD` from the checkout's gitignored `.env` or the
+per-user `~/.config/jellyrock/env` (same as the Rooibos device tests). If no device is reachable, **say so** — don't claim a pass.
 
 ## When CI runs it
 

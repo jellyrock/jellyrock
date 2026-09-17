@@ -1475,6 +1475,16 @@ A button-row mutation that moves focus to a different button on purpose declares
 
 Ruled out: **scaling `budgetMs` with the entry count** — a tuned constant tied to per-tier costs, which api.md already warns against. **Only improving the failed-row placeholder** — a real UX gap, but a separate followup that leaves the rows undelivered. **Constraint:** a live run can now outlast `PIPELINE_RUN_MS` end to end, so anything that watches a run from outside must judge it by silence since its last delivery — `latestRows.runIsStalled` does.
 
+## decision-id: per-user-env-file
+
+**date**: 2026-09-16
+**status**: accepted
+**related-files**: `scripts/lib/env-config.cjs`, `scripts/lib/load-env.cjs`, `eslint.config.js`, `.env.example`
+
+Tooling reads device settings and secrets from a per-user `~/.config/jellyrock/env` beneath each checkout's `.env`, so several checkouts share one device list and one set of credentials. Precedence is: variables already set, then the checkout's `.env`, then the user file — a local file overrides the global one, as with git config. An empty value in a file counts as unset, because `.env.example` ships blank keys that would otherwise hide the user file; the two passwords where blank means "no password" are the exception. The user file is skipped under GitHub Actions, so a self-hosted runner's home directory cannot change a CI run.
+
+Ruled out: **exporting the values from a shell profile** — shell variables outrank every checkout's `.env`, which removes the per-checkout override, and it puts secrets in shell startup files. **Making each checkout's `.env` a symbolic link to one file** — still a manual step for every new checkout or worktree, and a checkout can no longer override a single value. **Constraint:** every script must load settings through `load-env.cjs`; a direct `dotenv` import would silently ignore the user file, so ESLint now rejects one.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

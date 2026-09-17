@@ -126,7 +126,7 @@
  * script, and a preflight can only ever be an advisory READ -- the authoritative
  * CAS has to stay here, in the process that holds the lock.
  */
-import 'dotenv/config'; // ROKU_IP is how we REACH the device; its identity comes from ECP
+import './lib/load-env.cjs'; // ROKU_IP is how we REACH the device; its identity comes from ECP
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';

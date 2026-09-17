@@ -54,7 +54,7 @@
  * its children would have to tell each one to skip it, and the child would then record
  * itself as having run unlocked.
  */
-import 'dotenv/config';
+import './lib/load-env.cjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

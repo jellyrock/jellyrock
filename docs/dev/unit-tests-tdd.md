@@ -3,8 +3,9 @@ topic: unit-tests-tdd
 related-files:
   - bsconfig-tdd-sample.json
   - scripts/run-roku-tests.js
+  - scripts/lib/env-config.cjs
   - tests/source/BaseTestSuite.spec.bs
-last-reviewed: 2026-09-04
+last-reviewed: 2026-09-16
 ---
 
 # Test-Driven Development (TDD) Workflow
@@ -267,15 +268,23 @@ These notes apply when an automated agent (Claude Code, etc.) needs to run tests
 - **Broader runs**: `npm run test:unit`, `npm run test:integration`, `npm run test:all`.
 - The runner ([`scripts/run-roku-tests.js`](../../scripts/run-roku-tests.js)) zips the build, sideloads to the Roku, and tails the debug console for `[Rooibos Result]: PASS|FAIL`.
 
-### Roku Credentials (`.env`)
+### Roku Credentials (`.env` and the per-user env file)
 
-The runner reads `ROKU_IP` and `ROKU_PASSWORD` from a gitignored `.env` at the repo root. If `.env` is missing, source the values from the user's VSCode settings:
+Every tool reads its device settings (`ROKU_IP`, `ROKU_PASSWORD`, `ROKU_DEVICES`, …) from the environment, filled from two files that never enter the repo. Highest precedence first:
+
+1. **Variables already set** in your shell or by a parent process. Never overwritten.
+2. **The checkout's `.env`** at the repo root. Use it for a per-checkout override, such as one folder pointed at a different device.
+3. **The per-user file** `~/.config/jellyrock/env` (or `$XDG_CONFIG_HOME/jellyrock/env`). Put your defaults here once and every checkout of the repo uses them.
+
+Both files use the `.env.example` format. An **empty value in a file counts as unset**, so a `.env` copied from `.env.example` with blank keys does not hide the per-user file. The exceptions are `MEASURE_SIGNIN_PASSWORD` and `RTA_SERVER_PASS`, where blank means an account with no password, so `.env.example` ships those commented out. **The per-user file is skipped under GitHub Actions**, so CI is configured only by its workflow, and whenever `JELLYROCK_USER_ENV=off` is set (the scripts' unit tests set it). To stop using a device for a while, comment out the full `ROKU_DEVICES` line and keep a shorter active one below it. `npm run device:check` prints which file its device list came from. The rules live in [`scripts/lib/env-config.cjs`](../../scripts/lib/env-config.cjs).
+
+If neither file exists, source the values from the user's VSCode settings:
 
 ```bash
 grep -E '"brightscript\.debug\.(host|password)"' ~/.config/Code/User/settings.json
 ```
 
-…and write them to `.env` as `ROKU_IP=...` / `ROKU_PASSWORD=...`.
+…and write them as `ROKU_IP=...` / `ROKU_PASSWORD=...` to the per-user file (`chmod 600` it), or to `.env` for this checkout only.
 
 ### Debugger Contention
 
