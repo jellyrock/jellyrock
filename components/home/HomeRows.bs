@@ -518,7 +518,6 @@ sub startLatestMediaLoads()
   m.rowSizesBatching = true
   m.isLoadingLatestRows = true
   m.latestRowsRunClock.mark()
-  m.latestRowsSilenceClock.mark()
   launchTask(m.latestRowsTask)
 end sub
 
@@ -526,13 +525,11 @@ end sub
 ' Each wake may cover several results — wake events can coalesce, the children can't.
 sub onLatestRowsReady()
   if not isValid(m.latestRowsTask) then return
-  ' Every wake is at least one delivered row — the run is alive.
-  m.latestRowsSilenceClock.mark()
 
   ' The failure-vs-empty rule and the cursor arithmetic live in source/home/latestRows.bs
   ' so they can be unit-tested without a callFunc seam on this component.
   drainStart = m.latestRowsProcessedIndex
-  drained = latestRows.drainReady(m.latestRowsTask, m.latestRowsProcessedIndex)
+  drained = latestRows.drainReady(m.latestRowsTask, m.latestRowsProcessedIndex, m.latestRowsSilenceClock)
   m.latestRowsProcessedIndex = drained.nextIndex
   #if perfTiming
     m.popDrains++
@@ -611,6 +608,8 @@ sub resetLatestRowsRun()
   m.latestRowsProcessedIndex = 0
   m.latestRowsExpectedCount = 0
   m.isLoadingLatestRows = false
+  ' Every launch comes through here first, so the next run's silence starts at its launch.
+  m.latestRowsSilenceClock.mark()
 
   ' Close the row-size batch too. A run that is stopped or reclaimed never reaches its
   ' completion branch, so without this the batch flag would stay set and the latest rows it

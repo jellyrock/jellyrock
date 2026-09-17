@@ -30,10 +30,18 @@ namespace latestRows
   ' it. Measured on device (8 libraries, HTTP 500 forced on five): the skipped rows sat at their
   ' single placeholder child and nothing shifted. Keep it that way.
   '
+  ' Also resets `silenceClock` whenever the drain moves past at least one child — a failed
+  ' child included, since it is still the run reporting in. runIsStalled reads that clock, and
+  ' the reset lives here rather than at the call site because this is the one call every
+  ' delivered row goes through: a reset that could be dropped from the observer on its own
+  ' would silently turn the backstop back into "time since the run started", and reclaim a
+  ' long run that is still delivering.
+  '
   ' @param task - the LoadLatestRowsTask node holding { libId, items, status } children
   ' @param startIndex - first unprocessed child index
+  ' @param silenceClock - anything with a mark() method; HomeRows passes an roTimespan
   ' @return an AA { ready, nextIndex } - the children to populate, and the new cursor
-  function drainReady(task as object, startIndex as integer) as object
+  function drainReady(task as object, startIndex as integer, silenceClock as object) as object
     ready = []
     index = startIndex
     childCount = task.getChildCount()
@@ -44,6 +52,7 @@ namespace latestRows
       if isValid(child) and child.status = "ok" then ready.push(child)
     end while
 
+    if index > startIndex then silenceClock.mark()
     return { ready: ready, nextIndex: index }
   end function
 
@@ -87,7 +96,8 @@ namespace latestRows
   ' plus API_WAIT_MS as the largest overshoot one wait can post. Past the two combined it is not
   ' a slow run, it is a dead one.
   '
-  ' @param msSinceLastRow - milliseconds since the run started or last delivered a row
+  ' @param msSinceLastRow - milliseconds since the run started or last delivered a row (the
+  '   clock drainReady resets)
   ' @return true when the run has been silent longer than any live run can be
   function runIsStalled(msSinceLastRow as integer) as boolean
     return msSinceLastRow > timeouts.PIPELINE_RUN_MS + timeouts.API_WAIT_MS
