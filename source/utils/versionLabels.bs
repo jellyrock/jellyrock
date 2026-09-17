@@ -1,0 +1,301 @@
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/mediaDisplayTitle.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+import "pkg:/source/utils/versionResume.bs"
+
+' Labels for the alternate versions (MediaSources) of one item.
+'
+' A version label has to answer "how is this file different from the others?" in a slot that
+' ellipsizes: the details screen's collapsed Video trigger is 278 px wide. Before, every label
+' was the full MediaSource.Name followed by resolution and codec, so a release-style name
+' ("Silicon Valley - S04E06 - Customer Service WEBDL-1080p") filled the slot and the stream
+' info was cut off. Measured on a Roku Ultra against Jellyfin 12.0. Since 12.0 resumes the
+' exact file that holds the position and never upgrades on its own, the label is what tells a
+' viewer which file they are about to play.
+'
+' ONE RULE per part, each computed across ALL the versions, which is why this takes the whole
+' list rather than one source:
+'
+'   * Stream info: only the video fields that DIFFER between versions (resolution, codec, HDR
+'     range), and it comes first, so it survives the ellipsis. Versions whose video is
+'     identical (a bitrate ladder) get none, since repeating "1080p AV1" on every row does
+'     not help anyone choose. Audio is left out: the Audio dropdown lists it per version.
+'   * Name: the words EVERY version shares are dropped from the start and the end, comparing
+'     case-insensitively with space, ".", "-" and "_" as separators. Only shared words go, so
+'     nothing that tells two versions apart is lost; the rest is kept as written. Then the
+'     words at either end that repeat a label the row's stream info already shows go too
+'     ("1080p", not "1080p · 1080p", for Jellyfin's "Movie - 1080p" naming). That is a
+'     plain comparison against whole labels, never a reading: names are user-controlled, so
+'     nothing here reads quality out of them ("2160p" stays beside "4K").
+'   * Fallback: a version left with no text at all shows its full name, then its full stream
+'     summary. Two versions that are identical in every field keep identical labels; an
+'     ordinal would be arbitrary (see remoteSubtitles.subtitleDropdownEntries).
+'
+' TWO FORMS, because the places that name a version do different jobs:
+'
+'   * `title` is the FULL label (stream info + name), for the lists a viewer CHOOSES from:
+'     the details screen's open Video menu and the in-player Select Video Source dialog.
+'   * `triggerTitle` is the SHORT label, for the places that only say which version is
+'     current: the collapsed Video trigger and the player title. It is the stream info alone
+'     when that identifies the version among the others, and the full label otherwise.
+'
+' Why the short form drops the name: a name is free text. Sometimes it is the only thing that
+' matters (an edition), sometimes it is a whole release filename. Jellyfin returns the full
+' filename when a version's file shares no naming pattern with the others (measured on 12.0:
+' "silicon.valley.s04e06.720p.web.h264-tbs"), and MediaSourceInfo has no edition field to read
+' instead (checked in the 12.0 spec). The cost accepted: two editions that also differ in
+' quality show only the quality once picked ("4K HEVC", not "Director's Cut"); the list the
+' viewer picked from showed both.
+'
+' A single version has nothing to be told apart from and keeps the plain stream summary.
+'
+' PURE: plain values in, plain values out, so every rule is unit-testable.
+namespace versionLabels
+
+  const STREAM_NAME_SEPARATOR = " · "
+  const MARKER_SEPARATOR = "  ·  "
+
+  ' labelsFor: A label for each version, in the order given.
+  '
+  ' The caller passes exactly the versions the user chooses between (the details screen shows
+  ' only VideoFile sources), because each label depends on the others. Entries that are not
+  ' a source with an Id are skipped, as both pickers skip them.
+  '
+  ' @param {dynamic} mediaSources - MediaSourceInfo array
+  ' @param {dynamic} inProgressSourceId - the version the viewer is partway through, or "" /
+  '   invalid for none. Marks `title` only: the marker means something only beside the rows
+  '   it is distinguishing from.
+  ' @return {object} array of { id, title, triggerTitle } (see TWO FORMS above)
+  function labelsFor(mediaSources as dynamic, inProgressSourceId as dynamic) as object
+    labels = []
+    sources = []
+    if type(mediaSources) = "roArray"
+      for each source in mediaSources
+        if isValid(source) and isValidAndNotEmpty(source.Id) then sources.push(source)
+      end for
+    end if
+    if sources.count() = 0 then return labels
+
+    if sources.count() = 1
+      summary = versionLabels.streamSummary(sources[0])
+      labels.push({ id: sources[0].Id, title: summary, triggerTitle: summary })
+      return labels
+    end if
+
+    fields = []
+    names = []
+    for each source in sources
+      fields.push(versionLabels.videoFields(source))
+      name = ""
+      if isValidAndNotEmpty(source.Name) then name = source.Name
+      names.push(name)
+    end for
+
+    differs = {
+      resolution: versionLabels.fieldDiffers(fields, "resolution"),
+      codec: versionLabels.fieldDiffers(fields, "codec"),
+      range: versionLabels.fieldDiffers(fields, "range")
+    }
+    distinct = versionLabels.distinctNameParts(names)
+    marker = translate(translationKeys.LabelInProgress)
+
+    streamInfos = []
+    streamInfoCounts = {}
+    nameParts = []
+    for i = 0 to sources.count() - 1
+      parts = []
+      for each key in ["resolution", "codec", "range"]
+        if differs[key] and fields[i][key] <> "" then parts.push(fields[i][key])
+      end for
+      streamInfo = parts.join(" ")
+      streamInfos.push(streamInfo)
+      streamInfoCounts[streamInfo] = (streamInfoCounts[streamInfo] ?? 0) + 1
+      nameParts.push(versionLabels.trimShownLabels(distinct[i], parts))
+    end for
+
+    for i = 0 to sources.count() - 1
+      streamInfo = streamInfos[i]
+      label = streamInfo
+      if nameParts[i] <> ""
+        if label <> "" then label += STREAM_NAME_SEPARATOR
+        label += nameParts[i]
+      end if
+      if label = "" then label = names[i]
+      if label = "" then label = versionLabels.streamSummary(sources[i])
+
+      shortLabel = label
+      if streamInfo <> "" and streamInfoCounts[streamInfo] = 1 then shortLabel = streamInfo
+
+      title = label
+      if versionResume.idsMatch(sources[i].Id, inProgressSourceId) then title += MARKER_SEPARATOR + marker
+      labels.push({ id: sources[i].Id, title: title, triggerTitle: shortLabel })
+    end for
+
+    return labels
+  end function
+
+  ' triggerLabelFor: The short label of one version, judged against all of them. What the
+  ' player shows beside the title.
+  '
+  ' @param {dynamic} mediaSources - MediaSourceInfo array
+  ' @param {dynamic} sourceId - the version to name (matched ignoring case)
+  ' @return {string} the label, or "" when there is nothing to tell apart or no such version
+  function triggerLabelFor(mediaSources as dynamic, sourceId as dynamic) as string
+    labels = versionLabels.labelsFor(mediaSources, invalid)
+    if labels.count() < 2 then return ""
+    for each label in labels
+      if versionResume.idsMatch(label.id, sourceId) then return label.triggerTitle
+    end for
+    return ""
+  end function
+
+  ' streamSummary: The full video summary of one version ("1080p H264"), or "N/A" when it
+  ' has no video stream.
+  function streamSummary(source as object) as string
+    if not isValid(source) then return "N/A"
+    return formatVideoDisplayTitle(getFirstVideoStream(source.MediaStreams))
+  end function
+
+  ' videoFields: The comparable parts of a version's first video stream, each written as
+  ' formatVideoDisplayTitle writes it ("" when absent). The range is only named for HDR, as
+  ' there: "SDR" on every row is noise.
+  function videoFields(source as object) as object
+    fields = { resolution: "", codec: "", range: "" }
+    stream = getFirstVideoStream(source.MediaStreams)
+    if not isValid(stream) then return fields
+
+    width = 0
+    height = 0
+    isInterlaced = false
+    if isValid(stream.Width) then width = stream.Width
+    if isValid(stream.Height) then height = stream.Height
+    if isValid(stream.IsInterlaced) then isInterlaced = stream.IsInterlaced
+    fields.resolution = getVideoResolutionLabel(width, height, isInterlaced)
+
+    if isValidAndNotEmpty(stream.Codec) then fields.codec = UCase(stream.Codec)
+    if isValid(stream.VideoRange) and LCase(stream.VideoRange) = "hdr" then fields.range = formatVideoRangeLabel(stream)
+    return fields
+  end function
+
+  function fieldDiffers(fields as object, key as string) as boolean
+    for each entry in fields
+      if entry[key] <> fields[0][key] then return true
+    end for
+    return false
+  end function
+
+  ' distinctNameParts: Each name with the words every name shares removed from both ends.
+  '
+  ' @param {object} names - array of strings ("" for a version with no name)
+  ' @return {object} array of strings, index-aligned with names; "" where nothing is left
+  function distinctNameParts(names as object) as object
+    tokenLists = []
+    minCount = -1
+    for each name in names
+      tokens = versionLabels.tokenize(name)
+      tokenLists.push(tokens)
+      if minCount < 0 or tokens.count() < minCount then minCount = tokens.count()
+    end for
+
+    prefix = 0
+    while prefix < minCount and versionLabels.allTokensMatch(tokenLists, prefix, false)
+      prefix++
+    end while
+
+    suffix = 0
+    while prefix + suffix < minCount and versionLabels.allTokensMatch(tokenLists, suffix, true)
+      suffix++
+    end while
+
+    parts = []
+    for i = 0 to names.count() - 1
+      tokens = tokenLists[i]
+      first = prefix
+      last = tokens.count() - 1 - suffix
+      if first > last
+        parts.push("")
+      else
+        startPos = tokens[first].start
+        endPos = tokens[last].start + tokens[last].length
+        parts.push(names[i].mid(startPos, endPos - startPos))
+      end if
+    end for
+    return parts
+  end function
+
+  ' trimShownLabels: A name part without the words at either end that repeat a label its row
+  ' already shows. Each label is matched whole, ignoring case, so a label that is several
+  ' words ("DV 8.1") never matches part of a name ("Part 8"). Words in the middle stay, so
+  ' what is left is still cut from the text unchanged.
+  '
+  ' @param {string} text - a name part from distinctNameParts
+  ' @param {object} shownLabels - the row's stream-info labels ("1080p", "HEVC", ...)
+  ' @return {string} the trimmed part; "" when every word repeats a shown label
+  function trimShownLabels(text as string, shownLabels as object) as string
+    if text = "" or shownLabels.count() = 0 then return text
+
+    ' roAssociativeArray keys compare ignoring case
+    shown = {}
+    for each label in shownLabels
+      shown[label] = true
+    end for
+
+    tokens = versionLabels.tokenize(text)
+    first = 0
+    last = tokens.count() - 1
+    while first <= last and shown.doesExist(tokens[first].lower)
+      first++
+    end while
+    while last >= first and shown.doesExist(tokens[last].lower)
+      last--
+    end while
+    if first > last then return ""
+
+    startPos = tokens[first].start
+    return text.mid(startPos, tokens[last].start + tokens[last].length - startPos)
+  end function
+
+  ' allTokensMatch: Whether every list has the same word at `offset`, counted from the start,
+  ' or from the end when fromEnd is true. Case-insensitive.
+  function allTokensMatch(tokenLists as object, offset as integer, fromEnd as boolean) as boolean
+    expected = invalid
+    for each tokens in tokenLists
+      index = offset
+      if fromEnd then index = tokens.count() - 1 - offset
+      word = tokens[index].lower
+      if not isValid(expected)
+        expected = word
+      else if word <> expected
+        return false
+      end if
+    end for
+    return true
+  end function
+
+  ' tokenize: The words of a name, split on space, ".", "-" and "_", each with its position so
+  ' the kept part can be cut from the original text unchanged.
+  '
+  ' @return {object} array of { start, length, lower } (start is 0-based)
+  function tokenize(name as string) as object
+    tokens = []
+    start = -1
+    for i = 0 to name.len()
+      isSeparator = true
+      if i < name.len()
+        ch = name.mid(i, 1)
+        isSeparator = ch = " " or ch = "." or ch = "-" or ch = "_"
+      end if
+      if isSeparator
+        if start >= 0
+          tokens.push({ start: start, length: i - start, lower: LCase(name.mid(start, i - start)) })
+          start = -1
+        end if
+      else if start < 0
+        start = i
+      end if
+    end for
+    return tokens
+  end function
+
+end namespace

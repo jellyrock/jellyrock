@@ -23,6 +23,7 @@ import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/trackClusterFocus.bs"
 import "pkg:/source/utils/translate.bs"
+import "pkg:/source/utils/versionLabels.bs"
 import "pkg:/source/utils/versionResume.bs"
 
 ' Gap between bottom of itemInfoRows and top of extras pane when extras are open
@@ -1193,6 +1194,7 @@ sub toggleWatched()
       else if ctx.newState
         ' Non-Series marking watched: server clears playback position — drop the stale resume button.
         clearVersionResumePositions()
+        refreshVideoDropdownLabels()
         removeResumeButtonWithFocus(m.top.findNode("resumeButton"))
       end if
     else
@@ -1657,6 +1659,18 @@ sub clearVersionResumePositions()
   state.isConfigPending = false
   state.inProgressSourceId = ""
   state.positions = zeroVersionPositions(state.itemId, mediaSources)
+end sub
+
+' refreshVideoDropdownLabels: Rebuild the Video dropdown's labels after the in-progress
+' version changed, so its marker does not outlive the position it stood for.
+sub refreshVideoDropdownLabels()
+  item = m.top.itemContent
+  if not isValid(m.videoDropdown) or not m.videoDropdown.visible then return
+  if not isValid(item) or not isValid(item.mediaSourcesData) then return
+
+  items = buildVideoDropdownItems(item.mediaSourcesData.mediaSources, inProgressVersionId())
+  m.videoDropdown.items = items
+  m.videoDropdown.triggerText = triggerTextForSelection(items, m.top.selectedVideoStreamId)
 end sub
 
 ' zeroVersionPositions: A positions map recording that no version has a position.
@@ -3261,7 +3275,7 @@ end sub
 ' @param {object} allStreams - MediaStreams from the selected source (video/audio/subs mixed)
 ' @param {string} itemType - The item type string (drives which slots apply)
 sub populateTrackDropdowns(mediaSources as object, allStreams as object, itemType as string)
-  videoItems = buildVideoDropdownItems(mediaSources)
+  videoItems = buildVideoDropdownItems(mediaSources, inProgressVersionId())
   audioItems = buildAudioDropdownItems(allStreams)
   subtitleItems = buildSubtitleDropdownItems(allStreams)
 
@@ -3316,10 +3330,9 @@ sub applyDropdown(dropdown as object, items as object, selectedId as string, app
 end sub
 
 ' triggerTextForSelection: Look up the currently-selected item's display title.
-' Prefers triggerTitle where an item carries one — the subtitle slot uses it to
-' keep the collapsed trigger free of a disambiguator that only reads correctly
-' beside the other entries. Video and audio items have no triggerTitle and fall
-' through to title unchanged.
+' Prefers triggerTitle where an item carries one — the video and subtitle slots use it
+' to keep the collapsed trigger free of what only reads correctly beside the other
+' entries. Audio items have no triggerTitle and fall through to title unchanged.
 function triggerTextForSelection(items as object, selectedId as string) as string
   if not isValid(items) or items.count() = 0 then return ""
   for each item in items
@@ -3336,19 +3349,24 @@ function triggerTextForItem(item as object) as string
 end function
 
 ' buildVideoDropdownItems: Convert MediaSources into dropdown items. "Video" here is the
-' MediaSource, not a stream — it's the user-facing alternate-version selector (e.g. "1080p
-' H264" vs "4K HEVC HDR10").
-function buildVideoDropdownItems(mediaSources as object) as object
-  items = []
-  if not isValid(mediaSources) then return items
+' MediaSource, not a stream — it's the user-facing alternate-version selector. Every
+' version is offered, whatever its VideoType: the version selected here (findBestVideoSource,
+' the in-progress version) can be any of them, and so can the one the player offers and
+' names, so a narrower list would leave the trigger naming a version that is not selected
+' and label versions differently from the player. Labels come from versionLabels; the
+' version in progress is marked in the open menu only (triggerTitle stays plain).
+'
+' @param {object} mediaSources - the item's MediaSources
+' @param {dynamic} inProgressSourceId - the version the viewer is partway through, or ""
+function buildVideoDropdownItems(mediaSources as object, inProgressSourceId as dynamic) as object
+  return versionLabels.labelsFor(mediaSources, inProgressSourceId)
+end function
 
-  hasMultipleSources = mediaSources.count() > 1
-  for each source in mediaSources
-    if isValid(source) and source.VideoType = "VideoFile" and isValidAndNotEmpty(source.id)
-      items.push({ id: source.id, title: formatVideoSourceTitle(source, hasMultipleSources) })
-    end if
-  end for
-  return items
+' inProgressVersionId: The version to mark as in progress in the Video dropdown, or "" —
+' only a per-version server (m.versionResume set) keeps a position per version.
+function inProgressVersionId() as string
+  if not isValid(m.versionResume) then return ""
+  return m.versionResume.inProgressSourceId
 end function
 
 ' buildAudioDropdownItems: Convert the MediaStreams array into dropdown items for audio.

@@ -20,6 +20,7 @@ related-files:
   - components/mediaPlayers/AudioPlayer.bs
   - components/music/AudioPlayerView.bs
   - components/ItemGrid/LoadVideoContentTask.bs
+  - source/utils/versionLabels.bs
   - source/utils/versionResume.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
@@ -495,6 +496,41 @@ Every choice above lives in `source/utils/versionResume.bs` as pure functions ov
 values; `ItemDetails` holds only the shell that fetches what `resumeStateFor()` asks for.
 That split is what makes the rules testable — a component spec has no way to stub the two
 requests, so a rule expressed inside `ItemDetails` could only ever be checked by hand.
+
+### Version labels — `source/utils/versionLabels.bs`
+
+Since 12.0 resumes the exact file and never upgrades on its own, the version label is what
+tells a viewer which file they are about to play. One pure function,
+`versionLabels.labelsFor()`, names a version everywhere, judging each label against the other
+versions, and returns two forms because the places that name a version do different jobs:
+
+| Form | Used where | Example (two releases of one episode) |
+|---|---|---|
+| `title`, full | lists a viewer **chooses** from: the `ItemDetails` Video menu, the in-player Select Video Source dialog | `720p · web.h264-tbs` |
+| `triggerTitle`, short | places that only say **which is current**: the collapsed Video trigger, the player (`triggerLabelFor()` → `OSD.videoSourceTag`) | `720p` |
+
+- **Stream info first, and only what differs** — resolution, video codec, HDR range. A bitrate
+  ladder with identical video gets none.
+- **The name without the words every version shares**, at either end (case-insensitive;
+  space, `.`, `-`, `_` separate words), **and without the words at either end that repeat a
+  label the row already shows** — so Jellyfin's `Movie - 1080p` naming reads `1080p`, not
+  `1080p · 1080p`. Both are plain comparisons: names are user-controlled, so no quality is
+  read out of them (`2160p` stays beside `4K`).
+- **The short form is the stream info alone when that identifies the version**, and the full
+  label otherwise. A name can be the only thing that matters (an edition) or a whole release
+  filename — Jellyfin returns the full filename when a version's file shares no naming pattern
+  with the others, and `MediaSourceInfo` has no edition field — so the name is kept only where
+  the viewer chooses. The cost accepted: two editions that also differ in quality are named by
+  quality alone once picked.
+- **The in-progress version is marked** (`· In progress`) in the `ItemDetails` menu only, on
+  12.0+: the one `versionResume.inProgressSourceIndex()` names, which is the version the
+  screen selects and Resume continues, so the mark and Resume never disagree.
+- **The player shows the short form as its own segment on the line below the title**, right
+  after what identifies the item (`S4E6 - Customer Service • 720p`, `2010 • 1080p`); a live TV
+  channel shows none. The title line stays the title: an episode's is the series name, and a
+  version appended to a movie's name reads as part of it (`AV-1 90mbps`).
+
+A single version keeps its plain stream summary, and the player shows no tag for it.
 
 ## OSD — `components/video/OSD.bs/.xml`
 

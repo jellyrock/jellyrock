@@ -22,6 +22,7 @@ import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/translate.bs"
 import "pkg:/source/utils/trickplay.bs"
+import "pkg:/source/utils/versionLabels.bs"
 import "pkg:/source/utils/videoNotifications.bs"
 import "pkg:/source/utils/voiceTransport.bs"
 
@@ -1091,15 +1092,9 @@ sub onVideoContentLoaded()
     ' so setButtonStates() keeps the video source button.
     if isValid(m.top.fullVideoSourceData) and m.top.fullVideoSourceData.Count() > 1
       m.osd.numVideoSources = m.top.fullVideoSourceData.Count()
-      ' Set the active source's name tag for the OSD title (e.g., "[B&W]", "[Colorized]")
-      currentSourceId = videoContent[0].mediaSourceId
-      m.osd.videoSourceTag = ""
-      for each source in m.top.fullVideoSourceData
-        if source.Id = currentSourceId and isValidAndNotEmpty(source.Name)
-          m.osd.videoSourceTag = source.Name
-          exit for
-        end if
-      end for
+      ' Tag the OSD title with the active version, labeled as the version pickers label it
+      ' (the short form: e.g. "720p", or "[B&W]" when the versions differ only by name)
+      m.osd.videoSourceTag = versionLabels.triggerLabelFor(m.top.fullVideoSourceData, videoContent[0].mediaSourceId)
     else
       m.osd.videoSourceTag = ""
     end if

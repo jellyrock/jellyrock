@@ -30,6 +30,7 @@ import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
+import "pkg:/source/utils/versionLabels.bs"
 
 ' Audio tracks. `values` are Jellyfin stream indexes, which is what
 ' VideoPlayerView.audioIndex takes.
@@ -65,19 +66,16 @@ function buildVideoSourceOptions(videoSources as object, currentMediaSourceId as
   options = { labels: [], values: [], defaultIndex: 0, selectedIndex: -1 }
   if not isValid(videoSources) then return options
 
-  ' The source Name is only meaningful as a disambiguator, so it is prepended
-  ' only when there is something to disambiguate (see formatVideoSourceTitle).
-  hasMultipleSources = videoSources.count() > 1
-
-  for each source in videoSources
-    if isValid(source) and isValid(source.Id)
-      if source.Id = currentMediaSourceId
-        options.defaultIndex = options.values.count()
-        options.selectedIndex = options.defaultIndex
-      end if
-      options.labels.push(formatVideoSourceTitle(source, hasMultipleSources))
-      options.values.push(source.Id)
+  ' Labels are judged across all the versions (see versionLabels). No in-progress marker:
+  ' during playback the version being watched is the one in progress, and the checked row
+  ' already says which that is.
+  for each label in versionLabels.labelsFor(videoSources, invalid)
+    if label.id = currentMediaSourceId
+      options.defaultIndex = options.values.count()
+      options.selectedIndex = options.defaultIndex
     end if
+    options.labels.push(label.title)
+    options.values.push(label.id)
   end for
 
   return options

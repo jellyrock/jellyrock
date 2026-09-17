@@ -206,30 +206,6 @@ function formatVideoRangeLabel(stream as object) as string
   return stream.VideoRangeType
 end function
 
-' formatVideoSourceTitle: Build a display title for a video source (MediaSource)
-' Finds the first video stream and formats it via formatVideoDisplayTitle().
-' When multiple sources exist (i.e., multiple versions of the same video),
-' prepends the source Name (e.g., "[B&W] 1080p H264").
-'
-' @param {object} mediaSource - A MediaSource object from Jellyfin API (must have mediaStreams array)
-' @param {boolean} hasMultipleSources - True when item has more than one MediaSource version
-' @returns {string} - Formatted display title (e.g., "[B&W] 1080p H264") or "N/A" if no video stream found
-function formatVideoSourceTitle(mediaSource as object, hasMultipleSources as boolean) as string
-  if not isValid(mediaSource) or not isValid(mediaSource.mediaStreams) then return "N/A"
-
-  videoStream = getFirstVideoStream(mediaSource.mediaStreams)
-  if not isValid(videoStream) then return "N/A"
-
-  title = formatVideoDisplayTitle(videoStream)
-
-  ' Prepend the source name when multiple versions exist (e.g., "[B&W]")
-  if hasMultipleSources and isValidAndNotEmpty(mediaSource.Name)
-    title = mediaSource.Name + " " + title
-  end if
-
-  return title
-end function
-
 ' formatAudioDisplayTitle: Build a display title for an audio stream
 ' Format: "Language CODEC CHANNELS" or "Language CODEC CHANNELS (Default)"
 '

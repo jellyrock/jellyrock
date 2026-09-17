@@ -1495,6 +1495,16 @@ The `no-same-node-relaunch` plugin is an Error from day one, and the 16 sites th
 
 **The constraint worth re-evaluating is the analysis depth.** Source order stands in for control flow, per function, with each inline `sub(...)` callback a function of its own (it runs in a later callback). Same-file helpers are followed one hop by bare name, counting only `m.` paths the helper leaves stopped. Accepted gaps: a STOP and a launch in exclusive branches are flagged, a STOP through a local alias is missed, and a namespaced helper shares its bare name. The evidence for the rule is the same-node relaunch row in [threading.md](architecture/threading.md#measured-findings).
 
+## decision-id: version-label-forms
+
+**date**: 2026-09-16
+**status**: accepted
+**related-files**: `source/utils/versionLabels.bs`, `components/ItemDetails.bs`, `source/utils/trackPickerOptions.bs`, `components/video/VideoPlayerView.bs`, `components/video/OSD.bs`
+
+An alternate version is labeled in two forms. The **full** label (the video fields that differ between versions, first, then the name without the words every version shares, or the words at either end that repeat a label the stream info already shows, so `Movie - 1080p` reads `1080p`) is used where a viewer **chooses**: the `ItemDetails` Video menu and the in-player Select Video Source dialog. The **short** label (that stream info alone when it identifies the version, the full label otherwise) is used where the app only says **which is current**: the collapsed Video trigger and the player. The player shows it as its own segment on the line below the title, right after what identifies the item (the episode, or a movie's year), and never on the title line: an episode's title line is the series name (before this, the tag never showed for an episode at all), and a version appended to a movie's name reads as part of it (`AV-1 90mbps`). On 12.0+ the menu marks the version Resume continues (`versionResume.inProgressSourceIndex`) `· In progress`. The reason for two forms: a name is free text, sometimes the only thing that matters (an edition) and sometimes a whole release filename. Jellyfin returns the full filename when a version's file shares no naming pattern with the others (`silicon.valley.s04e06.720p.web.h264-tbs`, measured on 12.0), and `MediaSourceInfo` has no edition field to read instead (12.0 OpenAPI spec).
+
+**Ruled out:** name only, as `jellyfin-web`, `jellyfin-androidtv`, `Swiftfin` and `Kodi` show it (relies on names describing quality); always appending the full stream summary (`1080p AV1` six times on a bitrate ladder); the full label everywhere (release filenames in the player); the short label everywhere (an edition that also differs in quality loses its name even where it is chosen); reading quality or an edition out of a name (user-controlled, and `2160p` never matches `4K`). **The cost accepted** is that two editions that also differ in quality are named by quality alone once picked (`4K HEVC`, not `Director's Cut`), and that only one in-progress version is marked, the one Resume continues. **Re-evaluate** if the server adds an edition field, or returns every version's position in one response.
+
 ## decision-id: version-gated-query-parameters
 
 **date**: 2026-09-17
