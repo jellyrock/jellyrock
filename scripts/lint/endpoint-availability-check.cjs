@@ -13,11 +13,16 @@
 //   - SCHEMA — the loader's validateRegistry() throws on any shape violation.
 //   - USED — every entry's endpoint must still exist in the manifest (an entry for
 //     an endpoint the app no longer calls is dead weight — remove it).
-//   - version-guard — the cited `symbol` must still appear in source/*.bs. If the
-//     guard was removed, FAIL → the dev restores it or drops the entry, and the
+//   - version-guard — the cited `symbol` must still appear in source/*.bs code
+//     (comments don't count). If the guard was removed, FAIL → the dev restores it or drops the entry, and the
 //     floor finding correctly resurfaces.
 //   - dispatch-sibling — the cited `sibling` path must still exist in the manifest
 //     with a floor-tier range (minApiVersion <= 1), i.e. the V1 fallback is real.
+//   - parameters — a query parameter whose server behavior changes by version.
+//     Its endpoint must be in the manifest, its guard `symbol` must exist in
+//     source/, and EVERY .bs file under source/ or components/ whose code (not
+//     comments) names the parameter must also call the guard. A file that sends
+//     it without the guard FAILS. So does an entry no file sends any more (stale).
 //
 // NOT checked here (by design): "every floor finding has a registry entry." That
 // direction is enforced by the floor check itself — an unregistered post-floor
@@ -25,8 +30,8 @@
 // floor check is the comprehensive enumerator; this lint only keeps the ledger's
 // claims honest.
 //
-// `.cjs` (scripts/lint convention): reads the manifest JSON + walks source/*.bs +
-// requires the .cjs loader. No network, no GitHub.
+// `.cjs` (scripts/lint convention): reads the manifest JSON + walks source/ and components/ .bs +
+// requires the .cjs loader and BrighterScript's lexer. No network, no GitHub.
 //
 // Usage:  node scripts/lint/endpoint-availability-check.cjs [--root <dir>] [--json]
 // Exit:   0 = clean · 1 = at least one validation failure · 2 = internal error
@@ -35,10 +40,18 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { loadEndpointAvailability, normalizePath } = require('../lib/endpoint-availability.cjs');
+const { Lexer } = require('brighterscript');
+const {
+  loadEndpointAvailability,
+  loadParameterAvailability,
+  normalizePath,
+} = require('../lib/endpoint-availability.cjs');
 
 const MANIFEST_REL = 'docs/architecture/api-usage-manifest.json';
 const SOURCE_DIR_REL = 'source';
+// Where a request parameter may be set: the API layer and the Tasks that build
+// params before calling it.
+const PARAMETER_SCAN_DIRS_REL = ['source', 'components'];
 
 function parseFlags(argv) {
   const flags = {};
@@ -60,20 +73,51 @@ function readManifest(rootDir) {
   return JSON.parse(fs.readFileSync(path.join(rootDir, MANIFEST_REL), 'utf8'));
 }
 
-// Recursively collect the text of every .bs file under source/ (one read; the
-// guard-symbol check is a simple substring scan over the concatenation).
-function readAllSource(rootDir) {
-  const root = path.join(rootDir, SOURCE_DIR_REL);
-  const chunks = [];
+// Every .bs file under a directory, as { rel, text }. A missing directory → [].
+function readBsFiles(rootDir, dirRel) {
+  const root = path.join(rootDir, dirRel);
+  if (!fs.existsSync(root)) return [];
+  const files = [];
   const walk = (dir) => {
     for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, ent.name);
       if (ent.isDirectory()) walk(full);
-      else if (ent.name.endsWith('.bs')) chunks.push(fs.readFileSync(full, 'utf8'));
+      else if (ent.name.endsWith('.bs')) {
+        files.push({
+          rel: path.relative(rootDir, full).split(path.sep).join('/'),
+          text: fs.readFileSync(full, 'utf8'),
+        });
+      }
     }
   };
   walk(root);
-  return chunks.join('\n');
+  return files;
+}
+
+// Recursively collect the code of every .bs file under source/ (one read; the
+// guard-symbol check is a simple scan over the concatenation). Comments are
+// dropped, so a guard named only in a comment does not count as present.
+function readAllSource(rootDir) {
+  return readBsFiles(rootDir, SOURCE_DIR_REL)
+    .map((f) => stripComments(f.text))
+    .join('\n');
+}
+
+// Drop BrightScript comments using the compiler's own lexer, so string, template
+// string (including multi-line and `${…}`) and comment boundaries are read
+// exactly as the build reads them. The lexer keeps `'` and `rem` comments as
+// token trivia, not tokens, so joining the token text leaves only code.
+function stripComments(text) {
+  return Lexer.scan(text)
+    .tokens.map((t) => t.text)
+    .join(' ');
+}
+
+// BrightScript identifiers and AA keys are case-insensitive, so both the
+// parameter and the guard match case-insensitively on a word boundary. That
+// catches `params["X"]`, `params.X`, `{ X: … }` and `{ "X": … }` alike.
+function wordRegex(word) {
+  return new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
 }
 
 // Does the manifest contain an endpoint matching this normalized path + (any of)
@@ -97,6 +141,13 @@ function main() {
   let entries;
   try {
     entries = loadEndpointAvailability(rootDir); // throws on schema violation
+  } catch (err) {
+    return finish(flags, [{ entry: '(schema)', problem: err.message }], 0);
+  }
+
+  let parameters;
+  try {
+    parameters = loadParameterAvailability(rootDir); // throws on schema violation
   } catch (err) {
     return finish(flags, [{ entry: '(schema)', problem: err.message }], 0);
   }
@@ -144,7 +195,54 @@ function main() {
     }
   }
 
-  return finish(flags, failures, entries.length);
+  if (parameters.length) {
+    const code = PARAMETER_SCAN_DIRS_REL.flatMap((d) => readBsFiles(rootDir, d)).map((f) => ({
+      rel: f.rel,
+      code: stripComments(f.text),
+    }));
+    for (const param of parameters) {
+      failures.push(...checkParameter(param, manifest, source, code));
+    }
+  }
+
+  return finish(flags, failures, entries.length + parameters.length);
+}
+
+// The claims a `parameters:` entry makes: its endpoint is still called, its guard
+// still exists, and nothing sends the parameter without the guard.
+function checkParameter(param, manifest, source, code) {
+  const failures = [];
+  const fail = (problem) => failures.push({ entry: param.id, problem });
+
+  if (!findManifestEndpoint(manifest, param.normalizedPath, param.methodSet)) {
+    fail(
+      'endpoint not found in the manifest — the app no longer calls it (stale entry; remove it)',
+    );
+    return failures;
+  }
+  const symbol = param.handling.symbol;
+  const symbolRe = wordRegex(symbol);
+  if (!symbolRe.test(source)) {
+    fail(
+      `version-guard symbol "${symbol}" not found in source/ — guard removed? (restore it or drop the entry)`,
+    );
+  }
+
+  const nameRe = wordRegex(param.name);
+  const senders = code.filter((f) => nameRe.test(f.code));
+  if (senders.length === 0) {
+    fail(
+      `no .bs file under source/ or components/ sends "${param.name}" any more (stale entry; remove it)`,
+    );
+  }
+  for (const f of senders) {
+    if (!symbolRe.test(f.code)) {
+      fail(
+        `${f.rel} sends "${param.name}" without calling ${symbol}() — servers differ on this parameter, so decide with the guard (see docs/dev/jellyfin-server-versioning.md §4)`,
+      );
+    }
+  }
+  return failures;
 }
 
 function finish(flags, failures, registered) {
@@ -152,7 +250,7 @@ function finish(flags, failures, registered) {
     process.stdout.write(JSON.stringify({ registered, failures }, null, 2) + '\n');
   } else if (failures.length === 0) {
     console.log(
-      `endpoint-availability: OK — ${registered} registered post-floor endpoint(s), all claims validated.`,
+      `endpoint-availability: OK — ${registered} registered post-floor endpoint(s) and version-gated parameter(s), all claims validated.`,
     );
   } else {
     console.error(`endpoint-availability: ${failures.length} validation failure(s):`);

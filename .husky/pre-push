@@ -76,6 +76,20 @@
 
 set -e
 
+# Git exports GIT_DIR (and friends) to a hook run in a linked WORKTREE, and git
+# reads those BEFORE it looks at a command's cwd. Any step below that spawns git
+# elsewhere — the script tests build temp repos — would then operate on THIS
+# repository. Measured 2026-09-17 from a worktree: the fixtures moved the branch
+# being pushed onto a test commit, wrote `user.name=Test` and `core.bare=true`
+# into the shared config (leaving the main checkout unusable) and added junk
+# tags; the damage was silent, and only the 38 failing tests gave it away.
+# Unsetting them costs nothing here: every git call in this hook runs in the
+# worktree root, which git discovers from cwd. The test helpers scrub their own
+# env too (tests/scripts/unit/_helpers/git-env.js); this is the outer layer, for
+# whatever gets added to this hook next.
+unset GIT_DIR GIT_COMMON_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_OBJECT_DIRECTORY \
+  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX
+
 # Determine the push range. Fall back to origin/main when there's no upstream
 # (first push of a new branch).
 if git rev-parse --abbrev-ref --symbolic-full-name @{upstream} >/dev/null 2>&1; then

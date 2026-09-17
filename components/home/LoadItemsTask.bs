@@ -34,34 +34,7 @@ sub loadItems()
     ' Load Next Up
   else if m.top.itemsToLoad = "nextUp"
     userSettings = globalUser.settings
-
-    params = {}
-    params["recursive"] = true
-    params["SortBy"] = "DatePlayed"
-    params["SortOrder"] = "Descending"
-    params["EnableRewatching"] = userSettings.uiDetailsEnableRewatchingNextUp
-    params["DisableFirstEpisode"] = false
-    ' DELIBERATELY NO `limit`. Next Up is a WORKLIST — the user is trying to get through it,
-    ' so any cap hides episodes they are part-way into a series on, and no number is the right
-    ' one to hide at. It sent 69 for a long time, which was arbitrary rather than derived.
-    ' `uiHomeRowLimit` deliberately does NOT reach here: that setting sizes the browse FEEDS
-    ' (Recently Added / On Now / Active Recordings), where a limit chooses how much of a
-    ' larger set to sample. Continue Watching, the other worklist, sends no limit either and
-    ' has shipped that way — the two now match on purpose rather than by omission.
-    params["EnableTotalRecordCount"] = false
-    params["EnableResumable"] = false
-
-    maxDaysInNextUp = userSettings.uiDetailsMaxDaysNextUp
-    if isValid(maxDaysInNextUp)
-      if maxDaysInNextUp > 0
-        dateToday = CreateObject("roDateTime")
-        dateCutoff = CreateObject("roDateTime")
-
-        dateCutoff.FromSeconds(dateToday.AsSeconds() - (maxDaysInNextUp * 86400))
-
-        params["NextUpDateCutoff"] = dateCutoff.ToISOString()
-      end if
-    end if
+    params = buildHomeNextUpParams(m.global.server.version, userSettings.uiDetailsEnableRewatchingNextUp, userSettings.uiDetailsMaxDaysNextUp, CreateObject("roDateTime").AsSeconds())
 
     data = fetchJson(GetApi().BuildGetNextUpRequest(params), "nextUp")
     if isValid(data) and isValid(data.Items)

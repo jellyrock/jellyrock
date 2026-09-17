@@ -38,7 +38,7 @@ jobs:
       - id: detect
         uses: ./.github/actions/changed-paths
         with:
-          pattern: '^source/.*\.bs$|^docs/architecture/api-usage-manifest\.json$|^docs/architecture/spec-fingerprints/jellyfin-|^docs/dev/jellyfin-version-boundaries\.yml$|^docs/dev/jellyfin-endpoint-availability\.yml$|^\.api-watch/suppressions\.yml$|^scripts/lint/floor-coverage-check\.js$|^scripts/lint/endpoint-availability-check\.cjs$|^scripts/lint/apiversion-consistency-check\.js$|^scripts/generate/findings-candidates\.js$|^scripts/generate/api-usage-manifest\.js$|^scripts/lib/version-boundaries\.cjs$|^scripts/lib/endpoint-availability\.cjs$'
+          pattern: '^source/.*\.bs$|^components/.*\.bs$|^docs/architecture/api-usage-manifest\.json$|^docs/architecture/spec-fingerprints/jellyfin-|^docs/dev/jellyfin-version-boundaries\.yml$|^docs/dev/jellyfin-endpoint-availability\.yml$|^\.api-watch/suppressions\.yml$|^scripts/lint/floor-coverage-check\.js$|^scripts/lint/endpoint-availability-check\.cjs$|^scripts/lint/apiversion-consistency-check\.js$|^scripts/generate/findings-candidates\.js$|^scripts/generate/api-usage-manifest\.js$|^scripts/lib/version-boundaries\.cjs$|^scripts/lib/endpoint-availability\.cjs$'
           force: ${{ inputs.force }}
       - name: Setup Node.js
         if: steps.detect.outputs.relevant == 'true'

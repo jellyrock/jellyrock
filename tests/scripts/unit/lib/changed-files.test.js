@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { gitSafeEnv } from '../_helpers/git-env.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -15,7 +16,7 @@ const require = createRequire(import.meta.url);
 const { changedFiles, workingTreeFiles } = require('../../../../scripts/lib/changed-files.cjs');
 
 function git(repoDir, ...args) {
-  return execFileSync('git', args, { cwd: repoDir, encoding: 'utf8' });
+  return execFileSync('git', args, { cwd: repoDir, encoding: 'utf8', env: gitSafeEnv() });
 }
 
 function initRepo() {

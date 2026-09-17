@@ -1495,6 +1495,16 @@ The `no-same-node-relaunch` plugin is an Error from day one, and the 16 sites th
 
 **The constraint worth re-evaluating is the analysis depth.** Source order stands in for control flow, per function, with each inline `sub(...)` callback a function of its own (it runs in a later callback). Same-file helpers are followed one hop by bare name, counting only `m.` paths the helper leaves stopped. Accepted gaps: a STOP and a launch in exclusive branches are flagged, a STOP through a local alias is missed, and a namespaced helper shares its bare name. The evidence for the rule is the same-node relaunch row in [threading.md](architecture/threading.md#measured-findings).
 
+## decision-id: version-gated-query-parameters
+
+**date**: 2026-09-17
+**status**: accepted
+**related-files**: `source/api/items.bs`, `docs/dev/jellyfin-endpoint-availability.yml`, `scripts/lint/endpoint-availability-check.cjs`, `scripts/jellyfin-matrix.js`
+
+A query parameter whose effect differs by Jellyfin version is sent only to the versions whose behavior was checked. The check has two parts: read the controller at each release tag, and send a live request whose results differ depending on whether the server acted on it (`npm run jellyfin:matrix`). A guard function that takes the server version decides whether to send it, and the parameter is registered under `parameters:` in the endpoint-availability ledger. The first case is Next Up's `DisableFirstEpisode`. It is honored on 10.7–10.10, where it also drops `NextUpDateCutoff` on 10.8–10.10. 10.11 ignores it, and 12.0 removes it. `buildHomeNextUpParams()` sends `true` only where that costs nothing: 10.7, and 10.8–10.10 with Max Days off. So a user with no watch history gets no Next Up row, except on 10.8–10.10 with Max Days on, where the first episodes still arrive (a `docs/progress.md` followup). That is intended: it matches what 10.11+ servers return, even though jellyfin-web 10.10 sends `false` and shows those users a short row of first episodes.
+
+Ruled out: **sending it everywhere because newer servers ignore it**. An ignored parameter is still type-checked (a bad value returns HTTP 400 through 10.11), and nothing guarantees a later release will keep ignoring it. **Gating it through `api-usage-manifest.json`**: the manifest has no per-endpoint parameter binding and scans only `source/api/`, while request params are also built in `components/`. **Matching only quoted string literals in the lint**: BrightScript AA keys are case-insensitive and often unquoted (`{ Limit: 1 }`), so the lint matches the name case-insensitively in code with comments stripped. **Constraint:** the lint is per FILE. A file that calls the guard anywhere can still send the parameter unguarded elsewhere in that file.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

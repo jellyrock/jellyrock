@@ -1,0 +1,114 @@
+import "pkg:/source/api/items.bs"
+
+namespace tests
+
+  @suite("items.bs - Next Up version gate")
+  class NextUpParamsTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("honorsDisableFirstEpisode()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns true below 10.11.0")
+    @params("10.7.7")
+    @params("10.8.13")
+    @params("10.10.7")
+    @params("10.10.99")
+    function _(version)
+      m.assertTrue(honorsDisableFirstEpisode(version))
+    end function
+
+    @it("returns false at or above 10.11.0")
+    @params("10.11.0")
+    @params("10.11.11")
+    @params("12.0.0")
+    @params("12.1.0")
+    function _(version)
+      m.assertFalse(honorsDisableFirstEpisode(version))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("buildHomeNextUpParams() - DisableFirstEpisode")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sends true on 10.7, which has no cutoff, whether Max Days is on or off")
+    @params(0)
+    @params(30)
+    function _(maxDays)
+      params = buildHomeNextUpParams("10.7.7", false, maxDays, 1000000000)
+      m.assertEqual(params.DisableFirstEpisode, true)
+    end function
+
+    @it("sends true on 10.8-10.10 when Max Days is off")
+    @params("10.8.0", 0)
+    @params("10.8.13", 0)
+    @params("10.10.7", 0)
+    @params("10.10.7", invalid)
+    function _(version, maxDays)
+      params = buildHomeNextUpParams(version, false, maxDays, 1000000000)
+      m.assertEqual(params.DisableFirstEpisode, true)
+    end function
+
+    @it("omits it on 10.8-10.10 when Max Days is on, so the server keeps the cutoff")
+    @params("10.8.0")
+    @params("10.9.11")
+    @params("10.10.7")
+    function _(version)
+      params = buildHomeNextUpParams(version, false, 30, 1000000000)
+      m.assertFalse(params.DoesExist("DisableFirstEpisode"))
+      m.assertTrue(params.DoesExist("NextUpDateCutoff"))
+    end function
+
+    @it("omits it from 10.11 on, with Max Days on or off")
+    @params("10.11.0", 0)
+    @params("10.11.11", 30)
+    @params("12.0.0", 0)
+    function _(version, maxDays)
+      params = buildHomeNextUpParams(version, false, maxDays, 1000000000)
+      m.assertFalse(params.DoesExist("DisableFirstEpisode"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("buildHomeNextUpParams() - other params")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sets the cutoff to now minus Max Days")
+    function _()
+      ' 1000000000 = 2001-09-09T01:46:40Z; minus 30 days = 997408000
+      params = buildHomeNextUpParams("10.10.7", false, 30, 1000000000)
+      expected = CreateObject("roDateTime")
+      expected.FromSeconds(997408000)
+      m.assertEqual(params.NextUpDateCutoff, expected.ToISOString())
+      m.assertEqual(params.NextUpDateCutoff, "2001-08-10T01:46:40Z")
+    end function
+
+    @it("sends no cutoff when Max Days is off")
+    @params(0)
+    @params(invalid)
+    function _(maxDays)
+      params = buildHomeNextUpParams("10.10.7", false, maxDays, 1000000000)
+      m.assertFalse(params.DoesExist("NextUpDateCutoff"))
+    end function
+
+    @it("passes rewatching through")
+    @params(true)
+    @params(false)
+    function _(enableRewatching)
+      params = buildHomeNextUpParams("10.11.11", enableRewatching, 0, 1000000000)
+      m.assertEqual(params.EnableRewatching, enableRewatching)
+    end function
+
+    @it("sends the fixed params and no limit")
+    function _()
+      params = buildHomeNextUpParams("10.11.11", false, 0, 1000000000)
+      m.assertEqual(params.recursive, true)
+      m.assertEqual(params.SortBy, "DatePlayed")
+      m.assertEqual(params.SortOrder, "Descending")
+      m.assertEqual(params.EnableTotalRecordCount, false)
+      m.assertEqual(params.EnableResumable, false)
+      m.assertFalse(params.DoesExist("limit"))
+    end function
+
+  end class
+
+end namespace

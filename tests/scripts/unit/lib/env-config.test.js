@@ -155,13 +155,15 @@ describe('applyEnvFiles', () => {
       [CHECKOUT, USER],
       env,
       files({
-        [CHECKOUT]: 'MEASURE_SIGNIN_PASSWORD=\nRTA_SERVER_PASS=\n',
-        [USER]: 'MEASURE_SIGNIN_PASSWORD=secret\nRTA_SERVER_PASS=secret\n',
+        [CHECKOUT]: 'MEASURE_SIGNIN_PASSWORD=\nRTA_SERVER_PASS=\nJELLYFIN_VERSION_SERVERS_PASS=\n',
+        [USER]:
+          'MEASURE_SIGNIN_PASSWORD=secret\nRTA_SERVER_PASS=secret\nJELLYFIN_VERSION_SERVERS_PASS=secret\n',
       }),
     );
 
     expect(env.MEASURE_SIGNIN_PASSWORD).toBe('');
     expect(env.RTA_SERVER_PASS).toBe('');
+    expect(env.JELLYFIN_VERSION_SERVERS_PASS).toBe('');
     expect(sources.MEASURE_SIGNIN_PASSWORD).toBe(CHECKOUT);
   });
 

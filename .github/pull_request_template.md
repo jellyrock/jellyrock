@@ -9,8 +9,8 @@
 -
 
 ## Follow-ups
-<!-- Anything explicitly out of scope / deferred. Each item must have a tech-debt.md entry — link the slug. Default to None. -->
-<!-- - [`slug-name`](docs/architecture/tech-debt.md#slug-name) — one-line description -->
+<!-- Anything explicitly out of scope / deferred. Each item must have a tech-debt.md entry or a progress.md open followup — link it with an absolute URL (relative links 404 in a PR body). Default to None. -->
+<!-- - [`slug-name`](https://github.com/jellyrock/jellyrock/blob/main/docs/architecture/tech-debt.md#slug-name) — one-line description -->
 None
 
 ## Issues

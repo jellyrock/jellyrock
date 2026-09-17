@@ -48,7 +48,11 @@ const PRESET = 'environment';
  * blank means a passwordless account, and each consumer reads it with `?? ''`.
  * `.env.example` ships them commented out, so copying it does not set them.
  */
-const EMPTY_IS_A_VALUE = new Set(['MEASURE_SIGNIN_PASSWORD', 'RTA_SERVER_PASS']);
+const EMPTY_IS_A_VALUE = new Set([
+  'MEASURE_SIGNIN_PASSWORD',
+  'RTA_SERVER_PASS',
+  'JELLYFIN_VERSION_SERVERS_PASS',
+]);
 
 /**
  * The per-user file. `XDG_CONFIG_HOME` is honored when it is an absolute path, as the
