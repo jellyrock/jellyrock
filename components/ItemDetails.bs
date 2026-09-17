@@ -3330,10 +3330,9 @@ sub applyDropdown(dropdown as object, items as object, selectedId as string, app
 end sub
 
 ' triggerTextForSelection: Look up the currently-selected item's display title.
-' Prefers triggerTitle where an item carries one — the subtitle slot uses it to
-' keep the collapsed trigger free of a disambiguator that only reads correctly
-' beside the other entries. Video and audio items have no triggerTitle and fall
-' through to title unchanged.
+' Prefers triggerTitle where an item carries one — the video and subtitle slots use it
+' to keep the collapsed trigger free of what only reads correctly beside the other
+' entries. Audio items have no triggerTitle and fall through to title unchanged.
 function triggerTextForSelection(items as object, selectedId as string) as string
   if not isValid(items) or items.count() = 0 then return ""
   for each item in items
@@ -3350,22 +3349,17 @@ function triggerTextForItem(item as object) as string
 end function
 
 ' buildVideoDropdownItems: Convert MediaSources into dropdown items. "Video" here is the
-' MediaSource, not a stream — it's the user-facing alternate-version selector. Labels come
-' from versionLabels, judged across the versions offered here; the version in progress is
-' marked in the open menu only (triggerTitle stays plain).
+' MediaSource, not a stream — it's the user-facing alternate-version selector. Every
+' version is offered, whatever its VideoType: the version selected here (findBestVideoSource,
+' the in-progress version) can be any of them, and so can the one the player offers and
+' names, so a narrower list would leave the trigger naming a version that is not selected
+' and label versions differently from the player. Labels come from versionLabels; the
+' version in progress is marked in the open menu only (triggerTitle stays plain).
 '
 ' @param {object} mediaSources - the item's MediaSources
 ' @param {dynamic} inProgressSourceId - the version the viewer is partway through, or ""
 function buildVideoDropdownItems(mediaSources as object, inProgressSourceId as dynamic) as object
-  offered = []
-  if not isValid(mediaSources) then return offered
-
-  for each source in mediaSources
-    if isValid(source) and source.VideoType = "VideoFile" and isValidAndNotEmpty(source.id)
-      offered.push(source)
-    end if
-  end for
-  return versionLabels.labelsFor(offered, inProgressSourceId)
+  return versionLabels.labelsFor(mediaSources, inProgressSourceId)
 end function
 
 ' inProgressVersionId: The version to mark as in progress in the Video dropdown, or "" —

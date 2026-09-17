@@ -2,8 +2,8 @@ namespace tests
 
   ' ItemDetails' Video dropdown labels for an item with alternate versions
   ' (source/utils/versionLabels.bs). The label rules are tested as pure functions in
-  ' versionLabels.spec.bs; this suite checks that the component feeds them the right
-  ' in-progress version. Clearing the marker after Mark Watched needs a request, which
+  ' versionLabels.spec.bs; this suite checks that the component feeds them every version
+  ' and the right in-progress version. Clearing the marker after Mark Watched needs a request, which
   ' component specs cannot stub, so it is not covered here.
   @suite("ItemDetails - version labels")
   class ItemDetailsVersionLabelsTests extends tests.BaseTestSuite
@@ -22,11 +22,11 @@ namespace tests
       return item
     end function
 
-    private function version(id as string, name as string, width as integer, height as integer) as object
+    private function version(id as string, name as string, width as integer, height as integer, videoType = "VideoFile" as string) as object
       return {
         Id: id,
         Name: name,
-        VideoType: "VideoFile",
+        VideoType: videoType,
         RunTimeTicks: 18000000000&,
         MediaStreams: [{ Type: "Video", Width: width, Height: height, Codec: "h264", IsInterlaced: false, VideoRange: "SDR" }]
       }
@@ -97,6 +97,18 @@ namespace tests
       m.itemDetails.itemContent = m.makeMovie(0, m.primaryFirst())
 
       m.assertEqual(m.titles(), ["1080p", "720p"])
+    end function
+
+    @it("offers a version that is not a plain video file, and names it in the trigger when selected")
+    ' An ISO the server lists first is the version selected, so the menu has to offer it and
+    ' the trigger has to name it, not fall back to another row.
+    function _()
+      sources = [m.version("alternate", "Movie - DVD", 720, 480, "Iso"), m.version("primary", "Movie - 1080p", 1920, 1080)]
+      m.itemDetails.itemContent = m.makeMovie(0, sources)
+
+      m.assertEqual(m.itemDetails.selectedVideoStreamId, "alternate")
+      m.assertEqual(m.titles(), ["480p · DVD  ·  In progress", "1080p"])
+      m.assertEqual(m.itemDetails.findNode("videoDropdown").triggerText, "480p")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
