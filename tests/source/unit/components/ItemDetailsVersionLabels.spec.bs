@@ -71,7 +71,7 @@ namespace tests
     function _()
       m.itemDetails.itemContent = m.makeMovie(6000000000&, m.primaryFirst())
 
-      m.assertEqual(m.titles(), ["1080p · 1080p  ·  In progress", "720p · 720p"])
+      m.assertEqual(m.titles(), ["1080p  ·  In progress", "720p"])
       m.assertEqual(m.itemDetails.findNode("videoDropdown").triggerText, "1080p")
     end function
 
@@ -81,7 +81,7 @@ namespace tests
       sources = [m.version("alternate", "Movie - 720p", 1280, 720), m.version("primary", "Movie - 1080p", 1920, 1080)]
       m.itemDetails.itemContent = m.makeMovie(0, sources)
 
-      m.assertEqual(m.titles(), ["720p · 720p  ·  In progress", "1080p · 1080p"])
+      m.assertEqual(m.titles(), ["720p  ·  In progress", "1080p"])
     end function
 
     @it("marks the alternate the server lists first even when the item has a position too")
@@ -89,14 +89,14 @@ namespace tests
       sources = [m.version("alternate", "Movie - 720p", 1280, 720), m.version("primary", "Movie - 1080p", 1920, 1080)]
       m.itemDetails.itemContent = m.makeMovie(6000000000&, sources)
 
-      m.assertEqual(m.titles(), ["720p · 720p  ·  In progress", "1080p · 1080p"])
+      m.assertEqual(m.titles(), ["720p  ·  In progress", "1080p"])
     end function
 
     @it("marks nothing when no version is in progress")
     function _()
       m.itemDetails.itemContent = m.makeMovie(0, m.primaryFirst())
 
-      m.assertEqual(m.titles(), ["1080p · 1080p", "720p · 720p"])
+      m.assertEqual(m.titles(), ["1080p", "720p"])
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -108,7 +108,7 @@ namespace tests
       m.global.server.version = "10.11.11"
       m.itemDetails.itemContent = m.makeMovie(6000000000&, m.primaryFirst())
 
-      m.assertEqual(m.titles(), ["1080p · 1080p", "720p · 720p"])
+      m.assertEqual(m.titles(), ["1080p", "720p"])
     end function
 
   end class

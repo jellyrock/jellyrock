@@ -23,8 +23,11 @@ import "pkg:/source/utils/versionResume.bs"
 '     not help anyone choose. Audio is left out: the Audio dropdown lists it per version.
 '   * Name: the words EVERY version shares are dropped from the start and the end, comparing
 '     case-insensitively with space, ".", "-" and "_" as separators. Only shared words go, so
-'     nothing that tells two versions apart is lost; the rest is kept as written. Names are
-'     user-controlled, so nothing here reads quality out of them.
+'     nothing that tells two versions apart is lost; the rest is kept as written. Then the
+'     words at either end that repeat a label the row's stream info already shows go too
+'     ("1080p", not "1080p · 1080p", for Jellyfin's "Movie - 1080p" naming). That is a
+'     plain comparison against whole labels, never a reading: names are user-controlled, so
+'     nothing here reads quality out of them ("2160p" stays beside "4K").
 '   * Fallback: a version left with no text at all shows its full name, then its full stream
 '     summary. Two versions that are identical in every field keep identical labels; an
 '     ordinal would be arbitrary (see remoteSubtitles.subtitleDropdownEntries).
@@ -99,6 +102,7 @@ namespace versionLabels
 
     streamInfos = []
     streamInfoCounts = {}
+    nameParts = []
     for i = 0 to sources.count() - 1
       parts = []
       for each key in ["resolution", "codec", "range"]
@@ -107,14 +111,15 @@ namespace versionLabels
       streamInfo = parts.join(" ")
       streamInfos.push(streamInfo)
       streamInfoCounts[streamInfo] = (streamInfoCounts[streamInfo] ?? 0) + 1
+      nameParts.push(versionLabels.trimShownLabels(distinct[i], parts))
     end for
 
     for i = 0 to sources.count() - 1
       streamInfo = streamInfos[i]
       label = streamInfo
-      if distinct[i] <> ""
+      if nameParts[i] <> ""
         if label <> "" then label += STREAM_NAME_SEPARATOR
-        label += distinct[i]
+        label += nameParts[i]
       end if
       if label = "" then label = names[i]
       if label = "" then label = versionLabels.streamSummary(sources[i])
@@ -217,6 +222,38 @@ namespace versionLabels
       end if
     end for
     return parts
+  end function
+
+  ' trimShownLabels: A name part without the words at either end that repeat a label its row
+  ' already shows. Each label is matched whole, ignoring case, so a label that is several
+  ' words ("DV 8.1") never matches part of a name ("Part 8"). Words in the middle stay, so
+  ' what is left is still cut from the text unchanged.
+  '
+  ' @param {string} text - a name part from distinctNameParts
+  ' @param {object} shownLabels - the row's stream-info labels ("1080p", "HEVC", ...)
+  ' @return {string} the trimmed part; "" when every word repeats a shown label
+  function trimShownLabels(text as string, shownLabels as object) as string
+    if text = "" or shownLabels.count() = 0 then return text
+
+    ' roAssociativeArray keys compare ignoring case
+    shown = {}
+    for each label in shownLabels
+      shown[label] = true
+    end for
+
+    tokens = versionLabels.tokenize(text)
+    first = 0
+    last = tokens.count() - 1
+    while first <= last and shown.doesExist(tokens[first].lower)
+      first++
+    end while
+    while last >= first and shown.doesExist(tokens[last].lower)
+      last--
+    end while
+    if first > last then return ""
+
+    startPos = tokens[first].start
+    return text.mid(startPos, tokens[last].start + tokens[last].length - startPos)
   end function
 
   ' allTokensMatch: Whether every list has the same word at `offset`, counted from the start,

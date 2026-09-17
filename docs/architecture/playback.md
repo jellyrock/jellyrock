@@ -506,14 +506,16 @@ versions, and returns two forms because the places that name a version do differ
 
 | Form | Used where | Example (two releases of one episode) |
 |---|---|---|
-| `title`, full | lists a viewer **chooses** from: the `ItemDetails` Video menu, the in-player Select Video Source dialog | `720p · 720p.web.h264-tbs` |
+| `title`, full | lists a viewer **chooses** from: the `ItemDetails` Video menu, the in-player Select Video Source dialog | `720p · web.h264-tbs` |
 | `triggerTitle`, short | places that only say **which is current**: the collapsed Video trigger, the player (`triggerLabelFor()` → `OSD.videoSourceTag`) | `720p` |
 
 - **Stream info first, and only what differs** — resolution, video codec, HDR range. A bitrate
   ladder with identical video gets none.
 - **The name without the words every version shares**, at either end (case-insensitive;
-  space, `.`, `-`, `_` separate words). Names are user-controlled, so no quality is read out
-  of them.
+  space, `.`, `-`, `_` separate words), **and without the words at either end that repeat a
+  label the row already shows** — so Jellyfin's `Movie - 1080p` naming reads `1080p`, not
+  `1080p · 1080p`. Both are plain comparisons: names are user-controlled, so no quality is
+  read out of them (`2160p` stays beside `4K`).
 - **The short form is the stream info alone when that identifies the version**, and the full
   label otherwise. A name can be the only thing that matters (an edition) or a whole release
   filename — Jellyfin returns the full filename when a version's file shares no naming pattern

@@ -63,14 +63,14 @@ namespace tests
     @it("names only the field that differs, ahead of the name")
     function _()
       labels = versionLabels.labelsFor(m.episodeVersions(), "")
-      m.assertEqual(m.titles(labels), ["1080p · Customer Service WEBDL-1080p", "720p · 720p.web.h264-tbs"])
+      m.assertEqual(m.titles(labels), ["1080p · Customer Service WEBDL", "720p · web.h264-tbs"])
     end function
 
     @it("names every field that differs, HDR range included, and no range for SDR")
     function _()
       hdr = { Type: "Video", Width: 3840, Height: 2160, Codec: "hevc", IsInterlaced: false, VideoRange: "HDR", VideoRangeType: "HDR10" }
       labels = versionLabels.labelsFor([m.source("a", "2160p", hdr), m.source("b", "1080p", m.video(1920, 1080, "h264"))], "")
-      m.assertEqual(m.titles(labels), ["4K HEVC HDR10 · 2160p", "1080p H264 · 1080p"])
+      m.assertEqual(m.titles(labels), ["4K HEVC HDR10 · 2160p", "1080p H264"])
       m.assertEqual(m.triggers(labels), ["4K HEVC HDR10", "1080p H264"])
     end function
 
@@ -173,14 +173,58 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("labelsFor() - words the stream info already shows")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("drops a name that only repeats the stream info")
+    ' Jellyfin 12.0 names "Movie - 1080p.mkv" and "Movie - 720p.mkv" just "1080p" and "720p".
+    function _()
+      labels = versionLabels.labelsFor([m.source("a", "1080p", m.video(1920, 1080, "h264")), m.source("b", "720p", m.video(1280, 720, "h264"))], "")
+      m.assertEqual(m.titles(labels), ["1080p", "720p"])
+      m.assertEqual(m.triggers(labels), ["1080p", "720p"])
+    end function
+
+    @it("drops repeated labels from both ends and keeps the rest as written")
+    function _()
+      labels = versionLabels.labelsFor([m.source("a", "1080p Remux", m.video(1920, 1080, "h264")), m.source("b", "Bluray-720p", m.video(1280, 720, "h264"))], "")
+      m.assertEqual(m.titles(labels), ["1080p · Remux", "720p · Bluray"])
+    end function
+
+    @it("drops every shown label, ignoring case")
+    function _()
+      labels = versionLabels.labelsFor([m.source("a", "4k.hevc Director's Cut", m.video(3840, 2160, "hevc")), m.source("b", "Theatrical H264 1080P", m.video(1920, 1080, "h264"))], "")
+      m.assertEqual(m.titles(labels), ["4K HEVC · Director's Cut", "1080p H264 · Theatrical"])
+    end function
+
+    @it("keeps a repeated label in the middle of a name")
+    function _()
+      labels = versionLabels.labelsFor([m.source("a", "Director's 1080p Cut", m.video(1920, 1080, "h264")), m.source("b", "Theatrical", m.video(1280, 720, "h264"))], "")
+      m.assertEqual(m.titles(labels), ["1080p · Director's 1080p Cut", "720p · Theatrical"])
+    end function
+
+    @it("keeps a word the row does not show")
+    ' Both versions are HEVC, so the codec is not part of the stream info.
+    function _()
+      labels = versionLabels.labelsFor([m.source("a", "HEVC", m.video(1920, 1080, "hevc")), m.source("b", "Web", m.video(1280, 720, "hevc"))], "")
+      m.assertEqual(m.titles(labels), ["1080p · HEVC", "720p · Web"])
+    end function
+
+    @it("matches a label of several words only as a whole")
+    function _()
+      dolbyVision = { Type: "Video", Width: 3840, Height: 2160, Codec: "hevc", IsInterlaced: false, VideoRange: "HDR", VideoRangeType: "DOVIWithHDR10", DvProfile: 8, DvBlSignalCompatibilityId: 1 }
+      labels = versionLabels.labelsFor([m.source("a", "Part 8", dolbyVision), m.source("b", "Part 1", m.video(3840, 2160, "hevc"))], "")
+      m.assertEqual(m.titles(labels), ["DV 8.1 · 8", "1"])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("labelsFor() - in-progress marker")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("marks the in-progress version's title, ignoring id case")
     function _()
       labels = versionLabels.labelsFor(m.episodeVersions(), "B")
-      m.assertEqual(labels[0].title, "1080p · Customer Service WEBDL-1080p")
-      m.assertEqual(labels[1].title, "720p · 720p.web.h264-tbs  ·  In progress")
+      m.assertEqual(labels[0].title, "1080p · Customer Service WEBDL")
+      m.assertEqual(labels[1].title, "720p · web.h264-tbs  ·  In progress")
     end function
 
     @it("never marks the trigger title")
@@ -195,7 +239,7 @@ namespace tests
     @params("gone")
     function _(inProgressId)
       labels = versionLabels.labelsFor(m.episodeVersions(), inProgressId)
-      m.assertEqual(m.titles(labels), ["1080p · Customer Service WEBDL-1080p", "720p · 720p.web.h264-tbs"])
+      m.assertEqual(m.titles(labels), ["1080p · Customer Service WEBDL", "720p · web.h264-tbs"])
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

@@ -1093,7 +1093,7 @@ sub onVideoContentLoaded()
     if isValid(m.top.fullVideoSourceData) and m.top.fullVideoSourceData.Count() > 1
       m.osd.numVideoSources = m.top.fullVideoSourceData.Count()
       ' Tag the OSD title with the active version, labeled as the version pickers label it
-      ' (e.g. "[B&W]", "720p · 720p.web.h264-tbs")
+      ' (the short form: e.g. "720p", or "[B&W]" when the versions differ only by name)
       m.osd.videoSourceTag = versionLabels.triggerLabelFor(m.top.fullVideoSourceData, videoContent[0].mediaSourceId)
     else
       m.osd.videoSourceTag = ""
