@@ -31,6 +31,24 @@ function stopAndLaunchFresh() as object
   return previous
 end function
 
+' Configures the probe task before it is launched: how it blocks, for how long, and the
+' input value its function reads.
+sub configure(args as object)
+  m.top.task.setFields({ blockMode: args.blockMode, blockMs: args.blockMs, seq: args.seq })
+end sub
+
+' The app's full sequence, which is not just STOP-then-launch: every site writes its INPUT
+' field between the two (`m.searchTask.query = query`, `m.loadDetailsTask.itemId = itemId`).
+' That write is why an ignored relaunch can still look right — the old run, if it survives,
+' reads the new value.
+sub stopWriteRelaunch(newSeq as integer)
+  task = m.top.task
+  task.control = "STOP"
+  task.seq = newSeq
+  ' bsc-disable-next-line no-same-node-relaunch this probe relaunches the same node on purpose, to measure the race
+  launchTask(task)
+end sub
+
 ' Lets every invocation of the function return.
 sub release()
   m.top.task.release = true

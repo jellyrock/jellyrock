@@ -2,17 +2,44 @@ sub init()
   m.top.functionName = "holdUntilReleased"
 end sub
 
-' Counts the start, holds until released, counts the return. `beats` advances every pass of
-' the hold loop, so a spec can tell whether the function is still executing. The timeout only
-' stops a failed spec from leaving a thread running for the rest of the suite.
+' Counts the start, blocks the way `blockMode` says, counts the return.
+'
+' `beats` advances every pass of the poll loop, so a spec can tell whether the function is
+' still executing. The timeout only stops a failed spec from leaving a thread running for the
+' rest of the suite.
+'
+' `blockMode` exists because the app's Tasks do not all block alike, and the question a
+' relaunch raises is what the OLD run does, not just whether a new one starts:
+'   pollLoop  - wait() on a port in a loop, re-reading a field each pass (the original probe)
+'   waitOnce  - ONE long wait() on a port, which is what `fetchJson` does inside the pool
+'   sleepOnce - sleep(), which parks the thread without a port at all
+'
+' `seq` is read TWICE: once at entry and once after the block. A caller that stops the task,
+' writes a new `seq` and relaunches is doing what every app site does with its input field
+' (`m.searchTask.query = query` then launch). If the relaunch is ignored but the old run
+' survives its block, `endSeq` shows the run finishing against the NEW input — which looks
+' correct on screen and hides the ignored launch.
 sub holdUntilReleased()
   m.top.starts = m.top.starts + 1
-  ' Blocks in wait() on a port, as apiPipelineNext does, rather than in sleep().
-  port = CreateObject("roMessagePort")
-  clock = CreateObject("roTimespan")
-  while not m.top.release and clock.totalMilliseconds() < 5000
-    m.top.beats = m.top.beats + 1
-    wait(20, port)
-  end while
+  m.top.startSeq = m.top.seq
+
+  blockMs = m.top.blockMs
+  if blockMs <= 0 then blockMs = 5000
+
+  if m.top.blockMode = "sleepOnce"
+    sleep(blockMs)
+  else if m.top.blockMode = "waitOnce"
+    port = CreateObject("roMessagePort")
+    wait(blockMs, port)
+  else
+    port = CreateObject("roMessagePort")
+    clock = CreateObject("roTimespan")
+    while not m.top.release and clock.totalMilliseconds() < blockMs
+      m.top.beats = m.top.beats + 1
+      wait(20, port)
+    end while
+  end if
+
+  m.top.endSeq = m.top.seq
   m.top.ends = m.top.ends + 1
 end sub

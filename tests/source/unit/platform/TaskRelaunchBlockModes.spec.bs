@@ -1,0 +1,100 @@
+namespace tests
+
+  ' What a stopped-and-relaunched Task does to the USER, per way of blocking.
+  '
+  ' `TaskRelaunch.spec.bs` establishes that a launch made in the callback that stopped a
+  ' still-running Task is a race. This suite asks the question that decides whether the app's
+  ' remaining same-node relaunch sites can hurt anyone, because "the launch was ignored" is
+  ' only half an answer. Every app site writes its INPUT field between the stop and the launch
+  ' (`m.searchTask.query = query`), so three outcomes are possible:
+  '
+  '   honored        - the function starts again and reads the new input. Correct.
+  '   ignored-carry  - no new start, but the OLD run survives its block and finishes against
+  '                    the NEW input. Correct on screen; the ignored launch is invisible.
+  '   ignored-lost   - no new start and no delivery. THIS is the user-visible bug.
+  '
+  ' Measured across the three ways an app Task blocks: one long `wait()` on a port (what
+  ' `fetchJson` does inside the pool), `sleep()`, and a `wait()` poll loop.
+  '
+  ' A rate, not a gate: the counts are printed and the assertions only pin what must hold
+  ' whatever the race decides — the task ends stopped or running, never a third state, and a
+  ' run that finished read one of the two inputs. Recording an exact ratio would fail on a
+  ' firmware change for a reason that is not a regression.
+  @suite("Platform - relaunch outcomes by block mode")
+  class TaskRelaunchBlockModeTests extends tests.BaseTestSuite
+
+    private function waitForCount(node as object, field as string, expected as integer, timeoutMs as integer) as integer
+      clock = CreateObject("roTimespan")
+      value = node.getField(field)
+      while value < expected and clock.totalMilliseconds() < timeoutMs
+        sleep(20)
+        value = node.getField(field)
+      end while
+      return value
+    end function
+
+    ' One trial: launch a task blocking `blockMode` for `blockMs`, wait until its function is
+    ' provably running, then stop + write seq 2 + relaunch in one callback. Returns what the
+    ' user would have got.
+    private function trial(blockMode as string, blockMs as integer) as object
+      host = CreateObject("roSGNode", "TaskRelaunchProbeHost")
+      host.callFunc("configure", { blockMode: blockMode, blockMs: blockMs, seq: 1 })
+      host.callFunc("launch")
+      task = host.getField("task")
+      m.assertEqual(m.waitForCount(task, "starts", 1, 2000), 1, "precondition: the function started")
+
+      host.callFunc("stopWriteRelaunch", 2)
+
+      ' Long enough for a second start to appear AND for either run to finish its block.
+      m.waitForCount(task, "starts", 2, blockMs + 500)
+      m.waitForCount(task, "ends", 1, blockMs + 500)
+      sleep(200)
+
+      outcome = "ignored-lost"
+      if task.starts >= 2
+        outcome = "honored"
+      else if task.ends >= 1 and task.endSeq = 2
+        outcome = "ignored-carry"
+      end if
+      return { outcome: outcome, starts: task.starts, ends: task.ends, endSeq: task.endSeq, state: LCase(task.state) }
+    end function
+
+    private function runMode(blockMode as string, trials as integer) as object
+      counts = { honored: 0, "ignored-carry": 0, "ignored-lost": 0 }
+      for i = 1 to trials
+        result = m.trial(blockMode, 700)
+        counts[result.outcome] = counts[result.outcome] + 1
+        m.assertTrue(result.state = "stop" or result.state = "run", "task settled in a known state, got " + result.state)
+        if result.ends >= 1
+          m.assertTrue(result.endSeq = 1 or result.endSeq = 2, "a finished run read one of the two inputs")
+        end if
+      end for
+      print "[TaskRelaunchBlockModes] "; blockMode; " over "; trials; " trials: honored="; counts.honored; " ignored-carry="; counts["ignored-carry"]; " ignored-lost="; counts["ignored-lost"]
+      return counts
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("stop, write the input, relaunch the same node")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("records the outcome for a task blocked in one long wait(), as fetchJson is")
+    function _()
+      counts = m.runMode("waitOnce", 10)
+      m.assertEqual(counts.honored + counts["ignored-carry"] + counts["ignored-lost"], 10, "every trial classified")
+    end function
+
+    @it("records the outcome for a task blocked in sleep()")
+    function _()
+      counts = m.runMode("sleepOnce", 10)
+      m.assertEqual(counts.honored + counts["ignored-carry"] + counts["ignored-lost"], 10, "every trial classified")
+    end function
+
+    @it("records the outcome for a task blocked in a wait() poll loop")
+    function _()
+      counts = m.runMode("pollLoop", 10)
+      m.assertEqual(counts.honored + counts["ignored-carry"] + counts["ignored-lost"], 10, "every trial classified")
+    end function
+
+  end class
+
+end namespace
