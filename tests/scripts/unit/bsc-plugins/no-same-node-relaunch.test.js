@@ -472,14 +472,20 @@ describe('no-same-node-relaunch — pending migrations', () => {
     expect(steps).toEqual([1, 0]);
   });
 
-  it('points the missing-file error at the real entry in the plugin', () => {
+  it('points each missing-file error at that entry in the plugin', () => {
+    // Deliberately NOT keyed to a particular entry: the list shrinks as sites are migrated,
+    // and an assertion naming one of them fails the day it is deleted (it did). Every
+    // diagnostic must name the line its own path is written on; an empty list has none to
+    // check, which is the state this whole mechanism is working toward.
     const found = diagnosticsByCode(
       runPluginOnSource(plugin, { 'components/Unrelated.bs': 'sub a()\nend sub' }),
       CODE,
-    ).find((d) => d.message.includes('`components/ItemDetails.bs`'));
+    ).filter((d) => d.message.includes('not in the build'));
     const lines = readFileSync(PLUGIN_PATH, 'utf8').split(/\r?\n/);
-    expect(found).toBeDefined();
-    expect(lines[found.location.range.start.line]).toContain("'components/ItemDetails.bs'");
+    for (const diagnostic of found) {
+      const path = diagnostic.message.match(/PENDING_MIGRATIONS lists `([^`]+)`/)[1];
+      expect(lines[diagnostic.location.range.start.line]).toContain(`'${path}'`);
+    }
   });
 
   it('clears and re-raises the migrated finding as the file is edited', () => {
