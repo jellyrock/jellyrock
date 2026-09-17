@@ -366,13 +366,20 @@ sub setVideoTitle()
     ' that may include year/edition suffixes (e.g., "Dracula (1931) [Colorized]").
     ' Falls back to item.name on first load before the original is cached.
     title = m.originalItemName ?? item.name
-    ' Append active video source tag when multiple sources exist (e.g., "[B&W]")
-    if isValidAndNotEmpty(m.top.videoSourceTag)
+    ' Append the active version's label when there are several (e.g., "[B&W]"). An episode
+    ' shows it on the episode line instead (setVideoSubTitle): the version belongs to the
+    ' episode, and its title line is the series name.
+    if isValidAndNotEmpty(m.top.videoSourceTag) and not isEpisodeLike(item.type)
       title += " " + m.top.videoSourceTag
     end if
     m.videoTitle.text = title
   end if
 end sub
+
+' isEpisodeLike: Whether the OSD titles this item by its series, with an episode line below.
+function isEpisodeLike(itemType as string) as boolean
+  return itemType = "Episode" or itemType = "Recording"
+end function
 
 sub setVideoSubTitle()
   ' start fresh by removing all subtitle nodes
@@ -391,7 +398,7 @@ sub setVideoSubTitle()
   end if
 
   ' EPISODE
-  if itemType = "Episode" or itemType = "Recording"
+  if isEpisodeLike(itemType)
     ' Title
     if isValidAndNotEmpty(item.seriesName)
       m.videoTitle.text = item.seriesName
@@ -428,6 +435,13 @@ sub setVideoSubTitle()
       episodeInfoNode = createSubtitleLabelNode("episodeInfo")
       episodeInfoNode.text = episodeInfoText
       displaySubtitleNode(episodeInfoNode)
+    end if
+
+    ' The active version, when there are several: "S4E6 - Customer Service • 720p"
+    if isValidAndNotEmpty(m.top.videoSourceTag)
+      versionNode = createSubtitleLabelNode("versionLabel")
+      versionNode.text = m.top.videoSourceTag
+      displaySubtitleNode(versionNode)
     end if
   else if itemType = "Movie"
     ' videoAirDate

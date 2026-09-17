@@ -95,13 +95,13 @@ namespace tests
       m.assertEqual(options.defaultIndex, 1)
     end function
 
-    @it("names the versions apart only when there is more than one")
+    @it("labels the versions as versionLabels does, without the in-progress marker")
     function _()
       multiple = buildVideoSourceOptions(m.videoSources(), "src-a")
-      m.assertEqual(multiple.labels[0], "Remux 1080p H264")
+      m.assertEqual(multiple.labels, ["1080p · Remux", "480p · SDTV"])
 
       single = buildVideoSourceOptions([m.videoSources()[0]], "src-a")
-      m.assertEqual(single.labels[0], "1080p H264")
+      m.assertEqual(single.labels, ["1080p H264"])
     end function
 
     @it("returns an empty option set for invalid input")

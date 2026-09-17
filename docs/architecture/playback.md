@@ -20,6 +20,7 @@ related-files:
   - components/mediaPlayers/AudioPlayer.bs
   - components/music/AudioPlayerView.bs
   - components/ItemGrid/LoadVideoContentTask.bs
+  - source/utils/versionLabels.bs
   - source/utils/versionResume.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
@@ -458,7 +459,7 @@ An item with several `MediaSources` (alternate versions) resumes differently by 
 |---|---|---|
 | Position stored | once per item, whichever file played | per version, on the reported `MediaSourceId` |
 | Version picked to resume | device-best (`findBestVideoSource`) | the version that holds the position |
-| In-progress signal | the item's own position | the item's own position, **or** an alternate listed first in the primary's `MediaSources` |
+| In-progress signal | the item's own position | an alternate listed first in the primary's `MediaSources` (the server leads with the most recently played version that has a position, so it wins even when the item has one too), otherwise the item's own position |
 
 Resuming continues the file that holds the position because another version can be offset
 from it, and neither the names nor the runtime lengths tell a re-encode from a different cut. Upgrading to a
@@ -495,6 +496,38 @@ Every choice above lives in `source/utils/versionResume.bs` as pure functions ov
 values; `ItemDetails` holds only the shell that fetches what `resumeStateFor()` asks for.
 That split is what makes the rules testable — a component spec has no way to stub the two
 requests, so a rule expressed inside `ItemDetails` could only ever be checked by hand.
+
+### Version labels — `source/utils/versionLabels.bs`
+
+Since 12.0 resumes the exact file and never upgrades on its own, the version label is what
+tells a viewer which file they are about to play. One pure function,
+`versionLabels.labelsFor()`, names a version everywhere, judging each label against the other
+versions, and returns two forms because the places that name a version do different jobs:
+
+| Form | Used where | Example (two releases of one episode) |
+|---|---|---|
+| `title`, full | lists a viewer **chooses** from: the `ItemDetails` Video menu, the in-player Select Video Source dialog | `720p · 720p.web.h264-tbs` |
+| `triggerTitle`, short | places that only say **which is current**: the collapsed Video trigger, the player (`triggerLabelFor()` → `OSD.videoSourceTag`) | `720p` |
+
+- **Stream info first, and only what differs** — resolution, video codec, HDR range. A bitrate
+  ladder with identical video gets none.
+- **The name without the words every version shares**, at either end (case-insensitive;
+  space, `.`, `-`, `_` separate words). Names are user-controlled, so no quality is read out
+  of them.
+- **The short form is the stream info alone when that identifies the version**, and the full
+  label otherwise. A name can be the only thing that matters (an edition) or a whole release
+  filename — Jellyfin returns the full filename when a version's file shares no naming pattern
+  with the others, and `MediaSourceInfo` has no edition field — so the name is kept only where
+  the viewer chooses. The cost accepted: two editions that also differ in quality are named by
+  quality alone once picked.
+- **The in-progress version is marked** (`· In progress`) in the `ItemDetails` menu only, on
+  12.0+. Only the version the server lists first is known without a request, so only it is
+  marked.
+- **The player shows the short form after the title for a movie, and as its own segment on the
+  episode line for an episode or recording** (`S4E6 - Customer Service • 720p`): an episode's
+  title line is the series name, and the version belongs to the episode.
+
+A single version keeps its plain stream summary, and the player shows no tag for it.
 
 ## OSD — `components/video/OSD.bs/.xml`
 

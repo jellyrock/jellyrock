@@ -1,0 +1,116 @@
+namespace tests
+
+  ' ItemDetails' Video dropdown labels for an item with alternate versions
+  ' (source/utils/versionLabels.bs). The label rules are tested as pure functions in
+  ' versionLabels.spec.bs; this suite checks that the component feeds them the right
+  ' in-progress version. Clearing the marker after Mark Watched needs a request, which
+  ' component specs cannot stub, so it is not covered here.
+  @suite("ItemDetails - version labels")
+  class ItemDetailsVersionLabelsTests extends tests.BaseTestSuite
+
+    private itemDetails as object
+    private originalServerVersion as string
+
+    private function makeMovie(position as longinteger, sources as object) as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "primary"
+      item.type = "Movie"
+      item.name = "Two Versions"
+      item.runTimeTicks = 18000000000&
+      item.playbackPositionTicks = position
+      item.mediaSourcesData = { mediaSources: sources }
+      return item
+    end function
+
+    private function version(id as string, name as string, width as integer, height as integer) as object
+      return {
+        Id: id,
+        Name: name,
+        VideoType: "VideoFile",
+        RunTimeTicks: 18000000000&,
+        MediaStreams: [{ Type: "Video", Width: width, Height: height, Codec: "h264", IsInterlaced: false, VideoRange: "SDR" }]
+      }
+    end function
+
+    private function primaryFirst() as object
+      return [m.version("primary", "Movie - 1080p", 1920, 1080), m.version("alternate", "Movie - 720p", 1280, 720)]
+    end function
+
+    private function titles() as object
+      result = []
+      for each entry in m.itemDetails.findNode("videoDropdown").items
+        result.push(entry.title)
+      end for
+      return result
+    end function
+
+    ' beforeEach, not setup: each test loads content into the node and changes the server
+    ' version (tests/CLAUDE.md).
+    protected override function beforeEach()
+      super.beforeEach()
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+      m.originalServerVersion = m.global.server.version
+      m.global.server.version = "12.0.0"
+      m.itemDetails = CreateObject("roSGNode", "ItemDetails")
+    end function
+
+    protected override function afterEach()
+      m.itemDetails = invalid
+      m.global.server.version = m.originalServerVersion
+      super.afterEach()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("on a per-version server")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("marks the version in progress in the menu, and shows the short label in the trigger")
+    function _()
+      m.itemDetails.itemContent = m.makeMovie(6000000000&, m.primaryFirst())
+
+      m.assertEqual(m.titles(), ["1080p · 1080p  ·  In progress", "720p · 720p"])
+      m.assertEqual(m.itemDetails.findNode("videoDropdown").triggerText, "1080p")
+    end function
+
+    @it("marks an alternate the server lists first")
+    ' 12.0 leads a primary's sources with the in-progress version.
+    function _()
+      sources = [m.version("alternate", "Movie - 720p", 1280, 720), m.version("primary", "Movie - 1080p", 1920, 1080)]
+      m.itemDetails.itemContent = m.makeMovie(0, sources)
+
+      m.assertEqual(m.titles(), ["720p · 720p  ·  In progress", "1080p · 1080p"])
+    end function
+
+    @it("marks the alternate the server lists first even when the item has a position too")
+    function _()
+      sources = [m.version("alternate", "Movie - 720p", 1280, 720), m.version("primary", "Movie - 1080p", 1920, 1080)]
+      m.itemDetails.itemContent = m.makeMovie(6000000000&, sources)
+
+      m.assertEqual(m.titles(), ["720p · 720p  ·  In progress", "1080p · 1080p"])
+    end function
+
+    @it("marks nothing when no version is in progress")
+    function _()
+      m.itemDetails.itemContent = m.makeMovie(0, m.primaryFirst())
+
+      m.assertEqual(m.titles(), ["1080p · 1080p", "720p · 720p"])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("before Jellyfin 12.0")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("marks nothing, since one position covers every version")
+    function _()
+      m.global.server.version = "10.11.11"
+      m.itemDetails.itemContent = m.makeMovie(6000000000&, m.primaryFirst())
+
+      m.assertEqual(m.titles(), ["1080p · 1080p", "720p · 720p"])
+    end function
+
+  end class
+
+end namespace

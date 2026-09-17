@@ -1,0 +1,101 @@
+namespace tests
+
+  ' Where the OSD names the active version (videoSourceTag). A movie's title line carries it;
+  ' an episode's title line is overwritten with the series name, so before this the version
+  ' never showed for an episode at all — it now has its own segment on the episode line.
+  @suite("OSD - active version label")
+  class OSDVersionLabelTests extends tests.BaseTestSuite
+
+    private osd as object
+
+    protected override sub beforeEach()
+      super.beforeEach()
+
+      ' OSD.init() -> setButtonStates() reads m.global.queueManager
+      if not m.global.doesExist("queueManager")
+        m.global.addField("queueManager", "node", false)
+      end if
+      m.global.queueManager = CreateObject("roSGNode", "QueueManager")
+
+      ' SceneManager is required by JRScreen (OSD's parent)
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+
+      m.osd = CreateObject("roSGNode", "OSD")
+    end sub
+
+    protected override sub afterEach()
+      m.osd = invalid
+      super.afterEach()
+    end sub
+
+    private function episode() as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.setFields({ id: "ep-1", type: "Episode", name: "Customer Service", seriesName: "Silicon Valley", parentIndexNumber: 4, indexNumber: 6, isSeries: true })
+      return item
+    end function
+
+    private function movie() as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.setFields({ id: "mv-1", type: "Movie", name: "AV-1", isMovie: true })
+      return item
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("episode")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows the version as its own segment after the episode, and keeps the title the series")
+    function _()
+      m.osd.videoSourceTag = "720p"
+      m.osd.itemData = m.episode()
+
+      m.assertEqual(m.osd.findNode("videoTitle").text, "Silicon Valley")
+      versionNode = m.osd.findNode("versionLabel")
+      m.assertNotInvalid(versionNode)
+      m.assertEqual(versionNode.text, "720p")
+      ' Right after the episode, with a divider between them
+      group = m.osd.findNode("videoSubtitleGroup")
+      m.assertEqual(group.getChild(0).id, "episodeInfo")
+      m.assertTrue(group.getChild(2).isSameNode(versionNode))
+    end function
+
+    @it("shows no version segment when there is only one version")
+    function _()
+      m.osd.videoSourceTag = ""
+      m.osd.itemData = m.episode()
+
+      m.assertInvalid(m.osd.findNode("versionLabel"))
+    end function
+
+    @it("keeps the version off the title line when the episode has no series name")
+    function _()
+      item = m.episode()
+      item.seriesName = ""
+      m.osd.videoSourceTag = "720p"
+      m.osd.itemData = item
+
+      m.assertEqual(m.osd.findNode("videoTitle").text, "Customer Service")
+      versionNode = m.osd.findNode("versionLabel")
+      m.assertNotInvalid(versionNode)
+      m.assertEqual(versionNode.text, "720p")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("movie")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("appends the version to the title line, with no separate segment")
+    function _()
+      m.osd.videoSourceTag = "90mbps"
+      m.osd.itemData = m.movie()
+
+      m.assertEqual(m.osd.findNode("videoTitle").text, "AV-1 90mbps")
+      m.assertInvalid(m.osd.findNode("versionLabel"))
+    end function
+
+  end class
+
+end namespace

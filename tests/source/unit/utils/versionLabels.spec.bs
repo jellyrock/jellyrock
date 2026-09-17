@@ -1,0 +1,260 @@
+import "pkg:/source/utils/versionLabels.bs"
+
+namespace tests
+
+  @suite("versionLabels - telling alternate versions apart")
+  class VersionLabelsTests extends tests.BaseTestSuite
+
+    private function video(width as integer, height as integer, codec as string) as object
+      return { Type: "Video", Width: width, Height: height, Codec: codec, IsInterlaced: false, VideoRange: "SDR" }
+    end function
+
+    private function source(id as string, name as dynamic, stream as dynamic) as object
+      streams = []
+      if isValid(stream) then streams.push(stream)
+      return { Id: id, Name: name, MediaStreams: streams }
+    end function
+
+    ' Silicon Valley S04E06 as the local Jellyfin 12.0 test server groups it: two release
+    ' files with unrelated naming, 1080p and 720p, both H264.
+    private function episodeVersions() as object
+      return [
+        m.source("a", "Silicon Valley - S04E06 - Customer Service WEBDL-1080p", m.video(1920, 1080, "h264")),
+        m.source("b", "silicon.valley.s04e06.720p.web.h264-tbs", m.video(1280, 720, "h264"))
+      ]
+    end function
+
+    ' The AV-1 test movie on the same server: a bitrate ladder, identical video.
+    private function bitrateLadder() as object
+      return [
+        m.source("a", "40mbps", m.video(1920, 1080, "av1")),
+        m.source("b", "50mbps", m.video(1920, 1080, "av1")),
+        m.source("c", "60mbps", m.video(1920, 1080, "av1"))
+      ]
+    end function
+
+    private function titles(labels as object) as object
+      result = []
+      for each label in labels
+        result.push(label.title)
+      end for
+      return result
+    end function
+
+    private function triggers(labels as object) as object
+      result = []
+      for each label in labels
+        result.push(label.triggerTitle)
+      end for
+      return result
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("labelsFor() - stream info")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("adds no stream info when every version's video is the same")
+    function _()
+      labels = versionLabels.labelsFor(m.bitrateLadder(), "")
+      m.assertEqual(m.titles(labels), ["40mbps", "50mbps", "60mbps"])
+      m.assertEqual(m.triggers(labels), ["40mbps", "50mbps", "60mbps"])
+    end function
+
+    @it("names only the field that differs, ahead of the name")
+    function _()
+      labels = versionLabels.labelsFor(m.episodeVersions(), "")
+      m.assertEqual(m.titles(labels), ["1080p · Customer Service WEBDL-1080p", "720p · 720p.web.h264-tbs"])
+    end function
+
+    @it("names every field that differs, HDR range included, and no range for SDR")
+    function _()
+      hdr = { Type: "Video", Width: 3840, Height: 2160, Codec: "hevc", IsInterlaced: false, VideoRange: "HDR", VideoRangeType: "HDR10" }
+      labels = versionLabels.labelsFor([m.source("a", "2160p", hdr), m.source("b", "1080p", m.video(1920, 1080, "h264"))], "")
+      m.assertEqual(m.titles(labels), ["4K HEVC HDR10 · 2160p", "1080p H264 · 1080p"])
+      m.assertEqual(m.triggers(labels), ["4K HEVC HDR10", "1080p H264"])
+    end function
+
+    @it("names the codec alone when only the codec differs")
+    function _()
+      labels = versionLabels.labelsFor([m.source("a", "Movie", m.video(1920, 1080, "hevc")), m.source("b", "Movie", m.video(1920, 1080, "h264"))], "")
+      ' The names are identical, so nothing distinct is left of them: the stream info alone.
+      m.assertEqual(m.titles(labels), ["HEVC", "H264"])
+      m.assertEqual(m.triggers(labels), ["HEVC", "H264"])
+    end function
+
+    @it("leaves stream info out for a version with no video stream, keeping its name")
+    function _()
+      labels = versionLabels.labelsFor([m.source("a", "Disc", invalid), m.source("b", "File", m.video(1920, 1080, "h264"))], "")
+      m.assertEqual(m.titles(labels), ["Disc", "1080p H264 · File"])
+      m.assertEqual(m.triggers(labels), ["Disc", "1080p H264"])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("labelsFor() - short form (triggerTitle)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is the stream info alone when that identifies the version")
+    function _()
+      labels = versionLabels.labelsFor(m.episodeVersions(), "")
+      m.assertEqual(m.triggers(labels), ["1080p", "720p"])
+    end function
+
+    @it("is the full label when the stream info is shared with another version")
+    function _()
+      sources = [
+        m.source("a", "Director's Cut", m.video(3840, 2160, "hevc")),
+        m.source("b", "Theatrical", m.video(3840, 2160, "hevc")),
+        m.source("c", "Theatrical", m.video(1920, 1080, "h264"))
+      ]
+      labels = versionLabels.labelsFor(sources, "")
+      m.assertEqual(m.triggers(labels), ["4K HEVC · Director's Cut", "4K HEVC · Theatrical", "1080p H264"])
+    end function
+
+    @it("is the name when the video is the same, so an edition keeps its name")
+    function _()
+      labels = versionLabels.labelsFor([m.source("a", "Director's Cut", m.video(1920, 1080, "h264")), m.source("b", "Theatrical", m.video(1920, 1080, "h264"))], "")
+      m.assertEqual(m.triggers(labels), ["Director's Cut", "Theatrical"])
+    end function
+
+    ' The accepted cost: once picked, two editions that also differ in quality are named by
+    ' quality alone. The list they were picked from shows both.
+    @it("drops an edition name when the quality alone identifies the version")
+    function _()
+      labels = versionLabels.labelsFor([m.source("a", "Director's Cut", m.video(3840, 2160, "hevc")), m.source("b", "Theatrical", m.video(1920, 1080, "h264"))], "")
+      m.assertEqual(m.triggers(labels), ["4K HEVC", "1080p H264"])
+      m.assertEqual(m.titles(labels), ["4K HEVC · Director's Cut", "1080p H264 · Theatrical"])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("labelsFor() - shared words")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("drops words every name shares at the start, ignoring case and separators")
+    function _()
+      labels = versionLabels.labelsFor([m.source("a", "Dracula (1931) [B&W]", m.video(1920, 1080, "h264")), m.source("b", "dracula_(1931)_[Colorized]", m.video(1920, 1080, "h264"))], "")
+      m.assertEqual(m.titles(labels), ["[B&W]", "[Colorized]"])
+    end function
+
+    @it("drops words every name shares at the end")
+    function _()
+      labels = versionLabels.labelsFor([m.source("a", "Theatrical - Remux", m.video(1920, 1080, "h264")), m.source("b", "Extended.remux", m.video(1920, 1080, "h264"))], "")
+      m.assertEqual(m.titles(labels), ["Theatrical", "Extended"])
+    end function
+
+    @it("keeps shared words in the middle, and the kept text as written")
+    function _()
+      labels = versionLabels.labelsFor([m.source("a", "Movie Cut A Final", m.video(1920, 1080, "h264")), m.source("b", "Movie Edit A Draft", m.video(1920, 1080, "h264"))], "")
+      m.assertEqual(m.titles(labels), ["Cut A Final", "Edit A Draft"])
+    end function
+
+    @it("shows the full name of a version whose name is made only of shared words")
+    function _()
+      labels = versionLabels.labelsFor([m.source("a", "Dracula", m.video(1920, 1080, "h264")), m.source("b", "Dracula Colorized", m.video(1920, 1080, "h264"))], "")
+      m.assertEqual(m.titles(labels), ["Dracula", "Colorized"])
+    end function
+
+    @it("keeps identical versions identical rather than numbering them")
+    function _()
+      labels = versionLabels.labelsFor([m.source("a", "Movie", m.video(1920, 1080, "h264")), m.source("b", "Movie", m.video(1920, 1080, "h264"))], "")
+      m.assertEqual(m.titles(labels), ["Movie", "Movie"])
+    end function
+
+    @it("falls back to the stream summary when there is no name and no difference")
+    function _()
+      labels = versionLabels.labelsFor([m.source("a", invalid, m.video(1920, 1080, "h264")), m.source("b", "", m.video(1920, 1080, "h264"))], "")
+      m.assertEqual(m.triggers(labels), ["1080p H264", "1080p H264"])
+    end function
+
+    @it("shows N/A for a version with nothing at all to show")
+    function _()
+      labels = versionLabels.labelsFor([m.source("a", "", invalid), m.source("b", "File", m.video(1920, 1080, "h264"))], "")
+      m.assertEqual(m.titles(labels), ["N/A", "1080p H264 · File"])
+      m.assertEqual(m.triggers(labels), ["N/A", "1080p H264"])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("labelsFor() - in-progress marker")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("marks the in-progress version's title, ignoring id case")
+    function _()
+      labels = versionLabels.labelsFor(m.episodeVersions(), "B")
+      m.assertEqual(labels[0].title, "1080p · Customer Service WEBDL-1080p")
+      m.assertEqual(labels[1].title, "720p · 720p.web.h264-tbs  ·  In progress")
+    end function
+
+    @it("never marks the trigger title")
+    function _()
+      labels = versionLabels.labelsFor(m.episodeVersions(), "b")
+      m.assertEqual(labels[1].triggerTitle, "720p")
+    end function
+
+    @it("marks nothing when no version is in progress")
+    @params("")
+    @params(invalid)
+    @params("gone")
+    function _(inProgressId)
+      labels = versionLabels.labelsFor(m.episodeVersions(), inProgressId)
+      m.assertEqual(m.titles(labels), ["1080p · Customer Service WEBDL-1080p", "720p · 720p.web.h264-tbs"])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("labelsFor() - shape")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps a single version's plain stream summary and never marks it")
+    function _()
+      labels = versionLabels.labelsFor([m.source("a", "[B&W]", m.video(1920, 1080, "h264"))], "a")
+      m.assertEqual(labels, [{ id: "a", title: "1080p H264", triggerTitle: "1080p H264" }])
+    end function
+
+    @it("shows N/A for a single version with no video stream")
+    function _()
+      labels = versionLabels.labelsFor([m.source("a", "[B&W]", invalid)], "")
+      m.assertEqual(labels[0].title, "N/A")
+    end function
+
+    @it("keeps the given order and ids")
+    function _()
+      labels = versionLabels.labelsFor(m.bitrateLadder(), "")
+      m.assertEqual([labels[0].id, labels[1].id, labels[2].id], ["a", "b", "c"])
+    end function
+
+    @it("skips entries that are not a source with an id, and judges the rest alone")
+    function _()
+      sources = [invalid, { Name: "no id" }, m.source("a", "Only", m.video(1920, 1080, "h264"))]
+      labels = versionLabels.labelsFor(sources, "")
+      m.assertEqual(labels, [{ id: "a", title: "1080p H264", triggerTitle: "1080p H264" }])
+    end function
+
+    @it("returns nothing for invalid or empty input")
+    @params(invalid)
+    @params([])
+    @params("not an array")
+    function _(sources)
+      m.assertEqual(versionLabels.labelsFor(sources, ""), [])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("triggerLabelFor()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns the short label of the named version, ignoring id case")
+    function _()
+      m.assertEqual(versionLabels.triggerLabelFor(m.episodeVersions(), "B"), "720p")
+    end function
+
+    @it("returns nothing for a single version, which needs no tag")
+    function _()
+      m.assertEqual(versionLabels.triggerLabelFor([m.source("a", "[B&W]", m.video(1920, 1080, "h264"))], "a"), "")
+    end function
+
+    @it("returns nothing for an unknown version")
+    function _()
+      m.assertEqual(versionLabels.triggerLabelFor(m.episodeVersions(), "gone"), "")
+      m.assertEqual(versionLabels.triggerLabelFor(m.episodeVersions(), invalid), "")
+    end function
+
+  end class
+
+end namespace
