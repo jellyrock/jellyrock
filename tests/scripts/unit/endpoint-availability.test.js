@@ -330,13 +330,14 @@ describe('endpoint-availability-check.cjs (lint, offline)', () => {
     expect(out).toMatch(/components\/F\.bs sends/);
   });
 
-  it('does not count a parameter named only in a REM comment', () => {
+  it('does not count a parameter named only in a REM comment, including after a colon', () => {
     scaffold({
       manifestEndpoints: [...MANIFEST, NEXTUP],
       source: GUARD_SOURCE,
       registry: PARAM_REGISTRY,
       files: {
-        'components/G.bs': 'sub g()\n  REM DisableFirstEpisode is not sent here\nend sub\n',
+        'components/G.bs':
+          'sub g()\n  REM DisableFirstEpisode is not sent here\n  x = 1 : rem nor DisableFirstEpisode here\nend sub\n',
       },
     });
     const res = spawnScript(LINT, ['--root', dir]);
