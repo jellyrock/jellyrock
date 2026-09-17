@@ -22,10 +22,9 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Currently running
 
-Home Next Up version gate (branch `fix/next-up-first-episodes`): send `DisableFirstEpisode` only to Jellyfin servers below 10.11 that honor it, so users with no watch history on 10.7–10.10 stop getting one pilot per series. Also a lint gate that ties the parameter to its version guard, and a `jellyfin:matrix` script that queries every local server version.
-
 ## Recently shipped
 
+- 2026-09-17 — fix: Stop Next Up listing every series' pilot on Jellyfin 10.7–10.10
 - 2026-09-17 — ci: Fail the build on a same-node Task stop-and-relaunch
 - 2026-09-17 — ci: Accept either outcome of a same-callback Task relaunch in `TaskRelaunch.spec`
 - 2026-09-17 — `TaskRelaunch.spec`'s same-callback case now accepts both platform outcomes (the relaunch is a race: ignored when run alone, sometimes honored under a full suite) and fails only on a third, and the `threading.md` row says so. Closes the followup that it flaked on a Stick 4K and in CI.
