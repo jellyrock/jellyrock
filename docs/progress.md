@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-17 — Label alternate versions by what differs, and offer every version
 - 2026-09-17 — fix: Stop Next Up listing every series' pilot on Jellyfin 10.7–10.10
 - 2026-09-17 — ci: Fail the build on a same-node Task stop-and-relaunch
 - 2026-09-17 — Alternate-version labels now lead with what differs between the versions and drop the name text they all share (`source/utils/versionLabels.bs`): a full label in the `ItemDetails` Video menu and the in-player dialog, a short one in the collapsed trigger and the player, which now also names the version on an episode's line; the menu marks the in-progress version on 12.0+ (closes the #933 label follow-up; recorded as `version-label-forms`).
