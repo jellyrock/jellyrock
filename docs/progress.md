@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-17 — ci: Fail the build on a same-node Task stop-and-relaunch
 - 2026-09-17 — ci: Accept either outcome of a same-callback Task relaunch in `TaskRelaunch.spec`
 - 2026-09-17 — `TaskRelaunch.spec`'s same-callback case now accepts both platform outcomes (the relaunch is a race: ignored when run alone, sometimes honored under a full suite) and fails only on a third, and the `threading.md` row says so. Closes the followup that it flaked on a Stick 4K and in CI.
 - 2026-09-17 — Read device settings from a per-user env file as well as `.env`
