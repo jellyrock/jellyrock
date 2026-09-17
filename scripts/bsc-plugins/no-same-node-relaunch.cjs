@@ -141,7 +141,6 @@ const PENDING_MIGRATIONS = {
     ['channelsearchTermSet', 'm.LoadChannelsTask'],
   ],
   'components/music/AudioPlayerView.bs': [['pageContentChanged', 'm.LoadAudioStreamTask']],
-  'components/search/SearchResults.bs': [['searchMedias', 'm.searchTask']],
   'components/video/VideoPlayerView.bs': [
     ['loadCaption', 'm.captionTask'],
     ['onSubtitleChange', 'm.captionTask'],

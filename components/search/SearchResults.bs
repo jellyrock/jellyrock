@@ -239,8 +239,15 @@ sub searchMedias()
   if query.len() = 0
     stopLoadingSpinner()
   end if
-  'if search task is running and user selectes another letter stop the search and load the next letter
-  m.searchTask.control = "stop"
+  ' A NEW node per keystroke, never a relaunch of the previous one. A Task stopped while its
+  ' function is still running honors a launch made in the same callback only sometimes —
+  ' measured on device, pinned in tests/source/unit/platform/TaskRelaunch.spec.bs, and the
+  ' rate is unstable (tests/source/unit/platform/TaskRelaunchBlockModes.spec.bs). When the
+  ' launch is ignored the run is LOST, so the letter just typed would never be searched.
+  ' Releasing the old node also means a delivery already queued when it was superseded cannot
+  ' reach loadResults, which reads whatever m.searchTask points at now.
+  releaseSearchTask()
+  m.searchTask = CreateObject("roSGNode", "SearchTask")
   if isValid(query) and query <> ""
     ' A new query is a NEW run, not a continuation — `begin` restarts the ledger, so the
     ' clock starts at the keystroke rather than at the screen opening. Each keystroke
@@ -264,11 +271,25 @@ sub searchMedias()
 
 end sub
 
+' releaseSearchTask: Drop the run in flight, if any, and the node with it.
+sub releaseSearchTask()
+  if isValid(m.searchTask)
+    m.searchTask.unobserveField("results")
+    m.searchTask.control = "stop"
+    m.searchTask = invalid
+  end if
+end sub
+
 sub loadResults()
   ' Read ONCE and used for everything below, so the delivery this handler checks is provably
   ' the delivery it files and displays — a second read could not disagree today (nothing else
   ' writes the field on this thread), but then the assertion below would be about a different
   ' read than the data, which is a strange thing for an invariant check to be.
+  ' The node this handler was registered on is the one m.searchTask holds: searchMedias
+  ' releases and unobserves the previous node before replacing it, so a superseded run cannot
+  ' land here. The guard covers teardown, where onDestroy releases the node outright.
+  if not isValid(m.searchTask) then return
+
   results = m.searchTask.results
 
   ' A DETECTOR, not a guard — it reports the invariant breaking and then carries on.
@@ -427,9 +448,7 @@ sub onDestroy()
   m.searchSelect.content = invalid
 
   ' Stop and release task node (observer may already be cleared by loadResults())
-  m.searchTask.unobserveField("results")
-  m.searchTask.control = "STOP"
-  m.searchTask = invalid
+  releaseSearchTask()
 
   ' Clear node references
   m.searchSelect = invalid
