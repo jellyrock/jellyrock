@@ -58,7 +58,8 @@
  *
  * Sites that predate the rule are listed in PENDING_MIGRATIONS below rather than
  * suppressed inline, so there is no marker to copy onto a new site. The list can
- * only shrink: a listed site that no longer fires is itself an error.
+ * only shrink: a listed site that no longer fires is itself an error, and so is a
+ * listed file that is no longer in the build.
  *
  * Escape hatch, for a relaunch that is intended (state the reason after the code):
  *  - `' bsc-disable-next-line no-same-node-relaunch <reason>` on the line above
@@ -67,9 +68,11 @@
  */
 'use strict';
 
+const fs = require('node:fs');
 const brighterscript = require('brighterscript');
 
 const CODE = 'no-same-node-relaunch';
+const MISSING_FILE_TAG = `${CODE}-missing-file`;
 const ALLOWED_DEST_PATHS = new Set(['source/utils/tasks.bs', 'source/utils/tasks.brs']);
 const EXCLUDED_DEST_PREFIXES = ['components/vendor/'];
 // Line and next-line only, like the other Task rules: a whole-file opt-out would
@@ -316,6 +319,30 @@ function functionsIn(file) {
   return found;
 }
 
+/**
+ * Where a PENDING_MIGRATIONS key is written in this file, so the diagnostic for a
+ * missing file opens on the entry to fix. Falls back to the top of the file.
+ */
+function pendingEntryLocation(destPath) {
+  let line = 0;
+  try {
+    const found = fs
+      .readFileSync(__filename, 'utf8')
+      .split(/\r?\n/)
+      .findIndex((text) => text.includes(`'${destPath}'`));
+    if (found >= 0) line = found;
+  } catch (_e) {
+    // Keep line 0.
+  }
+  return brighterscript.util.createLocation(
+    line,
+    0,
+    line,
+    0,
+    brighterscript.util.pathToUri(__filename),
+  );
+}
+
 /** PENDING_MIGRATIONS for one file, as lowercased `function|path` keys. */
 function pendingFor(pending, destPath) {
   return new Set(
@@ -391,6 +418,33 @@ class NoSameNodeRelaunchPlugin {
         `Add ' bsc-disable-next-line ${CODE} <reason> above the launch to suppress.`,
       location: call.location,
     });
+  }
+
+  // A listed file that is not in the build (moved, renamed or deleted) would
+  // otherwise keep its entries forever, and silently cover a file that later
+  // reappears at that path. Checked once per validation, against the whole program.
+  afterValidateProgram(event) {
+    try {
+      const { program } = event;
+      program.diagnostics.clearForTag(MISSING_FILE_TAG);
+      for (const destPath of Object.keys(this.pending)) {
+        if (program.hasFile(destPath)) continue;
+        program.diagnostics.register(
+          {
+            code: CODE,
+            severity: 1, // Error
+            source: this.name,
+            message:
+              `PENDING_MIGRATIONS lists \`${destPath}\`, which is not in the build (moved, renamed or deleted). ` +
+              'Update or delete its entries: an entry for a missing file would silently cover a file that later appears at that path.',
+            location: pendingEntryLocation(destPath),
+          },
+          { tags: [MISSING_FILE_TAG] },
+        );
+      }
+    } catch (_e) {
+      // Never crash the build.
+    }
   }
 
   reportMigrated(program, file, functions, key) {

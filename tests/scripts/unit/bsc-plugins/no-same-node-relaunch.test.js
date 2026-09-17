@@ -10,11 +10,21 @@
 import { describe, it, expect } from 'vitest';
 import { runPluginOnSource, runPluginOnEdits, diagnosticsByCode } from '../_helpers/run-plugin.js';
 import plugin from '../../../../scripts/bsc-plugins/no-same-node-relaunch.cjs';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const PLUGIN_PATH = fileURLToPath(
+  new URL('../../../../scripts/bsc-plugins/no-same-node-relaunch.cjs', import.meta.url),
+);
 
 const CODE = 'no-same-node-relaunch';
 
+// An empty list, so these tests neither depend on which real sites are still
+// pending nor see the real list's files reported as missing from a tiny program.
+const unlisted = plugin.withPendingMigrations({});
+
 function check(source, path = 'components/Foo.bs') {
-  return diagnosticsByCode(runPluginOnSource(plugin, { [path]: source }), CODE);
+  return diagnosticsByCode(runPluginOnSource(unlisted, { [path]: source }), CODE);
 }
 
 describe('no-same-node-relaunch — flagged', () => {
@@ -425,7 +435,39 @@ describe('no-same-node-relaunch — pending migrations', () => {
   });
 
   it('does not cover the same function and path in another file', () => {
-    expect(run(unmigrated, 'components/Bar.bs')).toHaveLength(1);
+    const found = diagnosticsByCode(
+      runPluginOnSource(pendingPlugin, { [PATH]: unmigrated, 'components/Bar.bs': unmigrated }),
+      CODE,
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0].location.uri).toMatch(/Bar\.bs$/);
+  });
+
+  it('flags a listed file that is not in the build, on the plugin file', () => {
+    const found = run(unmigrated, 'components/Bar.bs').filter((d) =>
+      d.message.includes('not in the build'),
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0].message).toMatch(/PENDING_MIGRATIONS lists `components\/Foo\.bs`/);
+    expect(found[0].location.uri).toMatch(/no-same-node-relaunch\.cjs$/);
+  });
+
+  it('clears the missing-file error once the listed file is in the build', () => {
+    const steps = runPluginOnEdits(pendingPlugin, [
+      { 'components/Bar.bs': 'sub other()\nend sub' },
+      { [PATH]: unmigrated },
+    ]).map((diagnostics) => diagnosticsByCode(diagnostics, CODE).length);
+    expect(steps).toEqual([1, 0]);
+  });
+
+  it('points the missing-file error at the real entry in the plugin', () => {
+    const found = diagnosticsByCode(
+      runPluginOnSource(plugin, { 'components/Unrelated.bs': 'sub a()\nend sub' }),
+      CODE,
+    ).find((d) => d.message.includes('`components/ItemDetails.bs`'));
+    const lines = readFileSync(PLUGIN_PATH, 'utf8').split(/\r?\n/);
+    expect(found).toBeDefined();
+    expect(lines[found.location.range.start.line]).toContain("'components/ItemDetails.bs'");
   });
 
   it('clears and re-raises the migrated finding as the file is edited', () => {
