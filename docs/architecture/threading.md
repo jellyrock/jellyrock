@@ -4,7 +4,7 @@ related-files:
   - source/main.bs
   - components/JRScene.bs
   - source/utils/tasks.bs
-last-reviewed: 2026-08-23
+last-reviewed: 2026-09-16
 ---
 
 # Threading
@@ -61,7 +61,7 @@ these can differ across hardware.
 | The same Task-node read, from the **Render** thread | Render | **7.1 µs** / **4.5 µs** — no rendezvous | same |
 | `m.global` field read, from a Task thread | Task | **93 µs** / **62 µs** — `m.global` is render-owned, so this rendezvouses | same |
 | `m.global` field read, from the **Render** thread | Render | **2.0 µs** / **1.3 µs** — indistinguishable from a local node | same |
-| `control = "STOP"` then `launchTask` on the SAME Task node, in one callback, while its function is still running | Render | **The launch is ignored** — the function never starts again, and the stopped one makes no further progress (blocked in `sleep()` or `wait()`). A NEW node launched in that callback starts; the same node relaunches from a later callback, or in the same callback once its function had returned. Pinned in [`TaskRelaunch.spec.bs`](../../tests/source/unit/platform/TaskRelaunch.spec.bs) | Streaming Stick 4K, Roku OS 15.3.4, 2026-09-15 |
+| `control = "STOP"` then `launchTask` on the SAME Task node, in one callback, while its function is still running | Render | **Not reliable — a race.** The launch was ignored when the spec ran alone, but in full-suite runs it was sometimes honored (the function started again) and sometimes ignored, on both devices. Either way, the stopped function makes no further progress (blocked in `sleep()` or `wait()`). A NEW node launched in that callback always starts, and the same node relaunches from a later callback, or in the same callback once its function had returned. So never rely on either outcome: launch a new node. Pinned in [`TaskRelaunch.spec.bs`](../../tests/source/unit/platform/TaskRelaunch.spec.bs), which accepts both outcomes | Streaming Stick 4K and 512 MB Streaming Stick `3600X`, Roku OS 15.3.4, 2026-09-15/16 |
 
 ### What a crossing costs, and the half that surprises people
 

@@ -4,12 +4,14 @@ namespace tests
   ' Streaming Stick 4K, OS 15.3.4. Every control write happens inside
   ' TaskRelaunchProbeHost through callFunc, so on the render thread, as the app's are.
   '
-  ' The result the app DEPENDS on is the first @it: a Task stopped while its function is
-  ' running ignores a launch made in the same callback. So an orchestrator that can be
-  ' restarted mid-run must launch a NEW node (ExtrasRowList.startRun does), and must not rely
-  ' on "STOP, then RUN the same node" — the shape that silently did nothing on a Refresh
-  ' pressed during a run. The rest pin the neighbouring cases that make the everyday paths
-  ' safe; if one goes red on a firmware change, re-examine the callers before flipping it.
+  ' The result the app DEPENDS on is the first @it: a launch made in the same callback that
+  ' stopped a still-running Task is a RACE. It was ignored when this spec ran alone, and it
+  ' started in most full-suite runs, on a Stick 4K and on a 512 MB Stick alike. So an
+  ' orchestrator that can be restarted mid-run must launch a NEW node (ExtrasRowList.startRun
+  ' does) and must not rely on "STOP, then RUN the same node" either way. That case therefore
+  ' accepts both outcomes and fails only on a third one. The rest pin the neighbouring cases
+  ' that make the everyday paths safe; if one goes red on a firmware change, re-examine the
+  ' callers before flipping it.
   '
   ' NOT covered: OS versions below 15.3.4, and how SOON after the stopping callback a relaunch
   ' of the same node starts working — a later callback worked here, but nothing may be built
@@ -40,15 +42,25 @@ namespace tests
     @describe("a task whose function is still running")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("ignores a launch made in the same callback that stopped it")
+    @it("either ignores or honors a launch made in the same callback that stopped it")
     function _()
       host = m.runningHost()
       task = host.getField("task")
 
       host.callFunc("stopAndRelaunch")
 
-      m.assertEqual(m.waitForCount(task, "starts", 2, 1000), 1, "the function must not have started again")
-      m.assertEqual(LCase(task.state), "stop")
+      m.waitForCount(task, "starts", 2, 1000)
+      ' Long enough for a second, unwanted start to show up after the first one.
+      sleep(300)
+      starts = task.starts
+      ' Printed so repeated runs show how often each outcome happens.
+      print "[TaskRelaunch] same-callback relaunch: starts="; starts; " state="; task.state
+      if starts = 1
+        m.assertEqual(LCase(task.state), "stop", "the launch was ignored, so the task must stay stopped")
+      else
+        m.assertEqual(starts, 2, "the function started more than once more")
+        m.assertEqual(LCase(task.state), "run", "the launch was honored, so the task must be running")
+      end if
       host.callFunc("release")
     end function
 
