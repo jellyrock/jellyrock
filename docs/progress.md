@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-17 — chore: Gate line-number citations in docs behind a per-file ratchet
 - 2026-09-17 — chore: Record that `SearchResults` does not reproduce the relaunch race
 - 2026-09-17 — Label alternate versions by what differs, and offer every version
 - 2026-09-17 — fix: Stop Next Up listing every series' pilot on Jellyfin 10.7–10.10
