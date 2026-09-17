@@ -122,25 +122,16 @@ const DISABLE_NEXT_LINE_MARKER = /'\s*bsc-disable-next-line\s+no-same-node-relau
  * the build fails until you do.
  */
 const PENDING_MIGRATIONS = {
-  'components/ItemDetails.bs': [
-    ['onItemIdChanged', 'm.loadDetailsTask'],
-    ['onRefreshResumeData', 'm.loadSeriesResumeTask'],
-    ['onRefreshItemDetailsData', 'm.loadDetailsTask'],
-    ['populateDescriptionGroup', 'm.loadLyricsTask'],
-    ['onItemContentChanged', 'm.loadSeriesResumeTask'],
-  ],
   'components/ItemGrid/BaseGridView.bs': [
     ['loadInitialItems', 'm.loadItemsTask'],
     ['loadMoreData', 'm.loadItemsTask'],
     ['onVoiceFilter', 'm.loadItemsTask'],
   ],
-  'components/home/FavoritesRows.bs': [['loadFavorites', 'm.loadFavoritesTask']],
   'components/home/HomeRows.bs': [['startLatestMediaLoads', 'm.latestRowsTask']],
   'components/liveTv/schedule.bs': [
     ['channelFilterSet', 'm.LoadChannelsTask'],
     ['channelsearchTermSet', 'm.LoadChannelsTask'],
   ],
-  'components/music/AudioPlayerView.bs': [['pageContentChanged', 'm.LoadAudioStreamTask']],
   'components/video/VideoPlayerView.bs': [
     ['loadCaption', 'm.captionTask'],
     ['onSubtitleChange', 'm.captionTask'],

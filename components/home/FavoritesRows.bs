@@ -75,6 +75,23 @@ end sub
 
 ' Entry point called by Home.bs when Favorites tab is selected.
 ' Creates skeleton rows on first load, then fires the data task.
+' freshLoadTask: Release the run in flight, if any, and hand back a NEW node for the next one.
+'
+' A new node per run, never a relaunch of the same one. A Task stopped while its function is
+' still running honors a launch made in the same callback only sometimes, and when it is
+' ignored the run is LOST — measured in tests/source/unit/platform/TaskRelaunch.spec.bs and
+' TaskRelaunchBlockModes.spec.bs. Releasing the old node also keeps a delivery already queued
+' when its run was superseded from reaching a handler that reads the CURRENT node.
+function freshLoadTask(existing as dynamic, itemsToLoad as string) as object
+  if isValid(existing)
+    existing.unobserveField("content")
+    existing.control = "STOP"
+  end if
+  task = CreateObject("roSGNode", "LoadItemsTask")
+  task.itemsToLoad = itemsToLoad
+  return task
+end function
+
 sub loadFavorites()
   if not m.initialLoadComplete
     createSkeletonRows()
@@ -83,10 +100,7 @@ sub loadFavorites()
   end if
 
   ' Cancel any in-flight task before starting new one
-  if m.isLoadingFavorites
-    m.loadFavoritesTask.unobserveField("content")
-    m.loadFavoritesTask.control = "STOP"
-  end if
+  m.loadFavoritesTask = freshLoadTask(m.loadFavoritesTask, "favorites")
 
   m.isLoadingFavorites = true
   m.loadFavoritesTask.observeField("content", "onFavoritesLoaded")
@@ -112,6 +126,7 @@ end sub
 ' Groups loaded favorites by item type and populates/removes skeleton rows.
 ' On refresh, updates existing rows in place to preserve focus position.
 sub onFavoritesLoaded()
+  if not isValid(m.loadFavoritesTask) then return
   itemData = m.loadFavoritesTask.content
   m.loadFavoritesTask.unobserveField("content")
   m.loadFavoritesTask.content = []
