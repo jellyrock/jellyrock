@@ -42,10 +42,19 @@
  *   - Source order is not control flow. A STOP in one branch and the launch in
  *     another (`if a then stop else launch`) is flagged though they cannot both
  *     run; one suppression each. No such site exists today.
+ *   - Only the STOP crosses the helper hop, not the launch. A function that STOPs
+ *     and then calls a helper which launches is missed.
  *   - Helpers are followed one hop, within one file, by bare name. A helper
  *     reached through `m.someMethod()`, another file, or a second hop is missed,
  *     and a namespaced function shares its bare name with any same-named
- *     function in the file.
+ *     function in the file. The `m.someMethod()` half is the class-shaped blind
+ *     spot, since a class reaches its own methods that way and never by bare
+ *     name. Measured 2026-09-17 before leaving it: following dotted `m.<name>()`
+ *     calls as well found the same 16 sites and no others, so closing it would
+ *     have to be justified by a future site, not a present one. Closing it
+ *     properly means resolving BOTH directions by scope — bare to free
+ *     functions, `m.x()` to methods of the enclosing class — or a bare call
+ *     inherits a same-named method's STOPs, which is the same defect mirrored.
  *   - Paths are compared as written. A STOP through a local alias
  *     (`t = m.task` then `t.control = "STOP"`) followed by `launchTask(m.task)`
  *     is missed.
@@ -58,8 +67,26 @@
  *
  * Sites that predate the rule are listed in PENDING_MIGRATIONS below rather than
  * suppressed inline, so there is no marker to copy onto a new site. The list can
- * only shrink: a listed site that no longer fires is itself an error, and so is a
- * listed file that is no longer in the build.
+ * only shrink, and that is enforced rather than hoped for: EVERY state an entry
+ * can be in produces an actionable error except the one where it matches its site.
+ * The two halves of that live in different hooks, because they answer different
+ * questions:
+ *
+ *   afterValidateFile    — did this entry's site fire? Matched, or the function
+ *                          is there and does not relaunch that node, or no
+ *                          function of that name is there at all.
+ *   afterValidateProgram — CAN this entry be checked? Its file may be absent from
+ *                          the build, or be one this rule never inspects, or be
+ *                          spelled in a different case, or the entry may be
+ *                          listed twice. None of those is visible to the file
+ *                          hook, which never runs for such a file — so without
+ *                          this half the entry AND the site under it go quiet.
+ *
+ * An entry that matched nothing yields ONE claim, and never a second one
+ * contradicting it about the same node. The plugin sees only what the code does
+ * now, so it cannot tell a finished migration from an entry that was always
+ * wrong, and says neither. `tests/.../no-same-node-relaunch.test.js` pins every
+ * state in one table.
  *
  * Escape hatch, for a relaunch that is intended (state the reason after the code):
  *  - `' bsc-disable-next-line no-same-node-relaunch <reason>` on the line above
@@ -72,7 +99,10 @@ const fs = require('node:fs');
 const brighterscript = require('brighterscript');
 
 const CODE = 'no-same-node-relaunch';
-const MISSING_FILE_TAG = `${CODE}-missing-file`;
+// Findings about the LIST rather than about one file. They anchor in this file,
+// which no validation clears, so they are tagged and cleared by hand each run.
+const AUDIT_TAG = `${CODE}-list-audit`;
+const PLUGIN_DEST_PATH = `scripts/bsc-plugins/${CODE}.cjs`;
 const ALLOWED_DEST_PATHS = new Set(['source/utils/tasks.bs', 'source/utils/tasks.brs']);
 const EXCLUDED_DEST_PREFIXES = ['components/vendor/'];
 // Line and next-line only, like the other Task rules: a whole-file opt-out would
@@ -300,9 +330,18 @@ function trackStops(events, helperStops, onLaunch) {
 }
 
 /**
- * Every function in `file`, named or inline, as { name, statement, func }.
- * `name` is lowercased, and undefined for a method or an inline function, which
- * nothing in the file can call by bare name.
+ * Every function in `file`, named or inline, as
+ * { name, bareCallable, statement, func }.
+ *
+ * `name` is the lowercased IDENTITY of a top-level function or a class method —
+ * what a PENDING_MIGRATIONS entry names. It is undefined for an inline function,
+ * which nothing can name.
+ *
+ * `bareCallable` is narrower, and the two must not be conflated: only a top-level
+ * `function` / `sub` can be reached by the bare `helper()` call the one-hop walk
+ * follows. BrightScript reaches a class method as `m.helper()` (`MoviePresenter`
+ * calls every one of its own that way), so letting a method answer to its bare
+ * name would hand an unrelated global call someone else's STOPs.
  */
 function functionsIn(file) {
   const found = [];
@@ -310,8 +349,17 @@ function functionsIn(file) {
     brighterscript.createVisitor({
       FunctionExpression: (func) => {
         if (!func.body) return;
-        const statement = brighterscript.isFunctionStatement(func.parent) ? func.parent : undefined;
-        found.push({ name: statement?.tokens?.name?.text?.toLowerCase(), statement, func });
+        // `MethodStatement extends FunctionStatement`, but the guards are
+        // kind-based, so a method does NOT satisfy `isFunctionStatement`.
+        const bareCallable = brighterscript.isFunctionStatement(func.parent);
+        const statement =
+          bareCallable || brighterscript.isMethodStatement(func.parent) ? func.parent : undefined;
+        found.push({
+          name: statement?.tokens?.name?.text?.toLowerCase(),
+          bareCallable,
+          statement,
+          func,
+        });
       },
     }),
     { walkMode: brighterscript.WalkMode.visitAllRecursive },
@@ -320,20 +368,30 @@ function functionsIn(file) {
 }
 
 /**
- * Where a PENDING_MIGRATIONS key is written in this file, so the diagnostic for a
- * missing file opens on the entry to fix. Falls back to the top of the file.
+ * The 0-based line in THIS file where a PENDING_MIGRATIONS entry is written, so a
+ * diagnostic about the list opens on the line to edit. With `entry`, finds that
+ * entry's own tuple; without one, the file key it sits under. Falls back to 0.
  */
-function pendingEntryLocation(destPath) {
-  let line = 0;
+function pendingEntryLine(destPath, entry) {
   try {
-    const found = fs
-      .readFileSync(__filename, 'utf8')
-      .split(/\r?\n/)
-      .findIndex((text) => text.includes(`'${destPath}'`));
-    if (found >= 0) line = found;
+    const lines = fs.readFileSync(__filename, 'utf8').split(/\r?\n/);
+    if (entry) {
+      const at = lines.findIndex(
+        (text) => text.includes(`'${entry.fn}'`) && text.includes(`'${entry.path}'`),
+      );
+      if (at >= 0) return at;
+    }
+    const at = lines.findIndex((text) => text.includes(`'${destPath}'`));
+    if (at >= 0) return at;
   } catch (_e) {
-    // Keep line 0.
+    // Fall through to 0.
   }
+  return 0;
+}
+
+/** `pendingEntryLine` as a location in this file. */
+function pendingEntryLocation(destPath, entry) {
+  const line = pendingEntryLine(destPath, entry);
   return brighterscript.util.createLocation(
     line,
     0,
@@ -343,11 +401,53 @@ function pendingEntryLocation(destPath) {
   );
 }
 
-/** PENDING_MIGRATIONS for one file, as lowercased `function|path` keys. */
-function pendingFor(pending, destPath) {
-  return new Set(
-    (pending[destPath] || []).map(([fn, path]) => `${fn.toLowerCase()}|${path.toLowerCase()}`),
-  );
+/**
+ * The PENDING_MIGRATIONS key naming `destPath`, ignoring case, or undefined.
+ * Matched case-INSENSITIVELY on purpose: `program.getFile` already is, so an exact
+ * lookup here would have the two disagree — the key would find its file (no
+ * missing-file error) while its entries silently matched nothing. The casing is
+ * still wrong, and `auditPendingList` reports it; it just does not break the gate
+ * while it is wrong.
+ */
+function pendingKeyFor(pending, destPath) {
+  const wanted = destPath.toLowerCase();
+  return Object.keys(pending).find((key) => key.toLowerCase() === wanted);
+}
+
+/**
+ * One file's entries, as a Map of lowercased `function|path` -> the entry AS
+ * WRITTEN (original casing, which is what locates it in this file's source and
+ * what a message should echo back). A repeated tuple collapses here and is
+ * reported by `auditPendingList`.
+ */
+function entriesFor(pending, destPath) {
+  const entries = new Map();
+  for (const [fn, path] of pending[pendingKeyFor(pending, destPath)] || []) {
+    entries.set(`${fn.toLowerCase()}|${path.toLowerCase()}`, { fn, path });
+  }
+  return entries;
+}
+
+/** The entries listed more than once under `key`, as written. */
+function duplicateEntries(pending, key) {
+  const seen = new Set();
+  const duplicates = [];
+  for (const [fn, path] of pending[key] || []) {
+    const id = `${fn.toLowerCase()}|${path.toLowerCase()}`;
+    if (seen.has(id)) duplicates.push({ fn, path });
+    seen.add(id);
+  }
+  return duplicates;
+}
+
+/**
+ * True when the rule does not inspect `destPath` at all — the launch wrapper
+ * itself, or vendored code we do not author. Shared so the audit can tell when a
+ * listed file is one the file hook will silently skip.
+ */
+function isRuleExempt(destPath) {
+  if (ALLOWED_DEST_PATHS.has(destPath)) return true;
+  return EXCLUDED_DEST_PREFIXES.some((prefix) => destPath.startsWith(prefix));
 }
 
 class NoSameNodeRelaunchPlugin {
@@ -362,33 +462,36 @@ class NoSameNodeRelaunchPlugin {
       if (!brighterscript.isBrsFile(file)) return;
 
       const destPath = (file.destPath || '').replace(/\\/g, '/');
-      if (ALLOWED_DEST_PATHS.has(destPath)) return;
-      if (EXCLUDED_DEST_PREFIXES.some((prefix) => destPath.startsWith(prefix))) return;
+      if (isRuleExempt(destPath)) return;
 
       const functions = functionsIn(file).map((fn) => ({ ...fn, events: collectEvents(fn.func) }));
 
       // One hop: the `m.` paths each named function leaves stopped.
       const helperStops = new Map();
       for (const fn of functions) {
-        if (!fn.name) continue;
+        if (!fn.bareCallable) continue;
         const stops = trackStops(fn.events, new Map(), () => {}).filter((path) =>
           path.startsWith(`${SELF_REFERENCE}.`),
         );
         if (stops.length) helperStops.set(fn.name, new Set(stops));
       }
 
-      const unmigrated = pendingFor(this.pending, destPath);
+      const unclaimed = entriesFor(this.pending, destPath);
       const reported = new Set();
       for (const fn of functions) {
         trackStops(fn.events, helperStops, (e, via) => {
           const key = `${fn.name}|${e.path}`;
-          if (fn.name && unmigrated.delete(key)) return;
+          if (fn.name && unclaimed.delete(key)) return;
           this.report(event.program, file, e.node, e.path, via, reported);
         });
       }
 
-      // Whatever is left was listed but no longer relaunches: it has been migrated.
-      for (const key of unmigrated) this.reportMigrated(event.program, file, functions, key);
+      // Whatever is left described a site this file does not have. Whether the
+      // entry can be checked AT ALL is a whole-program question, answered in
+      // `auditPendingList`; here we only know this file's own code.
+      for (const entry of unclaimed.values()) {
+        this.reportStaleEntry(event.program, functions, destPath, entry);
+      }
     } catch (_e) {
       // Never crash the build.
     }
@@ -399,12 +502,12 @@ class NoSameNodeRelaunchPlugin {
     if (!range) return;
     const key = `${range.start.line}:${range.start.character}`;
     if (reported.has(key)) return;
-    reported.add(key);
     const lines = (file.fileContents || '').split(/\r?\n/);
     if (DISABLE_LINE_MARKER.test(lines[range.start.line] ?? '')) return;
     if (range.start.line > 0 && DISABLE_NEXT_LINE_MARKER.test(lines[range.start.line - 1] ?? '')) {
       return;
     }
+    reported.add(key);
 
     const where = via ? ` (stopped inside \`${via}()\`)` : '';
     program.diagnostics.register({
@@ -420,48 +523,101 @@ class NoSameNodeRelaunchPlugin {
     });
   }
 
-  // A listed file that is not in the build (moved, renamed or deleted) would
-  // otherwise keep its entries forever, and silently cover a file that later
-  // reappears at that path. Checked once per validation, against the whole program.
+  /**
+   * The whole-program half of the ledger: whether each entry CAN be checked at
+   * all. Every one of these is invisible to `afterValidateFile` — a key whose
+   * file never reaches the rule never gets reconciled, so without this the entry
+   * (and the real violation under it) would simply go quiet.
+   *
+   * Anchored on the entry's own line in this file, because the edit is here.
+   * Tagged, so the set is cleared and re-derived on every validation.
+   */
   afterValidateProgram(event) {
     try {
       const { program } = event;
-      program.diagnostics.clearForTag(MISSING_FILE_TAG);
-      for (const destPath of Object.keys(this.pending)) {
-        if (program.hasFile(destPath)) continue;
+      program.diagnostics.clearForTag(AUDIT_TAG);
+
+      const flag = (destPath, entry, message) =>
         program.diagnostics.register(
           {
             code: CODE,
             severity: 1, // Error
             source: this.name,
-            message:
-              `PENDING_MIGRATIONS lists \`${destPath}\`, which is not in the build (moved, renamed or deleted). ` +
-              'Update or delete its entries: an entry for a missing file would silently cover a file that later appears at that path.',
-            location: pendingEntryLocation(destPath),
+            message,
+            location: pendingEntryLocation(destPath, entry),
           },
-          { tags: [MISSING_FILE_TAG] },
+          { tags: [AUDIT_TAG] },
         );
+
+      for (const key of Object.keys(this.pending)) {
+        const listed = program.getFile(key);
+        if (!listed) {
+          flag(
+            key,
+            undefined,
+            `PENDING_MIGRATIONS lists \`${key}\`, which is not in the build (moved, renamed or deleted). ` +
+              'Update or delete its entries: an entry for a missing file would silently cover a file that later appears at that path.',
+          );
+          continue;
+        }
+
+        const destPath = (listed.destPath || '').replace(/\\/g, '/');
+        if (destPath !== key) {
+          flag(
+            key,
+            undefined,
+            `PENDING_MIGRATIONS lists \`${key}\`, but the file in the build is \`${destPath}\`. ` +
+              'Match the casing: the lookup tolerates it, but nothing else in the build does.',
+          );
+        }
+
+        if (isRuleExempt(destPath)) {
+          flag(
+            key,
+            undefined,
+            `PENDING_MIGRATIONS lists \`${key}\`, which this rule never inspects (it is the launch wrapper, or vendored). ` +
+              'Its entries can never be checked or retired, so delete them — and note the rule is not guarding that file at all.',
+          );
+        }
+
+        for (const entry of duplicateEntries(this.pending, key)) {
+          flag(
+            key,
+            entry,
+            `PENDING_MIGRATIONS lists \`${entry.fn}\` / \`${entry.path}\` in \`${key}\` more than once. ` +
+              'Only the first can ever be retired; delete the duplicate.',
+          );
+        }
       }
     } catch (_e) {
       // Never crash the build.
     }
   }
 
-  reportMigrated(program, file, functions, key) {
-    const [fnName, path] = key.split('|');
-    // Anchor on the function if it still exists, otherwise on the file's first statement.
-    const fn = functions.find((f) => f.name === fnName);
-    const location =
-      fn?.statement?.tokens?.name?.location ?? file.parser.ast.statements?.[0]?.location;
-    if (!location) return;
+  /**
+   * A listed entry that matched nothing in its own file. The plugin sees only
+   * what the code does NOW, so it CANNOT tell a finished migration from an entry
+   * that never matched — so neither message claims one. It reports what it
+   * checked and leaves the judgment to the reader.
+   */
+  reportStaleEntry(program, functions, destPath, entry) {
+    const fn = functions.find((f) => f.name === entry.fn.toLowerCase());
+    const entryLine = pendingEntryLine(destPath, entry) + 1;
+    const listedAt = `Its entry is at ${PLUGIN_DEST_PATH}:${entryLine}.`;
+    // Anchor on the function while it is still there, so the error lands in the
+    // file being migrated. With no function to anchor to, the entry is the only
+    // thing left to point at — never nothing, which is how this went silent.
+    const location = fn?.statement?.tokens?.name?.location;
     program.diagnostics.register({
       code: CODE,
       severity: 1, // Error
       source: this.name,
-      message:
-        `\`${fnName}()\` no longer relaunches \`${path}\` after a STOP, so its migration is done. ` +
-        `Delete its entry from PENDING_MIGRATIONS in scripts/bsc-plugins/${CODE}.cjs.`,
-      location,
+      message: fn
+        ? `\`${entry.fn}()\` does not stop and relaunch \`${entry.path}\` in ${destPath}. ` +
+          `If you migrated it, delete its PENDING_MIGRATIONS entry; if the entry is wrong, correct it. ${listedAt}`
+        : `PENDING_MIGRATIONS names \`${entry.fn}()\` in ${destPath}, and no function or method by that name is there. ` +
+          `If it was renamed, point the entry at the new name; if the site is gone, delete the entry. ${listedAt}`,
+      location: location ?? pendingEntryLocation(destPath, entry),
     });
   }
 }

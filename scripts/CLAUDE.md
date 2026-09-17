@@ -33,6 +33,18 @@ must do and what four plugins previously got wrong — plus the `bsc-disable-*`
 markers and the never-crash-the-build guard. See
 [build-and-tooling.md → Convention plugins](../docs/architecture/build-and-tooling.md#convention-plugins).
 
+**The exception is a rule whose every finding is derived from, and anchored in, a
+single file.** BSC clears a file's diagnostics by `location.uri` whenever that file
+re-validates, so such a rule has nothing stale to clear and may hook
+`afterValidateFile` directly — the staleness the factories exist to fix cannot
+arise. The four Task / dialog rules (`no-raw-run`, `no-task-fanout`,
+`no-same-node-relaunch`, `no-hand-rolled-dialog`) are all in this class, and they
+take the exception for a second reason: `bsc-rule`'s `isSuppressed` honors
+`bsc-disable-file`, which an error-severity gate must NOT, since a whole-file
+opt-out would silently remove the bound from every launch in the file. **If your
+rule reads a second file — the component XML, another component's interface, the
+program — you do not get this exception**; use the factories.
+
 **Anything `require()`'d by a `.cjs` file is also forced `.cjs`** — including
 everything in `scripts/lib/`. ESM (`.js`) modules can't be `require()`'d from
 CJS. The reverse works fine: ESM can `import x from './foo.cjs'`.
