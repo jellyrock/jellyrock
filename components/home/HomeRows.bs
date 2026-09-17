@@ -61,8 +61,10 @@ sub init()
   m.latestRowsProcessedIndex = 0
   ' Entries handed to the current run — the run is finished once the cursor reaches it
   m.latestRowsExpectedCount = 0
-  ' Wall clock for the current run, read only to detect a run that outlived its own budget
+  ' Wall clock for the current run, for the run-complete log
   m.latestRowsRunClock = CreateObject("roTimespan")
+  ' Time since the current run started or last delivered a row — latestRows.runIsStalled
+  m.latestRowsSilenceClock = CreateObject("roTimespan")
   ' The render-thread half of a latest-rows run. The orchestrator's `notify` column
   ' is time IT spends parked inside a write this thread's observer is servicing, so
   ' these three are the same work seen from the owning side and must roughly sum to
@@ -467,11 +469,11 @@ sub startLatestMediaLoads()
   if not isValidAndNotEmpty(m.filteredLatest) then return
 
   if m.isLoadingLatestRows
-    if not latestRows.runIsStalled(m.latestRowsRunClock.totalMilliseconds()) then return
-    ' Past its own budget the orchestrator thread is gone or wedged, so the flag would
-    ' otherwise freeze these rows for the life of this Home. Reclaiming it is safe for the
-    ' same reason: STOP here can only reach a thread that has already stopped running.
-    m.log.warn("latest-rows run outlived its budget; reclaiming", m.latestRowsRunClock.totalMilliseconds())
+    if not latestRows.runIsStalled(m.latestRowsSilenceClock.totalMilliseconds()) then return
+    ' Silent past its whole wait budget, the orchestrator thread is gone or wedged, so the
+    ' flag would otherwise freeze these rows for the life of this Home. Reclaiming it is safe
+    ' for the same reason: STOP here can only reach a thread that has already stopped running.
+    m.log.warn("latest-rows run went silent past its budget; reclaiming", m.latestRowsSilenceClock.totalMilliseconds())
   end if
 
   ' Ensure any previous run is stopped and its delivered results cleared
@@ -516,6 +518,7 @@ sub startLatestMediaLoads()
   m.rowSizesBatching = true
   m.isLoadingLatestRows = true
   m.latestRowsRunClock.mark()
+  m.latestRowsSilenceClock.mark()
   launchTask(m.latestRowsTask)
 end sub
 
@@ -523,6 +526,8 @@ end sub
 ' Each wake may cover several results — wake events can coalesce, the children can't.
 sub onLatestRowsReady()
   if not isValid(m.latestRowsTask) then return
+  ' Every wake is at least one delivered row — the run is alive.
+  m.latestRowsSilenceClock.mark()
 
   ' The failure-vs-empty rule and the cursor arithmetic live in source/home/latestRows.bs
   ' so they can be unit-tested without a callFunc seam on this component.

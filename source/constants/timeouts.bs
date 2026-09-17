@@ -18,6 +18,9 @@ namespace timeouts
   ' dead server made a 10-library Home churn for ~48s. Must exceed API_WAIT_MS
   ' or a single slow-but-successful request gets cut short.
   '
+  ' Charged only while the run waits on the server — the caller's per-result work
+  ' between apiPipelineNext calls does not count against it.
+  '
   ' This is a budget, not a guarantee of coverage. A run services roughly
   '   PIPELINE_RUN_MS / per-request-latency * pool width (apiPool.currentWidth())
   ' requests before it expires, and every entry past that is yielded undelivered.

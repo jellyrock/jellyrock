@@ -56,6 +56,14 @@ import "pkg:/source/utils/misc.bs"
 ' `res = invalid`. So budget expiry needs no special case at the call site: the
 ' loop just sees undelivered entries and ends.
 '
+' The budget is charged only for time spent INSIDE apiPipelineNext — the time the
+' run is waiting on the server. The caller's own work between calls (transforming
+' a response, handing a row to the render thread) is not charged. It bounds what
+' the budget exists to bound, a slow or dead server, and it keeps that bound from
+' shrinking as a caller's legitimate per-result work grows: charged by wall clock,
+' a Home with enough libraries spent its budget on its own rows and left the rest
+' undelivered.
+'
 ' `res = invalid` means "no answer" (never submitted, pool unavailable, or the
 ' budget ran out). It does NOT mean "the server said no" — an HTTP error is a
 ' valid `res` with `ok = false`. Callers that must distinguish a transient
@@ -64,9 +72,11 @@ import "pkg:/source/utils/misc.bs"
 ' ── Pure core / I/O shell split ────────────────────────────────────────────
 '
 ' The state machine (slot accounting, take, drain, done) is pure: it takes the
-' pipe AA explicitly and touches no nodes, no ports, no clock. Only the shell
-' (`apiPipelineNext`) submits, waits, and unobserves. This mirrors
-' `apiPromise.bs`'s `settleApiPromiseIn` split, and for the same reason —
+' pipe AA explicitly and touches no nodes, no ports, no clock — the budget
+' helpers take the time as an argument. Only the shell (`apiPipelineNext` and
+' its `apiPipelineAdvance` body) reads the clock, submits, waits, and
+' unobserves. This mirrors `apiPromise.bs`'s `settleApiPromiseIn` split, and
+' for the same reason —
 ' bare global calls from a Rooibos class method don't share the instance `m`,
 ' so an explicitly-passed state AA is what a unit test can drive.
 ' See docs/architecture/async.md.
@@ -101,6 +111,10 @@ function apiPipelineBegin(entries as dynamic, budgetMs = timeouts.PIPELINE_RUN_M
     slotCount: apiPool.currentWidth(),
     budgetMs: budgetMs,
     expired: false,
+    ' Budget accounting (see apiPipelineBudgetUsedMs): wall time spent outside
+    ' apiPipelineNext so far, and when the current stretch outside began.
+    callerMs: 0,
+    pausedAtMs: invalid,
     port: CreateObject("roMessagePort"),
     clock: CreateObject("roTimespan")
   }
@@ -116,8 +130,17 @@ end function
 function apiPipelineNext(pipe as dynamic) as dynamic
   if not isValid(pipe) then return invalid
 
+  apiPipelineBudgetResume(pipe, pipe.clock.totalMilliseconds())
+  result = apiPipelineAdvance(pipe)
+  apiPipelineBudgetPause(pipe, pipe.clock.totalMilliseconds())
+  return result
+end function
+
+' The body of apiPipelineNext, between the budget resume and pause — split out so
+' every return below is charged the same way without repeating the pause at each.
+function apiPipelineAdvance(pipe as object) as dynamic
   while true
-    elapsedMs = pipe.clock.totalMilliseconds()
+    elapsedMs = apiPipelineBudgetUsedMs(pipe, pipe.clock.totalMilliseconds())
     remainingMs = pipe.budgetMs - elapsedMs
     if apiPipelineBudgetSpent(pipe.budgetMs, elapsedMs) then pipe.expired = true
 
@@ -255,6 +278,25 @@ end function
 function apiPipelineBudgetSpent(budgetMs as integer, elapsedMs as integer) as boolean
   return budgetMs - elapsedMs <= 0
 end function
+
+' How much of the budget the run has used at `nowMs` on its clock: wall time
+' minus the time the caller has held a result.
+function apiPipelineBudgetUsedMs(pipe as object, nowMs as integer) as integer
+  return nowMs - pipe.callerMs
+end function
+
+' Stops charging the budget: a result is being handed back to the caller.
+sub apiPipelineBudgetPause(pipe as object, nowMs as integer)
+  pipe.pausedAtMs = nowMs
+end sub
+
+' Starts charging the budget again, crediting the time the caller held the result.
+' A no-op on the first call, before anything has been handed back.
+sub apiPipelineBudgetResume(pipe as object, nowMs as integer)
+  if not isValid(pipe.pausedAtMs) then return
+  pipe.callerMs += nowMs - pipe.pausedAtMs
+  pipe.pausedAtMs = invalid
+end sub
 
 ' How long to block on one wait: never past the run budget, never longer than a
 ' single request's own deadline.

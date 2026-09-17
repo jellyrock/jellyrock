@@ -80,15 +80,17 @@ namespace latestRows
   ' life of that Home instance. This is the backstop, and epic #728 is precisely a history of
   ' Task threads dying.
   '
-  ' The threshold is derived, not tuned: apiPipeline bounds a whole run at PIPELINE_RUN_MS,
-  ' and API_WAIT_MS is one request's own deadline — the largest overshoot a live run can post
-  ' between its last wait returning and the loop exiting. Anything past the two combined is
-  ' not a slow run, it is a dead one.
+  ' Measured from the last row the run DELIVERED, not from its start. apiPipeline charges its
+  ' budget only while waiting on the server, so a live run with many rows can legitimately
+  ' outlast PIPELINE_RUN_MS end to end — every row it hands over is its own proof of life. What
+  ' a live run cannot do is stay silent longer than its whole wait budget: PIPELINE_RUN_MS,
+  ' plus API_WAIT_MS as the largest overshoot one wait can post. Past the two combined it is not
+  ' a slow run, it is a dead one.
   '
-  ' @param elapsedMs - milliseconds since the run was started
-  ' @return true when the run has outlived any legitimate duration
-  function runIsStalled(elapsedMs as integer) as boolean
-    return elapsedMs > timeouts.PIPELINE_RUN_MS + timeouts.API_WAIT_MS
+  ' @param msSinceLastRow - milliseconds since the run started or last delivered a row
+  ' @return true when the run has been silent longer than any live run can be
+  function runIsStalled(msSinceLastRow as integer) as boolean
+    return msSinceLastRow > timeouts.PIPELINE_RUN_MS + timeouts.API_WAIT_MS
   end function
 
 

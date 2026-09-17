@@ -39,7 +39,9 @@ namespace tests
         pending: {},
         slotCount: slotCount,
         budgetMs: timeouts.PIPELINE_RUN_MS,
-        expired: false
+        expired: false,
+        callerMs: 0,
+        pausedAtMs: invalid
       }
     end function
 
@@ -347,6 +349,83 @@ namespace tests
     @it("is true once the deadline has passed")
     function _()
       m.assertTrue(apiPipelineBudgetSpent(5000, 7500))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("apiPipelineBudgetUsedMs - the budget is charged for waiting, not for the caller's work")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' apiPipelineNext resumes the budget on entry and pauses it on every return, so the
+    ' time between a return and the next call is the caller's own work. Charging that
+    ' too let a Home with enough libraries spend its budget on its own rows and leave
+    ' the rest undelivered, with the server answering quickly throughout.
+
+    @it("starts with nothing used")
+    function _()
+      pipe = apiPipelineBegin([{ requestId: "r0", req: { url: "/Items" } }])
+      m.assertEqual(pipe.callerMs, 0)
+      m.assertInvalid(pipe.pausedAtMs)
+    end function
+
+    @it("charges wall time until the first result is handed back")
+    function _()
+      pipe = m.makePipe(1)
+      apiPipelineBudgetResume(pipe, 0)
+      m.assertEqual(apiPipelineBudgetUsedMs(pipe, 800), 800)
+    end function
+
+    @it("does not charge the time the caller held a result")
+    function _()
+      pipe = m.makePipe(1)
+      apiPipelineBudgetPause(pipe, 300)
+      apiPipelineBudgetResume(pipe, 2300)
+      m.assertEqual(apiPipelineBudgetUsedMs(pipe, 2500), 500)
+    end function
+
+    @it("credits every hand-back, not just the latest")
+    function _()
+      pipe = m.makePipe(1)
+      apiPipelineBudgetPause(pipe, 100)
+      apiPipelineBudgetResume(pipe, 600)
+      apiPipelineBudgetPause(pipe, 700)
+      apiPipelineBudgetResume(pipe, 1700)
+      m.assertEqual(apiPipelineBudgetUsedMs(pipe, 1800), 300)
+    end function
+
+    @it("credits one hand-back once, however many times the run resumes")
+    function _()
+      pipe = m.makePipe(1)
+      apiPipelineBudgetPause(pipe, 100)
+      apiPipelineBudgetResume(pipe, 500)
+      apiPipelineBudgetResume(pipe, 900)
+      m.assertEqual(apiPipelineBudgetUsedMs(pipe, 1000), 600)
+    end function
+
+    @it("does not expire a run whose caller is slower than the whole budget")
+    function _()
+      ' Six results, 100 ms of waiting and 400 ms of caller work each: 3 s of wall time
+      ' against a 1.5 s budget, of which only 600 ms was spent waiting.
+      pipe = m.makePipe(6)
+      pipe.budgetMs = 1500
+      nowMs = 0
+      for i = 1 to 6
+        apiPipelineBudgetResume(pipe, nowMs)
+        nowMs += 100
+        m.assertFalse(apiPipelineBudgetSpent(pipe.budgetMs, apiPipelineBudgetUsedMs(pipe, nowMs)))
+        apiPipelineBudgetPause(pipe, nowMs)
+        nowMs += 400
+      end for
+      apiPipelineBudgetResume(pipe, nowMs)
+      m.assertEqual(apiPipelineBudgetUsedMs(pipe, nowMs), 600)
+    end function
+
+    @it("still expires a run that spends the budget waiting")
+    function _()
+      pipe = m.makePipe(1)
+      pipe.budgetMs = 1500
+      apiPipelineBudgetPause(pipe, 1000)
+      apiPipelineBudgetResume(pipe, 1200)
+      m.assertTrue(apiPipelineBudgetSpent(pipe.budgetMs, apiPipelineBudgetUsedMs(pipe, 1700)))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
