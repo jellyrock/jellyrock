@@ -1,0 +1,134 @@
+// scripts/lib/env-config.cjs — where the tooling's environment comes from.
+//
+// Every script that needs a device or a secret reads it from `process.env`, and
+// this module fills that in from two files, in this order:
+//
+//   1. the variables already set (your shell, or a parent process)   — always win
+//   2. `.env` in the current checkout                                — per-checkout override
+//   3. `$XDG_CONFIG_HOME/jellyrock/env` (default `~/.config/jellyrock/env`)
+//                                                                    — per-user default
+//
+// The user file is what lets several checkouts of this repo share one device list
+// and one set of credentials without a copy of `.env` in each. A checkout's `.env`
+// still wins, so one folder can point at a different device without touching the
+// shared file.
+//
+// Two rules that are not obvious from the list above:
+//
+// - **An already-set variable is never overwritten**, even when it is empty. That is
+//   dotenv's own rule, and `measure-devices.js` depends on it: it hands each child
+//   process its own `ROKU_IP`, and a file must not be able to take that back.
+// - **An EMPTY value in a file counts as unset.** `.env.example` ships keys like
+//   `ROKU_DEVICES=` blank, so a `.env` copied from it would otherwise hide the user
+//   file's list behind an empty string. To drop a user-level value for one checkout,
+//   set it to something else there; to drop it everywhere, comment it out in the
+//   user file.
+//
+// Pure functions plus one loader. The pure half takes its inputs explicitly so the
+// tests never read or write the real environment; `loadEnv()` is the only thing that
+// touches `process.env`, and `load-env.cjs` is the one-line entry scripts import.
+//
+// `.cjs` per `scripts/CLAUDE.md`: required by `create-signed-package.cjs`.
+
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const dotenv = require('dotenv');
+
+/** Marks a variable that was already set before any file was read. */
+const PRESET = 'environment';
+
+/**
+ * The per-user file. `XDG_CONFIG_HOME` is honored when set and non-empty, as the XDG
+ * base-directory spec requires; otherwise `~/.config`.
+ *
+ * @param {Record<string, string|undefined>} env
+ * @param {string} homedir
+ * @returns {string}
+ */
+function userEnvPath(env, homedir) {
+  const base = env.XDG_CONFIG_HOME ? env.XDG_CONFIG_HOME : path.join(homedir, '.config');
+  return path.join(base, 'jellyrock', 'env');
+}
+
+/**
+ * The files to read, highest precedence first.
+ *
+ * @param {{ cwd: string, env: Record<string, string|undefined>, homedir: string }} where
+ * @returns {string[]}
+ */
+function envFiles({ cwd, env, homedir }) {
+  return [path.join(cwd, '.env'), userEnvPath(env, homedir)];
+}
+
+/**
+ * Fill `env` from `files`, highest precedence first, without overwriting anything.
+ *
+ * @param {string[]} files
+ * @param {Record<string, string|undefined>} env - mutated in place
+ * @param {(file: string) => string|null} readFile - file contents, or null when absent
+ * @returns {{ loaded: string[], sources: Record<string, string> }} the files that
+ *   existed, and for every variable this call could have supplied, where its value
+ *   came from (`'environment'` or a file path)
+ */
+function applyEnvFiles(files, env, readFile) {
+  const loaded = [];
+  const sources = {};
+  for (const file of files) {
+    const text = readFile(file);
+    if (text === null) continue;
+    loaded.push(file);
+    for (const [key, value] of Object.entries(dotenv.parse(text))) {
+      if (key in sources) continue;
+      if (Object.prototype.hasOwnProperty.call(env, key)) {
+        sources[key] = PRESET;
+        continue;
+      }
+      if (value === '') continue;
+      env[key] = value;
+      sources[key] = file;
+    }
+  }
+  return { loaded, sources };
+}
+
+const readIfPresent = (file) => {
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
+};
+
+let result = null;
+
+/**
+ * Load the environment into `process.env`. Idempotent: every caller after the first
+ * gets the first call's result, so importing it from several modules is safe.
+ *
+ * @returns {{ loaded: string[], sources: Record<string, string> }}
+ */
+function loadEnv() {
+  if (!result) {
+    result = applyEnvFiles(
+      envFiles({ cwd: process.cwd(), env: process.env, homedir: os.homedir() }),
+      process.env,
+      readIfPresent,
+    );
+  }
+  return result;
+}
+
+/**
+ * Where `key` came from, for a human reading tool output: a file path, the literal
+ * `'environment'`, or undefined when no file mentions it.
+ *
+ * @param {string} key
+ * @returns {string|undefined}
+ */
+function envSource(key) {
+  return loadEnv().sources[key];
+}
+
+module.exports = { PRESET, userEnvPath, envFiles, applyEnvFiles, loadEnv, envSource };

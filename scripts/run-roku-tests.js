@@ -7,12 +7,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import net from 'node:net';
-import dotenv from 'dotenv';
+import './lib/load-env.cjs';
 import * as rokuDeploy from 'roku-deploy';
 import { acquireDeviceLock } from './device-lock.js';
 import { beginRun, RUN_OUTCOMES } from './run-record.js';
-
-dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

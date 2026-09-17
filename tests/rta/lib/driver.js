@@ -3,10 +3,10 @@
  * RTA-enabled build, and relaunch. Re-exports the RTA client singletons so the
  * rest of the layer imports them from one place.
  *
- * `import 'dotenv/config'` loads .env on import so ROKU_IP / ROKU_PASSWORD are
- * available to any consumer (tests, screenshot script).
+ * Importing `scripts/lib/load-env.cjs` loads `.env` and the per-user env file on import,
+ * so ROKU_IP / ROKU_PASSWORD are available to any consumer (tests, screenshot script).
  */
-import 'dotenv/config';
+import '../../../scripts/lib/load-env.cjs';
 import fs from 'node:fs';
 import { ecp, odc, device, utils } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';

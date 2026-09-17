@@ -55,8 +55,9 @@
  *    for that; it is the shape the client supports.
  *
  * A child gets its host through `ROKU_IP` in its own environment. That is load-bearing and
- * was verified rather than assumed: `dotenv` does not overwrite a variable already present
- * in `process.env`, so the value passed here wins over the `ROKU_IP` in `.env`.
+ * is pinned by a test rather than assumed: the env loader (`lib/env-config.cjs`) does not
+ * overwrite a variable already present in `process.env`, so the value passed here wins over
+ * any `ROKU_IP` in `.env` or the per-user env file.
  *
  * The three properties `measure-loop.js` grew for "the multi-device driver" are not lost by
  * going out-of-process — they are inherited by the `measure.js` running inside each child,
@@ -97,7 +98,7 @@
  * device 3 while device 1 is being measured; that device fails, is reported, and the rest
  * of the matrix carries on.
  */
-import 'dotenv/config';
+import './lib/load-env.cjs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -232,9 +233,9 @@ const runFor = (host, kind, script, argv = [], env = {}, { detached = false } = 
     const child = spawn(process.execPath, [script, ...argv], {
       stdio: 'inherit',
       detached,
-      // `ROKU_IP` LAST so it wins over the inherited one. `.env` cannot take it back:
-      // dotenv leaves an already-set variable alone (verified, not assumed — the whole
-      // design rests on it).
+      // `ROKU_IP` LAST so it wins over the inherited one. An env file cannot take it back:
+      // the env loader leaves an already-set variable alone (pinned by env-config.test.js —
+      // the whole design rests on it).
       env: { ...process.env, ...env, ROKU_IP: host },
     });
     // Published so an interrupt can act on whatever is running — which of the three kinds

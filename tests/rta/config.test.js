@@ -10,9 +10,9 @@
  * was nothing to go red.
  *
  * Tested through the exported pure function rather than the module's own
- * evaluation ON PURPOSE: `config.js` imports `dotenv/config`, so a test that
- * re-imported the module would read whatever is in the running developer's `.env`
- * and pass or fail per machine. Passing `env` in keeps this deterministic.
+ * evaluation ON PURPOSE: `config.js` loads the environment on import, so a test
+ * that re-imported the module would read whatever is in the running developer's env
+ * files and pass or fail per machine. Passing `env` in keeps this deterministic.
  */
 import { describe, expect, it } from 'vitest';
 import { PUBLIC_DEMO_SERVER, resolveServer } from './config.js';

@@ -92,7 +92,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-09-13
+last-reviewed: 2026-09-16
 ---
 
 # Build & Tooling
@@ -497,7 +497,7 @@ Module names (`log`, `rr`) are configured in `package.json`'s `dependencies` blo
 | `eslint-config-prettier` | Disables ESLint formatting rules that would fight Prettier |
 | `prettier` | JS / curated JSON formatting |
 | `vitest` | Unit tests for `scripts/` (BSC plugins + tooling) |
-| `dotenv` | `.env` file loading for device target/password |
+| `dotenv` | Parses the checkout's `.env` and the per-user `~/.config/jellyrock/env` for device target/password, via [`scripts/lib/env-config.cjs`](../../scripts/lib/env-config.cjs) |
 | `fast-glob` | File matching in scripts |
 | `husky` | Manages git hooks; installs `.husky/pre-push` on `npm install` (via `prepare` script) |
 | `patch-package` | Applies diffs under `patches/` to `node_modules/` post-install. Used to hold targeted upstream fixes until the corresponding PR lands (e.g. `patches/rooibos-roku+6.0.0-alpha.50.patch` → upstream [rokucommunity/rooibos#364](https://github.com/rokucommunity/rooibos/issues/364)) |

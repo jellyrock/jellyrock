@@ -65,7 +65,7 @@ The Rooibos runner (`scripts/run-roku-tests.js`) zips the build, sideloads to th
 
 ### Credentials
 
-Reads `ROKU_IP` and `ROKU_PASSWORD` from a gitignored `.env` at the repo root. If missing, source from VSCode `brightscript.debug.host` / `brightscript.debug.password` and write them to `.env`.
+Reads `ROKU_IP` and `ROKU_PASSWORD` from the environment, filled from the checkout's gitignored `.env` and then the per-user `~/.config/jellyrock/env` (the checkout wins; precedence rules in `docs/dev/unit-tests-tdd.md`). If neither has them, source from VSCode `brightscript.debug.host` / `brightscript.debug.password` and write them to the per-user file.
 
 ### When hardware isn't available
 

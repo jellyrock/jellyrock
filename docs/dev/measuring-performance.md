@@ -21,7 +21,7 @@ related-files:
   - source/utils/screenReadiness.bs
   - source/home/homeScreenLoad.bs
   - tests/rta/screens.js
-last-reviewed: 2026-09-15
+last-reviewed: 2026-09-16
 ---
 
 # Measuring performance on device
@@ -883,13 +883,13 @@ that range.
 one after another, and each device writes its own line to `measurements.jsonl`:
 
 ```bash
-# .env: ROKU_DEVICES=192.0.2.10,192.0.2.11,192.0.2.12
+# .env or ~/.config/jellyrock/env: ROKU_DEVICES=192.0.2.10,192.0.2.11,192.0.2.12
 npm run measure:devices -- --deploy --server http://192.0.2.10:8096 --nav settings -n 30
 ROKU_DEVICES=192.0.2.10,192.0.2.12 npm run measure:devices -- --server … -n 5   # a subset
 ```
 
-Every flag is forwarded verbatim to `npm run measure`, so nothing above changes. `.env`
-declares which devices EXIST; [`scripts/data/roku-hardware.json`](../../scripts/data/roku-hardware.json)
+Every flag is forwarded verbatim to `npm run measure`, so nothing above changes. Your env
+file declares which devices EXIST; [`scripts/data/roku-hardware.json`](../../scripts/data/roku-hardware.json)
 declares what RAM tier a model IS, so listing your own addresses is enough to get correct
 tier labels. `ROKU_IP` stays the single-device default — leaving `ROKU_DEVICES` unset
 changes nothing.

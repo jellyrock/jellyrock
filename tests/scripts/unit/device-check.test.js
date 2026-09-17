@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { hostsToCheck, report, verdict } from '../../../scripts/device-check.js';
+import { hostOrigin, hostsToCheck, report, verdict } from '../../../scripts/device-check.js';
 
 const up = (over = {}) => ({
   host: '192.0.2.10',
@@ -54,6 +54,33 @@ describe('which hosts get probed', () => {
     // error. Unset is a different state and has to fall through to ROKU_IP, not throw.
     expect(() => hostsToCheck([], { ROKU_IP: '192.0.2.10' })).not.toThrow();
     expect(hostsToCheck([], { ROKU_IP: '192.0.2.10' })).toEqual(['192.0.2.10']);
+  });
+});
+
+describe('where the host list came from', () => {
+  const sources = { ROKU_DEVICES: '/home/dev/.config/jellyrock/env', ROKU_IP: 'environment' };
+  const sourceOf = (key) => sources[key];
+
+  it('names the command line when hosts were passed explicitly', () => {
+    expect(hostOrigin(['192.0.2.99'], { ROKU_DEVICES: '192.0.2.10' }, sourceOf, '/home/dev')).toBe(
+      'the command line',
+    );
+  });
+
+  it('names the file ROKU_DEVICES came from, shortening the home directory', () => {
+    expect(hostOrigin([], { ROKU_DEVICES: '192.0.2.10' }, sourceOf, '/home/dev')).toBe(
+      'ROKU_DEVICES in ~/.config/jellyrock/env',
+    );
+  });
+
+  it('says so when ROKU_IP was already set in the environment', () => {
+    expect(hostOrigin([], { ROKU_IP: '192.0.2.10' }, sourceOf, '/home/dev')).toBe(
+      'ROKU_IP, set in the environment',
+    );
+  });
+
+  it('falls back to the bare variable name when no file mentions it', () => {
+    expect(hostOrigin([], { ROKU_IP: '192.0.2.10' }, () => undefined, '/home/dev')).toBe('ROKU_IP');
   });
 });
 

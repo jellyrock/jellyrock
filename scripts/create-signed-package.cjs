@@ -35,7 +35,7 @@
  *         didn't land)
  */
 
-require('dotenv').config();
+require('./lib/load-env.cjs');
 const { rokuDeploy } = require('roku-deploy');
 const fg = require('fast-glob');
 const fs = require('fs');

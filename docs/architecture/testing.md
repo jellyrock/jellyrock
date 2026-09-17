@@ -7,7 +7,7 @@ related-files:
   - bsconfig-tests.json
   - bsconfig-tests-unit.json
   - bsconfig-tests-integration.json
-last-reviewed: 2026-09-13
+last-reviewed: 2026-09-16
 ---
 
 # Testing
@@ -126,7 +126,7 @@ that partition — see
 
 ### How agents run tests
 
-Tests deploy to a real Roku device, but the npm scripts are CLI-driven so an automated agent can run them just like a human. The runner reads `ROKU_IP` / `ROKU_PASSWORD` from a gitignored `.env` (with a fallback to `VSCode`'s `brightscript.debug.*` settings). Note `ROKU_PASSWORD` is that one device's **dev server** password, so overriding `ROKU_IP` alone is not enough to drive a different Roku — pointing a local run at CI's `.200` also needs `.200`'s password, which lives only in CI as an org secret. The deploy fails with a `401 Unauthorized` from `roku-deploy`, after the lock is taken. If hardware isn't reachable, the runner exits with an error — agents are expected to surface this honestly rather than claim a fix was tested when only the build was verified. Debugger contention (a VSCode BrightScript debugger holding the port) is a real failure mode and shouldn't be retried blindly. See [`tests/CLAUDE.md`](../../tests/CLAUDE.md) for the rules and `docs/dev/unit-tests-tdd.md` for the full procedure.
+Tests deploy to a real Roku device, but the npm scripts are CLI-driven so an automated agent can run them just like a human. The runner reads `ROKU_IP` / `ROKU_PASSWORD` from the checkout's gitignored `.env` or the per-user `~/.config/jellyrock/env` ([`env-config.cjs`](../../scripts/lib/env-config.cjs); a fallback to `VSCode`'s `brightscript.debug.*` settings is documented in the TDD guide). Note `ROKU_PASSWORD` is that one device's **dev server** password, so overriding `ROKU_IP` alone is not enough to drive a different Roku — pointing a local run at CI's `.200` also needs `.200`'s password, which lives only in CI as an org secret. The deploy fails with a `401 Unauthorized` from `roku-deploy`, after the lock is taken. If hardware isn't reachable, the runner exits with an error — agents are expected to surface this honestly rather than claim a fix was tested when only the build was verified. Debugger contention (a VSCode BrightScript debugger holding the port) is a real failure mode and shouldn't be retried blindly. See [`tests/CLAUDE.md`](../../tests/CLAUDE.md) for the rules and `docs/dev/unit-tests-tdd.md` for the full procedure.
 
 ### Documentation
 
