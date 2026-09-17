@@ -17,6 +17,7 @@ end sub
 sub stopAndRelaunch()
   task = m.top.task
   task.control = "STOP"
+  ' bsc-disable-next-line no-same-node-relaunch this probe relaunches the same node on purpose, to measure the race
   launchTask(task)
 end sub
 

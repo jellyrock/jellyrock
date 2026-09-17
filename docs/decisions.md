@@ -1485,6 +1485,16 @@ Tooling reads device settings and secrets from a per-user `~/.config/jellyrock/e
 
 Ruled out: **exporting the values from a shell profile** — shell variables outrank every checkout's `.env`, which removes the per-checkout override, and it puts secrets in shell startup files. **Making each checkout's `.env` a symbolic link to one file** — still a manual step for every new checkout or worktree, and a checkout can no longer override a single value. **Constraint:** every script must load settings through `load-env.cjs`; a direct `dotenv` import would silently ignore the user file, so ESLint now rejects one.
 
+## decision-id: same-node-relaunch-gate
+
+**date**: 2026-09-17
+**status**: accepted
+**related-files**: `scripts/bsc-plugins/no-same-node-relaunch.cjs`, `bsconfig.json`, `bsconfig-prod.json`, `docs/architecture/build-and-tooling.md`
+
+The `no-same-node-relaunch` plugin is an Error from day one, and the 16 sites that predate it are listed in the plugin's `PENDING_MIGRATIONS` (file, function, launched path) rather than suppressed inline. An inline marker can be copied onto a new site; the list cannot, and a listed site that no longer fires is itself an error naming the entry to delete, so the list only shrinks. **This closes off a Vitest ratchet**: the CI Vitest job's path filter skips PRs touching only `.bs` files, which is exactly where a copied marker would land. Suppression is line / next-line only, like `no-raw-run` and `no-task-fanout`, and the plugin hooks `afterValidateFile` directly rather than `lib/bsc-rule.cjs`, because every finding is single-file and `bsc-rule` honors `bsc-disable-file`.
+
+**The constraint worth re-evaluating is the analysis depth.** Source order stands in for control flow, per function, with each inline `sub(...)` callback a function of its own (it runs in a later callback). Same-file helpers are followed one hop by bare name, counting only `m.` paths the helper leaves stopped. Accepted gaps: a STOP and a launch in exclusive branches are flagged, a STOP through a local alias is missed, and a namespaced helper shares its bare name. The evidence for the rule is the same-node relaunch row in [threading.md](architecture/threading.md#measured-findings).
+
 ## decision-id: version-gated-query-parameters
 
 **date**: 2026-09-17
