@@ -485,6 +485,8 @@ end function
 ' it costs nothing: always on 10.7 (which has no cutoff), and on 10.8–10.10 only when Max
 ' Days is off. With Max Days on, those servers keep the cutoff and still add first episodes.
 ' From 10.11 the server returns watch history only, so the parameter is not sent.
+' A user with no history therefore gets no Next Up row on any version. That is intended, and
+' differs from jellyfin-web 10.10, which asks for the first episodes.
 '
 ' @param {string} serverVersion - Server version string, e.g. "10.10.7"
 ' @param {boolean} enableRewatching - uiDetailsEnableRewatchingNextUp

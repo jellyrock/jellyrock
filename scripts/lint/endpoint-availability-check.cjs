@@ -13,8 +13,8 @@
 //   - SCHEMA — the loader's validateRegistry() throws on any shape violation.
 //   - USED — every entry's endpoint must still exist in the manifest (an entry for
 //     an endpoint the app no longer calls is dead weight — remove it).
-//   - version-guard — the cited `symbol` must still appear in source/*.bs. If the
-//     guard was removed, FAIL → the dev restores it or drops the entry, and the
+//   - version-guard — the cited `symbol` must still appear in source/*.bs code
+//     (comments don't count). If the guard was removed, FAIL → the dev restores it or drops the entry, and the
 //     floor finding correctly resurfaces.
 //   - dispatch-sibling — the cited `sibling` path must still exist in the manifest
 //     with a floor-tier range (minApiVersion <= 1), i.e. the V1 fallback is real.
@@ -31,7 +31,7 @@
 // claims honest.
 //
 // `.cjs` (scripts/lint convention): reads the manifest JSON + walks source/ and components/ .bs +
-// requires the .cjs loader. No network, no GitHub.
+// requires the .cjs loader and BrighterScript's lexer. No network, no GitHub.
 //
 // Usage:  node scripts/lint/endpoint-availability-check.cjs [--root <dir>] [--json]
 // Exit:   0 = clean · 1 = at least one validation failure · 2 = internal error
@@ -40,6 +40,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { Lexer } = require('brighterscript');
 const {
   loadEndpointAvailability,
   loadParameterAvailability,
@@ -93,31 +94,23 @@ function readBsFiles(rootDir, dirRel) {
   return files;
 }
 
-// Recursively collect the text of every .bs file under source/ (one read; the
-// guard-symbol check is a simple substring scan over the concatenation).
+// Recursively collect the code of every .bs file under source/ (one read; the
+// guard-symbol check is a simple scan over the concatenation). Comments are
+// dropped, so a guard named only in a comment does not count as present.
 function readAllSource(rootDir) {
   return readBsFiles(rootDir, SOURCE_DIR_REL)
-    .map((f) => f.text)
+    .map((f) => stripComments(f.text))
     .join('\n');
 }
 
-// Drop BrightScript comments: a `'` outside a string literal, or a line whose
-// first word is `rem`. Strings use `"` and escape it by doubling (`""`), which
-// toggles in and out of the string and so needs no special case here.
+// Drop BrightScript comments using the compiler's own lexer, so string, template
+// string (including multi-line and `${…}`) and comment boundaries are read
+// exactly as the build reads them. The lexer keeps `'` and `rem` comments as
+// token trivia, not tokens, so joining the token text leaves only code.
 function stripComments(text) {
-  return text
-    .split('\n')
-    .map((line) => {
-      if (/^\s*rem(\s|$)/i.test(line)) return '';
-      let inString = false;
-      for (let i = 0; i < line.length; i++) {
-        const c = line[i];
-        if (c === '"') inString = !inString;
-        else if (c === "'" && !inString) return line.slice(0, i);
-      }
-      return line;
-    })
-    .join('\n');
+  return Lexer.scan(text)
+    .tokens.map((t) => t.text)
+    .join(' ');
 }
 
 // BrightScript identifiers and AA keys are case-insensitive, so both the

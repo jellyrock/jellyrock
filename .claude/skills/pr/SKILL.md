@@ -150,7 +150,9 @@ Bulleted list. One line per logical change, not per file. Group related edits.
 
 #### Follow-ups — required
 
-Mirrors the Issues-section pattern: write `None` (no bullet) when nothing is deferred; use bulleted lines only when listing actual follow-ups. Each follow-up must have a stable slug in `docs/architecture/tech-debt.md` — link the anchor inline, e.g. `- [\`itemdetails-size\`](../docs/architecture/tech-debt.md#itemdetails-size) — split per-item-type renderers into separate modules`. If a deferred item doesn't have a tech-debt entry yet, add it as part of this PR or drop the line. Don't invent deferrals to fill the section — `None` is the right answer most of the time.
+Mirrors the Issues-section pattern: write `None` (no bullet) when nothing is deferred; use bulleted lines only when listing actual follow-ups. Each follow-up must point at its journal entry (see "Pass 3 — Followup capture" above): a stable slug in `docs/architecture/tech-debt.md`, or a `docs/progress.md` open followup. If a deferred item has neither yet, capture it as part of this PR or drop the line. Don't invent deferrals to fill the section — `None` is the right answer most of the time.
+
+**Links in the PR body must be absolute URLs** — `https://github.com/jellyrock/jellyrock/blob/main/<path>`, e.g. `- [\`itemdetails-size\`](https://github.com/jellyrock/jellyrock/blob/main/docs/architecture/tech-debt.md#itemdetails-size) — split per-item-type renderers into separate modules`. GitHub does not resolve repo-relative links in a PR body: `../docs/…` or `docs/…` is emitted as written and 404s from the PR page. Link `main`, not the PR branch, because the branch is deleted on merge; for a file the PR adds, name it in backticks instead of linking.
 
 #### Issues — required, must contain something
 

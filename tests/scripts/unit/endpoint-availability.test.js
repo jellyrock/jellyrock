@@ -311,6 +311,53 @@ describe('endpoint-availability-check.cjs (lint, offline)', () => {
     expect(res.exitCode).toBe(0);
   });
 
+  it('FAILS on a parameter after an apostrophe inside a template string', () => {
+    scaffold({
+      manifestEndpoints: [...MANIFEST, NEXTUP],
+      source: GUARD_SOURCE,
+      registry: PARAM_REGISTRY,
+      files: {
+        'components/E.bs':
+          "sub e(id)\n  url = `/Shows/NextUp?note=it's&DisableFirstEpisode=false&UserId=${id}`\nend sub\n",
+        'components/F.bs':
+          'sub f()\n  s = `first line, it\'s\n  ${m.x["q\'"]} DisableFirstEpisode=true`\nend sub\n',
+      },
+    });
+    const res = spawnScript(LINT, ['--root', dir]);
+    expect(res.exitCode).toBe(1);
+    const out = res.stderr + res.stdout;
+    expect(out).toMatch(/components\/E\.bs sends/);
+    expect(out).toMatch(/components\/F\.bs sends/);
+  });
+
+  it('does not count a parameter named only in a REM comment', () => {
+    scaffold({
+      manifestEndpoints: [...MANIFEST, NEXTUP],
+      source: GUARD_SOURCE,
+      registry: PARAM_REGISTRY,
+      files: {
+        'components/G.bs': 'sub g()\n  REM DisableFirstEpisode is not sent here\nend sub\n',
+      },
+    });
+    const res = spawnScript(LINT, ['--root', dir]);
+    expect(res.exitCode).toBe(0);
+  });
+
+  it('FAILS when the parameter guard is named only in a source comment', () => {
+    scaffold({
+      manifestEndpoints: [...MANIFEST, NEXTUP],
+      source:
+        "' honorsDisableFirstEpisode: decides whether to send it\n" +
+        'sub x()\n  p = { DisableFirstEpisode: true }\nend sub\n',
+      registry: PARAM_REGISTRY,
+    });
+    const res = spawnScript(LINT, ['--root', dir]);
+    expect(res.exitCode).toBe(1);
+    expect(res.stderr + res.stdout).toMatch(
+      /symbol "honorsDisableFirstEpisode" not found in source/,
+    );
+  });
+
   it('FAILS when the parameter guard is missing from source', () => {
     scaffold({
       manifestEndpoints: [...MANIFEST, NEXTUP],
@@ -362,6 +409,18 @@ describe('endpoint-availability-check.cjs (lint, offline)', () => {
     scaffold({
       manifestEndpoints: MANIFEST,
       source: "' guard was deleted\n",
+      registry:
+        'endpoints:\n  - path: /mediasegments/{}\n    method: GET\n    handling: { type: version-guard, symbol: supportsMediaSegments }\n',
+    });
+    const res = spawnScript(LINT, ['--root', dir]);
+    expect(res.exitCode).toBe(1);
+    expect(res.stderr + res.stdout).toMatch(/symbol "supportsMediaSegments" not found/);
+  });
+
+  it('FAILS when a version-guard symbol is named only in a comment', () => {
+    scaffold({
+      manifestEndpoints: MANIFEST,
+      source: "' supportsMediaSegments() used to guard this\nsub x()\nend sub\n",
       registry:
         'endpoints:\n  - path: /mediasegments/{}\n    method: GET\n    handling: { type: version-guard, symbol: supportsMediaSegments }\n',
     });
