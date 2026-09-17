@@ -47,10 +47,10 @@ import "pkg:/source/utils/misc.bs"
 ' of control, it reads like the `fetchRes` loop the team already knows, and it
 ' avoids depending on BrighterScript function-pointer params.
 '
-' ── The budget: one deadline for the whole run ─────────────────────────────
+' ── The budget: one allowance for the whole run ────────────────────────────
 '
-' `budgetMs` (default `timeouts.PIPELINE_RUN_MS`) is a WHOLE-RUN deadline, not a
-' per-request timeout. A per-request wait lets N slow requests stack into
+' `budgetMs` (default `timeouts.PIPELINE_RUN_MS`) is ONE budget for the whole run,
+' not a per-request timeout. A per-request wait lets N slow requests stack into
 ' N * API_WAIT_MS. When the budget expires the pipeline stops submitting and
 ' yields every remaining entry — in-flight first, then unsubmitted — with
 ' `res = invalid`. So budget expiry needs no special case at the call site: the
@@ -94,7 +94,7 @@ import "pkg:/source/utils/misc.bs"
 ' Starts a pipeline run over `entries`.
 '
 ' @param entries  - array of AAs, each { requestId: string, req: AA, ...payload }
-' @param budgetMs - whole-run deadline in ms; defaults to timeouts.PIPELINE_RUN_MS
+' @param budgetMs - whole-run budget in ms; defaults to timeouts.PIPELINE_RUN_MS
 ' @return an opaque pipe state AA to pass to apiPipelineNext(), or invalid if
 '         `entries` is empty / invalid
 function apiPipelineBegin(entries as dynamic, budgetMs = timeouts.PIPELINE_RUN_MS as integer) as dynamic
@@ -267,11 +267,11 @@ function apiPipelineDrainOne(pipe as object) as dynamic
   return apiPipelineClaimNext(pipe)
 end function
 
-' Has the whole-run deadline passed?
+' Has the whole-run budget been used up?
 '
 ' Small enough to inline, but named and separate on purpose: the clock lives in
 ' the shell and is therefore untestable, whereas this predicate is pinned by unit
-' tests — including that the deadline counts as spent AT zero rather than one
+' tests — including that the budget counts as spent AT zero rather than one
 ' tick later. Any second budget check added later must call this rather than
 ' re-derive the comparison; two hand-written checks disagreeing is precisely the
 ' bug that a post-completion refill introduced here once.

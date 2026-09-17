@@ -152,8 +152,8 @@ namespace tests
 
     @it("tolerates one request's deadline of overshoot past the budget")
     function _()
-      ' One wait can overshoot the budget by this much before the run hands over its next row;
-      ' reclaiming there would cancel a run that was about to deliver.
+      ' The slack covers silent time the budget does not charge (task start-up, one row's
+      ' transform); reclaiming inside it would cancel a run that was about to deliver.
       m.assertFalse(latestRows.runIsStalled(timeouts.PIPELINE_RUN_MS))
       m.assertFalse(latestRows.runIsStalled(timeouts.PIPELINE_RUN_MS + timeouts.API_WAIT_MS))
     end function

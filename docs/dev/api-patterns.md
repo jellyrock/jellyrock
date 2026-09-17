@@ -106,7 +106,7 @@ end while
 
 **Use when**: an orchestrator has N independent requests where N scales with server data (per library, per season). Never spawn a Task per request for this — that's the fan-out behind the `&h29` crashes (#728).
 
-Results arrive in completion order. `budgetMs` is a whole-run deadline, so a dead server can't cost N × `API_WAIT_MS`; it is charged only while the pipeline waits, so your own per-result work never uses it up. `res = invalid` means **no answer** (never submitted, or the budget ran out) — an HTTP error is a valid `res` with `ok = false`, so don't treat the two the same when deciding whether to clear UI.
+Results arrive in completion order. `budgetMs` is one budget for the whole run, so a dead server can't cost N × `API_WAIT_MS`; it is charged only while the run is inside `apiPipelineNext`, so your own per-result work never uses it up. `res = invalid` means **no answer** (never submitted, or the budget ran out) — an HTTP error is a valid `res` with `ok = false`, so don't treat the two the same when deciding whether to clear UI.
 
 Example: `LoadLatestRowsTask`
 

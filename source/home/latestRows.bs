@@ -92,9 +92,11 @@ namespace latestRows
   ' Measured from the last row the run DELIVERED, not from its start. apiPipeline charges its
   ' budget only while waiting on the server, so a live run with many rows can legitimately
   ' outlast PIPELINE_RUN_MS end to end — every row it hands over is its own proof of life. What
-  ' a live run cannot do is stay silent longer than its whole wait budget: PIPELINE_RUN_MS,
-  ' plus API_WAIT_MS as the largest overshoot one wait can post. Past the two combined it is not
-  ' a slow run, it is a dead one.
+  ' a live run cannot do is stay silent much longer than its whole budget, PIPELINE_RUN_MS: a
+  ' wait never outlasts what is left of it. API_WAIT_MS on top is slack for the silent time that
+  ' is NOT charged — the task thread starting, building its entries before the first row, and
+  ' one row's transform and hand-off to this thread. Past the two combined it is not a slow run,
+  ' it is a dead one.
   '
   ' @param msSinceLastRow - milliseconds since the run started or last delivered a row (the
   '   clock drainReady resets)

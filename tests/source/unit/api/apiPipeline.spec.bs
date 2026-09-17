@@ -428,6 +428,37 @@ namespace tests
       m.assertTrue(apiPipelineBudgetSpent(pipe.budgetMs, apiPipelineBudgetUsedMs(pipe, 1700)))
     end function
 
+    ' The two tests below drive apiPipelineNext itself, so they fail if its pause/resume
+    ' wiring is removed — the helpers above can't notice that. A run with nothing queued and
+    ' nothing in flight returns at once, without submitting or waiting.
+    private function makeFinishedPipe() as object
+      pipe = m.makePipe(1)
+      pipe.nextIndex = 1
+      pipe.clock = CreateObject("roTimespan")
+      pipe.port = CreateObject("roMessagePort")
+      return pipe
+    end function
+
+    @it("apiPipelineNext stops charging the budget when it hands back")
+    function _()
+      pipe = m.makeFinishedPipe()
+
+      m.assertInvalid(apiPipelineNext(pipe))
+
+      m.assertNotInvalid(pipe.pausedAtMs)
+    end function
+
+    @it("apiPipelineNext credits the time since the last hand-back")
+    function _()
+      pipe = m.makeFinishedPipe()
+      ' Handed back one second before this pipe's clock started.
+      pipe.pausedAtMs = -1000
+
+      apiPipelineNext(pipe)
+
+      m.assertTrue(pipe.callerMs >= 1000, "the caller's time was not credited")
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("apiPipelineEnd - abandoning a run early")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
