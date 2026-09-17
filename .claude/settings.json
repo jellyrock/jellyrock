@@ -44,6 +44,12 @@
       "Bash(date:*)",
       "Bash(ls:*)",
       "Bash(find .claude/handoffs:*)"
+    ],
+    "ask": [
+      "Bash(git worktree add *)",
+      "Bash(git * worktree add *)",
+      "Agent(isolation:worktree)",
+      "EnterWorktree"
     ]
   },
   "hooks": {
