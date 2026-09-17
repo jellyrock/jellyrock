@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Read device settings from a per-user env file as well as `.env` ([#949](https://github.com/jellyrock/jellyrock/pull/949))
 
+### Fixed
+
+- Stop Next Up listing every series' pilot on Jellyfin 10.7–10.10 ([#955](https://github.com/jellyrock/jellyrock/pull/955))
+
 ## [2.30.0](https://github.com/jellyrock/jellyrock/compare/v2.29.1...v2.30.0) - 2026-09-17
 
 ### Changed
