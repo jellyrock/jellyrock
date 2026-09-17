@@ -187,7 +187,6 @@ function doSeries(input as object, items as object) as longinteger
     data = fetchJson(GetApi().BuildGetNextUpRequest({
       "seriesId": input.id,
       "Limit": 1,
-      "DisableFirstEpisode": false,
       "ImageTypeLimit": 1,
       "EnableRewatching": localUser.settings.uiDetailsEnableRewatchingNextUp,
       "EnableTotalRecordCount": false

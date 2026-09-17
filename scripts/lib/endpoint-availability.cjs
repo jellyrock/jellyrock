@@ -127,18 +127,89 @@ function validateRegistry(raw) {
   });
 }
 
+// Validate the `parameters:` section: query parameters whose server behavior
+// differs by version, each tied to the guard that decides whether to send it.
+// Only `version-guard` handling is accepted — it is the one claim the lint can
+// check for a parameter (every file that sends it must call the guard).
+// Returns entries augmented with `normalizedPath`, `methodSet` and a stable `id`.
+function validateParameterRegistry(raw) {
+  if (!raw || typeof raw !== 'object') return [];
+  const parameters = raw.parameters ?? [];
+  if (!Array.isArray(parameters)) {
+    throw new Error('endpoint-availability: "parameters" must be a list');
+  }
+
+  const seen = new Set();
+  return parameters.map((entry, i) => {
+    const where = `parameter ${i}${entry && entry.name ? ` (${entry.name})` : ''}`;
+    if (!entry || typeof entry !== 'object') {
+      throw new Error(`endpoint-availability: ${where} is not an object`);
+    }
+    if (typeof entry.path !== 'string' || !entry.path.trim()) {
+      throw new Error(`endpoint-availability: ${where} missing a string "path"`);
+    }
+    if (typeof entry.name !== 'string' || !/^[A-Za-z][A-Za-z0-9]*$/.test(entry.name)) {
+      throw new Error(`endpoint-availability: ${where} "name" must be a parameter name`);
+    }
+    const methodSet = parseMethods(entry.method);
+    if (methodSet === '*' || methodSet.size === 0) {
+      throw new Error(`endpoint-availability: ${where} needs an explicit "method"`);
+    }
+    for (const m of methodSet) {
+      if (!HTTP_METHODS.has(m)) {
+        throw new Error(`endpoint-availability: ${where} has unknown HTTP method "${m}"`);
+      }
+    }
+    for (const field of ['honoredFrom', 'honoredBelow', 'removedIn']) {
+      if (entry[field] != null && !isReleaseVersionBase(entry[field])) {
+        throw new Error(`endpoint-availability: ${where} ${field} must be MAJOR.MINOR[.PATCH]`);
+      }
+    }
+    if (entry.honoredFrom == null && entry.honoredBelow == null) {
+      throw new Error(
+        `endpoint-availability: ${where} needs "honoredFrom" and/or "honoredBelow" (which servers act on it)`,
+      );
+    }
+    const h = entry.handling;
+    if (!h || typeof h !== 'object' || h.type !== 'version-guard') {
+      throw new Error(`endpoint-availability: ${where} handling.type must be version-guard`);
+    }
+    if (typeof h.symbol !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(h.symbol)) {
+      throw new Error(`endpoint-availability: ${where} version-guard handling requires a "symbol"`);
+    }
+
+    const id = `${entryId(entry)} ?${entry.name}`;
+    if (seen.has(id.toLowerCase())) {
+      throw new Error(`endpoint-availability: duplicate parameter entry for ${id}`);
+    }
+    seen.add(id.toLowerCase());
+
+    return { ...entry, normalizedPath: normalizePath(entry.path), methodSet, id };
+  });
+}
+
+// Read + parse the committed registry. A MISSING file yields null.
+function readRegistry(rootDir) {
+  let raw;
+  try {
+    raw = fs.readFileSync(path.join(rootDir, REGISTRY_REL), 'utf8');
+  } catch {
+    return null;
+  }
+  return yaml.load(raw);
+}
+
 // Load + validate the committed registry from a repo root. A MISSING file means
 // "no registered endpoints" (an empty ledger is valid — the floor check then
 // flags every post-floor endpoint, the pre-registry behavior).
 function loadEndpointAvailability(rootDir = '.') {
-  const file = path.join(rootDir, REGISTRY_REL);
-  let raw;
-  try {
-    raw = fs.readFileSync(file, 'utf8');
-  } catch {
-    return [];
-  }
-  return validateRegistry(yaml.load(raw));
+  const raw = readRegistry(rootDir);
+  return raw == null ? [] : validateRegistry(raw);
+}
+
+// Load + validate the registry's `parameters:` section (missing file → []).
+function loadParameterAvailability(rootDir = '.') {
+  return validateParameterRegistry(readRegistry(rootDir));
 }
 
 // Does a validated entry cover a floor candidate? The candidate carries the
@@ -164,6 +235,8 @@ module.exports = {
   parseMethods,
   entryId,
   validateRegistry,
+  validateParameterRegistry,
   loadEndpointAvailability,
+  loadParameterAvailability,
   entryMatchesCandidate,
 };

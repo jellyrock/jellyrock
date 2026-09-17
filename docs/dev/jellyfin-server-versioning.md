@@ -11,7 +11,7 @@ related-files:
   - docs/dev/jellyfin-endpoint-availability.yml
   - docs/dev/jellyfin-version-boundaries.yml
   - scripts/lint/apiversion-consistency-check.js
-last-reviewed: 2026-06-01
+last-reviewed: 2026-09-17
 ---
 
 # JellyRock Versioning Systems Overview
@@ -116,6 +116,34 @@ floor check consumes, and `npm run lint:endpoint-availability` validates each
 entry's guard/sibling claim against current code so a removed guard resurfaces the
 finding. When you add a version-gated or post-floor endpoint, add a registry entry
 (the lint will tell you if you forgot — the finding will flag `needsInvestigation`).
+
+**Version-gated parameters:**
+
+A parameter can change behavior while its endpoint stays the same, and the spec
+diff will not show it. Jellyfin 10.11 kept `DisableFirstEpisode` on
+`GET /Shows/NextUp` in the spec but stopped acting on it; only 12.0 removed it.
+
+| Endpoint | Parameter | Servers that act on it | Guard Function | Sent by |
+| -------- | --------- | ---------------------- | -------------- | ------- |
+| `GET /Shows/NextUp` | `DisableFirstEpisode` | 10.7–10.10 (ignored on 10.11, removed in 12.0) | `honorsDisableFirstEpisode()` | `buildHomeNextUpParams()` (`source/api/items.bs`) |
+
+The rule:
+
+- **Send a version-specific parameter only to versions whose behavior you checked.**
+  Check two things. First, read the controller and the code it calls at each release
+  tag you support. Second, send a live request whose results differ depending on
+  whether the server acted on the parameter.
+  `npm run jellyfin:matrix -- '<path?query>'` sends one GET to a server of each
+  version (`JELLYFIN_VERSION_SERVERS` in `.env.example`) and prints status, item
+  count and size per version.
+- **Decide with a guard function** that takes the server version, next to the code
+  that builds the request, and unit-test the table of versions it covers.
+- **Register it** under `parameters:` in
+  [`jellyfin-endpoint-availability.yml`](jellyfin-endpoint-availability.yml).
+  `npm run lint:endpoint-availability` then fails any `.bs` file under `source/` or
+  `components/` whose code names the parameter without calling the guard, and any
+  entry no file sends any more. Comments don't count, so you can still explain in
+  a comment why a call does not send the parameter.
 
 **Media Segments (10.10.0+):**
 

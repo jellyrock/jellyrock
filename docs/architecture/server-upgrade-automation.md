@@ -26,7 +26,7 @@ related-files:
   - docs/signals-backlog.md
   - docs/dev/jellyfin-server-versioning.md
   - source/api/ApiClient.bs
-last-reviewed: 2026-09-15
+last-reviewed: 2026-09-17
 ---
 
 # Jellyfin Server-Upgrade Automation
@@ -941,6 +941,20 @@ in Layer 2, not an `ApiClient` version branch.
    `QuickConnect` ×2 as the remaining deliberate graceful/fail-open cases (their
    handling is correct as-is; see the Quick Connect analysis in
    [`jellyfin-server-versioning.md`](../dev/jellyfin-server-versioning.md)).
+5. **Version-gated parameters (added 2026-09-17).** The spec diff sees a parameter
+   only when it is added or removed. It cannot see a server that stops ACTING on
+   one: 10.11 ignored Next Up's `DisableFirstEpisode` for a whole release while the
+   parameter stayed in the spec, and the digest only noticed when 12.0 deleted it
+   (#925). The ledger's `parameters:` section records such a parameter, the servers
+   that act on it, and its `version-guard` symbol. The lint makes a stronger claim
+   for a parameter than for an endpoint: every `.bs` file under `source/` or
+   `components/` whose code (not comments) names the parameter must also call the
+   guard, and an entry nothing sends any more fails as stale. The reason is that
+   request parameters are built outside the API layer, where the manifest does not
+   look (`requestFields` covers `source/api/` body keys only). The floor check does
+   not read this section; it is a lint-only ledger. `npm run jellyfin:matrix` is the
+   tool for the live half of verifying one. The rule for adding one is in
+   [`jellyfin-server-versioning.md`](../dev/jellyfin-server-versioning.md) §4.
 
 ### (2) The per-version release-triage digest model
 

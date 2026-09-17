@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { spawnScript } from './_helpers/spawn-script.js';
 import {
   validateRegistry,
+  validateParameterRegistry,
   entryMatchesCandidate,
   normalizePath,
 } from '../../../scripts/lib/endpoint-availability.cjs';
@@ -95,6 +96,62 @@ describe('validateRegistry — schema', () => {
   });
 });
 
+describe('validateParameterRegistry — schema', () => {
+  const param = (overrides = {}) => ({
+    parameters: [
+      {
+        path: '/Shows/NextUp',
+        method: 'GET',
+        name: 'DisableFirstEpisode',
+        honoredBelow: '10.11.0',
+        removedIn: '12.0.0',
+        handling: { type: 'version-guard', symbol: 'honorsDisableFirstEpisode' },
+        ...overrides,
+      },
+    ],
+  });
+
+  it('normalizes the path and ids the entry by endpoint + name', () => {
+    const [p] = validateParameterRegistry(param());
+    expect(p.normalizedPath).toBe('/shows/nextup');
+    expect(p.id).toBe('/shows/nextup GET ?DisableFirstEpisode');
+  });
+
+  it('a registry with no parameters section (or no registry) is valid (→ [])', () => {
+    expect(validateParameterRegistry({ endpoints: [] })).toEqual([]);
+    expect(validateParameterRegistry(null)).toEqual([]);
+  });
+
+  it('accepts only version-guard handling, with a symbol', () => {
+    expect(() =>
+      validateParameterRegistry(param({ handling: { type: 'graceful-degradation' } })),
+    ).toThrow(/handling.type must be version-guard/);
+    expect(() => validateParameterRegistry(param({ handling: { type: 'version-guard' } }))).toThrow(
+      /requires a "symbol"/,
+    );
+  });
+
+  it('requires at least one of honoredFrom / honoredBelow', () => {
+    expect(() =>
+      validateParameterRegistry(param({ honoredBelow: undefined, removedIn: undefined })),
+    ).toThrow(/needs "honoredFrom" and\/or "honoredBelow"/);
+    expect(() =>
+      validateParameterRegistry(param({ honoredBelow: undefined, honoredFrom: '10.9.0' })),
+    ).not.toThrow();
+  });
+
+  it('rejects a malformed version, a wildcard method, a bad name and a duplicate', () => {
+    expect(() => validateParameterRegistry(param({ removedIn: '12.0.0-rc1' }))).toThrow(
+      /removedIn must be/,
+    );
+    expect(() => validateParameterRegistry(param({ method: '*' }))).toThrow(/explicit "method"/);
+    expect(() => validateParameterRegistry(param({ name: 'a b' }))).toThrow(/parameter name/);
+    const twice = param();
+    twice.parameters.push({ ...twice.parameters[0], name: 'disablefirstepisode' });
+    expect(() => validateParameterRegistry(twice)).toThrow(/duplicate parameter entry/);
+  });
+});
+
 describe('entryMatchesCandidate', () => {
   const [entry] = validateRegistry({
     endpoints: [{ path: '/mediasegments/{}', method: 'GET', handling: { type: 'sdk-dispatch' } }],
@@ -129,6 +186,7 @@ describe('endpoint-availability-check.cjs (lint, offline)', () => {
     registry,
     manifestEndpoints,
     source = 'function supportsMediaSegments()\nend function\n',
+    files = {},
   }) {
     dir = mkdtempSync(join(tmpdir(), 'jellyrock-ea-'));
     const write = (rel, body) => {
@@ -142,6 +200,7 @@ describe('endpoint-availability-check.cjs (lint, offline)', () => {
       JSON.stringify({ endpoints: manifestEndpoints, requestFields: [], responseFields: [] }),
     );
     write('source/stub.bs', source);
+    for (const [rel, body] of Object.entries(files)) write(rel, body);
   }
 
   const MANIFEST = [
@@ -167,6 +226,124 @@ describe('endpoint-availability-check.cjs (lint, offline)', () => {
       maxApiVersion: 1,
     },
   ];
+
+  const NEXTUP = {
+    path: '/shows/nextup',
+    normalized: '/shows/nextup',
+    methods: ['GET'],
+    minApiVersion: 1,
+    maxApiVersion: null,
+  };
+  const PARAM_REGISTRY =
+    'parameters:\n' +
+    '  - path: /shows/nextup\n    method: GET\n    name: DisableFirstEpisode\n' +
+    '    honoredBelow: "10.11.0"\n' +
+    '    handling: { type: version-guard, symbol: honorsDisableFirstEpisode }\n';
+  const GUARD_SOURCE =
+    'function honorsDisableFirstEpisode(v as string) as boolean\n  return true\nend function\n' +
+    'function buildParams(v as string) as object\n  params = {}\n' +
+    '  if honorsDisableFirstEpisode(v) then params["DisableFirstEpisode"] = true\n' +
+    '  return params\nend function\n';
+
+  it('passes a version-gated parameter sent only beside its guard', () => {
+    scaffold({
+      manifestEndpoints: [...MANIFEST, NEXTUP],
+      source: GUARD_SOURCE,
+      registry: PARAM_REGISTRY,
+      files: {
+        'components/Task.bs':
+          "' DisableFirstEpisode is decided in buildParams\nsub run()\nend sub\n",
+      },
+    });
+    const res = spawnScript(LINT, ['--root', dir]);
+    expect(res.exitCode).toBe(0);
+    expect(res.stdout).toMatch(/1 registered/);
+  });
+
+  it('FAILS when a component sends the parameter without the guard, in any spelling', () => {
+    scaffold({
+      manifestEndpoints: [...MANIFEST, NEXTUP],
+      source: GUARD_SOURCE,
+      registry: PARAM_REGISTRY,
+      files: {
+        'components/A.bs':
+          'sub a()\n  req({ seriesId: "x", disableFirstEpisode: false })\nend sub\n',
+        'components/sub/B.bs': 'sub b()\n  p = {}\n  p.DisableFirstEpisode = true\nend sub\n',
+      },
+    });
+    const res = spawnScript(LINT, ['--root', dir]);
+    expect(res.exitCode).toBe(1);
+    const out = res.stderr + res.stdout;
+    expect(out).toMatch(
+      /components\/A\.bs sends "DisableFirstEpisode" without calling honorsDisableFirstEpisode/,
+    );
+    expect(out).toMatch(/components\/sub\/B\.bs sends/);
+    expect(out).toMatch(/2 validation failure/);
+  });
+
+  it('does not count a guard named only in a comment', () => {
+    scaffold({
+      manifestEndpoints: [...MANIFEST, NEXTUP],
+      source: GUARD_SOURCE,
+      registry: PARAM_REGISTRY,
+      files: {
+        'components/C.bs':
+          "sub c()\n  ' honorsDisableFirstEpisode() is not needed here\n" +
+          '  x = { "DisableFirstEpisode": "it\'s" } \' honorsDisableFirstEpisode\nend sub\n',
+      },
+    });
+    const res = spawnScript(LINT, ['--root', dir]);
+    expect(res.exitCode).toBe(1);
+    expect(res.stderr + res.stdout).toMatch(/components\/C\.bs sends/);
+  });
+
+  it('reads code after an apostrophe inside a string literal', () => {
+    scaffold({
+      manifestEndpoints: [...MANIFEST, NEXTUP],
+      source: GUARD_SOURCE,
+      registry: PARAM_REGISTRY,
+      files: {
+        'components/D.bs':
+          'sub d(v)\n  x = { DisableFirstEpisode: "it\'s", on: honorsDisableFirstEpisode(v) }\nend sub\n',
+      },
+    });
+    const res = spawnScript(LINT, ['--root', dir]);
+    expect(res.exitCode).toBe(0);
+  });
+
+  it('FAILS when the parameter guard is missing from source', () => {
+    scaffold({
+      manifestEndpoints: [...MANIFEST, NEXTUP],
+      source: 'sub x()\n  p = { DisableFirstEpisode: true }\nend sub\n',
+      registry: PARAM_REGISTRY,
+    });
+    const res = spawnScript(LINT, ['--root', dir]);
+    expect(res.exitCode).toBe(1);
+    expect(res.stderr + res.stdout).toMatch(
+      /symbol "honorsDisableFirstEpisode" not found in source/,
+    );
+  });
+
+  it('FAILS a parameter entry nothing sends any more (stale)', () => {
+    scaffold({
+      manifestEndpoints: [...MANIFEST, NEXTUP],
+      source:
+        'function honorsDisableFirstEpisode(v as string) as boolean\n  return true\nend function\n',
+      registry: PARAM_REGISTRY,
+    });
+    const res = spawnScript(LINT, ['--root', dir]);
+    expect(res.exitCode).toBe(1);
+    expect(res.stderr + res.stdout).toMatch(/sends "DisableFirstEpisode" any more/);
+  });
+
+  it('FAILS a parameter entry whose endpoint the app no longer calls', () => {
+    scaffold({ manifestEndpoints: MANIFEST, source: GUARD_SOURCE, registry: PARAM_REGISTRY });
+    const res = spawnScript(LINT, ['--root', dir]);
+    expect(res.exitCode).toBe(1);
+    expect(res.stderr + res.stdout).toMatch(
+      /\?DisableFirstEpisode: endpoint not found in the manifest/,
+    );
+  });
 
   it('passes when guard symbol exists + sibling is a floor-tier manifest endpoint', () => {
     scaffold({

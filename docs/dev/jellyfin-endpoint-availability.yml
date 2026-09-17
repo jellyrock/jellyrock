@@ -117,3 +117,33 @@ endpoints:
         in ApiClient calls the /Users/{userId}/Items sibling instead. The floor
         server serves GET /Items directly, so symmetry flags it; the V1 sibling
         covers the floor. (The expected coverage-symmetry case from Phase 5.)
+
+# Version-gated PARAMETERS — query parameters whose server behavior changes by
+# version on an endpoint that exists everywhere. The spec diff reports a parameter
+# only when it is added or removed, not when a server starts IGNORING it, so these
+# are recorded by hand after reading the controller at each release tag and
+# checking live servers (docs/dev/jellyfin-server-versioning.md §4).
+#
+# Fields: `path` + `method` (as above), `name` (the parameter), `honoredFrom` /
+# `honoredBelow` (the servers that act on it; at least one), optional `removedIn`
+# (the release that drops it from the spec), and `handling`, which must be
+# `version-guard`. The lint fails any .bs file under source/ or components/ that
+# names the parameter in code without calling the guard, and any entry that no
+# file sends any more.
+parameters:
+  - path: /shows/nextup
+    method: GET
+    name: DisableFirstEpisode
+    honoredBelow: "10.11.0"
+    removedIn: "12.0.0"
+    handling:
+      type: version-guard
+      symbol: honorsDisableFirstEpisode
+      note: >-
+        10.7–10.10 act on it: true drops the first-episode fallback (one pilot per
+        series for a user with no history in the cutoff), but on 10.8–10.10 it also
+        makes the server ignore NextUpDateCutoff. 10.11.x marks it
+        [ParameterObsolete] and ignores it; 12.0 removes it. Its default is false
+        on every version that honors it, so sending false does nothing.
+        buildHomeNextUpParams() (source/api/items.bs) sends true only where
+        honorsDisableFirstEpisode() is true and the cutoff is not lost.

@@ -464,6 +464,65 @@ function hasWatchedRegularEpisode(playedEpisodes as dynamic) as boolean
   return seasonNumber <> 0
 end function
 
+' honorsDisableFirstEpisode: Whether a server acts on Next Up's DisableFirstEpisode parameter.
+'
+' Honored on 10.7–10.10. From 10.11 the server ignores it (#925), and 12.0 removes it. Send
+' the parameter only where this returns true: it is registered as a version-gated parameter
+' in docs/dev/jellyfin-endpoint-availability.yml, and lint:endpoint-availability fails a
+' file that sends it without calling this.
+'
+' @param {string} serverVersion - Server version string, e.g. "10.10.7"
+' @returns {boolean} - true below 10.11.0
+function honorsDisableFirstEpisode(serverVersion as string) as boolean
+  return not versionChecker(serverVersion, "10.11.0")
+end function
+
+' buildHomeNextUpParams: Query parameters for the Home Next Up row.
+'
+' On 10.7–10.10, a user with no watch history inside the cutoff gets the first episode of
+' EVERY series (one per series, not a short list). DisableFirstEpisode=true drops those, but
+' on 10.8–10.10 it also makes the server ignore NextUpDateCutoff. So it is sent only where
+' it costs nothing: always on 10.7 (which has no cutoff), and on 10.8–10.10 only when Max
+' Days is off. With Max Days on, those servers keep the cutoff and still add first episodes.
+' From 10.11 the server returns watch history only, so the parameter is not sent.
+'
+' @param {string} serverVersion - Server version string, e.g. "10.10.7"
+' @param {boolean} enableRewatching - uiDetailsEnableRewatchingNextUp
+' @param {dynamic} maxDays - uiDetailsMaxDaysNextUp; 0 or invalid means off
+' @param {integer} nowSeconds - Current time as epoch seconds, for the cutoff
+' @returns {object} - Params for BuildGetNextUpRequest
+function buildHomeNextUpParams(serverVersion as string, enableRewatching as boolean, maxDays as dynamic, nowSeconds as integer) as object
+  params = {}
+  params["recursive"] = true
+  params["SortBy"] = "DatePlayed"
+  params["SortOrder"] = "Descending"
+  params["EnableRewatching"] = enableRewatching
+  ' DELIBERATELY NO `limit`. Next Up is a WORKLIST — the user is trying to get through it,
+  ' so any cap hides episodes they are part-way into a series on, and no number is the right
+  ' one to hide at. It sent 69 for a long time, which was arbitrary rather than derived.
+  ' `uiHomeRowLimit` deliberately does NOT reach here: that setting sizes the browse FEEDS
+  ' (Recently Added / On Now / Active Recordings), where a limit chooses how much of a
+  ' larger set to sample. Continue Watching, the other worklist, sends no limit either and
+  ' has shipped that way — the two now match on purpose rather than by omission.
+  params["EnableTotalRecordCount"] = false
+  params["EnableResumable"] = false
+
+  maxDaysOn = isValid(maxDays) and maxDays > 0
+  if maxDaysOn
+    dateCutoff = CreateObject("roDateTime")
+    dateCutoff.FromSeconds(nowSeconds - (maxDays * 86400))
+    params["NextUpDateCutoff"] = dateCutoff.ToISOString()
+  end if
+
+  if honorsDisableFirstEpisode(serverVersion)
+    if not versionChecker(serverVersion, "10.8.0") or not maxDaysOn
+      params["DisableFirstEpisode"] = true
+    end if
+  end if
+
+  return params
+end function
+
 function BackdropImage(id as string)
   ' Use UI resolution for backdrop images
   localDevice = m.global.device
