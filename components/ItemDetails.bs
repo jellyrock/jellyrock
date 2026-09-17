@@ -3413,15 +3413,13 @@ function getStreamsForSelectedSource(mediaSources as object) as object
 end function
 
 ' findSelectedSource: The MediaSource AA getStreamsForSelectedSource reads from, or
-' invalid. Only a source carrying MediaStreams qualifies, including the fallback.
+' invalid. Only a source carrying MediaStreams qualifies, including the fallback. The id is
+' matched ignoring case, as playback start matches it (mediaSourceIndexForId).
 function findSelectedSource(mediaSources as object) as dynamic
   if not isValid(mediaSources) then return invalid
 
-  for each source in mediaSources
-    if source.Id = m.top.selectedVideoStreamId and isValid(source.MediaStreams)
-      return source
-    end if
-  end for
+  index = mediaSourceIndexForId(mediaSources, m.top.selectedVideoStreamId)
+  if index >= 0 and isValid(mediaSources[index].MediaStreams) then return mediaSources[index]
 
   if isValid(mediaSources[0]) and isValid(mediaSources[0].MediaStreams)
     return mediaSources[0]
