@@ -662,6 +662,7 @@ sub onSubtitleChange()
   m.LoadMetaDataTask.selectedSubtitleIndex = m.top.SelectedSubtitle
   m.LoadMetaDataTask.selectedAudioStreamIndex = m.top.audioIndex
   m.LoadMetaDataTask.itemId = m.currentItem.id
+  keepLoadedVersionOnReload()
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
   ' Every launch of this task declares the fill its one handler resolves — see
   ' onVideoContentLoaded. Silent on this path in practice: a mid-playback reload happens
@@ -704,6 +705,7 @@ sub onAudioIndexChange()
   m.LoadMetaDataTask.selectedSubtitleIndex = m.top.SelectedSubtitle
   m.LoadMetaDataTask.selectedAudioStreamIndex = m.top.audioIndex
   m.LoadMetaDataTask.itemId = m.currentItem.id
+  keepLoadedVersionOnReload()
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
   ' Every launch of this task declares the fill its one handler resolves — see
   ' onVideoContentLoaded. Silent on this path in practice: a mid-playback reload happens
@@ -1697,7 +1699,12 @@ end sub
 ' @param {boolean} bypassDovi - skips DoVi container profile so the server can grant direct play
 ' @param {boolean} forceTranscode - disables direct play so the server returns a transcode URL
 sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
-  m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&)
+  ' Only a stream that has played has a position worth saving. A retry before the first
+  ' frame (direct play failing over to transcode) has none of its own, and saving what the
+  ' player reads then would replace the resume point the queue already holds.
+  if m.isPlayReported
+    m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&)
+  end if
   ' Prevents PlayerHostView from advancing/exiting when stop causes Roku to fire "finished".
   m.top.isRetrying = true
   m.top.control = "stop"
@@ -1709,6 +1716,7 @@ sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
   m.LoadMetaDataTask.selectedSubtitleIndex = m.top.SelectedSubtitle
   m.LoadMetaDataTask.selectedAudioStreamIndex = m.top.audioIndex
   m.LoadMetaDataTask.itemId = m.currentItem.id
+  keepLoadedVersionOnReload()
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
   ' Unlike the three reload paths, this one CAN run before the first frame, and when it
   ' does the retry is still the same load — the user has been waiting since init and has
@@ -1719,6 +1727,18 @@ sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
   ' declaration), so it spans the whole wait rather than restarting mid-way.
   screenLoad.pending("metadata")
   launchTask(m.LoadMetaDataTask)
+end sub
+
+' keepLoadedVersionOnReload: Hand the version this session loaded to the loader's next run.
+'
+' A reload — a subtitle or audio change, or a retry — runs LoadVideoContentTask again for the
+' same item, and a run given no mediaSourceId CHOOSES a version: on a per-version server from
+' the positions the server holds, which lag the viewer and can name a different file. So each
+' reload names the loaded version as an input of that run rather than trusting the field to
+' survive on a reused node (ADR 0037). Before the first load completes, and for live TV, there
+' is none; the field is then left alone, so a mediaSourceId the queue item supplied still stands.
+sub keepLoadedVersionOnReload()
+  if isValidAndNotEmpty(m.loadedMediaSourceId) then m.LoadMetaDataTask.mediaSourceId = m.loadedMediaSourceId
 end sub
 
 '
