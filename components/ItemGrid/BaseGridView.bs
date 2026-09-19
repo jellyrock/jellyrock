@@ -591,9 +591,10 @@ sub revealGenreList(rowsRoot as object)
   stopLoadingSpinner()
 
   ' Focus: the options dialog and the alpha menu keep it if the user is there (the grid
-  ' path guards isAlphaActive the same way); otherwise the list takes it.
+  ' path guards the same two); otherwise the list takes it. An open dialog keeps focus
+  ' where the user left it inside it — moving it to the dialog's root loses their place.
   if m.options.visible
-    m.options.setFocus(true)
+    ' leave it
   else if m.top.isAlphaActive
     m.alphaMenu.setFocus(true)
   else
@@ -656,6 +657,7 @@ sub onItemDataLoaded(msg)
   m.loadItemsTask.unobserveField("genreSkeletons")
   m.loadItemsTask.content = []
   m.totalRecordCount = m.loadItemsTask.totalRecordCount
+  isFirstPage = m.loadItemsTask.startIndex = 0
 
   if not isValid(itemData)
     m.loading = false
@@ -712,16 +714,22 @@ sub onItemDataLoaded(msg)
     ' Music genres fall through to use regular grid below
   end if
 
-  ' keep focus on alpha menu if it's active
+  ' Only a load's first page places focus, and never while the options dialog is open:
+  ' the later pages arrive every few hundred ms while the user may be anywhere, and moving
+  ' focus under an open dialog loses its place (the user's next OK is dropped or commits
+  ' the wrong entry). Keep focus on the alpha menu if it's active.
+  takeFocus = isFirstPage and not m.options.visible
   if m.top.isAlphaActive
-    m.alphaMenu.setFocus(true)
+    if takeFocus then m.alphaMenu.setFocus(true)
   else
     m.itemGrid.opacity = "1"
     m.genreList.opacity = "0"
 
-    m.alphaMenu.setFocus(false)
-    m.itemGrid.setFocus(true)
-    m.genreList.setFocus(false)
+    if takeFocus
+      m.alphaMenu.setFocus(false)
+      m.itemGrid.setFocus(true)
+      m.genreList.setFocus(false)
+    end if
   end if
 
   if m.data.getChildCount() = 0
@@ -769,10 +777,6 @@ sub onItemDataLoaded(msg)
     loadMoreData()
   end if
 
-  ' Return focus to options menu if it was opened while library was loading
-  if m.options.visible
-    m.options.setFocus(true)
-  end if
   m.log.debug("end onItemDataLoaded()")
 end sub
 
@@ -1307,6 +1311,10 @@ function onKeyEvent(key as string, press as boolean) as boolean
     m.itemGrid.setFocus(m.itemGrid.opacity = 1)
     m.genreList.setFocus(m.genreList.opacity = 1)
 
+    return true
+  else if key = "replay" and m.options.visible
+    ' The dialog does not handle Replay, so it arrives here. Reloading and resetting the
+    ' filters under an open dialog would rewrite the choices the user is making in it.
     return true
   else if key = "replay" and m.itemGrid.isinFocusChain()
     if m.resetGrid = true
