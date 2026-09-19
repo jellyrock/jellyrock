@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Give each run its own Task node where a restart can lose the work ([#961](https://github.com/jellyrock/jellyrock/pull/961))
 - Stop Next Up listing every series' pilot on Jellyfin 10.7–10.10 ([#955](https://github.com/jellyrock/jellyrock/pull/955))
 
 ## [2.30.0](https://github.com/jellyrock/jellyrock/compare/v2.29.1...v2.30.0) - 2026-09-17
