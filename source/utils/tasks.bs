@@ -160,6 +160,60 @@ function launchTask(node as object) as boolean
   return true
 end function
 
+' ── A new node per run ──────────────────────────────────────────────────────
+'
+' A run that can restart while the previous one is in flight gets a NEW Task node, never a
+' STOP then relaunch of the same one: while the old function still runs, that relaunch is
+' sometimes silently ignored and the work never happens (docs/architecture/threading.md,
+' "Measured findings"; the `no-same-node-relaunch` plugin makes it a build error). A new
+' node always starts, and the stopped function makes no further progress, so replacing
+' the node does not stack threads.
+'
+' Replacing the node brings a second obligation. Roku documents `unobserveField` only as
+' removing the connection; it says nothing about a change event already queued to this
+' thread. Such an event can reach the handler AFTER the field points at the replacement,
+' and a handler that reads `m.task` would then read the new run's still-empty output —
+' and usually unobserve it, losing the real delivery. So a handler for a replaceable
+' node takes its event and checks `isCurrentTaskEvent` first.
+
+' Stops `node`'s run, if any, and detaches the observer the caller registered on
+' `observedField`.
+'
+' @return invalid, so dropping the node for good reads `m.task = releaseTask(m.task, "field")`
+function releaseTask(node as dynamic, observedField as string) as dynamic
+  if isValid(node)
+    node.unobserveField(observedField)
+    node.control = "STOP"
+  end if
+  return invalid
+end function
+
+' Releases `existing` (see releaseTask) and returns a NEW `nodeType` Task node with
+' `fields` set, ready to be observed and launched. Always assign the result back:
+' `m.task = replaceTask(m.task, "LoadItemsTask", "content", { itemsToLoad: "x" })`.
+'
+' @param existing - the node of the run being replaced, or invalid when there is none
+' @param nodeType - the Task component to create
+' @param observedField - the field the caller observes on `existing`
+' @param fields - inputs for the new node, set in one call
+function replaceTask(existing as dynamic, nodeType as string, observedField as string, fields as object) as object
+  releaseTask(existing, observedField)
+  task = CreateObject("roSGNode", nodeType)
+  task.setFields(fields)
+  return task
+end function
+
+' True when `event` came from `current` — the run the component still wants. False for an
+' event queued by a node that has since been replaced or released, which the handler must
+' ignore rather than read `current` in its place.
+'
+' @param event - the roSGNodeEvent the observer handler received
+' @param current - the field holding the node of the run in flight (may be invalid)
+function isCurrentTaskEvent(event as object, current as dynamic) as boolean
+  if not isValid(current) then return false
+  return current.isSameNode(event.getRoSGNode())
+end function
+
 ' Records `node` and decides whether its launch may proceed.
 '
 ' Returns false when the app is at or above the watermark, in which case the node is

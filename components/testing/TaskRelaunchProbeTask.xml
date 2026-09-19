@@ -12,5 +12,10 @@
     <field id="ends" type="integer" value="0" />
     <field id="beats" type="integer" value="0" />
     <field id="release" type="bool" value="false" />
+    <field id="blockMode" type="string" value="pollLoop" />
+    <field id="blockMs" type="integer" value="5000" />
+    <field id="seq" type="integer" value="0" />
+    <field id="startSeq" type="integer" value="0" />
+    <field id="endSeq" type="integer" value="0" />
   </interface>
 </component>

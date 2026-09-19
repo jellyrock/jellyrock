@@ -83,10 +83,7 @@ sub loadFavorites()
   end if
 
   ' Cancel any in-flight task before starting new one
-  if m.isLoadingFavorites
-    m.loadFavoritesTask.unobserveField("content")
-    m.loadFavoritesTask.control = "STOP"
-  end if
+  m.loadFavoritesTask = replaceTask(m.loadFavoritesTask, "LoadItemsTask", "content", { itemsToLoad: "favorites" })
 
   m.isLoadingFavorites = true
   m.loadFavoritesTask.observeField("content", "onFavoritesLoaded")
@@ -111,7 +108,8 @@ end sub
 
 ' Groups loaded favorites by item type and populates/removes skeleton rows.
 ' On refresh, updates existing rows in place to preserve focus position.
-sub onFavoritesLoaded()
+sub onFavoritesLoaded(event as object)
+  if not isCurrentTaskEvent(event, m.loadFavoritesTask) then return
   itemData = m.loadFavoritesTask.content
   m.loadFavoritesTask.unobserveField("content")
   m.loadFavoritesTask.content = []

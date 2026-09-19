@@ -16,17 +16,16 @@ end sub
 
 ' Searches multiple Jellyfin endpoints for media matching the query.
 ' Runs on SearchTask thread — fetchJson blocks waiting for ApiPool responses.
-' Every result echoes the query it ANSWERS, so the caller can check that it got the one it
-' asked for. This node is reused across keystrokes — each stops the run in flight and
-' relaunches it — so `m.top.query` already holds the NEXT query by the time a delivery is
-' handled, and without the echo a late one is indistinguishable from the live one. Taken
+' Every result echoes the query it ANSWERS. The caller gives each keystroke a new node and
+' drops a delivery from any node it has since replaced (`SearchResults.loadResults`); the
+' echo is what that drop logs, so a superseded delivery names the query it answered. Taken
 ' from the local the search actually ran with, so the echo and the items cannot disagree.
 '
 ' ⚠️ `m.top.results` is assigned ONCE, below, as this function's last act — and that is
 ' load-bearing, not incidental. It is what lets the caller's `control = "stop"` prevent a
 ' superseded query from delivering at all (measured: 12 keystrokes, 6 deliveries, every one
-' current). Publishing partial results as each fetch lands would open exactly the race
-' `SearchResults.loadResults` watches for.
+' current). Publishing partial results as each fetch lands would widen the window of
+' superseded deliveries that `SearchResults.loadResults` has to drop.
 function searchMedia(query as string)
   if query = "" then return { Items: [], TotalRecordCount: 0, query: query }
 

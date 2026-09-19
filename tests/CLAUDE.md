@@ -55,11 +55,13 @@ Agents *can* and *should* run tests to verify fixes — do NOT commit changes ba
 | Command | What |
 |---|---|
 | `npm run test:tdd` | Build + run TDD config (single-suite iteration; copy `bsconfig-tdd-sample.json` to `bsconfig-tdd.json` and edit `files`) |
-| `npm run test:unit` | All unit tests |
+| `npm run test:unit` | All unit tests except the `measurement` tag |
 | `npm run test:integration` | All integration tests |
-| `npm run test:all` | Every suite except `migration` / `registry` tags, no code coverage — what CI's gating run uses |
-| `npm run test:complete` | Everything including `migration` / `registry` tags, **with code coverage recorded**. Much slower — the only build that instruments code; the others, CI's gating run included, do not |
+| `npm run test:all` | Every suite except `migration` / `registry` / `measurement` tags, no code coverage — what CI's gating run uses |
+| `npm run test:complete` | Everything including `migration` / `registry` / `measurement` tags, **with code coverage recorded**. Much slower — the only build that instruments code; the others, CI's gating run included, do not |
 | `npm run test:rta` | **RTA functional tests** (Vitest, drives a real device) — build + deploy + assert each screen loads. See [`docs/dev/rta-tests.md`](../docs/dev/rta-tests.md). |
+
+**`@tags("measurement")`** marks a suite that records a platform rate rather than gating behaviour — it is slow and cannot fail on the number it prints (`TaskRelaunchBlockModes.spec.bs`). It runs only when asked for: `test:tdd` with the spec selected, or `test:complete`. Put the property the app actually depends on in an untagged spec, so every run still gates it.
 
 The Rooibos runner (`scripts/run-roku-tests.js`) zips the build, sideloads to the Roku at `ROKU_IP`, and tails the debug console for `[Rooibos Result]: PASS|FAIL`. The RTA tests instead run under Vitest (`vitest.rta.config.js`) and assert in Node.
 

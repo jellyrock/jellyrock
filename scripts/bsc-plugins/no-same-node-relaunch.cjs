@@ -15,6 +15,13 @@
  * source order):
  *   - writes `X.control = "STOP"` (any casing; also `X["control"] = "STOP"`,
  *     `X.setField("control", "STOP")` and a literal `X.setFields({ control: "STOP" })`), or
+ *   - passes `X` as the first argument to `releaseTask()` or `replaceTask()`
+ *     (source/utils/tasks.bs), which STOP it. They live in another file, so the
+ *     same-file helper hop below would never see inside them; they are named here
+ *     instead. `m.x = replaceTask(m.x, …)` is the fix and is not flagged: the
+ *     assignment lands after the call it wraps. A bare `replaceTask(m.x, …)` whose
+ *     result is dropped, then `launchTask(m.x)`, IS flagged — that relaunches the
+ *     node the call just stopped. Or
  *   - calls a function or sub declared in the SAME file that STOPs `X` and does
  *     not assign `X` (or a parent of it) afterwards, where `X` is an `m.` path
  *     (one hop: `prepareDataLoad()` then `launchTask(m.loadItemsTask)`). A
@@ -122,26 +129,16 @@ const DISABLE_NEXT_LINE_MARKER = /'\s*bsc-disable-next-line\s+no-same-node-relau
  * the build fails until you do.
  */
 const PENDING_MIGRATIONS = {
-  'components/ItemDetails.bs': [
-    ['onItemIdChanged', 'm.loadDetailsTask'],
-    ['onRefreshResumeData', 'm.loadSeriesResumeTask'],
-    ['onRefreshItemDetailsData', 'm.loadDetailsTask'],
-    ['populateDescriptionGroup', 'm.loadLyricsTask'],
-    ['onItemContentChanged', 'm.loadSeriesResumeTask'],
-  ],
   'components/ItemGrid/BaseGridView.bs': [
     ['loadInitialItems', 'm.loadItemsTask'],
     ['loadMoreData', 'm.loadItemsTask'],
     ['onVoiceFilter', 'm.loadItemsTask'],
   ],
-  'components/home/FavoritesRows.bs': [['loadFavorites', 'm.loadFavoritesTask']],
   'components/home/HomeRows.bs': [['startLatestMediaLoads', 'm.latestRowsTask']],
   'components/liveTv/schedule.bs': [
     ['channelFilterSet', 'm.LoadChannelsTask'],
     ['channelsearchTermSet', 'm.LoadChannelsTask'],
   ],
-  'components/music/AudioPlayerView.bs': [['pageContentChanged', 'm.LoadAudioStreamTask']],
-  'components/search/SearchResults.bs': [['searchMedias', 'm.searchTask']],
   'components/video/VideoPlayerView.bs': [
     ['loadCaption', 'm.captionTask'],
     ['onSubtitleChange', 'm.captionTask'],
@@ -153,6 +150,8 @@ const CONTROL_FIELD = 'control';
 const STOP_VALUE = 'stop';
 const SET_FIELD = 'setfield';
 const FIELD_WRITE_METHODS = new Set(['setfields', 'addfields']);
+/** tasks.bs helpers that STOP the node passed as their first argument. */
+const TASK_RELEASERS = new Set(['releasetask', 'replacetask']);
 const SELF_REFERENCE = 'm';
 
 /** The value of a string literal expression, or undefined. */
@@ -212,6 +211,17 @@ function start(node) {
 }
 
 /**
+ * Where an assignment TAKES EFFECT: after its right-hand side has run, so at the
+ * statement's end. `m.x = replaceTask(m.x, …)` stops `m.x` inside the value and
+ * only then rebinds it; positioning the rebind at the statement's start would
+ * order it before that stop and flag the fix.
+ */
+function end(node) {
+  const e = node?.location?.range?.end;
+  return e ? e.line * 100000 + e.character : -1;
+}
+
+/**
  * Every STOP, launch, rebind and bare call in `func`'s own body, each with its
  * source position. Nested function expressions are skipped: they are checked as
  * functions of their own. The walk does not visit in source order, so this sorts.
@@ -221,6 +231,10 @@ function collectEvents(func) {
   const push = (kind, path, node, extra = {}) => {
     if (path === undefined) return;
     events.push({ kind, path, pos: start(node), node, ...extra });
+  };
+  const pushRebind = (path, statement) => {
+    if (path === undefined) return;
+    events.push({ kind: 'rebind', path, pos: end(statement), node: statement });
   };
   const skipper = new brighterscript.ChildrenSkipper();
 
@@ -236,7 +250,7 @@ function collectEvents(func) {
         if (field === CONTROL_FIELD && isLiteral(statement.value, STOP_VALUE)) {
           push('stop', base, statement);
         }
-        push('rebind', `${base}.${field}`, statement);
+        pushRebind(`${base}.${field}`, statement);
       },
       IndexedSetStatement: (statement) => {
         const indexes = statement.indexes || [];
@@ -247,11 +261,11 @@ function collectEvents(func) {
         if (key === CONTROL_FIELD && isLiteral(statement.value, STOP_VALUE)) {
           push('stop', base, statement);
         }
-        push('rebind', `${base}.${key}`, statement);
+        pushRebind(`${base}.${key}`, statement);
       },
       AssignmentStatement: (statement) => {
         const name = statement.tokens?.name?.text;
-        if (name) push('rebind', name.toLowerCase(), statement);
+        if (name) pushRebind(name.toLowerCase(), statement);
       },
       CallExpression: (call) => {
         const callee = call?.callee;
@@ -261,8 +275,12 @@ function collectEvents(func) {
           return;
         }
         if (brighterscript.isVariableExpression(callee)) {
-          const name = callee.tokens?.name?.text;
-          if (name) push('call', name.toLowerCase(), call);
+          const name = callee.tokens?.name?.text?.toLowerCase();
+          if (name && TASK_RELEASERS.has(name)) {
+            if (args.length >= 1) push('stop', refPath(args[0]), call);
+            return;
+          }
+          if (name) push('call', name, call);
           return;
         }
         if (!brighterscript.isDottedGetExpression(callee)) return;
@@ -652,3 +670,4 @@ class NoSameNodeRelaunchPlugin {
 module.exports = () => new NoSameNodeRelaunchPlugin();
 // Tests pass their own list, so they do not depend on which sites are still pending.
 module.exports.withPendingMigrations = (pending) => () => new NoSameNodeRelaunchPlugin(pending);
+module.exports.PENDING_MIGRATIONS = PENDING_MIGRATIONS;

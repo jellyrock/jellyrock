@@ -131,6 +131,72 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("releaseTask() / replaceTask() — a new node per run")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("releaseTask stops a running node and returns invalid")
+    function _()
+      node = m.runningTask()
+      m.assertInvalid(releaseTask(node, "reachable"))
+      m.assertEqual(LCase(node.state), "stop")
+    end function
+
+    @it("releaseTask accepts invalid, for a slot with no run yet")
+    function _()
+      m.assertInvalid(releaseTask(invalid, "reachable"))
+    end function
+
+    @it("replaceTask stops the old node and returns a new one of the type with its fields set")
+    function _()
+      old = m.runningTask()
+      fresh = replaceTask(old, "ServerReachableTask", "reachable", { baseUrl: "http://192.0.2.1:8096" })
+
+      m.assertFalse(fresh.isSameNode(old), "a new node, not the old one")
+      m.assertEqual(fresh.subtype(), "ServerReachableTask")
+      m.assertEqual(fresh.baseUrl, "http://192.0.2.1:8096")
+      m.assertEqual(LCase(old.state), "stop", "the old run is stopped")
+      m.assertEqual(LCase(fresh.state), "init", "the new node is not launched for the caller")
+    end function
+
+    @it("replaceTask accepts invalid, for a slot with no run yet")
+    function _()
+      fresh = replaceTask(invalid, "ServerReachableTask", "reachable", {})
+      m.assertEqual(fresh.subtype(), "ServerReachableTask")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isCurrentTaskEvent() — ignoring a replaced run's event")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A stand-in roSGNodeEvent: the helper reads only getRoSGNode().
+    protected function eventFrom(node as object) as object
+      return {
+        source: node,
+        getRoSGNode: function() as object
+          return m.source
+        end function
+      }
+    end function
+
+    @it("is true for an event from the node the field holds")
+    function _()
+      current = m.freshTask()
+      m.assertTrue(isCurrentTaskEvent(m.eventFrom(current), current))
+    end function
+
+    @it("is false for an event from a node that has since been replaced")
+    function _()
+      replaced = m.freshTask()
+      current = m.freshTask()
+      m.assertFalse(isCurrentTaskEvent(m.eventFrom(replaced), current))
+    end function
+
+    @it("is false once the field was released, as at teardown")
+    function _()
+      m.assertFalse(isCurrentTaskEvent(m.eventFrom(m.freshTask()), invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("taskThreadIsLive() — the liveness rule")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
