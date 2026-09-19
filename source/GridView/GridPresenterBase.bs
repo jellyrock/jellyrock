@@ -73,8 +73,9 @@ class GridPresenterBase
   ' Load Task Configuration
   ' ============================================================================
 
-  ' Configures the LoadItemsTask2 for data loading
-  ' @param {object} task - The LoadItemsTask2 node
+  ' Configures the LoadItemsTask2 query for data loading
+  ' @param {object} task - The query: an AA of LoadItemsTask2 input fields, NOT the node
+  '   (BaseGridView runs each load on a new node; see gridQuery.build). Assign fields only.
   ' @param {object} parentItem - The library item being displayed
   ' @param {string} viewMode - Current view mode (e.g., "Movies", "MoviesGrid")
   sub configureLoadTask(_task as object, _parentItem as object, _viewMode as string)
