@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-19 — fix: Start every item a queue arrives at from the beginning
 - 2026-09-19 — Quick play of a folder holding one series now resumes that series: `QuickPlayTask.doFolder` carries `doSeries`'s whole launch (its resume position, not just whether it resumes), so the episode resumes whatever its version count — measured on 12.0, a single-version episode resumed at 200.0 s where it previously started at 0.5 s
 - 2026-09-19 — The Cinema Mode intro now queues the item it plays in front of directly after that slot (`QueueManager.insertAfterCurrent`), so a multi-item queue keeps its play order — reproduced on 10.11 with the Local Intros plugin (a Play All queue played `e2` after the intro and `e1` last) and gated in `queueArrival.spec.bs`
 - 2026-09-19 — fix: Resume the same version everywhere, and map an in-player switch
