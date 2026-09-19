@@ -48,3 +48,4 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0034](0034-component-observers-init-to-ondestroy.md) | A component's own observers live from `init()` to `onDestroy()`; handlers gate, observers never toggle | Accepted | 2026-09-13 |
 | [0035](0035-server-plugin-capabilities.md) | Features that need a server plugin are gated by a per-sign-in capability check; each capability chooses its own failure policy | Accepted | 2026-09-14 |
 | [0036](0036-api-pool-width-by-device-class.md) | The API pool width is chosen per device class — 4 on low-memory devices, 6 elsewhere | Accepted | 2026-09-16 |
+| [0037](0037-task-run-replacement.md) | A Task run that can restart gets a new node, and its handler ignores events from nodes it replaced | Accepted | 2026-09-18 |
