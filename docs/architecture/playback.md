@@ -23,10 +23,11 @@ related-files:
   - source/utils/versionLabels.bs
   - source/utils/versionResume.bs
   - source/utils/quickplay.bs
+  - source/utils/nodeHelpers.bs
   - source/utils/streamSelection.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-09-17
+last-reviewed: 2026-09-19
 ---
 
 # Video & Audio Playback
@@ -470,12 +471,25 @@ picks device-best as before.
 
 **A version is only ever resumed at its OWN position**, never another's — the two local
 releases of one episode run 47 s apart, so borrowing a position moves the viewer elsewhere in
-the content. "Most recently played" is read from the server's source ORDER, not a timestamp:
-12.0 copies the newest version's `LastPlayedDate` onto the item's own user data
-(`VersionResumeData.ApplyTo`), so once an alternate was played more recently the item's real
-play time is unreadable — the local pair reports identical dates to the 100 ns digit.
-`SetAlternateVersionResumeStates` leads with the most recently played version that *has* a
-position, so the first in-progress version in server order is the most recent.
+the content. "Most recently played" is never read from a timestamp: 12.0 copies the newest
+version's `LastPlayedDate` onto the primary's user data (`VersionResumeData.ApplyTo`), so once
+an alternate was played more recently the primary's own play time is unreadable — the local
+pair reports identical dates to the 100 ns digit. The server answers it two other ways:
+
+- **The source ORDER, but only from a primary.** `SetAlternateVersionResumeStates` moves the
+  most recently played version that *has* a position to the front of a **primary's**
+  `MediaSources`, and leaves a directly queried alternate's own source first whatever played
+  last. So another version in front proves the item is a primary and that version was played
+  last; the item's own source in front proves nothing, and the DTO does not say which kind of
+  item it is (`PrimaryVersionId` is server-side only, through 12.1).
+- **The resume query**, `GET /UserItems/Resume?parentId=<the item's parent>`, which returns the
+  version that owns the resume point. `chooseResumeSource` asks for it (`needsMostRecent`) only
+  in the ambiguous case above with two versions in progress; the shells answer with
+  `versionResume.mostRecentIdFrom()`, and a reply that cannot say falls back to the order.
+
+This matters in practice because on 12.0 **Continue Watching lists the version played last**, so
+an alternate's id is what gets queued, and reading that alternate's own source order as "played last" once
+resumed the wrong file.
 
 Two versions within `versionResume.NEAR_LEVEL_MARGIN_TICKS` (30 s) count as being at the same
 place, so quality decides between them instead of which played last. Because a version resumes at its own
@@ -496,7 +510,15 @@ the app cannot name one version and play another:
   it with `MediaSources[0].Id`, which would otherwise read as an explicit pick) and leaves
   `selectedAudioStreamIndex` at 0 so the audio track is picked for whichever version wins. The
   reads ride `apiPipeline`, so N versions cost roughly one round trip, and nothing is fetched
-  unless something is already in progress.
+  unless something is already in progress. A **mid-playback reload** (subtitle or audio change,
+  retry) re-runs the same task, so `VideoPlayerView.keepLoadedVersionOnReload()` passes the
+  loaded version as that run's `mediaSourceId` — without it the reload chooses again from the
+  server's lagging positions and can switch file and position under the viewer.
+- **The start position says what kind it is.** The loader replaces a *resume* start with the
+  chosen version's own position, and never an *exact* one — a chapter, Play from the start, a
+  position the player saved before a reload. Callers write the pair through
+  `nodeHelpers.setResumeStart()` / `setExactStart()` (or `setCurrentStartingPoint`'s `isExact`),
+  never `startingPoint` alone; `startingPointIsExact` is read only on the per-version path.
 - **`ItemDetails`** decides for itself and passes an explicit id, which the loader honors
   untouched. Its first guess comes from the source order alone, then
   `syncVersionSelectionToChoice()` re-runs the choice as each position lands and moves the
