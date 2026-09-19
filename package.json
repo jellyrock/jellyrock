@@ -161,6 +161,9 @@
   ],
   "author": "Charles Ewert",
   "license": "GPL-2.0",
+  "engines": {
+    "node": "^22.22.1 || ^24.0.0 || >=26.0.0"
+  },
   "bugs": {
     "url": "https://github.com/jellyrock/jellyrock/issues"
   },
