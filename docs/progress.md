@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-19 — fix: Give each `BaseGridView` load and page its own Task node
 - 2026-09-19 — fix: Give each run its own Task node where a restart can lose the work
 - 2026-09-18 — `SearchResults.loadResults` now drops a delivery from a replaced search node (`isCurrentTaskEvent`) and warns naming the query it answered, closing the followup that the search keystroke race was detected but deliberately not acted on — with a new node per keystroke, reading the current node on a stale event would resolve and unobserve the live run
 - 2026-09-19 — ci: Give every `PENDING_MIGRATIONS` state in `no-same-node-relaunch` an honest verdict
