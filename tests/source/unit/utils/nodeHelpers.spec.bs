@@ -599,6 +599,73 @@ namespace tests
       m.assertFalse(queueItem.DoesExist("artists"))
     end function
 
+    '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("setResumeStart() / setExactStart() - the start position and its intent")
+    ' LoadVideoContentTask replaces a RESUME start with the chosen version's own position on a
+    ' per-version server, and must never replace an EXACT one (a chapter, Play from the start, a
+    ' position saved before a reload). The pair is written together so the two cannot drift.
+    '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("marks a resume start as replaceable")
+    function _()
+      queueItem = nodeHelpers.createQueueItem({ id: "ep-1", type: "Episode" })
+
+      nodeHelpers.setResumeStart(queueItem, 3180000000&)
+
+      m.assertEqual(queueItem.startingPoint, 3180000000&)
+      m.assertFalse(queueItem.startingPointIsExact)
+    end function
+
+    @it("marks an exact start as not replaceable")
+    function _()
+      queueItem = nodeHelpers.createQueueItem({ id: "ep-1", type: "Episode" })
+
+      nodeHelpers.setExactStart(queueItem, 6000000000&)
+
+      m.assertEqual(queueItem.startingPoint, 6000000000&)
+      m.assertTrue(queueItem.startingPointIsExact)
+    end function
+
+    @it("treats an exact start at zero as exact, so Play from the start is not turned into a resume")
+    function _()
+      queueItem = nodeHelpers.createQueueItem({ id: "ep-1", type: "Episode" })
+
+      nodeHelpers.setExactStart(queueItem, 0)
+
+      m.assertEqual(queueItem.startingPoint, 0)
+      m.assertTrue(queueItem.startingPointIsExact)
+    end function
+
+    @it("overwrites the intent along with the position, in either direction")
+    function _()
+      queueItem = nodeHelpers.createQueueItem({ id: "ep-1", type: "Episode" })
+
+      nodeHelpers.setExactStart(queueItem, 9000000000&)
+      nodeHelpers.setResumeStart(queueItem, 3180000000&)
+      m.assertEqual(queueItem.startingPoint, 3180000000&)
+      m.assertFalse(queueItem.startingPointIsExact)
+
+      nodeHelpers.setExactStart(queueItem, 9050000000&)
+      m.assertEqual(queueItem.startingPoint, 9050000000&)
+      m.assertTrue(queueItem.startingPointIsExact)
+    end function
+
+    @it("does not invent a start on a queue item that was never created")
+    function _()
+      ' Neither setter may throw on invalid — createQueueItem returns invalid for a bad source.
+      nodeHelpers.setResumeStart(invalid, 3180000000&)
+      nodeHelpers.setExactStart(invalid, 3180000000&)
+      m.assertTrue(true)
+    end function
+
+    @it("leaves no start at all on a fresh queue item, so the loader reads no intent")
+    function _()
+      queueItem = nodeHelpers.createQueueItem({ id: "ep-1", type: "Episode", playbackPositionTicks: 3180000000& })
+
+      m.assertFalse(queueItem.DoesExist("startingPoint"))
+      m.assertFalse(queueItem.DoesExist("startingPointIsExact"))
+    end function
+
   end class
 
 end namespace

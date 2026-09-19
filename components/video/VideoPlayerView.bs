@@ -655,7 +655,7 @@ sub onSubtitleChange()
   m.log.info("Subtitle change requires stream reload", "subtitleIndex", m.top.SelectedSubtitle, "position", m.top.position)
 
   ' Save the current video position
-  m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&)
+  m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&, true)
 
   m.top.control = "stop"
 
@@ -698,7 +698,7 @@ sub onAudioIndexChange()
   m.log.info("Audio change requires reload", "isTranscoded", m.top.isTranscoded)
 
   ' Save the current video position
-  m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&)
+  m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&, true)
 
   m.top.control = "stop"
 
@@ -743,7 +743,7 @@ sub onVideoSourceChange()
   if isValid(newSource) then newRuntimeTicks = newSource.RunTimeTicks
   startTicks = versionResume.switchTicksFor(int(m.top.position) * 10000000&, int(getEffectiveDuration()) * 10000000&, newRuntimeTicks)
   m.log.info("Version switch carry", "fromPosition", int(m.top.position), "toTicks", startTicks, "newRuntimeTicks", newRuntimeTicks)
-  m.global.queueManager.callFunc("setCurrentStartingPoint", startTicks)
+  m.global.queueManager.callFunc("setCurrentStartingPoint", startTicks, true)
 
   ' No progress report until the new stream plays (the `playing` branch restarts this): a
   ' tick after the new source loads would report the old stream's position against it.
@@ -1703,7 +1703,7 @@ sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
   ' frame (direct play failing over to transcode) has none of its own, and saving what the
   ' player reads then would replace the resume point the queue already holds.
   if m.isPlayReported
-    m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&)
+    m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&, true)
   end if
   ' Prevents PlayerHostView from advancing/exiting when stop causes Roku to fire "finished".
   m.top.isRetrying = true

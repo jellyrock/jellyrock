@@ -91,11 +91,10 @@ namespace quickplay
       audioStreamIndex = findBestAudioStreamIndex(audioStreams, playDefault, resolveAudioLanguagePreference(localUser.settings, localUser.config))
     end if
 
-    ' Resume position from typed field; startingPoint is computed here, not stored on node
-    playbackPosition = itemNode.playbackPositionTicks
-
     queueItem.selectedAudioStreamIndex = audioStreamIndex
-    queueItem.startingPoint = playbackPosition
+    ' The item's saved position: on a per-version server the loader may resume another version
+    ' at that version's own position instead.
+    nodeHelpers.setResumeStart(queueItem, itemNode.playbackPositionTicks)
 
     m.global.queueManager.callFunc("push", queueItem)
   end sub

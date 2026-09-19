@@ -825,7 +825,7 @@ sub resumeSeriesNextUp()
   if not (isValid(nextEp) and isValidAndNotEmpty(nextEp.id)) then return
   queueItem = nodeHelpers.createQueueItem(nextEp)
   if not isValid(queueItem) then return
-  queueItem.startingPoint = nextEp.playbackPositionTicks
+  nodeHelpers.setResumeStart(queueItem, nextEp.playbackPositionTicks)
   launchQueueItemToPlay(queueItem, "Episode", nextEp.id)
 end sub
 
@@ -857,7 +857,9 @@ sub startPlayFromDetail(startingPoint as longinteger)
   if isValidAndNotEmpty(m.top.selectedVideoStreamId)
     queueItem.mediaSourceId = m.top.selectedVideoStreamId
   end if
-  queueItem.startingPoint = startingPoint
+  ' Exact: this screen already resolved where the selected version starts (its own position, a
+  ' carry, or 0 for Play), and the loader must not second-guess it.
+  nodeHelpers.setExactStart(queueItem, startingPoint)
 
   launchQueueItemToPlay(queueItem, m.top.itemType, item.id)
 end sub

@@ -195,6 +195,9 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   if isValid(currentItem) and isValid(currentItem.startingPoint)
     playbackPosition = currentItem.startingPoint
   end if
+  ' A place the caller named — a chapter, Play from the start, a position saved before a
+  ' reload — as opposed to a saved resume position (nodeHelpers.setExactStart).
+  startsAtExactPosition = isValid(currentItem) and isValid(currentItem.startingPointIsExact) and currentItem.startingPointIsExact
 
   ' Select a video source if no specific source was requested. On a per-version server this is
   ' the ONE place that choice is made for every entry point that did not make it on screen —
@@ -208,9 +211,10 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
         mediaSourceId = choice.sourceId
         ' The chosen version resumes at ITS OWN position, never the one the queue carried:
         ' two versions of one item can be a minute apart in runtime, so reusing another
-        ' version's position would drop the viewer somewhere else in the content.
-        playbackPosition = choice.ticks
-        m.log.info("Resume version chosen", "mediaSourceId", mediaSourceId, "ticks", playbackPosition)
+        ' version's position would drop the viewer somewhere else in the content. Unless the
+        ' caller named the place: a chapter plays from the chapter, on whichever version.
+        if not startsAtExactPosition then playbackPosition = choice.ticks
+        m.log.info("Resume version chosen", "mediaSourceId", mediaSourceId, "ticks", playbackPosition.toStr(), "isExact", startsAtExactPosition)
       else
         mediaSourceId = mediaSources[findBestVideoSource(mediaSources)].Id
         m.log.info("Auto-selected video source (nothing in progress)", "mediaSourceId", mediaSourceId)

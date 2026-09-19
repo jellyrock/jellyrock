@@ -39,8 +39,13 @@ namespace nodeHelpers
     optional playbackPositionTicks as longinteger
     ' Live TV
     optional channelNumber as string
-    ' Set by callers after creation (quickplay / ItemDetails) — playback selection + resume point
+    ' Set by callers after creation (quickplay / ItemDetails) — playback selection + resume point.
+    ' Write the pair through setResumeStart() / setExactStart(), never startingPoint alone.
     optional startingPoint as longinteger
+    ' True when startingPoint is a place the caller NAMED (a chapter, Play from the start, the
+    ' position a reload saved) rather than a saved resume position. Only a resume position may be
+    ' replaced by the one the loader reads for the version it chooses on a per-version server.
+    optional startingPointIsExact as boolean
     optional selectedAudioStreamIndex as integer
     optional selectedSubtitleStreamIndex as integer
     ' True when SOME version of this item holds a playback position, which startingPoint alone
@@ -86,7 +91,8 @@ namespace nodeHelpers
   '   - seasonId: Season ID for episode navigation in resume dialog
   '   - playbackPositionTicks: Saved resume position
   '
-  ' Callers set startingPoint and selectedAudioStreamIndex on the returned AA after creation.
+  ' Callers set selectedAudioStreamIndex on the returned AA after creation, and the start
+  ' position through setResumeStart() or setExactStart().
   '
   ' Returns `object`, not `QueueItem`: the queue item is used as a real roAssociativeArray
   ' (callers/tests use DoesExist/Count), and typing it as the interface would strip those AA
@@ -149,5 +155,29 @@ namespace nodeHelpers
 
     return queueItem
   end function
+
+  ' setResumeStart: Start a queue item from its saved resume position.
+  '
+  ' The loader may replace it: on a per-version server it chooses which version resumes and
+  ' starts that version at ITS OWN position, which the caller could not read.
+  '
+  ' @param {object} queueItem - from createQueueItem()
+  ' @param {dynamic} ticks - the saved position (0 = from the beginning)
+  sub setResumeStart(queueItem as object, ticks as dynamic)
+    if not isValid(queueItem) then return
+    queueItem.startingPoint = ticks
+    queueItem.startingPointIsExact = false
+  end sub
+
+  ' setExactStart: Start a queue item at a place the caller named — a chapter, Play from the
+  ' start, the position a reload saved. The loader never replaces it.
+  '
+  ' @param {object} queueItem - from createQueueItem()
+  ' @param {dynamic} ticks - where playback starts (0 = from the beginning)
+  sub setExactStart(queueItem as object, ticks as dynamic)
+    if not isValid(queueItem) then return
+    queueItem.startingPoint = ticks
+    queueItem.startingPointIsExact = true
+  end sub
 
 end namespace
