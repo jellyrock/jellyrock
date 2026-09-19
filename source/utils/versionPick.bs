@@ -1,0 +1,56 @@
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/streamSelection.bs"
+import "pkg:/source/utils/versionLabels.bs"
+
+' The version a viewer explicitly picked, carried to the items a queue arrives at.
+'
+' A pick is made in the details screen's Video menu or by a switch in the player, and lives on
+' the queue (QueueManager.setVersionPreference), so a new queue starts without one. An item the
+' queue arrives at resumes nothing, so no position has a say in its version: it plays the one
+' with the same video (resolution, codec, HDR range) when it has it, otherwise the best for the
+' device. Matched on the stream, never the name: a name is the file's, so across items it only
+' lines up when every item's versions share one naming scheme (jellyfin-web's rule), and it
+' would pin a viewer to 1080p when the next item also has 4K. Only an explicit pick carries;
+' an automatic choice stays automatic, so upgrades still happen.
+namespace versionPick
+
+  ' preferenceFor: What an explicit version pick carries to later items — the video fields a
+  ' version is told apart by, written as the version labels write them.
+  '
+  ' @param {dynamic} source - the MediaSource the viewer picked
+  ' @return {dynamic} { resolution, codec, range }, or invalid when the source has no video
+  function preferenceFor(source as dynamic) as dynamic
+    if not isValid(source) then return invalid
+    fields = versionLabels.videoFields(source)
+    if fields.resolution = "" and fields.codec = "" then return invalid
+    return fields
+  end function
+
+  ' matchIndex: The first source whose video matches the preference, or -1.
+  '
+  ' @param {dynamic} preference - from preferenceFor(), or invalid for "no explicit pick"
+  ' @param {dynamic} mediaSources - the candidate MediaSources
+  ' @return {integer}
+  function matchIndex(preference as dynamic, mediaSources as dynamic) as integer
+    if not isValid(preference) or not isValid(mediaSources) then return -1
+    for i = 0 to mediaSources.count() - 1
+      if not isValid(mediaSources[i]) then continue for
+      fields = versionLabels.videoFields(mediaSources[i])
+      if fields.resolution = preference.resolution and fields.codec = preference.codec and fields.range = preference.range then return i
+    end for
+    return -1
+  end function
+
+  ' sourceIndexFor: Which version plays — the explicit pick's match, else the best for the device.
+  '
+  ' @param {dynamic} preference - from preferenceFor(), or invalid
+  ' @param {object} mediaSources - the item's MediaSources
+  ' @param {dynamic} deviceCapabilities - for tests; invalid reads the device
+  ' @return {integer}
+  function sourceIndexFor(preference as dynamic, mediaSources as object, deviceCapabilities = invalid as dynamic) as integer
+    index = matchIndex(preference, mediaSources)
+    if index >= 0 then return index
+    return findBestVideoSource(mediaSources, deviceCapabilities)
+  end function
+
+end namespace

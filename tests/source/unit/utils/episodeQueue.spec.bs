@@ -2,30 +2,37 @@ import "pkg:/source/utils/episodeQueue.bs"
 
 namespace tests
 
-  ' Which episodes a queue plays and which version or copy of each: the rules in
-  ' episodeQueue. build() is the network shell around them and is covered on device.
-  @suite("episodeQueue - queued episodes")
+  ' One copy per episode in a queue built from a list of episodes: the rules in episodeQueue.
+  ' collapseCopies() / collapseQueue() are the network shell around them and are covered on
+  ' device.
+  @suite("episodeQueue - one copy per episode")
   class EpisodeQueueTests extends tests.BaseTestSuite
 
     private function caps1080() as object
       return { maxHeight: 1080, maxWidth: 1920, canDecode4k: false, supportsHdr10: false, supportsDolbyVision: false, supportsHlg: false, isMock: true }
     end function
 
-    private function source(id as string, height as integer, codec = "h264" as string, videoRange = "SDR" as string) as object
+    private function source(id as string, height as integer) as object
       return {
         Id: id,
         SupportsDirectPlay: true,
-        MediaStreams: [{ Type: "Video", Height: height, Width: int(height * 16 / 9), Codec: codec, VideoRange: videoRange, IsInterlaced: false }]
+        MediaStreams: [{ Type: "Video", Height: height, Width: int(height * 16 / 9), Codec: "h264", VideoRange: "SDR", IsInterlaced: false }]
       }
     end function
 
-    private function episode(id as string, season as dynamic, number as dynamic) as object
-      return { Id: id, ParentIndexNumber: season, IndexNumber: number }
+    private function episode(id as string, season as dynamic, number as dynamic, seriesId = "show" as string) as object
+      return { Id: id, Type: "Episode", SeriesId: seriesId, ParentIndexNumber: season, IndexNumber: number }
     end function
 
-    ' How 10.11 lists the Version Episodes fixture: every file its own episode, and E1's
-    ' 720p copy ahead of its 1080p one (measured 2026-09-19).
-    private function listed1011() as object
+    private function withUserData(item as object, played as boolean, positionTicks = 0& as longinteger, lastPlayed = "" as string) as object
+      item.UserData = { Played: played, PlaybackPositionTicks: positionTicks }
+      if lastPlayed <> "" then item.UserData.LastPlayedDate = lastPlayed
+      return item
+    end function
+
+    ' How 10.7 through 10.11 list the Version Episodes fixture: every file its own episode, and
+    ' E1's 720p copy ahead of its 1080p one (queried on each 2026-09-19).
+    private function listedPre12() as object
       return [
         m.episode("e1-720", 1, 1), m.episode("e1-1080", 1, 1),
         m.episode("e2-1080", 1, 2), m.episode("e2-720", 1, 2),
@@ -46,9 +53,9 @@ namespace tests
     @describe("episodeKey()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("keys a numbered episode by season and number")
+    @it("keys a numbered episode by series, season and number")
     function _()
-      m.assertEqual(episodeQueue.episodeKey(m.episode("a", 1, 2)), "S1E2")
+      m.assertEqual(episodeQueue.episodeKey(m.episode("a", 1, 2)), "show/S1E2")
     end function
 
     @it("never keys an unnumbered item")
@@ -56,6 +63,20 @@ namespace tests
       m.assertEqual(episodeQueue.episodeKey(m.episode("a", 1, invalid)), "")
       m.assertEqual(episodeQueue.episodeKey(m.episode("a", invalid, 2)), "")
       m.assertEqual(episodeQueue.episodeKey(invalid), "")
+    end function
+
+    @it("never keys an episode without a series")
+    function _()
+      m.assertEqual(episodeQueue.episodeKey(m.episode("a", 1, 2, "")), "")
+    end function
+
+    @it("never keys anything but an episode, such as a track with disc and track numbers")
+    function _()
+      track = { Id: "t", Type: "Audio", ParentIndexNumber: 1, IndexNumber: 2 }
+      m.assertEqual(episodeQueue.episodeKey(track), "")
+      movie = m.episode("m", 1, 2)
+      movie.Type = "Movie"
+      m.assertEqual(episodeQueue.episodeKey(movie), "")
     end function
 
     @it("never keys a multi-episode file, which covers more than its first number")
@@ -69,7 +90,7 @@ namespace tests
     function _()
       item = m.episode("a", 1, 2)
       item.IndexNumberEnd = 2
-      m.assertEqual(episodeQueue.episodeKey(item), "S1E2")
+      m.assertEqual(episodeQueue.episodeKey(item), "show/S1E2")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -78,7 +99,7 @@ namespace tests
 
     @it("groups a pre-12.0 server's copies of one episode, in first-seen order")
     function _()
-      groups = episodeQueue.groupByEpisode(m.listed1011())
+      groups = episodeQueue.groupByEpisode(m.listedPre12())
       m.assertEqual(groups.count(), 4)
       m.assertEqual(m.ids(groups[0]), "e1-720,e1-1080")
       m.assertEqual(m.ids(groups[1]), "e2-1080,e2-720")
@@ -87,10 +108,10 @@ namespace tests
     end function
 
     @it("leaves out every copy of the episode already playing")
-    ' 10.11 lists E1's 720p copy first, so a queue started from it would otherwise play E1
+    ' The server lists E1's 720p copy first, so a queue started from it would otherwise play E1
     ' again from the 1080p copy.
     function _()
-      groups = episodeQueue.groupByEpisode(m.listed1011(), "S1E1")
+      groups = episodeQueue.groupByEpisode(m.listedPre12(), "show/S1E1")
       m.assertEqual(groups.count(), 3)
       m.assertEqual(m.ids(groups[0]), "e2-1080,e2-720")
     end function
@@ -109,7 +130,14 @@ namespace tests
       m.assertEqual(groups.count(), 2)
     end function
 
-    @it("keeps every unnumbered item, each on its own")
+    @it("keeps the same number in different shows apart")
+    ' A shuffle across shows lists S1E1 of each.
+    function _()
+      groups = episodeQueue.groupByEpisode([m.episode("a-s1e1", 1, 1, "a"), m.episode("b-s1e1", 1, 1, "b")])
+      m.assertEqual(groups.count(), 2)
+    end function
+
+    @it("keeps every unkeyed item, each on its own")
     function _()
       groups = episodeQueue.groupByEpisode([m.episode("x", 1, invalid), m.episode("y", 1, invalid)], "")
       m.assertEqual(groups.count(), 2)
@@ -121,12 +149,12 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("copyIds()")
+    @describe("copyIds() / idChunks()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("names only items that have another copy")
     function _()
-      groups = episodeQueue.groupByEpisode(m.listed1011())
+      groups = episodeQueue.groupByEpisode(m.listedPre12())
       m.assertEqual(episodeQueue.copyIds(groups).join(","), "e1-720,e1-1080,e2-1080,e2-720,e3-1080,e3-480")
     end function
 
@@ -136,66 +164,60 @@ namespace tests
       m.assertEqual(episodeQueue.copyIds(groups).count(), 0)
     end function
 
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("preferenceFor() / matchIndex()")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("matches the same video in the next episode whatever the release name")
-    ' The fixture's E01 720p is `-grpa`, E02's is `-grpb`: names never enter the match.
+    @it("splits ids into runs of the given size, in order, the last one short")
     function _()
-      pref = episodeQueue.preferenceFor(m.source("e1-720", 720))
-      nextSources = [m.source("e2-1080", 1080), m.source("e2-720", 720)]
-      m.assertEqual(episodeQueue.matchIndex(pref, nextSources), 1)
+      chunks = episodeQueue.idChunks(["a", "b", "c", "d", "e"], 2)
+      m.assertEqual(chunks.count(), 3)
+      m.assertEqual(chunks[0].join(","), "a,b")
+      m.assertEqual(chunks[1].join(","), "c,d")
+      m.assertEqual(chunks[2].join(","), "e")
     end function
 
-    @it("finds no match when the next episode lacks that quality")
+    @it("makes one run when every id fits, and none for no ids")
     function _()
-      pref = episodeQueue.preferenceFor(m.source("e2-720", 720))
-      m.assertEqual(episodeQueue.matchIndex(pref, [m.source("e3-1080", 1080), m.source("e3-480", 480)]), -1)
+      m.assertEqual(episodeQueue.idChunks(["a", "b"], 2).count(), 1)
+      m.assertEqual(episodeQueue.idChunks([], 2).count(), 0)
     end function
 
-    @it("does not match another codec at the same resolution")
+    @it("treats a size below one as one, rather than looping forever")
     function _()
-      pref = episodeQueue.preferenceFor(m.source("a", 1080, "hevc"))
-      m.assertEqual(episodeQueue.matchIndex(pref, [m.source("b", 1080, "h264")]), -1)
-    end function
-
-    @it("does not match SDR for an HDR pick")
-    function _()
-      pref = episodeQueue.preferenceFor(m.source("a", 2160, "hevc", "HDR"))
-      m.assertEqual(episodeQueue.matchIndex(pref, [m.source("b", 2160, "hevc", "SDR")]), -1)
-    end function
-
-    @it("matches nothing without an explicit pick")
-    function _()
-      m.assertEqual(episodeQueue.matchIndex(invalid, [m.source("a", 720)]), -1)
-    end function
-
-    @it("has no preference for a source without video")
-    function _()
-      m.assertInvalid(episodeQueue.preferenceFor({ Id: "a", MediaStreams: [{ Type: "Audio", Codec: "aac" }] }))
-      m.assertInvalid(episodeQueue.preferenceFor(invalid))
+      m.assertEqual(episodeQueue.idChunks(["a", "b"], 0).count(), 2)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("sourceIndexFor()")
+    @describe("isGroupPlayed() / inProgressCopy()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("plays the explicit pick's match")
+    @it("counts an episode watched when any copy is")
     function _()
-      pref = episodeQueue.preferenceFor(m.source("e1-720", 720))
-      m.assertEqual(episodeQueue.sourceIndexFor(pref, [m.source("e2-1080", 1080), m.source("e2-720", 720)], m.caps1080()), 1)
+      group = [m.withUserData(m.episode("e1-720", 1, 1), false), m.withUserData(m.episode("e1-1080", 1, 1), true)]
+      m.assertTrue(episodeQueue.isGroupPlayed(group))
     end function
 
-    @it("plays the best for the device when nothing matches")
+    @it("counts an episode unwatched when no copy is, or none says")
     function _()
-      pref = episodeQueue.preferenceFor(m.source("e2-720", 720))
-      m.assertEqual(episodeQueue.sourceIndexFor(pref, [m.source("e3-480", 480), m.source("e3-1080", 1080)], m.caps1080()), 1)
+      m.assertFalse(episodeQueue.isGroupPlayed([m.withUserData(m.episode("a", 1, 1), false), m.episode("b", 1, 1)]))
     end function
 
-    @it("plays the best for the device without an explicit pick")
+    @it("finds the copy the viewer is partway through")
     function _()
-      m.assertEqual(episodeQueue.sourceIndexFor(invalid, [m.source("e2-720", 720), m.source("e2-1080", 1080)], m.caps1080()), 1)
+      group = [m.withUserData(m.episode("e1-720", 1, 1), false), m.withUserData(m.episode("e1-1080", 1, 1), false, 2000000000&)]
+      m.assertEqual(episodeQueue.inProgressCopy(group).Id, "e1-1080")
+    end function
+
+    @it("takes the most recently played of two copies in progress")
+    function _()
+      group = [
+        m.withUserData(m.episode("e1-720", 1, 1), false, 1000000000&, "2026-09-18T20:00:00.0000000Z"),
+        m.withUserData(m.episode("e1-1080", 1, 1), false, 3000000000&, "2026-09-19T08:00:00.0000000Z")
+      ]
+      m.assertEqual(episodeQueue.inProgressCopy(group).Id, "e1-1080")
+    end function
+
+    @it("finds no copy in progress when none has a position")
+    function _()
+      group = [m.withUserData(m.episode("e1-720", 1, 1), false), m.episode("e1-1080", 1, 1)]
+      m.assertInvalid(episodeQueue.inProgressCopy(group))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -206,7 +228,7 @@ namespace tests
     function _()
       group = [m.episode("e2-1080", 1, 2), m.episode("e2-720", 1, 2)]
       sources = { "e2-1080": [m.source("e2-1080", 1080)], "e2-720": [m.source("e2-720", 720)] }
-      pref = episodeQueue.preferenceFor(m.source("e1-720", 720))
+      pref = versionPick.preferenceFor(m.source("e1-720", 720))
       m.assertEqual(episodeQueue.chooseCopy(group, sources, pref, m.caps1080()).Id, "e2-720")
     end function
 

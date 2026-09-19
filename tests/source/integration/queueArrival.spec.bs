@@ -1,0 +1,162 @@
+namespace tests
+
+  ' QueueManager's queue-level rules: an item the queue ARRIVES at starts fresh, and the
+  ' viewer's version pick belongs to the queue. Runs against the real component — a fresh node
+  ' per test, so no queue state leaks between tests.
+  @suite("QueueManager - arrival and version pick")
+  class QueueArrivalTests extends tests.BaseTestSuite
+
+    private queue as object
+    private previousQueue as object
+
+    ' beforeEach, not setup: every test mutates the queue (tests/CLAUDE.md).
+    protected override function beforeEach()
+      super.beforeEach()
+      ' QueueManager.init() reads playbackCinemaMode.
+      localUser = m.global.user
+      if isValid(localUser) and isValid(localUser.settings)
+        localUser.settings.playbackCinemaMode = false
+      end if
+      m.queue = CreateObject("roSGNode", "QueueManager")
+      ' shuffleQueueItems reaches the queue through m.global.queueManager, so this node stands
+      ' in for it; the one it replaces comes back in afterEach.
+      if not m.global.DoesExist("queueManager") then m.global.addField("queueManager", "node", false)
+      m.previousQueue = m.global.queueManager
+      m.global.queueManager = m.queue
+    end function
+
+    protected override function afterEach()
+      m.global.queueManager = m.previousQueue
+      m.previousQueue = invalid
+      m.queue = invalid
+      super.afterEach()
+    end function
+
+    private function episode(id as string) as object
+      return { id: id, type: "Episode" }
+    end function
+
+    private function item(index as integer) as object
+      return m.queue.callFunc("getItemByIndex", index)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("advanceTo()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("starts the item it moves to from the beginning, on the pick rather than a position")
+    function _()
+      first = m.episode("e1")
+      nodeHelpers.setResumeStart(first, 2000000000&)
+      m.queue.callFunc("set", [first, m.episode("e2")])
+
+      m.queue.callFunc("advanceTo", 1)
+
+      m.assertEqual(m.queue.callFunc("getPosition"), 1)
+      arrived = m.item(1)
+      m.assertTrue(arrived.startsFresh)
+      m.assertEqual(arrived.startingPoint, 0&)
+      m.assertTrue(arrived.startingPointIsExact)
+      ' The item it left keeps its own start.
+      m.assertEqual(m.item(0).startingPoint, 2000000000&)
+      m.assertFalse(m.item(0).DoesExist("startsFresh"))
+    end function
+
+    @it("starts an item it moves BACK to from the beginning too")
+    function _()
+      m.queue.callFunc("set", [m.episode("e1"), m.episode("e2")])
+      m.queue.callFunc("setPosition", 1)
+
+      m.queue.callFunc("advanceTo", 0)
+
+      m.assertTrue(m.item(0).startsFresh)
+    end function
+
+    @it("keeps the start of the item behind an intro, which is the one the viewer launched")
+    function _()
+      launched = m.episode("e1")
+      nodeHelpers.setResumeStart(launched, 0&)
+      launched.followsIntro = true
+      m.queue.callFunc("set", [m.episode("intro-slot"), launched])
+
+      m.queue.callFunc("advanceTo", 1)
+
+      m.assertFalse(m.item(1).DoesExist("startsFresh"))
+      m.assertFalse(m.item(1).startingPointIsExact)
+      m.assertFalse(m.item(1).DoesExist("followsIntro"))
+    end function
+
+    @it("treats a later move to the item behind an intro as an arrival")
+    ' followsIntro is consumed by the first move, so previous-then-next is a real arrival.
+    function _()
+      launched = m.episode("e1")
+      launched.followsIntro = true
+      m.queue.callFunc("set", [m.episode("intro-slot"), launched])
+      m.queue.callFunc("advanceTo", 1)
+      m.queue.callFunc("advanceTo", 0)
+
+      m.queue.callFunc("advanceTo", 1)
+
+      m.assertTrue(m.item(1).startsFresh)
+    end function
+
+    @it("leaves Live TV alone, which has no position to start from")
+    function _()
+      m.queue.callFunc("set", [{ id: "c1", type: "TvChannel" }, { id: "c2", type: "TvChannel" }])
+
+      m.queue.callFunc("advanceTo", 1)
+
+      m.assertFalse(m.item(1).DoesExist("startsFresh"))
+      m.assertFalse(m.item(1).DoesExist("startingPoint"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("startCurrentFresh()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("starts the current item from the beginning")
+    function _()
+      m.queue.callFunc("set", [m.episode("e1"), m.episode("e2")])
+
+      m.queue.callFunc("startCurrentFresh")
+
+      m.assertTrue(m.item(0).startsFresh)
+      m.assertEqual(m.item(0).startingPoint, 0&)
+      m.assertFalse(m.item(1).DoesExist("startsFresh"))
+    end function
+
+    @it("does nothing on an empty queue")
+    function _()
+      m.queue.callFunc("startCurrentFresh")
+      m.assertEqual(m.queue.callFunc("getCount"), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("version pick")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("forgets the pick when a new queue starts")
+    function _()
+      m.queue.callFunc("setVersionPreference", { resolution: "720p", codec: "H264", range: "" })
+
+      m.queue.callFunc("clear")
+
+      m.assertInvalid(m.queue.callFunc("getVersionPreference"))
+    end function
+
+    @it("keeps the pick when the queue's contents are replaced or reordered")
+    function _()
+      m.queue.callFunc("set", [m.episode("e1"), m.episode("e2"), m.episode("e3")])
+      m.queue.callFunc("setVersionPreference", { resolution: "720p", codec: "H264", range: "" })
+
+      m.queue.callFunc("toggleShuffle")
+      m.queue.callFunc("set", [m.episode("e4")])
+
+      pick = m.queue.callFunc("getVersionPreference")
+      m.assertNotInvalid(pick)
+      m.assertEqual(pick.resolution, "720p")
+    end function
+
+  end class
+
+end namespace

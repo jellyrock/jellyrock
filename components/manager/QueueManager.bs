@@ -25,8 +25,8 @@ sub init()
   ' launchQuickPlayAction so onQuickPlayTaskOutput's photo branch
   ' knows to randomize. Defaults false (a plain photoalbum item-tap is sequential).
   m.photoAlbumShuffleMode = false
-  ' The video the viewer explicitly picked for this queue (episodeQueue.preferenceFor), carried
-  ' to the episodes the queue arrives at. Belongs to the queue, so a new queue starts without one.
+  ' The video the viewer explicitly picked for this queue (versionPick.preferenceFor), carried
+  ' to the items the queue arrives at. Belongs to the queue, so a new queue starts without one.
   m.versionPreference = invalid
 end sub
 
@@ -79,6 +79,45 @@ end sub
 ' Move queue position ahead one
 sub moveForward()
   m.position++
+end sub
+
+' advanceTo: Move a VIDEO queue to another item because playback moved there — the next one
+' when an item ends, or the player's next / previous. The queue ARRIVES at that item, so it
+' starts from the beginning on the viewer's explicit version pick (nodeHelpers.startFresh): a
+' position saved on it belongs to an earlier session, and the viewer is watching in order.
+' Resume is the Resume button's job; jellyfin-web's nextTrack also plays with no start
+' position. Without this only a multi-version item resumed (its version chooser reads
+' positions) while every other item started at 0.
+'
+' Not an arrival: the item behind a Cinema Mode intro (followsIntro), which is the one the
+' viewer launched, and Live TV, which has no position to start from.
+'
+' Audio moves with moveForward / moveBack / setPosition and is untouched.
+'
+' @param {integer} index - the queue position to move to
+sub advanceTo(index as integer)
+  setPosition(index)
+  item = getCurrentItem()
+  if not isValid(item) then return
+  if item.followsIntro = true
+    item.delete("followsIntro")
+    return
+  end if
+  startFresh(item)
+end sub
+
+' startCurrentFresh: Start the current item from the beginning — the first item of a queue the
+' viewer did not launch to resume, such as Play All or shuffle.
+sub startCurrentFresh()
+  startFresh(getCurrentItem())
+end sub
+
+' startFresh: nodeHelpers.startFresh for anything with a position to start from — not Live TV.
+sub startFresh(item as dynamic)
+  if not isValid(item) then return
+  itemType = getItemType(item)
+  if itemType = "tvchannel" or itemType = "program" then return
+  nodeHelpers.startFresh(item)
 end sub
 
 ' Return the current play queue
@@ -261,6 +300,8 @@ sub onQuickPlayTaskOutput(msg as object)
     if output.shuffle and getCount() > 1
       toggleShuffle()
     end if
+    ' After the shuffle, which decides what the first item is.
+    if output.startsFresh = true then startCurrentFresh()
     playQueue()
   else if output.action = "photo"
     ' Route the slideshow to the /photo view. QueueManager has no router chain, so signal via
@@ -328,6 +369,8 @@ sub onShuffleItemsLoaded(msg as object)
     if shuffleItems.count() > 1
       toggleShuffle()
     end if
+    ' Nobody chose the first item to resume it.
+    startCurrentFresh()
     playQueue()
   else
     stopLoadingSpinner()
@@ -428,7 +471,11 @@ end function
 
 ' Replace play queue with passed array
 sub set(items)
+  ' set() replaces the contents — a shuffle toggle reorders through it — so the viewer's
+  ' version pick stays; a NEW queue starts with clear(), which forgets it.
+  versionPreference = m.versionPreference
   clear()
+  m.versionPreference = versionPreference
   m.queue = items
   for each item in items
     m.queueTypes.push(getItemType(item))
@@ -458,7 +505,7 @@ end sub
 ' setVersionPreference: Record an explicit version pick for the rest of this queue — the details
 ' screen's Video menu at launch, or a switch in the player. invalid forgets it.
 '
-' @param {dynamic} preference - from episodeQueue.preferenceFor()
+' @param {dynamic} preference - from versionPick.preferenceFor()
 sub setVersionPreference(preference as dynamic)
   m.versionPreference = preference
 end sub

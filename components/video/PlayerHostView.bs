@@ -259,9 +259,10 @@ sub onPlayerStateChange()
     end if
   end if
 
-  ' More items in the queue -> advance and play the next one
-  if queueManager.callFunc("getPosition") < queueManager.callFunc("getCount") - 1
-    queueManager.callFunc("moveForward")
+  ' More items in the queue -> advance and play the next one, from its beginning
+  position = queueManager.callFunc("getPosition")
+  if position < queueManager.callFunc("getCount") - 1
+    queueManager.callFunc("advanceTo", position + 1)
     updateQueueBackdrop()
     playCurrentQueueItem()
     return

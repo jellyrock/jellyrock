@@ -10,7 +10,6 @@ import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/buttonOverflow.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/dialogs.bs"
-import "pkg:/source/utils/episodeQueue.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
@@ -25,6 +24,7 @@ import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/trackClusterFocus.bs"
 import "pkg:/source/utils/translate.bs"
 import "pkg:/source/utils/versionLabels.bs"
+import "pkg:/source/utils/versionPick.bs"
 import "pkg:/source/utils/versionResume.bs"
 
 ' Gap between bottom of itemInfoRows and top of extras pane when extras are open
@@ -862,11 +862,11 @@ sub startPlayFromDetail(startingPoint as longinteger)
   ' carry, or 0 for Play), and the loader must not second-guess it.
   nodeHelpers.setExactStart(queueItem, startingPoint)
 
-  ' A version the viewer picked from the Video menu carries to the episodes the queue plays
+  ' A version the viewer picked from the Video menu carries to the items the queue arrives at
   ' next; one the screen chose on its own does not, so they still get the best for the device.
   preference = invalid
   if m.versionUserOverridden and isValid(item.mediaSourcesData)
-    preference = episodeQueue.preferenceFor(mediaSourceForId(item.mediaSourcesData.mediaSources, m.top.selectedVideoStreamId))
+    preference = versionPick.preferenceFor(mediaSourceForId(item.mediaSourcesData.mediaSources, m.top.selectedVideoStreamId))
   end if
 
   launchQueueItemToPlay(queueItem, m.top.itemType, item.id, preference)
@@ -877,7 +877,7 @@ end sub
 ' PlayerHostView reads this queue on mount. :type/:id give the route a deep-link identity; the
 ' queue is the source of truth for what actually plays.
 '
-' @param {dynamic} versionPreference - an explicit version pick for the queue (episodeQueue), or invalid
+' @param {dynamic} versionPreference - an explicit version pick for the queue (versionPick), or invalid
 sub launchQueueItemToPlay(queueItem as object, routeType as string, routeId as string, versionPreference = invalid as dynamic)
   startLoadingSpinner()
   m.global.queueManager.callFunc("clear")

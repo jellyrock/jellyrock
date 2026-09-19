@@ -650,20 +650,31 @@ namespace tests
       m.assertTrue(queueItem.startingPointIsExact)
     end function
 
-    @it("starts an episode a queue arrives at from the beginning, whatever it saved")
-    ' episodeQueue.build tags raw episodes; the queue item must start exactly at 0 so the
-    ' loader never replaces it with a version's resume position (measured on 12.0 before this
-    ' change: auto-advance and Play All resumed a multi-version episode at its saved 200 s).
+    @it("starts an item fresh exactly at 0, whatever it saved, so no version's position replaces it")
     function _()
-      queueItem = nodeHelpers.createQueueItem({ id: "ep-2", type: "Episode", startsFresh: true, UserData: { PlaybackPositionTicks: 2000000000& } })
+      queueItem = nodeHelpers.createQueueItem({ id: "ep-2", type: "Episode", UserData: { PlaybackPositionTicks: 2000000000& } })
+      nodeHelpers.setResumeStart(queueItem, 2000000000&)
+      queueItem.hasVersionInProgress = true
+
+      nodeHelpers.startFresh(queueItem)
 
       m.assertTrue(queueItem.startsFresh)
       m.assertEqual(queueItem.startingPoint, 0&)
       m.assertTrue(queueItem.startingPointIsExact)
+      m.assertFalse(queueItem.hasVersionInProgress)
+      ' The saved position stays readable for display.
       m.assertEqual(queueItem.playbackPositionTicks, 2000000000&)
     end function
 
-    @it("leaves an item nobody tagged without a start or the tag")
+    @it("starts a raw item in the queue fresh too, since shuffle queues raw items")
+    function _()
+      rawItem = { Id: "ep-3", Type: "Episode" }
+      nodeHelpers.startFresh(rawItem)
+      m.assertTrue(rawItem.startsFresh)
+      m.assertEqual(rawItem.startingPoint, 0&)
+    end function
+
+    @it("leaves a new queue item without a start or a fresh mark")
     function _()
       queueItem = nodeHelpers.createQueueItem({ id: "ep-2", type: "Episode" })
 

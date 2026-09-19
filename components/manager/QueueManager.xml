@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="QueueManager" extends="ContentNode">
   <interface>
+    <function name="advanceTo" />
     <function name="clear" />
     <function name="deleteAtIndex" />
     <function name="getCount" />
@@ -31,6 +32,7 @@
     <function name="setPosition" />
     <function name="setPrerollStatus" />
     <function name="setVersionPreference" />
+    <function name="startCurrentFresh" />
     <function name="toggleShuffle" />
     <function name="top" />
   </interface>
