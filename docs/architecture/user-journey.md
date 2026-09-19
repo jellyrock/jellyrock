@@ -9,7 +9,7 @@ related-files:
   - components/manager/QueueManager.bs
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
-last-reviewed: 2026-09-17
+last-reviewed: 2026-09-19
 ---
 
 # The User Journey
@@ -193,13 +193,16 @@ The component contains:
 
 There are two distinct launch shapes in `ItemDetails`:
 
-**Single-item play** (Play / Resume / Trailer / next-up episode) goes through `launchQueueItemToPlay(queueItem, routeType, routeId)` (`ItemDetails.bs:623`): it clears + pushes the queue, then navigates the play route directly:
+**Single-item play** (Play / Resume / Trailer / next-up episode) goes through `ItemDetails.launchQueueItemToPlay(queueItem, routeType, routeId, versionPreference)`: it clears the queue, records the viewer's explicit Video-menu pick for it when there is one, pushes, then navigates the play route directly:
 
 ```brightscript
 m.global.queueManager.callFunc("clear")
+if isValid(versionPreference) then m.global.queueManager.callFunc("setVersionPreference", versionPreference)
 m.global.queueManager.callFunc("push", queueItem)
 sgrouter.navigateTo("/details/" + routeType + "/" + routeId + "/play")
 ```
+
+The pick is what the episodes queued behind this one keep to (see [playback.md → Episodes a queue arrives at](playback.md#episodes-a-queue-arrives-at--sourceutilsepisodequeuebs)); a version the screen chose on its own is not recorded.
 
 The queue is populated **before** navigation — `PlayerHostView` reads it on mount, so the route `:type`/`:id` are just a deep-link identity; the queue is the source of truth.
 

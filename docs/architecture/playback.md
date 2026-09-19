@@ -22,6 +22,8 @@ related-files:
   - components/ItemGrid/LoadVideoContentTask.bs
   - source/utils/versionLabels.bs
   - source/utils/versionResume.bs
+  - source/utils/episodeQueue.bs
+  - components/tasks/QuickPlayTask.bs
   - source/utils/quickplay.bs
   - source/utils/nodeHelpers.bs
   - source/utils/streamSelection.bs
@@ -119,6 +121,10 @@ Shuffle:
 Resume:
 
 - `setCurrentStartingPoint(positionTicks)` — sets the resume point on the current queue item before playback starts
+
+Version pick:
+
+- `setVersionPreference(pref)`, `getVersionPreference()` — the viewer's explicit version pick for this queue, carried to the episodes it arrives at ([below](#episodes-a-queue-arrives-at--sourceutilsepisodequeuebs)); `clear()` forgets it
 
 Preroll:
 
@@ -504,8 +510,9 @@ scoring the whole list would let a 4K version nobody started win a tie between t
 the app cannot name one version and play another:
 
 - **`LoadVideoContentTask`** makes the choice for everything that did not make it on screen —
-  quick play, casts, a queued episode — because it is the only one that can read each version's
-  own position. `quickplay.video` runs on the render thread with no fetching, so on a
+  quick play, casts, a queued item — because it is the only one that can read each version's
+  own position. An episode the queue *arrives at* is the exception: it resumes nothing, so
+  position has no say in its version ([below](#episodes-a-queue-arrives-at--sourceutilsepisodequeuebs)). `quickplay.video` runs on the render thread with no fetching, so on a
   per-version server it stands down by **clearing** `mediaSourceId` (the transformer already sets
   it with `MediaSources[0].Id`, which would otherwise read as an explicit pick) and leaves
   `selectedAudioStreamIndex` at 0 so the audio track is picked for whichever version wins. The
@@ -577,6 +584,34 @@ Every choice above lives in `source/utils/versionResume.bs` as pure functions ov
 values; `ItemDetails` holds only the shell that fetches what `resumeStateFor()` asks for.
 That split is what makes the rules testable — a component spec has no way to stub the two
 requests, so a rule expressed inside `ItemDetails` could only ever be checked by hand.
+
+### Episodes a queue arrives at — `source/utils/episodeQueue.bs`
+
+The episodes queued behind the one playing (`LoadVideoContentTask.addNextEpisodesToQueue`) and
+every episode of Play All on a series or season (`QuickPlayTask`) are episodes the viewer
+*arrives at* rather than launches. All three builders go through `episodeQueue.build()`, so they
+cannot drift apart:
+
+- **They start from the beginning.** A saved position on the next episode belongs to an earlier
+  session, and the viewer is watching in order; Resume is the Resume button's job. `build()` tags
+  each episode `startsFresh`, and `createQueueItem` turns the tag into an exact start at 0.
+  `jellyfin-web`'s `nextTrack` plays the next item with no start position either. Measured on 12.0
+  before this: auto-advance and Play All resumed a multi-version episode at its saved 200 s, while
+  a single-version one started at 0 — the version chooser was deciding a question nobody asked.
+- **They play the version the viewer explicitly picked**, matched on the video (resolution,
+  codec, HDR range — `versionLabels.videoFields()`), else the best for the device. Only an
+  explicit pick carries — the details screen's Video menu (`m.versionUserOverridden`) or a switch
+  in the player (`VideoPlayerView.onVideoSourceChange`) — and it lives on the queue
+  (`QueueManager.setVersionPreference`), so a new queue starts without one. Never matched on the
+  name: jellyfin-web 12.0 matches `Name` exactly, which only lines up when every episode's
+  versions share one naming scheme, and would hold a viewer on 1080p when the next episode has 4K.
+- **Each episode is queued once.** Before 12.0 the server lists every file of an episode as its
+  own episode (same season and episode number), so a plain queue played both copies back to back
+  — and 10.11 can list a copy of the CURRENT episode after it, replaying it. Copies are grouped by
+  season + episode number (`episodeQueue.episodeKey()`; unnumbered items and multi-episode files
+  are never grouped), the current episode's copies are dropped, and one copy is kept by the same
+  pick → match → device rule. Their `MediaSources` are fetched only when copies exist, in one
+  request, so a 12.0 queue costs what it did.
 
 ### Version labels — `source/utils/versionLabels.bs`
 
