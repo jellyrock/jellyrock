@@ -43,7 +43,11 @@ take the exception for a second reason: `bsc-rule`'s `isSuppressed` honors
 `bsc-disable-file`, which an error-severity gate must NOT, since a whole-file
 opt-out would silently remove the bound from every launch in the file. **If your
 rule reads a second file — the component XML, another component's interface, the
-program — you do not get this exception**; use the factories.
+program — you do not get this exception**; use the factories. The one shape that
+stays legitimate is `no-same-node-relaunch`'s: its file hook stays single-file,
+and everything that needs the program lives in `afterValidateProgram`, registered
+under a tag that hook clears first. A file hook that anchors a diagnostic in any
+OTHER file breaks the exception — BSC never clears it, and it outlives the fix.
 
 **Anything `require()`'d by a `.cjs` file is also forced `.cjs`** — including
 everything in `scripts/lib/`. ESM (`.js`) modules can't be `require()`'d from

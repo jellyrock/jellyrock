@@ -531,12 +531,14 @@ describe('no-same-node-relaunch — every state a pending entry can be in', () =
       pending: { [PATH]: [['search', 'm.searchTask']] },
       files: { [PATH]: migrated },
       expect: /does not stop and relaunch `m\.searchTask`/,
+      recovers: true,
     },
     {
       state: 'function was renamed',
       pending: { [PATH]: [['search', 'm.searchTask']] },
       files: { [PATH]: relaunches.replace('search()', 'searchV2()') },
       expect: /no function or method by that name is there/,
+      recovers: true,
     },
     {
       state: 'function became a class method',
@@ -593,6 +595,17 @@ describe('no-same-node-relaunch — every state a pending entry can be in', () =
       pending: { [PATH]: [['search', 'm.searchTask']] },
       files: { [PATH]: "' nothing here" },
       expect: /no function or method by that name is there/,
+      recovers: true,
+    },
+    {
+      state: 'file key names a file that is not BrightScript',
+      pending: { 'components/Foo.xml': [['search', 'm.searchTask']] },
+      files: {
+        'components/Foo.xml':
+          '<?xml version="1.0" encoding="utf-8"?>\n<component name="Foo" extends="Group" />',
+        [PATH]: relaunches,
+      },
+      expect: /is not a BrightScript file/,
     },
   ];
 
@@ -609,6 +622,53 @@ describe('no-same-node-relaunch — every state a pending entry can be in', () =
       expect(found.some((d) => wanted.test(d.message))).toBe(true);
     });
   }
+
+  // A state an edit to the CODE can resolve must clear once it is resolved, in the
+  // same program — which is what the language server keeps between keystrokes. A
+  // single validation cannot see this: a diagnostic anchored outside the file that
+  // produced it is never cleared when that file re-validates, so it outlives the
+  // fix. Every recoverable row's entry names `search` / `m.searchTask`, so
+  // `relaunches` is the code that matches it again.
+  for (const { state, pending, files } of STATES.filter((row) => row.recovers)) {
+    it(`${state} — clears once the code matches the entry again`, () => {
+      const steps = runPluginOnEdits(plugin.withPendingMigrations(pending), [
+        files,
+        { [PATH]: relaunches },
+      ]).map((diagnostics) => diagnosticsByCode(diagnostics, CODE).map((d) => d.message));
+      expect(steps[0]).not.toEqual([]);
+      expect(steps[1]).toEqual([]);
+    });
+  }
+
+  // An entry in a file the rule cannot check has one remedy — delete it — so the
+  // file gets one error, not a second per entry that cannot be acted on. The key
+  // listed AFTER it must still be audited: reading functions out of a file that
+  // has none throws, and the never-crash guard would swallow the rest of the list.
+  it('reports an uncheckable file once, and still audits the keys after it', () => {
+    for (const key of ['components/vendor/Dep.bs', 'components/Foo.xml']) {
+      const found = diagnosticsByCode(
+        runPluginOnSource(
+          plugin.withPendingMigrations({
+            [key]: [
+              ['gone', 'm.aTask'],
+              ['alsoGone', 'm.bTask'],
+            ],
+            'components/Gone.bs': [['search', 'm.searchTask']],
+          }),
+          {
+            'components/vendor/Dep.bs': 'sub noop()\nend sub',
+            'components/Foo.xml':
+              '<?xml version="1.0" encoding="utf-8"?>\n<component name="Foo" extends="Group" />',
+          },
+        ),
+        CODE,
+      );
+      const messages = found.map((d) => d.message);
+      expect(messages).toHaveLength(2);
+      expect(messages.filter((m) => m.includes(`\`${key}\``))).toHaveLength(1);
+      expect(messages.filter((m) => m.includes('`components/Gone.bs`'))).toHaveLength(1);
+    }
+  });
 
   // The review found states where the plugin said, of ONE node, both "this is
   // relaunched" and "this is no longer relaunched" — following either message

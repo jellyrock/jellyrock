@@ -69,18 +69,23 @@
  * suppressed inline, so there is no marker to copy onto a new site. The list can
  * only shrink, and that is enforced rather than hoped for: EVERY state an entry
  * can be in produces an actionable error except the one where it matches its site.
- * The two halves of that live in different hooks, because they answer different
- * questions:
+ * The two halves of that live in different hooks, split by where the fix is made:
  *
- *   afterValidateFile    — did this entry's site fire? Matched, or the function
- *                          is there and does not relaunch that node, or no
- *                          function of that name is there at all.
- *   afterValidateProgram — CAN this entry be checked? Its file may be absent from
- *                          the build, or be one this rule never inspects, or be
- *                          spelled in a different case, or the entry may be
- *                          listed twice. None of those is visible to the file
- *                          hook, which never runs for such a file — so without
- *                          this half the entry AND the site under it go quiet.
+ *   afterValidateFile    — a fault in the CODE: the entry's function is there
+ *                          and does not relaunch that node. Anchored on the
+ *                          function, so BSC clears it when that file re-validates.
+ *   afterValidateProgram — a fault in the LIST: the entry cannot be checked. Its
+ *                          file may be absent from the build, be one this rule
+ *                          never inspects, not be BrightScript, or be spelled in
+ *                          a different case; the entry may be listed twice, or
+ *                          name a function the file does not have. Anchored on
+ *                          the entry's line here and tagged, so the set is
+ *                          cleared and re-derived on every validation.
+ *
+ * Keep that split when adding a state. A diagnostic the file hook anchors
+ * outside its own file is never cleared by BSC, so it outlives the fix; and most
+ * list faults are invisible to the file hook anyway, which never runs for such a
+ * file — without the program half the entry AND the site under it go quiet.
  *
  * An entry that matched nothing yields ONE claim, and never a second one
  * contradicting it about the same node. The plugin sees only what the code does
@@ -486,11 +491,12 @@ class NoSameNodeRelaunchPlugin {
         });
       }
 
-      // Whatever is left described a site this file does not have. Whether the
-      // entry can be checked AT ALL is a whole-program question, answered in
-      // `auditPendingList`; here we only know this file's own code.
+      // Whatever is left described a site this file does not have. An entry whose
+      // function is missing is a fault in the LIST, reported on the list by
+      // `afterValidateProgram`; only one whose function is here is this file's.
       for (const entry of unclaimed.values()) {
-        this.reportStaleEntry(event.program, functions, destPath, entry);
+        const fn = functions.find((f) => f.name === entry.fn.toLowerCase());
+        if (fn) this.reportStaleEntry(event.program, fn, destPath, entry);
       }
     } catch (_e) {
       // Never crash the build.
@@ -525,9 +531,11 @@ class NoSameNodeRelaunchPlugin {
 
   /**
    * The whole-program half of the ledger: whether each entry CAN be checked at
-   * all. Every one of these is invisible to `afterValidateFile` — a key whose
-   * file never reaches the rule never gets reconciled, so without this the entry
-   * (and the real violation under it) would simply go quiet.
+   * all. Most of these are invisible to `afterValidateFile` — a key whose file
+   * never reaches the rule never gets reconciled, so without this the entry (and
+   * the real violation under it) would simply go quiet. A missing function is
+   * visible there, but it is a fault in the list, so it is reported here with
+   * the rest.
    *
    * Anchored on the entry's own line in this file, because the edit is here.
    * Tagged, so the set is cleared and re-derived on every validation.
@@ -571,6 +579,8 @@ class NoSameNodeRelaunchPlugin {
           );
         }
 
+        // Past either of these the file hook never reconciles the entries, so
+        // nothing below could be checked either.
         if (isRuleExempt(destPath)) {
           flag(
             key,
@@ -578,6 +588,16 @@ class NoSameNodeRelaunchPlugin {
             `PENDING_MIGRATIONS lists \`${key}\`, which this rule never inspects (it is the launch wrapper, or vendored). ` +
               'Its entries can never be checked or retired, so delete them — and note the rule is not guarding that file at all.',
           );
+          continue;
+        }
+        if (!brighterscript.isBrsFile(listed)) {
+          flag(
+            key,
+            undefined,
+            `PENDING_MIGRATIONS lists \`${key}\`, which is not a BrightScript file, so its entries can never be checked. ` +
+              'Key them by the `.bs` / `.brs` file that holds the function.',
+          );
+          continue;
         }
 
         for (const entry of duplicateEntries(this.pending, key)) {
@@ -588,6 +608,17 @@ class NoSameNodeRelaunchPlugin {
               'Only the first can ever be retired; delete the duplicate.',
           );
         }
+
+        const names = new Set(functionsIn(listed).map((fn) => fn.name));
+        for (const entry of entriesFor(this.pending, key).values()) {
+          if (names.has(entry.fn.toLowerCase())) continue;
+          flag(
+            key,
+            entry,
+            `PENDING_MIGRATIONS names \`${entry.fn}()\` in ${destPath}, and no function or method by that name is there. ` +
+              'If it was renamed, point the entry at the new name; if the site is gone, delete the entry.',
+          );
+        }
       }
     } catch (_e) {
       // Never crash the build.
@@ -595,29 +626,25 @@ class NoSameNodeRelaunchPlugin {
   }
 
   /**
-   * A listed entry that matched nothing in its own file. The plugin sees only
-   * what the code does NOW, so it CANNOT tell a finished migration from an entry
-   * that never matched — so neither message claims one. It reports what it
-   * checked and leaves the judgment to the reader.
+   * A listed entry whose function is here but does not relaunch that node. The
+   * plugin sees only what the code does NOW, so it CANNOT tell a finished
+   * migration from an entry that never matched — so the message claims neither.
+   * It reports what it checked and leaves the judgment to the reader.
+   *
+   * Anchored on the function, in the file being validated, so BSC clears it when
+   * that file next re-validates.
    */
-  reportStaleEntry(program, functions, destPath, entry) {
-    const fn = functions.find((f) => f.name === entry.fn.toLowerCase());
+  reportStaleEntry(program, fn, destPath, entry) {
     const entryLine = pendingEntryLine(destPath, entry) + 1;
-    const listedAt = `Its entry is at ${PLUGIN_DEST_PATH}:${entryLine}.`;
-    // Anchor on the function while it is still there, so the error lands in the
-    // file being migrated. With no function to anchor to, the entry is the only
-    // thing left to point at — never nothing, which is how this went silent.
-    const location = fn?.statement?.tokens?.name?.location;
     program.diagnostics.register({
       code: CODE,
       severity: 1, // Error
       source: this.name,
-      message: fn
-        ? `\`${entry.fn}()\` does not stop and relaunch \`${entry.path}\` in ${destPath}. ` +
-          `If you migrated it, delete its PENDING_MIGRATIONS entry; if the entry is wrong, correct it. ${listedAt}`
-        : `PENDING_MIGRATIONS names \`${entry.fn}()\` in ${destPath}, and no function or method by that name is there. ` +
-          `If it was renamed, point the entry at the new name; if the site is gone, delete the entry. ${listedAt}`,
-      location: location ?? pendingEntryLocation(destPath, entry),
+      message:
+        `\`${entry.fn}()\` does not stop and relaunch \`${entry.path}\` in ${destPath}. ` +
+        'If you migrated it, delete its PENDING_MIGRATIONS entry; if the entry is wrong, correct it. ' +
+        `Its entry is at ${PLUGIN_DEST_PATH}:${entryLine}.`,
+      location: fn.statement.tokens.name.location,
     });
   }
 }

@@ -128,7 +128,10 @@ there is no staleness for a factory to prevent, and `bsc-rule`'s `isSuppressed`
 honors `bsc-disable-file`, which an error-severity gate must not. The four
 Task / dialog rules (`no-raw-run`, `no-task-fanout`, `no-same-node-relaunch`,
 `no-hand-rolled-dialog`) all take it and hook `afterValidateFile` directly. Read
-it narrowly: the moment a rule consults a second file, use the factories.
+it narrowly: the moment a rule consults a second file, use the factories — unless,
+like `no-same-node-relaunch`'s list audit, the cross-file part lives entirely in
+`afterValidateProgram` under a tag it clears first. A file hook must never anchor
+a diagnostic in another file: BSC never clears it, so it outlives the fix.
 
 Any such plugin also needs `runPluginOnEdits` alongside the usual cases:
 `runPluginOnSource` validates ONCE, so it cannot observe behavior across
