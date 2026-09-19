@@ -102,6 +102,7 @@ m.global.queueManager.callFunc("playQueue")
 Queue mutation:
 
 - `push(item)`, `pop()`, `peek()`, `top()` — array-style access
+- `insertAfterCurrent(item)` — play `item` next; the Cinema Mode intro queues the item it plays in front of this way (see [below](#items-a-queue-arrives-at))
 - `set(items)` — replace the whole queue's contents (a shuffle toggle reorders through it); keeps the version pick
 - `clear()`, `deleteAtIndex(i)`
 
@@ -612,6 +613,11 @@ shuffled or not — can leave it out:
   behind the intro `followsIntro`, and `advanceTo()` consumes the tag, so the item the viewer
   launched keeps its start — and Live TV, which has no position. Audio moves with the plain
   position methods and is untouched.
+- **The intro's copy goes directly after the slot the intro plays in** (`insertAfterCurrent`),
+  not at the end of the queue. Appending it played everything else first: measured 2026-09-19 on
+  10.11, a Play All queue became `[e1, e2, e3, e4, e1]` and the intro was followed by `e2`, with
+  `e1` last. With one item queued — every other intro path — the end IS the next slot, which is
+  why it went unnoticed.
 - **The first item** is each builder's call, because it follows from the button. Play All and
   shuffle start it fresh (`QuickPlayTask`'s `startsFresh` output, `QueueManager.startCurrentFresh()`
   after any shuffle); quick play of a series or season and the Resume button pick it to resume or

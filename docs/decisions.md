@@ -1561,16 +1561,6 @@ Deliberately **not** guarded by `versionResume.wouldMarkPlayed()`, unlike the de
 
 Two shell rules land with it, because the device run that found the order flaw found them too. **A start position declares its intent**: `startingPointIsExact`, written only through `nodeHelpers.setResumeStart` / `setExactStart` (or `setCurrentStartingPoint`'s `isExact`), and the loader replaces only a *resume* start with the chosen version's own position — a chapter, the details screen's Play/Resume and a position saved before a reload are exact. Ruled out: "no `startingPoint` means resume" (three more call sites would need `isPerVersionServer`), and an enum for a binary. **A reload names its version**: `VideoPlayerView.keepLoadedVersionOnReload` passes the loaded version as an input of each reload run, rather than leaving it on the reused task node ([ADR 0037](adr/0037-task-run-replacement.md)); without it a subtitle change re-chose from the server's lagging positions and moved the viewer to another file and place.
 
-## decision-id: episode-queue-starts-fresh
-
-**date**: 2026-09-19
-**status**: accepted
-**related-files**: `source/utils/episodeQueue.bs`, `source/utils/nodeHelpers.bs`, `components/ItemGrid/LoadVideoContentTask.bs`, `components/tasks/QuickPlayTask.bs`, `components/manager/QueueManager.bs`, `components/ItemDetails.bs`, `components/video/VideoPlayerView.bs`
-
-An episode a queue ARRIVES at — the next episodes queued behind the one playing, and every episode of Play All on a series or season — starts from the beginning and plays the viewer's explicit version pick when it has a version with the same video (resolution, codec, HDR range), else the best for the device. Before 12.0 a server lists each file of an episode as its own episode, so copies are grouped by season + episode number and queued once, chosen by the same rule. All three queue builders share `episodeQueue.build()`. Measured 2026-09-19 on a Roku Ultra with the synthetic `Version Episodes (2026)` fixture: on 12.0, auto-advance and Play All resumed a multi-version episode at its saved 200 s while a single-version one started at 0 — `chooseResumeSource` (`version-resume-near-level`, which listed "queued items" among its callers) was answering a question nobody asked; on 10.11 the auto-queue played both copies of an episode back to back and could replay the current one (the first episode's 720p copy is listed before its 1080p one). A pick lives on the queue (`QueueManager.setVersionPreference`), set only by the details screen's Video menu at launch or a switch in the player, and a new queue starts without one.
-
-Ruled out: **resuming a queued episode** — its saved position belongs to an earlier session, drops the viewer mid-scene, and the old behavior differed by version count; `jellyfin-web`'s `nextTrack` also plays with no start position. **jellyfin-web 12.0's exact-`Name` match** (#7984) — a name is the file's, so it only lines up when every episode's versions share one naming scheme (never for mixed releases like `S04E06`), and it would hold a viewer on 1080p when the next episode has 4K. **Carrying an automatic choice** — only explicit picks carry (the 2026-09-16 call), so upgrades still happen. **A server-version gate for the copy grouping** — servers before 12.0 really do report copies as separate episodes, a data shape no API tier changes, so one code path serves all (like #925). No match → device-best (user call). **Constraint:** a wrongly tagged library where two genuinely different episodes share a number loses one from the auto-queue; both stay playable directly.
-
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
@@ -1595,3 +1585,4 @@ convergence (audit-before-migrate). Old `decision-id` references resolve here:
 | `server-upgrade-anchor-vs-resolved-decoupling` | [ADR 0015](adr/0015-server-upgrade-anchor-vs-resolved-decoupling.md) |
 | `global-signin-language` | [ADR 0016](adr/0016-global-signin-language.md) |
 | `rta-functional-tests-vitest` | [ADR 0017](adr/0017-rta-functional-tests-vitest.md) |
+| `episode-queue-starts-fresh` | [ADR 0038](adr/0038-queue-arrival-starts-fresh.md) |
