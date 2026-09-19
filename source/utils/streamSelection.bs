@@ -984,6 +984,34 @@ function findBestVideoSource(mediaSources as dynamic, deviceCapabilities = inval
   return bestIndex
 end function
 
+' findBestVideoSourceAmongIds: Best source for this device among a NAMED SUBSET of an item's versions.
+'
+' The tie-break half of versionResume.chooseResumeSource(): that module decides which
+' versions are at the same place and so compete on quality, but it is pure by contract and
+' has no device knowledge, so it hands the tie back as ids. Scoring runs over just those
+' versions, because the best of a subset is not the best overall — a 4K version nobody has
+' started must not win a tie between two the viewer is actually partway through.
+'
+' @param {dynamic} mediaSources - the item's full MediaSource array
+' @param {dynamic} sourceIds - ids to choose between (from chooseResumeSource().tiedIds)
+' @param {dynamic} [deviceCapabilities=invalid] - Optional device capabilities (for testing)
+' @returns {string} - the winning source id, or "" when none of the ids name a source
+function findBestVideoSourceAmongIds(mediaSources as dynamic, sourceIds as dynamic, deviceCapabilities = invalid as dynamic) as string
+  if not isValid(mediaSources) or type(sourceIds) <> "roArray" or sourceIds.Count() = 0 then return ""
+
+  candidates = []
+  for each sourceId in sourceIds
+    index = mediaSourceIndexForId(mediaSources, sourceId)
+    if index >= 0 then candidates.push(mediaSources[index])
+  end for
+
+  if candidates.Count() = 0 then return ""
+
+  best = candidates[findBestVideoSource(candidates, deviceCapabilities)]
+  if not isValid(best) or not isValidAndNotEmpty(best.Id) then return ""
+  return best.Id
+end function
+
 ' applyLiveDirectPlayFallback: Flags that a transcode retry is available for live streams
 ' attempting direct play. Live direct play may fail on Roku if the server overestimates
 ' compatibility. VideoPlayerView observes isTranscodeAvailable to retry with transcoding on error.

@@ -29,32 +29,52 @@ namespace quickplay
     queueItem = nodeHelpers.createQueueItem(itemNode)
     if not isValid(queueItem) then return
 
-    ' Select the video source: the item's own version when resuming on a per-version server
-    ' (the position belongs to that file), otherwise the best one for the device.
-    ' When multiple sources exist, set mediaSourceId so LoadVideoContentTask uses the
-    ' chosen source without overwriting the base item ID needed for metadata/reporting.
+    ' Select the video source. On a per-version server the choice needs each version's own
+    ' position, which cannot be read from here, so it is left to LoadVideoContentTask; without
+    ' per-version positions any version resumes at the item's one position, so the best for the
+    ' device is picked here. A source chosen here travels as mediaSourceId, which the loader
+    ' uses without overwriting the base item ID needed for metadata/reporting.
     audioStreams = itemNode.audioStreams
+    deferVersionToLoader = false
     if isValid(itemNode.mediaSourcesData) and isValidAndNotEmpty(itemNode.mediaSourcesData.mediaSources)
       mediaSources = itemNode.mediaSourcesData.mediaSources
       if mediaSources.Count() > 1
-        isPerVersion = versionResume.isPerVersionServer(m.global.server.version)
-        bestSourceIndex = versionResume.resumeSourceIndex(itemNode.id, itemNode.playbackPositionTicks, mediaSources, isPerVersion)
-        if bestSourceIndex < 0 then bestSourceIndex = findBestVideoSource(mediaSources)
-        bestSource = mediaSources[bestSourceIndex]
-        if isValidAndNotEmpty(bestSource.Id)
-          queueItem.mediaSourceId = bestSource.Id
-        end if
-        ' Use the selected source's audio streams for best audio selection
-        if isValid(bestSource.MediaStreams)
-          audioStreams = []
-          for each stream in bestSource.MediaStreams
-            if isValid(stream.Type) and LCase(stream.Type) = "audio"
-              audioStreams.push(stream)
-            end if
-          end for
+        if versionResume.isPerVersionServer(m.global.server.version)
+          ' Which version resumes depends on EVERY version's own position, and each of those
+          ' is a request — impossible here, on the render thread with no fetching. So hand the
+          ' choice to LoadVideoContentTask, which makes it with the positions in hand.
+          '
+          ' Standing down means actively CLEARING the id, not just declining to set one: the
+          ' transformer pre-fills item.mediaSourceId with MediaSources[0].Id and
+          ' createQueueItem copies it, so a quick play would otherwise arrive at the loader
+          ' looking like an explicit pick and skip the choice altogether. The details screen's
+          ' real pick still travels as selectedVideoStreamId and is still honored.
+          deferVersionToLoader = true
+
+          ' Free signal, no request. The loader needs to know this is a resume BEFORE it has
+          ' chosen a version — startingPoint cannot say so when the item's own position is 0
+          ' and an alternate holds one.
+          queueItem.hasVersionInProgress = versionResume.anyVersionInProgress(itemNode.id, itemNode.playbackPositionTicks, mediaSources, true)
+        else
+          ' One position per item, so any version resumes at it: take the best for the device.
+          bestSource = mediaSources[findBestVideoSource(mediaSources)]
+          if isValidAndNotEmpty(bestSource.Id)
+            queueItem.mediaSourceId = bestSource.Id
+          end if
+          ' Use the selected source's audio streams for best audio selection
+          if isValid(bestSource.MediaStreams)
+            audioStreams = []
+            for each stream in bestSource.MediaStreams
+              if isValid(stream.Type) and LCase(stream.Type) = "audio"
+                audioStreams.push(stream)
+              end if
+            end for
+          end if
         end if
       end if
     end if
+
+    if deferVersionToLoader then queueItem.mediaSourceId = ""
 
     ' Get user session for audio selection
     localUser = m.global.user
@@ -62,17 +82,19 @@ namespace quickplay
     ' audioStreams is pre-filtered to audio-only by the transformer (or re-filtered above).
     ' findBestAudioStreamIndex filters by Type="audio" internally, so passing
     ' pre-filtered audio streams works correctly.
+    ' Left at 0 when the version is the loader's to choose: 0 is what tells it to pick the
+    ' audio track itself, and any index decided here would belong to the item's OWN version's
+    ' stream list rather than the one it ends up playing.
     audioStreamIndex = 0
-    if isValidAndNotEmpty(audioStreams)
+    if isValidAndNotEmpty(audioStreams) and not deferVersionToLoader
       playDefault = resolvePlayDefaultAudioTrack(localUser.settings, localUser.config)
       audioStreamIndex = findBestAudioStreamIndex(audioStreams, playDefault, resolveAudioLanguagePreference(localUser.settings, localUser.config))
     end if
 
-    ' Resume position from typed field; startingPoint is computed here, not stored on node
-    playbackPosition = itemNode.playbackPositionTicks
-
     queueItem.selectedAudioStreamIndex = audioStreamIndex
-    queueItem.startingPoint = playbackPosition
+    ' The item's saved position: on a per-version server the loader may resume another version
+    ' at that version's own position instead.
+    nodeHelpers.setResumeStart(queueItem, itemNode.playbackPositionTicks)
 
     m.global.queueManager.callFunc("push", queueItem)
   end sub

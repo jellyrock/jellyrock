@@ -39,6 +39,18 @@ namespace versionResume
   ' compares type-for-type against a position parsed out of a reply.
   const POSITION_UNREADABLE = -1&
 
+  ' How far apart two in-progress versions may sit and still count as being at the SAME
+  ' place, so quality decides between them instead of which was played last.
+  '
+  ' Because a version is only ever resumed at its OWN position, this margin IS the
+  ' worst-case misplacement the viewer can feel: pick the 30-seconds-behind version for its
+  ' better quality and they resume up to 30 s from where they left. It absorbs the three
+  ' ways two positions drift apart for the same moment of content — a constant offset
+  ' between two releases of one cut (measured at 4 s on the local mixed-release pair), the
+  ' 10 s progress-report cadence when a session ends without a stop report, and the switch
+  ' latency when switchTicksFor() carries a position across versions.
+  const NEAR_LEVEL_MARGIN_TICKS = 300000000& ' 30 s
+
   ' isPerVersionServer: Whether the server keeps a separate position per alternate version.
   '
   ' @param {string} serverVersion - m.global.server.version
@@ -95,23 +107,224 @@ namespace versionResume
     return lcase(left) = lcase(right)
   end function
 
-  ' resumeSourceIndex: Which version to play when starting an item from a known position.
+  ' anyVersionInProgress: Does SOME version of this item hold a playback position?
   '
-  ' For playback started without a details screen (quick play, a queue item with no
-  ' version chosen): the position being resumed belongs to the item's OWN version, so that
-  ' file is the only one it is exact for. A primary whose progress sits on an alternate
-  ' shows no progress, so it is started from the beginning like any unwatched item.
+  ' Answered without reading a single position, from two signals that arrive with the item: its
+  ' own position, and the server's source ORDER. SetAlternateVersionResumeStates leads a
+  ' primary's sources with the most recently played version that HAS a position, and otherwise
+  ' leaves the item's own source first — so an alternate in front means progress exists
+  ' somewhere, even when the item itself reads 0.
   '
-  ' @param {string} itemId - the item being played
-  ' @param {dynamic} startTicks - the position playback starts from (0 = beginning)
-  ' @param {object} mediaSources - the item's MediaSources
+  ' This is the question "are we resuming?" for callers that must answer it BEFORE the version
+  ' is chosen: LoadVideoContentTask decides on the Cinema Mode preroll at the top of its run,
+  ' long before any position has been read, and a preroll in front of a resume is wrong.
+  '
+  ' @param {string} itemId - the item these sources belong to
+  ' @param {dynamic} itemPositionTicks - its own UserData position
+  ' @param {dynamic} mediaSources - its MediaSources, in server order
   ' @param {boolean} isPerVersion - isPerVersionServer()
-  ' @return {integer} index of the version to play, or -1 to leave the choice to the caller
-  function resumeSourceIndex(itemId as string, startTicks as dynamic, mediaSources as dynamic, isPerVersion as boolean) as integer
-    if not isPerVersion then return -1
-    if not isValid(startTicks) or startTicks <= 0 then return -1
-    if type(mediaSources) <> "roArray" or mediaSources.count() < 2 then return -1
-    return versionResume.sourceIndexById(mediaSources, itemId)
+  ' @return {boolean} true when some version has a position
+  function anyVersionInProgress(itemId as string, itemPositionTicks as dynamic, mediaSources as dynamic, isPerVersion as boolean) as boolean
+    if isValid(itemPositionTicks) and itemPositionTicks > 0 then return true
+    if not isPerVersion then return false
+    if type(mediaSources) <> "roArray" or mediaSources.count() < 2 then return false
+
+    first = mediaSources[0]
+    if not isValid(first) or not isValidAndNotEmpty(first.Id) then return false
+    return not versionResume.idsMatch(first.Id, itemId)
+  end function
+
+  ' chooseResumeSource: WHICH version of an item resumes, and from where.
+  '
+  ' One answer for every entry point — the details screen, quick play, a cast, a queued item
+  ' — so the app cannot name one version and play another. Before this, the details screen
+  ' honored the server's order while quick play and the progress bars used the item's own
+  ' version, so with two versions in progress the screen marked one and played the other.
+  '
+  ' The rule: the most recently played version wins, UNLESS the in-progress versions sit at
+  ' about the same position (NEAR_LEVEL_MARGIN_TICKS, either direction), where the best
+  ' version for the device among them wins instead. A version is only ever resumed at its
+  ' OWN position — never at another version's, which would move the viewer to a different
+  ' place in the content.
+  '
+  ' "Most recently played" cannot be read from a timestamp: v12.0 copies the newest version's
+  ' LastPlayedDate onto the PRIMARY's user data (VersionResumeData.ApplyTo), so once an
+  ' alternate has been played more recently the primary's own play time is unreadable. The
+  ' server answers it two other ways, and this uses whichever the caller can trust:
+  '
+  '   * The source ORDER — but only from a PRIMARY. SetAlternateVersionResumeStates moves the
+  '     most recently played version that HAS a position to the front of a primary's sources,
+  '     and leaves a directly queried alternate's own source first whatever was played last.
+  '     So another version in front proves both that this item is a primary and that the
+  '     version in front was played last. The item's OWN source in front proves nothing: that
+  '     is also every alternate, and the DTO does not say which one this is.
+  '   * The resume query, which returns the version that owns the resume point. Asked for only
+  '     in that ambiguous case, and only once two versions are in progress, as needsMostRecent;
+  '     the caller answers with ctx.mostRecentId (see mostRecentIdFrom).
+  '
+  ' Device knowledge is deliberately absent from this module (it must stay pure and
+  ' unit-testable), so a near-level tie is handed back as tiedIds for the caller to settle
+  ' with findBestVideoSource() and ask again with deviceBestId.
+  '
+  ' @param {object} ctx - {
+  '     itemId            string  the item being resumed
+  '     itemPositionTicks dynamic the item's OWN position (its own, not the copied date)
+  '     mediaSources      dynamic its MediaSources, in server order
+  '     positions         object  sourceId -> ticks already known (POSITION_UNREADABLE = failed)
+  '     isPerVersion      boolean isPerVersionServer()
+  '     mostRecentId      dynamic the answer to a previous needsMostRecent: the version the
+  '                               server would resume, or "" when it could not say (optional;
+  '                               invalid = not asked yet)
+  '     deviceBestId      dynamic the caller's pick among a previous tiedIds (optional)
+  '   }
+  ' @return {object} {
+  '     sourceId        string       the version to resume ("" = no per-version answer; the
+  '                                  caller applies its own rule, e.g. device-best from 0)
+  '     ticks           longinteger  that version's own position (0 = from the beginning)
+  '     isLoading       boolean      the answer is not final yet
+  '     needsSourceIds  object       fetch these versions' UserData (empty = nothing to fetch)
+  '     needsMostRecent boolean      ask the server which version it would resume, and ask
+  '                                  again with mostRecentId
+  '     tiedIds         object       2+ ids at the same place: pick device-best among them and
+  '                                  ask again with deviceBestId (empty = no tie)
+  '   }
+  function chooseResumeSource(ctx as object) as object
+    answer = { sourceId: "", ticks: 0&, isLoading: false, needsSourceIds: [], needsMostRecent: false, tiedIds: [] }
+    if not isValid(ctx) or ctx.isPerVersion <> true then return answer
+
+    sources = ctx.mediaSources
+    if type(sources) <> "roArray" or sources.count() < 2 then return answer
+
+    itemTicks = ctx.itemPositionTicks
+    if not isValid(itemTicks) or itemTicks < 0 then itemTicks = 0&
+
+    ' Nothing in progress anywhere, and no request needed to know it — every item nobody has
+    ' started, which is the common case, therefore costs nothing on the playback path.
+    if not versionResume.anyVersionInProgress(ctx.itemId, itemTicks, sources, true) then return answer
+
+    ' Something IS in progress, so every version's position is now load-bearing: one at about
+    ' the same place as the most recent wins on quality, and only its own position can be
+    ' resumed. The server's order names just the single most recent, so the rest must be read.
+    need = []
+    for each source in sources
+      id = source.Id
+      if not isValidAndNotEmpty(id) then continue for
+      if versionResume.idsMatch(id, ctx.itemId) then continue for ' already in hand
+      if not isValid(versionResume.knownPosition(ctx, id)) then need.push(id)
+    end for
+    if need.count() > 0
+      answer.isLoading = true
+      answer.needsSourceIds = need
+      return answer
+    end if
+
+    ' In server order: from a primary, the first entry is the most recently played.
+    inProgress = []
+    for each source in sources
+      id = source.Id
+      if not isValidAndNotEmpty(id) then continue for
+      if versionResume.idsMatch(id, ctx.itemId)
+        ticks = itemTicks
+      else
+        ticks = versionResume.knownPosition(ctx, id)
+      end if
+      ' Unreadable is not "no position": resuming it would be a guess, so it cannot be
+      ' chosen, but it also must not be read as 0 and silently restart the content.
+      if not isValid(ticks) or ticks = versionResume.POSITION_UNREADABLE then continue for
+      if ticks > 0 then inProgress.push({ id: id, ticks: ticks })
+    end for
+
+    if inProgress.count() = 0 then return answer
+    if inProgress.count() = 1
+      answer.sourceId = inProgress[0].id
+      answer.ticks = inProgress[0].ticks
+      return answer
+    end if
+
+    leader = inProgress[0]
+    first = sources[0]
+    ownSourceLeads = isValid(first) and versionResume.idsMatch(first.Id, ctx.itemId)
+    if ownSourceLeads
+      ' The order is no signal here (see the header), so the server has to say.
+      if not isValid(ctx.mostRecentId)
+        answer.isLoading = true
+        answer.needsMostRecent = true
+        return answer
+      end if
+      ' An answer naming no version in progress (the query failed, or said nothing about this
+      ' item) leaves the order as the only signal left — what this did before it asked.
+      for each entry in inProgress
+        if versionResume.idsMatch(entry.id, ctx.mostRecentId)
+          leader = entry
+          exit for
+        end if
+      end for
+    end if
+
+    tied = [leader]
+    for each entry in inProgress
+      if entry.id = leader.id then continue for
+      ' Negated by hand rather than through abs(), which returns a FLOAT: at tick magnitudes
+      ' a 24-bit mantissa cannot hold 9 significant digits, so a delta of 300000001 rounds to
+      ' the margin itself and ties a version that is past it. Caught by the boundary spec.
+      delta& = entry.ticks - leader.ticks
+      if delta& < 0& then delta& = -delta&
+      if delta& <= versionResume.NEAR_LEVEL_MARGIN_TICKS then tied.push(entry)
+    end for
+
+    ' Clear of everything else: the most recently played version is the one being watched.
+    if tied.count() = 1
+      answer.sourceId = leader.id
+      answer.ticks = leader.ticks
+      return answer
+    end if
+
+    chosen = ctx.deviceBestId
+    if not isValidAndNotEmpty(chosen)
+      ids = []
+      for each entry in tied
+        ids.push(entry.id)
+      end for
+      answer.tiedIds = ids
+      return answer
+    end if
+
+    for each entry in tied
+      if versionResume.idsMatch(entry.id, chosen)
+        answer.sourceId = entry.id
+        answer.ticks = entry.ticks
+        return answer
+      end if
+    end for
+
+    ' A pick that names no tied version answers a question that was not asked — fall back to
+    ' the most recent rather than honor it.
+    answer.sourceId = leader.id
+    answer.ticks = leader.ticks
+    return answer
+  end function
+
+  ' mostRecentIdFrom: Which of an item's versions the server would resume, from a resume query
+  ' (GET /UserItems/Resume scoped to the item's parent).
+  '
+  ' The query returns ONE entry per item — the version that owns the resume point — among every
+  ' in-progress item under the parent, so the answer is whichever returned id names one of this
+  ' item's sources.
+  '
+  ' @param {object} res - fetchAsync / apiPipeline result { ok, json }
+  ' @param {dynamic} mediaSources - the item's MediaSources
+  ' @return {string} that source's id, or "" when the reply does not say (failed, or no entry
+  '                  for this item) — "" is still an answer: the caller must not ask again
+  function mostRecentIdFrom(res as object, mediaSources as dynamic) as string
+    if not isValid(res) or res.ok <> true or not isValid(res.json) then return ""
+    items = res.json.Items
+    if type(items) <> "roArray" or type(mediaSources) <> "roArray" then return ""
+    for each item in items
+      if not isValid(item) or not isValidAndNotEmpty(item.Id) then continue for
+      index = versionResume.sourceIndexById(mediaSources, item.Id)
+      if index >= 0 then return mediaSources[index].Id
+    end for
+    return ""
   end function
 
   ' wouldMarkPlayed: Would the server record this position as PLAYED instead of storing it
@@ -180,6 +393,46 @@ namespace versionResume
     if not isValid(carriedTicks) or carriedTicks <= 0 then return 0
     if versionResume.wouldMarkPlayed(carriedTicks, runtimeTicks, policy) then return 0
     return carriedTicks
+  end function
+
+  ' switchTicksFor: Where playback continues when the viewer switches version MID-PLAYBACK.
+  '
+  ' The exact time when the new version has one, otherwise the same percentage. Two releases
+  ' of one cut are offset by a constant, not stretched: the local mixed-release pair runs
+  ' 47 s apart yet matches at 1080p = 720p + 4 s at the start, middle and end (thumbnail
+  ' cross-correlation), so the extra footage is at the edges. Mapping by time is therefore
+  ' 4 s out everywhere, where mapping by percentage would be 19 s out at 15:00 and 35 s at
+  ' 25:00. Percentage is only the better answer once the time does not exist in the new file
+  ' at all, where it at least lands near the end instead of nowhere.
+  '
+  ' Deliberately NOT guarded by wouldMarkPlayed(): past the server's resume ceiling but
+  ' still inside the new file, the viewer continues at the exact time and the item counts as
+  ' watched, which is what finishing it would have done anyway. That is a decided rule, not
+  ' an oversight — unlike a details-screen carry, where refusing costs nothing because the
+  ' screen can simply offer Play instead of Resume.
+  '
+  ' @param {dynamic} positionTicks - where playback is in the version being left
+  ' @param {dynamic} oldRuntimeTicks - runtime of the version being left
+  ' @param {dynamic} newRuntimeTicks - runtime of the version being switched to
+  ' @return {longinteger} ticks the new version starts from (0 = from the beginning)
+  function switchTicksFor(positionTicks as dynamic, oldRuntimeTicks as dynamic, newRuntimeTicks as dynamic) as longinteger
+    if not isValid(positionTicks) or positionTicks <= 0 then return 0&
+
+    ' An unknown new runtime cannot rule the time out, and the exact time is the better
+    ' answer whenever it holds — keep it rather than refuse the switch's position.
+    if not isValid(newRuntimeTicks) or newRuntimeTicks <= 0 then return positionTicks
+    if positionTicks < newRuntimeTicks then return positionTicks
+
+    ' Past the new file's end. Without the old runtime there is no percentage to map, and a
+    ' position known to be outside the new file must not be used as-is.
+    if not isValid(oldRuntimeTicks) or oldRuntimeTicks <= 0 then return 0&
+
+    ' Double, not integer: positionTicks * newRuntimeTicks overflows LongInteger (two ~1e10
+    ' tick values multiply to ~1e20), while a double holds every value here exactly — the
+    ' operands and the result all sit far inside its 53-bit integer range.
+    fraction = (positionTicks * 1.0#) / oldRuntimeTicks
+    if fraction >= 1.0# then return 0& ' at or past the end of the version being left
+    return newRuntimeTicks * fraction
   end function
 
   ' resumeStateFor: Where Resume starts for the SELECTED version of a loaded item, and what

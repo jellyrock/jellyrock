@@ -23,6 +23,7 @@ import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/translate.bs"
 import "pkg:/source/utils/trickplay.bs"
 import "pkg:/source/utils/versionLabels.bs"
+import "pkg:/source/utils/versionResume.bs"
 import "pkg:/source/utils/videoNotifications.bs"
 import "pkg:/source/utils/voiceTransport.bs"
 
@@ -654,13 +655,14 @@ sub onSubtitleChange()
   m.log.info("Subtitle change requires stream reload", "subtitleIndex", m.top.SelectedSubtitle, "position", m.top.position)
 
   ' Save the current video position
-  m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&)
+  m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&, true)
 
   m.top.control = "stop"
 
   m.LoadMetaDataTask.selectedSubtitleIndex = m.top.SelectedSubtitle
   m.LoadMetaDataTask.selectedAudioStreamIndex = m.top.audioIndex
   m.LoadMetaDataTask.itemId = m.currentItem.id
+  keepLoadedVersionOnReload()
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
   ' Every launch of this task declares the fill its one handler resolves — see
   ' onVideoContentLoaded. Silent on this path in practice: a mid-playback reload happens
@@ -696,13 +698,14 @@ sub onAudioIndexChange()
   m.log.info("Audio change requires reload", "isTranscoded", m.top.isTranscoded)
 
   ' Save the current video position
-  m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&)
+  m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&, true)
 
   m.top.control = "stop"
 
   m.LoadMetaDataTask.selectedSubtitleIndex = m.top.SelectedSubtitle
   m.LoadMetaDataTask.selectedAudioStreamIndex = m.top.audioIndex
   m.LoadMetaDataTask.itemId = m.currentItem.id
+  keepLoadedVersionOnReload()
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
   ' Every launch of this task declares the fill its one handler resolves — see
   ' onVideoContentLoaded. Silent on this path in practice: a mid-playback reload happens
@@ -720,8 +723,30 @@ sub onVideoSourceChange()
   newSourceId = m.top.mediaSourceId
   if not isValidAndNotEmpty(newSourceId) then return
 
-  ' Save the current video position
-  m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&)
+  ' The version being switched TO, read once: its streams pick the audio track below, and its
+  ' runtime decides where playback continues. mediaSourceForId rather than an `=` compare,
+  ' because the id reaches here from a different server field than the one on the source —
+  ' the case-sensitivity class #947 fixed on the details screen.
+  newSource = mediaSourceForId(m.top.fullVideoSourceData, newSourceId)
+
+  ' Map the position into the NEW version's timeline instead of reusing the raw one. Two
+  ' releases of one cut are offset by a constant and can differ in runtime by a minute, so
+  ' the current position is not automatically a place the new file reaches — and seeding a
+  ' position past its end starts the stream at nothing. switchTicksFor() keeps the exact time
+  ' whenever the new version has it and falls back to the same percentage.
+  '
+  ' int() before scaling on BOTH values: getEffectiveDuration() is a FLOAT, and a float
+  ' cannot hold a tick count (~1e10) without rounding — the trap that made a 1-tick margin
+  ' difference vanish in versionResume. Whole seconds is the resolution the position already
+  ' uses anyway.
+  newRuntimeTicks = invalid
+  if isValid(newSource) then newRuntimeTicks = newSource.RunTimeTicks
+  startTicks = versionResume.switchTicksFor(int(m.top.position) * 10000000&, int(getEffectiveDuration()) * 10000000&, newRuntimeTicks)
+  ' Ticks as text: roku-log renders a LongInteger as an empty string.
+  newRuntimeText = "unknown"
+  if isValid(newRuntimeTicks) then newRuntimeText = newRuntimeTicks.toStr()
+  m.log.info("Version switch carry", "fromPosition", int(m.top.position), "toTicks", startTicks.toStr(), "newRuntimeTicks", newRuntimeText)
+  m.global.queueManager.callFunc("setCurrentStartingPoint", startTicks, true)
 
   ' No progress report until the new stream plays (the `playing` branch restarts this): a
   ' tick after the new source loads would report the old stream's position against it.
@@ -730,15 +755,10 @@ sub onVideoSourceChange()
 
   ' Re-determine best audio stream for the new source's MediaStreams
   audioStreamIdx = 0
-  if isValid(m.top.fullVideoSourceData)
-    for each source in m.top.fullVideoSourceData
-      if source.Id = newSourceId and isValid(source.MediaStreams)
-        localUser = m.global.user
-        playDefault = resolvePlayDefaultAudioTrack(localUser.settings, localUser.config)
-        audioStreamIdx = findBestAudioStreamIndex(source.MediaStreams, playDefault, resolveAudioLanguagePreference(localUser.settings, localUser.config))
-        exit for
-      end if
-    end for
+  if isValid(newSource) and isValid(newSource.MediaStreams)
+    localUser = m.global.user
+    playDefault = resolvePlayDefaultAudioTrack(localUser.settings, localUser.config)
+    audioStreamIdx = findBestAudioStreamIndex(newSource.MediaStreams, playDefault, resolveAudioLanguagePreference(localUser.settings, localUser.config))
   end if
 
   m.LoadMetaDataTask.selectedSubtitleIndex = -2 ' Reset to auto-detect for new source
@@ -1682,7 +1702,12 @@ end sub
 ' @param {boolean} bypassDovi - skips DoVi container profile so the server can grant direct play
 ' @param {boolean} forceTranscode - disables direct play so the server returns a transcode URL
 sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
-  m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&)
+  ' Only a stream that has played has a position worth saving. A retry before the first
+  ' frame (direct play failing over to transcode) has none of its own, and saving what the
+  ' player reads then would replace the resume point the queue already holds.
+  if m.isPlayReported
+    m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&, true)
+  end if
   ' Prevents PlayerHostView from advancing/exiting when stop causes Roku to fire "finished".
   m.top.isRetrying = true
   m.top.control = "stop"
@@ -1694,6 +1719,7 @@ sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
   m.LoadMetaDataTask.selectedSubtitleIndex = m.top.SelectedSubtitle
   m.LoadMetaDataTask.selectedAudioStreamIndex = m.top.audioIndex
   m.LoadMetaDataTask.itemId = m.currentItem.id
+  keepLoadedVersionOnReload()
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
   ' Unlike the three reload paths, this one CAN run before the first frame, and when it
   ' does the retry is still the same load — the user has been waiting since init and has
@@ -1704,6 +1730,18 @@ sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
   ' declaration), so it spans the whole wait rather than restarting mid-way.
   screenLoad.pending("metadata")
   launchTask(m.LoadMetaDataTask)
+end sub
+
+' keepLoadedVersionOnReload: Hand the version this session loaded to the loader's next run.
+'
+' A reload — a subtitle or audio change, or a retry — runs LoadVideoContentTask again for the
+' same item, and a run given no mediaSourceId CHOOSES a version: on a per-version server from
+' the positions the server holds, which lag the viewer and can name a different file. So each
+' reload names the loaded version as an input of that run rather than trusting the field to
+' survive on a reused node (ADR 0037). Before the first load completes, and for live TV, there
+' is none; the field is then left alone, so a mediaSourceId the queue item supplied still stands.
+sub keepLoadedVersionOnReload()
+  if isValidAndNotEmpty(m.loadedMediaSourceId) then m.LoadMetaDataTask.mediaSourceId = m.loadedMediaSourceId
 end sub
 
 '

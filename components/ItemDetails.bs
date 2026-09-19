@@ -825,7 +825,7 @@ sub resumeSeriesNextUp()
   if not (isValid(nextEp) and isValidAndNotEmpty(nextEp.id)) then return
   queueItem = nodeHelpers.createQueueItem(nextEp)
   if not isValid(queueItem) then return
-  queueItem.startingPoint = nextEp.playbackPositionTicks
+  nodeHelpers.setResumeStart(queueItem, nextEp.playbackPositionTicks)
   launchQueueItemToPlay(queueItem, "Episode", nextEp.id)
 end sub
 
@@ -857,7 +857,9 @@ sub startPlayFromDetail(startingPoint as longinteger)
   if isValidAndNotEmpty(m.top.selectedVideoStreamId)
     queueItem.mediaSourceId = m.top.selectedVideoStreamId
   end if
-  queueItem.startingPoint = startingPoint
+  ' Exact: this screen already resolved where the selected version starts (its own position, a
+  ' carry, or 0 for Play), and the loader must not second-guess it.
+  nodeHelpers.setExactStart(queueItem, startingPoint)
 
   launchQueueItemToPlay(queueItem, m.top.itemType, item.id)
 end sub
@@ -1599,6 +1601,10 @@ end sub
 ' @param {dynamic} mediaSources - its MediaSources, in server order
 sub resetVersionResume(item as object, mediaSources as dynamic)
   m.versionResume = invalid
+  ' Newly loaded content, so no one has picked a version on it yet: the automatic choice is
+  ' free to move again once the positions arrive. Set before the early returns below, or a
+  ' single-version item would leave the previous item's override standing.
+  m.versionUserOverridden = false
   if not isValid(item) or type(mediaSources) <> "roArray" or mediaSources.count() < 2 then return
   if not versionResume.isPerVersionServer(m.global.server.version) then return
 
@@ -1636,6 +1642,8 @@ sub resetVersionResume(item as object, mediaSources as dynamic)
     inProgressSourceId: inProgressSourceId,
     positions: positions, ' sourceId -> ticks (0 = none, POSITION_UNREADABLE = could not read)
     pending: {}, ' sourceId -> true while its fetch is in flight
+    mostRecentId: invalid, ' the version the server would resume; "" = it could not say
+    isMostRecentPending: false,
     isConfigPending: false,
     hasConfigFailed: false
   }
@@ -1656,8 +1664,90 @@ sub clearVersionResumePositions()
   state.generation = m.versionResumeSeq
   state.pending = {}
   state.isConfigPending = false
+  state.mostRecentId = invalid
+  state.isMostRecentPending = false
   state.inProgressSourceId = ""
   state.positions = zeroVersionPositions(state.itemId, mediaSources)
+end sub
+
+' applyVersionSelection: Point the screen at a version — the field, its streams and the track
+' dropdowns, the Video row included (populateTrackDropdowns rebuilds it with its labels).
+'
+' Shared by the viewer's pick and the automatic one (syncVersionSelectionToChoice) so the two
+' cannot drift: a version carries its own audio and subtitle streams, and leaving those behind
+' is what hands playback a stream index belonging to a different file.
+'
+' @param {string} sourceId - the version to select
+' @param {object} item - m.top.itemContent
+sub applyVersionSelection(sourceId as string, item as object)
+  m.top.selectedVideoStreamId = sourceId
+
+  mediaSources = item.mediaSourcesData.mediaSources
+  allStreams = getStreamsForSelectedSource(mediaSources)
+
+  SetDefaultAudioTrack(allStreams)
+  m.subtitleUserOverridden = false
+  populateTrackDropdowns(mediaSources ?? [], allStreams, item.type)
+end sub
+
+' syncVersionSelectionToChoice: Move the selected version to the one that should resume, once
+' enough positions are known to say which that is.
+'
+' The details screen's first guess is made before any position has been read — it can only go
+' on the server's source order. That order names the most recently played version, which is
+' the rule's usual answer, but not when two versions sit at about the same place: there the
+' better version for the device wins, and deciding that needs their actual positions. So the
+' choice is re-run as each position lands, and the SAME pure function answers it here as in
+' LoadVideoContentTask, which is what keeps the screen from naming one version while quick
+' play, a cast or Continue Watching plays another.
+'
+' Requests ride the existing per-version fetch, so a position already read or in flight is not
+' asked for twice, and each reply re-enters here through onVersionPositionLoaded.
+sub syncVersionSelectionToChoice()
+  state = m.versionResume
+  if not isValid(state) then return
+  if m.versionUserOverridden then return
+
+  item = m.top.itemContent
+  if not isValid(item) or not isValid(item.mediaSourcesData) then return
+  mediaSources = item.mediaSourcesData.mediaSources
+  if type(mediaSources) <> "roArray" or mediaSources.count() < 2 then return
+
+  ctx = {
+    itemId: item.id,
+    itemPositionTicks: item.playbackPositionTicks,
+    mediaSources: mediaSources,
+    positions: state.positions,
+    isPerVersion: true,
+    mostRecentId: state.mostRecentId,
+    deviceBestId: ""
+  }
+
+  answer = versionResume.chooseResumeSource(ctx)
+
+  if answer.needsSourceIds.count() > 0
+    for each sourceId in answer.needsSourceIds
+      requestVersionPosition(sourceId)
+    end for
+    return ' each reply comes back through onVersionPositionLoaded
+  end if
+
+  if answer.needsMostRecent
+    requestMostRecentVersion(item, mediaSources)
+    return ' the reply comes back through onMostRecentVersionLoaded
+  end if
+
+  if answer.tiedIds.count() > 1
+    ctx.deviceBestId = findBestVideoSourceAmongIds(mediaSources, answer.tiedIds)
+    if not isValidAndNotEmpty(ctx.deviceBestId) then return
+    answer = versionResume.chooseResumeSource(ctx)
+  end if
+
+  if not isValidAndNotEmpty(answer.sourceId) then return
+  if versionResume.idsMatch(answer.sourceId, m.top.selectedVideoStreamId) then return
+
+  m.log.info("Version selection moved to the resume choice", "sourceId", answer.sourceId)
+  applyVersionSelection(answer.sourceId, item)
 end sub
 
 ' refreshVideoDropdownLabels: Rebuild the Video dropdown's labels after the in-progress
@@ -1769,6 +1859,50 @@ function requestVersionPosition(sourceId as string) as boolean
   return true
 end function
 
+' requestMostRecentVersion: Ask the server which version it would resume, once per content load.
+'
+' The source order answers that only from a primary; this screen can be showing an alternate
+' (see versionResume.chooseResumeSource). Scoped to the item's parent and lean, as in
+' LoadVideoContentTask.fetchMostRecentVersionId, so both shells ask the same question.
+'
+' @param {object} item - m.top.itemContent
+' @param {object} mediaSources - its MediaSources
+sub requestMostRecentVersion(item as object, mediaSources as object)
+  state = m.versionResume
+  if not isValid(state) or state.isMostRecentPending then return
+
+  req = invalid
+  if isValidAndNotEmpty(item.parentId)
+    req = GetApi().BuildGetResumeItemsRequest({ parentId: item.parentId, EnableImages: false, EnableUserData: false })
+  end if
+  if not isValid(req)
+    ' Nothing to ask: record that the server cannot say, so the choice falls back to the order.
+    state.mostRecentId = ""
+    syncVersionSelectionToChoice()
+    return
+  end if
+
+  state.isMostRecentPending = true
+  m.versionResumeSeq += 1
+  promises.chain(fetchAsync(req, "versionMostRecent-" + m.versionResumeSeq.toStr()), { generation: state.generation, mediaSources: mediaSources }).then(sub(res as object, ctx as object)
+    onMostRecentVersionLoaded(ctx, versionResume.mostRecentIdFrom(res, ctx.mediaSources))
+  end sub).catch(sub(err as object, ctx as object)
+    m.log.warn("resume query for the most recent version failed", "reason", err.reason)
+    onMostRecentVersionLoaded(ctx, "")
+  end sub)
+end sub
+
+' onMostRecentVersionLoaded: Record the server's answer and re-run the choice, unless the
+' content has been reloaded since the request started.
+sub onMostRecentVersionLoaded(ctx as object, mostRecentId as string)
+  state = m.versionResume
+  if not isValid(state) or state.generation <> ctx.generation then return ' stale
+  state.isMostRecentPending = false
+  state.mostRecentId = mostRecentId
+  syncVersionSelectionToChoice()
+  manageResumeButton()
+end sub
+
 ' onVersionPositionLoaded: Record a fetched version position and redraw Resume, unless the
 ' content has been reloaded since the fetch started.
 sub onVersionPositionLoaded(ctx as object, ticks as dynamic)
@@ -1776,6 +1910,9 @@ sub onVersionPositionLoaded(ctx as object, ticks as dynamic)
   if not isValid(state) or state.generation <> ctx.generation then return ' stale
   state.pending.delete(ctx.sourceId)
   state.positions[ctx.sourceId] = ticks
+  ' Before the button, not after: a position can change WHICH version resumes, and the button
+  ' then has to describe the version that actually would.
+  syncVersionSelectionToChoice()
   manageResumeButton()
 end sub
 
@@ -3158,6 +3295,11 @@ sub onItemContentChanged()
 
       SetDefaultAudioTrack(allStreams)
       populateTrackDropdowns(mediaSources ?? [], allStreams, item.type)
+
+      ' The selection above is a first guess from the server's source order alone. Start the
+      ' position reads that can correct it; each reply re-enters through
+      ' onVersionPositionLoaded. No-op unless a version is actually in progress.
+      syncVersionSelectionToChoice()
     end if
     ' Series/Season/Person/BoxSet/MusicArtist/MusicAlbum: the NO_MEDIA_TRACKS branch
     ' above already removed itemTracks from layout and hid m.trackCluster, so nothing
@@ -4629,19 +4771,17 @@ end function
 sub onVideoDropdownSelection()
   newStreamId = m.videoDropdown.selectedAction
   if not isValidAndNotEmpty(newStreamId) then return
-  if newStreamId = m.top.selectedVideoStreamId then return
-
-  m.top.selectedVideoStreamId = newStreamId
+  if versionResume.idsMatch(newStreamId, m.top.selectedVideoStreamId) then return
 
   item = m.top.itemContent
   if not isValid(item) or not isValid(item.mediaSourcesData) then return
 
-  mediaSources = item.mediaSourcesData.mediaSources
-  allStreams = getStreamsForSelectedSource(mediaSources)
+  ' A deliberate pick outranks the automatic choice: once the viewer has named a version, a
+  ' position arriving later must not move the selection out from under them. Set only once
+  ' the pick is applied, so a pick that could not be applied does not freeze the choice.
+  m.versionUserOverridden = true
 
-  SetDefaultAudioTrack(allStreams)
-  m.subtitleUserOverridden = false
-  populateTrackDropdowns(mediaSources ?? [], allStreams, item.type)
+  applyVersionSelection(newStreamId, item)
 
   ' On a per-version server each version resumes from its own position.
   if isValid(m.versionResume) then manageResumeButton()

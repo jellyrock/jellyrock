@@ -22,9 +22,12 @@ related-files:
   - components/ItemGrid/LoadVideoContentTask.bs
   - source/utils/versionLabels.bs
   - source/utils/versionResume.bs
+  - source/utils/quickplay.bs
+  - source/utils/nodeHelpers.bs
+  - source/utils/streamSelection.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-09-16
+last-reviewed: 2026-09-19
 ---
 
 # Video & Audio Playback
@@ -458,7 +461,7 @@ An item with several `MediaSources` (alternate versions) resumes differently by 
 | | Before 12.0 | 12.0+ |
 |---|---|---|
 | Position stored | once per item, whichever file played | per version, on the reported `MediaSourceId` |
-| Version picked to resume | device-best (`findBestVideoSource`) | the version that holds the position |
+| Version picked to resume | device-best (`findBestVideoSource`) | the most recently played, unless two sit at about the same place — then device-best among those |
 | In-progress signal | the item's own position | the item's own position, **or** an alternate listed first in the primary's `MediaSources` |
 
 Resuming continues the file that holds the position because another version can be offset
@@ -466,14 +469,69 @@ from it, and neither the names nor the runtime lengths tell a re-encode from a d
 better file is left to an explicit choice or a fresh start: with nothing in progress, playback
 picks device-best as before.
 
-- **Quick play and queue items without a chosen version** (`quickplay.video`,
-  `LoadVideoContentTask`) resume on the item's own version when starting from a position;
-  otherwise device-best. A primary whose progress sits on an alternate shows no progress
-  bar, so it starts from the beginning.
-- **`ItemDetails`** auto-selects the in-progress version, and the Resume button follows the
-  selected version: its own position (one `GET /UserItems/{id}/UserData` for a version other
-  than the item, with the Resume slot's loading button meanwhile) or, for a version the user
-  picked that has none, the in-progress position carried over.
+**A version is only ever resumed at its OWN position**, never another's — the two local
+releases of one episode run 47 s apart, so borrowing a position moves the viewer elsewhere in
+the content. "Most recently played" is never read from a timestamp: 12.0 copies the newest
+version's `LastPlayedDate` onto the primary's user data (`VersionResumeData.ApplyTo`), so once
+an alternate was played more recently the primary's own play time is unreadable — the local
+pair reports identical dates to the 100 ns digit. The server answers it two other ways:
+
+- **The source ORDER, but only from a primary.** `SetAlternateVersionResumeStates` moves the
+  most recently played version that *has* a position to the front of a **primary's**
+  `MediaSources`, and leaves a directly queried alternate's own source first whatever played
+  last. So another version in front proves the item is a primary and that version was played
+  last; the item's own source in front proves nothing, and the DTO does not say which kind of
+  item it is (`PrimaryVersionId` is server-side only, through 12.1).
+- **The resume query**, `GET /UserItems/Resume?parentId=<the item's parent>`, which returns the
+  version that owns the resume point. `chooseResumeSource` asks for it (`needsMostRecent`) only
+  in the ambiguous case above with two versions in progress; the shells answer with
+  `versionResume.mostRecentIdFrom()`, and a reply that cannot say falls back to the order.
+
+This matters in practice because on 12.0 **Continue Watching lists the version played last**, so
+an alternate's id is what gets queued, and reading that alternate's own source order as "played last" once
+resumed the wrong file.
+
+Two versions within `versionResume.NEAR_LEVEL_MARGIN_TICKS` (30 s) count as being at the same
+place, so quality decides between them instead of which played last. Because a version resumes at its own
+position, that margin *is* the worst-case misplacement the viewer can feel; it absorbs the
+constant offset between two releases of one cut (4 s on the local pair), the 10 s
+progress-report cadence when a session ends without a stop report, and the switch latency of a
+carry. Device knowledge is deliberately absent from `versionResume` (it must stay pure), so a
+tie comes back as ids and `findBestVideoSourceAmongIds()` settles it over just those versions —
+scoring the whole list would let a 4K version nobody started win a tie between two in progress.
+
+**`versionResume.chooseResumeSource()` is the single answer**, shared by every entry point, so
+the app cannot name one version and play another:
+
+- **`LoadVideoContentTask`** makes the choice for everything that did not make it on screen —
+  quick play, casts, a queued episode — because it is the only one that can read each version's
+  own position. `quickplay.video` runs on the render thread with no fetching, so on a
+  per-version server it stands down by **clearing** `mediaSourceId` (the transformer already sets
+  it with `MediaSources[0].Id`, which would otherwise read as an explicit pick) and leaves
+  `selectedAudioStreamIndex` at 0 so the audio track is picked for whichever version wins. The
+  reads ride `apiPipeline`, so N versions cost roughly one round trip, and nothing is fetched
+  unless something is already in progress. A **mid-playback reload** (subtitle or audio change,
+  retry) re-runs the same task, so `VideoPlayerView.keepLoadedVersionOnReload()` passes the
+  loaded version as that run's `mediaSourceId` — without it the reload chooses again from the
+  server's lagging positions and can switch file and position under the viewer.
+- **The start position says what kind it is.** The loader replaces a *resume* start with the
+  chosen version's own position, and never an *exact* one — a chapter, Play from the start, a
+  position the player saved before a reload. Callers write the pair through
+  `nodeHelpers.setResumeStart()` / `setExactStart()` (or `setCurrentStartingPoint`'s `isExact`),
+  never `startingPoint` alone; `startingPointIsExact` is read only on the per-version path.
+- **`ItemDetails`** decides for itself and passes an explicit id, which the loader honors
+  untouched. Its first guess comes from the source order alone, then
+  `syncVersionSelectionToChoice()` re-runs the choice as each position lands and moves the
+  selection — unless the viewer has picked a version, which sets `m.versionUserOverridden` and
+  freezes it. The Resume button follows the selected version: its own position (one
+  `GET /UserItems/{id}/UserData` for a version other than the item, with the Resume slot's
+  loading button meanwhile) or, for a version the user picked that has none, the in-progress
+  position carried over.
+- **Cinema Mode prerolls** are suppressed when a resume is coming, which `startingPoint` alone
+  can no longer say (the item's own version may sit at 0 while an alternate is partway
+  through). `quickplay` passes `hasVersionInProgress` on the queue item, read from the source
+  order for free, because that decision is made before the version is chosen.
+  jellyfin-web draws the same line — `getIntros()` bails on `options.startPositionTicks`.
 
 The carry is guarded by `versionResume.wouldMarkPlayed()`, which follows the server's
 `UserDataManager.UpdatePlayState` played branches — past `MaxResumePct`, inside the last
@@ -491,6 +549,29 @@ the guard skips that check, so it refuses even a small carry onto a version shor
 either way, so the stricter answer costs the viewer a few seconds at most. The thresholds
 are read once per server into `JellyfinServer.resumePolicy` (both or neither), and an
 unreadable policy answers "played", so nothing is carried.
+
+#### Switching version mid-playback
+
+`VideoPlayerView.onVideoSourceChange` maps the position into the new version's timeline with
+`versionResume.switchTicksFor()` rather than reusing it raw: the exact time when the new
+version reaches it, otherwise the same percentage. Two releases of one cut are offset by a
+*constant*, not stretched — the local pair runs 47 s apart yet matches at 1080p = 720p + 4 s at
+start, middle and end, so the extra footage is at the edges. Mapping by time is 4 s out
+everywhere; by percentage it would be 19 s out at 15:00 and 35 s at 25:00. Percentage only wins
+once the time does not exist in the new file at all, where it lands near the end instead of
+past it.
+
+This path is deliberately **not** guarded by `wouldMarkPlayed()`. Past the resume ceiling but
+still inside the new file, the viewer continues at the exact time and the item counts as
+watched — what finishing it would have done anyway. The details screen keeps the stricter rule
+because refusing there costs nothing: it can simply offer Play instead of Resume, an out the
+player does not have.
+
+⚠️ **Tick arithmetic must stay integer.** `abs()` and `getEffectiveDuration()` return floats,
+and a 24-bit mantissa cannot hold a tick count (~`1e10`): an early version of the near-level
+comparison used `abs()` and a delta of 300000001 ticks silently rounded to the 30 s margin,
+tying a version that was past it. Negate by hand, and `int()` seconds before scaling by
+`10000000&`.
 
 Every choice above lives in `source/utils/versionResume.bs` as pure functions over plain
 values; `ItemDetails` holds only the shell that fetches what `resumeStateFor()` asks for.

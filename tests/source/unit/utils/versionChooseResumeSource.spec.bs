@@ -1,0 +1,552 @@
+import "pkg:/source/utils/versionResume.bs"
+
+namespace tests
+
+  ' `chooseResumeSource` — the ONE answer to "which version resumes", shared by the details
+  ' screen, quick play, casts and queued items.
+  '
+  ' Before it, those paths each had their own rule: the details screen honored the server's
+  ' source order while quick play and the progress bars used the item's own version, so with
+  ' two versions in progress the screen marked one version and played another. Measured on
+  ' the 12.0 test server with S04E06 — 1080p at 318 s, 720p at 319 s and listed first —
+  ' details resumed 1080p, the poster showed the 1080p bar, a cast played 1080p, and a brief
+  ' fix to details alone split it from all three.
+  '
+  ' Things the tests below encode that are easy to get wrong:
+  '   * "Most recently played" never comes from a timestamp. v12.0 copies the newest version's
+  '     LastPlayedDate onto the primary's user data (VersionResumeData.ApplyTo), so the local
+  '     pair reports identical dates to the 100 ns digit and the primary's play time is
+  '     unreadable.
+  '   * The source ORDER says who was played last only from a PRIMARY: the server moves the
+  '     most recent in-progress version to the front of a primary's sources, and leaves a
+  '     directly queried alternate's own source first. Another version in front is therefore
+  '     proof; the item's own source in front is not, and the server's resume query decides.
+  '   * A version is only ever resumed at its OWN position. Resuming one version at another's
+  '     would move the viewer somewhere else in the content — the two local releases of one
+  '     episode run 47 s apart.
+  @suite("versionResume - choosing which version resumes")
+  class VersionChooseResumeSourceTests extends tests.BaseTestSuite
+
+    ' Seconds as ticks. The `&` suffix makes the local a LongInteger, so the double
+    ' multiplication lands in 64 bits instead of overflowing a 32-bit integer.
+    private function secs(n as double) as longinteger
+      ticks& = n * 10000000#
+      return ticks&
+    end function
+
+    ' The order a 12.0 server lists sources in when the item's own version is the most
+    ' recently played one (or nothing is in progress): its own source first.
+    private function ownFirst() as object
+      return [{ Id: "primary", RunTimeTicks: m.secs(1843) }, { Id: "alternate", RunTimeTicks: m.secs(1795) }]
+    end function
+
+    ' The order after an alternate was played more recently: SetAlternateVersionResumeStates
+    ' leads with it, and only ever for a version that HAS a position.
+    private function alternateFirst() as object
+      return [{ Id: "alternate", RunTimeTicks: m.secs(1795) }, { Id: "primary", RunTimeTicks: m.secs(1843) }]
+    end function
+
+    private function ctx(overrides as object) as object
+      base = {
+        itemId: "primary",
+        itemPositionTicks: 0,
+        mediaSources: m.ownFirst(),
+        positions: { alternate: 0 },
+        isPerVersion: true,
+        deviceBestId: ""
+      }
+      for each key in overrides
+        base[key] = overrides[key]
+      end for
+      return base
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("chooseResumeSource() - when it declines to answer")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("gives no answer on a server that keeps one position per item")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({ isPerVersion: false, itemPositionTicks: m.secs(319) }))
+      m.assertEqual(answer.sourceId, "")
+      m.assertEqual(answer.ticks, 0&)
+    end function
+
+    @it("gives no answer for a single-version item, or none at all")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({ mediaSources: [{ Id: "primary" }] }))
+      m.assertEqual(answer.sourceId, "")
+      answer = versionResume.chooseResumeSource(m.ctx({ mediaSources: invalid }))
+      m.assertEqual(answer.sourceId, "")
+      m.assertEqual(versionResume.chooseResumeSource(invalid).sourceId, "")
+    end function
+
+    ' The zero-cost common case: every multi-version item nobody has started.
+    @it("costs no requests when the item has no position and no alternate leads")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({ positions: {} }))
+      m.assertEqual(answer.sourceId, "")
+      m.assertEqual(answer.needsSourceIds.count(), 0)
+      m.assertFalse(answer.isLoading)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("anyVersionInProgress() - the free 'are we resuming?' signal")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' This is what gates the Cinema Mode preroll, which is decided before any position is read.
+    ' It cannot be checked on a device here — no test server has the third-party Intros plugin —
+    ' so the rule is held by this spec rather than by an eyeball.
+    @it("is true from the item's own position alone, on any server line")
+    function _()
+      m.assertTrue(versionResume.anyVersionInProgress("primary", m.secs(318), m.ownFirst(), true))
+      m.assertTrue(versionResume.anyVersionInProgress("primary", m.secs(318), m.ownFirst(), false))
+      m.assertTrue(versionResume.anyVersionInProgress("primary", m.secs(318), invalid, false))
+    end function
+
+    ' The case startingPoint cannot express: the item reads 0, an alternate holds the position.
+    @it("is true when the server leads with an alternate, even at position zero")
+    function _()
+      m.assertTrue(versionResume.anyVersionInProgress("primary", 0, m.alternateFirst(), true))
+    end function
+
+    @it("is false when the item leads and has no position of its own")
+    function _()
+      m.assertFalse(versionResume.anyVersionInProgress("primary", 0, m.ownFirst(), true))
+      m.assertFalse(versionResume.anyVersionInProgress("primary", invalid, m.ownFirst(), true))
+    end function
+
+    ' Before 12.0 the source order is sorted by width, so a leading alternate says nothing.
+    @it("ignores the source order on a server that keeps one position per item")
+    function _()
+      m.assertFalse(versionResume.anyVersionInProgress("primary", 0, m.alternateFirst(), false))
+    end function
+
+    @it("is false for a single-version item or no sources at all")
+    function _()
+      m.assertFalse(versionResume.anyVersionInProgress("primary", 0, [{ Id: "alternate" }], true))
+      m.assertFalse(versionResume.anyVersionInProgress("primary", 0, invalid, true))
+      m.assertFalse(versionResume.anyVersionInProgress("primary", 0, [], true))
+    end function
+
+    @it("matches the item's own id ignoring case")
+    function _()
+      m.assertFalse(versionResume.anyVersionInProgress("PRIMARY", 0, m.ownFirst(), true))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("chooseResumeSource() - what it asks to be read")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("asks for every other version's position once something is in progress")
+    function _()
+      ' The server led with the alternate, so a position exists somewhere; the server's order
+      ' names only the single most recent one, so the rest have to be read.
+      answer = versionResume.chooseResumeSource(m.ctx({ mediaSources: m.alternateFirst(), positions: {} }))
+      m.assertTrue(answer.isLoading)
+      m.assertEqual(answer.needsSourceIds, ["alternate"])
+      m.assertEqual(answer.sourceId, "")
+    end function
+
+    @it("asks for the others when only the item's own position is known")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({ itemPositionTicks: m.secs(318), positions: {} }))
+      m.assertTrue(answer.isLoading)
+      m.assertEqual(answer.needsSourceIds, ["alternate"])
+    end function
+
+    @it("never asks for the item's own position, which is already in hand")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({ itemPositionTicks: m.secs(318) }))
+      m.assertEqual(answer.needsSourceIds.count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("chooseResumeSource() - exactly one version in progress")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("resumes the item's own version at its own position")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({ itemPositionTicks: m.secs(318) }))
+      m.assertEqual(answer.sourceId, "primary")
+      m.assertEqual(answer.ticks, m.secs(318))
+      m.assertFalse(answer.isLoading)
+    end function
+
+    ' The case the old quick-play rule got wrong: it started the item over.
+    @it("resumes an alternate at its own position when the item itself has none")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({
+        mediaSources: m.alternateFirst(),
+        positions: { alternate: m.secs(319) }
+      }))
+      m.assertEqual(answer.sourceId, "alternate")
+      m.assertEqual(answer.ticks, m.secs(319))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("chooseResumeSource() - clear of each other: the most recent wins")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("picks the leading version when it is well ahead of the item's own")
+    function _()
+      ' The alternate leads (played more recently) at 20:00; the item sits at 5:18.
+      answer = versionResume.chooseResumeSource(m.ctx({
+        mediaSources: m.alternateFirst(),
+        itemPositionTicks: m.secs(318),
+        positions: { alternate: m.secs(1200) }
+      }))
+      m.assertEqual(answer.sourceId, "alternate")
+      m.assertEqual(answer.ticks, m.secs(1200))
+      m.assertEqual(answer.tiedIds.count(), 0)
+    end function
+
+    @it("picks the leading version when it is well BEHIND the item's own")
+    function _()
+      ' Recency is the rule, not progress: the viewer most recently watched the alternate, so
+      ' that is the file they are in, even though the item is further along.
+      answer = versionResume.chooseResumeSource(m.ctx({
+        mediaSources: m.alternateFirst(),
+        itemPositionTicks: m.secs(1200),
+        positions: { alternate: m.secs(120) }
+      }))
+      m.assertEqual(answer.sourceId, "alternate")
+      m.assertEqual(answer.ticks, m.secs(120))
+    end function
+
+    @it("trusts the order without asking when another version leads")
+    function _()
+      ' Only a primary is ever reordered, so a version in front of the item proves both.
+      answer = versionResume.chooseResumeSource(m.ctx({
+        mediaSources: m.alternateFirst(),
+        itemPositionTicks: m.secs(318),
+        positions: { alternate: m.secs(1200) }
+      }))
+      m.assertFalse(answer.needsMostRecent)
+      m.assertEqual(answer.sourceId, "alternate")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("chooseResumeSource() - the item's own source in front: the server decides")
+    ' A primary played last and ANY directly queried alternate both list their own source
+    ' first, and nothing in the item says which it is.
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("asks which version the server would resume once two are in progress")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({
+        itemPositionTicks: m.secs(1200),
+        positions: { alternate: m.secs(120) }
+      }))
+      m.assertTrue(answer.needsMostRecent)
+      m.assertTrue(answer.isLoading)
+      m.assertEqual(answer.sourceId, "")
+    end function
+
+    @it("does not ask when only one version is in progress")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({
+        itemPositionTicks: m.secs(1200),
+        positions: { alternate: 0 }
+      }))
+      m.assertFalse(answer.needsMostRecent)
+      m.assertEqual(answer.sourceId, "primary")
+    end function
+
+    @it("resumes the item's own version when the server names it")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({
+        itemPositionTicks: m.secs(1200),
+        positions: { alternate: m.secs(120) },
+        mostRecentId: "primary"
+      }))
+      m.assertEqual(answer.sourceId, "primary")
+      m.assertEqual(answer.ticks, m.secs(1200))
+    end function
+
+    ' The state reproduced on a 12.0 server: an ALTERNATE queued (Continue Watching lists the
+    ' version played last) while the primary was then played to 900 s. Queried as itself, the
+    ' alternate still leads its own sources, and reading that as recency resumed 720p at 319 s.
+    @it("resumes the version the server names, not a queried alternate listed first")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({
+        itemId: "alternate",
+        itemPositionTicks: m.secs(319),
+        mediaSources: m.alternateFirst(),
+        positions: { primary: m.secs(900) },
+        mostRecentId: "primary"
+      }))
+      m.assertEqual(answer.sourceId, "primary")
+      m.assertEqual(answer.ticks, m.secs(900))
+    end function
+
+    @it("measures a tie from the server's pick, not from the version listed first")
+    function _()
+      sources = [
+        { Id: "alternate", RunTimeTicks: m.secs(1795) },
+        { Id: "primary", RunTimeTicks: m.secs(1843) },
+        { Id: "third", RunTimeTicks: m.secs(1800) }
+      ]
+      answer = versionResume.chooseResumeSource(m.ctx({
+        itemId: "alternate",
+        itemPositionTicks: m.secs(319),
+        mediaSources: sources,
+        positions: { primary: m.secs(900), third: m.secs(905) },
+        mostRecentId: "primary"
+      }))
+      m.assertEqual(answer.tiedIds.count(), 2)
+      m.assertArrayContains(answer.tiedIds, "primary")
+      m.assertArrayContains(answer.tiedIds, "third")
+    end function
+
+    @it("falls back to the order, without asking again, when the server could not say")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({
+        itemPositionTicks: m.secs(1200),
+        positions: { alternate: m.secs(120) },
+        mostRecentId: ""
+      }))
+      m.assertFalse(answer.needsMostRecent)
+      m.assertEqual(answer.sourceId, "primary")
+      m.assertEqual(answer.ticks, m.secs(1200))
+    end function
+
+    @it("falls back to the order when the server names a version not in progress")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({
+        itemPositionTicks: m.secs(1200),
+        positions: { alternate: m.secs(120) },
+        mostRecentId: "merged-away"
+      }))
+      m.assertFalse(answer.needsMostRecent)
+      m.assertEqual(answer.sourceId, "primary")
+    end function
+
+    @it("matches the server's pick ignoring case")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({
+        itemPositionTicks: m.secs(120),
+        positions: { alternate: m.secs(1200) },
+        mostRecentId: "ALTERNATE"
+      }))
+      m.assertEqual(answer.sourceId, "alternate")
+      m.assertEqual(answer.ticks, m.secs(1200))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("chooseResumeSource() - at about the same place: quality decides")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The exact state measured on the 12.0 server: 1 s apart, which is noise, not a choice.
+    @it("hands back a tie for the real S04E06 state (318 s vs 319 s)")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({
+        mediaSources: m.alternateFirst(),
+        itemPositionTicks: m.secs(318),
+        positions: { alternate: m.secs(319) }
+      }))
+      m.assertEqual(answer.sourceId, "")
+      m.assertEqual(answer.tiedIds.count(), 2)
+      m.assertFalse(answer.isLoading) ' the caller settles this with no request
+    end function
+
+    @it("ties at exactly the margin, and not one tick past it")
+    function _()
+      atMargin = m.ctx({
+        mediaSources: m.alternateFirst(),
+        itemPositionTicks: m.secs(600),
+        positions: { alternate: m.secs(630) } ' 30 s ahead
+      })
+      m.assertEqual(versionResume.chooseResumeSource(atMargin).tiedIds.count(), 2)
+
+      pastMargin = m.ctx({
+        mediaSources: m.alternateFirst(),
+        itemPositionTicks: m.secs(600),
+        positions: { alternate: m.secs(630) + 1& }
+      })
+      answer = versionResume.chooseResumeSource(pastMargin)
+      m.assertEqual(answer.tiedIds.count(), 0)
+      m.assertEqual(answer.sourceId, "alternate")
+    end function
+
+    @it("ties in either direction")
+    function _()
+      ' The leader BEHIND the item's own by less than the margin still ties.
+      answer = versionResume.chooseResumeSource(m.ctx({
+        mediaSources: m.alternateFirst(),
+        itemPositionTicks: m.secs(630),
+        positions: { alternate: m.secs(600) }
+      }))
+      m.assertEqual(answer.tiedIds.count(), 2)
+    end function
+
+    @it("resumes the device's pick at ITS OWN position, never the other version's")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({
+        mediaSources: m.alternateFirst(),
+        itemPositionTicks: m.secs(318),
+        positions: { alternate: m.secs(319) },
+        deviceBestId: "primary"
+      }))
+      m.assertEqual(answer.sourceId, "primary")
+      m.assertEqual(answer.ticks, m.secs(318)) ' its own 318, not the alternate's 319
+      m.assertEqual(answer.tiedIds.count(), 0)
+    end function
+
+    @it("honors a device pick naming the alternate")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({
+        mediaSources: m.alternateFirst(),
+        itemPositionTicks: m.secs(318),
+        positions: { alternate: m.secs(319) },
+        deviceBestId: "alternate"
+      }))
+      m.assertEqual(answer.sourceId, "alternate")
+      m.assertEqual(answer.ticks, m.secs(319))
+    end function
+
+    @it("falls back to the most recent when the device pick names no tied version")
+    function _()
+      ' Answers a question that was not asked — a version that is not in the tie, or gone.
+      answer = versionResume.chooseResumeSource(m.ctx({
+        mediaSources: m.alternateFirst(),
+        itemPositionTicks: m.secs(318),
+        positions: { alternate: m.secs(319) },
+        deviceBestId: "merged-away"
+      }))
+      m.assertEqual(answer.sourceId, "alternate")
+      m.assertEqual(answer.ticks, m.secs(319))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("chooseResumeSource() - a position that could not be read")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Unreadable is not "no position": reading it as 0 would silently restart the content.
+    @it("never chooses a version whose position is unreadable")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({
+        mediaSources: m.alternateFirst(),
+        itemPositionTicks: m.secs(318),
+        positions: { alternate: versionResume.POSITION_UNREADABLE }
+      }))
+      m.assertEqual(answer.sourceId, "primary")
+      m.assertEqual(answer.ticks, m.secs(318))
+    end function
+
+    @it("gives no answer when the only in-progress version is unreadable")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({
+        mediaSources: m.alternateFirst(),
+        positions: { alternate: versionResume.POSITION_UNREADABLE }
+      }))
+      m.assertEqual(answer.sourceId, "")
+      m.assertEqual(answer.ticks, 0&)
+      m.assertFalse(answer.isLoading)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("chooseResumeSource() - three versions")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    private function threeSources() as object
+      return [
+        { Id: "alternate", RunTimeTicks: m.secs(1795) },
+        { Id: "primary", RunTimeTicks: m.secs(1843) },
+        { Id: "third", RunTimeTicks: m.secs(1800) }
+      ]
+    end function
+
+    @it("ties only the versions near the leader, not every version in progress")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({
+        mediaSources: m.threeSources(),
+        itemPositionTicks: m.secs(319),
+        positions: { alternate: m.secs(318), third: m.secs(1200) }
+      }))
+      ' The leader and the item's own are 1 s apart; the third is 15 minutes away.
+      m.assertEqual(answer.tiedIds.count(), 2)
+      m.assertEqual(answer.sourceId, "")
+    end function
+
+    @it("asks for every unread version before deciding anything")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({
+        mediaSources: m.threeSources(),
+        itemPositionTicks: m.secs(319),
+        positions: {}
+      }))
+      m.assertEqual(answer.needsSourceIds.count(), 2)
+      m.assertTrue(answer.isLoading)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("chooseResumeSource() - id matching")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The ids arrive from two different server fields (Item.Id and MediaSource.Id).
+    @it("matches the item's own source ignoring case")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({
+        itemId: "PRIMARY",
+        itemPositionTicks: m.secs(318)
+      }))
+      m.assertEqual(answer.sourceId, "primary")
+      m.assertEqual(answer.ticks, m.secs(318))
+      m.assertEqual(answer.needsSourceIds.count(), 0)
+    end function
+
+    @it("honors a device pick that differs only in case")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({
+        mediaSources: m.alternateFirst(),
+        itemPositionTicks: m.secs(318),
+        positions: { alternate: m.secs(319) },
+        deviceBestId: "PRIMARY"
+      }))
+      m.assertEqual(answer.sourceId, "primary")
+      m.assertEqual(answer.ticks, m.secs(318))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("mostRecentIdFrom() - reading the server's resume query")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns the source the reply lists for this item, in the source's own spelling")
+    function _()
+      res = { ok: true, json: { Items: [{ Id: "PRIMARY", Type: "Episode" }] } }
+      m.assertEqual(versionResume.mostRecentIdFrom(res, m.ownFirst()), "primary")
+    end function
+
+    @it("ignores the other in-progress items under the same parent")
+    function _()
+      ' Since 12.0 a Season or Series with an in-progress descendant is listed too.
+      res = {
+        ok: true, json: {
+          Items: [
+            { Id: "season", Type: "Season" },
+            { Id: "another-episode", Type: "Episode" },
+            { Id: "alternate", Type: "Episode" }
+          ]
+        }
+      }
+      m.assertEqual(versionResume.mostRecentIdFrom(res, m.ownFirst()), "alternate")
+    end function
+
+    @it("returns an empty answer when the reply says nothing about this item")
+    function _()
+      res = { ok: true, json: { Items: [{ Id: "another-episode" }] } }
+      m.assertEqual(versionResume.mostRecentIdFrom(res, m.ownFirst()), "")
+    end function
+
+    @it("returns an empty answer for a failed or malformed reply")
+    function _()
+      m.assertEqual(versionResume.mostRecentIdFrom(invalid, m.ownFirst()), "")
+      m.assertEqual(versionResume.mostRecentIdFrom({ ok: false, json: invalid }, m.ownFirst()), "")
+      m.assertEqual(versionResume.mostRecentIdFrom({ ok: true, json: { Items: invalid } }, m.ownFirst()), "")
+      m.assertEqual(versionResume.mostRecentIdFrom({ ok: true, json: { Items: [{ Id: "primary" }] } }, invalid), "")
+    end function
+
+  end class
+
+end namespace

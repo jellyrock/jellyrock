@@ -162,7 +162,8 @@ sub launchItem(itemNode as object)
     queueItem = nodeHelpers.createQueueItem(itemNode)
     if isValid(queueItem)
       queueItem.type = itemNode.parentType
-      queueItem.startingPoint = itemNode.playbackPositionTicks
+      ' The chapter's start, not a resume point: the viewer picked this place.
+      nodeHelpers.setExactStart(queueItem, itemNode.playbackPositionTicks)
       push(queueItem)
       playQueue()
     end if
@@ -431,11 +432,23 @@ sub set(items)
 end sub
 
 ' Set starting point for the current item in the queue
-sub setCurrentStartingPoint(positionTicks)
+'
+' @param positionTicks - where the current item starts
+' @param {boolean} isExact - true for a place the caller named (a position the player saved
+'                            before a reload), false for a saved resume position — see
+'                            nodeHelpers.setExactStart / setResumeStart
+sub setCurrentStartingPoint(positionTicks, isExact = false as boolean)
   if getCount() = 0 then return
   if m.position < 0 or m.position >= getCount() then return
-  m.log.debug("setCurrentStartingPoint", "queuePosition", m.position, "ticks", positionTicks, "queueCount", getCount())
-  m.queue[m.position].startingPoint = positionTicks
+  ' Ticks as text: roku-log renders a LongInteger as an empty string.
+  ticksText = "invalid"
+  if isValid(positionTicks) then ticksText = positionTicks.toStr()
+  m.log.debug("setCurrentStartingPoint", "queuePosition", m.position, "ticks", ticksText, "isExact", isExact, "queueCount", getCount())
+  if isExact
+    nodeHelpers.setExactStart(m.queue[m.position], positionTicks)
+  else
+    nodeHelpers.setResumeStart(m.queue[m.position], positionTicks)
+  end if
 end sub
 
 ' getItemType: Returns the media type of the passed item
