@@ -742,7 +742,10 @@ sub onVideoSourceChange()
   newRuntimeTicks = invalid
   if isValid(newSource) then newRuntimeTicks = newSource.RunTimeTicks
   startTicks = versionResume.switchTicksFor(int(m.top.position) * 10000000&, int(getEffectiveDuration()) * 10000000&, newRuntimeTicks)
-  m.log.info("Version switch carry", "fromPosition", int(m.top.position), "toTicks", startTicks, "newRuntimeTicks", newRuntimeTicks)
+  ' Ticks as text: roku-log renders a LongInteger as an empty string.
+  newRuntimeText = "unknown"
+  if isValid(newRuntimeTicks) then newRuntimeText = newRuntimeTicks.toStr()
+  m.log.info("Version switch carry", "fromPosition", int(m.top.position), "toTicks", startTicks.toStr(), "newRuntimeTicks", newRuntimeText)
   m.global.queueManager.callFunc("setCurrentStartingPoint", startTicks, true)
 
   ' No progress report until the new stream plays (the `playing` branch restarts this): a

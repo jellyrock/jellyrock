@@ -440,7 +440,10 @@ end sub
 sub setCurrentStartingPoint(positionTicks, isExact = false as boolean)
   if getCount() = 0 then return
   if m.position < 0 or m.position >= getCount() then return
-  m.log.debug("setCurrentStartingPoint", "queuePosition", m.position, "ticks", positionTicks, "isExact", isExact, "queueCount", getCount())
+  ' Ticks as text: roku-log renders a LongInteger as an empty string.
+  ticksText = "invalid"
+  if isValid(positionTicks) then ticksText = positionTicks.toStr()
+  m.log.debug("setCurrentStartingPoint", "queuePosition", m.position, "ticks", ticksText, "isExact", isExact, "queueCount", getCount())
   if isExact
     nodeHelpers.setExactStart(m.queue[m.position], positionTicks)
   else

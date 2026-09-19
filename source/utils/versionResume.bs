@@ -107,25 +107,6 @@ namespace versionResume
     return lcase(left) = lcase(right)
   end function
 
-  ' resumeSourceIndex: Which version to play when starting an item from a known position.
-  '
-  ' For playback started without a details screen (quick play, a queue item with no
-  ' version chosen): the position being resumed belongs to the item's OWN version, so that
-  ' file is the only one it is exact for. A primary whose progress sits on an alternate
-  ' shows no progress, so it is started from the beginning like any unwatched item.
-  '
-  ' @param {string} itemId - the item being played
-  ' @param {dynamic} startTicks - the position playback starts from (0 = beginning)
-  ' @param {object} mediaSources - the item's MediaSources
-  ' @param {boolean} isPerVersion - isPerVersionServer()
-  ' @return {integer} index of the version to play, or -1 to leave the choice to the caller
-  function resumeSourceIndex(itemId as string, startTicks as dynamic, mediaSources as dynamic, isPerVersion as boolean) as integer
-    if not isPerVersion then return -1
-    if not isValid(startTicks) or startTicks <= 0 then return -1
-    if type(mediaSources) <> "roArray" or mediaSources.count() < 2 then return -1
-    return versionResume.sourceIndexById(mediaSources, itemId)
-  end function
-
   ' anyVersionInProgress: Does SOME version of this item hold a playback position?
   '
   ' Answered without reading a single position, from two signals that arrive with the item: its

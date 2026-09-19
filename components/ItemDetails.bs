@@ -1670,8 +1670,8 @@ sub clearVersionResumePositions()
   state.positions = zeroVersionPositions(state.itemId, mediaSources)
 end sub
 
-' applyVersionSelection: Point the screen at a version — the field, its streams, the track
-' dropdowns and the Video row's own labels.
+' applyVersionSelection: Point the screen at a version — the field, its streams and the track
+' dropdowns, the Video row included (populateTrackDropdowns rebuilds it with its labels).
 '
 ' Shared by the viewer's pick and the automatic one (syncVersionSelectionToChoice) so the two
 ' cannot drift: a version carries its own audio and subtitle streams, and leaving those behind
@@ -1688,7 +1688,6 @@ sub applyVersionSelection(sourceId as string, item as object)
   SetDefaultAudioTrack(allStreams)
   m.subtitleUserOverridden = false
   populateTrackDropdowns(mediaSources ?? [], allStreams, item.type)
-  refreshVideoDropdownLabels()
 end sub
 
 ' syncVersionSelectionToChoice: Move the selected version to the one that should resume, once
@@ -4772,14 +4771,15 @@ end function
 sub onVideoDropdownSelection()
   newStreamId = m.videoDropdown.selectedAction
   if not isValidAndNotEmpty(newStreamId) then return
-  if newStreamId = m.top.selectedVideoStreamId then return
-
-  ' A deliberate pick outranks the automatic choice: once the viewer has named a version, a
-  ' position arriving later must not move the selection out from under them.
-  m.versionUserOverridden = true
+  if versionResume.idsMatch(newStreamId, m.top.selectedVideoStreamId) then return
 
   item = m.top.itemContent
   if not isValid(item) or not isValid(item.mediaSourcesData) then return
+
+  ' A deliberate pick outranks the automatic choice: once the viewer has named a version, a
+  ' position arriving later must not move the selection out from under them. Set only once
+  ' the pick is applied, so a pick that could not be applied does not freeze the choice.
+  m.versionUserOverridden = true
 
   applyVersionSelection(newStreamId, item)
 

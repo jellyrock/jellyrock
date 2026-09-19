@@ -130,46 +130,6 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("resumeSourceIndex()")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("returns the item's own source when resuming on a per-version server")
-    function _()
-      sources = [{ Id: "alternate" }, { Id: "primary" }]
-      m.assertEqual(versionResume.resumeSourceIndex("primary", 5000&, sources, true), 1)
-    end function
-
-    @it("leaves the choice to the caller when starting from the beginning")
-    function _()
-      ' Even with an alternate leading: a poster without progress starts over.
-      sources = [{ Id: "alternate" }, { Id: "primary" }]
-      m.assertEqual(versionResume.resumeSourceIndex("primary", 0, sources, true), -1)
-      m.assertEqual(versionResume.resumeSourceIndex("primary", invalid, sources, true), -1)
-    end function
-
-    @it("leaves the choice to the caller before 12.0")
-    function _()
-      m.assertEqual(versionResume.resumeSourceIndex("primary", 5000&, m.primaryFirst(), false), -1)
-    end function
-
-    @it("leaves the choice to the caller for a single source")
-    function _()
-      m.assertEqual(versionResume.resumeSourceIndex("primary", 5000&, [{ Id: "primary" }], true), -1)
-    end function
-
-    @it("returns -1 when the item's own source is not listed")
-    function _()
-      m.assertEqual(versionResume.resumeSourceIndex("other", 5000&, m.primaryFirst(), true), -1)
-    end function
-
-    @it("accepts a float starting point")
-    function _()
-      ' QueueManager starting points can arrive as floats.
-      sources = [{ Id: "alternate" }, { Id: "primary" }]
-      m.assertEqual(versionResume.resumeSourceIndex("primary", 6000000000.0, sources, true), 1)
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("resumePolicyFrom()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
