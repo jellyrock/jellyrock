@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="QueueManager" extends="ContentNode">
   <interface>
+    <function name="advanceTo" />
     <function name="clear" />
     <function name="deleteAtIndex" />
     <function name="getCount" />
@@ -13,6 +14,8 @@
     <function name="getQueueTypes" />
     <function name="getQueueUniqueTypes" />
     <function name="getUnshuffledQueue" />
+    <function name="getVersionPreference" />
+    <function name="insertAfterCurrent" />
     <function name="isPrerollActive" />
     <function name="launchItem" />
     <function name="launchPhotoAlbum" />
@@ -29,6 +32,8 @@
     <function name="setCurrentStartingPoint" />
     <function name="setPosition" />
     <function name="setPrerollStatus" />
+    <function name="setVersionPreference" />
+    <function name="startCurrentFresh" />
     <function name="toggleShuffle" />
     <function name="top" />
   </interface>

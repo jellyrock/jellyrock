@@ -1,0 +1,223 @@
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/versionPick.bs"
+
+' One entry per episode in a queue the app builds from a list of episodes — the next episodes
+' behind the one playing, Play All, quick play and shuffle of a series, season, person or folder.
+'
+' Before 12.0 the server lists every file of an episode as its own episode (same series, season
+' and episode number, one MediaSource each — the same on 10.7 through 10.11), so a plain queue
+' plays both copies back to back. Copies are grouped and one is kept, chosen like a version:
+' the viewer's explicit pick when a copy matches it, else the best for the device
+' (versionPick). A 12.0 server merges them into one item with alternate versions, so its
+' lists have no copies and nothing here costs a request.
+'
+' Playlists and collections are left alone: the viewer put those entries there.
+'
+' Everything but collapseCopies() / collapseQueue() is pure, so the rules are unit-tested
+' without a network seam.
+namespace episodeQueue
+
+  ' How many ids one MediaSources request names. Each costs 35 bytes of URL (32 hex + an
+  ' encoded comma), so 100 keeps a request near 3.5 KB — well inside common request-line limits.
+  const COPY_IDS_PER_REQUEST = 100
+
+  ' episodeKey: "<seriesId>/S<season>E<episode>" for a single numbered episode, "" otherwise.
+  '
+  ' "" means "never group": anything that is not an episode (a movie, a recording, a track —
+  ' which has disc and track numbers), an episode without a series or numbers, and a
+  ' multi-episode file (IndexNumberEnd past IndexNumber), which covers more than the episode
+  ' its first number names. The series is part of the key so a list mixing shows never merges
+  ' S1E1 of one with S1E1 of another.
+  '
+  ' @param {dynamic} item - a raw item (BaseItemDto)
+  ' @return {string}
+  function episodeKey(item as dynamic) as string
+    if not isValid(item) then return ""
+    if not isValidAndNotEmpty(item.Type) or LCase(item.Type) <> "episode" then return ""
+    if not isValidAndNotEmpty(item.SeriesId) then return ""
+    if not isValid(item.ParentIndexNumber) or not isValid(item.IndexNumber) then return ""
+    if isValid(item.IndexNumberEnd) and item.IndexNumberEnd <> item.IndexNumber then return ""
+    return item.SeriesId + "/S" + item.ParentIndexNumber.toStr() + "E" + item.IndexNumber.toStr()
+  end function
+
+  ' groupByEpisode: The items as groups of copies of one episode, in the order each episode
+  ' first appears. An item that cannot be keyed is a group of its own.
+  '
+  ' @param {dynamic} items - raw items, in play order
+  ' @param {string} skipKey - an episode to leave out entirely: the one already playing, whose
+  '                           other copies would otherwise play it a second time
+  ' @return {object} array of arrays
+  function groupByEpisode(items as dynamic, skipKey = "" as string) as object
+    groups = []
+    if not isValid(items) then return groups
+    groupIndexByKey = {}
+    for each item in items
+      key = episodeKey(item)
+      if key = ""
+        groups.push([item])
+      else if key = skipKey
+        continue for
+      else if groupIndexByKey.DoesExist(key)
+        groups[groupIndexByKey[key]].push(item)
+      else
+        groupIndexByKey[key] = groups.count()
+        groups.push([item])
+      end if
+    end for
+    return groups
+  end function
+
+  ' copyIds: The ids of every item that has another copy in its group — the only items whose
+  ' MediaSources are needed to choose between them.
+  function copyIds(groups as object) as object
+    ids = []
+    for each group in groups
+      if group.count() > 1
+        for each item in group
+          if isValidAndNotEmpty(item.Id) then ids.push(item.Id)
+        end for
+      end if
+    end for
+    return ids
+  end function
+
+  ' idChunks: The ids split into runs of at most `size`, in order — one request each.
+  '
+  ' @param {object} ids - array of strings
+  ' @param {integer} size - the most ids in one run (at least 1)
+  ' @return {object} array of arrays
+  function idChunks(ids as object, size as integer) as object
+    chunks = []
+    if size < 1 then size = 1
+    chunk = []
+    for each id in ids
+      chunk.push(id)
+      if chunk.count() = size
+        chunks.push(chunk)
+        chunk = []
+      end if
+    end for
+    if chunk.count() > 0 then chunks.push(chunk)
+    return chunks
+  end function
+
+  ' isGroupPlayed: Whether the viewer has watched this episode — on ANY copy. Before 12.0 each
+  ' copy keeps its own watched state, so an unwatched copy of a watched episode is not a reason
+  ' to play it again.
+  '
+  ' @param {object} group - copies of one episode, from groupByEpisode()
+  ' @return {boolean}
+  function isGroupPlayed(group as object) as boolean
+    for each item in group
+      if isValid(item.UserData) and item.UserData.Played = true then return true
+    end for
+    return false
+  end function
+
+  ' inProgressCopy: The copy the viewer is partway through, or invalid. With more than one, the
+  ' one played most recently (LastPlayedDate is ISO 8601, so it compares as text).
+  '
+  ' A resume must come from this copy: its position belongs to its own file, and copies of one
+  ' episode can differ in runtime.
+  '
+  ' @param {object} group - copies of one episode, from groupByEpisode()
+  ' @return {dynamic} the copy, or invalid
+  function inProgressCopy(group as object) as dynamic
+    best = invalid
+    bestPlayed = ""
+    for each item in group
+      userData = item.UserData
+      if not isValid(userData) or userData.Played = true then continue for
+      if not isValid(userData.PlaybackPositionTicks) or userData.PlaybackPositionTicks <= 0 then continue for
+      played = ""
+      if isValidAndNotEmpty(userData.LastPlayedDate) then played = userData.LastPlayedDate
+      if not isValid(best) or played > bestPlayed
+        best = item
+        bestPlayed = played
+      end if
+    end for
+    return best
+  end function
+
+  ' chooseCopy: The one copy of an episode to queue, by the same rule as a version.
+  '
+  ' A copy's own source is its FIRST MediaSource: before 12.0 each copy is a separate item
+  ' with its file as its only source. When any copy's sources could not be read, the server's
+  ' first copy is kept — a choice made on partial data would be a guess.
+  '
+  ' @param {object} group - copies of one episode, from groupByEpisode()
+  ' @param {object} sourcesById - item id -> its MediaSources
+  ' @param {dynamic} preference - from versionPick.preferenceFor(), or invalid
+  ' @param {dynamic} deviceCapabilities - for tests; invalid reads the device
+  ' @return {object} the item to queue
+  function chooseCopy(group as object, sourcesById as object, preference as dynamic, deviceCapabilities = invalid as dynamic) as object
+    if group.count() = 1 then return group[0]
+    candidates = []
+    for each item in group
+      sources = invalid
+      if isValidAndNotEmpty(item.Id) then sources = sourcesById[item.Id]
+      if not isValidAndNotEmpty(sources) then return group[0]
+      candidates.push(sources[0])
+    end for
+    return group[versionPick.sourceIndexFor(preference, candidates, deviceCapabilities)]
+  end function
+
+  ' collapseCopies: The items with one copy per episode, in play order.
+  '
+  ' The imperative shell around the rules above; runs on a Task thread. MediaSources are
+  ' fetched only when copies exist, COPY_IDS_PER_REQUEST ids per request, so a 12.0 list
+  ' (never any copies) costs nothing.
+  '
+  ' @param {dynamic} items - raw items in play order
+  ' @param {string} skipKey - episodeKey() of the episode already playing, or ""
+  ' @param {string} requestId - for the pool
+  ' @return {object} array of raw items
+  function collapseCopies(items as dynamic, skipKey as string, requestId as string) as object
+    groups = groupByEpisode(items, skipKey)
+    result = []
+
+    sourcesById = {}
+    preference = invalid
+    ids = copyIds(groups)
+    if ids.count() > 0
+      preference = m.global.queueManager.callFunc("getVersionPreference")
+      for each chunk in idChunks(ids, COPY_IDS_PER_REQUEST)
+        data = fetchJson(GetApi().BuildGetItemsByQueryRequest({ Ids: chunk.join(","), Fields: "MediaSources", EnableTotalRecordCount: false }), requestId)
+        if isValid(data) and isValid(data.Items)
+          for each fetched in data.Items
+            if isValidAndNotEmpty(fetched.Id) then sourcesById[fetched.Id] = fetched.MediaSources
+          end for
+        end if
+      end for
+    end if
+
+    for each group in groups
+      result.push(chooseCopy(group, sourcesById, preference))
+    end for
+    return result
+  end function
+
+  ' collapseQueue: A whole queue with one copy per episode.
+  '
+  ' @param {dynamic} items - raw items in play order
+  ' @param {boolean} keepFirst - true when the builder chose the first item to resume: that
+  '                             exact copy stays first (its position is its own), and its
+  '                             episode's other copies are dropped
+  ' @param {string} requestId - for the pool
+  ' @return {object} array of raw items
+  function collapseQueue(items as dynamic, keepFirst as boolean, requestId as string) as object
+    if not isValidAndNotEmpty(items) then return []
+    if not keepFirst then return collapseCopies(items, "", requestId)
+
+    rest = []
+    for i = 1 to items.count() - 1
+      rest.push(items[i])
+    end for
+    result = [items[0]]
+    result.append(collapseCopies(rest, episodeKey(items[0]), requestId))
+    return result
+  end function
+
+end namespace

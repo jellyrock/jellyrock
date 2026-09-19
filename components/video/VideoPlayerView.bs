@@ -23,6 +23,7 @@ import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/translate.bs"
 import "pkg:/source/utils/trickplay.bs"
 import "pkg:/source/utils/versionLabels.bs"
+import "pkg:/source/utils/versionPick.bs"
 import "pkg:/source/utils/versionResume.bs"
 import "pkg:/source/utils/videoNotifications.bs"
 import "pkg:/source/utils/voiceTransport.bs"
@@ -319,7 +320,8 @@ sub switchToQueueItem(queueManager as object, targetPosition as integer)
 
   m.isSwitchingChannel = true
   m.top.control = "stop"
-  queueManager.callFunc("setPosition", targetPosition)
+  ' An item the viewer skips to starts from its beginning (QueueManager.advanceTo).
+  queueManager.callFunc("advanceTo", targetPosition)
   updateQueueBackdrop()
   ' The player is a child of PlayerHostView — remount it for the new queue position. The host
   ' destroys this player + mounts the next.
@@ -728,6 +730,11 @@ sub onVideoSourceChange()
   ' because the id reaches here from a different server field than the one on the source —
   ' the case-sensitivity class #947 fixed on the details screen.
   newSource = mediaSourceForId(m.top.fullVideoSourceData, newSourceId)
+
+  ' The viewer picked this version, so the items the queue arrives at next keep to it when they
+  ' have it (versionPick). Only this path is a pick: the player's own writes stop at the guard.
+  ' A source that cannot be resolved says nothing about the pick, so it keeps the one it has.
+  if isValid(newSource) then m.global.queueManager.callFunc("setVersionPreference", versionPick.preferenceFor(newSource))
 
   ' Map the position into the NEW version's timeline instead of reusing the raw one. Two
   ' releases of one cut are offset by a constant and can differ in runtime by a minute, so

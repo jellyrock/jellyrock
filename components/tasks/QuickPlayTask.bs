@@ -1,6 +1,7 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/episodeQueue.bs"
 import "pkg:/source/utils/misc.bs"
 
 ' QuickPlayTask: Orchestrator task for all quickplay, Play All, Instant Mix,
@@ -22,6 +23,12 @@ import "pkg:/source/utils/misc.bs"
 '   items (array)         - array of raw API item AAs (or node-like AAs)
 '   shuffle (boolean)     - whether to shuffle after queuing
 '   firstItemStartingPoint (LongInteger) - resume position for first item (0 = start)
+'   startsFresh (boolean) - the first item starts from the beginning: nobody chose it to
+'                           resume (QueueManager.startCurrentFresh). False only when a
+'                           builder picked the first item to resume or continue it.
+'
+' Every queue gets one copy per episode (episodeQueue.collapseQueue) except playlists and
+' collections, whose entries the viewer put there.
 
 sub init()
   m.top.functionName = "executeQuickPlay"
@@ -36,7 +43,10 @@ sub executeQuickPlay()
   items = []
   shouldShuffle = false
   outputAction = "queue"
-  firstItemStartingPoint = 0& ' LongInteger
+  ' How the first item starts: resumes = a builder chose it to resume or continue it, at
+  ' startingPoint (its own copy's position, or 0 to let the loader decide by version).
+  launch = { startingPoint: 0&, resumes: false }
+  keepsCopies = false
 
   ' Dispatch convention: the action key is the lowercased Jellyfin item type
   ' (e.g. "musicalbum", "boxset"), optionally with a literal operation prefix
@@ -51,22 +61,26 @@ sub executeQuickPlay()
     shouldShuffle = true
   else if action = "boxset"
     doBoxset(input, items)
+    keepsCopies = true
   else if action = "series"
-    firstItemStartingPoint = doSeries(input, items)
+    launch = doSeries(input, items)
   else if action = "season"
-    firstItemStartingPoint = doSeason(input, items)
+    launch = doSeason(input, items)
   else if action = "person"
     doPerson(input, items)
     shouldShuffle = true
   else if action = "playlist"
     doPlaylist(input, items)
     shouldShuffle = true
+    keepsCopies = true
   else if action = "folder"
     result = doFolder(input)
     if isValid(result)
       items = result.items
       shouldShuffle = result.shuffle
       outputAction = result.action
+      keepsCopies = (result.keepsCopies = true)
+      if isValid(result.launch) then launch = result.launch
     end if
   else if action = "collectionfolder"
     result = doCollectionFolder(input)
@@ -74,6 +88,8 @@ sub executeQuickPlay()
       items = result.items
       shouldShuffle = result.shuffle
       outputAction = result.action
+      keepsCopies = (result.keepsCopies = true)
+      if isValid(result.launch) then launch = result.launch
     end if
   else if action = "userview"
     result = doUserView(input)
@@ -81,6 +97,8 @@ sub executeQuickPlay()
       items = result.items
       shouldShuffle = result.shuffle
       outputAction = result.action
+      keepsCopies = (result.keepsCopies = true)
+      if isValid(result.launch) then launch = result.launch
     end if
   else if action = "photoalbum"
     doPhotoAlbum(input, items)
@@ -91,12 +109,14 @@ sub executeQuickPlay()
     doPlayAllSeason(input, items)
   else if action = "playallboxset"
     doPlayAllBoxset(input, items)
+    keepsCopies = true
   else if action = "playallmusicalbum"
     doPlayAllAlbum(input, items)
   else if action = "playallmusicartist"
     doPlayAllArtist(input, items)
   else if action = "playallplaylist"
     doPlayAllPlaylist(input, items)
+    keepsCopies = true
   else if action = "instantmix"
     doInstantMix(input, items)
   else if action = "loadtrailers"
@@ -113,11 +133,17 @@ sub executeQuickPlay()
     m.log.error("unhandled action — no dispatch branch matched", input.action)
   end if
 
+  ' One copy per episode. A first item resumed at its own position stays exactly that copy.
+  if outputAction = "queue" and not keepsCopies
+    items = episodeQueue.collapseQueue(items, launch.startingPoint > 0, "qp_copies")
+  end if
+
   m.top.output = {
     action: outputAction,
     items: items,
     shuffle: shouldShuffle,
-    firstItemStartingPoint: firstItemStartingPoint
+    firstItemStartingPoint: launch.startingPoint,
+    startsFresh: not launch.resumes
   }
 end sub
 
@@ -164,8 +190,9 @@ sub doBoxset(input as object, items as object)
   end if
 end sub
 
-function doSeries(input as object, items as object) as longinteger
-  firstItemStartingPoint = 0&
+' @return {object} { startingPoint, resumes } — see executeQuickPlay's launch
+function doSeries(input as object, items as object) as object
+  launch = { startingPoint: 0&, resumes: true }
   localUser = m.global.user
 
   ' Check for a resumable (in-progress) episode first
@@ -180,7 +207,7 @@ function doSeries(input as object, items as object) as longinteger
     ep = resumeData.Items[0]
     items.push(ep)
     if isValid(ep.UserData) and isValid(ep.UserData.PlaybackPositionTicks)
-      firstItemStartingPoint = ep.UserData.PlaybackPositionTicks
+      launch.startingPoint = ep.UserData.PlaybackPositionTicks
     end if
   else
     ' Fall back to next unstarted episode
@@ -204,16 +231,18 @@ function doSeries(input as object, items as object) as longinteger
       if isValid(allEps) and isValidAndNotEmpty(allEps.Items)
         items.append(allEps.Items)
       end if
+      launch.resumes = false
     end if
   end if
 
-  return firstItemStartingPoint
+  return launch
 end function
 
-function doSeason(input as object, items as object) as longinteger
-  firstItemStartingPoint = 0&
+' @return {object} { startingPoint, resumes } — see executeQuickPlay's launch
+function doSeason(input as object, items as object) as object
+  launch = { startingPoint: 0&, resumes: true }
   seriesId = isValidAndNotEmpty(input.seriesId) ? input.seriesId : ""
-  if seriesId = "" then return 0&
+  if seriesId = "" then return launch
 
   episodesData = fetchJson(GetApi().BuildGetEpisodesRequest(seriesId, {
     "seasonId": input.id,
@@ -222,29 +251,33 @@ function doSeason(input as object, items as object) as longinteger
   }), "qp_seasonEps")
 
   if isValid(episodesData) and isValidAndNotEmpty(episodesData.Items)
-    ' Find the first unwatched episode, tracking its POSITION in Items rather than
-    ' deriving one from IndexNumber. The two only agree when a season holds episodes
-    ' numbered 1..N with none missing; Jellyfin guarantees neither.
-    firstUnwatchedIndex = invalid
-    resumePosition = 0&
-    for idx = 0 to episodesData.Items.count() - 1
-      item = episodesData.Items[idx]
-      if isValid(item.UserData)
-        if isValid(item.UserData.Played) and item.UserData.Played = false
-          firstUnwatchedIndex = idx
-          if isValid(item.UserData.PlaybackPositionTicks)
-            resumePosition = item.UserData.PlaybackPositionTicks
-          end if
-          exit for
-        end if
+    ' Find the first unwatched EPISODE, not the first unwatched item: before 12.0 each copy
+    ' of an episode is its own item with its own watched state, so an unwatched copy of a
+    ' watched episode must not start the season over (episodeQueue). Tracks a position in
+    ' the list rather than one derived from IndexNumber — the two only agree when a season
+    ' holds episodes numbered 1..N with none missing; Jellyfin guarantees neither.
+    groups = episodeQueue.groupByEpisode(episodesData.Items)
+    firstUnwatched = -1
+    for g = 0 to groups.count() - 1
+      if not episodeQueue.isGroupPlayed(groups[g])
+        firstUnwatched = g
+        exit for
       end if
     end for
 
-    if isValid(firstUnwatchedIndex)
-      for i = firstUnwatchedIndex to episodesData.Items.count() - 1
-        items.push(episodesData.Items[i])
+    if firstUnwatched >= 0
+      ' Resume the copy the viewer is partway through, at its own position. Otherwise the
+      ' episode's copies stay together and executeQuickPlay keeps one.
+      firstQueued = firstUnwatched
+      resumeCopy = episodeQueue.inProgressCopy(groups[firstUnwatched])
+      if isValid(resumeCopy)
+        items.push(resumeCopy)
+        launch.startingPoint = resumeCopy.UserData.PlaybackPositionTicks
+        firstQueued = firstUnwatched + 1
+      end if
+      for g = firstQueued to groups.count() - 1
+        items.append(groups[g])
       end for
-      firstItemStartingPoint = resumePosition
     else
       ' try to find a "continue watching" episode
       continueData = fetchJson(GetApi().BuildGetResumeItemsRequest({
@@ -259,16 +292,17 @@ function doSeason(input as object, items as object) as longinteger
         ' Set starting point for the first resumable episode
         firstEp = continueData.Items[0]
         if isValid(firstEp.UserData) and isValid(firstEp.UserData.PlaybackPositionTicks)
-          firstItemStartingPoint = firstEp.UserData.PlaybackPositionTicks
+          launch.startingPoint = firstEp.UserData.PlaybackPositionTicks
         end if
       else
         ' play the whole season in order
         items.append(episodesData.Items)
+        launch.resumes = false
       end if
     end if
   end if
 
-  return firstItemStartingPoint
+  return launch
 end function
 
 sub doPerson(input as object, items as object)
@@ -325,6 +359,7 @@ function doFolder(input as object) as dynamic
   items = []
   shouldShuffle = true
   outputAction = "queue"
+  launch = { startingPoint: 0&, resumes: false }
 
   paramArray = {
     "includeItemTypes": "Episode,Recording,Movie,Video",
@@ -370,8 +405,9 @@ function doFolder(input as object) as dynamic
   if isValid(folderData) and isValidAndNotEmpty(folderData.items)
     if seriesCount > 0
       if seriesCount = 1
-        ' Single series — delegate to series quickplay
-        doSeries({ id: folderData.items[0].Id }, items)
+        ' Single series — delegate to series quickplay, and carry its whole launch: a folder
+        ' holding one series plays it exactly as the series itself would, resume included.
+        launch = doSeries({ id: folderData.items[0].Id }, items)
         shouldShuffle = false
       else
         doMultipleSeries(folderData.items, items)
@@ -384,13 +420,14 @@ function doFolder(input as object) as dynamic
     end if
   end if
 
-  return { action: outputAction, items: items, shuffle: shouldShuffle }
+  return { action: outputAction, items: items, shuffle: shouldShuffle, launch: launch }
 end function
 
 function doCollectionFolder(input as object) as dynamic
   items = []
   shouldShuffle = true
   outputAction = "queue"
+  keepsCopies = false
 
   collectionType = LCase(isValidAndNotEmpty(input.collectionType) ? input.collectionType : "")
 
@@ -433,6 +470,7 @@ function doCollectionFolder(input as object) as dynamic
       end if
     end if
     shouldShuffle = false
+    keepsCopies = true
   else if collectionType = "tvshows" or collectionType = "collectionfolder"
     doVideoContainer(input, items)
     shouldShuffle = false
@@ -464,13 +502,14 @@ function doCollectionFolder(input as object) as dynamic
     end if
   end if
 
-  return { action: outputAction, items: items, shuffle: shouldShuffle }
+  return { action: outputAction, items: items, shuffle: shouldShuffle, keepsCopies: keepsCopies }
 end function
 
 function doUserView(input as object) as dynamic
   items = []
   shouldShuffle = true
   outputAction = "queue"
+  keepsCopies = false
 
   collectionType = LCase(isValidAndNotEmpty(input.collectionType) ? input.collectionType : "")
 
@@ -494,6 +533,7 @@ function doUserView(input as object) as dynamic
         items.append(playlistItems.items)
       end if
     end if
+    keepsCopies = true
   else if collectionType = "livetv"
     ' pick a random channel
     channelData = fetchJson(GetApi().BuildGetItemsByQueryRequest({
@@ -518,7 +558,7 @@ function doUserView(input as object) as dynamic
     shouldShuffle = false
   end if
 
-  return { action: outputAction, items: items, shuffle: shouldShuffle }
+  return { action: outputAction, items: items, shuffle: shouldShuffle, keepsCopies: keepsCopies }
 end function
 
 ' Helper: video container logic (movies or tvshows collection)

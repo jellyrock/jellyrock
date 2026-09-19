@@ -9,7 +9,7 @@ related-files:
   - components/manager/QueueManager.bs
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
-last-reviewed: 2026-09-17
+last-reviewed: 2026-09-19
 ---
 
 # The User Journey
@@ -193,13 +193,16 @@ The component contains:
 
 There are two distinct launch shapes in `ItemDetails`:
 
-**Single-item play** (Play / Resume / Trailer / next-up episode) goes through `launchQueueItemToPlay(queueItem, routeType, routeId)` (`ItemDetails.bs:623`): it clears + pushes the queue, then navigates the play route directly:
+**Single-item play** (Play / Resume / Trailer / next-up episode) goes through `ItemDetails.launchQueueItemToPlay(queueItem, routeType, routeId, versionPreference)`: it clears the queue, records the viewer's explicit Video-menu pick for it when there is one, pushes, then navigates the play route directly:
 
 ```brightscript
 m.global.queueManager.callFunc("clear")
+if isValid(versionPreference) then m.global.queueManager.callFunc("setVersionPreference", versionPreference)
 m.global.queueManager.callFunc("push", queueItem)
 sgrouter.navigateTo("/details/" + routeType + "/" + routeId + "/play")
 ```
+
+The pick is what the items the queue arrives at next keep to (see [playback.md → Items a queue arrives at](playback.md#items-a-queue-arrives-at)); a version the screen chose on its own is not recorded.
 
 The queue is populated **before** navigation — `PlayerHostView` reads it on mount, so the route `:type`/`:id` are just a deep-link identity; the queue is the source of truth.
 
@@ -295,7 +298,7 @@ While the video plays:
 When the video finishes (`state = "finished"`), `PlayerHostView.onPlayerStateChange` decides what to do (queue advancement is **host-internal** — destroy + remount the player child, not pop/push):
 
 - **Live TV channel** — `playCurrentQueueItem()` (restart the same channel by remounting)
-- **More items in queue** — `moveForward` → `playCurrentQueueItem()` (remount for the next item)
+- **More items in queue** — `advanceTo(position + 1)` → `playCurrentQueueItem()` (remount for the next item, which starts from its beginning)
 - **Queue exhausted** — `exitPlayback()` → `sgrouter.goBack()` (the suspended launching detail, or Home, resumes)
 
 Two `finished` states are *not* the end of playback and bail before any of that: a DoVi

@@ -54,6 +54,16 @@ namespace nodeHelpers
     ' because "are we resuming?" is asked before the version is chosen — LoadVideoContentTask
     ' gates the Cinema Mode preroll on it, since a preroll in front of a resume is wrong.
     optional hasVersionInProgress as boolean
+    ' True for an item that starts from the beginning because the viewer did not choose to
+    ' resume it: one the queue ARRIVES at (QueueManager.advanceTo), or the first item of a queue
+    ' that does not resume, like Play All or shuffle (QueueManager.startCurrentFresh). Written
+    ' only through startFresh(). The loader plays the viewer's explicit version pick when the
+    ' item has it, else the best for the device — never the version holding a position.
+    optional startsFresh as boolean
+    ' True on the copy of an item the Cinema Mode intro queues behind itself: moving on from
+    ' the intro reaches the item the viewer launched, not a new one, so it keeps its start.
+    ' QueueManager.advanceTo consumes it.
+    optional followsIntro as boolean
   end interface
 
   ' createQueueItem: Create a queue item AA from a source item.
@@ -178,6 +188,19 @@ namespace nodeHelpers
     if not isValid(queueItem) then return
     queueItem.startingPoint = ticks
     queueItem.startingPointIsExact = true
+  end sub
+
+  ' startFresh: Start a queue item from the beginning because the viewer did not choose to
+  ' resume it (QueueManager.advanceTo / startCurrentFresh). An exact start at 0, so the loader
+  ' never swaps in a version's saved position; startsFresh, so it picks the version by the
+  ' viewer's explicit pick instead; and no version counts as in progress, since none resumes.
+  '
+  ' @param {object} queueItem - a queue item, from createQueueItem() or a raw item in the queue
+  sub startFresh(queueItem as object)
+    if not isValid(queueItem) then return
+    setExactStart(queueItem, 0&)
+    queueItem.startsFresh = true
+    queueItem.hasVersionInProgress = false
   end sub
 
 end namespace

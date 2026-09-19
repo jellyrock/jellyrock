@@ -1,0 +1,86 @@
+import "pkg:/source/utils/versionPick.bs"
+
+namespace tests
+
+  ' Which version an item the queue arrives at plays: the viewer's explicit pick when the item
+  ' has the same video, else the best for the device.
+  @suite("versionPick - explicit version picks")
+  class VersionPickTests extends tests.BaseTestSuite
+
+    private function caps1080() as object
+      return { maxHeight: 1080, maxWidth: 1920, canDecode4k: false, supportsHdr10: false, supportsDolbyVision: false, supportsHlg: false, isMock: true }
+    end function
+
+    private function source(id as string, height as integer, codec = "h264" as string, videoRange = "SDR" as string) as object
+      return {
+        Id: id,
+        SupportsDirectPlay: true,
+        MediaStreams: [{ Type: "Video", Height: height, Width: int(height * 16 / 9), Codec: codec, VideoRange: videoRange, IsInterlaced: false }]
+      }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("preferenceFor() / matchIndex()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("matches the same video in the next item whatever the release name")
+    ' The fixture's E01 720p is `-grpa`, E02's is `-grpb`: names never enter the match.
+    function _()
+      pref = versionPick.preferenceFor(m.source("e1-720", 720))
+      nextSources = [m.source("e2-1080", 1080), m.source("e2-720", 720)]
+      m.assertEqual(versionPick.matchIndex(pref, nextSources), 1)
+    end function
+
+    @it("finds no match when the next item lacks that quality")
+    function _()
+      pref = versionPick.preferenceFor(m.source("e2-720", 720))
+      m.assertEqual(versionPick.matchIndex(pref, [m.source("e3-1080", 1080), m.source("e3-480", 480)]), -1)
+    end function
+
+    @it("does not match another codec at the same resolution")
+    function _()
+      pref = versionPick.preferenceFor(m.source("a", 1080, "hevc"))
+      m.assertEqual(versionPick.matchIndex(pref, [m.source("b", 1080, "h264")]), -1)
+    end function
+
+    @it("does not match SDR for an HDR pick")
+    function _()
+      pref = versionPick.preferenceFor(m.source("a", 2160, "hevc", "HDR"))
+      m.assertEqual(versionPick.matchIndex(pref, [m.source("b", 2160, "hevc", "SDR")]), -1)
+    end function
+
+    @it("matches nothing without an explicit pick")
+    function _()
+      m.assertEqual(versionPick.matchIndex(invalid, [m.source("a", 720)]), -1)
+    end function
+
+    @it("has no preference for a source without video")
+    function _()
+      m.assertInvalid(versionPick.preferenceFor({ Id: "a", MediaStreams: [{ Type: "Audio", Codec: "aac" }] }))
+      m.assertInvalid(versionPick.preferenceFor(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("sourceIndexFor()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("plays the explicit pick's match")
+    function _()
+      pref = versionPick.preferenceFor(m.source("e1-720", 720))
+      m.assertEqual(versionPick.sourceIndexFor(pref, [m.source("e2-1080", 1080), m.source("e2-720", 720)], m.caps1080()), 1)
+    end function
+
+    @it("plays the best for the device when nothing matches")
+    function _()
+      pref = versionPick.preferenceFor(m.source("e2-720", 720))
+      m.assertEqual(versionPick.sourceIndexFor(pref, [m.source("e3-480", 480), m.source("e3-1080", 1080)], m.caps1080()), 1)
+    end function
+
+    @it("plays the best for the device without an explicit pick")
+    function _()
+      m.assertEqual(versionPick.sourceIndexFor(invalid, [m.source("e2-720", 720), m.source("e2-1080", 1080)], m.caps1080()), 1)
+    end function
+
+  end class
+
+end namespace

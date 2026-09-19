@@ -1585,3 +1585,4 @@ convergence (audit-before-migrate). Old `decision-id` references resolve here:
 | `server-upgrade-anchor-vs-resolved-decoupling` | [ADR 0015](adr/0015-server-upgrade-anchor-vs-resolved-decoupling.md) |
 | `global-signin-language` | [ADR 0016](adr/0016-global-signin-language.md) |
 | `rta-functional-tests-vitest` | [ADR 0017](adr/0017-rta-functional-tests-vitest.md) |
+| `episode-queue-starts-fresh` | [ADR 0038](adr/0038-queue-arrival-starts-fresh.md) |

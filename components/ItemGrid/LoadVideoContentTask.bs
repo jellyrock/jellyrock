@@ -11,6 +11,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
+import "pkg:/source/utils/episodeQueue.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
@@ -19,6 +20,7 @@ import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/subtitles.bs"
 import "pkg:/source/utils/translate.bs"
 import "pkg:/source/utils/trickplay.bs"
+import "pkg:/source/utils/versionPick.bs"
 import "pkg:/source/utils/versionResume.bs"
 
 sub init()
@@ -54,7 +56,13 @@ sub loadItems()
         ' If an error is thrown in the Intros plugin, instead of passing the error they pass the entire rick roll music video.
         ' Bypass the music video and treat it as an error message
         if lcase(preRoll.items[0].name) <> "rick roll'd"
-          queueManager.callFunc("push", queueManager.callFunc("getCurrentItem"))
+          ' The item plays after its intro, so it goes directly after the slot the intro plays
+          ' in — appending it would play the rest of the queue first. Moving on to it reaches
+          ' the same item, not a new one, so it keeps the start it was launched with
+          ' (QueueManager.advanceTo consumes followsIntro).
+          followingItem = queueManager.callFunc("getCurrentItem")
+          if isValid(followingItem) then followingItem.followsIntro = true
+          queueManager.callFunc("insertAfterCurrent", followingItem)
           m.top.itemId = preRoll.items[0].id
           queueManager.callFunc("setPrerollStatus", false)
           m.top.isIntro = true
@@ -228,11 +236,18 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
 
   ' Select a video source if no specific source was requested. On a per-version server this is
   ' the ONE place that choice is made for every entry point that did not make it on screen —
-  ' quick play, casts, a queued episode — because it is the only one that can read each
-  ' version's own position. The details screen still decides for itself and arrives with an
-  ' explicit id, which is honored untouched.
+  ' quick play, casts, a queued item — because it is the only one that can read each version's
+  ' own position. The details screen still decides for itself and arrives with an explicit id,
+  ' which is honored untouched. An item that starts fresh (QueueManager.advanceTo /
+  ' startCurrentFresh) is the exception: it resumes nothing, so position has no say in its version.
   if not isValid(mediaSourceId) and isValid(mediaSources) and mediaSources.Count() > 1
-    if versionResume.isPerVersionServer(m.global.server.version)
+    if isValid(currentItem) and currentItem.startsFresh = true
+      ' No position decides this item's version: the viewer's explicit pick does when the item
+      ' has it, else the device (versionPick).
+      preference = queueManager.callFunc("getVersionPreference")
+      mediaSourceId = mediaSources[versionPick.sourceIndexFor(preference, mediaSources)].Id
+      m.log.info("Fresh start version", "mediaSourceId", mediaSourceId, "hasPick", isValid(preference))
+    else if versionResume.isPerVersionServer(m.global.server.version)
       choice = resolveResumeVersion(video.id, meta, mediaSources)
       if isValidAndNotEmpty(choice.sourceId)
         mediaSourceId = choice.sourceId
@@ -760,9 +775,15 @@ sub addNextEpisodesToQueue(showID)
   }), "nextEpisodes")
 
   if isValid(data) and data.Items.Count() > 1
-    ' Start at index 1 to skip the current episode
+    ' The list starts at the current episode. Queue what follows it once per episode, leaving
+    ' out any other copy of the current one (episodeQueue); each starts fresh when the queue
+    ' arrives at it (QueueManager.advanceTo).
+    following = []
     for i = 1 to data.Items.Count() - 1
-      queueManager.callFunc("push", nodeHelpers.createQueueItem(data.Items[i]))
+      following.push(data.Items[i])
+    end for
+    for each episode in episodeQueue.collapseCopies(following, episodeQueue.episodeKey(data.Items[0]), "nextEpisodes-copies")
+      queueManager.callFunc("push", nodeHelpers.createQueueItem(episode))
     end for
   end if
 end sub

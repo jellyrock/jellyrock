@@ -22,6 +22,10 @@ related-files:
   - components/ItemGrid/LoadVideoContentTask.bs
   - source/utils/versionLabels.bs
   - source/utils/versionResume.bs
+  - source/utils/episodeQueue.bs
+  - source/utils/versionPick.bs
+  - components/tasks/QuickPlayTask.bs
+  - components/GetShuffleItemsTask.bs
   - source/utils/quickplay.bs
   - source/utils/nodeHelpers.bs
   - source/utils/streamSelection.bs
@@ -98,7 +102,8 @@ m.global.queueManager.callFunc("playQueue")
 Queue mutation:
 
 - `push(item)`, `pop()`, `peek()`, `top()` — array-style access
-- `set(items)` — replace the whole queue
+- `insertAfterCurrent(item)` — play `item` next; the Cinema Mode intro queues the item it plays in front of this way (see [below](#items-a-queue-arrives-at))
+- `set(items)` — replace the whole queue's contents (a shuffle toggle reorders through it); keeps the version pick
 - `clear()`, `deleteAtIndex(i)`
 
 Queue inspection:
@@ -108,7 +113,9 @@ Queue inspection:
 
 Position:
 
-- `setPosition(i)`, `getPosition()`, `moveBack()`, `moveForward()`
+- `setPosition(i)`, `getPosition()`, `moveBack()`, `moveForward()` — plain moves; audio uses these
+- `advanceTo(i)` — a VIDEO queue moving on because playback did (an item ended, or the player's next / previous): the item it reaches starts fresh ([below](#items-a-queue-arrives-at))
+- `startCurrentFresh()` — the first item of a queue nobody launched to resume (Play All, shuffle) starts fresh too
 
 Shuffle:
 
@@ -119,6 +126,10 @@ Shuffle:
 Resume:
 
 - `setCurrentStartingPoint(positionTicks)` — sets the resume point on the current queue item before playback starts
+
+Version pick:
+
+- `setVersionPreference(pref)`, `getVersionPreference()` — the viewer's explicit version pick for this queue, carried to the items it arrives at ([below](#items-a-queue-arrives-at)); `clear()` forgets it, `set()` keeps it
 
 Preroll:
 
@@ -332,7 +343,7 @@ The result handlers write back into `VideoPlayerView`'s fields (`audioIndex`, `s
 
 - **`finished` state** but `isRetrying = true` → don't advance (`mid-DoVi-fallback` retry)
 - **Live TV channel that finished** → `playCurrentQueueItem()` (restart the same channel, host-internal remount)
-- **More items in queue** → `moveForward` + `playCurrentQueueItem()` (destroy + remount for the next item)
+- **More items in queue** → `advanceTo(position + 1)` + `playCurrentQueueItem()` (destroy + remount for the next item, which starts fresh — [Items a queue arrives at](#items-a-queue-arrives-at))
 - **Queue exhausted** → `exitPlayback()` → `sgrouter.goBack()` (leaves the play route; the suspended view beneath — the launching detail, or Home — resumes)
 
 The player reports its stop playstate to Jellyfin in `destroyPlayer()`: it removes the observer on `state`, then sets `m.view.control = "stop"` (the `Video` node's own `onDestroy` does not report a stop), before `callFunc("onDestroy")` and `removeChild`. So whether the user backs out (`goBack` → `beforeViewClose` → `onDestroy` → `destroyPlayer`) or the queue exhausts, Jellyfin records the stop.
@@ -504,8 +515,9 @@ scoring the whole list would let a 4K version nobody started win a tie between t
 the app cannot name one version and play another:
 
 - **`LoadVideoContentTask`** makes the choice for everything that did not make it on screen —
-  quick play, casts, a queued episode — because it is the only one that can read each version's
-  own position. `quickplay.video` runs on the render thread with no fetching, so on a
+  quick play, casts, a queued item — because it is the only one that can read each version's
+  own position. An item that starts fresh is the exception: it resumes nothing, so position has
+  no say in its version ([below](#items-a-queue-arrives-at)). `quickplay.video` runs on the render thread with no fetching, so on a
   per-version server it stands down by **clearing** `mediaSourceId` (the transformer already sets
   it with `MediaSources[0].Id`, which would otherwise read as an explicit pick) and leaves
   `selectedAudioStreamIndex` at 0 so the audio track is picked for whichever version wins. The
@@ -577,6 +589,72 @@ Every choice above lives in `source/utils/versionResume.bs` as pure functions ov
 values; `ItemDetails` holds only the shell that fetches what `resumeStateFor()` asks for.
 That split is what makes the rules testable — a component spec has no way to stub the two
 requests, so a rule expressed inside `ItemDetails` could only ever be checked by hand.
+
+### Items a queue arrives at
+
+An item the queue *arrives at* — the next one when an item ends, or the player's next / previous
+— is one the viewer did not choose to resume, so it **starts from the beginning**. A position
+saved on it belongs to an earlier session, and the viewer is watching in order; Resume is the
+Resume button's job. `jellyfin-web`'s `nextTrack` also plays the next item with no start
+position. Measured on 12.0 before this rule: auto-advance and Play All resumed a multi-version
+episode at its saved 200 s while a single-version one started at 0, because only a multi-version
+item reaches the version chooser, which reads positions — so the old behavior depended on how many
+files an item happened to have.
+
+The rule lives in the queue, not in the code that builds it, so no queue — current or future,
+shuffled or not — can leave it out:
+
+- **`QueueManager.advanceTo()`** is how both video advance paths move
+  (`PlayerHostView.onPlayerStateChange` at an item's end, `VideoPlayerView.switchToQueueItem` for
+  next / previous). It marks the item it reaches through `nodeHelpers.startFresh()`: an exact
+  start at 0, so the loader never swaps in a version's position; `startsFresh`, so the loader picks
+  its version by the viewer's pick instead; and no version in progress, since none resumes.
+  **Not an arrival:** the item behind a Cinema Mode intro — the loader tags the copy it queues
+  behind the intro `followsIntro`, and `advanceTo()` consumes the tag, so the item the viewer
+  launched keeps its start — and Live TV, which has no position. Audio moves with the plain
+  position methods and is untouched.
+- **The intro's copy goes directly after the slot the intro plays in** (`insertAfterCurrent`),
+  not at the end of the queue. Appending it played everything else first: measured 2026-09-19 on
+  10.11, a Play All queue became `[e1, e2, e3, e4, e1]` and the intro was followed by `e2`, with
+  `e1` last. With one item queued — every other intro path — the end IS the next slot, which is
+  why it went unnoticed.
+- **The first item** is each builder's call, because it follows from the button. Play All and
+  shuffle start it fresh (`QuickPlayTask`'s `startsFresh` output, `QueueManager.startCurrentFresh()`
+  after any shuffle); quick play of a series or season and the Resume button pick it to resume or
+  continue, and keep the loader's resume path.
+
+**The version** of an item that starts fresh is the viewer's explicit pick when the item has one
+with the same video (resolution, codec, HDR range — `versionPick`, over
+`versionLabels.videoFields()`), else the best for the device. Only an explicit pick carries — the
+details screen's Video menu (`m.versionUserOverridden`) or a switch in the player
+(`VideoPlayerView.onVideoSourceChange`) — and it lives on the queue
+(`QueueManager.setVersionPreference`), so a new queue starts without one. Never matched on the
+name: jellyfin-web 12.0 matches `Name` exactly, which only lines up when every item's versions
+share one naming scheme, and would hold a viewer on 1080p when the next item has 4K.
+
+#### One copy per episode — `source/utils/episodeQueue.bs`
+
+Before 12.0 the server lists every file of an episode as its own episode — same series, season
+and episode number, one `MediaSource` each (queried 2026-09-19 on 10.7.7, 10.8.13, 10.9.11,
+10.10.7 and 10.11.11) — so a plain queue plays both copies back to back, and the next-episodes
+list can hold a copy of the CURRENT episode, replaying it. Every queue the app builds from a list
+of episodes collapses them: the next episodes (`addNextEpisodesToQueue`, which also drops the
+current episode's copies), and one pass at the end of `QuickPlayTask.executeQuickPlay` and of
+`GetShuffleItemsTask`. That covers Play All, quick play and shuffle of a series, season, person
+or folder. **Playlists and collections are left alone** — the viewer put those entries there.
+
+- Copies are grouped by `episodeQueue.episodeKey()`: series + season + episode number, for
+  episodes only. Anything else — a movie, a track (which has disc and track numbers), an
+  unnumbered episode, a multi-episode file — is never grouped.
+- One copy is kept by the same pick → match → device rule as a version. Their `MediaSources` are
+  fetched only when copies exist, `COPY_IDS_PER_REQUEST` ids per request (each id costs 35 bytes
+  of URL), so a 12.0 queue costs nothing and a large series on an older server never builds an over-long
+  request. When a copy's sources cannot be read, the server's first copy is kept.
+- **Watched state counts per episode, not per copy.** `QuickPlayTask.doSeason` finds the first
+  episode no copy of which is watched (`isGroupPlayed`), and resumes the copy the viewer is
+  partway through (`inProgressCopy`) at that copy's own position — so a copy not yet watched of a
+  watched episode no longer starts the season over. A first item resumed at its own position is
+  kept exactly (`collapseQueue`'s `keepFirst`), with its episode's other copies dropped.
 
 ### Version labels — `source/utils/versionLabels.bs`
 
