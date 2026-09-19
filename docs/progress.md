@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-09-18
+last-updated: 2026-09-19
 ---
 
 # Progress
@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-19 — ci: Give every `PENDING_MIGRATIONS` state in `no-same-node-relaunch` an honest verdict
 - 2026-09-17 — chore: Gate line-number citations in docs behind a per-file ratchet
 - 2026-09-17 — chore: Record that `SearchResults` does not reproduce the relaunch race
 - 2026-09-17 — Label alternate versions by what differs, and offer every version
@@ -75,9 +76,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-09-07 — `ItemDetails.itemContent` now registers its observer via `m.top.observeField()` in `init()`, so the `unobserveField` in `onDestroy` actually detaches it; the new `ineffective-unobserve` build gate now fails the build on that pairing.
 - 2026-09-07 — fix: Observe each interface field exactly once in `OSD` and `IconButton`
 - 2026-09-07 — feat: Cap `ItemDetails` and `OSD` button rows with a `More` overflow menu
-- 2026-09-04 — chore: Retire the calendar stale-docs backlog; cover `docs/dev/` contextually
-- 2026-09-03 — fix: Guard `onKeyEvent` against key events delivered after teardown
-- 2026-09-03 — Stop the playback error dialog exiting on a close it did not cause
 
 ## Open followups
 
