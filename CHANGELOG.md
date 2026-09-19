@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Give each `BaseGridView` load and page its own Task node ([#967](https://github.com/jellyrock/jellyrock/pull/967))
 - Give each run its own Task node where a restart can lose the work ([#961](https://github.com/jellyrock/jellyrock/pull/961))
 - Stop Next Up listing every series' pilot on Jellyfin 10.7–10.10 ([#955](https://github.com/jellyrock/jellyrock/pull/955))
 
