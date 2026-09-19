@@ -202,7 +202,7 @@ m.global.queueManager.callFunc("push", queueItem)
 sgrouter.navigateTo("/details/" + routeType + "/" + routeId + "/play")
 ```
 
-The pick is what the episodes queued behind this one keep to (see [playback.md → Episodes a queue arrives at](playback.md#episodes-a-queue-arrives-at--sourceutilsepisodequeuebs)); a version the screen chose on its own is not recorded.
+The pick is what the items the queue arrives at next keep to (see [playback.md → Items a queue arrives at](playback.md#items-a-queue-arrives-at)); a version the screen chose on its own is not recorded.
 
 The queue is populated **before** navigation — `PlayerHostView` reads it on mount, so the route `:type`/`:id` are just a deep-link identity; the queue is the source of truth.
 
@@ -298,7 +298,7 @@ While the video plays:
 When the video finishes (`state = "finished"`), `PlayerHostView.onPlayerStateChange` decides what to do (queue advancement is **host-internal** — destroy + remount the player child, not pop/push):
 
 - **Live TV channel** — `playCurrentQueueItem()` (restart the same channel by remounting)
-- **More items in queue** — `moveForward` → `playCurrentQueueItem()` (remount for the next item)
+- **More items in queue** — `advanceTo(position + 1)` → `playCurrentQueueItem()` (remount for the next item, which starts from its beginning)
 - **Queue exhausted** — `exitPlayback()` → `sgrouter.goBack()` (the suspended launching detail, or Home, resumes)
 
 Two `finished` states are *not* the end of playback and bail before any of that: a DoVi
