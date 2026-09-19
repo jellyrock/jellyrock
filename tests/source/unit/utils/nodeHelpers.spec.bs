@@ -650,6 +650,27 @@ namespace tests
       m.assertTrue(queueItem.startingPointIsExact)
     end function
 
+    @it("starts an episode a queue arrives at from the beginning, whatever it saved")
+    ' episodeQueue.build tags raw episodes; the queue item must start exactly at 0 so the
+    ' loader never replaces it with a version's resume position (measured on 12.0 before this
+    ' change: auto-advance and Play All resumed a multi-version episode at its saved 200 s).
+    function _()
+      queueItem = nodeHelpers.createQueueItem({ id: "ep-2", type: "Episode", startsFresh: true, UserData: { PlaybackPositionTicks: 2000000000& } })
+
+      m.assertTrue(queueItem.startsFresh)
+      m.assertEqual(queueItem.startingPoint, 0&)
+      m.assertTrue(queueItem.startingPointIsExact)
+      m.assertEqual(queueItem.playbackPositionTicks, 2000000000&)
+    end function
+
+    @it("leaves an item nobody tagged without a start or the tag")
+    function _()
+      queueItem = nodeHelpers.createQueueItem({ id: "ep-2", type: "Episode" })
+
+      m.assertFalse(queueItem.DoesExist("startsFresh"))
+      m.assertFalse(queueItem.DoesExist("startingPoint"))
+    end function
+
     @it("does not invent a start on a queue item that was never created")
     function _()
       ' Neither setter may throw on invalid — createQueueItem returns invalid for a bad source.

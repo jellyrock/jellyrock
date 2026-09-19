@@ -1,0 +1,188 @@
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/streamSelection.bs"
+import "pkg:/source/utils/versionLabels.bs"
+
+' The episodes a queue plays one after another: the next episodes queued behind the one
+' playing, and Play All on a series or season.
+'
+' Every episode here is one the viewer ARRIVES at, not one they chose to launch, so:
+'
+'   * It starts from the beginning. A position saved on it belongs to an earlier session
+'     (a rewatch, an abandoned attempt), and the viewer is watching in order. Resume is the
+'     Resume button's job. jellyfin-web plays the next queue item with no start position too.
+'   * It plays the version the viewer explicitly picked, when the episode has one with the
+'     same video (resolution, codec, HDR range), otherwise the best for the device. Matched on
+'     the stream, never the name: a name is the file's, so across episodes it only lines up
+'     when every episode's versions share one naming scheme (jellyfin-web's rule), and it
+'     would pin a viewer to 1080p when the next episode also has 4K. Only an explicit pick
+'     carries; an automatic choice stays automatic, so upgrades still happen.
+'   * It is queued ONCE. Before 12.0 the server lists every file of an episode as its own
+'     episode (same season and episode number, no alternate versions), so a plain queue plays
+'     both copies back to back. Copies are grouped by season + episode number and one is kept,
+'     chosen by the same rule as a version.
+'
+' Everything but build() is pure, so the rules are unit-tested without a network seam.
+namespace episodeQueue
+
+  ' episodeKey: "S<season>E<episode>" for a single numbered episode, "" otherwise.
+  '
+  ' "" means "never group": an unnumbered item, and a multi-episode file (IndexNumberEnd past
+  ' IndexNumber), which covers more than the episode its first number names.
+  '
+  ' @param {dynamic} item - a raw episode (BaseItemDto)
+  ' @return {string}
+  function episodeKey(item as dynamic) as string
+    if not isValid(item) then return ""
+    if not isValid(item.ParentIndexNumber) or not isValid(item.IndexNumber) then return ""
+    if isValid(item.IndexNumberEnd) and item.IndexNumberEnd <> item.IndexNumber then return ""
+    return "S" + item.ParentIndexNumber.toStr() + "E" + item.IndexNumber.toStr()
+  end function
+
+  ' groupByEpisode: The items as groups of copies of one episode, in the order each episode
+  ' first appears. An item that cannot be keyed is a group of its own.
+  '
+  ' @param {dynamic} items - raw episodes, in play order
+  ' @param {string} skipKey - an episode to leave out entirely: the one already playing, whose
+  '                           other copies would otherwise play it a second time
+  ' @return {object} array of arrays
+  function groupByEpisode(items as dynamic, skipKey = "" as string) as object
+    groups = []
+    if not isValid(items) then return groups
+    groupIndexByKey = {}
+    for each item in items
+      key = episodeKey(item)
+      if key = ""
+        groups.push([item])
+      else if key = skipKey
+        continue for
+      else if groupIndexByKey.DoesExist(key)
+        groups[groupIndexByKey[key]].push(item)
+      else
+        groupIndexByKey[key] = groups.count()
+        groups.push([item])
+      end if
+    end for
+    return groups
+  end function
+
+  ' copyIds: The ids of every item that has another copy in its group — the only items whose
+  ' MediaSources are needed to choose between them.
+  function copyIds(groups as object) as object
+    ids = []
+    for each group in groups
+      if group.count() > 1
+        for each item in group
+          if isValidAndNotEmpty(item.Id) then ids.push(item.Id)
+        end for
+      end if
+    end for
+    return ids
+  end function
+
+  ' preferenceFor: What an explicit version pick carries to later episodes — the video fields
+  ' a version is told apart by, written as the version labels write them.
+  '
+  ' @param {dynamic} source - the MediaSource the viewer picked
+  ' @return {dynamic} { resolution, codec, range }, or invalid when the source has no video
+  function preferenceFor(source as dynamic) as dynamic
+    if not isValid(source) then return invalid
+    fields = versionLabels.videoFields(source)
+    if fields.resolution = "" and fields.codec = "" then return invalid
+    return fields
+  end function
+
+  ' matchIndex: The first source whose video matches the preference, or -1.
+  '
+  ' @param {dynamic} preference - from preferenceFor(), or invalid for "no explicit pick"
+  ' @param {dynamic} mediaSources - the candidate MediaSources
+  ' @return {integer}
+  function matchIndex(preference as dynamic, mediaSources as dynamic) as integer
+    if not isValid(preference) or not isValid(mediaSources) then return -1
+    for i = 0 to mediaSources.count() - 1
+      if not isValid(mediaSources[i]) then continue for
+      fields = versionLabels.videoFields(mediaSources[i])
+      if fields.resolution = preference.resolution and fields.codec = preference.codec and fields.range = preference.range then return i
+    end for
+    return -1
+  end function
+
+  ' sourceIndexFor: Which version of a queued episode plays — the explicit pick's match, else
+  ' the best for the device.
+  '
+  ' @param {dynamic} preference - from preferenceFor(), or invalid
+  ' @param {object} mediaSources - the episode's MediaSources
+  ' @param {dynamic} deviceCapabilities - for tests; invalid reads the device
+  ' @return {integer}
+  function sourceIndexFor(preference as dynamic, mediaSources as object, deviceCapabilities = invalid as dynamic) as integer
+    index = matchIndex(preference, mediaSources)
+    if index >= 0 then return index
+    return findBestVideoSource(mediaSources, deviceCapabilities)
+  end function
+
+  ' chooseCopy: The one copy of an episode to queue, by the same rule as a version.
+  '
+  ' A copy's own source is its FIRST MediaSource: before 12.0 each copy is a separate item
+  ' with its file as its only source. When any copy's sources could not be read, the server's
+  ' first copy is kept — a choice made on partial data would be a guess.
+  '
+  ' @param {object} group - copies of one episode, from groupByEpisode()
+  ' @param {object} sourcesById - item id -> its MediaSources
+  ' @param {dynamic} preference - from preferenceFor(), or invalid
+  ' @param {dynamic} deviceCapabilities - for tests; invalid reads the device
+  ' @return {object} the item to queue
+  function chooseCopy(group as object, sourcesById as object, preference as dynamic, deviceCapabilities = invalid as dynamic) as object
+    if group.count() = 1 then return group[0]
+    candidates = []
+    for each item in group
+      sources = invalid
+      if isValidAndNotEmpty(item.Id) then sources = sourcesById[item.Id]
+      if not isValidAndNotEmpty(sources) then return group[0]
+      candidates.push(sources[0])
+    end for
+    return group[sourceIndexFor(preference, candidates, deviceCapabilities)]
+  end function
+
+  ' markStartsFresh: Tag a raw episode as one the queue arrives at, so createQueueItem starts
+  ' it from the beginning and the loader picks its version by sourceIndexFor().
+  sub markStartsFresh(item as object)
+    item.startsFresh = true
+  end sub
+
+  ' build: The raw episodes to queue — one per episode, each tagged to start fresh.
+  '
+  ' The imperative shell around the rules above; runs on a Task thread. MediaSources are
+  ' fetched only when copies exist, in one request, so a 12.0 queue (never any copies) costs
+  ' exactly what it did.
+  '
+  ' @param {dynamic} items - raw episodes in play order
+  ' @param {string} skipKey - episodeKey() of the episode already playing, or ""
+  ' @param {string} requestId - for the pool
+  ' @return {object} array of raw episodes
+  function build(items as dynamic, skipKey as string, requestId as string) as object
+    groups = groupByEpisode(items, skipKey)
+    result = []
+
+    sourcesById = {}
+    preference = invalid
+    ids = copyIds(groups)
+    if ids.count() > 0
+      preference = m.global.queueManager.callFunc("getVersionPreference")
+      data = fetchJson(GetApi().BuildGetItemsByQueryRequest({ Ids: ids.join(","), Fields: "MediaSources", EnableTotalRecordCount: false }), requestId)
+      if isValid(data) and isValid(data.Items)
+        for each fetched in data.Items
+          if isValidAndNotEmpty(fetched.Id) then sourcesById[fetched.Id] = fetched.MediaSources
+        end for
+      end if
+    end if
+
+    for each group in groups
+      item = chooseCopy(group, sourcesById, preference)
+      markStartsFresh(item)
+      result.push(item)
+    end for
+    return result
+  end function
+
+end namespace

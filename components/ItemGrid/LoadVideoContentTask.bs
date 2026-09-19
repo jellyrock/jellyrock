@@ -11,6 +11,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
+import "pkg:/source/utils/episodeQueue.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
@@ -228,11 +229,18 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
 
   ' Select a video source if no specific source was requested. On a per-version server this is
   ' the ONE place that choice is made for every entry point that did not make it on screen —
-  ' quick play, casts, a queued episode — because it is the only one that can read each
-  ' version's own position. The details screen still decides for itself and arrives with an
-  ' explicit id, which is honored untouched.
+  ' quick play, casts, a queued item — because it is the only one that can read each version's
+  ' own position. The details screen still decides for itself and arrives with an explicit id,
+  ' which is honored untouched. An episode a queue arrived at (startsFresh) is the exception:
+  ' it resumes nothing, so position has no say in its version.
   if not isValid(mediaSourceId) and isValid(mediaSources) and mediaSources.Count() > 1
-    if versionResume.isPerVersionServer(m.global.server.version)
+    if isValid(currentItem) and currentItem.startsFresh = true
+      ' An episode the queue arrived at starts from the beginning, so no position decides its
+      ' version: the viewer's explicit pick does when this episode has it, else the device.
+      preference = queueManager.callFunc("getVersionPreference")
+      mediaSourceId = mediaSources[episodeQueue.sourceIndexFor(preference, mediaSources)].Id
+      m.log.info("Queued episode version", "mediaSourceId", mediaSourceId, "hasPick", isValid(preference))
+    else if versionResume.isPerVersionServer(m.global.server.version)
       choice = resolveResumeVersion(video.id, meta, mediaSources)
       if isValidAndNotEmpty(choice.sourceId)
         mediaSourceId = choice.sourceId
@@ -760,9 +768,14 @@ sub addNextEpisodesToQueue(showID)
   }), "nextEpisodes")
 
   if isValid(data) and data.Items.Count() > 1
-    ' Start at index 1 to skip the current episode
+    ' The list starts at the current episode. Everything after it is an episode the viewer will
+    ' ARRIVE at: one per episode, from the beginning, on the version they picked (episodeQueue).
+    following = []
     for i = 1 to data.Items.Count() - 1
-      queueManager.callFunc("push", nodeHelpers.createQueueItem(data.Items[i]))
+      following.push(data.Items[i])
+    end for
+    for each episode in episodeQueue.build(following, episodeQueue.episodeKey(data.Items[0]), "nextEpisodes-copies")
+      queueManager.callFunc("push", nodeHelpers.createQueueItem(episode))
     end for
   end if
 end sub

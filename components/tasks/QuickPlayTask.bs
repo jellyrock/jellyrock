@@ -1,6 +1,7 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/episodeQueue.bs"
 import "pkg:/source/utils/misc.bs"
 
 ' QuickPlayTask: Orchestrator task for all quickplay, Play All, Instant Mix,
@@ -600,11 +601,15 @@ sub doPlayAllSeries(input as object, items as object)
   }), "qp_playAllSeries")
   if isValid(allEpData) and isValid(allEpData.Items)
     ' Exclude Season 0 (Specials) from Play All
+    episodes = []
     for each ep in allEpData.Items
       if isValid(ep.ParentIndexNumber) and ep.ParentIndexNumber > 0
-        items.push(ep)
+        episodes.push(ep)
       end if
     end for
+    ' Play All plays in order from the beginning: one per episode, each from its start
+    ' (episodeQueue) — the first one included, which a resume position would otherwise move.
+    items.append(episodeQueue.build(episodes, "", "qp_playAllSeries-copies"))
   end if
 end sub
 
@@ -615,7 +620,8 @@ sub doPlayAllSeason(input as object, items as object)
     SortOrder: "Ascending"
   }), "qp_playAllSeason")
   if isValid(allEpData) and isValid(allEpData.Items)
-    items.append(allEpData.Items)
+    ' Same rule as a series: one per episode, each from its start (episodeQueue).
+    items.append(episodeQueue.build(allEpData.Items, "", "qp_playAllSeason-copies"))
   end if
 end sub
 

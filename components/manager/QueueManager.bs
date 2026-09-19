@@ -25,6 +25,9 @@ sub init()
   ' launchQuickPlayAction so onQuickPlayTaskOutput's photo branch
   ' knows to randomize. Defaults false (a plain photoalbum item-tap is sequential).
   m.photoAlbumShuffleMode = false
+  ' The video the viewer explicitly picked for this queue (episodeQueue.preferenceFor), carried
+  ' to the episodes the queue arrives at. Belongs to the queue, so a new queue starts without one.
+  m.versionPreference = invalid
 end sub
 
 ' Clear all content from play queue
@@ -32,6 +35,7 @@ sub clear()
   m.isPlaying = false
   m.queue = []
   m.queueTypes = []
+  m.versionPreference = invalid
   m.isPrerollActive = m.global.user.settings.playbackCinemaMode
   setPosition(0)
 end sub
@@ -450,6 +454,19 @@ sub setCurrentStartingPoint(positionTicks, isExact = false as boolean)
     nodeHelpers.setResumeStart(m.queue[m.position], positionTicks)
   end if
 end sub
+
+' setVersionPreference: Record an explicit version pick for the rest of this queue — the details
+' screen's Video menu at launch, or a switch in the player. invalid forgets it.
+'
+' @param {dynamic} preference - from episodeQueue.preferenceFor()
+sub setVersionPreference(preference as dynamic)
+  m.versionPreference = preference
+end sub
+
+' getVersionPreference: The explicit version pick for this queue, or invalid when there is none.
+function getVersionPreference() as dynamic
+  return m.versionPreference
+end function
 
 ' getItemType: Returns the media type of the passed item
 '

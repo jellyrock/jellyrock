@@ -1,0 +1,235 @@
+import "pkg:/source/utils/episodeQueue.bs"
+
+namespace tests
+
+  ' Which episodes a queue plays and which version or copy of each: the rules in
+  ' episodeQueue. build() is the network shell around them and is covered on device.
+  @suite("episodeQueue - queued episodes")
+  class EpisodeQueueTests extends tests.BaseTestSuite
+
+    private function caps1080() as object
+      return { maxHeight: 1080, maxWidth: 1920, canDecode4k: false, supportsHdr10: false, supportsDolbyVision: false, supportsHlg: false, isMock: true }
+    end function
+
+    private function source(id as string, height as integer, codec = "h264" as string, videoRange = "SDR" as string) as object
+      return {
+        Id: id,
+        SupportsDirectPlay: true,
+        MediaStreams: [{ Type: "Video", Height: height, Width: int(height * 16 / 9), Codec: codec, VideoRange: videoRange, IsInterlaced: false }]
+      }
+    end function
+
+    private function episode(id as string, season as dynamic, number as dynamic) as object
+      return { Id: id, ParentIndexNumber: season, IndexNumber: number }
+    end function
+
+    ' How 10.11 lists the Version Episodes fixture: every file its own episode, and E1's
+    ' 720p copy ahead of its 1080p one (measured 2026-09-19).
+    private function listed1011() as object
+      return [
+        m.episode("e1-720", 1, 1), m.episode("e1-1080", 1, 1),
+        m.episode("e2-1080", 1, 2), m.episode("e2-720", 1, 2),
+        m.episode("e3-1080", 1, 3), m.episode("e3-480", 1, 3),
+        m.episode("e4-1080", 1, 4)
+      ]
+    end function
+
+    private function ids(items as object) as string
+      out = []
+      for each item in items
+        out.push(item.Id)
+      end for
+      return out.join(",")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("episodeKey()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keys a numbered episode by season and number")
+    function _()
+      m.assertEqual(episodeQueue.episodeKey(m.episode("a", 1, 2)), "S1E2")
+    end function
+
+    @it("never keys an unnumbered item")
+    function _()
+      m.assertEqual(episodeQueue.episodeKey(m.episode("a", 1, invalid)), "")
+      m.assertEqual(episodeQueue.episodeKey(m.episode("a", invalid, 2)), "")
+      m.assertEqual(episodeQueue.episodeKey(invalid), "")
+    end function
+
+    @it("never keys a multi-episode file, which covers more than its first number")
+    function _()
+      item = m.episode("a", 1, 2)
+      item.IndexNumberEnd = 3
+      m.assertEqual(episodeQueue.episodeKey(item), "")
+    end function
+
+    @it("keys an episode whose end number repeats its number")
+    function _()
+      item = m.episode("a", 1, 2)
+      item.IndexNumberEnd = 2
+      m.assertEqual(episodeQueue.episodeKey(item), "S1E2")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("groupByEpisode()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("groups a pre-12.0 server's copies of one episode, in first-seen order")
+    function _()
+      groups = episodeQueue.groupByEpisode(m.listed1011())
+      m.assertEqual(groups.count(), 4)
+      m.assertEqual(m.ids(groups[0]), "e1-720,e1-1080")
+      m.assertEqual(m.ids(groups[1]), "e2-1080,e2-720")
+      m.assertEqual(m.ids(groups[2]), "e3-1080,e3-480")
+      m.assertEqual(m.ids(groups[3]), "e4-1080")
+    end function
+
+    @it("leaves out every copy of the episode already playing")
+    ' 10.11 lists E1's 720p copy first, so a queue started from it would otherwise play E1
+    ' again from the 1080p copy.
+    function _()
+      groups = episodeQueue.groupByEpisode(m.listed1011(), "S1E1")
+      m.assertEqual(groups.count(), 3)
+      m.assertEqual(m.ids(groups[0]), "e2-1080,e2-720")
+    end function
+
+    @it("changes nothing when no episode has copies (a 12.0 queue)")
+    function _()
+      groups = episodeQueue.groupByEpisode([m.episode("e1", 1, 1), m.episode("e2", 1, 2)])
+      m.assertEqual(groups.count(), 2)
+      m.assertEqual(m.ids(groups[0]), "e1")
+      m.assertEqual(m.ids(groups[1]), "e2")
+    end function
+
+    @it("keeps the same number in different seasons apart")
+    function _()
+      groups = episodeQueue.groupByEpisode([m.episode("s1e1", 1, 1), m.episode("s2e1", 2, 1)])
+      m.assertEqual(groups.count(), 2)
+    end function
+
+    @it("keeps every unnumbered item, each on its own")
+    function _()
+      groups = episodeQueue.groupByEpisode([m.episode("x", 1, invalid), m.episode("y", 1, invalid)], "")
+      m.assertEqual(groups.count(), 2)
+    end function
+
+    @it("returns nothing for no items")
+    function _()
+      m.assertEqual(episodeQueue.groupByEpisode(invalid).count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("copyIds()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("names only items that have another copy")
+    function _()
+      groups = episodeQueue.groupByEpisode(m.listed1011())
+      m.assertEqual(episodeQueue.copyIds(groups).join(","), "e1-720,e1-1080,e2-1080,e2-720,e3-1080,e3-480")
+    end function
+
+    @it("names nothing for a queue without copies")
+    function _()
+      groups = episodeQueue.groupByEpisode([m.episode("e1", 1, 1), m.episode("e2", 1, 2)])
+      m.assertEqual(episodeQueue.copyIds(groups).count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("preferenceFor() / matchIndex()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("matches the same video in the next episode whatever the release name")
+    ' The fixture's E01 720p is `-grpa`, E02's is `-grpb`: names never enter the match.
+    function _()
+      pref = episodeQueue.preferenceFor(m.source("e1-720", 720))
+      nextSources = [m.source("e2-1080", 1080), m.source("e2-720", 720)]
+      m.assertEqual(episodeQueue.matchIndex(pref, nextSources), 1)
+    end function
+
+    @it("finds no match when the next episode lacks that quality")
+    function _()
+      pref = episodeQueue.preferenceFor(m.source("e2-720", 720))
+      m.assertEqual(episodeQueue.matchIndex(pref, [m.source("e3-1080", 1080), m.source("e3-480", 480)]), -1)
+    end function
+
+    @it("does not match another codec at the same resolution")
+    function _()
+      pref = episodeQueue.preferenceFor(m.source("a", 1080, "hevc"))
+      m.assertEqual(episodeQueue.matchIndex(pref, [m.source("b", 1080, "h264")]), -1)
+    end function
+
+    @it("does not match SDR for an HDR pick")
+    function _()
+      pref = episodeQueue.preferenceFor(m.source("a", 2160, "hevc", "HDR"))
+      m.assertEqual(episodeQueue.matchIndex(pref, [m.source("b", 2160, "hevc", "SDR")]), -1)
+    end function
+
+    @it("matches nothing without an explicit pick")
+    function _()
+      m.assertEqual(episodeQueue.matchIndex(invalid, [m.source("a", 720)]), -1)
+    end function
+
+    @it("has no preference for a source without video")
+    function _()
+      m.assertInvalid(episodeQueue.preferenceFor({ Id: "a", MediaStreams: [{ Type: "Audio", Codec: "aac" }] }))
+      m.assertInvalid(episodeQueue.preferenceFor(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("sourceIndexFor()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("plays the explicit pick's match")
+    function _()
+      pref = episodeQueue.preferenceFor(m.source("e1-720", 720))
+      m.assertEqual(episodeQueue.sourceIndexFor(pref, [m.source("e2-1080", 1080), m.source("e2-720", 720)], m.caps1080()), 1)
+    end function
+
+    @it("plays the best for the device when nothing matches")
+    function _()
+      pref = episodeQueue.preferenceFor(m.source("e2-720", 720))
+      m.assertEqual(episodeQueue.sourceIndexFor(pref, [m.source("e3-480", 480), m.source("e3-1080", 1080)], m.caps1080()), 1)
+    end function
+
+    @it("plays the best for the device without an explicit pick")
+    function _()
+      m.assertEqual(episodeQueue.sourceIndexFor(invalid, [m.source("e2-720", 720), m.source("e2-1080", 1080)], m.caps1080()), 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("chooseCopy()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps the copy matching the explicit pick")
+    function _()
+      group = [m.episode("e2-1080", 1, 2), m.episode("e2-720", 1, 2)]
+      sources = { "e2-1080": [m.source("e2-1080", 1080)], "e2-720": [m.source("e2-720", 720)] }
+      pref = episodeQueue.preferenceFor(m.source("e1-720", 720))
+      m.assertEqual(episodeQueue.chooseCopy(group, sources, pref, m.caps1080()).Id, "e2-720")
+    end function
+
+    @it("keeps the best copy for the device without a pick")
+    function _()
+      group = [m.episode("e1-720", 1, 1), m.episode("e1-1080", 1, 1)]
+      sources = { "e1-720": [m.source("e1-720", 720)], "e1-1080": [m.source("e1-1080", 1080)] }
+      m.assertEqual(episodeQueue.chooseCopy(group, sources, invalid, m.caps1080()).Id, "e1-1080")
+    end function
+
+    @it("keeps the server's first copy when a copy's sources are unknown")
+    function _()
+      group = [m.episode("e1-720", 1, 1), m.episode("e1-1080", 1, 1)]
+      sources = { "e1-1080": [m.source("e1-1080", 1080)] }
+      m.assertEqual(episodeQueue.chooseCopy(group, sources, invalid, m.caps1080()).Id, "e1-720")
+    end function
+
+    @it("returns a lone episode untouched")
+    function _()
+      group = [m.episode("e4", 1, 4)]
+      m.assertEqual(episodeQueue.chooseCopy(group, {}, invalid, m.caps1080()).Id, "e4")
+    end function
+
+  end class
+
+end namespace

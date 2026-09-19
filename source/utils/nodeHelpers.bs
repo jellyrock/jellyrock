@@ -54,6 +54,11 @@ namespace nodeHelpers
     ' because "are we resuming?" is asked before the version is chosen — LoadVideoContentTask
     ' gates the Cinema Mode preroll on it, since a preroll in front of a resume is wrong.
     optional hasVersionInProgress as boolean
+    ' True for an episode the queue ARRIVES at — the next episodes queued behind the one playing,
+    ' and every episode of Play All (episodeQueue.build). It starts from the beginning, and the
+    ' loader plays the viewer's explicit version pick when the episode has it, else the best for
+    ' the device — never the version holding a position, since no position is resumed.
+    optional startsFresh as boolean
   end interface
 
   ' createQueueItem: Create a queue item AA from a source item.
@@ -90,6 +95,7 @@ namespace nodeHelpers
   '   - seriesId: Series ID for episode navigation in resume dialog
   '   - seasonId: Season ID for episode navigation in resume dialog
   '   - playbackPositionTicks: Saved resume position
+  '   - startsFresh: an episode a queue arrives at (episodeQueue); also sets an exact start at 0
   '
   ' Callers set selectedAudioStreamIndex on the returned AA after creation, and the start
   ' position through setResumeStart() or setExactStart().
@@ -146,6 +152,14 @@ namespace nodeHelpers
       positionTicks = sourceNode.UserData.PlaybackPositionTicks
     end if
     if positionTicks > 0 then queueItem.playbackPositionTicks = positionTicks
+
+    ' An episode a queue arrives at (episodeQueue.build) starts from the beginning — its saved
+    ' position stays readable above for display only — and the loader picks its version by
+    ' the viewer's explicit pick instead of by position.
+    if sourceNode.startsFresh = true
+      queueItem.startsFresh = true
+      setExactStart(queueItem, 0&)
+    end if
 
     ' Backdrop fields — always set to guarantee callers can check .Count() without isValid().
     ' Empty array/string = no backdrop available for this item.

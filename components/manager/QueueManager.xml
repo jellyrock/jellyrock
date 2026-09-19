@@ -13,6 +13,7 @@
     <function name="getQueueTypes" />
     <function name="getQueueUniqueTypes" />
     <function name="getUnshuffledQueue" />
+    <function name="getVersionPreference" />
     <function name="isPrerollActive" />
     <function name="launchItem" />
     <function name="launchPhotoAlbum" />
@@ -29,6 +30,7 @@
     <function name="setCurrentStartingPoint" />
     <function name="setPosition" />
     <function name="setPrerollStatus" />
+    <function name="setVersionPreference" />
     <function name="toggleShuffle" />
     <function name="top" />
   </interface>

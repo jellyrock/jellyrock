@@ -11,6 +11,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/dialogs.bs"
+import "pkg:/source/utils/episodeQueue.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/mediaSegments.bs"
 import "pkg:/source/utils/misc.bs"
@@ -728,6 +729,10 @@ sub onVideoSourceChange()
   ' because the id reaches here from a different server field than the one on the source —
   ' the case-sensitivity class #947 fixed on the details screen.
   newSource = mediaSourceForId(m.top.fullVideoSourceData, newSourceId)
+
+  ' The viewer picked this version, so the episodes the queue plays next keep to it when they
+  ' have it (episodeQueue). Only this path is a pick: the player's own writes stop at the guard.
+  m.global.queueManager.callFunc("setVersionPreference", episodeQueue.preferenceFor(newSource))
 
   ' Map the position into the NEW version's timeline instead of reusing the raw one. Two
   ' releases of one cut are offset by a constant and can differ in runtime by a minute, so
