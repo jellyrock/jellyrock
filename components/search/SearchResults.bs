@@ -239,15 +239,10 @@ sub searchMedias()
   if query.len() = 0
     stopLoadingSpinner()
   end if
-  ' A NEW node per keystroke, never a relaunch of the previous one. A Task stopped while its
-  ' function is still running honors a launch made in the same callback only sometimes —
-  ' measured on device, pinned in tests/source/unit/platform/TaskRelaunch.spec.bs, and the
-  ' rate is unstable (tests/source/unit/platform/TaskRelaunchBlockModes.spec.bs). When the
-  ' launch is ignored the run is LOST, so the letter just typed would never be searched.
-  ' Releasing the old node also means a delivery already queued when it was superseded cannot
-  ' reach loadResults, which reads whatever m.searchTask points at now.
-  releaseSearchTask()
-  m.searchTask = CreateObject("roSGNode", "SearchTask")
+  ' A NEW node per keystroke, never a relaunch of the previous one (see replaceTask): a
+  ' relaunch of a node still searching is sometimes ignored, and then the letter just typed
+  ' is never searched at all.
+  m.searchTask = replaceTask(m.searchTask, "SearchTask", "results", { query: query })
   if isValid(query) and query <> ""
     ' A new query is a NEW run, not a continuation — `begin` restarts the ledger, so the
     ' clock starts at the keystroke rather than at the screen opening. Each keystroke
@@ -265,62 +260,34 @@ sub searchMedias()
     startLoadingSpinner(false)
   end if
   m.searchTask.observeField("results", "loadResults")
-  m.searchTask.query = query
   m.top.overhangTitle = translate(translationKeys.ButtonSearch) + ": " + query
   launchTask(m.searchTask)
 
 end sub
 
-' releaseSearchTask: Drop the run in flight, if any, and the node with it.
-sub releaseSearchTask()
-  if isValid(m.searchTask)
-    m.searchTask.unobserveField("results")
-    m.searchTask.control = "stop"
-    m.searchTask = invalid
+sub loadResults(event as object)
+  if not isCurrentTaskEvent(event, m.searchTask)
+    ' An invalid m.searchTask is teardown: onDestroy released the node, so there is nothing
+    ' to report. Otherwise this is a delivery from a node searchMedias has since replaced —
+    ' one queued before its observer was removed. Reading m.searchTask in its place would
+    ' read the NEW run's empty results, resolve its fill early and unobserve it, so the live
+    ' query's results would never arrive; hence the drop.
+    '
+    ' WARN, not info: this line is the only field evidence that Roku delivers an event
+    ' queued before `unobserveField`, which its docs neither promise nor rule out. The
+    ' measured expectation is that it never fires — `SearchTask` publishes once, as its last
+    ' act, so a stopped search does not deliver at all.
+    if isValid(m.searchTask)
+      stale = event.getData()
+      answered = ""
+      if isValid(stale) and isValid(stale.query) then answered = stale.query
+      m.log.warn("superseded search delivery dropped - answered", answered, "current", m.top.searchAlpha)
+    end if
+    return
   end if
-end sub
 
-sub loadResults()
-  ' Read ONCE and used for everything below, so the delivery this handler checks is provably
-  ' the delivery it files and displays — a second read could not disagree today (nothing else
-  ' writes the field on this thread), but then the assertion below would be about a different
-  ' read than the data, which is a strange thing for an invariant check to be.
-  ' The node this handler was registered on is the one m.searchTask holds: searchMedias
-  ' releases and unobserves the previous node before replacing it, so a superseded run cannot
-  ' land here. The guard covers teardown, where onDestroy releases the node outright.
-  if not isValid(m.searchTask) then return
-
+  ' Read ONCE and used for everything below.
   results = m.searchTask.results
-
-  ' A DETECTOR, not a guard — it reports the invariant breaking and then carries on.
-  '
-  ' The invariant: a delivery that arrives here answers the query the box currently holds.
-  ' If it ever does not, three things go wrong at once — the screen shows a prefix of what
-  ' was typed, `results` closes on a clock that started at the LATER keystroke (a short
-  ' number filed against the wrong query), and the `unobserveField` below tears down the
-  ' observer the live query still needs.
-  '
-  ' It holds because of WHERE `SearchTask` publishes: `searchMedia` runs four fetches and
-  ' assigns `m.top.results` exactly once, as its last statement. So the `control = "stop"`
-  ' that every keystroke issues lands before that assignment for any query still in flight,
-  ' and a superseded query does not deliver AT ALL — the exposure is only the notification
-  ' already queued when the keystroke arrives, which is one field-write wide.
-  '
-  ' Measured on `.177`, 12 keystrokes at 550 ms against a query answering in ~570 ms (so
-  ' every one superseded the last): 12 launches produced 6 deliveries, and all 6 answered
-  ' the current query. The stop is what makes the race unreachable in practice — not luck,
-  ' and not this line. So this does NOT drop the delivery: acting on a window nothing has
-  ' entered would be a behaviour change, and dropping it would also destroy the evidence
-  ' that it happened. If a `superseded search delivery` line ever appears, the invariant
-  ' above broke — most likely because something moved the publish earlier or made it
-  ' incremental — and a fix is then justified on its own evidence rather than on this
-  ' comment. See the followup in `docs/progress.md`.
-  ' WARN, not info: this fires only when the invariant above has broken, and it is the twin of
-  ' `screen-load unbalanced` — the ledger's own drift alarm, which warns for the same reason.
-  ' At info it would sit unread in a console that prints a great deal of ordinary traffic.
-  if isValid(results) and isValid(results.query) and results.query <> m.top.searchAlpha
-    m.log.warn("superseded search delivery - answered", results.query, "current", m.top.searchAlpha)
-  end if
 
   ' The server work is done. Resolved at the TOP because this handler has an early return
   ' on the no-results path. Measured on `.177`, this fill is nearly the whole wait: the
@@ -448,7 +415,7 @@ sub onDestroy()
   m.searchSelect.content = invalid
 
   ' Stop and release task node (observer may already be cleared by loadResults())
-  releaseSearchTask()
+  m.searchTask = releaseTask(m.searchTask, "results")
 
   ' Clear node references
   m.searchSelect = invalid

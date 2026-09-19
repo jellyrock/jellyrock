@@ -888,23 +888,6 @@ function resolveGoToArtistId(item as object) as string
 end function
 
 ' Triggered when itemId is set (route load) — kicks off async data load
-' freshLoadTask: Release the run in flight, if any, and hand back a NEW node for the next one.
-'
-' A new node per run, never a relaunch of the same one. A Task stopped while its function is
-' still running honors a launch made in the same callback only sometimes, and when it is
-' ignored the run is LOST — measured in tests/source/unit/platform/TaskRelaunch.spec.bs and
-' TaskRelaunchBlockModes.spec.bs. Releasing the old node also keeps a delivery already queued
-' when its run was superseded from reaching a handler that reads the CURRENT node.
-function freshLoadTask(existing as dynamic, itemsToLoad as string) as object
-  if isValid(existing)
-    existing.unobserveField("content")
-    existing.control = "STOP"
-  end if
-  task = CreateObject("roSGNode", "LoadItemsTask")
-  task.itemsToLoad = itemsToLoad
-  return task
-end function
-
 sub onItemIdChanged()
   itemId = m.top.itemId
   if not isValidAndNotEmpty(itemId) then return
@@ -917,7 +900,7 @@ sub onItemIdChanged()
     return
   end if
 
-  m.loadDetailsTask = freshLoadTask(m.loadDetailsTask, "metaDataDetails")
+  m.loadDetailsTask = replaceTask(m.loadDetailsTask, "LoadItemsTask", "content", { itemsToLoad: "metaDataDetails" })
 
   ' Show the loading spinner during the metadata fetch (onDetailsLoaded stops it). Restores the
   ' pre-#677 behavior: the removed showScenes.CreateItemDetailsGroup factory started the spinner
@@ -934,8 +917,8 @@ sub onItemIdChanged()
 end sub
 
 ' Callback when initial item details metadata arrives from the task
-sub onDetailsLoaded()
-  if not isValid(m.loadDetailsTask) then return
+sub onDetailsLoaded(event as object)
+  if not isCurrentTaskEvent(event, m.loadDetailsTask) then return
   m.loadDetailsTask.unobserveField("content")
   content = m.loadDetailsTask.content
   m.loadDetailsTask.content = []
@@ -1243,7 +1226,7 @@ sub onRefreshResumeData()
   item = m.top.itemContent
   if not isValid(item) or item.type <> "Series" then return
 
-  m.loadSeriesResumeTask = freshLoadTask(m.loadSeriesResumeTask, "seriesResume")
+  m.loadSeriesResumeTask = replaceTask(m.loadSeriesResumeTask, "LoadItemsTask", "content", { itemsToLoad: "seriesResume" })
   m.loadSeriesResumeTask.itemId = item.id
   m.loadSeriesResumeTask.observeField("content", "onSeriesResumeLoaded")
   launchTask(m.loadSeriesResumeTask)
@@ -1270,7 +1253,7 @@ sub onRefreshItemDetailsData()
     end if
   end if
 
-  m.loadDetailsTask = freshLoadTask(m.loadDetailsTask, "metaDataDetails")
+  m.loadDetailsTask = replaceTask(m.loadDetailsTask, "LoadItemsTask", "content", { itemsToLoad: "metaDataDetails" })
 
   m.loadDetailsTask.itemId = itemId
   m.loadDetailsTask.shouldForceRefresh = true
@@ -1279,8 +1262,8 @@ sub onRefreshItemDetailsData()
 end sub
 
 ' Callback when refreshed item details metadata arrives
-sub onRefreshDetailsLoaded()
-  if not isValid(m.loadDetailsTask) then return
+sub onRefreshDetailsLoaded(event as object)
+  if not isCurrentTaskEvent(event, m.loadDetailsTask) then return
   m.loadDetailsTask.unobserveField("content")
   content = m.loadDetailsTask.content
   m.loadDetailsTask.content = []
@@ -2075,7 +2058,7 @@ sub populateDescriptionGroup()
     m.itemDescription.visible = false
     setDescriptionInLayout(false)
     if item.hasLyrics
-      m.loadLyricsTask = freshLoadTask(m.loadLyricsTask, "lyrics")
+      m.loadLyricsTask = replaceTask(m.loadLyricsTask, "LoadItemsTask", "content", { itemsToLoad: "lyrics" })
       m.loadLyricsTask.itemId = item.id
       m.loadLyricsTask.observeField("content", "onLyricsLoaded")
       screenLoad.pending("lyrics")
@@ -3209,7 +3192,7 @@ sub onItemContentChanged()
     ' onSeriesResumeLoaded() handles both the data and no-data cases.
     if item.type = "Series"
       ' Unobserve before re-observing to prevent callbacks stacking on repeated content changes.
-      m.loadSeriesResumeTask = freshLoadTask(m.loadSeriesResumeTask, "seriesResume")
+      m.loadSeriesResumeTask = replaceTask(m.loadSeriesResumeTask, "LoadItemsTask", "content", { itemsToLoad: "seriesResume" })
       m.loadSeriesResumeTask.itemId = item.id
       m.loadSeriesResumeTask.observeField("content", "onSeriesResumeLoaded")
       screenLoad.pending("seriesResume")
@@ -4906,9 +4889,11 @@ sub onSeasonSeriesDataLoaded()
 end sub
 
 ' onSeriesResumeLoaded: Set nextUpEpisode from seriesResume task result to show/hide the Resume button
-sub onSeriesResumeLoaded()
+sub onSeriesResumeLoaded(event as object)
+  ' Before the resolve: an event from a replaced run is not the answer the fill is
+  ' waiting for, and resolving on it would close the live run's fill early.
+  if not isCurrentTaskEvent(event, m.loadSeriesResumeTask) then return
   screenLoad.resolve("seriesResume")
-  if not isValid(m.loadSeriesResumeTask) then return
   m.loadSeriesResumeTask.unobserveField("content")
   content = m.loadSeriesResumeTask.content
   m.loadSeriesResumeTask.content = []
@@ -4949,11 +4934,12 @@ sub removeResumeLoadingButton()
 end sub
 
 ' onLyricsLoaded: Show lyrics in the description area once the async fetch completes (Audio only)
-sub onLyricsLoaded()
-  ' At the TOP — same reason as onSeasonSeriesDataLoaded: the returns below are "no
-  ' usable lyrics", which is still an answer that ended the wait.
+sub onLyricsLoaded(event as object)
+  ' An event from a replaced run is not an answer at all, so it returns before the resolve.
+  if not isCurrentTaskEvent(event, m.loadLyricsTask) then return
+  ' Otherwise at the TOP — same reason as onSeasonSeriesDataLoaded: the returns below are
+  ' "no usable lyrics", which is still an answer that ended the wait.
   screenLoad.resolve("lyrics")
-  if not isValid(m.loadLyricsTask) then return
   m.loadLyricsTask.unobserveField("content")
   content = m.loadLyricsTask.content
   m.loadLyricsTask.content = []

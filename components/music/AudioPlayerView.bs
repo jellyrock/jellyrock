@@ -532,27 +532,10 @@ sub LoadNextSong()
   pageContentChanged()
 end sub
 
-' freshLoadTask: Release the run in flight, if any, and hand back a NEW node for the next one.
-'
-' A new node per run, never a relaunch of the same one. A Task stopped while its function is
-' still running honors a launch made in the same callback only sometimes, and when it is
-' ignored the run is LOST — measured in tests/source/unit/platform/TaskRelaunch.spec.bs and
-' TaskRelaunchBlockModes.spec.bs. Releasing the old node also keeps a delivery already queued
-' when its run was superseded from reaching a handler that reads the CURRENT node.
-function freshLoadTask(existing as dynamic, itemsToLoad as string) as object
-  if isValid(existing)
-    existing.unobserveField("content")
-    existing.control = "STOP"
-  end if
-  task = CreateObject("roSGNode", "LoadItemsTask")
-  task.itemsToLoad = itemsToLoad
-  return task
-end function
-
 ' Update values on screen when page content changes
 sub pageContentChanged()
 
-  m.LoadAudioStreamTask = freshLoadTask(m.LoadAudioStreamTask, "audioStream")
+  m.LoadAudioStreamTask = replaceTask(m.LoadAudioStreamTask, "LoadItemsTask", "content", { itemsToLoad: "audioStream" })
 
   currentItem = m.queueManager.callFunc("getCurrentItem")
 
@@ -574,9 +557,10 @@ sub loadButtons()
   end if
 end sub
 
-sub onAudioStreamLoaded()
+sub onAudioStreamLoaded(event as object)
+  ' Before the spinner: an event from a replaced run must not stop the live run's spinner.
+  if not isCurrentTaskEvent(event, m.LoadAudioStreamTask) then return
   stopLoadingSpinner()
-  if not isValid(m.LoadAudioStreamTask) then return
   data = m.LoadAudioStreamTask.content[0]
   m.LoadAudioStreamTask.unobserveField("content")
   if isValid(data) and data.count() > 0
