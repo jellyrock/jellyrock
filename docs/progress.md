@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-19 — fix: Resume the same version everywhere, and map an in-player switch
 - 2026-09-19 — fix: Keep the `ItemGridOptions` dialog usable while a library grid loads
 - 2026-09-19 — fix: Give each `BaseGridView` load and page its own Task node
 - 2026-09-19 — fix: Give each run its own Task node where a restart can lose the work
