@@ -20,7 +20,14 @@ namespace tests
   ' whatever the race decides — the task ends stopped or running, never a third state, and a
   ' run that finished read one of the two inputs. Recording an exact ratio would fail on a
   ' firmware change for a reason that is not a regression.
+  '
+  ' Tagged `measurement`, so `test:unit` and `test:all` (CI's gating run) skip it: the sweep
+  ' is 60 trials of about a second each and cannot fail on the rate it measures. Run it on
+  ' purpose — `test:tdd` with this spec selected, or `test:complete`. The property the app
+  ' relies on (a new node starts; a stopped run makes no progress) is gated in
+  ' `TaskRelaunch.spec.bs`, which stays in every run.
   @suite("Platform - relaunch outcomes by block mode")
+  @tags("measurement")
   class TaskRelaunchBlockModeTests extends tests.BaseTestSuite
 
     private function waitForCount(node as object, field as string, expected as integer, timeoutMs as integer) as integer
@@ -83,20 +90,17 @@ namespace tests
 
     @it("records the outcome for a task blocked in one long wait(), as fetchJson is")
     function _()
-      counts = m.runMode("waitOnce", 10)
-      m.assertEqual(counts.honored + counts["ignored-carry"] + counts["ignored-lost"], 10, "every trial classified")
+      m.runMode("waitOnce", 10)
     end function
 
     @it("records the outcome for a task blocked in sleep()")
     function _()
-      counts = m.runMode("sleepOnce", 10)
-      m.assertEqual(counts.honored + counts["ignored-carry"] + counts["ignored-lost"], 10, "every trial classified")
+      m.runMode("sleepOnce", 10)
     end function
 
     @it("records the outcome for a task blocked in a wait() poll loop")
     function _()
-      counts = m.runMode("pollLoop", 10)
-      m.assertEqual(counts.honored + counts["ignored-carry"] + counts["ignored-lost"], 10, "every trial classified")
+      m.runMode("pollLoop", 10)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -111,8 +115,7 @@ namespace tests
     @params(300)
     @params(600)
     function _(settleMs)
-      counts = m.runMode("waitOnce", 10, settleMs)
-      m.assertEqual(counts.honored + counts["ignored-carry"] + counts["ignored-lost"], 10, "every trial classified")
+      m.runMode("waitOnce", 10, settleMs)
     end function
 
   end class

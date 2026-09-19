@@ -46,7 +46,7 @@
     "./scripts/bsc-plugins/translation-keys.cjs"
   ],
   "rooibos": {
-    "tags": null,
+    "tags": ["!measurement"],
     "isRecordingCodeCoverage": false,
     "showOnlyFailures": true,
     "catchCrashes": true,

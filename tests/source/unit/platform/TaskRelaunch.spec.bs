@@ -78,6 +78,24 @@ namespace tests
       m.assertEqual(m.waitForCount(task, "ends", 1, 1000), 0, "the function returned after STOP")
     end function
 
+    ' The same property for how the app's Tasks actually block: `fetchJson` parks in ONE long
+    ' wait() inside the pool rather than a poll loop. A new node per run (replaceTask) only
+    ' keeps the thread count flat if the stopped run never resumes when that wait expires.
+    @it("makes no further progress once stopped while parked in one long wait()")
+    function _()
+      host = CreateObject("roSGNode", "TaskRelaunchProbeHost")
+      host.callFunc("configure", { blockMode: "waitOnce", blockMs: 400, seq: 1 })
+      host.callFunc("launch")
+      task = host.getField("task")
+      m.assertEqual(m.waitForCount(task, "starts", 1, 2000), 1, "precondition: the task function started")
+
+      host.callFunc("stopTask")
+
+      ' Past the end of the wait, so a run that survived the STOP would have returned by now.
+      m.assertEqual(m.waitForCount(task, "ends", 1, 900), 0, "the function returned after STOP")
+      m.assertEqual(LCase(task.state), "stop")
+    end function
+
     @it("starts a NEW node launched in the same callback that stopped the old one")
     function _()
       host = m.runningHost()
