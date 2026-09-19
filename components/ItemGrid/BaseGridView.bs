@@ -9,6 +9,7 @@ import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/GridView/GenericPresenter.bs"
+import "pkg:/source/GridView/gridQuery.bs"
 import "pkg:/source/GridView/LiveTVPresenter.bs"
 import "pkg:/source/GridView/MoviePresenter.bs"
 import "pkg:/source/GridView/MusicPresenter.bs"
@@ -83,9 +84,13 @@ sub init()
   m.filterOptions = {}
   m.favorite = "Favorite"
 
-  ' Create load task
-  m.loadItemsTask = createObject("roSGNode", "LoadItemsTask2")
-  m.loadItemsTask.totalRecordCount = 0
+  ' Grid run state. Each run gets its own LoadItemsTask2 node (startGridRun), so the query
+  ' and the paging state live here: a replaced node takes anything stored on it with it.
+  m.loadItemsTask = invalid
+  m.gridQuery = {}
+  m.nameStartsWith = ""
+  m.totalRecordCount = 0
+  m.loading = false
 
   ' Get reset folder setting
   m.resetGrid = userSettings.itemGridReset
@@ -316,10 +321,12 @@ end sub
 ' Data Loading
 ' ============================================================================
 
-' Prepare for data loading by stopping any active task, showing spinner, and hiding empty text
+' Prepare for data loading by releasing any run in flight, showing spinner, and hiding empty text
 ' @param {boolean} [disableRemote=false] - Whether to disable remote input during loading
 sub prepareDataLoad(disableRemote = false as boolean)
-  m.loadItemsTask.control = "stop"
+  ' Released here, not only when the next run replaces it: the TV Guide path of
+  ' loadInitialItems starts no run at all.
+  releaseGridRun()
   startLoadingSpinner(disableRemote)
   m.emptyText.visible = false
 end sub
@@ -389,48 +396,66 @@ sub loadInitialItems()
   end if
 
   ' Alpha search
-  if m.loadItemsTask.nameStartsWith = m.top.alphaSelected
-    m.loadItemsTask.nameStartsWith = ""
+  if m.nameStartsWith = m.top.alphaSelected
+    m.nameStartsWith = ""
   else
-    m.loadItemsTask.nameStartsWith = m.alpha.letterSelected
+    m.nameStartsWith = m.alpha.letterSelected
   end if
 
-  m.loadItemsTask.searchTerm = m.voiceBox.text
-  m.loadItemsTask.sortField = m.sortField
-  m.loadItemsTask.sortAscending = m.sortAscending
-  m.loadItemsTask.filter = m.filter
-  m.loadItemsTask.filterOptions = m.filterOptions
-  m.loadItemsTask.startIndex = 0
+  setGridQuery(buildGridQuery(m.nameStartsWith, m.voiceBox.text))
 
-  ' Set default itemId - presenter can override if needed
-  m.loadItemsTask.itemId = m.top.parentItem.Id
-
-  ' Reset stateful fields to prevent leakage from previous operations
-  ' recursive defaults to true (matches LoadItemsTask2.xml) - presenters can override
-  m.loadItemsTask.isRecursive = true
-  m.loadItemsTask.itemType = ""
-  m.loadItemsTask.view = ""
-  m.loadItemsTask.studioIds = ""
-  m.loadItemsTask.genreIds = ""
-
-  ' Let presenter configure the load task (can override any defaults)
-  if isValid(m.presenter)
-    m.presenter.configureLoadTask(m.loadItemsTask, m.top.parentItem, m.view)
-  end if
-
-  ' Update title after all task fields are configured
+  ' Update title after the query is final
   updateTitle()
 
-  m.loadItemsTask.observeField("content", "onItemDataLoaded")
-  ' Only a Genres run writes this, and only before its samples are fetched — it is a
-  ' head start on drawing, not a second delivery channel. `content` still carries the
+  ' Only a Genres run writes genreSkeletons, and only before its samples are fetched — it
+  ' is a head start on drawing, not a second delivery channel. `content` still carries the
   ' real rows for every view including this one.
-  m.loadItemsTask.unobserveField("genreSkeletons")
-  m.loadItemsTask.observeField("genreSkeletons", "onGenreSkeletonsReady")
-  launchTask(m.loadItemsTask)
+  startGridRun(0, true)
 
   SetUpOptions()
   m.log.debug("end loadInitialItems()")
+end sub
+
+' The query for a fresh load of the current view (see gridQuery.build).
+' @param {string} nameStartsWith - The alpha filter (" " and "" are both sent as-is)
+' @param {string} searchTerm - The search term; a presenter may override it
+' @return {object} LoadItemsTask2 input fields
+function buildGridQuery(nameStartsWith as string, searchTerm as string) as object
+  return gridQuery.build({
+    nameStartsWith: nameStartsWith,
+    searchTerm: searchTerm,
+    sortField: m.sortField,
+    sortAscending: m.sortAscending,
+    filter: m.filter,
+    filterOptions: m.filterOptions
+  }, m.top.parentItem, m.view, m.presenter)
+end function
+
+' Makes `query` the grid's current query. A new query is a new result set, so the previous
+' query's total no longer applies: until this query's first page lands, nothing may page
+' against it. (Swapping the grid's content reports focus on item 0, and onItemFocused
+' would otherwise page against the old total.)
+sub setGridQuery(query as object)
+  m.gridQuery = query
+  m.totalRecordCount = 0
+end sub
+
+' Runs m.gridQuery from `startIndex` on a NEW LoadItemsTask2 node, releasing the run in
+' flight. Never a relaunch of the previous node: see replaceTask.
+' @param {integer} startIndex - The first item to fetch
+' @param {boolean} observeSkeletons - Whether this run may deliver genreSkeletons
+sub startGridRun(startIndex as integer, observeSkeletons as boolean)
+  if isValid(m.loadItemsTask) then m.loadItemsTask.unobserveField("genreSkeletons")
+  m.loadItemsTask = replaceTask(m.loadItemsTask, "LoadItemsTask2", "content", gridQuery.forPage(m.gridQuery, startIndex))
+  m.loadItemsTask.observeField("content", "onItemDataLoaded")
+  if observeSkeletons then m.loadItemsTask.observeField("genreSkeletons", "onGenreSkeletonsReady")
+  launchTask(m.loadItemsTask)
+end sub
+
+' Stops the grid's run in flight, if any, and detaches both fields a run is observed on.
+sub releaseGridRun()
+  if isValid(m.loadItemsTask) then m.loadItemsTask.unobserveField("genreSkeletons")
+  m.loadItemsTask = releaseTask(m.loadItemsTask, "content")
 end sub
 
 function getDefaultView() as string
@@ -594,9 +619,10 @@ end sub
 ' replaces these wholesale. If it never arrives, the skeletons are what the failure looks
 ' like, which beats an empty screen.
 sub onGenreSkeletonsReady(msg)
-  ' A queued delivery from a just-stopped run must not repaint a non-Genres load — mirror
-  ' the view dispatch onItemDataLoaded performs. prepareDataLoad stops the task on every
-  ' reload, so this closes a narrow re-delivery window rather than a live path.
+  ' A delivery queued by a run that has since been replaced or released
+  if not isCurrentTaskEvent(msg, m.loadItemsTask) then return
+  ' Mirror the view dispatch onItemDataLoaded performs: the task publishes skeletons
+  ' whenever every item is a genre, not only for the Genres view.
   if m.loadItemsTask.view <> "Genres" then return
 
   genres = msg.getData()
@@ -622,10 +648,14 @@ end sub
 
 sub onItemDataLoaded(msg)
   m.log.debug("start onItemDataLoaded()")
+  ' A delivery queued by a run that has since been replaced or released: reading
+  ' m.loadItemsTask in its place would read the new run's still-empty output.
+  if not isCurrentTaskEvent(msg, m.loadItemsTask) then return
   itemData = msg.GetData()
   m.loadItemsTask.unobserveField("content")
   m.loadItemsTask.unobserveField("genreSkeletons")
   m.loadItemsTask.content = []
+  m.totalRecordCount = m.loadItemsTask.totalRecordCount
 
   if not isValid(itemData)
     m.loading = false
@@ -735,7 +765,7 @@ sub onItemDataLoaded(msg)
   ' onItemDataLoaded → loadMoreData cycle continues until all items are loaded.
   ' With texture management, only visible + buffer rows have loaded textures
   ' regardless of total ContentNode count, so loading all items is safe.
-  if m.loadedItems > 0 and m.loadedItems < m.loadItemsTask.totalRecordCount
+  if m.loadedItems > 0 and m.loadedItems < m.totalRecordCount
     loadMoreData()
   end if
 
@@ -750,12 +780,10 @@ sub loadMoreData()
   m.log.debug("start loadMoreData()")
   if m.loading = true then return
 
-  m.loadItemsTask.control = "stop"
   m.emptyText.visible = false
   m.loading = true
-  m.loadItemsTask.startIndex = m.loadedItems
-  m.loadItemsTask.observeField("content", "onItemDataLoaded")
-  launchTask(m.loadItemsTask)
+  ' The next page of the same query: m.gridQuery, not the previous node, is what it asks for.
+  startGridRun(m.loadedItems, false)
   m.log.debug("end loadMoreData()")
 end sub
 
@@ -776,7 +804,7 @@ sub onItemFocused()
   m.selectedFavoriteItem = m.itemGrid.content.getChild(m.itemGrid.itemFocused)
 
   ' Load more data if focus is within last 5 rows
-  if focusedRow >= m.loadedRows - 5 and m.loadedItems < m.loadItemsTask.totalRecordCount
+  if focusedRow >= m.loadedRows - 5 and m.loadedItems < m.totalRecordCount
     loadMoreData()
   end if
 
@@ -1046,8 +1074,7 @@ sub optionsClosed()
     ' Reset any filtering or search terms
     m.voiceBox.text = ""
     m.top.alphaSelected = ""
-    m.loadItemsTask.NameStartsWith = " "
-    m.loadItemsTask.searchTerm = ""
+    m.nameStartsWith = " "
     m.filter = "All"
     m.filterOptions = {}
     m.sortField = "SortName"
@@ -1099,7 +1126,6 @@ sub onAlphaSelectedChanged()
     m.genreData = CreateObject("roSGNode", "ContentNode")
     m.genreList.content = m.genreData
 
-    m.loadItemsTask.searchTerm = ""
     m.voiceBox.text = ""
     loadInitialItems()
   end if
@@ -1148,33 +1174,13 @@ sub onVoiceFilter()
 
     ' Prepare for data loading (stop task, show spinner, hide empty text)
     prepareDataLoad(false)
-    m.loadItemsTask.NameStartsWith = " "
-    m.loadItemsTask.sortField = m.sortField
-    m.loadItemsTask.sortAscending = m.sortAscending
-    m.loadItemsTask.filter = m.filter
-    m.loadItemsTask.filterOptions = m.filterOptions
-    m.loadItemsTask.startIndex = 0
-    m.loadItemsTask.itemId = m.top.parentItem.Id
-
-    ' Reset stateful fields, then set voice search specific config
-    m.loadItemsTask.itemType = ""
-    m.loadItemsTask.view = ""
-    m.loadItemsTask.studioIds = ""
-    m.loadItemsTask.genreIds = ""
-    m.loadItemsTask.isRecursive = true
-
-    ' Let presenter override if needed
-    if isValid(m.presenter)
-      m.presenter.configureLoadTask(m.loadItemsTask, m.top.parentItem, m.view)
-      ' Force recursive and searchTerm for voice search even if presenter changes them
-      m.loadItemsTask.isRecursive = true
-    end if
-
-    ' Set searchTerm after presenter to ensure it's not cleared
-    m.loadItemsTask.searchTerm = voiceSearchTerm
-
-    m.loadItemsTask.observeField("content", "onItemDataLoaded")
-    launchTask(m.loadItemsTask)
+    m.nameStartsWith = " "
+    query = buildGridQuery(m.nameStartsWith, voiceSearchTerm)
+    ' Force recursive and searchTerm for voice search even if the presenter changed them
+    query.isRecursive = true
+    query.searchTerm = voiceSearchTerm
+    setGridQuery(query)
+    startGridRun(0, false)
 
     if voiceSearchTerm.len() = 1
       ' move focus to the letter spoken
@@ -1321,18 +1327,10 @@ function onKeyEvent(key as string, press as boolean) as boolean
   if key = "replay"
     ' Clear all search/filter state
     m.voiceBox.text = ""
-    m.loadItemsTask.searchTerm = ""
-    m.loadItemsTask.nameStartsWith = ""
+    m.nameStartsWith = ""
     m.top.alphaSelected = ""
-    m.loadItemsTask.filter = "All"
     m.filter = "All"
     m.filterOptions = {}
-    ' Reset stateful fields to ensure clean state
-    m.loadItemsTask.isRecursive = false
-    m.loadItemsTask.itemType = ""
-    m.loadItemsTask.view = ""
-    m.loadItemsTask.studioIds = ""
-    m.loadItemsTask.genreIds = ""
     m.data = CreateObject("roSGNode", "ContentNode")
     m.itemGrid.content = m.data
     m.flatIndexMap = {}
@@ -1362,8 +1360,8 @@ sub updateTitle()
     return
   end if
 
-  if m.loadItemsTask.nameStartsWith.trim() <> ""
-    m.top.overhangTitle = translate(translationKeys.MessageFilteredBy, [m.top.parentItem.title, m.loadItemsTask.nameStartsWith])
+  if m.nameStartsWith.trim() <> ""
+    m.top.overhangTitle = translate(translationKeys.MessageFilteredBy, [m.top.parentItem.title, m.nameStartsWith])
     return
   end if
 
@@ -1385,8 +1383,8 @@ sub updateTitle()
 
   ' Add item count if enabled
   actInt = m.itemGrid.itemFocused + 1
-  if m.showItemCount and m.loadItemsTask.totalRecordCount > 0 and lowerView <> "genres"
-    m.top.overhangTitle += " (" + translate(translationKeys.Message1Of2, [actInt.toStr(), m.loadItemsTask.totalRecordCount.toStr()]) + ")"
+  if m.showItemCount and m.totalRecordCount > 0 and lowerView <> "genres"
+    m.top.overhangTitle += " (" + translate(translationKeys.Message1Of2, [actInt.toStr(), m.totalRecordCount.toStr()]) + ")"
   end if
 end sub
 
@@ -1450,12 +1448,8 @@ sub onDestroy()
     m.tvGuide = invalid
   end if
 
-  ' Stop and release task node
-  m.loadItemsTask.unobserveField("content")
-  m.loadItemsTask.unobserveField("genreSkeletons")
-  m.loadItemsTask.control = "STOP"
-  m.loadItemsTask.content = []
-  m.loadItemsTask = invalid
+  ' Stop and release the grid's run
+  releaseGridRun()
 
   ' Destroy presenter class object (may already be invalid from back-press handler)
   if isValid(m.presenter)
