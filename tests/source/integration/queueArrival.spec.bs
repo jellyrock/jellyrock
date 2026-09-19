@@ -111,6 +111,46 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("insertAfterCurrent()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("puts the item right after the one playing, so the queue reaches it next")
+    ' The Cinema Mode intro queues the item it plays in front of. Appending it played the rest
+    ' of the queue first (measured on 10.11: a Play All queue became [e1, e2, e3, e4, e1] and
+    ' the intro was followed by e2).
+    function _()
+      m.queue.callFunc("set", [m.episode("e1"), m.episode("e2"), m.episode("e3")])
+
+      m.queue.callFunc("insertAfterCurrent", m.episode("e1-again"))
+
+      m.assertEqual(m.queue.callFunc("getCount"), 4)
+      m.assertEqual(m.item(1).id, "e1-again")
+      m.assertEqual(m.item(2).id, "e2")
+      m.assertEqual(m.queue.callFunc("getQueueTypes")[1], "episode")
+    end function
+
+    @it("inserts after the CURRENT item, not the first one")
+    function _()
+      m.queue.callFunc("set", [m.episode("e1"), m.episode("e2"), m.episode("e3")])
+      m.queue.callFunc("setPosition", 1)
+
+      m.queue.callFunc("insertAfterCurrent", m.episode("e2-again"))
+
+      m.assertEqual(m.item(2).id, "e2-again")
+      m.assertEqual(m.item(3).id, "e3")
+    end function
+
+    @it("appends when the current item is the last one")
+    function _()
+      m.queue.callFunc("set", [m.episode("e1")])
+
+      m.queue.callFunc("insertAfterCurrent", m.episode("e1-again"))
+
+      m.assertEqual(m.queue.callFunc("getCount"), 2)
+      m.assertEqual(m.item(1).id, "e1-again")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("startCurrentFresh()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

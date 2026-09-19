@@ -15,6 +15,7 @@
     <function name="getQueueUniqueTypes" />
     <function name="getUnshuffledQueue" />
     <function name="getVersionPreference" />
+    <function name="insertAfterCurrent" />
     <function name="isPrerollActive" />
     <function name="launchItem" />
     <function name="launchPhotoAlbum" />

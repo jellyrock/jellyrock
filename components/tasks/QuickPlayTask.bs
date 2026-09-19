@@ -80,7 +80,7 @@ sub executeQuickPlay()
       shouldShuffle = result.shuffle
       outputAction = result.action
       keepsCopies = (result.keepsCopies = true)
-      if result.resumes = true then launch.resumes = true
+      if isValid(result.launch) then launch = result.launch
     end if
   else if action = "collectionfolder"
     result = doCollectionFolder(input)
@@ -89,7 +89,7 @@ sub executeQuickPlay()
       shouldShuffle = result.shuffle
       outputAction = result.action
       keepsCopies = (result.keepsCopies = true)
-      if result.resumes = true then launch.resumes = true
+      if isValid(result.launch) then launch = result.launch
     end if
   else if action = "userview"
     result = doUserView(input)
@@ -98,7 +98,7 @@ sub executeQuickPlay()
       shouldShuffle = result.shuffle
       outputAction = result.action
       keepsCopies = (result.keepsCopies = true)
-      if result.resumes = true then launch.resumes = true
+      if isValid(result.launch) then launch = result.launch
     end if
   else if action = "photoalbum"
     doPhotoAlbum(input, items)
@@ -359,7 +359,7 @@ function doFolder(input as object) as dynamic
   items = []
   shouldShuffle = true
   outputAction = "queue"
-  resumes = false
+  launch = { startingPoint: 0&, resumes: false }
 
   paramArray = {
     "includeItemTypes": "Episode,Recording,Movie,Video",
@@ -405,9 +405,9 @@ function doFolder(input as object) as dynamic
   if isValid(folderData) and isValidAndNotEmpty(folderData.items)
     if seriesCount > 0
       if seriesCount = 1
-        ' Single series — delegate to series quickplay, which picks its first episode to
-        ' resume or continue. Its resume position is not carried from here.
-        resumes = doSeries({ id: folderData.items[0].Id }, items).resumes
+        ' Single series — delegate to series quickplay, and carry its whole launch: a folder
+        ' holding one series plays it exactly as the series itself would, resume included.
+        launch = doSeries({ id: folderData.items[0].Id }, items)
         shouldShuffle = false
       else
         doMultipleSeries(folderData.items, items)
@@ -420,7 +420,7 @@ function doFolder(input as object) as dynamic
     end if
   end if
 
-  return { action: outputAction, items: items, shuffle: shouldShuffle, resumes: resumes }
+  return { action: outputAction, items: items, shuffle: shouldShuffle, launch: launch }
 end function
 
 function doCollectionFolder(input as object) as dynamic

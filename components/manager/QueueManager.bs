@@ -407,6 +407,36 @@ sub push(newItem)
   m.queueTypes.push(getItemType(newItem))
 end sub
 
+' insertAfterCurrent: Put an item directly after the one playing, so the queue reaches it next.
+'
+' The Cinema Mode intro queues the item it plays in front of. Appending that copy to the END
+' plays the rest of the queue first: measured 2026-09-19 on 10.11, a Play All queue became
+' [e1, e2, e3, e4, e1] and the intro was followed by e2, with e1 played last. With one item
+' queued — every other intro path — the end IS the next slot, which is why it went unnoticed.
+'
+' @param newItem - the queue item to play next
+sub insertAfterCurrent(newItem)
+  index = m.position + 1
+  if index >= m.queue.count()
+    push(newItem)
+    return
+  end if
+
+  ' roArray has no insert-at-index, so rebuild both arrays in step.
+  queue = []
+  types = []
+  for i = 0 to m.queue.count() - 1
+    if i = index
+      queue.push(newItem)
+      types.push(getItemType(newItem))
+    end if
+    queue.push(m.queue[i])
+    types.push(m.queueTypes[i])
+  end for
+  m.queue = queue
+  m.queueTypes = types
+end sub
+
 ' Set the queue position
 sub setPosition(newPosition)
   m.position = newPosition
