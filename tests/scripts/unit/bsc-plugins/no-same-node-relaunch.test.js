@@ -179,6 +179,90 @@ describe('no-same-node-relaunch — flagged', () => {
   });
 });
 
+describe('no-same-node-relaunch — the tasks.bs release helpers', () => {
+  it('flags a replaceTask whose result is dropped, then a launch of the stopped node', () => {
+    const found = check(`
+      sub search()
+        replaceTask(m.searchTask, "SearchTask", "results", {})
+        launchTask(m.searchTask)
+      end sub
+    `);
+    expect(found).toHaveLength(1);
+    expect(found[0].location.range.start.line).toBe(3);
+  });
+
+  it('flags releaseTask then a launch of the released node', () => {
+    expect(
+      check(`
+        sub reload()
+          releaseTask(m.loadTask, "content")
+          launchTask(m.loadTask)
+        end sub
+      `),
+    ).toHaveLength(1);
+  });
+
+  it('matches the helper names case-insensitively', () => {
+    expect(
+      check(`
+        sub reload()
+          ReleaseTask(m.loadTask, "content")
+          launchTask(m.loadTask)
+        end sub
+      `),
+    ).toHaveLength(1);
+  });
+
+  it('passes the assigned form — the rebind lands after the stop it wraps', () => {
+    expect(
+      check(`
+        sub search()
+          m.searchTask = replaceTask(m.searchTask, "SearchTask", "results", { query: "x" })
+          m.searchTask.observeField("results", "loadResults")
+          launchTask(m.searchTask)
+        end sub
+      `),
+    ).toHaveLength(0);
+  });
+
+  it('passes the assigned form through m["x"] and a local', () => {
+    expect(
+      check(`
+        sub a()
+          m["t"] = replaceTask(m.t, "LoadItemsTask", "content", {})
+          launchTask(m.t)
+        end sub
+        sub b()
+          t = replaceTask(t, "LoadItemsTask", "content", {})
+          launchTask(t)
+        end sub
+      `),
+    ).toHaveLength(0);
+  });
+
+  it('passes a release for good, assigned invalid', () => {
+    expect(
+      check(`
+        sub teardown()
+          m.t = releaseTask(m.t, "content")
+          launchTask(m.t)
+        end sub
+      `),
+    ).toHaveLength(0);
+  });
+
+  it('passes a replace of a DIFFERENT node than the one launched', () => {
+    expect(
+      check(`
+        sub a()
+          m.b = replaceTask(m.a, "LoadItemsTask", "content", {})
+          launchTask(m.b)
+        end sub
+      `),
+    ).toHaveLength(0);
+  });
+});
+
 describe('no-same-node-relaunch — not flagged', () => {
   it('passes a new node assigned between STOP and launch', () => {
     expect(
@@ -482,6 +566,9 @@ describe('no-same-node-relaunch — pending migrations', () => {
       CODE,
     ).filter((d) => d.message.includes('not in the build'));
     const lines = readFileSync(PLUGIN_PATH, 'utf8').split(/\r?\n/);
+    // One per listed file (none is in this tiny build), so a change to the message
+    // wording cannot empty the filter and leave the loop below checking nothing.
+    expect(found).toHaveLength(Object.keys(plugin.PENDING_MIGRATIONS).length);
     for (const diagnostic of found) {
       const path = diagnostic.message.match(/PENDING_MIGRATIONS lists `([^`]+)`/)[1];
       expect(lines[diagnostic.location.range.start.line]).toContain(`'${path}'`);
