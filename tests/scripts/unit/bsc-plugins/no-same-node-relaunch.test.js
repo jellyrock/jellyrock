@@ -412,9 +412,21 @@ describe('no-same-node-relaunch — pending migrations', () => {
   it('flags a listed site once it is migrated, naming the entry to delete', () => {
     const found = run(migrated);
     expect(found).toHaveLength(1);
-    expect(found[0].message).toMatch(/`search\(\)` no longer relaunches `m\.searchtask`/);
-    expect(found[0].message).toMatch(/PENDING_MIGRATIONS/);
+    // The entry is echoed back AS WRITTEN, so it can be found by eye in the list.
+    expect(found[0].message).toMatch(/`search\(\)` does not stop and relaunch `m\.searchTask`/);
+    expect(found[0].message).toMatch(/delete its PENDING_MIGRATIONS entry/);
     expect(found[0].location.range.start.line).toBe(1);
+  });
+
+  it('does not claim the migration is done — it cannot tell that from a wrong entry', () => {
+    // Same diagnostic, reached by an entry that never matched rather than by a
+    // finished migration. A message asserting either would be wrong half the time.
+    const wrong = plugin.withPendingMigrations({ [PATH]: [['search', 'm.typoTask']] });
+    const found = diagnosticsByCode(runPluginOnSource(wrong, { [PATH]: unmigrated }), CODE);
+    const stale = found.filter((d) => d.message.includes('m.typoTask'));
+    expect(stale).toHaveLength(1);
+    expect(stale[0].message).toMatch(/if the entry is wrong, correct it/);
+    expect(stale[0].message).not.toMatch(/migration is done|no longer relaunches/);
   });
 
   it('flags a listed site whose function was deleted', () => {
@@ -477,5 +489,205 @@ describe('no-same-node-relaunch — pending migrations', () => {
       { [PATH]: unmigrated },
     ]).map((diagnostics) => diagnosticsByCode(diagnostics, CODE).length);
     expect(steps).toEqual([0, 1, 0]);
+  });
+});
+
+// Every way a PENDING_MIGRATIONS entry can fail to line up with the code.
+//
+// This table is the gate behind the claim that the list "can only shrink". Each
+// row is a state an entry can land in; the contract is that EVERY state produces
+// at least one actionable diagnostic naming what to do. Seven of the eight were
+// found silent or self-contradictory during review — silence is the failure this
+// table exists to prevent, because a silent entry stops covering its site AND
+// stops the rule from guarding it, with nothing on screen either way.
+//
+// Adding a ninth state means adding a row, which forces the question of what the
+// plugin should say for it.
+describe('no-same-node-relaunch — every state a pending entry can be in', () => {
+  const PATH = 'components/Foo.bs';
+  const relaunches = `
+    sub search()
+      m.searchTask.control = "STOP"
+      launchTask(m.searchTask)
+    end sub
+  `;
+  const migrated = `
+    sub search()
+      m.searchTask.control = "STOP"
+      m.searchTask = createObject("roSGNode", "SearchTask")
+      launchTask(m.searchTask)
+    end sub
+  `;
+
+  const STATES = [
+    {
+      state: 'entry matches the code — the only quiet case',
+      pending: { [PATH]: [['search', 'm.searchTask']] },
+      files: { [PATH]: relaunches },
+      expect: null,
+    },
+    {
+      state: 'site was migrated',
+      pending: { [PATH]: [['search', 'm.searchTask']] },
+      files: { [PATH]: migrated },
+      expect: /does not stop and relaunch `m\.searchTask`/,
+      recovers: true,
+    },
+    {
+      state: 'function was renamed',
+      pending: { [PATH]: [['search', 'm.searchTask']] },
+      files: { [PATH]: relaunches.replace('search()', 'searchV2()') },
+      expect: /no function or method by that name is there/,
+      recovers: true,
+    },
+    {
+      state: 'function became a class method',
+      pending: { [PATH]: [['reload', 'm.searchTask']] },
+      files: {
+        [PATH]: `
+          class Loader
+            sub reload()
+              m.searchTask.control = "STOP"
+              launchTask(m.searchTask)
+            end sub
+          end class
+        `,
+      },
+      expect: null, // a method is nameable, so the entry simply matches
+    },
+    {
+      state: 'entry names a path the function never relaunches',
+      pending: { [PATH]: [['search', 'm.typoTask']] },
+      files: { [PATH]: relaunches },
+      expect: /`search\(\)` does not stop and relaunch `m\.typoTask`/,
+    },
+    {
+      state: 'file is not in the build',
+      pending: { 'components/Gone.bs': [['search', 'm.searchTask']] },
+      files: { [PATH]: 'sub noop()\nend sub' },
+      expect: /is not in the build/,
+    },
+    {
+      state: 'file is one the rule never inspects',
+      pending: { 'components/vendor/Dep.bs': [['search', 'm.searchTask']] },
+      files: { 'components/vendor/Dep.bs': relaunches },
+      expect: /this rule never inspects/,
+    },
+    {
+      state: 'file key is cased differently from the real file',
+      pending: { 'components/foo.bs': [['search', 'm.searchTask']] },
+      files: { [PATH]: relaunches },
+      expect: /but the file in the build is/,
+    },
+    {
+      state: 'entry is listed twice',
+      pending: {
+        [PATH]: [
+          ['search', 'm.searchTask'],
+          ['search', 'm.searchTask'],
+        ],
+      },
+      files: { [PATH]: relaunches },
+      expect: /more than once/,
+    },
+    {
+      state: 'listed file was emptied out',
+      pending: { [PATH]: [['search', 'm.searchTask']] },
+      files: { [PATH]: "' nothing here" },
+      expect: /no function or method by that name is there/,
+      recovers: true,
+    },
+    {
+      state: 'file key names a file that is not BrightScript',
+      pending: { 'components/Foo.xml': [['search', 'm.searchTask']] },
+      files: {
+        'components/Foo.xml':
+          '<?xml version="1.0" encoding="utf-8"?>\n<component name="Foo" extends="Group" />',
+        [PATH]: relaunches,
+      },
+      expect: /is not a BrightScript file/,
+    },
+  ];
+
+  for (const { state, pending, files, expect: wanted } of STATES) {
+    it(state, () => {
+      const found = diagnosticsByCode(
+        runPluginOnSource(plugin.withPendingMigrations(pending), files),
+        CODE,
+      );
+      if (wanted === null) {
+        expect(found.map((d) => d.message)).toEqual([]);
+        return;
+      }
+      expect(found.some((d) => wanted.test(d.message))).toBe(true);
+    });
+  }
+
+  // A state an edit to the CODE can resolve must clear once it is resolved, in the
+  // same program — which is what the language server keeps between keystrokes. A
+  // single validation cannot see this: a diagnostic anchored outside the file that
+  // produced it is never cleared when that file re-validates, so it outlives the
+  // fix. Every recoverable row's entry names `search` / `m.searchTask`, so
+  // `relaunches` is the code that matches it again.
+  for (const { state, pending, files } of STATES.filter((row) => row.recovers)) {
+    it(`${state} — clears once the code matches the entry again`, () => {
+      const steps = runPluginOnEdits(plugin.withPendingMigrations(pending), [
+        files,
+        { [PATH]: relaunches },
+      ]).map((diagnostics) => diagnosticsByCode(diagnostics, CODE).map((d) => d.message));
+      expect(steps[0]).not.toEqual([]);
+      expect(steps[1]).toEqual([]);
+    });
+  }
+
+  // An entry in a file the rule cannot check has one remedy — delete it — so the
+  // file gets one error, not a second per entry that cannot be acted on. The key
+  // listed AFTER it must still be audited: reading functions out of a file that
+  // has none throws, and the never-crash guard would swallow the rest of the list.
+  it('reports an uncheckable file once, and still audits the keys after it', () => {
+    for (const key of ['components/vendor/Dep.bs', 'components/Foo.xml']) {
+      const found = diagnosticsByCode(
+        runPluginOnSource(
+          plugin.withPendingMigrations({
+            [key]: [
+              ['gone', 'm.aTask'],
+              ['alsoGone', 'm.bTask'],
+            ],
+            'components/Gone.bs': [['search', 'm.searchTask']],
+          }),
+          {
+            'components/vendor/Dep.bs': 'sub noop()\nend sub',
+            'components/Foo.xml':
+              '<?xml version="1.0" encoding="utf-8"?>\n<component name="Foo" extends="Group" />',
+          },
+        ),
+        CODE,
+      );
+      const messages = found.map((d) => d.message);
+      expect(messages).toHaveLength(2);
+      expect(messages.filter((m) => m.includes(`\`${key}\``))).toHaveLength(1);
+      expect(messages.filter((m) => m.includes('`components/Gone.bs`'))).toHaveLength(1);
+    }
+  });
+
+  // The review found states where the plugin said, of ONE node, both "this is
+  // relaunched" and "this is no longer relaunched" — following either message
+  // left the other standing. Two claims about DIFFERENT nodes are not a
+  // contradiction: an entry naming `m.typoTask` while the code relaunches
+  // `m.searchTask` yields both, and together they pinpoint the typo.
+  it('never makes both claims about the same node', () => {
+    const pathsIn = (messages, pattern) =>
+      new Set(messages.map((m) => m.match(pattern)?.[1]?.toLowerCase()).filter(Boolean));
+
+    for (const { state, pending, files } of STATES) {
+      const messages = diagnosticsByCode(
+        runPluginOnSource(plugin.withPendingMigrations(pending), files),
+        CODE,
+      ).map((d) => d.message);
+      const live = pathsIn(messages, /^`([^`]+)` is stopped/);
+      const retired = pathsIn(messages, /does not stop and relaunch `([^`]+)`/);
+      const both = [...live].filter((path) => retired.has(path));
+      expect(`${state}: ${both.join(',')}`).toBe(`${state}: `);
+    }
   });
 });

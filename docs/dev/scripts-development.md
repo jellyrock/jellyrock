@@ -122,6 +122,17 @@ not the diagnostic's anchor leaves a stale finding on screen. Four plugins got
 that wrong before the module existed. See
 [build-and-tooling.md → Convention plugins](../architecture/build-and-tooling.md#convention-plugins).
 
+**The exception is a rule whose every finding is derived from, and anchored in, a
+single file** — BSC already clears a file's diagnostics on each re-validate, so
+there is no staleness for a factory to prevent, and `bsc-rule`'s `isSuppressed`
+honors `bsc-disable-file`, which an error-severity gate must not. The four
+Task / dialog rules (`no-raw-run`, `no-task-fanout`, `no-same-node-relaunch`,
+`no-hand-rolled-dialog`) all take it and hook `afterValidateFile` directly. Read
+it narrowly: the moment a rule consults a second file, use the factories — unless,
+like `no-same-node-relaunch`'s list audit, the cross-file part lives entirely in
+`afterValidateProgram` under a tag it clears first. A file hook must never anchor
+a diagnostic in another file: BSC never clears it, so it outlives the fix.
+
 Any such plugin also needs `runPluginOnEdits` alongside the usual cases:
 `runPluginOnSource` validates ONCE, so it cannot observe behavior across
 validations, which is exactly where the staleness class lives.
