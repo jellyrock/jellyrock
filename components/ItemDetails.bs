@@ -1642,6 +1642,8 @@ sub resetVersionResume(item as object, mediaSources as dynamic)
     inProgressSourceId: inProgressSourceId,
     positions: positions, ' sourceId -> ticks (0 = none, POSITION_UNREADABLE = could not read)
     pending: {}, ' sourceId -> true while its fetch is in flight
+    mostRecentId: invalid, ' the version the server would resume; "" = it could not say
+    isMostRecentPending: false,
     isConfigPending: false,
     hasConfigFailed: false
   }
@@ -1662,6 +1664,8 @@ sub clearVersionResumePositions()
   state.generation = m.versionResumeSeq
   state.pending = {}
   state.isConfigPending = false
+  state.mostRecentId = invalid
+  state.isMostRecentPending = false
   state.inProgressSourceId = ""
   state.positions = zeroVersionPositions(state.itemId, mediaSources)
 end sub
@@ -1716,6 +1720,7 @@ sub syncVersionSelectionToChoice()
     mediaSources: mediaSources,
     positions: state.positions,
     isPerVersion: true,
+    mostRecentId: state.mostRecentId,
     deviceBestId: ""
   }
 
@@ -1726,6 +1731,11 @@ sub syncVersionSelectionToChoice()
       requestVersionPosition(sourceId)
     end for
     return ' each reply comes back through onVersionPositionLoaded
+  end if
+
+  if answer.needsMostRecent
+    requestMostRecentVersion(item, mediaSources)
+    return ' the reply comes back through onMostRecentVersionLoaded
   end if
 
   if answer.tiedIds.count() > 1
@@ -1849,6 +1859,50 @@ function requestVersionPosition(sourceId as string) as boolean
   end sub)
   return true
 end function
+
+' requestMostRecentVersion: Ask the server which version it would resume, once per content load.
+'
+' The source order answers that only from a primary; this screen can be showing an alternate
+' (see versionResume.chooseResumeSource). Scoped to the item's parent and lean, as in
+' LoadVideoContentTask.fetchMostRecentVersionId, so both shells ask the same question.
+'
+' @param {object} item - m.top.itemContent
+' @param {object} mediaSources - its MediaSources
+sub requestMostRecentVersion(item as object, mediaSources as object)
+  state = m.versionResume
+  if not isValid(state) or state.isMostRecentPending then return
+
+  req = invalid
+  if isValidAndNotEmpty(item.parentId)
+    req = GetApi().BuildGetResumeItemsRequest({ parentId: item.parentId, EnableImages: false, EnableUserData: false })
+  end if
+  if not isValid(req)
+    ' Nothing to ask: record that the server cannot say, so the choice falls back to the order.
+    state.mostRecentId = ""
+    syncVersionSelectionToChoice()
+    return
+  end if
+
+  state.isMostRecentPending = true
+  m.versionResumeSeq += 1
+  promises.chain(fetchAsync(req, "versionMostRecent-" + m.versionResumeSeq.toStr()), { generation: state.generation, mediaSources: mediaSources }).then(sub(res as object, ctx as object)
+    onMostRecentVersionLoaded(ctx, versionResume.mostRecentIdFrom(res, ctx.mediaSources))
+  end sub).catch(sub(err as object, ctx as object)
+    m.log.warn("resume query for the most recent version failed", "reason", err.reason)
+    onMostRecentVersionLoaded(ctx, "")
+  end sub)
+end sub
+
+' onMostRecentVersionLoaded: Record the server's answer and re-run the choice, unless the
+' content has been reloaded since the request started.
+sub onMostRecentVersionLoaded(ctx as object, mostRecentId as string)
+  state = m.versionResume
+  if not isValid(state) or state.generation <> ctx.generation then return ' stale
+  state.isMostRecentPending = false
+  state.mostRecentId = mostRecentId
+  syncVersionSelectionToChoice()
+  manageResumeButton()
+end sub
 
 ' onVersionPositionLoaded: Record a fetched version position and redraw Resume, unless the
 ' content has been reloaded since the fetch started.

@@ -84,6 +84,8 @@ end sub
 ' pool as it has slots, so N versions cost roughly one round trip instead of N. Each reply is
 ' ~150 bytes against the item's ~17 KB, and nothing is fetched at all unless something is
 ' already in progress — so an item nobody has started costs no requests on the playback path.
+' When the source order cannot say which version was played last, one more request asks the
+' server (fetchMostRecentVersionId).
 '
 ' @param {string} itemId - the item being played
 ' @param {object} meta - ItemMetaData() for it (its own UserData position comes from here)
@@ -99,13 +101,17 @@ function resolveResumeVersion(itemId as string, meta as object, mediaSources as 
     deviceBestId: ""
   }
 
-  ' At most three passes: read the positions, settle a near-level tie, and take the answer. A
-  ' bounded loop rather than `while true` so a request that cannot be built cannot spin.
-  for attempt = 1 to 3
+  ' At most four passes: read the positions, ask which version the server would resume, settle
+  ' a near-level tie, and take the answer. Each pass records an answer (an unreadable one
+  ' included), so nothing is asked twice, and the bound means a request that cannot be built
+  ' cannot spin.
+  for attempt = 1 to 4
     answer = versionResume.chooseResumeSource(ctx)
 
     if answer.needsSourceIds.count() > 0
       fetchVersionPositions(ctx.positions, answer.needsSourceIds)
+    else if answer.needsMostRecent
+      ctx.mostRecentId = fetchMostRecentVersionId(itemId, meta, mediaSources)
     else if answer.tiedIds.count() > 1
       ' Equally far along, so quality decides — and that needs the device, which
       ' versionResume deliberately knows nothing about.
@@ -116,8 +122,29 @@ function resolveResumeVersion(itemId as string, meta as object, mediaSources as 
     end if
   end for
 
-  answer = versionResume.chooseResumeSource(ctx)
-  return { sourceId: answer.sourceId, ticks: answer.ticks }
+  ' A tie no device pick could settle — not reachable while tiedIds come from the item's own
+  ' sources, but it must not be re-asked: no per-version answer, so the caller's own rule applies.
+  return { sourceId: "", ticks: 0& }
+end function
+
+' fetchMostRecentVersionId: Ask the server which of an item's versions it would resume.
+'
+' The resume query returns the version that owns the resume point, which is the answer the
+' source order gives only from a primary (see versionResume.chooseResumeSource). Scoped to the
+' item's parent — its season, or the folder holding a movie — so the reply is that parent's
+' in-progress items rather than the whole of Continue Watching, and lean, because only ids are
+' read.
+'
+' @param {string} itemId - the item being played
+' @param {object} meta - ItemMetaData() for it
+' @param {object} mediaSources - its MediaSources
+' @return {string} the version's source id, or "" when the server cannot say — itself an
+'                  answer, so the caller falls back to the order instead of asking again
+function fetchMostRecentVersionId(itemId as string, meta as object, mediaSources as object) as string
+  if not isValidAndNotEmpty(meta.parentId) then return ""
+  req = GetApi().BuildGetResumeItemsRequest({ parentId: meta.parentId, EnableImages: false, EnableUserData: false })
+  if not isValid(req) then return ""
+  return versionResume.mostRecentIdFrom(fetchRes(req, "version-most-recent-" + itemId), mediaSources)
 end function
 
 ' fetchVersionPositions: Read each named version's own position into `positions`.

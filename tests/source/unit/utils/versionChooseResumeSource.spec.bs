@@ -12,11 +12,15 @@ namespace tests
   ' details resumed 1080p, the poster showed the 1080p bar, a cast played 1080p, and a brief
   ' fix to details alone split it from all three.
   '
-  ' Two things the tests below encode that are easy to get wrong:
-  '   * "Most recently played" comes from the server's source ORDER, never a timestamp. v12.0
-  '     copies the newest version's LastPlayedDate onto the item's own user data
-  '     (VersionResumeData.ApplyTo), so the local pair reports identical dates to the 100 ns
-  '     digit and the item's real play time is unreadable.
+  ' Things the tests below encode that are easy to get wrong:
+  '   * "Most recently played" never comes from a timestamp. v12.0 copies the newest version's
+  '     LastPlayedDate onto the primary's user data (VersionResumeData.ApplyTo), so the local
+  '     pair reports identical dates to the 100 ns digit and the primary's play time is
+  '     unreadable.
+  '   * The source ORDER says who was played last only from a PRIMARY: the server moves the
+  '     most recent in-progress version to the front of a primary's sources, and leaves a
+  '     directly queried alternate's own source first. Another version in front is therefore
+  '     proof; the item's own source in front is not, and the server's resume query decides.
   '   * A version is only ever resumed at its OWN position. Resuming one version at another's
   '     would move the viewer somewhere else in the content — the two local releases of one
   '     episode run 47 s apart.
@@ -210,13 +214,122 @@ namespace tests
       m.assertEqual(answer.ticks, m.secs(120))
     end function
 
-    @it("picks the item's own version when IT is the one the server leads with")
+    @it("trusts the order without asking when another version leads")
+    function _()
+      ' Only a primary is ever reordered, so a version in front of the item proves both.
+      answer = versionResume.chooseResumeSource(m.ctx({
+        mediaSources: m.alternateFirst(),
+        itemPositionTicks: m.secs(318),
+        positions: { alternate: m.secs(1200) }
+      }))
+      m.assertFalse(answer.needsMostRecent)
+      m.assertEqual(answer.sourceId, "alternate")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("chooseResumeSource() - the item's own source in front: the server decides")
+    ' A primary played last and ANY directly queried alternate both list their own source
+    ' first, and nothing in the item says which it is.
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("asks which version the server would resume once two are in progress")
     function _()
       answer = versionResume.chooseResumeSource(m.ctx({
         itemPositionTicks: m.secs(1200),
         positions: { alternate: m.secs(120) }
       }))
+      m.assertTrue(answer.needsMostRecent)
+      m.assertTrue(answer.isLoading)
+      m.assertEqual(answer.sourceId, "")
+    end function
+
+    @it("does not ask when only one version is in progress")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({
+        itemPositionTicks: m.secs(1200),
+        positions: { alternate: 0 }
+      }))
+      m.assertFalse(answer.needsMostRecent)
       m.assertEqual(answer.sourceId, "primary")
+    end function
+
+    @it("resumes the item's own version when the server names it")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({
+        itemPositionTicks: m.secs(1200),
+        positions: { alternate: m.secs(120) },
+        mostRecentId: "primary"
+      }))
+      m.assertEqual(answer.sourceId, "primary")
+      m.assertEqual(answer.ticks, m.secs(1200))
+    end function
+
+    ' The state reproduced on a 12.0 server: an ALTERNATE queued (Continue Watching lists the
+    ' version played last) while the primary was then played to 900 s. Queried as itself, the
+    ' alternate still leads its own sources, and reading that as recency resumed 720p at 319 s.
+    @it("resumes the version the server names, not a queried alternate listed first")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({
+        itemId: "alternate",
+        itemPositionTicks: m.secs(319),
+        mediaSources: m.alternateFirst(),
+        positions: { primary: m.secs(900) },
+        mostRecentId: "primary"
+      }))
+      m.assertEqual(answer.sourceId, "primary")
+      m.assertEqual(answer.ticks, m.secs(900))
+    end function
+
+    @it("measures a tie from the server's pick, not from the version listed first")
+    function _()
+      sources = [
+        { Id: "alternate", RunTimeTicks: m.secs(1795) },
+        { Id: "primary", RunTimeTicks: m.secs(1843) },
+        { Id: "third", RunTimeTicks: m.secs(1800) }
+      ]
+      answer = versionResume.chooseResumeSource(m.ctx({
+        itemId: "alternate",
+        itemPositionTicks: m.secs(319),
+        mediaSources: sources,
+        positions: { primary: m.secs(900), third: m.secs(905) },
+        mostRecentId: "primary"
+      }))
+      m.assertEqual(answer.tiedIds.count(), 2)
+      m.assertArrayContains(answer.tiedIds, "primary")
+      m.assertArrayContains(answer.tiedIds, "third")
+    end function
+
+    @it("falls back to the order, without asking again, when the server could not say")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({
+        itemPositionTicks: m.secs(1200),
+        positions: { alternate: m.secs(120) },
+        mostRecentId: ""
+      }))
+      m.assertFalse(answer.needsMostRecent)
+      m.assertEqual(answer.sourceId, "primary")
+      m.assertEqual(answer.ticks, m.secs(1200))
+    end function
+
+    @it("falls back to the order when the server names a version not in progress")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({
+        itemPositionTicks: m.secs(1200),
+        positions: { alternate: m.secs(120) },
+        mostRecentId: "merged-away"
+      }))
+      m.assertFalse(answer.needsMostRecent)
+      m.assertEqual(answer.sourceId, "primary")
+    end function
+
+    @it("matches the server's pick ignoring case")
+    function _()
+      answer = versionResume.chooseResumeSource(m.ctx({
+        itemPositionTicks: m.secs(120),
+        positions: { alternate: m.secs(1200) },
+        mostRecentId: "ALTERNATE"
+      }))
+      m.assertEqual(answer.sourceId, "alternate")
       m.assertEqual(answer.ticks, m.secs(1200))
     end function
 
@@ -393,6 +506,45 @@ namespace tests
       }))
       m.assertEqual(answer.sourceId, "primary")
       m.assertEqual(answer.ticks, m.secs(318))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("mostRecentIdFrom() - reading the server's resume query")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns the source the reply lists for this item, in the source's own spelling")
+    function _()
+      res = { ok: true, json: { Items: [{ Id: "PRIMARY", Type: "Episode" }] } }
+      m.assertEqual(versionResume.mostRecentIdFrom(res, m.ownFirst()), "primary")
+    end function
+
+    @it("ignores the other in-progress items under the same parent")
+    function _()
+      ' Since 12.0 a Season or Series with an in-progress descendant is listed too.
+      res = {
+        ok: true, json: {
+          Items: [
+            { Id: "season", Type: "Season" },
+            { Id: "another-episode", Type: "Episode" },
+            { Id: "alternate", Type: "Episode" }
+          ]
+        }
+      }
+      m.assertEqual(versionResume.mostRecentIdFrom(res, m.ownFirst()), "alternate")
+    end function
+
+    @it("returns an empty answer when the reply says nothing about this item")
+    function _()
+      res = { ok: true, json: { Items: [{ Id: "another-episode" }] } }
+      m.assertEqual(versionResume.mostRecentIdFrom(res, m.ownFirst()), "")
+    end function
+
+    @it("returns an empty answer for a failed or malformed reply")
+    function _()
+      m.assertEqual(versionResume.mostRecentIdFrom(invalid, m.ownFirst()), "")
+      m.assertEqual(versionResume.mostRecentIdFrom({ ok: false, json: invalid }, m.ownFirst()), "")
+      m.assertEqual(versionResume.mostRecentIdFrom({ ok: true, json: { Items: invalid } }, m.ownFirst()), "")
+      m.assertEqual(versionResume.mostRecentIdFrom({ ok: true, json: { Items: [{ Id: "primary" }] } }, invalid), "")
     end function
 
   end class

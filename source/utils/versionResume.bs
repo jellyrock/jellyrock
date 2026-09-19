@@ -166,13 +166,20 @@ namespace versionResume
   ' OWN position — never at another version's, which would move the viewer to a different
   ' place in the content.
   '
-  ' "Most recently played" is read from the server's source ORDER, not from a timestamp:
-  ' v12.0 copies the newest version's LastPlayedDate onto the item's own user data
-  ' (VersionResumeData.ApplyTo), so once an alternate has been played more recently the
-  ' item's real play time is unreadable — the local pair reports identical dates to the
-  ' 100 ns digit. SetAlternateVersionResumeStates leads with the most recently played version
-  ' that HAS a position, and only for a strictly newer one, so the first in-progress version
-  ' in server order is the most recent.
+  ' "Most recently played" cannot be read from a timestamp: v12.0 copies the newest version's
+  ' LastPlayedDate onto the PRIMARY's user data (VersionResumeData.ApplyTo), so once an
+  ' alternate has been played more recently the primary's own play time is unreadable. The
+  ' server answers it two other ways, and this uses whichever the caller can trust:
+  '
+  '   * The source ORDER — but only from a PRIMARY. SetAlternateVersionResumeStates moves the
+  '     most recently played version that HAS a position to the front of a primary's sources,
+  '     and leaves a directly queried alternate's own source first whatever was played last.
+  '     So another version in front proves both that this item is a primary and that the
+  '     version in front was played last. The item's OWN source in front proves nothing: that
+  '     is also every alternate, and the DTO does not say which one this is.
+  '   * The resume query, which returns the version that owns the resume point. Asked for only
+  '     in that ambiguous case, and only once two versions are in progress, as needsMostRecent;
+  '     the caller answers with ctx.mostRecentId (see mostRecentIdFrom).
   '
   ' Device knowledge is deliberately absent from this module (it must stay pure and
   ' unit-testable), so a near-level tie is handed back as tiedIds for the caller to settle
@@ -184,19 +191,24 @@ namespace versionResume
   '     mediaSources      dynamic its MediaSources, in server order
   '     positions         object  sourceId -> ticks already known (POSITION_UNREADABLE = failed)
   '     isPerVersion      boolean isPerVersionServer()
+  '     mostRecentId      dynamic the answer to a previous needsMostRecent: the version the
+  '                               server would resume, or "" when it could not say (optional;
+  '                               invalid = not asked yet)
   '     deviceBestId      dynamic the caller's pick among a previous tiedIds (optional)
   '   }
   ' @return {object} {
-  '     sourceId       string       the version to resume ("" = no per-version answer; the
-  '                                 caller applies its own rule, e.g. device-best from 0)
-  '     ticks          longinteger  that version's own position (0 = from the beginning)
-  '     isLoading      boolean      the answer is not final yet
-  '     needsSourceIds object       fetch these versions' UserData (empty = nothing to fetch)
-  '     tiedIds        object       2+ ids at the same place: pick device-best among them and
-  '                                 ask again with deviceBestId (empty = no tie)
+  '     sourceId        string       the version to resume ("" = no per-version answer; the
+  '                                  caller applies its own rule, e.g. device-best from 0)
+  '     ticks           longinteger  that version's own position (0 = from the beginning)
+  '     isLoading       boolean      the answer is not final yet
+  '     needsSourceIds  object       fetch these versions' UserData (empty = nothing to fetch)
+  '     needsMostRecent boolean      ask the server which version it would resume, and ask
+  '                                  again with mostRecentId
+  '     tiedIds         object       2+ ids at the same place: pick device-best among them and
+  '                                  ask again with deviceBestId (empty = no tie)
   '   }
   function chooseResumeSource(ctx as object) as object
-    answer = { sourceId: "", ticks: 0&, isLoading: false, needsSourceIds: [], tiedIds: [] }
+    answer = { sourceId: "", ticks: 0&, isLoading: false, needsSourceIds: [], needsMostRecent: false, tiedIds: [] }
     if not isValid(ctx) or ctx.isPerVersion <> true then return answer
 
     sources = ctx.mediaSources
@@ -225,7 +237,7 @@ namespace versionResume
       return answer
     end if
 
-    ' In server order, so the first entry is the most recently played.
+    ' In server order: from a primary, the first entry is the most recently played.
     inProgress = []
     for each source in sources
       id = source.Id
@@ -249,14 +261,34 @@ namespace versionResume
     end if
 
     leader = inProgress[0]
+    first = sources[0]
+    ownSourceLeads = isValid(first) and versionResume.idsMatch(first.Id, ctx.itemId)
+    if ownSourceLeads
+      ' The order is no signal here (see the header), so the server has to say.
+      if not isValid(ctx.mostRecentId)
+        answer.isLoading = true
+        answer.needsMostRecent = true
+        return answer
+      end if
+      ' An answer naming no version in progress (the query failed, or said nothing about this
+      ' item) leaves the order as the only signal left — what this did before it asked.
+      for each entry in inProgress
+        if versionResume.idsMatch(entry.id, ctx.mostRecentId)
+          leader = entry
+          exit for
+        end if
+      end for
+    end if
+
     tied = [leader]
-    for i = 1 to inProgress.count() - 1
+    for each entry in inProgress
+      if entry.id = leader.id then continue for
       ' Negated by hand rather than through abs(), which returns a FLOAT: at tick magnitudes
       ' a 24-bit mantissa cannot hold 9 significant digits, so a delta of 300000001 rounds to
       ' the margin itself and ties a version that is past it. Caught by the boundary spec.
-      delta& = inProgress[i].ticks - leader.ticks
+      delta& = entry.ticks - leader.ticks
       if delta& < 0& then delta& = -delta&
-      if delta& <= versionResume.NEAR_LEVEL_MARGIN_TICKS then tied.push(inProgress[i])
+      if delta& <= versionResume.NEAR_LEVEL_MARGIN_TICKS then tied.push(entry)
     end for
 
     ' Clear of everything else: the most recently played version is the one being watched.
@@ -289,6 +321,29 @@ namespace versionResume
     answer.sourceId = leader.id
     answer.ticks = leader.ticks
     return answer
+  end function
+
+  ' mostRecentIdFrom: Which of an item's versions the server would resume, from a resume query
+  ' (GET /UserItems/Resume scoped to the item's parent).
+  '
+  ' The query returns ONE entry per item — the version that owns the resume point — among every
+  ' in-progress item under the parent, so the answer is whichever returned id names one of this
+  ' item's sources.
+  '
+  ' @param {object} res - fetchAsync / apiPipeline result { ok, json }
+  ' @param {dynamic} mediaSources - the item's MediaSources
+  ' @return {string} that source's id, or "" when the reply does not say (failed, or no entry
+  '                  for this item) — "" is still an answer: the caller must not ask again
+  function mostRecentIdFrom(res as object, mediaSources as dynamic) as string
+    if not isValid(res) or res.ok <> true or not isValid(res.json) then return ""
+    items = res.json.Items
+    if type(items) <> "roArray" or type(mediaSources) <> "roArray" then return ""
+    for each item in items
+      if not isValid(item) or not isValidAndNotEmpty(item.Id) then continue for
+      index = versionResume.sourceIndexById(mediaSources, item.Id)
+      if index >= 0 then return mediaSources[index].Id
+    end for
+    return ""
   end function
 
   ' wouldMarkPlayed: Would the server record this position as PLAYED instead of storing it
