@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Start every item a queue arrives at from the beginning ([#970](https://github.com/jellyrock/jellyrock/pull/970))
 - Resume the same version everywhere, and map an in-player switch ([#958](https://github.com/jellyrock/jellyrock/pull/958))
 - Keep the `ItemGridOptions` dialog usable while a library grid loads ([#968](https://github.com/jellyrock/jellyrock/pull/968))
 - Give each `BaseGridView` load and page its own Task node ([#967](https://github.com/jellyrock/jellyrock/pull/967))
