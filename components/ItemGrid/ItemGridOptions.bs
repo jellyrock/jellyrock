@@ -101,6 +101,9 @@ sub onOptionsSet()
     viewContent = CreateObject("roSGNode", "ContentNode")
     index = 0
     selectedViewIndex = m.selectedViewIndex
+    ' Rebuilt with the menu: each options set lists the views afresh, and a stale entry
+    ' would sit before the new ones at the index the menu reports.
+    m.viewNames = []
 
     for each view in m.top.options.views
       entry = viewContent.CreateChild("ContentNode")
