@@ -112,12 +112,17 @@ function buildRowRequest(row as object, userId as string) as dynamic
   kind = row.kind
   api = GetApi()
 
+  ' MediaSourceCount is requested on every kind that lists VIDEO items, because it gates both
+  ' the alternate-versions badge and the 12.0 progress correction in emitResponse — a row that
+  ' omits it silently gets neither. additionalParts and specialFeatures are the exceptions:
+  ' their endpoints take no query params, and an extra (a trailer, a deleted scene) is not a
+  ' multi-version item. Seasons, music and channel programmes are not video items either.
   if kind = "additionalParts"
     return api.BuildGetAdditionalPartsRequest(row.itemId)
   else if kind = "specialFeatures"
     return api.BuildGetSpecialFeaturesRequest(row.itemId)
   else if kind = "likeThis"
-    return api.BuildGetSimilarItemsRequest(row.itemId, { "userId": userId, "limit": 16 })
+    return api.BuildGetSimilarItemsRequest(row.itemId, { "userId": userId, "limit": 16, "Fields": "MediaSourceCount" })
   else if kind = "artistSimilar"
     return api.BuildGetArtistSimilarRequest(row.itemId, { "userId": userId, "limit": 16 })
   else if kind = "seasons"
@@ -135,7 +140,7 @@ function buildRowRequest(row as object, userId as string) as dynamic
       "ParentId": row.itemId,
       "SortBy": "PremiereDate,ProductionYear,SortName",
       "SortOrder": "Ascending",
-      "Fields": "PrimaryImageAspectRatio,Overview",
+      "Fields": "PrimaryImageAspectRatio,Overview,MediaSourceCount",
       "EnableTotalRecordCount": false
     })
   else if kind = "artistAlbums" or kind = "moreAlbums"
@@ -150,7 +155,7 @@ function buildRowRequest(row as object, userId as string) as dynamic
     return api.BuildGetPlaylistItemsRequest(row.itemId, {
       "SortBy": "DateCreated",
       "SortOrder": "Descending",
-      "Fields": "PrimaryImageAspectRatio,Overview",
+      "Fields": "PrimaryImageAspectRatio,Overview,MediaSourceCount",
       "EnableTotalRecordCount": false
     })
   else if kind = "photoAlbumItems"
@@ -186,7 +191,7 @@ function buildRowRequest(row as object, userId as string) as dynamic
 end function
 
 function personVideosRequest(personId as string, videoType as string) as dynamic
-  return GetApi().BuildGetItemsByQueryRequest({ personIds: personId, recursive: true, includeItemTypes: videoType, Limit: 50, SortBy: "Random" })
+  return GetApi().BuildGetItemsByQueryRequest({ personIds: personId, recursive: true, includeItemTypes: videoType, Limit: 50, SortBy: "Random", Fields: "MediaSourceCount" })
 end function
 
 ' Transforms one pipeline response and emits its row.
