@@ -96,6 +96,14 @@ branch to find it.
   only the ODC calibration wants it.
 - **Per worker**: `tests/rta/setup/env-setup.js` (Vitest `setupFiles`) configures the
   RTA client singletons from `.env` in the test worker.
+- **Querying nodes by PROPERTY needs a reference store first.** `odc.getNodesWithProperties`
+  (and `getNodesInfo`) read from the snapshot that `odc.storeNodeReferences()` builds — call
+  them without it and they fail with `Invalid value supplied for 'nodeRefKey' param`, which
+  names the missing parameter rather than the missing call. Pair every such query with a
+  `storeNodeReferences()` before and a `deleteNodeReferences()` after, and remember the store is
+  a SNAPSHOT: nodes created after it was taken are not in it. For a one-off script, prefer
+  asserting on the SERVER response that fed the screen where that answers the question — it is
+  the same data the UI bound, it survives in a log, and it costs no round trip.
 - **Seeding, then `hardRelaunch()` — never `relaunch()`**: seeds write the device
   registry, and a plain `relaunch()` (ECP `/launch/dev`) only *foregrounds* an
   already-running channel. The app keeps its in-memory session and re-persists it
