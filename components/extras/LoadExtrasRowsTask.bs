@@ -40,6 +40,7 @@ sub loadExtrasRows()
   castMs = 0
   castPeople = 0
   castCards = 0
+  castRowRan = false
   #if perfTiming
     ' Same wait / emit split as LoadLatestRowsTask, so the two orchestrators' numbers read
     ' the same way. See the comment there for why it is gated on perfTiming and not debug.
@@ -80,6 +81,7 @@ sub loadExtrasRows()
         ' region should hold the row's work and nothing else.
         if isValid(people) then castPeople = people.count()
         castCards = cards.count()
+        castRowRan = true
       #end if
     else
       entries.push({ requestId: "extras-" + row.kind, req: buildRowRequest(row, userId), row: row })
@@ -127,8 +129,10 @@ sub loadExtrasRows()
     ' is far too small to see. `people` and `cards` differ exactly when the merge did
     ' something, which is the workload evidence a comparison of two arms needs.
     '
-    ' Not emitted at all for an item whose type plans no cast row (music, playlists).
-    if castPeople > 0 or castCards > 0
+    ' Gated on whether the row RAN, not on its counts: an item whose type plans no cast
+    ' row (music, playlists) must be distinguishable from a video item whose cast is
+    ' simply empty, and `castPeople > 0` conflates the two.
+    if castRowRan
       m.log.info("extras-rows cast -" + buildFlags, "people", castPeople, "cards", castCards, "ms", castMs)
     end if
   #end if
@@ -274,8 +278,9 @@ end sub
 ' The merge and the labelling happen here, on this thread, before any node exists: merging
 ' a person's repeated credits makes the row FEWER nodes to carry across, and castCardSpecs()
 ' resolves each distinct label once for the whole array rather than once per person — which
-' matters because every translate() from a Task thread is two m.global reads at ~93 us each
-' (docs/architecture/async.md). The specs are plain AAs; only the nodes below cross.
+' matters because every translate() from a Task thread reads `m.global.translations` at
+' ~93 us against ~2 us from the render thread (docs/architecture/async.md). The specs are
+' plain AAs; only the nodes below cross.
 function castItems(people as dynamic) as object
   items = []
   if not isValid(people) then return items

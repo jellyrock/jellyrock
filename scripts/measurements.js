@@ -607,11 +607,16 @@ export const MEASUREMENTS = Object.freeze([
     // pure local work on the task thread, which is the thing a change to card building
     // actually moves.
     primary: 'castMs',
-    // `people` is what the server sent; `cards` is what the row ended up with. They
-    // differ exactly when a person's repeated credits were merged onto one card, so the
-    // pair states both halves of the workload — how much there was to chew on, and how
-    // much crossed the thread boundary.
-    workload: Object.freeze(['rows', 'castPeople', 'castCards']),
+    // `castPeople` is what the server sent — the INPUT, identical across arms by
+    // construction, which is what `workloadKey` builds a comparison identity out of.
+    workload: Object.freeze(['rows', 'castPeople']),
+    // `castCards` is an OUTCOME, not workload: it diverges from `castPeople` exactly
+    // when the merge fired, so it is SUPPOSED to differ between a pre-merge arm and a
+    // post-merge one. In `workload` it would make `measure:compare` report that the arms
+    // "did not all do the same work" — the finding rather than a fault, which is the same
+    // reason `home-latest-rows` keeps `sizeCalls` out. `unitFor` answers '' either way,
+    // so this costs nothing in rendering and buys back the comparison.
+    counts: Object.freeze(['castCards']),
     lines: Object.freeze([
       Object.freeze({
         key: 'orchestrator',
