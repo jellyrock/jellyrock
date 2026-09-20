@@ -149,7 +149,7 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("copyIds() / idChunks()")
+    @describe("copyIds()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("names only items that have another copy")
@@ -162,26 +162,6 @@ namespace tests
     function _()
       groups = episodeQueue.groupByEpisode([m.episode("e1", 1, 1), m.episode("e2", 1, 2)])
       m.assertEqual(episodeQueue.copyIds(groups).count(), 0)
-    end function
-
-    @it("splits ids into runs of the given size, in order, the last one short")
-    function _()
-      chunks = episodeQueue.idChunks(["a", "b", "c", "d", "e"], 2)
-      m.assertEqual(chunks.count(), 3)
-      m.assertEqual(chunks[0].join(","), "a,b")
-      m.assertEqual(chunks[1].join(","), "c,d")
-      m.assertEqual(chunks[2].join(","), "e")
-    end function
-
-    @it("makes one run when every id fits, and none for no ids")
-    function _()
-      m.assertEqual(episodeQueue.idChunks(["a", "b"], 2).count(), 1)
-      m.assertEqual(episodeQueue.idChunks([], 2).count(), 0)
-    end function
-
-    @it("treats a size below one as one, rather than looping forever")
-    function _()
-      m.assertEqual(episodeQueue.idChunks(["a", "b"], 0).count(), 2)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

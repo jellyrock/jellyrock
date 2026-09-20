@@ -1,0 +1,70 @@
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/utils/misc.bs"
+
+' Fetching a set of items' MediaSources by id.
+'
+' Two features ask the same question — "which version ids belong to these items?" — and both
+' reach it from a Task thread holding a list of ids:
+'
+'   * episodeQueue.collapseCopies(), choosing one copy per episode on a pre-12 server, where
+'     the server lists every file of an episode as its own episode
+'   * the display-progress correction (versionResume's DISPLAY section), mapping a grouped
+'     tile back to whichever of its versions is in progress
+'
+' It lives here rather than inside either of them because neither owns it. Fields=MediaSources
+' is the expensive field on any item query, so asking for it BY ID — rather than for a whole
+' page — is what keeps the cost tied to the few items that need it.
+namespace mediaSources
+
+  ' How many ids one request names. Each costs 35 bytes of URL (32 hex + an encoded comma), so
+  ' 100 keeps a request near 3.5 KB — well inside common request-line limits.
+  const IDS_PER_REQUEST = 100
+
+  ' idChunks: The ids split into runs of at most `size`, in order — one request each.
+  '
+  ' @param {object} ids - array of strings
+  ' @param {integer} size - the most ids in one run (at least 1)
+  ' @return {object} array of arrays
+  function idChunks(ids as object, size as integer) as object
+    chunks = []
+    if size < 1 then size = 1
+    chunk = []
+    for each id in ids
+      chunk.push(id)
+      if chunk.count() = size
+        chunks.push(chunk)
+        chunk = []
+      end if
+    end for
+    if chunk.count() > 0 then chunks.push(chunk)
+    return chunks
+  end function
+
+  ' byIds: Each item's MediaSources, by item id.
+  '
+  ' The imperative half — runs on a Task thread, blocking, IDS_PER_REQUEST ids per request. An
+  ' id the server does not answer for is simply ABSENT from the result; every caller reads that
+  ' as "no versions known" rather than as an error, so a partial answer degrades instead of
+  ' failing the screen.
+  '
+  ' @param {object} ids - array of item id strings
+  ' @param {string} requestId - for the pool
+  ' @return {object} AA of item id -> MediaSources array
+  function byIds(ids as object, requestId as string) as object
+    sourcesById = {}
+    if not isValidAndNotEmpty(ids) then return sourcesById
+
+    for each chunk in mediaSources.idChunks(ids, mediaSources.IDS_PER_REQUEST)
+      data = fetchJson(GetApi().BuildGetItemsByQueryRequest({ Ids: chunk.join(","), Fields: "MediaSources", EnableTotalRecordCount: false }), requestId)
+      if isValid(data) and isValid(data.Items)
+        for each fetched in data.Items
+          if isValidAndNotEmpty(fetched.Id) then sourcesById[fetched.Id] = fetched.MediaSources
+        end for
+      end if
+    end for
+
+    return sourcesById
+  end function
+
+end namespace

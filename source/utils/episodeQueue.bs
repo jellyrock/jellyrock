@@ -1,5 +1,6 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/utils/mediaSources.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/versionPick.bs"
 
@@ -18,10 +19,6 @@ import "pkg:/source/utils/versionPick.bs"
 ' Everything but collapseCopies() / collapseQueue() is pure, so the rules are unit-tested
 ' without a network seam.
 namespace episodeQueue
-
-  ' How many ids one MediaSources request names. Each costs 35 bytes of URL (32 hex + an
-  ' encoded comma), so 100 keeps a request near 3.5 KB — well inside common request-line limits.
-  const COPY_IDS_PER_REQUEST = 100
 
   ' episodeKey: "<seriesId>/S<season>E<episode>" for a single numbered episode, "" otherwise.
   '
@@ -81,26 +78,6 @@ namespace episodeQueue
       end if
     end for
     return ids
-  end function
-
-  ' idChunks: The ids split into runs of at most `size`, in order — one request each.
-  '
-  ' @param {object} ids - array of strings
-  ' @param {integer} size - the most ids in one run (at least 1)
-  ' @return {object} array of arrays
-  function idChunks(ids as object, size as integer) as object
-    chunks = []
-    if size < 1 then size = 1
-    chunk = []
-    for each id in ids
-      chunk.push(id)
-      if chunk.count() = size
-        chunks.push(chunk)
-        chunk = []
-      end if
-    end for
-    if chunk.count() > 0 then chunks.push(chunk)
-    return chunks
   end function
 
   ' isGroupPlayed: Whether the viewer has watched this episode — on ANY copy. Before 12.0 each
@@ -167,7 +144,7 @@ namespace episodeQueue
   ' collapseCopies: The items with one copy per episode, in play order.
   '
   ' The imperative shell around the rules above; runs on a Task thread. MediaSources are
-  ' fetched only when copies exist, COPY_IDS_PER_REQUEST ids per request, so a 12.0 list
+  ' fetched only when copies exist — mediaSources.byIds() chunks them — so a 12.0 list
   ' (never any copies) costs nothing.
   '
   ' @param {dynamic} items - raw items in play order
@@ -183,14 +160,7 @@ namespace episodeQueue
     ids = copyIds(groups)
     if ids.count() > 0
       preference = m.global.queueManager.callFunc("getVersionPreference")
-      for each chunk in idChunks(ids, COPY_IDS_PER_REQUEST)
-        data = fetchJson(GetApi().BuildGetItemsByQueryRequest({ Ids: chunk.join(","), Fields: "MediaSources", EnableTotalRecordCount: false }), requestId)
-        if isValid(data) and isValid(data.Items)
-          for each fetched in data.Items
-            if isValidAndNotEmpty(fetched.Id) then sourcesById[fetched.Id] = fetched.MediaSources
-          end for
-        end if
-      end for
+      sourcesById = mediaSources.byIds(ids, requestId)
     end if
 
     for each group in groups
