@@ -6,6 +6,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
+import "pkg:/source/utils/versionResume.bs"
 
 sub init()
   m.log = new log.Logger("LoadItemsTask2")
@@ -80,8 +81,13 @@ sub loadItems()
     return
   end if
 
-  ' Build Fields string dynamically - start with Overview, add optional fields
-  fields = "Overview"
+  ' Build Fields string dynamically - start with Overview, add optional fields.
+  ' MediaSourceCount is what tells a tile it has alternate versions. It is the ONLY free
+  ' signal for that: measured 2026-09-19 on a local 12.0 server, adding it to a 100-item page
+  ' cost +85 bytes and no measurable time, where asking for MediaSources cost +87 ms and
+  ' +326 KB. The music branches below rebuild `fields` for their own queries and deliberately
+  ' do not carry it — no cue is shown for music, and the per-track cost there is unmeasured.
+  fields = "Overview,MediaSourceCount"
   if m.top.additionalFields <> ""
     fields = fields + "," + m.top.additionalFields
   end if
@@ -235,6 +241,11 @@ sub loadItems()
       end if
     end if
   end if
+
+  ' From 12.0 a tile's own UserData can belong to a version other than the one Play would
+  ' start. Correct it here, on the raw reply, so the transformer / item node / JRPoster chain
+  ' needs no knowledge of versions at all.
+  applyVersionDisplayProgress(data)
 
   ' `slots` holds one entry per source item, INCLUDING the ones that transform to
   ' invalid, so a genre's sampled items can be written back into its original
@@ -466,6 +477,44 @@ end sub
 ' Routes an item query through Build*Request() + pool based on queryType.
 ' Used for both the main request and the optional 2nd lookup for the # filter.
 ' queryType values: "liveTV", "studios", "genres", "artists", "albumArtists", "usersItems"
+' Rewrite each item's UserData so its progress bar shows the version that would actually play.
+'
+' Costs ONE request per load, and only when this page holds a multi-version item at all — on a
+' pre-12 server, or a page with nothing grouped, it makes none. See the DISPLAY section of
+' versionResume for the measurements and for the bounded divergence from chooseResumeSource().
+sub applyVersionDisplayProgress(data as dynamic)
+  if not isValid(data) or type(data.Items) <> "roArray" or data.Items.Count() = 0 then return
+  if not versionResume.isPerVersionServer(m.global.server.version) then return
+
+  hasMultiVersion = false
+  for each item in data.Items
+    if isValid(item) and isIntSafe(item.MediaSourceCount) and item.MediaSourceCount > 1
+      hasMultiVersion = true
+      exit for
+    end if
+  end for
+  if not hasMultiVersion then return
+
+  ' Fields=MediaSources is affordable HERE and nowhere else: the resume list holds only what
+  ' the user is part-way through, not the page. It is what carries each row's sibling ids, and
+  ' without it an alternate's row cannot be matched back to its tile at all.
+  params = {
+    MediaTypes: "Video",
+    Fields: "MediaSources",
+    EnableImages: false,
+    EnableTotalRecordCount: false
+  }
+  ' Scope to the container when there is one; a genre or search grid has none, and an
+  ' unscoped resume list is the same request Home already makes on every load.
+  if isValidAndNotEmpty(m.top.itemId) then params.parentId = m.top.itemId
+
+  res = fetchJson(GetApi().BuildGetResumeItemsRequest(params), "versionDisplayProgress")
+  if not isValid(res) or type(res.Items) <> "roArray" then return
+
+  changed = versionResume.applyDisplayProgress(data.Items, versionResume.displayProgressMap(res.Items))
+  if changed > 0 then m.log.debug("Corrected version progress on tiles", "count", changed)
+end sub
+
 function executeItemQuery(queryType as string, params as object) as dynamic
   if queryType = "liveTV"
     return fetchJson(GetApi().BuildGetLiveTVChannelsRequest(params), "itemQuery_liveTV")

@@ -109,6 +109,23 @@ namespace tests
       m.assertFalse(params.DoesExist("limit"))
     end function
 
+    @it("asks for MediaSourceCount, which is what drives the alternate-versions badge")
+    function _()
+      ' Free in practice: the server only emits the field for an item that HAS several
+      ' versions, so the cost follows those rather than the size of the row.
+      params = buildHomeNextUpParams("12.0.0", false, 0, 1000000000)
+      m.assertEqual(params.Fields, "MediaSourceCount")
+    end function
+
+    @it("asks for it on old servers too, where a grouped MOVIE can still have versions")
+    function _()
+      ' Per-version POSITIONS start at 12.0, but version GROUPING does not: a movie named by
+      ' the `<title> - <version>` convention is one item with two sources back to 10.7
+      ' (verified 2026-09-19 on local 10.7.7 / 10.9.11 / 10.11.11 servers).
+      params = buildHomeNextUpParams("10.7.7", false, 0, 1000000000)
+      m.assertEqual(params.Fields, "MediaSourceCount")
+    end function
+
   end class
 
 end namespace

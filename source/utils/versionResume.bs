@@ -559,6 +559,107 @@ namespace versionResume
     return { maxResumePct: int(maxResumePct), minResumeDurationSeconds: int(minResumeDurationSeconds) }
   end function
 
+  ' ─────────────────────────────────────────────────────────────────────────────────────
+  ' DISPLAY: which version's progress a poster or episode row shows.
+  '
+  ' A list response (/Items, /Shows/{id}/Episodes) carries each item's OWN UserData, and from
+  ' 12.0 that is the position of the item's own FILE rather than of the version that would
+  ' play. Measured on 12.0.0 (2026-09-19, `Version Episodes (2026)` fixture, 360 s versions):
+  '
+  '   only the 720p alternate in progress at 120 s -> the row reports PlayedPercentage 0,
+  '     so the tile shows NO bar at all while the viewer is a third of the way in
+  '   item's own version at 60 s, alternate at 240 s and played last -> the row reports
+  '     16.7% while pressing Play resumes the alternate at 67%
+  '
+  ' Pre-12 servers keep ONE position per item whichever file played (verified the same day on
+  ' 10.7.7, 10.9.11 and 10.11.11 with a grouped two-version movie), so neither case can arise
+  ' there and nothing below should run.
+  '
+  ' GET /UserItems/Resume answers it for a whole view in ONE request: each row IS the version
+  ' played last, carrying its own position, and with Fields=MediaSources it also carries every
+  ' source id of its item — so the row can be found from whichever id the list response used
+  ' to name the tile. That indirection is required: the DTO exposes no primary pointer
+  ' (`version-resume-primary-order`), so an alternate's row cannot be resolved to its primary
+  ' any other way, and matching on name/year is not an identity.
+  '
+  ' KNOWN, BOUNDED DIVERGENCE from chooseResumeSource(). The resume row is always the version
+  ' played LAST, while PLAYBACK prefers the device-best version when two sit within
+  ' NEAR_LEVEL_MARGIN_TICKS of each other. Inside that margin the two positions are at most
+  ' 30 s apart, so a bar taken from the wrong one of them is at most 30 s of runtime out —
+  ' under half a percent on a feature, about 8% on a six-minute episode. Closing it would mean
+  ' scoring every version's streams, which needs MediaSources on the GRID page: +87 ms and
+  ' +326 KB per 100 items, measured 2026-09-19 against a local 12.0 server. That cost is the
+  ' reason this shape exists, so the margin is accepted rather than paid for.
+
+  ' displayProgressMap: Progress of the version that would play, keyed by every id that could
+  ' name its tile.
+  '
+  ' @param {object} resumeItems - Items from GET /UserItems/Resume (Fields=MediaSources)
+  ' @return {object} AA of lowercased source id -> { positionTicks, playedPercentage }
+  function displayProgressMap(resumeItems as object) as object
+    map = {}
+    if not isValid(resumeItems) then return map
+
+    for each row in resumeItems
+      if isValid(row) and isValidAndNotEmpty(row.Id) and isValid(row.UserData)
+        ticks = row.UserData.PlaybackPositionTicks
+        pct = row.UserData.PlayedPercentage
+        if isIntSafe(ticks) and ticks > 0 and isValid(pct)
+          progress = { positionTicks: ticks, playedPercentage: pct }
+
+          ' The row's own id first — for a single-version item that is the tile's id.
+          map[LCase(row.Id)] = progress
+
+          ' Then every sibling version, because the tile may be named by any of them. The
+          ' server lists the played version first, so a later entry never overwrites a
+          ' nearer answer for the same id: only ids not already claimed are added.
+          if isValid(row.MediaSources)
+            for each source in row.MediaSources
+              if isValid(source) and isValidAndNotEmpty(source.Id)
+                key = LCase(source.Id)
+                if not map.DoesExist(key) then map[key] = progress
+              end if
+            end for
+          end if
+        end if
+      end if
+    end for
+
+    return map
+  end function
+
+  ' applyDisplayProgress: Rewrite a list response's UserData so each tile reports the progress
+  ' of the version that would play.
+  '
+  ' Patches the RAW API items before they reach the transformer, so every downstream surface —
+  ' the transformer, the item node, JRPoster's bar — needs no knowledge of versions at all.
+  '
+  ' @param {object} items - raw BaseItemDto array from a list response (mutated in place)
+  ' @param {object} map - displayProgressMap()
+  ' @return {integer} how many items were actually changed
+  function applyDisplayProgress(items as object, map as object) as integer
+    if not isValid(items) or not isValid(map) then return 0
+
+    changed = 0
+    for each item in items
+      if isValid(item) and isValidAndNotEmpty(item.Id)
+        progress = map[LCase(item.Id)]
+        if isValid(progress)
+          if not isValid(item.UserData) then item.UserData = {}
+          ' Only a DIFFERENT answer counts as a change — a single-version item in progress
+          ' maps to its own row and must not be reported as corrected.
+          if item.UserData.PlaybackPositionTicks <> progress.positionTicks
+            item.UserData.PlaybackPositionTicks = progress.positionTicks
+            item.UserData.PlayedPercentage = progress.playedPercentage
+            changed++
+          end if
+        end if
+      end if
+    end for
+
+    return changed
+  end function
+
   ' playbackPositionFrom: PlaybackPositionTicks from a GET /UserItems/{id}/UserData reply.
   '
   ' @param {object} res - fetchAsync result { ok, json }

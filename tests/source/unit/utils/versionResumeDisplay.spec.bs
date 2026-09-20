@@ -1,0 +1,142 @@
+import "pkg:/source/utils/versionResume.bs"
+
+namespace tests
+
+  ' The DISPLAY half of the per-version work: what a poster or episode row should show when
+  ' the bar's version is not the one Play would start (12.0+). Choosing a version to PLAY is
+  ' versionResume.spec.bs; the carry guard and whole-decision function have their own files
+  ' (one @suite per file — tests/CLAUDE.md).
+  @suite("versionResume - display progress")
+  class VersionResumeDisplayTests extends tests.BaseTestSuite
+
+    ' A 12.0 resume row for an ALTERNATE version: the row's own id is the alternate, and its
+    ' MediaSources carry the whole item — including the id the grid used for the tile.
+    private function altRow(ticks = 1200000000& as longinteger, pct = 33.3 as float) as object
+      return {
+        Id: "alternate",
+        UserData: { PlaybackPositionTicks: ticks, PlayedPercentage: pct },
+        MediaSources: [{ Id: "alternate" }, { Id: "primary" }]
+      }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("displayProgressMap()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("maps the tile's id to the alternate version that is actually in progress")
+    function _()
+      map = versionResume.displayProgressMap([m.altRow()])
+      m.assertTrue(map.DoesExist("primary"))
+      m.assertEqual(map["primary"].positionTicks, 1200000000&)
+      m.assertEqual(map["primary"].playedPercentage, 33.3)
+    end function
+
+    @it("maps the row's own id too, so a single-version item is covered")
+    function _()
+      map = versionResume.displayProgressMap([{
+        Id: "solo",
+        UserData: { PlaybackPositionTicks: 900000000&, PlayedPercentage: 25.0 }
+      }])
+      m.assertEqual(map["solo"].positionTicks, 900000000&)
+    end function
+
+    @it("matches ids ignoring case, as playback start does")
+    function _()
+      map = versionResume.displayProgressMap([{
+        Id: "ABC",
+        UserData: { PlaybackPositionTicks: 100&, PlayedPercentage: 1.0 },
+        MediaSources: [{ Id: "ABC" }, { Id: "DEF" }]
+      }])
+      m.assertTrue(map.DoesExist("abc"))
+      m.assertTrue(map.DoesExist("def"))
+    end function
+
+    @it("lets the nearer answer win when two rows name the same sibling id")
+    function _()
+      ' The server lists the played version first; a later row must not overwrite it.
+      rows = [
+        { Id: "a", UserData: { PlaybackPositionTicks: 111&, PlayedPercentage: 10.0 }, MediaSources: [{ Id: "a" }, { Id: "shared" }] },
+        { Id: "b", UserData: { PlaybackPositionTicks: 222&, PlayedPercentage: 20.0 }, MediaSources: [{ Id: "b" }, { Id: "shared" }] }
+      ]
+      map = versionResume.displayProgressMap(rows)
+      m.assertEqual(map["shared"].positionTicks, 111&)
+      ' but each row's OWN id always wins for itself
+      m.assertEqual(map["b"].positionTicks, 222&)
+    end function
+
+    @it("ignores a row with no position, so a finished item adds nothing")
+    function _()
+      map = versionResume.displayProgressMap([{
+        Id: "done",
+        UserData: { PlaybackPositionTicks: 0&, PlayedPercentage: 0.0 },
+        MediaSources: [{ Id: "done" }, { Id: "other" }]
+      }])
+      m.assertFalse(map.DoesExist("done"))
+      m.assertFalse(map.DoesExist("other"))
+    end function
+
+    @it("survives malformed rows without throwing")
+    function _()
+      map = versionResume.displayProgressMap([invalid, {}, { Id: "" }, { Id: "x" }])
+      m.assertEqual(map.Count(), 0)
+      m.assertEqual(versionResume.displayProgressMap(invalid).Count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("applyDisplayProgress()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("gives a bar to a tile whose own version reports nothing")
+    function _()
+      ' The measured 12.0 case: only the alternate is in progress, so the row reports 0.
+      items = [{ Id: "primary", UserData: { PlaybackPositionTicks: 0&, PlayedPercentage: 0.0 } }]
+      changed = versionResume.applyDisplayProgress(items, versionResume.displayProgressMap([m.altRow()]))
+      m.assertEqual(changed, 1)
+      m.assertEqual(items[0].UserData.PlaybackPositionTicks, 1200000000&)
+      m.assertEqual(items[0].UserData.PlayedPercentage, 33.3)
+    end function
+
+    @it("replaces a bar that belongs to a version other than the one Play would start")
+    function _()
+      ' Own version 60 s (16.7%), alternate 240 s (66.7%) and played last.
+      items = [{ Id: "primary", UserData: { PlaybackPositionTicks: 600000000&, PlayedPercentage: 16.7 } }]
+      map = versionResume.displayProgressMap([m.altRow(2400000000&, 66.7)])
+      m.assertEqual(versionResume.applyDisplayProgress(items, map), 1)
+      m.assertEqual(items[0].UserData.PlayedPercentage, 66.7)
+    end function
+
+    @it("reports no change when the item already agrees, so a single-version item is untouched")
+    function _()
+      items = [{ Id: "solo", UserData: { PlaybackPositionTicks: 900000000&, PlayedPercentage: 25.0 } }]
+      map = versionResume.displayProgressMap([{
+        Id: "solo",
+        UserData: { PlaybackPositionTicks: 900000000&, PlayedPercentage: 25.0 }
+      }])
+      m.assertEqual(versionResume.applyDisplayProgress(items, map), 0)
+      m.assertEqual(items[0].UserData.PlayedPercentage, 25.0)
+    end function
+
+    @it("leaves an item the resume list never mentions alone")
+    function _()
+      items = [{ Id: "untouched", UserData: { PlaybackPositionTicks: 0&, PlayedPercentage: 0.0 } }]
+      m.assertEqual(versionResume.applyDisplayProgress(items, versionResume.displayProgressMap([m.altRow()])), 0)
+      m.assertEqual(items[0].UserData.PlaybackPositionTicks, 0&)
+    end function
+
+    @it("fills in UserData when the list response omitted it entirely")
+    function _()
+      items = [{ Id: "primary" }]
+      m.assertEqual(versionResume.applyDisplayProgress(items, versionResume.displayProgressMap([m.altRow()])), 1)
+      m.assertEqual(items[0].UserData.PlayedPercentage, 33.3)
+    end function
+
+    @it("survives malformed input without throwing")
+    function _()
+      m.assertEqual(versionResume.applyDisplayProgress(invalid, {}), 0)
+      m.assertEqual(versionResume.applyDisplayProgress([], invalid), 0)
+      m.assertEqual(versionResume.applyDisplayProgress([invalid, {}, { Id: "" }], { "x": { positionTicks: 1&, playedPercentage: 1.0 } }), 0)
+    end function
+
+  end class
+
+end namespace

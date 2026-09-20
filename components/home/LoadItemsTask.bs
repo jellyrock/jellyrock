@@ -53,6 +53,8 @@ sub loadItems()
       ' is uncapped for the same reason; `uiHomeRowLimit` sizes the browse feeds only.
       params = {}
       params["EnableTotalRecordCount"] = false
+      ' Alternate-versions badge — see buildHomeNextUpParams for the measured cost.
+      params["Fields"] = "MediaSourceCount"
 
       data = fetchJson(GetApi().BuildGetResumeItemsRequest(params), "continue")
       if isValid(data) and isValid(data.Items)
@@ -73,6 +75,7 @@ sub loadItems()
     params["SortBy"] = "SortName"
     params["SortOrder"] = "Ascending"
     params["EnableTotalRecordCount"] = false
+    params["Fields"] = "MediaSourceCount"
 
     data = fetchJson(GetApi().BuildGetItemsByQueryRequest(params), "favorites")
     if isValid(data) and isValid(data.Items)
@@ -155,7 +158,7 @@ sub loadItems()
     resumeData = fetchJson(GetApi().BuildGetResumeItemsRequest({
       ParentId: m.top.itemId,
       Limit: 1,
-      Fields: "PrimaryImageAspectRatio",
+      Fields: "PrimaryImageAspectRatio,MediaSourceCount",
       EnableTotalRecordCount: false
     }), "seriesResume")
     if isValid(resumeData) and isValid(resumeData.Items) and resumeData.Items.Count() > 0

@@ -511,6 +511,38 @@ carry. Device knowledge is deliberately absent from `versionResume` (it must sta
 tie comes back as ids and `findBestVideoSourceAmongIds()` settles it over just those versions —
 scoring the whole list would let a 4K version nobody started win a tie between two in progress.
 
+#### What a TILE shows — `displayProgressMap()` / `applyDisplayProgress()`
+
+Everything above decides which version **plays**. A poster or episode row is a separate
+problem, because a list response carries each item's OWN `UserData` — which from 12.0 is the
+position of the item's own file, not of the version that would start. Measured on 12.0.0
+(2026-09-19, `Version Episodes (2026)`, 360 s versions): with only the alternate in progress at
+120 s the row reports `PlayedPercentage` 0, so the tile shows **no bar at all**; with the item's
+own version at 60 s and the alternate at 240 s and played last, the row reports 16.7% while Play
+resumes the alternate at 67%. Servers before 12.0 store one position per item whichever file played
+(verified the same day on 10.7.7, 10.9.11 and 10.11.11 with a grouped two-version movie), so
+neither case exists there and the correction does not run.
+
+The loaders fix it on the RAW reply, before the transform, so the transformer, the item node and
+`JRPoster`'s bar need no knowledge of versions:
+
+- **`MediaSourceCount`** is requested wherever video tiles are built. It is the free signal that
+  an item has alternates — the server emits it only when there are several, so its cost follows
+  the multi-version items rather than the row (+21 bytes for one, +85 across a 100-item page).
+  It gates the work below, and drives the alternate-versions badge on the tile.
+- **One `GET /UserItems/Resume` per load**, and only once a page actually holds a multi-version
+  item. Each row IS the version played last, and with `Fields=MediaSources` it carries its
+  item's sibling ids — which is what lets an alternate's row be matched back to whichever id
+  named the tile. There is no other way: the DTO exposes no primary pointer, and name/year is
+  not an identity.
+
+**Bounded divergence, accepted deliberately.** The resume row is always the version played
+*last*, while `chooseResumeSource()` prefers device-best inside the 30 s near-level margin. So
+where the two disagree the versions are at most 30 s apart and the bar is at most that much of
+the runtime out — under half a percent on a feature, about 8% on a six-minute episode. Closing
+it would need every version's streams, i.e. `MediaSources` on the grid page itself: +87 ms and
++326 KB per 100 items on a local 12.0 server, which is the cost this shape exists to avoid.
+
 **`versionResume.chooseResumeSource()` is the single answer**, shared by every entry point, so
 the app cannot name one version and play another:
 

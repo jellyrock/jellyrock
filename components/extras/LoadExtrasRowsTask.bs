@@ -5,6 +5,7 @@ import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/extras/extrasRows.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/versionResume.bs"
 
 sub init()
   m.log = new log.Logger("LoadExtrasRowsTask")
@@ -122,9 +123,11 @@ function buildRowRequest(row as object, userId as string) as dynamic
   else if kind = "seasons"
     return api.BuildGetSeasonsRequest(row.itemId, { Fields: "PrimaryImageAspectRatio,Overview", EnableImages: true })
   else if kind = "episodes" or kind = "seasonEpisodes"
+    ' MediaSourceCount both drives the alternate-versions cue and gates the progress
+    ' correction below, so no request is made for a row that has nothing grouped.
     return api.BuildGetEpisodesRequest(row.itemId, {
       SeasonId: row.seasonId,
-      Fields: "PrimaryImageAspectRatio,Overview",
+      Fields: "PrimaryImageAspectRatio,Overview,MediaSourceCount",
       EnableImages: true
     })
   else if kind = "boxSetItems"
@@ -215,7 +218,53 @@ sub emitResponse(row as object, res as dynamic)
   digest = ""
   if body <> "" then digest = extrasRows.digestOf(body + "|" + m.serverVersion)
 
+  ' From 12.0 an episode's own UserData can belong to a version other than the one Play would
+  ' start, so the row's bar disagrees with what pressing Play does — or is missing entirely.
+  ' Corrected on the raw reply, before the transform, so nothing downstream knows about
+  ' versions. The digest above is deliberately taken over the UNMODIFIED body: it identifies
+  ' what the SERVER sent, and folding a local correction into it would make an unchanged row
+  ' look changed.
+  applyVersionDisplayProgress(apiItems)
+
   emitRow(row, "ok", m.transformer.transformBaseItemArray(apiItems, m.serverVersion), digest)
+end sub
+
+' Rewrite each item's UserData so its progress bar shows the version that would actually play.
+'
+' The map is fetched at most ONCE per run and only once a row actually carries a multi-version
+' item, so a pre-12 server — or an item with nothing grouped — makes no extra request. See the
+' DISPLAY section of versionResume for the measurements behind this shape.
+sub applyVersionDisplayProgress(apiItems as object)
+  if type(apiItems) <> "roArray" or apiItems.Count() = 0 then return
+  if not versionResume.isPerVersionServer(m.serverVersion) then return
+
+  hasMultiVersion = false
+  for each item in apiItems
+    if isValid(item) and isIntSafe(item.MediaSourceCount) and item.MediaSourceCount > 1
+      hasMultiVersion = true
+      exit for
+    end if
+  end for
+  if not hasMultiVersion then return
+
+  if not isValid(m.versionDisplayMap)
+    params = {
+      MediaTypes: "Video",
+      Fields: "MediaSources",
+      EnableImages: false,
+      EnableTotalRecordCount: false
+    }
+    res = fetchJson(GetApi().BuildGetResumeItemsRequest(params), "versionDisplayProgress")
+    ' Memoize either way: a failed lookup must not be retried once per row.
+    if isValid(res) and type(res.Items) = "roArray"
+      m.versionDisplayMap = versionResume.displayProgressMap(res.Items)
+    else
+      m.versionDisplayMap = {}
+    end if
+  end if
+
+  changed = versionResume.applyDisplayProgress(apiItems, m.versionDisplayMap)
+  if changed > 0 then m.log.debug("Corrected version progress on a row", "count", changed)
 end sub
 
 function castItems(people as dynamic) as object

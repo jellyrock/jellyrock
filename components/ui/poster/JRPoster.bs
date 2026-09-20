@@ -14,11 +14,17 @@ sub init()
   m.watchBadgeBackground = m.top.findNode("watchBadgeBackground")
   m.unplayedVideosCount = m.top.findNode("unplayedVideosCount")
   m.checkmark = m.top.findNode("checkmark")
+  m.versionsBadgeBackground = m.top.findNode("versionsBadgeBackground")
+  m.versionsBadgeBackground.color = m.global.constants.colorBlack + m.global.constants.alpha60
+  m.top.findNode("versionsIcon").blendColor = m.global.constants.colorTextPrimary
 
   ' Observed once for the life of the poster. A recycled cell's resetBadge() must not
   ' re-render while it clears, so it raises this instead of toggling the observers.
   m.isResettingBadge = false
   m.top.observeField("playedPercentage", "onPlayedPercentageChanged")
+  ' Not gated on uiTvShowsDisableUnwatchedCount: that setting hides the WATCHED badge, and
+  ' widening it to mean "all poster badges" would break what its name and docs promise.
+  m.top.observeField("mediaSourceCount", "onMediaSourceCountChanged")
   if not m.disableWatchBadge
     m.top.observeField("unplayedCount", "onUnplayedCountChanged")
     m.top.observeField("isWatched", "onIsWatchedChanged")
@@ -57,6 +63,22 @@ sub onIsWatchedChanged()
   updateBadgeSize()
 end sub
 
+' Marks a tile whose item has more than one version, so the choice is visible while browsing
+' instead of only on the details screen.
+'
+' Pinned to the BOTTOM-LEFT, clear of the progress bar's 9px strip. The bar is added and
+' removed on demand, so this badge cannot depend on whether it is there.
+sub onMediaSourceCountChanged()
+  if m.isResettingBadge then return
+
+  if m.top.mediaSourceCount > 1
+    m.versionsBadgeBackground.translation = [0, m.top.height - m.versionsBadgeBackground.height - 9]
+    m.versionsBadgeBackground.visible = true
+  else
+    m.versionsBadgeBackground.visible = false
+  end if
+end sub
+
 sub onPlayedPercentageChanged()
   if m.isResettingBadge then return
 
@@ -85,9 +107,11 @@ sub resetBadge()
   m.top.unplayedCount = 0
   m.top.isWatched = false
   m.top.playedPercentage = 0
+  m.top.mediaSourceCount = 0
   m.isResettingBadge = false
 
   m.watchBadgeBackground.visible = false
+  m.versionsBadgeBackground.visible = false
   m.unplayedVideosCount.text = ""
   m.checkmark.visible = false
   m.watchBadgeBackground.width = 90

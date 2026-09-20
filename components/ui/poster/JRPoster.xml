@@ -5,11 +5,32 @@
       <LabelPrimarySmall id="unplayedVideosCount" isBold="true" height="48" horizAlign="center" vertAlign="center" translation="[0,3]" />
       <LabelPrimaryMedium id="checkmark" isBold="true" height="48" horizAlign="center" vertAlign="center" text="✓" translation="[0,3]" visible="false" />
     </RectangleSecondary>
+    <!--
+      Badge corners are assigned by FAMILY, so a tile stays readable as signals are added:
+        top-right    what you have CONSUMED   (unplayed count / watched ✓, above)
+        bottom-left  what the MEDIA is        (alternate versions, here)
+        bottom edge  how far through you are  (VideoProgressBar, added on demand)
+        top-left     reserved for USER marks  (favorite — not built yet)
+      Versions sits by the progress bar deliberately: both answer "what happens if I press
+      Play". Top-right was not available — the watched badge has held it since long before
+      this, and jellyfin-web puts its unplayed count there too.
+
+      It is the one badge NOT drawn in the accent colour, which also separates the families:
+      accent means YOUR state (watched, progress), a neutral scrim means a fact about the
+      MEDIA. That is not only taste — VideoProgressBar draws its filled bar in colorSecondary,
+      so an accent chip sitting directly on top of it merged into a single blue block on a
+      partly-watched tile. The scrim here is the same colorBlack+alpha60 that the progress
+      bar already uses for its own unfilled track.
+    -->
+    <Rectangle id="versionsBadgeBackground" width="48" height="48" visible="false">
+      <Poster id="versionsIcon" uri="pkg:/images/icons/layers_$$RES$$.png" width="40" height="40" translation="[4,4]" />
+    </Rectangle>
   </children>
   <interface>
     <field id="unplayedCount" type="integer" value="0" />
     <field id="isWatched" type="boolean" value="false" />
     <field id="playedPercentage" type="float" value="0" />
+    <field id="mediaSourceCount" type="integer" value="0" />
     <function name="resetBadge" />
   </interface>
 </component>
