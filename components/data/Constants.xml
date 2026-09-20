@@ -49,6 +49,10 @@
     <field id="alpha60" type="string" value="99" />
     <field id="alpha70" type="string" value="B3" />
     <field id="alpha80" type="string" value="CC" />
+    <!-- Off-ladder on purpose: the poster badges need a backdrop dark enough that a THEME-
+         coloured glyph stays legible over arbitrary artwork. At 85% the composite sits at
+         #262626 even over a white poster, which holds the default accent at 4.1:1. -->
+    <field id="alpha85" type="string" value="D9" />
     <field id="alpha90" type="string" value="E6" />
     <field id="alpha100" type="string" value="FF" />
 

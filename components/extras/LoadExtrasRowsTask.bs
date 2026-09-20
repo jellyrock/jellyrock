@@ -5,6 +5,7 @@ import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/extras/extrasRows.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/versionDisplay.bs"
 
 sub init()
   m.log = new log.Logger("LoadExtrasRowsTask")
@@ -48,6 +49,10 @@ sub loadExtrasRows()
   userId = m.global.user.id
   m.serverVersion = m.global.server.version
   if m.serverVersion = "" then m.serverVersion = "unknown"
+  ' One cache for the run: the resume ranking is fetched at most once however many rows carry
+  ' grouped items, and sibling ids already looked up for one row are not re-requested for the
+  ' next. A new node services every run (ExtrasRowList.startRun), so nothing outlives it.
+  m.versionDisplayCache = {}
 
   entries = []
   for each row in rows
@@ -111,20 +116,27 @@ function buildRowRequest(row as object, userId as string) as dynamic
   kind = row.kind
   api = GetApi()
 
+  ' MediaSourceCount is requested on every kind that lists VIDEO items, because it gates both
+  ' the alternate-versions badge and the 12.0 progress correction in emitResponse — a row that
+  ' omits it silently gets neither. additionalParts and specialFeatures are the exceptions:
+  ' their endpoints take no query params, and an extra (a trailer, a deleted scene) is not a
+  ' multi-version item. Seasons, music and channel programmes are not video items either.
   if kind = "additionalParts"
     return api.BuildGetAdditionalPartsRequest(row.itemId)
   else if kind = "specialFeatures"
     return api.BuildGetSpecialFeaturesRequest(row.itemId)
   else if kind = "likeThis"
-    return api.BuildGetSimilarItemsRequest(row.itemId, { "userId": userId, "limit": 16 })
+    return api.BuildGetSimilarItemsRequest(row.itemId, { "userId": userId, "limit": 16, "Fields": "MediaSourceCount" })
   else if kind = "artistSimilar"
     return api.BuildGetArtistSimilarRequest(row.itemId, { "userId": userId, "limit": 16 })
   else if kind = "seasons"
     return api.BuildGetSeasonsRequest(row.itemId, { Fields: "PrimaryImageAspectRatio,Overview", EnableImages: true })
   else if kind = "episodes" or kind = "seasonEpisodes"
+    ' MediaSourceCount both drives the alternate-versions cue and gates the progress
+    ' correction below, so no request is made for a row that has nothing grouped.
     return api.BuildGetEpisodesRequest(row.itemId, {
       SeasonId: row.seasonId,
-      Fields: "PrimaryImageAspectRatio,Overview",
+      Fields: "PrimaryImageAspectRatio,Overview,MediaSourceCount",
       EnableImages: true
     })
   else if kind = "boxSetItems"
@@ -132,7 +144,7 @@ function buildRowRequest(row as object, userId as string) as dynamic
       "ParentId": row.itemId,
       "SortBy": "PremiereDate,ProductionYear,SortName",
       "SortOrder": "Ascending",
-      "Fields": "PrimaryImageAspectRatio,Overview",
+      "Fields": "PrimaryImageAspectRatio,Overview,MediaSourceCount",
       "EnableTotalRecordCount": false
     })
   else if kind = "artistAlbums" or kind = "moreAlbums"
@@ -147,7 +159,7 @@ function buildRowRequest(row as object, userId as string) as dynamic
     return api.BuildGetPlaylistItemsRequest(row.itemId, {
       "SortBy": "DateCreated",
       "SortOrder": "Descending",
-      "Fields": "PrimaryImageAspectRatio,Overview",
+      "Fields": "PrimaryImageAspectRatio,Overview,MediaSourceCount",
       "EnableTotalRecordCount": false
     })
   else if kind = "photoAlbumItems"
@@ -183,7 +195,7 @@ function buildRowRequest(row as object, userId as string) as dynamic
 end function
 
 function personVideosRequest(personId as string, videoType as string) as dynamic
-  return GetApi().BuildGetItemsByQueryRequest({ personIds: personId, recursive: true, includeItemTypes: videoType, Limit: 50, SortBy: "Random" })
+  return GetApi().BuildGetItemsByQueryRequest({ personIds: personId, recursive: true, includeItemTypes: videoType, Limit: 50, SortBy: "Random", Fields: "MediaSourceCount" })
 end function
 
 ' Transforms one pipeline response and emits its row.
@@ -214,6 +226,19 @@ sub emitResponse(row as object, res as dynamic)
   body = res.text ?? ""
   digest = ""
   if body <> "" then digest = extrasRows.digestOf(body + "|" + m.serverVersion)
+
+  ' From 12.0 an episode's own UserData can belong to a version other than the one Play would
+  ' start, so the row's bar disagrees with what pressing Play does — or is missing entirely.
+  ' Corrected on the raw reply, before the transform, so nothing downstream knows about
+  ' versions. The digest above is deliberately taken over the UNMODIFIED body: it identifies
+  ' what the SERVER sent, and folding a local correction into it would make an unchanged row
+  ' look changed.
+  '
+  ' Unscoped on purpose — unlike the grid, an extras row is not one container's worth of items:
+  ' More Like This and a person's videos both legitimately cross libraries, so a parentId here
+  ' would drop the correction for exactly those rows.
+  changed = versionDisplay.correctDisplayProgress(apiItems, m.serverVersion, "", "versionDisplayProgress", m.versionDisplayCache)
+  if changed > 0 then m.log.debug("Corrected version progress on a row", "count", changed)
 
   emitRow(row, "ok", m.transformer.transformBaseItemArray(apiItems, m.serverVersion), digest)
 end sub

@@ -256,6 +256,10 @@ sub renderMediaItem(itemData as object, itemType as string)
     end if
   end if
 
+  ' Alternate-versions badge (bottom-left). Independent of the watched-badge setting — see
+  ' JRPoster.onMediaSourceCountChanged.
+  m.itemPoster.mediaSourceCount = itemData.mediaSourceCount
+
   m.itemPoster.loadDisplayMode = resolveLoadDisplayMode(itemType)
 
   posterUri = getItemPosterUrl(itemData)

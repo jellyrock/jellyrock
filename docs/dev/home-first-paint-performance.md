@@ -10,7 +10,7 @@ related-files:
   - scripts/harden-prod-manifest.js
   - scripts/measurements.js
   - manifest
-last-reviewed: 2026-09-15
+last-reviewed: 2026-09-20
 ---
 
 # Measuring orchestrator wait-vs-emit on device
@@ -862,6 +862,13 @@ reports the n=4 **median** (1016 ms), not this line.
 shapes. A plain grid load is a single query plus a transform loop (`genreFetches 0`). A
 **Genres** load is one query plus a fetch *per genre* — so the genre count is what makes that
 path I/O-heavy, and a line without it can't be interpreted.
+
+> **One more thing can move `wait` here**, and it is not a genre fetch. On a 12.0 server a page
+> holding items with alternate versions also pays the display-progress lookup (up to two
+> requests, once per run — see [playback.md](../architecture/playback.md#what-a-tile-shows--versiondisplaycorrectdisplayprogress)).
+> It is counted as `wait`, because it is a round trip. The baseline below is unaffected: its
+> library has nothing grouped, so the lookup makes **no** request at all. Measure a grouped
+> library and expect `wait` to be higher for a reason that is not the pipeline.
 
 **Baseline** — Stick 4K (`.177`), one movie library, 8 genres, `bs_const=debug=false`, n=4,
 medians. Reaching it needs `display.<libraryId>.landing` seeded to `Genres` (see

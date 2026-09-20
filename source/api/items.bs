@@ -508,6 +508,11 @@ function buildHomeNextUpParams(serverVersion as string, enableRewatching as bool
   ' has shipped that way — the two now match on purpose rather than by omission.
   params["EnableTotalRecordCount"] = false
   params["EnableResumable"] = false
+  ' Drives the alternate-versions badge. The server only emits the field for an item that
+  ' HAS several versions, so the cost scales with those rather than with the row: measured
+  ' 2026-09-19 against a local 12.0 server at +21 bytes for one such item, and +85 bytes
+  ' across a 100-item library page holding four of them.
+  params["Fields"] = "MediaSourceCount"
 
   maxDaysOn = isValid(maxDays) and maxDays > 0
   if maxDaysOn

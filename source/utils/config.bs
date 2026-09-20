@@ -219,9 +219,12 @@ end function
 ' the right one at PR time. An absent value reports its type as invalid and lands here too,
 ' which is why callers need no separate isValid() check.
 '
-' Named for the question rather than for either caller: it guards `settingRangeBounds`
-' (authored JSON) and `resolveHomeRowLimit` (a node field), which share nothing except that
-' both would fault on the same input.
+' Named for the question rather than for any one caller. It started out guarding
+' `settingRangeBounds` (authored JSON) and `resolveHomeRowLimit` (a node field), and now also
+' guards values read straight off an API reply (`versionResume.multiVersionIds`,
+' `resumeRanking`) — a field the server omits reports its type as invalid and lands here, which
+' is why none of them needs a separate isValid() check. What the callers share is only that
+' each would fault on the same input; do not read the list as a limit on where it belongs.
 function isIntSafe(value as dynamic) as boolean
   valueType = type(value)
   return valueType = "roInt" or valueType = "roInteger" or valueType = "Integer" or valueType = "roFloat" or valueType = "Float" or valueType = "roDouble" or valueType = "Double" or valueType = "roLongInteger" or valueType = "LongInteger"

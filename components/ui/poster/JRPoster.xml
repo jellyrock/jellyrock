@@ -5,11 +5,45 @@
       <LabelPrimarySmall id="unplayedVideosCount" isBold="true" height="48" horizAlign="center" vertAlign="center" translation="[0,3]" />
       <LabelPrimaryMedium id="checkmark" isBold="true" height="48" horizAlign="center" vertAlign="center" text="✓" translation="[0,3]" visible="false" />
     </RectangleSecondary>
+    <!--
+      Placement, and what is NOT yet decided about it.
+
+      This badge sits bottom-left, clear of the progress bar's strip, and the watched/unplayed
+      badge keeps top-right. That much is deliberate: top-right has held the watched badge since
+      long before this and jellyfin-web puts its unplayed count there too, and versions belongs by
+      the progress bar because both answer "what happens if I press Play".
+
+      What is NOT settled is the badge SYSTEM — whether further signals get their own corners or
+      join a single rail, and which metadata earns a tile at all. jellyfin-web lays every card
+      indicator out in ONE top-right flex rail of round chips (`.cardIndicators`) and shows no
+      HDR / Dolby Vision / Atmos / resolution on cards at all; JellyRock already diverges in chip
+      shape and size. With only two badges today the question is not forced, and measured tile
+      widths (213 and 264 px portrait) say a rail of three 48 px chips would take 75% of the
+      narrow poster, so it is not a free choice either. Settle it BEFORE adding a third badge —
+      see `poster-badge-system-undesigned` in docs/architecture/tech-debt.md.
+
+      The glyph is `content_copy`, not `layers`: at the real badge size (40px inside a 48px
+      chip on a 213px poster) the layers rhombus read as an abstract diamond, while two
+      overlapping rectangles read as "there are two of these" immediately. Checked against the
+      rendered PNGs at true scale, not from the icon names.
+
+      Two things that ARE load-bearing whatever gets decided:
+        * every badge must be cleared in resetBadge() — these cells are recycled, and an
+          uncleared badge ghosts onto the next item;
+        * the CHIP stays a dark scrim and only the GLYPH is themed. An accent-filled chip was
+          tried and merged into a single blue block with the progress bar directly below it,
+          which fills its bar with colorSecondary too (caught on device). A dark chip plus the
+          6px gap keeps the two apart while the glyph still carries the theme.
+    -->
+    <Rectangle id="versionsBadgeBackground" width="48" height="48" visible="false">
+      <Poster id="versionsIcon" uri="pkg:/images/icons/versions_$$RES$$.png" width="40" height="40" translation="[4,4]" />
+    </Rectangle>
   </children>
   <interface>
     <field id="unplayedCount" type="integer" value="0" />
     <field id="isWatched" type="boolean" value="false" />
     <field id="playedPercentage" type="float" value="0" />
+    <field id="mediaSourceCount" type="integer" value="0" />
     <function name="resetBadge" />
   </interface>
 </component>

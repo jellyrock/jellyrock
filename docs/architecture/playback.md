@@ -22,6 +22,8 @@ related-files:
   - components/ItemGrid/LoadVideoContentTask.bs
   - source/utils/versionLabels.bs
   - source/utils/versionResume.bs
+  - source/utils/versionDisplay.bs
+  - source/utils/mediaSources.bs
   - source/utils/episodeQueue.bs
   - source/utils/versionPick.bs
   - components/tasks/QuickPlayTask.bs
@@ -31,7 +33,7 @@ related-files:
   - source/utils/streamSelection.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-09-19
+last-reviewed: 2026-09-20
 ---
 
 # Video & Audio Playback
@@ -510,6 +512,60 @@ progress-report cadence when a session ends without a stop report, and the switc
 carry. Device knowledge is deliberately absent from `versionResume` (it must stay pure), so a
 tie comes back as ids and `findBestVideoSourceAmongIds()` settles it over just those versions —
 scoring the whole list would let a 4K version nobody started win a tie between two in progress.
+
+#### What a TILE shows — `versionDisplay.correctDisplayProgress()`
+
+Everything above decides which version **plays**. A poster or episode row is a separate
+problem, because a list response carries each item's OWN `UserData` — which from 12.0 is the
+position of the item's own file, not of the version that would start. Measured on 12.0.0
+(2026-09-19, `Version Episodes (2026)`, 360 s versions): with only the alternate in progress at
+120 s the row reports `PlayedPercentage` 0, so the tile shows **no bar at all**; with the item's
+own version at 60 s and the alternate at 240 s and played last, the row reports 16.7% while Play
+resumes the alternate at 67%. Servers before 12.0 store one position per item whichever file played
+(verified the same day on 10.7.7, 10.9.11 and 10.11.11 with a grouped two-version movie), so
+neither case exists there and the correction does not run.
+
+The loaders fix it on the RAW reply, before the transform, so the transformer, the item node and
+`JRPoster`'s bar need no knowledge of versions. `isResumable` is *derived* from the corrected
+values in the transformer, which is the other reason to correct the reply rather than the node —
+patching after the transform would mean re-deriving that invariant in a second place.
+
+- **`MediaSourceCount`** is requested wherever video tiles are built. It is the free signal that
+  an item has alternates — the server emits it only when there are several (verified 2026-09-19
+  on every server from 10.7.7 to 12.0.0), so its cost follows the multi-version items rather
+  than the row: +21 bytes for one, +85 across a 100-item page. It gates everything below, and
+  drives the alternate-versions badge on the tile.
+- **`GET /UserItems/Resume`, no `Fields`** — every version the viewer is part-way through, in
+  the server's `DatePlayed`-descending order. That order is the only signal for "played last";
+  it is hard-coded in `ItemsController.GetResumeItems` and the endpoint accepts no `sortBy`, so
+  a client cannot pin it.
+- **`GET /Items?Ids=…&Fields=MediaSources`** for the page's grouped tiles only — each tile's
+  sibling version ids. Needed because the DTO exposes no primary pointer and name/year is not
+  an identity.
+
+**Why two requests rather than one.** Asking the *resume list* for `Fields=MediaSources` answers
+it in one round trip, and costs the wrong thing. Measured against a local 12.0 server
+(2026-09-20), per resume row: **1.1 KB plain against 7.3 KB with `MediaSources`** — and the gap
+widens with the list, reaching **62 KB against 567 KB at 61 in-progress items**. That scales with
+the viewer's *backlog*, which nothing bounds. By-id scales with the *grouped items on the page*,
+which `multiVersionIds()` has already counted. End to end at 61 in-progress items and 4 grouped
+tiles: **567 KB / 68 ms for one request against 84 KB / 42 ms for two** — 6.8× fewer bytes and
+faster despite the extra round trip, because payload dominates.
+
+The resume list is fetched **first**: an empty one means nothing is in progress anywhere, so the
+second request is skipped. The resulting cost ladder is 0 requests on a pre-12 server or a page
+with nothing grouped, 1 when grouped items exist but nothing is in progress, and 2 otherwise.
+
+**Scoping differs by caller, deliberately.** The grid scopes the resume list to its container
+(also correct through a collection — verified 2026-09-20 that a resume query scoped to a `BoxSet`
+returns its members). Extras rows do not: More Like This and a person's videos legitimately cross
+libraries, so a `parentId` there would drop the correction for exactly those rows.
+
+**Bounded divergence, accepted deliberately.** The version shown is always the one played
+*last*, while `chooseResumeSource()` prefers device-best inside the 30 s near-level margin. So
+where the two disagree the versions are at most 30 s apart and the bar is at most that much of
+the runtime out — under half a percent on a feature, about 8% on a six-minute episode. Closing
+it would need every version's streams for every item on the page, not just the grouped ones.
 
 **`versionResume.chooseResumeSource()` is the single answer**, shared by every entry point, so
 the app cannot name one version and play another:

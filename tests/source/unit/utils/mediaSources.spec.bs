@@ -1,0 +1,47 @@
+import "pkg:/source/utils/mediaSources.bs"
+
+namespace tests
+
+  ' Chunking the ids of a MediaSources-by-id lookup. byIds() itself is the imperative half —
+  ' it fetches, so it has no seam a unit test can reach; the rule that decides how many
+  ' requests it makes is here.
+  '
+  ' Moved from episodeQueue.spec.bs when the lookup was lifted into its own module for the
+  ' display-progress correction to share (one @suite per file — tests/CLAUDE.md).
+  @suite("mediaSources - id chunking")
+  class MediaSourcesTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("idChunks()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("splits ids into runs of the given size, in order, the last one short")
+    function _()
+      chunks = mediaSources.idChunks(["a", "b", "c", "d", "e"], 2)
+      m.assertEqual(chunks.count(), 3)
+      m.assertEqual(chunks[0].join(","), "a,b")
+      m.assertEqual(chunks[1].join(","), "c,d")
+      m.assertEqual(chunks[2].join(","), "e")
+    end function
+
+    @it("makes one run when every id fits, and none for no ids")
+    function _()
+      m.assertEqual(mediaSources.idChunks(["a", "b"], 2).count(), 1)
+      m.assertEqual(mediaSources.idChunks([], 2).count(), 0)
+    end function
+
+    @it("treats a size below one as one, rather than looping forever")
+    function _()
+      m.assertEqual(mediaSources.idChunks(["a", "b"], 0).count(), 2)
+    end function
+
+    @it("keeps a request inside the documented URL budget at the configured size")
+    function _()
+      ' IDS_PER_REQUEST exists to bound the request LINE, not the response — 100 ids at 35
+      ' bytes each is ~3.5 KB. Pinned here so raising it has to be a deliberate edit.
+      m.assertEqual(mediaSources.IDS_PER_REQUEST, 100)
+    end function
+
+  end class
+
+end namespace
