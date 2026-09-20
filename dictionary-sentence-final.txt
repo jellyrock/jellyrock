@@ -109,6 +109,7 @@
 (?:BSC-plugin-generated)\.
 (?:bsc-plugins)\.
 (?:bsconfig)\.
+(?:bsconfigs)\.
 (?:bsfmt)\.
 (?:bslint)\.
 (?:cacheable)\.
@@ -480,6 +481,7 @@
 (?:post-auth)\.
 (?:postcondition)\.
 (?:postconditions)\.
+(?:pre-12)\.
 (?:pre-auth)\.
 (?:pre-commit)\.
 (?:Pre-commit)\.
@@ -712,6 +714,7 @@
 (?:unquantified)\.
 (?:unresolvable)\.
 (?:unreviewed)\.
+(?:unscoped)\.
 (?:unshuffled)\.
 (?:unsynchronized)\.
 (?:untracked)\.
