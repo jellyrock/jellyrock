@@ -15,9 +15,23 @@
 //      ("slv") falls through to tier 2's English string in EVERY UI locale,
 //      including Slovenian — the user's own language fails to localize.
 //
-// Both fail silently. Compile passes, unit tests pass, English UI renders
+//   3. PERSONKIND WITHOUT A LABEL — `source/utils/people.bs` maps every
+//      `PersonKind` enum value to a translation key (or declares it
+//      deliberately unlabelled). A value with NO row in either table is
+//      rendered as raw English enum text. This is NOT a compile error —
+//      a missing row has no expression to fail on — which is exactly how
+//      nine of the twenty-six values shipped untranslated. The enum is
+//      read from the committed spec fingerprints, so the check needs no
+//      network and no gitignored API cache.
+//
+// All fail silently. Compile passes, unit tests pass, English UI renders
 // fine, only non-English users notice — months later. This script catches
-// both before merge.
+// them before merge.
+//
+// Despite the name this covers BOTH localization lookup tables — the
+// language resolver and the person-label resolver. They share the same
+// `m.<cache> = { … }` authoring shape and the same failure mode, so they
+// share a parser and a gate rather than drifting across two scripts.
 //
 // Exits 1 on any inconsistency, 0 when clean.
 //
@@ -31,7 +45,11 @@ const path = require('path');
 
 const ROOT_DIR = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : '.';
 const LANGS_BS_PATH = path.join(ROOT_DIR, 'source/utils/languages.bs');
+const PEOPLE_BS_PATH = path.join(ROOT_DIR, 'source/utils/people.bs');
 const EN_US_PATH = path.join(ROOT_DIR, 'locale/custom/en_US.json');
+// Committed, network-free source of truth for server enums. `.api-watch/cache/` holds
+// the raw specs but is gitignored, so it does not exist in CI — these do.
+const FINGERPRINT_DIR = path.join(ROOT_DIR, 'docs/architecture/spec-fingerprints');
 
 // ============================================================
 // Reference: ISO 639-1 (2-letter) → ISO 639-2 (3-letter) variants.
@@ -159,27 +177,29 @@ function c(text, color) {
 //   2. Each function declares the AA on a `m.<cache> = { ... }` block
 //      bounded by `function <name>()` and the next `\nend function`.
 //
-// If languages.bs gains real logic, replace this with a tokenizer.
+// Values may be a quoted string, `translationKeys.X`, or a bare `true`
+// (a SET — `unlabeledPersonKinds()` in people.bs uses that shape).
+//
+// If either table gains real logic, replace this with a tokenizer.
 // ============================================================
-function parseAA(source, fnName) {
+function parseAA(source, fnName, fileLabel) {
   const fnRe = new RegExp(
     `function\\s+${fnName}\\s*\\(\\)[^\\n]*\\n([\\s\\S]*?)\\nend function`,
     'm',
   );
   const fnMatch = source.match(fnRe);
-  if (!fnMatch) throw new Error(`function ${fnName}() not found in languages.bs`);
+  if (!fnMatch) throw new Error(`function ${fnName}() not found in ${fileLabel}`);
   const body = fnMatch[1];
 
   const result = {};
-  // Match: "key": value   where value is either a quoted string OR translationKeys.X
-  const entryRe = /"([^"]+)"\s*:\s*(?:"([^"]*)"|translationKeys\.([A-Za-z0-9_]+))/g;
+  // Match: "key": value   where value is a quoted string, translationKeys.X, or `true`
+  const entryRe = /"([^"]+)"\s*:\s*(?:"([^"]*)"|translationKeys\.([A-Za-z0-9_]+)|(true))/g;
   let m;
   while ((m = entryRe.exec(body)) !== null) {
-    const [, key, strVal, tkVal] = m;
-    result[key] =
-      strVal !== undefined
-        ? { kind: 'string', value: strVal }
-        : { kind: 'translationKey', value: tkVal };
+    const [, key, strVal, tkVal, flagVal] = m;
+    if (strVal !== undefined) result[key] = { kind: 'string', value: strVal };
+    else if (tkVal !== undefined) result[key] = { kind: 'translationKey', value: tkVal };
+    else result[key] = { kind: 'flag', value: flagVal };
   }
   return result;
 }
@@ -191,9 +211,9 @@ console.log(c('\nLanguage Coverage Check', 'bold'));
 console.log(c('========================', 'blue'));
 
 const langsSource = fs.readFileSync(LANGS_BS_PATH, 'utf8');
-const aliases = parseAA(langsSource, 'mediaLanguageAliases');
-const tier1 = parseAA(langsSource, 'languageTranslationKeys');
-const tier2 = parseAA(langsSource, 'languageEnglishFallbacks');
+const aliases = parseAA(langsSource, 'mediaLanguageAliases', 'languages.bs');
+const tier1 = parseAA(langsSource, 'languageTranslationKeys', 'languages.bs');
+const tier2 = parseAA(langsSource, 'languageEnglishFallbacks', 'languages.bs');
 const enUS = JSON.parse(fs.readFileSync(EN_US_PATH, 'utf8'));
 
 console.log(
@@ -284,6 +304,115 @@ if (missingKeys.length === 0) {
     errors.push(
       `tier 1 entry "${base}" → translationKeys.${key} — key "${key}" is not defined in locale/custom/en_US.json`,
     );
+  }
+}
+
+// --------------------------------------------------------
+// Check 4: every `PersonKind` value is either labelled or deliberately blank
+//
+// Source of truth is the UNION of `schemas.PersonKind.enum` across every committed
+// fingerprint, not the newest one: the app supports 10.7 → 12.x simultaneously, so a
+// value present on any supported line must render. (10.7.0 predates the enum and
+// contributes nothing; no special-casing needed.) A value dropped upstream keeps its
+// string harmlessly, a value added anywhere is required.
+// --------------------------------------------------------
+console.log(c('\n[PersonKind Coverage]', 'cyan'));
+
+/** Union of PersonKind enum values across committed fingerprints, or null if none define it. */
+function readPersonKindEnum() {
+  let files;
+  try {
+    files = fs
+      .readdirSync(FINGERPRINT_DIR)
+      .filter((f) => f.endsWith('.json'))
+      .sort();
+  } catch {
+    return null;
+  }
+  const union = new Map(); // lowercased → canonical spelling
+  const sources = [];
+  for (const file of files) {
+    let doc;
+    try {
+      doc = JSON.parse(fs.readFileSync(path.join(FINGERPRINT_DIR, file), 'utf8'));
+    } catch {
+      continue;
+    }
+    const values = doc?.schemas?.PersonKind?.enum;
+    if (!Array.isArray(values) || values.length === 0) continue;
+    sources.push(file);
+    for (const v of values) union.set(String(v).toLowerCase(), String(v));
+  }
+  return sources.length === 0 ? null : { union, sources };
+}
+
+const personKindEnum = readPersonKindEnum();
+
+if (personKindEnum === null) {
+  // Loud, not silent. A skip here is indistinguishable from full coverage, which is the
+  // precise failure this check exists to prevent.
+  errors.push(
+    'no committed fingerprint under docs/architecture/spec-fingerprints/ defines ' +
+      'schemas.PersonKind — person-label coverage cannot be verified. Run ' +
+      '`npm run docs:spec-fingerprints`.',
+  );
+} else {
+  const peopleSource = fs.readFileSync(PEOPLE_BS_PATH, 'utf8');
+  const kindKeys = parseAA(peopleSource, 'personKindTranslationKeys', 'people.bs');
+  const unlabelled = parseAA(peopleSource, 'unlabeledPersonKinds', 'people.bs');
+  const { union, sources } = personKindEnum;
+
+  console.log(
+    `  ${union.size} PersonKind value(s) across ${sources.length} fingerprint(s); ` +
+      `${Object.keys(kindKeys).length} labelled, ${Object.keys(unlabelled).length} deliberately blank`,
+  );
+
+  const before = errors.length;
+
+  // 4a. Every enum value is classified.
+  for (const [lower, canonical] of union) {
+    const labelled = Object.prototype.hasOwnProperty.call(kindKeys, lower);
+    const blank = Object.prototype.hasOwnProperty.call(unlabelled, lower);
+    if (!labelled && !blank) {
+      errors.push(
+        `PersonKind "${canonical}" has no row in personKindTranslationKeys() nor ` +
+          `unlabeledPersonKinds() (source/utils/people.bs) — it would render as raw ` +
+          `English. Add a LabelPersonKind${canonical} key, or declare it deliberately blank.`,
+      );
+    } else if (labelled && blank) {
+      errors.push(
+        `PersonKind "${canonical}" is in BOTH personKindTranslationKeys() and ` +
+          `unlabeledPersonKinds() (source/utils/people.bs) — the two must be disjoint.`,
+      );
+    }
+  }
+
+  // 4b. No stale rows for a value no supported server sends.
+  for (const table of ['personKindTranslationKeys', 'unlabeledPersonKinds']) {
+    const entries = table === 'personKindTranslationKeys' ? kindKeys : unlabelled;
+    for (const lower of Object.keys(entries)) {
+      if (!union.has(lower)) {
+        errors.push(
+          `${table}() lists "${lower}", which is not a PersonKind value in any committed ` +
+            `fingerprint (${sources.join(', ')}) — stale row.`,
+        );
+      }
+    }
+  }
+
+  // 4c. Same key-existence guarantee Check 3 gives the language table.
+  for (const [lower, dst] of Object.entries(kindKeys)) {
+    if (dst.kind !== 'translationKey') continue;
+    if (!Object.prototype.hasOwnProperty.call(enUS, dst.value)) {
+      errors.push(
+        `PersonKind "${lower}" → translationKeys.${dst.value} — key "${dst.value}" is not ` +
+          `defined in locale/custom/en_US.json`,
+      );
+    }
+  }
+
+  if (errors.length === before) {
+    console.log(c('  OK', 'green') + ' — every PersonKind value is labelled or deliberately blank');
   }
 }
 

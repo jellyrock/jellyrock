@@ -116,6 +116,42 @@ namespace tests
       m.assertEqual(specs[0].subtitle, "Director / Screenplay / Producer")
     end function
 
+    @it("collapses repeated credits that would label identically")
+    function _()
+      ' Read "Director / Director" before the dedup. jellyfin-web still repeats them.
+      specs = castCardSpecs([
+        { Id: "d1", Name: "Twice Credited", Type: "Director", Role: "Director" },
+        { Id: "d1", Name: "Twice Credited", Type: "Director", Role: "Director" }
+      ])
+      m.assertEqual(specs.count(), 1)
+      m.assertEqual(specs[0].subtitle, "Director")
+    end function
+
+    @it("keeps a credit that merely CONTAINS an existing one")
+    @params("Director", "Co-Director", "Director / Co-Director")
+    @params("Co-Director", "Director", "Co-Director / Director")
+    function _(firstRole, secondRole, expected)
+      ' The separator-anchored test exists for exactly this: a bare substring check
+      ' would let "Director" swallow "Co-Director" in one direction or the other.
+      specs = castCardSpecs([
+        { Id: "d1", Name: "Both Roles", Type: "Director", Role: firstRole },
+        { Id: "d1", Name: "Both Roles", Type: "Director", Role: secondRole }
+      ])
+      m.assertEqual(specs.count(), 1)
+      m.assertEqual(specs[0].subtitle, expected)
+    end function
+
+    @it("collapses a repeat that is not adjacent to its first appearance")
+    function _()
+      specs = castCardSpecs([
+        { Id: "p1", Name: "Repeat", Type: "Director", Role: "Director" },
+        { Id: "p1", Name: "Repeat", Type: "Writer", Role: "Screenplay" },
+        { Id: "p1", Name: "Repeat", Type: "Director", Role: "Director" }
+      ])
+      m.assertEqual(specs.count(), 1)
+      m.assertEqual(specs[0].subtitle, "Director / Screenplay")
+    end function
+
     @it("does not leave a leading separator when the first credit labels to nothing")
     function _()
       ' A mergeable entry with no Type cannot occur from the server, but a blank label
@@ -198,11 +234,19 @@ namespace tests
     @params("Composer", "Composer")
     @params("Conductor", "Conductor")
     @params("Creator", "Creator")
+    @params("Colorist", "Colorist")
+    @params("CoverArtist", "Cover artist")
+    @params("Editor", "Editor")
     @params("Engineer", "Sound engineer")
     @params("Illustrator", "Illustrator")
+    @params("Inker", "Inker")
+    @params("Letterer", "Letterer")
     @params("Lyricist", "Lyricist")
     @params("Mixer", "Mixer")
+    @params("Narrator", "Narrator")
+    @params("Penciller", "Penciller")
     @params("Remixer", "Remixer")
+    @params("Translator", "Translator")
     function _(personKind, expected)
       m.assertEqual(personCreditLabel(personKind, ""), expected)
     end function
@@ -210,6 +254,20 @@ namespace tests
     @it("passes an unknown PersonKind through rather than showing nothing")
     function _()
       m.assertEqual(personCreditLabel("Choreographer", ""), "Choreographer")
+    end function
+
+    @it("renders nothing for a kind we deliberately leave unlabelled")
+    function _()
+      ' `Unknown` is the enum's serialization default, so it means "the server did not
+      ' say" — which must read the same as no type at all, not as the literal word.
+      m.assertEqual(personCreditLabel("Unknown", ""), "")
+      m.assertEqual(personCreditLabel("Unknown", "Unknown"), "")
+    end function
+
+    @it("still shows a real job when the kind is Unknown")
+    function _()
+      ' The blank only applies when there is nothing else to say; a job still wins.
+      m.assertEqual(personCreditLabel("Unknown", "Stunt Coordinator"), "Stunt Coordinator")
     end function
 
     @it("returns empty when there is neither a type nor a role")

@@ -16,10 +16,14 @@ import "pkg:/source/utils/translate.bs"
 ' neither `PersonKind` values nor TMDB job names are among them. See jellyfin#16488.
 '
 ' Mirrors jellyfin-web's `getPeopleRoleOrTypeLabel` (cardBuilder.js) and the merge in
-' its itemDetails controller, with two deliberate differences recorded in the PR:
-' guest stars stay in the one Cast & Crew row rather than getting a row of their own,
-' and `Artist` / `AlbumArtist` are KEPT (web drops them because it renders artists
-' separately; dropping them here would empty the row on a music video).
+' its itemDetails controller, with four deliberate differences recorded in the PR:
+'
+'   1. Guest stars stay in the one Cast & Crew row rather than getting a row of their
+'      own, because JellyRock has no layout for a second row.
+'   2. `Artist` / `AlbumArtist` are KEPT (web drops them because it renders artists
+'      separately; dropping them here would empty the row on a music video).
+'   3. `Unknown` renders NO label rather than the literal word — see unlabeledPersonKinds().
+'   4. Repeated credits that would label identically collapse — see castCardSpecs().
 
 ' The person kinds whose repeated credits collapse onto one card. Actors and guest stars
 ' stay separate — a performer credited twice is usually two distinct characters, and web
@@ -30,9 +34,15 @@ function mergeablePersonKinds() as object
   return m.mergeablePersonKindsCache
 end function
 
-' `PersonKind` → translation key. Covers the whole enum rather than the handful that
-' merge, because every one of them reaches the card subtitle when no `Role` is set —
-' before this map they rendered as raw enum text ("GuestStar").
+' `PersonKind` → translation key. Covers every enum value except those
+' unlabeledPersonKinds() deliberately renders blank, because each one reaches the card
+' subtitle when no `Role` is set — before this map they rendered as raw enum text
+' ("GuestStar").
+'
+' Completeness is GATED, not remembered: `npm run lint:language-coverage` fails when a
+' `PersonKind` value in any committed spec fingerprint appears in neither this map nor
+' unlabeledPersonKinds(). A missing row is NOT a compile error — there is no expression
+' to fail on — which is exactly how nine values shipped as raw English.
 '
 ' Cached on the caller's `m` after first build. Caches the KEYS, never the resolved
 ' strings, so a mid-session UI-language change is picked up on the next lookup.
@@ -45,20 +55,47 @@ function personKindTranslationKeys() as object
     "arranger": translationKeys.LabelPersonKindArranger,
     "artist": translationKeys.LabelPersonKindArtist,
     "author": translationKeys.LabelPersonKindAuthor,
+    "colorist": translationKeys.LabelPersonKindColorist,
     "composer": translationKeys.LabelPersonKindComposer,
     "conductor": translationKeys.LabelPersonKindConductor,
+    "coverartist": translationKeys.LabelPersonKindCoverArtist,
     "creator": translationKeys.LabelPersonKindCreator,
     "director": translationKeys.LabelPersonKindDirector,
+    "editor": translationKeys.LabelPersonKindEditor,
     "engineer": translationKeys.LabelPersonKindEngineer,
     "gueststar": translationKeys.LabelPersonKindGuestStar,
     "illustrator": translationKeys.LabelPersonKindIllustrator,
+    "inker": translationKeys.LabelPersonKindInker,
+    "letterer": translationKeys.LabelPersonKindLetterer,
     "lyricist": translationKeys.LabelPersonKindLyricist,
     "mixer": translationKeys.LabelPersonKindMixer,
+    "narrator": translationKeys.LabelPersonKindNarrator,
+    "penciller": translationKeys.LabelPersonKindPenciller,
     "producer": translationKeys.LabelPersonKindProducer,
     "remixer": translationKeys.LabelPersonKindRemixer,
+    "translator": translationKeys.LabelPersonKindTranslator,
     "writer": translationKeys.LabelPersonKindWriter
   }
   return m.personKindTranslationKeysCache
+end function
+
+' `PersonKind` values that deliberately render NO label.
+'
+' `Unknown` is the enum's serialization DEFAULT (`BaseItemPerson.Type` declares
+' `default: "Unknown"`), so it means "the server did not say" — the same thing as no type
+' at all, which personCreditLabel() already renders as "". Putting the literal word under
+' a person's name is noise. jellyfin-web translates it instead; this is deliberate.
+'
+' Declared as a SET rather than simply left out of personKindTranslationKeys(), because
+' the coverage gate requires the two together to cover the enum. An omission is
+' indistinguishable from the oversight that gate exists to catch; a row here is a
+' recorded decision.
+'
+' Cached on the caller's `m` after first build.
+function unlabeledPersonKinds() as object
+  if isValid(m.unlabeledPersonKindsCache) then return m.unlabeledPersonKindsCache
+  m.unlabeledPersonKindsCache = { "unknown": true }
+  return m.unlabeledPersonKindsCache
 end function
 
 ' TMDB job → translation key, for the jobs the server maps onto a broader `PersonKind`.
@@ -77,7 +114,8 @@ end function
 
 ' Label for ONE credit, using jellyfin-web's rule:
 '   actor / guest star with a character  → "as {character}"
-'   no role, or role that just restates the type → the translated type
+'   no role, or a role that just restates the type → the translated type, or "" when
+'                                            unlabeledPersonKinds() covers that kind
 '   otherwise                            → the role, translated when we carry a string
 '
 ' `cache` is an AA the caller threads through a batch, keyed on the TRANSLATION
@@ -86,9 +124,11 @@ end function
 ' calls. Resolving "as {0}" once and substituting the character locally bounds the whole
 ' batch to at most one call per distinct key — in practice three or four.
 '
-' That matters because this runs on a Task thread, where every translate() is two
-' m.global reads at ~93 us each against ~2 us from the render thread
-' (docs/architecture/async.md). Pass `invalid` to skip caching.
+' That matters because this runs on a Task thread, where translate() reads
+' `m.global.translations` — one rendezvous at ~93 us against ~2 us from the render thread
+' — and reads `m.global.translationsFallback` for a SECOND only when the key misses,
+' which for en_US it never does (docs/architecture/async.md). Pass `invalid` to skip
+' caching.
 '
 ' @param personKind - `BaseItemPerson.Type` (a `PersonKind` value)
 ' @param role  - `BaseItemPerson.Role` (a TMDB job, or an actor's character)
@@ -104,9 +144,15 @@ function personCreditLabel(personKind as string, role as string, cache = invalid
 
   if role = "" or LCase(role) = lowerKind
     if personKind = "" then return ""
+    ' Labelled kinds are checked FIRST because they are almost all of them, and each of
+    ' these table accessors is a function call this loop pays per credit. The gate keeps
+    ' the two tables disjoint, so the order is free to favour the common case.
     kindKeys = personKindTranslationKeys()
     if isValid(kindKeys[lowerKind]) then return translateCached(kindKeys[lowerKind], cache)
-    ' An enum value we carry no string for — show it rather than nothing.
+    ' A kind we deliberately say nothing for reads the same as no kind at all.
+    if isValid(unlabeledPersonKinds()[lowerKind]) then return ""
+    ' A kind no committed fingerprint knows about — i.e. a server newer than our newest
+    ' fingerprint, which the coverage gate cannot see. Show it rather than nothing.
     return personKind
   end if
 
@@ -158,6 +204,14 @@ end function
 ' the id is the only thing that identifies one person across two credits and merging on
 ' name would fuse two different people who share one.
 '
+' Credits that would label IDENTICALLY collapse rather than repeat: a director also
+' credited as such by `Role` read "Director / Director". Web does repeat them — its
+' `RoleList` join does not dedupe — so this is a deliberate improvement on the reference.
+' The test is anchored on " / " so a credit that merely CONTAINS an existing one still
+' shows: an existing "Director" must not swallow a later "Co-Director". It runs only on
+' the second and later credits of a MERGED person, so the no-merge path — the one the
+' timings above were taken on — allocates nothing new.
+'
 ' @param people - raw `BaseItemPerson` array from a parent item's `People` field
 ' @return array of { id, name, primaryImageTag, subtitle }
 function castCardSpecs(people as dynamic) as object
@@ -187,7 +241,9 @@ function castCardSpecs(people as dynamic) as object
           previous = specs[existing].subtitle
           if previous = ""
             specs[existing].subtitle = label
-          else
+          else if Instr(1, " / " + previous + " / ", " / " + label + " / ") = 0
+            ' Both sides wrapped in the separator so the match is on a WHOLE part:
+            ' a bare Instr would let "Director" suppress "Co-Director".
             specs[existing].subtitle = previous + " / " + label
           end if
         end if
