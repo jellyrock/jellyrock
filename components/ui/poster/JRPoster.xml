@@ -6,21 +6,28 @@
       <LabelPrimaryMedium id="checkmark" isBold="true" height="48" horizAlign="center" vertAlign="center" text="✓" translation="[0,3]" visible="false" />
     </RectangleSecondary>
     <!--
-      Badge corners are assigned by FAMILY, so a tile stays readable as signals are added:
-        top-right    what you have CONSUMED   (unplayed count / watched ✓, above)
-        bottom-left  what the MEDIA is        (alternate versions, here)
-        bottom edge  how far through you are  (VideoProgressBar, added on demand)
-        top-left     reserved for USER marks  (favorite — not built yet)
-      Versions sits by the progress bar deliberately: both answer "what happens if I press
-      Play". Top-right was not available — the watched badge has held it since long before
-      this, and jellyfin-web puts its unplayed count there too.
+      Placement, and what is NOT yet decided about it.
 
-      It is the one badge NOT drawn in the accent colour, which also separates the families:
-      accent means YOUR state (watched, progress), a neutral scrim means a fact about the
-      MEDIA. That is not only taste — VideoProgressBar draws its filled bar in colorSecondary,
-      so an accent chip sitting directly on top of it merged into a single blue block on a
-      partly-watched tile. The scrim here is the same colorBlack+alpha60 that the progress
-      bar already uses for its own unfilled track.
+      This badge sits bottom-left, clear of the progress bar's strip, and the watched/unplayed
+      badge keeps top-right. That much is deliberate: top-right has held the watched badge since
+      long before this and jellyfin-web puts its unplayed count there too, and versions belongs by
+      the progress bar because both answer "what happens if I press Play".
+
+      What is NOT settled is the badge SYSTEM — whether further signals get their own corners or
+      join a single rail, and which metadata earns a tile at all. jellyfin-web lays every card
+      indicator out in ONE top-right flex rail of round chips (`.cardIndicators`) and shows no
+      HDR / Dolby Vision / Atmos / resolution on cards at all; JellyRock already diverges in chip
+      shape and size. With only two badges today the question is not forced, and measured tile
+      widths (213 and 264 px portrait) say a rail of three 48 px chips would take 75% of the
+      narrow poster, so it is not a free choice either. Settle it BEFORE adding a third badge —
+      see `poster-badge-system-undesigned` in docs/architecture/tech-debt.md.
+
+      Two things that ARE load-bearing whatever gets decided:
+        * every badge must be cleared in resetBadge() — these cells are recycled, and an
+          uncleared badge ghosts onto the next item;
+        * this badge is drawn on a colorBlack+alpha60 scrim rather than the accent colour,
+          because VideoProgressBar fills its bar with colorSecondary and an accent chip directly
+          above it merged into a single blue block on a partly-watched tile (caught on device).
     -->
     <Rectangle id="versionsBadgeBackground" width="48" height="48" visible="false">
       <Poster id="versionsIcon" uri="pkg:/images/icons/layers_$$RES$$.png" width="40" height="40" translation="[4,4]" />
