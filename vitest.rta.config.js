@@ -23,10 +23,12 @@ export default defineConfig({
     // worst case sat above this arithmetic rather than at it.
     testTimeout: 180_000,
     hookTimeout: 120_000, // deploy + boot in globalSetup/beforeAll
-    // One real device — everything must run serially (Vitest 4: no poolOptions).
+    // One real device — everything must run serially. `poolOptions` was removed in
+    // Vitest 4 and these top-level options replace it. `minWorkers` was removed in
+    // Vitest 5 — it resolves but nothing reads it, so do not re-add it; the serial
+    // guarantee here is `fileParallelism: false` + `maxWorkers: 1`.
     fileParallelism: false,
     maxWorkers: 1,
-    minWorkers: 1,
     sequence: { concurrent: false },
   },
 });
