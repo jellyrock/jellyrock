@@ -177,7 +177,19 @@ namespace tests
     @describe("keepAliveFrame()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("is a KeepAlive message the server can parse")
+    ' Asserted as a RAW STRING, deliberately. The previous version of this spec did
+    ' `ParseJson(keepAliveFrame()).MessageType = "KeepAlive"` and passed for the whole life of #934,
+    ' because ParseJson returns a case-INsensitive AA: it resolved the broken `messagetype` key
+    ' without complaint. Only the serialized bytes can show the casing, and the casing is the whole
+    ' contract — Jellyfin's socket path binds `MessageType` case-SENSITIVELY, so a lowercased key is
+    ' silently ignored and the server reaps the socket ~60s later.
+    @it("serializes MessageType with the exact casing Jellyfin's socket binding requires")
+    function _()
+      Q = Chr(34)
+      m.assertEqual(remoteProtocol.keepAliveFrame(), "{" + Q + "MessageType" + Q + ":" + Q + "KeepAlive" + Q + "}")
+    end function
+
+    @it("is still a KeepAlive message the server can parse")
     function _()
       parsed = ParseJson(remoteProtocol.keepAliveFrame())
       m.assertEqual(parsed.MessageType, "KeepAlive")
