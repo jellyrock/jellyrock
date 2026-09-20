@@ -575,52 +575,121 @@ namespace versionResume
   ' 10.7.7, 10.9.11 and 10.11.11 with a grouped two-version movie), so neither case can arise
   ' there and nothing below should run.
   '
-  ' GET /UserItems/Resume answers it for a whole view in ONE request: each row IS the version
-  ' played last, carrying its own position, and with Fields=MediaSources it also carries every
-  ' source id of its item — so the row can be found from whichever id the list response used
-  ' to name the tile. That indirection is required: the DTO exposes no primary pointer
-  ' (`version-resume-primary-order`), so an alternate's row cannot be resolved to its primary
-  ' any other way, and matching on name/year is not an identity.
+  ' TWO REQUESTS, each scaling with something the PAGE controls:
   '
-  ' KNOWN, BOUNDED DIVERGENCE from chooseResumeSource(). The resume row is always the version
+  '   1. GET /UserItems/Resume, no Fields — every version the viewer is part-way through,
+  '      ordered DatePlayed DESCENDING. That order is hard-coded server-side
+  '      (ItemsController.GetResumeItems) and the endpoint accepts no sortBy, so a client
+  '      cannot pin it; resumeRanking() turns the order into a rank, which is the ONLY signal
+  '      for "played last".
+  '   2. GET /Items?Ids=<the page's multi-version tiles>&Fields=MediaSources — each tile's
+  '      sibling version ids. Required because the DTO exposes no primary pointer
+  '      (`version-resume-primary-order`), and name-and-year is not an identity.
+  '
+  ' Asking the RESUME list for Fields=MediaSources instead needs one request rather than two,
+  ' and measures the wrong way round. Per resume row against a local 12.0 server (2026-09-20):
+  ' 1.1 KB plain vs 7.3 KB with MediaSources, and the gap widens with the list — at 61
+  ' in-progress items, 62 KB vs 567 KB. That cost scales with the viewer's BACKLOG, which
+  ' nothing bounds. MediaSources-by-ids scales with the grouped items on the page, which
+  ' multiVersionIds() has already counted. End to end at 61 in-progress items and 4 grouped
+  ' tiles: 567 KB / 68 ms for one request against 84 KB / 42 ms for two — 6.8x fewer bytes AND
+  ' faster despite the extra round trip, because payload dominates.
+  '
+  ' Order matters: the resume list is fetched FIRST, because an empty one skips request 2.
+  '
+  ' KNOWN, BOUNDED DIVERGENCE from chooseResumeSource(). The version shown is always the one
   ' played LAST, while PLAYBACK prefers the device-best version when two sit within
   ' NEAR_LEVEL_MARGIN_TICKS of each other. Inside that margin the two positions are at most
   ' 30 s apart, so a bar taken from the wrong one of them is at most 30 s of runtime out —
   ' under half a percent on a feature, about 8% on a six-minute episode. Closing it would mean
-  ' scoring every version's streams, which needs MediaSources on the GRID page: +87 ms and
-  ' +326 KB per 100 items, measured 2026-09-19 against a local 12.0 server. That cost is the
-  ' reason this shape exists, so the margin is accepted rather than paid for.
+  ' scoring every version's streams, which needs MediaSources for every item on the page rather
+  ' than only the grouped ones. The margin is accepted rather than paid for.
 
-  ' displayProgressMap: Progress of the version that would play, keyed by every id that could
-  ' name its tile.
+  ' multiVersionIds: The ids of the items that have alternate versions.
   '
-  ' @param {object} resumeItems - Items from GET /UserItems/Resume (Fields=MediaSources)
-  ' @return {object} AA of lowercased source id -> { positionTicks, playedPercentage }
-  function displayProgressMap(resumeItems as object) as object
-    map = {}
-    if not isValid(resumeItems) then return map
+  ' Both the GATE and the input to the MediaSources request: an empty result means this page has
+  ' nothing grouped, so NEITHER request is made. One computation instead of the same scan
+  ' open-coded in every loader.
+  '
+  ' @param {object} items - raw BaseItemDto array from a list response
+  ' @return {object} array of id strings, in list order
+  function multiVersionIds(items as object) as object
+    ids = []
+    if not isValid(items) then return ids
 
-    for each row in resumeItems
+    for each item in items
+      if isValid(item) and isValidAndNotEmpty(item.Id) and isIntSafe(item.MediaSourceCount) and item.MediaSourceCount > 1
+        ids.push(item.Id)
+      end if
+    end for
+
+    return ids
+  end function
+
+  ' resumeRanking: Every version the viewer is part-way through, by id, carrying its position
+  ' and its place in the server's DatePlayed-descending order.
+  '
+  ' `rank` is what makes "played last" answerable: among one item's sibling versions, the LOWEST
+  ' rank is the one played most recently. It counts every row the server sent, including the
+  ' ones skipped here, so it stays faithful to that order. A row with no position is skipped —
+  ' a finished item contributes nothing to any tile.
+  '
+  ' @param {object} resumeRows - Items from GET /UserItems/Resume (no Fields needed)
+  ' @return {object} AA of lowercased version id -> { rank, positionTicks, playedPercentage }
+  function resumeRanking(resumeRows as object) as object
+    ranking = {}
+    if not isValid(resumeRows) then return ranking
+
+    rank = 0
+    for each row in resumeRows
       if isValid(row) and isValidAndNotEmpty(row.Id) and isValid(row.UserData)
         ticks = row.UserData.PlaybackPositionTicks
         pct = row.UserData.PlayedPercentage
         if isIntSafe(ticks) and ticks > 0 and isValid(pct)
-          progress = { positionTicks: ticks, playedPercentage: pct }
-
-          ' The row's own id first — for a single-version item that is the tile's id.
-          map[LCase(row.Id)] = progress
-
-          ' Then every sibling version, because the tile may be named by any of them. The
-          ' server lists the played version first, so a later entry never overwrites a
-          ' nearer answer for the same id: only ids not already claimed are added.
-          if isValid(row.MediaSources)
-            for each source in row.MediaSources
-              if isValid(source) and isValidAndNotEmpty(source.Id)
-                key = LCase(source.Id)
-                if not map.DoesExist(key) then map[key] = progress
-              end if
-            end for
+          key = LCase(row.Id)
+          ' First mention wins — the list is already in recency order.
+          if not ranking.DoesExist(key)
+            ranking[key] = { rank: rank, positionTicks: ticks, playedPercentage: pct }
           end if
+        end if
+      end if
+      rank++
+    end for
+
+    return ranking
+  end function
+
+  ' displayProgressMap: Progress of the version that would play, keyed by TILE id.
+  '
+  ' For each tile, the sibling version with the lowest rank — the one played most recently. A
+  ' tile whose siblings are all absent from the ranking contributes nothing, which is what
+  ' leaves an item with nothing in progress alone.
+  '
+  ' @param {object} sourcesById - AA of tile id -> that item's MediaSources array
+  ' @param {object} ranking - resumeRanking()
+  ' @return {object} AA of lowercased tile id -> { positionTicks, playedPercentage }
+  function displayProgressMap(sourcesById as object, ranking as object) as object
+    map = {}
+    if not isValid(sourcesById) or not isValid(ranking) then return map
+
+    for each tileId in sourcesById
+      sources = sourcesById[tileId]
+      if isValid(sources)
+        best = invalid
+        for each source in sources
+          if isValid(source) and isValidAndNotEmpty(source.Id)
+            hit = ranking[LCase(source.Id)]
+            if isValid(hit)
+              if not isValid(best)
+                best = hit
+              else if hit.rank < best.rank
+                best = hit
+              end if
+            end if
+          end if
+        end for
+        if isValid(best)
+          map[LCase(tileId)] = { positionTicks: best.positionTicks, playedPercentage: best.playedPercentage }
         end if
       end if
     end for
@@ -634,6 +703,9 @@ namespace versionResume
   ' Patches the RAW API items before they reach the transformer, so every downstream surface —
   ' the transformer, the item node, JRPoster's bar — needs no knowledge of versions at all.
   '
+  ' Only grouped tiles are ever in the map, so a single-version item is never touched: its own
+  ' UserData is authoritative on every server.
+  '
   ' @param {object} items - raw BaseItemDto array from a list response (mutated in place)
   ' @param {object} map - displayProgressMap()
   ' @return {integer} how many items were actually changed
@@ -646,8 +718,9 @@ namespace versionResume
         progress = map[LCase(item.Id)]
         if isValid(progress)
           if not isValid(item.UserData) then item.UserData = {}
-          ' Only a DIFFERENT answer counts as a change — a single-version item in progress
-          ' maps to its own row and must not be reported as corrected.
+          ' Only a DIFFERENT answer counts as a change. A grouped tile whose OWN version is
+          ' the one played last maps to the position it already carries, and reporting that
+          ' as corrected would overstate what this did.
           if item.UserData.PlaybackPositionTicks <> progress.positionTicks
             item.UserData.PlaybackPositionTicks = progress.positionTicks
             item.UserData.PlayedPercentage = progress.playedPercentage

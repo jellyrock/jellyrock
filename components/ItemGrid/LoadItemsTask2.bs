@@ -6,7 +6,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
-import "pkg:/source/utils/versionResume.bs"
+import "pkg:/source/utils/versionDisplay.bs"
 
 sub init()
   m.log = new log.Logger("LoadItemsTask2")
@@ -24,6 +24,12 @@ end sub
 sub loadItems()
   globalUser = m.global.user
   results = []
+
+  ' Read once: m.global is render-owned, so each read from this thread is a rendezvous. Both
+  ' version-display call sites need the server version, and the cache is per RUN — a new node
+  ' services every page (replaceTask), so it cannot leak a stale resume list into the next one.
+  m.serverVersion = m.global.server.version
+  m.versionDisplayCache = {}
 
   ' Split the run into time spent WAITING on the pool versus time spent EMITTING
   ' (transform + ContentNode + appendChild) on this thread. Same decomposition
@@ -242,11 +248,6 @@ sub loadItems()
     end if
   end if
 
-  ' From 12.0 a tile's own UserData can belong to a version other than the one Play would
-  ' start. Correct it here, on the raw reply, so the transformer / item node / JRPoster chain
-  ' needs no knowledge of versions at all.
-  applyVersionDisplayProgress(data)
-
   ' `slots` holds one entry per source item, INCLUDING the ones that transform to
   ' invalid, so a genre's sampled items can be written back into its original
   ' position after the pipeline hands them over in completion order. The server
@@ -258,6 +259,14 @@ sub loadItems()
   if isValid(data)
 
     if isValid(data.TotalRecordCount) then m.top.totalRecordCount = data.TotalRecordCount
+
+    ' From 12.0 a tile's own UserData can belong to a version other than the one Play would
+    ' start. Correct it here, on the raw reply, so the transformer / item node / JRPoster chain
+    ' needs no knowledge of versions at all. Inside the isValid(data) guard because a failed
+    ' query leaves `data` invalid, and a dot off invalid faults this task thread (&hec).
+    ' A Genres query returns genres, which are never grouped, so this is a no-op for one —
+    ' its sampled items are corrected in one pass after pass 2 instead.
+    correctVersionDisplay(data.Items)
 
     ' Pass 1 — emit everything that needs no further I/O, and collect the genre
     ' requests instead of issuing them one at a time.
@@ -370,6 +379,7 @@ sub loadItems()
       genreFetches = genreEntries.count()
     #end if
     pipe = apiPipelineBegin(genreEntries)
+    pending = []
 
     #if perfTiming
       stepClock.mark()
@@ -383,7 +393,13 @@ sub loadItems()
       #if perfTiming
         stepClock.mark()
       #end if
-      populateGenreRow(slots[result.entry.slotIndex], result.entry.item, result.res)
+      ' Held, not transformed yet: the version correction below rewrites the RAW items, and
+      ' doing it per row would either block this drain loop on a fetch — starving the pipeline
+      ' of the top-ups apiPipelineNext performs — or need a second correction shape. One pass
+      ' after the loop costs the same round trip once and leaves the pipeline alone. Nothing is
+      ' visible in the meantime: genreSkeletons already painted, and the rows themselves do not
+      ' cross until `m.top.content` below.
+      pending.push({ slotIndex: result.entry.slotIndex, item: result.entry.item, res: result.res })
       #if perfTiming
         emitMs += stepClock.totalMilliseconds()
         stepClock.mark()
@@ -393,6 +409,30 @@ sub loadItems()
         waitMs += stepClock.totalMilliseconds()
       #end if
     end while
+
+    ' Every sampled item across every genre row, corrected in ONE pass — so a grid of 8 genres
+    ' costs the same lookup as a grid of 1. Counted as wait, not emit: it is a round trip.
+    #if perfTiming
+      stepClock.mark()
+    #end if
+    sampled = []
+    for each entry in pending
+      if isValid(entry.res) and entry.res.ok and isValid(entry.res.json) and type(entry.res.json.Items) = "roArray"
+        sampled.append(entry.res.json.Items)
+      end if
+    end for
+    correctVersionDisplay(sampled)
+    #if perfTiming
+      waitMs += stepClock.totalMilliseconds()
+      stepClock.mark()
+    #end if
+
+    for each entry in pending
+      populateGenreRow(slots[entry.slotIndex], entry.item, entry.res)
+    end for
+    #if perfTiming
+      emitMs += stepClock.totalMilliseconds()
+    #end if
   end if
 
   ' The handoff is emit work too — a grid can carry hundreds of nodes across it.
@@ -474,47 +514,24 @@ sub populateGenreRow(row as dynamic, item as object, res as dynamic)
   end for
 end sub
 
-' Routes an item query through Build*Request() + pool based on queryType.
-' Used for both the main request and the optional 2nd lookup for the # filter.
-' queryType values: "liveTV", "studios", "genres", "artists", "albumArtists", "usersItems"
-' Rewrite each item's UserData so its progress bar shows the version that would actually play.
+' Rewrite this page's items so each tile's progress bar shows the version that would actually
+' play. The rules and the measurements are versionResume's DISPLAY section; the requests are
+' versionDisplay.correctDisplayProgress().
 '
-' Costs ONE request per load, and only when this page holds a multi-version item at all — on a
-' pre-12 server, or a page with nothing grouped, it makes none. See the DISPLAY section of
-' versionResume for the measurements and for the bounded divergence from chooseResumeSource().
-sub applyVersionDisplayProgress(data as dynamic)
-  if not isValid(data) or type(data.Items) <> "roArray" or data.Items.Count() = 0 then return
-  if not versionResume.isPerVersionServer(m.global.server.version) then return
-
-  hasMultiVersion = false
-  for each item in data.Items
-    if isValid(item) and isIntSafe(item.MediaSourceCount) and item.MediaSourceCount > 1
-      hasMultiVersion = true
-      exit for
-    end if
-  end for
-  if not hasMultiVersion then return
-
-  ' Fields=MediaSources is affordable HERE and nowhere else: the resume list holds only what
-  ' the user is part-way through, not the page. It is what carries each row's sibling ids, and
-  ' without it an alternate's row cannot be matched back to its tile at all.
-  params = {
-    MediaTypes: "Video",
-    Fields: "MediaSources",
-    EnableImages: false,
-    EnableTotalRecordCount: false
-  }
-  ' Scope to the container when there is one; a genre or search grid has none, and an
-  ' unscoped resume list is the same request Home already makes on every load.
-  if isValidAndNotEmpty(m.top.itemId) then params.parentId = m.top.itemId
-
-  res = fetchJson(GetApi().BuildGetResumeItemsRequest(params), "versionDisplayProgress")
-  if not isValid(res) or type(res.Items) <> "roArray" then return
-
-  changed = versionResume.applyDisplayProgress(data.Items, versionResume.displayProgressMap(res.Items))
+' The cache spans the whole run, so the genre pass below reuses whatever the main query already
+' looked up rather than asking again. The resume list is scoped to this grid's container: a
+' library, or — for a genre or studio view — the library the presenter set as `itemId`. That
+' resolves through a collection too (verified 2026-09-20 against a 12.0 server: a resume query
+' scoped to a BoxSet returns its members).
+sub correctVersionDisplay(items as dynamic)
+  if not isValid(m.versionDisplayCache) then m.versionDisplayCache = {}
+  changed = versionDisplay.correctDisplayProgress(items, m.serverVersion, m.top.itemId, "versionDisplayProgress", m.versionDisplayCache)
   if changed > 0 then m.log.debug("Corrected version progress on tiles", "count", changed)
 end sub
 
+' Routes an item query through Build*Request() + pool based on queryType.
+' Used for both the main request and the optional 2nd lookup for the # filter.
+' queryType values: "liveTV", "studios", "genres", "artists", "albumArtists", "usersItems"
 function executeItemQuery(queryType as string, params as object) as dynamic
   if queryType = "liveTV"
     return fetchJson(GetApi().BuildGetLiveTVChannelsRequest(params), "itemQuery_liveTV")

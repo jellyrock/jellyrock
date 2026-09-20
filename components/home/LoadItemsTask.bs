@@ -6,6 +6,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/versionDisplay.bs"
 
 sub init()
   m.log = new log.Logger("LoadItemsTask")
@@ -79,6 +80,14 @@ sub loadItems()
 
     data = fetchJson(GetApi().BuildGetItemsByQueryRequest(params), "favorites")
     if isValid(data) and isValid(data.Items)
+      ' A favorited movie is the same tile the library grid draws, so it gets the same
+      ' correction: from 12.0 its own UserData can belong to a version other than the one Play
+      ' would start. Unscoped — favorites span every library. Continue Watching and the series
+      ' resume row below need none of this: they are built FROM the resume list, so each row
+      ' already IS the version in progress.
+      changed = versionDisplay.correctDisplayProgress(data.Items, m.global.server.version, "", "favoritesVersionDisplay", {})
+      if changed > 0 then m.log.debug("Corrected version progress on favorites", "count", changed)
+
       for each item in data.Items
         ' Skip Books for now as we don't support it (issue #558)
         if item.Type <> "Book"

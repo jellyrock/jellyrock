@@ -1,0 +1,113 @@
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/utils/mediaSources.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/versionResume.bs"
+
+' The imperative shell for the display-progress correction — the half that fetches.
+'
+' versionResume's DISPLAY section holds the rules and the measurements; this holds the two
+' requests they need, in one place, because three loaders make the same correction and two
+' copies of it had already drifted apart (scoping, caching, and where the server version was
+' read). Every loader now gets one behaviour.
+'
+' Runs on a Task thread: fetchJson blocks, which is what a Task thread is for.
+namespace versionDisplay
+
+  ' correctDisplayProgress: Rewrite a list response's UserData so each tile's progress bar
+  ' shows the version that would actually play.
+  '
+  ' Costs nothing at all on a pre-12 server, or for a page with nothing grouped. When a page
+  ' DOES hold grouped items it makes one cheap request, and a second only if something is
+  ' actually in progress — see the DISPLAY section of versionResume for why that order, and for
+  ' the measurements behind asking for MediaSources by id rather than on the resume list.
+  '
+  ' `cache` is owned by the CALLER, which is what lets one function serve both shapes: a grid
+  ' passes a fresh AA and corrects its whole page at once, while the extras orchestrator passes
+  ' one AA for the run so the ranking is fetched once and sibling ids accumulate across rows.
+  '
+  ' @param {dynamic} items - raw BaseItemDto array from a list response (mutated in place)
+  ' @param {string} serverVersion - m.global.server.version, read ONCE by the caller
+  ' @param {string} parentId - scope the resume query to this container, or "" for none
+  ' @param {string} requestId - for the pool
+  ' @param {object} cache - caller-owned AA, reused across calls that share a run
+  ' @return {integer} how many items were changed
+  function correctDisplayProgress(items as dynamic, serverVersion as string, parentId as string, requestId as string, cache as object) as integer
+    if type(items) <> "roArray" or items.Count() = 0 then return 0
+    if not versionResume.isPerVersionServer(serverVersion) then return 0
+    if not isValid(cache) then return 0
+
+    ids = versionResume.multiVersionIds(items)
+    if ids.Count() = 0 then return 0
+
+    ' The ranking first, because an empty one ends it: nothing is in progress anywhere, so no
+    ' tile can need correcting and the second request is not worth making. Memoized either way
+    ' — a failed lookup must not be retried once per row.
+    if not isValid(cache.ranking)
+      cache.ranking = versionResume.resumeRanking(versionDisplay.resumeRows(parentId, requestId))
+    end if
+    if cache.ranking.Count() = 0 then return 0
+
+    versionDisplay.cacheSourcesFor(ids, requestId, cache)
+
+    ' Only the tiles on THIS page, so a shared cache never corrects an item the caller did not
+    ' ask about.
+    pageSources = {}
+    for each id in ids
+      sources = cache.sourcesById[id]
+      if isValid(sources) then pageSources[id] = sources
+    end for
+
+    return versionResume.applyDisplayProgress(items, versionResume.displayProgressMap(pageSources, cache.ranking))
+  end function
+
+  ' resumeRows: Every version the viewer is part-way through, in the server's DatePlayed order.
+  '
+  ' No Fields: the sibling ids come from mediaSources.byIds() instead, which is what keeps this
+  ' request's size tied to the viewer's backlog rather than multiplying it — 1.1 KB a row here
+  ' against 7.3 KB with Fields=MediaSources, measured 2026-09-20 on a local 12.0 server.
+  '
+  ' @param {string} parentId - container to scope to, or ""
+  ' @param {string} requestId - for the pool
+  ' @return {object} array of rows (empty when the lookup failed)
+  function resumeRows(parentId as string, requestId as string) as object
+    params = {
+      MediaTypes: "Video",
+      EnableImages: false,
+      EnableTotalRecordCount: false
+    }
+    if isValidAndNotEmpty(parentId) then params.parentId = parentId
+
+    res = fetchJson(GetApi().BuildGetResumeItemsRequest(params), requestId)
+    if not isValid(res) or type(res.Items) <> "roArray" then return []
+    return res.Items
+  end function
+
+  ' cacheSourcesFor: Make sure the cache holds a sibling list for each of these tile ids.
+  '
+  ' `attempted` is tracked separately from the answers so an id the server returned nothing for
+  ' is not re-requested by the next row that mentions it.
+  '
+  ' @param {object} ids - tile ids
+  ' @param {string} requestId - for the pool
+  ' @param {object} cache - caller-owned AA
+  sub cacheSourcesFor(ids as object, requestId as string, cache as object)
+    if not isValid(cache.sourcesById) then cache.sourcesById = {}
+    if not isValid(cache.attempted) then cache.attempted = {}
+
+    missing = []
+    for each id in ids
+      if not cache.attempted.DoesExist(id)
+        missing.push(id)
+        cache.attempted[id] = true
+      end if
+    end for
+    if missing.Count() = 0 then return
+
+    fetched = mediaSources.byIds(missing, requestId)
+    for each id in fetched
+      cache.sourcesById[id] = fetched[id]
+    end for
+  end sub
+
+end namespace
