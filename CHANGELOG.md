@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update vitest from v4.1.11 to v5 ([#882](https://github.com/jellyrock/jellyrock/pull/882))
 - Update prettier from v3.9.6 to v3.9.8 ([#941](https://github.com/jellyrock/jellyrock/pull/941))
 
 ## [2.30.0](https://github.com/jellyrock/jellyrock/compare/v2.29.1...v2.30.0) - 2026-09-17
