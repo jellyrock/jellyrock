@@ -5,6 +5,7 @@ import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/extras/extrasRows.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/people.bs"
 import "pkg:/source/utils/versionDisplay.bs"
 
 sub init()
@@ -268,11 +269,18 @@ sub emitResponse(row as object, res as dynamic)
   emitRow(row, "ok", m.transformer.transformBaseItemArray(apiItems, m.serverVersion), digest)
 end sub
 
+' Cards for the Cast & Crew row.
+'
+' The merge and the labelling happen here, on this thread, before any node exists: merging
+' a person's repeated credits makes the row FEWER nodes to carry across, and castCardSpecs()
+' resolves each distinct label once for the whole array rather than once per person — which
+' matters because every translate() from a Task thread is two m.global reads at ~93 us each
+' (docs/architecture/async.md). The specs are plain AAs; only the nodes below cross.
 function castItems(people as dynamic) as object
   items = []
   if not isValid(people) then return items
-  for each person in people
-    node = m.transformer.transformPerson(person)
+  for each spec in castCardSpecs(people)
+    node = m.transformer.transformPersonCard(spec)
     if isValid(node) then items.push(node)
   end for
   return items

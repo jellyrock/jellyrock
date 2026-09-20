@@ -3,11 +3,12 @@ topic: translations
 related-files:
   - source/utils/translate.bs
   - source/utils/translateLocale.bs
+  - source/utils/people.bs
   - scripts/bsc-plugins/translation-keys.cjs
   - scripts/lint/update-translations.cjs
   - scripts/lint/language-coverage.cjs
   - locale/languages.json
-last-reviewed: 2026-06-07
+last-reviewed: 2026-09-20
 ---
 
 # Translations (i18n)
@@ -197,6 +198,39 @@ Track names tagged `und` ("undetermined") and `zxx` ("no linguistic content") ar
 3. An English fallback exists for a code that's already covered by a translation key — wasted maintenance, inconsistent output.
 
 These all pass type-check and unit tests but produce silent gaps for non-English users — the lint is the only catch.
+
+## Person role labels — `source/utils/people.bs`
+
+The third localization concern, and structurally a sibling of the language resolver above:
+`BaseItemPerson.Type` (a `PersonKind` enum value) and `.Role` (a TMDB job title, or an actor's
+character) arrive as raw English and are rendered as the Cast & Crew card's subtitle.
+
+They have to be resolved **client-side, on every server version**. Jellyfin 12.0 added
+per-request localization via the `Accept-Language` header ([jellyfin#16488](https://github.com/jellyfin/jellyfin/pull/16488)),
+but it covers only the server's own resource strings — neither `PersonKind` values nor TMDB job
+names are among them, so no server will ever send these translated.
+
+`personCreditLabel()` follows `jellyfin-web`'s `getPeopleRoleOrTypeLabel` rule:
+
+1. **Character** — an `Actor` or `GuestStar` with a `Role` renders `LabelPersonRoleAs` ("as {0}").
+2. **Type** — no `Role`, or a `Role` that merely restates the `Type`, renders the `LabelPersonKindX`
+   key for that enum value. All 17 `PersonKind` values are covered; an unrecognized one passes
+   through verbatim rather than rendering blank.
+3. **Job** — anything else renders the `Role`, through `LabelPersonJobX` for the jobs we carry a
+   string for (`Screenplay`, `Novel` — the two the server files under `Writer`), and verbatim
+   otherwise. An untranslated real job beats a translated generic one, which is also what web does.
+
+**The cache is keyed on the translation KEY, not on the credit.** That is the load-bearing detail:
+this resolver runs on a Task thread (`LoadExtrasRowsTask`), where each `translate()` is two
+`m.global` reads at ~93 µs against ~2 µs from the render thread (see
+[async.md](async.md#crossing-the-thread-boundary-costs-a-rendezvous--budget-crossings-not-bytes)).
+An actor's label differs per character, so a credit-keyed cache would miss on every actor and leave
+a large cast making one `translate()` per person. Resolving `"as {0}"` once and substituting the
+character thread-locally bounds a whole cast to at most one call per distinct key.
+
+Unlike the language resolver there is **no coverage lint**: the key tables are closed sets keyed off
+a server enum, not an open-ended code space, so a missing entry is a compile error (the key would
+not exist in `translationKeys`) rather than a silent gap.
 
 ## Compile-time key safety — the BSC plugin
 

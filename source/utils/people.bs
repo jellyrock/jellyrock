@@ -1,0 +1,238 @@
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+
+' Cast & Crew card shaping — merging a person's repeated credits into one card and
+' labelling it in the user's language.
+'
+' The server sends one `People` entry per CREDIT, not per person: a director who also
+' wrote the screenplay appears twice with the same `Id`. That is true on every supported
+' line (verified live on 10.7.7, 10.11.11, 12.0.0 and demo 12.1.0), so nothing here is
+' version-gated. `BaseItemPerson.Type` is the broad `PersonKind` enum; `Role` is the
+' TMDB job string.
+'
+' Labels are resolved CLIENT-side and always will be: the server's per-request
+' localization (12.0+, `Accept-Language`) covers only its own resource strings, and
+' neither `PersonKind` values nor TMDB job names are among them. See jellyfin#16488.
+'
+' Mirrors jellyfin-web's `getPeopleRoleOrTypeLabel` (cardBuilder.js) and the merge in
+' its itemDetails controller, with two deliberate differences recorded in the PR:
+' guest stars stay in the one Cast & Crew row rather than getting a row of their own,
+' and `Artist` / `AlbumArtist` are KEPT (web drops them because it renders artists
+' separately; dropping them here would empty the row on a music video).
+
+' The person kinds whose repeated credits collapse onto one card. Actors and guest stars
+' stay separate — a performer credited twice is usually two distinct characters, and web
+' makes the same split.
+function mergeablePersonKinds() as object
+  if isValid(m.mergeablePersonKindsCache) then return m.mergeablePersonKindsCache
+  m.mergeablePersonKindsCache = { "director": true, "writer": true, "producer": true }
+  return m.mergeablePersonKindsCache
+end function
+
+' `PersonKind` → translation key. Covers the whole enum rather than the handful that
+' merge, because every one of them reaches the card subtitle when no `Role` is set —
+' before this map they rendered as raw enum text ("GuestStar").
+'
+' Cached on the caller's `m` after first build. Caches the KEYS, never the resolved
+' strings, so a mid-session UI-language change is picked up on the next lookup.
+function personKindTranslationKeys() as object
+  if isValid(m.personKindTranslationKeysCache) then return m.personKindTranslationKeysCache
+
+  m.personKindTranslationKeysCache = {
+    "actor": translationKeys.LabelPersonKindActor,
+    "albumartist": translationKeys.LabelPersonKindAlbumArtist,
+    "arranger": translationKeys.LabelPersonKindArranger,
+    "artist": translationKeys.LabelPersonKindArtist,
+    "author": translationKeys.LabelPersonKindAuthor,
+    "composer": translationKeys.LabelPersonKindComposer,
+    "conductor": translationKeys.LabelPersonKindConductor,
+    "creator": translationKeys.LabelPersonKindCreator,
+    "director": translationKeys.LabelPersonKindDirector,
+    "engineer": translationKeys.LabelPersonKindEngineer,
+    "gueststar": translationKeys.LabelPersonKindGuestStar,
+    "illustrator": translationKeys.LabelPersonKindIllustrator,
+    "lyricist": translationKeys.LabelPersonKindLyricist,
+    "mixer": translationKeys.LabelPersonKindMixer,
+    "producer": translationKeys.LabelPersonKindProducer,
+    "remixer": translationKeys.LabelPersonKindRemixer,
+    "writer": translationKeys.LabelPersonKindWriter
+  }
+  return m.personKindTranslationKeysCache
+end function
+
+' TMDB job → translation key, for the jobs the server maps onto a broader `PersonKind`.
+' Screenplay and Novel both arrive as `Type: "Writer"` (jellyfin#16066, #17248) and are
+' the two web carries a string for. Any other job falls through to the raw `Role`, which
+' is also what web does — an untranslated real job beats a generic "Writer".
+function personJobTranslationKeys() as object
+  if isValid(m.personJobTranslationKeysCache) then return m.personJobTranslationKeysCache
+
+  m.personJobTranslationKeysCache = {
+    "novel": translationKeys.LabelPersonJobNovel,
+    "screenplay": translationKeys.LabelPersonJobScreenplay
+  }
+  return m.personJobTranslationKeysCache
+end function
+
+' Label for ONE credit, using jellyfin-web's rule:
+'   actor / guest star with a character  → "as {character}"
+'   no role, or role that just restates the type → the translated type
+'   otherwise                            → the role, translated when we carry a string
+'
+' `cache` is an AA the caller threads through a batch, keyed on the TRANSLATION
+' KEY, not on the credit: an actor's label differs per character, so keying it on the
+' credit would miss on every actor and leave a 30-person cast making 30 translate()
+' calls. Resolving "as {0}" once and substituting the character locally bounds the whole
+' batch to at most one call per distinct key — in practice three or four.
+'
+' That matters because this runs on a Task thread, where every translate() is two
+' m.global reads at ~93 us each against ~2 us from the render thread
+' (docs/architecture/async.md). Pass `invalid` to skip caching.
+'
+' @param personKind - `BaseItemPerson.Type` (a `PersonKind` value)
+' @param role  - `BaseItemPerson.Role` (a TMDB job, or an actor's character)
+' @param cache - optional AA reused across one batch of people
+' @return the display label, or "" when there is nothing to say
+function personCreditLabel(personKind as string, role as string, cache = invalid as dynamic) as string
+  lowerKind = LCase(personKind)
+
+  if role <> "" and (lowerKind = "actor" or lowerKind = "gueststar")
+    ' One resolve for the batch; the character is substituted thread-locally.
+    return translateCached(translationKeys.LabelPersonRoleAs, cache).Replace("{0}", role)
+  end if
+
+  if role = "" or LCase(role) = lowerKind
+    if personKind = "" then return ""
+    kindKeys = personKindTranslationKeys()
+    if isValid(kindKeys[lowerKind]) then return translateCached(kindKeys[lowerKind], cache)
+    ' An enum value we carry no string for — show it rather than nothing.
+    return personKind
+  end if
+
+  jobKeys = personJobTranslationKeys()
+  if isValid(jobKeys[LCase(role)]) then return translateCached(jobKeys[LCase(role)], cache)
+  ' A real job we carry no string for beats the generic type it was filed under, which
+  ' is also what web does with a job it cannot translate.
+  return role
+end function
+
+' translate(), memoized for one batch.
+'
+' Memoized on the KEY rather than on the credit — see personCreditLabel for why that
+' distinction is load-bearing. `cache` may be invalid, which just means no reuse.
+'
+' Do not "optimise" this by hoisting `m.global.translations` into a local to dodge the
+' render-owned read translate() makes. That was tried and measured WORSE — reading the
+' ~150 KB table eagerly on every row costs more than the four or five lazy translate()
+' calls the memo below actually makes (measured 2026-09-20 on a Stick 4K, 31-person
+' cast: castMs +13.5 ms against the same baseline this version does not move, n=8 per
+' arm interleaved). A build making ZERO m.global reads here was no faster again, so the
+' rendezvous is not what this loop costs.
+function translateCached(key as string, cache as dynamic) as string
+  if not isValid(cache) then return translate(key)
+  if isValid(cache[key]) then return cache[key]
+
+  value = translate(key)
+  cache[key] = value
+  return value
+end function
+
+' Merge and label a whole `People` array in ONE pass — what the Cast & Crew row wants.
+'
+' Pure: takes raw AAs, returns plain AAs, creates no nodes and reads no node fields.
+'
+' Deliberately fused rather than split into a merge step and a label step. Do not
+' re-split it: the two-pass version allocated a credit AA, a credits array, a second
+' spec AA and a labels array to join, PER PERSON, and measured 46% slower on the row it
+' serves (measured 2026-09-20 on a Stick 4K against Jellyfin 12.0.0, a 31-person cast:
+' castMs median 47.5 ms -> 69.5 ms, n=8 per arm interleaved, Mann-Whitney p=0.0073).
+' One AA per CARD, with the subtitle appended as each credit is read, is what this
+' costs instead — the loop runs once per person on a Task thread, where Roku's
+' interpreter charges for every allocation.
+'
+' The merge rule, mirroring jellyfin-web's itemDetails controller: entries that share an
+' `Id` collapse onto the card of their first appearance, but only when the credit is a
+' Director / Writer / Producer one. Actors and guest stars stay separate — a performer
+' credited twice is usually two characters. An entry with no `Id` never merges, because
+' the id is the only thing that identifies one person across two credits and merging on
+' name would fuse two different people who share one.
+'
+' @param people - raw `BaseItemPerson` array from a parent item's `People` field
+' @return array of { id, name, primaryImageTag, subtitle }
+function castCardSpecs(people as dynamic) as object
+  specs = []
+  if not isValid(people) then return specs
+
+  ' One resolve per distinct translation key for the whole array — see personCreditLabel.
+  labelCache = {}
+  mergeable = mergeablePersonKinds()
+  indexById = {}
+
+  for each person in people
+    if isValid(person)
+      ' `?? ""` rather than a helper call: this runs 31+ times on a 31-person cast and a
+      ' BrightScript function call is not free. The fields are strings when present.
+      personKind = person.Type ?? ""
+      role = person.Role ?? ""
+      id = person.Id ?? ""
+      label = personCreditLabel(personKind, role, labelCache)
+
+      existing = invalid
+      isMergeable = id <> "" and isValid(mergeable[LCase(personKind)])
+      if isMergeable then existing = indexById[id]
+
+      if isValid(existing)
+        if label <> ""
+          previous = specs[existing].subtitle
+          if previous = ""
+            specs[existing].subtitle = label
+          else
+            specs[existing].subtitle = previous + " / " + label
+          end if
+        end if
+      else
+        if isMergeable then indexById[id] = specs.count()
+        specs.push({
+          id: id,
+          name: person.Name ?? "",
+          primaryImageTag: person.PrimaryImageTag ?? "",
+          subtitle: label
+        })
+      end if
+    end if
+  end for
+
+  return specs
+end function
+
+' The distinct directors of an item, in first-appearance order.
+'
+' Deduplicated by `Id` for the same reason the cards merge: the server sends one entry per
+' credit, so a director credited twice (say Director and Co-Director) would otherwise read
+' "Directed by Mike Judge, Mike Judge". Entries with no `Id` fall back to name matching,
+' which is the best available identity when the server gives none.
+'
+' @param people - raw `BaseItemPerson` array from a parent item's `People` field
+' @return array of director names, no repeats
+function directorNames(people as dynamic) as object
+  names = []
+  if not isValid(people) then return names
+
+  seen = {}
+  for each person in people
+    if isValid(person) and LCase(textOrEmpty(person.Type)) = "director"
+      name = textOrEmpty(person.Name)
+      if name <> ""
+        identity = textOrEmpty(person.Id)
+        if identity = "" then identity = "name:" + LCase(name)
+        if not isValid(seen[identity])
+          seen[identity] = true
+          names.push(name)
+        end if
+      end if
+    end if
+  end for
+
+  return names
+end function
