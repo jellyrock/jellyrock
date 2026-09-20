@@ -22,6 +22,11 @@
       narrow poster, so it is not a free choice either. Settle it BEFORE adding a third badge —
       see `poster-badge-system-undesigned` in docs/architecture/tech-debt.md.
 
+      The glyph is `content_copy`, not `layers`: at the real badge size (40px inside a 48px
+      chip on a 213px poster) the layers rhombus read as an abstract diamond, while two
+      overlapping rectangles read as "there are two of these" immediately. Checked against the
+      rendered PNGs at true scale, not from the icon names.
+
       Two things that ARE load-bearing whatever gets decided:
         * every badge must be cleared in resetBadge() — these cells are recycled, and an
           uncleared badge ghosts onto the next item;
@@ -30,7 +35,7 @@
           above it merged into a single blue block on a partly-watched tile (caught on device).
     -->
     <Rectangle id="versionsBadgeBackground" width="48" height="48" visible="false">
-      <Poster id="versionsIcon" uri="pkg:/images/icons/layers_$$RES$$.png" width="40" height="40" translation="[4,4]" />
+      <Poster id="versionsIcon" uri="pkg:/images/icons/versions_$$RES$$.png" width="40" height="40" translation="[4,4]" />
     </Rectangle>
   </children>
   <interface>

@@ -1,5 +1,12 @@
 import "pkg:/source/utils/misc.bs"
 
+' VideoProgressBar's own height — the strip the bar occupies along the poster's bottom edge.
+const PROGRESS_BAR_STRIP = 9
+
+' Gap between the versions badge and the bar. Without it the badge's bottom edge IS the bar's
+' top edge, and the two read as one welded element on a partly-watched tile.
+const VERSIONS_BADGE_GAP = 6
+
 
 sub init()
   m.top.width = 464
@@ -66,13 +73,18 @@ end sub
 ' Marks a tile whose item has more than one version, so the choice is visible while browsing
 ' instead of only on the details screen.
 '
-' Pinned to the BOTTOM-LEFT, clear of the progress bar's 9px strip. The bar is added and
-' removed on demand, so this badge cannot depend on whether it is there.
+' Pinned to the BOTTOM-LEFT, clear of the progress bar's strip plus a gap. The bar is added
+' and removed on demand, so this badge cannot depend on whether it is there — the offset is
+' computed from the constants, not from a bar node that may not exist yet.
+'
+' Still flush to the LEFT edge, matching the watched badge's flush top-right anchoring. If the
+' badge system later adopts a uniform inset, both move together — see
+' `poster-badge-system-undesigned`.
 sub onMediaSourceCountChanged()
   if m.isResettingBadge then return
 
   if m.top.mediaSourceCount > 1
-    m.versionsBadgeBackground.translation = [0, m.top.height - m.versionsBadgeBackground.height - 9]
+    m.versionsBadgeBackground.translation = [0, m.top.height - m.versionsBadgeBackground.height - PROGRESS_BAR_STRIP - VERSIONS_BADGE_GAP]
     m.versionsBadgeBackground.visible = true
   else
     m.versionsBadgeBackground.visible = false
