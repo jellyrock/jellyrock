@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Show the version that would actually play on posters and episode rows ([#971](https://github.com/jellyrock/jellyrock/pull/971))
 - Label alternate versions by what differs, and offer every version ([#953](https://github.com/jellyrock/jellyrock/pull/953))
 - Read device settings from a per-user env file as well as `.env` ([#949](https://github.com/jellyrock/jellyrock/pull/949))
 
