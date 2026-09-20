@@ -8,7 +8,7 @@ related-files:
   - scripts/bsc-plugins/translation-keys.cjs
   - scripts/lint/update-translations.cjs
   - scripts/lint/language-coverage.cjs
-last-reviewed: 2026-05-01
+last-reviewed: 2026-09-20
 ---
 
 # Translations
@@ -154,11 +154,14 @@ Language changes take effect after leaving Settings (the `reloadHome` mechanism 
 
 ## CI Validation
 
-Translation integrity is enforced by a single script (`scripts/lint/update-translations.cjs`) that runs as part of `npm run lint`:
+Translation integrity is enforced by two scripts, both run as part of `npm run lint` and in CI:
 
 | Command | What it checks |
 | --- | --- |
 | `lint:translations` | en_US.json sort order and orphans; all code `translate()` / `translationKeys.*` references exist; no hardcoded string literals; locale JSON validity; placeholder parity; plural completeness; coverage; languages.json alignment |
+| `lint:language-coverage` | The two lookup tables that map codes to translation keys stay complete: the media-language resolver in `languages.bs` (alias → key → English-fallback tiers), and the person-label table in `people.bs` — every `PersonKind` value in the committed spec fingerprints must be labeled or declared deliberately blank |
+
+If `lint:language-coverage` fails after a Jellyfin upgrade refreshed the fingerprints, a new `PersonKind` value has appeared upstream: add a `LabelPersonKind…` key and a row to `personKindTranslationKeys()`, or a row to `unlabeledPersonKinds()` if it should render nothing. Why this is a lint rather than a compile error: [translations.md](../architecture/translations.md#coverage-is-gated-not-remembered).
 
 ## Bot Automation
 
