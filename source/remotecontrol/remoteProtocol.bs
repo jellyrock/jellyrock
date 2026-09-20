@@ -184,8 +184,22 @@ namespace remoteProtocol
 
   ' The client->server KeepAlive frame. Jellyfin's ForceKeepAlive asks the client to send
   ' these on the requested interval so the session isn't reaped by the inactivity timeout.
+  ' The KeepAlive the receiver answers a ForceKeepAlive with, and sends every half-interval.
+  '
+  ' The key MUST stay QUOTED. BrightScript lowercases a BARE identifier key, so
+  ' `FormatJson({ MessageType: ... })` puts `{"messagetype":"KeepAlive"}` on the wire.
+  '
+  ' That is fatal HERE and nowhere else in the app, which is what makes it worth a comment: Jellyfin's
+  ' REST endpoints bind case-INsensitively (so the app's other lowercased bodies are forgiven), but the
+  ' socket path deserializes directly with `JsonDefaults.Options`, which does NOT set
+  ' `PropertyNameCaseInsensitive`. An unbound `MessageType` just takes its default enum value, so the
+  ' server logs nothing, never calls `SendKeepAliveResponse`, never advances `LastKeepAliveDate`, and
+  ' `SessionWebSocketListener` reaps the socket ~60s after it connects (#934).
+  '
+  ' The spec asserts the raw STRING. It cannot use ParseJson: a parsed AA is case-insensitive too, so
+  ' it resolves `messagetype` happily and the assertion passes against the broken frame.
   function keepAliveFrame() as string
-    return FormatJson({ MessageType: "KeepAlive" })
+    return FormatJson({ "MessageType": "KeepAlive" })
   end function
 
 end namespace
