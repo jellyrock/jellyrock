@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update brighterscript to v1.0.0 ([#964](https://github.com/jellyrock/jellyrock/pull/964))
 - Update vitest from v4.1.11 to v5 ([#882](https://github.com/jellyrock/jellyrock/pull/882))
 - Update prettier from v3.9.6 to v3.9.8 ([#941](https://github.com/jellyrock/jellyrock/pull/941))
 
