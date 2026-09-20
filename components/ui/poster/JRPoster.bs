@@ -22,8 +22,13 @@ sub init()
   m.unplayedVideosCount = m.top.findNode("unplayedVideosCount")
   m.checkmark = m.top.findNode("checkmark")
   m.versionsBadgeBackground = m.top.findNode("versionsBadgeBackground")
-  m.versionsBadgeBackground.color = m.global.constants.colorBlack + m.global.constants.alpha60
-  m.top.findNode("versionsIcon").blendColor = m.global.constants.colorTextPrimary
+  ' Theme-coloured glyph on a dark scrim. colorSecondary is the constant for a NON-focusable
+  ' highlight (components/CLAUDE.md), which is what a badge is — so the badge re-themes with
+  ' the rest of the app instead of being pinned to white. The scrim carries the legibility:
+  ' at alpha85 the composite is #262626 even over a white poster, so what is underneath stops
+  ' mattering and the glyph reads against a near-constant backdrop.
+  m.versionsBadgeBackground.color = m.global.constants.colorBlack + m.global.constants.alpha85
+  m.top.findNode("versionsIcon").blendColor = m.global.constants.colorSecondary
 
   ' Observed once for the life of the poster. A recycled cell's resetBadge() must not
   ' re-render while it clears, so it raises this instead of toggling the observers.

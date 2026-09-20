@@ -30,9 +30,10 @@
       Two things that ARE load-bearing whatever gets decided:
         * every badge must be cleared in resetBadge() — these cells are recycled, and an
           uncleared badge ghosts onto the next item;
-        * this badge is drawn on a colorBlack+alpha60 scrim rather than the accent colour,
-          because VideoProgressBar fills its bar with colorSecondary and an accent chip directly
-          above it merged into a single blue block on a partly-watched tile (caught on device).
+        * the CHIP stays a dark scrim and only the GLYPH is themed. An accent-filled chip was
+          tried and merged into a single blue block with the progress bar directly below it,
+          which fills its bar with colorSecondary too (caught on device). A dark chip plus the
+          6px gap keeps the two apart while the glyph still carries the theme.
     -->
     <Rectangle id="versionsBadgeBackground" width="48" height="48" visible="false">
       <Poster id="versionsIcon" uri="pkg:/images/icons/versions_$$RES$$.png" width="40" height="40" translation="[4,4]" />
