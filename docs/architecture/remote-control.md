@@ -14,7 +14,7 @@ related-files:
   - source/api/userAuth.bs
   - components/home/Home.bs
   - docs/architecture/remote-control-longpoll-contract.md
-last-reviewed: 2026-09-14
+last-reviewed: 2026-09-20
 ---
 
 # Remote control — "Cast to JellyRock"
@@ -147,6 +147,13 @@ than accumulating. The ordering inside the vendored loop is load-bearing and unr
 Reconnect is exponential backoff (`1s`→`30s` cap); it stops on a token rotation (re-read before each
 reconnect). `ForceKeepAlive` from the server sets a send interval (half the requested seconds), on
 which the receiver sends a `KeepAlive` so the session isn't reaped.
+
+**Anything the receiver SENDS on this socket must build its JSON with QUOTED keys.** BrightScript converts
+a bare identifier key to lower case, and — unlike Jellyfin's REST endpoints, which bind
+case-INsensitively — the socket path decodes with case-SENSITIVE options, so a lowercased
+`MessageType` binds to nothing, is dropped without a server-side log line, and the session is reaped
+~60 seconds after it connects. That asymmetry is why a casing mistake is survivable everywhere else in the
+app and fatal here; it cost every 10.11+ server a permanently churning socket until #934.
 
 ## Cold-launch pairing report (#668)
 
