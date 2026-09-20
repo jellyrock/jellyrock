@@ -3,7 +3,7 @@ topic: migrations
 related-files:
   - source/migrations.bs
   - source/utils/config.bs
-last-reviewed: 2026-05-01
+last-reviewed: 2026-09-20
 ---
 
 # Registry Migrations
@@ -36,7 +36,7 @@ Two top-level functions:
 - `runGlobalMigrations()` — runs migrations on the `"JellyRock"` global section
 - `runRegistryUserMigrations(targetSections)` — runs migrations on every per-user section
 
-Both run early in `Main()`, **before** `SessionDataTransformer`, so that by the time settings are loaded, only the new key names and new value shapes exist.
+Both run early in `Main()` — before the scene is created, and so before `SessionDataTransformer` runs on session load (`source/utils/session.bs`). By the time settings are read back, only the new key names and new value shapes exist.
 
 A migration is gated by version constants:
 
@@ -101,6 +101,8 @@ end for
 ```
 
 This means integration tests can write `test-<id>` sections without ever touching real user data, even in a dev build deployed to a personal device.
+
+Two further skips apply to every run, test mode or not: the global sections (`JellyRock` and `test-global`) are stepped over inside the per-user loop, and a section with **no `serverId` key** is treated as orphaned or half-written and skipped. `serverId` is written by `user.Login()` regardless of whether credentials were saved, so its absence means the section never completed a login — a migration must not assume it will be reached for such a section.
 
 ### Migration testing
 
