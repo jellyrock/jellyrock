@@ -591,6 +591,46 @@ export const MEASUREMENTS = Object.freeze([
       }),
     ]),
   }),
+  Object.freeze({
+    id: 'extras-rows',
+    title: 'Item details extras rows',
+    doc: 'docs/architecture/async.md#crossing-the-thread-boundary-costs-a-rendezvous--budget-crossings-not-bytes',
+    // NULL for the same reason `item-grid`'s is: ONE orchestrator
+    // (`LoadExtrasRowsTask`) backs the extras rows of every detail screen, so a movie's
+    // extras and a series' extras are different workloads under one id. Whoever
+    // navigates has to say which (`--nav movieDetails` / `--nav seriesDetails`).
+    screen: null,
+    grounded: true,
+    // `castMs`, not `taskMs`: the orchestrator's total is dominated by network wait for
+    // the rows that make requests, and the cast row makes none — its people are already
+    // on the item. So `taskMs` moves with the server and the library, while `castMs` is
+    // pure local work on the task thread, which is the thing a change to card building
+    // actually moves.
+    primary: 'castMs',
+    // `people` is what the server sent; `cards` is what the row ended up with. They
+    // differ exactly when a person's repeated credits were merged onto one card, so the
+    // pair states both halves of the workload — how much there was to chew on, and how
+    // much crossed the thread boundary.
+    workload: Object.freeze(['rows', 'castPeople', 'castCards']),
+    lines: Object.freeze([
+      Object.freeze({
+        key: 'orchestrator',
+        required: true,
+        pattern:
+          /extras-rows orchestrator done -.*?rows (?<rows>\d+) task (?<taskMs>\d+) wait (?<waitMs>\d+) emit (?<emitMs>\d+)/,
+      }),
+      Object.freeze({
+        // OPTIONAL because a detail screen whose type plans no cast row (music,
+        // playlists) emits the orchestrator line and not this one — and a REQUIRED line
+        // would throw away every such sample rather than recording the timings it does
+        // have. Same reason `latest-rows size recompute` is optional.
+        key: 'cast',
+        required: false,
+        pattern:
+          /extras-rows cast -.*?people (?<castPeople>\d+) cards (?<castCards>\d+) ms (?<castMs>\d+)/,
+      }),
+    ]),
+  }),
 ]);
 
 /** Look a family up by id; `undefined` when it is not registered. */
