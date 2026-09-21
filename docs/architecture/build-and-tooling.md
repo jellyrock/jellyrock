@@ -1,6 +1,7 @@
 ---
 topic: build-and-tooling
 related-files:
+  - bsconfig-base.json
   - bsconfig.json
   - bsconfig-prod.json
   - package.json
@@ -93,7 +94,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-09-17
+last-reviewed: 2026-09-21
 ---
 
 # Build & Tooling
@@ -112,22 +113,35 @@ images, locales   ─┘     in build/                                    in out
 
 ## bsconfig variants
 
-Several `bsconfig*.json` files exist, one per build target:
+Several `bsconfig*.json` files exist, one per build target, and every one inherits from `bsconfig-base.json`:
 
 | File | Purpose |
 |---|---|
+| `bsconfig-base.json` | Not a build target. The settings every config shares: `compilerOptions` (`autoImportComponentScript`, `sourceMap: true`), **all** `diagnosticFilters`, and `outDir` |
 | `bsconfig.json` | Standard dev build — log strip OFF, source maps ON, all plugins active |
 | `bsconfig-prod.json` | Production build — log strip ON (`rokuLog.strip = true`), source maps OFF, comments removed |
+| `bsconfig-analysis.json` | `bsconfig-prod.json` plus source maps, built to `build-analysis/` (`npm run build:analysis`). `/crash-report` derives the same config from each tag's own prod config |
 | `bsconfig-tests.json` | All test suites except `migration` / `registry` / `measurement` tags; no code coverage — the gating build (`test:all`, CI) |
 | `bsconfig-tests-unit.json` | Unit tests only, except the `measurement` tag (faster for iteration) |
 | `bsconfig-tests-integration.json` | Integration tests only |
 | `bsconfig-tests-complete.json` | Every tag, **with code coverage recorded** (`test:complete`, CI `complete` dispatch) |
 | `bsconfig-tdd-sample.json` | Sample TDD config — devs copy to `bsconfig-tdd.json` and customize what suites/tests to run |
 
+### How the configs compose
+
+Each config names its parent with `extends` (`bsconfig-analysis.json` extends `bsconfig-prod.json`; the rest extend `bsconfig-base.json`). BrighterScript merges `extends` **shallowly**, and only `compilerOptions` is merged key by key — so a child can override one compiler option (prod sets just `compilerOptions.sourceMap: false`) and keep the others. Every other key a child sets **replaces** the parent's value outright: a child `diagnosticFilters` array would silently drop every filter the base defines. That is why all filters live in the base, including the test-only ones (`tests/**`), which match nothing in the app builds. [`bsconfig-inheritance.test.js`](../../tests/scripts/unit/lint/bsconfig-inheritance.test.js) enforces this shape: every config reaches the base, no child redefines `diagnosticFilters`, no config uses a deprecated top-level compiler option, and every file a device-test config inherits from triggers the device unit tests.
+
+Compiler options go under `compilerOptions`. BrighterScript 1.0.0-alpha.53 moved 17 of them there (`sourceMap`, `autoImportComponentScript`, `strict`, …); the top-level spelling still works but warns, and **`compilerOptions` wins when both are set**, so a top-level override in a child is silently ignored once the base sets the same option under `compilerOptions`.
+
+The base's `tests/**/*.spec.bs` filter for `function-name-too-long` exists because Rooibos renames every test method to `rooiboos_test_case_<md5>_<n>` inside the suite class, which puts any suite with a class name over about 20 characters past Roku's 89-character function-name limit. The limit only matters when a function reference is converted with `toStr()`, and Rooibos calls test methods by name (`m.testSuite[m.funcName]()`), never through `toStr()`. The filter covers only the files Rooibos rewrites, so the rule stays live for app code and for test helpers and mocks.
+
+**VS Code does not reload a project when its base changes.** The BrighterScript language server reloads a project only when that project's own bsconfig file changes, so after editing `bsconfig-base.json` run **BrightScript: Restart Language Server** (or reload the window) to see the new settings.
+
 The `bsconfig.json` (dev) entry shape:
 
 ```json
 {
+  "extends": "./bsconfig-base.json",
   "files": [
     "manifest",
     "source/**/*.*",
@@ -147,10 +161,7 @@ The `bsconfig.json` (dev) entry shape:
     "strip": false,
     "insertPkgPath": true,
     "removeComments": false
-  },
-  "sourceMap": true,
-  "autoImportComponentScript": true,
-  "outDir": "build"
+  }
 }
 ```
 
@@ -468,7 +479,7 @@ Roku channel-store submission requires a signed `.pkg`, not the sideload `.zip`.
 
 **Why hardware is required.** `roku-deploy.deployAndSignPackage()` is a thin wrapper over `deploy()` + `signExistingPackage()`. The signing runs on the Roku itself: `roku-deploy` uploads the zip, hits the dev-portal sign endpoint with the signing password, and downloads the resulting `.pkg`. There is no offline signing path.
 
-**Prod-build guard.** The script refuses to sign a `build/` directory that contains source maps. `bsconfig-prod.json` has `sourceMap: false`; `bsconfig.json` and `bsconfig-tests*.json` both have `sourceMap: true`. Any `.map` file under `build/` means an unsafe build is sitting there. The composed npm script (`npm run build:prod && node scripts/create-signed-package.cjs`) makes the default invocation always safe; the in-script guard catches direct `.cjs` invocations against a stale build.
+**Prod-build guard.** The script refuses to sign a `build/` directory that contains source maps. `bsconfig-prod.json` sets `compilerOptions.sourceMap: false`; `bsconfig.json` and `bsconfig-tests*.json` inherit `sourceMap: true` from `bsconfig-base.json`. Any `.map` file under `build/` means an unsafe build is sitting there. The composed npm script (`npm run build:prod && node scripts/create-signed-package.cjs`) makes the default invocation always safe; the in-script guard catches direct `.cjs` invocations against a stale build.
 
 **Dev-ID verification (optional).** When `ROKU_DEV_ID` is set, it's passed to `deployAndSignPackage()` and the call aborts if the device's cert produces a `.pkg` with a different ID. Roku channel-store updates must be signed with the same dev ID as prior versions, so this catches a wrong-cert `.pkg` before manual upload.
 

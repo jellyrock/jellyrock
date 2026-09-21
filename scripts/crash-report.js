@@ -919,6 +919,26 @@ function readStdin() {
 // ────────────────────────────────────────────────────────────────────
 
 /**
+ * Derive a tag's analysis bsconfig from its prod bsconfig: the same build, with
+ * source maps on and its own outDir.
+ *
+ * `compilerOptions.sourceMap` beats a top-level `sourceMap` (BrighterScript
+ * 1.0.0-alpha.53+), so a top-level override alone silently loses to a prod config
+ * that sets `compilerOptions.sourceMap: false`. Older tags keep the top-level key,
+ * and their BrighterScript ignores `compilerOptions`, so it is overridden too —
+ * but only where the prod config has it, since a newer BrighterScript warns on it.
+ */
+export function deriveAnalysisConfig(prodConfig) {
+  const analysisConfig = {
+    ...prodConfig,
+    compilerOptions: { ...prodConfig.compilerOptions, sourceMap: true },
+    outDir: 'build-analysis',
+  };
+  if ('sourceMap' in prodConfig) analysisConfig.sourceMap = true;
+  return analysisConfig;
+}
+
+/**
  * Create a git worktree at the given tag/ref and run the analysis build there.
  * Generates bsconfig-analysis.json by reading the worktree's own bsconfig-prod.json
  * and flipping sourceMap on — this means the build always uses the plugin list
@@ -960,14 +980,9 @@ export function buildAnalysisInWorktree(
       );
     }
     const prodConfig = JSON.parse(readFileSync(prodConfigPath, 'utf8'));
-    const analysisConfig = {
-      ...prodConfig,
-      sourceMap: true,
-      outDir: 'build-analysis',
-    };
     writeFileSync(
       join(worktreePath, 'bsconfig-analysis.json'),
-      JSON.stringify(analysisConfig, null, 2) + '\n',
+      JSON.stringify(deriveAnalysisConfig(prodConfig), null, 2) + '\n',
     );
     logger(`[crash-report] installing dependencies in worktree`);
     runStep(['npm', 'ci'], worktreePath, logger);

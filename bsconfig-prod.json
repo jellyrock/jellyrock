@@ -1,4 +1,5 @@
 {
+  "extends": "./bsconfig-base.json",
   "files": [
     "manifest",
     "source/**/*.*",
@@ -32,15 +33,7 @@
     "insertPkgPath": false,
     "removeComments": true
   },
-  "diagnosticFilters": [
-    {
-      "files": "node_modules/**/*"
-    },
-    {
-      "files": "**/roku_modules/**/*"
-    }
-  ],
-  "sourceMap": false,
-  "autoImportComponentScript": true,
-  "outDir": "build"
+  "compilerOptions": {
+    "sourceMap": false
+  }
 }

@@ -5,7 +5,7 @@ related-files:
   - scripts/run-roku-tests.js
   - scripts/lib/env-config.cjs
   - tests/source/BaseTestSuite.spec.bs
-last-reviewed: 2026-09-16
+last-reviewed: 2026-09-21
 ---
 
 # Test-Driven Development (TDD) Workflow
@@ -43,6 +43,8 @@ cp bsconfig-tdd-sample.json bsconfig-tdd.json
 ```
 
 **Note:** `bsconfig-tdd.json` is gitignored - it's your personal development config.
+
+The sample `extends` `bsconfig-base.json`, which supplies the compiler options and every diagnostic filter, so your copy only needs `files`, `plugins` and `rooibos`. Keep it that way: a `diagnosticFilters` array in your copy replaces the base's list instead of adding to it. If your copy predates the base — it has top-level `sourceMap` / `autoImportComponentScript` keys or its own `diagnosticFilters`, and the build warns `deprecated-bsconfig-option` — re-copy the sample and re-add your spec entries.
 
 ### 2. Edit the `files` Array
 
@@ -198,7 +200,7 @@ end function
 
 - Check `isRecordingCodeCoverage: false`
 - Verify only 1-3 test files are included
-- Disable source maps: `"sourceMap": false`
+- Disable source maps: `"compilerOptions": { "sourceMap": false }` (a top-level `"sourceMap": false` is ignored — the base's `compilerOptions.sourceMap` wins)
 
 ### Changes Not Detected
 

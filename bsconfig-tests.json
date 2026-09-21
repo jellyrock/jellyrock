@@ -1,4 +1,5 @@
 {
+  "extends": "./bsconfig-base.json",
   "files": [
     "manifest",
     {
@@ -25,20 +26,6 @@
     "!tests/source/e2e/**/*",
     "!tests/source/**/*.md"
   ],
-  "diagnosticFilters": [
-    {
-      "files": "node_modules/**/*"
-    },
-    {
-      "files": "**/roku_modules/**/*"
-    },
-    {
-      "files": "tests/**/*",
-      "codes": ["LINT3008"]
-    }
-  ],
-  "autoImportComponentScript": true,
-  "outDir": "build",
   "plugins": [
     "rooibos-roku",
     "@rokucommunity/bslint",
@@ -54,6 +41,5 @@
     "failFast": false,
     "sendHomeOnFinish": false,
     "printTestTimes": true
-  },
-  "sourceMap": true
+  }
 }
