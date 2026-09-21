@@ -94,15 +94,9 @@ async function createSignedPackage() {
   // builds also have source maps. Any *.map under build/ means the build
   // came from bsconfig.json or bsconfig-tests*.json — both unsafe to ship.
   //
-  // Exclude roku_modules/ — those are ropm-vendored upstream packages that
-  // ship with their own .brs.map files regardless of our bsconfig settings.
-  // We have no control over their build output and they're not what this
-  // guard is trying to catch.
-  const sourceMaps = await fg(['**/*.map'], {
-    cwd: buildDir,
-    onlyFiles: true,
-    ignore: ['**/roku_modules/**'],
-  });
+  // No exceptions: every config's `files` excludes prebuilt `**/*.map` (the
+  // roku-log maps ropm vendors), so a prod build contains none at all.
+  const sourceMaps = await fg(['**/*.map'], { cwd: buildDir, onlyFiles: true });
   if (sourceMaps.length > 0) {
     console.error(
       '❌ build/ contains source maps — this is a dev or test build, not a prod build.',

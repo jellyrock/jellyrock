@@ -1,5 +1,5 @@
 {
-  "extends": "./bsconfig-base.json",
+  "extends": "./bsconfig-tests.json",
   "files": [
     "manifest",
     {
@@ -33,12 +33,8 @@
     {
       "src": "**/NewFeature.spec.bs",
       "dest": "source"
-    }
-  ],
-  "plugins": [
-    "rooibos-roku",
-    "@rokucommunity/bslint",
-    "./scripts/bsc-plugins/translation-keys.cjs"
+    },
+    "!**/*.map"
   ],
   "rooibos": {
     "isRecordingCodeCoverage": false,

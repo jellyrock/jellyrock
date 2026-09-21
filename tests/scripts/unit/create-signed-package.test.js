@@ -123,23 +123,15 @@ describe('create-signed-package', () => {
     }
   });
 
-  it('ignores source maps under roku_modules/ (vendored ropm packages ship with their own)', () => {
-    // Regression: ropm-vendored packages (log, rr, bslib) copy their own
-    // .brs.map files into build/{source,components}/roku_modules/ regardless
-    // of bsconfig sourceMap settings. These are NOT a sign of a dev build —
-    // a clean prod build still contains them. The guard must skip them and
-    // proceed past the source-map check (failing later at the manifest step
-    // here, since no manifest is created for this fixture).
+  it('refuses source maps under roku_modules/ too (a prod build has none)', () => {
+    // Every bsconfig's `files` excludes prebuilt `**/*.map`, so even the maps ropm
+    // vendors with roku-log never reach a prod build. A map anywhere in build/,
+    // roku_modules included, means the build did not come from bsconfig-prod.json.
     const ws = freshWorkspace();
     try {
       const buildDir = join(ws.dir, 'build');
       mkdirSync(join(buildDir, 'source', 'roku_modules', 'log'), { recursive: true });
-      mkdirSync(join(buildDir, 'components', 'roku_modules', 'log'), { recursive: true });
       writeFileSync(join(buildDir, 'source', 'roku_modules', 'log', 'LogMixin.brs.map'), '{}');
-      writeFileSync(
-        join(buildDir, 'components', 'roku_modules', 'log', 'HTTPTransport.brs.map'),
-        '{}',
-      );
       const { exitCode, stderr } = spawnScript('scripts/create-signed-package.cjs', [], {
         cwd: ws.dir,
         env: {
@@ -149,10 +141,8 @@ describe('create-signed-package', () => {
         },
       });
       expect(exitCode).not.toBe(0);
-      // Must NOT have failed at the source-map check.
-      expect(stderr).not.toMatch(/source maps/);
-      // Must have progressed past it to the manifest check.
-      expect(stderr).toMatch(/manifest/);
+      expect(stderr).toMatch(/source maps/);
+      expect(stderr).toMatch(/LogMixin\.brs\.map/);
     } finally {
       ws.cleanup();
     }

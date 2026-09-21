@@ -125,11 +125,13 @@ Several `bsconfig*.json` files exist, one per build target, and every one inheri
 | `bsconfig-tests-unit.json` | Unit tests only, except the `measurement` tag (faster for iteration) |
 | `bsconfig-tests-integration.json` | Integration tests only |
 | `bsconfig-tests-complete.json` | Every tag, **with code coverage recorded** (`test:complete`, CI `complete` dispatch) |
-| `bsconfig-tdd-sample.json` | Sample TDD config — devs copy to `bsconfig-tdd.json` and customize what suites/tests to run |
+| `bsconfig-tdd-sample.json` | Sample TDD config — extends `bsconfig-tests.json`, so a copy holds only `files` and `rooibos`; devs copy it to `bsconfig-tdd.json` and pick the suites/tests to run |
 
 ### How the configs compose
 
-Each config names its parent with `extends` (`bsconfig-analysis.json` extends `bsconfig-prod.json`; the rest extend `bsconfig-base.json`). BrighterScript merges `extends` **shallowly**, and only `compilerOptions` is merged key by key — so a child can override one compiler option (prod sets just `compilerOptions.sourceMap: false`) and keep the others. Every other key a child sets **replaces** the parent's value outright: a child `diagnosticFilters` array would silently drop every filter the base defines. That is why all filters live in the base, including the test-only ones (`tests/**`), which match nothing in the app builds. [`bsconfig-inheritance.test.js`](../../tests/scripts/unit/lint/bsconfig-inheritance.test.js) enforces this shape: every config reaches the base, no child redefines `diagnosticFilters`, no config uses a deprecated top-level compiler option, and every file a device-test config inherits from triggers the device unit tests.
+Each config names its parent with `extends` (`bsconfig-analysis.json` extends `bsconfig-prod.json`, `bsconfig-tdd-sample.json` extends `bsconfig-tests.json`; the rest extend `bsconfig-base.json`). BrighterScript merges `extends` **shallowly**, and only `compilerOptions` is merged key by key — so a child can override one compiler option (prod sets just `compilerOptions.sourceMap: false`) and keep the others. Every other key a child sets **replaces** the parent's value outright: a child `diagnosticFilters` array would silently drop every filter the base defines. That is why all filters live in the base, including the test-only ones (`tests/**`), which match nothing in the app builds. [`bsconfig-inheritance.test.js`](../../tests/scripts/unit/lint/bsconfig-inheritance.test.js) enforces this shape: every config reaches the base, no child redefines `diagnosticFilters`, no config uses a deprecated top-level compiler option, every file a device-test config inherits from triggers the device unit tests, and every `files` array ends with `"!**/*.map"`.
+
+**Every `files` array ends with `"!**/*.map"`.** A ropm package can ship prebuilt `.map` files next to its `.brs` (roku-log ships 9). Copied by `files`, each lands on the same output path as the map BSC generates for that `.brs`, and BSC writes both concurrently: the result differed between builds and was often invalid JSON (the shorter map written over the head of the longer one). BSC already reads a co-located prebuilt map from disk to chain it, so nothing needs copying, and prod now ships no maps at all. The negation must stay the **last** entry, because a later glob would copy the maps back in. The TDD sample is the exception to inheriting everything shared: `files` cannot be inherited, so it restates the line. Adopting roku-log as owned code, which would remove its prebuilt maps altogether, is [#986](https://github.com/jellyrock/jellyrock/issues/986).
 
 Compiler options go under `compilerOptions`. BrighterScript 1.0.0-alpha.53 moved 17 of them there (`sourceMap`, `autoImportComponentScript`, `strict`, …); the top-level spelling still works but warns, and **`compilerOptions` wins when both are set**, so a top-level override in a child is silently ignored once the base sets the same option under `compilerOptions`.
 
@@ -148,7 +150,8 @@ The `bsconfig.json` (dev) entry shape:
     "components/**/*.*",
     "images/**/*.*",
     "locale/**/*.*",
-    "settings/*.*"
+    "settings/*.*",
+    "!**/*.map"
   ],
   "plugins": [
     "@rokucommunity/bslint",

@@ -10,7 +10,8 @@
     {
       "src": "resources/branding/release/*.*",
       "dest": "images/branding"
-    }
+    },
+    "!**/*.map"
   ],
   "plugins": [
     "@rokucommunity/bslint",

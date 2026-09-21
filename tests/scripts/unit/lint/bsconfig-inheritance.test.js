@@ -79,6 +79,17 @@ describe('bsconfig inheritance', () => {
     expect(deprecatedCompilerOptionKeys.filter((key) => key in config)).toEqual([]);
   });
 
+  // A prebuilt map copied by `files` lands on the same output path as the map BSC
+  // generates for that file, and the two concurrent writes corrupt it. BSC reads a
+  // co-located prebuilt map itself, so it never needs copying. Last entry, so no
+  // later glob can copy one back in.
+  it.each(CONFIGS.filter((c) => 'files' in load(c)))(
+    '%s copies no prebuilt source maps (files ends with "!**/*.map")',
+    (name) => {
+      expect(load(name).files.at(-1)).toBe('!**/*.map');
+    },
+  );
+
   // A config the device-test path filter watches changes what the device builds,
   // and so does every file it inherits from — they must re-run the tests too.
   const deviceFilter = deviceTestPathFilter();
