@@ -46,18 +46,23 @@ sub loadSchedule()
 
   ok = isValid(res) and res.ok and isValid(res.json) and isValid(res.json.Items)
   if ok
-    transformer = JellyfinDataTransformer()
-    for each item in res.json.Items
-      programs = byChannel[item.ChannelId ?? ""]
+    ' The array form, not transformBaseItem per program: the per-item form reads
+    ' m.global.server.version for every program, a render-thread rendezvous each time, and
+    ' while the guide scrolls each one waits on a busy render thread. Measured 2026-09-21 on a
+    ' Streaming Stick 4K: a ~700-program block took 1.4 s idle and 51.8 s during a 400 ms/row
+    ' scroll. The nodes are this thread's own, so reading them below crosses nothing.
+    transformed = JellyfinDataTransformer().transformBaseItemArray(res.json.Items)
+    for i = 0 to transformed.count() - 1
+      program = transformed[i]
+      programs = byChannel[program.channelId]
       if isValid(programs)
-        node = transformer.transformBaseItem(item)
         ' hdSmallIconUrl drives the TimeGrid recording indicator (a ContentNode built-in)
-        if isValidAndNotEmpty(node.timerId)
-          node.hdsmalliconurl = "pkg:/images/red.png"
+        if isValidAndNotEmpty(program.timerId)
+          program.hdsmalliconurl = "pkg:/images/red.png"
         else
-          node.hdsmalliconurl = ""
+          program.hdsmalliconurl = ""
         end if
-        programs.push(node)
+        programs.push(program)
       end if
     end for
   end if
