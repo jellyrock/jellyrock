@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-21 — fix: Stop copying prebuilt source maps into builds
 - 2026-09-21 — ci: Make the device test run account for every test it counts
 - 2026-09-21 — Share bsconfig settings through one base config and clear the new BrighterScript warnings
 - 2026-09-21 — fix: Honor v12 web client's "Original language" audio preference
