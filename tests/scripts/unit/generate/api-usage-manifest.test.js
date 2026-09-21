@@ -235,6 +235,7 @@ describe('CLI --check drift gate', () => {
     dir = mkdtempSync(join(tmpdir(), 'jellyrock-api-manifest-'));
     mkdirSync(join(dir, 'source', 'api'), { recursive: true });
     mkdirSync(join(dir, 'source', 'data'), { recursive: true });
+    mkdirSync(join(dir, 'source', 'utils'), { recursive: true });
     mkdirSync(join(dir, 'docs', 'architecture'), { recursive: true });
     writeFileSync(
       join(dir, 'source', 'api', 'ApiClient.bs'),
@@ -249,6 +250,9 @@ describe('CLI --check drift gate', () => {
       join(dir, 'source', 'data', 'SessionDataTransformer.bs'),
       fn('  x = apiData.Name'),
     );
+    // Same: every RESPONSE_FIELD_FILES entry must exist, because the generator fails
+    // loudly on a missing one rather than quietly scanning less.
+    writeFileSync(join(dir, 'source', 'utils', 'people.bs'), fn('  x = person.Id'));
 
     const check1 = spawnScript(SCRIPT, ['--check', dir]);
     expect(check1.exitCode).toBe(1);

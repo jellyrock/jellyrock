@@ -5,6 +5,7 @@ import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/extras/extrasRows.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/people.bs"
 import "pkg:/source/utils/versionDisplay.bs"
 
 sub init()
@@ -36,6 +37,10 @@ sub loadExtrasRows()
   stepClock = invalid
   waitMs = 0
   emitMs = 0
+  castMs = 0
+  castPeople = 0
+  castCards = 0
+  castRowRan = false
   #if perfTiming
     ' Same wait / emit split as LoadLatestRowsTask, so the two orchestrators' numbers read
     ' the same way. See the comment there for why it is gated on perfTiming and not debug.
@@ -63,11 +68,20 @@ sub loadExtrasRows()
         stepClock.mark()
       #end if
       people = m.top.people
+      ' Hoisted out of the emitRow() call only so the card count can be read for the
+      ' perfTiming line below; the call order is unchanged.
+      cards = castItems(people)
       ' &h0200: an unsupported value becomes a descriptive string rather than failing the whole
       ' format to "" (which would still be safe — an empty digest always rewrites the row).
-      emitRow(row, "ok", castItems(people), extrasRows.digestOf(FormatJSON(people, &h0200)))
+      emitRow(row, "ok", cards, extrasRows.digestOf(FormatJSON(people, &h0200)))
       #if perfTiming
-        emitMs += stepClock.totalMilliseconds()
+        castMs = stepClock.totalMilliseconds()
+        emitMs += castMs
+        ' Counted AFTER the clock is read — both are thread-local by now, but the timed
+        ' region should hold the row's work and nothing else.
+        if isValid(people) then castPeople = people.count()
+        castCards = cards.count()
+        castRowRan = true
       #end if
     else
       entries.push({ requestId: "extras-" + row.kind, req: buildRowRequest(row, userId), row: row })
@@ -105,6 +119,22 @@ sub loadExtrasRows()
       buildFlags = " [debug=false perfTiming=true]"
     #end if
     m.log.info("extras-rows orchestrator done -" + buildFlags, "rows", rows.count(), "task", runClock.totalMilliseconds(), "wait", waitMs, "emit", emitMs)
+    ' The Cast & Crew row gets its OWN line rather than four more columns on the one
+    ' above, because `m.log.*` faults at runtime past nine call-site arguments and that
+    ' line already carries eight. Same reason `latest-rows size recompute` is separate.
+    '
+    ' It is worth separating at all because this row is the only one that does real
+    ' per-item work on this thread — merging a person's repeated credits and resolving
+    ' each distinct label — while `emit` above aggregates every row, where a change here
+    ' is far too small to see. `people` and `cards` differ exactly when the merge did
+    ' something, which is the workload evidence a comparison of two arms needs.
+    '
+    ' Gated on whether the row RAN, not on its counts: an item whose type plans no cast
+    ' row (music, playlists) must be distinguishable from a video item whose cast is
+    ' simply empty, and `castPeople > 0` conflates the two.
+    if castRowRan
+      m.log.info("extras-rows cast -" + buildFlags, "people", castPeople, "cards", castCards, "ms", castMs)
+    end if
   #end if
 end sub
 
@@ -243,11 +273,19 @@ sub emitResponse(row as object, res as dynamic)
   emitRow(row, "ok", m.transformer.transformBaseItemArray(apiItems, m.serverVersion), digest)
 end sub
 
+' Cards for the Cast & Crew row.
+'
+' The merge and the labelling happen here, on this thread, before any node exists: merging
+' a person's repeated credits makes the row FEWER nodes to carry across, and castCardSpecs()
+' resolves each distinct label once for the whole array rather than once per person — which
+' matters because every translate() from a Task thread reads `m.global.translations` at
+' ~93 us against ~2 us from the render thread (docs/architecture/async.md). The specs are
+' plain AAs; only the nodes below cross.
 function castItems(people as dynamic) as object
   items = []
   if not isValid(people) then return items
-  for each person in people
-    node = m.transformer.transformPerson(person)
+  for each spec in castCardSpecs(people)
+    node = m.transformer.transformPersonCard(spec)
     if isValid(node) then items.push(node)
   end for
   return items

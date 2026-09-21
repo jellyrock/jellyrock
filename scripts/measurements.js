@@ -591,6 +591,51 @@ export const MEASUREMENTS = Object.freeze([
       }),
     ]),
   }),
+  Object.freeze({
+    id: 'extras-rows',
+    title: 'Item details extras rows',
+    doc: 'docs/architecture/async.md#crossing-the-thread-boundary-costs-a-rendezvous--budget-crossings-not-bytes',
+    // NULL for the same reason `item-grid`'s is: ONE orchestrator
+    // (`LoadExtrasRowsTask`) backs the extras rows of every detail screen, so a movie's
+    // extras and a series' extras are different workloads under one id. Whoever
+    // navigates has to say which (`--nav movieDetails` / `--nav seriesDetails`).
+    screen: null,
+    grounded: true,
+    // `castMs`, not `taskMs`: the orchestrator's total is dominated by network wait for
+    // the rows that make requests, and the cast row makes none — its people are already
+    // on the item. So `taskMs` moves with the server and the library, while `castMs` is
+    // pure local work on the task thread, which is the thing a change to card building
+    // actually moves.
+    primary: 'castMs',
+    // `castPeople` is what the server sent — the INPUT, identical across arms by
+    // construction, which is what `workloadKey` builds a comparison identity out of.
+    workload: Object.freeze(['rows', 'castPeople']),
+    // `castCards` is an OUTCOME, not workload: it diverges from `castPeople` exactly
+    // when the merge fired, so it is SUPPOSED to differ between a pre-merge arm and a
+    // post-merge one. In `workload` it would make `measure:compare` report that the arms
+    // "did not all do the same work" — the finding rather than a fault, which is the same
+    // reason `home-latest-rows` keeps `sizeCalls` out. `unitFor` answers '' either way,
+    // so this costs nothing in rendering and buys back the comparison.
+    counts: Object.freeze(['castCards']),
+    lines: Object.freeze([
+      Object.freeze({
+        key: 'orchestrator',
+        required: true,
+        pattern:
+          /extras-rows orchestrator done -.*?rows (?<rows>\d+) task (?<taskMs>\d+) wait (?<waitMs>\d+) emit (?<emitMs>\d+)/,
+      }),
+      Object.freeze({
+        // OPTIONAL because a detail screen whose type plans no cast row (music,
+        // playlists) emits the orchestrator line and not this one — and a REQUIRED line
+        // would throw away every such sample rather than recording the timings it does
+        // have. Same reason `latest-rows size recompute` is optional.
+        key: 'cast',
+        required: false,
+        pattern:
+          /extras-rows cast -.*?people (?<castPeople>\d+) cards (?<castCards>\d+) ms (?<castMs>\d+)/,
+      }),
+    ]),
+  }),
 ]);
 
 /** Look a family up by id; `undefined` when it is not registered. */

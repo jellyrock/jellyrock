@@ -3,11 +3,12 @@ topic: translations
 related-files:
   - source/utils/translate.bs
   - source/utils/translateLocale.bs
+  - source/utils/people.bs
   - scripts/bsc-plugins/translation-keys.cjs
   - scripts/lint/update-translations.cjs
   - scripts/lint/language-coverage.cjs
   - locale/languages.json
-last-reviewed: 2026-06-07
+last-reviewed: 2026-09-20
 ---
 
 # Translations (i18n)
@@ -197,6 +198,64 @@ Track names tagged `und` ("undetermined") and `zxx` ("no linguistic content") ar
 3. An English fallback exists for a code that's already covered by a translation key — wasted maintenance, inconsistent output.
 
 These all pass type-check and unit tests but produce silent gaps for non-English users — the lint is the only catch.
+
+## Person role labels — `source/utils/people.bs`
+
+The third localization concern, and structurally a sibling of the language resolver above:
+`BaseItemPerson.Type` (a `PersonKind` enum value) and `.Role` (a TMDB job title, or an actor's
+character) arrive as raw English and are rendered as the Cast & Crew card's subtitle.
+
+They have to be resolved **client-side, on every server version**. Jellyfin 12.0 added
+per-request localization via the `Accept-Language` header ([jellyfin#16488](https://github.com/jellyfin/jellyfin/pull/16488)),
+but it covers only the server's own resource strings — neither `PersonKind` values nor TMDB job
+names are among them, so no server will ever send these translated.
+
+`personCreditLabel()` follows `jellyfin-web`'s `getPeopleRoleOrTypeLabel` rule:
+
+1. **Character** — an `Actor` or `GuestStar` with a `Role` renders `LabelPersonRoleAs` ("as {0}").
+2. **Type** — no `Role`, or a `Role` that merely restates the `Type`, renders the `LabelPersonKindX`
+   key for that enum value, or **nothing at all** when `unlabeledPersonKinds()` covers it. `Unknown`
+   is the only such kind today: it is the value the enum serializes by default, so it means "the server did
+   not say", which must read the same as no type at all rather than as the literal word. (`jellyfin-web`
+   translates it instead — a deliberate divergence.) A kind in neither table passes through verbatim,
+   which the gate below exists to stop.
+3. **Job** — anything else renders the `Role`, through `LabelPersonJobX` for the jobs we carry a
+   string for (`Screenplay`, `Novel` — the two the server files under `Writer`), and verbatim
+   otherwise. An untranslated real job beats a translated generic one, which is also what web does.
+
+**The cache is keyed on the translation KEY, not on the credit.** That is the load-bearing detail:
+this resolver runs on a Task thread (`LoadExtrasRowsTask`), where each `translate()` reads
+`m.global.translations` — one rendezvous at ~93 µs against ~2 µs from the render thread, plus a
+second read of `m.global.translationsFallback` only when the key misses, which for `en_US` it never
+does (see
+[async.md](async.md#crossing-the-thread-boundary-costs-a-rendezvous--budget-crossings-not-bytes)).
+An actor's label differs per character, so a credit-keyed cache would miss on every actor and leave
+a large cast making one `translate()` per person. Resolving `"as {0}"` once and substituting the
+character thread-locally bounds a whole cast to at most one call per distinct key.
+
+### Coverage is gated, not remembered
+
+The kind table is **closed** — it is keyed off a server enum — so completeness is a checkable
+property, and `npm run lint:language-coverage` checks it: every `PersonKind` value in the committed
+[spec fingerprints](spec-fingerprints/) must appear in either `personKindTranslationKeys()` or
+`unlabeledPersonKinds()`, the two must be disjoint, and neither may carry a row for a value no
+supported server sends.
+
+**This gate replaced a claim that was false.** The section used to argue no lint was needed because
+"a missing entry is a compile error (the key would not exist in `translationKeys`)". It is not. The
+compiler catches a *typo in a key that is in the map*; a value with **no row at all** has no
+expression to fail on. Nine of the twenty-six values shipped that way, rendering raw English, and
+nothing caught it — including a review and a full on-device test run. The count is deliberately not
+written down here: `lint:language-coverage` prints it, and a number in prose would only rot.
+
+The gate reads the fingerprints rather than `.api-watch/cache/`, because the cache is gitignored and
+so does not exist in CI. It takes the **union** across fingerprints, not the newest, since the app
+talks to 10.7 → 12.x simultaneously and a value on any supported line has to render. It fails loudly
+when no fingerprint defines the enum at all — a silent skip would be indistinguishable from full
+coverage, which is the exact failure being prevented.
+
+The **job** table is not gated and cannot be: TMDB job strings are an open-ended space with no enum,
+so its fall-through to the raw `Role` is the design rather than a gap.
 
 ## Compile-time key safety — the BSC plugin
 

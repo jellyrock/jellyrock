@@ -59,6 +59,13 @@ const ENDPOINT_EXCLUDE = new Set(['source/api/baseRequest.bs', 'source/api/image
 const RESPONSE_FIELD_FILES = [
   'source/data/JellyfinDataTransformer.bs',
   'source/data/SessionDataTransformer.bs',
+  // Same kind of file by the test above, just not under source/data: it maps
+  // BaseItemPerson entries onto Cast & Crew card specs, so every PascalCase read in
+  // it is a Jellyfin field. Added when the person reads moved here out of
+  // JellyfinDataTransformer — without it the manifest silently lost
+  // BaseItemPerson.PrimaryImageTag, which is exactly the blindness /server-upgrade
+  // reads this file to avoid.
+  'source/utils/people.bs',
 ];
 
 // Request-body fields are built in the API layer.

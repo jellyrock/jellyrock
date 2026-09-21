@@ -54,6 +54,11 @@ export default [
       'locale/',
       'tasks/',
       '.claude/',
+      // Gitignored per-project scratch (.gitignore), same category as `tasks/` and
+      // `.claude/` above: probe scripts written during a session, never committed and
+      // never seen by CI. Linting them can only ever fail a push on files nobody can
+      // fix by committing — which is exactly what it did.
+      'docs/projects/',
       'roku_modules/',
       '**/roku_modules/',
     ],

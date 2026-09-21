@@ -6,7 +6,8 @@ related-files:
   - source/api/ApiClient.bs
   - source/api/sdk.bs
   - source/data/JellyfinDataTransformer.bs
-last-reviewed: 2026-05-29
+  - source/utils/people.bs
+last-reviewed: 2026-09-20
 ---
 
 # API Usage Manifest
@@ -58,9 +59,21 @@ same parser the BSC plugins use — robust to formatting, unlike grep) and extra
   a string literal or a `Substitute("/path/{0}", …)` template. The HTTP method
   is inferred from the enclosing builder function (`validatedReq("GET", …)`,
   an inline `{ method: "POST" }` AA, or `getJson`/`postJson`).
-- **Response fields** from PascalCase field reads in the data transformers. This
-  works because Jellyfin DTO fields are PascalCase (`apiData.RunTimeTicks`) while
-  JellyRock's own ContentNode writes are camelCase (`item.runTimeTicks`).
+- **Response fields** from PascalCase field reads in an explicit, hand-maintained
+  list of DTO→node mapper files (`RESPONSE_FIELD_FILES`). This works because
+  Jellyfin DTO fields are PascalCase (`apiData.RunTimeTicks`) while JellyRock's own
+  ContentNode writes are camelCase (`item.runTimeTicks`) — but only inside files
+  that are *purely* such mappers, which is why this one is a list and not a glob:
+  elsewhere a PascalCase read can be a Roku object (`deviceInfo.DolbyVision`).
+
+  **The list is a maintenance burden with teeth.** Moving DTO reads into a file
+  that is not on it silently shrinks the manifest, and the manifest going quiet is
+  indistinguishable from the app not using a field. That happened: factoring the
+  `BaseItemPerson` reads out of `JellyfinDataTransformer` into
+  `source/utils/people.bs` dropped `BaseItemPerson.PrimaryImageTag` from the
+  manifest entirely until `people.bs` was added to the list. **If you move or add a
+  DTO→node mapper, add it here.** The generator fails loudly on a listed file that
+  does not exist, which is deliberate — a typo must not degrade into scanning less.
 - **Request fields** from PascalCase AA keys and `body.X =` assignments in the
   API layer.
 

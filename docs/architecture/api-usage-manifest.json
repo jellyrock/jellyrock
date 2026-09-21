@@ -2001,7 +2001,8 @@
         "person"
       ],
       "sourceFiles": [
-        "source/data/JellyfinDataTransformer.bs"
+        "source/data/JellyfinDataTransformer.bs",
+        "source/utils/people.bs"
       ]
     },
     {
@@ -2373,7 +2374,8 @@
         "person"
       ],
       "sourceFiles": [
-        "source/data/JellyfinDataTransformer.bs"
+        "source/data/JellyfinDataTransformer.bs",
+        "source/utils/people.bs"
       ]
     },
     {
@@ -2679,7 +2681,7 @@
         "person"
       ],
       "sourceFiles": [
-        "source/data/JellyfinDataTransformer.bs"
+        "source/utils/people.bs"
       ]
     },
     {
@@ -2796,7 +2798,7 @@
         "person"
       ],
       "sourceFiles": [
-        "source/data/JellyfinDataTransformer.bs"
+        "source/utils/people.bs"
       ]
     },
     {
@@ -3069,7 +3071,8 @@
         "stream"
       ],
       "sourceFiles": [
-        "source/data/JellyfinDataTransformer.bs"
+        "source/data/JellyfinDataTransformer.bs",
+        "source/utils/people.bs"
       ]
     },
     {
@@ -3131,7 +3134,8 @@
       "responseFields": {
         "files": [
           "source/data/JellyfinDataTransformer.bs",
-          "source/data/SessionDataTransformer.bs"
+          "source/data/SessionDataTransformer.bs",
+          "source/utils/people.bs"
         ]
       }
     },

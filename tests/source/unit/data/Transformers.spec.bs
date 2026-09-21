@@ -1893,28 +1893,30 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("JellyfinDataTransformer.transformPerson")
+    @describe("JellyfinDataTransformer.transformPersonCard")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The merge and the label are people.bs's job and are covered in people.spec.bs —
+    ' what is asserted here is only that a spec becomes the right node.
 
     @it("returns invalid for invalid input")
     function _()
       transformer = new JellyfinDataTransformer()
-      m.assertInvalid(transformer.transformPerson(invalid))
+      m.assertInvalid(transformer.transformPersonCard(invalid))
     end function
 
     @it("sets type to Person")
     function _()
       transformer = new JellyfinDataTransformer()
-      person = { Id: "p1", Name: "Jane Smith", Type: "Actor", Role: "Hero", PrimaryImageTag: "tag1" }
-      result = transformer.transformPerson(person)
-      m.assertEqual(result.type, "Person")
+      spec = { id: "p1", name: "Jane Smith", primaryImageTag: "tag1", subtitle: "as Hero" }
+      m.assertEqual(transformer.transformPersonCard(spec).type, "Person")
     end function
 
-    @it("sets id and name from person data")
+    @it("sets id, name and title from the spec")
     function _()
       transformer = new JellyfinDataTransformer()
-      person = { Id: "p1", Name: "Jane Smith", Type: "Actor", Role: "Hero", PrimaryImageTag: "tag1" }
-      result = transformer.transformPerson(person)
+      spec = { id: "p1", name: "Jane Smith", primaryImageTag: "tag1", subtitle: "as Hero" }
+      result = transformer.transformPersonCard(spec)
       m.assertEqual(result.id, "p1")
       m.assertEqual(result.name, "Jane Smith")
       m.assertEqual(result.title, "Jane Smith")
@@ -1923,33 +1925,28 @@ namespace tests
     @it("sets primaryImageTag directly (not nested under ImageTags)")
     function _()
       transformer = new JellyfinDataTransformer()
-      person = { Id: "p1", Name: "Jane Smith", Type: "Actor", Role: "Hero", PrimaryImageTag: "directTag" }
-      result = transformer.transformPerson(person)
-      m.assertEqual(result.primaryImageTag, "directTag")
+      spec = { id: "p1", name: "Jane Smith", primaryImageTag: "directTag", subtitle: "" }
+      m.assertEqual(transformer.transformPersonCard(spec).primaryImageTag, "directTag")
     end function
 
-    @it("sets subtitle as 'as {Role}' for actor with role")
-    function _()
+    @it("carries the pre-computed subtitle through unchanged")
+    @params("as Hero")
+    @params("Director / Screenplay")
+    @params("Guest star")
+    function _(subtitle)
       transformer = new JellyfinDataTransformer()
-      person = { Id: "p1", Name: "Jane Smith", Type: "Actor", Role: "Hero" }
-      result = transformer.transformPerson(person)
-      m.assertEqual(result.subtitle, "as Hero")
+      spec = { id: "p1", name: "Jane Smith", primaryImageTag: "", subtitle: subtitle }
+      m.assertEqual(transformer.transformPersonCard(spec).subtitle, subtitle)
     end function
 
-    @it("sets subtitle to Type for actor without role")
+    @it("defaults every absent spec field to an empty string")
     function _()
       transformer = new JellyfinDataTransformer()
-      person = { Id: "p1", Name: "Jane Smith", Type: "Actor", Role: "" }
-      result = transformer.transformPerson(person)
-      m.assertEqual(result.subtitle, "Actor")
-    end function
-
-    @it("sets subtitle to Type for non-actor (e.g. Director)")
-    function _()
-      transformer = new JellyfinDataTransformer()
-      person = { Id: "p2", Name: "John Doe", Type: "Director" }
-      result = transformer.transformPerson(person)
-      m.assertEqual(result.subtitle, "Director")
+      result = transformer.transformPersonCard({})
+      m.assertEqual(result.id, "")
+      m.assertEqual(result.name, "")
+      m.assertEqual(result.subtitle, "")
+      m.assertEqual(result.primaryImageTag, "")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

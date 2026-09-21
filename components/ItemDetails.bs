@@ -14,6 +14,7 @@ import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
+import "pkg:/source/utils/people.bs"
 import "pkg:/source/utils/placeholderImage.bs"
 import "pkg:/source/utils/remoteSubtitles.bs"
 import "pkg:/source/utils/screenReadiness.bs"
@@ -2337,19 +2338,21 @@ sub populateInfoGroupMovie(item as object, userSettings as object)
     displayDirectorGenreNode(genreNode)
   end if
 
-  directors = []
-  if isValid(item.people)
-    for each person in item.people
-      if person.type = "Director"
-        directors.push(person.name)
-      end if
-    end for
-  end if
-  if directors.count() > 0
-    directorNode = createInfoLabel("director")
-    directorNode.text = translate(translationKeys.MessageDirectedBy1, [directors.join(", ")])
-    displayDirectorGenreNode(directorNode)
-  end if
+  displayDirectedBy(item)
+end sub
+
+' The "Directed by" info line, shared by the Movie, MusicVideo and Episode info groups.
+'
+' Was three byte-identical copies. directorNames() deduplicates by Id because the server
+' sends one People entry per CREDIT: a director also credited as, say, Co-Director appears
+' twice and the line read "Directed by Mike Judge, Mike Judge".
+sub displayDirectedBy(item as object)
+  directors = directorNames(item.people)
+  if directors.count() = 0 then return
+
+  directorNode = createInfoLabel("director")
+  directorNode.text = translate(translationKeys.MessageDirectedBy1, [directors.join(", ")])
+  displayDirectorGenreNode(directorNode)
 end sub
 
 ' populateInfoGroupMusicVideo: Info rows for MusicVideo
@@ -2394,17 +2397,7 @@ sub populateInfoGroupMusicVideo(item as object, userSettings as object)
     displayDirectorGenreNode(artistNode)
   end if
 
-  directors = []
-  if isValid(item.people)
-    for each person in item.people
-      if person.type = "Director" then directors.push(person.name)
-    end for
-  end if
-  if directors.count() > 0
-    directorNode = createInfoLabel("director")
-    directorNode.text = translate(translationKeys.MessageDirectedBy1, [directors.join(", ")])
-    displayDirectorGenreNode(directorNode)
-  end if
+  displayDirectedBy(item)
 end sub
 
 ' populateInfoGroupEpisode: Info rows for Episode
@@ -2452,17 +2445,7 @@ sub populateInfoGroupEpisode(item as object, userSettings as object)
     displayDirectorGenreNode(seriesNameNode)
   end if
 
-  directors = []
-  if isValid(item.people)
-    for each person in item.people
-      if person.type = "Director" then directors.push(person.name)
-    end for
-  end if
-  if directors.count() > 0
-    directorNode = createInfoLabel("director")
-    directorNode.text = translate(translationKeys.MessageDirectedBy1, [directors.join(", ")])
-    displayDirectorGenreNode(directorNode)
-  end if
+  displayDirectedBy(item)
 end sub
 
 ' populateInfoGroupSeries: Info rows for Series

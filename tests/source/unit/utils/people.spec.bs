@@ -1,0 +1,415 @@
+import "pkg:/source/utils/people.bs"
+
+namespace tests
+
+  @suite("people - Cast & Crew merging and role labels")
+  class PeopleTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("castCardSpecs() - merging")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Asserted through the subtitle rather than against an intermediate `credits`
+    ' array, because there is no longer one to inspect: the merge and the label are a
+    ' single pass (see castCardSpecs). The subtitle IS the observable result of merging,
+    ' so these assert the behaviour instead of the shape that used to implement it.
+
+    @it("returns an empty array for invalid input")
+    function _()
+      m.assertEqual(castCardSpecs(invalid).count(), 0)
+    end function
+
+    @it("returns an empty array for an empty People array")
+    function _()
+      m.assertEqual(castCardSpecs([]).count(), 0)
+    end function
+
+    @it("merges a person's Director and Writer credits onto one card")
+    function _()
+      ' Mike Judge on Silicon Valley's Minimum Viable Product, as 10.11.11 and 12.0.0 send it.
+      specs = castCardSpecs([
+        { Id: "mj", Name: "Mike Judge", Type: "Director", Role: "Director" },
+        { Id: "mj", Name: "Mike Judge", Type: "Writer", Role: "Writer" }
+      ])
+      m.assertEqual(specs.count(), 1)
+      m.assertEqual(specs[0].name, "Mike Judge")
+      m.assertEqual(specs[0].subtitle, "Director / Writer")
+    end function
+
+    @it("merges Producer credits too")
+    @params("Director", "Producer")
+    @params("Writer", "Producer")
+    @params("Producer", "Producer")
+    function _(firstType, secondType)
+      specs = castCardSpecs([
+        { Id: "p1", Name: "Ann Lee", Type: firstType },
+        { Id: "p1", Name: "Ann Lee", Type: secondType }
+      ])
+      m.assertEqual(specs.count(), 1)
+    end function
+
+    @it("keeps actors separate even when the same person is credited twice")
+    function _()
+      specs = castCardSpecs([
+        { Id: "a1", Name: "Tatiana Maslany", Type: "Actor", Role: "Sarah" },
+        { Id: "a1", Name: "Tatiana Maslany", Type: "Actor", Role: "Helena" }
+      ])
+      m.assertEqual(specs.count(), 2)
+      m.assertEqual(specs[0].subtitle, "as Sarah")
+      m.assertEqual(specs[1].subtitle, "as Helena")
+    end function
+
+    @it("keeps guest stars separate")
+    function _()
+      specs = castCardSpecs([
+        { Id: "g1", Name: "Guest", Type: "GuestStar", Role: "Doctor" },
+        { Id: "g1", Name: "Guest", Type: "GuestStar", Role: "Nurse" }
+      ])
+      m.assertEqual(specs.count(), 2)
+    end function
+
+    @it("does not merge an actor credit into the same person's director card")
+    function _()
+      specs = castCardSpecs([
+        { Id: "x1", Name: "Jordan Peele", Type: "Director", Role: "Director" },
+        { Id: "x1", Name: "Jordan Peele", Type: "Actor", Role: "Himself" }
+      ])
+      m.assertEqual(specs.count(), 2)
+      m.assertEqual(specs[0].subtitle, "Director")
+      m.assertEqual(specs[1].subtitle, "as Himself")
+    end function
+
+    @it("never merges entries with no Id, even when the type is mergeable")
+    function _()
+      specs = castCardSpecs([
+        { Name: "Unknown Director", Type: "Director" },
+        { Name: "Unknown Director", Type: "Writer" }
+      ])
+      m.assertEqual(specs.count(), 2)
+    end function
+
+    @it("keeps each person at their first appearance")
+    function _()
+      specs = castCardSpecs([
+        { Id: "d1", Name: "First", Type: "Director" },
+        { Id: "a1", Name: "Second", Type: "Actor", Role: "Lead" },
+        { Id: "d1", Name: "First", Type: "Writer" }
+      ])
+      m.assertEqual(specs.count(), 2)
+      m.assertEqual(specs[0].name, "First")
+      m.assertEqual(specs[0].subtitle, "Director / Writer")
+      m.assertEqual(specs[1].name, "Second")
+    end function
+
+    @it("joins three merged credits in credit order")
+    function _()
+      specs = castCardSpecs([
+        { Id: "p1", Name: "Triple", Type: "Director", Role: "Director" },
+        { Id: "p1", Name: "Triple", Type: "Writer", Role: "Screenplay" },
+        { Id: "p1", Name: "Triple", Type: "Producer", Role: "Producer" }
+      ])
+      m.assertEqual(specs.count(), 1)
+      m.assertEqual(specs[0].subtitle, "Director / Screenplay / Producer")
+    end function
+
+    @it("collapses repeated credits that would label identically")
+    function _()
+      ' Read "Director / Director" before the dedup. jellyfin-web still repeats them.
+      specs = castCardSpecs([
+        { Id: "d1", Name: "Twice Credited", Type: "Director", Role: "Director" },
+        { Id: "d1", Name: "Twice Credited", Type: "Director", Role: "Director" }
+      ])
+      m.assertEqual(specs.count(), 1)
+      m.assertEqual(specs[0].subtitle, "Director")
+    end function
+
+    @it("keeps a credit that merely CONTAINS an existing one")
+    @params("Director", "Co-Director", "Director / Co-Director")
+    @params("Co-Director", "Director", "Co-Director / Director")
+    function _(firstRole, secondRole, expected)
+      ' The separator-anchored test exists for exactly this: a bare substring check
+      ' would let "Director" swallow "Co-Director" in one direction or the other.
+      specs = castCardSpecs([
+        { Id: "d1", Name: "Both Roles", Type: "Director", Role: firstRole },
+        { Id: "d1", Name: "Both Roles", Type: "Director", Role: secondRole }
+      ])
+      m.assertEqual(specs.count(), 1)
+      m.assertEqual(specs[0].subtitle, expected)
+    end function
+
+    @it("collapses a repeat that is not adjacent to its first appearance")
+    function _()
+      specs = castCardSpecs([
+        { Id: "p1", Name: "Repeat", Type: "Director", Role: "Director" },
+        { Id: "p1", Name: "Repeat", Type: "Writer", Role: "Screenplay" },
+        { Id: "p1", Name: "Repeat", Type: "Director", Role: "Director" }
+      ])
+      m.assertEqual(specs.count(), 1)
+      m.assertEqual(specs[0].subtitle, "Director / Screenplay")
+    end function
+
+    @it("does not leave a leading separator when the first credit labels to nothing")
+    function _()
+      ' A mergeable entry with no Type cannot occur from the server, but a blank label
+      ' must never produce " / Director" if one ever does.
+      specs = castCardSpecs([
+        { Id: "p1", Name: "Blank first", Type: "Director", Role: "" },
+        { Id: "p1", Name: "Blank first", Type: "Writer", Role: "Screenplay" }
+      ])
+      m.assertEqual(specs[0].subtitle, "Director / Screenplay")
+    end function
+
+    @it("carries name and primaryImageTag onto the card")
+    function _()
+      specs = castCardSpecs([{ Id: "p1", Name: "Jane Smith", Type: "Actor", Role: "Hero", PrimaryImageTag: "tag1" }])
+      m.assertEqual(specs[0].id, "p1")
+      m.assertEqual(specs[0].name, "Jane Smith")
+      m.assertEqual(specs[0].primaryImageTag, "tag1")
+      m.assertEqual(specs[0].subtitle, "as Hero")
+    end function
+
+    @it("defaults missing fields to empty strings rather than faulting")
+    function _()
+      specs = castCardSpecs([{ Name: "Nameless Kind" }])
+      m.assertEqual(specs.count(), 1)
+      m.assertEqual(specs[0].id, "")
+      m.assertEqual(specs[0].primaryImageTag, "")
+      m.assertEqual(specs[0].subtitle, "")
+    end function
+
+    @it("skips invalid entries inside the array")
+    function _()
+      specs = castCardSpecs([invalid, { Id: "p1", Name: "Real", Type: "Actor", Role: "Lead" }])
+      m.assertEqual(specs.count(), 1)
+      m.assertEqual(specs[0].name, "Real")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("personCreditLabel()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("renders an actor's character as 'as {character}'")
+    @params("Actor", "Hero", "as Hero")
+    @params("GuestStar", "Doctor Who", "as Doctor Who")
+    function _(personKind, role, expected)
+      m.assertEqual(personCreditLabel(personKind, role), expected)
+    end function
+
+    @it("falls back to the translated type when a performer has no character")
+    @params("Actor", "Actor")
+    @params("GuestStar", "Guest star")
+    function _(personKind, expected)
+      m.assertEqual(personCreditLabel(personKind, ""), expected)
+    end function
+
+    @it("translates the type when the role merely restates it")
+    @params("Director", "Director", "Director")
+    @params("Writer", "Writer", "Writer")
+    @params("Producer", "producer", "Producer")
+    function _(personKind, role, expected)
+      m.assertEqual(personCreditLabel(personKind, role), expected)
+    end function
+
+    @it("translates the specific job when it differs from the type")
+    @params("Writer", "Screenplay", "Screenplay")
+    @params("Writer", "Novel", "Novel")
+    function _(personKind, role, expected)
+      m.assertEqual(personCreditLabel(personKind, role), expected)
+    end function
+
+    @it("shows an untranslated job verbatim rather than the generic type")
+    function _()
+      m.assertEqual(personCreditLabel("Writer", "Story Editor"), "Story Editor")
+    end function
+
+    @it("translates every PersonKind we carry a string for")
+    @params("AlbumArtist", "Album artist")
+    @params("Arranger", "Arranger")
+    @params("Artist", "Artist")
+    @params("Author", "Author")
+    @params("Composer", "Composer")
+    @params("Conductor", "Conductor")
+    @params("Creator", "Creator")
+    @params("Colorist", "Colorist")
+    @params("CoverArtist", "Cover artist")
+    @params("Editor", "Editor")
+    @params("Engineer", "Sound engineer")
+    @params("Illustrator", "Illustrator")
+    @params("Inker", "Inker")
+    @params("Letterer", "Letterer")
+    @params("Lyricist", "Lyricist")
+    @params("Mixer", "Mixer")
+    @params("Narrator", "Narrator")
+    @params("Penciller", "Penciller")
+    @params("Remixer", "Remixer")
+    @params("Translator", "Translator")
+    function _(personKind, expected)
+      m.assertEqual(personCreditLabel(personKind, ""), expected)
+    end function
+
+    @it("passes an unknown PersonKind through rather than showing nothing")
+    function _()
+      m.assertEqual(personCreditLabel("Choreographer", ""), "Choreographer")
+    end function
+
+    @it("renders nothing for a kind we deliberately leave unlabelled")
+    function _()
+      ' `Unknown` is the enum's serialization default, so it means "the server did not
+      ' say" — which must read the same as no type at all, not as the literal word.
+      m.assertEqual(personCreditLabel("Unknown", ""), "")
+      m.assertEqual(personCreditLabel("Unknown", "Unknown"), "")
+    end function
+
+    @it("still shows a real job when the kind is Unknown")
+    function _()
+      ' The blank only applies when there is nothing else to say; a job still wins.
+      m.assertEqual(personCreditLabel("Unknown", "Stunt Coordinator"), "Stunt Coordinator")
+    end function
+
+    @it("returns empty when there is neither a type nor a role")
+    function _()
+      m.assertEqual(personCreditLabel("", ""), "")
+    end function
+
+    @it("reuses a cached label instead of resolving it twice")
+    function _()
+      cache = {}
+      m.assertEqual(personCreditLabel("Director", "", cache), "Director")
+      m.assertEqual(cache.count(), 1)
+      m.assertEqual(personCreditLabel("Director", "", cache), "Director")
+      m.assertEqual(cache.count(), 1)
+    end function
+
+    @it("caches one entry per translation key, not per credit")
+    function _()
+      cache = {}
+      m.assertEqual(personCreditLabel("Writer", "Screenplay", cache), "Screenplay")
+      m.assertEqual(personCreditLabel("Writer", "Novel", cache), "Novel")
+      m.assertEqual(cache.count(), 2)
+    end function
+
+    @it("resolves 'as {0}' ONCE however many characters use it")
+    function _()
+      ' The whole point of the key-based cache: an actor's label differs per character,
+      ' so a cache keyed on the credit would miss on every actor and leave a big cast
+      ' making one translate() per person on the task thread.
+      cache = {}
+      m.assertEqual(personCreditLabel("Actor", "Sarah", cache), "as Sarah")
+      m.assertEqual(personCreditLabel("Actor", "Helena", cache), "as Helena")
+      m.assertEqual(personCreditLabel("GuestStar", "Rachel", cache), "as Rachel")
+      m.assertEqual(cache.count(), 1)
+    end function
+
+    @it("adds nothing to the cache for a label that needs no translation")
+    function _()
+      cache = {}
+      m.assertEqual(personCreditLabel("Writer", "Story Editor", cache), "Story Editor")
+      m.assertEqual(personCreditLabel("Choreographer", "", cache), "Choreographer")
+      m.assertEqual(cache.count(), 0)
+    end function
+
+    @it("works with no cache at all")
+    function _()
+      m.assertEqual(personCreditLabel("Actor", "Hero", invalid), "as Hero")
+      m.assertEqual(personCreditLabel("Director", "", invalid), "Director")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("castCardSpecs() - labelling")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns one labelled spec per card, in server order")
+    function _()
+      specs = castCardSpecs([
+        { Id: "a1", Name: "Lead Actor", Type: "Actor", Role: "Hero", PrimaryImageTag: "t1" },
+        { Id: "d1", Name: "The Director", Type: "Director", Role: "Director" },
+        { Id: "d1", Name: "The Director", Type: "Writer", Role: "Screenplay" }
+      ])
+      m.assertEqual(specs.count(), 2)
+      m.assertEqual(specs[0].name, "Lead Actor")
+      m.assertEqual(specs[0].subtitle, "as Hero")
+      m.assertEqual(specs[0].primaryImageTag, "t1")
+      m.assertEqual(specs[1].name, "The Director")
+      m.assertEqual(specs[1].subtitle, "Director / Screenplay")
+    end function
+
+    @it("keeps Artist and AlbumArtist entries, unlike jellyfin-web")
+    function _()
+      ' Dropping them would empty the Cast & Crew row on a music video.
+      specs = castCardSpecs([
+        { Id: "ar", Name: "The Band", Type: "Artist" },
+        { Id: "aa", Name: "The Label", Type: "AlbumArtist" }
+      ])
+      m.assertEqual(specs.count(), 2)
+      m.assertEqual(specs[0].subtitle, "Artist")
+      m.assertEqual(specs[1].subtitle, "Album artist")
+    end function
+
+    @it("returns an empty array for invalid input")
+    function _()
+      m.assertEqual(castCardSpecs(invalid).count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("directorNames()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns an empty array for invalid input")
+    function _()
+      m.assertEqual(directorNames(invalid).count(), 0)
+    end function
+
+    @it("returns only directors, in order")
+    function _()
+      names = directorNames([
+        { Id: "a1", Name: "An Actor", Type: "Actor", Role: "Hero" },
+        { Id: "d1", Name: "First Director", Type: "Director" },
+        { Id: "w1", Name: "A Writer", Type: "Writer" },
+        { Id: "d2", Name: "Second Director", Type: "Director" }
+      ])
+      m.assertEqual(names, ["First Director", "Second Director"])
+    end function
+
+    @it("deduplicates a director credited more than once")
+    function _()
+      names = directorNames([
+        { Id: "mj", Name: "Mike Judge", Type: "Director", Role: "Director" },
+        { Id: "mj", Name: "Mike Judge", Type: "Director", Role: "Co-Director" }
+      ])
+      m.assertEqual(names, ["Mike Judge"])
+    end function
+
+    @it("falls back to the name when the server sends no Id")
+    function _()
+      names = directorNames([
+        { Name: "No Id Director", Type: "Director" },
+        { Name: "no id director", Type: "Director" }
+      ])
+      m.assertEqual(names, ["No Id Director"])
+    end function
+
+    @it("keeps two different directors who share no Id")
+    function _()
+      names = directorNames([
+        { Name: "Alice", Type: "Director" },
+        { Name: "Bob", Type: "Director" }
+      ])
+      m.assertEqual(names, ["Alice", "Bob"])
+    end function
+
+    @it("matches the type case-insensitively and skips nameless entries")
+    function _()
+      names = directorNames([
+        { Id: "d1", Name: "Cased", Type: "director" },
+        { Id: "d2", Type: "Director" }
+      ])
+      m.assertEqual(names, ["Cased"])
+    end function
+
+  end class
+
+end namespace
