@@ -355,7 +355,7 @@ end function
 
 Test Scene Graph components in their proper node context.
 
-**Requirements:** `"autoImportComponentScript": true` in `bsconfig.json`
+**Requirements:** `compilerOptions.autoImportComponentScript: true` — every config inherits it from `bsconfig-base.json`
 
 ```brighterscript
 namespace tests

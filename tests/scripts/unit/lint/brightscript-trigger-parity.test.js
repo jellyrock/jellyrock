@@ -57,6 +57,7 @@ const MUST_TRIGGER = [
   ['components/ItemDetails.xml', 'component XML — half the input to three gates'],
   ['bsconfig.json', 'the plugin list itself: removing a gate here must re-run the gates'],
   ['bsconfig-tests-unit.json', 'a sibling bsconfig the hook also matches'],
+  ['bsconfig-base.json', 'the shared base every bsconfig extends: its filters reach them all'],
   ['scripts/bsc-plugins/field-observer-wiring.cjs', 'a gate: editing it changes what CI enforces'],
   ['scripts/lib/bsc-rule.cjs', 'the diagnostic lifecycle all cross-file gates share'],
 ];

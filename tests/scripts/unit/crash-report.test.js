@@ -10,6 +10,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SourceMapGenerator } from 'source-map';
+import { util as bscUtil } from 'brighterscript';
 import { spawnScript } from './_helpers/spawn-script.js';
 
 import {
@@ -40,6 +41,7 @@ import {
   normalizeBacktraceText,
   enrichIssue,
   getOrBuildAnalysis,
+  deriveAnalysisConfig,
   ANALYSIS_CACHE_PREFIX,
   classifyBacktraceForEnrichment,
   parseOccurrenceCount,
@@ -1007,6 +1009,46 @@ describe('resolveIssuesByBacktrace (auto-resolve issue from backtrace)', () => {
   it('returns [] when gh returns malformed JSON', () => {
     const ghExec = () => 'not json at all';
     expect(resolveIssuesByBacktrace(backtrace, { ghExec })).toEqual([]);
+  });
+});
+
+describe('deriveAnalysisConfig (prod bsconfig → source-mapped analysis bsconfig)', () => {
+  // Resolve through BrighterScript's own option handling, so these assert what the
+  // compiler will actually do rather than the shape of the object we wrote.
+  const resolvedSourceMap = (config) => bscUtil.normalizeConfig(structuredClone(config)).sourceMap;
+
+  it('turns source maps on for a legacy prod config (top-level sourceMap)', () => {
+    const prod = { sourceMap: false, autoImportComponentScript: true, outDir: 'build' };
+    const derived = deriveAnalysisConfig(prod);
+    expect(resolvedSourceMap(derived)).toBe(true);
+    expect(derived.sourceMap).toBe(true); // older BrighterScript reads only this key
+    expect(derived.outDir).toBe('build-analysis');
+    expect(derived.autoImportComponentScript).toBe(true);
+  });
+
+  it('turns source maps on for a compilerOptions prod config', () => {
+    const prod = {
+      extends: './bsconfig-base.json',
+      compilerOptions: { sourceMap: false, autoImportComponentScript: true },
+    };
+    const derived = deriveAnalysisConfig(prod);
+    expect(resolvedSourceMap(derived)).toBe(true);
+    expect(derived.compilerOptions.autoImportComponentScript).toBe(true);
+    expect(derived.extends).toBe('./bsconfig-base.json');
+    // No top-level key: a current BrighterScript flags it as deprecated.
+    expect('sourceMap' in derived).toBe(false);
+  });
+
+  it('a top-level override alone loses to compilerOptions.sourceMap', () => {
+    // The shape this function replaced. Guards the precedence it exists to handle.
+    const prod = { compilerOptions: { sourceMap: false } };
+    expect(resolvedSourceMap({ ...prod, sourceMap: true })).toBe(false);
+  });
+
+  it('does not mutate the prod config', () => {
+    const prod = { sourceMap: false, compilerOptions: { sourceMap: false } };
+    deriveAnalysisConfig(prod);
+    expect(prod).toEqual({ sourceMap: false, compilerOptions: { sourceMap: false } });
   });
 });
 

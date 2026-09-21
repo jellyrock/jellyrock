@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "autoImportComponentScript": true,
+    "sourceMap": true
+  },
+  "diagnosticFilters": [
+    { "files": "node_modules/**/*" },
+    { "files": "**/roku_modules/**/*" },
+    { "files": "tests/**/*", "codes": ["LINT3008"] },
+    { "files": "tests/**/*.spec.bs", "codes": ["function-name-too-long"] }
+  ],
+  "outDir": "build"
+}
