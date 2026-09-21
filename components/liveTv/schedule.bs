@@ -593,8 +593,9 @@ function onKeyEvent(key as string, press as boolean) as boolean
   return false
 end function
 
-' onDestroy: Full teardown releasing all resources before component removal
-' Called automatically via JRScreen.beforeViewClose when sgRouter permanently closes this view.
+' onDestroy: Full teardown releasing all resources before component removal.
+' The guide is a child of BaseGridView, not a routed view, so BaseGridView calls this
+' (hideTVGuide and its own onDestroy) — the router never will.
 sub onDestroy()
   ' Detach the interface observers registered in init(). Must precede every
   ' reference release below — these handlers dereference them.

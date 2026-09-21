@@ -288,6 +288,9 @@ sub hideTVGuide()
   m.log.debug("Hiding TV Guide")
   m.tvGuide.unobserveField("watchChannel")
   m.tvGuide.unobserveField("focusedChannel")
+  ' The guide is a child of this view, not a routed screen, so nothing else will tear it down:
+  ' without this its channel and program fetches keep running after it is gone.
+  m.tvGuide.callFunc("onDestroy")
   m.top.removeChild(m.tvGuide)
   m.tvGuide = invalid
   m.channelFocused = invalid
@@ -1455,6 +1458,7 @@ sub onDestroy()
   if isValid(m.tvGuide)
     m.tvGuide.unobserveField("watchChannel")
     m.tvGuide.unobserveField("focusedChannel")
+    m.tvGuide.callFunc("onDestroy")
     m.tvGuide = invalid
   end if
 
