@@ -5,6 +5,7 @@ import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/guidePrograms.bs"
+import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/paging.bs"
 import "pkg:/source/utils/tasks.bs"
@@ -531,37 +532,42 @@ end sub
 ' Handle user selecting "Record Channel" from Program Details
 sub onRecordChannelSelected()
   if m.detailsPane.shouldRecordSelectedChannel = false then return
-
-  ' Set focus back to grid before showing channel, to ensure grid has focus when we return
-  focusProgramDetails(false)
-
-  m.scheduleGrid.showLoadingDataFeedback = true
-
-  m.RecordProgramTask = createObject("roSGNode", "RecordProgramTask")
-  m.RecordProgramTask.programDetails = m.detailsPane.programDetails
-  m.RecordProgramTask.shouldRecordSeries = false
-  m.RecordProgramTask.observeField("recordOperationDone", "onRecordOperationDone")
-  launchTask(m.RecordProgramTask)
+  startRecording(false)
 end sub
 
 ' Handle user selecting "Record Series" from Program Details
 sub onRecordSeriesChannelSelected()
   if m.detailsPane.shouldRecordSeriesSelectedChannel = false then return
+  startRecording(true)
+end sub
 
+' Records — or, if it already records, cancels — the program in the details pane, on a new
+' RecordProgramTask node, so a second press while one is in flight starts a run of its own.
+sub startRecording(isSeries as boolean)
   ' Set focus back to grid before showing channel, to ensure grid has focus when we return
   focusProgramDetails(false)
 
   m.scheduleGrid.showLoadingDataFeedback = true
 
-  m.RecordProgramTask = createObject("roSGNode", "RecordProgramTask")
-  m.RecordProgramTask.programDetails = m.detailsPane.programDetails
-  m.RecordProgramTask.shouldRecordSeries = true
-  m.RecordProgramTask.observeField("recordOperationDone", "onRecordOperationDone")
+  m.RecordProgramTask = replaceTask(m.RecordProgramTask, "RecordProgramTask", "result", { programDetails: m.detailsPane.programDetails, shouldRecordSeries: isSeries })
+  m.RecordProgramTask.observeField("result", "onRecordOperationDone")
   launchTask(m.RecordProgramTask)
 end sub
 
-sub onRecordOperationDone()
-  if m.RecordProgramTask.shouldRecordSeries = true
+sub onRecordOperationDone(event as object)
+  ' A result from a run a later press has replaced
+  if not isCurrentTaskEvent(event, m.RecordProgramTask) then return
+  m.RecordProgramTask.unobserveField("result")
+  result = m.RecordProgramTask.result
+  isSeries = m.RecordProgramTask.shouldRecordSeries
+  m.RecordProgramTask = releaseTask(m.RecordProgramTask, "result")
+
+  m.scheduleGrid.showLoadingDataFeedback = false
+  toast = recordResultToast(result)
+  displayToast(toast.text, toast.type)
+  if not (isValid(result) and result.ok = true) then return
+
+  if isSeries
     ' Every airing of the series may now carry a recording indicator: mark every block's
     ' programs stale, so each is replaced — the ones near the focus now, the rest when the
     ' focus reaches them.
@@ -574,9 +580,10 @@ sub onRecordOperationDone()
     ' This reloads just the details for the currently selected program, so that we don't have to
     ' reload the entire grid...
     channel = m.scheduleGrid.content.GetChild(m.scheduleGrid.programFocusedDetails.focusChannelIndex)
-    prog = channel.GetChild(m.scheduleGrid.programFocusedDetails.focusIndex)
+    prog = invalid
+    if isValid(channel) then prog = channel.GetChild(m.scheduleGrid.programFocusedDetails.focusIndex)
     ' Re-fetch unconditionally — the program's recording state just changed.
-    loadProgramDetails(prog.id, m.scheduleGrid.programFocusedDetails.focusChannelIndex, m.scheduleGrid.programFocusedDetails.focusIndex)
+    if isValid(prog) then loadProgramDetails(prog.id, m.scheduleGrid.programFocusedDetails.focusChannelIndex, m.scheduleGrid.programFocusedDetails.focusIndex)
   end if
 end sub
 
@@ -621,10 +628,10 @@ sub onDestroy()
   m.scheduleGrid.unobserveField("programSelected")
   m.scheduleGrid.unobserveField("leftEdgeTargetTime")
 
-  ' Detach the record-operation observer before releasing any task reference:
-  ' onRecordOperationDone reads m.LoadScheduleTask, so leaving it attached while
-  ' that ref is nulled below would let a late completion dot into invalid (&hec).
-  if isValid(m.RecordProgramTask) then m.RecordProgramTask.unobserveField("recordOperationDone")
+  ' Detach the record-operation observer before releasing any reference: onRecordOperationDone
+  ' reads the grid and the program state, so leaving it attached while those are nulled below
+  ' would let a late completion dot into invalid (&hec).
+  if isValid(m.RecordProgramTask) then m.RecordProgramTask.unobserveField("result")
 
   ' Stop and release the channel page and the program fetch in flight, if any
   m.LoadChannelsTask = releaseTask(m.LoadChannelsTask, "channels")
@@ -633,10 +640,7 @@ sub onDestroy()
   ' Program details now load via a render-thread promise; the auto-abandon BSC plugin injects
   ' abandonApiPromises() here, so a late fetch can't fire into this destroyed component.
 
-  if isValid(m.RecordProgramTask)
-    m.RecordProgramTask.control = "STOP"
-    m.RecordProgramTask = invalid
-  end if
+  m.RecordProgramTask = releaseTask(m.RecordProgramTask, "result")
 
   ' Clear node references
   m.detailsPane = invalid

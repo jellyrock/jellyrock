@@ -1,4 +1,6 @@
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
 
 ' Sentinel seek position used to jump to the live edge of an HLS stream.
 ' Roku clips this to the manifest's available range, landing at the live edge.
@@ -139,4 +141,18 @@ function shouldTreatAsEpisode(videotype as string, meta as object) as boolean
   if videotype = "episode" or videotype = "series" then return true
   if videotype = "recording" and isValid(meta) and isValidAndNotEmpty(meta.seriesId) then return true
   return false
+end function
+
+' The toast for a RecordProgramTask result: scheduled or cancelled, and whether it worked. A
+' failed result that is not a record reads as a failed cancel, as the task reports it.
+'
+' @param result - RecordProgramTask.result ({ ok, action }), or invalid
+' @return an AA with `text` and `type` for displayToast
+function recordResultToast(result as dynamic) as object
+  ok = isValid(result) and result.ok = true
+  isRecord = isValid(result) and result.action = "record"
+  if ok and isRecord then return { text: translate(translationKeys.LabelRecordingScheduled), type: "success" }
+  if ok then return { text: translate(translationKeys.LabelRecordingCancelled), type: "success" }
+  if isRecord then return { text: translate(translationKeys.ErrorFailedToScheduleRecording), type: "error" }
+  return { text: translate(translationKeys.ErrorFailedToCancelRecording), type: "error" }
 end function
