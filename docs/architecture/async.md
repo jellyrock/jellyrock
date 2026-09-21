@@ -7,7 +7,7 @@ related-files:
   - components/JRGroup.bs
   - scripts/bsc-plugins/auto-abandon-promises.cjs
   - scripts/lint/promise-ratchet.cjs
-last-reviewed: 2026-08-07
+last-reviewed: 2026-09-21
 ---
 
 # Async & Promises
@@ -143,7 +143,9 @@ That is the reason behind rules stated elsewhere without their price tag: cache 
 in a local instead of re-reading it per item ([components/CLAUDE.md](../../components/CLAUDE.md)),
 prefer `node.setFields({...})` to a run of individual assignments, and use
 `transformBaseItemArray` over a per-item `transformBaseItem` (which re-reads
-`m.global.server.version` — one rendezvous per item).
+`m.global.server.version` — one rendezvous per item). `translate()` belongs on the same list: it
+reads `m.global.translations`, which from a Task copies the whole translations table across the
+boundary on every call, so resolve a label once per batch rather than once per item.
 
 **Worked example, measured on a Streaming Stick 4K.** The item grid's Genres view delivers N rows
 of ~7 item nodes. Delivered as ONE `m.top.content` write it costs ~220 ms of task-thread `emit`.
@@ -161,7 +163,11 @@ Practical consequences when designing a Task → UI handoff:
   `HomeRows.createSkeletonRows()` is the same split.
 - **Expect a busy render thread to slow the Task down**, not just the other way round. In the same
   experiment the pipeline's *network* wait grew ~200 ms purely because the render thread was laying
-  out rows during the run instead of after it.
+  out rows during the run instead of after it. Under continuous interaction it is far worse: while
+  the TV guide scrolled at 400 ms per row, every Task crossing waited on the animating grid, so a
+  program transform that crossed twice per item went from 1.4 s to 51.8 s (Stick 4K, 2026-09-21;
+  row in [threading.md](threading.md#measured-findings)). A per-item crossing that is harmless on an
+  idle screen becomes the whole cost the moment the user is moving.
 - Where a handoff must be frequent, `apiQueue`'s children-as-vehicle pattern is the shape to copy —
   it exists for correctness under coalescing (see [api.md](./api.md)), and it does **not** make the
   crossings free.

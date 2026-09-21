@@ -48,9 +48,8 @@ sub loadSchedule()
   if ok
     ' The array form, not transformBaseItem per program: the per-item form reads
     ' m.global.server.version for every program, a render-thread rendezvous each time, and
-    ' while the guide scrolls each one waits on a busy render thread. Measured 2026-09-21 on a
-    ' Streaming Stick 4K: a ~700-program block took 1.4 s idle and 51.8 s during a 400 ms/row
-    ' scroll. The nodes are this thread's own, so reading them below crosses nothing.
+    ' while the guide scrolls each one waits on the animating grid — a block took most of a
+    ' minute. The nodes are this thread's own, so reading them below crosses nothing.
     transformed = JellyfinDataTransformer().transformBaseItemArray(res.json.Items)
     for i = 0 to transformed.count() - 1
       program = transformed[i]
