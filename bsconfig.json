@@ -6,7 +6,8 @@
     "components/**/*.*",
     "images/**/*.*",
     "locale/**/*.*",
-    "settings/*.*"
+    "settings/*.*",
+    "!**/*.map"
   ],
   "plugins": [
     "@rokucommunity/bslint",

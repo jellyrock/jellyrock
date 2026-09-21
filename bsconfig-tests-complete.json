@@ -24,7 +24,8 @@
       "dest": "source/tests"
     },
     "!tests/source/e2e/**/*",
-    "!tests/source/**/*.md"
+    "!tests/source/**/*.md",
+    "!**/*.map"
   ],
   "plugins": [
     "rooibos-roku",

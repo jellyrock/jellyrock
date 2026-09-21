@@ -44,7 +44,7 @@ cp bsconfig-tdd-sample.json bsconfig-tdd.json
 
 **Note:** `bsconfig-tdd.json` is gitignored - it's your personal development config.
 
-The sample `extends` `bsconfig-base.json`, which supplies the compiler options and every diagnostic filter, so your copy only needs `files`, `plugins` and `rooibos`. Keep it that way: a `diagnosticFilters` array in your copy replaces the base's list instead of adding to it. If your copy predates the base — it has top-level `sourceMap` / `autoImportComponentScript` keys or its own `diagnosticFilters`, and the build warns `deprecated-bsconfig-option` — re-copy the sample and re-add your spec entries.
+The sample `extends` `bsconfig-tests.json`, which supplies the plugins, compiler options and every diagnostic filter, so your copy only needs `files` and `rooibos`. Keep it that way: a `plugins` or `diagnosticFilters` array in your copy replaces the inherited list instead of adding to it, and a copied plugin list goes stale the moment a plugin moves. Keep `"!**/*.map"` as the last `files` entry, too — it stops the build copying prebuilt source maps over the ones BSC generates. If your copy predates this — it lists its own `plugins`, has top-level `sourceMap` / `autoImportComponentScript` keys, or the build warns `deprecated-bsconfig-option` — re-copy the sample and re-add your spec entries.
 
 ### 2. Edit the `files` Array
 
