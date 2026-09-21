@@ -23,6 +23,7 @@ import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/displaySettings.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/paging.bs"
 import "pkg:/source/utils/skeleton.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
@@ -446,7 +447,7 @@ end sub
 ' @param {boolean} observeSkeletons - Whether this run may deliver genreSkeletons
 sub startGridRun(startIndex as integer, observeSkeletons as boolean)
   if isValid(m.loadItemsTask) then m.loadItemsTask.unobserveField("genreSkeletons")
-  m.loadItemsTask = replaceTask(m.loadItemsTask, "LoadItemsTask2", "content", gridQuery.forPage(m.gridQuery, startIndex))
+  m.loadItemsTask = replaceTask(m.loadItemsTask, "LoadItemsTask2", "content", paging.forPage(m.gridQuery, startIndex))
   m.loadItemsTask.observeField("content", "onItemDataLoaded")
   if observeSkeletons then m.loadItemsTask.observeField("genreSkeletons", "onGenreSkeletonsReady")
   launchTask(m.loadItemsTask)
@@ -658,6 +659,7 @@ sub onItemDataLoaded(msg)
   m.loadItemsTask.content = []
   m.totalRecordCount = m.loadItemsTask.totalRecordCount
   isFirstPage = m.loadItemsTask.startIndex = 0
+  deliveredStartIndex = m.loadItemsTask.startIndex
 
   if not isValid(itemData)
     m.loading = false
@@ -773,7 +775,7 @@ sub onItemDataLoaded(msg)
   ' onItemDataLoaded → loadMoreData cycle continues until all items are loaded.
   ' With texture management, only visible + buffer rows have loaded textures
   ' regardless of total ContentNode count, so loading all items is safe.
-  if m.loadedItems > 0 and m.loadedItems < m.totalRecordCount
+  if paging.nextStart(deliveredStartIndex, itemData.count(), m.totalRecordCount) >= 0
     loadMoreData()
   end if
 

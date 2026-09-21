@@ -1,0 +1,70 @@
+import "pkg:/source/utils/paging.bs"
+
+namespace tests
+
+  @suite("paging - a query paged across Task runs")
+  class PagingTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("forPage()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns the whole query with the page's startIndex")
+    function _()
+      query = { filter: "Favorites", searchTerm: "", limit: 25, sortAscending: false, filterOptions: { Genres: "Drama" } }
+
+      page = paging.forPage(query, 200)
+
+      m.assertEqual(page.startIndex, 200)
+      for each key in query
+        m.assertEqual(page[key], query[key], "page field differs from the query: " + key)
+      end for
+      m.assertEqual(page.count(), query.count() + 1)
+    end function
+
+    @it("leaves the query itself untouched")
+    function _()
+      query = { filter: "All" }
+
+      paging.forPage(query, 100)
+
+      m.assertFalse(query.DoesExist("startIndex"), "forPage wrote into the stored query")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("nextStart()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("starts the next page where the delivered one ended")
+    function _()
+      m.assertEqual(paging.nextStart(0, 25, 393), 25)
+      m.assertEqual(paging.nextStart(25, 25, 393), 50)
+    end function
+
+    @it("ends the load when the delivered page reaches the total")
+    function _()
+      m.assertEqual(paging.nextStart(375, 18, 393), -1)
+      m.assertEqual(paging.nextStart(0, 25, 25), -1)
+    end function
+
+    @it("ends the load on an empty page even when the total says more exist")
+    function _()
+      ' Asking again would request the same startIndex and get the same empty page, forever.
+      m.assertEqual(paging.nextStart(50, 0, 393), -1)
+      m.assertEqual(paging.nextStart(0, 0, 10), -1)
+    end function
+
+    @it("ends the load when the total is smaller than what was delivered")
+    function _()
+      ' A voice search reports its filtered count as the total, which one page already covers.
+      m.assertEqual(paging.nextStart(0, 12, 12), -1)
+      m.assertEqual(paging.nextStart(0, 30, 12), -1)
+    end function
+
+  end class
+
+end namespace

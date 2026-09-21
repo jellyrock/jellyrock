@@ -1,0 +1,38 @@
+' Paging a query across Task runs: what each page asks for, and whether another page follows.
+'
+' A paged load runs every page on a NEW Task node (see replaceTask in tasks.bs), so the node
+' cannot be the memory of the query: each page must ask for exactly what the first page asked
+' for. The screen holds the query as a plain AA and hands each run a copy with that page's
+' startIndex. BaseGridView and the TV guide (Schedule) both page this way.
+namespace paging
+
+  ' The fields for one run of `query`, starting at `startIndex`. A copy: `query` itself is
+  ' left untouched, so it stays the record of what every page of the load asks for.
+  '
+  ' @param query - the load's Task input fields, without startIndex
+  ' @param startIndex - the first item to fetch
+  ' @return Task input fields for this page
+  function forPage(query as object, startIndex as integer) as object
+    fields = {}
+    fields.append(query)
+    fields.startIndex = startIndex
+    return fields
+  end function
+
+  ' Where the next page starts, or -1 when the load is complete.
+  '
+  ' A page that delivers nothing ends the load even when `total` says more exist: the next
+  ' request would ask for the same startIndex and get the same empty answer, forever.
+  '
+  ' @param startIndex - the startIndex of the page just delivered
+  ' @param delivered - how many items that page delivered
+  ' @param total - the server's total for the query
+  ' @return the next page's startIndex, or -1
+  function nextStart(startIndex as integer, delivered as integer, total as integer) as integer
+    if delivered <= 0 then return -1
+    nextIndex = startIndex + delivered
+    if nextIndex >= total then return -1
+    return nextIndex
+  end function
+
+end namespace
