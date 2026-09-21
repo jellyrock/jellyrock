@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-21 — fix: Honor v12 web client's "Original language" audio preference
 - 2026-09-21 — ci: Make an RTA run against a non-demo server mean what it says
 - 2026-09-21 — feat: Merge a person's credits into one Cast & Crew card, translated
 - 2026-09-20 — fix: Stop the session socket being reaped a minute after it connects
