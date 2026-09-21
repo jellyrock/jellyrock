@@ -6,11 +6,15 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/guidePrograms.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/paging.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/translate.bs"
 
 ' Rows the guide shows at once, when TimeGrid does not report numRows.
 const GUIDE_VISIBLE_ROWS = 6
+
+' Channels per page of the channel list.
+const CHANNEL_PAGE_SIZE = 25
 
 sub init()
   m.log = new log.Logger("Schedule")
@@ -39,9 +43,6 @@ sub init()
   m.gridMoveAnimation = m.top.findNode("gridMoveAnimation")
   m.gridMoveAnimationPosition = m.top.findNode("gridMoveAnimationPosition")
 
-  m.LoadChannelsTask = createObject("roSGNode", "LoadChannelsTask")
-  m.LoadChannelsTask.observeField("channels", "onChannelsLoaded")
-
   m.top.lastFocus = m.scheduleGrid
 
   ' Generation guard for the program-details render-thread promise. Bumped whenever the
@@ -55,7 +56,12 @@ sub init()
   ' .fullyLoaded field on the (immutable) JellyfinBaseItem node.
   resetPrograms()
 
-  ' Guard: onChange handlers must not start tasks before startLoading() configures paging
+  ' The channel list's query: the last-applied filter and search term. Every page and every
+  ' reload runs on a NEW LoadChannelsTask node (see replaceTask), so the node cannot be the
+  ' memory of what was asked for.
+  m.channelQuery = invalid
+
+  ' Guard: onChange handlers must not start tasks before startLoading() sets the query
   m.loadingInitialized = false
 
   ' Interface observers are registered HERE rather than declared as XML onChange
@@ -68,18 +74,29 @@ sub init()
 end sub
 
 ' Called by BaseGridView after setting filter/searchTerm to avoid double-fire.
-' Applies current filter and search state to the task before starting it.
-' Loads channels in pages of m.channelPageSize for fast initial display.
+' Loads the channel list in pages of CHANNEL_PAGE_SIZE for fast initial display.
 sub startLoading()
-  m.channelPageSize = 25
-
-  m.LoadChannelsTask.filter = m.top.filter
-  m.LoadChannelsTask.searchTerm = m.top.searchTerm
-  m.LoadChannelsTask.limit = m.channelPageSize
-  m.LoadChannelsTask.startIndex = 0
+  m.channelQuery = { filter: m.top.filter, searchTerm: m.top.searchTerm, limit: CHANNEL_PAGE_SIZE }
   m.loadingInitialized = true
   startLoadingSpinner()
+  runChannelsPage(0)
+end sub
+
+' Runs m.channelQuery from `startIndex` on a NEW LoadChannelsTask node, releasing the run in
+' flight. Never a relaunch of the previous node: see replaceTask.
+sub runChannelsPage(startIndex as integer)
+  m.LoadChannelsTask = replaceTask(m.LoadChannelsTask, "LoadChannelsTask", "channels", paging.forPage(m.channelQuery, startIndex))
+  m.LoadChannelsTask.observeField("channels", "onChannelsLoaded")
   launchTask(m.LoadChannelsTask)
+end sub
+
+' Rebuilds the guide for the current m.channelQuery: forgets every channel and program, and
+' loads the list from its first page.
+sub reloadChannels()
+  resetPrograms()
+  m.scheduleGrid.content = createObject("roSGNode", "ContentNode")
+  startLoadingSpinner()
+  runChannelsPage(0)
 end sub
 
 sub onScreenShown()
@@ -96,17 +113,9 @@ sub channelFilterSet()
   if not m.loadingInitialized then return
 
   m.scheduleGrid.jumpToChannel = 0
-  if isValid(m.top.filter) and m.LoadChannelsTask.filter <> m.top.filter
-    if m.LoadChannelsTask.state = "run" then m.LoadChannelsTask.control = "stop"
-
-    ' Reset all state for fresh filter
-    resetPrograms()
-    m.LoadChannelsTask.startIndex = 0
-    m.scheduleGrid.content = createObject("roSGNode", "ContentNode")
-
-    m.LoadChannelsTask.filter = m.top.filter
-    startLoadingSpinner()
-    launchTask(m.LoadChannelsTask)
+  if isValid(m.top.filter) and m.channelQuery.filter <> m.top.filter
+    m.channelQuery.filter = m.top.filter
+    reloadChannels()
   end if
 end sub
 
@@ -116,30 +125,18 @@ sub channelsearchTermSet()
   if not m.loadingInitialized then return
 
   m.scheduleGrid.jumpToChannel = 0
+  allWord = LCase(translate(translationKeys.LabelAll))
   'Reset filter if user says all
-  if LCase(m.top.searchTerm) = LCase(translate(translationKeys.LabelAll)) or m.LoadChannelsTask.searchTerm = LCase(translate(translationKeys.LabelAll))
+  if LCase(m.top.searchTerm) = allWord or m.channelQuery.searchTerm = allWord
+    ' The query first: clearing m.top.searchTerm below re-enters this handler, which must then
+    ' find nothing to change.
+    m.channelQuery.searchTerm = ""
     m.top.searchTerm = ""
-    m.LoadChannelsTask.searchTerm = ""
-
-    ' Reset all state for fresh search
-    resetPrograms()
-    m.LoadChannelsTask.startIndex = 0
-    m.scheduleGrid.content = createObject("roSGNode", "ContentNode")
-
-    startLoadingSpinner()
-    launchTask(m.LoadChannelsTask)
+    reloadChannels()
     'filter if the searterm is not invalid
-  else if isValid(m.top.searchTerm) and LCase(m.LoadChannelsTask.searchTerm) <> LCase(m.top.searchTerm)
-    if m.LoadChannelsTask.state = "run" then m.LoadChannelsTask.control = "stop"
-
-    ' Reset all state for fresh search
-    resetPrograms()
-    m.LoadChannelsTask.startIndex = 0
-    m.scheduleGrid.content = createObject("roSGNode", "ContentNode")
-
-    m.LoadChannelsTask.searchTerm = m.top.searchTerm
-    startLoadingSpinner()
-    launchTask(m.LoadChannelsTask)
+  else if isValid(m.top.searchTerm) and LCase(m.channelQuery.searchTerm) <> LCase(m.top.searchTerm)
+    m.channelQuery.searchTerm = m.top.searchTerm
+    reloadChannels()
   end if
 end sub
 
@@ -147,20 +144,28 @@ end sub
 ' First page: creates grid content, shows channels immediately.
 ' Subsequent pages: appends channels to existing grid.
 ' Programs are not part of a page: reconcilePrograms loads them for the rows near the focus.
-sub onChannelsLoaded()
+sub onChannelsLoaded(event as object)
+  ' A delivery queued by a run that has since been replaced (a newer filter or search, or the
+  ' next page) or released: reading m.LoadChannelsTask in its place would read the new run's
+  ' still-empty output.
+  if not isCurrentTaskEvent(event, m.LoadChannelsTask) then return
+  m.LoadChannelsTask.unobserveField("channels")
   channels = m.LoadChannelsTask.channels
-  m.log.info("onChannelsLoaded", "channelCount", channels.count(), "startIndex", m.LoadChannelsTask.startIndex, "totalRecordCount", m.LoadChannelsTask.totalRecordCount)
+  startIndex = m.LoadChannelsTask.startIndex
+  totalRecordCount = m.LoadChannelsTask.totalRecordCount
+  m.log.info("onChannelsLoaded", "channelCount", channels.count(), "startIndex", startIndex, "totalRecordCount", totalRecordCount)
+  isFirstPage = startIndex = 0
 
   if channels.count() = 0
-    ' No channels returned — stop spinner and restore focus so user can navigate back
     m.channelsComplete = true
-    stopLoadingSpinner()
-    m.scheduleGrid.showLoadingDataFeedback = false
-    m.scheduleGrid.setFocus(true)
+    if isFirstPage
+      ' No channels at all — stop spinner and restore focus so user can navigate back
+      stopLoadingSpinner()
+      m.scheduleGrid.showLoadingDataFeedback = false
+      m.scheduleGrid.setFocus(true)
+    end if
     return
   end if
-
-  isFirstPage = not isValid(m.scheduleGrid.content) or m.scheduleGrid.content.getChildCount() = 0
 
   for each item in channels
     m.channelIds.push(item.id)
@@ -187,10 +192,9 @@ sub onChannelsLoaded()
   end if
 
   ' Load next page of channels if more exist
-  loadedSoFar = m.LoadChannelsTask.startIndex + channels.count()
-  if loadedSoFar < m.LoadChannelsTask.totalRecordCount
-    m.LoadChannelsTask.startIndex = loadedSoFar
-    launchTask(m.LoadChannelsTask)
+  nextStart = paging.nextStart(startIndex, channels.count(), totalRecordCount)
+  if nextStart >= 0
+    runChannelsPage(nextStart)
   else
     m.channelsComplete = true
   end if
@@ -613,12 +617,8 @@ sub onDestroy()
   ' that ref is nulled below would let a late completion dot into invalid (&hec).
   if isValid(m.RecordProgramTask) then m.RecordProgramTask.unobserveField("recordOperationDone")
 
-  ' Stop and release always-present task node
-  m.LoadChannelsTask.unobserveField("channels")
-  m.LoadChannelsTask.control = "STOP"
-  m.LoadChannelsTask = invalid
-
-  ' Stop and release the program fetch in flight, if any
+  ' Stop and release the channel page and the program fetch in flight, if any
+  m.LoadChannelsTask = releaseTask(m.LoadChannelsTask, "channels")
   m.LoadScheduleTask = releaseTask(m.LoadScheduleTask, "programs")
 
   ' Program details now load via a render-thread promise; the auto-abandon BSC plugin injects
@@ -636,6 +636,7 @@ sub onDestroy()
   m.gridMoveAnimationPosition = invalid
 
   ' Clear data structures
+  m.channelQuery = invalid
   m.channelIds = invalid
   m.guideHeld = invalid
   m.fullyLoadedProgramIds = invalid

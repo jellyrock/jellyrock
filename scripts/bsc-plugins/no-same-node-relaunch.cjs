@@ -130,10 +130,6 @@ const DISABLE_NEXT_LINE_MARKER = /'\s*bsc-disable-next-line\s+no-same-node-relau
  */
 const PENDING_MIGRATIONS = {
   'components/home/HomeRows.bs': [['startLatestMediaLoads', 'm.latestRowsTask']],
-  'components/liveTv/schedule.bs': [
-    ['channelFilterSet', 'm.LoadChannelsTask'],
-    ['channelsearchTermSet', 'm.LoadChannelsTask'],
-  ],
   'components/video/VideoPlayerView.bs': [
     ['loadCaption', 'm.captionTask'],
     ['onSubtitleChange', 'm.captionTask'],
