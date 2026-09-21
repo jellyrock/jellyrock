@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-09-20
+last-updated: 2026-09-21
 ---
 
 # Progress
@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-21 — feat: Merge a person's credits into one Cast & Crew card, translated
 - 2026-09-20 — fix: Stop the session socket being reaped a minute after it connects
 - 2026-09-20 — Show the version that would actually play on posters and episode rows
 - 2026-09-19 — fix: Start every item a queue arrives at from the beginning
