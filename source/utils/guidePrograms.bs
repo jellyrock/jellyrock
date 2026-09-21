@@ -3,11 +3,10 @@ import "pkg:/source/utils/viewport.bs"
 
 ' Which program blocks the TV guide (Schedule) should hold, fetch next, and drop.
 '
-' The guide loads every channel row but programs only near the viewport: loading every
-' channel's programs does not scale (measured 2026-09-21 on a Streaming Stick 4K: 393 channels
-' with 24 h of programs took the channel from 37 to ~160 MB). Programs are fetched in BLOCKS
+' The guide loads every channel row but programs only near the viewport: every channel's
+' programs at once do not fit a large lineup on a 512 MB device. Programs are fetched in BLOCKS
 ' of BLOCK_SIZE consecutive channel rows — one request per block — and at most CAP blocks hold
-' programs at once, so memory is bounded by CAP whatever the lineup size.
+' programs at once, so program memory is bounded by CAP whatever the lineup size.
 '
 ' Pure decisions only: the component does the fetching and the node writes. A block's state is
 ' the time it holds programs through, in `held` (an AA keyed by the block index as a string):
@@ -69,6 +68,14 @@ namespace guidePrograms
       if above >= firstBlock and isBlockReady(above, rowCount, rowsComplete) then wanted.push(above)
     end for
     return wanted
+  end function
+
+  ' Whether `block` is one of `wanted`.
+  function isWanted(block as integer, wanted as object) as boolean
+    for each candidate in wanted
+      if candidate = block then return true
+    end for
+    return false
   end function
 
   ' Whether every row of `block` has arrived.

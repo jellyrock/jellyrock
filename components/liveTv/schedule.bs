@@ -237,6 +237,14 @@ sub reconcilePrograms()
   dropPrograms(guidePrograms.evictions(m.guideHeld, wanted, focusedRow, guidePrograms.CAP))
   updateNoProgramsText(focusedRow, rowCount)
 
+  ' A fetch for a block the focus has since left is abandoned, not waited out: fetches run one
+  ' at a time, so on a slow server it would hold up the block the user is now looking at for
+  ' the rest of its run.
+  if isValid(m.LoadScheduleTask) and not guidePrograms.isWanted(m.programFetch.block, wanted)
+    m.LoadScheduleTask = releaseTask(m.LoadScheduleTask, "programs")
+    m.programFetch = invalid
+  end if
+
   if isValid(m.LoadScheduleTask) or m.programFetchPaused then return
   fetch = guidePrograms.nextFetch(wanted, m.guideHeld, m.guideHorizon)
   if isValid(fetch) then startProgramFetch(fetch, rowCount)

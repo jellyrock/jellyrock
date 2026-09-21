@@ -58,6 +58,13 @@ namespace tests
       m.assertEqual(guidePrograms.wantedBlocks(100, 6, 50, true), [])
     end function
 
+    @it("tells whether a block is among the wanted ones")
+    function _()
+      m.assertTrue(guidePrograms.isWanted(2, [1, 2, 0]))
+      m.assertFalse(guidePrograms.isWanted(5, [1, 2, 0]))
+      m.assertFalse(guidePrograms.isWanted(0, []))
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("nextFetch()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
