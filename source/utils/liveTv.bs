@@ -1,4 +1,5 @@
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/url.bs"
 
 ' Sentinel seek position used to jump to the live edge of an HLS stream.
 ' Roku clips this to the manifest's available range, landing at the live edge.
@@ -139,4 +140,68 @@ function shouldTreatAsEpisode(videotype as string, meta as object) as boolean
   if videotype = "episode" or videotype = "series" then return true
   if videotype = "recording" and isValid(meta) and isValidAndNotEmpty(meta.seriesId) then return true
   return false
+end function
+
+' Whether to play a Live TV channel from its own HLS URL when the server has declined to direct
+' play it.
+'
+' Jellyfin 12.0 (PR #17768) stopped offering direct play for M3U channels whose URL is an HLS
+' manifest: it had been relaying the upstream master playlist through its own /Videos/{id}/ URL,
+' where the playlist's relative variant URIs 404. JellyRock never used that relay. It plays the
+' absolute upstream Path (setupVideoContentWithAuth), where relative URIs resolve against the
+' origin, which is how these channels played before 12.0. The server's remux instead drops audio
+' that arrives as a separate HLS rendition. If the device cannot play the upstream stream, the
+' live direct-play fallback (applyLiveDirectPlayFallback) still retries through the server.
+'
+' True only for an explicit "no" (SupportsDirectPlay = false) on an HTTP HLS source whose Path is
+' an absolute http(s) URL that does not go through Jellyfin: not a loopback host, not the server's
+' own host and port, not the LiveStreamFiles relay. DASH is excluded.
+'
+' @param {dynamic} mediaSource - the channel's PlaybackInfo MediaSource
+' @param {string} serverUrl - the configured Jellyfin server URL
+' @returns {boolean}
+function shouldDirectPlayUpstreamHls(mediaSource as dynamic, serverUrl as string) as boolean
+  if not isValid(mediaSource) or LCase(type(mediaSource)) <> "roassociativearray" then return false
+
+  ' Override only the server's explicit "no"; an absent field is no decision to second-guess.
+  declined = mediaSource.SupportsDirectPlay
+  declinedType = LCase(type(declined))
+  if not (declinedType = "boolean" or declinedType = "roboolean") or declined then return false
+
+  if LCase(textOrEmpty(mediaSource.Protocol)) <> "http" then return false
+
+  upstream = parseUrlComponents(textOrEmpty(mediaSource.Path))
+  if not isValid(upstream) then return false
+  scheme = LCase(upstream.scheme)
+  if (scheme <> "http" and scheme <> "https") or upstream.host = "" then return false
+
+  path = LCase(upstream.path)
+  container = LCase(textOrEmpty(mediaSource.Container))
+  isHls = container = "hls" or container = "applehttp" or Right(path, 5) = ".m3u8" or Right(path, 4) = ".m3u"
+  if not isHls then return false
+
+  ' Through Jellyfin's own relay, relative URIs really do break: the case PR #17768 fixed.
+  if Instr(1, path, "/livetv/livestreamfiles/") > 0 then return false
+  bareHost = upstream.host
+  if Left(bareHost, 1) = "[" then bareHost = Mid(bareHost, 2, Len(bareHost) - 2)
+  if isLocalhost(bareHost) then return false
+
+  server = parseUrlComponents(serverUrl)
+  if not isValid(server) or server.host = "" then return false
+  if upstream.host = server.host and upstream.port = server.port then return false
+
+  return true
+end function
+
+' Whether a response to the preflight GET of a live channel's upstream playlist shows the device
+' can play it: HTTP 200 with an HLS playlist body. The body check turns away a captive portal or an
+' HTML error page served with 200; RFC 8216 requires #EXTM3U as the first line, so only leading
+' whitespace is tolerated before it.
+'
+' @param {integer} responseCode - roUrlEvent.GetResponseCode() (negative for a transport failure)
+' @param {dynamic} body - roUrlEvent.GetString()
+' @returns {boolean}
+function isHlsPlaylistResponse(responseCode as integer, body as dynamic) as boolean
+  if responseCode <> 200 then return false
+  return Left(textOrEmpty(body).Trim(), 7) = "#EXTM3U"
 end function

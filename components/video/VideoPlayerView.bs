@@ -1074,6 +1074,7 @@ sub onVideoContentLoaded()
   m.top.videoId = videoContent[0].id
   m.top.container = videoContent[0].container
   m.top.isTranscoded = isValid(videoContent[0].isTranscoded) and videoContent[0].isTranscoded
+  m.top.isDirectPlaySupported = isValid(videoContent[0].isDirectPlaySupported) and videoContent[0].isDirectPlaySupported
   m.top.fullSubtitleData = videoContent[0].fullSubtitleData
   m.top.fullAudioData = videoContent[0].fullAudioData
   ' The loaded track is not a user selection, so onAudioIndexChange must not reload for it.

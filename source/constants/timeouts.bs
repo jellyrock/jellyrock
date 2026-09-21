@@ -31,6 +31,15 @@ namespace timeouts
   ' components/home/LoadLatestRowsTask.bs and source/home/latestRows.bs.
   const PIPELINE_RUN_MS = 20000
 
+  ' Device preflight of a Live TV channel's upstream HLS playlist, before playing it directly
+  ' instead of through the server (LoadVideoContentTask.upstreamPlaylistAnswers). It exists because
+  ' a Roku handed a URL it cannot reach does not fail: an unroutable host or an unresolvable name
+  ' leaves it buffering indefinitely, so the fallback to the server never runs. The budget is the
+  ' worst-case extra wait before that fallback path. Measured 2026-09-21: the preflight itself took
+  ' 57-129 ms on a Roku Ultra against two live-TV CDNs, and a desktop on the same LAN saw 0.16-0.82 s
+  ' per playlist GET, so 3 s is ~3.7x the slowest seen anywhere.
+  const LIVE_UPSTREAM_PREFLIGHT_MS = 3000
+
   ' Fallback-font scale measurement wait (main.bs calculateFontScaleFactor).
   ' A safety net for a task that never reports, not an expected duration — it measures two
   ' labels. Blocks the main thread during bootstrap, so it is not larger.
