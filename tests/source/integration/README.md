@@ -4,7 +4,8 @@
 
 **Characteristics:**
 
-- May perform real I/O (registry writes, network calls to demo servers)
+- May perform real I/O (registry writes)
+- Must not depend on a public server such as demo.jellyfin.org: a test that fails whenever someone else's server is down or its shared account changes says nothing about your change ([#945](https://github.com/jellyrock/jellyrock/issues/945))
 - Tests multiple components working together
 - Slower execution than unit tests
 - Requires cleanup after execution (handled by `BaseTestSuite`)
@@ -14,8 +15,6 @@
 **Examples:**
 
 - Testing `user.Login()` with real registry writes
-- Testing server connection to demo.jellyfin.org
-- Testing full authentication flow
 - Testing session management with persistent storage
 
 **Cleanup:**

@@ -1,0 +1,38 @@
+namespace tests
+
+  ' `server.UrlToPersist()` — which server URL `server.UpdateURL()` writes to the
+  ' registry after a successful connection.
+  '
+  ' The rule: save what the user ENTERED, never the canonical URL it was normalized
+  ' or redirected to, so re-discovery runs on every connection and a URL that only
+  ' resolves on one network is never saved. This used to be asserted by integration
+  ' tests that connected to the public demo server, so they failed whenever that
+  ' server was down; the rule itself needs no network.
+  @suite("session.bs - server.UrlToPersist")
+  class SessionServerUrlToPersistTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("which URL is saved")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("saves the user-entered originalUrl rather than the URL it connected to")
+    function _()
+      saved = server.UrlToPersist("https://demo.jellyfin.org/stable", "https://jellyfin.example.com")
+      return m.assertEqual(saved, "https://jellyfin.example.com")
+    end function
+
+    @it("saves the URL exactly as given when there is no originalUrl — not a normalized form")
+    function _()
+      saved = server.UrlToPersist("jellyfin.example.com:8096")
+      return m.assertEqual(saved, "jellyfin.example.com:8096")
+    end function
+
+    @it("saves the URL when originalUrl is the same URL")
+    function _()
+      saved = server.UrlToPersist("https://jellyfin.example.com", "https://jellyfin.example.com")
+      return m.assertEqual(saved, "https://jellyfin.example.com")
+    end function
+
+  end class
+
+end namespace

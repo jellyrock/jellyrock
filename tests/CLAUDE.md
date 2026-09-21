@@ -63,7 +63,7 @@ Agents *can* and *should* run tests to verify fixes — do NOT commit changes ba
 
 **`@tags("measurement")`** marks a suite that records a platform rate rather than gating behaviour — it is slow and cannot fail on the number it prints (`TaskRelaunchBlockModes.spec.bs`). It runs only when asked for: `test:tdd` with the spec selected, or `test:complete`. Put the property the app actually depends on in an untagged spec, so every run still gates it.
 
-The Rooibos runner (`scripts/run-roku-tests.js`) zips the build, sideloads to the Roku at `ROKU_IP`, and tails the debug console for `[Rooibos Result]: PASS|FAIL`. The RTA tests instead run under Vitest (`vitest.rta.config.js`) and assert in Node.
+The Rooibos runner (`scripts/run-roku-tests.js`) zips the build, sideloads to the Roku at `ROKU_IP`, and tails the debug console for `[Rooibos Result]: PASS|FAIL`. It also fails a PASS whose summary does not add up (`Total` ≠ `Passed` + `Crashed` + `Failed` + `Ignored`) — a test counted but never reported ran invisibly. The RTA tests instead run under Vitest (`vitest.rta.config.js`) and assert in Node.
 
 ### Credentials
 

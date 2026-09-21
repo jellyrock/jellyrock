@@ -516,7 +516,7 @@ Module names (`log`, `rr`) are configured in `package.json`'s `dependencies` blo
 | `dotenv` | Parses the checkout's `.env` and the per-user `~/.config/jellyrock/env` for device target/password, via [`scripts/lib/env-config.cjs`](../../scripts/lib/env-config.cjs) |
 | `fast-glob` | File matching in scripts |
 | `husky` | Manages git hooks; installs `.husky/pre-push` on `npm install` (via `prepare` script) |
-| `patch-package` | Applies diffs under `patches/` to `node_modules/` post-install. Used to hold targeted upstream fixes until the corresponding PR lands (e.g. `patches/rooibos-roku+6.0.0-alpha.50.patch` → upstream [rokucommunity/rooibos#364](https://github.com/rokucommunity/rooibos/issues/364)) |
+| `patch-package` | Applies diffs under `patches/` to `node_modules/` post-install. Used to hold targeted upstream fixes until the corresponding PR lands. `patches/rooibos-roku+6.0.0-alpha.55.patch` holds two: code-coverage aggregation on write, so coverage runs stay under the render-thread watchdog (upstream [rokucommunity/rooibos#364](https://github.com/rokucommunity/rooibos/issues/364), being replaced by the coverage rewrite in [#275](https://github.com/rokucommunity/rooibos/pull/275)), and the console reporter's `Ignored` count, which left out individually ignored tests ([#435](https://github.com/rokucommunity/rooibos/pull/435)). Regenerate it with `npx patch-package rooibos-roku` after a Rooibos bump, so the file name matches the installed version |
 
 Versions are pinned in `package.json` (currently on alpha versions of brighterscript ecosystem packages).
 
