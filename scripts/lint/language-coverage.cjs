@@ -214,6 +214,7 @@ const langsSource = fs.readFileSync(LANGS_BS_PATH, 'utf8');
 const aliases = parseAA(langsSource, 'mediaLanguageAliases', 'languages.bs');
 const tier1 = parseAA(langsSource, 'languageTranslationKeys', 'languages.bs');
 const tier2 = parseAA(langsSource, 'languageEnglishFallbacks', 'languages.bs');
+const matchAliases = parseAA(langsSource, 'mediaLanguageMatchAliases', 'languages.bs');
 const enUS = JSON.parse(fs.readFileSync(EN_US_PATH, 'utf8'));
 
 console.log(
@@ -305,6 +306,34 @@ if (missingKeys.length === 0) {
       `tier 1 entry "${base}" → translationKeys.${key} — key "${key}" is not defined in locale/custom/en_US.json`,
     );
   }
+}
+
+// --------------------------------------------------------
+// Check 3b: the matching-only alias map supplements the display alias map, never
+// overlaps it. languageBaseCode() consults the display map first, so an overlapping
+// entry is dead at best and a silent contradiction at worst; and a display alias
+// moved here by mistake would change nothing visible, but the reverse (a matching
+// alias moved into the display map) breaks tier-2 names — see mediaLanguageMatchAliases().
+// --------------------------------------------------------
+console.log(c('\n[Match Alias Supplement]', 'cyan'));
+const badMatchAliases = [];
+for (const [src, dst] of Object.entries(matchAliases)) {
+  if (Object.prototype.hasOwnProperty.call(aliases, src)) {
+    badMatchAliases.push(`match alias "${src}" is also in mediaLanguageAliases() — keep one copy`);
+  }
+  if (!/^[a-z]{3}$/.test(src) || !/^[a-z]{2}$/.test(dst.value)) {
+    badMatchAliases.push(
+      `match alias "${src}" → "${dst.value}" — expected a 3-letter ISO 639-2 code mapped to a 2-letter ISO 639-1 code`,
+    );
+  }
+}
+if (badMatchAliases.length === 0) {
+  console.log(
+    c('  OK', 'green') +
+      ` — ${Object.keys(matchAliases).length} match aliases, none overlapping the display map`,
+  );
+} else {
+  errors.push(...badMatchAliases);
 }
 
 // --------------------------------------------------------

@@ -258,8 +258,24 @@ function ItemMetaData(id as string, fields = "Chapters,Trickplay" as string, for
   data = fetchJson(req, "itemMetaData")
   if not isValid(data) then return invalid
   transformer = JellyfinDataTransformer()
-  return transformer.transformBaseItem(data)
+  item = transformer.transformBaseItem(data)
+  inheritSeriesOriginalLanguage(item)
+  return item
 end function
+
+' inheritSeriesOriginalLanguage: Give an episode its series' OriginalLanguage when track
+' selection needs it (needsSeriesOriginalLanguage()) — as the server does for its own pick.
+' One extra request, made only for a viewer whose audio preference is "Original language".
+'
+' @param {dynamic} item - JellyfinBaseItem from ItemMetaData()
+sub inheritSeriesOriginalLanguage(item as dynamic)
+  localUser = m.global.user
+  if not needsSeriesOriginalLanguage(item, localUser.settings, localUser.config) then return
+  series = fetchJson(GetApi().BuildGetItemRequest(item.seriesId), "seriesOriginalLanguage")
+  if isValid(series) and isValidAndNotEmpty(series.OriginalLanguage)
+    item.originalLanguage = series.OriginalLanguage
+  end if
+end sub
 
 ' MetaData for an item detail screen — includes People, Genres, and Studios in addition to
 ' Chapters and Trickplay. Use this instead of ItemMetaData() when populating a detail view.

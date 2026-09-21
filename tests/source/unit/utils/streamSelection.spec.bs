@@ -518,6 +518,195 @@ namespace tests
       m.assertFalse(isSelectedAudioStreamDirectPlayable(99, audioStreams))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("languagesMatch() — mixed ISO 639 forms")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("matches 639-1 against 639-2")
+    function _()
+      m.assertTrue(languagesMatch("ko", "kor"))
+      m.assertTrue(languagesMatch("kor", "ko"))
+    end function
+
+    @it("matches 639-2/B against 639-2/T, ignoring case")
+    function _()
+      m.assertTrue(languagesMatch("fre", "fra"))
+      m.assertTrue(languagesMatch("FRA", "fr"))
+    end function
+
+    @it("compares codes outside the alias map as-is")
+    function _()
+      m.assertTrue(languagesMatch("xyz", "XYZ"))
+      m.assertFalse(languagesMatch("xyz", "abc"))
+    end function
+
+    @it("never matches different languages, or a missing code")
+    function _()
+      m.assertFalse(languagesMatch("eng", "jpn"))
+      m.assertFalse(languagesMatch("", ""))
+      m.assertFalse(languagesMatch(invalid, "eng"))
+      m.assertFalse(languagesMatch("OriginalLanguage", "eng"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("'Original language' preference (Jellyfin 12.0+)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("picks the original-language track over a better-channel dub")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "jpn", channels: 2, codec: "aac", IsDefault: false },
+        { Type: "audio", index: 2, Language: "eng", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      ' "ja" is the item's OriginalLanguage (ISO 639-1); the streams are 639-2
+      result = findBestAudioStreamIndex(streams, false, "ja", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 1)
+    end function
+
+    @it("applies no language rule, not the Roku locale, when the item has no OriginalLanguage")
+    function _()
+      m.global.device.locale = "en_US"
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", channels: 2, codec: "aac", IsDefault: false },
+        { Type: "audio", index: 2, Language: "jpn", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      ' The Roku locale would pick the English dub; no rule leaves it to the hardware
+      result = findBestAudioStreamIndex(streams, false, "", m.createMockCapabilities(6, false), true)
+      m.assertEqual(result, 2)
+    end function
+
+    @it("still applies the Roku locale to an empty preference that is not 'Original language'")
+    function _()
+      m.global.device.locale = "en_US"
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", channels: 2, codec: "aac", IsDefault: false },
+        { Type: "audio", index: 2, Language: "jpn", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, false, "", m.createMockCapabilities(6, false), false)
+      m.assertEqual(result, 1)
+    end function
+
+    @it("picks the original over a default-flagged dub (Severance layout)")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "fra", IsDefault: true, IsOriginal: false, channels: 6, codec: "eac3" },
+        { Type: "audio", index: 2, Language: "eng", IsDefault: false, IsOriginal: true, channels: 6, codec: "eac3" }
+      ]
+      m.assertEqual(findBestAudioStreamIndex(streams, false, "en", m.createMockCapabilities(6, false), true), 2)
+    end function
+
+    @it("lets 'Play default track' win over 'Original language', as the server does")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "fra", IsDefault: true, IsOriginal: false, channels: 6, codec: "eac3" },
+        { Type: "audio", index: 2, Language: "eng", IsDefault: false, IsOriginal: true, channels: 6, codec: "eac3" }
+      ]
+      m.assertEqual(findBestAudioStreamIndex(streams, true, "en", m.createMockCapabilities(6, false), true), 1)
+    end function
+
+    @it("picks the original language when it is not the first track (Squid Game '222' layout)")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", IsDefault: true, IsOriginal: false, channels: 6, codec: "eac3" },
+        { Type: "audio", index: 2, Language: "kor", IsDefault: false, IsOriginal: false, channels: 6, codec: "eac3" }
+      ]
+      m.assertEqual(findBestAudioStreamIndex(streams, false, "ko", m.createMockCapabilities(6, false), true), 2)
+    end function
+
+    @it("prefers the track flagged IsOriginal among same-language tracks over a better channel count")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "kor", IsOriginal: false, channels: 6, codec: "ac3", IsDefault: false },
+        { Type: "audio", index: 2, Language: "kor", IsOriginal: true, channels: 2, codec: "aac", IsDefault: false }
+      ]
+      m.assertEqual(findBestAudioStreamIndex(streams, false, "ko", m.createMockCapabilities(6, false), true), 2)
+      ' Without "Original language" the flag is ignored and the hardware decides
+      m.assertEqual(findBestAudioStreamIndex(streams, false, "kor", m.createMockCapabilities(6, false), false), 1)
+    end function
+
+    @it("takes a track flagged IsOriginal when the original language is unknown")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "fra", IsOriginal: false, channels: 6, codec: "ac3", IsDefault: false },
+        { Type: "audio", index: 2, Language: "eng", IsOriginal: true, channels: 2, codec: "aac", IsDefault: false }
+      ]
+      m.assertEqual(findBestAudioStreamIndex(streams, false, "", m.createMockCapabilities(6, false), true), 2)
+    end function
+
+    @it("matches a 639-2/B preference against a 639-2/T track")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", channels: 6, codec: "ac3", IsDefault: false },
+        { Type: "audio", index: 2, Language: "fra", channels: 2, codec: "aac", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, false, "fre", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 2)
+    end function
+
+    @it("keeps an exact regional code over its base language")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "por", channels: 6, codec: "ac3", IsDefault: false },
+        { Type: "audio", index: 2, Language: "pob", channels: 2, codec: "aac", IsDefault: false }
+      ]
+      m.assertEqual(findBestAudioStreamIndex(streams, false, "pob", m.createMockCapabilities(6, false)), 2)
+    end function
+
+    @it("falls back to the base language when no track has the exact regional code")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", channels: 6, codec: "ac3", IsDefault: false },
+        { Type: "audio", index: 2, Language: "por", channels: 2, codec: "aac", IsDefault: false }
+      ]
+      m.assertEqual(findBestAudioStreamIndex(streams, false, "pob", m.createMockCapabilities(6, false)), 2)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("languageBaseCode() / matchingLanguageCodes()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("normalizes languages outside the UI-locale alias map")
+    function _()
+      m.assertTrue(languagesMatch("sw", "swa"))
+      m.assertTrue(languagesMatch("bo", "tib"))
+      m.assertTrue(languagesMatch("bod", "tib"))
+      m.assertTrue(languagesMatch("tl", "tgl"))
+    end function
+
+    @it("matches Yiddish in every form, the deprecated 'ji' included")
+    function _()
+      m.assertTrue(languagesMatch("yi", "yid"))
+      m.assertTrue(languagesMatch("ji", "yi"))
+    end function
+
+    @it("drops a region or script suffix")
+    function _()
+      m.assertEqual(languageBaseCode("pt-BR"), "pt")
+      m.assertEqual(languageBaseCode("zh_Hant"), "zh")
+      m.assertEqual(languageBaseCode(""), "")
+      m.assertEqual(languageBaseCode(invalid), "")
+    end function
+
+    @it("returns only the exact code when a stream carries it")
+    function _()
+      matches = matchingLanguageCodes(["por", "pob", "eng"], "POB")
+      m.assertEqual(matches.Count(), 1)
+      m.assertTrue(matches.doesExist("pob"))
+    end function
+
+    @it("returns every same-language code when none is exact")
+    function _()
+      matches = matchingLanguageCodes(["fra", "fre", "eng", invalid], "fr")
+      m.assertEqual(matches.Count(), 2)
+      m.assertTrue(matches.doesExist("fra"))
+      m.assertTrue(matches.doesExist("fre"))
+    end function
+
+    @it("returns nothing for no preference")
+    function _()
+      m.assertEqual(matchingLanguageCodes(["eng"], "").Count(), 0)
+    end function
+
   end class
 
 end namespace

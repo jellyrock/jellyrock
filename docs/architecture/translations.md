@@ -8,7 +8,7 @@ related-files:
   - scripts/lint/update-translations.cjs
   - scripts/lint/language-coverage.cjs
   - locale/languages.json
-last-reviewed: 2026-09-20
+last-reviewed: 2026-09-21
 ---
 
 # Translations (i18n)
@@ -189,6 +189,12 @@ The codes are messy: ffmpeg/Jellyfin pass through whatever the container says, s
 
 Track names tagged `und` ("undetermined") and `zxx` ("no linguistic content") are intentionally omitted from labels — there's nothing meaningful to localize.
 
+### Matching codes across forms — `languageBaseCode()` / `languagesMatch()`
+
+Track *selection* needs the same normalization for a different reason: a preference or an item's `OriginalLanguage` (ISO 639-1, `ko`) has to find a track tagged in another form (`kor`). `languageBaseCode()` reduces a code to one form through `mediaLanguageAliases()` and then `mediaLanguageMatchAliases()`, a second map holding only the ISO 639-2 codes the first leaves out.
+
+The two maps are kept apart on purpose. `mediaLanguageAliases()` covers only UI locales, and display depends on that gap: tier 3 is keyed by the 3-letter code, so aliasing `swa` → `sw` there would show Swahili as the raw `swa`. The matching map can therefore cover every language without touching labels. Which codes count as a match for a given track list — exact code first, same language only as a fallback — is selection policy, and lives with it in `streamSelection.bs` (`matchingLanguageCodes()`).
+
 ### CI lint — `npm run lint:language-coverage`
 
 `scripts/lint/language-coverage.cjs` catches three classes of silent regression in the resolver:
@@ -196,6 +202,7 @@ Track names tagged `und` ("undetermined") and `zxx` ("no linguistic content") ar
 1. An alias maps `tib` → `bo` but `bo` is missing from tiers 1 and 2 — user sees raw `bo`.
 2. A new `LanguageX` key is added to tier 1 but `xxx` → `x` alias coverage is forgotten — ffmpeg-tagged audio in that language falls through to the English fallback in every UI locale, **including the user's own**.
 3. An English fallback exists for a code that's already covered by a translation key — wasted maintenance, inconsistent output.
+4. The matching-only map overlaps the display alias map, or holds something other than a 3-letter → 2-letter code — one of the two copies is dead, and they can silently disagree.
 
 These all pass type-check and unit tests but produce silent gaps for non-English users — the lint is the only catch.
 

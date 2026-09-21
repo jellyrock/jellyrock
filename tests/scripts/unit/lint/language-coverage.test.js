@@ -19,8 +19,11 @@ import { spawnScript } from '../_helpers/spawn-script.js';
 
 const SCRIPT = 'scripts/lint/language-coverage.cjs';
 
-function buildLanguagesBs({ aliases = {}, tier1 = {}, tier2 = {} }) {
+function buildLanguagesBs({ aliases = {}, tier1 = {}, tier2 = {}, matchAliases = {} }) {
   const aliasEntries = Object.entries(aliases)
+    .map(([k, v]) => `    "${k}": "${v}"`)
+    .join('\n');
+  const matchAliasEntries = Object.entries(matchAliases)
     .map(([k, v]) => `    "${k}": "${v}"`)
     .join('\n');
   const tier1Entries = Object.entries(tier1)
@@ -52,6 +55,12 @@ end function
 function languageEnglishFallbacks()
   m.tier2Cache = {
 ${tier2Entries}
+  }
+end function
+
+function mediaLanguageMatchAliases()
+  m.matchAliasCache = {
+${matchAliasEntries}
   }
 end function
 `;
@@ -87,6 +96,7 @@ function setupTree({
   aliases = {},
   tier1 = {},
   tier2 = {},
+  matchAliases = {},
   enUS = {},
   personKinds = {},
   unlabelledKinds = ['unknown'],
@@ -98,7 +108,7 @@ function setupTree({
   mkdirSync(join(dir, 'docs', 'architecture', 'spec-fingerprints'), { recursive: true });
   writeFileSync(
     join(dir, 'source', 'utils', 'languages.bs'),
-    buildLanguagesBs({ aliases, tier1, tier2 }),
+    buildLanguagesBs({ aliases, tier1, tier2, matchAliases }),
   );
   writeFileSync(
     join(dir, 'source', 'utils', 'people.bs'),
@@ -185,6 +195,40 @@ describe('language-coverage', () => {
     });
     const { exitCode } = spawnScript(SCRIPT, [dir]);
     expect(exitCode).toBe(0);
+  });
+});
+
+describe('language-coverage — match alias supplement', () => {
+  let dir;
+
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  });
+
+  const base = {
+    aliases: { eng: 'en' },
+    tier1: { en: 'translationKeys.LanguageEnglish' },
+    enUS: { LanguageEnglish: 'English' },
+  };
+
+  it('exits 0 when the match aliases only supplement the display aliases', () => {
+    dir = setupTree({ ...base, matchAliases: { swa: 'sw', bod: 'bo', tib: 'bo' } });
+    const { exitCode } = spawnScript(SCRIPT, [dir]);
+    expect(exitCode).toBe(0);
+  });
+
+  it('exits 1 when a match alias duplicates a display alias', () => {
+    dir = setupTree({ ...base, matchAliases: { eng: 'en' } });
+    const { exitCode, stdout } = spawnScript(SCRIPT, [dir]);
+    expect(exitCode).toBe(1);
+    expect(stdout).toMatch(/match alias "eng" is also in mediaLanguageAliases\(\)/);
+  });
+
+  it('exits 1 when a match alias is not 639-2 → 639-1', () => {
+    dir = setupTree({ ...base, matchAliases: { sw: 'swa' } });
+    const { exitCode, stdout } = spawnScript(SCRIPT, [dir]);
+    expect(exitCode).toBe(1);
+    expect(stdout).toMatch(/match alias "sw" → "swa" — expected a 3-letter/);
   });
 });
 

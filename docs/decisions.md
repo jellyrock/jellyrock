@@ -1583,6 +1583,16 @@ The tile correction reads a PLAIN `GET /UserItems/Resume` and gets each grouped 
 
 The resume list is fetched FIRST so an empty one skips the second request: the ladder is 0 requests on a pre-12 server or a page with nothing grouped, 1 when grouped items exist but nothing is in progress, 2 otherwise. "Played last" is now an explicit `rank` over the list's `DatePlayed`-descending order — hard-coded in `ItemsController.GetResumeItems`, and the endpoint takes no `sortBy`, so a client cannot pin it. **Scoping is per-caller by design**, not by accident: the grid scopes the resume list to its container (verified 2026-09-20 that a resume query scoped to a `BoxSet` returns its members), while extras rows stay unscoped because More Like This and person-videos rows legitimately cross libraries. Ruled out: **capping the resume list with `Limit`**, which bounds the cost by silently dropping the correction in the tail — the exact defect this feature exists to fix.
 
+## decision-id: original-language-client-side-parity
+
+**date**: 2026-09-21
+**status**: accepted
+**related-files**: `source/utils/streamSelection.bs`, `source/api/items.bs`, `source/utils/quickplay.bs`
+
+For the Jellyfin 12.0 web client's "Original language" audio preference, JellyRock keeps choosing the track itself and follows the server's rules for that mode: an episode with no `OriginalLanguage` of its own takes its series' (`Episode.GetInheritedOriginalLanguage`), and with "Play default track" off a stream flagged `IsOriginal` wins; with it on, the flag is ignored, as on the server. Ruled out: **taking `MediaSource.DefaultAudioStreamIndex`**, which the per-user item fetch already carries and which would need no series request. The server computes it from ITS `PlayDefaultAudioTrack`, ignoring JellyRock's own override (`resolvePlayDefaultAudioTrack()`); it skips JellyRock's hardware ranking (channel count, direct-play codec) and commentary demotion (#500); and it applies `RememberAudioSelections`, which JellyRock parses but uses nowhere else — so this one preference would behave differently from every other.
+
+The cost accepted is one series `GET` per episode that lacks its own `OriginalLanguage`, made only for viewers who chose "Original language" (`needsSeriesOriginalLanguage()`): 53–90 ms per fetch, measured 2026-09-21 on a Stick 4K against the local 12.0 server (4 samples). It is needed because `DtoService` sends the item's own value, not the inherited one, at 12.0 and 12.1, and on the 12.0 test server 354 of 1767 episodes carried none. Re-evaluate if the server starts sending the inherited value in the DTO, which would remove the fetch.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

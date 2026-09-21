@@ -1,5 +1,6 @@
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
+import "pkg:/source/utils/languages.bs"
 import "pkg:/source/utils/misc.bs"
 
 ' streamSelection.bs
@@ -16,6 +17,108 @@ enum JellyfinLanguage
   GERMAN = "deu"
   ITALIAN = "ita"
 end enum
+
+' The web client's "Original language" audio preference (Jellyfin 12.0+). The server stores it
+' in AudioLanguagePreference in place of a language code; it means "the item's OriginalLanguage".
+const ORIGINAL_LANGUAGE_PREFERENCE = "originallanguage"
+
+' wantsOriginalAudio: True when the viewer's audio preference is "Original language" — the web
+' client's choice, not overridden by a JellyRock Roku or custom language.
+'
+' @param {object} userSettings - JellyfinUserSettings node (JellyRock settings)
+' @param {object} userConfig - JellyfinUserConfiguration node (web client settings)
+' @returns {boolean}
+function wantsOriginalAudio(userSettings as object, userConfig as object) as boolean
+  if isValid(userSettings) and isValid(userSettings.playbackAudioLanguagePreference)
+    override = userSettings.playbackAudioLanguagePreference
+    if override = "roku" or override = "custom" then return false
+  end if
+  if not isValid(userConfig) or not isValid(userConfig.audioLanguagePreference) then return false
+  return LCase(userConfig.audioLanguagePreference) = ORIGINAL_LANGUAGE_PREFERENCE
+end function
+
+' needsSeriesOriginalLanguage: True when an episode's track selection needs its series'
+' OriginalLanguage — the viewer wants the original audio and the episode has none of its own.
+' The server falls back to the series itself (Episode.GetInheritedOriginalLanguage), but sends
+' only the item's own value, and not every metadata provider sets one on episodes. ItemMetaData()
+' fetches it; render-thread callers, which cannot, leave the track to LoadVideoContentTask.
+'
+' @param {object} item - JellyfinBaseItem
+' @param {object} userSettings - JellyfinUserSettings node (JellyRock settings)
+' @param {object} userConfig - JellyfinUserConfiguration node (web client settings)
+' @returns {boolean}
+function needsSeriesOriginalLanguage(item as object, userSettings as object, userConfig as object) as boolean
+  if not isValid(item) or (item.type ?? "") <> "Episode" then return false
+  if isValidAndNotEmpty(item.originalLanguage) or not isValidAndNotEmpty(item.seriesId) then return false
+  return wantsOriginalAudio(userSettings, userConfig)
+end function
+
+' matchingLanguageCodes: The stream language codes that count as a match for a preference.
+'
+' Exact codes win: when any stream carries the preferred code itself (case-insensitively), only
+' that code matches, so a "pob" preference keeps its Brazilian track over a "por" one. Only when
+' none does are codes for the same language in another form accepted (languagesMatch()) — how a
+' "fre" preference finds a "fra" track, and an OriginalLanguage of "ko" a "kor" one.
+'
+' Compute it once over ALL the candidate streams, not per filtered subset, so a subset without
+' the exact code cannot fall back to a same-language code the full list would have ruled out.
+'
+' @param {object} codes - Array of stream language codes (entries may be invalid or empty)
+' @param {string} preference - Preferred language code, or "" for none
+' @returns {object} - AssocArray set of lowercased matching codes; empty when preference is ""
+function matchingLanguageCodes(codes as object, preference as string) as object
+  matches = {}
+  if preference = "" then return matches
+
+  exact = LCase(preference)
+  for each code in codes
+    if isValid(code) and LCase(code) = exact
+      matches[exact] = true
+      return matches
+    end if
+  end for
+
+  for each code in codes
+    if languagesMatch(code, preference) then matches[LCase(code)] = true
+  end for
+  return matches
+end function
+
+' streamLanguageCodes: The Language of each stream of one type, for matchingLanguageCodes().
+'
+' @param {object} streams - Array of MediaStream AAs
+' @param {string} streamType - "audio" or "subtitle" (case-insensitive)
+' @returns {object} - Array of language codes (entries may be invalid)
+function streamLanguageCodes(streams as object, streamType as string) as object
+  codes = []
+  for each stream in streams
+    if isValid(stream.Type) and LCase(stream.Type) = streamType then codes.push(stream.Language)
+  end for
+  return codes
+end function
+
+' isLanguageMatch: Whether a stream language is in a matchingLanguageCodes() set.
+'
+' @param {object} matches - Set from matchingLanguageCodes()
+' @param {dynamic} code - Stream language code
+' @returns {boolean}
+function isLanguageMatch(matches as object, code as dynamic) as boolean
+  return isValidAndNotEmpty(code) and matches.doesExist(LCase(code))
+end function
+
+' selectAudioStreamIndex: The audio stream to auto-select for the viewer — their "play default
+' track" and language preferences resolved, then findBestAudioStreamIndex().
+'
+' @param {object} streams - Array of MediaStream AAs (all types, or audio only)
+' @param {object} userSettings - JellyfinUserSettings node (JellyRock settings)
+' @param {object} userConfig - JellyfinUserConfiguration node (web client settings)
+' @param {string} [originalLanguage=""] - The item's OriginalLanguage (JellyfinBaseItem.originalLanguage)
+' @returns {integer} - Jellyfin index of the audio stream, or 0 if none
+function selectAudioStreamIndex(streams as dynamic, userSettings as object, userConfig as object, originalLanguage = "" as string) as integer
+  playDefault = resolvePlayDefaultAudioTrack(userSettings, userConfig)
+  language = resolveAudioLanguagePreference(userSettings, userConfig, originalLanguage)
+  return findBestAudioStreamIndex(streams, playDefault, language, invalid, wantsOriginalAudio(userSettings, userConfig))
+end function
 
 ' resolvePlayDefaultAudioTrack: Resolves the playDefaultAudioTrack setting value
 '
@@ -56,15 +159,21 @@ end function
 ' Checks JellyRock override setting first, then falls back to web client setting.
 ' Returns a 3-letter ISO 639-2 language code (e.g., "eng", "jpn") or empty string.
 '
+' The web client's "Original language" choice (12.0+) resolves to the item's OriginalLanguage,
+' which is ISO 639-1 ("ko"), or to "" when the item has none. Pair the result with
+' wantsOriginalAudio(): "" then means "no language rule", not "use the Roku locale".
+'
 ' @param {object} userSettings - JellyfinUserSettings node (JellyRock settings)
 ' @param {object} userConfig - JellyfinUserConfiguration node (web client settings)
-' @returns {string} - Resolved audio language preference (3-letter code or empty string)
-function resolveAudioLanguagePreference(userSettings as object, userConfig as object) as string
+' @param {string} [originalLanguage=""] - The item's OriginalLanguage (JellyfinBaseItem.originalLanguage)
+' @returns {string} - Resolved audio language preference (language code or empty string)
+function resolveAudioLanguagePreference(userSettings as object, userConfig as object, originalLanguage = "" as string) as string
   ' Default to web client value
   defaultValue = ""
   if isValid(userConfig) and isValid(userConfig.audioLanguagePreference)
     defaultValue = userConfig.audioLanguagePreference
   end if
+  if LCase(defaultValue) = ORIGINAL_LANGUAGE_PREFERENCE then defaultValue = originalLanguage
 
   ' Check for JellyRock override setting
   if isValid(userSettings) and isValid(userSettings.playbackAudioLanguagePreference) and userSettings.playbackAudioLanguagePreference <> ""
@@ -95,12 +204,14 @@ end function
 '
 ' Checks JellyRock override setting first, then falls back to web client setting.
 ' The "audio" option chains to resolveAudioLanguagePreference() so subtitle language
-' follows the user's audio language override.
+' follows the user's audio language override — including "Original language", which follows
+' the item's OriginalLanguage, or applies no language rule when the item has none.
 '
 ' @param {object} userSettings - JellyfinUserSettings node (JellyRock settings)
 ' @param {object} userConfig - JellyfinUserConfiguration node (web client settings)
-' @returns {string} - Resolved subtitle language preference (3-letter code or empty string)
-function resolveSubtitleLanguagePreference(userSettings as object, userConfig as object) as string
+' @param {string} [originalLanguage=""] - The item's OriginalLanguage (JellyfinBaseItem.originalLanguage)
+' @returns {string} - Resolved subtitle language preference (language code or empty string)
+function resolveSubtitleLanguagePreference(userSettings as object, userConfig as object, originalLanguage = "" as string) as string
   ' Default to web client subtitle language preference
   defaultValue = ""
   if isValid(userConfig) and isValid(userConfig.subtitleLanguagePreference)
@@ -111,7 +222,7 @@ function resolveSubtitleLanguagePreference(userSettings as object, userConfig as
   if isValid(userSettings) and isValid(userSettings.playbackSubtitleLanguagePreference) and userSettings.playbackSubtitleLanguagePreference <> ""
     if userSettings.playbackSubtitleLanguagePreference = "audio"
       ' Follow the resolved audio language preference
-      return resolveAudioLanguagePreference(userSettings, userConfig)
+      return resolveAudioLanguagePreference(userSettings, userConfig, originalLanguage)
     else if userSettings.playbackSubtitleLanguagePreference = "roku"
       ' Use Roku device OS language
       rokuLocale = m.global.device.locale
@@ -233,10 +344,18 @@ end function
 '   2. If multiple language matches, apply hardware optimization
 '   3. If no language matches, apply hardware optimization to all streams
 '
+' "Original language" (preferOriginal, playDefault = false) — as the server does, a stream the
+' file flags IsOriginal wins: among the language matches when the item's original language is
+' known, among all streams when it is not. The server ignores IsOriginal when playDefault = true.
+'
+' Language matching: exact codes first, then the same language in another ISO form
+' (matchingLanguageCodes()).
+'
 ' Roku OS Language Fallback:
 '   When preferredLanguage is blank/empty, automatically uses the Roku device's
 '   OS language (from m.global.device.locale) as fallback for better
-'   out-of-box experience (see issue #179)
+'   out-of-box experience (see issue #179). Not with preferOriginal: the viewer asked for the
+'   original, and the locale is usually the dub, so no language rule applies instead.
 '
 ' Hardware optimization:
 '   - Prefer streams matching device's max channel capability
@@ -245,10 +364,11 @@ end function
 '
 ' @param {dynamic} streams - Array of media streams from Jellyfin metadata
 ' @param {dynamic} playDefault - Boolean, if true use IsDefault flag and only use language as tiebreaker
-' @param {dynamic} preferredLanguage - Three-letter language code (e.g., "eng", "jpn")
+' @param {dynamic} preferredLanguage - Language code in any ISO 639 form (e.g., "eng", "ko")
 ' @param {dynamic} deviceCapabilities - Optional: Device audio capabilities (for testing). If invalid, will detect automatically.
+' @param {boolean} [preferOriginal=false] - The viewer wants the original audio (wantsOriginalAudio())
 ' @returns {integer} - Jellyfin index of best audio stream, or 0 if not found
-function findBestAudioStreamIndex(streams as dynamic, playDefault as dynamic, preferredLanguage as dynamic, deviceCapabilities = invalid as dynamic) as integer
+function findBestAudioStreamIndex(streams as dynamic, playDefault as dynamic, preferredLanguage as dynamic, deviceCapabilities = invalid as dynamic, preferOriginal = false as boolean) as integer
   if not isValid(streams) or streams.Count() = 0 then return 0
 
   ' Get device audio capabilities (or use provided ones for testing)
@@ -259,7 +379,8 @@ function findBestAudioStreamIndex(streams as dynamic, playDefault as dynamic, pr
   ' Apply Roku OS language fallback when web client language preference is blank
   ' This provides better out-of-box experience for new users (issue #179)
   effectiveLanguage = preferredLanguage
-  if not isValid(preferredLanguage) or preferredLanguage = ""
+  if not isValid(effectiveLanguage) then effectiveLanguage = ""
+  if effectiveLanguage = "" and not preferOriginal
     ' Get Roku OS locale from global device node
     rokuLocale = m.global.device.locale
     if isValid(rokuLocale) and rokuLocale <> ""
@@ -303,6 +424,7 @@ function findBestAudioStreamIndex(streams as dynamic, playDefault as dynamic, pr
   end if
 
   ' Multiple audio tracks - apply selection logic
+  languageMatches = matchingLanguageCodes(streamLanguageCodes(audioStreams, "audio"), effectiveLanguage)
 
   ' BRANCH 1: "Play default track" setting is enabled
   ' Use IsDefault flag as primary filter, language as tiebreaker only
@@ -324,10 +446,10 @@ function findBestAudioStreamIndex(streams as dynamic, playDefault as dynamic, pr
         end if
       else
         ' Multiple IsDefault streams - try language preference as tiebreaker
-        if isValid(effectiveLanguage) and effectiveLanguage <> ""
+        if effectiveLanguage <> ""
           languageMatchedDefaults = []
           for i = 0 to defaultStreams.Count() - 1
-            if isValid(defaultStreams[i].Language) and LCase(defaultStreams[i].Language) = LCase(effectiveLanguage)
+            if isLanguageMatch(languageMatches, defaultStreams[i].Language)
               languageMatchedDefaults.push(defaultStreams[i])
             end if
           end for
@@ -354,17 +476,31 @@ function findBestAudioStreamIndex(streams as dynamic, playDefault as dynamic, pr
 
   ' BRANCH 2: Either playDefault = false OR playDefault = true but no IsDefault streams found
   ' Use language preference as primary filter (completely ignore IsDefault flag)
-  if isValid(effectiveLanguage) and effectiveLanguage <> ""
+  preferOriginalFlag = preferOriginal and not (isValid(playDefault) and playDefault = true)
+  if effectiveLanguage <> ""
     languageMatchedStreams = []
     for i = 0 to audioStreams.Count() - 1
-      if isValid(audioStreams[i].Language) and LCase(audioStreams[i].Language) = LCase(effectiveLanguage)
+      if isLanguageMatch(languageMatches, audioStreams[i].Language)
         languageMatchedStreams.push(audioStreams[i])
       end if
     end for
 
     ' If we found language matches, apply hardware optimization
     if languageMatchedStreams.Count() > 0
+      if preferOriginalFlag
+        originalStreams = originalAudioStreams(languageMatchedStreams)
+        if originalStreams.Count() > 0 then languageMatchedStreams = originalStreams
+      end if
       bestStream = selectBestStreamByHardware(languageMatchedStreams, deviceCapabilities)
+      if isValid(bestStream) and isValid(bestStream.index)
+        return bestStream.index
+      end if
+    end if
+  else if preferOriginalFlag
+    ' Original language unknown: the server still takes a stream flagged IsOriginal
+    originalStreams = originalAudioStreams(audioStreams)
+    if originalStreams.Count() > 0
+      bestStream = selectBestStreamByHardware(originalStreams, deviceCapabilities)
       if isValid(bestStream) and isValid(bestStream.index)
         return bestStream.index
       end if
@@ -383,6 +519,18 @@ function findBestAudioStreamIndex(streams as dynamic, playDefault as dynamic, pr
   end if
 
   return 0
+end function
+
+' originalAudioStreams: The streams the file flags as the original audio (MediaStream.IsOriginal).
+'
+' @param {object} audioStreams - Array of audio MediaStream AAs
+' @returns {object} - Array of the flagged streams, possibly empty
+function originalAudioStreams(audioStreams as object) as object
+  originals = []
+  for each stream in audioStreams
+    if stream.IsOriginal = true then originals.push(stream)
+  end for
+  return originals
 end function
 
 ' selectBestStreamByHardware: Selects the best audio stream based on device capabilities
@@ -630,8 +778,9 @@ end function
 '
 ' @param {object} mediaStreams - Array of MediaStream objects from Jellyfin API (all types: video, audio, subtitle)
 ' @param {integer} selectedAudioStreamIndex - Server-side index of the selected audio stream (for Smart mode)
+' @param {string} [originalLanguage=""] - The item's OriginalLanguage (JellyfinBaseItem.originalLanguage)
 ' @returns {integer} - Server-side stream index of the selected subtitle, or -1 if none
-function findDefaultSubtitleStreamIndex(mediaStreams as object, selectedAudioStreamIndex as integer) as integer
+function findDefaultSubtitleStreamIndex(mediaStreams as object, selectedAudioStreamIndex as integer, originalLanguage = "" as string) as integer
   if not isValid(mediaStreams) or mediaStreams.Count() = 0 then return -1
 
   ' ONE rendezvous to get user node
@@ -640,7 +789,8 @@ function findDefaultSubtitleStreamIndex(mediaStreams as object, selectedAudioStr
 
   if subtitleMode = "none" then return -1
 
-  prefLang = resolveSubtitleLanguagePreference(localUser.settings, localUser.config)
+  prefLang = resolveSubtitleLanguagePreference(localUser.settings, localUser.config, originalLanguage)
+  languageMatches = matchingLanguageCodes(streamLanguageCodes(mediaStreams, "subtitle"), prefLang)
 
   ' Sort subtitles into priority buckets: forced > default > normal
   ' Within each bucket, preferred language entries come first
@@ -664,7 +814,7 @@ function findDefaultSubtitleStreamIndex(mediaStreams as object, selectedAudioStr
     entry = { lang: lang, isForced: isForced, isDefault: isDefault, isText: isText, index: stream.index }
 
     if isForced
-      if prefLang <> "" and prefLang = lang
+      if isLanguageMatch(languageMatches, lang)
         forced.unshift(entry)
         if isText then textForced.unshift(entry)
       else
@@ -672,7 +822,7 @@ function findDefaultSubtitleStreamIndex(mediaStreams as object, selectedAudioStr
         if isText then textForced.push(entry)
       end if
     else if isDefault
-      if prefLang <> "" and prefLang = lang
+      if isLanguageMatch(languageMatches, lang)
         default.unshift(entry)
         if isText then textDefault.unshift(entry)
       else
@@ -680,7 +830,7 @@ function findDefaultSubtitleStreamIndex(mediaStreams as object, selectedAudioStr
         if isText then textDefault.push(entry)
       end if
     else
-      if prefLang <> "" and prefLang = lang
+      if isLanguageMatch(languageMatches, lang)
         normal.unshift(entry)
         if isText then textNormal.unshift(entry)
       else
@@ -709,12 +859,12 @@ function findDefaultSubtitleStreamIndex(mediaStreams as object, selectedAudioStr
   end for
 
   ' Try text subtitles first (same as defaultSubtitleTrackFromVid)
-  result = selectSubtitleByMode(textSorted, subtitleMode, prefLang, selectedAudioLanguage, true)
+  result = selectSubtitleByMode(textSorted, subtitleMode, prefLang, selectedAudioLanguage, true, languageMatches)
   if result >= 0 then return result
 
   ' If not text-only mode, try all subtitles
   if not localUser.settings.playbackSubsOnlyText
-    result = selectSubtitleByMode(allSorted, subtitleMode, prefLang, selectedAudioLanguage, false)
+    result = selectSubtitleByMode(allSorted, subtitleMode, prefLang, selectedAudioLanguage, false, languageMatches)
     if result >= 0 then return result
   end if
 
@@ -729,14 +879,15 @@ end function
 ' @param {string} prefLang - Preferred subtitle language (ISO 639-2 code, e.g., "eng")
 ' @param {string} selectedAudioLanguage - Language of the selected audio stream
 ' @param {boolean} requireText - If true, only consider text subtitle entries
+' @param {object} languageMatches - matchingLanguageCodes() for prefLang over ALL the item's subtitles
 ' @returns {integer} - Server-side stream index of the selected subtitle, or -1 if none
-function selectSubtitleByMode(sortedEntries as object, subtitleMode as string, prefLang as string, selectedAudioLanguage as string, requireText as boolean) as integer
+function selectSubtitleByMode(sortedEntries as object, subtitleMode as string, prefLang as string, selectedAudioLanguage as string, requireText as boolean, languageMatches as object) as integer
   if not isValid(sortedEntries) or sortedEntries.Count() = 0 then return -1
 
   ' Smart mode is only active when audio language differs from subtitle preference
   allowSmartMode = false
   if selectedAudioLanguage <> ""
-    allowSmartMode = selectedAudioLanguage <> prefLang
+    allowSmartMode = not languagesMatch(selectedAudioLanguage, prefLang)
   end if
 
   ' Primary pass: match by mode with language filter
@@ -746,7 +897,7 @@ function selectSubtitleByMode(sortedEntries as object, subtitleMode as string, p
     ' Language match check
     languageMatch = true
     if prefLang <> ""
-      languageMatch = (prefLang = entry.lang)
+      languageMatch = isLanguageMatch(languageMatches, entry.lang)
     end if
 
     if languageMatch

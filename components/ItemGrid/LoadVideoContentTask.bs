@@ -276,9 +276,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
 
   if m.top.selectedAudioStreamIndex = 0
     if isValid(playedSource) and isValid(playedSource.MediaStreams)
-      ' Resolve playDefaultAudioTrack setting (JellyRock override or web client)
-      playDefault = resolvePlayDefaultAudioTrack(userSettings, userSession.config)
-      audioStreamIdx = findBestAudioStreamIndex(playedSource.MediaStreams, playDefault, resolveAudioLanguagePreference(userSettings, userSession.config))
+      audioStreamIdx = selectAudioStreamIndex(playedSource.MediaStreams, userSettings, userSession.config, meta.originalLanguage ?? "")
     else
       ' MediaStreams not available - keep existing behavior of using 0
       ' This should never happen since ItemMetaData() just fetched metadata
@@ -722,7 +720,7 @@ sub addSubtitlesToVideo(video, meta)
   if not isValidAndNotEmpty(m.playbackInfo.MediaSources) then return
   if not isValid(m.playbackInfo.MediaSources[0].MediaStreams) then return
 
-  subtitles = sortSubtitles(m.playbackInfo.MediaSources[0].MediaStreams)
+  subtitles = sortSubtitles(m.playbackInfo.MediaSources[0].MediaStreams, meta.originalLanguage ?? "")
   safesubs = subtitles["all"]
   subtitleTracks = []
 

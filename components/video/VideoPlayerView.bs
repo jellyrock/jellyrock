@@ -764,8 +764,7 @@ sub onVideoSourceChange()
   audioStreamIdx = 0
   if isValid(newSource) and isValid(newSource.MediaStreams)
     localUser = m.global.user
-    playDefault = resolvePlayDefaultAudioTrack(localUser.settings, localUser.config)
-    audioStreamIdx = findBestAudioStreamIndex(newSource.MediaStreams, playDefault, resolveAudioLanguagePreference(localUser.settings, localUser.config))
+    audioStreamIdx = selectAudioStreamIndex(newSource.MediaStreams, localUser.settings, localUser.config, itemOriginalLanguage())
   end if
 
   m.LoadMetaDataTask.selectedSubtitleIndex = -2 ' Reset to auto-detect for new source
@@ -1564,6 +1563,12 @@ sub onNotificationStateChanged()
     end if
   end if
 end sub
+
+' The playing item's OriginalLanguage (12.0+), for the "Original language" audio preference.
+function itemOriginalLanguage() as string
+  if not isValid(m.osd) or not isValid(m.osd.itemData) then return ""
+  return m.osd.itemData.originalLanguage ?? ""
+end function
 
 ' The media duration in seconds, or 0 when it is not known.
 '
