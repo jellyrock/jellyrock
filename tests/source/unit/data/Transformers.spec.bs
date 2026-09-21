@@ -1347,6 +1347,22 @@ namespace tests
       m.assertEqual(result.subtitle, "")
     end function
 
+    @it("labels every channel and program in a batch with the channel label it resolves once")
+    function _()
+      transformer = new JellyfinDataTransformer()
+      apiArray = [
+        { Id: "ch1", Type: "TvChannel", Name: "BBC One", Number: "1" },
+        { Id: "ch2", Type: "TvChannel", Name: "BBC Two", Number: "2" },
+        { Id: "p1", Type: "Program", Name: "News", ChannelNumber: "3", ChannelName: "ITV" }
+      ]
+
+      results = transformer.transformBaseItemArray(apiArray, "10.8.0")
+
+      m.assertEqual(results[0].subtitle, "CH 1")
+      m.assertEqual(results[1].subtitle, "CH 2")
+      m.assertEqual(results[2].subtitle, "CH 3 - ITV")
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("JellyfinDataTransformer - item.title (ContentNode compatibility)")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

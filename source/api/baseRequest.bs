@@ -38,8 +38,11 @@ function buildParams(params = {} as object) as string
   return paramArray.join("&")
 end function
 
-function buildURL(path as string, params = {} as object) as dynamic
-  serverURL = getUrl()
+' @param serverURL - the server URL, when the caller already has it: getUrl() reads it off
+'   m.global, a render-thread rendezvous from a Task, so a Task building many URLs reads it once
+'   and passes it here
+function buildURL(path as string, params = {} as object, serverURL = invalid as dynamic) as dynamic
+  if not isValid(serverURL) then serverURL = getUrl()
   if not isValid(serverURL) then return invalid
 
   ' Add intial '/' if path does not start with one

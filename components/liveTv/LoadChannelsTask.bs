@@ -99,18 +99,24 @@ sub loadChannels()
 
     m.top.totalRecordCount = res.json.TotalRecordCount
 
-    transformer = JellyfinDataTransformer()
-    for each item in res.json.Items
-      node = transformer.transformBaseItem(item)
+    ' Everything read off m.global is read once per page, not per channel: from a Task each
+    ' read is a render-thread rendezvous, and while the guide scrolls each one waits on it.
+    ' That is the array transform (the server version), the channel label (translate copies
+    ' the translations table across) and the server URL for the icons.
+    channelLabel = translate(translationKeys.LabelCh)
+    serverURL = getUrl()
+    transformed = JellyfinDataTransformer().transformBaseItemArray(res.json.Items)
+    for i = 0 to transformed.count() - 1
+      node = transformed[i]
 
       ' Format title with channel number for TimeGrid channel gutter display
       if isValidAndNotEmpty(node.channelNumber)
-        node.title = `${translate(translationKeys.LabelCh)} ${node.channelNumber} ${node.name}`
+        node.title = `${channelLabel} ${node.channelNumber} ${node.name}`
       end if
 
       ' Set hdSmallIconUrl for TimeGrid channel icon (ContentNode built-in read by Roku TimeGrid)
       if isValidAndNotEmpty(node.primaryImageTag)
-        node.hdsmalliconurl = ImageURL(node.id, "Primary", { maxHeight: 60, tag: node.primaryImageTag })
+        node.hdsmalliconurl = ImageURL(node.id, "Primary", { maxHeight: 60, tag: node.primaryImageTag }, serverURL)
       end if
 
       ' Favorites appear at the top of the channel list
