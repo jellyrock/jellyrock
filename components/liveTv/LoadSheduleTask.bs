@@ -10,41 +10,59 @@ sub init()
   m.top.functionName = "loadSchedule"
 end sub
 
-' Orchestrator Task: submits to ApiTask pool and waits off the render thread.
+' Orchestrator Task: fetches the programs for one block of channels and hands them back
+' grouped by channel, so the guide can give each channel row its programs in one write.
+'
+' A full load sends minEndDate (programs still airing at the window start or later); an
+' extension sends minStartDate instead (programs starting at or after what the block already
+' holds). The server compares both inclusively, so the one program that can arrive twice is
+' one starting exactly on an extension boundary — the guide drops it (Schedule.applyPrograms).
 sub loadSchedule()
+  channelIds = m.top.channelIds
   params = {
     UserId: m.global.user.id,
     SortBy: "startDate",
     EnableImages: false,
     EnableTotalRecordCount: false,
     EnableUserData: false,
-    channelIds: m.top.channelIds,
-    MaxStartDate: m.top.endTime,
-    MinEndDate: m.top.startTime
+    channelIds: channelIds.join(","),
+    MaxStartDate: m.top.maxStartDate
   }
+  if isValidAndNotEmpty(m.top.minStartDate)
+    params.MinStartDate = m.top.minStartDate
+  else
+    params.MinEndDate = m.top.minEndDate
+  end if
 
-  m.log.info("loadSchedule: starting fetch", "startTime", m.top.startTime, "endTime", m.top.endTime)
+  m.log.info("loadSchedule: starting fetch", "channels", channelIds.count(), "extend", isValidAndNotEmpty(m.top.minStartDate))
   timer = CreateObject("roTimespan")
   res = fetchRes(GetApi().BuildGetLiveTvScheduleRequest(params), "liveTvSchedule")
-  elapsed = timer.TotalMilliseconds()
-  m.log.info("loadSchedule: fetch completed", "elapsed_ms", elapsed, "ok", isValid(res) and res.ok)
+  m.log.info("loadSchedule: fetch completed", "elapsed_ms", timer.TotalMilliseconds(), "ok", isValid(res) and res.ok)
 
-  results = []
+  byChannel = {}
+  for each id in channelIds
+    byChannel[id] = []
+  end for
 
-  if isValid(res) and res.ok and isValid(res.json)
+  ok = isValid(res) and res.ok and isValid(res.json) and isValid(res.json.Items)
+  if ok
     transformer = JellyfinDataTransformer()
     for each item in res.json.Items
-      node = transformer.transformBaseItem(item)
-      ' Set hdSmallIconUrl for TimeGrid recording indicator (ContentNode built-in read by Roku TimeGrid)
-      if isValidAndNotEmpty(node.timerId)
-        node.hdsmalliconurl = "pkg:/images/red.png"
-      else
-        node.hdsmalliconurl = ""
+      programs = byChannel[item.ChannelId ?? ""]
+      if isValid(programs)
+        node = transformer.transformBaseItem(item)
+        ' hdSmallIconUrl drives the TimeGrid recording indicator (a ContentNode built-in)
+        if isValidAndNotEmpty(node.timerId)
+          node.hdsmalliconurl = "pkg:/images/red.png"
+        else
+          node.hdsmalliconurl = ""
+        end if
+        programs.push(node)
       end if
-      results.push(node)
     end for
   end if
 
-  m.log.info("loadSchedule: result", "programCount", results.Count())
-  m.top.schedule = results
+  m.log.info("loadSchedule: result", "ok", ok, "elapsed_ms", timer.TotalMilliseconds())
+  m.top.ok = ok
+  m.top.programs = byChannel
 end sub

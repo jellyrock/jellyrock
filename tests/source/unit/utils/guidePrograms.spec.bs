@@ -1,0 +1,138 @@
+import "pkg:/source/utils/guidePrograms.bs"
+
+namespace tests
+
+  @suite("guidePrograms - which TV guide program blocks to hold, fetch and drop")
+  class GuideProgramsTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("blockOf() / blockRows()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("puts BLOCK_SIZE consecutive rows in each block")
+    function _()
+      m.assertEqual(guidePrograms.blockOf(0), 0)
+      m.assertEqual(guidePrograms.blockOf(24), 0)
+      m.assertEqual(guidePrograms.blockOf(25), 1)
+      m.assertEqual(guidePrograms.blockRows(1, 393), [25, 49])
+    end function
+
+    @it("ends the last block at the last row")
+    function _()
+      m.assertEqual(guidePrograms.blockRows(15, 393), [375, 392])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("wantedBlocks()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("lists the focused block first, then alternately below and above it")
+    function _()
+      ' Rows 24..80 are near row 49 (6 visible + 25 either side): blocks 0..3.
+      m.assertEqual(guidePrograms.wantedBlocks(49, 6, 2000, true), [1, 2, 0, 3])
+    end function
+
+    @it("clamps at the top of the guide")
+    function _()
+      m.assertEqual(guidePrograms.wantedBlocks(0, 6, 2000, true), [0, 1])
+    end function
+
+    @it("leaves out a block whose rows have not all arrived while channels still page in")
+    function _()
+      ' 60 rows so far: block 2 (rows 50..74) is partial and more rows are coming.
+      m.assertEqual(guidePrograms.wantedBlocks(40, 6, 60, false), [1, 0])
+    end function
+
+    @it("includes the short last block once every row has arrived")
+    function _()
+      m.assertEqual(guidePrograms.wantedBlocks(40, 6, 60, true), [1, 2, 0])
+    end function
+
+    @it("wants nothing when the guide has no rows or the focus is outside it")
+    function _()
+      m.assertEqual(guidePrograms.wantedBlocks(0, 6, 0, true), [])
+      m.assertEqual(guidePrograms.wantedBlocks(100, 6, 50, true), [])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("nextFetch()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("fully loads the first wanted block that holds nothing")
+    function _()
+      fetch = guidePrograms.nextFetch([1, 2, 0], { "1": 5000 }, 5000)
+      m.assertEqual(fetch, { block: 2, extendFrom: 0 })
+    end function
+
+    @it("extends a block from the time it already holds programs through")
+    function _()
+      fetch = guidePrograms.nextFetch([1, 2], { "1": 3000, "2": 5000 }, 5000)
+      m.assertEqual(fetch, { block: 1, extendFrom: 3000 })
+    end function
+
+    @it("fully reloads a stale block, which the load replaces")
+    function _()
+      fetch = guidePrograms.nextFetch([1, 2], { "1": 0, "2": 5000 }, 5000)
+      m.assertEqual(fetch, { block: 1, extendFrom: 0 })
+    end function
+
+    @it("fetches nothing once every wanted block is current")
+    function _()
+      m.assertInvalid(guidePrograms.nextFetch([1, 2], { "1": 5000, "2": 9000 }, 5000))
+      m.assertInvalid(guidePrograms.nextFetch([], {}, 5000))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("evictions()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("drops nothing while at most CAP blocks hold programs")
+    function _()
+      held = {}
+      for i = 0 to guidePrograms.CAP - 1
+        held[i.toStr()] = 5000
+      end for
+      m.assertEqual(guidePrograms.evictions(held, [0], 0, guidePrograms.CAP), [])
+    end function
+
+    @it("drops the blocks farthest from the focus")
+    function _()
+      ' Eight blocks held, focus in block 10; blocks 9 and 11 wanted.
+      held = { "2": 1, "5": 1, "8": 1, "9": 1, "10": 1, "11": 1, "14": 1, "30": 1 }
+      dropped = guidePrograms.evictions(held, [10, 11, 9], 250, 6)
+      m.assertEqual(dropped, [30, 2])
+    end function
+
+    @it("never drops a wanted block, even when that leaves more than the cap")
+    function _()
+      ' The farthest held block (12) is wanted; only the unwanted one may go.
+      held = { "7": 1, "10": 1, "11": 1, "12": 1 }
+      dropped = guidePrograms.evictions(held, [10, 11, 12], 250, 1)
+      m.assertEqual(dropped, [7])
+    end function
+
+    @it("counts a stale block toward the cap")
+    function _()
+      held = { "0": 0, "1": 1, "2": 1, "3": 1, "4": 1, "5": 1, "6": 1 }
+      m.assertEqual(guidePrograms.evictions(held, [6], 150, 6), [0])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isSpanLoaded()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true only when every block of the span holds current programs")
+    function _()
+      held = { "0": 5000, "1": 5000, "2": 0 }
+      m.assertTrue(guidePrograms.isSpanLoaded(10, 40, held))
+      m.assertFalse(guidePrograms.isSpanLoaded(40, 60, held), "block 2 is stale")
+      m.assertFalse(guidePrograms.isSpanLoaded(70, 80, held), "block 3 holds nothing")
+    end function
+
+  end class
+
+end namespace

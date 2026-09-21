@@ -4,9 +4,13 @@ import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/guidePrograms.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/translate.bs"
+
+' Rows the guide shows at once, when TimeGrid does not report numRows.
+const GUIDE_VISIBLE_ROWS = 6
 
 sub init()
   m.log = new log.Logger("Schedule")
@@ -17,11 +21,16 @@ sub init()
   m.detailsPane.observeField("shouldWatchSelectedChannel", "onWatchChannelSelected")
   m.detailsPane.observeField("shouldRecordSelectedChannel", "onRecordChannelSelected")
   m.detailsPane.observeField("shouldRecordSeriesSelectedChannel", "onRecordSeriesChannelSelected")
-  m.gridStartDate = CreateObject("roDateTime")
-  m.scheduleGrid.contentStartTime = m.gridStartDate.AsSeconds() - 1800
-  m.gridEndDate = createObject("roDateTime")
-  m.gridEndDate.FromSeconds(m.gridStartDate.AsSeconds() + (24 * 60 * 60))
+  ' Programs are fetched from guideWindowStart through guideHorizon; scrolling toward the
+  ' horizon pushes it out a day at a time (onGridScrolled).
+  m.guideWindowStart = CreateObject("roDateTime").AsSeconds()
+  m.scheduleGrid.contentStartTime = m.guideWindowStart - 1800
+  m.guideHorizon = m.guideWindowStart + (24 * 60 * 60)
 
+  m.textLoading = translate(translationKeys.LabelLoading)
+  m.textNoSchedule = translate(translationKeys.LabelNoScheduleInformation)
+
+  m.scheduleGrid.observeField("channelFocused", "onChannelFocused")
   m.scheduleGrid.observeField("programFocused", "onProgramFocused")
   m.scheduleGrid.observeField("programSelected", "onProgramSelected")
   m.scheduleGrid.observeField("leftEdgeTargetTime", "onGridScrolled")
@@ -35,16 +44,16 @@ sub init()
 
   m.top.lastFocus = m.scheduleGrid
 
-  m.channelIndex = {}
-  ' Track which program IDs have been fully loaded to avoid redundant API requests.
-  ' Used instead of a .fullyLoaded field on the (immutable) JellyfinBaseItem node.
-  m.fullyLoadedProgramIds = {}
-
   ' Generation guard for the program-details render-thread promise. Bumped whenever the
-  ' grid is rebuilt (filter/search reset) or a newer fetch fires, so a slow earlier result
-  ' can't ReplaceChild a cell the user scrolled past / a grid that's been torn down. Mirrors
-  ' ItemDetails.checkTrailerAvailability's m.trailerCheckSeq (Phase-3b staleness guard).
+  ' grid is rebuilt (filter/search reset), programs are replaced, or a newer fetch fires, so
+  ' a slow earlier result can't ReplaceChild a cell the user scrolled past / a grid that's
+  ' been torn down. Mirrors ItemDetails.checkTrailerAvailability's m.trailerCheckSeq.
   m.programDetailsSeq = 0
+
+  ' Program state, including m.fullyLoadedProgramIds: the program IDs whose full details
+  ' are loaded, so re-focusing one makes no redundant request. Used instead of a
+  ' .fullyLoaded field on the (immutable) JellyfinBaseItem node.
+  resetPrograms()
 
   ' Guard: onChange handlers must not start tasks before startLoading() configures paging
   m.loadingInitialized = false
@@ -63,7 +72,6 @@ end sub
 ' Loads channels in pages of m.channelPageSize for fast initial display.
 sub startLoading()
   m.channelPageSize = 25
-  m.pendingScheduleIds = []
 
   m.LoadChannelsTask.filter = m.top.filter
   m.LoadChannelsTask.searchTerm = m.top.searchTerm
@@ -91,15 +99,9 @@ sub channelFilterSet()
   if isValid(m.top.filter) and m.LoadChannelsTask.filter <> m.top.filter
     if m.LoadChannelsTask.state = "run" then m.LoadChannelsTask.control = "stop"
 
-    ' Stop in-flight schedule task + invalidate program-detail fetch — their data belongs to the old filter
-    if isValid(m.LoadScheduleTask) and m.LoadScheduleTask.state = "run" then m.LoadScheduleTask.control = "stop"
-    m.programDetailsSeq += 1 ' invalidate any in-flight program-detail fetch — it belongs to the old grid
-
     ' Reset all state for fresh filter
+    resetPrograms()
     m.LoadChannelsTask.startIndex = 0
-    m.channelIndex = {}
-    m.fullyLoadedProgramIds = {}
-    m.pendingScheduleIds = []
     m.scheduleGrid.content = createObject("roSGNode", "ContentNode")
 
     m.LoadChannelsTask.filter = m.top.filter
@@ -119,15 +121,9 @@ sub channelsearchTermSet()
     m.top.searchTerm = ""
     m.LoadChannelsTask.searchTerm = ""
 
-    ' Stop in-flight schedule task + invalidate program-detail fetch — their data belongs to the old search
-    if isValid(m.LoadScheduleTask) and m.LoadScheduleTask.state = "run" then m.LoadScheduleTask.control = "stop"
-    m.programDetailsSeq += 1 ' invalidate any in-flight program-detail fetch — it belongs to the old grid
-
     ' Reset all state for fresh search
+    resetPrograms()
     m.LoadChannelsTask.startIndex = 0
-    m.channelIndex = {}
-    m.fullyLoadedProgramIds = {}
-    m.pendingScheduleIds = []
     m.scheduleGrid.content = createObject("roSGNode", "ContentNode")
 
     startLoadingSpinner()
@@ -136,15 +132,9 @@ sub channelsearchTermSet()
   else if isValid(m.top.searchTerm) and LCase(m.LoadChannelsTask.searchTerm) <> LCase(m.top.searchTerm)
     if m.LoadChannelsTask.state = "run" then m.LoadChannelsTask.control = "stop"
 
-    ' Stop in-flight schedule task + invalidate program-detail fetch — their data belongs to the old search
-    if isValid(m.LoadScheduleTask) and m.LoadScheduleTask.state = "run" then m.LoadScheduleTask.control = "stop"
-    m.programDetailsSeq += 1 ' invalidate any in-flight program-detail fetch — it belongs to the old grid
-
     ' Reset all state for fresh search
+    resetPrograms()
     m.LoadChannelsTask.startIndex = 0
-    m.channelIndex = {}
-    m.fullyLoadedProgramIds = {}
-    m.pendingScheduleIds = []
     m.scheduleGrid.content = createObject("roSGNode", "ContentNode")
 
     m.LoadChannelsTask.searchTerm = m.top.searchTerm
@@ -156,13 +146,14 @@ end sub
 ' Channels loaded callback — handles both first and subsequent pages.
 ' First page: creates grid content, shows channels immediately.
 ' Subsequent pages: appends channels to existing grid.
-' Each page queues its channel IDs for schedule loading.
+' Programs are not part of a page: reconcilePrograms loads them for the rows near the focus.
 sub onChannelsLoaded()
   channels = m.LoadChannelsTask.channels
   m.log.info("onChannelsLoaded", "channelCount", channels.count(), "startIndex", m.LoadChannelsTask.startIndex, "totalRecordCount", m.LoadChannelsTask.totalRecordCount)
 
   if channels.count() = 0
     ' No channels returned — stop spinner and restore focus so user can navigate back
+    m.channelsComplete = true
     stopLoadingSpinner()
     m.scheduleGrid.showLoadingDataFeedback = false
     m.scheduleGrid.setFocus(true)
@@ -170,28 +161,20 @@ sub onChannelsLoaded()
   end if
 
   isFirstPage = not isValid(m.scheduleGrid.content) or m.scheduleGrid.content.getChildCount() = 0
-  channelIdList = ""
+
+  for each item in channels
+    m.channelIds.push(item.id)
+  end for
 
   if isFirstPage
-    ' First page: create fresh grid content
+    ' First page: create fresh grid content, while it is still detached
     gridData = createObject("roSGNode", "ContentNode")
-    for each item in channels
-      gridData.appendChild(item)
-      m.channelIndex[item.id] = m.channelIndex.count()
-      channelIdList += item.id + ","
-    end for
+    gridData.appendChildren(channels)
     m.scheduleGrid.content = gridData
 
-    ' Show channels immediately — programs populate as schedule batches arrive
+    ' Show channels immediately — their rows read "Loading…" until their programs arrive
     m.scheduleGrid.showLoadingDataFeedback = false
     stopLoadingSpinner()
-
-    ' Create task instances only once — filter/search resets reuse them.
-    ' Program details are loaded via a render-thread promise (loadProgramDetails), not a Task.
-    if not isValid(m.LoadScheduleTask)
-      m.LoadScheduleTask = createObject("roSGNode", "LoadScheduleTask")
-      m.LoadScheduleTask.observeField("schedule", "onScheduleLoaded")
-    end if
 
     m.scheduleGrid.setFocus(true)
     if m.EPGLaunchCompleteSignaled = false
@@ -200,62 +183,197 @@ sub onChannelsLoaded()
     end if
   else
     ' Subsequent page: append to existing grid content
-    for each item in channels
-      m.scheduleGrid.content.appendChild(item)
-      m.channelIndex[item.id] = m.channelIndex.count()
-      channelIdList += item.id + ","
-    end for
+    m.scheduleGrid.content.appendChildren(channels)
   end if
-
-  ' Queue schedule load for this batch of channels
-  m.pendingScheduleIds.push(channelIdList)
-  tryLoadNextScheduleBatch()
 
   ' Load next page of channels if more exist
   loadedSoFar = m.LoadChannelsTask.startIndex + channels.count()
   if loadedSoFar < m.LoadChannelsTask.totalRecordCount
     m.LoadChannelsTask.startIndex = loadedSoFar
     launchTask(m.LoadChannelsTask)
+  else
+    m.channelsComplete = true
   end if
+
+  ' A page can complete a block the focus is waiting on
+  reconcilePrograms()
 end sub
 
-' Starts the next queued schedule batch if LoadScheduleTask is free.
-sub tryLoadNextScheduleBatch()
-  if not isValid(m.LoadScheduleTask) then return
-  if m.LoadScheduleTask.state = "run" then return
-  if m.pendingScheduleIds.count() = 0 then return
+' ── Programs: loaded near the focus, in blocks ──────────────────────────────────────
+'
+' Every channel row is in the grid, but only blocks of rows near the focused one hold
+' programs (guidePrograms decides which). One block is fetched at a time; each landing
+' reconciles again, so after a fast scroll the next fetch is the block nearest the focus NOW,
+' never a queue of blocks the user has already left.
 
-  channelIds = m.pendingScheduleIds[0]
-  m.pendingScheduleIds.delete(0)
+' Forgets every program and the channel rows' ids: the channel list is being rebuilt.
+sub resetPrograms()
+  if isValid(m.LoadScheduleTask) then m.LoadScheduleTask = releaseTask(m.LoadScheduleTask, "programs")
+  m.programFetch = invalid
+  m.programFetchPaused = false
+  m.guideHeld = {}
+  m.channelIds = []
+  m.channelsComplete = false
+  m.fullyLoadedProgramIds = {}
+  ' Invalidates any in-flight program-detail fetch — it belongs to the old grid
+  m.programDetailsSeq += 1
+end sub
 
-  m.LoadScheduleTask.startTime = m.gridStartDate.ToISOString()
-  m.LoadScheduleTask.endTime = m.gridEndDate.ToISOString()
-  m.LoadScheduleTask.channelIds = channelIds
+' Brings the rows near the focus to the programs they should hold: drops blocks beyond the
+' cap, updates the text shown in rows without programs, and starts the next fetch if none is
+' in flight.
+sub reconcilePrograms()
+  content = m.scheduleGrid.content
+  if not isValid(content) then return
+  rowCount = content.getChildCount()
+  if rowCount = 0 then return
+
+  focusedRow = guideFocusedRow(rowCount)
+  wanted = guidePrograms.wantedBlocks(focusedRow, guideVisibleRows(), rowCount, m.channelsComplete)
+  dropPrograms(guidePrograms.evictions(m.guideHeld, wanted, focusedRow, guidePrograms.CAP))
+  updateNoProgramsText(focusedRow, rowCount)
+
+  if isValid(m.LoadScheduleTask) or m.programFetchPaused then return
+  fetch = guidePrograms.nextFetch(wanted, m.guideHeld, m.guideHorizon)
+  if isValid(fetch) then startProgramFetch(fetch, rowCount)
+end sub
+
+' The focused channel row, clamped to the grid — TimeGrid keeps reporting the old index for a
+' moment after the content is replaced.
+function guideFocusedRow(rowCount as integer) as integer
+  focusedRow = m.scheduleGrid.channelFocused
+  if not isValid(focusedRow) or focusedRow < 0 or focusedRow >= rowCount then return 0
+  return focusedRow
+end function
+
+function guideVisibleRows() as integer
+  rows = m.scheduleGrid.numRows
+  if isValid(rows) and rows > 0 then return rows
+  return GUIDE_VISIBLE_ROWS
+end function
+
+' Fetches the programs of one block on a new LoadScheduleTask node.
+sub startProgramFetch(fetch as object, rowCount as integer)
+  rows = guidePrograms.blockRows(fetch.block, rowCount)
+  ids = []
+  for row = rows[0] to rows[1]
+    ids.push(m.channelIds[row])
+  end for
+
+  fields = { channelIds: ids, maxStartDate: isoFromSeconds(m.guideHorizon) }
+  if fetch.extendFrom > 0
+    fields.minStartDate = isoFromSeconds(fetch.extendFrom)
+  else
+    fields.minEndDate = isoFromSeconds(m.guideWindowStart)
+  end if
+
+  fetch.until = m.guideHorizon
+  m.programFetch = fetch
+  m.LoadScheduleTask = replaceTask(m.LoadScheduleTask, "LoadScheduleTask", "programs", fields)
+  m.LoadScheduleTask.observeField("programs", "onProgramsLoaded")
   launchTask(m.LoadScheduleTask)
 end sub
 
-' When LoadScheduleTask completes (initial or more data) and we have a schedule to display
-sub onScheduleLoaded()
-  m.log.info("onScheduleLoaded", "programCount", m.LoadScheduleTask.schedule.Count())
+sub onProgramsLoaded(event as object)
+  ' A delivery from a fetch that has since been released (a filter or search reset)
+  if not isCurrentTaskEvent(event, m.LoadScheduleTask) then return
+  m.LoadScheduleTask.unobserveField("programs")
+  ok = m.LoadScheduleTask.ok
+  byChannel = m.LoadScheduleTask.programs
+  fetch = m.programFetch
+  m.LoadScheduleTask = releaseTask(m.LoadScheduleTask, "programs")
+  m.programFetch = invalid
 
-  ' make sure we actually have a schedule (i.e. filter by favorites, but no channels have been favorited)
-  if m.scheduleGrid.content.GetChildCount() <= 0
+  if not ok
+    ' Leave the block without programs and fetch nothing more until the focus moves, so an
+    ' unreachable server is retried by the user rather than in a loop.
+    m.log.warn("program fetch failed", "block", fetch.block)
+    m.programFetchPaused = true
     return
   end if
 
-  for each item in m.LoadScheduleTask.schedule
-    if isValid(m.channelIndex[item.channelId])
-      channel = m.scheduleGrid.content.GetChild(m.channelIndex[item.channelId])
-      channel.appendChild(item)
+  applyPrograms(byChannel, fetch)
+  reconcilePrograms()
+end sub
+
+' Gives each channel row of `fetch.block` its programs, one write per row. A full load
+' replaces what the row holds; an extension appends, dropping the one program that can arrive
+' twice (it starts exactly on the boundary both fetches include).
+sub applyPrograms(byChannel as object, fetch as object)
+  content = m.scheduleGrid.content
+  rowCount = content.getChildCount()
+  rows = guidePrograms.blockRows(fetch.block, rowCount)
+  key = fetch.block.toStr()
+  isRefresh = fetch.extendFrom = 0 and m.guideHeld.DoesExist(key)
+  focusedRow = guideFocusedRow(rowCount)
+
+  for row = rows[0] to rows[1]
+    channel = content.getChild(row)
+    programs = byChannel[m.channelIds[row]]
+    if not isValid(programs) then programs = []
+    held = channel.getChildCount()
+    if fetch.extendFrom = 0
+      if held > 0 then channel.removeChildrenIndex(held, 0)
+    else if held > 0 and programs.count() > 0
+      if channel.getChild(held - 1).id = programs[0].id then programs.shift()
     end if
+    if programs.count() > 0 then channel.appendChildren(programs)
   end for
 
-  m.scheduleGrid.showLoadingDataFeedback = false
-  m.scheduleGrid.setFocus(true)
-  m.LoadScheduleTask.schedule = []
+  m.guideHeld[key] = fetch.until
+  if isRefresh
+    ' The replaced programs' details and any detail fetch in flight belong to the old nodes
+    m.fullyLoadedProgramIds = {}
+    m.programDetailsSeq += 1
+  end if
 
-  ' Process next queued schedule batch
-  tryLoadNextScheduleBatch()
+  ' The focused row may just have gained its programs while the details pane showed nothing
+  if focusedRow >= rows[0] and focusedRow <= rows[1] and not isValid(m.detailsPane.programDetails)
+    onProgramFocused()
+  end if
+end sub
+
+' Drops the programs of `blocks`, one write per row.
+sub dropPrograms(blocks as object)
+  if blocks.count() = 0 then return
+  content = m.scheduleGrid.content
+  rowCount = content.getChildCount()
+  for each block in blocks
+    rows = guidePrograms.blockRows(block, rowCount)
+    for row = rows[0] to rows[1]
+      channel = content.getChild(row)
+      held = channel.getChildCount()
+      if held > 0 then channel.removeChildrenIndex(held, 0)
+    end for
+    m.guideHeld.Delete(block.toStr())
+  end for
+  m.fullyLoadedProgramIds = {}
+end sub
+
+' A row without programs reads "Loading…" while any block around the focus is still loading,
+' and "No schedule information" once they have all loaded — TimeGrid has one text for every
+' such row, so it follows the rows the user can see.
+sub updateNoProgramsText(focusedRow as integer, rowCount as integer)
+  visibleRows = guideVisibleRows()
+  firstRow = focusedRow - visibleRows
+  if firstRow < 0 then firstRow = 0
+  lastRow = focusedRow + visibleRows
+  if lastRow >= rowCount then lastRow = rowCount - 1
+
+  text = m.textLoading
+  if guidePrograms.isSpanLoaded(firstRow, lastRow, m.guideHeld) then text = m.textNoSchedule
+  if m.scheduleGrid.channelNoDataText <> text then m.scheduleGrid.channelNoDataText = text
+end sub
+
+function isoFromSeconds(seconds as integer) as string
+  date = CreateObject("roDateTime")
+  date.FromSeconds(seconds)
+  return date.ToISOString()
+end function
+
+sub onChannelFocused()
+  m.programFetchPaused = false
+  reconcilePrograms()
 end sub
 
 sub onProgramFocused()
@@ -387,26 +505,15 @@ sub onWatchChannelSelected()
   m.top.watchChannel = m.detailsPane.channel
 end sub
 
-' As user scrolls grid, check if more data requries to be loaded
+' Keeps the horizon at least 12 hours past the left edge, a day at a time. Only the blocks
+' near the focus fetch the extension now; others fetch it when the focus reaches them.
 sub onGridScrolled()
-
-  ' If we're within 12 hours of end of grid, load next 24hrs of data
-  if m.scheduleGrid.leftEdgeTargetTime + (12 * 60 * 60) > m.gridEndDate.AsSeconds()
-
-    ' Ensure the task is not already (still) running,
-    if isValid(m.LoadScheduleTask) and m.LoadScheduleTask.state <> "run"
-      ' Build channel ID list from ALL loaded channels (not just last batch)
-      allChannelIds = ""
-      for each key in m.channelIndex
-        allChannelIds += key + ","
-      end for
-      m.LoadScheduleTask.startTime = m.gridEndDate.ToISOString()
-      m.gridEndDate.FromSeconds(m.gridEndDate.AsSeconds() + (24 * 60 * 60))
-      m.LoadScheduleTask.endTime = m.gridEndDate.ToISOString()
-      m.LoadScheduleTask.channelIds = allChannelIds
-      launchTask(m.LoadScheduleTask)
-    end if
-  end if
+  extended = false
+  while m.scheduleGrid.leftEdgeTargetTime + (12 * 60 * 60) > m.guideHorizon
+    m.guideHorizon += 24 * 60 * 60
+    extended = true
+  end while
+  if extended then reconcilePrograms()
 end sub
 
 ' Handle user selecting "Record Channel" from Program Details
@@ -442,8 +549,15 @@ sub onRecordSeriesChannelSelected()
 end sub
 
 sub onRecordOperationDone()
-  if m.RecordProgramTask.shouldRecordSeries = true and m.LoadScheduleTask.state <> "run"
-    launchTask(m.LoadScheduleTask)
+  if m.RecordProgramTask.shouldRecordSeries = true
+    ' Every airing of the series may now carry a recording indicator: mark every block's
+    ' programs stale, so each is replaced — the ones near the focus now, the rest when the
+    ' focus reaches them.
+    for each key in m.guideHeld
+      m.guideHeld[key] = 0
+    end for
+    m.programFetchPaused = false
+    reconcilePrograms()
   else
     ' This reloads just the details for the currently selected program, so that we don't have to
     ' reload the entire grid...
@@ -489,6 +603,7 @@ sub onDestroy()
   m.detailsPane.unobserveField("shouldWatchSelectedChannel")
   m.detailsPane.unobserveField("shouldRecordSelectedChannel")
   m.detailsPane.unobserveField("shouldRecordSeriesSelectedChannel")
+  m.scheduleGrid.unobserveField("channelFocused")
   m.scheduleGrid.unobserveField("programFocused")
   m.scheduleGrid.unobserveField("programSelected")
   m.scheduleGrid.unobserveField("leftEdgeTargetTime")
@@ -503,12 +618,8 @@ sub onDestroy()
   m.LoadChannelsTask.control = "STOP"
   m.LoadChannelsTask = invalid
 
-  ' Stop and release conditionally-created task nodes
-  if isValid(m.LoadScheduleTask)
-    m.LoadScheduleTask.unobserveField("schedule")
-    m.LoadScheduleTask.control = "STOP"
-    m.LoadScheduleTask = invalid
-  end if
+  ' Stop and release the program fetch in flight, if any
+  m.LoadScheduleTask = releaseTask(m.LoadScheduleTask, "programs")
 
   ' Program details now load via a render-thread promise; the auto-abandon BSC plugin injects
   ' abandonApiPromises() here, so a late fetch can't fire into this destroyed component.
@@ -525,8 +636,8 @@ sub onDestroy()
   m.gridMoveAnimationPosition = invalid
 
   ' Clear data structures
-  m.channelIndex = invalid
+  m.channelIds = invalid
+  m.guideHeld = invalid
   m.fullyLoadedProgramIds = invalid
-  m.pendingScheduleIds = invalid
   m.loadingInitialized = false
 end sub

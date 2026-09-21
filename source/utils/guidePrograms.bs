@@ -1,0 +1,149 @@
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/viewport.bs"
+
+' Which program blocks the TV guide (Schedule) should hold, fetch next, and drop.
+'
+' The guide loads every channel row but programs only near the viewport: loading every
+' channel's programs does not scale (measured 2026-09-21 on a Streaming Stick 4K: 393 channels
+' with 24 h of programs took the channel from 37 to ~160 MB). Programs are fetched in BLOCKS
+' of BLOCK_SIZE consecutive channel rows — one request per block — and at most CAP blocks hold
+' programs at once, so memory is bounded by CAP whatever the lineup size.
+'
+' Pure decisions only: the component does the fetching and the node writes. A block's state is
+' the time it holds programs through, in `held` (an AA keyed by the block index as a string):
+'   absent — holds nothing
+'   0      — holds programs that are stale (a refresh is due); the next fetch replaces them
+'   > 0    — holds programs through that time (seconds since the epoch)
+namespace guidePrograms
+
+  ' Channels per program request. 25 channels x 24 h is ~460 programs on the fixture server.
+  const BLOCK_SIZE = 25
+
+  ' Blocks that may hold programs at once. At most four are ever wanted (the visible rows plus
+  ' BUFFER_ROWS either side can touch four blocks), so this keeps a couple of recently visited
+  ' blocks for scrolling back without refetching.
+  const CAP = 6
+
+  ' Rows kept near either side of the visible rows: one whole block, so the next block is
+  ' already loading by the time the user reaches it.
+  const BUFFER_ROWS = 25
+
+  ' The block a row belongs to.
+  function blockOf(row as integer) as integer
+    return row \ BLOCK_SIZE
+  end function
+
+  ' The rows of `block` present in the grid, as [first, last] inclusive.
+  '
+  ' @param block - a block index
+  ' @param rowCount - channel rows in the grid
+  function blockRows(block as integer, rowCount as integer) as object
+    first = block * BLOCK_SIZE
+    last = first + BLOCK_SIZE - 1
+    if last >= rowCount then last = rowCount - 1
+    return [first, last]
+  end function
+
+  ' Blocks to hold programs for, nearest the focused row first: the focused block, then
+  ' alternately below and above it. Only blocks whose rows have all arrived are listed — a
+  ' block fetched while its channels are still paging in would miss the late ones.
+  '
+  ' @param focusedRow - the focused channel row
+  ' @param visibleRows - rows the grid shows at once
+  ' @param rowCount - channel rows in the grid
+  ' @param rowsComplete - whether every channel row has arrived
+  ' @return block indices, in the order to fetch them
+  function wantedBlocks(focusedRow as dynamic, visibleRows as integer, rowCount as integer, rowsComplete as boolean) as object
+    window = viewport.rowWindow(focusedRow, visibleRows, rowCount, BUFFER_ROWS)
+    if window[0] < 0 then return []
+
+    firstBlock = blockOf(window[0])
+    lastBlock = blockOf(window[3])
+    focusBlock = blockOf(focusedRow)
+    wanted = []
+    if isBlockReady(focusBlock, rowCount, rowsComplete) then wanted.push(focusBlock)
+    for distance = 1 to lastBlock - firstBlock
+      below = focusBlock + distance
+      if below <= lastBlock and isBlockReady(below, rowCount, rowsComplete) then wanted.push(below)
+      above = focusBlock - distance
+      if above >= firstBlock and isBlockReady(above, rowCount, rowsComplete) then wanted.push(above)
+    end for
+    return wanted
+  end function
+
+  ' Whether every row of `block` has arrived.
+  function isBlockReady(block as integer, rowCount as integer, rowsComplete as boolean) as boolean
+    if rowsComplete then return block * BLOCK_SIZE < rowCount
+    return (block + 1) * BLOCK_SIZE <= rowCount
+  end function
+
+  ' The next fetch to make, or invalid when every wanted block holds programs through
+  ' `horizon`. Fetches are made one at a time; call again after each lands.
+  '
+  ' @param wanted - from wantedBlocks
+  ' @param held - block states (see the namespace comment)
+  ' @param horizon - the time wanted blocks should hold programs through
+  ' @return an AA with `block` and `extendFrom`: extendFrom is 0 for a full load (replacing
+  '   whatever the block holds), or the time the block already holds programs through, to fetch
+  '   only what starts after it
+  function nextFetch(wanted as object, held as object, horizon as integer) as dynamic
+    for each block in wanted
+      key = block.toStr()
+      if not held.DoesExist(key) then return { block: block, extendFrom: 0 }
+      ' A stale block (0) comes back as a full load too
+      if held[key] < horizon then return { block: block, extendFrom: held[key] }
+    end for
+    return invalid
+  end function
+
+  ' Blocks to drop so at most `cap` hold programs: never a wanted one, farthest from the
+  ' focused block first. The guide passes CAP.
+  '
+  ' @param held - block states
+  ' @param wanted - from wantedBlocks
+  ' @param focusedRow - the focused channel row
+  ' @param cap - blocks that may hold programs at once
+  ' @return block indices to drop
+  function evictions(held as object, wanted as object, focusedRow as integer, cap as integer) as object
+    excess = held.count() - cap
+    if excess <= 0 then return []
+
+    isWanted = {}
+    for each block in wanted
+      isWanted[block.toStr()] = true
+    end for
+
+    focusBlock = blockOf(focusedRow)
+    candidates = []
+    for each key in held
+      if not isWanted.DoesExist(key)
+        heldBlock = key.toInt()
+        candidates.push({ block: heldBlock, distance: abs(heldBlock - focusBlock) })
+      end if
+    end for
+    candidates.sortBy("distance", "r")
+
+    dropped = []
+    for each candidate in candidates
+      if dropped.count() >= excess then exit for
+      dropped.push(candidate.block)
+    end for
+    return dropped
+  end function
+
+  ' Whether every row in [firstRow, lastRow] belongs to a block holding current programs —
+  ' decides whether a row without programs is still loading or has nothing to show.
+  '
+  ' @param firstRow - first row, inclusive
+  ' @param lastRow - last row, inclusive
+  ' @param held - block states
+  function isSpanLoaded(firstRow as integer, lastRow as integer, held as object) as boolean
+    if firstRow < 0 or lastRow < firstRow then return true
+    for block = blockOf(firstRow) to blockOf(lastRow)
+      key = block.toStr()
+      if not held.DoesExist(key) or held[key] = 0 then return false
+    end for
+    return true
+  end function
+
+end namespace
