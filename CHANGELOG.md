@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Merge a person's credits into one Cast & Crew card, translated ([#975](https://github.com/jellyrock/jellyrock/pull/975))
+
 ### Changed
 
 - Show the version that would actually play on posters and episode rows ([#971](https://github.com/jellyrock/jellyrock/pull/971))
