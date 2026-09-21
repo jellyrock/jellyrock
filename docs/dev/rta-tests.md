@@ -25,7 +25,7 @@ related-files:
   - scripts/flake-baseline.js
   - tests/rta/demos/run.mjs
   - .github/workflows/rta-functional-tests.yml
-last-reviewed: 2026-09-14
+last-reviewed: 2026-09-20
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -51,7 +51,8 @@ RTA tests live in `tests/rta/` (Node/ESM, like `tests/scripts/`), NOT under
 | `npm run test:rta:fast` | `RTA_NO_DEPLOY=1` — skip the redeploy, run against the build already on the device (fastest inner loop). |
 | `npm run test:rta:capture` | Run the tests AND dump a raw UI screenshot per screen to `out/rta-captures/` (for viewing the GUI). |
 | `RTA_BENCH=1 npm run test:rta` | Additionally run the opt-in **measurement** specs (`task-ledger-bench`, `task-ledger-screen-cost`). Skipped by default — they report numbers rather than asserting, and `task-ledger-screen-cost` costs a `hardRelaunch` + seed + `waitHome` for a run that would gate nothing. |
-| `RTA_SERVER_URL=… RTA_SERVER_USER=… RTA_SERVER_PASS=… npm run test:rta` | Point the run at a richer fixture than the demo server. The demo server is a **control**, not a substitute — ~3 libraries against a real server's ~10, so anything that scales with library count reads LOW on it. |
+| `RTA_SERVER_URL=… RTA_SERVER_USER=… RTA_SERVER_PASS=… npm run test:rta` | Point the run at a richer fixture than the demo server. The demo server is a **control**, not a substitute — ~3 libraries against a real server's ~10, so anything that scales with library count reads LOW on it. **Pointing it elsewhere also needs the content knobs changed** — see below. |
+| `RTA_HERO_MOVIE=… RTA_SEEK_SECONDS=… npm run test:rta` | Change the CONTENT the suite expects to find. Also `RTA_TRICKPLAY_MOVIE`, `RTA_TRICKPLAY_SEEK_SECONDS`, `RTA_SEARCH_QUERY`; all documented in `.env.example` and resolved by `resolveContent()` in [`tests/rta/config.js`](../../tests/rta/config.js). The defaults name films in the PUBLIC DEMO's library, so a run against another server without these drives the wrong film. |
 
 Credentials: `ROKU_IP` / `ROKU_PASSWORD` from the checkout's gitignored `.env` or the
 per-user `~/.config/jellyrock/env` (same as the Rooibos device tests). If no device is reachable, **say so** — don't claim a pass.
@@ -856,13 +857,37 @@ Add one entry to [`tests/rta/screens.js`](../../tests/rta/screens.js):
   `eligible` to capture, `store: true` to ALSO include in the curated Roku-store / homepage
   set (see split below), `backdrop: true` to composite the in-film frame behind the OSD,
   `scope: 'shared'` for language-agnostic screens (captured once, copied to all locales).
-- `requires`: optional `{ probe, reason }` for a screen that needs a CAPABILITY the fixture's
-  user or server may not grant. `probe` is an async `(ctx) => boolean`; when it answers
-  false the screen skips with `reason` — in both `specs/screens.spec.js` and
-  `scripts/capture-screenshots.js` — instead of failing its nav. Reference: `subtitlePanel`,
-  probed by `manageSubtitlesOffered()` in [`tests/rta/lib/jellyfin.js`](../../tests/rta/lib/jellyfin.js),
-  which skips on the public demo user. A probe must throw on a failed request rather than
-  answer false, so an auth error can't masquerade as "not granted".
+- `requires`: optional `{ probe, reason }` — **or a list of them** — for a screen that needs
+  something the fixture may not provide. `probe` is a sync or async `(ctx) => boolean`; when
+  it answers false the screen skips with that gate's `reason`, in both
+  `specs/screens.spec.js` and `scripts/capture-screenshots.js`, instead of failing its nav.
+  Both consumers resolve it through the one exported `firstUnmetRequirement(screen, ctx)`
+  so they cannot drift on what "required" means — a screen gated in the suite but not the
+  orchestrator is a silent hole that burns a ~15-minute matrix run. It returns the failing
+  GATE rather than a boolean, which is what lets each gate keep its own precise reason.
+  Gates run in declared order and **short-circuit**, so a cheap local check can guard an
+  expensive request. A probe must throw on a failed request rather than answer false, so an
+  auth error can't masquerade as "not granted".
+
+  Three references, one per class of gap:
+
+  | Gate | Class | Skips when |
+  |---|---|---|
+  | `manageSubtitlesOffered()` (`subtitlePanel`) | user/server CAPABILITY | the user may not search subtitles, or no provider plugin is installed |
+  | `HERO_PRESENT` (`osd`, `trickplay`) | the configured CONTENT is absent | `RTA_HERO_MOVIE` names a film this server does not have |
+  | `trickplayAvailable()` (`trickplay`) | derived server DATA | the server extracted no trickplay thumbnails for that film |
+
+  `HERO_PRESENT` exists because a missing film did not fail loudly: `findMovie` answers a
+  miss with `{ index: 0, id: '' }`, so `navOsd`'s seek (guarded on `ctx.heroId`) was skipped
+  and the suite reported a PASS for a screen it never drove to the position it asserts
+  about. Measured 2026-09-20: `Dracula` returns zero matches on the local 12.0 test server
+  and the suite went green anyway. A hollow pass is worse than a red one — it is
+  indistinguishable from a real one in the record. `trickplayAvailable()` is the same
+  lesson on data rather than content: `EnableTrickplayImageExtraction` is off by default,
+  measured 2026-09-20 as false on all nine local libraries with 0 of 151 movies carrying
+  trickplay data, so without the gate `trickplay` goes RED and reads like a broken scrubber
+  in the app. Note the "Generate Trickplay Images" task reporting a clean run is NOT
+  evidence that thumbnails exist.
 
 The new screen is automatically a functional test (the spec loops over `SCREENS`) and, if
 `capture.eligible`, a captured screenshot.

@@ -15,7 +15,7 @@
  * files and pass or fail per machine. Passing `env` in keeps this deterministic.
  */
 import { describe, expect, it } from 'vitest';
-import { PUBLIC_DEMO_SERVER, resolveServer } from './config.js';
+import { DEMO_CONTENT, PUBLIC_DEMO_SERVER, resolveContent, resolveServer } from './config.js';
 
 describe('resolveServer', () => {
   it('falls back to the public demo when nothing is set', () => {
@@ -87,5 +87,85 @@ describe('resolveServer', () => {
   // PUBLIC_DEMO_SERVER for its privacy guard), so it must not be mutable.
   it('returns a frozen object', () => {
     expect(Object.isFrozen(resolveServer({}))).toBe(true);
+  });
+});
+
+/**
+ * `resolveContent` — the content-dependent knobs (`heroMovie`, the seek positions, the
+ * search query) resolved from the environment.
+ *
+ * These were literals until 2026-09-20, which made a repointed suite quietly wrong: the
+ * defaults name films in the PUBLIC DEMO's library, and `findMovie` answers a miss with
+ * `{ index: 0, id: '' }` rather than throwing. Measured against the local 12.0 test
+ * server, `Dracula` and `The Boy in the Plastic Bubble` both return ZERO matches and the
+ * suite still went green — driving a different film and skipping the seek entirely.
+ *
+ * Same testing rationale as `resolveServer` above: through the exported pure function,
+ * never the module's own evaluation, so the result cannot depend on the running
+ * developer's env files.
+ */
+describe('resolveContent', () => {
+  it('falls back to the public demo content when nothing is set', () => {
+    expect(resolveContent({})).toEqual(DEMO_CONTENT);
+  });
+
+  it('honours a real retune of every knob', () => {
+    expect(
+      resolveContent({
+        RTA_HERO_MOVIE: 'Sintel',
+        RTA_SEEK_SECONDS: '300',
+        RTA_TRICKPLAY_MOVIE: 'Big Buck Bunny',
+        RTA_TRICKPLAY_SEEK_SECONDS: '120',
+        RTA_SEARCH_QUERY: 'bun',
+      }),
+    ).toEqual({
+      heroMovie: 'Sintel',
+      seekSeconds: 300,
+      trickplayMovie: 'Big Buck Bunny',
+      trickplaySeekSeconds: 120,
+      searchQuery: 'bun',
+    });
+  });
+
+  // The `.env.example`-copied-verbatim hazard, one axis over from the server keys: a
+  // bare `RTA_HERO_MOVIE=` arrives as the empty string, and no knob has a meaningful
+  // empty value.
+  it('treats empty and whitespace-only values as unset', () => {
+    expect(
+      resolveContent({
+        RTA_HERO_MOVIE: '',
+        RTA_TRICKPLAY_MOVIE: '   ',
+        RTA_SEARCH_QUERY: '',
+        RTA_SEEK_SECONDS: '',
+      }),
+    ).toEqual(DEMO_CONTENT);
+  });
+
+  it('trims a padded value rather than passing the padding through', () => {
+    // dotenv preserves whitespace inside a QUOTED value, so this reaches us padded.
+    expect(resolveContent({ RTA_HERO_MOVIE: '  Sintel  ' }).heroMovie).toBe('Sintel');
+  });
+
+  // A seek is fed to the player. `Number('abc')` is NaN and `Number('')` is 0 — and 0 is
+  // a LEGITIMATE seek target, which is exactly why a typo must not be able to produce it
+  // silently. Anything non-finite or negative reads as unset instead.
+  it('rejects a non-numeric or negative seek instead of seeking to NaN', () => {
+    expect(resolveContent({ RTA_SEEK_SECONDS: 'halfway' }).seekSeconds).toBe(
+      DEMO_CONTENT.seekSeconds,
+    );
+    expect(resolveContent({ RTA_SEEK_SECONDS: '-5' }).seekSeconds).toBe(DEMO_CONTENT.seekSeconds);
+    expect(resolveContent({ RTA_TRICKPLAY_SEEK_SECONDS: 'NaN' }).trickplaySeekSeconds).toBe(
+      DEMO_CONTENT.trickplaySeekSeconds,
+    );
+  });
+
+  // Zero IS a valid position (the very start of a film), so it must survive as an
+  // override rather than being swallowed as falsy.
+  it('keeps an explicit zero seek', () => {
+    expect(resolveContent({ RTA_SEEK_SECONDS: '0' }).seekSeconds).toBe(0);
+  });
+
+  it('returns a frozen object', () => {
+    expect(Object.isFrozen(resolveContent({}))).toBe(true);
   });
 });
