@@ -71,3 +71,22 @@ index 378a160..4ffb9fa 100644
 +  setExpectedMap()
 +  setFilePathMap()
  end function
+diff --git a/node_modules/rooibos-roku/dist/lib/framework/source/rooibos/ConsoleTestReporter.bs b/node_modules/rooibos-roku/dist/lib/framework/source/rooibos/ConsoleTestReporter.bs
+index 77053bc..b4d7672 100644
+--- a/node_modules/rooibos-roku/dist/lib/framework/source/rooibos/ConsoleTestReporter.bs
++++ b/node_modules/rooibos-roku/dist/lib/framework/source/rooibos/ConsoleTestReporter.bs
+@@ -72,12 +72,12 @@ namespace rooibos
+             m.printLine(0, "  Passed: " + rooibos.common.AsString(m.allStats.passedCount))
+             m.printLine(0, "  Crashed: " + rooibos.common.AsString(m.allStats.crashedCount))
+             m.printLine(0, "  Failed: " + rooibos.common.AsString(m.allStats.failedCount))
+-            m.printLine(0, "  Ignored: " + rooibos.common.AsString(ignoredInfo.count))
++            m.printLine(0, "  Ignored: " + rooibos.common.AsString(m.allStats.ignoredCount))
+             m.printLine(0, "  Time: " + rooibos.common.AsString(m.allStats.time) + "ms")
+             m.printLine()
+             m.printLine()
+ 
+-            if ignoredInfo.count > 0 then
++            if m.allStats.ignoredCount > 0 then
+                 m.printLine(0, "IGNORED TESTS:")
+                 for each ignoredItemName in ignoredInfo.items
+                     m.printLine(1, ignoredItemName)

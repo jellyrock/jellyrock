@@ -483,7 +483,7 @@ function _()
 end function
 ```
 
-**Best practice:** Always include a comment explaining why the test is ignored and reference a ticket/issue number.
+**Best practice:** Always include a comment explaining why the test is ignored and reference a ticket/issue number. An ignored test is counted under `Ignored` and listed under `IGNORED TESTS:` at the end of every device run, so it stays visible.
 
 ### Debug Mode
 

@@ -11,6 +11,7 @@ import './lib/load-env.cjs';
 import * as rokuDeploy from 'roku-deploy';
 import { acquireDeviceLock } from './device-lock.js';
 import { beginRun, RUN_OUTCOMES } from './run-record.js';
+import { createSummaryCollector, unaccountedTests } from './lib/rooibos-summary.cjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -67,6 +68,7 @@ async function captureConsole() {
     let idleTimeoutId;
     let lineBuffer = '';
     const results = [];
+    const summary = createSummaryCollector();
 
     function resetIdleTimer() {
       clearTimeout(idleTimeoutId);
@@ -76,7 +78,7 @@ async function captureConsole() {
 
         const lastResult = results.length > 0 ? results[results.length - 1] : null;
         if (lastResult) {
-          resolve({ passed: lastResult === 'PASS', logFile });
+          resolve({ passed: lastResult === 'PASS', logFile, summary: summary.summary() });
         } else {
           reject(
             new Error(
@@ -102,6 +104,7 @@ async function captureConsole() {
       if (resultMatch) {
         results.push(resultMatch[1]);
       }
+      summary.addLine(cleanLine);
 
       // Check for shutdown signal
       if (cleanLine.includes('[Rooibos Shutdown]')) {
@@ -111,7 +114,7 @@ async function captureConsole() {
 
         const lastResult = results.length > 0 ? results[results.length - 1] : null;
         if (lastResult) {
-          resolve({ passed: lastResult === 'PASS', logFile });
+          resolve({ passed: lastResult === 'PASS', logFile, summary: summary.summary() });
         } else {
           reject(new Error('Test run completed without result'));
         }
@@ -146,7 +149,7 @@ async function captureConsole() {
       const lastResult = results.length > 0 ? results[results.length - 1] : null;
       if (lastResult) {
         console.warn('Connection error, but result found:', err.message);
-        resolve({ passed: lastResult === 'PASS', logFile });
+        resolve({ passed: lastResult === 'PASS', logFile, summary: summary.summary() });
       } else {
         reject(new Error(`Console connection error: ${err.message}`));
       }
@@ -163,7 +166,7 @@ async function captureConsole() {
 
       const lastResult = results.length > 0 ? results[results.length - 1] : null;
       if (lastResult) {
-        resolve({ passed: lastResult === 'PASS', logFile });
+        resolve({ passed: lastResult === 'PASS', logFile, summary: summary.summary() });
       } else {
         reject(new Error('Console connection closed without test result'));
       }
@@ -217,7 +220,17 @@ async function main() {
     const result = await captureConsole();
     console.log(`📝 Full log saved to ${result.logFile}`);
 
-    if (result.passed) {
+    // Every test in Total must land in exactly one reported bucket. One that does
+    // not ran invisibly while the run still reads as a clean PASS.
+    const unaccounted = result.summary ? unaccountedTests(result.summary) : 0;
+    if (result.passed && unaccounted > 0) {
+      console.error(
+        `❌ ${unaccounted} test(s) counted in Total but reported as none of Passed, Crashed, Failed or Ignored. ` +
+          "The known cause is an individually @ignore'd test on an unpatched Rooibos, whose Ignored count leaves " +
+          'it out: check that `npm run patches:apply` applies patches/rooibos-roku+*.patch.',
+      );
+      await done(1);
+    } else if (result.passed) {
       console.log('✅ All tests passed!');
       await done(0);
     } else {

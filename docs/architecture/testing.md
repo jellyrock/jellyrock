@@ -7,7 +7,7 @@ related-files:
   - bsconfig-tests.json
   - bsconfig-tests-unit.json
   - bsconfig-tests-integration.json
-last-reviewed: 2026-09-16
+last-reviewed: 2026-09-21
 ---
 
 # Testing
@@ -88,6 +88,8 @@ npm run build:tdd                 # watch mode build only (no run)
 The TDD workflow expects you to copy `bsconfig-tdd-sample.json` to `bsconfig-tdd.json` (gitignored) and edit it to scope which suites/tests get built.
 
 The actual test execution is via `scripts/run-roku-tests.js` which deploys the test channel, captures rooibos output over telnet, and exits with the result.
+
+**A PASS whose summary does not add up fails the run.** Every test Rooibos counts in `Total` must land in exactly one of `Passed` / `Crashed` / `Failed` / `Ignored`; the runner reads the summary ([`scripts/lib/rooibos-summary.cjs`](../../scripts/lib/rooibos-summary.cjs)) and exits 1 when a counted test was never reported. Upstream Rooibos leaves a test `@ignore`d on its own out of `Ignored` (an ignored group or suite is counted), so such a test appeared in no line at all behind a green run. `patches/rooibos-roku+*.patch` makes the console reporter print the runtime count — upstream as [rokucommunity/rooibos#435](https://github.com/rokucommunity/rooibos/pull/435) — which also restores the `IGNORED TESTS:` list; the gate is what notices if a counted test ever goes unreported again.
 
 **The device is claimed before the sideload**, and `run-roku-tests.js` holds that
 claim ([`scripts/device-lock.js`](../../scripts/device-lock.js)) until the run
