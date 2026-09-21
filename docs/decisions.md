@@ -1593,6 +1593,16 @@ For the Jellyfin 12.0 web client's "Original language" audio preference, JellyRo
 
 The cost accepted is one series `GET` per episode that lacks its own `OriginalLanguage`, made only for viewers who chose "Original language" (`needsSeriesOriginalLanguage()`): 53–90 ms per fetch, measured 2026-09-21 on a Stick 4K against the local 12.0 server (4 samples). It is needed because `DtoService` sends the item's own value, not the inherited one, at 12.0 and 12.1, and on the 12.0 test server 354 of 1767 episodes carried none. Re-evaluate if the server starts sending the inherited value in the DTO, which would remove the fetch.
 
+## decision-id: tv-guide-windowed-programs
+
+**date**: 2026-09-21
+**status**: accepted
+**related-files**: `components/liveTv/schedule.bs`, `source/utils/guidePrograms.bs`, `components/liveTv/LoadSheduleTask.bs`
+
+The TV guide loads every channel row but programs only near the focus: 25-channel blocks around the focused row (`guidePrograms.wantedBlocks`), fetched one at a time on a new `LoadScheduleTask` node, each landing re-deciding from the focus as it is then; at most `guidePrograms.CAP` blocks hold programs and the farthest are dropped; a fetch whose block has left the window is abandoned. Ruled out: **every channel's programs up front** — measured 2026-09-21 on a Streaming Stick 4K, 393 channels × 24 h took channel memory from 37 to ~160 MB, so a 2,000-channel lineup would not fit a 512 MB device (300 MB channel limit); **explicit channel pages with previous / next buttons**, as `jellyfin-web` (500) and `jellyfin-androidtv` (75) do — bounded, but it needs page UI the `TimeGrid` does not have and is a worse remote experience; and **the row-by-row model of `SGDEX`'s `TimeGridView` as it ships** — no eviction, no canceling of stale loads, and "Loading…" standing in for "no data".
+
+Measured with the design, 2026-09-21: 2,000 channels on a 512 MB Roku Stick at 72 MB cold and 124–152 MB at the cap; 9–42 ms of render thread per block. Re-evaluate `CAP` (each block is ~15–20 MB there, and dropping one blocks the render thread ~150 ms), `BLOCK_SIZE`, and the single fetch in flight if either hurts; the channel list itself still grows with the lineup (~15 KB per row), which is the next lever for very large lineups.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
