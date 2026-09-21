@@ -408,6 +408,44 @@ namespace tests
       m.assertEqual(result, 2)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Language matching — exact code first")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("matches a 639-2/B preference against a 639-2/T subtitle")
+    function _()
+      m.global.user.config.subtitleLanguagePreference = "fre"
+      m.global.user.config.subtitleMode = "Always"
+      streams = [
+        { Type: "Subtitle", index: 2, Language: "eng", IsDefault: false, IsForced: false, IsTextSubtitleStream: true },
+        { Type: "Subtitle", index: 3, Language: "fra", IsDefault: false, IsForced: false, IsTextSubtitleStream: true }
+      ]
+      m.assertEqual(findDefaultSubtitleStreamIndex(streams, 1), 3)
+    end function
+
+    @it("keeps an exact regional code over its base language")
+    function _()
+      m.global.user.config.subtitleLanguagePreference = "pob"
+      m.global.user.config.subtitleMode = "Always"
+      streams = [
+        { Type: "Subtitle", index: 2, Language: "por", IsDefault: false, IsForced: false, IsTextSubtitleStream: true },
+        { Type: "Subtitle", index: 3, Language: "pob", IsDefault: false, IsForced: false, IsTextSubtitleStream: true }
+      ]
+      m.assertEqual(findDefaultSubtitleStreamIndex(streams, 1), 3)
+    end function
+
+    @it("does not let the text-only pass take a base-language match the full list rules out")
+    function _()
+      ' The exact "pob" track is image-based; the text pass must not settle for "por"
+      m.global.user.config.subtitleLanguagePreference = "pob"
+      m.global.user.config.subtitleMode = "Always"
+      streams = [
+        { Type: "Subtitle", index: 2, Language: "por", IsDefault: false, IsForced: false, IsTextSubtitleStream: true },
+        { Type: "Subtitle", index: 3, Language: "pob", IsDefault: false, IsForced: false, IsTextSubtitleStream: false }
+      ]
+      m.assertEqual(findDefaultSubtitleStreamIndex(streams, 1), 3)
+    end function
+
   end class
 
 end namespace

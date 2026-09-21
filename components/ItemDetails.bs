@@ -3585,8 +3585,7 @@ sub SetDefaultAudioTrack(mediaStreams as object)
   if not isValid(mediaStreams) then return
 
   localUser = m.global.user
-  playDefault = resolvePlayDefaultAudioTrack(localUser.settings, localUser.config)
-  selectedIndex = findBestAudioStreamIndex(mediaStreams, playDefault, resolveAudioLanguagePreference(localUser.settings, localUser.config, itemOriginalLanguage()))
+  selectedIndex = selectAudioStreamIndex(mediaStreams, localUser.settings, localUser.config, itemOriginalLanguage())
 
   m.top.selectedAudioStreamIndex = selectedIndex
 end sub

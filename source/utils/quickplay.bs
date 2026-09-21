@@ -84,11 +84,11 @@ namespace quickplay
     ' pre-filtered audio streams works correctly.
     ' Left at 0 when the version is the loader's to choose: 0 is what tells it to pick the
     ' audio track itself, and any index decided here would belong to the item's OWN version's
-    ' stream list rather than the one it ends up playing.
+    ' stream list rather than the one it ends up playing. Likewise when the pick needs the
+    ' series' original language, which only the loader can fetch.
     audioStreamIndex = 0
-    if isValidAndNotEmpty(audioStreams) and not deferVersionToLoader
-      playDefault = resolvePlayDefaultAudioTrack(localUser.settings, localUser.config)
-      audioStreamIndex = findBestAudioStreamIndex(audioStreams, playDefault, resolveAudioLanguagePreference(localUser.settings, localUser.config, itemNode.originalLanguage ?? ""))
+    if isValidAndNotEmpty(audioStreams) and not deferVersionToLoader and not needsSeriesOriginalLanguage(itemNode, localUser.settings, localUser.config)
+      audioStreamIndex = selectAudioStreamIndex(audioStreams, localUser.settings, localUser.config, itemNode.originalLanguage ?? "")
     end if
 
     queueItem.selectedAudioStreamIndex = audioStreamIndex

@@ -110,6 +110,162 @@ function mediaLanguageAliases() as object
   return m.mediaLanguageAliasesCache
 end function
 
+' ISO 639-2 codes for the languages mediaLanguageAliases() leaves out (it covers only UI
+' locales), mapped to their ISO 639-1 code. For language MATCHING only — see
+' languageBaseCode(). Kept apart from mediaLanguageAliases() because display depends on that
+' map's gaps: languageEnglishFallbacks() is keyed by the 3-letter code, so aliasing "swa" to
+' "sw" there would show Swahili as the raw "swa".
+'
+' Source: the ISO 639-2 list (Library of Congress) as Jellyfin 12.0 ships it,
+' Emby.Server.Implementations/Localization/iso6392.txt — every code with an ISO 639-1
+' equivalent that mediaLanguageAliases() does not already map. lint:language-coverage fails if
+' the two maps overlap.
+'
+' @returns {object} - AssocArray of 3-letter code to 2-letter code
+function mediaLanguageMatchAliases() as object
+  if isValid(m.mediaLanguageMatchAliasesCache) then return m.mediaLanguageMatchAliasesCache
+
+  m.mediaLanguageMatchAliasesCache = {
+    "aar": "aa",
+    "abk": "ab",
+    "aka": "ak",
+    "amh": "am",
+    "arg": "an",
+    "ava": "av",
+    "ave": "ae",
+    "aym": "ay",
+    "aze": "az",
+    "bak": "ba",
+    "bam": "bm",
+    "bih": "bh",
+    "bis": "bi",
+    "bod": "bo", "tib": "bo",
+    "bos": "bs",
+    "cha": "ch",
+    "che": "ce",
+    "chu": "cu",
+    "chv": "cv",
+    "cos": "co",
+    "cre": "cr",
+    "dzo": "dz",
+    "ewe": "ee",
+    "fij": "fj",
+    "fry": "fy",
+    "ful": "ff",
+    "gla": "gd",
+    "glv": "gv",
+    "grn": "gn",
+    "hau": "ha",
+    "her": "hz",
+    "hmo": "ho",
+    "ibo": "ig",
+    "ido": "io",
+    "iii": "ii",
+    "iku": "iu",
+    "ile": "ie",
+    "ina": "ia",
+    "ipk": "ik",
+    "jav": "jv",
+    "kal": "kl",
+    "kas": "ks",
+    "kau": "kr",
+    "khm": "km",
+    "kik": "ki",
+    "kin": "rw",
+    "kir": "ky",
+    "kom": "kv",
+    "kon": "kg",
+    "kua": "kj",
+    "kur": "ku",
+    "lao": "lo",
+    "lat": "la",
+    "lim": "li",
+    "lin": "ln",
+    "lub": "lu",
+    "lug": "lg",
+    "mah": "mh",
+    "nau": "na",
+    "nav": "nv",
+    "nbl": "nr",
+    "nde": "nd",
+    "ndo": "ng",
+    "nya": "ny",
+    "oci": "oc",
+    "oji": "oj",
+    "ori": "or",
+    "orm": "om",
+    "oss": "os",
+    "pli": "pi",
+    "pus": "ps",
+    "que": "qu",
+    "roh": "rm",
+    "run": "rn",
+    "sag": "sg",
+    "san": "sa",
+    "sme": "se",
+    "smo": "sm",
+    "sna": "sn",
+    "snd": "sd",
+    "sot": "st",
+    "srd": "sc",
+    "ssw": "ss",
+    "sun": "su",
+    "swa": "sw",
+    "tah": "ty",
+    "tat": "tt",
+    "tgk": "tg",
+    "tgl": "tl",
+    "tir": "ti",
+    "ton": "to",
+    "tsn": "tn",
+    "tso": "ts",
+    "tuk": "tk",
+    "twi": "tw",
+    "ven": "ve",
+    "vol": "vo",
+    "wln": "wa",
+    "wol": "wo",
+    "xho": "xh",
+    "yid": "yi",
+    "yor": "yo",
+    "zha": "za"
+  }
+
+  return m.mediaLanguageMatchAliasesCache
+end function
+
+' languageBaseCode: One canonical form of a language code, for comparing codes written in
+' different ISO 639 forms — "fra", "fre" and "fr" all give "fr", "sw" and "swa" give "sw".
+' A region or script suffix is dropped first ("pt-BR" → "pt"), as resolveLanguageName() does.
+' A code neither map knows is returned lowercased as-is.
+'
+' @param {dynamic} code - Language code in any common form
+' @returns {string} - Canonical code, or "" when code is missing or empty
+function languageBaseCode(code as dynamic) as string
+  if not isValidAndNotEmpty(code) then return ""
+
+  base = LCase(code)
+  hyphenPos = inStr(1, base, "-")
+  if hyphenPos > 0 then base = Left(base, hyphenPos - 1)
+  underscorePos = inStr(1, base, "_")
+  if underscorePos > 0 then base = Left(base, underscorePos - 1)
+
+  base = mediaLanguageAliases()[base] ?? base
+  ' Second lookup on the result, for the one display alias whose target is 3-letter ("ji" → "yid")
+  return mediaLanguageMatchAliases()[base] ?? base
+end function
+
+' languagesMatch: True when two language codes name the same language, whatever ISO 639 form
+' each is written in (see languageBaseCode()). Regional variants count as the same language.
+'
+' @param {dynamic} a - Language code
+' @param {dynamic} b - Language code
+' @returns {boolean} - False when either code is missing or empty
+function languagesMatch(a as dynamic, b as dynamic) as boolean
+  baseA = languageBaseCode(a)
+  return baseA <> "" and baseA = languageBaseCode(b)
+end function
+
 ' Maps a normalized 2-letter base code (or a 3-letter code for languages
 ' without a 639-1 equivalent) to the translation key used by translate()
 ' for the localized language name. Keys must exist in locale/custom/en_US.json.
