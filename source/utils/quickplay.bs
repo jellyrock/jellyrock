@@ -88,7 +88,7 @@ namespace quickplay
     audioStreamIndex = 0
     if isValidAndNotEmpty(audioStreams) and not deferVersionToLoader
       playDefault = resolvePlayDefaultAudioTrack(localUser.settings, localUser.config)
-      audioStreamIndex = findBestAudioStreamIndex(audioStreams, playDefault, resolveAudioLanguagePreference(localUser.settings, localUser.config))
+      audioStreamIndex = findBestAudioStreamIndex(audioStreams, playDefault, resolveAudioLanguagePreference(localUser.settings, localUser.config, itemNode.originalLanguage ?? ""))
     end if
 
     queueItem.selectedAudioStreamIndex = audioStreamIndex

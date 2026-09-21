@@ -369,6 +369,45 @@ namespace tests
       m.assertEqual(result, -1)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("'Same as audio' with web client 'Original language' (Jellyfin 12.0+)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("selects the forced subtitle in the item's original language")
+    function _()
+      savedSubPref = m.global.user.settings.playbackSubtitleLanguagePreference
+      savedAudioPref = m.global.user.config.audioLanguagePreference
+      m.global.user.settings.playbackSubtitleLanguagePreference = "audio"
+      m.global.user.config.audioLanguagePreference = "OriginalLanguage"
+      m.global.user.config.subtitleMode = "OnlyForced"
+      streams = [
+        { Type: "Audio", index: 1, Language: "kor" },
+        { Type: "Subtitle", index: 2, Language: "eng", IsDefault: false, IsForced: true, IsTextSubtitleStream: true },
+        { Type: "Subtitle", index: 3, Language: "kor", IsDefault: false, IsForced: true, IsTextSubtitleStream: true }
+      ]
+      result = findDefaultSubtitleStreamIndex(streams, 1, "ko")
+      m.global.user.settings.playbackSubtitleLanguagePreference = savedSubPref
+      m.global.user.config.audioLanguagePreference = savedAudioPref
+      m.assertEqual(result, 3)
+    end function
+
+    @it("still selects a forced subtitle when the item has no OriginalLanguage")
+    function _()
+      savedSubPref = m.global.user.settings.playbackSubtitleLanguagePreference
+      savedAudioPref = m.global.user.config.audioLanguagePreference
+      m.global.user.settings.playbackSubtitleLanguagePreference = "audio"
+      m.global.user.config.audioLanguagePreference = "OriginalLanguage"
+      m.global.user.config.subtitleMode = "OnlyForced"
+      streams = [
+        { Type: "Audio", index: 1, Language: "kor" },
+        { Type: "Subtitle", index: 2, Language: "eng", IsDefault: false, IsForced: true, IsTextSubtitleStream: true }
+      ]
+      result = findDefaultSubtitleStreamIndex(streams, 1, "")
+      m.global.user.settings.playbackSubtitleLanguagePreference = savedSubPref
+      m.global.user.config.audioLanguagePreference = savedAudioPref
+      m.assertEqual(result, 2)
+    end function
+
   end class
 
 end namespace

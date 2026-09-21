@@ -26,6 +26,7 @@
     <field id="type" type="string" value="" />
     <field id="name" type="string" value="" />
     <field id="originalTitle" type="string" value="" />
+    <field id="originalLanguage" type="string" value="" />
     <field id="sortName" type="string" value="" />
     <field id="etag" type="string" value="" />
     <field id="mediaType" type="string" value="" />              <!-- "Video", "Audio", "Photo", "Book" -->

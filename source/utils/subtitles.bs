@@ -26,7 +26,8 @@ function defaultSubtitleTrackFromVid(meta as object, selectedAudioIndex as integ
   if not isValid(playedSource) or not isValidAndNotEmpty(playedSource.MediaStreams) then return SubtitleSelection.NONE
   allStreams = playedSource.MediaStreams
 
-  subtitles = sortSubtitles(allStreams)
+  originalLanguage = meta.originalLanguage ?? ""
+  subtitles = sortSubtitles(allStreams, originalLanguage)
 
   selectedAudioLanguage = ""
   ' Find the audio stream with the matching Jellyfin index
@@ -43,13 +44,13 @@ function defaultSubtitleTrackFromVid(meta as object, selectedAudioIndex as integ
     selectedAudioLanguage = audioMediaStream.Language ?? ""
   end if
 
-  defaultTextSubs = defaultSubtitleTrack(subtitles["text"], selectedAudioLanguage, true) ' Find correct subtitle track (forced text)
+  defaultTextSubs = defaultSubtitleTrack(subtitles["text"], selectedAudioLanguage, true, originalLanguage) ' Find correct subtitle track (forced text)
   if defaultTextSubs <> SubtitleSelection.NONE
     return defaultTextSubs
   end if
 
   if not userSession.settings.playbackSubsOnlyText
-    return defaultSubtitleTrack(subtitles["all"], selectedAudioLanguage) ' if no appropriate text subs exist, allow non-text
+    return defaultSubtitleTrack(subtitles["all"], selectedAudioLanguage, false, originalLanguage) ' if no appropriate text subs exist, allow non-text
   end if
 
   return SubtitleSelection.NONE
@@ -60,27 +61,28 @@ end function
 ' @param {dynamic} sortedSubtitles - array of subtitles sorted by type and language
 ' @param {string} selectedAudioLanguage - language for selected audio track
 ' @param {boolean} [requireText=false] - indicates if only text subtitles should be considered
+' @param {string} [originalLanguage=""] - the item's OriginalLanguage (JellyfinBaseItem.originalLanguage)
 ' @return {integer} indicating the default track's server-side index. Defaults to {SubtitleSelection.NONE} if one is not found
-function defaultSubtitleTrack(sortedSubtitles, selectedAudioLanguage as string, requireText = false as boolean) as integer
+function defaultSubtitleTrack(sortedSubtitles, selectedAudioLanguage as string, requireText = false as boolean, originalLanguage = "" as string) as integer
   ' ONE rendezvous to get user node
   localUser = m.global.user
 
   subtitleMode = isValid(localUser.config.subtitleMode) ? LCase(localUser.config.subtitleMode) : ""
 
-  prefLang = resolveSubtitleLanguagePreference(localUser.settings, localUser.config)
+  prefLang = resolveSubtitleLanguagePreference(localUser.settings, localUser.config, originalLanguage)
 
   allowSmartMode = false
 
   ' Only evaluate selected audio language if we have a value
   if selectedAudioLanguage <> ""
-    allowSmartMode = selectedAudioLanguage <> prefLang
+    allowSmartMode = not languagesMatch(selectedAudioLanguage, prefLang)
   end if
 
   for each item in sortedSubtitles
     ' Only auto-select subtitle if language matches SubtitleLanguagePreference
     languageMatch = true
     if prefLang <> ""
-      languageMatch = (prefLang = item.Track.Language)
+      languageMatch = languagesMatch(prefLang, item.Track.Language)
     end if
 
     ' Ensure textuality of subtitle matches preference passed as arg
@@ -137,11 +139,11 @@ function defaultSubtitleTrack(sortedSubtitles, selectedAudioLanguage as string, 
 end function
 
 'Checks available subtitle tracks and puts subtitles in forced, default, and non-default/forced but preferred language at the top
-function sortSubtitles(MediaStreams)
+function sortSubtitles(MediaStreams, originalLanguage = "" as string)
   tracks = { "forced": [], "default": [], "normal": [], "textForced": [], "textDefault": [], "textNormal": [] }
   ' ONE rendezvous to get user node
   localUser = m.global.user
-  preferredLang = resolveSubtitleLanguagePreference(localUser.settings, localUser.config)
+  preferredLang = resolveSubtitleLanguagePreference(localUser.settings, localUser.config, originalLanguage)
   for each stream in MediaStreams
     if stream.type = "Subtitle"
 
@@ -174,7 +176,7 @@ function sortSubtitles(MediaStreams)
         textType = "textNormal"
       end if
 
-      if preferredLang <> "" and preferredLang = stream.Track.Language
+      if languagesMatch(preferredLang, stream.Track.Language)
         tracks[trackType].unshift(stream)
 
         if stream.IsTextSubtitleStream

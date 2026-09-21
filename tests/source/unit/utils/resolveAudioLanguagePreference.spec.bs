@@ -191,6 +191,46 @@ namespace tests
       m.assertEqual(result, "")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Web client 'Original language' (Jellyfin 12.0+)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("resolves the sentinel to the item's OriginalLanguage")
+    function _()
+      settings = m.createMockUserSettings("webclient")
+      config = m.createMockUserConfig("OriginalLanguage")
+      m.assertEqual(resolveAudioLanguagePreference(settings, config, "ko"), "ko")
+    end function
+
+    @it("recognizes the sentinel case-insensitively")
+    function _()
+      settings = m.createMockUserSettings("webclient")
+      config = m.createMockUserConfig("originallanguage")
+      m.assertEqual(resolveAudioLanguagePreference(settings, config, "ko"), "ko")
+    end function
+
+    @it("returns the sentinel itself when the item has no OriginalLanguage")
+    function _()
+      settings = m.createMockUserSettings("webclient")
+      config = m.createMockUserConfig("OriginalLanguage")
+      result = resolveAudioLanguagePreference(settings, config, "")
+      m.assertTrue(isOriginalLanguagePreference(result))
+    end function
+
+    @it("ignores the item's OriginalLanguage when the preference is a language code")
+    function _()
+      settings = m.createMockUserSettings("webclient")
+      config = m.createMockUserConfig("jpn")
+      m.assertEqual(resolveAudioLanguagePreference(settings, config, "ko"), "jpn")
+    end function
+
+    @it("lets a JellyRock custom override win over the sentinel")
+    function _()
+      settings = m.createMockUserSettings("custom", "eng")
+      config = m.createMockUserConfig("OriginalLanguage")
+      m.assertEqual(resolveAudioLanguagePreference(settings, config, "ko"), "eng")
+    end function
+
   end class
 
 end namespace

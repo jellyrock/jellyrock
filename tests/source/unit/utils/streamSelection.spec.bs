@@ -518,6 +518,73 @@ namespace tests
       m.assertFalse(isSelectedAudioStreamDirectPlayable(99, audioStreams))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("languagesMatch() — mixed ISO 639 forms")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("matches 639-1 against 639-2")
+    function _()
+      m.assertTrue(languagesMatch("ko", "kor"))
+      m.assertTrue(languagesMatch("kor", "ko"))
+    end function
+
+    @it("matches 639-2/B against 639-2/T, ignoring case")
+    function _()
+      m.assertTrue(languagesMatch("fre", "fra"))
+      m.assertTrue(languagesMatch("FRA", "fr"))
+    end function
+
+    @it("compares codes outside the alias map as-is")
+    function _()
+      m.assertTrue(languagesMatch("xyz", "XYZ"))
+      m.assertFalse(languagesMatch("xyz", "abc"))
+    end function
+
+    @it("never matches different languages, or a missing code")
+    function _()
+      m.assertFalse(languagesMatch("eng", "jpn"))
+      m.assertFalse(languagesMatch("", ""))
+      m.assertFalse(languagesMatch(invalid, "eng"))
+      m.assertFalse(languagesMatch("OriginalLanguage", "eng"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("'Original language' preference (Jellyfin 12.0+)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("picks the original-language track over a better-channel dub")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "jpn", channels: 2, codec: "aac", IsDefault: false },
+        { Type: "audio", index: 2, Language: "eng", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      ' "ja" is the item's OriginalLanguage (ISO 639-1); the streams are 639-2
+      result = findBestAudioStreamIndex(streams, false, "ja", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 1)
+    end function
+
+    @it("applies no language rule, not the Roku locale, when the item has no OriginalLanguage")
+    function _()
+      m.global.device.locale = "en_US"
+      streams = [
+        { Type: "audio", index: 1, Language: "jpn", channels: 6, codec: "ac3", IsDefault: false },
+        { Type: "audio", index: 2, Language: "eng", channels: 2, codec: "aac", IsDefault: false }
+      ]
+      ' The Roku locale would pick the English dub; no rule leaves it to the hardware
+      result = findBestAudioStreamIndex(streams, false, "OriginalLanguage", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 1)
+    end function
+
+    @it("matches a 639-2/B preference against a 639-2/T track")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", channels: 6, codec: "ac3", IsDefault: false },
+        { Type: "audio", index: 2, Language: "fra", channels: 2, codec: "aac", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, false, "fre", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 2)
+    end function
+
   end class
 
 end namespace

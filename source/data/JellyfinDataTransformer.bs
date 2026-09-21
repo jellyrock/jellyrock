@@ -46,6 +46,7 @@ class JellyfinDataTransformer
       ' RowList, etc.) can consume JellyfinBaseItem nodes directly without render-thread mapping.
       item.title = item.name
       item.originalTitle = apiData.OriginalTitle ?? ""
+      item.originalLanguage = apiData.OriginalLanguage ?? "" ' 12.0+; ISO 639-1 ("ko")
       item.sortName = apiData.SortName ?? ""
       item.etag = apiData.Etag ?? ""
       item.mediaType = apiData.MediaType ?? ""

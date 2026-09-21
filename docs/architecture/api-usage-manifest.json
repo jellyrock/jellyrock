@@ -2415,6 +2415,15 @@
       ]
     },
     {
+      "name": "OriginalLanguage",
+      "readVia": [
+        "apiData"
+      ],
+      "sourceFiles": [
+        "source/data/JellyfinDataTransformer.bs"
+      ]
+    },
+    {
       "name": "OriginalTitle",
       "readVia": [
         "apiData"
@@ -3142,7 +3151,7 @@
     "counts": {
       "endpoints": 76,
       "requestFields": 41,
-      "responseFields": 214,
+      "responseFields": 215,
       "unresolvedEndpointSinks": 2
     },
     "unresolvedEndpointSinks": [
@@ -3152,7 +3161,7 @@
       },
       {
         "sourceFile": "source/utils/subtitles.bs",
-        "line": 150
+        "line": 152
       }
     ],
     "knownGaps": [

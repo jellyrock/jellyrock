@@ -3416,7 +3416,7 @@ sub populateTrackDropdowns(mediaSources as object, allStreams as object, itemTyp
   ' text reflects the subtitle stream playback would auto-pick. A subsequent user pick on
   ' the dropdown flips m.subtitleUserOverridden so we don't re-seed on audio changes.
   if not m.subtitleUserOverridden
-    defaultSubIdx = findDefaultSubtitleStreamIndex(allStreams, m.top.selectedAudioStreamIndex)
+    defaultSubIdx = findDefaultSubtitleStreamIndex(allStreams, m.top.selectedAudioStreamIndex, itemOriginalLanguage())
     m.top.selectedSubtitleStreamIndex = defaultSubIdx
   end if
 
@@ -3586,10 +3586,16 @@ sub SetDefaultAudioTrack(mediaStreams as object)
 
   localUser = m.global.user
   playDefault = resolvePlayDefaultAudioTrack(localUser.settings, localUser.config)
-  selectedIndex = findBestAudioStreamIndex(mediaStreams, playDefault, resolveAudioLanguagePreference(localUser.settings, localUser.config))
+  selectedIndex = findBestAudioStreamIndex(mediaStreams, playDefault, resolveAudioLanguagePreference(localUser.settings, localUser.config, itemOriginalLanguage()))
 
   m.top.selectedAudioStreamIndex = selectedIndex
 end sub
+
+' The shown item's OriginalLanguage (12.0+), for the "Original language" audio preference.
+function itemOriginalLanguage() as string
+  if not isValid(m.top.itemContent) then return ""
+  return m.top.itemContent.originalLanguage ?? ""
+end function
 
 sub setFieldText(field, value)
   node = m.top.findNode(field)
@@ -4798,7 +4804,7 @@ sub onAudioDropdownSelection()
   if not isValid(item) or not isValid(item.mediaSourcesData) then return
   allStreams = getStreamsForSelectedSource(item.mediaSourcesData.mediaSources)
 
-  defaultSubIdx = findDefaultSubtitleStreamIndex(allStreams, newIndex)
+  defaultSubIdx = findDefaultSubtitleStreamIndex(allStreams, newIndex, itemOriginalLanguage())
   m.top.selectedSubtitleStreamIndex = defaultSubIdx
 
   ' Refresh the subtitle dropdown's selection highlight + trigger text
