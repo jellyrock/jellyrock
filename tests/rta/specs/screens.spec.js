@@ -21,7 +21,7 @@ import {
   assertSeedTookEffect,
 } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
-import { SCREENS } from '../screens.js';
+import { firstUnmetRequirement, SCREENS } from '../screens.js';
 import { captureRawUI } from '../capture.js';
 import { recordAssertion } from '../../../scripts/run-record.js';
 
@@ -34,8 +34,10 @@ let libraries;
 
 beforeAll(async () => {
   session = await authenticate(RTA_CONFIG.server);
-  const hero = await getHero(session);
+  // libraries FIRST: the hero's tile index is only a tile index when it is computed over
+  // the one library the grid renders, so `getHero` needs that id (see findMovie).
   libraries = await getLibraries(session); // runtime collectionType -> id (no hardcoded GUIDs)
+  const hero = await getHero(session, libraryIdFor(libraries, 'movies'));
   // Functional tests assert each screen LOADS; the hero movie exercises every nav
   // (incl. trickplay). The trickplay-specific film is a store-screenshot concern.
   // `session` + `libraries` ride along for asserts that check rendered content
@@ -73,8 +75,9 @@ for (const screen of SCREENS) {
     // statement about the fixture, not a regression, so it skips visibly for the same
     // reason a missing library does. Generic on purpose: `requires` is a predicate on
     // the registry entry, so a future capability-gated screen needs no change here.
-    if (screen.requires && !(await screen.requires.probe(ctx))) {
-      testCtx.skip(screen.requires.reason);
+    const unmet = await firstUnmetRequirement(screen, ctx);
+    if (unmet) {
+      testCtx.skip(unmet.reason);
     }
 
     let expectedServer;

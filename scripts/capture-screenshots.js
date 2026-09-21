@@ -71,7 +71,7 @@ import {
   restoreRegistry,
   armRestoreOnInterrupt,
 } from '../tests/rta/lib/registry.js';
-import { SCREENS } from '../tests/rta/screens.js';
+import { firstUnmetRequirement, SCREENS } from '../tests/rta/screens.js';
 import { generateIndex } from './screenshots-index.js';
 
 const execFileAsync = promisify(execFile);
@@ -338,9 +338,15 @@ async function main() {
     seekSeconds,
     backdropUrl: found.backdropUrl,
   });
-  const heroTarget = mkTarget(await findMovie(session, CONFIG.heroMovie), CONFIG.seekSeconds);
+  // Scoped to the movies library the grid renders — an unscoped index spans every library
+  // and aims the nav at the wrong tile on any multi-library server (see findMovie).
+  const moviesLibraryId = libraryIdFor(libraries, 'movies');
+  const heroTarget = mkTarget(
+    await findMovie(session, CONFIG.heroMovie, { parentId: moviesLibraryId }),
+    CONFIG.seekSeconds,
+  );
   const trickTarget = mkTarget(
-    await findMovie(session, CONFIG.trickplayMovie),
+    await findMovie(session, CONFIG.trickplayMovie, { parentId: moviesLibraryId }),
     CONFIG.trickplaySeekSeconds,
   );
   // `libraries` rides along so library navs resolve the SAME library the seed
@@ -416,8 +422,9 @@ async function main() {
     // attempts and then abandon a ~15-minute matrix run. Mirrors the same `requires`
     // gate in specs/screens.spec.js: one predicate, honored by both consumers of
     // the registry, so the two cannot disagree about what a screen needs.
-    if (screen.requires && !(await screen.requires.probe(targetFor(screen)))) {
-      console.log(`  - ${folder}/${screen.name} skipped: ${screen.requires.reason}`);
+    const unmet = await firstUnmetRequirement(screen, targetFor(screen));
+    if (unmet) {
+      console.log(`  - ${folder}/${screen.name} skipped: ${unmet.reason}`);
       return;
     }
     for (let i = 1; i <= attempts; i++) {

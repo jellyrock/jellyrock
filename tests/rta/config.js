@@ -44,6 +44,35 @@ export const PUBLIC_DEMO_SERVER = Object.freeze({
  * failing on the fixture, not silently.
  */
 /**
+ * `undefined` for "not overridden", so a `??` chain does the falling back. Trims the
+ * value it returns, not just the emptiness test: dotenv strips whitespace around an
+ * unquoted value but preserves it inside a quoted one, so `KEY="  x  "` would
+ * otherwise reach a consumer with its padding attached.
+ *
+ * Shared by `resolveServer` and `resolveContent` rather than duplicated — both face
+ * the same `.env.example`-copied-verbatim hazard described above.
+ */
+const override = (value) => {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  return trimmed === '' ? undefined : trimmed;
+};
+
+/**
+ * Same rule for a NUMERIC knob: a seek position is meaningless unless it parses to a
+ * finite, non-negative number, so anything else reads as unset rather than reaching
+ * the player as `NaN`. `Number('')` is 0, which is a legitimate seek target and
+ * therefore exactly the value a typo must not be able to produce silently — hence
+ * `override` first, then a finiteness check.
+ */
+const overrideNumber = (value) => {
+  const raw = override(value);
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+};
+
+/**
  * Resolve the functional-test server from an environment.
  *
  * `RTA_SERVER_*` rather than a second scheme of this repo's own: those names
@@ -76,13 +105,6 @@ export const PUBLIC_DEMO_SERVER = Object.freeze({
  * @param {{url: string, username: string, password: string}} fallback
  */
 export function resolveServer(env = process.env, fallback = PUBLIC_DEMO_SERVER) {
-  // undefined for "not overridden", so `??` below does the falling back. Trims the
-  // value it returns, not just the emptiness test — see the header.
-  const override = (value) => {
-    if (value === undefined) return undefined;
-    const trimmed = value.trim();
-    return trimmed === '' ? undefined : trimmed;
-  };
   return Object.freeze({
     url: override(env.RTA_SERVER_URL) ?? fallback.url,
     username: override(env.RTA_SERVER_USER) ?? fallback.username,
@@ -92,7 +114,68 @@ export function resolveServer(env = process.env, fallback = PUBLIC_DEMO_SERVER) 
   });
 }
 
+/**
+ * The public demo's content, and the fallback for every knob above. Frozen and
+ * exported so a test can assert the fallback without restating the literals.
+ */
+export const DEMO_CONTENT = Object.freeze({
+  // The movie used for movieDetails + osd. Reached in the Movies grid by its
+  // SortName tile index, looked up at runtime (see findMovie).
+  heroMovie: 'Dracula',
+  // Playback position (seconds) for the osd paused frame — 28:44.
+  seekSeconds: 1724,
+  // trickplay uses its OWN film + position so the store frame matches the
+  // long-standing reference screenshot.
+  trickplayMovie: 'The Boy in the Plastic Bubble',
+  trickplaySeekSeconds: 1940, // 32:20
+  // The search-screen query, typed into the search keyboard to populate results.
+  // Chosen to surface the RICHEST spread of result-type rows on the demo server —
+  // "a" returns 7 grouped rows (Movies / Episodes / People / Playlists / Artists /
+  // Albums / Songs); see the probe in #621.
+  searchQuery: 'a',
+});
+
+/**
+ * The CONTENT-dependent expectations, resolved from the environment the same way the
+ * server is.
+ *
+ * ## Why these are overridable at all
+ *
+ * `server` was already repointable, but these were not — and they describe the PUBLIC
+ * DEMO's library, not any library. So pointing the suite at a local server (the
+ * documented way to test against a richer fixture) left `heroMovie` naming a film that
+ * server does not have. Measured 2026-09-20 against the local 12.0 test server:
+ * `Dracula` and `The Boy in the Plastic Bubble` both return ZERO matches.
+ *
+ * That did not go red. `findMovie` answers a miss with `{ index: 0, id: '' }`, so
+ * `movieDetails` opens whatever sorts first, `navOsd`'s seek is skipped entirely (it is
+ * guarded on `ctx.heroId`), and the suite reports a PASS for a screen it never drove to
+ * the position it was asserting about. A hollow pass is worse than a red one: it is
+ * indistinguishable from a real one in the record.
+ *
+ * Overriding these in `.env` alongside `RTA_SERVER_*` is what makes a local run mean
+ * what it says. The visible skip in `screens.js` covers the other half — a configured
+ * film that is not on the server now SAYS so instead of quietly testing a different one.
+ *
+ * Exported and parameterised for the same reason `resolveServer` is: this module loads
+ * the environment on import, so testing it through the module's own evaluation would
+ * read the running developer's env files and pass or fail per machine.
+ *
+ * @param {Record<string, string | undefined>} env
+ */
+export function resolveContent(env = process.env, fallback = DEMO_CONTENT) {
+  return Object.freeze({
+    heroMovie: override(env.RTA_HERO_MOVIE) ?? fallback.heroMovie,
+    seekSeconds: overrideNumber(env.RTA_SEEK_SECONDS) ?? fallback.seekSeconds,
+    trickplayMovie: override(env.RTA_TRICKPLAY_MOVIE) ?? fallback.trickplayMovie,
+    trickplaySeekSeconds:
+      overrideNumber(env.RTA_TRICKPLAY_SEEK_SECONDS) ?? fallback.trickplaySeekSeconds,
+    searchQuery: override(env.RTA_SEARCH_QUERY) ?? fallback.searchQuery,
+  });
+}
+
 const server = resolveServer();
+const content = resolveContent();
 
 export const RTA_CONFIG = {
   // Jellyfin server the screens are driven against. License-clear content only
@@ -102,21 +185,12 @@ export const RTA_CONFIG = {
   // The demo server is a CONTROL, not a substitute: ~3 libraries against a real
   // server's ~10, so anything that scales with library count reads LOW on it.
   server,
-  // The movie used for movieDetails + osd. Reached in the Movies grid by its
-  // SortName tile index, looked up at runtime (see findMovie), so this name is
-  // the only knob to change.
-  heroMovie: 'Dracula',
-  // Playback position (seconds) for the osd paused frame — 28:44.
-  seekSeconds: 1724,
-  // trickplay uses its OWN film + position so the store frame matches the
-  // long-standing reference screenshot. Change movie/timestamp here.
-  trickplayMovie: 'The Boy in the Plastic Bubble',
-  trickplaySeekSeconds: 1940, // 32:20
-  // The search-screen query, typed into the search keyboard to populate results.
-  // Chosen to surface the RICHEST spread of result-type rows on the demo server —
-  // "a" returns 7 grouped rows (Movies / Episodes / People / Playlists / Artists /
-  // Albums / Songs); see the probe in #621. Change to retune the shot.
-  searchQuery: 'a',
+  // Content-dependent expectations. These describe the PUBLIC DEMO's library by
+  // default and are overridable per-environment (`RTA_HERO_MOVIE`, `RTA_SEEK_SECONDS`,
+  // `RTA_TRICKPLAY_MOVIE`, `RTA_TRICKPLAY_SEEK_SECONDS`, `RTA_SEARCH_QUERY`) so a run
+  // repointed with `RTA_SERVER_*` can name films that server actually has. See
+  // `resolveContent` for why a missing film used to pass rather than fail.
+  ...content,
   // Time to let the app boot + the RTA on-device component come up after a
   // relaunch or a fresh deploy.
   bootMs: 10000,

@@ -23,7 +23,13 @@
  */
 import { waitFor, waitHome, hasChildren, getActiveVal, getActiveVals } from './lib/steps.js';
 import { diagnosedError, FAILURE_KINDS } from './lib/diagnostics.js';
-import { genreItemNames, libraryIdFor, manageSubtitlesOffered } from './lib/jellyfin.js';
+import {
+  genreItemNames,
+  libraryIdFor,
+  manageSubtitlesOffered,
+  trickplayAvailable,
+} from './lib/jellyfin.js';
+import { RTA_CONFIG } from './config.js';
 import {
   navLibraryGrid,
   navMovieDetails,
@@ -226,6 +232,70 @@ const vw = (name, nav, collectionType, landing, assert) => ({
  */
 export const MOVIES_GRID = { collectionType: 'movies', landing: 'MoviesGrid' };
 
+/**
+ * The hero film must actually be ON this server.
+ *
+ * Expressed through `requires` rather than a new key, because this is the same shape as
+ * the other two content gates: a statement about the FIXTURE, not a regression in the
+ * app. `findMovie` answers a miss with `{ index: 0, id: '' }` instead of throwing, which
+ * is deliberate — but it means a screen that seeks by the hero's id silently seeks
+ * NOWHERE (`navOsd` guards on `ctx.heroId`) while still reporting a pass, and one that
+ * seeks by position drives `RTA_CONFIG.seekSeconds` into whatever film happens to sort
+ * first, which can be shorter than that position. Measured 2026-09-20: `Dracula` returns
+ * zero matches on the local 12.0 test server, and the suite went green anyway.
+ *
+ * So the gate is not "be strict", it is "stop reporting a pass for a screen that was
+ * never driven to the state it asserts about". Retune the film with `RTA_HERO_MOVIE`
+ * (see `config.js`) and these run again.
+ *
+ * NOT applied to `movieDetails`: it uses only `heroIndex`, and tile 0 is a real tile, so
+ * opening whatever sorts first is still a genuine "ItemDetails loads" assertion.
+ */
+export const HERO_PRESENT = {
+  probe: (ctx) => Boolean(ctx?.heroId),
+  // Deliberately does NOT name one film. The two consumers resolve a DIFFERENT film for
+  // `trickplay`: the suite drives it with `heroMovie` (the hero exercises every nav),
+  // while the store orchestrator gives it `trickplayMovie` so its frame matches the
+  // reference screenshot. A message naming `heroMovie` would therefore be wrong in one
+  // of them, which is worse than a message that names the two knobs and lets the reader
+  // look. Both are printed so whichever applies is to hand.
+  reason:
+    `the film this screen drives is not on this server ` +
+    `(RTA_HERO_MOVIE="${RTA_CONFIG.heroMovie}", RTA_TRICKPLAY_MOVIE="${RTA_CONFIG.trickplayMovie}")`,
+};
+
+/** The server must hold trickplay thumbnails for the film being driven. */
+export const TRICKPLAY_DATA = {
+  probe: (ctx) => trickplayAvailable(ctx.session, ctx.heroId),
+  reason:
+    'server holds no trickplay images for this film ' +
+    '(EnableTrickplayImageExtraction is off by default)',
+};
+
+/**
+ * The first requirement this screen does NOT meet, or `null` when it meets them all.
+ *
+ * `requires` takes one gate or a list of them, and lives here rather than in each
+ * consumer so the suite and the store orchestrator cannot drift on what "required"
+ * means — they are the two callers, and a screen gated in one but not the other is a
+ * silent hole. Returning the GATE (not a boolean) is what lets each one keep its own
+ * precise `reason`: `trickplay` needs both a film and thumbnails, and "one of two
+ * preconditions failed" is not an actionable skip message.
+ *
+ * Gates run in declared order and short-circuit, so a cheap local check can guard an
+ * expensive request — `HERO_PRESENT` is a field read and screens it from `TRICKPLAY_DATA`,
+ * which would otherwise query the server with an empty item id.
+ *
+ * @returns {Promise<{probe: Function, reason: string} | null>}
+ */
+export async function firstUnmetRequirement(screen, ctx) {
+  const gates = screen.requires ? [screen.requires].flat() : [];
+  for (const gate of gates) {
+    if (!(await gate.probe(ctx))) return gate;
+  }
+  return null;
+}
+
 export const SCREENS = [
   {
     name: 'userSelect',
@@ -250,12 +320,20 @@ export const SCREENS = [
     name: 'osd',
     state: 'home',
     nav: navOsd,
+    // Seeks by the hero's ITEM ID (`#<heroId>.seek`), so without the film the seek is
+    // skipped and the OSD is asserted at whatever position playback reached.
+    requires: HERO_PRESENT,
     capture: { eligible: true, store: true, backdrop: true },
   },
   {
     name: 'trickplay',
     state: 'home',
     nav: navTrickplay,
+    // Seeks to `RTA_CONFIG.seekSeconds` to reveal the filmstrip. Driven into an
+    // arbitrary first-by-SortName film that position may be past the end, so this one
+    // can fail outright rather than merely read hollow — and the filmstrip itself only
+    // exists if the server extracted thumbnails, which is off by default.
+    requires: [HERO_PRESENT, TRICKPLAY_DATA],
     // No backdrop injection: Roku's built-in trickPlayBar (the scrubber + position/
     // remaining times) renders BEHIND the Video node's children, so an injected
     // in-film frame would cover it. We accept the un-capturable video plane reading

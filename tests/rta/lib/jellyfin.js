@@ -274,12 +274,32 @@ export async function authenticate(server, { role = 'rta', deviceKey } = {}) {
  * list IS its grid tile index — the number of Right presses from the first tile to
  * focus it.
  *
+ * ## `parentId` is what makes the index mean anything
+ *
+ * The index is only a tile index if this query enumerates the SAME items the grid
+ * renders — that is, ONE library. Without `parentId` it spans every library on the
+ * server, so on any server with more than one movies-ish library the number is an index
+ * into a population the grid never shows, and the nav focuses an arbitrary tile.
+ *
+ * That went unnoticed because the public demo has a single movies library, where the two
+ * populations coincide. Measured 2026-09-20 against the local 12.0 test server: 151
+ * movies across NINE libraries, and `osd` opened item `e33c03fc…` while the configured
+ * hero was `0363e2dc…` — the suite then timed out reading `#<heroId>.state` on a player
+ * that was happily playing something else, which reads as a broken player rather than a
+ * mis-aimed nav.
+ *
+ * Callers pass the id `libraryIdFor(libraries, 'movies')` resolved — the same library
+ * `seedHome` landed on, so the grid and this query cannot disagree. Omitting it keeps the
+ * old server-wide behaviour, which is still correct for a single-library server and is
+ * what `firstMovie` (deliberately server-wide) wants.
+ *
  * Returns { index, id, backdropUrl } ({0, '', ''} if the movie isn't found).
  * backdropUrl is the promo still (a fallback only — see prepareBackdrop).
  */
-export async function findMovie(session, movieName) {
+export async function findMovie(session, movieName, { parentId } = {}) {
   const url =
     `${session.serverUrl}/Items?UserId=${session.userId}` +
+    (parentId ? `&ParentId=${parentId}` : '') +
     `&IncludeItemTypes=Movie&Recursive=true&SortBy=SortName&SortOrder=Ascending`;
   // Throws on a failed request. The `{ index: 0, id: '' }` miss below is reserved for
   // a query that SUCCEEDED and did not list the movie — a fact about the library, and
@@ -298,8 +318,12 @@ export async function findMovie(session, movieName) {
   };
 }
 
-/** The movie used by movieDetails + osd (RTA_CONFIG.heroMovie). */
-export const getHero = (session) => findMovie(session, RTA_CONFIG.heroMovie);
+/**
+ * The movie used by movieDetails + osd (RTA_CONFIG.heroMovie), scoped to the movies
+ * library the grid actually shows. See `findMovie` for why the scope is load-bearing.
+ */
+export const getHero = (session, parentId) =>
+  findMovie(session, RTA_CONFIG.heroMovie, { parentId });
 
 /**
  * First movie (by SortName) on a server, with its title — `{ id, name }` (or `{ '', '' }`).
@@ -473,6 +497,43 @@ export async function manageSubtitlesOffered(session) {
     tokenHeader(session.token),
   );
   return Array.isArray(options?.SubtitleFetchers) && options.SubtitleFetchers.length > 0;
+}
+
+/**
+ * Does the server hold TRICKPLAY images for this item?
+ *
+ * `trickplay`'s nav reveals Roku's filmstrip by scrubbing, and the carousel only appears
+ * when the server can serve thumbnails. Without them the spec waits out
+ * `#trickplayCarousel.isVisible` and fails — a red that reads exactly like a broken
+ * scrubber in the app, which is the thing it must not do.
+ *
+ * Trickplay extraction is OFF by default (`EnableTrickplayImageExtraction`), and nothing
+ * in the local test-server setup turns it on. Measured 2026-09-20 across the local 12.0
+ * server: every one of its nine libraries reports it false and ZERO of 151 movies carry
+ * trickplay data, while the "Generate Trickplay Images" task still reports a clean run —
+ * so "the task ran" is not evidence that thumbnails exist. The public demo does have
+ * them, which is why the screen has a reference screenshot at all.
+ *
+ * Reads the field off the item rather than probing the tiles endpoint: `Fields=Trickplay`
+ * is the same source the app's own player consults, and an empty object is the server
+ * saying "none", distinctly from a 404 on a guessed URL.
+ *
+ * Throws on a failed request, like every other helper here — a transport error must not
+ * be read as "this server has no trickplay".
+ *
+ * @param {{serverUrl: string, token: string}} session
+ * @param {string} itemId
+ * @returns {Promise<boolean>}
+ */
+export async function trickplayAvailable(session, itemId) {
+  if (!itemId) return false;
+  const data = await getJson(
+    `${session.serverUrl}/Items?Ids=${itemId}&Fields=Trickplay`,
+    tokenHeader(session.token),
+  );
+  const trickplay = data?.Items?.[0]?.Trickplay;
+  // Shape is { "<mediaSourceId>": { "<width>": {...} } }. Any populated entry is enough.
+  return Boolean(trickplay) && Object.keys(trickplay).length > 0;
 }
 
 /**
