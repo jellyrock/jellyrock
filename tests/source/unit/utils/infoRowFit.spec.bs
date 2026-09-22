@@ -89,6 +89,47 @@ namespace tests
       m.assertEqual(result.cutWidth, 1228)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("textLineWidth()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A 359x212 logo right-aligned to 1824 (x = 1465) with its top at y = 672; text starts
+    ' at x = 96; 12px clearance.
+    private logo = { x: 1465, y: 672 }
+
+    @it("runs a line to the right edge when there is no logo")
+    function _()
+      m.assertEqual(textLineWidth(700, 96, invalid, 12, 1824), 1728)
+    end function
+
+    @it("runs a line that ends above the logo to the right edge")
+    function _()
+      m.assertEqual(textLineWidth(600, 96, m.logo, 12, 1824), 1728)
+    end function
+
+    @it("counts a line ending exactly the clearance above the logo as above it")
+    function _()
+      m.assertEqual(textLineWidth(660, 96, m.logo, 12, 1824), 1728)
+    end function
+
+    @it("stops a line inside the clearance band the clearance short of the logo")
+    function _()
+      ' One pixel lower and the line is beside the logo.
+      m.assertEqual(textLineWidth(661, 96, m.logo, 12, 1824), 1465 - 12 - 96)
+    end function
+
+    @it("stops a line beside the logo the clearance short of it")
+    function _()
+      m.assertEqual(textLineWidth(775, 96, m.logo, 12, 1824), 1357)
+    end function
+
+    @it("stops every line short of a logo taken to reach the top, as ItemDetails does before the logo's place is known")
+    function _()
+      widestLogo = { x: 1324, y: 0 }
+      m.assertEqual(textLineWidth(200, 96, widestLogo, 12, 1824), 1216)
+      m.assertEqual(textLineWidth(775, 96, widestLogo, 12, 1824), 1216)
+    end function
+
   end class
 
 end namespace

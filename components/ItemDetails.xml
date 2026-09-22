@@ -10,14 +10,16 @@
          metadata to render in the wrong y-position. -->
     <LayoutGroup id="itemDetails" layoutDirection="vert" vertAlignment="bottom" itemSpacings="[12]" translation="[96, 775]" enableRenderTracking="true">
       <LayoutGroup id="itemInfoRows" layoutDirection="vert">
-        <!-- The title and the two text rows below the chips are all fitted to the
-             logo's leftmost possible edge (width set in init from detailsTextWidth()),
-             so no text on this screen can run into the logo. The rows are cut by
-             fitInfoRow(); the title stays ONE line and ends on a whole word. It does
-             not wrap: with extras open this block is pinned above the extras pane and
-             grows upward, and a second title line over the credits row put its top at
-             y=34, outside Roku's action-safe zone. -->
-        <LabelPrimaryLargest id="videoTitle" isBold="true" ellipsizeOnBoundary="true" />
+        <!-- The title, all three info rows and the description are fitted to the
+             logo (layoutDetailsText()), so no text on this screen can run into it: a
+             line that ends above the logo runs to the right edge, one beside it stops
+             short of it. The rows are cut by fitInfoRow(); the title stays ONE line.
+             It does not wrap: with extras open this block is pinned above the extras
+             pane and grows upward, and a second title line over the credits row put
+             its top at y=34, outside Roku's action-safe zone.
+             No ellipsizeOnBoundary: this label doesn't wrap, so whole-word ellipsizing
+             drops a single word too wide for it and renders a bare "..." (#798). -->
+        <LabelPrimaryLargest id="videoTitle" isBold="true" />
         <LayoutGroup layoutDirection="horiz" itemSpacings="[9]" id="infoGroup" />
         <LayoutGroup layoutDirection="horiz" itemSpacings="[9]" id="detailsGroup" />
         <!-- People credits ("Directed by ...") get a row of their own: a credit list
@@ -27,7 +29,8 @@
         <LayoutGroup layoutDirection="horiz" itemSpacings="[9]" id="creditsGroup" />
       </LayoutGroup>
 
-      <FocusableOverview id="itemDescription" width="1200" visible="false" />
+      <!-- Width set by layoutDetailsText(), like the lines above it. -->
+      <FocusableOverview id="itemDescription" visible="false" />
 
       <!-- Invisible 62px layout spacer. Pushes description bottom up to y=701
            (itemDetails bottom 775 - spacer 62 - itemSpacings 12 = 701) so the
@@ -70,6 +73,10 @@
 
     <!-- Item logo - positioned 5% from right edge -->
     <Poster id="itemLogo" visible="false" />
+
+    <!-- Caps how long the text waits for the logo's place to be known before it shows
+         anyway, fitted to the widest logo possible (holdDetailsText()). -->
+    <Timer id="textHoldTimer" duration="0.5" repeat="false" />
 
     <!-- Date added label - positioned at bottom right corner -->
     <LabelDisabledSmaller id="dateCreatedLabel" width="450" horizAlign="right" visible="false" />

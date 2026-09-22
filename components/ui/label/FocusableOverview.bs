@@ -1,8 +1,8 @@
+import "pkg:/source/constants/focusableOverview.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/misc.bs"
 
 const LABEL_PADDING = 30
-const FOCUS_BORDER_PADDING = 12
 
 sub init()
   m.background = m.top.findNode("background")
@@ -74,7 +74,7 @@ sub updateFocusBorderLayout()
   ' Invisible nodes still affect layout in SceneGraph, so the border must
   ' match the background when unfocused to avoid unwanted layout shifts
   if not m.top.shouldShowBackground and m.top.hasFocus()
-    p = FOCUS_BORDER_PADDING
+    p = focusableOverview.FOCUS_OUTSET
     m.focusBorder.translation = [-p, -p]
     m.focusBorder.width = m.background.width + (p * 2)
     m.focusBorder.height = m.background.height + (p * 2)

@@ -46,3 +46,21 @@ function fitTextRow(itemWidths as object, separatorWidth as integer, budget as i
 
   return { keep: itemWidths.count(), cutWidth: 0 }
 end function
+
+' The width a line of text starting at textLeftX may use, given where the logo is.
+'
+' A line that ends above the logo (with `clearance` to spare) runs to rightEdgeX; one
+' beside the logo stops `clearance` short of the logo's left edge. With no logo on
+' screen every line runs to rightEdgeX.
+'
+' @param {integer} lineBottomY - the line's bottom edge, in screen space
+' @param {integer} textLeftX - the line's left edge, in screen space
+' @param {object} logoBox - { x, y } of the logo's top-left corner, or invalid for no logo
+' @param {integer} clearance - the gap kept between text and the logo, on both sides
+' @param {integer} rightEdgeX - the right edge text never passes
+' @return {integer} the line's width budget
+function textLineWidth(lineBottomY as integer, textLeftX as integer, logoBox as object, clearance as integer, rightEdgeX as integer) as integer
+  if not isValid(logoBox) then return rightEdgeX - textLeftX
+  if lineBottomY <= logoBox.y - clearance then return rightEdgeX - textLeftX
+  return logoBox.x - clearance - textLeftX
+end function

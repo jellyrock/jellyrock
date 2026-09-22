@@ -1,0 +1,56 @@
+' How big ItemDetails draws its logo, from the image's size alone.
+'
+' Pure on purpose: no node access, no m, no globals. The same arithmetic places the logo
+' when its image loads AND predicts where it will be before the image arrives (from the
+' original size the server reports), so the two can never disagree.
+
+' The size the server sends for an image request bounded by maxWidth x maxHeight: scaled
+' down to fit, aspect kept, never scaled up. Measured 2026-09-22 against Jellyfin 12.1:
+' the served size is the scaled size ROUNDED to the nearest pixel (15 of 15 logos;
+' truncating was a pixel short on 6 of them).
+' @param {integer} width - the original image's width
+' @param {integer} height - the original image's height
+' @param {integer} maxWidth - the request's maxWidth
+' @param {integer} maxHeight - the request's maxHeight
+' @return {object} { width, height }, or invalid when either original side is unknown (0)
+function serverFitSize(width as integer, height as integer, maxWidth as integer, maxHeight as integer) as object
+  if width <= 0 or height <= 0 then return invalid
+  scale = 1.0
+  if maxWidth / width < scale then scale = maxWidth / width
+  if maxHeight / height < scale then scale = maxHeight / height
+  return { width: int(width * scale + 0.5), height: int(height * scale + 0.5) }
+end function
+
+' The size the logo is drawn at, from the size of the bitmap that loads.
+'
+' A small logo is scaled up to limits.minHeight, keeping aspect, unless that would make it
+' wider than limits.maxWidth: maxWidth is a hard layout bound, minHeight only a target.
+' When capHeight is set, a tall image is then scaled down to limits.maxHeight so it stays
+' clear of the text rows above it.
+' @param {integer} width - the bitmap's width
+' @param {integer} height - the bitmap's height
+' @param {object} limits - { minHeight, maxWidth, maxHeight }
+' @param {boolean} capHeight - whether limits.maxHeight applies
+' @return {object} { width, height }, or invalid when either side is unknown (0)
+function logoDisplaySize(width as integer, height as integer, limits as object, capHeight as boolean) as object
+  if width <= 0 or height <= 0 then return invalid
+
+  scaleToMinHeight = limits.minHeight / height
+  if height >= limits.minHeight and width <= limits.maxWidth
+    displayWidth = width
+    displayHeight = height
+  else if int(width * scaleToMinHeight) <= limits.maxWidth
+    displayWidth = int(width * scaleToMinHeight)
+    displayHeight = limits.minHeight
+  else
+    displayWidth = limits.maxWidth
+    displayHeight = int(height * limits.maxWidth / width)
+  end if
+
+  if capHeight and displayHeight > limits.maxHeight
+    displayWidth = int(displayWidth * limits.maxHeight / displayHeight)
+    displayHeight = limits.maxHeight
+  end if
+
+  return { width: displayWidth, height: displayHeight }
+end function
