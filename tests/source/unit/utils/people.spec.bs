@@ -355,59 +355,71 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("directorNames()")
+    @describe("creditNames()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("returns an empty array for invalid input")
     function _()
-      m.assertEqual(directorNames(invalid).count(), 0)
+      m.assertEqual(creditNames(invalid, "Director").count(), 0)
     end function
 
     @it("returns only directors, in order")
     function _()
-      names = directorNames([
+      names = creditNames([
         { Id: "a1", Name: "An Actor", Type: "Actor", Role: "Hero" },
         { Id: "d1", Name: "First Director", Type: "Director" },
         { Id: "w1", Name: "A Writer", Type: "Writer" },
         { Id: "d2", Name: "Second Director", Type: "Director" }
-      ])
+      ], "Director")
       m.assertEqual(names, ["First Director", "Second Director"])
     end function
 
     @it("deduplicates a director credited more than once")
     function _()
-      names = directorNames([
+      names = creditNames([
         { Id: "mj", Name: "Mike Judge", Type: "Director", Role: "Director" },
         { Id: "mj", Name: "Mike Judge", Type: "Director", Role: "Co-Director" }
-      ])
+      ], "Director")
       m.assertEqual(names, ["Mike Judge"])
     end function
 
     @it("falls back to the name when the server sends no Id")
     function _()
-      names = directorNames([
+      names = creditNames([
         { Name: "No Id Director", Type: "Director" },
         { Name: "no id director", Type: "Director" }
-      ])
+      ], "Director")
       m.assertEqual(names, ["No Id Director"])
     end function
 
     @it("keeps two different directors who share no Id")
     function _()
-      names = directorNames([
+      names = creditNames([
         { Name: "Alice", Type: "Director" },
         { Name: "Bob", Type: "Director" }
-      ])
+      ], "Director")
       m.assertEqual(names, ["Alice", "Bob"])
     end function
 
     @it("matches the type case-insensitively and skips nameless entries")
     function _()
-      names = directorNames([
+      names = creditNames([
         { Id: "d1", Name: "Cased", Type: "director" },
         { Id: "d2", Type: "Director" }
-      ])
+      ], "Director")
       m.assertEqual(names, ["Cased"])
+    end function
+
+    @it("keeps only the kind asked for, so one list serves creators and directors")
+    function _()
+      people = [
+        { Id: "c1", Name: "Thomas Lennon", Type: "Creator" },
+        { Id: "d1", Name: "A Director", Type: "Director" },
+        { Id: "c2", Name: "Kerri Kenney", Type: "Creator" }
+      ]
+      m.assertEqual(creditNames(people, "Creator"), ["Thomas Lennon", "Kerri Kenney"])
+      m.assertEqual(creditNames(people, "Director"), ["A Director"])
+      m.assertEqual(creditNames(people, "Writer").count(), 0)
     end function
 
   end class

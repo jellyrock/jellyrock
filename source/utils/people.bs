@@ -262,22 +262,25 @@ function castCardSpecs(people as dynamic) as object
   return specs
 end function
 
-' The distinct directors of an item, in first-appearance order.
+' The distinct people credited as `personKind` on an item, in first-appearance order —
+' what the details screen's "Created by" / "Directed by" lines list.
 '
 ' Deduplicated by `Id` for the same reason the cards merge: the server sends one entry per
 ' credit, so a director credited twice (say Director and Co-Director) would otherwise read
 ' "Directed by Mike Judge, Mike Judge". Entries with no `Id` fall back to name matching,
 ' which is the best available identity when the server gives none.
 '
-' @param people - raw `BaseItemPerson` array from a parent item's `People` field
-' @return array of director names, no repeats
-function directorNames(people as dynamic) as object
+' @param people - raw `BaseItemPerson` array from an item's `People` field
+' @param personKind - the `PersonKind` to keep, compared case-insensitively ("Director")
+' @return array of names, no repeats
+function creditNames(people as dynamic, personKind as string) as object
   names = []
   if not isValid(people) then return names
 
+  lowerKind = LCase(personKind)
   seen = {}
   for each person in people
-    if isValid(person) and LCase(textOrEmpty(person.Type)) = "director"
+    if isValid(person) and LCase(textOrEmpty(person.Type)) = lowerKind
       name = textOrEmpty(person.Name)
       if name <> ""
         identity = textOrEmpty(person.Id)
