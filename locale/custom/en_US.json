@@ -588,6 +588,7 @@
   "MessageControlHowMediaSegmentsAreHandled": "Control how media segments (Intro, Outro, etc.) are handled during playback. Requires Jellyfin server 10.10.0 or newer with segment detection configured.",
   "MessageControlWhetherTheServerSSplash": "Control whether the server's splash screen image is displayed on the User Select screen. Server admin must enable this feature in branding settings.",
   "MessageCouldNotReachServer": "Couldn't reach '{0}'.",
+  "MessageCreatedBy1": "Created by {0}",
   "MessageDeepLinkAfterSignIn": "Sign in to open your content.",
   "MessageDirectPlayMpeg2Video": "Direct Play MPEG-2 video instead of transcoding it, which uses significantly more bandwidth. Does not apply to Live TV or other MPEG-TS sources, which are always transcoded.",
   "MessageDirectedBy1": "Directed by {0}",
