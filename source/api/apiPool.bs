@@ -1,5 +1,89 @@
 import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/tasks.bs"
+
+' ── Skipping a request nobody is waiting for ────────────────────────────────
+'
+' The pool has no way to cancel a request. A caller that stops listening — a Task
+' STOPped by replaceTask() while it waits in fetchRes, a promise abandoned at
+' teardown, a pipeline run ended early, a caller that timed out — leaves its request
+' in the coordinator's FIFO queue, where it is still dispatched and holds a pool slot
+' for as long as the server takes (up to timeouts.HTTP_MS). On a slow server that
+' queues the requests the user IS waiting for behind ones nobody will read: Search
+' starts a new SearchTask per keystroke, and the TV guide a new schedule load per page.
+'
+' So at DISPATCH the coordinator skips a queued request whose caller is gone, and
+' completes its result node with `error: "abandoned"` instead. Only reads are skipped:
+' a POST or DELETE is something the user asked for (a favorite, a recording, a
+' delete), and running it even though the screen moved on is what they want. A POST
+' that only reads opts in with `skippable: true` on its request AA
+' (BuildGetLiveTvScheduleRequest). A request already on a pool slot is not cancelled
+' — that would need a cancellable HTTP call in place of the blocking one.
+
+' True when the pool may skip `req` once its caller is gone: a GET or HEAD (a request
+' with no method is a GET — executeHttpRequest's pool default), or a request that
+' declares `skippable: true`.
+function apiRequestIsSkippable(req as dynamic) as boolean
+  if not isValid(req) then return false
+  skippable = req.skippable
+  if type(skippable) = "Boolean" or type(skippable) = "roBoolean"
+    if skippable then return true
+  end if
+  method = req.method
+  if not isValid(method) or method = "" then return true
+  method = UCase(method)
+  return method = "GET" or method = "HEAD"
+end function
+
+' True when nobody will read the answer: the caller marked the request abandoned, or
+' the Task thread that was waiting for it is no longer running.
+function apiRequestCallerGone(abandoned as boolean, owner as dynamic) as boolean
+  if abandoned then return true
+  if not isValid(owner) then return false
+  return not taskThreadIsLive(owner)
+end function
+
+' The Task node whose thread is running this code, or invalid on the render or main
+' thread. Only fetchRes and a pipeline submit (both Task-thread only) record it.
+function poolCallerTask() as dynamic
+  if not isValid(m.top) then return invalid
+  if not m.top.isSubtype("Task") then return invalid
+  return m.top
+end function
+
+' Marks a request as one its caller has stopped waiting for, so the coordinator can
+' skip it if it has not been dispatched yet. Safe on invalid and on a finished request.
+sub abandonApiRequest(resultNode as dynamic)
+  if isValid(resultNode) then resultNode.abandoned = true
+end sub
+
+' Called by the coordinator (ApiQueueTask) for each queued entry as a slot frees up.
+' Skips the entry when its caller is gone and it is safe to skip, completing its
+' result node so the node never looks pending; returns true if it did. Always clears
+' `owner`, so a queued result node does not keep a stopped Task node alive.
+'
+' Reads the request AA the coordinator already holds before touching the node, so a
+' request that can never be skipped costs no extra cross-thread reads.
+'
+' @param entry - { req: request AA, resultNode: ApiResultNode }
+function settleIfCallerGone(entry as object) as boolean
+  if not apiRequestIsSkippable(entry.req) then return false
+  node = entry.resultNode
+  if not isValid(node) then return false
+  owner = node.owner
+  if isValid(owner) then node.owner = invalid
+  if not apiRequestCallerGone(node.abandoned, owner) then return false
+  node.result = {
+    requestId: entry.req.requestId,
+    ok: false,
+    statusCode: 0,
+    json: invalid,
+    text: "",
+    error: "abandoned"
+  }
+  node.isDone = true
+  return true
+end function
 
 ' Submits a request to the API queue coordinator and blocks the calling Task thread
 ' until the response arrives (or the timeouts.API_WAIT_MS deadline elapses).
@@ -52,6 +136,9 @@ function fetchRes(req as dynamic, requestId as string) as dynamic
   ' 'result' and sets 'done' when the slot completes.
   resultNode = CreateObject("roSGNode", "ApiResultNode")
   resultNode.request = req
+  ' This Task thread is about to block on the answer. If it is STOPped before a slot
+  ' frees up, the coordinator sees that and skips the request (see above).
+  if apiRequestIsSkippable(req) then resultNode.owner = poolCallerTask()
 
   ' Observe BEFORE appending. If the request completes before we reach wait(),
   ' the 'done' event is already in the port queue and wait() returns immediately.
@@ -77,6 +164,8 @@ function fetchRes(req as dynamic, requestId as string) as dynamic
   ' abandoned node (no crash), free the slot, and dispatch the next queued
   ' request normally. The node is pruned at the 50-child threshold.
   resultNode.unobserveField("isDone")
+  ' Still queued (every slot busy for the whole wait)? Then nobody will read it.
+  abandonApiRequest(resultNode)
   return invalid
 end function
 
@@ -132,7 +221,12 @@ function submitApiRequest(req as dynamic, requestId as string, port = invalid as
 
   resultNode = CreateObject("roSGNode", "ApiResultNode")
   resultNode.request = req
-  if isValid(port) then resultNode.observeField("isDone", port)
+  if isValid(port)
+    resultNode.observeField("isDone", port)
+    ' A port means a Task-thread pipeline caller (apiPipeline), which can be STOPped
+    ' while this waits in the queue. Render-thread callers abandon explicitly instead.
+    if apiRequestIsSkippable(req) then resultNode.owner = poolCallerTask()
+  end if
 
   apiQueue.appendChild(resultNode)
   apiQueue.enqueue = requestId

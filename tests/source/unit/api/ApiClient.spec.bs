@@ -630,6 +630,18 @@ namespace tests
       m.assertInvalid(result)
     end function
 
+    ' The pool skips a queued read whose caller is gone (apiPool.bs). This POST only
+    ' reads, so it opts in; PlaybackInfo's POST does not, because it sends
+    ' AutoOpenLiveStream and can open a live stream on the server.
+    @it("marks the schedule POST skippable and leaves PlaybackInfo's POST unmarked")
+    function _()
+      schedule = m.apiClient.BuildGetLiveTvScheduleRequest({})
+      playbackInfo = m.apiClient.BuildPostPlaybackInfoRequest(m.testItemId, {})
+
+      m.assertTrue(apiRequestIsSkippable(schedule))
+      m.assertFalse(apiRequestIsSkippable(playbackInfo))
+    end function
+
     @it("returns invalid from BuildCreateTimerRequest when serverUrl is empty")
     function _()
       m.global.server.serverUrl = ""

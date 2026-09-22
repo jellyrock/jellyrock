@@ -1,0 +1,168 @@
+import "pkg:/source/api/apiPipeline.bs"
+import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/apiPromise.bs"
+import "pkg:/source/utils/tasks.bs"
+
+namespace tests
+
+  ' The coordinator skips a QUEUED read whose caller has stopped waiting (apiPool.bs,
+  ' "Skipping a request nobody is waiting for"). These pin the rules it applies and every
+  ' path that marks a request abandoned; the coordinator itself only calls
+  ' settleIfCallerGone for each entry as a slot frees up.
+  @suite("apiPool - skipping a request nobody is waiting for")
+  class ApiPoolSkipTests extends tests.BaseTestSuite
+
+    ' A Task node whose thread is running and stays running: its reachability probe
+    ' targets an unroutable address (TEST-NET-1), as tasks.spec.bs does.
+    private function runningTask() as object
+      node = CreateObject("roSGNode", "ServerReachableTask")
+      node.baseUrl = "http://192.0.2.1:8096"
+      launchTask(node)
+      return node
+    end function
+
+    private function entryFor(req as object) as object
+      node = CreateObject("roSGNode", "ApiResultNode")
+      req.requestId = "req-1"
+      node.request = req
+      return { req: req, resultNode: node }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("apiRequestIsSkippable() — only reads may be skipped")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("skips a GET or HEAD in any casing, and a request with no method (the pool's GET)")
+    function _()
+      m.assertTrue(apiRequestIsSkippable({ method: "GET" }))
+      m.assertTrue(apiRequestIsSkippable({ method: "get" }))
+      m.assertTrue(apiRequestIsSkippable({ method: "HEAD" }))
+      m.assertTrue(apiRequestIsSkippable({ url: "http://x" }))
+      m.assertTrue(apiRequestIsSkippable({ method: "" }))
+    end function
+
+    @it("never skips a POST or DELETE — the user asked for it")
+    function _()
+      m.assertFalse(apiRequestIsSkippable({ method: "POST" }))
+      m.assertFalse(apiRequestIsSkippable({ method: "DELETE" }))
+      m.assertFalse(apiRequestIsSkippable(invalid))
+    end function
+
+    @it("skips a POST only when it declares skippable: true")
+    function _()
+      m.assertTrue(apiRequestIsSkippable({ method: "POST", skippable: true }))
+      m.assertFalse(apiRequestIsSkippable({ method: "POST", skippable: false }))
+      m.assertFalse(apiRequestIsSkippable({ method: "POST", skippable: "true" }), "only a real boolean opts in")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("apiRequestCallerGone()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is gone once abandoned, or once the waiting Task has stopped")
+    function _()
+      m.assertTrue(apiRequestCallerGone(true, invalid))
+      stopped = m.runningTask()
+      stopped.control = "STOP"
+      m.assertTrue(apiRequestCallerGone(false, stopped))
+    end function
+
+    @it("is still waiting with a running Task, or with no owner recorded")
+    function _()
+      running = m.runningTask()
+      m.assertFalse(apiRequestCallerGone(false, running))
+      m.assertFalse(apiRequestCallerGone(false, invalid), "render-thread callers record no owner")
+      running.control = "STOP"
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("settleIfCallerGone() — what the coordinator does per entry")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("completes an abandoned GET as abandoned instead of dispatching it")
+    function _()
+      entry = m.entryFor({ method: "GET" })
+      entry.resultNode.abandoned = true
+
+      m.assertTrue(settleIfCallerGone(entry))
+      m.assertTrue(entry.resultNode.isDone)
+      m.assertEqual(entry.resultNode.result.error, "abandoned")
+      m.assertEqual(entry.resultNode.result.requestId, "req-1")
+      m.assertFalse(entry.resultNode.result.ok)
+    end function
+
+    @it("skips a GET whose Task was stopped, and drops its reference to that Task")
+    function _()
+      entry = m.entryFor({ method: "GET" })
+      owner = m.runningTask()
+      entry.resultNode.owner = owner
+      owner.control = "STOP"
+
+      m.assertTrue(settleIfCallerGone(entry))
+      m.assertInvalid(entry.resultNode.owner, "a queued node must not keep a stopped Task alive")
+    end function
+
+    @it("dispatches a GET whose Task is still waiting, and still drops the reference")
+    function _()
+      entry = m.entryFor({ method: "GET" })
+      owner = m.runningTask()
+      entry.resultNode.owner = owner
+
+      m.assertFalse(settleIfCallerGone(entry))
+      m.assertFalse(entry.resultNode.isDone)
+      m.assertInvalid(entry.resultNode.owner)
+      owner.control = "STOP"
+    end function
+
+    @it("dispatches an abandoned POST untouched")
+    function _()
+      entry = m.entryFor({ method: "POST" })
+      entry.resultNode.abandoned = true
+
+      m.assertFalse(settleIfCallerGone(entry))
+      m.assertFalse(entry.resultNode.isDone)
+      m.assertInvalid(entry.resultNode.result)
+    end function
+
+    @it("skips an abandoned POST that declares itself skippable")
+    function _()
+      entry = m.entryFor({ method: "POST", skippable: true })
+      entry.resultNode.abandoned = true
+
+      m.assertTrue(settleIfCallerGone(entry))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("every path that stops listening marks the request")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("abandonApiRequest marks a node and accepts invalid")
+    function _()
+      node = CreateObject("roSGNode", "ApiResultNode")
+      abandonApiRequest(node)
+      m.assertTrue(node.abandoned)
+      abandonApiRequest(invalid)
+    end function
+
+    @it("abandoning a component's promises marks their requests")
+    function _()
+      node = CreateObject("roSGNode", "ApiResultNode")
+      pending = { "req-1": { resultNode: node, timer: invalid, promise: invalid } }
+
+      abandonApiPromisesIn(pending)
+
+      m.assertTrue(node.abandoned)
+    end function
+
+    @it("ending a pipeline run early marks its in-flight requests")
+    function _()
+      node = CreateObject("roSGNode", "ApiResultNode")
+
+      apiPipelineAbandon({ node: node, entry: {} })
+
+      m.assertTrue(node.abandoned)
+    end function
+
+  end class
+
+end namespace

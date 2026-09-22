@@ -241,7 +241,7 @@ This eliminates the startup race. After the first request, the `isReady` check i
 
 ### `ApiResultNode` — `components/api/ApiResultNode.xml`
 
-A trivial component with three fields:
+A small component: three fields that carry the request and its answer, and two that say whether anyone is still waiting for it:
 
 ```xml
 <component name="ApiResultNode" extends="Node">
@@ -249,11 +249,25 @@ A trivial component with three fields:
     <field id="request" type="assocarray" />     <!-- inbound -->
     <field id="result"  type="assocarray" />     <!-- outbound -->
     <field id="isDone"  type="boolean" value="false" />
+    <field id="owner"   type="node" />               <!-- the waiting Task, if any -->
+    <field id="abandoned" type="boolean" value="false" />
   </interface>
 </component>
 ```
 
 One per request. Created by `fetchRes()`, appended to the queue, written to by the coordinator, observed by the caller, then garbage-collected.
+
+### A request nobody is waiting for
+
+The pool cannot cancel a request, and callers stop listening all the time: `replaceTask()` STOPs a Task that is blocked in `fetchRes`, a component's promises are abandoned at teardown, a pipeline run ends early, a caller times out. Before 2026-09-22 each of those left its request in the FIFO queue, where it was still dispatched and held a slot for as long as the server took — so on a slow server a burst of replaced runs (Search starts a new `SearchTask` per keystroke) queued the request the user *was* waiting for behind ones nobody would read.
+
+So at dispatch the coordinator calls `settleIfCallerGone()` ([`apiPool.bs`](../../source/api/apiPool.bs)) on each entry. A queued **read** whose caller is gone — `abandoned` set by the caller, or an `owner` Task that is no longer running (`taskThreadIsLive()`) — is completed with `error: "abandoned"` and never reaches a slot, which stays free for the next entry. Three rules hold it safe:
+
+- **Only reads are skipped.** A GET or HEAD, or a POST that declares `skippable: true` because it only reads (`BuildGetLiveTvScheduleRequest`). A POST or DELETE is something the user asked for — a favorite, a recording, a delete — so it runs even though the screen moved on, and in FIFO order, so a run of toggles ends where the user left it. `BuildPostPlaybackInfoRequest` is not marked: it sends `AutoOpenLiveStream`, which can open a live stream on the server.
+- **Only Task-thread callers record an owner** — `fetchRes`, and `submitApiRequest` with a port (the pipeline). A render-thread caller marks `abandoned` itself instead, so a request can never be skipped because some unrelated node stopped.
+- **The coordinator always clears `owner`** as it takes the entry, so a queued result node never keeps a stopped Task node alive.
+
+A request already on a slot is not canceled. That would mean replacing the blocking `rr_Requests().request` call in `ApiTask` with one that can be interrupted, and it only saves the remaining time of a request the server is already working on. The rules are pinned in [`apiPoolSkip.spec.bs`](../../tests/source/unit/api/apiPoolSkip.spec.bs).
 
 ## The 5 API call patterns
 

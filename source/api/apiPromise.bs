@@ -98,6 +98,11 @@ end sub
 ' Runs in the owning component's `m`. event.getNode() = the timer's id =
 ' the requestId.
 sub __onApiPromiseTimeout(event as object)
+  ' Nobody reads a timed-out request, so the pool may skip it if it is still queued.
+  if isValid(m.__apiPromisePending)
+    entry = m.__apiPromisePending[event.getNode()]
+    if isValid(entry) then abandonApiRequest(entry.resultNode)
+  end if
   settleApiPromiseIn(m.__apiPromisePending, event.getNode())
 end sub
 
@@ -192,6 +197,7 @@ sub abandonApiPromisesIn(pending as object)
     entry = pending[requestId]
     if isValid(entry)
       if isValid(entry.resultNode) then entry.resultNode.unobserveField("isDone")
+      abandonApiRequest(entry.resultNode)
       if isValid(entry.timer)
         entry.timer.unobserveField("fire")
         entry.timer.control = "stop"
