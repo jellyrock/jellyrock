@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update java-jdk to v25 ([#979](https://github.com/jellyrock/jellyrock/pull/979))
 - Update pin dependency java-jdk to v21.0.12 ([#978](https://github.com/jellyrock/jellyrock/pull/978))
 - Update markdownlint-cli2 from v0.23.2 to v0.23.3 ([#972](https://github.com/jellyrock/jellyrock/pull/972))
 
