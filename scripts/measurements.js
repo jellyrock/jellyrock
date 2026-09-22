@@ -636,6 +636,40 @@ export const MEASUREMENTS = Object.freeze([
       }),
     ]),
   }),
+  Object.freeze({
+    id: 'api-dispatch',
+    title: 'API pool dispatch cost (coordinator thread)',
+    doc: 'docs/architecture/api.md#a-request-nobody-is-waiting-for',
+    // NULL, and not an oversight: the coordinator is ONE task for the whole session and
+    // dispatches for every screen, so a window can span a navigation. Whoever runs it
+    // says what the app was doing (`--nav`), exactly as `item-grid` does.
+    screen: null,
+    // GROUNDED 2026-09-22 on `.177` (Stick 4K), `--nav home`: 30 samples over 6
+    // launches, `check`/`send`/`deliver` all populated, and a forced 1-wide-pool arm
+    // produced `waited` > 0 — so the pattern is proven against both shapes of window.
+    grounded: true,
+    // `checkUs` — what the coordinator spends per window deciding whether a queued
+    // request still has a caller. That is the quantity the skip design adds, and the one
+    // an arm is supposed to move; `sendUs` is the unchanged slot write beside it, which
+    // is what makes a moved `checkUs` readable as a real difference rather than a
+    // busier device.
+    primary: 'checkUs',
+    // `entries` is fixed by DISPATCH_WINDOW, so two arms are comparable by construction;
+    // it is recorded as workload so a window that emitted short (a changed constant)
+    // cannot be silently averaged in.
+    workload: Object.freeze(['entries']),
+    // OUTCOMES, kept out of `workload` for the reason `extras-rows` keeps `castCards`
+    // out: `skipped` is SUPPOSED to differ between arms — it is the finding.
+    counts: Object.freeze(['waited', 'skipped', 'delivered']),
+    lines: Object.freeze([
+      Object.freeze({
+        key: 'window',
+        required: true,
+        pattern:
+          /api-dispatch window entries (?<entries>\d+) waited (?<waited>\d+) skipped (?<skipped>\d+) delivered (?<delivered>\d+).*?check (?<checkUs>\d+) send (?<sendUs>\d+) deliver (?<deliverUs>\d+)/,
+      }),
+    ]),
+  }),
 ]);
 
 /** Look a family up by id; `undefined` when it is not registered. */

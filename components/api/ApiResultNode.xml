@@ -14,7 +14,8 @@
   Tier 1 also carries who is still waiting, so the coordinator can skip a queued read
   nobody will receive (apiPool.bs, "Skipping a request nobody is waiting for"):
     'owner'     the Task thread blocked on this request, or invalid (render-thread and
-                main-thread callers have none). Cleared by the coordinator at dispatch.
+                main-thread callers have none). Cleared when the coordinator SKIPS the
+                request; a dispatched one keeps it until the node itself is released.
     'abandoned' set by a caller that has stopped listening (a timeout, a teardown).
 -->
 <component name="ApiResultNode" extends="Node">

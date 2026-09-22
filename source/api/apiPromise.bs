@@ -98,12 +98,20 @@ end sub
 ' Runs in the owning component's `m`. event.getNode() = the timer's id =
 ' the requestId.
 sub __onApiPromiseTimeout(event as object)
-  ' Nobody reads a timed-out request, so the pool may skip it if it is still queued.
-  if isValid(m.__apiPromisePending)
-    entry = m.__apiPromisePending[event.getNode()]
-    if isValid(entry) then abandonApiRequest(entry.resultNode)
-  end if
-  settleApiPromiseIn(m.__apiPromisePending, event.getNode())
+  timeoutApiPromiseIn(m.__apiPromisePending, event.getNode())
+end sub
+
+' Settles a request that ran out of time, and marks it abandoned first so the pool may
+' skip it if it is still queued (apiPool.bs, "Skipping a request nobody is waiting for").
+'
+' Split out of the handler above, and taking `pending` explicitly, for the reason
+' settleApiPromiseIn does: a bare call from a Rooibos class method does not share the
+' component `m` the handler runs in, so the contract is only testable this way.
+sub timeoutApiPromiseIn(pending as object, requestId as string)
+  if not isValid(pending) then return
+  entry = pending[requestId]
+  if isValid(entry) then abandonApiRequest(entry.resultNode)
+  settleApiPromiseIn(pending, requestId)
 end sub
 
 ' Settles (resolve OR reject) the pending request identified by `requestId`,

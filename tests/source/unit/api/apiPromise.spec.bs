@@ -120,6 +120,22 @@ namespace tests
       m.assertFalse(promise.promiseResult.ok)
     end function
 
+    ' A timed-out request is one nobody will read, so it is also marked abandoned —
+    ' which lets the pool skip it if it is still queued (apiPool.bs, "Skipping a request
+    ' nobody is waiting for") rather than spending a slot on an answer with no reader.
+    @it("marks the request abandoned on timeout, and still rejects the promise")
+    function _()
+      promise = m.registerPending("r7", invalid)
+      resultNode = m.__apiPromisePending["r7"].resultNode
+
+      timeoutApiPromiseIn(m.__apiPromisePending, "r7")
+
+      m.assertTrue(resultNode.abandoned, "the pool may now skip it if it never left the queue")
+      m.assertEqual(promise.promiseState, "rejected")
+      m.assertEqual(promise.promiseResult.reason, "timeout")
+      m.assertFalse(m.__apiPromisePending.doesExist("r7"), "and the entry is settled, not just marked")
+    end function
+
     @it("rejects with a timeout error when no response arrived (result invalid)")
     function _()
       promise = m.registerPending("r4", invalid)

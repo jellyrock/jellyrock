@@ -1,3 +1,4 @@
+import "pkg:/source/api/apiResponse.bs"
 import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/tasks.bs"
@@ -57,13 +58,16 @@ sub abandonApiRequest(resultNode as dynamic)
   if isValid(resultNode) then resultNode.abandoned = true
 end sub
 
-' Called by the coordinator (ApiQueueTask) for each queued entry as a slot frees up.
 ' Skips the entry when its caller is gone and it is safe to skip, completing its
-' result node so the node never looks pending; returns true if it did. Always clears
-' `owner`, so a queued result node does not keep a stopped Task node alive.
+' result node so the node never looks pending; returns true if it did.
+'
+' Called by apiPoolNextDispatch, and ONLY for an entry that waited for a slot — every
+' read here crosses to the render thread, and the coordinator is the serial path every
+' request passes through. Measured on a Stick 4K (2026-09-22, Home load, 96 requests):
+' 7796 us per entry checked, against 1559 us for the slot write beside it.
 '
 ' Reads the request AA the coordinator already holds before touching the node, so a
-' request that can never be skipped costs no extra cross-thread reads.
+' request that can never be skipped costs no cross-thread reads at all.
 '
 ' @param entry - { req: request AA, resultNode: ApiResultNode }
 function settleIfCallerGone(entry as object) as boolean
@@ -71,18 +75,71 @@ function settleIfCallerGone(entry as object) as boolean
   node = entry.resultNode
   if not isValid(node) then return false
   owner = node.owner
-  if isValid(owner) then node.owner = invalid
   if not apiRequestCallerGone(node.abandoned, owner) then return false
+  ' Skipped, so this Task reference is known dead: drop it. A DISPATCHED entry keeps
+  ' its owner — that Task is still waiting for the answer, and clearing it would cost a
+  ' crossing on the path every request takes. The node lets go when it is released,
+  ' which the coordinator's 50-child prune bounds. (Folding the clear into the delivery
+  ' write as setFields({result, owner: invalid}) was measured SLOWER than the plain
+  ' write: 27.4 ms against 10.8 — see ADR 0040.)
+  if isValid(owner) then node.owner = invalid
   node.result = {
     requestId: entry.req.requestId,
     ok: false,
     statusCode: 0,
     json: invalid,
     text: "",
-    error: "abandoned"
+    error: apiResponse.ERROR_ABANDONED
   }
   node.isDone = true
   return true
+end function
+
+' The coordinator's per-slot decision, as one step: take the next queued entry and say
+' what to do with it. Extracted from ApiQueueTask.tryDispatch so tests can drive the
+' rules — a skip that claimed a slot would leave that slot marked busy with nothing
+' running on it, dead for the rest of the session, and the shell is not reachable.
+'
+' Mutates `queue` and `inFlight` exactly as the coordinator needs: the returned entry is
+' off the queue, and a dispatched one is already recorded in its slot.
+'
+' @param queue    - the FIFO of { req, resultNode, waited } entries
+' @param inFlight - one element per pool slot: invalid = free
+' @return an AA { slot, entry } naming the slot to send it to, the same AA with slot -1
+'         for an entry completed as abandoned, or invalid when nothing can move now
+function apiPoolNextDispatch(queue as object, inFlight as object) as dynamic
+  if queue.count() = 0 then return invalid
+
+  freeSlot = -1
+  for i = 0 to inFlight.count() - 1
+    if not isValid(inFlight[i])
+      freeSlot = i
+      exit for
+    end if
+  end for
+
+  if freeSlot = -1
+    ' Every slot is busy, so everything still queued is now WAITING — the only
+    ' population whose caller can go away before it is dispatched. An entry that
+    ' finds a free slot on arrival is sent in the same breath, so checking it costs
+    ' the crossings and can never find anything.
+    for each queued in queue
+      queued.waited = true
+    end for
+    return invalid
+  end if
+
+  entry = queue[0]
+  queue.Delete(0)
+  ' Nested rather than `if entry.waited and settleIfCallerGone(entry)`: the whole point
+  ' is that a request which never waited costs NO cross-thread reads, and that must not
+  ' rest on the evaluation order of `and`.
+  if entry.waited
+    if settleIfCallerGone(entry) then return { slot: -1, entry: entry }
+  end if
+
+  inFlight[freeSlot] = entry
+  return { slot: freeSlot, entry: entry }
 end function
 
 ' Submits a request to the API queue coordinator and blocks the calling Task thread
