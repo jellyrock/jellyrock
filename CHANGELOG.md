@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (skills) Make `/pr` titles name every user-visible change ([#998](https://github.com/jellyrock/jellyrock/pull/998))
 - Fit `ItemDetails` text to the logo's real size ([#996](https://github.com/jellyrock/jellyrock/pull/996))
 - Stop crashing when a server answers a list endpoint with an object ([#993](https://github.com/jellyrock/jellyrock/pull/993))
 - Fetch a focused TV guide program's details once, not twice ([#994](https://github.com/jellyrock/jellyrock/pull/994))
