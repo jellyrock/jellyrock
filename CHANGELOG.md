@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Show the focused movie's logo, not the previous one's, in the `Movies` view ([#997](https://github.com/jellyrock/jellyrock/pull/997))
 - (skills) Make `/pr` titles name every user-visible change ([#998](https://github.com/jellyrock/jellyrock/pull/998))
 - Fit `ItemDetails` text to the logo's real size ([#996](https://github.com/jellyrock/jellyrock/pull/996))
 - Stop crashing when a server answers a list endpoint with an object ([#993](https://github.com/jellyrock/jellyrock/pull/993))
