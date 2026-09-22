@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Play Live TV HLS channels from their own URL again on Jellyfin 12 ([#990](https://github.com/jellyrock/jellyrock/pull/990))
 - Stop copying prebuilt source maps into builds ([#987](https://github.com/jellyrock/jellyrock/pull/987))
 
 ## [2.31.0](https://github.com/jellyrock/jellyrock/compare/v2.30.0...v2.31.0) - 2026-09-21
