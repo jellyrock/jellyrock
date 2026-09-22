@@ -325,12 +325,8 @@ class MoviePresenter extends GridPresenterBase
   sub onLogoLoaded(event as object)
     if not isValid(m.view) or not isCurrentTaskEvent(event, m.view.loadLogoTask) then return
     data = event.getData()
-    if isValid(m.view) and isValid(m.view.loadLogoTask)
-      m.view.loadLogoTask.unobserveField("content")
-      m.view.loadLogoTask.content = []
-    end if
-
-    if not isValid(m.view) then return
+    m.view.loadLogoTask.unobserveField("content")
+    m.view.loadLogoTask.content = []
 
     infoGroup = m.view.top.findNode("presentationInfo")
     if not isValid(infoGroup) then return
@@ -392,11 +388,7 @@ class MoviePresenter extends GridPresenterBase
   end sub
 
   override sub onDestroy()
-    if isValid(m.view) and isValid(m.view.loadLogoTask)
-      m.view.loadLogoTask.control = "stop"
-      m.view.loadLogoTask.unobserveField("content")
-      m.view.loadLogoTask = invalid
-    end if
+    if isValid(m.view) then m.view.loadLogoTask = releaseTask(m.view.loadLogoTask, "content")
     super.onDestroy()
   end sub
 
