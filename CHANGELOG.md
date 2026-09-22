@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Stop crashing when a server answers a list endpoint with an object ([#993](https://github.com/jellyrock/jellyrock/pull/993))
 - Fetch a focused TV guide program's details once, not twice ([#994](https://github.com/jellyrock/jellyrock/pull/994))
 - Play Live TV HLS channels from their own URL again on Jellyfin 12 ([#990](https://github.com/jellyrock/jellyrock/pull/990))
 - Stop copying prebuilt source maps into builds ([#987](https://github.com/jellyrock/jellyrock/pull/987))
