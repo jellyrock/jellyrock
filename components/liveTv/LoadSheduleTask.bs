@@ -13,10 +13,11 @@ end sub
 ' Orchestrator Task: fetches the programs for one block of channels and hands them back
 ' grouped by channel, so the guide can give each channel row its programs in one write.
 '
-' A full load sends minEndDate (programs still airing at the window start or later); an
-' extension sends minStartDate instead (programs starting at or after what the block already
-' holds). The server compares both inclusively, so the one program that can arrive twice is
-' one starting exactly on an extension boundary — the guide drops it (Schedule.applyPrograms).
+' A fetch of a block's whole time window, or of the part before what it holds, sends minEndDate
+' (programs still airing at its start or later); a fetch of the part after sends minStartDate
+' (programs starting at or after what the block holds). The server compares both inclusively,
+' so an extension repeats the programs the block holds at its edge — the guide drops them
+' (Schedule.applyPrograms).
 sub loadSchedule()
   channelIds = m.top.channelIds
   params = {

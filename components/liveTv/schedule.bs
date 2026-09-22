@@ -27,11 +27,12 @@ sub init()
   m.detailsPane.observeField("shouldWatchSelectedChannel", "onWatchChannelSelected")
   m.detailsPane.observeField("shouldRecordSelectedChannel", "onRecordChannelSelected")
   m.detailsPane.observeField("shouldRecordSeriesSelectedChannel", "onRecordSeriesChannelSelected")
-  ' Programs are fetched from guideWindowStart through guideHorizon; scrolling toward the
-  ' horizon pushes it out a day at a time (onGridScrolled).
+  ' Blocks hold programs for a time window around the grid's left edge (guidePrograms.timeWindow),
+  ' which follows the left edge as the user scrolls (onGridScrolled); nothing before
+  ' guideWindowStart is shown.
   m.guideWindowStart = CreateObject("roDateTime").AsSeconds()
   m.scheduleGrid.contentStartTime = m.guideWindowStart - 1800
-  m.guideHorizon = m.guideWindowStart + (24 * 60 * 60)
+  m.guideLeftEdge = m.guideWindowStart
 
   m.textLoading = translate(translationKeys.LabelLoading)
   m.textNoSchedule = translate(translationKeys.LabelNoScheduleInformation)
@@ -317,9 +318,14 @@ sub reconcilePrograms()
 
   focusedRow = guideFocusedRow(rowCount)
   wanted = guidePrograms.wantedBlocks(focusedRow, guideVisibleRows(), rowCount, m.channelsComplete)
+  window = guidePrograms.timeWindow(m.guideLeftEdge, m.guideWindowStart)
   m.guideFailures = guidePrograms.pruneFailures(m.guideFailures, wanted)
   dropPrograms(guidePrograms.evictions(m.guideHeld, wanted, focusedRow, guidePrograms.CAP))
-  updateNoProgramsText(focusedRow, rowCount)
+  ' One trim per call: each is a write per row, so after a long scroll they spread over the next
+  ' few turns instead of stacking into one hitch
+  trims = guidePrograms.trims(m.guideHeld, wanted, window, focusedRow)
+  if trims.count() > 0 then applyTrim(trims[0])
+  updateNoProgramsText(focusedRow, rowCount, window)
 
   ' A fetch for a block the focus has since left is abandoned, not waited out: fetches run one
   ' at a time, so on a slow server it would hold up the block the user is now looking at for
@@ -331,11 +337,11 @@ sub reconcilePrograms()
 
   m.programRetryAt = invalid
   if not isValid(m.LoadScheduleTask)
-    fetch = guidePrograms.nextFetch(wanted, m.guideHeld, m.guideHorizon, m.guideFailures, m.clock.TotalMilliseconds())
+    fetch = guidePrograms.nextFetch(wanted, m.guideHeld, window, m.guideFailures, m.clock.TotalMilliseconds())
     if isValid(fetch)
       startProgramFetch(fetch, rowCount)
     else
-      m.programRetryAt = guidePrograms.nextRetryAt(wanted, m.guideHeld, m.guideHorizon, m.guideFailures)
+      m.programRetryAt = guidePrograms.nextRetryAt(wanted, m.guideHeld, window, m.guideFailures)
     end if
   end if
   scheduleRetry()
@@ -363,14 +369,15 @@ sub startProgramFetch(fetch as object, rowCount as integer)
     ids.push(m.channelIds[row])
   end for
 
-  fields = { channelIds: ids, maxStartDate: isoFromSeconds(m.guideHorizon) }
-  if fetch.extendFrom > 0
-    fields.minStartDate = isoFromSeconds(fetch.extendFrom)
+  ' LATER asks for what starts after the block's `until`; REPLACE and EARLIER for what is still
+  ' airing at `from` or later. Both bounds are inclusive.
+  fields = { channelIds: ids, maxStartDate: isoFromSeconds(fetch.until) }
+  if fetch.kind = GuideFetchKind.LATER
+    fields.minStartDate = isoFromSeconds(fetch.from)
   else
-    fields.minEndDate = isoFromSeconds(m.guideWindowStart)
+    fields.minEndDate = isoFromSeconds(fetch.from)
   end if
 
-  fetch.until = m.guideHorizon
   m.programFetch = fetch
   m.LoadScheduleTask = replaceTask(m.LoadScheduleTask, "LoadScheduleTask", "programs", fields)
   m.LoadScheduleTask.observeField("programs", "onProgramsLoaded")
@@ -399,15 +406,19 @@ sub onProgramsLoaded(event as object)
   reconcilePrograms()
 end sub
 
-' Gives each channel row of `fetch.block` its programs, one write per row. A full load
-' replaces what the row holds; an extension appends, dropping the one program that can arrive
-' twice (it starts exactly on the boundary both fetches include).
+' Gives each channel row of `fetch.block` its programs, one write per row: REPLACE swaps what the
+' row holds for them, LATER appends them and EARLIER inserts them ahead. The server's bounds are
+' inclusive, so an extension repeats the programs the block already holds at its edge; those are
+' dropped by id.
 sub applyPrograms(byChannel as object, fetch as object)
   content = m.scheduleGrid.content
   rowCount = content.getChildCount()
   rows = guidePrograms.blockRows(fetch.block, rowCount)
   key = fetch.block.toStr()
-  isRefresh = fetch.extendFrom = 0 and m.guideHeld.DoesExist(key)
+  state = m.guideHeld[key]
+  kind = fetch.kind
+  ' A block trimmed away while its extension was in flight holds nothing left to extend
+  if not isValid(state) then kind = GuideFetchKind.REPLACE
   focusedRow = guideFocusedRow(rowCount)
 
   for row = rows[0] to rows[1]
@@ -415,18 +426,30 @@ sub applyPrograms(byChannel as object, fetch as object)
     programs = byChannel[m.channelIds[row]]
     if not isValid(programs) then programs = []
     held = channel.getChildCount()
-    if fetch.extendFrom = 0
+    if kind = GuideFetchKind.REPLACE
       if held > 0 then channel.removeChildrenIndex(held, 0)
-    else if held > 0 and programs.count() > 0
-      if channel.getChild(held - 1).id = programs[0].id then programs.shift()
+      if programs.count() > 0 then channel.appendChildren(programs)
+    else if kind = GuideFetchKind.LATER
+      programs = withoutHeld(programs, channel, held - 1, -1, fetch.from)
+      if programs.count() > 0 then channel.appendChildren(programs)
+    else
+      programs = withoutHeld(programs, channel, 0, 1, fetch.until)
+      if programs.count() > 0 then channel.insertChildren(programs, 0)
     end if
-    if programs.count() > 0 then channel.appendChildren(programs)
   end for
 
-  m.guideHeld[key] = fetch.until
+  isRefresh = kind = GuideFetchKind.REPLACE and isValid(state)
+  if kind = GuideFetchKind.REPLACE
+    m.guideHeld[key] = { from: fetch.from, until: fetch.until, stale: false }
+  else if kind = GuideFetchKind.LATER
+    state.until = fetch.until
+  else
+    state.from = fetch.from
+  end if
   m.guideFailures.Delete(key)
-  if isRefresh
-    ' The replaced programs' details and any detail fetch in flight belong to the old nodes
+  if isRefresh or kind = GuideFetchKind.EARLIER
+    ' Cells were replaced, or moved along by the ones inserted ahead: details and any detail
+    ' fetch in flight belong to the old ones
     m.fullyLoadedProgramIds = {}
     m.programDetailsSeq += 1
   end if
@@ -435,6 +458,65 @@ sub applyPrograms(byChannel as object, fetch as object)
   if focusedRow >= rows[0] and focusedRow <= rows[1] and not isValid(m.detailsPane.programDetails)
     onProgramFocused()
   end if
+end sub
+
+' `programs` without those `channel` already holds at the edge an extension overlaps: the held
+' programs from `index`, stepping by `stepBy` (-1 from the end, 1 from the start), while they
+' start at or after (-1) / at or before (1) `boundary`.
+function withoutHeld(programs as object, channel as object, index as integer, stepBy as integer, boundary as integer) as object
+  if programs.count() = 0 then return programs
+  heldIds = {}
+  while index >= 0 and index < channel.getChildCount()
+    child = channel.getChild(index)
+    if stepBy < 0 and child.PlayStart < boundary then exit while
+    if stepBy > 0 and child.PlayStart > boundary then exit while
+    heldIds[child.id] = true
+    index += stepBy
+  end while
+  if heldIds.count() = 0 then return programs
+
+  kept = []
+  for each program in programs
+    if not heldIds.DoesExist(program.id) then kept.push(program)
+  end for
+  return kept
+end function
+
+' Applies one of guidePrograms.trims: drops the block, or cuts it back to what airs in
+' [trim.from, trim.until].
+sub applyTrim(trim as object)
+  if trim.drop
+    dropPrograms([trim.block])
+    return
+  end if
+
+  content = m.scheduleGrid.content
+  rows = guidePrograms.blockRows(trim.block, content.getChildCount())
+  for row = rows[0] to rows[1]
+    channel = content.getChild(row)
+    count = channel.getChildCount()
+    ' Programs that end before trim.from lead the row; those starting after trim.until trail it
+    head = 0
+    while head < count
+      program = channel.getChild(head)
+      if program.PlayStart + program.PlayDuration >= trim.from then exit while
+      head++
+    end while
+    tail = 0
+    while tail < count - head
+      if channel.getChild(count - 1 - tail).PlayStart <= trim.until then exit while
+      tail++
+    end while
+    if tail > 0 then channel.removeChildrenIndex(tail, count - tail)
+    if head > 0 then channel.removeChildrenIndex(head, 0)
+  end for
+
+  state = m.guideHeld[trim.block.toStr()]
+  state.from = trim.from
+  state.until = trim.until
+  ' Cells moved along and programs went: details and any detail fetch in flight belong to them
+  m.fullyLoadedProgramIds = {}
+  m.programDetailsSeq += 1
 end sub
 
 ' Drops the programs of `blocks`, one write per row.
@@ -458,7 +540,7 @@ end sub
 ' "Schedule unavailable" while one is waiting to retry, and "No schedule information" once they
 ' have all loaded — TimeGrid has one text for every such row, so it follows the rows the user
 ' can see.
-sub updateNoProgramsText(focusedRow as integer, rowCount as integer)
+sub updateNoProgramsText(focusedRow as integer, rowCount as integer, window as object)
   visibleRows = guideVisibleRows()
   firstRow = focusedRow - visibleRows
   if firstRow < 0 then firstRow = 0
@@ -466,7 +548,7 @@ sub updateNoProgramsText(focusedRow as integer, rowCount as integer)
   if lastRow >= rowCount then lastRow = rowCount - 1
 
   text = m.textNoSchedule
-  state = guidePrograms.spanState(firstRow, lastRow, m.guideHeld, m.guideFailures, m.guideHorizon)
+  state = guidePrograms.spanState(firstRow, lastRow, m.guideHeld, m.guideFailures, window)
   if state = GuideSpanState.LOADING
     text = m.textLoading
   else if state = GuideSpanState.FAILED
@@ -618,15 +700,16 @@ sub onWatchChannelSelected()
   m.top.watchChannel = m.detailsPane.channel
 end sub
 
-' Keeps the horizon at least 12 hours past the left edge, a day at a time. Only the blocks
-' near the focus fetch the extension now; others fetch it when the focus reaches them.
+' The left edge sets the time window (guidePrograms.timeWindow): the blocks near the focus fetch
+' what they miss of it, and what falls far outside it is trimmed. Blocks farther away catch up
+' when the focus reaches them.
 sub onGridScrolled()
-  extended = false
-  while m.scheduleGrid.leftEdgeTargetTime + (12 * 60 * 60) > m.guideHorizon
-    m.guideHorizon += 24 * 60 * 60
-    extended = true
-  end while
-  if extended then reconcilePrograms()
+  leftEdge = m.scheduleGrid.leftEdgeTargetTime
+  if not isValid(leftEdge) or leftEdge <= 0 then return
+  leftEdge = Int(leftEdge)
+  if leftEdge = m.guideLeftEdge then return
+  m.guideLeftEdge = leftEdge
+  reconcilePrograms()
 end sub
 
 ' Handle user selecting "Record Channel" from Program Details
@@ -672,7 +755,7 @@ sub onRecordOperationDone(event as object)
     ' programs stale, so each is replaced — the ones near the focus now, the rest when the
     ' focus reaches them.
     for each key in m.guideHeld
-      m.guideHeld[key] = 0
+      m.guideHeld[key].stale = true
     end for
     reconcilePrograms()
   else

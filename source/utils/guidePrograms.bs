@@ -4,7 +4,7 @@ import "pkg:/source/utils/viewport.bs"
 
 ' What the rows without programs around the focus should say (guidePrograms.spanState).
 enum GuideSpanState
-  ' Every block there holds programs through the horizon: a row without any has none to show
+  ' Every block there covers the time around the left edge: a row without programs has none
   LOADED = "loaded"
   ' A block there is still to be fetched, or its fetch is in flight
   LOADING = "loading"
@@ -12,18 +12,32 @@ enum GuideSpanState
   FAILED = "failed"
 end enum
 
+' The fetch a block needs to cover the time window (guidePrograms.nextFetch).
+enum GuideFetchKind
+  ' Every program in the window, replacing whatever the block holds
+  REPLACE = "replace"
+  ' The programs starting after what the block holds, up to the window's end
+  LATER = "later"
+  ' The programs airing before what the block holds, back to the window's start
+  EARLIER = "earlier"
+end enum
+
 ' Which program blocks the TV guide (Schedule) should hold, fetch next, and drop.
 '
 ' The guide loads every channel row but programs only near the viewport: every channel's
 ' programs at once do not fit a large lineup on a 512 MB device. Programs are fetched in BLOCKS
 ' of BLOCK_SIZE consecutive channel rows — one request per block — and at most CAP blocks hold
-' programs at once, so program memory is bounded by CAP whatever the lineup size.
+' programs at once. They hold them only for a TIME WINDOW around the grid's left edge
+' (timeWindow), not from the guide's start: a block holding every program up to a horizon that
+' only grows ran a 512 MB device out of memory once the user looked a few days ahead. So program
+' memory is bounded by CAP blocks x the window, whatever the lineup size and the day.
 '
 ' Pure decisions only: the component does the fetching and the node writes. A block's state is
-' the time it holds programs through, in `held` (an AA keyed by the block index as a string):
-'   absent — holds nothing
-'   0      — holds programs that are stale (a refresh is due); the next fetch replaces them
-'   > 0    — holds programs through that time (seconds since the epoch)
+' in `held` (an AA keyed by the block index as a string), absent when it holds nothing, else
+' { from, until, stale }: it holds every program airing in [from, until] (seconds since the
+' epoch) — those ending at or after `from` and starting at or before `until`, as one
+' /LiveTv/Programs query with MinEndDate and MaxStartDate returns them. `stale` marks programs
+' that must be replaced (a series was recorded).
 ' A block whose last fetch failed also has an entry in `failures` (same keys): its backoff state
 ' (source/utils/backoff.bs), so it is not fetched again until its retryAt. Times in `failures`
 ' are on the component's own millisecond clock, not the epoch.
@@ -40,6 +54,43 @@ namespace guidePrograms
   ' Rows kept near either side of the visible rows: one whole block, so the next block is
   ' already loading by the time the user reaches it.
   const BUFFER_ROWS = 25
+
+  ' The time window blocks load programs for: WINDOW_BEFORE before the left edge to WINDOW_AFTER
+  ' after it (seconds).
+  const WINDOW_BEFORE = 21600 ' 6 h
+  const WINDOW_AFTER = 108000 ' 30 h
+
+  ' A block is fetched again only once it covers less than NEED_BEFORE / NEED_AFTER around the
+  ' left edge, so pressing Left or Right does not start a fetch each time.
+  const NEED_BEFORE = 10800 ' 3 h
+  const NEED_AFTER = 43200 ' 12 h
+
+  ' Programs more than this outside the window are trimmed.
+  const TRIM_SLACK = 43200 ' 12 h
+
+  ' The time window blocks should hold programs for, from the grid's left edge.
+  '
+  ' @param leftEdge - the time at the grid's left edge (seconds since the epoch)
+  ' @param guideStart - the earliest time the guide shows programs for
+  ' @return an AA: `from` / `until` to fetch; `needFrom` / `needUntil`, what a block must cover to
+  '   need no fetch; `keepFrom` / `keepUntil`, outside which what a block holds is trimmed
+  function timeWindow(leftEdge as integer, guideStart as integer) as object
+    edge = leftEdge
+    if edge < guideStart then edge = guideStart
+    fromTime = edge - WINDOW_BEFORE
+    if fromTime < guideStart then fromTime = guideStart
+    needFrom = edge - NEED_BEFORE
+    if needFrom < guideStart then needFrom = guideStart
+    untilTime = edge + WINDOW_AFTER
+    return {
+      from: fromTime,
+      until: untilTime,
+      needFrom: needFrom,
+      needUntil: edge + NEED_AFTER,
+      keepFrom: fromTime - TRIM_SLACK,
+      keepUntil: untilTime + TRIM_SLACK
+    }
+  end function
 
   ' The block a row belongs to.
   function blockOf(row as integer) as integer
@@ -98,27 +149,38 @@ namespace guidePrograms
     return (block + 1) * BLOCK_SIZE <= rowCount
   end function
 
-  ' The next fetch to make, or invalid when every wanted block holds programs through
-  ' `horizon` or is waiting to retry. Fetches are made one at a time; call again after each lands.
+  ' The next fetch to make, or invalid when every wanted block covers the window or is waiting
+  ' to retry. Fetches are made one at a time; call again after each lands.
   '
   ' @param wanted - from wantedBlocks
   ' @param held - block states (see the namespace comment)
-  ' @param horizon - the time wanted blocks should hold programs through
+  ' @param window - from timeWindow
   ' @param failures - backoff states of blocks whose last fetch failed
   ' @param nowMs - the clock `failures` is on
-  ' @return an AA with `block` and `extendFrom`: extendFrom is 0 for a full load (replacing
-  '   whatever the block holds), or the time the block already holds programs through, to fetch
-  '   only what starts after it
-  function nextFetch(wanted as object, held as object, horizon as integer, failures as object, nowMs as integer) as dynamic
+  ' @return an AA with `block`, `kind` (a GuideFetchKind) and the `from` / `until` to request
+  function nextFetch(wanted as object, held as object, window as object, failures as object, nowMs as integer) as dynamic
     for each block in wanted
       key = block.toStr()
-      if not isCurrent(key, held, horizon) and not backoff.isWaiting(failures[key], nowMs)
-        if not held.DoesExist(key) then return { block: block, extendFrom: 0 }
-        ' A stale block (0) comes back as a full load too
-        return { block: block, extendFrom: held[key] }
+      if not isCurrent(key, held, window) and not backoff.isWaiting(failures[key], nowMs)
+        return fetchFor(block, held[key], window)
       end if
     end for
     return invalid
+  end function
+
+  ' The fetch that brings a block holding `state` up to the window: only the side it is missing
+  ' when what it holds overlaps the window, else the whole window in place of what it holds.
+  '
+  ' @param block - a block index
+  ' @param state - the block's entry in `held`, or invalid
+  ' @param window - from timeWindow
+  function fetchFor(block as integer, state as dynamic, window as object) as object
+    replace = { block: block, kind: GuideFetchKind.REPLACE, from: window.from, until: window.until }
+    if not isValid(state) or state.stale then return replace
+    if state.until < window.from or state.from > window.until then return replace
+    if state.until < window.needUntil then return { block: block, kind: GuideFetchKind.LATER, from: state.until, until: window.until }
+    if state.from > window.needFrom then return { block: block, kind: GuideFetchKind.EARLIER, from: window.from, until: state.from }
+    return replace
   end function
 
   ' When the earliest wanted block waiting to retry may be fetched, or invalid when none is
@@ -126,15 +188,15 @@ namespace guidePrograms
   '
   ' @param wanted - from wantedBlocks
   ' @param held - block states
-  ' @param horizon - the time wanted blocks should hold programs through
+  ' @param window - from timeWindow
   ' @param failures - backoff states of blocks whose last fetch failed
   ' @return a time on the `failures` clock, or invalid
-  function nextRetryAt(wanted as object, held as object, horizon as integer, failures as object) as dynamic
+  function nextRetryAt(wanted as object, held as object, window as object, failures as object) as dynamic
     earliest = invalid
     for each block in wanted
       key = block.toStr()
       failure = failures[key]
-      if isValid(failure) and not isCurrent(key, held, horizon)
+      if isValid(failure) and not isCurrent(key, held, window)
         if not isValid(earliest) or failure.retryAt < earliest then earliest = failure.retryAt
       end if
     end for
@@ -156,9 +218,56 @@ namespace guidePrograms
     return kept
   end function
 
-  ' Whether `key`'s block holds programs through `horizon`. A stale block (0) never does.
-  function isCurrent(key as string, held as object, horizon as integer) as boolean
-    return held.DoesExist(key) and held[key] >= horizon
+  ' Whether `key`'s block covers enough of the window to need no fetch. A stale block never does.
+  function isCurrent(key as string, held as object, window as object) as boolean
+    state = held[key]
+    if not isValid(state) or state.stale then return false
+    return state.from <= window.needFrom and state.until >= window.needUntil
+  end function
+
+  ' What to cut back so blocks hold programs only near the window, farthest from the focus
+  ' first: a block no longer wanted that holds anything outside [keepFrom, keepUntil] is dropped
+  ' whole (coming back to it loads its own window anyway), as is a wanted one that no longer
+  ' overlaps the window at all; any other wanted one is cut back to the window on the side that
+  ' ran past it. The drops come before the cuts.
+  '
+  ' @param held - block states
+  ' @param wanted - from wantedBlocks
+  ' @param window - from timeWindow
+  ' @param focusedRow - the focused channel row
+  ' @return AAs with `block` and `drop` — true to drop the block, else false with the `from` /
+  '   `until` to keep
+  function trims(held as object, wanted as object, window as object, focusedRow as integer) as object
+    focusBlock = blockOf(focusedRow)
+    drops = []
+    cuts = []
+    for each key in held
+      state = held[key]
+      if state.from < window.keepFrom or state.until > window.keepUntil
+        block = key.toInt()
+        distance = abs(block - focusBlock)
+        if not isWanted(block, wanted) or state.until < window.from or state.from > window.until
+          drops.push({ block: block, distance: distance })
+        else
+          keepFrom = state.from
+          if keepFrom < window.keepFrom then keepFrom = window.from
+          keepUntil = state.until
+          if keepUntil > window.keepUntil then keepUntil = window.until
+          cuts.push({ block: block, distance: distance, from: keepFrom, until: keepUntil })
+        end if
+      end if
+    end for
+    drops.sortBy("distance", "r")
+    cuts.sortBy("distance", "r")
+
+    result = []
+    for each drop in drops
+      result.push({ block: drop.block, drop: true })
+    end for
+    for each cut in cuts
+      result.push({ block: cut.block, drop: false, from: cut.from, until: cut.until })
+    end for
+    return result
   end function
 
   ' Blocks to drop so at most `cap` hold programs: never a wanted one, farthest from the
@@ -204,13 +313,13 @@ namespace guidePrograms
   ' @param lastRow - last row, inclusive
   ' @param held - block states
   ' @param failures - backoff states of blocks whose last fetch failed
-  ' @param horizon - the time blocks should hold programs through
-  function spanState(firstRow as integer, lastRow as integer, held as object, failures as object, horizon as integer) as string
+  ' @param window - from timeWindow
+  function spanState(firstRow as integer, lastRow as integer, held as object, failures as object, window as object) as string
     if firstRow < 0 or lastRow < firstRow then return GuideSpanState.LOADED
     state = GuideSpanState.LOADED
     for block = blockOf(firstRow) to blockOf(lastRow)
       key = block.toStr()
-      if not isCurrent(key, held, horizon)
+      if not isCurrent(key, held, window)
         if failures.DoesExist(key) then return GuideSpanState.FAILED
         state = GuideSpanState.LOADING
       end if
