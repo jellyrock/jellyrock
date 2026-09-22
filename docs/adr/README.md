@@ -50,3 +50,4 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0036](0036-api-pool-width-by-device-class.md) | The API pool width is chosen per device class — 4 on low-memory devices, 6 elsewhere | Accepted | 2026-09-16 |
 | [0037](0037-task-run-replacement.md) | A Task run that can restart gets a new node, and its handler ignores events from nodes it replaced | Accepted | 2026-09-18 |
 | [0038](0038-queue-arrival-starts-fresh.md) | An item the queue arrives at starts fresh, and the queue owns that rule | Accepted | 2026-09-19 |
+| [0039](0039-list-endpoint-shape-in-pool.md) | A bare-array endpoint's body is held to its shape in the pool, declared by its request | Accepted | 2026-09-22 |
