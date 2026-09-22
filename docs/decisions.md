@@ -1687,6 +1687,16 @@ The `ItemDetails` credits row shows "Created by …", then "Directed by …" (th
 
 Ruled out: gating by type (the old "Directed by" on Movie, Episode and `MusicVideo` only), and showing a parent's credits on a Season or Episode (an extra request per open; web doesn't). Re-evaluate if some type's `People` start carrying credits that read wrong on its details screen.
 
+## decision-id: credit-row-kinds-in-people
+
+**date**: 2026-09-22
+**status**: accepted
+**related-files**: `source/utils/people.bs`, `components/ItemDetails.bs`
+
+WHICH credits the details screen's credits row shows, and in WHAT order, is a table in `people.bs` (`creditRowKinds()`) beside the other `PersonKind` tables; `creditRowSpecs()` builds every line from it in ONE pass over `People` and returns render-ready specs, leaving `ItemDetails.displayPeopleCredits()` owning only the nodes — the same split as `castCardSpecs()` / `transformPersonCard()`. The single pass is not cosmetic: `people` is a node ARRAY field, so each read copies the whole array and a scan per kind cost a copy per kind; with `populateInfoGroup()` running twice per open (load, then `rebuildDetailsText()` when the logo box lands) that was 4 copies and 4 walks per details open, now 2 and 2. The table's ORDER is also the overflow policy — `fitInfoRow()` keeps the earlier credit and drops the later one, so a series with a long creator list loses "Directed by", which is intended: creators are the headline credit on the one type carrying both. The dedupe is per kind, so someone credited as both Creator and Director appears on both lines, and a `Name` that is blank or only whitespace is not a credit, so the row never renders a bare "Created by".
+
+Ruled out: a per-kind `creditNames(people, kind)` helper called once per kind (deleted — a copy and a walk per kind, and a second home for `PersonKind` knowledge to drift from), and keeping the kind literals in `ItemDetails.bs`. Parity with `jellyfin-web` is explicitly NOT maintained or verified — show what the server gives us and pick the best-reading order ourselves. The constraint worth re-evaluating: `creditRowKinds()` names `PersonKind` values but sits OUTSIDE `npm run lint:language-coverage`, which parses `personKindTranslationKeys()` and `unlabeledPersonKinds()` by function name — so an upstream rename of `Creator` would silently empty the line, the failure that gate exists to prevent.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

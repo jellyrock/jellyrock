@@ -8,7 +8,7 @@ related-files:
   - scripts/lint/update-translations.cjs
   - scripts/lint/language-coverage.cjs
   - locale/languages.json
-last-reviewed: 2026-09-21
+last-reviewed: 2026-09-22
 ---
 
 # Translations (i18n)
@@ -247,6 +247,14 @@ property, and `npm run lint:language-coverage` checks it: every `PersonKind` val
 [spec fingerprints](spec-fingerprints/) must appear in either `personKindTranslationKeys()` or
 `unlabeledPersonKinds()`, the two must be disjoint, and neither may carry a row for a value no
 supported server sends.
+
+**A second `PersonKind` table in the same file is NOT gated.** `creditRowKinds()` — the details
+screen's credits row, decision [`credit-row-kinds-in-people`](../decisions.md) — names
+`PersonKind` values too, but the gate locates its tables by FUNCTION NAME, so that one is invisible
+to it. Nothing is parsed wrongly (it is an array of AAs, not an AA), but an upstream rename or removal of
+`Creator` would silently empty the "Created by" line with every check green — the same shape as the
+failure below, in the one table the gate does not read. Tracked as an open followup in
+[progress.md](../progress.md).
 
 **This gate replaced a claim that was false.** The section used to argue no lint was needed because
 "a missing entry is a compile error (the key would not exist in `translationKeys`)". It is not. The
