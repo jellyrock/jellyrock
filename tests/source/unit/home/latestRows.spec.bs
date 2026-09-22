@@ -1,3 +1,4 @@
+import "pkg:/source/api/apiResponse.bs"
 import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/home/latestRows.bs"
 
@@ -265,6 +266,50 @@ namespace tests
     @it("matches on the latest_ prefix, not on a section that merely contains it")
     function _()
       m.assertFalse(latestRows.removalIsDeferrable("mylatest_abc", true))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("itemsFromResponse - only an ok response is authoritative")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns the items of a bare-array response")
+    function _()
+      res = { ok: true, json: ParseJson("[{""Id"":""a"",""Type"":""Movie""},{""Id"":""b"",""Type"":""Episode""}]") }
+      items = latestRows.itemsFromResponse(res)
+      m.assertEqual(items.count(), 2)
+      m.assertEqual(items[1].Id, "b")
+    end function
+
+    @it("drops Books")
+    function _()
+      res = { ok: true, json: ParseJson("[{""Id"":""a"",""Type"":""Book""},{""Id"":""b"",""Type"":""Movie""}]") }
+      items = latestRows.itemsFromResponse(res)
+      m.assertEqual(items.count(), 1)
+      m.assertEqual(items[0].Id, "b")
+    end function
+
+    @it("returns an empty list for an empty answer - the row may legitimately be removed")
+    function _()
+      items = latestRows.itemsFromResponse({ ok: true, json: ParseJson("[]") })
+      m.assertEqual(type(items), "roArray")
+      m.assertEqual(items.count(), 0)
+    end function
+
+    @it("treats a not-ok response as failed")
+    function _()
+      m.assertInvalid(latestRows.itemsFromResponse({ ok: false, json: ParseJson("[]") }))
+    end function
+
+    @it("treats a body the pool rejected as failed, not as an empty library")
+    function _()
+      ' An "ok" with an empty list REMOVES the row. A 200 whose body holds no list reaches here
+      ' as not-ok (apiResponse.enforceShape), so it must stay a failure.
+      m.assertInvalid(latestRows.itemsFromResponse({ ok: false, statusCode: 200, json: invalid, error: apiResponse.ERROR_UNEXPECTED_SHAPE }))
+    end function
+
+    @it("treats no answer as failed")
+    function _()
+      m.assertInvalid(latestRows.itemsFromResponse(invalid))
     end function
 
   end class

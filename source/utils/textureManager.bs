@@ -1,4 +1,5 @@
 import "pkg:/source/utils/cellLoad.bs"
+import "pkg:/source/utils/viewport.bs"
 
 ' Texture Manager Utility
 '
@@ -17,7 +18,8 @@ import "pkg:/source/utils/cellLoad.bs"
 '
 ' Vertical range (loadedRowRange):
 '   4-element array: [bufferStart, visibleStart, visibleEnd, bufferEnd]
-'   Buffer rows (±2 from visible) keep ALL items loaded in active state.
+'   Buffer rows (TEXTURE_BUFFER_ROWS either side of visible, via viewport.rowWindow) keep ALL
+'   items loaded in active state.
 '   Visible rows use horizontal buffer for long rows (RowList only).
 '
 ' Horizontal buffer (focusedColumns + textureVisibleWidth + textureItemSpacing):
@@ -45,6 +47,9 @@ import "pkg:/source/utils/cellLoad.bs"
 ' Rows at or below this count use renderTracking only — all items stay loaded
 ' when on screen because they fit comfortably in texture memory.
 const TEXTURE_BUFFER_THRESHOLD = 20
+
+' Rows kept loaded on each side of the visible rows (see viewport.rowWindow).
+const TEXTURE_BUFFER_ROWS = 2
 
 ' Adds texture management fields to a RowList content root node.
 ' Sets initial state to "init" — cells will not unload during layout changes.
@@ -201,26 +206,7 @@ sub updateTextureBufferRange(contentRoot as object, focusedRow as dynamic, focus
   end if
 
   ' --- Vertical range ---
-  visibleStart = focusedRow
-  visibleEnd = focusedRow + numVisibleRows - 1
-  if visibleEnd >= totalRows then visibleEnd = totalRows - 1
-
-  bufferStart = focusedRow - 2
-  if bufferStart < 0 then bufferStart = 0
-
-  bufferEnd = visibleEnd + 2
-  if bufferEnd >= totalRows then bufferEnd = totalRows - 1
-
-  ' Only set loadedRowRange if it actually changed
-  currentRange = contentRoot.loadedRowRange
-  rowRangeChanged = true
-  if isValid(currentRange) and currentRange.count() >= 4 and currentRange[0] = bufferStart and currentRange[1] = visibleStart and currentRange[2] = visibleEnd and currentRange[3] = bufferEnd
-    rowRangeChanged = false
-  end if
-
-  if rowRangeChanged
-    contentRoot.loadedRowRange = [bufferStart, visibleStart, visibleEnd, bufferEnd]
-  end if
+  setLoadedRowRange(contentRoot, viewport.rowWindow(focusedRow, numVisibleRows, totalRows, TEXTURE_BUFFER_ROWS))
 
   ' --- Horizontal: track focused column per row ---
   if contentRoot.hasField("focusedColumns")
@@ -262,27 +248,18 @@ sub updateGridTextureBufferRange(contentRoot as object, focusedIndex as dynamic,
   focusedRow = int(focusedIndex / numColumns)
   totalRows = int((totalItems + numColumns - 1) / numColumns) ' ceiling division
 
-  ' --- Vertical range (same ±2 buffer as RowList) ---
-  visibleStart = focusedRow
-  visibleEnd = focusedRow + numVisibleRows - 1
-  if visibleEnd >= totalRows then visibleEnd = totalRows - 1
+  ' --- Vertical range (same buffer as RowList) ---
+  setLoadedRowRange(contentRoot, viewport.rowWindow(focusedRow, numVisibleRows, totalRows, TEXTURE_BUFFER_ROWS))
+end sub
 
-  bufferStart = focusedRow - 2
-  if bufferStart < 0 then bufferStart = 0
-
-  bufferEnd = visibleEnd + 2
-  if bufferEnd >= totalRows then bufferEnd = totalRows - 1
-
-  ' Only set loadedRowRange if it actually changed
+' Writes `range` to loadedRowRange only when it differs, so cells observing the field are not
+' woken by a focus move that leaves the window where it was.
+sub setLoadedRowRange(contentRoot as object, range as object)
   currentRange = contentRoot.loadedRowRange
-  rowRangeChanged = true
-  if isValid(currentRange) and currentRange.count() >= 4 and currentRange[0] = bufferStart and currentRange[1] = visibleStart and currentRange[2] = visibleEnd and currentRange[3] = bufferEnd
-    rowRangeChanged = false
+  if isValid(currentRange) and currentRange.count() >= 4 and currentRange[0] = range[0] and currentRange[1] = range[1] and currentRange[2] = range[2] and currentRange[3] = range[3]
+    return
   end if
-
-  if rowRangeChanged
-    contentRoot.loadedRowRange = [bufferStart, visibleStart, visibleEnd, bufferEnd]
-  end if
+  contentRoot.loadedRowRange = range
 end sub
 
 ' Activates texture management after initial content load or on onScreenShown.

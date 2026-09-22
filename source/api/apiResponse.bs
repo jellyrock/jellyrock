@@ -1,0 +1,70 @@
+import "pkg:/source/utils/misc.bs"
+
+' Shape checks for parsed response bodies — the one place a caller learns whether a body holds
+' what its endpoint promised, before it iterates or indexes it.
+namespace apiResponse
+
+  ' `req.expect` value for an endpoint that answers with a bare array (ApiClient.listReq).
+  const EXPECT_LIST = "list"
+  ' `res.error` value when a 200's body is not the shape its request expected.
+  const ERROR_UNEXPECTED_SHAPE = "unexpectedShape"
+
+  ' Returns the list a list endpoint answered with, or invalid when the body holds none.
+  '
+  ' BrightScript iterates an AA's KEYS, so a body that is an object instead of an array does not
+  ' fail softly: `for each item in json` hands back key strings, and the first `item.Field` (or a
+  ' `json[0]`) is a runtime error that kills the app.
+  '
+  ' Also accepts the `{ Items: [...] }` query-result wrapper. Stock Jellyfin does not send it for
+  ' bare-array endpoints, but a server has sent exactly that for /Items/Latest in the field, and
+  ' its `Items` is the same list — so reading it shows the user their content where rejecting it
+  ' would leave the row empty on every retry. The same property makes this the reader for a
+  ' query-result endpoint too, when a caller wants its list and nothing else.
+  '
+  ' invalid means "no list", which callers must treat as NO ANSWER, not as an authoritative
+  ' empty list — an empty array is returned as-is and is the only way to say "empty".
+  '
+  ' @param json - a parsed response body (`res.json`), any type
+  ' @return the roArray, or invalid
+  function listFrom(json as dynamic) as dynamic
+    if type(json) = "roArray" then return json
+    if type(json) = "roAssociativeArray" and type(json.Items) = "roArray" then return json.Items
+    return invalid
+  end function
+
+  ' Whether a request declared that its endpoint answers with a bare array (ApiClient.listReq).
+  '
+  ' @param req - a request AA, or invalid
+  ' @return true for a list request
+  function expectsList(req as dynamic) as boolean
+    if type(req) <> "roAssociativeArray" or not isValid(req.expect) then return false
+    return req.expect = apiResponse.EXPECT_LIST
+  end function
+
+  ' Holds a pool response to the shape its request declared. ApiTask runs every response through
+  ' this, so a caller of a list request never sees a body it cannot iterate.
+  '
+  ' For a request built with `expect: "list"`, an ok response leaves with `json` set to the list
+  ' (unwrapped by listFrom), or — when the body holds none — with `ok = false`, `json = invalid`
+  ' and `error = "unexpectedShape"`. `statusCode` stays the server's, so a log line still says
+  ' what came back. Reporting it as not-ok is deliberate: every caller already treats `not ok` as
+  ' "no answer", which is what an unreadable body is. Any other response is returned untouched.
+  '
+  ' @param req - the request AA the response answers
+  ' @param res - the pool response AA { requestId, ok, statusCode, json, text }; modified in place
+  ' @return res
+  function enforceShape(req as object, res as object) as object
+    if not res.ok or not apiResponse.expectsList(req) then return res
+
+    list = apiResponse.listFrom(res.json)
+    if isValid(list)
+      res.json = list
+    else
+      res.ok = false
+      res.json = invalid
+      res.error = apiResponse.ERROR_UNEXPECTED_SHAPE
+    end if
+    return res
+  end function
+
+end namespace

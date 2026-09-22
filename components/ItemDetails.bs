@@ -12,6 +12,7 @@ import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/infoRowFit.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
+import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
@@ -763,8 +764,8 @@ sub onRecordResult()
   m.recordTask.control = "STOP"
   m.recordTask = invalid
 
+  ' Toggle button label and icon color to reflect the new state; a failure leaves them as they were
   if isValid(res) and res.ok
-    ' Toggle button label and icon color to reflect new state
     if isValid(m.pendingRecordButton)
       if m.pendingRecordIsCancel
         m.pendingRecordButton.text = translate(translationKeys.ButtonRecord)
@@ -776,19 +777,9 @@ sub onRecordResult()
         m.pendingRecordButton.iconFocusBackground = m.global.constants.colorError
       end if
     end if
-    if res.action = "record"
-      displayToast(translate(translationKeys.LabelRecordingScheduled), "success")
-    else
-      displayToast(translate(translationKeys.LabelRecordingCancelled), "success")
-    end if
-  else
-    ' Failed — button label stays as-is (no state change)
-    if isValid(res) and res.action = "record"
-      displayToast(translate(translationKeys.ErrorFailedToScheduleRecording), "error")
-    else
-      displayToast(translate(translationKeys.ErrorFailedToCancelRecording), "error")
-    end if
   end if
+  toast = recordResultToast(res)
+  displayToast(toast.text, toast.type)
 
   if isValid(m.pendingRecordButton) then m.pendingRecordButton.isLoading = false
   m.pendingRecordButton = invalid

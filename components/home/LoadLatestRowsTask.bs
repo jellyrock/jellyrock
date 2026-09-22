@@ -1,6 +1,7 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPipeline.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
+import "pkg:/source/home/latestRows.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
@@ -162,12 +163,13 @@ end sub
 ' Transforms one response and emits its row.
 '
 ' `res` is invalid when the request never got an answer — the pool was down, or the run
-' budget expired. An HTTP error (`res.ok = false`) is deliberately folded into the same
-' "failed" status: apiPipeline distinguishes the two, but neither is authoritative about what
-' the library HOLDS, which is the only question this row's contents answer. Only an "ok"
-' carries a list the UI may act on, including an empty one (which legitimately removes the
-' row). HomeRows leaves any existing row alone on "failed" — a populated one keeps its
-' content, an unpopulated one keeps its loading placeholder.
+' budget expired. An HTTP error (`res.ok = false`), and a 200 whose body holds no list, are
+' deliberately folded into the same "failed" status: apiPipeline distinguishes the first two,
+' but none is authoritative about what the library HOLDS, which is the only question this
+' row's contents answer. Only an "ok" carries a list the UI may act on, including an empty one
+' (which legitimately removes the row); the rule itself is latestRows.itemsFromResponse.
+' HomeRows leaves any existing row alone on "failed" — a populated one keeps its content, an
+' unpopulated one keeps its loading placeholder.
 sub emitRow(libId as string, res as dynamic)
   #if perfTiming
     m.emitClock.mark()
@@ -176,13 +178,12 @@ sub emitRow(libId as string, res as dynamic)
   items = []
   status = "failed"
 
-  if isValid(res) and res.ok
+  apiItems = latestRows.itemsFromResponse(res)
+  if isValid(apiItems)
     status = "ok"
-    if isValid(res.json)
-      ' transformBaseItemArray resolves the server version once for the whole batch;
-      ' the per-item call re-reads it (a rendezvous) for every one of the 16 items.
-      items.append(m.transformer.transformBaseItemArray(supportedItems(res.json)))
-    end if
+    ' transformBaseItemArray resolves the server version once for the whole batch;
+    ' the per-item call re-reads it (a rendezvous) for every one of the 16 items.
+    items.append(m.transformer.transformBaseItemArray(apiItems))
   else
     m.log.warn("latest-media row failed; leaving any existing row in place", libId)
   end if
@@ -209,12 +210,3 @@ sub emitRow(libId as string, res as dynamic)
     m.notifyMs += m.emitClock.totalMilliseconds()
   #end if
 end sub
-
-' Drops item types the app can't present — Books (issue #525).
-function supportedItems(apiItems as object) as object
-  kept = []
-  for each item in apiItems
-    if item.Type <> "Book" then kept.push(item)
-  end for
-  return kept
-end function

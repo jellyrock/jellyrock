@@ -76,6 +76,10 @@ const ENDPOINT_SINK_NAMES = new Set(['buildurl', 'apirequest']);
 const PATH_TEMPLATE_NAMES = new Set(['substitute']);
 const METHOD_CALL_GET = new Set(['getjson']);
 const METHOD_CALL_POST = new Set(['postjson']);
+// ApiClient request builders whose FIRST argument is the HTTP method literal. listReq is
+// validatedReq for a bare-array endpoint (it marks the request so the pool checks the body's
+// shape), so it carries the method the same way.
+const METHOD_ARG_BUILDERS = new Set(['validatedreq', 'listreq']);
 
 const OUTPUT_REL = 'docs/architecture/api-usage-manifest.json';
 
@@ -311,7 +315,7 @@ function extractEndpoints(ast) {
       if (METHOD_CALL_GET.has(name)) bucket(node).methods.add('GET');
       if (METHOD_CALL_POST.has(name)) bucket(node).methods.add('POST');
 
-      if (name === 'validatedreq') {
+      if (METHOD_ARG_BUILDERS.has(name)) {
         const m = literalStringValue(node.args?.[0]);
         if (m) bucket(node).methods.add(m.toUpperCase());
         return;
