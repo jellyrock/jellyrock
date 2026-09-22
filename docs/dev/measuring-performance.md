@@ -21,7 +21,7 @@ related-files:
   - source/utils/screenReadiness.bs
   - source/home/homeScreenLoad.bs
   - tests/rta/screens.js
-last-reviewed: 2026-09-16
+last-reviewed: 2026-09-22
 ---
 
 # Measuring performance on device
@@ -42,12 +42,20 @@ two quantities that share a name.
 | *When did this SCREEN become usable, and how does that differ across devices?* | **this doc** — the `screen-load` family, every screen in [`tests/rta/screens.js`](../../tests/rta/screens.js) |
 | *How much work did a screen's CELLS do, and how much of it was waste?* | **this doc** — the [`cell-load` family](#cell-workloads--how-much-work-did-the-cells-do) |
 | *Where did the time go INSIDE one orchestrator — waiting on the network, or working on its own thread?* | [`home-first-paint-performance.md`](home-first-paint-performance.md) — the `home-latest-rows` and `item-grid` families |
+| *What does the API pool's COORDINATOR spend per request, deciding and dispatching?* | [`api.md`](../architecture/api.md#a-request-nobody-is-waiting-for) — the `api-dispatch` family |
 
 The split is the same one [`scripts/measurements.js`](../../scripts/measurements.js) draws
 between its measurement families. `screen-load` says **when** a screen painted and when it
 stopped changing; `cell-load` says **how much** its cells bound and re-requested along the
 way; `home-latest-rows` says **why** one loader took as long as it did. A regression hunt
 usually starts here and ends there.
+
+`api-dispatch` is the one family that is not about a screen at all: the request coordinator
+is a single Task for the whole session, so its window can span a navigation and whoever runs
+it says what the app was doing (`--nav`). It exists because the cost it reports is invisible
+everywhere else — cross-thread work on the serial path every request takes, which no screen
+timing attributes to the pool. [ADR 0040](../adr/0040-pool-skips-abandoned-reads.md) is what
+it was built to settle.
 
 `screen-load` and `cell-load` also differ in WHEN they close, which is why neither could be
 folded into the other. A readiness ledger closes when the screen stops loading; a cell

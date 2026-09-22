@@ -981,11 +981,14 @@ class ApiClient
   function BuildGetLiveTvScheduleRequest(params as object) as dynamic
     url = buildURL("/LiveTv/Programs")
     if not isValid(url) then return invalid
+    ' A POST that only reads, so the pool may skip it once its caller is gone
+    ' (apiPool.bs, "Skipping a request nobody is waiting for").
     return {
       method: "POST",
       url: url,
       body: FormatJson(params),
-      headers: { "Content-Type": "application/json" }
+      headers: { "Content-Type": "application/json" },
+      skippable: true
     }
   end function
 

@@ -7,7 +7,7 @@ related-files:
   - components/JRGroup.bs
   - scripts/bsc-plugins/auto-abandon-promises.cjs
   - scripts/lint/promise-ratchet.cjs
-last-reviewed: 2026-09-21
+last-reviewed: 2026-09-22
 ---
 
 # Async & Promises
@@ -66,7 +66,9 @@ explicitly-passed state AA, with only submit / wait / unobserve in the shell.
 
 A pending promise must never fire a callback into a destroyed node. `abandonApiPromises()` removes
 the observer on every pending request, stops its timer, and clears the registry — after which a late
-pool response settles nothing.
+pool response settles nothing. It also marks each request abandoned, so one still waiting in the pool's queue
+is skipped rather than sent ([api.md](api.md#a-request-nobody-is-waiting-for)); a promise that times
+out does the same.
 
 **The non-obvious part:** SceneGraph component `onDestroy` does **not** chain to a base class.
 `SceneManager` tears down via `group.callFunc("onDestroy")`, which dispatches to the *most-derived*

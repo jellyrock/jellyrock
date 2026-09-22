@@ -10,11 +10,20 @@
   Tier 2 (SubmitSideEffect → SideEffectTask): reused as a bare request-carrier —
     only 'request' is read; 'result'/'isDone' are unused, since side effects are
     fire-and-forget and deliver no response.
+
+  Tier 1 also carries who is still waiting, so the coordinator can skip a queued read
+  nobody will receive (apiPool.bs, "Skipping a request nobody is waiting for"):
+    'owner'     the Task thread blocked on this request, or invalid (render-thread and
+                main-thread callers have none). Cleared when the coordinator SKIPS the
+                request; a dispatched one keeps it until the node itself is released.
+    'abandoned' set by a caller that has stopped listening (a timeout, a teardown).
 -->
 <component name="ApiResultNode" extends="Node">
   <interface>
     <field id="request" type="assocarray" />
     <field id="result" type="assocarray" />
     <field id="isDone" type="boolean" value="false" />
+    <field id="owner" type="node" />
+    <field id="abandoned" type="boolean" value="false" />
   </interface>
 </component>

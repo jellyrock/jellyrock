@@ -1,3 +1,4 @@
+import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/constants/apiPool.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
@@ -13,6 +14,11 @@ end sub
 ' the request AA on its 'request' field. The coordinator reads ALL unprocessed
 ' children when woken up, dispatches each to the first free ApiTask pool slot, then
 ' routes the completed response back to the ApiResultNode so the orchestrator unblocks.
+'
+' A queued READ whose caller has stopped waiting is completed as abandoned instead of
+' being sent, so the slot goes to the next request. The decision — including which
+' entries are worth the cross-thread check at all — is apiPoolNextDispatch in
+' apiPool.bs ("Skipping a request nobody is waiting for"); this file is its shell.
 '
 ' Why children instead of a shared field:
 '   SceneGraph can coalesce port events when multiple Task threads write to the same
@@ -33,6 +39,17 @@ end sub
 '   no TOCTOU race. Child appends from other threads go through SceneGraph rendezvous.
 sub runQueueLoop()
   m.queue = []
+  #if perfTiming
+    ' Per-window dispatch cost (see emitDispatchWindow).
+    m.dispatchClock = CreateObject("roTimespan")
+    m.dispatchEntries = 0
+    m.dispatchSkipped = 0
+    m.dispatchWaited = 0
+    m.dispatchCheckUs = 0
+    m.dispatchSendUs = 0
+    m.deliverUs = 0
+    m.deliverCount = 0
+  #end if
   ' Index of the next unprocessed child node (children accumulate, never re-processed)
   m.processedIndex = 0
 
@@ -129,8 +146,16 @@ sub runQueueLoop()
           if isValid(entry)
             ' Deliver response to the orchestrator's result node.
             ' Write result before done so it is readable when the observer fires.
+            #if perfTiming
+              m.dispatchClock.mark()
+            #end if
             entry.resultNode.result = msg.getData()
             entry.resultNode.isDone = true
+            #if perfTiming
+              m.deliverUs += m.dispatchClock.totalMicroseconds()
+              m.deliverCount++
+              emitDispatchWindow(0)
+            #end if
             m.inFlight[slotIdx] = invalid
           end if
         end if
@@ -178,7 +203,7 @@ sub processNewChildren(pool as object)
     child = m.top.getChild(m.processedIndex)
     m.processedIndex++
     if isValid(child) and isValid(child.request)
-      m.queue.Push({ req: child.request, resultNode: child })
+      m.queue.Push({ req: child.request, resultNode: child, waited: false })
     end if
   end while
   tryDispatch(pool)
@@ -196,20 +221,64 @@ end sub
 ' Dispatch queued requests to free pool slots (FIFO).
 ' Only ever called from this coordinator's task thread — no concurrent access.
 sub tryDispatch(pool as object)
-  while m.queue.Count() > 0
-    freeSlot = -1
-    for i = 0 to m.inFlight.count() - 1
-      if not isValid(m.inFlight[i])
-        freeSlot = i
-        exit for
-      end if
-    end for
-    if freeSlot = -1 then return
+  while true
+    #if perfTiming
+      m.dispatchClock.mark()
+    #end if
+    pick = apiPoolNextDispatch(m.queue, m.inFlight)
+    #if perfTiming
+      m.dispatchCheckUs += m.dispatchClock.totalMicroseconds()
+    #end if
+    if not isValid(pick) then return
 
-    entry = m.queue[0]
-    m.queue.Delete(0)
-    m.inFlight[freeSlot] = entry
+    if pick.slot < 0
+      ' Completed as abandoned instead of sent; the slot it would have taken stays free
+      ' (apiPool.bs, "Skipping a request nobody is waiting for").
+      m.log.info("skipped a queued request whose caller is gone", pick.entry.req.requestId)
+      #if perfTiming
+        m.dispatchSkipped++
+        emitDispatchWindow(1)
+      #end if
+      continue while
+    end if
+
+    #if perfTiming
+      if pick.entry.waited then m.dispatchWaited++
+      m.dispatchClock.mark()
+    #end if
     ' Writing request triggers ApiTask's port observer, starting execution.
-    pool[freeSlot].request = entry.req
+    pool[pick.slot].request = pick.entry.req
+    #if perfTiming
+      m.dispatchSendUs += m.dispatchClock.totalMicroseconds()
+      emitDispatchWindow(1)
+    #end if
   end while
 end sub
+
+#if perfTiming
+  ' One line per DISPATCH_WINDOW entries taken off the queue: what the coordinator
+  ' spent per entry deciding whether to skip it (`check`), handing it to a slot
+  ' (`send`), and delivering answers back (`deliver`, counted per response, so its
+  ' window is the same entries seen from the other end). Read by the `api-dispatch`
+  ' measurement family in scripts/measurements.js.
+  sub emitDispatchWindow(dispatched as integer)
+    DISPATCH_WINDOW = 5
+    m.dispatchEntries += dispatched
+    if m.dispatchEntries < DISPATCH_WINDOW and m.deliverCount < DISPATCH_WINDOW then return
+
+    #if debug
+      buildFlags = " [debug=true perfTiming=true]"
+    #else
+      buildFlags = " [debug=false perfTiming=true]"
+    #end if
+    m.log.info("api-dispatch window entries " + m.dispatchEntries.toStr() + " waited " + m.dispatchWaited.toStr() + " skipped " + m.dispatchSkipped.toStr() + " delivered " + m.deliverCount.toStr() + buildFlags, "check", m.dispatchCheckUs, "send", m.dispatchSendUs, "deliver", m.deliverUs)
+
+    m.dispatchEntries = 0
+    m.dispatchSkipped = 0
+    m.dispatchWaited = 0
+    m.dispatchCheckUs = 0
+    m.dispatchSendUs = 0
+    m.deliverUs = 0
+    m.deliverCount = 0
+  end sub
+#end if

@@ -8,6 +8,9 @@ namespace apiResponse
   const EXPECT_LIST = "list"
   ' `res.error` value when a 200's body is not the shape its request expected.
   const ERROR_UNEXPECTED_SHAPE = "unexpectedShape"
+  ' `res.error` value when the pool completed a queued read without sending it, because
+  ' nobody was waiting for the answer any more (apiPool.settleIfCallerGone).
+  const ERROR_ABANDONED = "abandoned"
 
   ' Returns the list a list endpoint answered with, or invalid when the body holds none.
   '

@@ -164,7 +164,7 @@ function apiPipelineAdvance(pipe as object) as dynamic
     if pipe.expired
       record = apiPipelineDrainOne(pipe)
       if not isValid(record) then return invalid
-      apiPipelineRelease(record)
+      apiPipelineAbandon(record)
       return { entry: record.entry, res: invalid }
     end if
 
@@ -196,7 +196,7 @@ end function
 sub apiPipelineEnd(pipe as dynamic)
   if not isValid(pipe) then return
   for each requestId in pipe.pending
-    apiPipelineRelease(pipe.pending[requestId])
+    apiPipelineAbandon(pipe.pending[requestId])
   end for
   pipe.pending.clear()
   pipe.nextIndex = pipe.entries.count()
@@ -331,6 +331,14 @@ end sub
 sub apiPipelineRelease(record as dynamic)
   if not isValid(record) then return
   if isValid(record.node) then record.node.unobserveField("isDone")
+end sub
+
+' Releases a record whose answer this run will not read (the budget ran out, or the
+' run ended early), and marks its request abandoned so the pool may skip it if it is
+' still queued (apiPool.bs, "Skipping a request nobody is waiting for").
+sub apiPipelineAbandon(record as dynamic)
+  apiPipelineRelease(record)
+  if isValid(record) then abandonApiRequest(record.node)
 end sub
 
 ' Recovers the requestId from an isDone event. submitApiRequest stamps it onto
