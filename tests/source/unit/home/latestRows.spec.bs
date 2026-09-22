@@ -267,6 +267,60 @@ namespace tests
       m.assertFalse(latestRows.removalIsDeferrable("mylatest_abc", true))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("itemsFromResponse - only a list is authoritative")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns the items of a bare-array response")
+    function _()
+      res = { ok: true, json: ParseJson("[{""Id"":""a"",""Type"":""Movie""},{""Id"":""b"",""Type"":""Episode""}]") }
+      items = latestRows.itemsFromResponse(res)
+      m.assertEqual(items.count(), 2)
+      m.assertEqual(items[1].Id, "b")
+    end function
+
+    @it("reads the query-result wrapper instead of crashing on its keys")
+    function _()
+      ' The field crash: this body reached the old Book filter, which iterated the wrapper's
+      ' KEYS and faulted on "StartIndex".Type (&h02).
+      res = { ok: true, json: ParseJson("{""Items"":[{""Id"":""a"",""Type"":""Movie""}],""TotalRecordCount"":1,""StartIndex"":0}") }
+      items = latestRows.itemsFromResponse(res)
+      m.assertEqual(items.count(), 1)
+      m.assertEqual(items[0].Id, "a")
+    end function
+
+    @it("drops Books")
+    function _()
+      res = { ok: true, json: ParseJson("[{""Id"":""a"",""Type"":""Book""},{""Id"":""b"",""Type"":""Movie""}]") }
+      items = latestRows.itemsFromResponse(res)
+      m.assertEqual(items.count(), 1)
+      m.assertEqual(items[0].Id, "b")
+    end function
+
+    @it("returns an empty list for an empty answer - the row may legitimately be removed")
+    function _()
+      items = latestRows.itemsFromResponse({ ok: true, json: ParseJson("[]") })
+      m.assertEqual(type(items), "roArray")
+      m.assertEqual(items.count(), 0)
+    end function
+
+    @it("treats a 200 whose body holds no list as failed, not as an empty library")
+    function _()
+      ' An "ok" with an empty list REMOVES the row, so a body we cannot read must not be one.
+      m.assertInvalid(latestRows.itemsFromResponse({ ok: true, json: ParseJson("{""StartIndex"":0}") }))
+      m.assertInvalid(latestRows.itemsFromResponse({ ok: true, json: invalid }))
+    end function
+
+    @it("treats an HTTP error as failed")
+    function _()
+      m.assertInvalid(latestRows.itemsFromResponse({ ok: false, json: ParseJson("[]") }))
+    end function
+
+    @it("treats no answer as failed")
+    function _()
+      m.assertInvalid(latestRows.itemsFromResponse(invalid))
+    end function
+
   end class
 
 end namespace

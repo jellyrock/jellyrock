@@ -51,5 +51,6 @@ Decision flow:
 ## What NOT to do
 
 - Don't add a new `Get*()` synchronous method on `ApiClient`. Sync exists for the bootstrap path; new endpoints use `Build*Request()`.
+- Don't iterate or index `res.json` from a bare-array endpoint (latest media, sessions, local trailers, special features, cultures) — read it through `apiResponse.listFrom(res.json)` and treat `invalid` as no answer. An object body iterates as its KEYS, and the first `item.Field` or `json[0]` ends the app. See [docs/architecture/api.md](../../docs/architecture/api.md#reading-a-list-endpoints-body--sourceapiapiresponsebs).
 - Don't write requests directly to a pool slot's field — go through `apiQueue` (children-as-vehicle dodge SceneGraph coalescing). See [docs/architecture/api.md](../../docs/architecture/api.md#the-coalescing-problem-why-children-not-fields).
 - Don't change the pool width (`source/constants/apiPool.bs`) without measuring on device — the two values are measured, per device class, and each slot is a thread for the whole session. See [docs/architecture/api.md](../../docs/architecture/api.md#pool-width). Don't restate the width (or a slot/thread count derived from it) in comments or docs elsewhere — it differs per device, so say "one per pool slot" or link that section.

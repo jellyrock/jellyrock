@@ -4,6 +4,7 @@ related-files:
   - source/api/ApiClient.bs
   - source/api/apiPool.bs
   - source/api/apiPipeline.bs
+  - source/api/apiResponse.bs
   - source/constants/apiPool.bs
   - source/api/baseRequest.bs
   - source/api/image.bs
@@ -13,7 +14,7 @@ related-files:
   - components/api/ApiResultNode.xml
   - components/api/SideEffectTask.bs
   - components/home/LoadLatestRowsTask.bs
-last-reviewed: 2026-09-16
+last-reviewed: 2026-09-21
 ---
 
 # API Layer & Task Pool
@@ -366,6 +367,22 @@ Three things worth knowing before you use it:
 A run is also a *budget*, not a promise of coverage: it services roughly `PIPELINE_RUN_MS ÷ per-request-latency × pool width` requests before expiring, so on a large, distant server the tail of a run legitimately comes back undelivered. Design the call site for that, don't tune the constant for it.
 
 Canonical example: `LoadLatestRowsTask` (Home's latest-media rows). Its state machine is split pure-core / I/O-shell for the same reason `apiPromise.bs` is — see [async.md](./async.md).
+
+## Reading a list endpoint's body — `source/api/apiResponse.bs`
+
+Whatever the call pattern, `res.json` is whatever the server sent, parsed. Most endpoints answer with a `{ Items: [...] }` query result, but a few answer with a **bare array** — latest media, sessions, local trailers, special features, cultures. Read those through `apiResponse.listFrom(res.json)`, never by iterating or indexing `res.json` directly:
+
+```brightscript
+items = apiResponse.listFrom(res.json)
+if not isValid(items)
+  ' No list in the body — treat it as no answer, exactly like a failed request.
+end if
+```
+
+**Why a shape check, not trust in the spec:** BrightScript iterates an associative array's *keys*. If one of these endpoints ever answers with an object, `for each item in res.json` yields key strings and the first `item.Type` (or a `res.json[0]`) is a runtime error that ends the app — it cannot fail softly. That happened in the field (a v2.30.0 crash report): a server answered `/Items/Latest` with a query result, and the latest-media task crashed the app while Home was loading.
+
+- **Returns the array**, or the `Items` array out of a `{ Items: [...] }` wrapper — the wrapper is not what stock Jellyfin sends here, but its `Items` is the same list, so reading it shows the user their content rather than leaving the row empty on every retry.
+- **Returns `invalid`** for anything else. That is *no answer*, not an empty list — an empty array comes back as-is and is the only way to say "empty". Callers that remove UI on an empty result must not do so on `invalid` (the same rule as `res = invalid` above).
 
 ## Authentication & request building — `source/api/baseRequest.bs`
 

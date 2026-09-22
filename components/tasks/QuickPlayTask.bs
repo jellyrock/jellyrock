@@ -1,5 +1,6 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/apiResponse.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/episodeQueue.bs"
 import "pkg:/source/utils/misc.bs"
@@ -722,8 +723,8 @@ sub doInstantMix(input as object, items as object)
 end sub
 
 sub doLoadTrailers(input as object, items as object)
-  data = fetchJson(GetApi().BuildGetLocalTrailersRequest(input.id), "qp_trailers")
-  if isValid(data)
-    items.append(data)
+  trailers = apiResponse.listFrom(fetchJson(GetApi().BuildGetLocalTrailersRequest(input.id), "qp_trailers"))
+  if isValid(trailers)
+    items.append(trailers)
   end if
 end sub

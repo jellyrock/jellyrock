@@ -1,0 +1,29 @@
+' Shape checks for parsed response bodies — the one place a caller learns whether a body holds
+' what its endpoint promised, before it iterates or indexes it.
+namespace apiResponse
+
+  ' Returns the list a list endpoint answered with, or invalid when the body holds none.
+  '
+  ' Read every bare-array endpoint's body through this (latest media, sessions, local trailers,
+  ' special features, cultures) — never iterate or index `res.json` directly. BrightScript
+  ' iterates an AA's KEYS, so a body that is an object instead of an array does not fail
+  ' softly: `for each item in json` hands back key strings, and the first `item.Field` (or a
+  ' `json[0]`) is a runtime error that kills the app.
+  '
+  ' Also accepts the `{ Items: [...] }` query-result wrapper. Stock Jellyfin does not send it for
+  ' these endpoints, but a server has sent exactly that for /Items/Latest in the field, and its
+  ' `Items` is the same list — so reading it shows the user their content where rejecting it
+  ' would leave the row empty on every retry.
+  '
+  ' invalid means "no list", which callers must treat as NO ANSWER, not as an authoritative
+  ' empty list — an empty array is returned as-is and is the only way to say "empty".
+  '
+  ' @param json - a parsed response body (`res.json`), any type
+  ' @return the roArray, or invalid
+  function listFrom(json as dynamic) as dynamic
+    if type(json) = "roArray" then return json
+    if type(json) = "roAssociativeArray" and type(json.Items) = "roArray" then return json.Items
+    return invalid
+  end function
+
+end namespace
