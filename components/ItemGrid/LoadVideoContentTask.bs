@@ -516,17 +516,27 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   video.isDirectPlaySupported = m.playbackInfo.MediaSources[0].SupportsDirectPlay
 
   ' Jellyfin 12.0+ declines direct play for every HLS Live TV channel, and its remux loses audio that
-  ' arrives as a separate rendition; play the channel's own URL instead, as before 12.0. A
-  ' forced-transcode retry is exempt, so a stream this device cannot play still reaches the server.
-  ' The device must be able to load that URL itself first: one it cannot reach leaves the Roku buffering
-  ' forever rather than failing, so the fallback to the server would never run.
-  if isLive and not forceTranscoding and shouldDirectPlayUpstreamHls(m.playbackInfo.MediaSources[0], textOrEmpty(getUrl()))
+  ' arrives as a separate rendition; play the channel's own URL instead, as before 12.0, unless the
+  ' server had a reason of its own (getUpstreamHlsBlocker says which). The device must be able to
+  ' load that URL itself first: one it cannot reach leaves the Roku buffering forever rather than
+  ' failing, so the fallback to the server would never run.
+  userPolicy = userSession.policy
+  upstreamBlocker = getUpstreamHlsBlocker(m.playbackInfo.MediaSources[0], {
+    isLive: isLive,
+    forceTranscoding: forceTranscoding,
+    serverUrl: textOrEmpty(getUrl()),
+    forceRemoteSourceTranscoding: isValid(userPolicy) and isBooleanTrue(userPolicy.forceRemoteSourceTranscoding),
+    transcodeReasons: getTranscodeReasons(textOrEmpty(m.playbackInfo.MediaSources[0].TranscodingUrl))
+  })
+  if upstreamBlocker = UpstreamHlsBlocker.NONE
     if upstreamPlaylistAnswers(m.playbackInfo.MediaSources[0].Path)
       video.isDirectPlaySupported = true
       m.log.info("Server declined direct play of a live HLS channel; playing its upstream URL", "itemId", video.id)
     else
       m.log.info("Server declined direct play of a live HLS channel and this device cannot load its upstream URL; using the server's stream", "itemId", video.id)
     end if
+  else if isLive
+    m.log.info("Live channel keeps the server's answer", "blocker", upstreamBlocker, "itemId", video.id)
   end if
 
   ' For h264/hevc video, Roku spec states that it supports specfic encoding levels
@@ -619,7 +629,7 @@ end sub
 
 ' upstreamPlaylistAnswers: Whether THIS device can load a live channel's upstream HLS playlist.
 '
-' A preflight for playing a channel from its own URL (shouldDirectPlayUpstreamHls). The server
+' A preflight for playing a channel from its own URL (getUpstreamHlsBlocker). The server
 ' reaching a URL says nothing about the Roku reaching it, and a Roku handed one it cannot reach does
 ' not error: an unroutable host or an unresolvable name leaves it buffering indefinitely, so the
 ' direct-play fallback never runs. A GET within timeouts.LIVE_UPSTREAM_PREFLIGHT_MS that returns an

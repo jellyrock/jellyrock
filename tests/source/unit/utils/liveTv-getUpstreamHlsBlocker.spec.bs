@@ -1,0 +1,249 @@
+import "pkg:/source/utils/liveTv.bs"
+
+namespace tests
+
+  ' getUpstreamHlsBlocker — play a Live TV channel's own HLS URL when the server declines to.
+  '
+  ' Jellyfin 12.0 (jellyfin/jellyfin#17768) stopped offering direct play for any M3U channel whose
+  ' URL is an HLS manifest, because the server was proxying the upstream master playlist through
+  ' /Videos/{id}/, where its relative variant URIs 404. JellyRock never took that path: it plays the
+  ' absolute upstream Path, where relative URIs resolve against the origin. What the server gives
+  ' instead is a remux, which drops a separately-delivered audio rendition.
+  '
+  ' The server's "no" does not say whether 12.0 is its only reason, so the override stands in for
+  ' the answer it would have given before 12.0. Each case asserts WHICH blocker applies, so a case
+  ' cannot pass because a different check happened to turn its source away.
+  @suite("liveTv - getUpstreamHlsBlocker()")
+  class GetUpstreamHlsBlockerTests extends tests.BaseTestSuite
+
+    ' A 12.x response for an M3U HLS channel on a CDN: the server declined direct play, but the
+    ' upstream URL is still in Path.
+    private function declined(overrides = {} as object) as object
+      source = {
+        SupportsDirectPlay: false,
+        Protocol: "Http",
+        Container: "hls",
+        Path: "https://cdn.example.com/stitch/hls/channel/abc/master.m3u8?jwt=token",
+        IsRemote: true,
+        RequiresLooping: false
+      }
+      source.append(overrides)
+      return source
+    end function
+
+    ' A first load of a live channel, as LoadVideoContentTask builds it, where the server had no
+    ' reason of its own to decline.
+    private function request(overrides = {} as object) as object
+      built = {
+        isLive: true,
+        forceTranscoding: false,
+        serverUrl: "https://jellyfin.example.com",
+        forceRemoteSourceTranscoding: false,
+        transcodeReasons: []
+      }
+      built.append(overrides)
+      return built
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("an upstream HLS channel the server declined to direct play")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("plays it directly")
+    function _()
+      m.assertEqual(getUpstreamHlsBlocker(m.declined(), m.request()), UpstreamHlsBlocker.NONE)
+    end function
+
+    @it("plays a LAN source directly, even on the Jellyfin host, when the port differs")
+    ' A tuner such as tvheadend on the same box as Jellyfin: same host, different port.
+    function _()
+      source = m.declined({ Path: "http://192.168.1.3:8190/separate/master.m3u8", IsRemote: false })
+      m.assertEqual(getUpstreamHlsBlocker(source, m.request({ serverUrl: "http://192.168.1.3:8096" })), UpstreamHlsBlocker.NONE)
+    end function
+
+    @it("reads the extension from the URL path, so a query string cannot hide it")
+    function _()
+      source = m.declined({ Container: "", Path: "https://cdn.example.com/live/index.m3u8?token=abc.ts" })
+      m.assertEqual(getUpstreamHlsBlocker(source, m.request()), UpstreamHlsBlocker.NONE)
+    end function
+
+    @it("accepts a plain .m3u playlist path when the container is not reported")
+    function _()
+      source = m.declined({ Container: "", Path: "http://iptv.example.com/channel/5.m3u" })
+      m.assertEqual(getUpstreamHlsBlocker(source, m.request()), UpstreamHlsBlocker.NONE)
+    end function
+
+    @it("accepts ffmpeg's older 'applehttp' name for HLS")
+    function _()
+      source = m.declined({ Container: "applehttp", Path: "https://cdn.example.com/live/stream" })
+      m.assertEqual(getUpstreamHlsBlocker(source, m.request()), UpstreamHlsBlocker.NONE)
+    end function
+
+    @it("ignores case in the protocol, container and URL")
+    function _()
+      source = m.declined({ Protocol: "HTTP", Container: "HLS", Path: "HTTPS://CDN.EXAMPLE.COM/LIVE/MASTER.M3U8" })
+      m.assertEqual(getUpstreamHlsBlocker(source, m.request()), UpstreamHlsBlocker.NONE)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("what this load asked for")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves a load that is not a live channel alone")
+    ' The 12.0 rule declines any HLS source, a .strm movie included, but only a live channel has
+    ' the transcode retry that backs a failed direct play.
+    function _()
+      m.assertEqual(getUpstreamHlsBlocker(m.declined(), m.request({ isLive: false })), UpstreamHlsBlocker.NOT_LIVE)
+    end function
+
+    @it("never overrides the retry that forces a transcode")
+    ' The fallback after a failed direct play. Overriding it would send the device back to the
+    ' stream it just failed on, and the retry would repeat forever.
+    function _()
+      m.assertEqual(getUpstreamHlsBlocker(m.declined(), m.request({ forceTranscoding: true })), UpstreamHlsBlocker.FORCED_TRANSCODE)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("what the server already allows, or never declined")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves a channel the server will direct play alone")
+    ' Every 10.11 server: nothing to override.
+    function _()
+      m.assertEqual(getUpstreamHlsBlocker(m.declined({ SupportsDirectPlay: true }), m.request()), UpstreamHlsBlocker.NOT_DECLINED)
+    end function
+
+    @it("does nothing when the server did not say either way")
+    function _()
+      source = m.declined()
+      source.Delete("SupportsDirectPlay")
+      m.assertEqual(getUpstreamHlsBlocker(source, m.request()), UpstreamHlsBlocker.NOT_DECLINED)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the server's reasons that predate 12.0")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps a channel whose tuner auto-loops it on the server, which does the looping")
+    function _()
+      m.assertEqual(getUpstreamHlsBlocker(m.declined({ RequiresLooping: true }), m.request()), UpstreamHlsBlocker.AUTO_LOOP)
+    end function
+
+    @it("honors the user's policy to force transcoding of remote sources")
+    function _()
+      m.assertEqual(getUpstreamHlsBlocker(m.declined(), m.request({ forceRemoteSourceTranscoding: true })), UpstreamHlsBlocker.REMOTE_SOURCE_POLICY)
+    end function
+
+    @it("applies that policy only to a remote source, as the server does")
+    function _()
+      source = m.declined({ Path: "http://192.168.1.3:8190/separate/master.m3u8", IsRemote: false })
+      m.assertEqual(getUpstreamHlsBlocker(source, m.request({ forceRemoteSourceTranscoding: true })), UpstreamHlsBlocker.NONE)
+    end function
+
+    @it("honors the server's internet streaming bitrate limit")
+    function _()
+      overLimit = m.request({ transcodeReasons: ["ContainerBitrateExceedsLimit"] })
+      m.assertEqual(getUpstreamHlsBlocker(m.declined(), overLimit), UpstreamHlsBlocker.BITRATE_LIMIT)
+    end function
+
+    @it("honors the bitrate limit alongside other reasons")
+    function _()
+      overLimit = m.request({ transcodeReasons: ["VideoCodecNotSupported", "ContainerBitrateExceedsLimit"] })
+      m.assertEqual(getUpstreamHlsBlocker(m.declined(), overLimit), UpstreamHlsBlocker.BITRATE_LIMIT)
+    end function
+
+    @it("ignores codec reasons, which describe the server's own transcode rather than this device")
+    ' For a manifest, 12.x skips its direct-play check and reports only whether its transcode can
+    ' copy the stream: an h264 channel 10.11 direct plays carries VideoCodecNotSupported on 12.1
+    ' when the transcode target is HEVC.
+    function _()
+      codecOnly = m.request({ transcodeReasons: ["VideoCodecNotSupported", "AudioCodecNotSupported", "ContainerNotSupported"] })
+      m.assertEqual(getUpstreamHlsBlocker(m.declined(), codecOnly), UpstreamHlsBlocker.NONE)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("streams that go through Jellyfin itself")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("declines a URL on the server's own host and port")
+    ' That is the relay jellyfin/jellyfin#17768 was fixing, where relative URIs really do break.
+    function _()
+      source = m.declined({ Path: "https://jellyfin.example.com/videos/abc/master.m3u8" })
+      m.assertEqual(getUpstreamHlsBlocker(source, m.request()), UpstreamHlsBlocker.SERVER_HOST)
+    end function
+
+    @it("treats an absent port as the scheme's default when comparing with the server")
+    function _()
+      source = m.declined({ Path: "https://jellyfin.example.com:443/videos/abc/master.m3u8" })
+      m.assertEqual(getUpstreamHlsBlocker(source, m.request()), UpstreamHlsBlocker.SERVER_HOST)
+    end function
+
+    @it("declines the LiveStreamFiles relay whatever host it names")
+    ' 12.x rewrites relay paths to the request's host, which need not match the saved server URL.
+    function _()
+      source = m.declined({ Path: "https://other.example.com/LiveTv/LiveStreamFiles/abc/stream.m3u8" })
+      m.assertEqual(getUpstreamHlsBlocker(source, m.request()), UpstreamHlsBlocker.SERVER_RELAY)
+    end function
+
+    @it("declines a loopback host")
+    function _()
+      m.assertEqual(getUpstreamHlsBlocker(m.declined({ Path: "http://localhost:8096/x/master.m3u8" }), m.request()), UpstreamHlsBlocker.LOOPBACK)
+      m.assertEqual(getUpstreamHlsBlocker(m.declined({ Path: "http://127.0.0.1:8096/x/master.m3u8" }), m.request()), UpstreamHlsBlocker.LOOPBACK)
+      m.assertEqual(getUpstreamHlsBlocker(m.declined({ Path: "http://[::1]:8096/x/master.m3u8" }), m.request()), UpstreamHlsBlocker.LOOPBACK)
+    end function
+
+    @it("declines when the server URL cannot be read, rather than guessing")
+    function _()
+      m.assertEqual(getUpstreamHlsBlocker(m.declined(), m.request({ serverUrl: "" })), UpstreamHlsBlocker.NO_SERVER_URL)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("sources that are not an absolute HLS URL")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("declines a relative path")
+    function _()
+      m.assertEqual(getUpstreamHlsBlocker(m.declined({ Path: "/LiveTv/abc/master.m3u8" }), m.request()), UpstreamHlsBlocker.NOT_HTTP_URL)
+    end function
+
+    @it("declines an empty or missing path")
+    function _()
+      m.assertEqual(getUpstreamHlsBlocker(m.declined({ Path: "" }), m.request()), UpstreamHlsBlocker.NOT_HTTP_URL)
+      source = m.declined()
+      source.Delete("Path")
+      m.assertEqual(getUpstreamHlsBlocker(source, m.request()), UpstreamHlsBlocker.NOT_HTTP_URL)
+    end function
+
+    @it("declines a non-HTTP scheme")
+    function _()
+      m.assertEqual(getUpstreamHlsBlocker(m.declined({ Path: "rtsp://camera.example.com/live.m3u8" }), m.request()), UpstreamHlsBlocker.NOT_HTTP_URL)
+    end function
+
+    @it("declines a file source, even one whose Path looks like an upstream URL")
+    ' The loader builds a Jellyfin stream URL for a File source and never plays its Path.
+    function _()
+      m.assertEqual(getUpstreamHlsBlocker(m.declined({ Protocol: "File" }), m.request()), UpstreamHlsBlocker.NOT_HTTP_PROTOCOL)
+    end function
+
+    @it("declines MPEG-TS")
+    ' Not a manifest, so 12.x never declined it for that reason; the server's answer stands.
+    function _()
+      source = m.declined({ Container: "ts", Path: "http://tuner.example.com/auto/v5.1" })
+      m.assertEqual(getUpstreamHlsBlocker(source, m.request()), UpstreamHlsBlocker.NOT_HLS)
+    end function
+
+    @it("declines DASH")
+    ' Out of scope: the live path hard-codes StreamFormat=hls and there is no DASH source to test.
+    function _()
+      source = m.declined({ Container: "dash", Path: "https://cdn.example.com/live/manifest.mpd" })
+      m.assertEqual(getUpstreamHlsBlocker(source, m.request()), UpstreamHlsBlocker.NOT_HLS)
+    end function
+
+    @it("declines an invalid media source")
+    function _()
+      m.assertEqual(getUpstreamHlsBlocker(invalid, m.request()), UpstreamHlsBlocker.NO_SOURCE)
+    end function
+
+  end class
+
+end namespace
