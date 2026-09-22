@@ -931,6 +931,7 @@ sub startTileLoader(tileIndexes as dynamic)
   m.tileLoader.videoID = m.config.videoID
   m.tileLoader.width = m.config.width
   m.tileLoader.tileIndexes = tileIndexes
+  ' bsc-disable-next-line no-same-node-relaunch every caller waits for the last run: requests queue while m.taskRunning, and onTaskStateChanged starts the queue only once state = "stop"
   launchTask(m.tileLoader)
 end sub
 

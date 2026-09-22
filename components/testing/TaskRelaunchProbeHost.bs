@@ -6,6 +6,7 @@ sub init()
 end sub
 
 sub launch()
+  ' bsc-disable-next-line no-same-node-relaunch this probe relaunches the same node on purpose, to measure what Roku does
   launchTask(m.top.task)
 end sub
 
@@ -51,7 +52,7 @@ end sub
 
 ' What a site with a persistent Task node does on every run after the first: write the input
 ' field and launch, with no STOP — whether or not the previous run has finished
-' (`m.LoadNextUpTask.params = …` then launch).
+' (`MoviePresenter.loadLogo` did this with `itemId` before it moved to replaceTask).
 sub writeAndLaunch(newSeq as integer)
   task = m.top.task
   task.seq = newSeq
