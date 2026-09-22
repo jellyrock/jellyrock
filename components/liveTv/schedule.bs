@@ -47,9 +47,10 @@ sub init()
   m.top.lastFocus = m.scheduleGrid
 
   ' Generation guard for the program-details render-thread promise. Bumped whenever the
-  ' grid is rebuilt (filter/search reset), programs are replaced, or a newer fetch fires, so
-  ' a slow earlier result can't ReplaceChild a cell the user scrolled past / a grid that's
-  ' been torn down. Mirrors ItemDetails.checkTrailerAvailability's m.trailerCheckSeq.
+  ' focus moves, the grid is rebuilt (filter/search reset), programs are replaced, or a newer
+  ' fetch fires, so a slow earlier result can't fill the details pane for a program the user
+  ' has left, or ReplaceChild a cell the user scrolled past / a grid that's been torn down.
+  ' Mirrors ItemDetails.checkTrailerAvailability's m.trailerCheckSeq.
   m.programDetailsSeq = 0
 
   ' Program state, including m.fullyLoadedProgramIds: the program IDs whose full details
@@ -390,6 +391,10 @@ sub onChannelFocused()
 end sub
 
 sub onProgramFocused()
+  ' A details fetch still in flight is for the program the focus just left. Without this, one
+  ' that lands while the focus is on a row without programs — or on a program whose details
+  ' are already loaded, which starts no fetch of its own — fills the pane with the old program.
+  m.programDetailsSeq += 1
   m.top.watchChannel = invalid
 
   ' Make sure we have channels (i.e. filter set to favorite yet there are none)
