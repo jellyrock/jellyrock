@@ -335,6 +335,14 @@ class ApiClient
     return m.listReq("GET", buildURL(Substitute("/users/{0}/items/{1}/localtrailers", userId, itemId), {}))
   end function
 
+  ' Build a request AA for GetItemImageInfos: every image the item has, with each one's
+  ' original Width and Height. The same path on every supported server (10.7.0 onward).
+  ' @param itemId - The item ID
+  ' @returns Request AA: { method, url, expect } or invalid
+  function BuildGetItemImageInfosRequest(itemId as string) as dynamic
+    return m.listReq("GET", buildURL(Substitute("/Items/{0}/Images", itemId), {}))
+  end function
+
   ' Build a request AA for GetSpecialFeatures, for use with fetchRes() or fetchJson().
   ' Mirrors GetSpecialFeatures(): version-aware endpoint.
   ' @param itemId - The item ID

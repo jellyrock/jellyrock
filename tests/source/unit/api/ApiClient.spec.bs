@@ -881,6 +881,7 @@ namespace tests
       reqs = {
         latestMedia: m.apiClient.BuildGetLatestMediaRequest({}),
         localTrailers: m.apiClient.BuildGetLocalTrailersRequest(m.testItemId),
+        itemImageInfos: m.apiClient.BuildGetItemImageInfosRequest(m.testItemId),
         specialFeatures: m.apiClient.BuildGetSpecialFeaturesRequest(m.testItemId),
         sessions: m.apiClient.BuildGetSessionsRequest({ deviceId: "d" }),
         remoteSubtitles: m.apiClient.BuildSearchRemoteSubtitlesRequest(m.testItemId, "en"),

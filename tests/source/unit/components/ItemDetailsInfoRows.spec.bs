@@ -1,0 +1,281 @@
+namespace tests
+
+  ' The details screen's text block: which row each item lands on, and the fit that keeps
+  ' the title, the rows and the description clear of the logo. The arithmetic itself is
+  ' covered by infoRowFit.spec.bs and logoLayout.spec.bs; this pins that the screen feeds
+  ' it and applies its answer.
+  '
+  ' The spec package carries no images, so every item's placeholder logo fails to load.
+  ' That arrives asynchronously, so each test waits for it (show()) and asserts the settled
+  ' screen: no logo, every line running from x = 96 to the right edge at 1824.
+  @suite("ItemDetails - info rows")
+  class ItemDetailsInfoRowsTests extends tests.BaseTestSuite
+
+    private itemDetails as object
+
+    private budget = 1728
+
+    ' Load an item and wait for its logo to settle (the failure handler clears the uri).
+    private sub show(item as object)
+      m.itemDetails.itemContent = item
+      logo = m.itemDetails.findNode("itemLogo")
+      for attempt = 1 to 150
+        if logo.uri = "" then return
+        sleep(20)
+      end for
+      m.fail("the logo never settled")
+    end sub
+
+    ' Text long enough to overflow any line on this screen.
+    private function overlong(text as string) as string
+      return text + " " + text + " " + text + " " + text
+    end function
+
+    private function makeMovie() as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "movie-001"
+      item.type = "Movie"
+      item.name = "Office Space"
+      item.productionYear = 1999
+      item.genres = ["Comedy", "Crime"]
+      item.people = [{ Id: "d1", Name: "Mike Judge", Type: "Director" }]
+      return item
+    end function
+
+    private function makeEpisode() as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "episode-001"
+      item.type = "Episode"
+      item.name = "Pilot"
+      item.seriesName = "Silicon Valley"
+      item.parentIndexNumber = 1
+      item.indexNumber = 1
+      return item
+    end function
+
+    private function directorsNamed(count as integer) as object
+      people = []
+      for i = 1 to count
+        people.push({ Id: "d" + i.toStr(), Name: "Director Number " + i.toStr(), Type: "Director" })
+      end for
+      return people
+    end function
+
+    ' Where a row ends, summed from its children the way the LayoutGroup lays them out.
+    ' A child with an explicit width renders AT that width; otherwise at its text's.
+    private function rowRight(group as object) as integer
+      right = 0
+      spacing = int(group.itemSpacings[0])
+      for i = 0 to group.getChildCount() - 1
+        child = group.getChild(i)
+        width = int(child.boundingRect().width)
+        if child.width > 0 then width = int(child.width)
+        if i > 0 then right = right + spacing
+        right = right + width
+      end for
+      return right
+    end function
+
+    protected override sub setup()
+      super.setup()
+
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+    end sub
+
+    protected override function beforeEach()
+      super.beforeEach()
+      m.itemDetails = CreateObject("roSGNode", "ItemDetails")
+    end function
+
+    protected override function afterEach()
+      m.itemDetails = invalid
+      super.afterEach()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the credits row")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("puts Directed by on the credits row, not beside the genres")
+    function _()
+      m.show(m.makeMovie())
+
+      credits = m.itemDetails.findNode("creditsGroup")
+      details = m.itemDetails.findNode("detailsGroup")
+      m.assertEqual(credits.getChildCount(), 1)
+      m.assertEqual(credits.getChild(0).id, "director")
+      m.assertEqual(details.getChildCount(), 1)
+      m.assertEqual(details.getChild(0).id, "genre")
+    end function
+
+    @it("leaves the credits row empty for an item with no credits")
+    function _()
+      item = m.makeMovie()
+      item.people = []
+      m.show(item)
+
+      m.assertEqual(m.itemDetails.findNode("creditsGroup").getChildCount(), 0)
+    end function
+
+    @it("moves an episode's director off the code and series row")
+    function _()
+      item = m.makeEpisode()
+      item.people = [{ Id: "d1", Name: "Mike Judge", Type: "Director" }]
+      m.show(item)
+
+      details = m.itemDetails.findNode("detailsGroup")
+      m.assertEqual(details.getChildCount(), 3)
+      m.assertEqual(details.getChild(0).id, "episodeCode")
+      m.assertEqual(details.getChild(2).id, "seriesName")
+      m.assertEqual(m.itemDetails.findNode("creditsGroup").getChild(0).id, "director")
+    end function
+
+    @it("empties the credits row when the screen is reused for an item without credits")
+    function _()
+      m.show(m.makeMovie())
+      item = m.makeMovie()
+      item.id = "movie-002"
+      item.people = []
+      m.show(item)
+
+      m.assertEqual(m.itemDetails.findNode("creditsGroup").getChildCount(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("fitting clear of the logo")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves a row that fits at its natural width")
+    function _()
+      m.show(m.makeMovie())
+
+      director = m.itemDetails.findNode("director")
+      m.assertEqual(int(director.width), 0)
+    end function
+
+    @it("ellipsizes a credit list too long for its line at the line's end")
+    function _()
+      item = m.makeMovie()
+      item.people = m.directorsNamed(12)
+      m.show(item)
+
+      director = m.itemDetails.findNode("director")
+      m.assertEqual(int(director.width), m.budget)
+      ' Whole-word ellipsizing on a Label that doesn't wrap renders a single word too
+      ' wide for the space as a bare "..." (#798), so a cut must be by character.
+      m.assertFalse(director.ellipsizeOnBoundary)
+    end function
+
+    @it("cuts row 2 at the line's end and keeps its first item whole")
+    function _()
+      item = m.makeEpisode()
+      item.seriesName = m.overlong("A Series Name Too Long To Fit Beside Its Episode Code")
+      m.show(item)
+
+      details = m.itemDetails.findNode("detailsGroup")
+      m.assertEqual(int(details.getChild(0).width), 0, "episode code keeps its natural width")
+      m.assertTrue(details.getChild(2).width > 0, "series name is narrowed")
+      m.assertEqual(m.rowRight(details), m.budget)
+    end function
+
+    @it("drops the items after the one that crosses the budget")
+    function _()
+      item = m.makeMovie()
+      item.type = "MusicVideo"
+      item.genres = [m.overlong("A Genre Name Long Enough To Take The Row"), "And Another"]
+      item.artists = ["An Artist Who Will Not Fit"]
+      m.show(item)
+
+      details = m.itemDetails.findNode("detailsGroup")
+      m.assertInvalid(details.findNode("artists"))
+      m.assertTrue(m.rowRight(details) <= m.budget)
+    end function
+
+    @it("keeps a long title to one line within its line's width")
+    function _()
+      m.show(m.makeMovie())
+      shortHeight = int(m.itemDetails.findNode("videoTitle").boundingRect().height)
+
+      item = m.makeMovie()
+      item.id = "movie-002"
+      item.name = m.overlong("What Happens at the National Propane Gas Convention in Memphis")
+      m.show(item)
+
+      title = m.itemDetails.findNode("videoTitle")
+      m.assertEqual(int(title.width), m.budget)
+      m.assertFalse(title.wrap)
+      m.assertFalse(title.ellipsizeOnBoundary, "whole-word ellipsizing shows a bare ... for one over-wide word (#798)")
+      m.assertEqual(int(title.boundingRect().height), shortHeight, "a long title is no taller than a short one")
+    end function
+
+    @it("cuts row 1 at the line's end on a channel whose program name is long")
+    function _()
+      program = CreateObject("roSGNode", "JellyfinBaseItem")
+      program.name = m.overlong("A Program Name Long Enough To Push The Broadcast Times Off Row One")
+      program.startDate = "2026-09-22T20:00:00.0000000Z"
+      program.endDate = "2026-09-22T21:00:00.0000000Z"
+      program.PlayDuration = 3600
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "channel-001"
+      item.type = "TvChannel"
+      item.name = "Channel Five"
+      item.channelNumber = "5"
+      item.currentProgram = program
+      m.show(item)
+
+      info = m.itemDetails.findNode("infoGroup")
+      m.assertEqual(info.getChild(0).id, "channelNumber")
+      m.assertEqual(int(info.getChild(0).width), 0, "the channel number keeps its natural width")
+      m.assertEqual(info.getChild(2).id, "currentProgramName")
+      m.assertTrue(info.getChild(2).width > 0, "the program name is narrowed")
+      m.assertInvalid(info.findNode("broadcastTime"), "what follows the cut is dropped")
+      m.assertEqual(m.rowRight(info), m.budget)
+    end function
+
+    @it("drops the rating chips that follow a cut on row 1 rather than narrowing them")
+    function _()
+      showRatings = m.global.user.settings.uiMoviesShowRatings
+      m.global.user.settings.uiMoviesShowRatings = true
+      item = m.makeMovie()
+      item.officialRating = m.overlong("An Official Rating Long Enough That It Alone Crosses Row One")
+      item.communityRating = 7.5
+      item.criticRating = 91
+      m.show(item)
+      m.global.user.settings.uiMoviesShowRatings = showRatings
+
+      info = m.itemDetails.findNode("infoGroup")
+      m.assertTrue(m.itemDetails.findNode("officialRating").width > 0, "the rating text is narrowed")
+      m.assertInvalid(info.findNode("communityRating"))
+      m.assertInvalid(info.findNode("criticRating"))
+      m.assertEqual(m.rowRight(info), m.budget)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("holding the text for the logo")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows the title, rows and description once the logo has settled")
+    function _()
+      m.show(m.makeMovie())
+
+      m.assertEqual(m.itemDetails.findNode("itemInfoRows").opacity, 1.0)
+      m.assertEqual(m.itemDetails.findNode("itemDescription").opacity, 1.0)
+      m.assertEqual(m.itemDetails.findNode("buttons").opacity, 1.0)
+    end function
+
+    @it("keeps the description's focus border inside the bound the other lines stop at")
+    function _()
+      item = m.makeMovie()
+      item.overview = "A description long enough to wrap onto a second line, so its width matters."
+      m.show(item)
+
+      ' The border is drawn 12px outside the text (focusableOverview.FOCUS_OUTSET).
+      m.assertEqual(m.itemDetails.findNode("itemDescription").width, m.budget - 12)
+    end function
+
+  end class
+
+end namespace
