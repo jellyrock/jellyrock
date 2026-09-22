@@ -1605,6 +1605,16 @@ The server's "no" does not say which rule declined, so the override keeps the se
 
 The override is gated by a device preflight (`upstreamPlaylistAnswers()`): direct play only on HTTP 200 with an `#EXTM3U` body within `timeouts.LIVE_UPSTREAM_PREFLIGHT_MS`, `gzip` decoded because the player decodes it too. Anything else stays on the server's stream. Cost accepted: one playlist GET before each live start (57–129 ms measured on a Roku Ultra, 2026-09-21), up to 3 s added when the upstream is unreachable. Known limit, accepted: a playlist that answers while its segments do not. Re-evaluate if the server restores direct play for these channels or says why it declined.
 
+## decision-id: extras-rows-discovery-last
+
+**date**: 2026-09-21
+**status**: accepted
+**related-files**: source/extras/extrasRows.bs
+
+Item details put the rows about the item itself first and the rows that lead away from it last, in the same order on every type that has them: Collections, then More Like This (`extrasRows.appendDiscovery`). The Movie plan moved Special Features up to satisfy it: Chapters, Additional Parts, Cast & Crew, Special Features, Collections, More Like This. That is jellyfin-web 12.1's relative order for those four rows. Considered and ruled out (user pick, #926): inserting Collections above More Like This with nothing moved, which left Special Features below both discovery rows, and a larger reorder putting Cast & Crew first.
+
+The Collections row (Jellyfin 12.0+, `extrasRows.supportsItemCollections`) is keyed on the item itself, even for an episode, unlike More Like This. The server lists only the collections an item was added to directly, so asking about the series would show collections the episode is not in; jellyfin-web behaves the same way. Audio, Photo, Program and Person never plan the row, because jellyfin-web cannot add those types to a collection (`supportsAddingToCollection`), and asking would cost a request per open for a row that is always empty. Re-evaluate if the server starts returning inherited membership, or if web adds one of those types.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
