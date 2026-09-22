@@ -10,6 +10,28 @@ import "pkg:/source/utils/misc.bs"
 ' the component and the rules under test. Same move as source/remotecontrol/remoteCommand.bs.
 namespace latestRows
 
+  ' The raw items one latest-media response lets the row show, or invalid when the row must be
+  ' treated as "failed".
+  '
+  ' Only an ok response is authoritative. No answer and a not-ok response return invalid — none
+  ' of them says what the library holds, and an "ok" with an empty list REMOVES the row
+  ' (HomeRows' populateRowFromData). Not-ok includes a 200 whose body holds no list: the request
+  ' is a list request (ApiClient.listReq), so the pool reports that body as not-ok and an ok
+  ' one always carries an roArray (apiResponse.enforceShape). Books are dropped: the app can't
+  ' present them (issue #525).
+  '
+  ' @param res - a pool response AA { ok, json, ... }, or invalid when the request never answered
+  ' @return an roArray of BaseItemDto AAs (possibly empty), or invalid
+  function itemsFromResponse(res as dynamic) as dynamic
+    if not isValid(res) or not res.ok then return invalid
+
+    kept = []
+    for each item in res.json
+      if item.Type <> "Book" then kept.push(item)
+    end for
+    return kept
+  end function
+
   ' Walks LoadLatestRowsTask's result children from `startIndex` and returns the ones the UI
   ' should populate, plus the new cursor. One wake can cover several results — wake events
   ' coalesce, appended children don't — so the caller always drains to the end.

@@ -236,25 +236,17 @@ end function
 
 ' Transforms one pipeline response and emits its row.
 '
-' `res` is invalid when the request never got an answer; an HTTP error (`res.ok = false`) is
-' folded into the same "failed" status, because neither says what the item HAS. Only an "ok"
-' carries a list the UI may act on, including an empty one.
+' `res` is invalid when the request never got an answer; an HTTP error (`res.ok = false`) and a
+' 200 whose body holds no list are folded into the same "failed" status, because none says what
+' the item HAS. Only an "ok" carries a list the UI may act on, including an empty one; the rule
+' itself is extrasRows.itemsFromResponse.
 sub emitResponse(row as object, res as dynamic)
-  if not isValid(res) or not res.ok
+  apiItems = extrasRows.itemsFromResponse(res)
+  if not isValid(apiItems)
     m.log.warn("extras row failed; leaving any existing row in place", row.kind)
     emitRow(row, "failed", [], "")
     return
   end if
-
-  apiItems = invalid
-  json = res.json
-  if row.kind = "specialFeatures"
-    ' The one endpoint here that answers with a bare array rather than { Items }.
-    apiItems = json
-  else if isValid(json)
-    apiItems = json.Items
-  end if
-  if type(apiItems) <> "roArray" then apiItems = []
 
   ' The digest is taken over the response body exactly as the server sent it: it identifies the
   ' row's content without comparing item nodes on the render thread (see extrasRows.digestOf).

@@ -1,0 +1,100 @@
+import "pkg:/source/api/apiResponse.bs"
+
+namespace tests
+
+  ' Contract tests for apiResponse.enforceShape — the pool's hold on a list request's body.
+  ' Every pooled response passes through it (ApiTask.executeRequest), so a list request's caller
+  ' never sees a body it cannot iterate: an ok response carries an roArray, and anything else
+  ' arrives as not-ok.
+  @suite("apiResponse - enforceShape pool contract")
+  class ApiResponseEnforceShapeTests extends tests.BaseTestSuite
+
+    private function listReq() as object
+      return { method: "GET", url: "http://jellyfin.test/Items/Latest", expect: apiResponse.EXPECT_LIST }
+    end function
+
+    private function okRes(body as string) as object
+      return { requestId: "r", ok: true, statusCode: 200, json: ParseJson(body), text: body }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("expectsList")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true only for a request marked as a list request")
+    function _()
+      m.assertTrue(apiResponse.expectsList(m.listReq()))
+      m.assertFalse(apiResponse.expectsList({ method: "GET", url: "u" }))
+      m.assertFalse(apiResponse.expectsList({ method: "GET", url: "u", expect: "other" }))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a list request's ok body")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("passes a bare array through as ok")
+    function _()
+      res = apiResponse.enforceShape(m.listReq(), m.okRes("[{""Id"":""a""}]"))
+      m.assertTrue(res.ok)
+      m.assertEqual(type(res.json), "roArray")
+      m.assertEqual(res.json[0].Id, "a")
+      m.assertInvalid(res.error)
+    end function
+
+    @it("unwraps the query-result wrapper a server sent for /Items/Latest")
+    function _()
+      ' The field crash: this body reached a caller that iterated its KEYS and faulted on
+      ' "StartIndex".Type (&h02). The caller now sees the list inside it.
+      res = apiResponse.enforceShape(m.listReq(), m.okRes("{""Items"":[{""Id"":""a""}],""TotalRecordCount"":1,""StartIndex"":0}"))
+      m.assertTrue(res.ok)
+      m.assertEqual(type(res.json), "roArray")
+      m.assertEqual(res.json.count(), 1)
+      m.assertEqual(res.json[0].Id, "a")
+    end function
+
+    @it("keeps an empty list ok - empty is an answer")
+    function _()
+      res = apiResponse.enforceShape(m.listReq(), m.okRes("[]"))
+      m.assertTrue(res.ok)
+      m.assertEqual(res.json.count(), 0)
+    end function
+
+    @it("reports a body with no list as not-ok, keeping the server's status code")
+    function _()
+      res = apiResponse.enforceShape(m.listReq(), m.okRes("{""TotalRecordCount"":0,""StartIndex"":0}"))
+      m.assertFalse(res.ok)
+      m.assertInvalid(res.json)
+      m.assertEqual(res.error, apiResponse.ERROR_UNEXPECTED_SHAPE)
+      m.assertEqual(res.statusCode, 200)
+    end function
+
+    @it("reports an empty or unparseable body as not-ok")
+    function _()
+      res = apiResponse.enforceShape(m.listReq(), { requestId: "r", ok: true, statusCode: 200, json: invalid, text: "" })
+      m.assertFalse(res.ok)
+      m.assertEqual(res.error, apiResponse.ERROR_UNEXPECTED_SHAPE)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("responses it leaves alone")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves an HTTP error untouched")
+    function _()
+      res = apiResponse.enforceShape(m.listReq(), { requestId: "r", ok: false, statusCode: 404, json: invalid, text: "" })
+      m.assertFalse(res.ok)
+      m.assertEqual(res.statusCode, 404)
+      m.assertInvalid(res.error)
+    end function
+
+    @it("leaves a request that declared no shape untouched")
+    function _()
+      res = apiResponse.enforceShape({ method: "GET", url: "u" }, m.okRes("{""Items"":[],""TotalRecordCount"":0}"))
+      m.assertTrue(res.ok)
+      m.assertEqual(type(res.json), "roAssociativeArray")
+      m.assertInvalid(res.error)
+    end function
+
+  end class
+
+end namespace

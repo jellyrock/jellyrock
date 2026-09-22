@@ -1,0 +1,78 @@
+import "pkg:/source/api/apiResponse.bs"
+
+namespace tests
+
+  ' Contract tests for apiResponse.listFrom — the shape gate every bare-array endpoint's body
+  ' goes through before a caller iterates or indexes it.
+  '
+  ' The object case is the one that matters: iterating an AA yields its KEYS, so an object body
+  ' that got past this gate crashed the app on its first `item.Field` or `json[0]`.
+  @suite("apiResponse - listFrom shape gate")
+  class ApiResponseListFromTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("returns the list")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("passes a bare array through unchanged")
+    function _()
+      json = ParseJson("[{""Id"":""a""},{""Id"":""b""}]")
+      list = apiResponse.listFrom(json)
+      m.assertEqual(type(list), "roArray")
+      m.assertEqual(list.count(), 2)
+      m.assertEqual(list[0].Id, "a")
+    end function
+
+    @it("returns an empty array as-is - empty is an answer, not a failure")
+    function _()
+      list = apiResponse.listFrom(ParseJson("[]"))
+      m.assertEqual(type(list), "roArray")
+      m.assertEqual(list.count(), 0)
+    end function
+
+    @it("takes Items out of the query-result wrapper a server sent for /Items/Latest")
+    function _()
+      json = ParseJson("{""Items"":[{""Id"":""a""}],""TotalRecordCount"":1,""StartIndex"":0}")
+      list = apiResponse.listFrom(json)
+      m.assertEqual(type(list), "roArray")
+      m.assertEqual(list.count(), 1)
+      m.assertEqual(list[0].Id, "a")
+    end function
+
+    @it("returns an empty Items list from the wrapper as-is")
+    function _()
+      json = ParseJson("{""Items"":[],""TotalRecordCount"":0,""StartIndex"":0}")
+      list = apiResponse.listFrom(json)
+      m.assertEqual(type(list), "roArray")
+      m.assertEqual(list.count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("returns invalid when the body holds no list")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("rejects an object with no Items")
+    function _()
+      m.assertInvalid(apiResponse.listFrom(ParseJson("{""TotalRecordCount"":0,""StartIndex"":0}")))
+    end function
+
+    @it("rejects an object whose Items is not a list")
+    function _()
+      m.assertInvalid(apiResponse.listFrom(ParseJson("{""Items"":{""Id"":""a""}}")))
+    end function
+
+    @it("rejects an unparseable or empty body")
+    function _()
+      m.assertInvalid(apiResponse.listFrom(invalid))
+    end function
+
+    @it("rejects a scalar body")
+    function _()
+      m.assertInvalid(apiResponse.listFrom("oops"))
+      m.assertInvalid(apiResponse.listFrom(42))
+      m.assertInvalid(apiResponse.listFrom(true))
+    end function
+
+  end class
+
+end namespace
