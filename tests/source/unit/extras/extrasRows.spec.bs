@@ -199,22 +199,22 @@ namespace tests
       m.assertEqual(m.kindsOf(extrasRows.plan("MusicAlbum", { id: "al1", albumArtists: [{ Name: "no id" }] }, "12.0.0")), ["albumSongs", "collections", "likeThis"])
     end function
 
-    @it("Audio: album tracks (current first) then more like this")
+    @it("Audio: album tracks (current first), collections, then more like this")
     function _()
       plan = extrasRows.plan("Audio", { id: "t3", albumId: "al1", albumName: "Blue" }, "12.0.0")
       tracks = m.findRow(plan, "albumTracks")
 
-      m.assertEqual(m.kindsOf(plan), ["albumTracks", "likeThis"])
-      m.assertEqual(m.shapesOf(plan), ["SQUARE", "SQUARE"])
+      m.assertEqual(m.kindsOf(plan), ["albumTracks", "collections", "likeThis"])
+      m.assertEqual(m.shapesOf(plan), ["SQUARE", "PORTRAIT", "SQUARE"])
       m.assertEqual(tracks.itemId, "al1")
       m.assertEqual(tracks.currentId, "t3")
       m.assertEqual(tracks.titleKey, translationKeys.MessageMoreFrom1)
       m.assertEqual(tracks.titleArgs, ["Blue"])
     end function
 
-    @it("Audio: without an album there is only more like this; without an album name the tracks row is Album Tracks")
+    @it("Audio: without an album there is no tracks row; without an album name the tracks row is Album Tracks")
     function _()
-      m.assertEqual(m.kindsOf(extrasRows.plan("Audio", { id: "t3", albumId: "" }, "12.0.0")), ["likeThis"])
+      m.assertEqual(m.kindsOf(extrasRows.plan("Audio", { id: "t3", albumId: "" }, "12.0.0")), ["collections", "likeThis"])
       tracks = m.findRow(extrasRows.plan("Audio", { id: "t3", albumId: "al1", albumName: "" }, "12.0.0"), "albumTracks")
       m.assertEqual(tracks.titleKey, translationKeys.LabelAlbumTracks)
     end function
@@ -227,12 +227,12 @@ namespace tests
       m.assertEqual(m.shapesOf(plan), ["PORTRAIT", "PORTRAIT", "SQUARE"])
     end function
 
-    @it("Photo: a WIDE more like this only")
+    @it("Photo: collections, then a WIDE more like this")
     function _()
       plan = extrasRows.plan("Photo", { id: "ph" }, "12.0.0")
 
-      m.assertEqual(m.kindsOf(plan), ["likeThis"])
-      m.assertEqual(m.shapesOf(plan), ["WIDE"])
+      m.assertEqual(m.kindsOf(plan), ["collections", "likeThis"])
+      m.assertEqual(m.shapesOf(plan), ["PORTRAIT", "WIDE"])
     end function
 
     @it("PhotoAlbum: WIDE photos, collections, then WIDE more like this")
@@ -259,10 +259,10 @@ namespace tests
       plan = extrasRows.plan("Program", { id: "pr1", channelId: "ch1" }, "12.0.0")
       programs = m.findRow(plan, "channelPrograms")
 
-      m.assertEqual(m.kindsOf(plan), ["channelPrograms", "likeThis"])
+      m.assertEqual(m.kindsOf(plan), ["channelPrograms", "collections", "likeThis"])
       m.assertEqual(programs.itemId, "ch1")
       m.assertEqual(programs.titleKey, translationKeys.LabelMoreOnThisChannel)
-      m.assertEqual(m.kindsOf(extrasRows.plan("Program", { id: "pr1", channelId: "" }, "12.0.0")), ["likeThis"])
+      m.assertEqual(m.kindsOf(extrasRows.plan("Program", { id: "pr1", channelId: "" }, "12.0.0")), ["collections", "likeThis"])
     end function
 
     @it("Person: movies, episodes, series")
@@ -317,14 +317,17 @@ namespace tests
       m.assertEqual(m.kindsOf(extrasRows.plan("Movie", item, serverVersion)), ["chapters", "additionalParts", "cast", "specialFeatures", "likeThis"])
     end function
 
-    @it("is never planned for a type web cannot add to a collection, even on 12.0")
-    @params("Audio")
-    @params("Photo")
-    @params("Program")
-    @params("Person")
-    function _(itemType)
-      item = { id: "i1", albumId: "al1", channelId: "ch1" }
-      m.assertInvalid(m.findRow(extrasRows.plan(itemType, item, "12.0.0"), "collections"))
+    @it("is planned for every type but Person on 12.0 — the server accepts any item into a collection")
+    function _()
+      item = { id: "i1", seriesId: "s1", seasonId: "sn1", albumId: "al1", channelId: "ch1", albumArtists: [{ Id: "ar1" }] }
+      for each itemType in ["Movie", "Video", "Recording", "Series", "Season", "Episode", "MusicVideo", "BoxSet", "MusicArtist", "MusicAlbum", "Playlist", "PhotoAlbum", "TvChannel", "Audio", "Photo", "Program"]
+        m.assertNotInvalid(m.findRow(extrasRows.plan(itemType, item, "12.0.0"), "collections"), itemType + " did not plan a Collections row")
+      end for
+    end function
+
+    @it("is never planned for a Person — any row on screen there means the person has media to shuffle")
+    function _()
+      m.assertInvalid(m.findRow(extrasRows.plan("Person", { id: "pe1" }, "12.0.0"), "collections"))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

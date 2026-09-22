@@ -37,9 +37,11 @@ namespace extrasRows
   ' Rows about the item itself come first; the rows that lead AWAY from it — Collections, then
   ' More Like This — come last on every type that has them (appendDiscovery).
   '
-  ' Audio, Photo and Program never plan a Collections row: jellyfin-web cannot add those types
-  ' to a collection (its supportsAddingToCollection), so asking would cost a request per open
-  ' for a row that is always empty.
+  ' Every type plans a Collections row except Person. The server accepts any item into a
+  ' collection, so none is ruled out by type; the row simply stays off screen when the answer
+  ' is empty. Person's rows are the person's own media instead: ExtrasRowList.finishRunIfResolved
+  ' reads "any row on screen" as personHasMedia, which shows the Shuffle button, so a
+  ' Collections row there would offer to shuffle a person with nothing to play.
   '
   ' @param itemType - the item's type, e.g. "Movie"
   ' @param item - the item node or AA
@@ -57,34 +59,34 @@ namespace extrasRows
       return rows
     end if
 
-    hasCollections = extrasRows.supportsItemCollections(serverVersion)
+    canListCollections = extrasRows.supportsItemCollections(serverVersion)
 
     if itemType = "Series"
       rows.push(planRow("seasons", "PORTRAIT", translationKeys.LabelSeasons, itemId))
-      appendCastAndDiscovery(rows, itemType, item, hasCollections)
+      appendCastAndDiscovery(rows, itemType, item, canListCollections)
     else if itemType = "Season"
       row = planRow("episodes", "WIDE", translationKeys.LabelEpisodes, item.seriesId ?? "")
       row.seasonId = itemId
       rows.push(row)
-      appendCastAndDiscovery(rows, itemType, item, hasCollections)
+      appendCastAndDiscovery(rows, itemType, item, canListCollections)
     else if itemType = "Episode"
       rows.push(planRow("chapters", "WIDE", translationKeys.LabelChapters, itemId))
       if isValidAndNotEmpty(item.seasonId)
         rows.push(seasonEpisodesRow(item))
       end if
-      appendCastAndDiscovery(rows, itemType, item, hasCollections)
+      appendCastAndDiscovery(rows, itemType, item, canListCollections)
     else if itemType = "MusicVideo"
-      appendCastAndDiscovery(rows, itemType, item, hasCollections)
+      appendCastAndDiscovery(rows, itemType, item, canListCollections)
     else if itemType = "BoxSet"
       rows.push(planRow("boxSetItems", "PORTRAIT", translationKeys.LabelMovies, itemId))
-      appendCastAndDiscovery(rows, itemType, item, hasCollections)
+      appendCastAndDiscovery(rows, itemType, item, canListCollections)
     else if itemType = "MusicArtist"
       rows.push(planRow("artistAlbums", "SQUARE", translationKeys.LabelAlbums, itemId))
       rows.push(planRow("artistAppearsOn", "SQUARE", translationKeys.LabelAppearsOn, itemId))
       rows.push(planRow("artistSongs", "SQUARE", translationKeys.LabelSongs, itemId))
       ' Similar artists stand in for More Like This here, so the discovery tail is assembled by
       ' hand rather than through appendDiscovery.
-      if hasCollections then rows.push(collectionsRow(item))
+      if canListCollections then rows.push(collectionsRow(item))
       rows.push(planRow("artistSimilar", "SQUARE", translationKeys.LabelMoreLikeThis, itemId))
     else if itemType = "MusicAlbum"
       rows.push(planRow("albumSongs", "SQUARE", translationKeys.LabelSongs, itemId))
@@ -94,36 +96,36 @@ namespace extrasRows
         row.excludeId = itemId
         rows.push(row)
       end if
-      appendDiscovery(rows, itemType, item, hasCollections)
+      appendDiscovery(rows, itemType, item, canListCollections)
     else if itemType = "Audio"
       if isValidAndNotEmpty(item.albumId)
         rows.push(albumTracksRow(item))
       end if
-      rows.push(likeThisRow(itemType, item))
+      appendDiscovery(rows, itemType, item, canListCollections)
     else if itemType = "Playlist"
       ' PORTRAIT until the items are known — finishRow makes an all-audio playlist SQUARE.
       rows.push(planRow("playlistItems", "PORTRAIT", translationKeys.LabelPlaylistItems, itemId))
-      appendDiscovery(rows, itemType, item, hasCollections)
+      appendDiscovery(rows, itemType, item, canListCollections)
     else if itemType = "Photo"
-      rows.push(likeThisRow(itemType, item))
+      appendDiscovery(rows, itemType, item, canListCollections)
     else if itemType = "PhotoAlbum"
       rows.push(planRow("photoAlbumItems", "WIDE", translationKeys.LabelPhotos, itemId))
-      appendDiscovery(rows, itemType, item, hasCollections)
+      appendDiscovery(rows, itemType, item, canListCollections)
     else if itemType = "TvChannel"
       rows.push(planRow("channelPrograms", "SQUARE", translationKeys.LabelUpNext, itemId))
-      appendDiscovery(rows, itemType, item, hasCollections)
+      appendDiscovery(rows, itemType, item, canListCollections)
     else if itemType = "Program"
       if isValidAndNotEmpty(item.channelId)
         rows.push(planRow("channelPrograms", "SQUARE", translationKeys.LabelMoreOnThisChannel, item.channelId))
       end if
-      rows.push(likeThisRow(itemType, item))
+      appendDiscovery(rows, itemType, item, canListCollections)
     else
       ' Movie, Video, Recording — and any type not named above, as the chain always did.
       rows.push(planRow("chapters", "WIDE", translationKeys.LabelChapters, itemId))
       rows.push(planRow("additionalParts", "PORTRAIT", translationKeys.LabelAdditionalParts, itemId))
       rows.push(planRow("cast", "PORTRAIT", translationKeys.LabelCastCrew, itemId))
       rows.push(planRow("specialFeatures", "WIDE", translationKeys.LabelSpecialFeatures, itemId))
-      appendDiscovery(rows, itemType, item, hasCollections)
+      appendDiscovery(rows, itemType, item, canListCollections)
     end if
 
     return rows
@@ -361,14 +363,14 @@ namespace extrasRows
 
   ' Cast, then the discovery tail — how every video-library type ends except those on the Movie
   ' plan, which put Special Features between the two.
-  sub appendCastAndDiscovery(rows as object, itemType as string, item as object, hasCollections as boolean)
+  sub appendCastAndDiscovery(rows as object, itemType as string, item as object, canListCollections as boolean)
     rows.push(planRow("cast", "PORTRAIT", translationKeys.LabelCastCrew, item.id ?? ""))
-    appendDiscovery(rows, itemType, item, hasCollections)
+    appendDiscovery(rows, itemType, item, canListCollections)
   end sub
 
   ' Collections, then More Like This — the rows that lead away from the item.
-  sub appendDiscovery(rows as object, itemType as string, item as object, hasCollections as boolean)
-    if hasCollections then rows.push(collectionsRow(item))
+  sub appendDiscovery(rows as object, itemType as string, item as object, canListCollections as boolean)
+    if canListCollections then rows.push(collectionsRow(item))
     rows.push(likeThisRow(itemType, item))
   end sub
 
