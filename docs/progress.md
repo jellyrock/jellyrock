@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-22 — feat: Show which collections an item is in on its details page
 - 2026-09-22 — fix: Play Live TV HLS channels from their own URL again on Jellyfin 12
 - 2026-09-21 — fix: Stop copying prebuilt source maps into builds
 - 2026-09-21 — ci: Make the device test run account for every test it counts
