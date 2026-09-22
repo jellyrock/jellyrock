@@ -31,9 +31,10 @@ related-files:
   - source/utils/quickplay.bs
   - source/utils/nodeHelpers.bs
   - source/utils/streamSelection.bs
+  - source/utils/liveTv.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-09-20
+last-reviewed: 2026-09-21
 ---
 
 # Video & Audio Playback
@@ -855,7 +856,21 @@ Special case: **Dolby Vision (DoVi)**. JellyRock has dedicated DoVi handling bec
 - If that produces a `buffer:loop:` source error mid-playback, the player retries with `shouldBypassDoviPreservation = true` (the `isRetrying` flag prevents `PlayerHostView.onPlayerStateChange` from advancing/exiting during this in-flight retry).
 - The retry typically succeeds with direct play (since the device supports DoVi natively, just not the way Jellyfin transcoded it).
 
-Live TV channels always use the HLS transcode wrapper.
+**Live TV** follows the server's answer, with two live-only rules:
+
+- **Direct play of a live channel is always backed by a transcode retry** (`applyLiveDirectPlayFallback`). The server cannot probe a live stream ahead of time, so its "yes" is a guess; a failure before the first frame reloads with `EnableDirectPlay=false`.
+- **From Jellyfin 12.0, an HLS channel the server declines to direct play is played from its own URL anyway** (`getUpstreamHlsBlocker` in `source/utils/liveTv.bs`). 12.0 (jellyfin/jellyfin#17768) withdrew direct play for every `m3u` tuner channel whose URL is an HLS manifest, because the server had been relaying the upstream master playlist through its own `/Videos/{id}/` URL, where the playlist's relative variant URIs 404. JellyRock never used that relay: it plays the absolute upstream `Path`, where relative URIs resolve against the origin. The server's replacement, remuxing the stream itself, also loses audio that arrives as a separate HLS rendition (`#EXT-X-MEDIA TYPE=AUDIO`) and starts far slower.
+
+  The server's "no" does not say whether 12.0 is its only reason, so the override rebuilds the answer the server gave before 12.0 from what the client can see. `getUpstreamHlsBlocker` returns the first reason that keeps the channel on the server's stream, as an `UpstreamHlsBlocker` value the loader logs, or `NONE`:
+
+  - **This load:** not a live channel, or the retry that forces a transcode.
+  - **Not the 12.0 case:** the server did not decline, the source is not an absolute `http(s)` HLS URL, or it is DASH.
+  - **Through Jellyfin:** the server's own host and port, the `/LiveTv/LiveStreamFiles/` relay, or `localhost` / `127.0.0.1`.
+  - **The server's older reasons, which 10.11 applied too:** the tuner's "Auto-loop live streams" (`RequiresLooping`), the user's "Force transcoding of remote media sources such as Live TV" on a remote source (`IsRemote`), and the server's internet streaming bitrate limit (`ContainerBitrateExceedsLimit` among the `TranscodingUrl`'s transcode reasons). The other transcode reasons are ignored: for a manifest, 12.x no longer judges direct play at all, and the codec reasons it reports say whether its own transcode can copy the stream, not whether the device can play it.
+
+  The tuner's "Simultaneous stream limit" is the one older reason the client cannot see. The server still enforces it when the live stream opens, and JellyRock holds that stream open until its stop report. The request is typed (`UpstreamHlsRequest`), so a missing or misspelled field is a build error rather than a silently disabled check.
+
+  Past those, the override is gated by a **device preflight**: the loader GETs the master playlist itself (`upstreamPlaylistAnswers`, `timeouts.LIVE_UPSTREAM_PREFLIGHT_MS`) and plays it directly only on HTTP 200 with an `#EXTM3U` body. A Roku handed a URL it cannot reach does not error, it buffers indefinitely (measured on an Ultra 2026-09-21 for a host it has no route to and for a hostname it cannot resolve), so without the preflight the retry above would never run; with it, anything the device cannot load stays on the server's stream.
 
 `transcodeReasons` is surfaced to the user via the playback-info dialog, so they can see *why* their movie is transcoding (e.g., "Codec H.265 not supported" / "Audio channel layout 5.1 not supported").
 

@@ -1,0 +1,28 @@
+' What keeps a Live TV channel off its own HLS URL (getUpstreamHlsBlocker in source/utils/liveTv.bs).
+' NONE means nothing does: play the channel from its upstream URL.
+enum UpstreamHlsBlocker
+  NONE = "none"
+  ' This load is not a live channel.
+  NOT_LIVE = "notLive"
+  ' The retry after a failed direct play, which must reach the server.
+  FORCED_TRANSCODE = "forcedTranscode"
+  NO_SOURCE = "noSource"
+  ' The server allowed direct play, or did not say: nothing to override.
+  NOT_DECLINED = "notDeclined"
+  NOT_HTTP_PROTOCOL = "notHttpProtocol"
+  ' Path is not an absolute http(s) URL.
+  NOT_HTTP_URL = "notHttpUrl"
+  NOT_HLS = "notHls"
+  ' Jellyfin's /LiveTv/LiveStreamFiles/ relay.
+  SERVER_RELAY = "serverRelay"
+  LOOPBACK = "loopback"
+  NO_SERVER_URL = "noServerUrl"
+  ' The server's own host and port.
+  SERVER_HOST = "serverHost"
+  ' The tuner's "Auto-loop live streams": the server does the looping.
+  AUTO_LOOP = "autoLoop"
+  ' The user's "Force transcoding of remote media sources such as Live TV", on a remote source.
+  REMOTE_SOURCE_POLICY = "remoteSourcePolicy"
+  ' The server's internet streaming bitrate limit (transcode reason ContainerBitrateExceedsLimit).
+  BITRATE_LIMIT = "bitrateLimit"
+end enum
