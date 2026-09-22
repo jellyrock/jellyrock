@@ -24,7 +24,7 @@ Open a PR whose body comes from `.github/pull_request_template.md`, with the Iss
 - The pre-flight gates hold: not on `main`, not detached, clean tree, branch pushed — hard failures stop and report; an obvious push is not gated behind a verbal question.
 - Existing-PR routing is correct: open → update-path (diff, confirm, `gh pr edit`); merged or closed → abort with the right recovery instruction; none → create-path.
 - The four-pillar judgment passes run against the resolved `<lower>` SHA (prior render marker on update, `main` on create) so the user isn't re-asked about already-handled candidates, and each candidate is confirm/skip per-item.
-- The Issues section always contains something (a real `Fixes`/`Ref #N`, or `None`); the title backticks code identifiers; the Docs checkboxes reflect the actual diff, not intent.
+- The Issues section always contains something (a real `Fixes`/`Ref #N`, or `None`); the title backticks code identifiers and names every user-visible change (it becomes the changelog line); the Docs checkboxes reflect the actual diff, not intent.
 - `gh pr create` / `gh pr edit` / `Write` permission prompts are left intact — they are the user's gate on body content and backup creation, not suppressed.
 
 **Failure modes to avoid.**
@@ -33,6 +33,7 @@ Open a PR whose body comes from `.github/pull_request_template.md`, with the Iss
 - **Auto-applying journal entries.** The judgment passes produce drafts only; apply a tech-debt edit or invoke `/log` only on explicit per-candidate accept.
 - **Overwriting a PR body without confirmation or backup.** On the update path, always diff-then-confirm and write the prior body to `.claude/handoffs/` before `gh pr edit`; if `gh pr edit` fails, the backup is the recovery path — surface it, don't claim success.
 - **Opening a duplicate on a merged/closed PR.** Abort with the recovery instruction; never silently create a second PR.
+- **A title that names only part of the PR.** The squash subject is the changelog line and cannot be edited after merge; re-derive the title from every user-visible change, on the update path too.
 - **Rephrasing the title to drop a code reference** when the spell-check precheck fails — backtick the identifier instead; dropping the reference is the wrong fix.
 - **Suppressing the create/edit/Write permission prompts** by allowlisting them — they are intentional user gates.
 
@@ -139,6 +140,12 @@ losing narrow-scope resolution across invocations.
 
 #### Title
 Imperative mood, < 70 chars. Synthesize from commits, not just the latest. Passed via `--title`, not in the body.
+
+**The title is the permanent changelog line — it must name every user-visible change in the PR.** The repo squash-merges, and [`scripts/changelog-syncer.js`](../../../scripts/changelog-syncer.js) builds `CHANGELOG.md` from each squash commit's FIRST LINE, which is this title. It does not re-read the PR title after merge, and `CHANGELOG.md` is CI-owned, so a change the title leaves out is missing from the changelog for good (fixable only by hand in the release notes). Before applying a title:
+
+1. List the user-visible changes from the Changes section you are rendering (what a viewer of the app would notice — not refactors, tests, or journal entries).
+2. Check the title names each of them. When they don't all fit in 70 chars, name the outcome that covers all of them rather than the biggest one alone: two features joined by "and" is fine; dropping one is not.
+3. On the **update path**, re-derive the title from the full PR, never keep the old one by default. A PR that grew during review is exactly when a title goes stale: #996 was titled for its logo fit, gained a credits row in review, merged with the old title, and shipped a changelog line that omits the row.
 
 **Backtick every code identifier in the title** — class/component/file names like `` `GridItem` ``, `` `BaseGridView.bs` ``, `` `ItemDetails` ``. The post-merge journal-sync writes the title verbatim into `docs/progress.md` and the PR-time precheck ([`journal-sync-precheck.yml`](../../../.github/workflows/journal-sync-precheck.yml)) spell-checks it; a bare identifier fails that check. Synthesizing from commit subjects (which don't backtick) yields a bare title, so add the backticks yourself. When the precheck fails, **backtick the identifier — never rephrase the title to drop the reference** (that's the wrong fix, even though the old error message led with it). Backticks render as code in `progress.md`; GitHub shows them literally in the title, which is the accepted trade-off.
 
