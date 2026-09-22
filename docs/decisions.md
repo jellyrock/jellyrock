@@ -1677,6 +1677,16 @@ Ruled out: waiting on the image itself (blank text for seconds on a first open);
 
 **The constraint worth re-evaluating is reach.** Only `m.`-rooted paths are checked (a local alias of a long-lived node is missed), helpers are followed one hop by bare name, and a handler in another file is not followed. `MoviePresenter`'s logo handler is reached through `BaseGridView.onPresenterLogoLoaded`, so `MoviePresenter.spec.bs` pins that one instead.
 
+## decision-id: details-credits-follow-people
+
+**date**: 2026-09-22
+**status**: accepted
+**related-files**: `components/ItemDetails.bs`, `source/utils/people.bs`
+
+The `ItemDetails` credits row shows "Created by …", then "Directed by …" (the order `jellyfin-web` uses), for ANY item type whose own `People` carry those credits, via one `displayPeopleCredits()` call after the type dispatch. Chosen by the user over a Series-only rule for creators, then applied to directors too: a type the server starts crediting later needs no change, and a type it doesn't credit shows nothing. Measured 2026-09-22: Creator credits exist on 12.0 / 12.1 Series only; 22 Seasons carry Director credits on 10.11 AND 12.0, so seasons now show "Directed by" on every server version. The row is fitted to the logo for every type by `fitInfoRow()`.
+
+Ruled out: gating by type (the old "Directed by" on Movie, Episode and `MusicVideo` only), and showing a parent's credits on a Season or Episode (an extra request per open; web doesn't). Re-evaluate if some type's `People` start carrying credits that read wrong on its details screen.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
