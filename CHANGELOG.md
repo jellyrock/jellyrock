@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Give each `HomeRows` latest-rows run its own task node ([#995](https://github.com/jellyrock/jellyrock/pull/995))
 - Show every TV guide channel, loading programs near the focus ([#991](https://github.com/jellyrock/jellyrock/pull/991))
 
 ### Fixed
