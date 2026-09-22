@@ -1615,6 +1615,16 @@ Item details put the rows about the item itself first and the rows that lead awa
 
 The Collections row (Jellyfin 12.0+, `extrasRows.supportsItemCollections`) is planned on every item type except Person, and stays off screen when the answer is empty. The server accepts any item into a collection (`CollectionManager.AddToCollectionAsync` checks only that the collection and items exist; an Audio track added on a local 12.0.0, 2026-09-22, came back from `GET /Items/{id}/Collections`), and jellyfin-web asks for every item. Ruled out: gating on web's add menu (`supportsAddingToCollection`), which hid membership that exists. Person is excluded because `ExtrasRowList.finishRunIfResolved` reads any row on screen as `personHasMedia`, which shows Shuffle. The row is keyed on the item itself, even for an episode: the server lists only direct links, as web does. Cost, measured 2026-09-22 on a local 12.0.0 (median of 10, 5 movies): 7.7–9.1 ms against 25.9–40.1 ms for `/Similar`, and every plan with the row also has that slower row, so it never delays the commit. Re-evaluate if the server returns inherited membership, or if Person rows stop driving `personHasMedia`.
 
+## decision-id: accept-language-not-sent
+
+**date**: 2026-09-22
+**status**: accepted
+**related-files**: `source/utils/mediaDisplayTitle.bs`, `source/utils/remoteSubtitles.bs`
+
+JellyRock does not send `Accept-Language`, although Jellyfin 12.0 localizes per request (jellyfin/jellyfin#16488). Measured 2026-09-22 against a local 12.0.0 (`fr`, `de`, `ja` against no header, 22 endpoints JellyRock calls plus `PlaybackInfo`): the server honors it (`Content-Language` is echoed), but the only content that changes is the flag words inside audio and subtitle `DisplayTitle` and the `Localized*` stream fields (`Default` became `Par défaut`). Language names stay English; season and chapter names are written in the server's language at scan time; views, genres, Next Up, Resume, Latest, Search and Live TV come back byte-identical. The server source agrees: every other request-culture string is a scheduled-task name, an admin surface.
+
+JellyRock renders none of it. `mediaDisplayTitle.bs` builds every track label from its own translation keys, and the one `DisplayTitle` read (`remoteSubtitles.subtitleStreamKey()`) is an identity key the header would make language-dependent. Ruled out: sending it anyway as future-proofing, which means a header on every request plus a `ui-culture` query parameter on the `ws://` connection (the server captures its culture at upgrade), for no change on screen. Re-evaluate if a `/server-upgrade` triage finds a release that localizes a string JellyRock displays.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
