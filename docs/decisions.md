@@ -218,7 +218,8 @@ Ruled out: retry-in-place, which adds a second timeout budget to a path that alr
 ## decision-id: latest-rows-no-mid-run-restart
 
 **date**: 2026-08-02
-**status**: accepted
+**status**: superseded
+**superseded-by**: latest-rows-new-node-per-run
 **partially-superseded-by**: pipeline-budget-charges-wait-only (the stalled-run backstop now measures silence since the last delivered row, not time since the run started)
 **related-files**: `components/home/HomeRows.bs`, `source/home/latestRows.bs`, `source/constants/timeouts.bs`
 
@@ -1634,6 +1635,17 @@ Measured with the design, 2026-09-21: 2,000 channels on the 512 MB Stick at 72 M
 A TV guide load that fails retries on its own after a backoff delay (`backoff.afterFailure`: 1 s, doubling to a 30 s cap), per program block and per channel page, and says so: rows without programs read "Schedule unavailable" while a block near the focus waits to retry — that wins over "Loading…", since the wait can be 30 s — and a failed first page puts the same text over the whole grid and stops the spinner, which holds the remote. Moving the focus does not cut a delay short (a held key would otherwise hammer a failing server), a block the focus leaves forgets its failures, and retries wait while the guide is off screen. Ruled out: **retrying only when the user moves the focus**, the previous behavior — hard to discover, and it paused every block, not just the one that failed; **a toast per failure** — noise for a state the rows already show; and **per-row placeholder cells** — `TimeGrid` has no per-row status text, and a placeholder node per row would need guarding in every program handler.
 
 Re-evaluate the 30 s cap if servers take longer than that to come back, and whether some failures (a `4xx`) should stop retrying rather than back off.
+
+## decision-id: latest-rows-new-node-per-run
+
+**date**: 2026-09-22
+**status**: accepted
+**supersedes**: latest-rows-no-mid-run-restart
+**related-files**: `components/home/HomeRows.bs`, `source/home/latestRows.bs`, `source/utils/tasks.bs`
+
+Each Home latest-rows run gets a NEW `LoadLatestRowsTask` node (`startLatestMediaLoads` via `replaceTask()`), and `onLatestRowsReady` drops any wake that fails `isCurrentTaskEvent()` — [ADR 0037](adr/0037-task-run-replacement.md) applied here. What `HomeRows` reads off the node (the delivered result children and the drain cursor over them) belongs to one run, so it is released with the node; unlike `BaseGridView` and `schedule`, there is no cross-run query state to move onto the component. The refresh still SKIPS while a run is in flight, and `latestRows.runIsStalled` still reclaims a run silent past `PIPELINE_RUN_MS + API_WAIT_MS` since its last row (`pipeline-budget-charges-wait-only`). The skip's reason has changed: a new node always starts, so it no longer guards against a dropped relaunch. It stays because a restart would discard a run already fetching fresh data, delaying first paint and spending pool slots twice.
+
+This reverses the predecessor's "ruled out: a fresh Task node per run". Both of its reasons are gone: the persistent-node convention was replaced app-wide by ADR 0037 after a same-node STOP-then-relaunch was measured losing up to 10 of 10 runs, and "an allocation per refresh" is one node per return to Home, far rarer than the node per keystroke ADR 0037 accepts in `SearchResults` (the allocation itself is not measured). Its "a running task is never STOPped" never held: the stall reclaim STOPped a node that could still read `run` and relaunched that same node, the one path its guard did not cover. Forced wedge, Stick 4K, 2026-09-22 (run 1 sleeps 60 s after its first row, reclaim at ~45 s): `main` 6/6 relaunches honored, new node 6/6, wedged run never resumed — migrated without a reproduction, as `SearchResults` was. Its warning about non-cloneable objects in `LoadLatestRowsTask.init()` no longer applies: each node launches once. Out of scope: `HomeRows`' five other Task nodes keep one node each; they relaunch only after delivering, from a later callback, which [threading.md](architecture/threading.md#measured-findings) measured as reliable.
 
 ## Migrated to ADRs
 
