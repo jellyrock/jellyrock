@@ -9,9 +9,10 @@ namespace tests
   ' started in most full-suite runs, on a Stick 4K and on a 512 MB Stick alike. So an
   ' orchestrator that can be restarted mid-run must launch a NEW node (ExtrasRowList.startRun
   ' does) and must not rely on "STOP, then RUN the same node" either way. That case therefore
-  ' accepts both outcomes and fails only on a third one. The rest pin the neighbouring cases
-  ' that make the everyday paths safe; if one goes red on a firmware change, re-examine the
-  ' callers before flipping it.
+  ' accepts both outcomes and fails only on a third one. The rest pin the neighbouring cases,
+  ' including one more that is NOT safe: launching a still-running node with no STOP at all is
+  ' ignored every time. If one goes red on a firmware change, re-examine the callers before
+  ' flipping it.
   '
   ' NOT covered: OS versions below 15.3.4, and how SOON after the stopping callback a relaunch
   ' of the same node starts working — a later callback worked here, but nothing may be built
@@ -120,6 +121,28 @@ namespace tests
 
       m.assertEqual(m.waitForCount(task, "starts", 2, 1500), 2)
       host.callFunc("release")
+    end function
+
+    ' The everyday shape of a site that keeps one Task node for its whole life: write the input,
+    ' launch, no STOP — from a later callback, while the previous run is still going. The launch
+    ' is IGNORED: nothing starts now, nothing starts when the running function returns, and the
+    ' running function finishes against whatever it already read. Deterministic, unlike the
+    ' STOP case above — 40 of 40 trials on a Stick 4K and a 512 MB Stick (threading.md). A site
+    ' that can launch again mid-run therefore loses the newer request; give it a new node.
+    @it("ignores a launch with no stop, made from a later callback while it runs")
+    function _()
+      host = m.runningHost()
+      task = host.getField("task")
+
+      host.callFunc("writeAndLaunch", 2)
+      m.assertEqual(task.seq, 2, "precondition: writeAndLaunch ran (the input write landed)")
+
+      m.assertEqual(m.waitForCount(task, "starts", 2, 600), 1, "the launch started a second run while the first was running")
+      host.callFunc("release")
+      m.assertEqual(m.waitForCount(task, "ends", 1, 1500), 1, "precondition: the running function returned")
+      ' Long enough for a launch queued behind the first run to start.
+      sleep(600)
+      m.assertEqual(task.starts, 1, "the launch was queued and started after the first run returned")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
