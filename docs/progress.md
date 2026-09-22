@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-22 — Give each `HomeRows` latest-rows run its own task node
 - 2026-09-22 — fix: Stop crashing when a server answers a list endpoint with an object
 - 2026-09-22 — Show every TV guide channel, loading programs near the focus
 - 2026-09-22 — fix: Fetch a focused TV guide program's details once, not twice
