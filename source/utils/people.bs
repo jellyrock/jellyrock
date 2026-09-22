@@ -2,8 +2,9 @@ import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
-' Cast & Crew card shaping — merging a person's repeated credits into one card and
-' labelling it in the user's language.
+' The two surfaces built from an item's `People`: the Cast & Crew cards — merging a
+' person's repeated credits into one card and labelling it in the user's language — and
+' the details screen's credits row (see creditRowKinds()).
 '
 ' The server sends one `People` entry per CREDIT, not per person: a director who also
 ' wrote the screenplay appears twice with the same `Id`. That is true on every supported
@@ -262,36 +263,87 @@ function castCardSpecs(people as dynamic) as object
   return specs
 end function
 
-' The distinct people credited as `personKind` on an item, in first-appearance order —
-' what the details screen's "Created by" / "Directed by" lines list.
+' The credits the details screen puts on its credits row, in the order they appear on it:
+' "Created by ...", then "Directed by ...". Lowercase keys, like the tables above.
+'
+' The ORDER is the overflow policy. A row too long for the space left of the logo is cut
+' by fitInfoRow(), which keeps the earlier item and drops the later one, so on a series
+' with a long creator list "Directed by" is what goes. That is the intended trade: on the
+' one type that carries both, the creators are the headline credit.
+'
+' Adding a kind here is the whole change — creditRowSpecs() picks it up in the same single
+' pass, and ItemDetails needs no edit.
+'
+' Cached on the caller's `m` after first build. Caches the translation KEYS, never the
+' resolved strings, so a mid-session UI-language change is picked up on the next lookup.
+function creditRowKinds() as object
+  if isValid(m.creditRowKindsCache) then return m.creditRowKindsCache
+  m.creditRowKindsCache = [
+    { kind: "creator", messageKey: translationKeys.MessageCreatedBy1 },
+    { kind: "director", messageKey: translationKeys.MessageDirectedBy1 }
+  ]
+  return m.creditRowKindsCache
+end function
+
+' The details screen's credit lines, ready to put in a Label, in creditRowKinds() order.
+'
+' ONE pass over People covering every kind, because People is a node ARRAY field: reading
+' `item.people` copies the whole array, so a pass per kind costs a copy per kind. The
+' caller reads it once and hands it here.
 '
 ' Deduplicated by `Id` for the same reason the cards merge: the server sends one entry per
 ' credit, so a director credited twice (say Director and Co-Director) would otherwise read
 ' "Directed by Mike Judge, Mike Judge". Entries with no `Id` fall back to name matching,
 ' which is the best available identity when the server gives none.
 '
+' The dedupe is PER KIND, not shared across kinds. Someone credited as both Creator and
+' Director belongs on both lines; one `seen` map across the buckets would silently drop
+' the second line. Pinned by a spec.
+'
+' A kind with no named credits yields NO spec, so the row never shows a bare "Created by"
+' with nothing after it. A name that is blank or only whitespace does not count as a
+' credit — an entry the server sent with no usable name would otherwise pad the line.
+'
+' Unlike castCardSpecs() this resolves its translations WITHOUT a batch cache: it runs on
+' the render thread (ItemDetails.populateInfoGroup), where translate()'s read of
+' `m.global.translations` costs ~2 us rather than the ~93 us a Task thread pays, and there
+' is at most one call per kind. Call it from a Task thread and that stops being true.
+'
 ' @param people - raw `BaseItemPerson` array from an item's `People` field
-' @param personKind - the `PersonKind` to keep, compared case-insensitively ("Director")
-' @return array of names, no repeats
-function creditNames(people as dynamic, personKind as string) as object
-  names = []
-  if not isValid(people) then return names
+' @return array of { id, text }, one per kind that has credits, in row order
+function creditRowSpecs(people as dynamic) as object
+  specs = []
+  if not isValid(people) then return specs
 
-  lowerKind = LCase(personKind)
-  seen = {}
+  kinds = creditRowKinds()
+  buckets = {}
+  for each entry in kinds
+    buckets[entry.kind] = { names: [], seen: {} }
+  end for
+
   for each person in people
-    if isValid(person) and LCase(textOrEmpty(person.Type)) = lowerKind
-      name = textOrEmpty(person.Name)
-      if name <> ""
-        identity = textOrEmpty(person.Id)
-        if identity = "" then identity = "name:" + LCase(name)
-        if not isValid(seen[identity])
-          seen[identity] = true
-          names.push(name)
+    if isValid(person)
+      bucket = buckets[LCase(textOrEmpty(person.Type))]
+      if isValid(bucket)
+        name = textOrEmpty(person.Name).trim()
+        if name <> ""
+          identity = textOrEmpty(person.Id)
+          if identity = "" then identity = "name:" + LCase(name)
+          if not isValid(bucket.seen[identity])
+            bucket.seen[identity] = true
+            bucket.names.push(name)
+          end if
         end if
       end if
     end if
   end for
 
-  return names
+  for each entry in kinds
+    names = buckets[entry.kind].names
+    if names.count() > 0
+      specs.push({ id: entry.kind, text: translate(entry.messageKey, [names.join(", ")]) })
+    end if
+  end for
+
+  return specs
 end function

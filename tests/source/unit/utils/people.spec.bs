@@ -355,73 +355,118 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("creditNames()")
+    @describe("creditRowSpecs()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("returns an empty array for invalid input")
+    ' Asserted through the rendered `text` rather than an intermediate name array, for the
+    ' same reason the card specs are asserted through `subtitle`: the line IS the
+    ' observable result, and there is only one pass to observe it in.
+
+    @it("returns no specs for invalid input")
     function _()
-      m.assertEqual(creditNames(invalid, "Director").count(), 0)
+      m.assertEqual(creditRowSpecs(invalid).count(), 0)
     end function
 
-    @it("returns only directors, in order")
+    @it("returns no specs when no one carries a credit-row kind")
     function _()
-      names = creditNames([
+      specs = creditRowSpecs([
+        { Id: "a1", Name: "An Actor", Type: "Actor", Role: "Hero" },
+        { Id: "w1", Name: "A Writer", Type: "Writer" }
+      ])
+      m.assertEqual(specs.count(), 0)
+    end function
+
+    @it("lists directors in first-appearance order")
+    function _()
+      specs = creditRowSpecs([
         { Id: "a1", Name: "An Actor", Type: "Actor", Role: "Hero" },
         { Id: "d1", Name: "First Director", Type: "Director" },
         { Id: "w1", Name: "A Writer", Type: "Writer" },
         { Id: "d2", Name: "Second Director", Type: "Director" }
-      ], "Director")
-      m.assertEqual(names, ["First Director", "Second Director"])
+      ])
+      m.assertEqual(specs.count(), 1)
+      m.assertEqual(specs[0].id, "director")
+      m.assertEqual(specs[0].text, "Directed by First Director, Second Director")
     end function
 
     @it("deduplicates a director credited more than once")
     function _()
-      names = creditNames([
+      specs = creditRowSpecs([
         { Id: "mj", Name: "Mike Judge", Type: "Director", Role: "Director" },
         { Id: "mj", Name: "Mike Judge", Type: "Director", Role: "Co-Director" }
-      ], "Director")
-      m.assertEqual(names, ["Mike Judge"])
+      ])
+      m.assertEqual(specs[0].text, "Directed by Mike Judge")
     end function
 
     @it("falls back to the name when the server sends no Id")
     function _()
-      names = creditNames([
+      specs = creditRowSpecs([
         { Name: "No Id Director", Type: "Director" },
         { Name: "no id director", Type: "Director" }
-      ], "Director")
-      m.assertEqual(names, ["No Id Director"])
+      ])
+      m.assertEqual(specs[0].text, "Directed by No Id Director")
     end function
 
     @it("keeps two different directors who share no Id")
     function _()
-      names = creditNames([
+      specs = creditRowSpecs([
         { Name: "Alice", Type: "Director" },
         { Name: "Bob", Type: "Director" }
-      ], "Director")
-      m.assertEqual(names, ["Alice", "Bob"])
+      ])
+      m.assertEqual(specs[0].text, "Directed by Alice, Bob")
     end function
 
     @it("matches the type case-insensitively and skips nameless entries")
     function _()
-      names = creditNames([
+      specs = creditRowSpecs([
         { Id: "d1", Name: "Cased", Type: "director" },
         { Id: "d2", Type: "Director" }
-      ], "Director")
-      m.assertEqual(names, ["Cased"])
+      ])
+      m.assertEqual(specs[0].text, "Directed by Cased")
     end function
 
-    @it("keeps only the kind asked for, so one list serves creators and directors")
+    @it("splits creators and directors across one spec each, creators first")
     function _()
-      people = [
-        { Id: "c1", Name: "Thomas Lennon", Type: "Creator" },
+      specs = creditRowSpecs([
         { Id: "d1", Name: "A Director", Type: "Director" },
+        { Id: "c1", Name: "Thomas Lennon", Type: "Creator" },
         { Id: "c2", Name: "Kerri Kenney", Type: "Creator" }
-      ]
-      m.assertEqual(creditNames(people, "Creator"), ["Thomas Lennon", "Kerri Kenney"])
-      m.assertEqual(creditNames(people, "Director"), ["A Director"])
-      m.assertEqual(creditNames(people, "Writer").count(), 0)
+      ])
+      m.assertEqual(specs.count(), 2)
+      ' Row order comes from creditRowKinds(), NOT from the order People arrived in —
+      ' the director is first in the array above and still lands second.
+      m.assertEqual(specs[0].id, "creator")
+      m.assertEqual(specs[0].text, "Created by Thomas Lennon, Kerri Kenney")
+      m.assertEqual(specs[1].id, "director")
+      m.assertEqual(specs[1].text, "Directed by A Director")
     end function
 
+    ' The single pass buckets per kind, so each kind keeps its OWN `seen` map. One shared
+    ' map would let the creator line swallow the identical Id and drop "Directed by"
+    ' entirely — green tests, missing line.
+    @it("shows someone credited as both creator and director on BOTH lines")
+    function _()
+      specs = creditRowSpecs([
+        { Id: "mj", Name: "Mike Judge", Type: "Creator" },
+        { Id: "mj", Name: "Mike Judge", Type: "Director" }
+      ])
+      m.assertEqual(specs.count(), 2)
+      m.assertEqual(specs[0].text, "Created by Mike Judge")
+      m.assertEqual(specs[1].text, "Directed by Mike Judge")
+    end function
+
+    ' Otherwise the line renders the literal "Created by" followed by blanks — the one
+    ' shape the row must never take.
+    @it("drops a name that is only whitespace rather than padding the line")
+    function _()
+      specs = creditRowSpecs([
+        { Id: "c1", Name: "   ", Type: "Creator" },
+        { Id: "d1", Name: " Mike Judge ", Type: "Director" }
+      ])
+      m.assertEqual(specs.count(), 1)
+      m.assertEqual(specs[0].id, "director")
+      m.assertEqual(specs[0].text, "Directed by Mike Judge")
+    end function
   end class
 
 end namespace

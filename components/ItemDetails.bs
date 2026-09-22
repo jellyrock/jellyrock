@@ -2625,28 +2625,26 @@ sub populateInfoGroupMovie(item as object, userSettings as object)
   end if
 end sub
 
-' The credits row: "Created by", then "Directed by" (web's order), for ANY item type.
+' The credits row, for ANY item type: whichever credits the item's own People carry, in
+' the order creditRowKinds() lists them.
 '
 ' Driven by the item's own People rather than by its type, so a type the server starts
 ' crediting later needs no change here, and a type it doesn't credit shows nothing: 10.11
 ' sends no Creator credits at all (12.0+ adds them to Series), and a Season carries
 ' Director credits on every version. Nothing is looked up from a parent — a Season or
-' Episode shows only its own credits, as jellyfin-web does.
+' Episode shows only its own credits.
 '
-' creditNames() deduplicates by Id because the server sends one People entry per CREDIT:
-' a director also credited as, say, Co-Director appears twice and the line read
-' "Directed by Mike Judge, Mike Judge". The row is fitted to the logo by fitInfoRow().
+' WHICH credits appear, in WHAT order, and how they read is `people.bs`'s to own, beside
+' the other PersonKind tables; this owns only the nodes. Same split as castCardSpecs() and
+' transformPersonCard(). `item.people` is read exactly ONCE and handed over: it is a node
+' array field, so every read copies the whole array. The row is fitted to the logo by
+' fitInfoRow(), which drops a later credit rather than let it reach the logo.
 sub displayPeopleCredits(item as object)
-  displayCredit(creditNames(item.people, "Creator"), translationKeys.MessageCreatedBy1, "creator")
-  displayCredit(creditNames(item.people, "Director"), translationKeys.MessageDirectedBy1, "director")
-end sub
-
-sub displayCredit(names as object, messageKey as string, nodeId as string)
-  if names.count() = 0 then return
-
-  creditNode = createInfoLabel(nodeId)
-  creditNode.text = translate(messageKey, [names.join(", ")])
-  displayCreditsNode(creditNode)
+  for each spec in creditRowSpecs(item.people)
+    creditNode = createInfoLabel(spec.id)
+    creditNode.text = spec.text
+    displayCreditsNode(creditNode)
+  end for
 end sub
 
 ' populateInfoGroupMusicVideo: Info rows for MusicVideo
