@@ -1,0 +1,330 @@
+import "pkg:/source/utils/backoff.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/viewport.bs"
+
+' What the rows without programs around the focus should say (guidePrograms.spanState).
+enum GuideSpanState
+  ' Every block there covers the time around the left edge: a row without programs has none
+  LOADED = "loaded"
+  ' A block there is still to be fetched, or its fetch is in flight
+  LOADING = "loading"
+  ' A block there failed to load and is waiting to retry
+  FAILED = "failed"
+end enum
+
+' The fetch a block needs to cover the time window (guidePrograms.nextFetch).
+enum GuideFetchKind
+  ' Every program in the window, replacing whatever the block holds
+  REPLACE = "replace"
+  ' The programs starting after what the block holds, up to the window's end
+  LATER = "later"
+  ' The programs airing before what the block holds, back to the window's start
+  EARLIER = "earlier"
+end enum
+
+' Which program blocks the TV guide (Schedule) should hold, fetch next, and drop.
+'
+' The guide loads every channel row but programs only near the viewport: every channel's
+' programs at once do not fit a large lineup on a 512 MB device. Programs are fetched in BLOCKS
+' of BLOCK_SIZE consecutive channel rows — one request per block — and at most CAP blocks hold
+' programs at once. They hold them only for a TIME WINDOW around the grid's left edge
+' (timeWindow), not from the guide's start: a block holding every program up to a horizon that
+' only grows ran a 512 MB device out of memory once the user looked a few days ahead. So program
+' memory is bounded by CAP blocks x the window, whatever the lineup size and the day.
+'
+' Pure decisions only: the component does the fetching and the node writes. A block's state is
+' in `held` (an AA keyed by the block index as a string), absent when it holds nothing, else
+' { from, until, stale }: it holds every program airing in [from, until] (seconds since the
+' epoch) — those ending at or after `from` and starting at or before `until`, as one
+' /LiveTv/Programs query with MinEndDate and MaxStartDate returns them. `stale` marks programs
+' that must be replaced (a series was recorded).
+' A block whose last fetch failed also has an entry in `failures` (same keys): its backoff state
+' (source/utils/backoff.bs), so it is not fetched again until its retryAt. Times in `failures`
+' are on the component's own millisecond clock, not the epoch.
+namespace guidePrograms
+
+  ' Channels per program request. 25 channels x 24 h is ~460 programs on the fixture server.
+  const BLOCK_SIZE = 25
+
+  ' Blocks that may hold programs at once. At most four are ever wanted (the visible rows plus
+  ' BUFFER_ROWS either side can touch four blocks), so this keeps a couple of recently visited
+  ' blocks for scrolling back without refetching.
+  const CAP = 6
+
+  ' Rows kept near either side of the visible rows: one whole block, so the next block is
+  ' already loading by the time the user reaches it.
+  const BUFFER_ROWS = 25
+
+  ' The time window blocks load programs for: WINDOW_BEFORE before the left edge to WINDOW_AFTER
+  ' after it (seconds).
+  const WINDOW_BEFORE = 21600 ' 6 h
+  const WINDOW_AFTER = 108000 ' 30 h
+
+  ' A block is fetched again only once it covers less than NEED_BEFORE / NEED_AFTER around the
+  ' left edge, so pressing Left or Right does not start a fetch each time.
+  const NEED_BEFORE = 10800 ' 3 h
+  const NEED_AFTER = 43200 ' 12 h
+
+  ' Programs more than this outside the window are trimmed.
+  const TRIM_SLACK = 43200 ' 12 h
+
+  ' The time window blocks should hold programs for, from the grid's left edge.
+  '
+  ' @param leftEdge - the time at the grid's left edge (seconds since the epoch)
+  ' @param guideStart - the earliest time the guide shows programs for
+  ' @return an AA: `from` / `until` to fetch; `needFrom` / `needUntil`, what a block must cover to
+  '   need no fetch; `keepFrom` / `keepUntil`, outside which what a block holds is trimmed
+  function timeWindow(leftEdge as integer, guideStart as integer) as object
+    edge = leftEdge
+    if edge < guideStart then edge = guideStart
+    fromTime = edge - WINDOW_BEFORE
+    if fromTime < guideStart then fromTime = guideStart
+    needFrom = edge - NEED_BEFORE
+    if needFrom < guideStart then needFrom = guideStart
+    untilTime = edge + WINDOW_AFTER
+    return {
+      from: fromTime,
+      until: untilTime,
+      needFrom: needFrom,
+      needUntil: edge + NEED_AFTER,
+      keepFrom: fromTime - TRIM_SLACK,
+      keepUntil: untilTime + TRIM_SLACK
+    }
+  end function
+
+  ' The block a row belongs to.
+  function blockOf(row as integer) as integer
+    return row \ BLOCK_SIZE
+  end function
+
+  ' The rows of `block` present in the grid, as [first, last] inclusive.
+  '
+  ' @param block - a block index
+  ' @param rowCount - channel rows in the grid
+  function blockRows(block as integer, rowCount as integer) as object
+    first = block * BLOCK_SIZE
+    last = first + BLOCK_SIZE - 1
+    if last >= rowCount then last = rowCount - 1
+    return [first, last]
+  end function
+
+  ' Blocks to hold programs for, nearest the focused row first: the focused block, then
+  ' alternately below and above it. Only blocks whose rows have all arrived are listed — a
+  ' block fetched while its channels are still paging in would miss the late ones.
+  '
+  ' @param focusedRow - the focused channel row
+  ' @param visibleRows - rows the grid shows at once
+  ' @param rowCount - channel rows in the grid
+  ' @param rowsComplete - whether every channel row has arrived
+  ' @return block indices, in the order to fetch them
+  function wantedBlocks(focusedRow as dynamic, visibleRows as integer, rowCount as integer, rowsComplete as boolean) as object
+    window = viewport.rowWindow(focusedRow, visibleRows, rowCount, BUFFER_ROWS)
+    if window[0] < 0 then return []
+
+    firstBlock = blockOf(window[0])
+    lastBlock = blockOf(window[3])
+    focusBlock = blockOf(focusedRow)
+    wanted = []
+    if isBlockReady(focusBlock, rowCount, rowsComplete) then wanted.push(focusBlock)
+    for distance = 1 to lastBlock - firstBlock
+      below = focusBlock + distance
+      if below <= lastBlock and isBlockReady(below, rowCount, rowsComplete) then wanted.push(below)
+      above = focusBlock - distance
+      if above >= firstBlock and isBlockReady(above, rowCount, rowsComplete) then wanted.push(above)
+    end for
+    return wanted
+  end function
+
+  ' Whether `block` is one of `wanted`.
+  function isWanted(block as integer, wanted as object) as boolean
+    for each candidate in wanted
+      if candidate = block then return true
+    end for
+    return false
+  end function
+
+  ' Whether every row of `block` has arrived.
+  function isBlockReady(block as integer, rowCount as integer, rowsComplete as boolean) as boolean
+    if rowsComplete then return block * BLOCK_SIZE < rowCount
+    return (block + 1) * BLOCK_SIZE <= rowCount
+  end function
+
+  ' The next fetch to make, or invalid when every wanted block covers the window or is waiting
+  ' to retry. Fetches are made one at a time; call again after each lands.
+  '
+  ' @param wanted - from wantedBlocks
+  ' @param held - block states (see the namespace comment)
+  ' @param window - from timeWindow
+  ' @param failures - backoff states of blocks whose last fetch failed
+  ' @param nowMs - the clock `failures` is on
+  ' @return an AA with `block`, `kind` (a GuideFetchKind) and the `from` / `until` to request
+  function nextFetch(wanted as object, held as object, window as object, failures as object, nowMs as integer) as dynamic
+    for each block in wanted
+      key = block.toStr()
+      if not isCurrent(key, held, window) and not backoff.isWaiting(failures[key], nowMs)
+        return fetchFor(block, held[key], window)
+      end if
+    end for
+    return invalid
+  end function
+
+  ' The fetch that brings a block holding `state` up to the window: only the side it is missing
+  ' when what it holds overlaps the window, else the whole window in place of what it holds.
+  '
+  ' @param block - a block index
+  ' @param state - the block's entry in `held`, or invalid
+  ' @param window - from timeWindow
+  function fetchFor(block as integer, state as dynamic, window as object) as object
+    replace = { block: block, kind: GuideFetchKind.REPLACE, from: window.from, until: window.until }
+    if not isValid(state) or state.stale then return replace
+    if state.until < window.from or state.from > window.until then return replace
+    if state.until < window.needUntil then return { block: block, kind: GuideFetchKind.LATER, from: state.until, until: window.until }
+    if state.from > window.needFrom then return { block: block, kind: GuideFetchKind.EARLIER, from: window.from, until: state.from }
+    return replace
+  end function
+
+  ' When the earliest wanted block waiting to retry may be fetched, or invalid when none is
+  ' waiting — the time to come back if nextFetch has nothing to do now.
+  '
+  ' @param wanted - from wantedBlocks
+  ' @param held - block states
+  ' @param window - from timeWindow
+  ' @param failures - backoff states of blocks whose last fetch failed
+  ' @return a time on the `failures` clock, or invalid
+  function nextRetryAt(wanted as object, held as object, window as object, failures as object) as dynamic
+    earliest = invalid
+    for each block in wanted
+      key = block.toStr()
+      failure = failures[key]
+      if isValid(failure) and not isCurrent(key, held, window)
+        if not isValid(earliest) or failure.retryAt < earliest then earliest = failure.retryAt
+      end if
+    end for
+    return earliest
+  end function
+
+  ' `failures` with only the wanted blocks' entries, so a block the focus comes back to later
+  ' starts again from the first, shortest delay.
+  '
+  ' @param failures - backoff states of blocks whose last fetch failed
+  ' @param wanted - from wantedBlocks
+  ' @return a new AA; `failures` is left untouched
+  function pruneFailures(failures as object, wanted as object) as object
+    kept = {}
+    for each block in wanted
+      key = block.toStr()
+      if failures.DoesExist(key) then kept[key] = failures[key]
+    end for
+    return kept
+  end function
+
+  ' Whether `key`'s block covers enough of the window to need no fetch. A stale block never does.
+  function isCurrent(key as string, held as object, window as object) as boolean
+    state = held[key]
+    if not isValid(state) or state.stale then return false
+    return state.from <= window.needFrom and state.until >= window.needUntil
+  end function
+
+  ' What to cut back so blocks hold programs only near the window, farthest from the focus
+  ' first: a block no longer wanted that holds anything outside [keepFrom, keepUntil] is dropped
+  ' whole (coming back to it loads its own window anyway), as is a wanted one that no longer
+  ' overlaps the window at all; any other wanted one is cut back to the window on the side that
+  ' ran past it. The drops come before the cuts.
+  '
+  ' @param held - block states
+  ' @param wanted - from wantedBlocks
+  ' @param window - from timeWindow
+  ' @param focusedRow - the focused channel row
+  ' @return AAs with `block` and `drop` — true to drop the block, else false with the `from` /
+  '   `until` to keep
+  function trims(held as object, wanted as object, window as object, focusedRow as integer) as object
+    focusBlock = blockOf(focusedRow)
+    drops = []
+    cuts = []
+    for each key in held
+      state = held[key]
+      if state.from < window.keepFrom or state.until > window.keepUntil
+        block = key.toInt()
+        distance = abs(block - focusBlock)
+        if not isWanted(block, wanted) or state.until < window.from or state.from > window.until
+          drops.push({ block: block, distance: distance })
+        else
+          keepFrom = state.from
+          if keepFrom < window.keepFrom then keepFrom = window.from
+          keepUntil = state.until
+          if keepUntil > window.keepUntil then keepUntil = window.until
+          cuts.push({ block: block, distance: distance, from: keepFrom, until: keepUntil })
+        end if
+      end if
+    end for
+    drops.sortBy("distance", "r")
+    cuts.sortBy("distance", "r")
+
+    result = []
+    for each drop in drops
+      result.push({ block: drop.block, drop: true })
+    end for
+    for each cut in cuts
+      result.push({ block: cut.block, drop: false, from: cut.from, until: cut.until })
+    end for
+    return result
+  end function
+
+  ' Blocks to drop so at most `cap` hold programs: never a wanted one, farthest from the
+  ' focused block first. The guide passes CAP.
+  '
+  ' @param held - block states
+  ' @param wanted - from wantedBlocks
+  ' @param focusedRow - the focused channel row
+  ' @param cap - blocks that may hold programs at once
+  ' @return block indices to drop
+  function evictions(held as object, wanted as object, focusedRow as integer, cap as integer) as object
+    excess = held.count() - cap
+    if excess <= 0 then return []
+
+    isWanted = {}
+    for each block in wanted
+      isWanted[block.toStr()] = true
+    end for
+
+    focusBlock = blockOf(focusedRow)
+    candidates = []
+    for each key in held
+      if not isWanted.DoesExist(key)
+        heldBlock = key.toInt()
+        candidates.push({ block: heldBlock, distance: abs(heldBlock - focusBlock) })
+      end if
+    end for
+    candidates.sortBy("distance", "r")
+
+    dropped = []
+    for each candidate in candidates
+      if dropped.count() >= excess then exit for
+      dropped.push(candidate.block)
+    end for
+    return dropped
+  end function
+
+  ' What rows in [firstRow, lastRow] without programs should say — TimeGrid has one text for
+  ' every such row. FAILED wins over LOADING: a block waiting up to 30 s to retry must not read as
+  ' loading, while a block still loading next to it reads as unavailable only until it lands.
+  '
+  ' @param firstRow - first row, inclusive
+  ' @param lastRow - last row, inclusive
+  ' @param held - block states
+  ' @param failures - backoff states of blocks whose last fetch failed
+  ' @param window - from timeWindow
+  function spanState(firstRow as integer, lastRow as integer, held as object, failures as object, window as object) as string
+    if firstRow < 0 or lastRow < firstRow then return GuideSpanState.LOADED
+    state = GuideSpanState.LOADED
+    for block = blockOf(firstRow) to blockOf(lastRow)
+      key = block.toStr()
+      if not isCurrent(key, held, window)
+        if failures.DoesExist(key) then return GuideSpanState.FAILED
+        state = GuideSpanState.LOADING
+      end if
+    end for
+    return state
+  end function
+
+end namespace

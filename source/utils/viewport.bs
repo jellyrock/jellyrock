@@ -1,0 +1,35 @@
+import "pkg:/source/utils/misc.bs"
+
+' Which rows of a list are near the viewport. The one definition of "near" shared by the
+' texture window (textureManager.bs) and the TV guide's program window (guidePrograms.bs), so
+' the two cannot drift into different answers to the same question.
+namespace viewport
+
+  ' The rows around a focused row, as [bufferStart, visibleStart, visibleEnd, bufferEnd], all
+  ' clamped to the list. The focused row is taken as the first visible row, and the visible
+  ' span as `numVisibleRows` from it; `bufferRows` more on each side are "near".
+  '
+  ' @param focusedRow - index of the focused row
+  ' @param numVisibleRows - rows the list shows at once
+  ' @param totalRows - rows in the list
+  ' @param bufferRows - rows kept near on each side of the visible span
+  ' @return [bufferStart, visibleStart, visibleEnd, bufferEnd], or [-1, -1, -1, -1] when there
+  '   is no focused row inside the list
+  function rowWindow(focusedRow as dynamic, numVisibleRows as integer, totalRows as integer, bufferRows as integer) as object
+    if not isValid(focusedRow) or totalRows <= 0 or focusedRow < 0 or focusedRow >= totalRows
+      return [-1, -1, -1, -1]
+    end if
+
+    visibleEnd = focusedRow + numVisibleRows - 1
+    if visibleEnd >= totalRows then visibleEnd = totalRows - 1
+
+    bufferStart = focusedRow - bufferRows
+    if bufferStart < 0 then bufferStart = 0
+
+    bufferEnd = visibleEnd + bufferRows
+    if bufferEnd >= totalRows then bufferEnd = totalRows - 1
+
+    return [bufferStart, focusedRow, visibleEnd, bufferEnd]
+  end function
+
+end namespace

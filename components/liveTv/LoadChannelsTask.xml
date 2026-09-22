@@ -10,6 +10,8 @@
     <field id="sortAscending" type="boolean" value="true" />
     <field id="nameStartsWith" type="string" value="" />
     <field id="isRecursive" type="boolean" value="true" />
+    <!-- Outputs: ok is set before channels, so a reader of channels can trust it -->
+    <field id="ok" type="boolean" value="false" />
     <!-- Total records available from server-->
     <field id="channels" type="array" />
     <field id="totalRecordCount" type="integer" value="0" />
