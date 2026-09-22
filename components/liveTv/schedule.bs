@@ -324,12 +324,14 @@ sub loadProgramDetails(programId as string, channelIndex as integer, programInde
       node.hdsmalliconurl = ""
     end if
 
+    ' Track this program as fully loaded to prevent redundant API requests on re-focus — BEFORE
+    ' the ReplaceChild below: replacing the focused cell re-enters onProgramFocused at once, which
+    ' would otherwise find the program not yet loaded and fetch it a second time
+    m.fullyLoadedProgramIds[node.id] = true
+
     ' Replace the lightweight schedule item in the TimeGrid with the fully-loaded node
     channel = m.scheduleGrid.content.GetChild(ctx.channelIndex)
     channel.ReplaceChild(node, ctx.programIndex)
-
-    ' Track this program as fully loaded to prevent redundant API requests on re-focus
-    m.fullyLoadedProgramIds[node.id] = true
 
     ' Update the details pane immediately so the user sees full program data
     m.detailsPane.programDetails = node
