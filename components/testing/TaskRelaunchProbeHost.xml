@@ -16,6 +16,7 @@
     <function name="configure" />
     <function name="stopWriteRelaunch" />
     <function name="stopAndLaunchFresh" />
+    <function name="writeAndLaunch" />
     <function name="release" />
   </interface>
 </component>

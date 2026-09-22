@@ -49,6 +49,15 @@ sub stopWriteRelaunch(newSeq as integer)
   launchTask(task)
 end sub
 
+' What a site with a persistent Task node does on every run after the first: write the input
+' field and launch, with no STOP — whether or not the previous run has finished
+' (`m.LoadNextUpTask.params = …` then launch).
+sub writeAndLaunch(newSeq as integer)
+  task = m.top.task
+  task.seq = newSeq
+  launchTask(task)
+end sub
+
 ' Lets every invocation of the function return.
 sub release()
   m.top.task.release = true
