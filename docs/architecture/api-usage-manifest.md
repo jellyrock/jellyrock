@@ -7,7 +7,7 @@ related-files:
   - source/api/sdk.bs
   - source/data/JellyfinDataTransformer.bs
   - source/utils/people.bs
-last-reviewed: 2026-09-20
+last-reviewed: 2026-09-22
 ---
 
 # API Usage Manifest
@@ -57,8 +57,8 @@ same parser the BSC plugins use — robust to formatting, unlike grep) and extra
 
 - **Endpoints** from the first argument of `buildURL()` / `APIRequest()` calls —
   a string literal or a `Substitute("/path/{0}", …)` template. The HTTP method
-  is inferred from the enclosing builder function (`validatedReq("GET", …)`,
-  an inline `{ method: "POST" }` AA, or `getJson`/`postJson`).
+  is inferred from the enclosing builder function (`validatedReq("GET", …)` or
+  `listReq("GET", …)`, an inline `{ method: "POST" }` AA, or `getJson`/`postJson`).
 - **Response fields** from PascalCase field reads in an explicit, hand-maintained
   list of DTO→node mapper files (`RESPONSE_FIELD_FILES`). This works because
   Jellyfin DTO fields are PascalCase (`apiData.RunTimeTicks`) while JellyRock's own

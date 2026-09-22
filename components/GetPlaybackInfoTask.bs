@@ -1,6 +1,5 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
-import "pkg:/source/api/apiResponse.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
@@ -29,7 +28,7 @@ end sub
 ' state (the server has not registered playback yet), and the renderer says so
 ' rather than the task inventing an error section.
 sub getPlaybackInfoTask()
-  sessions = apiResponse.listFrom(fetchJson(GetApi().BuildGetSessionsRequest({ "deviceId": m.global.device.serverDeviceName }), "sessions"))
+  sessions = fetchJson(GetApi().BuildGetSessionsRequest({ "deviceId": m.global.device.serverDeviceName }), "sessions")
 
   session = invalid
   if isValidAndNotEmpty(sessions) then session = sessions[0]

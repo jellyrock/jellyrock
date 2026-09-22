@@ -1,3 +1,4 @@
+import "pkg:/source/api/apiResponse.bs"
 import "pkg:/source/api/sdk.bs"
 import "pkg:/source/api/sdkV1.bs"
 import "pkg:/source/api/sdkV2.bs"
@@ -138,9 +139,9 @@ class ApiClient
     if m.getApiVersion() >= 2
       queryParams = { userId: userId }
       queryParams.append(mergedParams)
-      return m.validatedReq("GET", buildURL("/Items/Latest", queryParams))
+      return m.listReq("GET", buildURL("/Items/Latest", queryParams))
     end if
-    return m.validatedReq("GET", buildURL(Substitute("/users/{0}/items/latest", userId), mergedParams))
+    return m.listReq("GET", buildURL(Substitute("/users/{0}/items/latest", userId), mergedParams))
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
@@ -327,11 +328,11 @@ class ApiClient
   ' @returns Request AA: { method, url } or invalid if no userId (V1 only)
   function BuildGetLocalTrailersRequest(itemId as string) as dynamic
     if m.getApiVersion() >= 2
-      return m.validatedReq("GET", buildURL(Substitute("/Items/{0}/LocalTrailers", itemId), {}))
+      return m.listReq("GET", buildURL(Substitute("/Items/{0}/LocalTrailers", itemId), {}))
     end if
     userId = m.getUserId()
     if userId = "" then return invalid
-    return m.validatedReq("GET", buildURL(Substitute("/users/{0}/items/{1}/localtrailers", userId, itemId), {}))
+    return m.listReq("GET", buildURL(Substitute("/users/{0}/items/{1}/localtrailers", userId, itemId), {}))
   end function
 
   ' Build a request AA for GetSpecialFeatures, for use with fetchRes() or fetchJson().
@@ -340,11 +341,11 @@ class ApiClient
   ' @returns Request AA: { method, url } or invalid if no userId (V1 only)
   function BuildGetSpecialFeaturesRequest(itemId as string) as dynamic
     if m.getApiVersion() >= 2
-      return m.validatedReq("GET", buildURL(Substitute("/Items/{0}/SpecialFeatures", itemId), {}))
+      return m.listReq("GET", buildURL(Substitute("/Items/{0}/SpecialFeatures", itemId), {}))
     end if
     userId = m.getUserId()
     if userId = "" then return invalid
-    return m.validatedReq("GET", buildURL(Substitute("/users/{0}/items/{1}/specialfeatures", userId, itemId), {}))
+    return m.listReq("GET", buildURL(Substitute("/users/{0}/items/{1}/specialfeatures", userId, itemId), {}))
   end function
 
   ' Build a request AA to mark an item as favorite, for use with SubmitSideEffect().
@@ -493,7 +494,7 @@ class ApiClient
   ' @param params - Query parameters (e.g. { deviceId: "..." })
   ' @returns Request AA: { method, url } or invalid if server URL not set
   function BuildGetSessionsRequest(params = {} as object) as dynamic
-    return m.validatedReq("GET", buildURL("/sessions", params))
+    return m.listReq("GET", buildURL("/sessions", params))
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
@@ -549,9 +550,10 @@ class ApiClient
   end function
 
   ' Get public users
-  ' @returns API response or invalid on error
+  ' Synchronous, so it bypasses the pool's shape check (listReq); the list is read here instead.
+  ' @returns an roArray of UserDto, or invalid on error or a body that holds no list
   function GetPublicUsers() as dynamic
-    return sdk.users.GetPublic()
+    return apiResponse.listFrom(sdk.users.GetPublic())
   end function
 
   ' Build a request AA to exchange an APPROVED Quick Connect secret for an auth
@@ -729,7 +731,7 @@ class ApiClient
   function BuildSearchRemoteSubtitlesRequest(itemId as string, language as string, isPerfectMatch = false as boolean) as dynamic
     params = {}
     if isPerfectMatch then params.isPerfectMatch = "true"
-    return m.validatedReq("GET", buildURL(Substitute("/Items/{0}/RemoteSearch/Subtitles/{1}", itemId, language), params))
+    return m.listReq("GET", buildURL(Substitute("/Items/{0}/RemoteSearch/Subtitles/{1}", itemId, language), params))
   end function
 
   ' Build a request AA to have the SERVER download a remote subtitle onto the
@@ -804,7 +806,7 @@ class ApiClient
   '
   ' @returns Request AA: { method, url } or invalid if server URL not set
   function BuildGetCulturesRequest() as dynamic
-    return m.validatedReq("GET", buildURL("/Localization/Cultures"))
+    return m.listReq("GET", buildURL("/Localization/Cultures"))
   end function
 
   ' Build a request AA for the server's library options, for use with fetchRes()
@@ -1042,6 +1044,20 @@ class ApiClient
   private function validatedReq(method as string, url as dynamic) as dynamic
     if not isValid(url) then return invalid
     return { method: method, url: url }
+  end function
+
+  ' validatedReq for an endpoint whose spec response is a bare ARRAY. It marks the request so the
+  ' pool holds the body to that shape (apiResponse.enforceShape): an ok response then always
+  ' carries an roArray in `json`, and a body that holds no list arrives as not-ok. Every builder
+  ' for such an endpoint must use this — an object body that reaches a caller iterates as its
+  ' keys, and the first field read ends the app.
+  ' @param method - HTTP method
+  ' @param url - Result of buildURL() — may be invalid
+  ' @returns Request AA: { method, url, expect: "list" } or invalid
+  private function listReq(method as string, url as dynamic) as dynamic
+    req = m.validatedReq(method, url)
+    if isValid(req) then req.expect = apiResponse.EXPECT_LIST
+    return req
   end function
 
 end class

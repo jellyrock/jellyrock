@@ -1,3 +1,4 @@
+import "pkg:/source/api/apiResponse.bs"
 import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/home/latestRows.bs"
 
@@ -268,7 +269,7 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("itemsFromResponse - only a list is authoritative")
+    @describe("itemsFromResponse - only an ok response is authoritative")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("returns the items of a bare-array response")
@@ -277,16 +278,6 @@ namespace tests
       items = latestRows.itemsFromResponse(res)
       m.assertEqual(items.count(), 2)
       m.assertEqual(items[1].Id, "b")
-    end function
-
-    @it("reads the query-result wrapper instead of crashing on its keys")
-    function _()
-      ' The field crash: this body reached the old Book filter, which iterated the wrapper's
-      ' KEYS and faulted on "StartIndex".Type (&h02).
-      res = { ok: true, json: ParseJson("{""Items"":[{""Id"":""a"",""Type"":""Movie""}],""TotalRecordCount"":1,""StartIndex"":0}") }
-      items = latestRows.itemsFromResponse(res)
-      m.assertEqual(items.count(), 1)
-      m.assertEqual(items[0].Id, "a")
     end function
 
     @it("drops Books")
@@ -304,16 +295,16 @@ namespace tests
       m.assertEqual(items.count(), 0)
     end function
 
-    @it("treats a 200 whose body holds no list as failed, not as an empty library")
-    function _()
-      ' An "ok" with an empty list REMOVES the row, so a body we cannot read must not be one.
-      m.assertInvalid(latestRows.itemsFromResponse({ ok: true, json: ParseJson("{""StartIndex"":0}") }))
-      m.assertInvalid(latestRows.itemsFromResponse({ ok: true, json: invalid }))
-    end function
-
-    @it("treats an HTTP error as failed")
+    @it("treats a not-ok response as failed")
     function _()
       m.assertInvalid(latestRows.itemsFromResponse({ ok: false, json: ParseJson("[]") }))
+    end function
+
+    @it("treats a body the pool rejected as failed, not as an empty library")
+    function _()
+      ' An "ok" with an empty list REMOVES the row. A 200 whose body holds no list reaches here
+      ' as not-ok (apiResponse.enforceShape), so it must stay a failure.
+      m.assertInvalid(latestRows.itemsFromResponse({ ok: false, statusCode: 200, json: invalid, error: apiResponse.ERROR_UNEXPECTED_SHAPE }))
     end function
 
     @it("treats no answer as failed")

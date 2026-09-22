@@ -1,7 +1,6 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/api/apiPromise.bs"
-import "pkg:/source/api/apiResponse.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/constants/extrasLayout.bs"
 import "pkg:/source/constants/itemTypeOrder.bs"
@@ -1034,13 +1033,10 @@ sub checkTrailerAvailability(itemId as string)
   promises.chain(fetchAsync(req, "trailerCheck-" + m.trailerCheckSeq.toStr()), { itemId: itemId }).then(sub(res as object, ctx as object)
     if ctx.itemId <> m.top.itemId then return ' stale — content changed under us
     screenLoad.resolve("trailer")
-    trailers = invalid
-    if res.ok then trailers = apiResponse.listFrom(res.json)
-    if isValid(trailers)
-      m.top.trailerAvailable = trailers.Count() > 0
+    if res.ok and isValid(res.json)
+      m.top.trailerAvailable = res.json.Count() > 0
     else
-      ' Any non-ok HTTP response (the error contract resolves these), or a body with no
-      ' trailer list in it → no trailer button.
+      ' Any non-ok HTTP response (the error contract resolves these) → no trailer button.
       m.top.trailerAvailable = false
     end if
   end sub).catch(sub(err as object, ctx as object)

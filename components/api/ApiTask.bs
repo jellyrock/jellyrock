@@ -1,7 +1,10 @@
+import "pkg:/source/api/apiResponse.bs"
 import "pkg:/source/api/baseRequest.bs"
+import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 
 sub init()
+  m.log = new log.Logger("ApiTask")
   m.top.functionName = "runApiLoop"
 end sub
 
@@ -34,8 +37,11 @@ end sub
 ' Executes a single HTTP request via the shared executeHttpRequest() helper and shapes
 ' the roku-requests result into the pool's response AA (invalid URL → an error AA so the
 ' waiting orchestrator still unblocks). Auth/timeout/Content-Type live in the helper.
-' @param req - request AA: { requestId, method, url, headers?, body?, timeout? }
-' @return response AA: { requestId, ok, statusCode, json, text }
+'
+' The body is then held to the shape the request declared (apiResponse.enforceShape): a list
+' request whose body holds no list comes back not-ok with `error = "unexpectedShape"`.
+' @param req - request AA: { requestId, method, url, headers?, body?, timeout?, expect? }
+' @return response AA: { requestId, ok, statusCode, json, text, error? }
 function executeRequest(req as object) as object
   r = executeHttpRequest(req, "GET", "[ApiTask]")
   if not isValid(r)
@@ -48,11 +54,19 @@ function executeRequest(req as object) as object
     }
   end if
 
-  return {
+  res = {
     requestId: req.requestId,
     ok: r.ok,
     statusCode: r.statusCode,
     json: r.json,
     text: r.text
   }
+  bodyType = type(r.json)
+  res = apiResponse.enforceShape(req, res)
+  ' Stock Jellyfin answers every list endpoint with a bare array, so anything else — a wrapper
+  ' read through, or a body rejected — is a server worth knowing about.
+  if r.ok and bodyType <> "roArray" and apiResponse.expectsList(req)
+    m.log.warn("list endpoint answered with a non-array body", req.requestId, "body", bodyType, "accepted", res.ok)
+  end if
+  return res
 end function

@@ -38,6 +38,13 @@ describe('endpoint extraction', () => {
     expect(ep.normalized).toBe('/items'); // trailing slash stripped for spec matching
   });
 
+  it('captures the method from listReq, the bare-array builder', () => {
+    const r = extractFromSource(fn('  return m.listReq("GET", buildURL("/Items/Latest", q))'));
+    const ep = findEndpoint(r, '/Items/Latest');
+    expect(ep).toBeTruthy();
+    expect(ep.methods).toEqual(['GET']);
+  });
+
   it('captures a Substitute() template and normalizes placeholders', () => {
     const r = extractFromSource(
       fn('  return m.validatedReq("GET", buildURL(Substitute("/Items/{0}", id), p))'),

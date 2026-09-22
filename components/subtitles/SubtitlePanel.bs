@@ -10,7 +10,6 @@
 ' tests/source/unit/utils/remoteSubtitles*.spec.bs.
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPromise.bs"
-import "pkg:/source/api/apiResponse.bs"
 import "pkg:/source/constants/extrasLayout.bs"
 import "pkg:/source/constants/subtitleLayout.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
@@ -491,11 +490,7 @@ sub ensureCulturesLoaded()
     ' Guard a reply that outlived a server switch — the culture list is
     ' server-specific and a stale one would mislabel every language.
     if ctx.serverUrl <> m.global.server.serverUrl then return
-    cultures = invalid
-    if res.ok then cultures = apiResponse.listFrom(res.json)
-    ' A 200 with no culture list in it is no more usable than an error, so it takes the same
-    ' path — and leaves m.cultures invalid, so the next open retries.
-    if not isValid(cultures)
+    if not res.ok
       m.log.warn("cultures fetch failed", res.statusCode)
       ' Only when nothing else got us a language — a manual pick before this
       ' landed means the panel is working and this reply is irrelevant.
@@ -504,7 +499,7 @@ sub ensureCulturesLoaded()
       end if
       return
     end if
-    m.cultures = cultures
+    m.cultures = res.json
     m.languagePicker.languages = remoteSubtitles.cultureOptions(m.cultures)
     applyLanguageFromCultures()
   end sub).catch(sub(err as object, ctx as object)

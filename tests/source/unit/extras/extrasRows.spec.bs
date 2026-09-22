@@ -447,6 +447,43 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("itemsFromResponse: only a list is authoritative")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads the Items of a query-result row")
+    function _()
+      items = extrasRows.itemsFromResponse({ ok: true, json: ParseJson("{""Items"":[{""Id"":""a""}],""TotalRecordCount"":1}") })
+      m.assertEqual(items.count(), 1)
+      m.assertEqual(items[0].Id, "a")
+    end function
+
+    @it("reads a bare-array row (Special Features)")
+    function _()
+      items = extrasRows.itemsFromResponse({ ok: true, json: ParseJson("[{""Id"":""a""},{""Id"":""b""}]") })
+      m.assertEqual(items.count(), 2)
+    end function
+
+    @it("returns an empty list for an empty answer - the row may legitimately be removed")
+    function _()
+      items = extrasRows.itemsFromResponse({ ok: true, json: ParseJson("{""Items"":[],""TotalRecordCount"":0}") })
+      m.assertEqual(type(items), "roArray")
+      m.assertEqual(items.count(), 0)
+    end function
+
+    @it("treats an ok body with no list as failed, not as an empty row")
+    function _()
+      ' An "ok" with an empty list REMOVES a row on screen, so a body we cannot read must not be one.
+      m.assertInvalid(extrasRows.itemsFromResponse({ ok: true, json: ParseJson("{""TotalRecordCount"":0}") }))
+      m.assertInvalid(extrasRows.itemsFromResponse({ ok: true, json: invalid }))
+    end function
+
+    @it("treats a not-ok response and no answer as failed")
+    function _()
+      m.assertInvalid(extrasRows.itemsFromResponse({ ok: false, json: ParseJson("[]") }))
+      m.assertInvalid(extrasRows.itemsFromResponse(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("rowDisposition: what a resolved row does to the list")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

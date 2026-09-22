@@ -1,3 +1,5 @@
+import "pkg:/source/api/apiResponse.bs"
+
 namespace tests
 
   @suite("ApiClient - V1/V2 routing and parameter injection")
@@ -827,6 +829,53 @@ namespace tests
     @it("refuses an invalid stream")
     function _()
       m.assertInvalid(m.apiClient.BuildDeleteSubtitleRequest(m.testItemId, invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("List requests - bare-array endpoints declare their shape")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Each endpoint below answers with a bare array (Jellyfin OpenAPI, 10.8.13 and 10.11.11), so
+    ' its builder must use listReq: the pool then holds the body to that shape
+    ' (apiResponse.enforceShape). A builder that drops it hands callers an unchecked body, and an
+    ' object body iterates as its KEYS — the v2.30.0 latest-media crash.
+
+    private function listRequestsFor(apiVersion as integer) as object
+      originalApiVersion = m.global.server.apiVersion
+      m.setApiVersion(apiVersion)
+      reqs = {
+        latestMedia: m.apiClient.BuildGetLatestMediaRequest({}),
+        localTrailers: m.apiClient.BuildGetLocalTrailersRequest(m.testItemId),
+        specialFeatures: m.apiClient.BuildGetSpecialFeaturesRequest(m.testItemId),
+        sessions: m.apiClient.BuildGetSessionsRequest({ deviceId: "d" }),
+        remoteSubtitles: m.apiClient.BuildSearchRemoteSubtitlesRequest(m.testItemId, "en"),
+        cultures: m.apiClient.BuildGetCulturesRequest()
+      }
+      m.setApiVersion(originalApiVersion)
+      return reqs
+    end function
+
+    @it("marks every bare-array builder as a list request on V2")
+    function _()
+      reqs = m.listRequestsFor(2)
+      for each name in reqs
+        m.assertTrue(apiResponse.expectsList(reqs[name]), name + " should be built with listReq")
+      end for
+    end function
+
+    @it("marks every bare-array builder as a list request on V1")
+    function _()
+      reqs = m.listRequestsFor(1)
+      for each name in reqs
+        m.assertTrue(apiResponse.expectsList(reqs[name]), name + " should be built with listReq")
+      end for
+    end function
+
+    @it("does not mark a query-result builder as a list request")
+    function _()
+      req = m.apiClient.BuildGetResumeItemsRequest({})
+      m.assertNotInvalid(req)
+      m.assertFalse(apiResponse.expectsList(req))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

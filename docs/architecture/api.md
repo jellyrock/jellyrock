@@ -14,7 +14,7 @@ related-files:
   - components/api/ApiResultNode.xml
   - components/api/SideEffectTask.bs
   - components/home/LoadLatestRowsTask.bs
-last-reviewed: 2026-09-21
+last-reviewed: 2026-09-22
 ---
 
 # API Layer & Task Pool
@@ -57,7 +57,7 @@ Underlying ────────────────── source/api/sdk
 
 A singleton class. Get it via `GetApi()`. Methods come in two flavors:
 
-**Build*Request() methods** return a request AA — `{ method, url, body? }` — for use with the task pool. **This is the modern, preferred pattern.**
+**Build*Request() methods** return a request AA — `{ method, url, body?, expect? }` — for use with the task pool. **This is the modern, preferred pattern.**
 
 ```brightscript
 req = GetApi().BuildGetItemRequest(itemId, { fields: "Overview,Genres" })
@@ -71,6 +71,7 @@ Internally, `Build*Request` methods:
 - Apply image defaults (`EnableImageTypes: "Primary,Backdrop,Logo,Thumb"`, `ImageTypeLimit: 1`)
 - Route between `V1` and `V2` endpoints based on `getApiVersionFromGlobal()` (which reads `m.global.server.apiVersion`)
 - Return `invalid` if there's no user (so callers don't have to null-check globals)
+- Mark a bare-array endpoint's request `expect: "list"` (`listReq`), so the pool holds its body to that shape — see [Reading a list endpoint's body](#reading-a-list-endpoints-body--sourceapiapiresponsebs)
 - **May REFUSE to build a request that would be unsafe, and may take a domain object instead of an id in order to check.** This is a second, narrower meaning of the `invalid` return above: not "I lack a prerequisite" but "I will not build this". `BuildDeleteSubtitleRequest(itemId, stream)` is the reference — it takes the subtitle `MediaStream` rather than a stream index, and returns `invalid` unless `IsExternal` is explicitly `true`, because the server deletes `MediaStream.Path` unconditionally and an embedded subtitle's path is the media container. Put a safety rule here, once, when getting it wrong destroys user data; a rule stated in prose for callers to honor is not a guard, and callers already treat an `invalid` request as "cannot do this", so a refusal degrades into an inert control rather than a crash.
 
 Example of `V1/V2` routing (one method shown — the same pattern repeats per endpoint; canonical source: `source/api/ApiClient.bs`):
@@ -204,7 +205,8 @@ ApiQueueTask.runQueueLoop() (Task thread)
 ApiTask<i>.runApiLoop() (Task thread)
   │
   │  1. Observer fires on .request field
-  │  2. executeRequest(req) — runs HTTP via roku-requests
+  │  2. executeRequest(req) — runs HTTP via roku-requests, then holds a list
+  │     request's body to its shape (apiResponse.enforceShape)
   │  3. Writes response AA to .response
   │
   ▼
@@ -271,7 +273,7 @@ end sub
 
 This blocks the *Task* thread (not the render thread!) for up to `timeouts.API_WAIT_MS` (currently 12 seconds; the canonical value lives in `source/constants/timeouts.bs`). Concurrent calls from multiple Task threads are safe — each gets its own `ApiResultNode`.
 
-`fetchJson(req, id)` is a convenience wrapper that returns just `res.json` (or `invalid` on timeout/HTTP error).
+`fetchJson(req, id)` is a convenience wrapper that returns just `res.json` (or `invalid` on timeout, an HTTP error, or a list body that failed its shape check — see [Reading a list endpoint's body](#reading-a-list-endpoints-body--sourceapiapiresponsebs)).
 
 ### Pattern 2 — `submitApiRequest` (non-blocking, from render thread)
 
@@ -370,19 +372,29 @@ Canonical example: `LoadLatestRowsTask` (Home's latest-media rows). Its state ma
 
 ## Reading a list endpoint's body — `source/api/apiResponse.bs`
 
-Whatever the call pattern, `res.json` is whatever the server sent, parsed. Most endpoints answer with a `{ Items: [...] }` query result, but a few answer with a **bare array** — latest media, sessions, local trailers, special features, cultures. Read those through `apiResponse.listFrom(res.json)`, never by iterating or indexing `res.json` directly:
+Most endpoints answer with a `{ Items: [...] }` query result, but some answer with a **bare array** — the Jellyfin OpenAPI spec says which, as a 200 response schema of `type: array`. **Build those requests with `listReq` instead of `validatedReq`:**
 
 ```brightscript
-items = apiResponse.listFrom(res.json)
-if not isValid(items)
-  ' No list in the body — treat it as no answer, exactly like a failed request.
-end if
+function BuildGetCulturesRequest() as dynamic
+  return m.listReq("GET", buildURL("/Localization/Cultures"))
+end function
 ```
 
-**Why a shape check, not trust in the spec:** BrightScript iterates an associative array's *keys*. If one of these endpoints ever answers with an object, `for each item in res.json` yields key strings and the first `item.Type` (or a `res.json[0]`) is a runtime error that ends the app — it cannot fail softly. That happened in the field (a v2.30.0 crash report): a server answered `/Items/Latest` with a query result, and the latest-media task crashed the app while Home was loading.
+`listReq` marks the request `expect: "list"`, and the pool holds the body to that shape: `ApiTask.executeRequest()` runs every response through `apiResponse.enforceShape()`. For a list request:
 
-- **Returns the array**, or the `Items` array out of a `{ Items: [...] }` wrapper — the wrapper is not what stock Jellyfin sends here, but its `Items` is the same list, so reading it shows the user their content rather than leaving the row empty on every retry.
-- **Returns `invalid`** for anything else. That is *no answer*, not an empty list — an empty array comes back as-is and is the only way to say "empty". Callers that remove UI on an empty result must not do so on `invalid` (the same rule as `res = invalid` above).
+- **`ok` means `res.json` is an `roArray`.** Callers iterate it with no check of their own. It may be empty — empty is an answer, and the only way to say "empty".
+- **A `{ Items: [...] }` wrapper is unwrapped** to its `Items`. Stock Jellyfin does not send one for these endpoints, but its `Items` is the same list, so reading it shows the user their content rather than leaving a row empty on every retry ([ADR 0039](../adr/0039-list-endpoint-shape-in-pool.md)).
+- **Any other body arrives as a failure:** `ok = false`, `json = invalid`, `error = "unexpectedShape"`, with `statusCode` still the server's. Callers already treat `ok = false` as *no answer* — never as an empty list — so nothing on screen is removed (the same rule as `res = invalid` above).
+- **The pool logs one `warn`**, naming the `requestId`, whenever a list endpoint answers with anything but a bare array — whether the wrapper was read through or the body rejected.
+
+Which endpoints are list requests is the set of builders that call `listReq` — `grep listReq source/api/ApiClient.bs` — and is deliberately not repeated here. The "List requests" group in `ApiClient.spec.bs` pins each one on both API versions.
+
+**Why a shape check, not trust in the spec:** BrightScript iterates an associative array's *keys*. If one of these endpoints ever answers with an object, `for each item in res.json` yields key strings and the first `item.Type` (or a `res.json[0]`) is a runtime error that ends the app — it cannot fail softly. That happened in the field (a v2.30.0 crash report): a server answered `/Items/Latest` with a query result, and the latest-media task crashed the app while Home was loading. **Why in the pool, not at each call site:** a per-caller check has to be remembered by every caller, and one forgotten caller is a crash. A builder is where the endpoint — and so its shape — is decided, and every pooled response already passes through one function.
+
+Two paths read a list without the pool's help:
+
+- **The synchronous bootstrap path** (`sdk.*` via `getJson`) never reaches `ApiTask`. Its one bare-array call, `ApiClient.GetPublicUsers()`, reads its body through `apiResponse.listFrom()` before returning it.
+- **A caller that wants the list out of a response of either shape** reads it through `apiResponse.listFrom(res.json)`, which returns the array, or a wrapper's `Items`, or `invalid`. `extrasRows.itemsFromResponse()` does this, because its rows mix both kinds of endpoint.
 
 ## Authentication & request building — `source/api/baseRequest.bs`
 
