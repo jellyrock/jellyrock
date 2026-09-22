@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-22 — fix(skills): Make `/pr` titles name every user-visible change
 - 2026-09-22 — fix: Fit `ItemDetails` text to the logo's real size
 - 2026-09-22 — Give each `HomeRows` latest-rows run its own task node
 - 2026-09-22 — fix: Stop crashing when a server answers a list endpoint with an object
