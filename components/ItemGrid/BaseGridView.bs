@@ -204,6 +204,10 @@ sub onScreenShown()
     activateTextureManager(m.data)
   end if
 
+  ' The guide is a child of this view, not a routed screen, so nothing else tells it it is back
+  ' (it resumes retrying what failed). Before the focus restore below, which stays this view's.
+  if isValid(m.tvGuide) then m.tvGuide.callFunc("onScreenShown")
+
   if isValid(m.top.lastFocus)
     m.top.lastFocus.setFocus(true)
   else
@@ -251,6 +255,7 @@ end sub
 
 sub onScreenHidden()
   hideTextureManager(m.data)
+  if isValid(m.tvGuide) then m.tvGuide.callFunc("onScreenHidden")
 end sub
 
 ' ============================================================================

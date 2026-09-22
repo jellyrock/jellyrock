@@ -2,7 +2,7 @@ import "pkg:/source/utils/backoff.bs"
 
 namespace tests
 
-  @suite("backoff - retry delays")
+  @suite("backoff - retry delays and failure state")
   class BackoffTests extends tests.BaseTestSuite
 
     protected override function setup()
@@ -23,6 +23,39 @@ namespace tests
     @params(10, 30000)
     function _(attempt, expectedMs)
       m.assertEqual(backoff.nextDelayMs(attempt), expectedMs)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("afterFailure()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("waits the first delay after a first failure")
+    function _()
+      m.assertEqual(backoff.afterFailure(invalid, 5000), { attempts: 1, retryAt: 6000 })
+    end function
+
+    @it("waits longer after each further failure, from the time of that failure")
+    function _()
+      second = backoff.afterFailure({ attempts: 1, retryAt: 6000 }, 7000)
+      m.assertEqual(second, { attempts: 2, retryAt: 9000 })
+      m.assertEqual(backoff.afterFailure(second, 9500), { attempts: 3, retryAt: 13500 })
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isWaiting()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is waiting until the retry time, and not from then on")
+    function _()
+      failure = { attempts: 1, retryAt: 6000 }
+      m.assertTrue(backoff.isWaiting(failure, 5999))
+      m.assertFalse(backoff.isWaiting(failure, 6000))
+      m.assertFalse(backoff.isWaiting(failure, 9000))
+    end function
+
+    @it("is not waiting when nothing failed")
+    function _()
+      m.assertFalse(backoff.isWaiting(invalid, 0))
     end function
 
   end class

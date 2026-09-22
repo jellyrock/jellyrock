@@ -80,7 +80,7 @@ The socket is I/O, so it lives on a **Task thread**; but the seams a command mus
 - **`remoteCommand.bs`** / **`remoteProtocol.bs`** are pure (no node, no socket, no `m.global`) and
   unit-tested — the wire-protocol parser and the transport helpers (the HTTP gate, URL builder,
   keepalive frame). The reconnect delay is the app's shared `backoff.nextDelayMs`
-  ([`source/utils/backoff.bs`](../../source/utils/backoff.bs)).
+  ([`source/utils/backoff.bs`](../../source/utils/backoff.bs)), which the TV guide's retries use too.
 - **`remoteDispatch.bs`** is the main-thread adapter — the single place the deep-link and player
   seams are called for a remote command. `dispatchTransport` is **shared** with the voice path
   (`main.bs`'s `roInputEvent` branch calls the same adapter), so voice and cast dispatch transport

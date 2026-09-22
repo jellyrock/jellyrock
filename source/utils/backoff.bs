@@ -1,5 +1,8 @@
+import "pkg:/source/utils/misc.bs"
+
 ' Exponential backoff for retrying something that failed: how long to wait before the next
-' attempt. Pure, so it works on any thread and in a test.
+' attempt, and whether a failure is still waiting that long. Pure — callers pass their own clock
+' in, so the same failure state works on any thread and in a test.
 namespace backoff
 
   ' The delay before the retry that follows a 0-based `attempt`: 1 s, 2 s, 4 s, 8 s, 16 s, then
@@ -11,6 +14,22 @@ namespace backoff
       if ms >= 30000 then return 30000
     end for
     return ms
+  end function
+
+  ' The failure state after one more failure.
+  '
+  ' @param previous - the state afterFailure returned for the last failure, or invalid for the first
+  ' @param nowMs - the caller's clock, in milliseconds
+  ' @return an AA with `attempts` and `retryAt`, the time the next attempt may start on the same clock
+  function afterFailure(previous as dynamic, nowMs as integer) as object
+    attempts = 1
+    if isValid(previous) then attempts = previous.attempts + 1
+    return { attempts: attempts, retryAt: nowMs + nextDelayMs(attempts - 1) }
+  end function
+
+  ' Whether `failure` is still waiting out its delay at `nowMs`. False for invalid: nothing failed.
+  function isWaiting(failure as dynamic, nowMs as integer) as boolean
+    return isValid(failure) and failure.retryAt > nowMs
   end function
 
 end namespace

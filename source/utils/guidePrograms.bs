@@ -1,5 +1,16 @@
+import "pkg:/source/utils/backoff.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/viewport.bs"
+
+' What the rows without programs around the focus should say (guidePrograms.spanState).
+enum GuideSpanState
+  ' Every block there holds programs through the horizon: a row without any has none to show
+  LOADED = "loaded"
+  ' A block there is still to be fetched, or its fetch is in flight
+  LOADING = "loading"
+  ' A block there failed to load and is waiting to retry
+  FAILED = "failed"
+end enum
 
 ' Which program blocks the TV guide (Schedule) should hold, fetch next, and drop.
 '
@@ -13,6 +24,9 @@ import "pkg:/source/utils/viewport.bs"
 '   absent — holds nothing
 '   0      — holds programs that are stale (a refresh is due); the next fetch replaces them
 '   > 0    — holds programs through that time (seconds since the epoch)
+' A block whose last fetch failed also has an entry in `failures` (same keys): its backoff state
+' (source/utils/backoff.bs), so it is not fetched again until its retryAt. Times in `failures`
+' are on the component's own millisecond clock, not the epoch.
 namespace guidePrograms
 
   ' Channels per program request. 25 channels x 24 h is ~460 programs on the fixture server.
@@ -85,22 +99,66 @@ namespace guidePrograms
   end function
 
   ' The next fetch to make, or invalid when every wanted block holds programs through
-  ' `horizon`. Fetches are made one at a time; call again after each lands.
+  ' `horizon` or is waiting to retry. Fetches are made one at a time; call again after each lands.
   '
   ' @param wanted - from wantedBlocks
   ' @param held - block states (see the namespace comment)
   ' @param horizon - the time wanted blocks should hold programs through
+  ' @param failures - backoff states of blocks whose last fetch failed
+  ' @param nowMs - the clock `failures` is on
   ' @return an AA with `block` and `extendFrom`: extendFrom is 0 for a full load (replacing
   '   whatever the block holds), or the time the block already holds programs through, to fetch
   '   only what starts after it
-  function nextFetch(wanted as object, held as object, horizon as integer) as dynamic
+  function nextFetch(wanted as object, held as object, horizon as integer, failures as object, nowMs as integer) as dynamic
     for each block in wanted
       key = block.toStr()
-      if not held.DoesExist(key) then return { block: block, extendFrom: 0 }
-      ' A stale block (0) comes back as a full load too
-      if held[key] < horizon then return { block: block, extendFrom: held[key] }
+      if not isCurrent(key, held, horizon) and not backoff.isWaiting(failures[key], nowMs)
+        if not held.DoesExist(key) then return { block: block, extendFrom: 0 }
+        ' A stale block (0) comes back as a full load too
+        return { block: block, extendFrom: held[key] }
+      end if
     end for
     return invalid
+  end function
+
+  ' When the earliest wanted block waiting to retry may be fetched, or invalid when none is
+  ' waiting — the time to come back if nextFetch has nothing to do now.
+  '
+  ' @param wanted - from wantedBlocks
+  ' @param held - block states
+  ' @param horizon - the time wanted blocks should hold programs through
+  ' @param failures - backoff states of blocks whose last fetch failed
+  ' @return a time on the `failures` clock, or invalid
+  function nextRetryAt(wanted as object, held as object, horizon as integer, failures as object) as dynamic
+    earliest = invalid
+    for each block in wanted
+      key = block.toStr()
+      failure = failures[key]
+      if isValid(failure) and not isCurrent(key, held, horizon)
+        if not isValid(earliest) or failure.retryAt < earliest then earliest = failure.retryAt
+      end if
+    end for
+    return earliest
+  end function
+
+  ' `failures` with only the wanted blocks' entries, so a block the focus comes back to later
+  ' starts again from the first, shortest delay.
+  '
+  ' @param failures - backoff states of blocks whose last fetch failed
+  ' @param wanted - from wantedBlocks
+  ' @return a new AA; `failures` is left untouched
+  function pruneFailures(failures as object, wanted as object) as object
+    kept = {}
+    for each block in wanted
+      key = block.toStr()
+      if failures.DoesExist(key) then kept[key] = failures[key]
+    end for
+    return kept
+  end function
+
+  ' Whether `key`'s block holds programs through `horizon`. A stale block (0) never does.
+  function isCurrent(key as string, held as object, horizon as integer) as boolean
+    return held.DoesExist(key) and held[key] >= horizon
   end function
 
   ' Blocks to drop so at most `cap` hold programs: never a wanted one, farthest from the
@@ -138,19 +196,26 @@ namespace guidePrograms
     return dropped
   end function
 
-  ' Whether every row in [firstRow, lastRow] belongs to a block holding current programs —
-  ' decides whether a row without programs is still loading or has nothing to show.
+  ' What rows in [firstRow, lastRow] without programs should say — TimeGrid has one text for
+  ' every such row. FAILED wins over LOADING: a block waiting up to 30 s to retry must not read as
+  ' loading, while a block still loading next to it reads as unavailable only until it lands.
   '
   ' @param firstRow - first row, inclusive
   ' @param lastRow - last row, inclusive
   ' @param held - block states
-  function isSpanLoaded(firstRow as integer, lastRow as integer, held as object) as boolean
-    if firstRow < 0 or lastRow < firstRow then return true
+  ' @param failures - backoff states of blocks whose last fetch failed
+  ' @param horizon - the time blocks should hold programs through
+  function spanState(firstRow as integer, lastRow as integer, held as object, failures as object, horizon as integer) as string
+    if firstRow < 0 or lastRow < firstRow then return GuideSpanState.LOADED
+    state = GuideSpanState.LOADED
     for block = blockOf(firstRow) to blockOf(lastRow)
       key = block.toStr()
-      if not held.DoesExist(key) or held[key] = 0 then return false
+      if not isCurrent(key, held, horizon)
+        if failures.DoesExist(key) then return GuideSpanState.FAILED
+        state = GuideSpanState.LOADING
+      end if
     end for
-    return true
+    return state
   end function
 
 end namespace

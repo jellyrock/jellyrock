@@ -88,11 +88,14 @@ sub loadChannels()
   m.log.info("loadChannels: fetch completed", "elapsed_ms", elapsed, "ok", isValid(res) and res.ok)
 
   results = []
+  ' A failed fetch delivers no channels too; ok tells the guide it was not the end of the list
+  ok = isValid(res) and res.ok and isValid(res.json)
 
-  if isValid(res) and res.ok and isValid(res.json)
+  if ok
     if not isValid(res.json.TotalRecordCount)
       m.log.info("loadChannels: no TotalRecordCount in response")
       m.top.totalRecordCount = 0
+      m.top.ok = true
       m.top.channels = results
       return
     end if
@@ -133,7 +136,8 @@ sub loadChannels()
     results = filterByVoiceSearch(results, searchTerm, timer)
   end if
 
-  m.log.info("loadChannels: result", "channelCount", results.Count())
+  m.log.info("loadChannels: result", "ok", ok, "channelCount", results.Count())
+  m.top.ok = ok
   m.top.channels = results
 end sub
 

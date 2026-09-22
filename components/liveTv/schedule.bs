@@ -4,6 +4,7 @@ import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/backoff.bs"
 import "pkg:/source/utils/guidePrograms.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
@@ -34,6 +35,7 @@ sub init()
 
   m.textLoading = translate(translationKeys.LabelLoading)
   m.textNoSchedule = translate(translationKeys.LabelNoScheduleInformation)
+  m.textUnavailable = translate(translationKeys.LabelScheduleUnavailable)
 
   m.scheduleGrid.observeField("channelFocused", "onChannelFocused")
   m.scheduleGrid.observeField("programFocused", "onProgramFocused")
@@ -43,6 +45,13 @@ sub init()
 
   m.gridMoveAnimation = m.top.findNode("gridMoveAnimation")
   m.gridMoveAnimationPosition = m.top.findNode("gridMoveAnimationPosition")
+
+  ' A channel page or program block that failed is fetched again on this timer once its backoff
+  ' delay is up (scheduleRetry). Delays run on m.clock; they wait while the guide is off screen.
+  m.clock = CreateObject("roTimespan")
+  m.isShown = true
+  m.retryTimer = m.top.findNode("retryTimer")
+  m.retryTimer.observeField("fire", "onRetryTimer")
 
   m.top.lastFocus = m.scheduleGrid
 
@@ -101,13 +110,26 @@ sub reloadChannels()
   runChannelsPage(0)
 end sub
 
+' BaseGridView forwards onScreenShown / onScreenHidden: the guide is its child, not a routed view.
 sub onScreenShown()
+  ' Back on screen: a retry that came due while it was hidden runs now
+  if not m.isShown
+    m.isShown = true
+    onRetryTimer()
+  end if
+
   ' Restore focus for scene navigation
   if isValid(m.top.lastFocus)
     m.top.lastFocus.setFocus(true)
   else
     m.top.setFocus(true)
   end if
+end sub
+
+' Off screen (something plays on top of the library): retries wait until the guide is back.
+sub onScreenHidden()
+  m.isShown = false
+  m.retryTimer.control = "stop"
 end sub
 
 sub channelFilterSet()
@@ -152,20 +174,27 @@ sub onChannelsLoaded(event as object)
   ' still-empty output.
   if not isCurrentTaskEvent(event, m.LoadChannelsTask) then return
   m.LoadChannelsTask.unobserveField("channels")
+  ok = m.LoadChannelsTask.ok
   channels = m.LoadChannelsTask.channels
   startIndex = m.LoadChannelsTask.startIndex
   totalRecordCount = m.LoadChannelsTask.totalRecordCount
-  m.log.info("onChannelsLoaded", "channelCount", channels.count(), "startIndex", startIndex, "totalRecordCount", totalRecordCount)
+  m.log.info("onChannelsLoaded", "ok", ok, "channelCount", channels.count(), "startIndex", startIndex, "totalRecordCount", totalRecordCount)
   isFirstPage = startIndex = 0
 
-  if channels.count() = 0
+  if not ok
+    onChannelPageFailed(startIndex)
+    return
+  end if
+  m.channelPageFailure = invalid
+  ' After a failed first page the grid's loading message says the schedule is unavailable
+  if m.scheduleGrid.loadingDataText <> m.textLoading then m.scheduleGrid.loadingDataText = m.textLoading
+
+  if channels.count() = 0 and isFirstPage
+    ' No channels at all — stop spinner and restore focus so user can navigate back
     m.channelsComplete = true
-    if isFirstPage
-      ' No channels at all — stop spinner and restore focus so user can navigate back
-      stopLoadingSpinner()
-      m.scheduleGrid.showLoadingDataFeedback = false
-      m.scheduleGrid.setFocus(true)
-    end if
+    stopLoadingSpinner()
+    m.scheduleGrid.showLoadingDataFeedback = false
+    m.scheduleGrid.setFocus(true)
     return
   end if
 
@@ -188,12 +217,13 @@ sub onChannelsLoaded(event as object)
       m.top.signalBeacon("EPGLaunchComplete")
       m.EPGLaunchCompleteSignaled = true
     end if
-  else
+  else if channels.count() > 0
     ' Subsequent page: append to existing grid content
     m.scheduleGrid.content.appendChildren(channels)
   end if
 
-  ' Load next page of channels if more exist
+  ' Load the next page if more exist. An empty later page ends the list (paging.nextStart), and
+  ' still reconciles below: it can complete a short last block.
   nextStart = paging.nextStart(startIndex, channels.count(), totalRecordCount)
   if nextStart >= 0
     runChannelsPage(nextStart)
@@ -203,6 +233,55 @@ sub onChannelsLoaded(event as object)
 
   ' A page can complete a block the focus is waiting on
   reconcilePrograms()
+end sub
+
+' A failed channel page is not the end of the list: keep the rows already here and fetch the
+' same page again after a backoff delay (scheduleRetry).
+sub onChannelPageFailed(startIndex as integer)
+  m.log.warn("channel page failed", "startIndex", startIndex)
+  failure = backoff.afterFailure(m.channelPageFailure, m.clock.TotalMilliseconds())
+  failure.startIndex = startIndex
+  m.channelPageFailure = failure
+  ' No page is in flight until the retry starts one: scheduleRetry arms the timer only then
+  m.LoadChannelsTask = releaseTask(m.LoadChannelsTask, "channels")
+
+  if startIndex = 0
+    ' Nothing to show yet: say so over the whole grid, and hand the remote back to the user
+    ' (the loading spinner holds it)
+    m.scheduleGrid.loadingDataText = m.textUnavailable
+    m.scheduleGrid.showLoadingDataFeedback = true
+    stopLoadingSpinner()
+    m.scheduleGrid.setFocus(true)
+  end if
+  scheduleRetry()
+end sub
+
+' Arms the retry timer for the earliest failure whose delay is not up yet — a channel page with
+' none in flight, or a wanted program block with no fetch in flight — or stops it when nothing
+' waits or the guide is off screen.
+sub scheduleRetry()
+  retryAt = invalid
+  if isValid(m.channelPageFailure) and not isValid(m.LoadChannelsTask) then retryAt = m.channelPageFailure.retryAt
+  if isValid(m.programRetryAt) and (not isValid(retryAt) or m.programRetryAt < retryAt) then retryAt = m.programRetryAt
+
+  m.retryTimer.control = "stop"
+  if not isValid(retryAt) or not m.isShown then return
+  delayMs = retryAt - m.clock.TotalMilliseconds()
+  if delayMs < 50 then delayMs = 50
+  m.retryTimer.duration = delayMs / 1000
+  m.retryTimer.control = "start"
+end sub
+
+sub onRetryTimer()
+  ' A fire already queued when onDestroy detached the observer finds nothing left to retry
+  if not isValid(m.clock) then return
+  failure = m.channelPageFailure
+  if isValid(failure) and not isValid(m.LoadChannelsTask) and not backoff.isWaiting(failure, m.clock.TotalMilliseconds())
+    runChannelsPage(failure.startIndex)
+  end if
+  ' Starts a program block whose delay is up, and arms the timer for the next one
+  reconcilePrograms()
+  scheduleRetry()
 end sub
 
 ' ── Programs: loaded near the focus, in blocks ──────────────────────────────────────
@@ -216,8 +295,10 @@ end sub
 sub resetPrograms()
   if isValid(m.LoadScheduleTask) then m.LoadScheduleTask = releaseTask(m.LoadScheduleTask, "programs")
   m.programFetch = invalid
-  m.programFetchPaused = false
+  m.programRetryAt = invalid
   m.guideHeld = {}
+  m.guideFailures = {}
+  m.channelPageFailure = invalid
   m.channelIds = []
   m.channelsComplete = false
   m.fullyLoadedProgramIds = {}
@@ -226,8 +307,8 @@ sub resetPrograms()
 end sub
 
 ' Brings the rows near the focus to the programs they should hold: drops blocks beyond the
-' cap, updates the text shown in rows without programs, and starts the next fetch if none is
-' in flight.
+' cap, updates the text shown in rows without programs, starts the next fetch if none is in
+' flight, and arms the retry timer for a failed block whose delay is not up yet.
 sub reconcilePrograms()
   content = m.scheduleGrid.content
   if not isValid(content) then return
@@ -236,6 +317,7 @@ sub reconcilePrograms()
 
   focusedRow = guideFocusedRow(rowCount)
   wanted = guidePrograms.wantedBlocks(focusedRow, guideVisibleRows(), rowCount, m.channelsComplete)
+  m.guideFailures = guidePrograms.pruneFailures(m.guideFailures, wanted)
   dropPrograms(guidePrograms.evictions(m.guideHeld, wanted, focusedRow, guidePrograms.CAP))
   updateNoProgramsText(focusedRow, rowCount)
 
@@ -247,9 +329,16 @@ sub reconcilePrograms()
     m.programFetch = invalid
   end if
 
-  if isValid(m.LoadScheduleTask) or m.programFetchPaused then return
-  fetch = guidePrograms.nextFetch(wanted, m.guideHeld, m.guideHorizon)
-  if isValid(fetch) then startProgramFetch(fetch, rowCount)
+  m.programRetryAt = invalid
+  if not isValid(m.LoadScheduleTask)
+    fetch = guidePrograms.nextFetch(wanted, m.guideHeld, m.guideHorizon, m.guideFailures, m.clock.TotalMilliseconds())
+    if isValid(fetch)
+      startProgramFetch(fetch, rowCount)
+    else
+      m.programRetryAt = guidePrograms.nextRetryAt(wanted, m.guideHeld, m.guideHorizon, m.guideFailures)
+    end if
+  end if
+  scheduleRetry()
 end sub
 
 ' The focused channel row, clamped to the grid — TimeGrid keeps reporting the old index for a
@@ -298,15 +387,15 @@ sub onProgramsLoaded(event as object)
   m.LoadScheduleTask = releaseTask(m.LoadScheduleTask, "programs")
   m.programFetch = invalid
 
-  if not ok
-    ' Leave the block without programs and fetch nothing more until the focus moves, so an
-    ' unreachable server is retried by the user rather than in a loop.
+  if ok
+    applyPrograms(byChannel, fetch)
+  else
+    ' Leave the block without programs: it is fetched again after a backoff delay, while the
+    ' other blocks near the focus go on loading
     m.log.warn("program fetch failed", "block", fetch.block)
-    m.programFetchPaused = true
-    return
+    key = fetch.block.toStr()
+    m.guideFailures[key] = backoff.afterFailure(m.guideFailures[key], m.clock.TotalMilliseconds())
   end if
-
-  applyPrograms(byChannel, fetch)
   reconcilePrograms()
 end sub
 
@@ -335,6 +424,7 @@ sub applyPrograms(byChannel as object, fetch as object)
   end for
 
   m.guideHeld[key] = fetch.until
+  m.guideFailures.Delete(key)
   if isRefresh
     ' The replaced programs' details and any detail fetch in flight belong to the old nodes
     m.fullyLoadedProgramIds = {}
@@ -364,9 +454,10 @@ sub dropPrograms(blocks as object)
   m.fullyLoadedProgramIds = {}
 end sub
 
-' A row without programs reads "Loading…" while any block around the focus is still loading,
-' and "No schedule information" once they have all loaded — TimeGrid has one text for every
-' such row, so it follows the rows the user can see.
+' A row without programs reads "Loading…" while a block around the focus is still loading,
+' "Schedule unavailable" while one is waiting to retry, and "No schedule information" once they
+' have all loaded — TimeGrid has one text for every such row, so it follows the rows the user
+' can see.
 sub updateNoProgramsText(focusedRow as integer, rowCount as integer)
   visibleRows = guideVisibleRows()
   firstRow = focusedRow - visibleRows
@@ -374,8 +465,13 @@ sub updateNoProgramsText(focusedRow as integer, rowCount as integer)
   lastRow = focusedRow + visibleRows
   if lastRow >= rowCount then lastRow = rowCount - 1
 
-  text = m.textLoading
-  if guidePrograms.isSpanLoaded(firstRow, lastRow, m.guideHeld) then text = m.textNoSchedule
+  text = m.textNoSchedule
+  state = guidePrograms.spanState(firstRow, lastRow, m.guideHeld, m.guideFailures, m.guideHorizon)
+  if state = GuideSpanState.LOADING
+    text = m.textLoading
+  else if state = GuideSpanState.FAILED
+    text = m.textUnavailable
+  end if
   if m.scheduleGrid.channelNoDataText <> text then m.scheduleGrid.channelNoDataText = text
 end sub
 
@@ -386,7 +482,6 @@ function isoFromSeconds(seconds as integer) as string
 end function
 
 sub onChannelFocused()
-  m.programFetchPaused = false
   reconcilePrograms()
 end sub
 
@@ -579,7 +674,6 @@ sub onRecordOperationDone(event as object)
     for each key in m.guideHeld
       m.guideHeld[key] = 0
     end for
-    m.programFetchPaused = false
     reconcilePrograms()
   else
     ' This reloads just the details for the currently selected program, so that we don't have to
@@ -632,6 +726,8 @@ sub onDestroy()
   m.scheduleGrid.unobserveField("programFocused")
   m.scheduleGrid.unobserveField("programSelected")
   m.scheduleGrid.unobserveField("leftEdgeTargetTime")
+  m.retryTimer.unobserveField("fire")
+  m.retryTimer.control = "stop"
 
   ' Detach the record-operation observer before releasing any reference: onRecordOperationDone
   ' reads the grid and the program state, so leaving it attached while those are nulled below
@@ -652,11 +748,15 @@ sub onDestroy()
   m.scheduleGrid = invalid
   m.gridMoveAnimation = invalid
   m.gridMoveAnimationPosition = invalid
+  m.retryTimer = invalid
+  m.clock = invalid
 
   ' Clear data structures
   m.channelQuery = invalid
   m.channelIds = invalid
   m.guideHeld = invalid
+  m.guideFailures = invalid
+  m.channelPageFailure = invalid
   m.fullyLoadedProgramIds = invalid
   m.loadingInitialized = false
 end sub

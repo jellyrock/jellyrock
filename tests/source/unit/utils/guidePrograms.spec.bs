@@ -71,26 +71,73 @@ namespace tests
 
     @it("fully loads the first wanted block that holds nothing")
     function _()
-      fetch = guidePrograms.nextFetch([1, 2, 0], { "1": 5000 }, 5000)
+      fetch = guidePrograms.nextFetch([1, 2, 0], { "1": 5000 }, 5000, {}, 0)
       m.assertEqual(fetch, { block: 2, extendFrom: 0 })
     end function
 
     @it("extends a block from the time it already holds programs through")
     function _()
-      fetch = guidePrograms.nextFetch([1, 2], { "1": 3000, "2": 5000 }, 5000)
+      fetch = guidePrograms.nextFetch([1, 2], { "1": 3000, "2": 5000 }, 5000, {}, 0)
       m.assertEqual(fetch, { block: 1, extendFrom: 3000 })
     end function
 
     @it("fully reloads a stale block, which the load replaces")
     function _()
-      fetch = guidePrograms.nextFetch([1, 2], { "1": 0, "2": 5000 }, 5000)
+      fetch = guidePrograms.nextFetch([1, 2], { "1": 0, "2": 5000 }, 5000, {}, 0)
       m.assertEqual(fetch, { block: 1, extendFrom: 0 })
     end function
 
     @it("fetches nothing once every wanted block is current")
     function _()
-      m.assertInvalid(guidePrograms.nextFetch([1, 2], { "1": 5000, "2": 9000 }, 5000))
-      m.assertInvalid(guidePrograms.nextFetch([], {}, 5000))
+      m.assertInvalid(guidePrograms.nextFetch([1, 2], { "1": 5000, "2": 9000 }, 5000, {}, 0))
+      m.assertInvalid(guidePrograms.nextFetch([], {}, 5000, {}, 0))
+    end function
+
+    @it("passes over a block waiting to retry, and fetches it once its retry time comes")
+    function _()
+      failures = { "1": { attempts: 1, retryAt: 2000 } }
+      m.assertEqual(guidePrograms.nextFetch([1, 2], {}, 5000, failures, 1999), { block: 2, extendFrom: 0 })
+      m.assertInvalid(guidePrograms.nextFetch([1], {}, 5000, failures, 1999))
+      m.assertEqual(guidePrograms.nextFetch([1, 2], {}, 5000, failures, 2000), { block: 1, extendFrom: 0 })
+    end function
+
+    @it("retries a failed extension as an extension")
+    function _()
+      failures = { "1": { attempts: 2, retryAt: 2000 } }
+      m.assertEqual(guidePrograms.nextFetch([1], { "1": 3000 }, 5000, failures, 2500), { block: 1, extendFrom: 3000 })
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("nextRetryAt()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is the earliest retry time among wanted blocks still to load")
+    function _()
+      failures = { "1": { attempts: 3, retryAt: 9000 }, "2": { attempts: 1, retryAt: 4000 } }
+      m.assertEqual(guidePrograms.nextRetryAt([1, 2], {}, 5000, failures), 4000)
+    end function
+
+    @it("ignores a failed block that is not wanted, or has loaded since")
+    function _()
+      failures = { "1": { attempts: 1, retryAt: 4000 }, "7": { attempts: 1, retryAt: 1000 } }
+      m.assertEqual(guidePrograms.nextRetryAt([1, 2], {}, 5000, failures), 4000)
+      m.assertInvalid(guidePrograms.nextRetryAt([1, 2], { "1": 5000 }, 5000, failures))
+    end function
+
+    @it("is invalid when nothing is waiting")
+    function _()
+      m.assertInvalid(guidePrograms.nextRetryAt([1, 2], {}, 5000, {}))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("pruneFailures()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps only the wanted blocks' failures, leaving its argument untouched")
+    function _()
+      failures = { "1": { attempts: 4, retryAt: 9000 }, "7": { attempts: 2, retryAt: 3000 } }
+      m.assertEqual(guidePrograms.pruneFailures(failures, [1, 2]), { "1": { attempts: 4, retryAt: 9000 } })
+      m.assertEqual(failures.count(), 2)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -129,15 +176,34 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("isSpanLoaded()")
+    @describe("spanState()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("is true only when every block of the span holds current programs")
+    @it("is loaded only when every block of the span holds programs through the horizon")
     function _()
-      held = { "0": 5000, "1": 5000, "2": 0 }
-      m.assertTrue(guidePrograms.isSpanLoaded(10, 40, held))
-      m.assertFalse(guidePrograms.isSpanLoaded(40, 60, held), "block 2 is stale")
-      m.assertFalse(guidePrograms.isSpanLoaded(70, 80, held), "block 3 holds nothing")
+      held = { "0": 5000, "1": 5000, "2": 0, "3": 3000 }
+      m.assertEqual(guidePrograms.spanState(10, 40, held, {}, 5000), GuideSpanState.LOADED)
+      m.assertEqual(guidePrograms.spanState(40, 60, held, {}, 5000), GuideSpanState.LOADING, "block 2 is stale")
+      m.assertEqual(guidePrograms.spanState(80, 90, held, {}, 5000), GuideSpanState.LOADING, "block 3 holds programs only up to an earlier horizon")
+      m.assertEqual(guidePrograms.spanState(100, 110, held, {}, 5000), GuideSpanState.LOADING, "block 4 holds nothing")
+    end function
+
+    @it("is failed when a block of the span failed, even beside one still loading")
+    function _()
+      failures = { "3": { attempts: 1, retryAt: 9000 } }
+      m.assertEqual(guidePrograms.spanState(70, 80, {}, failures, 5000), GuideSpanState.FAILED)
+      m.assertEqual(guidePrograms.spanState(40, 80, { "1": 5000 }, failures, 5000), GuideSpanState.FAILED)
+    end function
+
+    @it("is loaded for a failed block that has loaded since")
+    function _()
+      m.assertEqual(guidePrograms.spanState(0, 10, { "0": 5000 }, { "0": { attempts: 1, retryAt: 9000 } }, 5000), GuideSpanState.LOADED)
+    end function
+
+    @it("is loaded for an empty span")
+    function _()
+      m.assertEqual(guidePrograms.spanState(-1, 5, {}, {}, 5000), GuideSpanState.LOADED)
+      m.assertEqual(guidePrograms.spanState(6, 5, {}, {}, 5000), GuideSpanState.LOADED)
     end function
 
   end class
