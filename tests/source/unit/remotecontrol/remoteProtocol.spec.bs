@@ -3,8 +3,8 @@ import "pkg:/source/remotecontrol/remoteProtocol.bs"
 namespace tests
 
   ' Remote-control receiver: the transport-agnostic protocol helpers — the http-gate,
-  ' the session-socket URL builder (must bind the same session as the REST API), reconnect
-  ' backoff, and the client KeepAlive frame.
+  ' the session-socket URL builder (must bind the same session as the REST API), and the
+  ' client KeepAlive frame. Reconnect backoff is backoff.nextDelayMs (utils/backoff.spec.bs).
   @suite("remoteProtocol — protocol helpers")
   class RemoteProtocolTests extends tests.BaseTestSuite
 
@@ -155,22 +155,6 @@ namespace tests
     @params("[1,2,3]", 0)
     function _(body, expected)
       m.assertEqual(remoteProtocol.parseContractVersion(body), expected)
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("nextBackoffMs() — exponential, capped at 30s")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("doubles per attempt then caps at 30000ms")
-    @params(0, 1000)
-    @params(1, 2000)
-    @params(2, 4000)
-    @params(3, 8000)
-    @params(4, 16000)
-    @params(5, 30000)
-    @params(10, 30000)
-    function _(attempt, expectedMs)
-      m.assertEqual(remoteProtocol.nextBackoffMs(attempt), expectedMs)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

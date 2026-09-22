@@ -7,6 +7,7 @@ related-files:
   - components/vendor/BrightWebSocket/web_socket_client/WebSocketClientTask.brs
   - source/remotecontrol/remoteCommand.bs
   - source/remotecontrol/remoteProtocol.bs
+  - source/utils/backoff.bs
   - source/remotecontrol/remoteDispatch.bs
   - source/utils/deviceCapabilities.bs
   - source/main.bs
@@ -14,7 +15,7 @@ related-files:
   - source/api/userAuth.bs
   - components/home/Home.bs
   - docs/architecture/remote-control-longpoll-contract.md
-last-reviewed: 2026-09-20
+last-reviewed: 2026-09-21
 ---
 
 # Remote control — "Cast to JellyRock"
@@ -77,8 +78,9 @@ The socket is I/O, so it lives on a **Task thread**; but the seams a command mus
   parses each frame, answers keepalive, reconnects with backoff, and marshals normalized commands
   to the main thread. It **never** dispatches and **never** logs the socket URL (it carries the token).
 - **`remoteCommand.bs`** / **`remoteProtocol.bs`** are pure (no node, no socket, no `m.global`) and
-  unit-tested — the wire-protocol parser and the transport helpers (the HTTP gate, URL builder, backoff,
-  keepalive frame).
+  unit-tested — the wire-protocol parser and the transport helpers (the HTTP gate, URL builder,
+  keepalive frame). The reconnect delay is the app's shared `backoff.nextDelayMs`
+  ([`source/utils/backoff.bs`](../../source/utils/backoff.bs)).
 - **`remoteDispatch.bs`** is the main-thread adapter — the single place the deep-link and player
   seams are called for a remote command. `dispatchTransport` is **shared** with the voice path
   (`main.bs`'s `roInputEvent` branch calls the same adapter), so voice and cast dispatch transport

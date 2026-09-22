@@ -1,0 +1,30 @@
+import "pkg:/source/utils/backoff.bs"
+
+namespace tests
+
+  @suite("backoff - retry delays")
+  class BackoffTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("nextDelayMs() — exponential, capped at 30s")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("doubles per attempt then caps at 30000ms")
+    @params(0, 1000)
+    @params(1, 2000)
+    @params(2, 4000)
+    @params(3, 8000)
+    @params(4, 16000)
+    @params(5, 30000)
+    @params(10, 30000)
+    function _(attempt, expectedMs)
+      m.assertEqual(backoff.nextDelayMs(attempt), expectedMs)
+    end function
+
+  end class
+
+end namespace

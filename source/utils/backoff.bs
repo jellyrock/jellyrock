@@ -1,0 +1,16 @@
+' Exponential backoff for retrying something that failed: how long to wait before the next
+' attempt. Pure, so it works on any thread and in a test.
+namespace backoff
+
+  ' The delay before the retry that follows a 0-based `attempt`: 1 s, 2 s, 4 s, 8 s, 16 s, then
+  ' capped at 30 s.
+  function nextDelayMs(attempt as integer) as integer
+    ms = 1000
+    for i = 1 to attempt
+      ms = ms * 2
+      if ms >= 30000 then return 30000
+    end for
+    return ms
+  end function
+
+end namespace
