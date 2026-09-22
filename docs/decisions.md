@@ -1603,6 +1603,16 @@ The TV guide loads every channel row but programs only near the focus, on both a
 
 Measured with the design, 2026-09-21: 2,000 channels on the 512 MB Stick at 72 MB cold and 124–152 MB at the cap (24 h of programs per block). With the time window, the scenario that ran out of memory peaks at 136–167 MB, and swapping blocks at day 6 stays in a 143–170 MB band, reclaimed in batches rather than climbing; the OS reported `generalMemoryLevel` low twice in that band. Applying a block costs 6–59 ms of render thread on a Stick 4K and 16–75 ms on the 512 MB Stick, except the block holding the rows on screen: 99–255 ms and 111–348 ms, nearly all of it `TimeGrid` taking the programs into visible rows (the details pane is 6–15 ms of it). Dropping a block costs 45–137 ms and 108–256 ms; a cut, 33–83 ms and 50–235 ms. Re-evaluate `CAP`, `BLOCK_SIZE`, the window and the single fetch in flight if any of these hurts; the channel list itself still grows with the lineup (~15 KB per row), and the ~10 KB program node is the next lever.
 
+## decision-id: tv-guide-load-retry
+
+**date**: 2026-09-22
+**status**: accepted
+**related-files**: `components/liveTv/schedule.bs`, `source/utils/guidePrograms.bs`, `source/utils/backoff.bs`, `components/liveTv/LoadChannelsTask.bs`
+
+A TV guide load that fails retries on its own after a backoff delay (`backoff.afterFailure`: 1 s, doubling to a 30 s cap), per program block and per channel page, and says so: rows without programs read "Schedule unavailable" while a block near the focus waits to retry — that wins over "Loading…", since the wait can be 30 s — and a failed first page puts the same text over the whole grid and stops the spinner, which holds the remote. Moving the focus does not cut a delay short (a held key would otherwise hammer a failing server), a block the focus leaves forgets its failures, and retries wait while the guide is off screen. Ruled out: **retrying only when the user moves the focus**, the previous behavior — hard to discover, and it paused every block, not just the one that failed; **a toast per failure** — noise for a state the rows already show; and **per-row placeholder cells** — `TimeGrid` has no per-row status text, and a placeholder node per row would need guarding in every program handler.
+
+Re-evaluate the 30 s cap if servers take longer than that to come back, and whether some failures (a `4xx`) should stop retrying rather than back off.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
