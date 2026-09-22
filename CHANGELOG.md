@@ -14,10 +14,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Give each `HomeRows` latest-rows run its own task node ([#995](https://github.com/jellyrock/jellyrock/pull/995))
 - Show every TV guide channel, loading programs near the focus ([#991](https://github.com/jellyrock/jellyrock/pull/991))
 
 ### Fixed
 
+- Fit `ItemDetails` text to the logo's real size ([#996](https://github.com/jellyrock/jellyrock/pull/996))
 - Stop crashing when a server answers a list endpoint with an object ([#993](https://github.com/jellyrock/jellyrock/pull/993))
 - Fetch a focused TV guide program's details once, not twice ([#994](https://github.com/jellyrock/jellyrock/pull/994))
 - Play Live TV HLS channels from their own URL again on Jellyfin 12 ([#990](https://github.com/jellyrock/jellyrock/pull/990))

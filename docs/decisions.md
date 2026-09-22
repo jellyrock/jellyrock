@@ -1647,6 +1647,26 @@ Each Home latest-rows run gets a NEW `LoadLatestRowsTask` node (`startLatestMedi
 
 This reverses the predecessor's "ruled out: a fresh Task node per run". Both of its reasons are gone: the persistent-node convention was replaced app-wide by ADR 0037 after a same-node STOP-then-relaunch was measured losing up to 10 of 10 runs, and "an allocation per refresh" is one node per return to Home, far rarer than the node per keystroke ADR 0037 accepts in `SearchResults` (the allocation itself is not measured). Its "a running task is never STOPped" never held: the stall reclaim STOPped a node that could still read `run` and relaunched that same node, the one path its guard did not cover. Forced wedge, Stick 4K, 2026-09-22 (run 1 sleeps 60 s after its first row, reclaim at ~45 s): `main` 6/6 relaunches honored, new node 6/6, wedged run never resumed — migrated without a reproduction, as `SearchResults` was. Its warning about non-cloneable objects in `LoadLatestRowsTask.init()` no longer applies: each node launches once. Out of scope: `HomeRows`' five other Task nodes keep one node each; they relaunch only after delivering, from a later callback, which [threading.md](architecture/threading.md#measured-findings) measured as reliable.
 
+## decision-id: accept-language-not-sent
+
+**date**: 2026-09-22
+**status**: accepted
+**related-files**: `source/utils/mediaDisplayTitle.bs`, `source/utils/remoteSubtitles.bs`
+
+JellyRock does not send `Accept-Language`, although Jellyfin 12.0 localizes per request (jellyfin/jellyfin#16488). Measured 2026-09-22 against a local 12.0.0 (`fr`, `de`, `ja` against no header, 22 endpoints JellyRock calls plus `PlaybackInfo`): the server honors it (`Content-Language` is echoed), but the only content that changes is the flag words inside audio and subtitle `DisplayTitle` and the `Localized*` stream fields (`Default` became `Par défaut`). Language names stay English; season and chapter names are written in the server's language at scan time; views, genres, Next Up, Resume, Latest, Search and Live TV come back byte-identical. The server source agrees: every other request-culture string is a scheduled-task name, an admin surface.
+
+JellyRock renders none of it. `mediaDisplayTitle.bs` builds every track label from its own translation keys, and the one `DisplayTitle` read (`remoteSubtitles.subtitleStreamKey()`) is an identity key the header would make language-dependent. Ruled out: sending it anyway as future-proofing, which means a header on every request plus a `ui-culture` query parameter on the `ws://` connection (the server captures its culture at upgrade), for no change on screen. Re-evaluate if a `/server-upgrade` triage finds a release that localizes a string JellyRock displays.
+
+## decision-id: details-text-fits-logo-size
+
+**date**: 2026-09-22
+**status**: accepted
+**related-files**: `components/ItemDetails.bs`, `source/utils/logoLayout.bs`, `source/utils/infoRowFit.bs`, `source/api/ApiClient.bs`
+
+`ItemDetails` fits each line of its text to the logo's real box, and learns that box before the image arrives by asking for the image's original size (`GetItemImageInfos`, on the 10.7.0 floor) — one extra request per details open. The title, info rows and description are held at opacity 0 until the box is known, capped at 0.5 s, then shown already fitted; past the cap they show fitted to the widest possible logo and are not refitted. Measured 2026-09-22 against a LAN Jellyfin 12.1: a first request for a resized logo took 0.26 s median and 3 s worst (12 logos), the size request 28–56 ms; the served size is the original scaled to fit and rounded to nearest (15 of 15 matched).
+
+Ruled out: waiting on the image itself (blank text for seconds on a first open); one widest-logo bound for every line (wastes the room a short or narrow logo leaves); refitting after the logo lands (a visible jump); a spinner for the hold (sub-second waits, so it would only flash). Re-evaluate if the size request proves costly, if servers commonly report a size of 0 (the text then waits on the image, up to the cap), or if the cap is hit often on remote servers.
+
 ## decision-id: relaunch-gate-no-stop-shapes
 
 **date**: 2026-09-22

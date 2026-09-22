@@ -3,6 +3,7 @@ import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/constants/extrasLayout.bs"
+import "pkg:/source/constants/focusableOverview.bs"
 import "pkg:/source/constants/itemTypeOrder.bs"
 import "pkg:/source/deepLink.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
@@ -10,8 +11,10 @@ import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/buttonOverflow.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/dialogs.bs"
+import "pkg:/source/utils/infoRowFit.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/liveTv.bs"
+import "pkg:/source/utils/logoLayout.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
@@ -43,6 +46,14 @@ const LOGO_RIGHT_ANCHOR_X = 1824
 ' extending above the metadata rows. Person photos are exempt because their info rows
 ' are short and don't reach the right edge where the photo sits.
 const LOGO_MAX_DISPLAY_HEIGHT = 336
+' Narrowest a cut info-row item may be before it is dropped instead. Measured
+' 2026-09-22 on a Roku Ultra: the row font averages 15.6px per character, so 160px
+' is about ten characters, the shortest cut that still reads as a word or name
+' rather than a stub.
+const INFO_ROW_MIN_CUT_WIDTH = 160
+' The gap kept between the logo and any text beside or above it. Matches the
+' block's own spacing between its title rows and the description.
+const LOGO_TEXT_CLEARANCE = 12
 ' First-frame estimate for the button row's total rendered height. Used by anchorDateLabel()
 ' before boundingRect() has settled (it reports height=0 during initial render). Observed to
 ' land around 130 px for the typical 2-line-label icon button. A later renderTracking callback
@@ -139,6 +150,18 @@ sub init()
   ' Item logo - positioned at fixed Y position
   m.itemLogo = m.top.findNode("itemLogo")
   m.itemLogo.observeField("loadStatus", "onLogoLoadStatusChanged")
+  m.textHoldTimer = m.top.findNode("textHoldTimer")
+  m.textHoldTimer.observeField("fire", "onTextHoldTimeout")
+  ' Where the logo is drawn, once known: { x, y, width, height }, or invalid for no
+  ' logo. Until m.logoBoxKnown, the text is fitted to the widest logo possible.
+  m.logoBox = invalid
+  m.logoBoxKnown = false
+  m.logoSizeSeq = 0
+  ' What the text was last fitted to, and the width each line got.
+  m.textLayoutBox = invalid
+  m.textLayoutKnown = false
+  m.textLineWidths = {}
+  m.textHeld = false
 
   ' Date added label - positioned at bottom right
   m.dateCreatedLabel = m.top.findNode("dateCreatedLabel")
@@ -171,7 +194,7 @@ sub init()
   m.extrasActive = false
   m.extrasLoaded = false
 
-  ' Inner group: title + infoGroup + directorGenreGroup (never changes during activate/deactivate)
+  ' Inner group: title + infoGroup + detailsGroup + creditsGroup (never changes during activate/deactivate)
   ' Used to compute the correct animation target height when extras are shown
   m.itemInfoRows = m.top.findNode("itemInfoRows")
 
@@ -221,9 +244,12 @@ sub init()
   m.lastDeepLinkRouteId = ""
   m.deepLinkAction = "open"
 
-  m.directorGenreGroup = m.top.findNode("directorGenreGroup")
-  m.infoDividerCount = 0
-  m.directorGenreDividerCount = 0
+  m.detailsGroup = m.top.findNode("detailsGroup")
+  m.creditsGroup = m.top.findNode("creditsGroup")
+  m.videoTitle = m.top.findNode("videoTitle")
+  ' The block's resting y. The extras slide moves the block but not the logo, so text
+  ' is always fitted against where it rests.
+  m.itemDetailsRestY = int(m.itemDetails.translation[1])
 
   ' ItemDetails owns its own in-screen navigation AND its own action buttons. Extras-grid
   ' selections (cast / related items) navigate to their route; goTo* buttons navigate to
@@ -2043,24 +2069,294 @@ end function
 
 ' displayInfoNode: Add a node to the info group, prepending a bullet divider if needed
 sub displayInfoNode(node as object)
-  if not isValid(node) then return
-  if m.infoGroup.getChildCount() > 0
-    m.infoDividerCount++
-    divider = createDividerNode("infoDivider" + m.infoDividerCount.toStr())
-    m.infoGroup.appendChild(divider)
-  end if
-  m.infoGroup.appendChild(node)
+  appendInfoRowItem(m.infoGroup, node, "infoDivider")
 end sub
 
-' displayDirectorGenreNode: Add a node to the second info row, prepending a bullet divider if needed
-sub displayDirectorGenreNode(node as object)
+' displayDetailsNode: Add a node to the second info row, prepending a bullet divider if needed
+sub displayDetailsNode(node as object)
+  appendInfoRowItem(m.detailsGroup, node, "detailsDivider")
+end sub
+
+' displayCreditsNode: Add a people credit ("Directed by ...") to the credits row
+sub displayCreditsNode(node as object)
+  appendInfoRowItem(m.creditsGroup, node, "creditsDivider")
+end sub
+
+' The rows fitInfoRow() cuts are built ONLY here, which is what lets it read a row as
+' item, divider, item, ... by position: an item at every even index, a divider at
+' every odd one. Append to those rows any other way and the fit misreads them.
+sub appendInfoRowItem(group as object, node as object, dividerIdPrefix as string)
   if not isValid(node) then return
-  if m.directorGenreGroup.getChildCount() > 0
-    m.directorGenreDividerCount++
-    divider = createDividerNode("directorGenreDivider" + m.directorGenreDividerCount.toStr())
-    m.directorGenreGroup.appendChild(divider)
+  childCount = group.getChildCount()
+  if childCount > 0
+    group.appendChild(createDividerNode(dividerIdPrefix + childCount.toStr()))
   end if
-  m.directorGenreGroup.appendChild(node)
+  group.appendChild(node)
+end sub
+
+' The x where the logo's LEFTMOST possible edge sits: the right anchor less the widest
+' the logo may be drawn. Everything left of the logo stops here, for any logo, so no
+' measurement of the loaded image (which arrives after the text paints) is needed.
+function logoLeftmostX() as integer
+  return LOGO_RIGHT_ANCHOR_X - LOGO_MAX_DISPLAY_WIDTH
+end function
+
+' The width a line of text may use when its bottom edge sits at bottomY. Until the
+' logo's place is known, it is taken to be the widest logo possible reaching the top of
+' the screen, so every line stops short of the logo's leftmost POSSIBLE edge, which is
+' safe for any logo. The left edge is read from the live translation, like the button
+' row's geometry, so moving the block moves the budget with it.
+function detailsLineWidth(bottomY as integer) as integer
+  logo = { x: logoLeftmostX(), y: 0 }
+  if m.logoBoxKnown then logo = m.logoBox
+  return textLineWidth(bottomY, int(m.itemDetails.translation[0]), logo, LOGO_TEXT_CLEARANCE, LOGO_RIGHT_ANCHOR_X)
+end function
+
+' Where each line of the text block will have its bottom edge once the block lays out,
+' in screen space, at the block's resting position. Computed, not read: before the
+' block's first layout its rows' boundingRect() reports nothing usable (measured
+' 2026-09-22), and this has to run before the text first paints. The block is
+' bottom-aligned; under the rows sit the description and the track spacer when each
+' is in the layout, with the block's itemSpacings between them, and the rows stack
+' with no spacing. A debug build checks this against the real layout in
+' onItemDetailsRendered().
+function detailsLineBottoms() as object
+  spacing = int(m.itemDetails.itemSpacings[0])
+  bottom = m.itemDetailsRestY
+  if m.itemTracksInLayout then bottom = bottom - rowHeight(m.itemTracks) - spacing
+  lines = { itemDescription: bottom }
+  if m.itemDescriptionInLayout then bottom = bottom - int(m.itemDescription.boundingRect().height) - spacing
+  for each row in [m.creditsGroup, m.detailsGroup, m.infoGroup, m.videoTitle]
+    lines[row.id] = bottom
+    bottom = bottom - rowHeight(row)
+  end for
+  return lines
+end function
+
+' A row's height before layout: its tallest child for a horizontal group, else its own.
+function rowHeight(node as object) as integer
+  if not node.isSubtype("LayoutGroup") then return int(node.boundingRect().height)
+  height = 0
+  for i = 0 to node.getChildCount() - 1
+    childHeight = int(node.getChild(i).boundingRect().height)
+    if childHeight > height then height = childHeight
+  end for
+  return height
+end function
+
+' Fit the title, the description and all three info rows to the space the logo leaves.
+' The rows must be freshly built (fitting only ever cuts); rebuildDetailsText() does both.
+sub layoutDetailsText()
+  lines = detailsLineBottoms()
+  ' The description first: its width sets its height, which moves every row above it.
+  ' Its focus border is drawn outside the text, so the text stops that much sooner.
+  descriptionWidth = detailsLineWidth(lines.itemDescription) - focusableOverview.FOCUS_OUTSET
+  if m.itemDescription.width <> descriptionWidth
+    m.itemDescription.width = descriptionWidth
+    lines = detailsLineBottoms()
+  end if
+
+  m.textLineWidths = {}
+  for each id in ["videoTitle", "infoGroup", "detailsGroup", "creditsGroup"]
+    m.textLineWidths[id] = detailsLineWidth(lines[id])
+  end for
+  m.videoTitle.width = m.textLineWidths.videoTitle
+  fitInfoRows()
+
+  m.textLayoutKnown = m.logoBoxKnown
+  m.textLayoutBox = m.logoBox
+end sub
+
+' Build the info rows again and fit them, for when what they are fitted to changes.
+sub rebuildDetailsText()
+  populateInfoGroup()
+  ' The rebuild put the Playlist count label back to its default wording.
+  if m.top.itemContent.type = "Playlist" and m.extrasLoaded then updatePlaylistItemCountLabel()
+  layoutDetailsText()
+end sub
+
+' Keep the text hidden until the logo's place is known, so it paints once, already
+' fitted, instead of moving when the logo arrives. Only the text is held: the buttons,
+' backdrop and logo paint as usual. textHoldTimer caps the wait.
+sub holdDetailsText()
+  m.textHeld = true
+  m.itemInfoRows.opacity = 0
+  m.itemDescription.opacity = 0
+  m.textHoldTimer.control = "stop"
+  m.textHoldTimer.control = "start"
+end sub
+
+sub revealDetailsText()
+  m.textHeld = false
+  m.textHoldTimer.control = "stop"
+  m.itemInfoRows.opacity = 1
+  m.itemDescription.opacity = 1
+end sub
+
+' The logo's size has not arrived in time. The text is already fitted to the widest logo
+' possible, so show it as it is; it is not refitted when the logo does arrive.
+sub onTextHoldTimeout()
+  if m.textHeld then revealDetailsText()
+end sub
+
+' The logo's place on screen is known: newBox, or invalid for no logo at all.
+sub setLogoBox(newBox as object)
+  m.logoBox = newBox
+  m.logoBoxKnown = true
+  if m.textHeld
+    rebuildDetailsText()
+    revealDetailsText()
+  else if m.textLayoutKnown and logoBoxIntrudes(newBox, m.textLayoutBox)
+    ' A different logo after the text showed (a Season swapping in its series logo)
+    ' reaching further than the one the text was fitted to. Refitting is a visible
+    ' change, but text over the logo is worse.
+    rebuildDetailsText()
+  end if
+end sub
+
+' Whether a logo at newBox reaches into space text fitted to oldBox may be using.
+function logoBoxIntrudes(newBox as object, oldBox as object) as boolean
+  if not isValid(newBox) then return false
+  if not isValid(oldBox) then return true
+  return newBox.x < oldBox.x or newBox.y < oldBox.y
+end function
+
+sub resetLogoBox()
+  m.logoBox = invalid
+  m.logoBoxKnown = false
+end sub
+
+' Where the logo is drawn for a bitmap of this size: right-aligned to LOGO_RIGHT_ANCHOR_X,
+' its bottom 18px above the date label.
+function logoBoxFor(bitmapWidth as integer, bitmapHeight as integer) as object
+  limits = { minHeight: LOGO_MIN_DISPLAY_HEIGHT, maxWidth: LOGO_MAX_DISPLAY_WIDTH, maxHeight: LOGO_MAX_DISPLAY_HEIGHT }
+  ' Person and MusicArtist photos are exempt from the height cap: their info rows are
+  ' short and don't reach the right edge where the photo sits.
+  itemType = ""
+  if isValid(m.top.itemContent) then itemType = m.top.itemContent.type
+  capHeight = itemType <> "Person" and itemType <> "MusicArtist"
+  size = logoDisplaySize(bitmapWidth, bitmapHeight, limits, capHeight)
+  if not isValid(size) then return invalid
+  return {
+    x: LOGO_RIGHT_ANCHOR_X - size.width,
+    y: anchorDateLabel() - size.height - 18,
+    width: size.width,
+    height: size.height
+  }
+end function
+
+' Point the logo at a server image, and ask the server for the image's size so the text
+' can be fitted before the image itself arrives. A first request for a resized image can
+' take seconds while the server makes it (measured 2026-09-22: 0.26 s median, 3 s worst,
+' on a LAN); the size answers in tens of milliseconds.
+sub setLogoImage(itemId as string, imageType as string, params as object)
+  uri = ImageURL(itemId, imageType, params)
+  if uri = m.itemLogo.uri then return
+  m.itemLogo.uri = uri
+  resetLogoBox()
+  if uri = ""
+    ' Nothing will load, so there is no logo to keep clear of.
+    m.itemLogo.visible = false
+    setLogoBox(invalid)
+    return
+  end if
+  requestLogoSize(itemId, imageType, params.maxWidth, params.maxHeight, uri)
+end sub
+
+' Point the logo at a packaged placeholder. It loads in moments, and its size is
+' learned when it does (onLogoLoadStatusChanged).
+sub setLogoPlaceholder(itemType as string)
+  uri = getPlaceholderImagePath(itemType)
+  if uri = m.itemLogo.uri then return
+  m.itemLogo.uri = uri
+  resetLogoBox()
+end sub
+
+' The size the server will send the logo at, from the original size it reports, drawn
+' through the same logoBoxFor() the loaded bitmap uses. No answer, or a size of 0 (the
+' server has none recorded), leaves the text waiting on the image itself.
+sub requestLogoSize(itemId as string, imageType as string, maxWidth as integer, maxHeight as integer, uri as string)
+  req = GetApi().BuildGetItemImageInfosRequest(itemId)
+  if not isValid(req) then return
+  m.logoSizeSeq += 1
+  ctx = { uri: uri, imageType: imageType, maxWidth: maxWidth, maxHeight: maxHeight }
+  promises.chain(fetchAsync(req, "logoSize-" + m.logoSizeSeq.toStr()), ctx).then(sub(res as object, ctx as object)
+    ' Stale (the logo changed), or the image beat the answer.
+    if not isValid(m.itemLogo) or m.itemLogo.uri <> ctx.uri or m.logoBoxKnown then return
+    if not res.ok or not isValid(res.json) then return
+    for each info in res.json
+      if isValid(info) and info.ImageType = ctx.imageType
+        served = serverFitSize(info.Width ?? 0, info.Height ?? 0, ctx.maxWidth, ctx.maxHeight)
+        if isValid(served) then setLogoBox(logoBoxFor(served.width, served.height))
+        return
+      end if
+    end for
+  end sub).catch(sub(err as object, ctx as object)
+    m.log.warn("logo-size fetch failed", ctx.imageType, err.reason)
+  end sub)
+end sub
+
+' Empty all three info rows before a rebuild.
+sub resetInfoRows()
+  m.infoGroup.removeChildrenIndex(m.infoGroup.getChildCount(), 0)
+  m.detailsGroup.removeChildrenIndex(m.detailsGroup.getChildCount(), 0)
+  m.creditsGroup.removeChildrenIndex(m.creditsGroup.getChildCount(), 0)
+  m.endsAtNode = invalid
+  m.endsAtDurationSeconds = 0
+end sub
+
+' Cut the info rows to the space left of the logo. Runs after every rebuild, before the
+' rows first paint: a Label's width is correct the moment its text is set. Row 1 has
+' text that changes after the rebuild ("Ends at" each minute, a Playlist's item count),
+' so those writes fit it again; a second fit of an already fitted row changes nothing.
+sub fitInfoRows()
+  fitInfoRow(m.infoGroup)
+  fitInfoRow(m.detailsGroup)
+  fitInfoRow(m.creditsGroup)
+end sub
+
+' A LayoutGroup never clips, so an over-long row would run on into the logo. The item
+' that crosses the budget is narrowed so the Label ellipsizes it, and what follows it
+' is removed; see fitTextRow() for the rule. The row's own boundingRect() is NOT used:
+' until the group has laid out it does not include its children's positions, so the
+' widths are summed from the children instead.
+'
+' Only a Label can be narrowed. A rating chip (an icon plus a label) that crosses the
+' budget is dropped with the rest instead.
+'
+' The cut is by character, not ellipsizeOnBoundary: on a Label that does not wrap, a
+' single word too wide for the space renders as a bare "..." (#798).
+sub fitInfoRow(group as object)
+  childCount = group.getChildCount()
+  if childCount = 0 then return
+
+  spacing = 0
+  if isValid(group.itemSpacings) and group.itemSpacings.count() > 0 then spacing = int(group.itemSpacings[0])
+  separatorWidth = 0
+  if childCount > 1 then separatorWidth = spacing + int(group.getChild(1).boundingRect().width) + spacing
+
+  widths = []
+  for i = 0 to childCount - 1 step 2
+    widths.push(int(group.getChild(i).boundingRect().width))
+  end for
+
+  budget = m.textLineWidths.lookup(group.id)
+  if not isValid(budget) then budget = detailsLineWidth(0)
+  fit = fitTextRow(widths, separatorWidth, budget, INFO_ROW_MIN_CUT_WIDTH)
+  if fit.keep = widths.count() and fit.cutWidth = 0 then return
+
+  keep = fit.keep
+  if fit.cutWidth > 0
+    cutItem = group.getChild((keep - 1) * 2)
+    if cutItem.isSubtype("Label")
+      cutItem.width = fit.cutWidth
+    else if keep > 1
+      keep--
+    end if
+  end if
+
+  lastKeptIndex = (keep - 1) * 2
+  group.removeChildrenIndex(childCount - lastKeptIndex - 1, lastKeptIndex + 1)
 end sub
 
 ' displayRatingNodes: Community + critic rating chips shared across every rateable item type's
@@ -2247,12 +2543,7 @@ end sub
 
 ' populateInfoGroup: Dispatch to type-specific info row builder
 sub populateInfoGroup()
-  m.infoGroup.removeChildrenIndex(m.infoGroup.getChildCount(), 0)
-  m.directorGenreGroup.removeChildrenIndex(m.directorGenreGroup.getChildCount(), 0)
-  m.infoDividerCount = 0
-  m.directorGenreDividerCount = 0
-  m.endsAtNode = invalid
-  m.endsAtDurationSeconds = 0
+  resetInfoRows()
 
   item = m.top.itemContent
   userSettings = m.global.user.settings
@@ -2295,7 +2586,8 @@ end sub
 
 ' populateInfoGroupMovie: Info rows for Movie, Video, Recording
 ' Row 1: Year · Official Rating · Community Rating · Critic Rating · Runtime · Ends At
-' Row 2: Genres · Director(s)
+' Row 2: Genres
+' Row 3: Directed by
 sub populateInfoGroupMovie(item as object, userSettings as object)
   if item.productionYear > 0
     yearNode = createInfoLabel("releaseYear")
@@ -2326,13 +2618,14 @@ sub populateInfoGroupMovie(item as object, userSettings as object)
   if item.genres.count() > 0
     genreNode = createInfoLabel("genre")
     genreNode.text = item.genres.join(" / ")
-    displayDirectorGenreNode(genreNode)
+    displayDetailsNode(genreNode)
   end if
 
   displayDirectedBy(item)
 end sub
 
-' The "Directed by" info line, shared by the Movie, MusicVideo and Episode info groups.
+' The "Directed by" credit, shared by the Movie, MusicVideo and Episode info groups. It
+' goes on the credits row, not beside the genres.
 '
 ' Was three byte-identical copies. directorNames() deduplicates by Id because the server
 ' sends one People entry per CREDIT: a director also credited as, say, Co-Director appears
@@ -2343,12 +2636,13 @@ sub displayDirectedBy(item as object)
 
   directorNode = createInfoLabel("director")
   directorNode.text = translate(translationKeys.MessageDirectedBy1, [directors.join(", ")])
-  displayDirectorGenreNode(directorNode)
+  displayCreditsNode(directorNode)
 end sub
 
 ' populateInfoGroupMusicVideo: Info rows for MusicVideo
 ' Row 1: Year · Official Rating · Community Rating · Critic Rating · Runtime · Ends At
 ' Row 2: Genres · Artist(s)
+' Row 3: Directed by
 sub populateInfoGroupMusicVideo(item as object, userSettings as object)
   if item.productionYear > 0
     yearNode = createInfoLabel("releaseYear")
@@ -2379,13 +2673,13 @@ sub populateInfoGroupMusicVideo(item as object, userSettings as object)
   if item.genres.count() > 0
     genreNode = createInfoLabel("genre")
     genreNode.text = item.genres.join(" / ")
-    displayDirectorGenreNode(genreNode)
+    displayDetailsNode(genreNode)
   end if
 
   if isValid(item.artists) and item.artists.count() > 0
     artistNode = createInfoLabel("artists")
     artistNode.text = item.artists.join(", ")
-    displayDirectorGenreNode(artistNode)
+    displayDetailsNode(artistNode)
   end if
 
   displayDirectedBy(item)
@@ -2393,7 +2687,8 @@ end sub
 
 ' populateInfoGroupEpisode: Info rows for Episode
 ' Row 1: Air Date · Official Rating · Community Rating · Critic Rating · Runtime · Ends At
-' Row 2: Series name + "S{n}E{n}"
+' Row 2: "S{n}E{n}" · Series name
+' Row 3: Directed by
 sub populateInfoGroupEpisode(item as object, userSettings as object)
   if isValidAndNotEmpty(item.premiereDate)
     airDate = CreateObject("roDateTime")
@@ -2423,17 +2718,17 @@ sub populateInfoGroupEpisode(item as object, userSettings as object)
     displayInfoNode(m.endsAtNode)
   end if
 
-  ' Row 2: S{n}E{n} • SeriesName • Directed by X, Y, Z
+  ' Row 2: S{n}E{n} • SeriesName (Row 3: Directed by X, Y, Z)
   if item.parentIndexNumber > 0 and item.indexNumber > 0
     episodeCodeNode = createInfoLabel("episodeCode")
     episodeCodeNode.text = "S" + item.parentIndexNumber.toStr() + "E" + item.indexNumber.toStr()
-    displayDirectorGenreNode(episodeCodeNode)
+    displayDetailsNode(episodeCodeNode)
   end if
 
   if isValidAndNotEmpty(item.seriesName)
     seriesNameNode = createInfoLabel("seriesName")
     seriesNameNode.text = item.seriesName
-    displayDirectorGenreNode(seriesNameNode)
+    displayDetailsNode(seriesNameNode)
   end if
 
   displayDirectedBy(item)
@@ -2484,14 +2779,14 @@ sub populateInfoGroupSeries(item as object, userSettings as object)
   if item.genres.count() > 0
     genreNode = createInfoLabel("genre")
     genreNode.text = item.genres.join(" / ")
-    displayDirectorGenreNode(genreNode)
+    displayDetailsNode(genreNode)
   end if
 
   historyText = getHistory()
   if isValidAndNotEmpty(historyText)
     historyNode = createInfoLabel("history")
     historyNode.text = historyText
-    displayDirectorGenreNode(historyNode)
+    displayDetailsNode(historyNode)
   end if
 end sub
 
@@ -2522,13 +2817,13 @@ sub populateInfoGroupBoxSet(item as object, userSettings as object)
   if item.genres.count() > 0
     genreNode = createInfoLabel("genre")
     genreNode.text = item.genres.join(" / ")
-    displayDirectorGenreNode(genreNode)
+    displayDetailsNode(genreNode)
   end if
 
   if item.studios.count() > 0
     studioNode = createInfoLabel("studio")
     studioNode.text = item.studios[0]
-    displayDirectorGenreNode(studioNode)
+    displayDetailsNode(studioNode)
   end if
 end sub
 
@@ -2587,19 +2882,19 @@ sub populateInfoGroupSeason(item as object, userSettings as object)
   if isValidAndNotEmpty(item.seriesName)
     seriesNameNode = createInfoLabel("seriesName")
     seriesNameNode.text = item.seriesName
-    displayDirectorGenreNode(seriesNameNode)
+    displayDetailsNode(seriesNameNode)
   end if
 
   if item.childCount > 0
     episodeCountNode = createInfoLabel("episodeCount")
     episodeCountNode.text = translatePlural(translationKeys.LabelEpisodeCount, item.childCount, [stri(item.childCount).trim()])
-    displayDirectorGenreNode(episodeCountNode)
+    displayDetailsNode(episodeCountNode)
   end if
 
   if isValid(seriesData) and seriesData.studios.count() > 0
     studioNode = createInfoLabel("studio")
     studioNode.text = seriesData.studios[0]
-    displayDirectorGenreNode(studioNode)
+    displayDetailsNode(studioNode)
   end if
 end sub
 
@@ -2652,12 +2947,12 @@ sub populateInfoGroupPerson(item as object)
   if item.movieCount > 0
     movieCountNode = createInfoLabel("personMovieCount")
     movieCountNode.text = translatePlural(translationKeys.LabelMovieCount, item.movieCount, [stri(item.movieCount).trim()])
-    displayDirectorGenreNode(movieCountNode)
+    displayDetailsNode(movieCountNode)
   end if
   if item.episodeCount > 0
     episodeCountNode = createInfoLabel("personEpisodeCount")
     episodeCountNode.text = translatePlural(translationKeys.LabelEpisodeCount, item.episodeCount, [stri(item.episodeCount).trim()])
-    displayDirectorGenreNode(episodeCountNode)
+    displayDetailsNode(episodeCountNode)
   end if
 end sub
 
@@ -2686,7 +2981,7 @@ sub populateInfoGroupMusicArtist(item as object)
   if item.genres.count() > 0
     genreNode = createInfoLabel("genre")
     genreNode.text = item.genres.join(" / ")
-    displayDirectorGenreNode(genreNode)
+    displayDetailsNode(genreNode)
   end if
 end sub
 
@@ -2715,19 +3010,19 @@ sub populateInfoGroupMusicAlbum(item as object, userSettings as object)
   if isValidAndNotEmpty(item.albumArtist)
     artistNode = createInfoLabel("albumArtist")
     artistNode.text = item.albumArtist
-    displayDirectorGenreNode(artistNode)
+    displayDetailsNode(artistNode)
   end if
 
   if item.genres.count() > 0
     genreNode = createInfoLabel("genre")
     genreNode.text = item.genres.join(" / ")
-    displayDirectorGenreNode(genreNode)
+    displayDetailsNode(genreNode)
   end if
 
   if item.childCount > 0
     trackCountNode = createInfoLabel("trackCount")
     trackCountNode.text = translatePlural(translationKeys.LabelTrackCount, item.childCount, [stri(item.childCount).trim()])
-    displayDirectorGenreNode(trackCountNode)
+    displayDetailsNode(trackCountNode)
   end if
 end sub
 
@@ -2758,7 +3053,7 @@ sub populateInfoGroupPlaylist(item as object, userSettings as object)
   if item.genres.count() > 0
     genreNode = createInfoLabel("genre")
     genreNode.text = item.genres.join(" / ")
-    displayDirectorGenreNode(genreNode)
+    displayDetailsNode(genreNode)
   end if
 end sub
 
@@ -2794,13 +3089,13 @@ sub populateInfoGroupAudio(item as object, userSettings as object)
   if isValidAndNotEmpty(item.albumName)
     albumNameNode = createInfoLabel("albumName")
     albumNameNode.text = item.albumName
-    displayDirectorGenreNode(albumNameNode)
+    displayDetailsNode(albumNameNode)
   end if
 
   if isValidAndNotEmpty(item.albumArtist)
     albumArtistNode = createInfoLabel("albumArtistName")
     albumArtistNode.text = item.albumArtist
-    displayDirectorGenreNode(albumArtistNode)
+    displayDetailsNode(albumArtistNode)
   end if
 end sub
 
@@ -2845,7 +3140,7 @@ sub populateInfoGroupPhoto(item as object)
   if isValidAndNotEmpty(item.albumName)
     albumNode = createInfoLabel("albumName")
     albumNode.text = item.albumName
-    displayDirectorGenreNode(albumNode)
+    displayDetailsNode(albumNode)
   end if
 end sub
 
@@ -2928,7 +3223,7 @@ sub populateInfoGroupTvChannel(item as object, userSettings as object)
     if prog.genres.count() > 0
       genreNode = createInfoLabel("genre")
       genreNode.text = prog.genres.join(" / ")
-      displayDirectorGenreNode(genreNode)
+      displayDetailsNode(genreNode)
     else
       categories = []
       if prog.isNews then categories.push(translate(translationKeys.LabelNews))
@@ -2938,7 +3233,7 @@ sub populateInfoGroupTvChannel(item as object, userSettings as object)
       if categories.count() > 0
         catNode = createInfoLabel("programCategories")
         catNode.text = categories.join(" / ")
-        displayDirectorGenreNode(catNode)
+        displayDetailsNode(catNode)
       end if
     end if
   end if
@@ -3029,7 +3324,7 @@ sub populateInfoGroupProgram(item as object, userSettings as object)
   if item.genres.count() > 0
     genreNode = createInfoLabel("genre")
     genreNode.text = item.genres.join(" / ")
-    displayDirectorGenreNode(genreNode)
+    displayDetailsNode(genreNode)
   else
     categories = []
     if item.isNews then categories.push(translate(translationKeys.LabelNews))
@@ -3039,7 +3334,7 @@ sub populateInfoGroupProgram(item as object, userSettings as object)
     if categories.count() > 0
       catNode = createInfoLabel("programCategories")
       catNode.text = categories.join(" / ")
-      displayDirectorGenreNode(catNode)
+      displayDetailsNode(catNode)
     end if
   end if
 end sub
@@ -3111,7 +3406,7 @@ sub populateInfoGroupRecording(item as object, userSettings as object)
   if item.genres.count() > 0
     genreNode = createInfoLabel("genre")
     genreNode.text = item.genres.join(" / ")
-    displayDirectorGenreNode(genreNode)
+    displayDetailsNode(genreNode)
   end if
 end sub
 
@@ -3301,6 +3596,8 @@ sub onItemContentChanged()
     end if
 
     setFieldText("videoTitle", item.name)
+    layoutDetailsText()
+    if not m.logoBoxKnown then holdDetailsText()
 
     updateFavoriteButton()
     updateWatchedButton()
@@ -3640,6 +3937,8 @@ end sub
 sub onClockMinuteChanged()
   if not isValid(m.endsAtNode) then return
   m.endsAtNode.text = formatEndsAtText(endsAtDate())
+  ' "9:59" to "10:00" widens the row it sits on.
+  fitInfoRow(m.infoGroup)
 end sub
 
 sub updateFavoriteButton()
@@ -3688,9 +3987,9 @@ sub setItemLogo(item as object)
     ' Person: display primary (portrait) photo where the logo sits; fall back to silhouette glyph
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
-      m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
+      setLogoImage(item.id, "Primary", imgParams)
     else
-      m.itemLogo.uri = getPlaceholderImagePath(item.type)
+      setLogoPlaceholder(item.type)
     end if
     return
   else if item.type = "MusicArtist"
@@ -3700,69 +3999,69 @@ sub setItemLogo(item as object)
     ' MusicArtistGridItem shows on grid fallback.
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
-      m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
+      setLogoImage(item.id, "Primary", imgParams)
     else
-      m.itemLogo.uri = getPlaceholderImagePath(item.type)
+      setLogoPlaceholder(item.type)
     end if
     return
   else if item.type = "MusicAlbum"
     ' Square album art as the primary image; typed placeholder if none
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
-      m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
+      setLogoImage(item.id, "Primary", imgParams)
     else
-      m.itemLogo.uri = getPlaceholderImagePath(item.type)
+      setLogoPlaceholder(item.type)
     end if
     return
   else if item.type = "Playlist"
     ' Square playlist cover as primary image; typed placeholder if none
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
-      m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
+      setLogoImage(item.id, "Primary", imgParams)
     else
-      m.itemLogo.uri = getPlaceholderImagePath(item.type)
+      setLogoPlaceholder(item.type)
     end if
     return
   else if item.type = "Photo" or item.type = "PhotoAlbum"
     ' Photo thumbnail or album cover as primary image; typed placeholder if none
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
-      m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
+      setLogoImage(item.id, "Primary", imgParams)
     else
-      m.itemLogo.uri = getPlaceholderImagePath(item.type)
+      setLogoPlaceholder(item.type)
     end if
     return
   else if item.type = "TvChannel"
     ' Channel logo (typically square); folder-fallback placeholder if none
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
-      m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
+      setLogoImage(item.id, "Primary", imgParams)
     else
-      m.itemLogo.uri = getPlaceholderImagePath(item.type)
+      setLogoPlaceholder(item.type)
     end if
     return
   else if item.type = "Program"
     ' Program image → channel logo → typed placeholder
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
-      m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
+      setLogoImage(item.id, "Primary", imgParams)
     else if isValidAndNotEmpty(item.channelPrimaryImageTag) and isValidAndNotEmpty(item.channelId)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.channelPrimaryImageTag }
-      m.itemLogo.uri = ImageURL(item.channelId, "Primary", imgParams)
+      setLogoImage(item.channelId, "Primary", imgParams)
     else
-      m.itemLogo.uri = getPlaceholderImagePath(item.type)
+      setLogoPlaceholder(item.type)
     end if
     return
   else if item.type = "Audio"
     ' Own primary image → album art fallback → typed placeholder
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
-      m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
+      setLogoImage(item.id, "Primary", imgParams)
     else if isValidAndNotEmpty(item.albumId) and isValidAndNotEmpty(item.albumPrimaryImageTag)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.albumPrimaryImageTag }
-      m.itemLogo.uri = ImageURL(item.albumId, "Primary", imgParams)
+      setLogoImage(item.albumId, "Primary", imgParams)
     else
-      m.itemLogo.uri = getPlaceholderImagePath(item.type)
+      setLogoPlaceholder(item.type)
     end if
     return
   else if item.type = "Episode" or item.type = "Season" or item.type = "Recording"
@@ -3770,7 +4069,7 @@ sub setItemLogo(item as object)
     ' If none, fall through to the series logo chain via logoItemId/logoImageTag.
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
-      m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
+      setLogoImage(item.id, "Primary", imgParams)
       return
     end if
     if isValidAndNotEmpty(item.parentLogoItemId)
@@ -3782,39 +4081,39 @@ sub setItemLogo(item as object)
     ' image instead; playCircle placeholder if none.
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 212, maxWidth: 500, quality: 90, tag: item.primaryImageTag }
-      m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
+      setLogoImage(item.id, "Primary", imgParams)
     else
-      m.itemLogo.uri = getPlaceholderImagePath(item.type)
+      setLogoPlaceholder(item.type)
     end if
     return
   end if
 
   if isValidAndNotEmpty(logoImageTag)
     imgParams = { maxHeight: 212, maxWidth: 500, quality: 90, tag: logoImageTag }
-    m.itemLogo.uri = ImageURL(logoItemId, "Logo", imgParams)
+    setLogoImage(logoItemId, "Logo", imgParams)
   else if item.type = "Movie" or item.type = "Series" or item.type = "BoxSet"
     ' No logo: fall back to primary (poster) image — fetch at full quality; display height is
     ' capped by LOGO_MAX_DISPLAY_HEIGHT in onLogoLoadStatusChanged to avoid overlapping info rows.
     ' Movie placeholder if neither logo nor primary is available.
     if isValidAndNotEmpty(item.primaryImageTag)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.primaryImageTag }
-      m.itemLogo.uri = ImageURL(item.id, "Primary", imgParams)
+      setLogoImage(item.id, "Primary", imgParams)
     else
-      m.itemLogo.uri = getPlaceholderImagePath(item.type)
+      setLogoPlaceholder(item.type)
     end if
   else if item.type = "Episode" or item.type = "Season" or item.type = "Recording"
     ' No item primary (already tried above), no series logo: fall back to series primary poster,
     ' then a playCircle placeholder if the series has no primary image either.
     if isValidAndNotEmpty(item.seriesPrimaryImageTag) and isValidAndNotEmpty(item.seriesId)
       imgParams = { maxHeight: 534, maxWidth: LOGO_MAX_DISPLAY_WIDTH, quality: 90, tag: item.seriesPrimaryImageTag }
-      m.itemLogo.uri = ImageURL(item.seriesId, "Primary", imgParams)
+      setLogoImage(item.seriesId, "Primary", imgParams)
     else
-      m.itemLogo.uri = getPlaceholderImagePath(item.type)
+      setLogoPlaceholder(item.type)
     end if
   else
     ' Catch-all: any other type without a known fallback chain gets the type-driven
     ' placeholder (falls through to the folder glyph for genuinely unknown types).
-    m.itemLogo.uri = getPlaceholderImagePath(item.type)
+    setLogoPlaceholder(item.type)
   end if
 end sub
 
@@ -3891,6 +4190,10 @@ sub onButtonGrpRendered()
   if isValid(m.itemLogo) and m.itemLogo.visible
     logoY = dateLabelY - m.itemLogo.height - 18
     m.itemLogo.translation = [m.itemLogo.translation[0], logoY]
+    ' Keep the text's idea of the logo in step, and refit if it moved up into the text.
+    if m.logoBoxKnown and isValid(m.logoBox) and m.logoBox.y <> logoY
+      setLogoBox({ x: m.logoBox.x, y: logoY, width: m.logoBox.width, height: m.logoBox.height })
+    end if
   end if
 end sub
 
@@ -3921,61 +4224,50 @@ sub onLogoLoadStatusChanged()
       m.itemLogo.blendColor = "0xFFFFFFFF"
     end if
 
-    logoWidth = m.itemLogo.bitmapWidth
-    logoHeight = m.itemLogo.bitmapHeight
+    ' A box predicted from the server's size is where the text was fitted, so the logo is
+    ' drawn in it (scaleToFit keeps the aspect). Otherwise it is placed from the bitmap.
+    placement = m.logoBox
+    if not m.logoBoxKnown or not isValid(placement) then placement = logoBoxFor(m.itemLogo.bitmapWidth, m.itemLogo.bitmapHeight)
 
-    if logoWidth > 0 and logoHeight > 0
-      ' Compute display size satisfying both constraints where possible.
-      ' LOGO_MAX_DISPLAY_WIDTH is a hard layout constraint (prevents button overlap).
-      ' LOGO_MIN_DISPLAY_HEIGHT is a best-effort aesthetic target — it cannot be
-      ' guaranteed when the logo is too wide/flat to satisfy both simultaneously.
-      scaleToMinHeight = LOGO_MIN_DISPLAY_HEIGHT / logoHeight
-      if logoHeight >= LOGO_MIN_DISPLAY_HEIGHT and logoWidth <= LOGO_MAX_DISPLAY_WIDTH
-        ' Native size already satisfies both constraints.
-        displayWidth = logoWidth
-        displayHeight = logoHeight
-      else if int(logoWidth * scaleToMinHeight) <= LOGO_MAX_DISPLAY_WIDTH
-        ' Scaling up to min-height keeps width within max-width — both satisfied.
-        displayWidth = int(logoWidth * scaleToMinHeight)
-        displayHeight = LOGO_MIN_DISPLAY_HEIGHT
-      else
-        ' Very wide/flat logo: max-width is the binding constraint.
-        ' Height will be below LOGO_MIN_DISPLAY_HEIGHT — max-width takes precedence.
-        displayWidth = LOGO_MAX_DISPLAY_WIDTH
-        displayHeight = int(logoHeight * LOGO_MAX_DISPLAY_WIDTH / logoWidth)
-      end if
-
-      ' Cap portrait images for non-Person/MusicArtist items so the logo top stays below the metadata rows.
-      ' Person and MusicArtist are exempt — their info rows are short and don't reach the right edge.
-      if isValid(m.top.itemContent) and m.top.itemContent.type <> "Person" and m.top.itemContent.type <> "MusicArtist"
-        if displayHeight > LOGO_MAX_DISPLAY_HEIGHT
-          displayWidth = int(displayWidth * LOGO_MAX_DISPLAY_HEIGHT / displayHeight)
-          displayHeight = LOGO_MAX_DISPLAY_HEIGHT
-        end if
-      end if
-
-      m.itemLogo.width = displayWidth
-      m.itemLogo.height = displayHeight
+    if isValid(placement)
+      m.itemLogo.width = placement.width
+      m.itemLogo.height = placement.height
       m.itemLogo.loadDisplayMode = "scaleToFit"
-
-      rightEdge = LOGO_RIGHT_ANCHOR_X
-      logoX = rightEdge - displayWidth
-
-      dateLabelY = anchorDateLabel()
-      logoY = dateLabelY - displayHeight - 18
-
-      m.itemLogo.translation = [logoX, logoY]
+      m.itemLogo.translation = [placement.x, placement.y]
       m.itemLogo.visible = true
+      if not m.logoBoxKnown then setLogoBox(placement)
     end if
   else if m.itemLogo.loadStatus = "failed"
     m.itemLogo.uri = ""
     m.itemLogo.visible = false
+    setLogoBox(invalid)
   end if
 end sub
 
 sub onItemDetailsRendered()
   if m.itemDetails.renderTracking = "none" then return
   updateTextGradient()
+  #if debug
+    checkDetailsLineBottoms()
+  #end if
+end sub
+
+' Debug builds: warn when detailsLineBottoms() disagrees with where the block really laid
+' out its lines, since the text is fitted against the computed positions.
+sub checkDetailsLineBottoms()
+  if int(m.itemDetails.translation[1]) <> m.itemDetailsRestY then return
+  lines = detailsLineBottoms()
+  nodes = [m.videoTitle, m.infoGroup, m.detailsGroup, m.creditsGroup]
+  if m.itemDescriptionInLayout then nodes.push(m.itemDescription)
+  for each node in nodes
+    rect = node.sceneBoundingRect()
+    if rect.height > 0
+      actual = int(rect.y + rect.height)
+      if abs(actual - lines[node.id]) > 1
+        m.log.warn("details-text line bottom mismatch", node.id, "computed", lines[node.id], "laid out", actual)
+      end if
+    end if
+  end for
 end sub
 
 ' updateItemDetailsAnimationTarget: Slide itemDetails so the bottom of itemInfoRows sits just
@@ -4063,7 +4355,7 @@ function itemDetailsRowGeometry() as object
     rowY: int(m.buttonGrp.translation[1]),
     spacing: spacing,
     itemWidth: iconButtonLayoutWidth(ICON_BUTTON_ICON_SIZE),
-    rightBound: LOGO_RIGHT_ANCHOR_X - LOGO_MAX_DISPLAY_WIDTH
+    rightBound: logoLeftmostX()
   }
 end function
 
@@ -4672,8 +4964,6 @@ end sub
 sub onPlaylistContentKindChanged()
   if not isValid(m.top.itemContent) or m.top.itemContent.type <> "Playlist" then return
 
-  item = m.top.itemContent
-  childCount = item.childCount
   kind = m.extrasGrid.playlistContentKind
 
   ' --- Watched button ---
@@ -4723,9 +5013,15 @@ sub onPlaylistContentKindChanged()
 
   applyOverflow()
 
-  ' --- Item count label ---
-  ' "Tracks" only when the playlist is positively confirmed all-audio.
-  ' "unknown" (load failure) and "mixed" both fall through to "Items" — the safe neutral default.
+  updatePlaylistItemCountLabel()
+end sub
+
+' The Playlist info row's count: "Tracks" only when the playlist is positively confirmed
+' all-audio. "unknown" (load failure) and "mixed" both fall through to "Items" — the safe
+' neutral default.
+sub updatePlaylistItemCountLabel()
+  childCount = m.top.itemContent.childCount
+  kind = m.extrasGrid.playlistContentKind
   itemCountNode = m.top.findNode("itemCount")
   if isValid(itemCountNode) and childCount > 0
     if kind = "audio"
@@ -4733,6 +5029,7 @@ sub onPlaylistContentKindChanged()
     else
       itemCountNode.text = translatePlural(translationKeys.LabelItemCount, childCount, [stri(childCount).trim()])
     end if
+    fitInfoRow(m.infoGroup)
   end if
 end sub
 
@@ -4994,15 +5291,9 @@ sub onSeasonSeriesDataLoaded()
     m.seasonSeriesCache[seriesId] = seriesItem
   end if
 
-  ' Clear both rows — removeChildrenIndex(num_children, startIndex)
-  m.infoGroup.removeChildrenIndex(m.infoGroup.getChildCount(), 0)
-  m.directorGenreGroup.removeChildrenIndex(m.directorGenreGroup.getChildCount(), 0)
-  m.infoDividerCount = 0
-  m.directorGenreDividerCount = 0
-  m.endsAtNode = invalid
-  m.endsAtDurationSeconds = 0
-
-  populateInfoGroupSeason(m.top.itemContent, m.global.user.settings)
+  ' The same rebuild as a fresh load, so the rows are reset and fitted exactly as they
+  ' are there (for a Season it dispatches to populateInfoGroupSeason).
+  rebuildDetailsText()
 
   ' Update logo using series data if the season didn't carry parentLogoItemId
   if isValid(m.itemLogo) and not m.itemLogo.visible
@@ -5280,6 +5571,8 @@ sub onDestroy()
 
   ' Unobserve child node observers
   m.itemLogo.unobserveField("loadStatus")
+  m.textHoldTimer.unobserveField("fire")
+  m.textHoldTimer.control = "stop"
   m.itemDetails.unobserveField("renderTracking")
   m.extrasGrid.unobserveField("personHasMedia")
   m.extrasGrid.unobserveField("contentReady")
@@ -5375,13 +5668,16 @@ sub onDestroy()
   m.buttonGrp = invalid
   m.buttonOverflow = invalid
   m.itemLogo = invalid
+  m.textHoldTimer = invalid
+  m.videoTitle = invalid
   m.dateCreatedLabel = invalid
   m.itemTextGradient = invalid
   m.itemDetails = invalid
   m.itemDetailsSlider = invalid
   m.itemDetailsSliderInterp = invalid
   m.itemInfoRows = invalid
-  m.directorGenreGroup = invalid
+  m.detailsGroup = invalid
+  m.creditsGroup = invalid
   m.itemTracks = invalid
   m.trackCluster = invalid
   m.trackTitles = invalid
