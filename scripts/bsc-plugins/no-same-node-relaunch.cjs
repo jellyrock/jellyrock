@@ -129,7 +129,6 @@ const DISABLE_NEXT_LINE_MARKER = /'\s*bsc-disable-next-line\s+no-same-node-relau
  * the build fails until you do.
  */
 const PENDING_MIGRATIONS = {
-  'components/home/HomeRows.bs': [['startLatestMediaLoads', 'm.latestRowsTask']],
   'components/video/VideoPlayerView.bs': [
     ['loadCaption', 'm.captionTask'],
     ['onSubtitleChange', 'm.captionTask'],

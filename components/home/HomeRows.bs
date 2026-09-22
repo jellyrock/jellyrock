@@ -56,8 +56,9 @@ sub init()
   m.populatedSectionCount = 0
   m.initialLoadComplete = false
 
-  ' Single orchestrator services all latest-media rows — one Task thread at any library count
-  m.latestRowsTask = createObject("roSGNode", "LoadLatestRowsTask")
+  ' Single orchestrator services all latest-media rows — one Task thread at any library count.
+  ' A new node per run, created by startLatestMediaLoads; invalid until the first run.
+  m.latestRowsTask = invalid
   m.latestRowsProcessedIndex = 0
   ' Entries handed to the current run — the run is finished once the cursor reaches it
   m.latestRowsExpectedCount = 0
@@ -461,22 +462,27 @@ end function
 '
 ' Skips outright while a run is in flight, matching the isLoading* rule updateHomeRows()
 ' already applies to the other persistent tasks: the running orchestrator is about to deliver
-' fresh data, so restarting buys nothing and costs a cancel. It also keeps this off the one
-' path nobody has measured — Home is SUSPENDED rather than destroyed on navigation
-' (onScreenHidden stops no tasks), so a Home revisit lands here mid-run routinely, and
-' restarting would mean setting control = "RUN" on a thread that may still be unwinding.
+' fresh data, so restarting buys nothing and costs a cancel. Home is SUSPENDED rather than
+' destroyed on navigation (onScreenHidden stops no tasks), so a Home revisit lands here
+' mid-run routinely.
+'
+' Every run gets a NEW node (see replaceTask in source/utils/tasks.bs): a stop-and-relaunch of
+' the same node while its function still runs is sometimes silently ignored, and then no row
+' would ever load.
 sub startLatestMediaLoads()
   if not isValidAndNotEmpty(m.filteredLatest) then return
 
   if m.isLoadingLatestRows
     if not latestRows.runIsStalled(m.latestRowsSilenceClock.totalMilliseconds()) then return
-    ' Silent past its whole wait budget, the orchestrator thread is gone or wedged, so the
-    ' flag would otherwise freeze these rows for the life of this Home. Reclaiming it is safe
-    ' for the same reason: STOP here can only reach a thread that has already stopped running.
+    ' Silent past its whole wait budget, the orchestrator is wedged — possibly still parked
+    ' inside a wait with its node reading `run` — so the flag would otherwise freeze these rows
+    ' for the life of this Home. Reclaiming releases that run (resetLatestRowsRun): a stopped
+    ' run makes no further progress, and any event it already queued is ignored by
+    ' onLatestRowsReady.
     m.log.warn("latest-rows run went silent past its budget; reclaiming", m.latestRowsSilenceClock.totalMilliseconds())
   end if
 
-  ' Ensure any previous run is stopped and its delivered results cleared
+  ' Release any previous run; its delivered results go with its node
   resetLatestRowsRun()
 
   libs = []
@@ -487,7 +493,8 @@ sub startLatestMediaLoads()
   end for
   if libs.count() = 0 then return
 
-  m.latestRowsTask.libraries = libs
+  ' resetLatestRowsRun already released the previous node, so this only creates the new one.
+  m.latestRowsTask = replaceTask(m.latestRowsTask, "LoadLatestRowsTask", "rowReady", { libraries: libs })
   m.latestRowsTask.observeField("rowReady", "onLatestRowsReady")
   m.latestRowsExpectedCount = libs.count()
   #if perfTiming
@@ -523,8 +530,14 @@ end sub
 
 ' onLatestRowsReady: Drains all unprocessed result children from the orchestrator.
 ' Each wake may cover several results — wake events can coalesce, the children can't.
-sub onLatestRowsReady()
-  if not isValid(m.latestRowsTask) then return
+sub onLatestRowsReady(event as object)
+  if not isCurrentTaskEvent(event, m.latestRowsTask)
+    ' An invalid m.latestRowsTask is teardown. Otherwise this wake was queued by a run that has
+    ' since been released, and m.latestRowsTask is the NEW run's node, not this event's (see
+    ' isCurrentTaskEvent). WARN because it is the only field evidence that such an event arrives.
+    if isValid(m.latestRowsTask) then m.log.warn("superseded latest-rows wake dropped", event.getData())
+    return
+  end if
 
   ' The failure-vs-empty rule and the cursor arithmetic live in source/home/latestRows.bs
   ' so they can be unit-tested without a callFunc seam on this component.
@@ -593,18 +606,15 @@ sub onLatestRowsReady()
   end if
 end sub
 
-' resetLatestRowsRun: Return the orchestrator to a clean pre-run state — unobserved, stopped,
-' its delivered result children dropped and the drain cursor rewound.
+' resetLatestRowsRun: Return to a clean pre-run state — the orchestrator's node released
+' (unobserved and stopped; its delivered result children go with it) and the drain cursor
+' rewound.
 '
 ' Called before starting a run and from onDestroy. Named for the run rather than the task
 ' (the old cleanupLatestMediaTasks) because there is exactly one task now; what gets reset is
 ' the run's state around it.
 sub resetLatestRowsRun()
-  if not isValid(m.latestRowsTask) then return
-
-  m.latestRowsTask.unobserveField("rowReady")
-  m.latestRowsTask.control = "STOP"
-  m.latestRowsTask.removeChildrenIndex(m.latestRowsTask.getChildCount(), 0)
+  m.latestRowsTask = releaseTask(m.latestRowsTask, "rowReady")
   m.latestRowsProcessedIndex = 0
   m.latestRowsExpectedCount = 0
   m.isLoadingLatestRows = false
@@ -1373,7 +1383,6 @@ sub onDestroy()
 
   ' Stop and release the latest-media orchestrator
   resetLatestRowsRun()
-  m.latestRowsTask = invalid
 
   ' Clear data caches
   m.libraryData = invalid
