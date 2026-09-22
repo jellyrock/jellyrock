@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-09-21
+last-updated: 2026-09-22
 ---
 
 # Progress
@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-22 — fix: Play Live TV HLS channels from their own URL again on Jellyfin 12
 - 2026-09-21 — fix: Stop copying prebuilt source maps into builds
 - 2026-09-21 — ci: Make the device test run account for every test it counts
 - 2026-09-21 — Share bsconfig settings through one base config and clear the new BrighterScript warnings
@@ -90,9 +91,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-09-08 — fix: Register the `state` observer exactly once
 - 2026-09-08 — fix: Register the `position` observer exactly once
 - 2026-09-08 — fix: Gate interface-field observer wiring; fix stale cross-file findings
-- 2026-09-07 — `ItemDetails.itemContent` now registers its observer via `m.top.observeField()` in `init()`, so the `unobserveField` in `onDestroy` actually detaches it; the new `ineffective-unobserve` build gate now fails the build on that pairing.
-- 2026-09-07 — fix: Observe each interface field exactly once in `OSD` and `IconButton`
-- 2026-09-07 — feat: Cap `ItemDetails` and `OSD` button rows with a `More` overflow menu
 
 ## Open followups
 
