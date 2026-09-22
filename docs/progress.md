@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-22 — fix: Stop crashing when a server answers a list endpoint with an object
 - 2026-09-22 — Show every TV guide channel, loading programs near the focus
 - 2026-09-22 — fix: Fetch a focused TV guide program's details once, not twice
 - 2026-09-22 — feat: Show which collections an item is in on its details page
