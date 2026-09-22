@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Show Created by and Directed by credits on every item type that has them ([#1000](https://github.com/jellyrock/jellyrock/pull/1000))
 - Show which collections an item is in on its details page ([#992](https://github.com/jellyrock/jellyrock/pull/992))
 - Share bsconfig settings through one base config and clear the new BrighterScript warnings ([#984](https://github.com/jellyrock/jellyrock/pull/984))
 
