@@ -27,6 +27,13 @@ function check(source, path = 'components/Foo.bs') {
   return diagnosticsByCode(runPluginOnSource(unlisted, { [path]: source }), CODE);
 }
 
+// Only the STOP-then-relaunch findings (check 1). The cases below that launch a node
+// they did not assign are about check 1's scope; check 2 flags those launches too,
+// and is tested on its own further down.
+function stopFindings(source) {
+  return check(source).filter((d) => /is stopped/.test(d.message));
+}
+
 describe('no-same-node-relaunch — flagged', () => {
   it('flags STOP then launchTask on the same m. slot', () => {
     const found = check(`
@@ -356,7 +363,7 @@ describe('no-same-node-relaunch — not flagged', () => {
 
   it('passes a launch inside a callback after the outer function stopped the node', () => {
     expect(
-      check(`
+      stopFindings(`
         sub a()
           m.t.control = "STOP"
           promises.chain(req, {}).then(sub(res as object, ctx as object)
@@ -381,7 +388,7 @@ describe('no-same-node-relaunch — not flagged', () => {
 
   it('passes a STOP and a launch of different nodes', () => {
     expect(
-      check(`
+      stopFindings(`
         sub a()
           m.a.control = "STOP"
           launchTask(m.b)
@@ -392,7 +399,7 @@ describe('no-same-node-relaunch — not flagged', () => {
 
   it('passes a STOP in one function and a launch in another (no call between)', () => {
     expect(
-      check(`
+      stopFindings(`
         sub onDone()
           m.task.control = "STOP"
         end sub
@@ -421,7 +428,7 @@ describe('no-same-node-relaunch — not flagged', () => {
 
   it('ignores a control value other than STOP on the launched node', () => {
     expect(
-      check(`
+      stopFindings(`
         sub a()
           m.task.control = "none"
           launchTask(m.task)
@@ -470,6 +477,220 @@ describe('no-same-node-relaunch — not flagged', () => {
   });
 });
 
+describe('no-same-node-relaunch — a long-lived node launched again', () => {
+  it('flags a launch after only an input write (MoviePresenter.loadLogo before the fix)', () => {
+    const found = check(`
+      class Presenter
+        sub loadLogo(itemId as string)
+          m.view.loadLogoTask.unobserveField("content")
+          m.view.loadLogoTask.itemId = itemId
+          m.view.loadLogoTask.observeField("content", "onLogoLoaded")
+          launchTask(m.view.loadLogoTask)
+        end sub
+      end class
+    `);
+    expect(found).toHaveLength(1);
+    expect(found[0].message).toMatch(/`m\.view\.loadlogotask` is launched without a new node/);
+    expect(found[0].location.range.start.line).toBe(6);
+  });
+
+  it('flags a relaunch from the node’s own delivery handler (the TV guide’s paging, #991)', () => {
+    // schedule.onChannelsLoaded before #991: no STOP anywhere, and inside its own
+    // observer the node still reads `run`, so page 2 was dropped every time.
+    const found = check(`
+      sub loadChannels()
+        m.LoadChannelsTask = createObject("roSGNode", "LoadChannelsTask")
+        m.LoadChannelsTask.observeField("channels", "onChannelsLoaded")
+        launchTask(m.LoadChannelsTask)
+      end sub
+      sub onChannelsLoaded()
+        m.LoadChannelsTask.startIndex = m.LoadChannelsTask.startIndex + 25
+        launchTask(m.LoadChannelsTask)
+      end sub
+    `);
+    expect(found).toHaveLength(1);
+    expect(found[0].location.range.start.line).toBe(8);
+  });
+
+  it('flags a launch from a later callback of a node created elsewhere', () => {
+    expect(
+      check(`
+        sub init()
+          m.task = createObject("roSGNode", "LoadItemsTask")
+        end sub
+        sub refresh()
+          launchTask(m.task)
+        end sub
+      `),
+    ).toHaveLength(1);
+  });
+
+  it('passes a node assigned in the same function, directly or by replaceTask', () => {
+    expect(
+      check(`
+        sub init()
+          m.task = createObject("roSGNode", "LoadItemsTask")
+          launchTask(m.task)
+        end sub
+        sub refresh()
+          m.task = replaceTask(m.task, "LoadItemsTask", "content", {})
+          launchTask(m.task)
+        end sub
+      `),
+    ).toHaveLength(0);
+  });
+
+  it('passes a node assigned by a same-file helper, one hop', () => {
+    expect(
+      check(`
+        sub freshTask()
+          m.task = createObject("roSGNode", "LoadItemsTask")
+        end sub
+        sub refresh()
+          freshTask()
+          launchTask(m.task)
+        end sub
+      `),
+    ).toHaveLength(0);
+  });
+
+  it('does not check a local, which is assigned where the reader can see it', () => {
+    expect(
+      check(`
+        sub launch()
+          task = m.top.task
+          launchTask(task)
+        end sub
+      `),
+    ).toHaveLength(0);
+  });
+
+  it('reports a STOP-then-relaunch once, not once per finding', () => {
+    const found = check(`
+      sub reload()
+        m.task.control = "STOP"
+        launchTask(m.task)
+      end sub
+    `);
+    expect(found).toHaveLength(1);
+    expect(found[0].message).toMatch(/is stopped and relaunched/);
+  });
+
+  it('honors the next-line suppression, where an audited-safe site states why', () => {
+    expect(
+      check(`
+        sub startLoader()
+          ' bsc-disable-next-line no-same-node-relaunch callers wait for state = "stop"
+          launchTask(m.loader)
+        end sub
+      `),
+    ).toHaveLength(0);
+  });
+
+  it('lets a pending entry cover this shape as well as the STOP one', () => {
+    const pending = plugin.withPendingMigrations({
+      'components/Foo.bs': [['refresh', 'm.task']],
+    });
+    const found = diagnosticsByCode(
+      runPluginOnSource(pending, {
+        'components/Foo.bs': `
+          sub refresh()
+            m.task.itemId = "1"
+            launchTask(m.task)
+          end sub
+        `,
+      }),
+      CODE,
+    );
+    expect(found).toHaveLength(0);
+  });
+});
+
+describe('no-same-node-relaunch — a replaced node’s handler must check the event first', () => {
+  const replacer = `
+    sub load()
+      m.task = replaceTask(m.task, "LoadItemsTask", "content", {})
+      m.task.observeField("content", "onLoaded")
+      launchTask(m.task)
+    end sub
+  `;
+  const withHandler = (body) =>
+    check(`${replacer}\nsub onLoaded(event as object)\n${body}\nend sub`);
+
+  it('flags a handler that reads the node before the guard', () => {
+    const found = withHandler(`
+      data = m.task.content
+      if not isCurrentTaskEvent(event, m.task) then return
+    `);
+    expect(found).toHaveLength(1);
+    expect(found[0].message).toMatch(
+      /`onloaded\(\)` handles `m\.task`.*does not open with the isCurrentTaskEvent\(\) guard/,
+    );
+  });
+
+  it('flags a side effect before the guard (a spinner stop)', () => {
+    expect(
+      withHandler(`
+        stopLoadingSpinner()
+        if not isCurrentTaskEvent(event, m.task) then return
+      `),
+    ).toHaveLength(1);
+  });
+
+  it('flags a guard inside an if body rather than its condition', () => {
+    expect(
+      withHandler(`
+        if isValid(m.task)
+          if not isCurrentTaskEvent(event, m.task) then return
+        end if
+      `),
+    ).toHaveLength(1);
+  });
+
+  it('passes the guard first, alone or inside a wider condition', () => {
+    expect(withHandler('  if not isCurrentTaskEvent(event, m.task) then return')).toHaveLength(0);
+    expect(
+      withHandler('  if not isValid(m.view) or not isCurrentTaskEvent(event, m.task) then return'),
+    ).toHaveLength(0);
+  });
+
+  it('allows logging ahead of the guard (BaseGridView.onItemDataLoaded)', () => {
+    expect(
+      withHandler(`
+        m.log.debug("start onLoaded()")
+        print "loaded"
+        if not isCurrentTaskEvent(event, m.task) then return
+      `),
+    ).toHaveLength(0);
+  });
+
+  it('does not follow a handler that lives in another file', () => {
+    expect(check(replacer)).toHaveLength(0);
+  });
+
+  it('ignores observers of a node the file never replaces', () => {
+    expect(
+      check(`
+        sub init()
+          m.timer.observeField("fire", "onFire")
+        end sub
+        sub onFire()
+          m.count = m.count + 1
+        end sub
+      `),
+    ).toHaveLength(0);
+  });
+
+  it('honors the next-line suppression above the opening statement', () => {
+    expect(
+      withHandler(`
+        ' bsc-disable-next-line no-same-node-relaunch reads only the event
+        data = event.getData()
+      `),
+    ).toHaveLength(0);
+  });
+});
+
 describe('no-same-node-relaunch — pending migrations', () => {
   const PATH = 'components/Foo.bs';
   const pendingPlugin = plugin.withPendingMigrations({ [PATH]: [['search', 'm.searchTask']] });
@@ -497,7 +718,9 @@ describe('no-same-node-relaunch — pending migrations', () => {
     const found = run(migrated);
     expect(found).toHaveLength(1);
     // The entry is echoed back AS WRITTEN, so it can be found by eye in the list.
-    expect(found[0].message).toMatch(/`search\(\)` does not stop and relaunch `m\.searchTask`/);
+    expect(found[0].message).toMatch(
+      /`search\(\)` does not relaunch `m\.searchTask` in any way this rule flags/,
+    );
     expect(found[0].message).toMatch(/delete its PENDING_MIGRATIONS entry/);
     expect(found[0].location.range.start.line).toBe(1);
   });
@@ -623,7 +846,7 @@ describe('no-same-node-relaunch — every state a pending entry can be in', () =
       state: 'site was migrated',
       pending: { [PATH]: [['search', 'm.searchTask']] },
       files: { [PATH]: migrated },
-      expect: /does not stop and relaunch `m\.searchTask`/,
+      expect: /does not relaunch `m\.searchTask` in any way this rule flags/,
       recovers: true,
     },
     {
@@ -652,7 +875,7 @@ describe('no-same-node-relaunch — every state a pending entry can be in', () =
       state: 'entry names a path the function never relaunches',
       pending: { [PATH]: [['search', 'm.typoTask']] },
       files: { [PATH]: relaunches },
-      expect: /`search\(\)` does not stop and relaunch `m\.typoTask`/,
+      expect: /`search\(\)` does not relaunch `m\.typoTask`/,
     },
     {
       state: 'file is not in the build',

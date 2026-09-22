@@ -1667,6 +1667,16 @@ JellyRock renders none of it. `mediaDisplayTitle.bs` builds every track label fr
 
 Ruled out: waiting on the image itself (blank text for seconds on a first open); one widest-logo bound for every line (wastes the room a short or narrow logo leaves); refitting after the logo lands (a visible jump); a spinner for the hold (sub-second waits, so it would only flash). Re-evaluate if the size request proves costly, if servers commonly report a size of 0 (the text then waits on the image, up to the cap), or if the cap is hit often on remote servers.
 
+## decision-id: relaunch-gate-no-stop-shapes
+
+**date**: 2026-09-22
+**status**: accepted
+**related-files**: `scripts/bsc-plugins/no-same-node-relaunch.cjs`, `tests/scripts/unit/bsc-plugins/no-same-node-relaunch.test.js`, `tests/source/unit/GridView/MoviePresenter.spec.bs`, `docs/architecture/build-and-tooling.md`
+
+`no-same-node-relaunch` also flags two shapes with no STOP in them. The first is a `launchTask(m.x)` in a function that has not assigned `m.x` a new node first (directly, or through a same-file helper, one hop). Launching a still-running node is ignored every time: 40 of 40 trials on a Stick 4K and a 512 MB Stick ([threading.md](architecture/threading.md#measured-findings)). `MoviePresenter.loadLogo` hit this, and so did the TV guide's own-handler paging (#991). The second is a same-file handler of a `replaceTask()` node whose first statement, logging aside, is not the `isCurrentTaskEvent()` guard; until now only review enforced that part of [ADR 0037](adr/0037-task-run-replacement.md). **Ruled out: recognizing safe guard shapes structurally** (`state <> "stop"` checks, `HomeRows`' `isLoading*` flags). Detecting them would be heuristic, and one of those guards is cleared inside the node's own delivery handler, where it still reads `run`. So a site audited as safe carries a line suppression that states the reason (`TrickplayCarousel.startTileLoader`), and a site not yet audited goes in `PENDING_MIGRATIONS`, as [`same-node-relaunch-gate`](#decision-id-same-node-relaunch-gate) requires. That note's no-inline-marker rule covers sites awaiting migration, not ones audited safe. An entry covers every finding at the first launch it names, and a second launch of the same path is still flagged. **Also ruled out: a unit test per site** instead of the gate. A test protects one site; the gate covers every present and future one.
+
+**The constraint worth re-evaluating is reach.** Only `m.`-rooted paths are checked (a local alias of a long-lived node is missed), helpers are followed one hop by bare name, and a handler in another file is not followed. `MoviePresenter`'s logo handler is reached through `BaseGridView.onPresenterLogoLoaded`, so `MoviePresenter.spec.bs` pins that one instead.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

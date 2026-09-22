@@ -1,5 +1,14 @@
 /**
- * BrighterScript plugin — no STOP-then-relaunch of the same Task node.
+ * BrighterScript plugin — no relaunch of a Task node that may still be running.
+ *
+ * Three findings, one code, each with its own section below:
+ *   1. STOP then relaunch of the same node in one function (a race).
+ *   2. A launch of a long-lived `m.` node with no new node assigned first (ignored
+ *      every time while the previous run is still going).
+ *   3. A handler observing a `replaceTask()` node whose first statement is not the
+ *      `isCurrentTaskEvent()` guard.
+ *
+ * ── 1. STOP then relaunch ──────────────────────────────────────────────────
  *
  * Measured on device (docs/architecture/threading.md, "Measured findings";
  * pinned by tests/source/unit/platform/TaskRelaunch.spec.bs): writing
@@ -68,6 +77,38 @@
  *   - A STOP guarded by `if X.state = "run"` is flagged like any other: the guard
  *     is exactly the running case the race needs.
  *
+ * ── 2. A long-lived node launched again ─────────────────────────────────────
+ *
+ * Measured on device (threading.md, "Measured findings"; pinned in
+ * TaskRelaunch.spec.bs): `launchTask()` on a node whose previous run has not
+ * returned, from a later callback and with no STOP, is IGNORED every time. Nothing
+ * starts and nothing is queued, so the newer request is lost, and a Task that
+ * re-reads its input after its request delivers a result mixing the two runs
+ * (`MoviePresenter.loadLogo` did). The rule cannot know whether a run can still be
+ * going, so it flags the shape: `launchTask(X)` where `X` is an `m.` path that
+ * this function has not assigned (nor a parent of it) before the launch. A call to
+ * a same-file function that assigns `X` counts, one hop, as for STOPs above.
+ * Writing an input field (`m.x.itemId = …`) is not an assignment of `m.x`.
+ *
+ * A launch that provably cannot overlap a running one — the only launch a node
+ * ever gets, or a site that returns unless `X.state = "stop"` — is suppressed on
+ * the line with the reason. Sites not yet audited are in PENDING_MIGRATIONS.
+ *
+ * Gaps: only `m.`-rooted paths are checked, since a local was assigned somewhere
+ * in view (`task = m.top.task` then `launchTask(task)` is missed); and, as above,
+ * helpers are followed one hop by bare name.
+ *
+ * ── 3. A replaced node's handler must check the event first ─────────────────
+ *
+ * Roku does not promise that `unobserveField` cancels an event already queued, so
+ * a handler for a node the file replaces with `replaceTask()` must open with
+ * `isCurrentTaskEvent(event, X)`: otherwise a replaced run's event reads the new
+ * node's empty output. Flagged: `X.observeField("field", "handler")` where the
+ * file assigns `X = replaceTask(…)`, the handler is a function in the same file,
+ * and its first statement — `m.log.*` calls and `print` aside — does not call
+ * `isCurrentTaskEvent`. A handler in another file (`MoviePresenter`'s, reached
+ * through `BaseGridView.onPresenterLogoLoaded`) is not followed.
+ *
  * Allowed call sites:
  *  - `source/utils/tasks.bs`   (the wrapper itself)
  *  - `components/vendor/**`    (vendored third-party code we don't author)
@@ -123,15 +164,42 @@ const DISABLE_LINE_MARKER = /'\s*bsc-disable-line\s+no-same-node-relaunch\b/i;
 const DISABLE_NEXT_LINE_MARKER = /'\s*bsc-disable-next-line\s+no-same-node-relaunch\b/i;
 
 /**
- * Sites that relaunched the same node before this rule existed, each awaiting a
- * move to a new node per run (docs/progress.md, same-node relaunch followup).
- * File → [function, launched path]. Delete an entry when its site is migrated;
- * the build fails until you do.
+ * Sites that relaunched a node before this rule flagged them, each awaiting an
+ * audit and, where a run can overlap, a move to a new node per run
+ * (docs/progress.md, same-node relaunch followup). File → [function, launched
+ * path]. An entry covers the first launch of that path in that function, and every
+ * finding at it; a second launch is still flagged. Delete an entry
+ * when its site is migrated, or suppressed with its reason once audited safe; the
+ * build fails until you do.
  */
 const PENDING_MIGRATIONS = {
+  'components/ItemDetails.bs': [
+    ['onItemContentChanged', 'm.loadSeasonSeriesTask'],
+    ['onKeyEvent', 'm.loadFirstEpisodeTask'],
+  ],
+  'components/home/Home.bs': [['onScreenShown', 'm.global.remoteControlTask']],
+  'components/home/HomeRows.bs': [
+    ['loadLibraries', 'm.LoadLibrariesTask'],
+    ['updateHomeRows', 'm.LoadLibrariesTask'],
+    ['startParallelLoads', 'm.LoadContinueWatchingTask'],
+    ['startParallelLoads', 'm.LoadNextUpTask'],
+    ['startParallelLoads', 'm.LoadOnNowTask'],
+    ['startParallelLoads', 'm.LoadActiveRecordingsTask'],
+    ['onProgramsExpired', 'm.LoadOnNowTask'],
+    ['onProgramsExpired', 'm.LoadActiveRecordingsTask'],
+  ],
+  'components/music/AudioPlayerView.bs': [['onAudioStreamLoaded', 'm.LoadMetaDataTask']],
+  'components/video/PlayerHostView.bs': [
+    ['onSelectPlaybackInfoPressed', 'm.getPlaybackInfoTask'],
+    ['onPlaybackInfoRefreshDue', 'm.getPlaybackInfoTask'],
+  ],
   'components/video/VideoPlayerView.bs': [
     ['loadCaption', 'm.captionTask'],
     ['onSubtitleChange', 'm.captionTask'],
+    ['onSubtitleChange', 'm.LoadMetaDataTask'],
+    ['onAudioIndexChange', 'm.LoadMetaDataTask'],
+    ['onVideoSourceChange', 'm.LoadMetaDataTask'],
+    ['retryPlayback', 'm.LoadMetaDataTask'],
   ],
 };
 
@@ -142,6 +210,10 @@ const SET_FIELD = 'setfield';
 const FIELD_WRITE_METHODS = new Set(['setfields', 'addfields']);
 /** tasks.bs helpers that STOP the node passed as their first argument. */
 const TASK_RELEASERS = new Set(['releasetask', 'replacetask']);
+const REPLACE_FUNCTION = 'replacetask';
+const OBSERVE_METHOD = 'observefield';
+const EVENT_GUARD = 'iscurrenttaskevent';
+const LOGGER_PATH = 'm.log';
 const SELF_REFERENCE = 'm';
 
 /** The value of a string literal expression, or undefined. */
@@ -181,6 +253,13 @@ function refPath(expression) {
   const root = current.tokens?.name?.text;
   if (!root) return undefined;
   return [root.toLowerCase(), ...steps].join('.');
+}
+
+/** The lowercased name of a bare `name(...)` call, or undefined. */
+function bareCallName(expression) {
+  if (!brighterscript.isCallExpression(expression)) return undefined;
+  if (!brighterscript.isVariableExpression(expression.callee)) return undefined;
+  return expression.callee.tokens?.name?.text?.toLowerCase();
 }
 
 /** True when `call` is `launchTask(...)`, bare or with a dotted callee. */
@@ -240,6 +319,9 @@ function collectEvents(func) {
         if (field === CONTROL_FIELD && isLiteral(statement.value, STOP_VALUE)) {
           push('stop', base, statement);
         }
+        if (bareCallName(statement.value) === REPLACE_FUNCTION) {
+          push('replace', `${base}.${field}`, statement);
+        }
         pushRebind(`${base}.${field}`, statement);
       },
       IndexedSetStatement: (statement) => {
@@ -255,7 +337,11 @@ function collectEvents(func) {
       },
       AssignmentStatement: (statement) => {
         const name = statement.tokens?.name?.text;
-        if (name) pushRebind(name.toLowerCase(), statement);
+        if (!name) return;
+        if (bareCallName(statement.value) === REPLACE_FUNCTION) {
+          push('replace', name.toLowerCase(), statement);
+        }
+        pushRebind(name.toLowerCase(), statement);
       },
       CallExpression: (call) => {
         const callee = call?.callee;
@@ -277,6 +363,11 @@ function collectEvents(func) {
         const method = callee.tokens?.name?.text?.toLowerCase();
         const base = refPath(callee.obj);
         if (base === undefined) return;
+        if (method === OBSERVE_METHOD) {
+          const handler = stringLiteralValue(args[1])?.toLowerCase();
+          if (args.length === 2 && handler) push('observe', base, call, { handler });
+          return;
+        }
         if (method === SET_FIELD) {
           if (
             args.length >= 2 &&
@@ -340,6 +431,65 @@ function trackStops(events, helperStops, onLaunch) {
   return [...stopped]
     .filter(([path, state]) => !isRebound(path, state.rebound))
     .map(([path]) => path);
+}
+
+/**
+ * Replay `events` in order and call `onLaunch(event)` for each launch of an `m.`
+ * path this function has not assigned (nor a parent of it) before the launch — a
+ * node that may be the one launched last time. A call to a function in
+ * `helperRebinds` assigns the paths it lists.
+ */
+function trackUnassignedLaunches(events, helperRebinds, onLaunch) {
+  const rebound = new Set();
+  for (const e of events) {
+    if (e.kind === 'rebind') {
+      rebound.add(e.path);
+    } else if (e.kind === 'call') {
+      for (const path of helperRebinds.get(e.path) ?? []) rebound.add(path);
+    } else if (e.kind === 'launch') {
+      if (e.path.startsWith(`${SELF_REFERENCE}.`) && !isRebound(e.path, rebound)) onLaunch(e);
+    }
+  }
+}
+
+/** True when `expression` contains a call to `isCurrentTaskEvent`, however nested. */
+function callsEventGuard(expression) {
+  if (!expression) return false;
+  if (bareCallName(expression) === EVENT_GUARD) return true;
+  let found = false;
+  expression.walk(
+    brighterscript.createVisitor({
+      CallExpression: (call) => {
+        if (bareCallName(call) === EVENT_GUARD) found = true;
+      },
+    }),
+    { walkMode: brighterscript.WalkMode.visitExpressionsRecursive },
+  );
+  return found;
+}
+
+/** True for a statement that only logs: `print …` or an `m.log.*(…)` call. */
+function isLoggingStatement(statement) {
+  if (brighterscript.isPrintStatement(statement)) return true;
+  if (!brighterscript.isExpressionStatement(statement)) return false;
+  const callee = statement.expression?.callee;
+  if (!brighterscript.isCallExpression(statement.expression)) return false;
+  return brighterscript.isDottedGetExpression(callee) && refPath(callee.obj) === LOGGER_PATH;
+}
+
+/**
+ * The statement a replaced node's handler must open with, or undefined when it
+ * already does: the first statement other than logging, when that statement does
+ * not call `isCurrentTaskEvent`. For an `if`, only its CONDITION counts — a guard
+ * inside its body runs too late to protect the condition.
+ */
+function unguardedOpening(func) {
+  const opening = (func.body?.statements || []).find((s) => !isLoggingStatement(s));
+  if (!opening) return undefined;
+  const guarded = brighterscript.isIfStatement(opening)
+    ? callsEventGuard(opening.condition)
+    : callsEventGuard(opening.expression ?? opening.value);
+  return guarded ? undefined : opening;
 }
 
 /**
@@ -463,6 +613,34 @@ function isRuleExempt(destPath) {
   return EXCLUDED_DEST_PREFIXES.some((prefix) => destPath.startsWith(prefix));
 }
 
+const EVIDENCE = 'Evidence: docs/architecture/threading.md (Measured findings).';
+
+function stopMessage(path, via) {
+  const where = via ? ` (stopped inside \`${via}()\`)` : '';
+  return (
+    `\`${path}\` is stopped${where} and relaunched in the same function. If its task is still running, the relaunch is a race: it is sometimes silently ignored. ` +
+    'Launch a new node for each run instead (ExtrasRowList.startRun is the reference). ' +
+    `${EVIDENCE} ` +
+    `Add ' bsc-disable-next-line ${CODE} <reason> above the launch to suppress.`
+  );
+}
+
+function unassignedLaunchMessage(path) {
+  return (
+    `\`${path}\` is launched without a new node assigned first. If its previous run is still going, the launch is ignored every time and the request is lost. ` +
+    `Assign a new node in this function: \`m.x = replaceTask(m.x, …)\` (source/utils/tasks.bs). ${EVIDENCE} ` +
+    `If this launch can never overlap a running one (the node's only launch, or the function returns unless its state is "stop"), add ' bsc-disable-next-line ${CODE} <why> above it.`
+  );
+}
+
+function unguardedHandlerMessage(handler, path) {
+  return (
+    `\`${handler}()\` handles \`${path}\`, which this file replaces with replaceTask(), but does not open with the isCurrentTaskEvent() guard. ` +
+    `An event a replaced node already queued would read the new node's empty output. Make \`if not isCurrentTaskEvent(event, ${path}) then return\` the first statement (logging aside) — before any read of the node, spinner stop or screenLoad.resolve. ` +
+    `Add ' bsc-disable-next-line ${CODE} <reason> above this statement to suppress.`
+  );
+}
+
 class NoSameNodeRelaunchPlugin {
   constructor(pending = PENDING_MIGRATIONS) {
     this.name = 'jellyrock-no-same-node-relaunch';
@@ -489,20 +667,50 @@ class NoSameNodeRelaunchPlugin {
         if (stops.length) helperStops.set(fn.name, new Set(stops));
       }
 
-      const unclaimed = entriesFor(this.pending, destPath);
+      // One hop, for check 2: the `m.` paths each named function assigns.
+      const helperRebinds = new Map();
+      for (const fn of functions) {
+        if (!fn.bareCallable) continue;
+        const paths = fn.events
+          .filter((e) => e.kind === 'rebind' && e.path.startsWith(`${SELF_REFERENCE}.`))
+          .map((e) => e.path);
+        if (paths.length) helperRebinds.set(fn.name, new Set(paths));
+      }
+
+      // An entry covers ONE launch — the first one found — and every finding at
+      // it: the STOP finding and the unassigned-launch finding of that launch both
+      // answer to it, while a second launch of the same path is still flagged.
+      const listed = entriesFor(this.pending, destPath);
+      const claimed = new Map(); // key -> position of the launch it covers
+      const isClaimed = (fn, e) => {
+        const key = `${fn.name}|${e.path}`;
+        if (!fn.name || !listed.has(key)) return false;
+        if (claimed.has(key)) return claimed.get(key) === e.pos;
+        claimed.set(key, e.pos);
+        return true;
+      };
       const reported = new Set();
       for (const fn of functions) {
         trackStops(fn.events, helperStops, (e, via) => {
-          const key = `${fn.name}|${e.path}`;
-          if (fn.name && unclaimed.delete(key)) return;
-          this.report(event.program, file, e.node, e.path, via, reported);
+          if (isClaimed(fn, e)) return;
+          this.report(event.program, file, e.node, stopMessage(e.path, via), reported);
         });
       }
+      // After the STOP check, so a launch it already reported is not reported twice.
+      for (const fn of functions) {
+        trackUnassignedLaunches(fn.events, helperRebinds, (e) => {
+          if (isClaimed(fn, e)) return;
+          this.report(event.program, file, e.node, unassignedLaunchMessage(e.path), reported);
+        });
+      }
+
+      this.checkHandlerGuards(event.program, file, functions, reported);
 
       // Whatever is left described a site this file does not have. An entry whose
       // function is missing is a fault in the LIST, reported on the list by
       // `afterValidateProgram`; only one whose function is here is this file's.
-      for (const entry of unclaimed.values()) {
+      const unclaimed = [...listed].filter(([key]) => !claimed.has(key)).map(([, entry]) => entry);
+      for (const entry of unclaimed) {
         const fn = functions.find((f) => f.name === entry.fn.toLowerCase());
         if (fn) this.reportStaleEntry(event.program, fn, destPath, entry);
       }
@@ -511,7 +719,35 @@ class NoSameNodeRelaunchPlugin {
     }
   }
 
-  report(program, file, call, path, via, reported) {
+  /**
+   * Check 3: each same-file handler of a node the file replaces must open with the
+   * `isCurrentTaskEvent()` guard. Reported on the handler's opening statement, so
+   * a suppression goes where the guard would.
+   */
+  checkHandlerGuards(program, file, functions, reported) {
+    const replaced = new Set();
+    for (const fn of functions) {
+      for (const e of fn.events) if (e.kind === 'replace') replaced.add(e.path);
+    }
+    if (!replaced.size) return;
+    const handlers = new Map();
+    for (const fn of functions) {
+      for (const e of fn.events) {
+        if (e.kind === 'observe' && replaced.has(e.path) && !handlers.has(e.handler)) {
+          handlers.set(e.handler, e.path);
+        }
+      }
+    }
+    for (const [name, path] of handlers) {
+      const handler = functions.find((fn) => fn.bareCallable && fn.name === name);
+      if (!handler) continue;
+      const opening = unguardedOpening(handler.func);
+      if (!opening) continue;
+      this.report(program, file, opening, unguardedHandlerMessage(name, path), reported);
+    }
+  }
+
+  report(program, file, call, message, reported) {
     const range = call?.location?.range;
     if (!range) return;
     const key = `${range.start.line}:${range.start.character}`;
@@ -523,16 +759,11 @@ class NoSameNodeRelaunchPlugin {
     }
     reported.add(key);
 
-    const where = via ? ` (stopped inside \`${via}()\`)` : '';
     program.diagnostics.register({
       code: CODE,
       severity: 1, // Error
       source: this.name,
-      message:
-        `\`${path}\` is stopped${where} and relaunched in the same function. If its task is still running, the relaunch is a race: it is sometimes silently ignored. ` +
-        'Launch a new node for each run instead (ExtrasRowList.startRun is the reference). ' +
-        'Evidence: docs/architecture/threading.md (Measured findings). ' +
-        `Add ' bsc-disable-next-line ${CODE} <reason> above the launch to suppress.`,
+      message,
       location: call.location,
     });
   }
@@ -649,7 +880,7 @@ class NoSameNodeRelaunchPlugin {
       severity: 1, // Error
       source: this.name,
       message:
-        `\`${entry.fn}()\` does not stop and relaunch \`${entry.path}\` in ${destPath}. ` +
+        `\`${entry.fn}()\` does not relaunch \`${entry.path}\` in any way this rule flags, in ${destPath}. ` +
         'If you migrated it, delete its PENDING_MIGRATIONS entry; if the entry is wrong, correct it. ' +
         `Its entry is at ${PLUGIN_DEST_PATH}:${entryLine}.`,
       location: fn.statement.tokens.name.location,
