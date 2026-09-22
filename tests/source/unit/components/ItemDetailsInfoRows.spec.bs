@@ -1,0 +1,195 @@
+namespace tests
+
+  ' The details screen's text block: which row each item lands on, and the fit that keeps
+  ' the title and the rows clear of the logo. The fitting arithmetic itself is covered by
+  ' infoRowFit.spec.bs; this pins that the screen feeds it and applies its answer.
+  @suite("ItemDetails - info rows")
+  class ItemDetailsInfoRowsTests extends tests.BaseTestSuite
+
+    private itemDetails as object
+
+    ' The logo's leftmost possible edge (1824 - 500) less the text block's x (96).
+    private budget = 1228
+
+    private function makeMovie() as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "movie-001"
+      item.type = "Movie"
+      item.name = "Office Space"
+      item.productionYear = 1999
+      item.genres = ["Comedy", "Crime"]
+      item.people = [{ Id: "d1", Name: "Mike Judge", Type: "Director" }]
+      return item
+    end function
+
+    private function makeEpisode() as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "episode-001"
+      item.type = "Episode"
+      item.name = "Pilot"
+      item.seriesName = "Silicon Valley"
+      item.parentIndexNumber = 1
+      item.indexNumber = 1
+      return item
+    end function
+
+    private function directorsNamed(count as integer) as object
+      people = []
+      for i = 1 to count
+        people.push({ Id: "d" + i.toStr(), Name: "Director Number " + i.toStr(), Type: "Director" })
+      end for
+      return people
+    end function
+
+    ' Where a row ends, summed from its children the way the LayoutGroup lays them out.
+    ' A child with an explicit width renders AT that width; otherwise at its text's.
+    private function rowRight(group as object) as integer
+      right = 0
+      spacing = int(group.itemSpacings[0])
+      for i = 0 to group.getChildCount() - 1
+        child = group.getChild(i)
+        width = int(child.boundingRect().width)
+        if child.width > 0 then width = int(child.width)
+        if i > 0 then right = right + spacing
+        right = right + width
+      end for
+      return right
+    end function
+
+    protected override sub setup()
+      super.setup()
+
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+    end sub
+
+    protected override function beforeEach()
+      super.beforeEach()
+      m.itemDetails = CreateObject("roSGNode", "ItemDetails")
+    end function
+
+    protected override function afterEach()
+      m.itemDetails = invalid
+      super.afterEach()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the credits row")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("puts Directed by on the credits row, not beside the genres")
+    function _()
+      m.itemDetails.itemContent = m.makeMovie()
+
+      credits = m.itemDetails.findNode("creditsGroup")
+      details = m.itemDetails.findNode("detailsGroup")
+      m.assertEqual(credits.getChildCount(), 1)
+      m.assertEqual(credits.getChild(0).id, "director")
+      m.assertEqual(details.getChildCount(), 1)
+      m.assertEqual(details.getChild(0).id, "genre")
+    end function
+
+    @it("leaves the credits row empty for an item with no credits")
+    function _()
+      item = m.makeMovie()
+      item.people = []
+      m.itemDetails.itemContent = item
+
+      m.assertEqual(m.itemDetails.findNode("creditsGroup").getChildCount(), 0)
+    end function
+
+    @it("moves an episode's director off the code and series row")
+    function _()
+      item = m.makeEpisode()
+      item.people = [{ Id: "d1", Name: "Mike Judge", Type: "Director" }]
+      m.itemDetails.itemContent = item
+
+      details = m.itemDetails.findNode("detailsGroup")
+      m.assertEqual(details.getChildCount(), 3)
+      m.assertEqual(details.getChild(0).id, "episodeCode")
+      m.assertEqual(details.getChild(2).id, "seriesName")
+      m.assertEqual(m.itemDetails.findNode("creditsGroup").getChild(0).id, "director")
+    end function
+
+    @it("empties the credits row when the screen is reused for an item without credits")
+    function _()
+      m.itemDetails.itemContent = m.makeMovie()
+      item = m.makeMovie()
+      item.id = "movie-002"
+      item.people = []
+      m.itemDetails.itemContent = item
+
+      m.assertEqual(m.itemDetails.findNode("creditsGroup").getChildCount(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("fitting clear of the logo")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves a row that fits at its natural width")
+    function _()
+      m.itemDetails.itemContent = m.makeMovie()
+
+      director = m.itemDetails.findNode("director")
+      m.assertEqual(int(director.width), 0)
+    end function
+
+    @it("ellipsizes a credit list too long for the budget at the logo's edge")
+    function _()
+      item = m.makeMovie()
+      item.people = m.directorsNamed(12)
+      m.itemDetails.itemContent = item
+
+      director = m.itemDetails.findNode("director")
+      m.assertEqual(int(director.width), m.budget)
+      m.assertTrue(director.ellipsizeOnBoundary)
+    end function
+
+    @it("cuts row 2 at the logo's edge and keeps its first item whole")
+    function _()
+      item = m.makeEpisode()
+      item.seriesName = "A Series Name So Long That It Could Never Fit Beside Its Episode Code On One Row Of This Screen"
+      m.itemDetails.itemContent = item
+
+      details = m.itemDetails.findNode("detailsGroup")
+      m.assertEqual(int(details.getChild(0).width), 0, "episode code keeps its natural width")
+      m.assertTrue(details.getChild(2).width > 0, "series name is narrowed")
+      m.assertEqual(m.rowRight(details), m.budget)
+    end function
+
+    @it("drops the items after the one that crosses the budget")
+    function _()
+      item = m.makeMovie()
+      item.type = "MusicVideo"
+      item.genres = ["A Genre Name Long Enough To Take Almost All Of The Row By Itself", "And Another Long One Too"]
+      item.artists = ["An Artist Who Will Not Fit"]
+      m.itemDetails.itemContent = item
+
+      details = m.itemDetails.findNode("detailsGroup")
+      m.assertInvalid(details.findNode("artists"))
+      m.assertTrue(m.rowRight(details) <= m.budget)
+    end function
+
+    @it("keeps a long title to one line within the same budget")
+    function _()
+      item = m.makeMovie()
+      m.itemDetails.itemContent = item
+      shortHeight = int(m.itemDetails.findNode("videoTitle").boundingRect().height)
+
+      item = m.makeMovie()
+      item.id = "movie-002"
+      item.name = "What Happens at the National Propane Gas Convention in Memphis Stays at the National Propane Gas Convention in Memphis"
+      m.itemDetails.itemContent = item
+
+      title = m.itemDetails.findNode("videoTitle")
+      m.assertEqual(int(title.width), m.budget)
+      m.assertFalse(title.wrap)
+      m.assertTrue(title.ellipsizeOnBoundary)
+      m.assertEqual(int(title.boundingRect().height), shortHeight, "a long title is no taller than a short one")
+    end function
+
+  end class
+
+end namespace

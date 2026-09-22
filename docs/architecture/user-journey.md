@@ -9,7 +9,7 @@ related-files:
   - components/manager/QueueManager.bs
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
-last-reviewed: 2026-09-19
+last-reviewed: 2026-09-22
 ---
 
 # The User Journey
@@ -178,7 +178,8 @@ The largest single file in the codebase. It handles the detail view for *every* 
 
 The component contains:
 
-- A title block with metadata (year, runtime, rating, director, genres, tagline, overview)
+- A title block with metadata (year, runtime, rating, genres, credits, tagline, overview). Under the title, one row of chips (year, rating, runtime, …), one row of details (genres, episode code and series, studio, …) and a **credits row** (`Directed by …`), which is empty — so takes no space — for an item with no credits. Credits get a row of their own because a credit list is the one item on these rows with no natural length limit; sharing a row with the genres, it was always the first thing cut.
+  - **No text reaches the logo.** The title and the details and credits rows all stop at `logoLeftmostX()` — the logo's leftmost *possible* edge — the same bound that caps the button row, so the budget needs no measurement of the loaded logo (which arrives after the text paints). `fitInfoRow()` cuts a row on a whole word with an ellipsis and drops what follows, using [`infoRowFit.bs`](../../source/utils/infoRowFit.bs); it runs on every rebuild, before the first paint, because a `Label`'s width is correct the moment its text is set. The title stays **one line**: with extras open, this block is pinned above the extras pane and grows upward, and a second title line put its top outside Roku's action-safe zone.
 - A button row (`buttonGrp`) — buttons are dynamically generated based on item type and play state:
   - **Play** — primary action
   - **Resume** — replaces Play if the item has playback progress. On Jellyfin 12.0+ an item with alternate versions resumes per version: Resume follows the version selected in the Video dropdown and can load that version's position behind a loading button (see [`playback.md`](playback.md#alternate-versions-and-resume--sourceutilsversionresumebs))

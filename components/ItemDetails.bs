@@ -10,6 +10,7 @@ import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/buttonOverflow.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/dialogs.bs"
+import "pkg:/source/utils/infoRowFit.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
@@ -42,6 +43,11 @@ const LOGO_RIGHT_ANCHOR_X = 1824
 ' extending above the metadata rows. Person photos are exempt because their info rows
 ' are short and don't reach the right edge where the photo sits.
 const LOGO_MAX_DISPLAY_HEIGHT = 336
+' Narrowest a cut info-row item may be before it is dropped instead. Measured
+' 2026-09-22 on a Roku Ultra: the row font averages 15.6px per character, so 160px
+' is about ten characters, the shortest cut that still reads as a word or name
+' rather than a stub.
+const INFO_ROW_MIN_CUT_WIDTH = 160
 ' First-frame estimate for the button row's total rendered height. Used by anchorDateLabel()
 ' before boundingRect() has settled (it reports height=0 during initial render). Observed to
 ' land around 130 px for the typical 2-line-label icon button. A later renderTracking callback
@@ -170,7 +176,7 @@ sub init()
   m.extrasActive = false
   m.extrasLoaded = false
 
-  ' Inner group: title + infoGroup + directorGenreGroup (never changes during activate/deactivate)
+  ' Inner group: title + infoGroup + detailsGroup + creditsGroup (never changes during activate/deactivate)
   ' Used to compute the correct animation target height when extras are shown
   m.itemInfoRows = m.top.findNode("itemInfoRows")
 
@@ -220,9 +226,10 @@ sub init()
   m.lastDeepLinkRouteId = ""
   m.deepLinkAction = "open"
 
-  m.directorGenreGroup = m.top.findNode("directorGenreGroup")
+  m.detailsGroup = m.top.findNode("detailsGroup")
+  m.creditsGroup = m.top.findNode("creditsGroup")
   m.infoDividerCount = 0
-  m.directorGenreDividerCount = 0
+  m.top.findNode("videoTitle").width = detailsTextWidth()
 
   ' ItemDetails owns its own in-screen navigation AND its own action buttons. Extras-grid
   ' selections (cast / related items) navigate to their route; goTo* buttons navigate to
@@ -2061,15 +2068,88 @@ sub displayInfoNode(node as object)
   m.infoGroup.appendChild(node)
 end sub
 
-' displayDirectorGenreNode: Add a node to the second info row, prepending a bullet divider if needed
-sub displayDirectorGenreNode(node as object)
+' displayDetailsNode: Add a node to the second info row, prepending a bullet divider if needed
+sub displayDetailsNode(node as object)
+  appendInfoRowItem(m.detailsGroup, node, "detailsDivider")
+end sub
+
+' displayCreditsNode: Add a people credit ("Directed by ...") to the credits row
+sub displayCreditsNode(node as object)
+  appendInfoRowItem(m.creditsGroup, node, "creditsDivider")
+end sub
+
+' The rows fitInfoRow() cuts are built ONLY here, which is what lets it read a row as
+' item, divider, item, ... by position: an item at every even index, a divider at
+' every odd one. Append to those rows any other way and the fit misreads them.
+sub appendInfoRowItem(group as object, node as object, dividerIdPrefix as string)
   if not isValid(node) then return
-  if m.directorGenreGroup.getChildCount() > 0
-    m.directorGenreDividerCount++
-    divider = createDividerNode("directorGenreDivider" + m.directorGenreDividerCount.toStr())
-    m.directorGenreGroup.appendChild(divider)
+  childCount = group.getChildCount()
+  if childCount > 0
+    group.appendChild(createDividerNode(dividerIdPrefix + childCount.toStr()))
   end if
-  m.directorGenreGroup.appendChild(node)
+  group.appendChild(node)
+end sub
+
+' The x where the logo's LEFTMOST possible edge sits: the right anchor less the widest
+' the logo may be drawn. Everything left of the logo stops here, for any logo, so no
+' measurement of the loaded image (which arrives after the text paints) is needed.
+function logoLeftmostX() as integer
+  return LOGO_RIGHT_ANCHOR_X - LOGO_MAX_DISPLAY_WIDTH
+end function
+
+' The width the title and the info rows may use: from the text block's left edge to
+' the logo's leftmost possible edge. Read from the live translation, like the button
+' row's geometry, so moving the block moves the budget with it.
+function detailsTextWidth() as integer
+  return logoLeftmostX() - int(m.itemDetails.translation[0])
+end function
+
+' Empty both fitted rows and the chip row before a rebuild.
+sub resetInfoRows()
+  m.infoGroup.removeChildrenIndex(m.infoGroup.getChildCount(), 0)
+  m.detailsGroup.removeChildrenIndex(m.detailsGroup.getChildCount(), 0)
+  m.creditsGroup.removeChildrenIndex(m.creditsGroup.getChildCount(), 0)
+  m.infoDividerCount = 0
+  m.endsAtNode = invalid
+  m.endsAtDurationSeconds = 0
+end sub
+
+' Cut the text rows to the space left of the logo. Runs after every rebuild, before the
+' rows first paint: a Label's width is correct the moment its text is set.
+sub fitInfoRows()
+  fitInfoRow(m.detailsGroup)
+  fitInfoRow(m.creditsGroup)
+end sub
+
+' A LayoutGroup never clips, so an over-long row would run on into the logo. The item
+' that crosses the budget is narrowed so it ends on a whole word with an ellipsis, and
+' what follows it is removed; see fitTextRow() for the rule. The row's own
+' boundingRect() is NOT used: until the group has laid out it does not include its
+' children's positions, so the widths are summed from the children instead.
+sub fitInfoRow(group as object)
+  childCount = group.getChildCount()
+  if childCount = 0 then return
+
+  spacing = 0
+  if isValid(group.itemSpacings) and group.itemSpacings.count() > 0 then spacing = int(group.itemSpacings[0])
+  separatorWidth = 0
+  if childCount > 1 then separatorWidth = spacing + int(group.getChild(1).boundingRect().width) + spacing
+
+  widths = []
+  for i = 0 to childCount - 1 step 2
+    widths.push(int(group.getChild(i).boundingRect().width))
+  end for
+
+  fit = fitTextRow(widths, separatorWidth, detailsTextWidth(), INFO_ROW_MIN_CUT_WIDTH)
+  if fit.keep = widths.count() and fit.cutWidth = 0 then return
+
+  lastKeptIndex = (fit.keep - 1) * 2
+  if fit.cutWidth > 0
+    lastKept = group.getChild(lastKeptIndex)
+    lastKept.width = fit.cutWidth
+    lastKept.ellipsizeOnBoundary = true
+  end if
+  group.removeChildrenIndex(childCount - lastKeptIndex - 1, lastKeptIndex + 1)
 end sub
 
 ' displayRatingNodes: Community + critic rating chips shared across every rateable item type's
@@ -2256,12 +2336,7 @@ end sub
 
 ' populateInfoGroup: Dispatch to type-specific info row builder
 sub populateInfoGroup()
-  m.infoGroup.removeChildrenIndex(m.infoGroup.getChildCount(), 0)
-  m.directorGenreGroup.removeChildrenIndex(m.directorGenreGroup.getChildCount(), 0)
-  m.infoDividerCount = 0
-  m.directorGenreDividerCount = 0
-  m.endsAtNode = invalid
-  m.endsAtDurationSeconds = 0
+  resetInfoRows()
 
   item = m.top.itemContent
   userSettings = m.global.user.settings
@@ -2300,11 +2375,14 @@ sub populateInfoGroup()
     ' Movie, Video
     populateInfoGroupMovie(item, userSettings)
   end if
+
+  fitInfoRows()
 end sub
 
 ' populateInfoGroupMovie: Info rows for Movie, Video, Recording
 ' Row 1: Year · Official Rating · Community Rating · Critic Rating · Runtime · Ends At
-' Row 2: Genres · Director(s)
+' Row 2: Genres
+' Row 3: Directed by
 sub populateInfoGroupMovie(item as object, userSettings as object)
   if item.productionYear > 0
     yearNode = createInfoLabel("releaseYear")
@@ -2335,13 +2413,14 @@ sub populateInfoGroupMovie(item as object, userSettings as object)
   if item.genres.count() > 0
     genreNode = createInfoLabel("genre")
     genreNode.text = item.genres.join(" / ")
-    displayDirectorGenreNode(genreNode)
+    displayDetailsNode(genreNode)
   end if
 
   displayDirectedBy(item)
 end sub
 
-' The "Directed by" info line, shared by the Movie, MusicVideo and Episode info groups.
+' The "Directed by" credit, shared by the Movie, MusicVideo and Episode info groups. It
+' goes on the credits row, not beside the genres.
 '
 ' Was three byte-identical copies. directorNames() deduplicates by Id because the server
 ' sends one People entry per CREDIT: a director also credited as, say, Co-Director appears
@@ -2352,12 +2431,13 @@ sub displayDirectedBy(item as object)
 
   directorNode = createInfoLabel("director")
   directorNode.text = translate(translationKeys.MessageDirectedBy1, [directors.join(", ")])
-  displayDirectorGenreNode(directorNode)
+  displayCreditsNode(directorNode)
 end sub
 
 ' populateInfoGroupMusicVideo: Info rows for MusicVideo
 ' Row 1: Year · Official Rating · Community Rating · Critic Rating · Runtime · Ends At
 ' Row 2: Genres · Artist(s)
+' Row 3: Directed by
 sub populateInfoGroupMusicVideo(item as object, userSettings as object)
   if item.productionYear > 0
     yearNode = createInfoLabel("releaseYear")
@@ -2388,13 +2468,13 @@ sub populateInfoGroupMusicVideo(item as object, userSettings as object)
   if item.genres.count() > 0
     genreNode = createInfoLabel("genre")
     genreNode.text = item.genres.join(" / ")
-    displayDirectorGenreNode(genreNode)
+    displayDetailsNode(genreNode)
   end if
 
   if isValid(item.artists) and item.artists.count() > 0
     artistNode = createInfoLabel("artists")
     artistNode.text = item.artists.join(", ")
-    displayDirectorGenreNode(artistNode)
+    displayDetailsNode(artistNode)
   end if
 
   displayDirectedBy(item)
@@ -2402,7 +2482,8 @@ end sub
 
 ' populateInfoGroupEpisode: Info rows for Episode
 ' Row 1: Air Date · Official Rating · Community Rating · Critic Rating · Runtime · Ends At
-' Row 2: Series name + "S{n}E{n}"
+' Row 2: "S{n}E{n}" · Series name
+' Row 3: Directed by
 sub populateInfoGroupEpisode(item as object, userSettings as object)
   if isValidAndNotEmpty(item.premiereDate)
     airDate = CreateObject("roDateTime")
@@ -2432,17 +2513,17 @@ sub populateInfoGroupEpisode(item as object, userSettings as object)
     displayInfoNode(m.endsAtNode)
   end if
 
-  ' Row 2: S{n}E{n} • SeriesName • Directed by X, Y, Z
+  ' Row 2: S{n}E{n} • SeriesName (Row 3: Directed by X, Y, Z)
   if item.parentIndexNumber > 0 and item.indexNumber > 0
     episodeCodeNode = createInfoLabel("episodeCode")
     episodeCodeNode.text = "S" + item.parentIndexNumber.toStr() + "E" + item.indexNumber.toStr()
-    displayDirectorGenreNode(episodeCodeNode)
+    displayDetailsNode(episodeCodeNode)
   end if
 
   if isValidAndNotEmpty(item.seriesName)
     seriesNameNode = createInfoLabel("seriesName")
     seriesNameNode.text = item.seriesName
-    displayDirectorGenreNode(seriesNameNode)
+    displayDetailsNode(seriesNameNode)
   end if
 
   displayDirectedBy(item)
@@ -2493,14 +2574,14 @@ sub populateInfoGroupSeries(item as object, userSettings as object)
   if item.genres.count() > 0
     genreNode = createInfoLabel("genre")
     genreNode.text = item.genres.join(" / ")
-    displayDirectorGenreNode(genreNode)
+    displayDetailsNode(genreNode)
   end if
 
   historyText = getHistory()
   if isValidAndNotEmpty(historyText)
     historyNode = createInfoLabel("history")
     historyNode.text = historyText
-    displayDirectorGenreNode(historyNode)
+    displayDetailsNode(historyNode)
   end if
 end sub
 
@@ -2531,13 +2612,13 @@ sub populateInfoGroupBoxSet(item as object, userSettings as object)
   if item.genres.count() > 0
     genreNode = createInfoLabel("genre")
     genreNode.text = item.genres.join(" / ")
-    displayDirectorGenreNode(genreNode)
+    displayDetailsNode(genreNode)
   end if
 
   if item.studios.count() > 0
     studioNode = createInfoLabel("studio")
     studioNode.text = item.studios[0]
-    displayDirectorGenreNode(studioNode)
+    displayDetailsNode(studioNode)
   end if
 end sub
 
@@ -2596,19 +2677,19 @@ sub populateInfoGroupSeason(item as object, userSettings as object)
   if isValidAndNotEmpty(item.seriesName)
     seriesNameNode = createInfoLabel("seriesName")
     seriesNameNode.text = item.seriesName
-    displayDirectorGenreNode(seriesNameNode)
+    displayDetailsNode(seriesNameNode)
   end if
 
   if item.childCount > 0
     episodeCountNode = createInfoLabel("episodeCount")
     episodeCountNode.text = translatePlural(translationKeys.LabelEpisodeCount, item.childCount, [stri(item.childCount).trim()])
-    displayDirectorGenreNode(episodeCountNode)
+    displayDetailsNode(episodeCountNode)
   end if
 
   if isValid(seriesData) and seriesData.studios.count() > 0
     studioNode = createInfoLabel("studio")
     studioNode.text = seriesData.studios[0]
-    displayDirectorGenreNode(studioNode)
+    displayDetailsNode(studioNode)
   end if
 end sub
 
@@ -2661,12 +2742,12 @@ sub populateInfoGroupPerson(item as object)
   if item.movieCount > 0
     movieCountNode = createInfoLabel("personMovieCount")
     movieCountNode.text = translatePlural(translationKeys.LabelMovieCount, item.movieCount, [stri(item.movieCount).trim()])
-    displayDirectorGenreNode(movieCountNode)
+    displayDetailsNode(movieCountNode)
   end if
   if item.episodeCount > 0
     episodeCountNode = createInfoLabel("personEpisodeCount")
     episodeCountNode.text = translatePlural(translationKeys.LabelEpisodeCount, item.episodeCount, [stri(item.episodeCount).trim()])
-    displayDirectorGenreNode(episodeCountNode)
+    displayDetailsNode(episodeCountNode)
   end if
 end sub
 
@@ -2695,7 +2776,7 @@ sub populateInfoGroupMusicArtist(item as object)
   if item.genres.count() > 0
     genreNode = createInfoLabel("genre")
     genreNode.text = item.genres.join(" / ")
-    displayDirectorGenreNode(genreNode)
+    displayDetailsNode(genreNode)
   end if
 end sub
 
@@ -2724,19 +2805,19 @@ sub populateInfoGroupMusicAlbum(item as object, userSettings as object)
   if isValidAndNotEmpty(item.albumArtist)
     artistNode = createInfoLabel("albumArtist")
     artistNode.text = item.albumArtist
-    displayDirectorGenreNode(artistNode)
+    displayDetailsNode(artistNode)
   end if
 
   if item.genres.count() > 0
     genreNode = createInfoLabel("genre")
     genreNode.text = item.genres.join(" / ")
-    displayDirectorGenreNode(genreNode)
+    displayDetailsNode(genreNode)
   end if
 
   if item.childCount > 0
     trackCountNode = createInfoLabel("trackCount")
     trackCountNode.text = translatePlural(translationKeys.LabelTrackCount, item.childCount, [stri(item.childCount).trim()])
-    displayDirectorGenreNode(trackCountNode)
+    displayDetailsNode(trackCountNode)
   end if
 end sub
 
@@ -2767,7 +2848,7 @@ sub populateInfoGroupPlaylist(item as object, userSettings as object)
   if item.genres.count() > 0
     genreNode = createInfoLabel("genre")
     genreNode.text = item.genres.join(" / ")
-    displayDirectorGenreNode(genreNode)
+    displayDetailsNode(genreNode)
   end if
 end sub
 
@@ -2803,13 +2884,13 @@ sub populateInfoGroupAudio(item as object, userSettings as object)
   if isValidAndNotEmpty(item.albumName)
     albumNameNode = createInfoLabel("albumName")
     albumNameNode.text = item.albumName
-    displayDirectorGenreNode(albumNameNode)
+    displayDetailsNode(albumNameNode)
   end if
 
   if isValidAndNotEmpty(item.albumArtist)
     albumArtistNode = createInfoLabel("albumArtistName")
     albumArtistNode.text = item.albumArtist
-    displayDirectorGenreNode(albumArtistNode)
+    displayDetailsNode(albumArtistNode)
   end if
 end sub
 
@@ -2854,7 +2935,7 @@ sub populateInfoGroupPhoto(item as object)
   if isValidAndNotEmpty(item.albumName)
     albumNode = createInfoLabel("albumName")
     albumNode.text = item.albumName
-    displayDirectorGenreNode(albumNode)
+    displayDetailsNode(albumNode)
   end if
 end sub
 
@@ -2937,7 +3018,7 @@ sub populateInfoGroupTvChannel(item as object, userSettings as object)
     if prog.genres.count() > 0
       genreNode = createInfoLabel("genre")
       genreNode.text = prog.genres.join(" / ")
-      displayDirectorGenreNode(genreNode)
+      displayDetailsNode(genreNode)
     else
       categories = []
       if prog.isNews then categories.push(translate(translationKeys.LabelNews))
@@ -2947,7 +3028,7 @@ sub populateInfoGroupTvChannel(item as object, userSettings as object)
       if categories.count() > 0
         catNode = createInfoLabel("programCategories")
         catNode.text = categories.join(" / ")
-        displayDirectorGenreNode(catNode)
+        displayDetailsNode(catNode)
       end if
     end if
   end if
@@ -3038,7 +3119,7 @@ sub populateInfoGroupProgram(item as object, userSettings as object)
   if item.genres.count() > 0
     genreNode = createInfoLabel("genre")
     genreNode.text = item.genres.join(" / ")
-    displayDirectorGenreNode(genreNode)
+    displayDetailsNode(genreNode)
   else
     categories = []
     if item.isNews then categories.push(translate(translationKeys.LabelNews))
@@ -3048,7 +3129,7 @@ sub populateInfoGroupProgram(item as object, userSettings as object)
     if categories.count() > 0
       catNode = createInfoLabel("programCategories")
       catNode.text = categories.join(" / ")
-      displayDirectorGenreNode(catNode)
+      displayDetailsNode(catNode)
     end if
   end if
 end sub
@@ -3120,7 +3201,7 @@ sub populateInfoGroupRecording(item as object, userSettings as object)
   if item.genres.count() > 0
     genreNode = createInfoLabel("genre")
     genreNode.text = item.genres.join(" / ")
-    displayDirectorGenreNode(genreNode)
+    displayDetailsNode(genreNode)
   end if
 end sub
 
@@ -4072,7 +4153,7 @@ function itemDetailsRowGeometry() as object
     rowY: int(m.buttonGrp.translation[1]),
     spacing: spacing,
     itemWidth: iconButtonLayoutWidth(ICON_BUTTON_ICON_SIZE),
-    rightBound: LOGO_RIGHT_ANCHOR_X - LOGO_MAX_DISPLAY_WIDTH
+    rightBound: logoLeftmostX()
   }
 end function
 
@@ -5003,15 +5084,9 @@ sub onSeasonSeriesDataLoaded()
     m.seasonSeriesCache[seriesId] = seriesItem
   end if
 
-  ' Clear both rows — removeChildrenIndex(num_children, startIndex)
-  m.infoGroup.removeChildrenIndex(m.infoGroup.getChildCount(), 0)
-  m.directorGenreGroup.removeChildrenIndex(m.directorGenreGroup.getChildCount(), 0)
-  m.infoDividerCount = 0
-  m.directorGenreDividerCount = 0
-  m.endsAtNode = invalid
-  m.endsAtDurationSeconds = 0
-
-  populateInfoGroupSeason(m.top.itemContent, m.global.user.settings)
+  ' The same rebuild as a fresh load, so the rows are reset and fitted exactly as they
+  ' are there (for a Season it dispatches to populateInfoGroupSeason).
+  populateInfoGroup()
 
   ' Update logo using series data if the season didn't carry parentLogoItemId
   if isValid(m.itemLogo) and not m.itemLogo.visible
@@ -5390,7 +5465,8 @@ sub onDestroy()
   m.itemDetailsSlider = invalid
   m.itemDetailsSliderInterp = invalid
   m.itemInfoRows = invalid
-  m.directorGenreGroup = invalid
+  m.detailsGroup = invalid
+  m.creditsGroup = invalid
   m.itemTracks = invalid
   m.trackCluster = invalid
   m.trackTitles = invalid

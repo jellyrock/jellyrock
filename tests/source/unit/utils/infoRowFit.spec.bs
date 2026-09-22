@@ -1,0 +1,94 @@
+import "pkg:/source/utils/infoRowFit.bs"
+
+namespace tests
+
+  @suite("infoRowFit.bs")
+  class InfoRowFitTests extends tests.BaseTestSuite
+
+    ' ItemDetails' real geometry, repeated here because the source constants live in
+    ' component scope, which a source-scope spec cannot see. The separator is
+    ' spacing 9 + bullet 11 + spacing 9; the budget is the logo's leftmost possible
+    ' edge (1824 - 500) less the 96px left margin.
+    private separator = 29
+    private budget = 1228
+    private minCut = 160
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("fitTextRow() - rows that fit")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps every item at its natural width when the row fits")
+    function _()
+      result = fitTextRow([300, 200, 100], m.separator, m.budget, m.minCut)
+      m.assertEqual(result.keep, 3)
+      m.assertEqual(result.cutWidth, 0)
+    end function
+
+    @it("treats a row that ends exactly on the budget as fitting")
+    function _()
+      ' 600 + 29 + 599 = 1228
+      result = fitTextRow([600, 599], m.separator, m.budget, m.minCut)
+      m.assertEqual(result.keep, 2)
+      m.assertEqual(result.cutWidth, 0)
+    end function
+
+    @it("counts separators only BETWEEN items, not after the last one")
+    function _()
+      ' Two items plus ONE separator is 1228; charging a trailing separator would cut it.
+      result = fitTextRow([1000, 199], m.separator, m.budget, m.minCut)
+      m.assertEqual(result.keep, 2)
+      m.assertEqual(result.cutWidth, 0)
+    end function
+
+    @it("keeps nothing for an empty or missing row")
+    function _()
+      m.assertEqual(fitTextRow([], m.separator, m.budget, m.minCut).keep, 0)
+      m.assertEqual(fitTextRow(invalid, m.separator, m.budget, m.minCut).keep, 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("fitTextRow() - rows that overflow")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("narrows the item that crosses the budget to the space left")
+    function _()
+      ' Measured on a Roku Ultra (OS 15.3.4): "Animation / Comedy / Drama" = 438px,
+      ' a four-name "Directed by ..." = 1158px. Together they are 1625px.
+      result = fitTextRow([438, 1158], m.separator, m.budget, m.minCut)
+      m.assertEqual(result.keep, 2)
+      m.assertEqual(result.cutWidth, 1228 - 438 - 29)
+    end function
+
+    @it("drops everything after the item that crosses the budget")
+    function _()
+      result = fitTextRow([500, 900, 100, 100], m.separator, m.budget, m.minCut)
+      m.assertEqual(result.keep, 2)
+      m.assertEqual(result.cutWidth, 1228 - 500 - 29)
+    end function
+
+    @it("drops the crossing item instead of showing a stub too narrow to read")
+    function _()
+      ' 1100 + 29 leaves 99px for the second item, under the 160px floor.
+      result = fitTextRow([1100, 400], m.separator, m.budget, m.minCut)
+      m.assertEqual(result.keep, 1)
+      m.assertEqual(result.cutWidth, 0)
+    end function
+
+    @it("shows a crossing item left exactly the minimum width")
+    function _()
+      ' 1039 + 29 leaves exactly 160.
+      result = fitTextRow([1039, 400], m.separator, m.budget, m.minCut)
+      m.assertEqual(result.keep, 2)
+      m.assertEqual(result.cutWidth, 160)
+    end function
+
+    @it("never empties a row: a first item wider than the budget gets all of it")
+    function _()
+      result = fitTextRow([2000, 100], m.separator, m.budget, m.minCut)
+      m.assertEqual(result.keep, 1)
+      m.assertEqual(result.cutWidth, 1228)
+    end function
+
+  end class
+
+end namespace

@@ -10,9 +10,21 @@
          metadata to render in the wrong y-position. -->
     <LayoutGroup id="itemDetails" layoutDirection="vert" vertAlignment="bottom" itemSpacings="[12]" translation="[96, 775]" enableRenderTracking="true">
       <LayoutGroup id="itemInfoRows" layoutDirection="vert">
-        <LabelPrimaryLargest id="videoTitle" isBold="true" />
+        <!-- The title and the two text rows below the chips are all fitted to the
+             logo's leftmost possible edge (width set in init from detailsTextWidth()),
+             so no text on this screen can run into the logo. The rows are cut by
+             fitInfoRow(); the title stays ONE line and ends on a whole word. It does
+             not wrap: with extras open this block is pinned above the extras pane and
+             grows upward, and a second title line over the credits row put its top at
+             y=34, outside Roku's action-safe zone. -->
+        <LabelPrimaryLargest id="videoTitle" isBold="true" ellipsizeOnBoundary="true" />
         <LayoutGroup layoutDirection="horiz" itemSpacings="[9]" id="infoGroup" />
-        <LayoutGroup layoutDirection="horiz" itemSpacings="[9]" id="directorGenreGroup" />
+        <LayoutGroup layoutDirection="horiz" itemSpacings="[9]" id="detailsGroup" />
+        <!-- People credits ("Directed by ...") get a row of their own: a credit list
+             is the one item on these rows with no natural length limit, and sharing
+             a row with genres cut it first. Empty (and so zero height) for an item
+             with no credits. -->
+        <LayoutGroup layoutDirection="horiz" itemSpacings="[9]" id="creditsGroup" />
       </LayoutGroup>
 
       <FocusableOverview id="itemDescription" width="1200" visible="false" />
