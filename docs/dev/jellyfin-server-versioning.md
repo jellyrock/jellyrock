@@ -11,7 +11,7 @@ related-files:
   - docs/dev/jellyfin-endpoint-availability.yml
   - docs/dev/jellyfin-version-boundaries.yml
   - scripts/lint/apiversion-consistency-check.js
-last-reviewed: 2026-09-17
+last-reviewed: 2026-09-21
 ---
 
 # JellyRock Versioning Systems Overview
@@ -92,10 +92,11 @@ Some Jellyfin API endpoints are only available on specific server versions. Thes
 | Endpoint | Min Version | Guard Function | Purpose |
 | -------- | ----------- | -------------- | ------- |
 | `GET /MediaSegments/{itemId}` | 10.10.0 | `supportsMediaSegments()` | Fetch intro/outro/recap/preview/commercial segments for skip functionality |
+| `GET /Items/{itemId}/Collections` | 12.0.0 | `extrasRows.supportsItemCollections()` | The collections an item is in — the item-details Collections row |
 
 **How it works:**
 
-- Guard functions call `versionChecker(m.global.server.version, "x.y.z")` to compare the raw server version string
+- Guard functions call `versionChecker()` on the raw server version string — read from `m.global.server.version` inside the guard (`supportsMediaSegments()`), or passed in by the caller so the guard stays pure and table-testable (`extrasRows.supportsItemCollections(serverVersion)`)
 - Callers check the guard before making the API request — the endpoint simply isn't called on older servers
 - No `apiVersion` dispatch needed because these are top-level paths, not user-scoped endpoints
 
@@ -272,7 +273,7 @@ All code references this value to determine behavior.
 | Device Profile | `source/utils/deviceCapabilities.bs` (`V1/V2` selection internal) |
 | Field Handling | `source/data/JellyfinDataTransformer.bs`, `source/api/ApiClient.bs` |
 | Version Detection | `source/utils/misc.bs` (resolveApiVersion), `source/utils/session.bs` |
-| Version-Gated Endpoints | `source/utils/mediaSegments.bs` (supportsMediaSegments), `source/api/items.bs` (GetMediaSegments) |
+| Version-Gated Endpoints | `source/utils/mediaSegments.bs` (supportsMediaSegments), `source/api/items.bs` (GetMediaSegments), `source/extras/extrasRows.bs` (supportsItemCollections) |
 
 ## Adding Support for New Server Versions
 

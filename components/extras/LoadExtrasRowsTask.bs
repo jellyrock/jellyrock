@@ -150,13 +150,19 @@ function buildRowRequest(row as object, userId as string) as dynamic
   ' the alternate-versions badge and the 12.0 progress correction in emitResponse — a row that
   ' omits it silently gets neither. additionalParts and specialFeatures are the exceptions:
   ' their endpoints take no query params, and an extra (a trailer, a deleted scene) is not a
-  ' multi-version item. Seasons, music and channel programmes are not video items either.
+  ' multi-version item. Seasons, collections, music and channel programmes are not video items
+  ' either.
   if kind = "additionalParts"
     return api.BuildGetAdditionalPartsRequest(row.itemId)
   else if kind = "specialFeatures"
     return api.BuildGetSpecialFeaturesRequest(row.itemId)
   else if kind = "likeThis"
     return api.BuildGetSimilarItemsRequest(row.itemId, { "userId": userId, "limit": 16, "Fields": "MediaSourceCount" })
+  else if kind = "collections"
+    ' Planned only for a server that has the endpoint (extrasRows.supportsItemCollections).
+    ' ChildCount gives each tile its "N items" line; the server returns it for a collection
+    ' only when asked.
+    return api.BuildGetItemCollectionsRequest(row.itemId, { "userId": userId, "Fields": "PrimaryImageAspectRatio,ChildCount" })
   else if kind = "artistSimilar"
     return api.BuildGetArtistSimilarRequest(row.itemId, { "userId": userId, "limit": 16 })
   else if kind = "seasons"

@@ -71,38 +71,41 @@ namespace tests
     @describe("plan: row order and slot shape per item type")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("Movie: chapters, additional parts, cast, more like this, special features")
-    function _()
-      plan = extrasRows.plan("Movie", { id: "m1" })
+    ' Planned against 12.0.0 so every type shows its full row set, Collections included. What a
+    ' pre-12 server loses is pinned once, in the next group, rather than per type.
 
-      m.assertEqual(m.kindsOf(plan), ["chapters", "additionalParts", "cast", "likeThis", "specialFeatures"])
-      m.assertEqual(m.shapesOf(plan), ["WIDE", "PORTRAIT", "PORTRAIT", "PORTRAIT", "WIDE"])
+    @it("Movie: chapters, additional parts, cast, special features, collections, more like this")
+    function _()
+      plan = extrasRows.plan("Movie", { id: "m1" }, "12.0.0")
+
+      m.assertEqual(m.kindsOf(plan), ["chapters", "additionalParts", "cast", "specialFeatures", "collections", "likeThis"])
+      m.assertEqual(m.shapesOf(plan), ["WIDE", "PORTRAIT", "PORTRAIT", "WIDE", "PORTRAIT", "PORTRAIT"])
     end function
 
     @it("Recording and unknown types take the Movie plan")
     function _()
-      m.assertEqual(m.kindsOf(extrasRows.plan("Recording", { id: "r1" })), ["chapters", "additionalParts", "cast", "likeThis", "specialFeatures"])
-      m.assertEqual(m.kindsOf(extrasRows.plan("SomethingNew", { id: "x1" })), ["chapters", "additionalParts", "cast", "likeThis", "specialFeatures"])
+      m.assertEqual(m.kindsOf(extrasRows.plan("Recording", { id: "r1" }, "12.0.0")), ["chapters", "additionalParts", "cast", "specialFeatures", "collections", "likeThis"])
+      m.assertEqual(m.kindsOf(extrasRows.plan("SomethingNew", { id: "x1" }, "12.0.0")), ["chapters", "additionalParts", "cast", "specialFeatures", "collections", "likeThis"])
     end function
 
     @it("Video: More Like This is WIDE, everything else matches Movie")
     function _()
-      plan = extrasRows.plan("Video", { id: "v1" })
+      plan = extrasRows.plan("Video", { id: "v1" }, "12.0.0")
 
-      m.assertEqual(m.shapesOf(plan), ["WIDE", "PORTRAIT", "PORTRAIT", "WIDE", "WIDE"])
+      m.assertEqual(m.shapesOf(plan), ["WIDE", "PORTRAIT", "PORTRAIT", "WIDE", "PORTRAIT", "WIDE"])
     end function
 
-    @it("Episode: chapters, season episodes, cast, more like this")
+    @it("Episode: chapters, season episodes, cast, collections, more like this")
     function _()
-      plan = extrasRows.plan("Episode", { id: "e3", seriesId: "s1", seasonId: "sn1", parentIndexNumber: 2 })
+      plan = extrasRows.plan("Episode", { id: "e3", seriesId: "s1", seasonId: "sn1", parentIndexNumber: 2 }, "12.0.0")
 
-      m.assertEqual(m.kindsOf(plan), ["chapters", "seasonEpisodes", "cast", "likeThis"])
-      m.assertEqual(m.shapesOf(plan), ["WIDE", "WIDE", "PORTRAIT", "PORTRAIT"])
+      m.assertEqual(m.kindsOf(plan), ["chapters", "seasonEpisodes", "cast", "collections", "likeThis"])
+      m.assertEqual(m.shapesOf(plan), ["WIDE", "WIDE", "PORTRAIT", "PORTRAIT", "PORTRAIT"])
     end function
 
     @it("Episode: season episodes are fetched by series id and season id")
     function _()
-      row = m.findRow(extrasRows.plan("Episode", { id: "e3", seriesId: "s1", seasonId: "sn1", parentIndexNumber: 2 }), "seasonEpisodes")
+      row = m.findRow(extrasRows.plan("Episode", { id: "e3", seriesId: "s1", seasonId: "sn1", parentIndexNumber: 2 }, "12.0.0"), "seasonEpisodes")
 
       m.assertEqual(row.itemId, "s1")
       m.assertEqual(row.seasonId, "sn1")
@@ -111,15 +114,15 @@ namespace tests
 
     @it("Episode: the season row is omitted when the episode has no season id")
     function _()
-      plan = extrasRows.plan("Episode", { id: "e3", seriesId: "s1", seasonId: "" })
+      plan = extrasRows.plan("Episode", { id: "e3", seriesId: "s1", seasonId: "" }, "12.0.0")
 
-      m.assertEqual(m.kindsOf(plan), ["chapters", "cast", "likeThis"])
+      m.assertEqual(m.kindsOf(plan), ["chapters", "cast", "collections", "likeThis"])
     end function
 
     @it("Episode: season row is titled with the season number when there is one")
     function _()
-      withNumber = m.findRow(extrasRows.plan("Episode", { id: "e", seriesId: "s", seasonId: "sn", parentIndexNumber: 2 }), "seasonEpisodes")
-      withoutNumber = m.findRow(extrasRows.plan("Episode", { id: "e", seriesId: "s", seasonId: "sn", parentIndexNumber: 0 }), "seasonEpisodes")
+      withNumber = m.findRow(extrasRows.plan("Episode", { id: "e", seriesId: "s", seasonId: "sn", parentIndexNumber: 2 }, "12.0.0"), "seasonEpisodes")
+      withoutNumber = m.findRow(extrasRows.plan("Episode", { id: "e", seriesId: "s", seasonId: "sn", parentIndexNumber: 0 }, "12.0.0"), "seasonEpisodes")
 
       m.assertEqual(withNumber.titleKey, translationKeys.MessageMoreFromSeason1)
       m.assertEqual(withNumber.titleArgs, ["2"])
@@ -128,77 +131,77 @@ namespace tests
 
     @it("Episode: More Like This is keyed on the series, falling back to the episode")
     function _()
-      withSeries = m.findRow(extrasRows.plan("Episode", { id: "e", seriesId: "s", seasonId: "sn" }), "likeThis")
-      withoutSeries = m.findRow(extrasRows.plan("Episode", { id: "e", seriesId: "", seasonId: "sn" }), "likeThis")
+      withSeries = m.findRow(extrasRows.plan("Episode", { id: "e", seriesId: "s", seasonId: "sn" }, "12.0.0"), "likeThis")
+      withoutSeries = m.findRow(extrasRows.plan("Episode", { id: "e", seriesId: "", seasonId: "sn" }, "12.0.0"), "likeThis")
 
       m.assertEqual(withSeries.itemId, "s")
       m.assertEqual(withoutSeries.itemId, "e")
     end function
 
-    @it("MusicVideo: cast then a WIDE More Like This")
+    @it("MusicVideo: cast, collections, then a WIDE More Like This")
     function _()
-      plan = extrasRows.plan("MusicVideo", { id: "mv" })
+      plan = extrasRows.plan("MusicVideo", { id: "mv" }, "12.0.0")
 
-      m.assertEqual(m.kindsOf(plan), ["cast", "likeThis"])
-      m.assertEqual(m.shapesOf(plan), ["PORTRAIT", "WIDE"])
+      m.assertEqual(m.kindsOf(plan), ["cast", "collections", "likeThis"])
+      m.assertEqual(m.shapesOf(plan), ["PORTRAIT", "PORTRAIT", "WIDE"])
     end function
 
-    @it("Series: seasons, cast, more like this — all PORTRAIT")
+    @it("Series: seasons, cast, collections, more like this — all PORTRAIT")
     function _()
-      plan = extrasRows.plan("Series", { id: "s1" })
+      plan = extrasRows.plan("Series", { id: "s1" }, "12.0.0")
 
-      m.assertEqual(m.kindsOf(plan), ["seasons", "cast", "likeThis"])
-      m.assertEqual(m.shapesOf(plan), ["PORTRAIT", "PORTRAIT", "PORTRAIT"])
+      m.assertEqual(m.kindsOf(plan), ["seasons", "cast", "collections", "likeThis"])
+      m.assertEqual(m.shapesOf(plan), ["PORTRAIT", "PORTRAIT", "PORTRAIT", "PORTRAIT"])
     end function
 
     @it("Season: WIDE episodes fetched by series id and this season's id")
     function _()
-      plan = extrasRows.plan("Season", { id: "sn1", seriesId: "s1" })
+      plan = extrasRows.plan("Season", { id: "sn1", seriesId: "s1" }, "12.0.0")
       row = m.findRow(plan, "episodes")
 
-      m.assertEqual(m.kindsOf(plan), ["episodes", "cast", "likeThis"])
-      m.assertEqual(m.shapesOf(plan), ["WIDE", "PORTRAIT", "PORTRAIT"])
+      m.assertEqual(m.kindsOf(plan), ["episodes", "cast", "collections", "likeThis"])
+      m.assertEqual(m.shapesOf(plan), ["WIDE", "PORTRAIT", "PORTRAIT", "PORTRAIT"])
       m.assertEqual(row.itemId, "s1")
       m.assertEqual(row.seasonId, "sn1")
     end function
 
-    @it("BoxSet: movies, cast, more like this")
+    @it("BoxSet: movies, cast, collections, more like this")
     function _()
-      plan = extrasRows.plan("BoxSet", { id: "b1" })
+      plan = extrasRows.plan("BoxSet", { id: "b1" }, "12.0.0")
 
-      m.assertEqual(m.kindsOf(plan), ["boxSetItems", "cast", "likeThis"])
-      m.assertEqual(m.shapesOf(plan), ["PORTRAIT", "PORTRAIT", "PORTRAIT"])
+      m.assertEqual(m.kindsOf(plan), ["boxSetItems", "cast", "collections", "likeThis"])
+      m.assertEqual(m.shapesOf(plan), ["PORTRAIT", "PORTRAIT", "PORTRAIT", "PORTRAIT"])
     end function
 
-    @it("MusicArtist: albums, appears on, songs, similar artists — all SQUARE, no likeThis")
+    @it("MusicArtist: albums, appears on, songs, collections, similar artists — no likeThis")
     function _()
-      plan = extrasRows.plan("MusicArtist", { id: "a1" })
+      plan = extrasRows.plan("MusicArtist", { id: "a1" }, "12.0.0")
 
-      m.assertEqual(m.kindsOf(plan), ["artistAlbums", "artistAppearsOn", "artistSongs", "artistSimilar"])
-      m.assertEqual(m.shapesOf(plan), ["SQUARE", "SQUARE", "SQUARE", "SQUARE"])
+      m.assertEqual(m.kindsOf(plan), ["artistAlbums", "artistAppearsOn", "artistSongs", "collections", "artistSimilar"])
+      m.assertEqual(m.shapesOf(plan), ["SQUARE", "SQUARE", "SQUARE", "PORTRAIT", "SQUARE"])
     end function
 
-    @it("MusicAlbum: songs, more albums by the first album artist, more like this")
+    @it("MusicAlbum: songs, more albums by the first album artist, collections, more like this")
     function _()
-      plan = extrasRows.plan("MusicAlbum", { id: "al1", albumArtists: [{ Id: "ar1" }] })
+      plan = extrasRows.plan("MusicAlbum", { id: "al1", albumArtists: [{ Id: "ar1" }] }, "12.0.0")
       moreAlbums = m.findRow(plan, "moreAlbums")
 
-      m.assertEqual(m.kindsOf(plan), ["albumSongs", "moreAlbums", "likeThis"])
-      m.assertEqual(m.shapesOf(plan), ["SQUARE", "SQUARE", "SQUARE"])
+      m.assertEqual(m.kindsOf(plan), ["albumSongs", "moreAlbums", "collections", "likeThis"])
+      m.assertEqual(m.shapesOf(plan), ["SQUARE", "SQUARE", "PORTRAIT", "SQUARE"])
       m.assertEqual(moreAlbums.itemId, "ar1")
       m.assertEqual(moreAlbums.excludeId, "al1")
     end function
 
     @it("MusicAlbum: more albums is omitted without an album artist id")
     function _()
-      m.assertEqual(m.kindsOf(extrasRows.plan("MusicAlbum", { id: "al1", albumArtists: [] })), ["albumSongs", "likeThis"])
-      m.assertEqual(m.kindsOf(extrasRows.plan("MusicAlbum", { id: "al1" })), ["albumSongs", "likeThis"])
-      m.assertEqual(m.kindsOf(extrasRows.plan("MusicAlbum", { id: "al1", albumArtists: [{ Name: "no id" }] })), ["albumSongs", "likeThis"])
+      m.assertEqual(m.kindsOf(extrasRows.plan("MusicAlbum", { id: "al1", albumArtists: [] }, "12.0.0")), ["albumSongs", "collections", "likeThis"])
+      m.assertEqual(m.kindsOf(extrasRows.plan("MusicAlbum", { id: "al1" }, "12.0.0")), ["albumSongs", "collections", "likeThis"])
+      m.assertEqual(m.kindsOf(extrasRows.plan("MusicAlbum", { id: "al1", albumArtists: [{ Name: "no id" }] }, "12.0.0")), ["albumSongs", "collections", "likeThis"])
     end function
 
     @it("Audio: album tracks (current first) then more like this")
     function _()
-      plan = extrasRows.plan("Audio", { id: "t3", albumId: "al1", albumName: "Blue" })
+      plan = extrasRows.plan("Audio", { id: "t3", albumId: "al1", albumName: "Blue" }, "12.0.0")
       tracks = m.findRow(plan, "albumTracks")
 
       m.assertEqual(m.kindsOf(plan), ["albumTracks", "likeThis"])
@@ -211,60 +214,60 @@ namespace tests
 
     @it("Audio: without an album there is only more like this; without an album name the tracks row is Album Tracks")
     function _()
-      m.assertEqual(m.kindsOf(extrasRows.plan("Audio", { id: "t3", albumId: "" })), ["likeThis"])
-      tracks = m.findRow(extrasRows.plan("Audio", { id: "t3", albumId: "al1", albumName: "" }), "albumTracks")
+      m.assertEqual(m.kindsOf(extrasRows.plan("Audio", { id: "t3", albumId: "" }, "12.0.0")), ["likeThis"])
+      tracks = m.findRow(extrasRows.plan("Audio", { id: "t3", albumId: "al1", albumName: "" }, "12.0.0"), "albumTracks")
       m.assertEqual(tracks.titleKey, translationKeys.LabelAlbumTracks)
     end function
 
-    @it("Playlist: items (shape decided by content) then a SQUARE more like this")
+    @it("Playlist: items (shape decided by content), collections, then a SQUARE more like this")
     function _()
-      plan = extrasRows.plan("Playlist", { id: "p1" })
+      plan = extrasRows.plan("Playlist", { id: "p1" }, "12.0.0")
 
-      m.assertEqual(m.kindsOf(plan), ["playlistItems", "likeThis"])
-      m.assertEqual(m.shapesOf(plan), ["PORTRAIT", "SQUARE"])
+      m.assertEqual(m.kindsOf(plan), ["playlistItems", "collections", "likeThis"])
+      m.assertEqual(m.shapesOf(plan), ["PORTRAIT", "PORTRAIT", "SQUARE"])
     end function
 
     @it("Photo: a WIDE more like this only")
     function _()
-      plan = extrasRows.plan("Photo", { id: "ph" })
+      plan = extrasRows.plan("Photo", { id: "ph" }, "12.0.0")
 
       m.assertEqual(m.kindsOf(plan), ["likeThis"])
       m.assertEqual(m.shapesOf(plan), ["WIDE"])
     end function
 
-    @it("PhotoAlbum: WIDE photos then WIDE more like this")
+    @it("PhotoAlbum: WIDE photos, collections, then WIDE more like this")
     function _()
-      plan = extrasRows.plan("PhotoAlbum", { id: "pa" })
+      plan = extrasRows.plan("PhotoAlbum", { id: "pa" }, "12.0.0")
 
-      m.assertEqual(m.kindsOf(plan), ["photoAlbumItems", "likeThis"])
-      m.assertEqual(m.shapesOf(plan), ["WIDE", "WIDE"])
+      m.assertEqual(m.kindsOf(plan), ["photoAlbumItems", "collections", "likeThis"])
+      m.assertEqual(m.shapesOf(plan), ["WIDE", "PORTRAIT", "WIDE"])
     end function
 
-    @it("TvChannel: Up Next for this channel then more like this — SQUARE")
+    @it("TvChannel: Up Next for this channel, collections, then more like this")
     function _()
-      plan = extrasRows.plan("TvChannel", { id: "ch1" })
+      plan = extrasRows.plan("TvChannel", { id: "ch1" }, "12.0.0")
       programs = m.findRow(plan, "channelPrograms")
 
-      m.assertEqual(m.kindsOf(plan), ["channelPrograms", "likeThis"])
-      m.assertEqual(m.shapesOf(plan), ["SQUARE", "SQUARE"])
+      m.assertEqual(m.kindsOf(plan), ["channelPrograms", "collections", "likeThis"])
+      m.assertEqual(m.shapesOf(plan), ["SQUARE", "PORTRAIT", "SQUARE"])
       m.assertEqual(programs.itemId, "ch1")
       m.assertEqual(programs.titleKey, translationKeys.LabelUpNext)
     end function
 
     @it("Program: More on this Channel for its channel, omitted without one")
     function _()
-      plan = extrasRows.plan("Program", { id: "pr1", channelId: "ch1" })
+      plan = extrasRows.plan("Program", { id: "pr1", channelId: "ch1" }, "12.0.0")
       programs = m.findRow(plan, "channelPrograms")
 
       m.assertEqual(m.kindsOf(plan), ["channelPrograms", "likeThis"])
       m.assertEqual(programs.itemId, "ch1")
       m.assertEqual(programs.titleKey, translationKeys.LabelMoreOnThisChannel)
-      m.assertEqual(m.kindsOf(extrasRows.plan("Program", { id: "pr1", channelId: "" })), ["likeThis"])
+      m.assertEqual(m.kindsOf(extrasRows.plan("Program", { id: "pr1", channelId: "" }, "12.0.0")), ["likeThis"])
     end function
 
     @it("Person: movies, episodes, series")
     function _()
-      plan = extrasRows.plan("Person", { id: "pe1" })
+      plan = extrasRows.plan("Person", { id: "pe1" }, "12.0.0")
 
       m.assertEqual(m.kindsOf(plan), ["personMovies", "personEpisodes", "personSeries"])
       m.assertEqual(m.shapesOf(plan), ["PORTRAIT", "WIDE", "PORTRAIT"])
@@ -273,11 +276,72 @@ namespace tests
 
     @it("every row fetched by id is fetched for this item unless its type says otherwise")
     function _()
-      plan = extrasRows.plan("Movie", { id: "m1" })
+      plan = extrasRows.plan("Movie", { id: "m1" }, "12.0.0")
 
       m.assertEqual(m.findRow(plan, "additionalParts").itemId, "m1")
       m.assertEqual(m.findRow(plan, "likeThis").itemId, "m1")
       m.assertEqual(m.findRow(plan, "specialFeatures").itemId, "m1")
+      m.assertEqual(m.findRow(plan, "collections").itemId, "m1")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("plan: the Collections row")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is titled Collections and keyed on the item itself — an episode's, not its series'")
+    function _()
+      row = m.findRow(extrasRows.plan("Episode", { id: "e", seriesId: "s", seasonId: "sn" }, "12.0.0"), "collections")
+
+      m.assertEqual(row.itemId, "e")
+      m.assertEqual(row.titleKey, translationKeys.LabelCollections)
+    end function
+
+    @it("is planned on every server from 12.0")
+    @params("12.0.0")
+    @params("12.1.0")
+    @params("13.0.0")
+    function _(serverVersion)
+      m.assertNotInvalid(m.findRow(extrasRows.plan("Movie", { id: "m1" }, serverVersion), "collections"))
+    end function
+
+    @it("is planned for no type below 12.0, or when the version is unknown — the rest of the plan is unchanged")
+    @params("10.11.11")
+    @params("10.7.0")
+    @params("")
+    @params("unknown")
+    function _(serverVersion)
+      item = { id: "i1", seriesId: "s1", seasonId: "sn1", albumId: "al1", channelId: "ch1", albumArtists: [{ Id: "ar1" }] }
+      for each itemType in ["Movie", "Video", "Recording", "Series", "Season", "Episode", "MusicVideo", "BoxSet", "MusicArtist", "MusicAlbum", "Playlist", "PhotoAlbum", "TvChannel", "Audio", "Photo", "Program", "Person"]
+        m.assertInvalid(m.findRow(extrasRows.plan(itemType, item, serverVersion), "collections"), itemType + " planned a Collections row on " + serverVersion)
+      end for
+      m.assertEqual(m.kindsOf(extrasRows.plan("Movie", item, serverVersion)), ["chapters", "additionalParts", "cast", "specialFeatures", "likeThis"])
+    end function
+
+    @it("is never planned for a type web cannot add to a collection, even on 12.0")
+    @params("Audio")
+    @params("Photo")
+    @params("Program")
+    @params("Person")
+    function _(itemType)
+      item = { id: "i1", albumId: "al1", channelId: "ch1" }
+      m.assertInvalid(m.findRow(extrasRows.plan(itemType, item, "12.0.0"), "collections"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("supportsItemCollections: which servers can list an item's collections")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true from 12.0 and false below it, and for an empty or unknown version")
+    @params("12.0.0", true)
+    @params("12.0", true)
+    @params("12.1.0", true)
+    @params("13.0.0", true)
+    @params("10.11.11", false)
+    @params("10.7.0", false)
+    @params("", false)
+    @params("unknown", false)
+    function _(serverVersion, expected)
+      m.assertEqual(extrasRows.supportsItemCollections(serverVersion), expected)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

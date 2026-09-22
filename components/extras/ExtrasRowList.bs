@@ -74,19 +74,20 @@ sub updateSize()
 end sub
 
 ' loadParts: Load the extras rows for an item. m.top.type must be set first (ItemDetails does).
-' Rows per type are decided by extrasRows.plan.
+' Rows per type are decided by extrasRows.plan; the server version decides whether a
+' Collections row is one of them.
 sub loadParts(data as object)
   itemType = m.top.type
   m.top.parentId = data.id
 
-  setPlan(extrasRows.plan(itemType, data))
+  setPlan(extrasRows.plan(itemType, data, m.global.server.version))
   resetForLoad()
   startRun(m.plan, data.people, data)
 end sub
 
 sub loadPersonVideos(personId)
   m.top.personHasMedia = false ' Reset before the run — prevents a stale true from a prior run
-  setPlan(extrasRows.plan("Person", { id: personId }))
+  setPlan(extrasRows.plan("Person", { id: personId }, m.global.server.version))
   resetForLoad()
   startRun(m.plan, invalid, invalid)
 end sub

@@ -688,6 +688,16 @@ class ApiClient
     return m.validatedReq("GET", buildURL(Substitute("/Items/{0}/Similar", itemId), params))
   end function
 
+  ' Build a request AA for the collections an item belongs to, for use with fetchRes().
+  ' Jellyfin 12.0+ only, so there is no V1 path: older servers answer 404. Decide with
+  ' extrasRows.supportsItemCollections() before building it.
+  ' @param itemId - The item ID
+  ' @param params - Optional query parameters (userId, Fields, limit, startIndex)
+  ' @returns Request AA: { method, url } or invalid if server URL not set
+  function BuildGetItemCollectionsRequest(itemId as string, params = {} as object) as dynamic
+    return m.validatedReq("GET", buildURL(Substitute("/Items/{0}/Collections", itemId), params))
+  end function
+
   ' ═══════════════════════════════════════════════════════════════════════════
   ' SUBTITLE ENDPOINTS
   '

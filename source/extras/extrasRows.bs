@@ -15,6 +15,10 @@ import "pkg:/source/utils/misc.bs"
 ' thread, and the item argument may be a node or an AA.
 namespace extrasRows
 
+  ' The first Jellyfin release that can list the collections an item is in
+  ' (GET /Items/{itemId}/Collections). Older servers answer 404.
+  const ITEM_COLLECTIONS_MIN_SERVER = "12.0.0"
+
   ' The ordered rows for an item type.
   '
   ' Each row is an AA:
@@ -30,10 +34,19 @@ namespace extrasRows
   ' A row whose request cannot be formed for this item (an episode with no season, a track
   ' with no album) is left out of the plan rather than planned and resolved empty.
   '
+  ' Rows about the item itself come first; the rows that lead AWAY from it — Collections, then
+  ' More Like This — come last on every type that has them (appendDiscovery).
+  '
+  ' Audio, Photo and Program never plan a Collections row: jellyfin-web cannot add those types
+  ' to a collection (its supportsAddingToCollection), so asking would cost a request per open
+  ' for a row that is always empty.
+  '
   ' @param itemType - the item's type, e.g. "Movie"
   ' @param item - the item node or AA
+  ' @param serverVersion - the server's version string; decides whether a Collections row is
+  '                        planned (supportsItemCollections)
   ' @return array of row AAs in display order
-  function plan(itemType as string, item as object) as object
+  function plan(itemType as string, item as object, serverVersion as string) as object
     itemId = item.id ?? ""
     rows = []
 
@@ -44,29 +57,34 @@ namespace extrasRows
       return rows
     end if
 
+    hasCollections = extrasRows.supportsItemCollections(serverVersion)
+
     if itemType = "Series"
       rows.push(planRow("seasons", "PORTRAIT", translationKeys.LabelSeasons, itemId))
-      appendCastAndLikeThis(rows, itemType, item)
+      appendCastAndDiscovery(rows, itemType, item, hasCollections)
     else if itemType = "Season"
       row = planRow("episodes", "WIDE", translationKeys.LabelEpisodes, item.seriesId ?? "")
       row.seasonId = itemId
       rows.push(row)
-      appendCastAndLikeThis(rows, itemType, item)
+      appendCastAndDiscovery(rows, itemType, item, hasCollections)
     else if itemType = "Episode"
       rows.push(planRow("chapters", "WIDE", translationKeys.LabelChapters, itemId))
       if isValidAndNotEmpty(item.seasonId)
         rows.push(seasonEpisodesRow(item))
       end if
-      appendCastAndLikeThis(rows, itemType, item)
+      appendCastAndDiscovery(rows, itemType, item, hasCollections)
     else if itemType = "MusicVideo"
-      appendCastAndLikeThis(rows, itemType, item)
+      appendCastAndDiscovery(rows, itemType, item, hasCollections)
     else if itemType = "BoxSet"
       rows.push(planRow("boxSetItems", "PORTRAIT", translationKeys.LabelMovies, itemId))
-      appendCastAndLikeThis(rows, itemType, item)
+      appendCastAndDiscovery(rows, itemType, item, hasCollections)
     else if itemType = "MusicArtist"
       rows.push(planRow("artistAlbums", "SQUARE", translationKeys.LabelAlbums, itemId))
       rows.push(planRow("artistAppearsOn", "SQUARE", translationKeys.LabelAppearsOn, itemId))
       rows.push(planRow("artistSongs", "SQUARE", translationKeys.LabelSongs, itemId))
+      ' Similar artists stand in for More Like This here, so the discovery tail is assembled by
+      ' hand rather than through appendDiscovery.
+      if hasCollections then rows.push(collectionsRow(item))
       rows.push(planRow("artistSimilar", "SQUARE", translationKeys.LabelMoreLikeThis, itemId))
     else if itemType = "MusicAlbum"
       rows.push(planRow("albumSongs", "SQUARE", translationKeys.LabelSongs, itemId))
@@ -76,7 +94,7 @@ namespace extrasRows
         row.excludeId = itemId
         rows.push(row)
       end if
-      rows.push(likeThisRow(itemType, item))
+      appendDiscovery(rows, itemType, item, hasCollections)
     else if itemType = "Audio"
       if isValidAndNotEmpty(item.albumId)
         rows.push(albumTracksRow(item))
@@ -85,15 +103,15 @@ namespace extrasRows
     else if itemType = "Playlist"
       ' PORTRAIT until the items are known — finishRow makes an all-audio playlist SQUARE.
       rows.push(planRow("playlistItems", "PORTRAIT", translationKeys.LabelPlaylistItems, itemId))
-      rows.push(likeThisRow(itemType, item))
+      appendDiscovery(rows, itemType, item, hasCollections)
     else if itemType = "Photo"
       rows.push(likeThisRow(itemType, item))
     else if itemType = "PhotoAlbum"
       rows.push(planRow("photoAlbumItems", "WIDE", translationKeys.LabelPhotos, itemId))
-      rows.push(likeThisRow(itemType, item))
+      appendDiscovery(rows, itemType, item, hasCollections)
     else if itemType = "TvChannel"
       rows.push(planRow("channelPrograms", "SQUARE", translationKeys.LabelUpNext, itemId))
-      rows.push(likeThisRow(itemType, item))
+      appendDiscovery(rows, itemType, item, hasCollections)
     else if itemType = "Program"
       if isValidAndNotEmpty(item.channelId)
         rows.push(planRow("channelPrograms", "SQUARE", translationKeys.LabelMoreOnThisChannel, item.channelId))
@@ -103,11 +121,25 @@ namespace extrasRows
       ' Movie, Video, Recording — and any type not named above, as the chain always did.
       rows.push(planRow("chapters", "WIDE", translationKeys.LabelChapters, itemId))
       rows.push(planRow("additionalParts", "PORTRAIT", translationKeys.LabelAdditionalParts, itemId))
-      appendCastAndLikeThis(rows, itemType, item)
+      rows.push(planRow("cast", "PORTRAIT", translationKeys.LabelCastCrew, itemId))
       rows.push(planRow("specialFeatures", "WIDE", translationKeys.LabelSpecialFeatures, itemId))
+      appendDiscovery(rows, itemType, item, hasCollections)
     end if
 
     return rows
+  end function
+
+  ' Whether the server can list the collections an item is in (GET /Items/{itemId}/Collections).
+  '
+  ' Older servers answer 404, so the Collections row is left out of the plan there rather than
+  ' requested and failed. Registered as a version guard in
+  ' docs/dev/jellyfin-endpoint-availability.yml, whose lint fails if this function disappears.
+  '
+  ' @param serverVersion - the server's version string, e.g. "12.0.0"
+  ' @return true from 12.0.0; false below it, and for an empty or unknown version
+  function supportsItemCollections(serverVersion as string) as boolean
+    if not isValidAndNotEmpty(serverVersion) then return false
+    return versionChecker(serverVersion, extrasRows.ITEM_COLLECTIONS_MIN_SERVER)
   end function
 
   ' Orders, filters and (for playlists) re-shapes and classifies one delivered row.
@@ -327,11 +359,26 @@ namespace extrasRows
     return { kind: kind, shape: shape, titleKey: titleKey, titleArgs: [], itemId: itemId }
   end function
 
-  ' Cast, then More Like This — the tail every video-library type shares.
-  sub appendCastAndLikeThis(rows as object, itemType as string, item as object)
+  ' Cast, then the discovery tail — how every video-library type ends except those on the Movie
+  ' plan, which put Special Features between the two.
+  sub appendCastAndDiscovery(rows as object, itemType as string, item as object, hasCollections as boolean)
     rows.push(planRow("cast", "PORTRAIT", translationKeys.LabelCastCrew, item.id ?? ""))
+    appendDiscovery(rows, itemType, item, hasCollections)
+  end sub
+
+  ' Collections, then More Like This — the rows that lead away from the item.
+  sub appendDiscovery(rows as object, itemType as string, item as object, hasCollections as boolean)
+    if hasCollections then rows.push(collectionsRow(item))
     rows.push(likeThisRow(itemType, item))
   end sub
+
+  ' The collections the item is in. Keyed on the item ITSELF, even for an episode, unlike More
+  ' Like This: the server lists only the collections an item was added to directly, so asking
+  ' about an episode's series would show collections the episode is not in. PORTRAIT whatever
+  ' the viewed item's shape — the tiles are collections, not items like this one.
+  function collectionsRow(item as object) as object
+    return planRow("collections", "PORTRAIT", translationKeys.LabelCollections, item.id ?? "")
+  end function
 
   function likeThisRow(itemType as string, item as object) as object
     itemId = item.id ?? ""

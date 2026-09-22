@@ -148,6 +148,18 @@
       ]
     },
     {
+      "path": "/Items/{0}/Collections",
+      "normalized": "/items/{}/collections",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
       "path": "/items/{0}/images/{1}/{2}",
       "normalized": "/items/{}/images/{}/{}",
       "methods": [
@@ -3149,7 +3161,7 @@
       }
     },
     "counts": {
-      "endpoints": 76,
+      "endpoints": 77,
       "requestFields": 41,
       "responseFields": 215,
       "unresolvedEndpointSinks": 2
