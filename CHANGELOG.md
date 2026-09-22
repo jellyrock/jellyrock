@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Don't let abandoned requests delay the ones you're waiting for ([#999](https://github.com/jellyrock/jellyrock/pull/999))
 - Show the focused movie's logo, not the previous one's, in the `Movies` view ([#997](https://github.com/jellyrock/jellyrock/pull/997))
 - (skills) Make `/pr` titles name every user-visible change ([#998](https://github.com/jellyrock/jellyrock/pull/998))
 - Fit `ItemDetails` text to the logo's real size ([#996](https://github.com/jellyrock/jellyrock/pull/996))
