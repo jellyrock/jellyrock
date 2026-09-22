@@ -172,16 +172,6 @@ namespace remoteProtocol
     return { method: "POST", url: url, body: body }
   end function
 
-  ' Exponential reconnect backoff, 0-based attempt: 1s, 2s, 4s, 8s, 16s, then capped at 30s.
-  function nextBackoffMs(attempt as integer) as integer
-    ms = 1000
-    for i = 1 to attempt
-      ms = ms * 2
-      if ms >= 30000 then return 30000
-    end for
-    return ms
-  end function
-
   ' The client->server KeepAlive frame. Jellyfin's ForceKeepAlive asks the client to send
   ' these on the requested interval so the session isn't reaped by the inactivity timeout.
   ' The KeepAlive the receiver answers a ForceKeepAlive with, and sends every half-interval.

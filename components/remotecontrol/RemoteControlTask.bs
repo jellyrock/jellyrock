@@ -2,6 +2,7 @@ import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/remotecontrol/remoteCommand.bs"
 import "pkg:/source/remotecontrol/remoteProtocol.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/backoff.bs"
 import "pkg:/source/utils/misc.bs"
 
 ' Remote-control receiver (#666) — the ws:// "Cast to JellyRock" listener. See RemoteControlTask.xml
@@ -65,7 +66,7 @@ sub runWsReceiver(serverUrl as string)
     ' that path never resets, so it can't hot-loop. increment AFTER the sleep so the 0th tier (1s) is
     ' actually used rather than skipped straight to 2s.
     if wasStable then attempt = 0
-    backoffMs = remoteProtocol.nextBackoffMs(attempt)
+    backoffMs = backoff.nextDelayMs(attempt)
     m.log.info("socket closed; reconnecting", "inMs", backoffMs)
     sleep(backoffMs)
     attempt++
@@ -301,7 +302,7 @@ sub runLongPollReceiver(serverUrl as string)
     else
       ' Transient error / timeout (code 0) -> exponential backoff (1s..30s), then retry. A persistently
       ' unreachable server keeps the counter climbing so it can't hot-loop.
-      backoffMs = remoteProtocol.nextBackoffMs(attempt)
+      backoffMs = backoff.nextDelayMs(attempt)
       m.log.info("long-poll error; retrying", "code", resp.code, "inMs", backoffMs)
       sleep(backoffMs)
       attempt++

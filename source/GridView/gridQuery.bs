@@ -6,7 +6,7 @@ import "pkg:/source/utils/misc.bs"
 ' BaseGridView runs every load and every page on a NEW node (see replaceTask), so the node
 ' cannot be the memory of the query: the next page must ask for exactly what the first page
 ' asked for, and that has to survive the node being replaced. The query is a plain AA held
-' on the component instead.
+' on the component instead, and paging.forPage gives each page its copy.
 '
 ' It lives in source/ rather than in BaseGridView.bs because a component codebehind's
 ' functions are scoped to that component and a Rooibos suite cannot call them without a
@@ -22,7 +22,7 @@ namespace gridQuery
   ' @param parentItem - the library (or folder) the grid shows
   ' @param view - the current view mode, passed to the presenter
   ' @param presenter - the grid's presenter, or invalid
-  ' @return LoadItemsTask2 input fields, without startIndex (see forPage)
+  ' @return LoadItemsTask2 input fields, without startIndex (see paging.forPage)
   function build(state as object, parentItem as object, view as dynamic, presenter as dynamic) as object
     query = {
       nameStartsWith: state.nameStartsWith,
@@ -43,19 +43,6 @@ namespace gridQuery
       presenter.configureLoadTask(query, parentItem, view)
     end if
     return query
-  end function
-
-  ' The fields for one run of `query`, starting at `startIndex`. A copy: `query` itself is
-  ' left untouched, so it stays the record of what every page of this load asks for.
-  '
-  ' @param query - a query from build()
-  ' @param startIndex - the first item to fetch
-  ' @return LoadItemsTask2 input fields
-  function forPage(query as object, startIndex as integer) as object
-    fields = {}
-    fields.append(query)
-    fields.startIndex = startIndex
-    return fields
   end function
 
 end namespace

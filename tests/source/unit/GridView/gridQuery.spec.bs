@@ -2,6 +2,7 @@ import "pkg:/source/GridView/GenericPresenter.bs"
 import "pkg:/source/GridView/gridQuery.bs"
 import "pkg:/source/GridView/MusicPresenter.bs"
 import "pkg:/source/GridView/TVShowPresenter.bs"
+import "pkg:/source/utils/paging.bs"
 
 namespace tests
 
@@ -81,32 +82,6 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("forPage()")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("returns the whole query with the page's startIndex")
-    function _()
-      query = gridQuery.build(m.state(), m.musicLibrary(), "albums", new MusicPresenter())
-
-      page = gridQuery.forPage(query, 200)
-
-      m.assertEqual(page.startIndex, 200)
-      for each key in query
-        m.assertEqual(page[key], query[key], "page field differs from the query: " + key)
-      end for
-      m.assertEqual(page.count(), query.count() + 1)
-    end function
-
-    @it("leaves the query itself untouched")
-    function _()
-      query = gridQuery.build(m.state(), { Id: "lib-1" }, "Movies", invalid)
-
-      gridQuery.forPage(query, 100)
-
-      m.assertFalse(query.DoesExist("startIndex"), "forPage wrote into the stored query")
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("on a LoadItemsTask2 node")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -119,7 +94,7 @@ namespace tests
       s = m.state()
       s.nameStartsWith = " "
       tvLibrary = { Id: "tv-lib", type: "CollectionFolder" }
-      fields = gridQuery.forPage(gridQuery.build(s, tvLibrary, "shows", new TVShowPresenter()), 100)
+      fields = paging.forPage(gridQuery.build(s, tvLibrary, "shows", new TVShowPresenter()), 100)
       task = CreateObject("roSGNode", "LoadItemsTask2")
 
       task.setFields(fields)

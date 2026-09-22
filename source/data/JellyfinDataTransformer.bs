@@ -11,9 +11,20 @@ class JellyfinDataTransformer
   ' Cache global reference so m.global works inside class methods
   private global = invalid
 
+  ' The translated "Ch" label, resolved on first use. translate() reads m.global.translations,
+  ' which from a Task copies the whole translations table across the thread boundary; a Task
+  ' transforming a page of channels would otherwise pay that once per channel. Callers that
+  ' transform many items share one transformer (transformBaseItemArray does).
+  private channelLabel = invalid
+
   sub new()
     m.global = GetGlobalAA().global
   end sub
+
+  private function getChannelLabel() as string
+    if not isValid(m.channelLabel) then m.channelLabel = translate(translationKeys.LabelCh)
+    return m.channelLabel
+  end function
 
   ' Transform a BaseItemDto to a JellyfinBaseItem content node.
   ' @param apiData - Raw BaseItemDto assocarray from the Jellyfin API
@@ -689,7 +700,7 @@ class JellyfinDataTransformer
       ' integer responses (isValidAndNotEmpty() rejects non-string primitives).
       chanNumStr = (apiData.Number ?? "").toStr().trim()
       if chanNumStr <> ""
-        return translate(translationKeys.LabelCh) + " " + chanNumStr
+        return m.getChannelLabel() + " " + chanNumStr
       end if
       return ""
 
@@ -702,7 +713,7 @@ class JellyfinDataTransformer
       chanNumStr = (apiData.ChannelNumber ?? "").toStr().trim()
       chanName = apiData.ChannelName ?? ""
       parts = []
-      if chanNumStr <> "" then parts.push(translate(translationKeys.LabelCh) + " " + chanNumStr)
+      if chanNumStr <> "" then parts.push(m.getChannelLabel() + " " + chanNumStr)
       if isValidAndNotEmpty(chanName) then parts.push(chanName)
       return parts.join(" - ")
 

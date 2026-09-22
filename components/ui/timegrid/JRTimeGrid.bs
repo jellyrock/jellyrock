@@ -1,11 +1,17 @@
 ' bsc-disable-file print-locations — legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
 
 sub init()
   constants = m.global.constants
 
   m.top.automaticLoadingDataFeedback = false
   m.top.showLoadingDataFeedback = true
+  ' Replace the firmware's untranslated defaults. The owner updates channelNoDataText as rows
+  ' finish loading (Schedule.updateNoProgramsText).
+  m.top.loadingDataText = translate(translationKeys.LabelLoading)
+  m.top.channelNoDataText = translate(translationKeys.LabelLoading)
   m.top.showPastTimeScreen = true
   m.top.focusBitmapUri = "pkg:/images/9patch/border-6px.9.png"
   m.top.focusBitmapBlendColor = constants.colorPrimary

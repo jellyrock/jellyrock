@@ -1,5 +1,7 @@
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
 
 namespace tests
 
@@ -368,6 +370,33 @@ namespace tests
     @it("returns false for unknown type")
     function _()
       m.assertFalse(shouldTreatAsEpisode("video", { seriesId: "anything" }))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("recordResultToast()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("confirms a scheduled recording")
+    function _()
+      m.assertEqual(recordResultToast({ ok: true, action: "record" }), { text: translate(translationKeys.LabelRecordingScheduled), type: "success" })
+    end function
+
+    @it("confirms a cancelled recording")
+    function _()
+      m.assertEqual(recordResultToast({ ok: true, action: "cancel" }), { text: translate(translationKeys.LabelRecordingCancelled), type: "success" })
+    end function
+
+    @it("reports a recording that could not be scheduled")
+    function _()
+      m.assertEqual(recordResultToast({ ok: false, action: "record" }), { text: translate(translationKeys.ErrorFailedToScheduleRecording), type: "error" })
+    end function
+
+    @it("reports a failed cancel, and any other failure the same way")
+    function _()
+      failedCancel = { text: translate(translationKeys.ErrorFailedToCancelRecording), type: "error" }
+      m.assertEqual(recordResultToast({ ok: false, action: "cancel" }), failedCancel)
+      m.assertEqual(recordResultToast({ ok: false, action: "unknown" }), failedCancel)
+      m.assertEqual(recordResultToast(invalid), failedCancel)
     end function
 
   end class

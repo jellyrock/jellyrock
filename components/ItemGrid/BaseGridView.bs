@@ -23,6 +23,7 @@ import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/displaySettings.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/paging.bs"
 import "pkg:/source/utils/skeleton.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
@@ -203,6 +204,10 @@ sub onScreenShown()
     activateTextureManager(m.data)
   end if
 
+  ' The guide is a child of this view, not a routed screen, so nothing else tells it it is back
+  ' (it resumes retrying what failed). Before the focus restore below, which stays this view's.
+  if isValid(m.tvGuide) then m.tvGuide.callFunc("onScreenShown")
+
   if isValid(m.top.lastFocus)
     m.top.lastFocus.setFocus(true)
   else
@@ -250,6 +255,7 @@ end sub
 
 sub onScreenHidden()
   hideTextureManager(m.data)
+  if isValid(m.tvGuide) then m.tvGuide.callFunc("onScreenHidden")
 end sub
 
 ' ============================================================================
@@ -287,6 +293,9 @@ sub hideTVGuide()
   m.log.debug("Hiding TV Guide")
   m.tvGuide.unobserveField("watchChannel")
   m.tvGuide.unobserveField("focusedChannel")
+  ' The guide is a child of this view, not a routed screen, so nothing else will tear it down:
+  ' without this its channel and program fetches keep running after it is gone.
+  m.tvGuide.callFunc("onDestroy")
   m.top.removeChild(m.tvGuide)
   m.tvGuide = invalid
   m.channelFocused = invalid
@@ -446,7 +455,7 @@ end sub
 ' @param {boolean} observeSkeletons - Whether this run may deliver genreSkeletons
 sub startGridRun(startIndex as integer, observeSkeletons as boolean)
   if isValid(m.loadItemsTask) then m.loadItemsTask.unobserveField("genreSkeletons")
-  m.loadItemsTask = replaceTask(m.loadItemsTask, "LoadItemsTask2", "content", gridQuery.forPage(m.gridQuery, startIndex))
+  m.loadItemsTask = replaceTask(m.loadItemsTask, "LoadItemsTask2", "content", paging.forPage(m.gridQuery, startIndex))
   m.loadItemsTask.observeField("content", "onItemDataLoaded")
   if observeSkeletons then m.loadItemsTask.observeField("genreSkeletons", "onGenreSkeletonsReady")
   launchTask(m.loadItemsTask)
@@ -658,6 +667,7 @@ sub onItemDataLoaded(msg)
   m.loadItemsTask.content = []
   m.totalRecordCount = m.loadItemsTask.totalRecordCount
   isFirstPage = m.loadItemsTask.startIndex = 0
+  deliveredStartIndex = m.loadItemsTask.startIndex
 
   if not isValid(itemData)
     m.loading = false
@@ -773,7 +783,7 @@ sub onItemDataLoaded(msg)
   ' onItemDataLoaded → loadMoreData cycle continues until all items are loaded.
   ' With texture management, only visible + buffer rows have loaded textures
   ' regardless of total ContentNode count, so loading all items is safe.
-  if m.loadedItems > 0 and m.loadedItems < m.totalRecordCount
+  if paging.nextStart(deliveredStartIndex, itemData.count(), m.totalRecordCount) >= 0
     loadMoreData()
   end if
 
@@ -1453,6 +1463,7 @@ sub onDestroy()
   if isValid(m.tvGuide)
     m.tvGuide.unobserveField("watchChannel")
     m.tvGuide.unobserveField("focusedChannel")
+    m.tvGuide.callFunc("onDestroy")
     m.tvGuide = invalid
   end if
 
