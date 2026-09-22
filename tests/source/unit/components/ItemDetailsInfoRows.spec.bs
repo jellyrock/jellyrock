@@ -53,6 +53,22 @@ namespace tests
       return item
     end function
 
+    ' Reno 911!'s real 12.0 credits, trimmed: creators arrive on Series from 12.0 (TMDB).
+    private function makeSeries() as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "series-001"
+      item.type = "Series"
+      item.name = "Reno 911!"
+      item.productionYear = 2003
+      item.genres = ["Comedy"]
+      item.people = [
+        { Id: "a1", Name: "Cedric Yarbrough", Type: "Actor", Role: "Deputy S. Jones" },
+        { Id: "c1", Name: "Thomas Lennon", Type: "Creator" },
+        { Id: "c2", Name: "Kerri Kenney", Type: "Creator" }
+      ]
+      return item
+    end function
+
     private function directorsNamed(count as integer) as object
       people = []
       for i = 1 to count
@@ -133,6 +149,53 @@ namespace tests
       m.assertEqual(m.itemDetails.findNode("creditsGroup").getChild(0).id, "director")
     end function
 
+    @it("shows a series' creators as Created by on the credits row")
+    function _()
+      m.show(m.makeSeries())
+
+      credits = m.itemDetails.findNode("creditsGroup")
+      m.assertEqual(credits.getChildCount(), 1)
+      m.assertEqual(credits.getChild(0).id, "creator")
+      m.assertEqual(credits.getChild(0).text, "Created by Thomas Lennon, Kerri Kenney")
+    end function
+
+    @it("puts Created by before Directed by when an item has both")
+    function _()
+      item = m.makeSeries()
+      people = item.people
+      people.push({ Id: "d1", Name: "A Director", Type: "Director" })
+      item.people = people
+      m.show(item)
+
+      credits = m.itemDetails.findNode("creditsGroup")
+      m.assertEqual(credits.getChildCount(), 3, "creator, divider, director")
+      m.assertEqual(credits.getChild(0).id, "creator")
+      m.assertEqual(credits.getChild(2).id, "director")
+    end function
+
+    @it("leaves a series with no creator credits (as 10.11 sends it) without a credits row")
+    function _()
+      item = m.makeSeries()
+      item.people = [{ Id: "a1", Name: "Cedric Yarbrough", Type: "Actor", Role: "Deputy S. Jones" }]
+      m.show(item)
+
+      m.assertEqual(m.itemDetails.findNode("creditsGroup").getChildCount(), 0)
+    end function
+
+    @it("shows a season's own director credits, whatever the type")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "season-001"
+      item.type = "Season"
+      item.name = "Season 1"
+      item.people = [{ Id: "d1", Name: "Mike Judge", Type: "Director" }]
+      m.show(item)
+
+      credits = m.itemDetails.findNode("creditsGroup")
+      m.assertEqual(credits.getChildCount(), 1)
+      m.assertEqual(credits.getChild(0).text, "Directed by Mike Judge")
+    end function
+
     @it("empties the credits row when the screen is reused for an item without credits")
     function _()
       m.show(m.makeMovie())
@@ -167,6 +230,22 @@ namespace tests
       ' Whole-word ellipsizing on a Label that doesn't wrap renders a single word too
       ' wide for the space as a bare "..." (#798), so a cut must be by character.
       m.assertFalse(director.ellipsizeOnBoundary)
+    end function
+
+    @it("drops Directed by rather than overflow when a long Created by fills the line")
+    function _()
+      item = m.makeSeries()
+      people = []
+      for i = 1 to 12
+        people.push({ Id: "c" + i.toStr(), Name: "Creator Number " + i.toStr(), Type: "Creator" })
+      end for
+      people.push({ Id: "d1", Name: "A Director", Type: "Director" })
+      item.people = people
+      m.show(item)
+
+      credits = m.itemDetails.findNode("creditsGroup")
+      m.assertInvalid(credits.findNode("director"))
+      m.assertEqual(int(credits.findNode("creator").width), m.budget)
     end function
 
     @it("cuts row 2 at the line's end and keeps its first item whole")

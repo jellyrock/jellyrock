@@ -1677,6 +1677,26 @@ Ruled out: waiting on the image itself (blank text for seconds on a first open);
 
 **The constraint worth re-evaluating is reach.** Only `m.`-rooted paths are checked (a local alias of a long-lived node is missed), helpers are followed one hop by bare name, and a handler in another file is not followed. `MoviePresenter`'s logo handler is reached through `BaseGridView.onPresenterLogoLoaded`, so `MoviePresenter.spec.bs` pins that one instead.
 
+## decision-id: details-credits-follow-people
+
+**date**: 2026-09-22
+**status**: accepted
+**related-files**: `components/ItemDetails.bs`, `source/utils/people.bs`
+
+The `ItemDetails` credits row shows "Created by …", then "Directed by …" (the order `jellyfin-web` uses), for ANY item type whose own `People` carry those credits, via one `displayPeopleCredits()` call after the type dispatch. Chosen by the user over a Series-only rule for creators, then applied to directors too: a type the server starts crediting later needs no change, and a type it doesn't credit shows nothing. Measured 2026-09-22: Creator credits exist on 12.0 / 12.1 Series only; 22 Seasons carry Director credits on 10.11 AND 12.0, so seasons now show "Directed by" on every server version. The row is fitted to the logo for every type by `fitInfoRow()`.
+
+Ruled out: gating by type (the old "Directed by" on Movie, Episode and `MusicVideo` only), and showing a PARENT's credits — a Season or Episode listing its series' creators. **The cost argument holds for an Episode only**, and the first draft of this note got that wrong: an Episode screen does not fetch its series, so the fallback would cost a request per open, but a Season screen ALREADY has the series in memory (`m.loadSeasonSeriesTask` loads it as `metaDataDetails`, which requests `People`) and `populateInfoGroupSeason()` already falls back to it for the official rating, the ratings, the runtime and the studio. The Season case was declined on repetition rather than cost (user call 2026-09-22, after a review caught the wrong rationale): the creators belong to the show, the series screen already says who they are, and repeating the line on every season adds nothing. Re-evaluate if some type's `People` start carrying credits that read wrong on its details screen, or if the season fallback is ever wanted — it is a `populateInfoGroupSeason()` change with no new request.
+
+## decision-id: credit-row-kinds-in-people
+
+**date**: 2026-09-22
+**status**: accepted
+**related-files**: `source/utils/people.bs`, `components/ItemDetails.bs`
+
+WHICH credits the details screen's credits row shows, and in WHAT order, is a table in `people.bs` (`creditRowKinds()`) beside the other `PersonKind` tables; `creditRowSpecs()` builds every line from it in ONE pass over `People` and returns render-ready specs, leaving `ItemDetails.displayPeopleCredits()` owning only the nodes — the same split as `castCardSpecs()` / `transformPersonCard()`. The single pass is not cosmetic: `people` is a node ARRAY field, so each read copies the whole array and a scan per kind cost a copy per kind; with `populateInfoGroup()` running twice per open (load, then `rebuildDetailsText()` when the logo box lands) that was 4 copies and 4 walks per details open, now 2 and 2. The table's ORDER is also the overflow policy — `fitInfoRow()` keeps the earlier credit and drops the later one, so a series with a long creator list loses "Directed by", which is intended: creators are the headline credit on the one type carrying both. The dedupe is per kind, so someone credited as both Creator and Director appears on both lines, and a `Name` that is blank or only whitespace is not a credit, so the row never renders a bare "Created by".
+
+Ruled out: a per-kind `creditNames(people, kind)` helper called once per kind (deleted — a copy and a walk per kind, and a second home for `PersonKind` knowledge to drift from), and keeping the kind literals in `ItemDetails.bs`. Parity with `jellyfin-web` is explicitly NOT maintained or verified — show what the server gives us and pick the best-reading order ourselves. The constraint worth re-evaluating: `creditRowKinds()` names `PersonKind` values but sits OUTSIDE `npm run lint:language-coverage`, which parses `personKindTranslationKeys()` and `unlabeledPersonKinds()` by function name — so an upstream rename of `Creator` would silently empty the line, the failure that gate exists to prevent.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

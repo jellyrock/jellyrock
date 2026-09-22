@@ -2582,12 +2582,15 @@ sub populateInfoGroup()
     ' Movie, Video
     populateInfoGroupMovie(item, userSettings)
   end if
+
+  ' Row 3 for every type: whatever credits the item's own People carry.
+  displayPeopleCredits(item)
 end sub
 
 ' populateInfoGroupMovie: Info rows for Movie, Video, Recording
 ' Row 1: Year · Official Rating · Community Rating · Critic Rating · Runtime · Ends At
 ' Row 2: Genres
-' Row 3: Directed by
+' Row 3: credits (displayPeopleCredits)
 sub populateInfoGroupMovie(item as object, userSettings as object)
   if item.productionYear > 0
     yearNode = createInfoLabel("releaseYear")
@@ -2620,29 +2623,34 @@ sub populateInfoGroupMovie(item as object, userSettings as object)
     genreNode.text = item.genres.join(" / ")
     displayDetailsNode(genreNode)
   end if
-
-  displayDirectedBy(item)
 end sub
 
-' The "Directed by" credit, shared by the Movie, MusicVideo and Episode info groups. It
-' goes on the credits row, not beside the genres.
+' The credits row, for ANY item type: whichever credits the item's own People carry, in
+' the order creditRowKinds() lists them.
 '
-' Was three byte-identical copies. directorNames() deduplicates by Id because the server
-' sends one People entry per CREDIT: a director also credited as, say, Co-Director appears
-' twice and the line read "Directed by Mike Judge, Mike Judge".
-sub displayDirectedBy(item as object)
-  directors = directorNames(item.people)
-  if directors.count() = 0 then return
-
-  directorNode = createInfoLabel("director")
-  directorNode.text = translate(translationKeys.MessageDirectedBy1, [directors.join(", ")])
-  displayCreditsNode(directorNode)
+' Driven by the item's own People rather than by its type, so a type the server starts
+' crediting later needs no change here, and a type it doesn't credit shows nothing: 10.11
+' sends no Creator credits at all (12.0+ adds them to Series), and a Season carries
+' Director credits on every version. Nothing is looked up from a parent — a Season or
+' Episode shows only its own credits.
+'
+' WHICH credits appear, in WHAT order, and how they read is `people.bs`'s to own, beside
+' the other PersonKind tables; this owns only the nodes. Same split as castCardSpecs() and
+' transformPersonCard(). `item.people` is read exactly ONCE and handed over: it is a node
+' array field, so every read copies the whole array. The row is fitted to the logo by
+' fitInfoRow(), which drops a later credit rather than let it reach the logo.
+sub displayPeopleCredits(item as object)
+  for each spec in creditRowSpecs(item.people)
+    creditNode = createInfoLabel(spec.id)
+    creditNode.text = spec.text
+    displayCreditsNode(creditNode)
+  end for
 end sub
 
 ' populateInfoGroupMusicVideo: Info rows for MusicVideo
 ' Row 1: Year · Official Rating · Community Rating · Critic Rating · Runtime · Ends At
 ' Row 2: Genres · Artist(s)
-' Row 3: Directed by
+' Row 3: credits (displayPeopleCredits)
 sub populateInfoGroupMusicVideo(item as object, userSettings as object)
   if item.productionYear > 0
     yearNode = createInfoLabel("releaseYear")
@@ -2681,14 +2689,12 @@ sub populateInfoGroupMusicVideo(item as object, userSettings as object)
     artistNode.text = item.artists.join(", ")
     displayDetailsNode(artistNode)
   end if
-
-  displayDirectedBy(item)
 end sub
 
 ' populateInfoGroupEpisode: Info rows for Episode
 ' Row 1: Air Date · Official Rating · Community Rating · Critic Rating · Runtime · Ends At
 ' Row 2: "S{n}E{n}" · Series name
-' Row 3: Directed by
+' Row 3: credits (displayPeopleCredits)
 sub populateInfoGroupEpisode(item as object, userSettings as object)
   if isValidAndNotEmpty(item.premiereDate)
     airDate = CreateObject("roDateTime")
@@ -2718,7 +2724,7 @@ sub populateInfoGroupEpisode(item as object, userSettings as object)
     displayInfoNode(m.endsAtNode)
   end if
 
-  ' Row 2: S{n}E{n} • SeriesName (Row 3: Directed by X, Y, Z)
+  ' Row 2: S{n}E{n} • SeriesName
   if item.parentIndexNumber > 0 and item.indexNumber > 0
     episodeCodeNode = createInfoLabel("episodeCode")
     episodeCodeNode.text = "S" + item.parentIndexNumber.toStr() + "E" + item.indexNumber.toStr()
@@ -2730,8 +2736,6 @@ sub populateInfoGroupEpisode(item as object, userSettings as object)
     seriesNameNode.text = item.seriesName
     displayDetailsNode(seriesNameNode)
   end if
-
-  displayDirectedBy(item)
 end sub
 
 ' populateInfoGroupSeries: Info rows for Series
