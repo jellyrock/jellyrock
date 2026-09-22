@@ -1605,6 +1605,16 @@ The server's "no" does not say which rule declined, so the override keeps the se
 
 The override is gated by a device preflight (`upstreamPlaylistAnswers()`): direct play only on HTTP 200 with an `#EXTM3U` body within `timeouts.LIVE_UPSTREAM_PREFLIGHT_MS`, `gzip` decoded because the player decodes it too. Anything else stays on the server's stream. Cost accepted: one playlist GET before each live start (57–129 ms measured on a Roku Ultra, 2026-09-21), up to 3 s added when the upstream is unreachable. Known limit, accepted: a playlist that answers while its segments do not. Re-evaluate if the server restores direct play for these channels or says why it declined.
 
+## decision-id: bare-array-bodies-accept-items-wrapper
+
+**date**: 2026-09-21
+**status**: accepted
+**related-files**: `source/api/apiResponse.bs`, `source/home/latestRows.bs`
+
+Bodies from the endpoints that answer with a bare array (latest media, sessions, local trailers, special features, cultures) are read through `apiResponse.listFrom()`, which also accepts a `{ Items: [...] }` query-result wrapper and returns its `Items`. Any other non-list body is `invalid`: no answer, never an authoritative empty list. Ruled out: strict (only a real array counts). A server sent exactly that wrapper for `/Items/Latest` in the field (a v2.30.0 crash report); its `Items` is the same list, so reading it shows the user their content, where strict would leave a Home latest row as a "failed" skeleton that fails again on every retry.
+
+Cost accepted: none for stock servers, since Jellyfin 10.9 through 12.1 sends a bare array for all of these. Re-evaluate if a server is found sending a wrapper whose `Items` is not the endpoint's list.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
