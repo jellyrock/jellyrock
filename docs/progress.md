@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-22 — feat: Show Created by and Directed by credits on every item type that has them
 - 2026-09-22 — fix: Show the focused movie's logo, not the previous one's, in the `Movies` view
 - 2026-09-22 — `no-same-node-relaunch` now flags a relaunch from a node's own delivery handler (the #991 TV-guide paging shape), as part of flagging any `launchTask(m.x)` with no new node assigned first; closes the own-delivery-handler followup
 - 2026-09-22 — fix(skills): Make `/pr` titles name every user-visible change
