@@ -76,6 +76,20 @@ endpoints:
         caller (components/home/LoadItemsTask.bs) still checks
         `isValid(lyricsData) and isValid(lyricsData.Lyrics)` before indexing.
 
+  - path: /items/{}/collections
+    method: GET
+    minServer: "12.0.0"
+    handling:
+      type: version-guard
+      symbol: supportsItemCollections
+      note: >-
+        The item-details Collections row. extrasRows.plan() (source/extras/extrasRows.bs)
+        plans the row only when extrasRows.supportsItemCollections() (versionChecker
+        >=12.0.0) passes, so LoadExtrasRowsTask never builds the request on older
+        servers, which answer 404 (measured 2026-09-21 on a local 10.11.11). The guard
+        decides the PLAN rather than wrapping the ApiClient call, which is why the AST
+        tags the endpoint [1, ∞).
+
   - path: /quickconnect/enabled
     method: GET
     minServer: "10.8.0"

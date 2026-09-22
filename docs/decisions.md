@@ -1605,6 +1605,16 @@ The server's "no" does not say which rule declined, so the override keeps the se
 
 The override is gated by a device preflight (`upstreamPlaylistAnswers()`): direct play only on HTTP 200 with an `#EXTM3U` body within `timeouts.LIVE_UPSTREAM_PREFLIGHT_MS`, `gzip` decoded because the player decodes it too. Anything else stays on the server's stream. Cost accepted: one playlist GET before each live start (57–129 ms measured on a Roku Ultra, 2026-09-21), up to 3 s added when the upstream is unreachable. Known limit, accepted: a playlist that answers while its segments do not. Re-evaluate if the server restores direct play for these channels or says why it declined.
 
+## decision-id: extras-rows-discovery-last
+
+**date**: 2026-09-21
+**status**: accepted
+**related-files**: source/extras/extrasRows.bs
+
+Item details put the rows about the item itself first and the rows that lead away from it last, in the same order on every type that has them: Collections, then More Like This (`extrasRows.appendDiscovery`). The Movie plan moved Special Features up to satisfy it: Chapters, Additional Parts, Cast & Crew, Special Features, Collections, More Like This. That is jellyfin-web 12.1's relative order for those four rows. Considered and ruled out (user pick, #926): inserting Collections above More Like This with nothing moved, which left Special Features below both discovery rows, and a larger reorder putting Cast & Crew first.
+
+The Collections row (Jellyfin 12.0+, `extrasRows.supportsItemCollections`) is planned on every item type except Person, and stays off screen when the answer is empty. The server accepts any item into a collection (`CollectionManager.AddToCollectionAsync` checks only that the collection and items exist; an Audio track added on a local 12.0.0, 2026-09-22, came back from `GET /Items/{id}/Collections`), and jellyfin-web asks for every item. Ruled out: gating on web's add menu (`supportsAddingToCollection`), which hid membership that exists. Person is excluded because `ExtrasRowList.finishRunIfResolved` reads any row on screen as `personHasMedia`, which shows Shuffle. The row is keyed on the item itself, even for an episode: the server lists only direct links, as web does. Cost, measured 2026-09-22 on a local 12.0.0 (median of 10, 5 movies): 7.7–9.1 ms against 25.9–40.1 ms for `/Similar`, and every plan with the row also has that slower row, so it never delays the commit. Re-evaluate if the server returns inherited membership, or if Person rows stop driving `personHasMedia`.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
