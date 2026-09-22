@@ -12,7 +12,8 @@ import "pkg:/source/utils/paging.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/translate.bs"
 
-' Rows the guide shows at once, when TimeGrid does not report numRows.
+' Rows the guide shows at once, for when TimeGrid does not report numRows. Roku's TimeGrid
+' reference does not list that field; both test devices report 6 (Roku OS 15.3.4, 2026-09-21).
 const GUIDE_VISIBLE_ROWS = 6
 
 ' Channels per page of the channel list.

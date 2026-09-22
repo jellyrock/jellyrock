@@ -18,7 +18,7 @@ import "pkg:/source/utils/viewport.bs"
 '
 ' Vertical range (loadedRowRange):
 '   4-element array: [bufferStart, visibleStart, visibleEnd, bufferEnd]
-''   Buffer rows (TEXTURE_BUFFER_ROWS either side of visible, via viewport.rowWindow) keep ALL
+'   Buffer rows (TEXTURE_BUFFER_ROWS either side of visible, via viewport.rowWindow) keep ALL
 '   items loaded in active state.
 '   Visible rows use horizontal buffer for long rows (RowList only).
 '
