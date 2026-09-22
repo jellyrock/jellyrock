@@ -37,6 +37,9 @@ function searchMedia(query as string)
   data = fetchJson(GetApi().BuildGetItemsByQueryRequest({
     "searchTerm": query,
     "IncludeItemTypes": "Movie,Series,Episode,Video,MusicVideo,Audio,MusicAlbum,Playlist,LiveTvChannel,PhotoAlbum,Photo,BoxSet",
+    ' ChildCount gives a collection or photo album tile its "N items" line, as in the details
+    ' Collections row; a list query returns it for those only when asked.
+    "Fields": "ChildCount",
     "EnableTotalRecordCount": false,
     "Recursive": true,
     "limit": 100

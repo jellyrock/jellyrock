@@ -1,6 +1,8 @@
+import "pkg:/source/enums/UpstreamHlsBlocker.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
+import "pkg:/source/utils/url.bs"
 
 ' Sentinel seek position used to jump to the live edge of an HLS stream.
 ' Roku clips this to the manifest's available range, landing at the live edge.
@@ -141,6 +143,104 @@ function shouldTreatAsEpisode(videotype as string, meta as object) as boolean
   if videotype = "episode" or videotype = "series" then return true
   if videotype = "recording" and isValid(meta) and isValidAndNotEmpty(meta.seriesId) then return true
   return false
+end function
+
+' What the playback request knows that the server's PlaybackInfo answer does not carry, for
+' getUpstreamHlsBlocker.
+interface UpstreamHlsRequest
+  ' This load is a live channel (TvChannel or Program).
+  isLive as boolean
+  ' This load is the retry that asked the server for a transcode (EnableDirectPlay=false).
+  forceTranscoding as boolean
+  ' The configured Jellyfin server URL.
+  serverUrl as string
+  ' The user's policy "Force transcoding of remote media sources such as Live TV".
+  forceRemoteSourceTranscoding as boolean
+  ' The source's TranscodeReasons, from its TranscodingUrl (getTranscodeReasons), as the server sent
+  ' them; getUpstreamHlsBlocker decides which of them count.
+  transcodeReasons as object
+end interface
+
+' What keeps a Live TV channel off its own HLS URL when the server has declined to direct play it,
+' or UpstreamHlsBlocker.NONE when nothing does and the channel should play from that URL.
+'
+' Jellyfin 12.0 (jellyfin/jellyfin#17768) stopped offering direct play for M3U channels whose URL
+' is an HLS manifest: it had been relaying the upstream master playlist through its own
+' /Videos/{id}/ URL, where the playlist's relative variant URIs 404. JellyRock never used that
+' relay. It plays the absolute upstream Path (setupVideoContentWithAuth), where relative URIs
+' resolve against the origin, which is how these channels played before 12.0. The server's remux
+' instead drops audio that arrives as a separate HLS rendition. If the device cannot play the
+' upstream stream, the live direct-play fallback (applyLiveDirectPlayFallback) still retries
+' through the server.
+'
+' The server's "no" does not say whether 12.0 is its only reason, so this rebuilds the answer the
+' server would have given before 12.0 from what the client can see. It overrides only an explicit
+' "no" (SupportsDirectPlay = false) on an HTTP HLS source whose Path is an absolute http(s) URL
+' that does not go through Jellyfin: not a loopback host, not the server's own host and port, not
+' the LiveStreamFiles relay. And only when none of the server's older reasons applies: the tuner's
+' "Auto-loop live streams", the user's remote-source transcoding policy, or the server's internet
+' streaming bitrate limit. The tuner's "Simultaneous stream limit" is the one reason the client
+' cannot see; the server still enforces it when the live stream opens. DASH is excluded.
+'
+' @param {dynamic} mediaSource - the channel's PlaybackInfo MediaSource
+' @param {UpstreamHlsRequest} request - what this load asked for, and of whom
+' @returns {string} an UpstreamHlsBlocker value
+function getUpstreamHlsBlocker(mediaSource as dynamic, request as UpstreamHlsRequest) as string
+  if not request.isLive then return UpstreamHlsBlocker.NOT_LIVE
+  ' The retry that forces a transcode must reach the server, or a stream this device cannot play
+  ' would be retried from its upstream URL forever.
+  if request.forceTranscoding then return UpstreamHlsBlocker.FORCED_TRANSCODE
+  if not isValid(mediaSource) or LCase(type(mediaSource)) <> "roassociativearray" then return UpstreamHlsBlocker.NO_SOURCE
+
+  ' Override only the server's explicit "no"; an absent field is no decision to second-guess.
+  declined = mediaSource.SupportsDirectPlay
+  declinedType = LCase(type(declined))
+  if not (declinedType = "boolean" or declinedType = "roboolean") or declined then return UpstreamHlsBlocker.NOT_DECLINED
+
+  if LCase(textOrEmpty(mediaSource.Protocol)) <> "http" then return UpstreamHlsBlocker.NOT_HTTP_PROTOCOL
+
+  upstream = parseUrlComponents(textOrEmpty(mediaSource.Path))
+  if not isValid(upstream) then return UpstreamHlsBlocker.NOT_HTTP_URL
+  scheme = LCase(upstream.scheme)
+  if (scheme <> "http" and scheme <> "https") or upstream.host = "" then return UpstreamHlsBlocker.NOT_HTTP_URL
+
+  path = LCase(upstream.path)
+  container = LCase(textOrEmpty(mediaSource.Container))
+  isHls = container = "hls" or container = "applehttp" or Right(path, 5) = ".m3u8" or Right(path, 4) = ".m3u"
+  if not isHls then return UpstreamHlsBlocker.NOT_HLS
+
+  ' Through Jellyfin's own relay, relative URIs really do break: the case jellyfin/jellyfin#17768 fixed.
+  if Instr(1, path, "/livetv/livestreamfiles/") > 0 then return UpstreamHlsBlocker.SERVER_RELAY
+  bareHost = upstream.host
+  if Left(bareHost, 1) = "[" then bareHost = Mid(bareHost, 2, Len(bareHost) - 2)
+  if isLocalhost(bareHost) then return UpstreamHlsBlocker.LOOPBACK
+
+  jellyfin = parseUrlComponents(request.serverUrl)
+  if not isValid(jellyfin) or jellyfin.host = "" then return UpstreamHlsBlocker.NO_SERVER_URL
+  if upstream.host = jellyfin.host and upstream.port = jellyfin.port then return UpstreamHlsBlocker.SERVER_HOST
+
+  ' The server's reasons that predate 12.0, which it applied then too.
+  if isBooleanTrue(mediaSource.RequiresLooping) then return UpstreamHlsBlocker.AUTO_LOOP
+  if isBooleanTrue(mediaSource.IsRemote) and request.forceRemoteSourceTranscoding then return UpstreamHlsBlocker.REMOTE_SOURCE_POLICY
+  ' Of the transcode reasons, only the bitrate one is a verdict on direct play. For a manifest,
+  ' 12.x no longer judges direct play at all; the codec reasons it reports say whether its own
+  ' transcode can copy the stream, not whether this device can play it.
+  if isValid(request.transcodeReasons) and arrayHasValue(request.transcodeReasons, "ContainerBitrateExceedsLimit") then return UpstreamHlsBlocker.BITRATE_LIMIT
+
+  return UpstreamHlsBlocker.NONE
+end function
+
+' Whether a response to the preflight GET of a live channel's upstream playlist shows the device
+' can play it: HTTP 200 with an HLS playlist body. The body check turns away a captive portal or an
+' HTML error page served with 200; RFC 8216 requires #EXTM3U as the first line, so only leading
+' whitespace is tolerated before it.
+'
+' @param {integer} responseCode - roUrlEvent.GetResponseCode() (negative for a transport failure)
+' @param {dynamic} body - roUrlEvent.GetString()
+' @returns {boolean}
+function isHlsPlaylistResponse(responseCode as integer, body as dynamic) as boolean
+  if responseCode <> 200 then return false
+  return Left(textOrEmpty(body).Trim(), 7) = "#EXTM3U"
 end function
 
 ' The toast for a RecordProgramTask result: scheduled or cancelled, and whether it worked. A

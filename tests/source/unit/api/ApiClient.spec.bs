@@ -381,6 +381,16 @@ namespace tests
       m.assertInvalid(result)
     end function
 
+    @it("returns invalid from BuildGetItemCollectionsRequest when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildGetItemCollectionsRequest(m.testItemId)
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
     @it("returns invalid from BuildGetFiltersRequest when serverUrl is empty")
     function _()
       m.global.server.serverUrl = ""
@@ -662,6 +672,31 @@ namespace tests
       m.assertTrue(result.inStr("user-123") >= 0, "V2 should have userId value in query")
       m.assertTrue(result.inStr("backdrop") >= 0, "V2 should have type value in query")
       m.assertTrue(result.inStr("500") >= 0, "V2 should have maxWidth value")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("BuildGetItemCollectionsRequest() - the collections an item is in (12.0+)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("GETs /Items/{itemId}/Collections with the caller's params")
+    function _()
+      m.setApiVersion(2)
+
+      result = m.apiClient.BuildGetItemCollectionsRequest(m.testItemId, { "Fields": "ChildCount" })
+
+      m.assertEqual(result.method, "GET")
+      m.assertTrue(result.url.inStr("/Items/test-item-456/Collections") >= 0, "should use /Items/{itemId}/Collections")
+      m.assertTrue(result.url.inStr("ChildCount") >= 0, "should carry the Fields value")
+    end function
+
+    @it("has no V1 path — the endpoint exists only on 12.0+, where apiVersion is always 2")
+    function _()
+      m.setApiVersion(1)
+
+      result = m.apiClient.BuildGetItemCollectionsRequest(m.testItemId)
+
+      m.setApiVersion(2)
+      m.assertTrue(result.url.inStr("/Items/test-item-456/Collections") >= 0, "should not route to a /Users/{id}/ path")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

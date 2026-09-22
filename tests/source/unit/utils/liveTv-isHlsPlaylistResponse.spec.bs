@@ -1,0 +1,50 @@
+import "pkg:/source/utils/liveTv.bs"
+
+namespace tests
+
+  ' isHlsPlaylistResponse — the preflight's verdict on whether this device can load a live
+  ' channel's upstream playlist. A "no" keeps the server's stream, so a false positive is the
+  ' costly direction: it sends the Roku to a URL it may then buffer on forever.
+  @suite("liveTv - isHlsPlaylistResponse()")
+  class IsHlsPlaylistResponseTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the preflight response")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("accepts HTTP 200 with an HLS playlist")
+    function _()
+      m.assertTrue(isHlsPlaylistResponse(200, "#EXTM3U" + Chr(10) + "#EXT-X-VERSION:6" + Chr(10)))
+    end function
+
+    @it("tolerates whitespace before the #EXTM3U line")
+    function _()
+      m.assertTrue(isHlsPlaylistResponse(200, Chr(13) + Chr(10) + "  #EXTM3U" + Chr(10)))
+    end function
+
+    @it("turns away a 200 that is not a playlist, such as a captive portal")
+    function _()
+      m.assertFalse(isHlsPlaylistResponse(200, "<!doctype html><title>Sign in</title>"))
+    end function
+
+    @it("turns away an empty or missing body")
+    function _()
+      m.assertFalse(isHlsPlaylistResponse(200, ""))
+      m.assertFalse(isHlsPlaylistResponse(200, invalid))
+    end function
+
+    @it("turns away an HTTP error, even one whose body looks like a playlist")
+    function _()
+      m.assertFalse(isHlsPlaylistResponse(403, "#EXTM3U"))
+      m.assertFalse(isHlsPlaylistResponse(404, "#EXTM3U"))
+    end function
+
+    @it("turns away a transport failure")
+    ' roUrlTransfer reports DNS and connection failures as negative codes.
+    function _()
+      m.assertFalse(isHlsPlaylistResponse(-6, ""))
+    end function
+
+  end class
+
+end namespace

@@ -76,7 +76,9 @@ sub loadItems()
     params["SortBy"] = "SortName"
     params["SortOrder"] = "Ascending"
     params["EnableTotalRecordCount"] = false
-    params["Fields"] = "MediaSourceCount"
+    ' ChildCount gives a collection or photo album tile its "N items" line, as in the details
+    ' Collections row; a list query returns it for those only when asked.
+    params["Fields"] = "MediaSourceCount,ChildCount"
 
     data = fetchJson(GetApi().BuildGetItemsByQueryRequest(params), "favorites")
     if isValid(data) and isValid(data.Items)

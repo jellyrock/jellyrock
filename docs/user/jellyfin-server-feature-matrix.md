@@ -11,12 +11,13 @@ This document shows which JellyRock features require specific Jellyfin server ve
 
 ## Version-Specific Features
 
-| Feature                   | 10.7.x | 10.8.x | 10.9.x | 10.10.x+ | Notes                           |
-| ------------------------- | ------ | ------ | ------ | -------- | ------------------------------- |
-| **Trickplay Thumbnails**  | ❌     | ❌     | ✅     | ✅       | Video preview scrubbing         |
-| **Quick Connect**         | ✅     | ✅     | ✅     | ✅       | Auto-dispatches per server API  |
-| **Media Segments**        | ❌     | ❌     | ❌     | ✅       | Skip intro/outro/recap/etc.     |
-| **Song Lyrics**           | ❌     | ❌     | ✅     | ✅       | Lyrics your library already has |
+| Feature                  | 10.7.x | 10.8.x | 10.9.x | 10.10.x–10.11.x | 12.0+ | Notes                                              |
+| ------------------------ | ------ | ------ | ------ | --------------- | ----- | -------------------------------------------------- |
+| **Trickplay Thumbnails** | ❌     | ❌     | ✅     | ✅              | ✅    | Video preview scrubbing                            |
+| **Quick Connect**        | ✅     | ✅     | ✅     | ✅              | ✅    | Auto-dispatches per server API                     |
+| **Media Segments**       | ❌     | ❌     | ❌     | ✅              | ✅    | Skip intro/outro/recap/etc.                        |
+| **Song Lyrics**          | ❌     | ❌     | ✅     | ✅              | ✅    | Lyrics your library already has                    |
+| **Collections row**      | ❌     | ❌     | ❌     | ❌              | ✅    | The collections an item is in, on its details page |
 
 ## Legend
 
@@ -48,6 +49,15 @@ Media Segments enable skip functionality for detected intros, outros, recaps, pr
 - **10.10+**: ✅ Fully supported
 
 Requires a media segment provider plugin on the server to detect the segments. See [Media Segments](media-segments.md) for the plugins JellyRock is tested with, how to choose what happens for each segment type, and troubleshooting.
+
+### Collections row
+
+An item's details page lists the collections it belongs to, so you can open a collection from any movie, series or episode in it.
+
+- **10.11 and below**: ❌ Not available (the API endpoint does not exist)
+- **12.0+**: ✅ Fully supported
+
+Only collections the item was added to directly are listed — an episode shows the collections that episode is in, not the ones its series is in.
 
 ## Upgrade Recommendations
 

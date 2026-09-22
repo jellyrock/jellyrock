@@ -6,6 +6,7 @@ import "pkg:/source/api/image.bs"
 import "pkg:/source/api/items.bs"
 import "pkg:/source/api/userAuth.bs"
 import "pkg:/source/constants/imageSize.bs"
+import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
@@ -514,6 +515,30 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   ' 'TODO: allow user selection of subtitle track before playback initiated, for now set to no subtitles
   video.isDirectPlaySupported = m.playbackInfo.MediaSources[0].SupportsDirectPlay
 
+  ' Jellyfin 12.0+ declines direct play for every HLS Live TV channel, and its remux loses audio that
+  ' arrives as a separate rendition; play the channel's own URL instead, as before 12.0, unless the
+  ' server had a reason of its own (getUpstreamHlsBlocker says which). The device must be able to
+  ' load that URL itself first: one it cannot reach leaves the Roku buffering forever rather than
+  ' failing, so the fallback to the server would never run.
+  userPolicy = userSession.policy
+  upstreamBlocker = getUpstreamHlsBlocker(m.playbackInfo.MediaSources[0], {
+    isLive: isLive,
+    forceTranscoding: forceTranscoding,
+    serverUrl: textOrEmpty(getUrl()),
+    forceRemoteSourceTranscoding: isValid(userPolicy) and isBooleanTrue(userPolicy.forceRemoteSourceTranscoding),
+    transcodeReasons: getTranscodeReasons(textOrEmpty(m.playbackInfo.MediaSources[0].TranscodingUrl))
+  })
+  if upstreamBlocker = UpstreamHlsBlocker.NONE
+    if upstreamPlaylistAnswers(m.playbackInfo.MediaSources[0].Path)
+      video.isDirectPlaySupported = true
+      m.log.info("Server declined direct play of a live HLS channel; playing its upstream URL", "itemId", video.id)
+    else
+      m.log.info("Server declined direct play of a live HLS channel and this device cannot load its upstream URL; using the server's stream", "itemId", video.id)
+    end if
+  else if isLive
+    m.log.info("Live channel keeps the server's answer", "blocker", upstreamBlocker, "itemId", video.id)
+  end if
+
   ' For h264/hevc video, Roku spec states that it supports specfic encoding levels
   ' The device can decode content with a Higher Encoding level but may play it back with certain
   ' artifacts. If the user preference is set, and the only reason the server says we need to
@@ -601,6 +626,51 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   ' Convert Jellyfin audio stream index to Roku Track identifier (Index + 1 for MKV)
   video.audioTrack = getRokuAudioTrackPosition(audioStreamIdx, video.fullAudioData)
 end sub
+
+' upstreamPlaylistAnswers: Whether THIS device can load a live channel's upstream HLS playlist.
+'
+' A preflight for playing a channel from its own URL (getUpstreamHlsBlocker). The server
+' reaching a URL says nothing about the Roku reaching it, and a Roku handed one it cannot reach does
+' not error: an unroutable host or an unresolvable name leaves it buffering indefinitely, so the
+' direct-play fallback never runs. A GET within timeouts.LIVE_UPSTREAM_PREFLIGHT_MS that returns an
+' HLS playlist is the answer (isHlsPlaylistResponse); anything else keeps the server's stream.
+' Raw roUrlTransfer on this Task thread, no Jellyfin auth (the URL is not Jellyfin's) and the URL is
+' never logged, because upstream URLs carry session tokens.
+'
+' @param {dynamic} url - the channel's upstream playlist URL (MediaSource.Path)
+' @returns {boolean}
+function upstreamPlaylistAnswers(url as dynamic) as boolean
+  target = textOrEmpty(url)
+  if target = "" then return false
+
+  req = CreateObject("roUrlTransfer")
+  port = CreateObject("roMessagePort")
+  req.setMessagePort(port)
+  req.setUrl(target)
+  if LCase(Left(target, 8)) = "https://" then req.setCertificatesFile("common:/certs/ca-bundle.crt")
+  ' The player decodes a gzip-encoded playlist, so the preflight must too: a CDN serving
+  ' pre-compressed objects sends one even to a request that did not ask for it.
+  req.EnableEncodings(true)
+
+  elapsed = CreateObject("roTimespan")
+  elapsed.mark()
+  if not req.AsyncGetToString() then return false
+
+  remaining = timeouts.LIVE_UPSTREAM_PREFLIGHT_MS
+  while remaining > 0
+    msg = wait(remaining, port)
+    if type(msg) = "roUrlEvent"
+      answers = isHlsPlaylistResponse(msg.GetResponseCode(), msg.GetString())
+      m.log.info("Live upstream preflight", "answers", answers, "responseCode", msg.GetResponseCode(), "ms", elapsed.TotalMilliseconds())
+      return answers
+    end if
+    remaining = timeouts.LIVE_UPSTREAM_PREFLIGHT_MS - elapsed.TotalMilliseconds()
+  end while
+
+  req.AsyncCancel()
+  m.log.info("Live upstream preflight timed out", "ms", elapsed.TotalMilliseconds())
+  return false
+end function
 
 ' setupVideoContentWithAuth: Configures video content URL and applies authentication
 '
