@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-23 — ci: Prove a stopped Task thread frees its slot under Roku's thread cap
 - 2026-09-23 — fix: Stop a late playback report replacing a dialog you opened meanwhile
 - 2026-09-23 — fix: Stop the playback info report reopening itself after you close it
 - 2026-09-23 — fix: Keep Home rows refreshing when you return to Home as a load finishes
