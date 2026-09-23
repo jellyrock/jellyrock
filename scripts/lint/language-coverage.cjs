@@ -24,6 +24,14 @@
 //      read from the committed spec fingerprints, so the check needs no
 //      network and no gitignored API cache.
 //
+//   4. A CREDIT ROW NAMING A KIND THE SERVER NO LONGER SENDS —
+//      `creditRowKinds()` drives the details screen's per-kind credit lines
+//      ("Created by", "Directed by") by naming `PersonKind` values. If
+//      upstream renames or drops one, the matching line silently renders
+//      empty: nothing throws, no row is missing, the label just never has
+//      anyone to name. Same silence as class 3, and the same fix — check
+//      the named kinds against the committed enum.
+//
 // All fail silently. Compile passes, unit tests pass, English UI renders
 // fine, only non-English users notice — months later. This script catches
 // them before merge.
@@ -202,6 +210,74 @@ function parseAA(source, fnName, fileLabel) {
     else result[key] = { kind: 'flag', value: flagVal };
   }
   return result;
+}
+
+// ============================================================
+// Parse an ARRAY of AAs: `m.<cache> = [ { kind: "x", messageKey: translationKeys.Y }, … ]`
+//
+// A second shape rather than a second parser by accident: `creditRowKinds()`
+// is ordered (the credit lines render in array order), so it cannot be an AA,
+// and parseAA() above finds its tables BY FUNCTION NAME while parsing an AA —
+// so this table sat outside every check until it was added here.
+//
+// Keys are UNQUOTED here (`kind:`, not `"kind":`), matching how the table is
+// actually authored.
+//
+// Absence is never confused with failure, the same discipline the PersonKind
+// enum read applies below: a missing function, a missing array literal, an
+// entry that parses to nothing, and an entry missing either field are all
+// LOUD. A genuinely empty `[]` is the one quiet answer, and it is quiet only
+// because the literal provably holds no entries. Without that split, a shape
+// change to the table would disable this check silently — which is the exact
+// failure class the check exists to close.
+// ============================================================
+function parseAAArray(source, fnName, fileLabel) {
+  const fnRe = new RegExp(
+    `function\\s+${fnName}\\s*\\(\\)[^\\n]*\\n([\\s\\S]*?)\\nend function`,
+    'm',
+  );
+  const fnMatch = source.match(fnRe);
+  if (!fnMatch) throw new Error(`function ${fnName}() not found in ${fileLabel}`);
+  const body = fnMatch[1];
+
+  const litMatch = body.match(/=\s*\[([\s\S]*?)\]/);
+  if (!litMatch) {
+    throw new Error(
+      `${fnName}() in ${fileLabel} has no \`= [ … ]\` array literal — the table's shape ` +
+        `changed and this check can no longer read it.`,
+    );
+  }
+  const literal = litMatch[1];
+
+  const entries = [];
+  const entryRe = /\{([^}]*)\}/g;
+  let m;
+  while ((m = entryRe.exec(literal)) !== null) {
+    const inner = m[1];
+    const kind = inner.match(/\bkind\s*:\s*"([^"]*)"/);
+    const messageKey = inner.match(/\bmessageKey\s*:\s*translationKeys\.([A-Za-z0-9_]+)/);
+    if (!kind || !messageKey) {
+      throw new Error(
+        `${fnName}() in ${fileLabel} has an entry this check cannot read ` +
+          `({${inner.trim()}}) — every entry needs \`kind: "x"\` and ` +
+          `\`messageKey: translationKeys.Y\`.`,
+      );
+    }
+    entries.push({ kind: kind[1], messageKey: messageKey[1] });
+  }
+
+  // Quiet ONLY for a literal that provably holds nothing. Keying this on `{`
+  // would let a re-authoring to bare strings (`[ "creator" ]`) parse to zero
+  // entries and pass, so the test is whether the literal holds any CONTENT at
+  // all, not whether it has braces.
+  if (entries.length === 0 && literal.trim() !== '') {
+    throw new Error(
+      `${fnName}() in ${fileLabel} holds content this check parsed no entries from ` +
+        `(\`${literal.trim()}\`) — the table's shape changed and the check would pass ` +
+        `vacuously.`,
+    );
+  }
+  return entries;
 }
 
 // ============================================================
@@ -440,8 +516,32 @@ if (personKindEnum === null) {
     }
   }
 
+  // 4d. Every kind a credit ROW names is still a value the server sends, and its
+  // label key exists. `creditRowKinds()` is an ordered array, so it is read with
+  // parseAAArray() rather than parseAA().
+  const creditRows = parseAAArray(peopleSource, 'creditRowKinds', 'people.bs');
+  for (const { kind, messageKey } of creditRows) {
+    if (!union.has(kind.toLowerCase())) {
+      errors.push(
+        `creditRowKinds() names kind "${kind}", which is not a PersonKind value in any ` +
+          `committed fingerprint (${sources.join(', ')}) — that credit line would render ` +
+          `empty with every other check green.`,
+      );
+    }
+    if (!Object.prototype.hasOwnProperty.call(enUS, messageKey)) {
+      errors.push(
+        `creditRowKinds() kind "${kind}" → translationKeys.${messageKey} — key ` +
+          `"${messageKey}" is not defined in locale/custom/en_US.json`,
+      );
+    }
+  }
+
   if (errors.length === before) {
-    console.log(c('  OK', 'green') + ' — every PersonKind value is labelled or deliberately blank');
+    console.log(
+      c('  OK', 'green') +
+        ' — every PersonKind value is labelled or deliberately blank, and ' +
+        `${creditRows.length} credit row kind(s) resolve`,
+    );
   }
 }
 

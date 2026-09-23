@@ -1,0 +1,205 @@
+import "pkg:/source/utils/languages.bs"
+import "pkg:/source/utils/mediaDisplayTitle.bs"
+import "pkg:/source/utils/misc.bs"
+
+' Audio- and subtitle-language browse filters, a Jellyfin 12.0 server capability.
+'
+' `audioLanguages` / `subtitleLanguages` are the only `GET /Items` parameters added
+' between the 10.11.8 and 12.0 spec fingerprints (jellyfin#9787). Measured on the
+' local 10.11.11 / 12.0.0 / 12.1.0 servers, 2026-09-22:
+'
+'   * On 12.x they filter. `audioLanguages=zzz` returns 0 of 17 films; `=eng`
+'     returns all 17.
+'   * On 10.11 they are SILENTLY IGNORED — `audioLanguages=zzz` returns all 17,
+'     in either casing. That is why the filters are version-gated rather than
+'     offered everywhere and allowed to no-op: a 10.11 user picking "Japanese
+'     audio" would get their whole library back, which reads as a broken filter.
+'   * Within one parameter the values are OR'd (`hin,pol` returns exactly the
+'     union, 2 films); across the two parameters they are AND'd (Spanish audio 3,
+'     Japanese subtitles 9, both together 2). The panel can only have one filter
+'     category active at a time, so only the OR half is reachable today —
+'     see `itemgridoptions-single-active-filter` in tech-debt.md.
+'   * Comma is the delimiter ON THE WIRE, and a pipe returns 0 there. It is NOT what
+'     the categories declare: an option's value is itself several comma-joined codes,
+'     so the panel separates options with PANEL_DELIMITER and toWire() flattens the
+'     two apart when the request is built. See PANEL_DELIMITER for why.
+'   * Values are case-sensitive 3-letter ISO 639-2 codes. `ENG` and `en` both
+'     return 0. So the option list must send the server's own `Value` verbatim,
+'     which is why nothing here upper- or lower-cases a code.
+'
+' THE ALIAS TRAP, and why this module exists at all. The server does NOT
+' canonicalize ISO 639-2/T against /B: it matches the literal tag on the file. On
+' the same library, `subtitleLanguages=fra` returns 1 film and `fre` returns 10,
+' and `/Items/Filters2` duly advertises BOTH as separate options — "French (fra)"
+' and "French (fre)". Offering those two entries as the server sends them would be
+' a filter where picking "French" gives one of two partial answers and which one
+' is arbitrary. Grouping them and sending `fra,fre` returns all 11, which is what
+' the user meant.
+'
+' The grouping needs no new table: `languageBaseCode()` already folds the alias
+' pairs (it is the same fold the audio/subtitle track pickers use), and
+' `resolveLanguageName()` already localizes a code through the app's own language
+' keys. Checked 2026-09-22 against the 52 codes the local fixture reports — every
+' one resolves, and the 8 alias pairs present (fra/fre, deu/ger, ces/cze, nld/dut,
+' zho/chi, eus/baq, ell/gre, ron/rum) merge cleanly.
+'
+' Using the app's names rather than the server's `Name` is also what makes the list
+' readable: the server's strings are English-only library-science labels
+' ("Spanish; Castilian (spa)", "Greek, Modern (1453-) (ell)"), and the app already
+' holds localized names for the same codes.
+namespace languageFilters
+
+  ' The first server line that honours the parameters at all. Below this they are
+  ' accepted and ignored, so the gate is on the SERVER VERSION and not on whether
+  ' the request succeeds.
+  const MIN_SERVER = "12.0.0"
+
+  ' The key each category is stored and sent under. Shared by the presenter that declares
+  ' the category, the Filters2 merge that fills it, and toWire(), so the three cannot
+  ' drift apart on spelling.
+  const AUDIO_KEY = "AudioLanguages"
+  const SUBTITLE_KEY = "SubtitleLanguages"
+
+  ' Separates the codes WITHIN one language's value, and is what the server requires
+  ' between values. Comma is not a preference: a pipe-separated list returns 0 results.
+  const CODE_DELIMITER = ","
+
+  ' Separates the selected options from EACH OTHER, in the panel and in the registry.
+  '
+  ' It cannot also be CODE_DELIMITER, and that is the whole reason this constant exists.
+  ' One language's value is already several codes joined by a comma ("fra,fre"), so a
+  ' comma between options makes the saved query ambiguous: the restore pass splits
+  ' "fra,fre" into "fra" and "fre", matches neither against the option, and leaves the
+  ' box unticked while the filter is still applied — and one confirming keypress on that
+  ' panel then clears the filter outright. Measured on a Roku Stick 2026-09-22: the
+  ' round-trip test fails on exactly the 8 alias-merged languages and passes on the rest,
+  ' which is what makes the bug look like flakiness rather than breakage.
+  '
+  ' "|" is what Genres and OfficialRatings already use for the same reason — their values
+  ' are free text that can contain a comma — so this follows the panel's existing rule
+  ' rather than inventing one: AN OPTION'S VALUE NEVER CONTAINS ITS CATEGORY'S DELIMITER.
+  ' toWire() flattens the two apart on the way to the request.
+  const PANEL_DELIMITER = "|"
+
+  ' supported: Whether this server honours the language filter parameters.
+  '
+  ' @param {string} serverVersion - m.global.server.version
+  ' @return {boolean} false for an empty/unknown version (the conservative answer —
+  '                   an unknown server is assumed not to filter, so the categories
+  '                   are hidden rather than offered and silently ignored)
+  function supported(serverVersion as string) as boolean
+    if not isValidAndNotEmpty(serverVersion) then return false
+    return versionChecker(serverVersion, languageFilters.MIN_SERVER)
+  end function
+
+  ' optionsFrom: Turn one `/Items/Filters2` language list into filter options,
+  ' merging the ISO 639-2/T and /B spellings of a language into a single entry.
+  '
+  ' @param {dynamic} namePairs - `AudioLanguages` or `SubtitleLanguages` from the
+  '                              Filters2 response: an array of { Name, Value }.
+  '                              Anything else (invalid, empty, not an array) is
+  '                              answered with an empty array, which the caller
+  '                              reads as "do not offer this category".
+  ' @return {object} array of { title, value }, sorted by localized title, where
+  '                  `value` is every code that resolved to the same language,
+  '                  comma-joined
+  function optionsFrom(namePairs as dynamic) as object
+    if type(namePairs) <> "roArray" then return []
+
+    ' base code -> { title, codes }. Insertion builds the groups; the sort below
+    ' fixes the display order, because AA key order is not defined.
+    groups = {}
+    order = []
+
+    for each pair in namePairs
+      if not isValid(pair) then continue for
+
+      code = pair.Value
+      if not isValidAndNotEmpty(code) then continue for
+
+      ' The app's own localized name, not the server's English label. Resolved from the
+      ' CODE the server sent, never from languageBaseCode()'s folded base: the two name
+      ' tables are keyed differently, and languageEnglishFallbacks holds the 3-letter
+      ' forms ("aar" -> "Afar") while the base of "aar" is "aa", which no table carries.
+      ' Resolving the base would render Afar as a bare "aa". (Tried, measured, reverted
+      ' 2026-09-22 — the naive de-duplication of this line is a downgrade.)
+      '
+      ' Empty means a code the app deliberately renders as nothing ("und", "zxx") — there
+      ' is no sensible row to offer for those, so they are dropped rather than shown with
+      ' a blank title. A code with no name at ALL keeps its raw form as the label, because
+      ' resolveLanguageName() falls back to the code: a filter that works under an ugly
+      ' label beats one that silently is not offered.
+      '
+      ' KNOWN LIMIT, deliberately not addressed here: when a group's spellings resolve to
+      ' DIFFERENT names, the first one the server listed wins, so the label depends on its
+      ' ordering. That needs both spellings of one language present in a single library
+      ' AND only one of them carrying a name — no such pair exists in the 52 codes the
+      ' local fixture reports, where every alias pair resolves identically.
+      title = resolveLanguageName(code)
+      if title = "" then continue for
+
+      base = languageBaseCode(code)
+      if groups.doesExist(base)
+        ' The alias case: a second spelling of a language already in the list.
+        ' Both codes have to be sent, because the server matches the literal tag.
+        if not inArray(groups[base].codes, code) then groups[base].codes.push(code)
+      else
+        groups[base] = { title: title, codes: [code] }
+        order.push(base)
+      end if
+    end for
+
+    options = CreateObject("roArray", order.count(), true)
+    for each base in order
+      options.push({
+        title: groups[base].title,
+        value: groups[base].codes.join(languageFilters.CODE_DELIMITER)
+      })
+    end for
+
+    ' Case-insensitive so the order matches how the titles read on screen.
+    options.sortBy("title", "i")
+    return options
+  end function
+
+  ' toWire: the request form of a saved `filterOptions` AA.
+  '
+  ' The panel and the registry separate selected options with PANEL_DELIMITER; the server
+  ' wants one flat comma list. Flattening that one level is the entire conversion —
+  ' "fra,fre|deu,ger" becomes "fra,fre,deu,ger" — and it is what lets the saved form stay
+  ' unambiguous while the sent form stays what the server accepts.
+  '
+  ' Only the two language keys are touched. Every other category already stores exactly
+  ' what it sends, so its value is copied through untouched.
+  '
+  ' Called from gridQuery.build(), which is the single place a saved `filterOptions`
+  ' becomes a request (LoadItemsTask2 appends whatever keys it is handed). Keeping the
+  ' conversion there is what keeps the panel, the registry and the wire in agreement.
+  '
+  ' @param {dynamic} filterOptions - the saved AA, as BaseGridView holds it
+  ' @return {object} a NEW AA; the caller's is never mutated
+  function toWire(filterOptions as dynamic) as object
+    if type(filterOptions) <> "roAssociativeArray" then return {}
+
+    wire = {}
+    for each key in filterOptions
+      if languageFilters.isLanguageKey(key)
+        wire[key] = textOrEmpty(filterOptions[key]).split(languageFilters.PANEL_DELIMITER).join(languageFilters.CODE_DELIMITER)
+      else
+        wire[key] = filterOptions[key]
+      end if
+    end for
+    return wire
+  end function
+
+  ' isLanguageKey: whether a `filterOptions` key is one of the two language categories.
+  '
+  ' Case-insensitive because the key round-trips through the registry as JSON and through
+  ' a SceneGraph assocarray field, neither of which promises to preserve the spelling a
+  ' presenter declared.
+  function isLanguageKey(key as dynamic) as boolean
+    name = LCase(textOrEmpty(key))
+    return name = LCase(languageFilters.AUDIO_KEY) or name = LCase(languageFilters.SUBTITLE_KEY)
+  end function
+
+end namespace

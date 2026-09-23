@@ -7,11 +7,12 @@ related-files:
   - source/api/sdkV2.bs
   - source/utils/deviceCapabilities.bs
   - source/utils/misc.bs
+  - source/utils/languageFilters.bs
   - source/utils/mediaSegments.bs
   - docs/dev/jellyfin-endpoint-availability.yml
   - docs/dev/jellyfin-version-boundaries.yml
   - scripts/lint/apiversion-consistency-check.js
-last-reviewed: 2026-09-21
+last-reviewed: 2026-09-22
 ---
 
 # JellyRock Versioning Systems Overview
@@ -93,11 +94,14 @@ Some Jellyfin API endpoints are only available on specific server versions. Thes
 | -------- | ----------- | -------------- | ------- |
 | `GET /MediaSegments/{itemId}` | 10.10.0 | `supportsMediaSegments()` | Fetch intro/outro/recap/preview/commercial segments for skip functionality |
 | `GET /Items/{itemId}/Collections` | 12.0.0 | `extrasRows.supportsItemCollections()` | The collections an item is in — the item-details Collections row |
+| `GET /Items` `audioLanguages` / `subtitleLanguages` | 12.0.0 | `languageFilters.supported()` | The library grid's audio- and subtitle-language filters. Gated on the SERVER VERSION rather than on the request succeeding, because 10.11 accepts both parameters and silently ignores them — an ungated filter would return the user's whole library instead of reporting a problem |
+| `GET /Items/Filters2` language lists | 12.0.0 | `languageFilters.supported()` | Supplies the options for the filters above. A SECOND filters endpoint, not a replacement: it carries `AudioLanguages` / `SubtitleLanguages`, while `/Items/Filters` carries `OfficialRatings` / `Years`, so a caller wanting both asks twice |
 
 **How it works:**
 
 - Guard functions call `versionChecker()` on the raw server version string — read from `m.global.server.version` inside the guard (`supportsMediaSegments()`), or passed in by the caller so the guard stays pure and table-testable (`extrasRows.supportsItemCollections(serverVersion)`)
 - Callers check the guard before making the API request — the endpoint simply isn't called on older servers
+- A gate can be on a PARAMETER rather than a whole endpoint (`audioLanguages` on `GET /Items`), and that case is the one to be careful with: an absent endpoint answers 404, but an unsupported parameter on a supported endpoint is **accepted and ignored**, so the request succeeds and returns unfiltered results. There is nothing to detect at runtime — verified on 10.11.11, where `audioLanguages=zzz` returns the full library in either casing — which is why the version check is the only correct gate
 - No `apiVersion` dispatch needed because these are top-level paths, not user-scoped endpoints
 
 **Endpoints that gracefully degrade (no explicit guard):** some post-floor
@@ -273,7 +277,7 @@ All code references this value to determine behavior.
 | Device Profile | `source/utils/deviceCapabilities.bs` (`V1/V2` selection internal) |
 | Field Handling | `source/data/JellyfinDataTransformer.bs`, `source/api/ApiClient.bs` |
 | Version Detection | `source/utils/misc.bs` (resolveApiVersion), `source/utils/session.bs` |
-| Version-Gated Endpoints | `source/utils/mediaSegments.bs` (supportsMediaSegments), `source/api/items.bs` (GetMediaSegments), `source/extras/extrasRows.bs` (supportsItemCollections) |
+| Version-Gated Endpoints | `source/utils/mediaSegments.bs` (supportsMediaSegments), `source/api/items.bs` (GetMediaSegments), `source/extras/extrasRows.bs` (supportsItemCollections), `source/utils/languageFilters.bs` (supported) |
 
 ## Adding Support for New Server Versions
 

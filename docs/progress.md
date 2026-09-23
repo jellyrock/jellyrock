@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-09-22
+last-updated: 2026-09-23
 ---
 
 # Progress
@@ -24,6 +24,10 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-23 — feat: Filter a movie library by audio and subtitle language on Jellyfin 12
+- 2026-09-23 — chore(skills): Don't let a refactor hide a fix from the PR title
+- 2026-09-23 — ci: Gate `creditRowKinds()` against the `PersonKind` enum
+- 2026-09-22 — `lint:language-coverage` now gates `creditRowKinds()`: every kind it names must be a `PersonKind` value in the committed spec fingerprints, every `messageKey` must exist in `en_US.json`, and a shape-drift guard keeps a re-authored table from passing vacuously
 - 2026-09-22 — fix: Don't let abandoned requests delay the ones you're waiting for
 - 2026-09-22 — feat: Show Created by and Directed by credits on every item type that has them
 - 2026-09-22 — fix: Show the focused movie's logo, not the previous one's, in the `Movies` view
@@ -99,9 +103,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-09-09 — fix: Close all three routes to a false buffer stall
 - 2026-09-09 — ci: cancel superseded PR device runs to drain the Roku queue
 - 2026-09-09 — Refresh the `rooibos-roku` patch for the installed version
-- 2026-09-08 — fix: Register the `state` observer exactly once
-- 2026-09-08 — fix: Register the `position` observer exactly once
-- 2026-09-08 — fix: Gate interface-field observer wiring; fix stale cross-file findings
 
 ## Open followups
 
@@ -149,7 +150,6 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 - **`scripts/measure.js` drives screens from the `SCREENS` registry but ignores their `requires` gates, so a measurement can silently profile the wrong thing.** The registry's `requires` gates are honored by the functional suite and the screenshot orchestrator (both via `firstUnmetRequirement()`), not by `measure.js` — which documents `--nav osd` as an example, and `osd` now carries a `HERO_PRESENT` gate. Against a server lacking the configured film, `findMovie` answers a miss with tile 0, so the measurement runs against whatever sorts first and records the number under the nav name as though nothing were wrong. Pre-existing rather than new (`subtitlePanel` has had a gate all along and `measure.js` ignored that too), and adding the field regressed nothing — but `osd` is a *documented* measurement nav, which widens the surface. It matters because a ledger figure's whole value is that two records under one nav name are comparable. **Fix shape:** call the same `firstUnmetRequirement()` and refuse the run with the gate's reason, rather than teaching `measure.js` a second notion of readiness.
 - **`observe-without-on-destroy` does not count `releaseTask(x, "field")` / `replaceTask(x, …, "field", …)` as releasing `x`'s observer**, so every migrated site (`SearchResults`, `FavoritesRows`, `BaseGridView`, `schedule`) carries an explicit `unobserveField` next to the helper that already does it. Teach the plugin the two helpers — `no-same-node-relaunch` already recognizes them as stopping their first argument.
 - **Nothing fails when a bare-array endpoint's builder is written with `validatedReq` instead of `listReq`.** [ADR 0039](adr/0039-list-endpoint-shape-in-pool.md) has the pool hold a list request's body to its shape, but only for builders that declare it; the "List requests" group in `ApiClient.spec.bs` pins the builders that exist and cannot see a new one. The first cut of that ADR's branch missed two of seven such readers, found only by joining the Jellyfin OpenAPI spec's array-typed 200 responses against the app's endpoints by hand (2026-09-22). **Fix shape:** have [`api-usage-manifest.js`](../scripts/generate/api-usage-manifest.js) record which builder helper each endpoint uses (it already reads `validatedReq`/`listReq` for the method), and a check join that against the spec's `type: array` 200 responses — reusing `scripts/lib/spec-fetch.cjs` rather than a second spec loader. Cost to weigh: CI needs the spec (a network fetch or the `api-watch` cache).
-- **`creditRowKinds()` names `PersonKind` values but sits outside the language-coverage gate.** [`scripts/lint/language-coverage.cjs`](../scripts/lint/language-coverage.cjs) finds its tables via `parseAA(peopleSource, '<fnName>')` — literally `personKindTranslationKeys` and `unlabeledPersonKinds` — so the credits-row kind table added in `credit-row-kinds-in-people` is invisible to it. No regression (it is an array of AAs, not an AA, so nothing is parsed wrongly), but an upstream rename or removal of `Creator` would silently empty the "Created by" line with every check green — the exact failure [translations.md](architecture/translations.md) credits that gate with preventing, having already shipped nine kinds as raw English. **Fix shape:** teach the gate a second parser for the array of AAs shape and assert every `kind` in it is a `PersonKind` some supported server sends, per the committed spec fingerprints.
 
 ### components
 
@@ -226,6 +226,7 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 - **The subtitle language picker shows two pairs of identical rows for Chinese** (#750 follow-up). Verified against Jellyfin's own culture table (`Emby.Server.Implementations/Localization/iso6392.txt` at v10.11.0): `zh-cn` and `zh-hans` both carry the `DisplayName` "Chinese (Simplified)", and `zh-tw` and `zh-hant` both carry "Chinese (Traditional)" — so `remoteSubtitles.cultureOptions()` emits four rows reading as two, plus a separate `ze` row reading "Chinese (Bilingual)". They are not duplicates to collapse: the codes are distinct and reach the provider distinctly, so a user picking the "wrong" one of a pair may get a different result set with no way to tell which they chose. This is the same class of problem `subtitleDropdownEntries()` already solves for tracks — make the row say what distinguishes it. **Fix shape:** in `cultureOptions()`, detect display-name collisions across the mapped set and disambiguate the colliding rows by appending their code ("Chinese (Simplified) · `zh-cn`"), leaving every non-colliding row untouched — the same "only mark what needs marking" rule the track dropdown uses. Cheap to test: the collision set is fixed per server and the function is already pure and unit-tested.
 - **roku-log prints a `LongInteger` or `Double` argument as an empty string**, so any `m.log` value that is a tick count or the Video node's `position` (a Double) logs blank unless the caller `.toStr()`s it (`LogMixin.toString` handles Integer/Float/String/Boolean/node/AA only). Still blank as of 2026-09-19: `VideoPlayerView`'s "Subtitle change requires stream reload" and "Audio index changed by user" (`position`), and `LoadVideoContentTask`'s "Playback position resolved" (`startingPoint`). **Fix shape:** one change to how the logger turns values into text rather than per-call-site `.toStr()` — but `LogMixin.brs` is a vendored ropm module, so check how it is patched/pinned first.
 - **Triage the Hint-severity diagnostics every bsconfig reports** (edits span `source/` and `components/`): bslint `type-reassignment` (195–200 per config) and BSC `overrides-ancestor-function` (49). Both rules predate the alpha.53 bump that surfaced the `bsconfig` warnings — compare counts against alpha.52 first to see whether the bump added instances, then fix each or silence it deliberately.
+- **A merged language-filter option takes its label from whichever ISO 639-2 spelling the server listed FIRST**, so a library carrying two spellings that resolve to different names gets an order-dependent label. `languageFilters.optionsFrom()` groups by `languageBaseCode()` but resolves the title from the member code, and the first one into the group wins. Latent rather than observed: every alias pair in the 52 codes the local fixture reports (measured 2026-09-22) resolves identically, so no such pair exists there. **The obvious fix is wrong — it was tried on device and reverted.** Resolving the title from the folded BASE code turns "Afar" into a bare `aa`, because `languageEnglishFallbacks` is keyed on the 3-letter forms (`aar` → "Afar") while `languageBaseCode()` folds those to a 2-letter base that no name table carries. A correct fix picks deterministically among the group's own members — sort the codes and take the first that resolves to a real name, falling back to the base — rather than collapsing the resolve call.
 
 ### api
 

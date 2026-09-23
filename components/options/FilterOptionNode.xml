@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One selectable option inside a filter category's CheckList.
+     `title` (from ContentNode) is what the list draws; `value` is what the request
+     carries. They are the same text for Genres and Years, and differ for the 12.0
+     language filters — see gridQuery.optionTitle() / optionValue() for why. -->
+<component name="FilterOptionNode" extends="ContentNode">
+  <interface>
+    <field id="value" type="string" />
+  </interface>
+</component>

@@ -283,6 +283,18 @@
       ]
     },
     {
+      "path": "/items/filters2",
+      "normalized": "/items/filters2",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
       "path": "/Items/Latest",
       "normalized": "/items/latest",
       "methods": [
@@ -3173,7 +3185,7 @@
       }
     },
     "counts": {
-      "endpoints": 78,
+      "endpoints": 79,
       "requestFields": 41,
       "responseFields": 215,
       "unresolvedEndpointSinks": 2

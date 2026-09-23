@@ -1697,6 +1697,16 @@ WHICH credits the details screen's credits row shows, and in WHAT order, is a ta
 
 Ruled out: a per-kind `creditNames(people, kind)` helper called once per kind (deleted — a copy and a walk per kind, and a second home for `PersonKind` knowledge to drift from), and keeping the kind literals in `ItemDetails.bs`. Parity with `jellyfin-web` is explicitly NOT maintained or verified — show what the server gives us and pick the best-reading order ourselves. The constraint worth re-evaluating: `creditRowKinds()` names `PersonKind` values but sits OUTSIDE `npm run lint:language-coverage`, which parses `personKindTranslationKeys()` and `unlabeledPersonKinds()` by function name — so an upstream rename of `Creator` would silently empty the line, the failure that gate exists to prevent.
 
+## decision-id: filter-option-delimiter-split
+
+**date**: 2026-09-22
+**status**: accepted
+**related-files**: `source/utils/languageFilters.bs`, `source/GridView/gridQuery.bs`, `source/GridView/MoviePresenter.bs`
+
+A library filter category's saved query is its checked options' values joined by the category's delimiter, and that same string is what the registry stores and what the request carries. Decoding it on restore is a plain split, which is correct only while an option's value never contains that delimiter. Every category was built to satisfy that — Genres and `OfficialRatings` use `|` because their values are free text, Years uses `,` because a year is digits — but the rule was never written down, and the 12.0 language filters broke it: one option's value is several ISO codes joined by `,` (`fra,fre`, because the server matches the literal tag and will not fold 639-2/T and /B together) under a category the server forces to use `,` between values as well. The saved form and the sent form are therefore no longer the same string: `PANEL_DELIMITER` (`|`) separates options in the panel and the registry, `CODE_DELIMITER` (`,`) separates codes inside one value, and `languageFilters.toWire()` flattens one into the other in `gridQuery.build()` — the single place a saved `filterOptions` becomes a request, since `LoadItemsTask2` appends whatever keys it is handed.
+
+Ruled out: matching set-wise on restore (splitting the option's own value too and testing for intersection), which keeps one string for both roles but repeals the rule the other three categories still rely on and leaves the saved query readable only by consulting the current option list; and making option values atomic base codes expanded to their alias spellings at request time, which is the strongest invariant but needs an inverse of `mediaLanguageAliases()` and sends codes `/Items/Filters2` never advertised. Splitting the delimiters restores the rule the codebase already followed rather than replacing it with a subtler one, and the conversion stays at one seam. The constraint worth re-evaluating: the rule is now enforced by a round-trip unit test over the shapes we construct, not by anything that can see a value the server invents — a future category whose values can contain `|` would break the same way, silently, with the filter applying while no box is ticked.
+
 ## decision-id: caption-fetch-render-split
 
 **date**: 2026-09-22
