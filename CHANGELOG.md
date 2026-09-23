@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Stop a late playback report replacing a dialog you opened meanwhile ([#1020](https://github.com/jellyrock/jellyrock/pull/1020))
 - Stop the playback info report reopening itself after you close it ([#1019](https://github.com/jellyrock/jellyrock/pull/1019))
 - Keep Home rows refreshing when you return to Home as a load finishes ([#1017](https://github.com/jellyrock/jellyrock/pull/1017))
 
