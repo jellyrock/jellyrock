@@ -169,6 +169,20 @@ describe('checkIssueRefs', () => {
     expect(problem).toContain('owner/repo#17044');
   });
 
+  // Each of these rendered as plain text through GitHub's own renderer (`gh api markdown`,
+  // mode gfm, context jellyrock/jellyrock, 2026-09-23), so failing them is right; the
+  // message must not assume the word before `#` is a repo.
+  it.each(['PR#123', 'issue#12', 'C#10', 'v2.2.5#3', 'CHANGELOG.md#399'])(
+    'flags %s with every form that links and the backtick escape',
+    (text) => {
+      const [problem] = checkIssueRefs(text);
+      const n = text.slice(text.indexOf('#'));
+      expect(problem).toContain(`"${text}" is not a link`);
+      expect(problem).toContain(`only ${n} (this repo's issue), owner/repo${n} or a URL`);
+      expect(problem).toContain('put it in backticks');
+    },
+  );
+
   it('passes bare and fully qualified references', () => {
     expect(checkIssueRefs('Fixes #12, see jellyfin/jellyfin#17044')).toEqual([]);
   });

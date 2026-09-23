@@ -146,11 +146,17 @@ export function issueRefs(text) {
   };
 }
 
-/** @returns {string[]} one problem per shorthand reference, which GitHub renders unlinked. */
+/**
+ * One problem per shorthand reference, which GitHub renders unlinked. The word before
+ * `#` need not be a repo (`PR#123`, `C#10` are unlinked too), so the message names
+ * every form that does link rather than guessing which one was meant.
+ *
+ * @returns {string[]}
+ */
 export function checkIssueRefs(text) {
   return issueRefs(text).shorthand.map((ref) => {
     const n = ref.slice(ref.indexOf('#'));
-    return `"${ref}" is not a link — GitHub links another repo's issue only as owner/repo${n} (e.g. jellyfin/jellyfin${n}) or a URL`;
+    return `"${ref}" is not a link — GitHub links only ${n} (this repo's issue), owner/repo${n} or a URL; if it isn't an issue reference, put it in backticks`;
   });
 }
 
