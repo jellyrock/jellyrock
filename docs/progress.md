@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-23 — chore(skills): Don't let a refactor hide a fix from the PR title
 - 2026-09-23 — ci: Gate `creditRowKinds()` against the `PersonKind` enum
 - 2026-09-22 — `lint:language-coverage` now gates `creditRowKinds()`: every kind it names must be a `PersonKind` value in the committed spec fingerprints, every `messageKey` must exist in `en_US.json`, and a shape-drift guard keeps a re-authored table from passing vacuously
 - 2026-09-22 — fix: Don't let abandoned requests delay the ones you're waiting for
