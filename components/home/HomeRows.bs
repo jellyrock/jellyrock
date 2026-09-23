@@ -290,8 +290,8 @@ end function
 ' Library-dependent sections (library row, latestmedia) are handled in onLibrariesLoaded.
 '
 ' Launches in the user's layout order. The loop may call a helper more than once per refresh
-' only if a type repeats, and each helper's own isLoading* guard is what holds a section to
-' one run — no-task-fanout does not follow a launch into a helper, so that guard is the bound.
+' only if a type repeats; each helper's own isLoading* guard holds its section to one run, and
+' states so at its launch — no-task-fanout follows these calls and fails the build otherwise.
 sub startParallelLoads()
   for each section in m.sectionPlan
     if section.type = "resume"
@@ -336,6 +336,7 @@ sub startResumeLoad()
   if m.isLoadingResume then return
   m.LoadContinueWatchingTask = replaceTask(m.LoadContinueWatchingTask, "LoadItemsTask", "content", { itemsToLoad: "continue" })
   m.LoadContinueWatchingTask.observeField("content", "updateContinueWatchingItems")
+  ' bsc-disable-next-line no-task-fanout one run at a time: returns above while m.isLoadingResume
   m.isLoadingResume = launchTask(m.LoadContinueWatchingTask)
 end sub
 
@@ -343,6 +344,7 @@ sub startNextUpLoad()
   if m.isLoadingNextUp then return
   m.LoadNextUpTask = replaceTask(m.LoadNextUpTask, "LoadItemsTask", "content", { itemsToLoad: "nextUp" })
   m.LoadNextUpTask.observeField("content", "updateNextUpItems")
+  ' bsc-disable-next-line no-task-fanout one run at a time: returns above while m.isLoadingNextUp
   m.isLoadingNextUp = launchTask(m.LoadNextUpTask)
 end sub
 
@@ -350,6 +352,7 @@ sub startOnNowLoad()
   if m.isLoadingOnNow then return
   m.LoadOnNowTask = replaceTask(m.LoadOnNowTask, "LoadItemsTask", "content", { itemsToLoad: "onNow" })
   m.LoadOnNowTask.observeField("content", "updateOnNowItems")
+  ' bsc-disable-next-line no-task-fanout one run at a time: returns above while m.isLoadingOnNow
   m.isLoadingOnNow = launchTask(m.LoadOnNowTask)
 end sub
 
@@ -357,6 +360,7 @@ sub startActiveRecordingsLoad()
   if m.isLoadingActiveRecordings then return
   m.LoadActiveRecordingsTask = replaceTask(m.LoadActiveRecordingsTask, "LoadItemsTask", "content", { itemsToLoad: "activeRecordings" })
   m.LoadActiveRecordingsTask.observeField("content", "updateActiveRecordingsItems")
+  ' bsc-disable-next-line no-task-fanout one run at a time: returns above while m.isLoadingActiveRecordings
   m.isLoadingActiveRecordings = launchTask(m.LoadActiveRecordingsTask)
 end sub
 
