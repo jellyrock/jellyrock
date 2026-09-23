@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-09-22
+last-updated: 2026-09-23
 ---
 
 # Progress
@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-23 — ci: Gate `creditRowKinds()` against the `PersonKind` enum
 - 2026-09-22 — `lint:language-coverage` now gates `creditRowKinds()`: every kind it names must be a `PersonKind` value in the committed spec fingerprints, every `messageKey` must exist in `en_US.json`, and a shape-drift guard keeps a re-authored table from passing vacuously
 - 2026-09-22 — fix: Don't let abandoned requests delay the ones you're waiting for
 - 2026-09-22 — feat: Show Created by and Directed by credits on every item type that has them
@@ -100,9 +101,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-09-09 — fix: Close all three routes to a false buffer stall
 - 2026-09-09 — ci: cancel superseded PR device runs to drain the Roku queue
 - 2026-09-09 — Refresh the `rooibos-roku` patch for the installed version
-- 2026-09-08 — fix: Register the `state` observer exactly once
-- 2026-09-08 — fix: Register the `position` observer exactly once
-- 2026-09-08 — fix: Gate interface-field observer wiring; fix stale cross-file findings
 
 ## Open followups
 
