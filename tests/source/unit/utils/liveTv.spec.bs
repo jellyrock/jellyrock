@@ -451,6 +451,94 @@ namespace tests
       end for
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("liveRestartOnMount() / liveRestartOnState() / liveRestartOnEnd()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Drives one mount that ends at once without playing; returns whether the host restarts.
+    private function endWithoutPlaying(budget as object, isLiveRestart as boolean) as boolean
+      liveRestartOnMount(budget, isLiveRestart)
+      liveRestartOnState(budget, "buffering", 0)
+      return liveRestartOnEnd(budget, 500)
+    end function
+
+    @it("restarts a channel that never plays LIVE_RESTART_MAX times, then gives up")
+    function _()
+      budget = newLiveRestartBudget()
+      m.assertTrue(m.endWithoutPlaying(budget, false))
+      for restart = 1 to LIVE_RESTART_MAX - 1
+        m.assertTrue(m.endWithoutPlaying(budget, true), "restart " + restart.toStr())
+      end for
+      m.assertFalse(m.endWithoutPlaying(budget, true))
+    end function
+
+    @it("starts a fresh budget on any mount that is not a restart (channel switch)")
+    function _()
+      budget = newLiveRestartBudget()
+      m.endWithoutPlaying(budget, false)
+      for restart = 1 to LIVE_RESTART_MAX - 1
+        m.endWithoutPlaying(budget, true)
+      end for
+      ' Switched away and back: the next end is the first of a new budget, not past the cap.
+      m.assertTrue(m.endWithoutPlaying(budget, false))
+      m.assertEqual(budget.count, 1)
+    end function
+
+    @it("resets the count after LIVE_RESTART_HEALTHY_MS of playing")
+    function _()
+      budget = newLiveRestartBudget()
+      m.endWithoutPlaying(budget, false)
+      m.endWithoutPlaying(budget, true)
+      liveRestartOnMount(budget, true)
+      liveRestartOnState(budget, "playing", 1000)
+      m.assertTrue(liveRestartOnEnd(budget, 1000 + LIVE_RESTART_HEALTHY_MS))
+      m.assertEqual(budget.count, 0)
+    end function
+
+    @it("does not count buffering after a moment of play as healthy playback")
+    function _()
+      budget = newLiveRestartBudget()
+      liveRestartOnMount(budget, false)
+      liveRestartOnState(budget, "playing", 0)
+      liveRestartOnState(budget, "buffering", 1000)
+      liveRestartOnEnd(budget, 1000 + LIVE_RESTART_HEALTHY_MS * 2)
+      m.assertEqual(budget.playedMs, 1000)
+      m.assertEqual(budget.count, 1)
+    end function
+
+    @it("adds up separate stretches of play and skips the paused time")
+    function _()
+      budget = newLiveRestartBudget()
+      liveRestartOnMount(budget, false)
+      liveRestartOnState(budget, "playing", 0)
+      liveRestartOnState(budget, "paused", 20000)
+      liveRestartOnState(budget, "playing", 80000)
+      liveRestartOnEnd(budget, 95000)
+      m.assertEqual(budget.playedMs, 35000)
+      m.assertEqual(budget.count, 0)
+    end function
+
+    @it("keeps the first start of a stretch when `playing` repeats")
+    function _()
+      budget = newLiveRestartBudget()
+      liveRestartOnMount(budget, false)
+      liveRestartOnState(budget, "playing", 0)
+      liveRestartOnState(budget, "playing", 10000)
+      liveRestartOnEnd(budget, 30000)
+      m.assertEqual(budget.playedMs, 30000)
+    end function
+
+    @it("starts each mount's played time at zero")
+    function _()
+      budget = newLiveRestartBudget()
+      liveRestartOnMount(budget, false)
+      liveRestartOnState(budget, "playing", 0)
+      liveRestartOnState(budget, "buffering", 20000)
+      liveRestartOnMount(budget, true)
+      m.assertEqual(budget.playedMs, 0)
+      m.assertEqual(budget.playingSinceMs, -1)
+    end function
+
   end class
 
 end namespace

@@ -57,9 +57,10 @@ sub init()
   ' router-active view (JRScene's overhang controller reads isOverhangVisible on mount).
   m.top.isOverhangVisible = false
 
-  ' Live TV restart budget, per channel: see nextLiveRestartCount.
-  m.liveRestartChannelId = ""
-  m.liveRestartCount = 0
+  ' Live TV restart budget, carried across mounts: see newLiveRestartBudget. The clock only
+  ' supplies monotonic readings for its played-time accounting.
+  m.liveRestart = newLiveRestartBudget()
+  m.liveRestartClock = CreateObject("roTimespan")
 end sub
 
 ' Router lifecycle (via JRScreen's onViewOpen bridge): mount the player for the
@@ -89,9 +90,10 @@ end function
 ' Build + mount the VideoPlayerView as a child of this host. Ported from
 ' ViewCreator.CreateVideoPlayerView; the only behavioral change is appendChild to
 ' the host instead of SceneManager.pushScene.
-sub mountPlayer()
-  ' Started on this mount's first `playing`, for the Live TV restart rule.
-  m.playingClock = invalid
+'
+' @param {boolean} isLiveRestart - true only from restartLiveChannel; see liveRestartOnMount
+sub mountPlayer(isLiveRestart = false as boolean)
+  liveRestartOnMount(m.liveRestart, isLiveRestart)
   m.view = CreateObject("roSGNode", "VideoPlayerView")
   ' Keep video player invisible during loading to prevent black background from covering backdrop
   m.view.visible = false
@@ -147,12 +149,19 @@ sub destroyPlayer()
 end sub
 
 ' Host-internal advancement: remount the player for the CURRENT queue position.
-' Callers (onPlayerStateChange next-item / Live TV restart; VideoPlayerView channel
+' Callers (onPlayerStateChange next-item; VideoPlayerView channel
 ' switch) set the position + backdrop first. Replaces ViewCreator's
 ' clearPreviousScene + playQueue (which created a new pushed scene).
 sub playCurrentQueueItem()
   destroyPlayer()
   mountPlayer()
+end sub
+
+' Restart the Live TV channel whose stream ended. Same remount as playCurrentQueueItem, except
+' that it keeps the restart count: every other remount (channel switch, queue advance) resets it.
+sub restartLiveChannel()
+  destroyPlayer()
+  mountPlayer(true)
 end sub
 
 ' A deep link arrived while this player is active. Stop + report the player NOW (synchronously)
@@ -199,10 +208,7 @@ end sub
 ' ===========================================================================
 sub onPlayerStateChange()
   state = LCase(m.view.state)
-  if state = "playing"
-    if not isValid(m.playingClock) then m.playingClock = CreateObject("roTimespan")
-    return
-  end if
+  liveRestartOnState(m.liveRestart, state, m.liveRestartClock.TotalMilliseconds())
   if state <> "finished" then return
 
   ' Don't advance mid-retry; the DoVi fallback calls stop which can fire "finished".
@@ -263,25 +269,16 @@ sub onPlayerStateChange()
 
   ' Live TV channel that finished -> restart the same channel (same queue position). A live feed
   ' that drops mid-stream surfaces as `finished`; one that keeps ending without playing gets the
-  ' error instead of a restart loop (nextLiveRestartCount).
+  ' error instead of a restart loop (liveRestartOnEnd in liveTv.bs).
   currentItem = queueManager.callFunc("getCurrentItem")
   if isValid(currentItem)
     currentItemType = queueManager.callFunc("getItemType", currentItem)
     if currentItemType = "tvchannel"
-      ' Keyed on the channel, so a channel change starts a fresh budget.
-      channelId = textOrEmpty(currentItem.id)
-      if channelId <> m.liveRestartChannelId
-        m.liveRestartChannelId = channelId
-        m.liveRestartCount = 0
-      end if
-      playedMs = 0
-      if isValid(m.playingClock) then playedMs = m.playingClock.TotalMilliseconds()
-      m.liveRestartCount = nextLiveRestartCount(m.liveRestartCount, playedMs)
-      if canRestartLiveChannel(m.liveRestartCount)
-        playCurrentQueueItem()
+      if liveRestartOnEnd(m.liveRestart, m.liveRestartClock.TotalMilliseconds())
+        restartLiveChannel()
       else
-        m.log.warn("Live TV channel keeps ending without playing; showing the error instead of restarting", channelId, m.liveRestartCount)
-        m.view.callFunc("showPlaybackError")
+        m.log.warn("Live TV channel keeps ending without playing; showing the error instead of restarting", textOrEmpty(currentItem.id), m.liveRestart.count, m.liveRestart.playedMs)
+        m.view.callFunc("showInvalidLiveStreamError")
       end if
       return
     end if
