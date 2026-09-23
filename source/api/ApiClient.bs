@@ -869,6 +869,24 @@ class ApiClient
     return m.validatedReq("GET", buildURL("/items/filters", params))
   end function
 
+  ' Build a request AA for GetFilters2, for use with fetchRes() or fetchJson().
+  '
+  ' A SECOND filters endpoint, not a replacement: the two return disjoint sets.
+  ' `/items/filters` carries OfficialRatings and Years, which this one does not;
+  ' this one carries AudioLanguages and SubtitleLanguages (12.0+), which that one
+  ' does not. A caller wanting both has to ask twice — verified against the
+  ' 10.11.11 and 12.0.0 OpenAPI specs, where `QueryFiltersLegacy` and
+  ' `QueryFilters` are separate schemas.
+  '
+  ' On servers below 12.0 the response omits the language keys entirely, so their
+  ' absence is a usable capability probe rather than an empty-list ambiguity.
+  '
+  ' @param params - Query parameters (userid, parentid, includeitemtypes, etc.)
+  ' @returns Request AA: { method, url } or invalid if server URL not set
+  function BuildGetFilters2Request(params = {} as object) as dynamic
+    return m.validatedReq("GET", buildURL("/items/filters2", params))
+  end function
+
   ' ═══════════════════════════════════════════════════════════════════════════
   ' IMAGE ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════

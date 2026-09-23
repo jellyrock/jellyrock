@@ -18,11 +18,33 @@ class GridPresenterBase
   ' Cached filter options from API (invalid = not loaded, {} = load failed)
   protected apiFilters
 
+  ' Which library m.apiFilters holds a SUCCESSFUL load for, "" when none. This is the
+  ' cache, and the reason one exists: the filter lists are needed only if the user opens
+  ' the options panel, but loadFilters() is reached from configureLoadTask(), which runs
+  ' on every query build — every sort change, filter change, view change, alpha letter
+  ' and voice search. Without this, browsing a library refetches both filter endpoints
+  ' repeatedly for data most sessions never look at, competing with the grid's own load
+  ' on a contended render thread (see docs/architecture/async.md).
+  protected filtersLoadedFor
+
+  ' The library a fetch is CURRENTLY in flight for, "" when none. Separate from the cache
+  ' because a request that has not answered yet is neither loaded nor absent, and because
+  ' fetchAsync keys its pending registry by requestId — two overlapping loads of the same
+  ' library would collide on "filters-<parentid>".
+  protected filtersInFlightFor
+
+  ' What refreshFilters() needs to repeat the last request. Unset on a presenter with no
+  ' dynamic filters, which is what makes refreshFilters() a no-op there.
+  protected filtersRequest
+
   ' Constructor - view is set later via onInit()
   sub new()
     m.view = invalid
     m.log = invalid
     m.apiFilters = invalid
+    m.filtersLoadedFor = ""
+    m.filtersInFlightFor = ""
+    m.filtersRequest = invalid
   end sub
 
   ' ============================================================================
@@ -159,14 +181,49 @@ class GridPresenterBase
   ' of GetFiltersTask; see docs/dev/promises.md). Results arrive via onFiltersLoaded().
   ' @param {object} parentItem - The library item to load filters for
   ' @param {string} itemType - The item type to filter (e.g., "Movie", "Series")
-  sub loadFilters(parentItem as object, itemType as string)
-    if not isValid(m.view) then return
+  ' @param {boolean} [force=false] - refetch even when this library is already cached.
+  '                                   Set by refreshFilters() when the panel opens.
+  sub loadFilters(parentItem as object, itemType as string, force = false as boolean)
+    if not isValid(m.view) or not isValid(parentItem) then return
+
+    parentId = textOrEmpty(parentItem.Id)
+    if parentId = "" then return
+
+    ' Remembered before the guards, so refreshFilters() can repeat the request even on a
+    ' call that is about to be skipped as already-loaded.
+    m.filtersRequest = { parentItem: parentItem, itemType: itemType }
+
+    ' One request at a time per library: a second would collide with the first in
+    ' fetchAsync's pending registry, which is keyed by requestId.
+    if m.filtersInFlightFor = parentId then return
+    if not force and m.filtersLoadedFor = parentId then return
+
+    m.filtersInFlightFor = parentId
 
     m.view.top.callFunc("loadFilters", {
       userid: m.view.global.user.id,
-      parentid: parentItem.Id,
+      parentid: parentId,
       includeitemtypes: itemType
     })
+  end sub
+
+  ' refreshFilters: Revalidate the cached filter lists in the background.
+  '
+  ' Called when the options panel OPENS, which is the only moment the lists are actually
+  ' looked at — so freshness is bought exactly where it is spent, and a session that
+  ' never opens the panel pays for one load instead of one per query build.
+  '
+  ' Deliberately NOT rendered into the open panel. BaseGridView.SetUpOptions() has already
+  ' read m.apiFilters by the time this answers, and re-running it would reassign the
+  ' panel's content and reset checkedItem — categories would appear and shift focus under
+  ' a cursor already moving through the list. The refreshed lists show on the NEXT open,
+  ' which is the stale-while-revalidate contract and the reason no TTL is needed.
+  '
+  ' It also retries a previous failure: a failed load never marks the cache populated, so
+  ' the panel that needs those categories is what asks for them again.
+  sub refreshFilters()
+    if not isValid(m.filtersRequest) then return
+    m.loadFilters(m.filtersRequest.parentItem, m.filtersRequest.itemType, true)
   end sub
 
   ' Called when filters are delivered by the host component's promise (BaseGridView.loadFilters).
@@ -174,10 +231,29 @@ class GridPresenterBase
   ' @param {object} filters - The filter options AA (empty {} on failure)
   ' @param {string} errorMsg - Non-empty on failure; triggers a toast
   sub onFiltersLoaded(filters as object, errorMsg as string)
-    m.apiFilters = filters
+    inFlightFor = m.filtersInFlightFor
+    m.filtersInFlightFor = ""
+
     if errorMsg <> ""
-      m.showToast(errorMsg)
+      ' A FAILED REVALIDATION MUST NOT EMPTY A PANEL THAT WAS WORKING. Once the lists are
+      ' cached, every panel open fires a refresh over them, so a server that goes flaky
+      ' mid-session would otherwise replace good categories with {} — and the cache would
+      ' still read as loaded, so nothing but another open would retry. Keeping the last
+      ' good result is the whole point of revalidating rather than re-fetching.
+      '
+      ' Silent for the same reason: someone looking at a working filter panel has no
+      ' problem to be told about, and the toast would repeat on every open. Only a failure
+      ' with NOTHING cached reaches the user, because that panel really is missing its
+      ' categories.
+      if m.filtersLoadedFor = ""
+        m.apiFilters = filters
+        m.showToast(errorMsg)
+      end if
+      return
     end if
+
+    m.apiFilters = filters
+    m.filtersLoadedFor = inFlightFor
   end sub
 
   ' ============================================================================
@@ -207,6 +283,9 @@ class GridPresenterBase
     ' The filter fetch is now a promise on the host component; auto-abandon (injected into
     ' BaseGridView.onDestroy) cancels any in-flight request, so there's no task/observer here.
     m.apiFilters = invalid
+    m.filtersLoadedFor = ""
+    m.filtersInFlightFor = ""
+    m.filtersRequest = invalid
     m.view = invalid
     m.log = invalid
   end sub

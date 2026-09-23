@@ -1,3 +1,4 @@
+import "pkg:/source/utils/languageFilters.bs"
 import "pkg:/source/utils/misc.bs"
 
 ' The library grid's LoadItemsTask2 query — what BaseGridView asks for, kept apart from the
@@ -30,7 +31,10 @@ namespace gridQuery
       sortField: state.sortField,
       sortAscending: state.sortAscending,
       filter: state.filter,
-      filterOptions: state.filterOptions,
+      ' The ONE place a saved filter becomes a request. The panel and the registry
+      ' separate options with the category's own delimiter; the language categories then
+      ' need flattening to the comma list the server takes. See languageFilters.toWire.
+      filterOptions: languageFilters.toWire(state.filterOptions),
       ' Presenters can override any of these
       itemId: parentItem.Id,
       isRecursive: true,
@@ -43,6 +47,147 @@ namespace gridQuery
       presenter.configureLoadTask(query, parentItem, view)
     end if
     return query
+  end function
+
+  ' ── A category's options, its saved query, and the invariant between them ──────
+  '
+  ' A filter category's selectable options come in two shapes, and every site that reads
+  ' them goes through optionTitle() / optionValue() so they cannot disagree about which
+  ' is which.
+  '
+  ' A PLAIN STRING is its own query value: Genres sends the genre name, Years sends the
+  ' year. What the panel shows and what the request carries are the same text.
+  '
+  ' An AA — { title, value } — separates them, which the 12.0 language filters need in
+  ' both directions. The label has to be the app's own localized language name, because
+  ' the server's is an English library-science string ("Spanish; Castilian (spa)"); the
+  ' value has to be the server's own case-sensitive codes, and for a language with two
+  ' ISO 639-2 spellings it is BOTH of them, since the server matches the literal tag on
+  ' the file. Sending the label would return nothing.
+  '
+  ' THE INVARIANT. A category's saved query is its checked options' values joined by the
+  ' category's delimiter, and that same string is what the registry stores. Decoding it
+  ' on restore is a plain split, which is correct only while this holds:
+  '
+  '     AN OPTION'S VALUE NEVER CONTAINS ITS CATEGORY'S DELIMITER.
+  '
+  ' Every category is built to satisfy it, and the delimiters were chosen for that
+  ' reason: Genres and OfficialRatings use "|" because their values are free text that
+  ' may contain commas and spaces; Years uses "," because a year is digits; the language
+  ' filters use "|" because ONE option's value is several ISO codes joined by ","
+  ' (languageFilters.toWire converts that form to the comma-only one the server wants).
+  '
+  ' Break it and the failure is silent and specific: the query still applies, because
+  ' joining is unaffected, but the restore pass splits a value apart and matches none of
+  ' the pieces — so the filter is active with no box ticked, and one confirming keypress
+  ' on that panel then clears it. queryValueFor() and checkedStateFor() are inverses, and
+  ' are tested as a ROUND TRIP rather than individually, because each is self-consistently
+  ' correct on its own while the pair silently disagrees.
+  '
+  ' Both accessors read through textOrEmpty() rather than toString(), which FAULTS on
+  ' Invalid (it falls through to Str()) — and a filter category's option list is exactly
+  ' the kind of place a missing entry shows up. Both also trim, because Str() on a number
+  ' returns a LEADING SPACE (`1999` -> `" 1999"`), which would never match the saved
+  ' query. Both faults were found by the unit tests on device, not by review.
+
+  ' optionTitle: what the user sees for one selectable option.
+  function optionTitle(option as dynamic) as string
+    if isFilterOptionPair(option) then return textOrEmpty(option.title).trim()
+    return textOrEmpty(option).trim()
+  end function
+
+  ' optionValue: what the request carries for one selectable option.
+  function optionValue(option as dynamic) as string
+    if isFilterOptionPair(option) then return textOrEmpty(option.value).trim()
+    return textOrEmpty(option).trim()
+  end function
+
+  ' Whether an option carries a separate label and value, rather than being its own.
+  '
+  ' A plain `and` would not do here: BrightScript does not short-circuit it, so a
+  ' validity guard and a member access cannot share one condition.
+  function isFilterOptionPair(option as dynamic) as boolean
+    if not isValid(option) then return false
+    return LCase(type(option)) = "roassociativearray"
+  end function
+
+  ' optionValues: every option's query value, in the order the panel lists them.
+  '
+  ' @param options - a category's `Options` list
+  ' @return {object} array of strings, one per option
+  function optionValues(options as dynamic) as object
+    values = []
+    if type(options) <> "roArray" then return values
+    for each option in options
+      values.push(gridQuery.optionValue(option))
+    end for
+    return values
+  end function
+
+  ' queryValueFor: the saved query for one category — its checked options' values, joined.
+  '
+  ' Takes VALUES rather than options because the caller (ItemGridOptions) reads them off
+  ' the CheckList's own nodes, not off the presenter's option list; optionValues() is the
+  ' bridge for callers that hold the list instead.
+  '
+  ' @param values - option query values in panel order
+  ' @param checkedState - one boolean per option, panel order
+  ' @param delimiter - the category's delimiter
+  ' @return {string} "" when nothing is checked, which the caller reads as "no filter"
+  function queryValueFor(values as dynamic, checkedState as dynamic, delimiter as string) as string
+    if type(values) <> "roArray" or type(checkedState) <> "roArray" then return ""
+
+    selected = []
+    for i = 0 to values.count() - 1
+      ' A checkedState shorter than the option list means the panel and the list have
+      ' drifted; take only what both agree on rather than indexing off the end.
+      if i >= checkedState.count() then exit for
+      if isBooleanTrue(checkedState[i])
+        value = textOrEmpty(values[i]).trim()
+        if value <> "" then selected.push(value)
+      end if
+    end for
+
+    return selected.join(delimiter)
+  end function
+
+  ' checkedStateFor: which of a category's options a saved query has selected.
+  '
+  ' The inverse of queryValueFor(), and the reason the pair has to be tested together:
+  ' this is what re-ticks the boxes when the panel reopens, matching on the VALUE because
+  ' that is what was saved — the registry holds the query the filter applied, not the
+  ' labels it was picked by.
+  '
+  ' @param options - a category's `Options` list
+  ' @param savedQuery - the stored query string for this category
+  ' @param delimiter - the category's delimiter
+  ' @return {object} one boolean per option, panel order
+  function checkedStateFor(options as dynamic, savedQuery as dynamic, delimiter as string) as object
+    checkedState = []
+    if type(options) <> "roArray" then return checkedState
+
+    ' An empty separator makes Split() return one entry PER CHARACTER, so a category that
+    ' somehow declared none must fall back to "the whole string is one value".
+    saved = textOrEmpty(savedQuery).trim()
+    selected = []
+    if saved <> ""
+      if delimiter = ""
+        selected = [saved]
+      else
+        selected = saved.split(delimiter)
+      end if
+    end if
+
+    for each option in options
+      value = LCase(gridQuery.optionValue(option))
+      matched = false
+      for each candidate in selected
+        if value <> "" and value = LCase(textOrEmpty(candidate).trim()) then matched = true
+      end for
+      checkedState.push(matched)
+    end for
+
+    return checkedState
   end function
 
 end namespace
