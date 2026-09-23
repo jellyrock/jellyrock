@@ -10,6 +10,14 @@
 //       "key": translationKeys.X   ← translationKey
 //     }
 //   end function
+//
+// people.bs also holds an ORDERED table, parsed by parseAAArray():
+//
+//   function creditRowKinds()
+//     m.<cache> = [
+//       { kind: "creator", messageKey: translationKeys.X }
+//     ]
+//   end function
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -68,11 +76,44 @@ end function
 
 // people.bs holds the OTHER localization table the script gates: PersonKind →
 // translation key, plus the set of kinds deliberately rendered blank.
-function buildPeopleBs({ personKinds = {}, unlabelledKinds = [] }) {
+function buildPeopleBs({
+  personKinds = {},
+  unlabelledKinds = [],
+  creditRowKinds = [],
+  // Escape hatches for the shape-drift tests: author the array literal's body
+  // verbatim, or omit the function / its literal entirely.
+  rawCreditRows = null,
+  omitCreditRowKinds = false,
+  omitCreditRowLiteral = false,
+}) {
   const kindEntries = Object.entries(personKinds)
     .map(([k, v]) => `    "${k}": ${v}`)
     .join('\n');
   const unlabelledEntries = unlabelledKinds.map((k) => `    "${k}": true`).join('\n');
+  const creditEntries =
+    rawCreditRows ??
+    creditRowKinds
+      .map(
+        ({ kind, messageKey }) =>
+          `    { kind: "${kind}", messageKey: translationKeys.${messageKey} }`,
+      )
+      .join(',\n');
+
+  let creditFn = `
+function creditRowKinds()
+  m.creditRowKindsCache = [
+${creditEntries}
+  ]
+end function
+`;
+  if (omitCreditRowLiteral) {
+    creditFn = `
+function creditRowKinds()
+  m.creditRowKindsCache = invalid
+end function
+`;
+  }
+  if (omitCreditRowKinds) creditFn = '';
 
   return `
 function personKindTranslationKeys()
@@ -86,7 +127,7 @@ function unlabeledPersonKinds()
 ${unlabelledEntries}
   }
 end function
-`;
+${creditFn}`;
 }
 
 // The PersonKind defaults are deliberately MINIMAL — one enum value, declared blank,
@@ -100,6 +141,10 @@ function setupTree({
   enUS = {},
   personKinds = {},
   unlabelledKinds = ['unknown'],
+  creditRowKinds = [],
+  rawCreditRows = null,
+  omitCreditRowKinds = false,
+  omitCreditRowLiteral = false,
   fingerprints = { 'jellyfin-12.0.json': ['Unknown'] },
 }) {
   const dir = mkdtempSync(join(tmpdir(), 'jellyrock-language-coverage-'));
@@ -112,7 +157,14 @@ function setupTree({
   );
   writeFileSync(
     join(dir, 'source', 'utils', 'people.bs'),
-    buildPeopleBs({ personKinds, unlabelledKinds }),
+    buildPeopleBs({
+      personKinds,
+      unlabelledKinds,
+      creditRowKinds,
+      rawCreditRows,
+      omitCreditRowKinds,
+      omitCreditRowLiteral,
+    }),
   );
   for (const [file, values] of Object.entries(fingerprints)) {
     writeFileSync(
@@ -347,6 +399,125 @@ describe('language-coverage — PersonKind coverage', () => {
     const { exitCode, stdout } = spawnScript(SCRIPT, [dir]);
     expect(exitCode).toBe(1);
     expect(stdout).toMatch(/key "LabelPersonKindActor" is not defined/);
+  });
+
+  // ── creditRowKinds(): the ordered table that drives the details screen's
+  // per-kind credit lines. It sat outside every check until #1000, because the
+  // gate finds its tables by function name AND parses an AA, while this one is
+  // an array.
+  it('exits 0 when a credit row names an enum kind whose label key exists', () => {
+    dir = setupTree({
+      ...CLEAN_LANG,
+      enUS: {
+        LanguageEnglish: 'English',
+        LabelPersonKindActor: 'Actor',
+        MessageCreatedBy1: 'Created by {0}',
+      },
+      fingerprints: { 'jellyfin-12.0.json': ['Actor', 'Creator', 'Unknown'] },
+      personKinds: { actor: 'translationKeys.LabelPersonKindActor' },
+      unlabelledKinds: ['unknown', 'creator'],
+      creditRowKinds: [{ kind: 'creator', messageKey: 'MessageCreatedBy1' }],
+    });
+    const { exitCode, stdout } = spawnScript(SCRIPT, [dir]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/1 credit row kind\(s\) resolve/);
+  });
+
+  it('exits 1 when a credit row names a kind no supported server sends', () => {
+    // The defect this check closes: upstream renames or drops `Creator`, the
+    // "Created by" line silently renders empty, and every other check stays green.
+    dir = setupTree({
+      ...CLEAN_LANG,
+      enUS: { LanguageEnglish: 'English', MessageCreatedBy1: 'Created by {0}' },
+      fingerprints: { 'jellyfin-12.0.json': ['Actor', 'Unknown'] },
+      personKinds: {},
+      unlabelledKinds: ['unknown', 'actor'],
+      creditRowKinds: [{ kind: 'creator', messageKey: 'MessageCreatedBy1' }],
+    });
+    const { exitCode, stdout } = spawnScript(SCRIPT, [dir]);
+    expect(exitCode).toBe(1);
+    expect(stdout).toMatch(/creditRowKinds\(\) names kind "creator", which is not a PersonKind/);
+  });
+
+  it("exits 1 when a credit row's message key is not in en_US.json", () => {
+    dir = setupTree({
+      ...CLEAN_LANG,
+      enUS: { LanguageEnglish: 'English' }, // no MessageCreatedBy1
+      fingerprints: { 'jellyfin-12.0.json': ['Creator', 'Unknown'] },
+      personKinds: {},
+      unlabelledKinds: ['unknown', 'creator'],
+      creditRowKinds: [{ kind: 'creator', messageKey: 'MessageCreatedBy1' }],
+    });
+    const { exitCode, stdout } = spawnScript(SCRIPT, [dir]);
+    expect(exitCode).toBe(1);
+    expect(stdout).toMatch(/key "MessageCreatedBy1" is not defined/);
+  });
+
+  it('exits 0 on a genuinely empty credit-row table', () => {
+    // The one quiet answer, and only because the literal provably holds nothing.
+    dir = setupTree({
+      ...CLEAN_LANG,
+      enUS: { LanguageEnglish: 'English' },
+      fingerprints: { 'jellyfin-12.0.json': ['Unknown'] },
+      creditRowKinds: [],
+    });
+    const { exitCode, stdout } = spawnScript(SCRIPT, [dir]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/0 credit row kind\(s\) resolve/);
+  });
+
+  it('fails loudly when the credit-row table holds entries it cannot read', () => {
+    // Shape drift must not read as "no credit rows to check". An entry authored in a
+    // form the parser does not know would otherwise disable this check silently —
+    // exactly how the table escaped the gate in the first place.
+    dir = setupTree({
+      ...CLEAN_LANG,
+      enUS: { LanguageEnglish: 'English' },
+      fingerprints: { 'jellyfin-12.0.json': ['Unknown'] },
+      rawCreditRows: '    { kind: "creator" }',
+    });
+    const { exitCode, stderr } = spawnScript(SCRIPT, [dir]);
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toMatch(/every entry needs/);
+  });
+
+  it('fails loudly when the table is re-authored to a shape with no AA entries', () => {
+    // Found while mutation-checking the guard above: keying "is it empty?" on the
+    // presence of a brace let a literal of bare strings parse to zero entries and
+    // pass. An empty table is quiet; a NON-empty one it cannot read must not be.
+    dir = setupTree({
+      ...CLEAN_LANG,
+      enUS: { LanguageEnglish: 'English' },
+      fingerprints: { 'jellyfin-12.0.json': ['Unknown'] },
+      rawCreditRows: '    "creator"',
+    });
+    const { exitCode, stderr } = spawnScript(SCRIPT, [dir]);
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toMatch(/parsed no entries from/);
+  });
+
+  it('fails loudly when the credit-row table is gone entirely', () => {
+    dir = setupTree({
+      ...CLEAN_LANG,
+      enUS: { LanguageEnglish: 'English' },
+      fingerprints: { 'jellyfin-12.0.json': ['Unknown'] },
+      omitCreditRowKinds: true,
+    });
+    const { exitCode, stderr } = spawnScript(SCRIPT, [dir]);
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toMatch(/function creditRowKinds\(\) not found/);
+  });
+
+  it('fails loudly when the credit-row table no longer holds an array literal', () => {
+    dir = setupTree({
+      ...CLEAN_LANG,
+      enUS: { LanguageEnglish: 'English' },
+      fingerprints: { 'jellyfin-12.0.json': ['Unknown'] },
+      omitCreditRowLiteral: true,
+    });
+    const { exitCode, stderr } = spawnScript(SCRIPT, [dir]);
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toMatch(/no `= \[ … \]` array literal/);
   });
 
   it('fails loudly when no fingerprint defines the enum, rather than passing silently', () => {
