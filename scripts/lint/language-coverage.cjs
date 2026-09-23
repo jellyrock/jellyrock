@@ -268,7 +268,8 @@ function parseAAArray(source, fnName, fileLabel) {
 
   // Quiet ONLY for a literal that provably holds nothing. Keying this on `{`
   // would let a re-authoring to bare strings (`[ "creator" ]`) parse to zero
-  // entries and pass, so the test is non-whitespace CONTENT, not brace shape.
+  // entries and pass, so the test is whether the literal holds any CONTENT at
+  // all, not whether it has braces.
   if (entries.length === 0 && literal.trim() !== '') {
     throw new Error(
       `${fnName}() in ${fileLabel} holds content this check parsed no entries from ` +

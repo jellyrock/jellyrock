@@ -8,7 +8,7 @@ related-files:
   - scripts/bsc-plugins/translation-keys.cjs
   - scripts/lint/update-translations.cjs
   - scripts/lint/language-coverage.cjs
-last-reviewed: 2026-09-20
+last-reviewed: 2026-09-22
 ---
 
 # Translations
@@ -159,9 +159,13 @@ Translation integrity is enforced by two scripts, both run as part of `npm run l
 | Command | What it checks |
 | --- | --- |
 | `lint:translations` | en_US.json sort order and orphans; all code `translate()` / `translationKeys.*` references exist; no hardcoded string literals; locale JSON validity; placeholder parity; plural completeness; coverage; languages.json alignment |
-| `lint:language-coverage` | The two lookup tables that map codes to translation keys stay complete: the media-language resolver in `languages.bs` (alias → key → English-fallback tiers), and the person-label table in `people.bs` — every `PersonKind` value in the committed spec fingerprints must be labeled or declared deliberately blank |
+| `lint:language-coverage` | The lookup tables that map codes to translation keys stay complete: the media-language resolver in `languages.bs` (alias → key → English-fallback tiers), the person-label table in `people.bs` (every `PersonKind` value in the committed spec fingerprints must be labeled or declared deliberately blank), and `creditRowKinds()` in the same file (every kind a credit line names must still be a value some supported server sends, and its `messageKey` must exist) |
 
-If `lint:language-coverage` fails after a Jellyfin upgrade refreshed the fingerprints, a new `PersonKind` value has appeared upstream: add a `LabelPersonKind…` key and a row to `personKindTranslationKeys()`, or a row to `unlabeledPersonKinds()` if it should render nothing. Why this is a lint rather than a compile error: [translations.md](../architecture/translations.md#coverage-is-gated-not-remembered).
+If `lint:language-coverage` fails after a Jellyfin upgrade refreshed the fingerprints, read which check failed — the remediation differs:
+
+- **A `PersonKind` value has no row** — one appeared upstream. Add a `LabelPersonKind…` key and a row to `personKindTranslationKeys()`, or a row to `unlabeledPersonKinds()` if it should render nothing.
+- **A `creditRowKinds()` kind is not a `PersonKind` value** — one was renamed or dropped upstream, so that credit line would render empty. Update the kind in `creditRowKinds()` to the new spelling, or remove the line if the kind is gone for good. Do NOT silence it by deleting the check: an empty credit line is the failure, and it is invisible at runtime.
+- **The credit-row table's shape could not be read** — the table was re-authored into a form the gate's parser does not know. Restore the `{ kind: "x", messageKey: translationKeys.Y }` entry shape, or teach `parseAAArray()` the new one. It throws rather than skipping on purpose, because a table the gate silently fails to read is how this check was missing in the first place. Why this is a lint rather than a compile error: [translations.md](../architecture/translations.md#coverage-is-gated-not-remembered).
 
 ## Bot Automation
 
