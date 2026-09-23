@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-23 — feat: Browse a movie or TV library's collections on Jellyfin 12
 - 2026-09-23 — fix: Always apply a subtitle track change, and stop the caption timer
 - 2026-09-23 — feat: Filter a movie library by audio and subtitle language on Jellyfin 12
 - 2026-09-23 — chore(skills): Don't let a refactor hide a fix from the PR title
