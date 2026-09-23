@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-23 — fix: Keep Home rows refreshing when you return to Home as a load finishes
 - 2026-09-23 — `no-task-fanout` now follows a loop's same-file helper calls one hop (decision `task-fanout-follows-helpers`); a helper that keeps one run live states its bound on its launch line, as `HomeRows`' section loads and `ExtrasRowList.startRun` do. Closes the followup that the gate did not see launches in helpers.
 - 2026-09-23 — feat: Browse a movie or TV library's collections on Jellyfin 12
 - 2026-09-23 — fix: Always apply a subtitle track change, and stop the caption timer
