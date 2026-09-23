@@ -180,10 +180,6 @@ const PENDING_MIGRATIONS = {
   ],
   'components/home/Home.bs': [['onScreenShown', 'm.global.remoteControlTask']],
   'components/music/AudioPlayerView.bs': [['onAudioStreamLoaded', 'm.LoadMetaDataTask']],
-  'components/video/PlayerHostView.bs': [
-    ['onSelectPlaybackInfoPressed', 'm.getPlaybackInfoTask'],
-    ['onPlaybackInfoRefreshDue', 'm.getPlaybackInfoTask'],
-  ],
   'components/video/VideoPlayerView.bs': [
     ['onSubtitleChange', 'm.LoadMetaDataTask'],
     ['onAudioIndexChange', 'm.LoadMetaDataTask'],
