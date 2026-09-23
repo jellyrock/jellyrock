@@ -32,6 +32,41 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("offeredFor()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true on the library itself, on a server that scopes the query")
+    @params("12.0.0")
+    @params("12.1.0")
+    function _(serverVersion)
+      m.assertTrue(collectionsView.offeredFor({ Id: "lib", type: "CollectionFolder" }, serverVersion))
+    end function
+
+    @it("is false on the library itself below 12.0")
+    @params("10.11.11")
+    @params("")
+    function _(serverVersion)
+      m.assertFalse(collectionsView.offeredFor({ Id: "lib", type: "CollectionFolder" }, serverVersion))
+    end function
+
+    @it("is false inside a folder below the library, even on 12.0")
+    ' 12.x scopes these queries correctly; they are withheld because a collection's
+    ' genres and studios are the union of its films', so the list would hold every
+    ' collection with even one film matching.
+    @params("Studio")
+    @params("Genre")
+    @params("Folder")
+    @params("")
+    function _(parentType)
+      m.assertFalse(collectionsView.offeredFor({ Id: "folder", type: parentType }, "12.0.0"))
+    end function
+
+    @it("is false with no parent item")
+    function _()
+      m.assertFalse(collectionsView.offeredFor(invalid, "12.0.0"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("VIEW_NAME")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

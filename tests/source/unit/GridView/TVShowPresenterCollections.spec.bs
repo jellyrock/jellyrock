@@ -65,6 +65,17 @@ namespace tests
       m.assertEqual(m.names(m.presenter.getOptions(m.library()).views), ["Shows", "Networks", "Genres"])
     end function
 
+    @it("does not offer Collections inside a network or genre, only on the library itself")
+    ' Both open as a TV grid of their own with the library's views; Collections is the one
+    ' withheld (see collectionsView.offeredFor).
+    @params("Studio")
+    @params("Genre")
+    function _(parentType)
+      m.attach("12.0.0")
+
+      m.assertEqual(m.names(m.presenter.getOptions({ Id: "f1", type: parentType, parentId: "shows-lib" }).views), ["Shows", "Networks", "Genres"])
+    end function
+
     @it("lists BoxSet sorts in the view, not series ones")
     ' DateLastContentAdded and SeriesDatePlayed are properties of a series; a collection
     ' has neither.

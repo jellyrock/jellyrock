@@ -106,14 +106,24 @@ namespace tests
       m.assertEqual(names, ["Movies", "MoviesGrid", "Studios", "Genres"])
     end function
 
-    @it("does not offer Collections inside a genre, where the library scope does not apply")
-    ' A genre sits below a library; the collections query scopes to the library itself.
+    @it("does not offer Collections inside a genre, which lists only the two movie views")
     function _()
       m.attach("12.0.0")
 
       names = m.viewNames(m.presenter.getOptions({ Id: "g1", type: "Genre" }))
 
       m.assertEqual(names, ["Movies", "MoviesGrid"])
+    end function
+
+    @it("does not offer Collections inside a studio, only on the library itself")
+    ' A studio folder is a library grid of its own and keeps the library's other views;
+    ' Collections is the one withheld (see collectionsView.offeredFor).
+    function _()
+      m.attach("12.0.0")
+
+      names = m.viewNames(m.presenter.getOptions({ Id: "s1", type: "Studio", parentId: "movies-lib" }))
+
+      m.assertEqual(names, ["Movies", "MoviesGrid", "Studios", "Genres"])
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

@@ -38,11 +38,11 @@ class TVShowPresenter extends GridPresenterBase
       { "Title": translate(translationKeys.LabelGenres), "Name": "Genres" }
     ]
 
-    ' 12.0+ only — see collectionsView for what older servers answer instead. A TV library
+    ' The library itself on 12.0+ only — see collectionsView for both rules. A TV library
     ' gets the view for the same reason a movie library does: the server scopes BoxSets by
     ' library, a collection can hold series, and jellyfin-web lists a Collections tab on
     ' both library kinds.
-    if collectionsView.supported(m.serverVersion())
+    if collectionsView.offeredFor(parentItem, m.serverVersion())
       options.views.push({ "Title": translate(translationKeys.LabelCollections), "Name": collectionsView.VIEW_NAME })
     end if
 

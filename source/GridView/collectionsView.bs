@@ -48,4 +48,22 @@ namespace collectionsView
     return versionChecker(serverVersion, collectionsView.MIN_SERVER)
   end function
 
+  ' offeredFor: Whether a grid's View menu lists Collections — on the library itself, and
+  ' only on a server that scopes the query.
+  '
+  ' Not inside a studio, network or genre folder, although 12.x answers those queries
+  ' correctly. A collection's studios and genres are the union of its films', so a
+  ' folder-scoped list holds every collection with even ONE film matching — a mixed
+  ' collection turns up under a genre most of it is not. The view means "this library's
+  ' collections" and is offered only where it can mean exactly that.
+  '
+  ' @param {object} parentItem - the item the grid is showing
+  ' @param {string} serverVersion - m.global.server.version
+  ' @return {boolean}
+  function offeredFor(parentItem as dynamic, serverVersion as string) as boolean
+    if not isValid(parentItem) then return false
+    if textOrEmpty(parentItem.type) <> "CollectionFolder" then return false
+    return collectionsView.supported(serverVersion)
+  end function
+
 end namespace

@@ -77,18 +77,16 @@ class MoviePresenter extends GridPresenterBase
       ]
     }
 
-    ' 12.0+ only. Below it the same request returns every collection on the server —
-    ' other libraries' included — so the view is withheld rather than offered and wrong.
-    ' See collectionsView for the measured behavior on each line.
-    if collectionsView.supported(m.serverVersion())
+    ' The library itself on 12.0+ only. Below 12.0 the same request returns every
+    ' collection on the server — other libraries' included — so the view is withheld
+    ' rather than offered and wrong. See collectionsView for both rules.
+    if collectionsView.offeredFor(parentItem, m.serverVersion())
       options.views.push({ "Title": translate(translationKeys.LabelCollections), "Name": collectionsView.VIEW_NAME })
     end if
 
     ' Adjust options for specific views
     if isValid(parentItem) and parentItem.type = "Genre"
-      ' Genre view has limited options. A genre is scoped BELOW a library, and the
-      ' collections endpoint scopes to the library, so Collections is not offered here
-      ' either.
+      ' Genre view has limited options
       options.views = [
         { "Title": translate(translationKeys.LabelMoviesPresentation), "Name": "Movies" },
         { "Title": translate(translationKeys.LabelMoviesGrid), "Name": "MoviesGrid" }
