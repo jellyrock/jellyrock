@@ -130,9 +130,9 @@ const TASK_THREAD_WATERMARK = 50
 '
 ' @param node - the Task node to start
 ' @return true when the node was valid and RUN was issued, false otherwise. Check
-'         it where state depends on the run delivering — `HomeRows`' section loads
-'         set their isLoading* flag from it, so a refused launch leaves nothing to
-'         clear. See the invalid-node note below before checking it elsewhere.
+'         it where state depends on the run delivering — a "loading" flag that only
+'         the delivery clears must take this result, or a refused launch leaves it
+'         set for good. See the invalid-node note below.
 function launchTask(node as object) as boolean
   if not isValid(node)
     ' Behaviour change worth stating: a raw `m.someTask.control = "RUN"` on an
@@ -179,6 +179,11 @@ end function
 
 ' Stops `node`'s run, if any, and detaches the observer the caller registered on
 ' `observedField`.
+'
+' Called from the handler of the field the Task writes, it can land before the Task's
+' function returns — the node still reads `run` there — and a stopped run executes nothing
+' further. So a caller that releases on delivery relies on that field being the Task's LAST
+' write; anything the Task does after it may silently not happen.
 '
 ' @return invalid, so dropping the node for good reads `m.task = releaseTask(m.task, "field")`
 function releaseTask(node as dynamic, observedField as string) as dynamic
