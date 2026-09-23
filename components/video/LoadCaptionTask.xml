@@ -3,5 +3,9 @@
   <interface>
     <field id="url" type="string" />
     <field id="captionData" type="assocarray" />
+    <!-- Answered here because roFileSystem is Invalid on the render thread,
+         where CaptionRenderer lives. Written BEFORE captionData, so the
+         renderer's captionData handler can read it. -->
+    <field id="fontAvailable" type="boolean" />
   </interface>
 </component>

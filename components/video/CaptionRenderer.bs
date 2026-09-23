@@ -27,7 +27,11 @@ sub init()
   m.captionTimer.ObserveField("fire", "updateCaption")
 
   m.captionList = []
-  m.font = CreateObject("roSGNode", "Font")
+  ' The downloaded fallback font, used only once a run confirms it is on disk.
+  m.fallbackFont = CreateObject("roSGNode", "Font")
+  ' Safe default until then: a system font always renders, where a Font node
+  ' pointed at a missing file has no defined behaviour we have measured.
+  m.font = "font:LargeSystemFont"
   m.tags = CreateObject("roRegex", "{\\an\d*}|&lt;.*?&gt;|<.*?>", "s")
 
   ' Caption Style
@@ -55,28 +59,24 @@ sub init()
     m.log.warn("Text opacity is 0 or invalid, using default for visibility", m.textOpac)
   end if
 
-  setFont()
 end sub
 
-' Picks the fallback font when the app downloaded one, else a system font.
+' Applies the downloaded fallback font, or a system font when it is not on disk.
 '
-' Asks the SETTINGS that trigger the download rather than probing the filesystem:
-' `CreateObject("roFileSystem")` returns Invalid on the render thread, which is
-' where this component lives (measured 2026-09-22 — it faulted &hec here while the
-' identical code was fine in the Task this component was split out of). Both
-' settings matter because `main.bs` downloads the font for EITHER of them, and
-' custom subtitles are exactly this component's job. Same gate the seven other
-' fallback-font consumers use (`JRLabel`, `JRLabelList`, `JRRowList`, …).
-sub setFont()
-  globalUser = m.global.user
-  usesFallbackFont = false
-  if isValid(globalUser) and isValid(globalUser.settings)
-    usesFallbackFont = globalUser.settings.playbackSubsCustom = true or globalUser.settings.uiFontFallback = true
-  end if
-
-  if usesFallbackFont
-    m.font.uri = "tmp:/font"
-    m.font.size = m.fontSize
+' The answer comes from the fetch task (`fontAvailable`), not from a setting and not
+' from a filesystem probe here: `CreateObject("roFileSystem")` returns Invalid on the
+' render thread, where this component lives (measured 2026-09-22 — it faulted &hec
+' here while the identical code was fine in the Task this component was split out of).
+'
+' Asking the SETTING instead would be wrong in the case that matters: `playbackSubsCustom`
+' being on is what TRIGGERS the download, not proof that it succeeded. A server that
+' cannot supply the font leaves the setting on and the file absent, which is exactly
+' when non-Latin subtitles need the fallback most.
+sub applyFont(fontAvailable as boolean)
+  if fontAvailable
+    m.fallbackFont.uri = "tmp:/font"
+    m.fallbackFont.size = m.fontSize
+    m.font = m.fallbackFont
   else
     m.font = "font:LargeSystemFont"
   end if
@@ -116,6 +116,8 @@ sub onCaptionDataReceived(event as object)
   end if
 
   m.captionTimer.control = "stop"
+  ' Before any label is built: `updateCaption` reads `m.font` for every line.
+  applyFont(m.fetchTask.fontAvailable = true)
   captionData = m.fetchTask.captionData
 
   if isValid(captionData) and isValid(captionData.entries) and captionData.entries.count() > 0
@@ -257,4 +259,5 @@ sub onDestroy()
   m.lastCaptionTexts = invalid
   m.tags = invalid
   m.font = invalid
+  m.fallbackFont = invalid
 end sub
