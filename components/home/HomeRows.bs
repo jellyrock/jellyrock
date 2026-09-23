@@ -289,24 +289,22 @@ end function
 ' startParallelLoads: Fires off data tasks for sections that don't need library data.
 ' Library-dependent sections (library row, latestmedia) are handled in onLibrariesLoaded.
 '
-' Deliberately not a loop over m.sectionPlan: each launch sits outside any loop, so
-' no-task-fanout can see that a section holds one node. The order is the default layout's
-' (user.getDefaultHomeSections), so a default Home launches in the same order as before.
+' Launches in the user's layout order. The loop may call a helper more than once per refresh
+' only if a type repeats, and each helper's own isLoading* guard is what holds a section to
+' one run — no-task-fanout does not follow a launch into a helper, so that guard is the bound.
 sub startParallelLoads()
-  if sectionPlanHas("resume") then startResumeLoad()
-  if sectionPlanHas("nextup") then startNextUpLoad()
-  if sectionPlanHas("activerecordings") then startActiveRecordingsLoad()
-  if sectionPlanHas("livetv") then startOnNowLoad()
-end sub
-
-' sectionPlanHas: True when the user's Home layout includes `sectionType`.
-function sectionPlanHas(sectionType as string) as boolean
-  if not isValid(m.sectionPlan) then return false
   for each section in m.sectionPlan
-    if section.type = sectionType then return true
+    if section.type = "resume"
+      startResumeLoad()
+    else if section.type = "nextup"
+      startNextUpLoad()
+    else if section.type = "livetv"
+      startOnNowLoad()
+    else if section.type = "activerecordings"
+      startActiveRecordingsLoad()
+    end if
   end for
-  return false
-end function
+end sub
 
 ' ── Per-section loads ───────────────────────────────────────────────────────
 '
@@ -938,11 +936,17 @@ end sub
 ' or Recording. Re-runs the On Now and/or Active Recordings loads to pull
 ' fresh data. Loading guards debounce repeated expiry signals while a load is
 ' already in flight, and section plan checks avoid wasted requests when the
-' user has disabled the relevant sections. Same order and loop-free shape as
-' startParallelLoads.
+' user has disabled the relevant sections.
 sub onProgramsExpired()
-  if sectionPlanHas("activerecordings") then startActiveRecordingsLoad()
-  if sectionPlanHas("livetv") then startOnNowLoad()
+  if not isValidAndNotEmpty(m.sectionPlan) then return
+
+  for each section in m.sectionPlan
+    if section.type = "livetv"
+      startOnNowLoad()
+    else if section.type = "activerecordings"
+      startActiveRecordingsLoad()
+    end if
+  end for
 end sub
 
 ' populateRowFromData: Unified row population logic used by all update callbacks.
