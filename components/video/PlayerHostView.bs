@@ -94,9 +94,6 @@ sub mountPlayer()
   m.view.observeField("selectAudioPressed", "onSelectAudioPressed")
   m.view.observeField("selectVideoSourcePressed", "onSelectVideoSourcePressed")
 
-  m.getPlaybackInfoTask = createObject("roSGNode", "GetPlaybackInfoTask")
-  m.getPlaybackInfoTask.observeField("data", "onPlaybackInfoLoaded")
-
   ' Update backdrop for current queue item (handles first item, shuffle, library play, etc.)
   updateQueueBackdrop()
 
@@ -127,11 +124,7 @@ sub destroyPlayer()
     m.view = invalid
   end if
 
-  if isValid(m.getPlaybackInfoTask)
-    m.getPlaybackInfoTask.control = "STOP"
-    m.getPlaybackInfoTask.unobserveField("data")
-    m.getPlaybackInfoTask = invalid
-  end if
+  m.getPlaybackInfoTask = releaseTask(m.getPlaybackInfoTask, "data")
 
   ' Otherwise the first report opened on the NEXT queue item compares its
   ' completion percentage against the previous item's last figure, silently
@@ -434,13 +427,27 @@ end sub
 ' transcode that had already stopped. Composition is cheap now that it happens
 ' here rather than on the Task thread, so a fresh answer costs one request.
 sub onSelectPlaybackInfoPressed()
+  startPlaybackInfoLoad()
+end sub
+
+' One fetch of the live session, on a NEW node per run (ADR 0037) — a node that
+' is still running ignores a relaunch. Replaces any run in flight, which is what a
+' press wants; the refresh tick lets one finish instead (onPlaybackInfoRefreshDue).
+sub startPlaybackInfoLoad()
+  m.getPlaybackInfoTask = replaceTask(m.getPlaybackInfoTask, "GetPlaybackInfoTask", "data", {})
+  m.getPlaybackInfoTask.observeField("data", "onPlaybackInfoLoaded")
   launchTask(m.getPlaybackInfoTask)
 end sub
 
 ' The session arrived. Compose the report and either open it or refresh the one
 ' already open.
-sub onPlaybackInfoLoaded()
-  data = m.getPlaybackInfoTask.data
+sub onPlaybackInfoLoaded(event as object)
+  ' Also drops a fetch that was in flight when the report closed: without the
+  ' release in onPlaybackInfoDialogClosed plus this check, its answer found no
+  ' dialog below and opened the report again by itself.
+  if not isCurrentTaskEvent(event, m.getPlaybackInfoTask) then return
+
+  data = event.getData()
   session = invalid
   if isValid(data) then session = data.session
 
@@ -688,7 +695,14 @@ sub onPlaybackInfoRefreshDue()
     if m.deviceInfo.TimeSinceLastKeypress() >= m.screenSaverTimeout then return
   end if
 
-  launchTask(m.getPlaybackInfoTask)
+  ' A fetch still running is let finish, not replaced. On a server slower than
+  ' this poll, replacing it every tick would abandon each request before it
+  ' answered and the report would never update again; skipping keeps it updating
+  ' at the server's pace. Reads `state`, not whether a node exists, so a run that
+  ' never started (a refused launch) does not block every later tick.
+  if isValid(m.getPlaybackInfoTask) and m.getPlaybackInfoTask.state = "run" then return
+
+  startPlaybackInfoLoad()
 end sub
 
 ' The dialog closed — stop polling into it and let it go.
@@ -703,6 +717,7 @@ end sub
 ' first time and never again.
 sub onPlaybackInfoDialogClosed()
   stopPlaybackInfoRefresh()
+  m.getPlaybackInfoTask = releaseTask(m.getPlaybackInfoTask, "data")
   if isValid(m.playbackDialog) then m.playbackDialog.unobserveField("closed")
   m.playbackDialog = invalid
 end sub

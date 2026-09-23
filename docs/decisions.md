@@ -1741,6 +1741,16 @@ Ruled out: launching in a fixed order with no launch inside the `m.sectionPlan` 
 
 Ruled out: **a suppression at each call site** (7 markers instead of 5, each pointing at a guard in another function, so deleting the guard would not mean walking past the claim); **recognizing guards structurally** (already ruled out as heuristic by `relaunch-gate-no-stop-shapes`). Constraints worth re-evaluating: reach is one hop, one file, bare name, so a second hop, another file or a class method called as `m.helper()` is missed; and a stated bound is a claim, not a proof.
 
+## decision-id: playback-report-fetch-per-run
+
+**date**: 2026-09-23
+**status**: accepted
+**related-files**: `components/video/PlayerHostView.bs`, `scripts/bsc-plugins/observe-without-on-destroy.cjs`, `tests/scripts/unit/bsc-plugins/observe-without-on-destroy.test.js`, `scripts/bsc-plugins/no-same-node-relaunch.cjs`
+
+`PlayerHostView`'s playback-report fetch gets a NEW `GetPlaybackInfoTask` per run (ADR 0037), and its two callers treat a run still in flight differently: the "i" press replaces it (a fresh answer), while the 5 s poll tick skips while the current node reads `state = "run"`. It checks state rather than whether a node exists, so a launch refused at the thread watermark does not block every later tick. Closing the report releases the node, which also fixes an older bug: a poll in flight at close delivered onto no dialog and opened the report again by itself. Measured 2026-09-23 on a Stick 4K, local Jellyfin 10.10.7 behind a latency toxic, polling forced in a probe build: close with a poll in flight at +3000 ms, `main` 8/8 reopened, this change 0/8; at +7000 ms with the report open 45 s, `main` 4 of 9 tick launches ignored and 4 deliveries, this change 4 ticks skipped, 0 ignored, 4 deliveries.
+
+Ruled out: `replaceTask` on every tick, the standard migration. On a server slower than the poll (`HTTP_MS` is 10 s), each tick would abandon the request before it answered and the report would never update. Alongside it, `observe-without-on-destroy` now counts `releaseTask(X, "f")` as an unobserve of `X`/`f`, but not `replaceTask`, which releases only the previous node: a file that only replaces still leaves the last run observed when the screen is destroyed.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

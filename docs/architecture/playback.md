@@ -36,7 +36,7 @@ related-files:
   - source/utils/liveTv.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-09-22
+last-reviewed: 2026-09-23
 ---
 
 # Video & Audio Playback
@@ -150,7 +150,7 @@ The whole file is well-commented and reads cleanly. It's frequently held up inte
 
 The **routed host** for video playback (route `/details/:type/:id/play`). `VideoPlayerView` extends Roku's native `Video` node, so it can't itself be a `sgrouter_View`; this thin `JRScreen` wrapper is the routed view and owns the player as a **runtime child** (`m.top.appendChild(m.view)`), not a separate pushed scene. It is the new home for what was `ViewCreator`'s video half (the deleted `components/manager/ViewCreator.bs`). Its job is three-fold:
 
-1. **Player mount**: `onScreenShown` → `mountPlayer()` instantiates `VideoPlayerView`, wires observers (including creating `GetPlaybackInfoTask` and observing its `data`, without launching it — the launch is deferred to `onSelectPlaybackInfoPressed`), updates the backdrop, and appends the player as a child (player `visible=false` during loading to avoid a black flash over the backdrop). The queue is already populated *before* navigation (the launcher cleared + pushed, then navigated to `/play`), so the host just reads `getCurrentItem` — **the queue is the source of truth**.
+1. **Player mount**: `onScreenShown` → `mountPlayer()` instantiates `VideoPlayerView`, wires observers (no `GetPlaybackInfoTask` yet — each report fetch creates its own, see **Playback info** below), updates the backdrop, and appends the player as a child (player `visible=false` during loading to avoid a black flash over the backdrop). The queue is already populated *before* navigation (the launcher cleared + pushed, then navigated to `/play`), so the host just reads `getCurrentItem` — **the queue is the source of truth**.
 2. **Queue advancement** (host-internal): next-episode / Live TV restart / channel switch destroy + remount the player child (`playCurrentQueueItem()` = `destroyPlayer()` + `mountPlayer()`), rather than pop/push of scenes.
 3. **Playback-time track selection**: when the user opens the `OSD`'s track menus *during playback*, the player fires events (`selectSubtitlePressed`, `selectAudioPressed`, `selectVideoSourcePressed`, `selectPlaybackInfoPressed`) which `PlayerHostView` catches via observers and shows a dialog from the standard family (`source/utils/dialogs.bs`). (Note: *pre-playback* track selection happens inline via `ItemDetails`'s `TrackDropdown` cluster — see `user-journey.md`. The two flows write to the same `VideoPlayerView` fields; they're parallel entry points, not duplicates.)
 
@@ -342,6 +342,15 @@ multiplier, and below 1.0x the server cannot keep up. Refreshing assigns `sectio
 removed and the scroll position does not move. Volatility is a property of the *model*,
 not a list in the refresh code — a future live field updates because its text changed.
 
+**Every fetch is a new `GetPlaybackInfoTask` node** ([ADR 0037](../adr/0037-task-run-replacement.md)),
+and the two callers treat a run still in flight differently. A press replaces it — the user
+asked for a fresh answer. A poll tick skips while one is running: on a server slower than
+the poll, replacing it every tick would abandon each request before it answered, and the
+report would never update again. Closing the report releases the node, so a poll in flight
+at that moment cannot land on no dialog and open the report again by itself — which the old
+single long-lived node did every time (8 of 8 closes with a poll in flight, `.177`,
+2026-09-23). At most one fetch is live per player.
+
 The result handlers write back into `VideoPlayerView`'s fields (`audioIndex`, `selectedSubtitle`, `mediaSourceId`), which the player observes and reacts to (e.g., changing `audioIndex` triggers an audio stream switch on the underlying `Video` node). They write only on an actual change: `mediaSourceId` triggers a video reload, and `SelectedSubtitle` is `alwaysNotify`, so re-writing the value it already holds still fires its observers.
 
 `onPlayerStateChange` (ported from `ViewCreator.onStateChange`) handles end-of-playback:
@@ -406,7 +415,7 @@ Note: the `OSD`'s `inactiveTimeout` is **5 seconds**, not 10 as some sources may
 
 ### Playback lifecycle
 
-1. **Mount** — `PlayerHostView.mountPlayer()` instantiates the player, observes state + UI press fields, creates `GetPlaybackInfoTask` and observes its `data` (the task is launched later, on `onSelectPlaybackInfoPressed`), and appends it as a child of the host (player is `visible=false` during loading to avoid a black flash over the backdrop).
+1. **Mount** — `PlayerHostView.mountPlayer()` instantiates the player, observes state + UI press fields, and appends it as a child of the host (player is `visible=false` during loading to avoid a black flash over the backdrop).
 2. **Metadata loaded** — `onPlaybackInfoLoaded()` populates `playbackData`. The player begins resolving the actual video URL (direct play vs. transcode — see "Transcoding decisions" below).
 3. **Underlying `Video` node starts** — the inherited `state` field transitions to `buffering` → `playing`. The player observes its own state and:
    - Shows the OSD briefly
