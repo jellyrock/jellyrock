@@ -197,12 +197,13 @@ The two maps are kept apart on purpose. `mediaLanguageAliases()` covers only UI 
 
 ### CI lint — `npm run lint:language-coverage`
 
-`scripts/lint/language-coverage.cjs` catches three classes of silent regression in the resolver:
+`scripts/lint/language-coverage.cjs` catches several classes of silent regression in the resolver and in the person-label tables:
 
 1. An alias maps `tib` → `bo` but `bo` is missing from tiers 1 and 2 — user sees raw `bo`.
 2. A new `LanguageX` key is added to tier 1 but `xxx` → `x` alias coverage is forgotten — ffmpeg-tagged audio in that language falls through to the English fallback in every UI locale, **including the user's own**.
 3. An English fallback exists for a code that's already covered by a translation key — wasted maintenance, inconsistent output.
 4. The matching-only map overlaps the display alias map, or holds something other than a 3-letter → 2-letter code — one of the two copies is dead, and they can silently disagree.
+5. A `PersonKind` value has no label row, or a credit row names a kind no supported server sends — see Person role labels below.
 
 These all pass type-check and unit tests but produce silent gaps for non-English users — the lint is the only catch.
 
@@ -248,13 +249,23 @@ property, and `npm run lint:language-coverage` checks it: every `PersonKind` val
 `unlabeledPersonKinds()`, the two must be disjoint, and neither may carry a row for a value no
 supported server sends.
 
-**A second `PersonKind` table in the same file is NOT gated.** `creditRowKinds()` — the details
-screen's credits row, decision [`credit-row-kinds-in-people`](../decisions.md) — names
-`PersonKind` values too, but the gate locates its tables by FUNCTION NAME, so that one is invisible
-to it. Nothing is parsed wrongly (it is an array of AAs, not an AA), but an upstream rename or removal of
-`Creator` would silently empty the "Created by" line with every check green — the same shape as the
-failure below, in the one table the gate does not read. Tracked as an open followup in
-[progress.md](../progress.md).
+**The second `PersonKind` table in the same file is gated too, and it needed its own parser.**
+`creditRowKinds()` — the details screen's credits row, decision
+[`credit-row-kinds-in-people`](../decisions.md) — names `PersonKind` values as well, but it is
+ORDERED (the credit lines render in array order), so it is an array of AAs rather than an AA. The
+gate finds its tables by FUNCTION NAME *and* parses an AA, so for a while this one was invisible to
+it: nothing was parsed wrongly, but an upstream rename or removal of `Creator` would have silently
+emptied the "Created by" line with every check green. `parseAAArray()` reads the ordered shape, and
+the check holds every named kind to the committed fingerprints' enum and every `messageKey` to
+`en_US.json`.
+
+That parser distinguishes **absence from failure**, which is the whole reason the gap could exist
+unnoticed. A missing function, a missing array literal, an entry missing either field, and a literal
+holding content it reads no entries from are all loud; only a provably empty `[]` is quiet. Keying
+that "is it empty?" test on brace shape would have let a re-authoring to bare strings parse to zero
+entries and pass, so it keys on whether the literal holds any content at all. Without the split, a shape change to
+the table would disable the check silently — which is exactly how the table escaped the gate to
+begin with.
 
 **This gate replaced a claim that was false.** The section used to argue no lint was needed because
 "a missing entry is a compile error (the key would not exist in `translationKeys`)". It is not. The
