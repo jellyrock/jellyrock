@@ -278,7 +278,7 @@ sub onPlayerStateChange()
         restartLiveChannel()
       else
         m.log.warn("Live TV channel keeps ending without playing; showing the error instead of restarting", textOrEmpty(currentItem.id), m.liveRestart.count, m.liveRestart.playedMs)
-        m.view.callFunc("showInvalidLiveStreamError")
+        m.view.callFunc("showLiveStreamStoppedError")
       end if
       return
     end if
