@@ -11,11 +11,15 @@
 ' this one, so `currentPos` and `playerState` — the live playback bridge — survive
 ' a track change untouched.
 import "pkg:/source/roku_modules/log/LogMixin.brs"
-import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/tasks.bs"
 
 sub init()
+  ' NOT the onKeyEvent guard `auto-destroyed-guard.cjs` owns — this component has
+  ' no onKeyEvent, so that plugin never reaches it. Same flag name and same `= true`
+  ' comparison form on purpose: both are positionally first, so the plugin stays a
+  ' no-op if an onKeyEvent is ever added here.
+  m.isDestroyed = false
   m.log = new log.Logger("CaptionRenderer")
   m.top.observeField("url", "onUrlChange")
   m.top.currentCaption = []
@@ -87,6 +91,12 @@ end sub
 ' Captions are cleared HERE rather than at the top of the fetch, so the old track's
 ' lines are gone the moment the track changes instead of one thread crossing later.
 sub onUrlChange()
+  ' A `url` write landing after teardown must not rebuild the fetch node: onDestroy has
+  ' already released it and nulled the timer, so a node built here would never be
+  ' released again. `onCaptionDataReceived` is guarded by `isCurrentTaskEvent`; this is
+  ' the same protection on this component's other entry point.
+  if m.isDestroyed = true then return
+
   clearCaptions()
 
   url = m.top.url
@@ -236,6 +246,7 @@ end sub
 ' `<function name="onDestroy" />`. Without that line callFunc() is a silent no-op
 ' and the 100 ms timer below keeps firing for the life of the app.
 sub onDestroy()
+  m.isDestroyed = true
   m.log.verbose("onDestroy")
 
   ' Detach every observer before releasing any reference, so a delivery that lands
