@@ -1,0 +1,160 @@
+import "pkg:/source/GridView/collectionsView.bs"
+import "pkg:/source/GridView/TVShowPresenter.bs"
+
+namespace tests
+
+  ' A TV library gets the Collections view for the same reason a movie library does: the
+  ' server scopes BoxSets by library from 12.0, a collection can hold series, and
+  ' jellyfin-web lists a Collections tab on both library kinds.
+  @suite("TVShowPresenter - the Collections view")
+  class TVShowPresenterCollectionsTests extends tests.BaseTestSuite
+
+    private presenter as object
+
+    protected override function beforeEach()
+      super.beforeEach()
+      m.presenter = new TVShowPresenter()
+    end function
+
+    protected override function afterEach()
+      m.presenter = invalid
+      super.afterEach()
+    end function
+
+    ' Only what a presenter reads off its host. TVShowPresenter asks for no dynamic
+    ' filters, so unlike the movie one it never calls back into the component.
+    private sub attach(serverVersion as string, currentView = "Shows" as string)
+      m.presenter.onInit({
+        top: { currentView: currentView },
+        global: { server: { version: serverVersion } }
+      })
+    end sub
+
+    private function library() as object
+      return { Id: "shows-lib", type: "CollectionFolder", collectionType: "tvshows" }
+    end function
+
+    private function names(entries as object) as object
+      out = []
+      for each entry in entries
+        out.push(entry.Name)
+      end for
+      return out
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getOptions()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("offers Collections on a server that scopes the query")
+    @params("12.0.0")
+    @params("12.1.0")
+    function _(serverVersion)
+      m.attach(serverVersion)
+
+      m.assertEqual(m.names(m.presenter.getOptions(m.library()).views), ["Shows", "Networks", "Genres", collectionsView.VIEW_NAME])
+    end function
+
+    @it("does not offer Collections on a server that ignores the scope")
+    @params("10.11.11")
+    @params("10.7.7")
+    @params("")
+    function _(serverVersion)
+      m.attach(serverVersion)
+
+      m.assertEqual(m.names(m.presenter.getOptions(m.library()).views), ["Shows", "Networks", "Genres"])
+    end function
+
+    @it("does not offer Collections inside a network or genre, only on the library itself")
+    ' Both open as a TV grid of their own with the library's views; Collections is the one
+    ' withheld (see collectionsView.offeredFor).
+    @params("Studio")
+    @params("Genre")
+    function _(parentType)
+      m.attach("12.0.0")
+
+      m.assertEqual(m.names(m.presenter.getOptions({ Id: "f1", type: parentType, parentId: "shows-lib" }).views), ["Shows", "Networks", "Genres"])
+    end function
+
+    @it("lists BoxSet sorts in the view, not series ones")
+    ' DateLastContentAdded and SeriesDatePlayed are properties of a series; a collection
+    ' has neither.
+    function _()
+      m.attach("12.0.0", collectionsView.VIEW_NAME)
+
+      options = m.presenter.getOptions(m.library())
+
+      m.assertEqual(m.names(options.sort), ["SortName", "CommunityRating", "DateCreated", "OfficialRating", "PremiereDate", "Random"])
+      m.assertEqual(m.names(options.filter), ["All", "Favorites", "Played", "Unplayed"])
+    end function
+
+    @it("leaves the series sorts alone in the other views")
+    @params("Shows")
+    @params("Networks")
+    function _(viewMode)
+      m.attach("12.0.0", viewMode)
+
+      m.assertTrue(inArray(m.names(m.presenter.getOptions(m.library()).sort), "DateLastContentAdded,SortName"))
+    end function
+
+    @it("still limits the Genres view to a title sort")
+    ' The Collections branch is inserted ahead of the Genres one, so this pins that it did
+    ' not swallow it.
+    function _()
+      m.attach("12.0.0", "Genres")
+
+      options = m.presenter.getOptions(m.library())
+
+      m.assertEqual(m.names(options.sort), ["SortName"])
+      m.assertEqual(options.filter.count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("configureLoadTask()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("asks for the library's BoxSets, recursively")
+    function _()
+      m.attach("12.0.0", collectionsView.VIEW_NAME)
+      task = { isRecursive: true, itemType: "", view: "", studioIds: "", genreIds: "", additionalFields: "" }
+
+      m.presenter.configureLoadTask(task, m.library(), collectionsView.VIEW_NAME)
+
+      m.assertEqual(task.itemType, "BoxSet")
+      m.assertEqual(task.itemId, "shows-lib")
+      m.assertTrue(task.isRecursive)
+      m.assertEqual(task.additionalFields, "", "Genres is a series field")
+    end function
+
+    @it("still asks for series in the other views")
+    @params("Shows")
+    @params("Networks")
+    @params("Genres")
+    function _(viewMode)
+      m.attach("12.0.0", viewMode)
+      task = { isRecursive: true, itemType: "", view: "", studioIds: "", genreIds: "", additionalFields: "" }
+
+      m.presenter.configureLoadTask(task, m.library(), viewMode)
+
+      m.assertEqual(task.itemType, "Series")
+      m.assertEqual(task.additionalFields, "Genres")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getGridConfig()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("lays the view out as the standard poster grid")
+    function _()
+      m.attach("12.0.0", collectionsView.VIEW_NAME)
+
+      config = m.presenter.getGridConfig(collectionsView.VIEW_NAME)
+
+      m.assertEqual(config.translation, [96, 102])
+      m.assertEqual(config.numRows, "3")
+      m.assertEqual(config.numColumns, "6")
+    end function
+
+  end class
+
+end namespace
