@@ -13,6 +13,8 @@ end sub
 '   pollLoop  - wait() on a port in a loop, re-reading a field each pass (the original probe)
 '   waitOnce  - ONE long wait() on a port, which is what `fetchJson` does inside the pool
 '   sleepOnce - sleep(), which parks the thread without a port at all
+'   waitForever - wait(0) on a port nothing ever writes to: blocks with NO timeout, so only a
+'               STOP can end it (TaskThreadSlots.spec.bs asks whether a STOP does)
 '
 ' `seq` is read TWICE: once at entry and once after the block. A caller that stops the task,
 ' writes a new `seq` and relaunches is doing what every app site does with its input field
@@ -31,6 +33,9 @@ sub holdUntilReleased()
   else if m.top.blockMode = "waitOnce"
     port = CreateObject("roMessagePort")
     wait(blockMs, port)
+  else if m.top.blockMode = "waitForever"
+    port = CreateObject("roMessagePort")
+    wait(0, port)
   else
     port = CreateObject("roMessagePort")
     clock = CreateObject("roTimespan")

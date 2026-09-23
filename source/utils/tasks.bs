@@ -167,8 +167,9 @@ end function
 ' STOP then relaunch of the same one: while the old function still runs, that relaunch is
 ' sometimes silently ignored and the work never happens (docs/architecture/threading.md,
 ' "Measured findings"; the `no-same-node-relaunch` plugin makes it a build error). A new
-' node always starts, and the stopped function makes no further progress, so replacing
-' the node does not stack threads.
+' node always starts, the stopped function makes no further progress, and its thread hands
+' back its slot at once even while parked in a wait (gated in TaskRelaunch.spec.bs), so
+' replacing the node does not stack threads.
 '
 ' Replacing the node brings a second obligation. Roku documents `unobserveField` only as
 ' removing the connection; it says nothing about a change event already queued to this
