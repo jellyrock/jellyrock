@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Browse a movie or TV library's collections on Jellyfin 12 ([#1014](https://github.com/jellyrock/jellyrock/pull/1014))
+
 ## [2.32.0](https://github.com/jellyrock/jellyrock/compare/v2.31.0...v2.32.0) - 2026-09-23
 
 ### Added
