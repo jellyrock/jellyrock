@@ -416,7 +416,7 @@ Note: the `OSD`'s `inactiveTimeout` is **5 seconds**, not 10 as some sources may
 ### Playback lifecycle
 
 1. **Mount** — `PlayerHostView.mountPlayer()` instantiates the player, observes state + UI press fields, and appends it as a child of the host (player is `visible=false` during loading to avoid a black flash over the backdrop).
-2. **Metadata loaded** — `onPlaybackInfoLoaded()` populates `playbackData`. The player begins resolving the actual video URL (direct play vs. transcode — see "Transcoding decisions" below).
+2. **Metadata loaded** — `VideoPlayerView.init()` launches `LoadVideoContentTask` (`m.LoadMetaDataTask`), which resolves the actual video URL (direct play vs. transcode — see "Transcoding decisions" below). `onVideoContentLoaded()` applies the result — the stream `content`, the chosen audio / subtitle / source, and `cachedPlaybackInfo` — or shows the playback error dialog when nothing came back.
 3. **Underlying `Video` node starts** — the inherited `state` field transitions to `buffering` → `playing`. The player observes its own state and:
    - Shows the OSD briefly
    - Starts the `playbackTimer` (10-second repeat) → `reportPlayback("update")` to Jellyfin
