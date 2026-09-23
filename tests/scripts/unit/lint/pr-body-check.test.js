@@ -11,7 +11,14 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkPrBody, sectionBody, stripComments } from '../../../../scripts/lint/pr-body-check.js';
+import {
+  checkIssueRefs,
+  checkPrBody,
+  issueRefs,
+  listIssueRefs,
+  sectionBody,
+  stripComments,
+} from '../../../../scripts/lint/pr-body-check.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE = resolve(HERE, '../../../../.github/pull_request_template.md');
@@ -114,5 +121,94 @@ describe('sectionBody', () => {
 describe('stripComments', () => {
   it('removes multi-line comments', () => {
     expect(stripComments('a\n<!-- one\ntwo -->\nb').replace(/\n+/g, '\n')).toBe('a\nb');
+  });
+});
+
+// The shapes below are the real ones: #940 / #1000 / #1002 wrote Jellyfin's issues as the
+// unlinked shorthand, and #1016's "legacy PR #669" linked to our own unrelated #669.
+describe('issueRefs', () => {
+  it('sorts references by the form GitHub reads them in', () => {
+    const refs = issueRefs(
+      'Adds creators (jellyfin#17107) as the legacy app did (jellyfin-archive/jellyfin-roku-legacy#669); Ref #988.',
+    );
+    expect(refs).toEqual({
+      shorthand: ['jellyfin#17107'],
+      qualified: ['jellyfin-archive/jellyfin-roku-legacy#669'],
+      bare: [988],
+    });
+  });
+
+  it('reads a bare #N after a repo name as bare — that is the #1016 mis-link', () => {
+    expect(issueRefs('from jellyfin-roku-legacy PR #669').bare).toEqual([669]);
+  });
+
+  it('ignores code, comments, links, URLs and escaped references', () => {
+    const refs = issueRefs(
+      [
+        '`jellyfin#1` and ```\njellyfin#2\n```',
+        '<!-- jellyfin#3 -->',
+        '[jellyfin-web#8209](https://github.com/jellyfin/jellyfin-web/pull/8209)',
+        'https://github.com/prettier/prettier/blob/HEAD/CHANGELOG.md#399',
+        '([#&#8203;433](https://redirect.github.com/rokucommunity/rooibos/pull/433))',
+        '## Changes',
+      ].join('\n'),
+    );
+    expect(refs).toEqual({ shorthand: [], qualified: [], bare: [] });
+  });
+
+  it('lists each reference once', () => {
+    expect(issueRefs('#5, #5 and jellyfin#7 twice: jellyfin#7').bare).toEqual([5]);
+    expect(issueRefs('jellyfin#7 twice: jellyfin#7').shorthand).toEqual(['jellyfin#7']);
+  });
+});
+
+describe('checkIssueRefs', () => {
+  it('flags a shorthand reference with the owner/repo form to use', () => {
+    const [problem] = checkIssueRefs('saved per version (jellyfin#17044)');
+    expect(problem).toContain('"jellyfin#17044" is not a link');
+    expect(problem).toContain('owner/repo#17044');
+  });
+
+  it('passes bare and fully qualified references', () => {
+    expect(checkIssueRefs('Fixes #12, see jellyfin/jellyfin#17044')).toEqual([]);
+  });
+});
+
+describe('listIssueRefs', () => {
+  const known = {
+    'this#669': { type: 'issue', state: 'open', title: 'Cast to JellyRock' },
+    'jellyfin-archive/jellyfin-roku-legacy#669': {
+      type: 'pull request',
+      state: 'closed',
+      title: 'Auto Reload LiveTv when feed Errors',
+    },
+  };
+  const resolve = (repo, n) => known[`${repo ?? 'this'}#${n}`] ?? null;
+
+  it("prints each bare #N with our issue's title, so a mis-link is visible", () => {
+    const { lines, failed } = listIssueRefs('from jellyfin-roku-legacy PR #669', resolve);
+    expect(lines).toEqual(['  #669 — issue (open): Cast to JellyRock']);
+    expect(failed).toBe(false);
+  });
+
+  it('confirms a qualified reference exists in its repo', () => {
+    const { lines, failed } = listIssueRefs('jellyfin-archive/jellyfin-roku-legacy#669', resolve);
+    expect(lines[0]).toContain('pull request (closed): Auto Reload LiveTv');
+    expect(failed).toBe(false);
+  });
+
+  it('fails a reference that does not exist, and a shorthand one', () => {
+    expect(listIssueRefs('Jellyfin #17107', resolve).failed).toBe(true);
+    expect(listIssueRefs('jellyfin/jelyfin#669', resolve).failed).toBe(true);
+    expect(listIssueRefs('jellyfin#17107', resolve).failed).toBe(true);
+  });
+
+  it('reports an unresolvable reference without failing', () => {
+    const offline = () => {
+      throw new Error('error connecting to api.github.com');
+    };
+    const { lines, failed } = listIssueRefs('#5', offline);
+    expect(lines[0]).toContain('could not resolve (error connecting to api.github.com)');
+    expect(failed).toBe(false);
   });
 });
