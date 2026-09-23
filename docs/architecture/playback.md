@@ -179,10 +179,13 @@ Each picker has its **own** result handler. The predecessor shared one
 string (`"audioselection"` / `"subtitleselection"` / `"videosourceselection"`) into every
 option — a discriminator that existed only because the return channel was global.
 
-Only one of these can be open at a time (the OSD is unreachable behind a modal), so they
-share one node slot (`m.playbackDialog`). That slot is what teardown abandons: these
-overlays are appended to the **scene**, so `onDestroy` *and* `onPlayerStateChange` call
-`abandonDialog()` on it.
+Only one of these can be open at a time (the OSD is unreachable behind a modal), but the
+report keeps its own slot (`m.reportDialog`) apart from the pickers' (`m.trackPickerDialog`).
+Its life starts before its dialog does: after a press, a fetch in flight is a report with no
+dialog yet, and a picker can open in that window — with one shared slot, the fetch's answer
+took the picker for the report. Both slots are what teardown abandons: these overlays are
+appended to the **scene**, so `onDestroy` *and* `onPlayerStateChange` call
+`abandonPlaybackDialogs()`.
 
 `onPlayerStateChange` then calls `cancelOpenDialog()` as well, and the two are not
 redundant. A main-thread flow can open a dialog *over* the player — a cast notice, the
@@ -199,7 +202,7 @@ them* — which is what decides both the verb and the order:
 
 | # | Dialog | Owned by | How teardown clears it |
 |---|---|---|---|
-| 1 | Track pickers + the playback-info report (`m.playbackDialog`) | `PlayerHostView` | `abandonDialog()` on the slot |
+| 1 | Track pickers (`m.trackPickerDialog`) + the playback-info report (`m.reportDialog`) | `PlayerHostView` | `abandonPlaybackDialogs()` |
 | 2 | The playback-error alert | **`VideoPlayerView`** (the player child) | `m.view.callFunc("abandonErrorDialog")` |
 | 3 | Anything a main-thread flow put over the player (cast notice, server-switch prompt) | someone else | `cancelOpenDialog()` |
 
@@ -210,7 +213,7 @@ pressing `Back` would have produced.
 
 **Row 2 needs its own call, and it must come before row 3.** The error alert is created by
 `showPlaybackErrorDialog` inside the *player*, not the host, so it was never in
-`m.playbackDialog` and row 1 never touched it. Since it is now an ordinary overlay,
+either of `PlayerHostView`'s slots and row 1 never touched it. Since it is now an ordinary overlay,
 `cancelOpenDialog()` *would* reach it — and that is the trap. Canceling is deliberately
 **indistinguishable from the user pressing `Back`** (see `JRDialog.cancelDialog`), and this
 dialog's result handler treats any real dismissal as "leave the player" and calls
@@ -350,6 +353,16 @@ report would never update again. Closing the report releases the node, so a poll
 at that moment cannot land on no dialog and open the report again by itself — which the old
 single long-lived node did every time (8 of 8 closes with a poll in flight, `.177`,
 2026-09-23). At most one fetch is live per player.
+
+**A dialog asked for after the press wins over the report.** The press is a request to
+open a dialog that has to wait for the network, so it follows the same newest-wins rule as
+`presentOverlayDialog`. Opening a track picker releases the fetch, and an answer that finds
+another overlay open (a server message, the player's error) is dropped rather than
+superseding it — the error dialog reads a supersede as a deliberate takeover and parks the
+player with its message gone. The user presses "i" again. Not covered: the chapter
+list (an OSD button) is a panel inside the player, not an overlay, so a late answer still opens over it.
+Read from code rather than tested: nothing is lost there, since the report returns focus to
+the list when it closes.
 
 The result handlers write back into `VideoPlayerView`'s fields (`audioIndex`, `selectedSubtitle`, `mediaSourceId`), which the player observes and reacts to (e.g., changing `audioIndex` triggers an audio stream switch on the underlying `Video` node). They write only on an actual change: `mediaSourceId` triggers a video reload, and `SelectedSubtitle` is `alwaysNotify`, so re-writing the value it already holds still fires its observers.
 

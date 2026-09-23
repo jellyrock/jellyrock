@@ -1751,6 +1751,16 @@ Ruled out: **a suppression at each call site** (7 markers instead of 5, each poi
 
 Ruled out: `replaceTask` on every tick, the standard migration. On a server slower than the poll (`HTTP_MS` is 10 s), each tick would abandon the request before it answered and the report would never update. Alongside it, `observe-without-on-destroy` now counts `releaseTask(X, "f")` as an unobserve of `X`/`f`, but not `replaceTask`, which releases only the previous node: a file that only replaces still leaves the last run observed when the screen is destroyed.
 
+## decision-id: playback-report-newest-dialog-wins
+
+**date**: 2026-09-23
+**status**: accepted
+**related-files**: `components/video/PlayerHostView.bs`
+
+`PlayerHostView` treats the "i" press as a request to open a dialog that has to wait for the network, so it follows `presentOverlayDialog`'s newest-wins rule. The report has its own slot (`m.reportDialog`) apart from the pickers (`m.trackPickerDialog`). Opening a track picker releases a pending fetch, and an answer that finds another overlay open is dropped instead of replacing it. Measured 2026-09-23 on a Stick 4K with a probe build that delays the fetch 6 s, three runs per case: with another dialog open when the answer arrived, the report replaced it 3/3 before the fix and 0/3 after; with a picker opened and canceled first, the report opened by itself 3/3 before and 0/3 after.
+
+Ruled out: keeping the shared slot and relying on `showTrackPicker` releasing the fetch. That works, but it depends on a rule across two functions that nothing enforces. Also ruled out: letting the report open after the picker closes, which is the same "opened by itself" problem as `playback-report-fetch-per-run`. Not covered: the chapter list is a panel inside the player, not an overlay, so a late answer still opens over it.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
