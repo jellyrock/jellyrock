@@ -1,0 +1,76 @@
+namespace tests
+
+  ' Does a `<function>` declared in one component's <interface> reach a SUBCLASS
+  ' that does not redeclare it?
+  '
+  ' Not a style question. `OSD` and `liveTv/Schedule` are both reached by
+  ' `callFunc("onDestroy")` from another component, and NEITHER declares
+  ' `<function name="onDestroy" />` of its own — both rely on inheriting the
+  ' declaration from `JRScreen`. If that inheritance does not hold, their teardown
+  ' silently never runs.
+  '
+  ' That is precisely the defect the caption split was made to fix: the old
+  ' `captionTask.xml` declared no interface at all, so `VideoPlayerView`'s
+  ' `callFunc("onDestroy")` was a silent no-op and the 100 ms caption timer
+  ' survived every exit from the player. Nothing failed, nothing logged.
+  '
+  ' A THIRD outcome is possible besides "runs" and "does not run": dispatch could
+  ' reach `JRScreen`'s own `onDestroy` (whose whole body is `abandonApiPromises()`)
+  ' instead of the subclass's override, leaving the subclass's timers and observers
+  ' attached. This suite does not separate that case from a non-dispatch, and
+  ' deliberately so — both are bugs, both are fixed by declaring the function
+  ' explicitly on the subclass, and both imply the same rule for any future lint:
+  ' an INHERITED declaration cannot be trusted to dispatch to your override.
+  '
+  ' The instrument is the one `CaptionRenderer.spec.bs` uses: the TEST starts a
+  ' timer that `onDestroy` stops, so the expectation cannot be computed from the
+  ' code under test — only the body actually running turns it back off.
+  @suite("SceneGraph - is a <function> declaration inherited through extends?")
+  class CallFuncInterfaceInheritanceTests extends tests.BaseTestSuite
+
+    protected override sub setup()
+      super.setup()
+
+      ' Mirrors OSD.spec.bs: OSD.init() reaches m.global.queueManager via
+      ' setButtonStates(), and JRScreen (its base) requires sceneManager.
+      ' Immutable per-suite fixtures, so setup() is the right home for them.
+      if not m.global.doesExist("queueManager")
+        m.global.addField("queueManager", "node", false)
+      end if
+      m.global.queueManager = CreateObject("roSGNode", "QueueManager")
+
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("callFunc() on a subclass that does not redeclare the function")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Built in the test body, never setup(): this node is DESTROYED, and a node
+    ' shared across a @describe group leaves every later test acting on a
+    ' torn-down one (tests/CLAUDE.md, lifecycle hooks).
+    @it("reaches OSD's own onDestroy, which OSD.xml does not declare")
+    function _()
+      osd = CreateObject("roSGNode", "OSD")
+      m.assertTrue(isValid(osd), "OSD did not instantiate — the result below would be meaningless")
+
+      timer = osd.findNode("inactivityTimer")
+      m.assertTrue(isValid(timer), "inactivityTimer missing — the instrument is gone, not the behaviour")
+      timer.control = "start"
+      m.assertEqual(timer.control, "start")
+
+      osd.callFunc("onDestroy")
+
+      ' A FAILURE here means OSD's teardown does not run when reached this way:
+      ' its inactivity timer, its six m.top observers and its More-menu dialog
+      ' all leak for the life of the app. The fix is one line in OSD.xml —
+      ' <function name="onDestroy" /> — and the same line in schedule.xml.
+      m.assertEqual(timer.control, "stop", "OSD.onDestroy() did not run via callFunc on an INHERITED declaration")
+    end function
+
+  end class
+
+end namespace
