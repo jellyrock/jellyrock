@@ -1,0 +1,46 @@
+import "pkg:/source/utils/deviceCapabilities.bs"
+import "pkg:/source/utils/misc.bs"
+
+namespace tests
+
+  @suite("deviceCapabilities.bs - Subtitle profile ORDER decides the delivered format")
+  class SubtitleProfileOrderTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getSubtitleProfiles()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Jellyfin converts an external text subtitle to the FIRST format the client
+    ' advertises, and `LoadCaptionTask` fetches only a `.vtt` URL. So this order is
+    ' load-bearing, not cosmetic: put any other format first and custom subtitles
+    ' silently stop rendering for EVERY external track — the fetch logs
+    ' "No valid VTT URL found in:" and native captions are already suppressed on
+    ' that path, so nothing reaches the screen.
+    '
+    ' Measured 2026-09-22 against a Jellyfin 12.1.0 server, one `subrip` external
+    ' track, same request varying ONLY this list's order:
+    '   vtt,srt,ttml,sub -> Stream.vtt      srt,vtt -> Stream.srt
+    '   vtt              -> Stream.vtt      srt     -> Stream.srt
+    @it("lists vtt FIRST — the fetcher accepts no other format")
+    function _()
+      profiles = getSubtitleProfiles()
+
+      m.assertTrue(profiles.count() > 0, "no subtitle profiles advertised")
+      m.assertEqual(LCase(profiles[0].Format), "vtt", "vtt must lead — see the comment above this test")
+      m.assertEqual(profiles[0].Method, "External")
+    end function
+
+    ' Removing the list entirely is NOT a safe simplification. Measured on the same
+    ' server: with no subtitle profiles advertised, every stream — including the
+    ' external text ones that direct-play today — comes back `DeliveryMethod: Encode`,
+    ' i.e. burned into the video, which cannot be toggled off and forces a re-encode.
+    @it("advertises External delivery, so the server never has to burn subtitles in")
+    function _()
+      for each profile in getSubtitleProfiles()
+        m.assertEqual(profile.Method, "External", "every advertised subtitle profile must be External")
+      end for
+    end function
+
+  end class
+
+end namespace

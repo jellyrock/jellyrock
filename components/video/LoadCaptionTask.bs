@@ -32,6 +32,11 @@ sub fetchCaption()
 
   m.log.debug("Start fetchCaption()", top.url)
 
+  ' Only `.vtt` is accepted, and that is safe ONLY because `vtt` leads
+  ' `getSubtitleProfiles()` in `source/utils/deviceCapabilities.bs`: Jellyfin converts
+  ' an external text subtitle to the FIRST format the client advertises. Reorder that
+  ' list and every external track arrives as another format and renders nothing —
+  ' pinned by `deviceCapabilities-subtitleProfile.spec.bs`, which fails on the reorder.
   re = CreateObject("roRegex", "(http.*?\.vtt)", "s")
   matchResult = re.match(top.url)
 
