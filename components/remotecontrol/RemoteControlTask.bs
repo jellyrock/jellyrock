@@ -313,7 +313,7 @@ end sub
 ' Authenticated async GET on this Task thread. Blocks up to timeoutMs for the response. Returns
 ' { code, body }; code = 0 on a failed initiation or a timeout. A fresh roUrlTransfer + roMessagePort
 ' per call avoids cross-call event bleed. NEVER logs the url — the Authorization header carries the
-' token. Mirrors the raw-transfer pattern in captionTask.bs / ServerReachableTask.bs.
+' token. Mirrors the raw-transfer pattern in LoadCaptionTask.bs / ServerReachableTask.bs.
 function httpGet(url as string, timeoutMs as integer) as object
   req = CreateObject("roUrlTransfer")
   port = CreateObject("roMessagePort")

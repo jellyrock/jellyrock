@@ -87,7 +87,7 @@
  *    `<interface>` is read.
  *  - An `m.top` reached through a local alias (`top = m.top`); the sibling plugin
  *    does union-find aliasing, this one matches the written form. Applies to (4)
- *    and (5) too — `captionTask`'s alias is the one instance, and it observes nothing.
+ *    and (5) too — `LoadCaptionTask`'s alias is the one instance, and it observes nothing.
  *  - (4) and (5) read the component's own codebehind only. An observe or unobserve
  *    on `m.top` inside a `source/` helper it imports is invisible; there is none today.
  *  - (5) treats a non-literal second argument as a port, since it cannot tell a

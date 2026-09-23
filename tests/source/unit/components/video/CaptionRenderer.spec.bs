@@ -1,0 +1,116 @@
+namespace tests
+
+  @suite("CaptionRenderer")
+  class CaptionRendererTests extends tests.BaseTestSuite
+
+    private captionRenderer as object
+
+    ' A node these tests DESTROY must be built per test, not per @describe group:
+    ' setup() runs once per group, so one onDestroy() left every later test acting
+    ' on an already-torn-down node (tests/CLAUDE.md, lifecycle hooks).
+    protected override sub beforeEach()
+      super.beforeEach()
+      m.captionRenderer = CreateObject("roSGNode", "CaptionRenderer")
+    end sub
+
+    protected override sub afterEach()
+      super.afterEach()
+      ' Releases any fetch node a url test launched, so no delivery lands during a
+      ' later test. Proven idempotent below, so the tests that call it are fine too.
+      m.captionRenderer.callFunc("onDestroy")
+      m.captionRenderer = invalid
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("onDestroy()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("stops the caption timer")
+    function _()
+      ' The TEST starts the timer, so the expectation cannot be computed from the
+      ' code under test: only onDestroy() actually running can turn it back off.
+      ' This is the case that proves callFunc() reaches the component at all — it
+      ' fails outright if CaptionRenderer.xml stops declaring <function name="onDestroy" />.
+      timer = m.captionRenderer.findNode("captionTimer")
+      timer.control = "start"
+      m.assertEqual(timer.control, "start")
+
+      m.captionRenderer.callFunc("onDestroy")
+
+      m.assertEqual(timer.control, "stop")
+    end function
+
+    @it("does not crash when called")
+    function _()
+      m.captionRenderer.callFunc("onDestroy")
+      m.assertTrue(true)
+    end function
+
+    @it("does not crash when called twice (idempotent)")
+    function _()
+      m.captionRenderer.callFunc("onDestroy")
+      m.captionRenderer.callFunc("onDestroy")
+      m.assertTrue(true)
+    end function
+
+    @it("leaves currentCaption empty")
+    function _()
+      m.captionRenderer.callFunc("onDestroy")
+      m.assertArrayCount(m.captionRenderer.currentCaption, 0)
+    end function
+
+    @it("updateCaption does not crash after onDestroy")
+    function _()
+      m.captionRenderer.playerState = "playingOn"
+      m.captionRenderer.currentPos = 500
+      m.captionRenderer.callFunc("onDestroy")
+      ' Simulate a late timer fire — the defensive guard in updateCaption()
+      ' should return early when m.tags/m.captionList are invalid
+      m.captionRenderer.callFunc("updateCaption")
+      m.assertTrue(true)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("url")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("an empty url stops the caption timer and clears what is on screen")
+    function _()
+      ' The clear verb VideoPlayerView uses when the viewer switches away from
+      ' custom subtitles. `url` already defaults to "", so it must hold a track
+      ' first or writing "" is not a change and no observer fires.
+      m.captionRenderer.url = m.unreachableVtt("a")
+      timer = m.captionRenderer.findNode("captionTimer")
+      timer.control = "start"
+
+      m.captionRenderer.url = ""
+
+      m.assertEqual(timer.control, "stop")
+      m.assertArrayCount(m.captionRenderer.currentCaption, 0)
+    end function
+
+    @it("switching track clears the previous track's captions immediately")
+    function _()
+      ' The old track must leave the screen the moment the track changes, not one
+      ' thread crossing later when the fetch replies — clearCaptions() runs
+      ' synchronously in onUrlChange, before the fetch is even launched.
+      m.captionRenderer.url = m.unreachableVtt("a")
+      timer = m.captionRenderer.findNode("captionTimer")
+      timer.control = "start"
+
+      m.captionRenderer.url = m.unreachableVtt("b")
+
+      m.assertEqual(timer.control, "stop")
+      m.assertArrayCount(m.captionRenderer.currentCaption, 0)
+    end function
+
+    ' A syntactically valid .vtt URL on a closed local port: it satisfies the
+    ' renderer's fetch path but is refused at once, so no test waits on a network
+    ' round trip and nothing leaves the device.
+    private function unreachableVtt(name as string) as string
+      return "http://127.0.0.1:1/" + name + ".vtt"
+    end function
+
+  end class
+
+end namespace
