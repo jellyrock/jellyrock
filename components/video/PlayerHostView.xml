@@ -10,6 +10,9 @@
     <!-- Host-internal advancement, called by the child VideoPlayerView (channel
          up/down) and by this host's own onPlayerStateChange (finished -> next). -->
     <function name="playCurrentQueueItem" />
+    <!-- The child VideoPlayerView's bufferCheck saw a Live TV stream stall: restart the
+         channel or show the error. -->
+    <function name="onLiveStreamStalled" />
     <!-- Leave the play route (queue exhausted / playback error / voice "stop"). -->
     <function name="exitPlayback" />
     <!-- Voice transport: main.bs forwards here, this host forwards to the child player. -->

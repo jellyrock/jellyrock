@@ -55,6 +55,8 @@
     <function name="handleTransport" />
     <function name="abandonErrorDialog" />
     <function name="showLiveStreamStoppedError" />
+    <function name="showLiveStreamStalledError" />
+    <function name="reportStallStop" />
   </interface>
 
   <children>

@@ -57,10 +57,8 @@ sub init()
   ' router-active view (JRScene's overhang controller reads isOverhangVisible on mount).
   m.top.isOverhangVisible = false
 
-  ' Live TV restart budget, carried across mounts: see newLiveRestartBudget. The clock only
-  ' supplies monotonic readings for its played-time accounting.
+  ' Live TV restart budget, carried across mounts: see newLiveRestartBudget.
   m.liveRestart = newLiveRestartBudget()
-  m.liveRestartClock = CreateObject("roTimespan")
 end sub
 
 ' Router lifecycle (via JRScreen's onViewOpen bridge): mount the player for the
@@ -207,17 +205,61 @@ end sub
 ' ===========================================================================
 sub onPlayerStateChange()
   state = LCase(m.view.state)
-  liveRestartOnState(m.liveRestart, state, m.liveRestartClock.TotalMilliseconds())
+  liveRestartOnState(m.liveRestart, state, playerPositionMs())
   if state <> "finished" then return
 
+  if not prepareToLeaveMount() then return
+  queueManager = m.global.queueManager
+
+  ' Live TV channel that finished -> restart the same channel (same queue position). A live feed
+  ' that drops mid-stream surfaces as `finished`; one that keeps ending without playing gets the
+  ' error instead of a restart loop (liveRestartOnEnd in liveTv.bs).
+  currentItem = queueManager.callFunc("getCurrentItem")
+  if isValid(currentItem)
+    currentItemType = queueManager.callFunc("getItemType", currentItem)
+    if currentItemType = "tvchannel"
+      if liveRestartOnEnd(m.liveRestart, playerPositionMs())
+        restartLiveChannel()
+      else
+        m.log.warn("Live TV channel keeps ending without playing; showing the error instead of restarting", textOrEmpty(currentItem.id), m.liveRestart.count, m.liveRestart.playedMs)
+        m.view.callFunc("showLiveStreamStoppedError")
+      end if
+      return
+    end if
+  end if
+
+  ' More items in the queue -> advance and play the next one, from its beginning
+  position = queueManager.callFunc("getPosition")
+  if position < queueManager.callFunc("getCount") - 1
+    queueManager.callFunc("advanceTo", position + 1)
+    updateQueueBackdrop()
+    playCurrentQueueItem()
+    return
+  end if
+
+  ' Queue exhausted -> leave the player and return to the launching view
+  m.global.audioPlayer.loopMode = ""
+  exitPlayback()
+end sub
+
+' The player's position in milliseconds, for the Live TV restart rule (newLiveRestartBudget).
+function playerPositionMs() as integer
+  if not isValid(m.view) or not isValid(m.view.position) then return 0
+  return int(m.view.position * 1000)
+end function
+
+' The checks and screen-clearing every exit from the current mount shares — a stream that
+' finished (onPlayerStateChange) and a Live TV stream that stalled (onLiveStreamStalled).
+' Returns false when a guard says to leave the mount alone, before anything is torn down.
+function prepareToLeaveMount() as boolean
   ' Don't advance mid-retry; the DoVi fallback calls stop which can fire "finished".
-  if isValid(m.view.isRetrying) and m.view.isRetrying then return
+  if isValid(m.view.isRetrying) and m.view.isRetrying then return false
 
   ' Don't advance — or tear anything down — while an error dialog owns the exit.
   ' Same class of "finished" as the line above, and the same asymmetry it fixes:
   ' bufferCheck shows the dialog and stops the stream on the very next line, with
-  ' nothing claiming the exit. A `stop` usually surfaces as `stopped`, which the
-  ' guard at the top of this sub already ignores — but it can surface as
+  ' nothing claiming the exit. A `stop` usually surfaces as `stopped`, which
+  ' onPlayerStateChange's state check already ignores — but it can surface as
   ' `finished`, which is precisely why isRetrying exists, and on that landing the
   ' teardown below would abandon the dialog and the queue logic would advance to
   ' the next episode with the error unread.
@@ -226,9 +268,7 @@ sub onPlayerStateChange()
   ' tear it down — the dialog's own resolution calls exitFromPlaybackError ->
   ' exitPlayback, and anything that navigates without it (deep link, sign-out)
   ' reaches VideoPlayerView.onDestroy, which abandons it.
-  if isValid(m.view.errorDialogOwnsExit) and m.view.errorDialogOwnsExit then return
-
-  queueManager = m.global.queueManager
+  if isValid(m.view.errorDialogOwnsExit) and m.view.errorDialogOwnsExit then return false
 
   ' Clear the screen before playback teardown navigates: a dialog left open would
   ' end up over the incoming screen, having lost focus to it — visible but deaf.
@@ -262,35 +302,27 @@ sub onPlayerStateChange()
   abandonPlaybackDialogs()
   cancelOpenDialog()
 
-  ' Live TV channel that finished -> restart the same channel (same queue position). A live feed
-  ' that drops mid-stream surfaces as `finished`; one that keeps ending without playing gets the
-  ' error instead of a restart loop (liveRestartOnEnd in liveTv.bs).
-  currentItem = queueManager.callFunc("getCurrentItem")
-  if isValid(currentItem)
-    currentItemType = queueManager.callFunc("getItemType", currentItem)
-    if currentItemType = "tvchannel"
-      if liveRestartOnEnd(m.liveRestart, m.liveRestartClock.TotalMilliseconds())
-        restartLiveChannel()
-      else
-        m.log.warn("Live TV channel keeps ending without playing; showing the error instead of restarting", "channelId", textOrEmpty(currentItem.id), "endsWithoutHealthyPlay", m.liveRestart.count, "playedMs", m.liveRestart.playedMs)
-        m.view.callFunc("showLiveStreamStoppedError")
-      end if
-      return
-    end if
-  end if
+  return true
+end function
 
-  ' More items in the queue -> advance and play the next one, from its beginning
-  position = queueManager.callFunc("getPosition")
-  if position < queueManager.callFunc("getCount") - 1
-    queueManager.callFunc("advanceTo", position + 1)
-    updateQueueBackdrop()
-    playCurrentQueueItem()
-    return
-  end if
+' VideoPlayerView.bufferCheck saw a Live TV channel's buffering stall. The same two exits as a
+' channel that ended: restart it (liveRestartOnStall allows that only after healthy playing) or
+' show the error. A guard that declines leaves the player's buffer check running, so it asks again.
+' The restart destroys the calling player synchronously, which bufferCheck is written to survive.
+sub onLiveStreamStalled()
+  if not isValid(m.view) then return
+  if not prepareToLeaveMount() then return
 
-  ' Queue exhausted -> leave the player and return to the launching view
-  m.global.audioPlayer.loopMode = ""
-  exitPlayback()
+  if liveRestartOnStall(m.liveRestart, playerPositionMs())
+    m.view.callFunc("reportStallStop")
+    restartLiveChannel()
+  else
+    currentItem = m.global.queueManager.callFunc("getCurrentItem")
+    channelId = ""
+    if isValid(currentItem) then channelId = textOrEmpty(currentItem.id)
+    m.log.warn("Live TV channel stalled without healthy playing; showing the error instead of restarting", channelId, m.liveRestart.count, m.liveRestart.playedMs)
+    m.view.callFunc("showLiveStreamStalledError")
+  end if
 end sub
 
 ' handleTransport: voice transport delegate. main.bs forwards transport commands

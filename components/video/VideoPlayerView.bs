@@ -4,11 +4,13 @@ import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/constants/imageSize.bs"
+import "pkg:/source/enums/BufferCheckAction.bs"
 import "pkg:/source/enums/MediaSegmentAction.bs"
 import "pkg:/source/enums/MediaSegmentType.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/bufferStall.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/liveTv.bs"
@@ -970,6 +972,25 @@ end function
 ' player reports no error code for it, so the cause is given in words.
 sub showLiveStreamStoppedError()
   showPlaybackErrorDialog(translate(translationKeys.ErrorPlaybackCauseLiveStreamStopped))
+end sub
+
+' Called by PlayerHostView just before it restarts a Live TV channel whose stream stalled. The
+' remount destroys this player before its `stopped` state is handled, so onState never reports
+' the stop, and restarting the SAME channel does not make Jellyfin close the live stream either:
+' each stall restart left one consumer holding it (on a tuner-limited server, a tuner).
+sub reportStallStop()
+  if not m.isPlayReported then return
+  reportPlayback("stop")
+  m.isPlayReported = false
+end sub
+
+' Called by PlayerHostView when a Live TV stream stalls and it will not restart the channel (it had
+' not played healthily). The same cause as showLiveStreamStoppedError, plus the stop a stall needs
+' (an ended stream has already stopped). Same shape as bufferCheck's stall error: the dialog claims
+' the exit first, so the `finished` this stop can surface as is ignored by the host.
+sub showLiveStreamStalledError()
+  showPlaybackErrorDialog(translate(translationKeys.ErrorPlaybackCauseLiveStreamStopped))
+  m.top.control = "stop"
 end sub
 
 ' Called by PlayerHostView BEFORE it clears the modal/overlay channels during its
@@ -2035,12 +2056,18 @@ sub bufferCheck()
     return
   end if
   if isValid(m.top.bufferingStatus)
-
-    ' Check that the buffering percentage is increasing
-    if m.top.bufferingStatus["percentage"] > m.bufferPercentage
-      m.bufferPercentage = m.top.bufferingStatus["percentage"]
-    else if isLiveTvPlayback()
-      m.top.callFunc("refresh")
+    percentage = m.top.bufferingStatus["percentage"]
+    action = classifyBufferCheck(percentage, m.bufferPercentage, isLiveTvPlayback())
+    if action = BufferCheckAction.PROGRESS
+      m.bufferPercentage = percentage
+    else if action = BufferCheckAction.LIVE_STALLED
+      ' The host owns the Live TV restart rule. Nothing may touch this component after the call:
+      ' a restart destroys it synchronously (onDestroy releases bufferCheckTimer), so this must be
+      ' the last statement. The timer needs no handling here: onDestroy stops it on a restart, the
+      ' next tick stops it once the error has stopped the stream, and a guard that declined leaves
+      ' it running so the next tick checks again.
+      host = m.top.getParent()
+      if isValid(host) then host.callFunc("onLiveStreamStalled")
     else
       ' If buffering has stopped Display dialog
       showPlaybackErrorDialog(translate(translationKeys.ErrorThereWasAnErrorRetrievingThe))
