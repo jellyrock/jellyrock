@@ -1,6 +1,6 @@
 ---
 name: done
-description: Close-loop completion for journal entries. Three modes — `running` (special keyword: moves the `## Currently running` paragraph in `docs/progress.md` to `## Recently shipped` dated today and clears the cursor), or polymorphic slug/keyword match (searches `docs/progress.md` "Open followups" first via substring against bullet text; falls through to `docs/signals-backlog.md` exact `### <slug>:` match). For followups: removes the bullet, prepends a "Recently shipped" entry with today's date, bumps `last-updated:`. For signals: flips `status:` to `completed` and bumps `last_checked:` + file `last-updated:` to today. Edit-only — never commits. If no match, suggests `/tech-debt-scan` (for tech-debt removals) or `gh issue close <N>` (for issues). Distinct from `/log` (which CREATES entries).
+description: Close-loop completion for journal entries. Three modes — `running` (special keyword: moves the `## Currently running` paragraph in `docs/progress.md` to `## Recently shipped` dated today and clears the cursor), or polymorphic slug/keyword match (searches `docs/progress.md` "Open followups" first via substring against bullet text; falls through to `docs/signals-backlog.md` exact `### <slug>:` match). For followups: removes the bullet, prepends a "Recently shipped" entry with today's date (on `main` only — on a branch the post-merge journal-sync writes it), bumps `last-updated:`. For signals: flips `status:` to `completed` and bumps `last_checked:` + file `last-updated:` to today. Edit-only — never commits. If no match, suggests `/tech-debt-scan` (for tech-debt removals) or `gh issue close <N>` (for issues). Distinct from `/log` (which CREATES entries).
 model: sonnet
 effort: low
 ---
@@ -15,7 +15,7 @@ effort: low
 
 **Outputs.**
 
-- The closure writes applied directly via `Edit`: for a **followup** — remove the bullet from `## Open followups` (restore the `(none)` placeholder if the area empties), prepend a dated `- YYYY-MM-DD — <text>` entry to `## Recently shipped`, bump `last-updated:`; for a **signal** — the auto-managed-vs-manual field updates (see Success criteria); for **running** — promote the cursor paragraph to a dated `## Recently shipped` bullet, clear the cursor body, bump `last-updated:`.
+- The closure writes applied directly via `Edit`: for a **followup** — remove the bullet from `## Open followups` (restore the `(none)` placeholder if the area empties), prepend a dated `- YYYY-MM-DD — <text>` entry to `## Recently shipped` (on `main` only; see Step 2-F), bump `last-updated:`; for a **signal** — the auto-managed-vs-manual field updates (see Success criteria); for **running** — promote the cursor paragraph to a dated `## Recently shipped` bullet (on `main` only), clear the cursor body, bump `last-updated:`.
 - A one-line confirmation after the writes, so the user can see what landed.
 - A verification pass (`npm run lint:docs`) confirming the file stays lint-clean (staleness gate + signals schema).
 - **No commit.** `/done` is edit-only — it surfaces "edited `<path>` — review and commit when ready." The commit (carrying the actual code change that closed the work) is the user's call.
@@ -103,7 +103,7 @@ Tell the user no journal entry matched, then suggest:
 Compose the diff:
 
 1. Remove the matched bullet from the area subsection under `## Open followups`. If removing the bullet leaves the area subsection empty, restore the `(none)` placeholder line. If the bullet was the LAST line of the file, make sure the file still ends with a single newline — removing a final line takes its newline with it, and `markdownlint`'s MD047 fires on the next edit rather than on this one, so the breakage surfaces attached to unrelated work.
-2. Prepend a new bullet at the top of `## Recently shipped`: `- YYYY-MM-DD — <followup text>` using today's ISO date and the followup's text verbatim.
+2. **Only if `git branch --show-current` is `main`**, prepend a new bullet at the top of `## Recently shipped`: `- YYYY-MM-DD — <followup text>` using today's ISO date and the followup's text verbatim. On any other branch skip this step: the work ships in a PR, and the post-merge `journal-sync.yml` writes its one Recently-shipped line from the PR title, so a line here is a duplicate.
 3. Bump `last-updated:` in the frontmatter to today.
 
 **Verbatim has one exception, and it is not a style call.** A followup that states a PROBLEM rather than a deliverable — "X has no sanctioned way to do Y", "Z cannot be verified" — reads as a live complaint when copied verbatim under a today's date, i.e. it asserts the problem still exists on the very day it was fixed. That fails this skill's own "closure writes reflect reality, not optimism" criterion in the honest direction rather than the optimistic one, but it fails it. For those, write a one-line RESOLUTION naming what shipped and the followup it closes, which is the shape `docs/progress.md` already uses — see its `run-meta.json` and registry-restore entries. Deliverable-shaped bullets ("Expand automated store screenshots to all ~99 locales") are unaffected: verbatim is already the resolution, and rewriting them would just be drift.
@@ -154,7 +154,7 @@ The in-flight cursor shipped — promote it to `## Recently shipped` and clear t
 Compose the diff:
 
 1. Read the current paragraph between `## Currently running` and the next `## ` heading in `docs/progress.md`. If the paragraph is empty (already cleared), tell the user "no Currently-running cursor to close" and stop — don't pad Recently shipped with a blank entry.
-2. Prepend a new bullet at the top of `## Recently shipped`: `- YYYY-MM-DD — <currently-running text>` using today's ISO date and the paragraph verbatim. If the paragraph is multi-line, collapse internal whitespace to single spaces so the bullet stays one line.
+2. **Only on `main`** (same reason as Step 2-F), prepend a new bullet at the top of `## Recently shipped`: `- YYYY-MM-DD — <currently-running text>` using today's ISO date and the paragraph verbatim. If the paragraph is multi-line, collapse internal whitespace to single spaces so the bullet stays one line.
 3. Replace the `## Currently running` body with a blank-line pair (clears the cursor; leaves the section heading intact).
 4. Bump `last-updated:` frontmatter to today.
 
