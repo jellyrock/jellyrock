@@ -194,8 +194,6 @@ const PENDING_MIGRATIONS = {
     ['onPlaybackInfoRefreshDue', 'm.getPlaybackInfoTask'],
   ],
   'components/video/VideoPlayerView.bs': [
-    ['loadCaption', 'm.captionTask'],
-    ['onSubtitleChange', 'm.captionTask'],
     ['onSubtitleChange', 'm.LoadMetaDataTask'],
     ['onAudioIndexChange', 'm.LoadMetaDataTask'],
     ['onVideoSourceChange', 'm.LoadMetaDataTask'],

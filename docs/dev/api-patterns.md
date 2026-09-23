@@ -82,9 +82,11 @@ Standalone Task for non-Jellyfin HTTP, binary downloads, or timer-driven loops.
 
 Use `roUrlTransfer` + `port.WaitMessage()` for the HTTP request. **Do NOT use `rr_Requests()` in Tasks with active render-thread timers or frequent field observers.** `rr_Requests_run()` is a standalone function whose `m` resolves to the component's shared `m` AA; its busy-polling loop reads `m.top` thousands of times per second from the task thread, racing with any render-thread code that also reads `m`. This data race corrupts the AA's internal state and causes intermittent crashes.
 
-`FontDownloadTask` still uses `rr_Requests()` safely because it has no render-thread timers — the collision window is negligible. Tasks with timers (like `captionTask`) must use `roUrlTransfer` + `WaitMessage()` instead.
+`FontDownloadTask` still uses `rr_Requests()` safely because it has no render-thread timers — the collision window is negligible.
 
-Examples: `captionTask` (`roUrlTransfer` + `WaitMessage`), `FontDownloadTask` (rr_Requests), `ServerDiscoveryTask` (`roUrlTransfer` + wait)
+**The stronger fix is to not share the component at all.** Captions used to be one `captionTask` holding both the VTT fetch and a 100 ms render-thread caption timer, and that shared `m` is what produced the `&hf3` crash this warning is about. It is now split — `LoadCaptionTask` (fetch only, no render-thread state) and `CaptionRenderer` (a `Group`, no Task function) — so the race is structurally impossible rather than avoided by picking the right HTTP client. Prefer that shape for anything new; the rule above is for a component that genuinely must be both.
+
+Examples: `LoadCaptionTask` (`roUrlTransfer` + `WaitMessage`), `FontDownloadTask` (rr_Requests), `ServerDiscoveryTask` (`roUrlTransfer` + wait)
 
 ### Pattern 5: `apiPipeline` (N independent requests, one thread)
 

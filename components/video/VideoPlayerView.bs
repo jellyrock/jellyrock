@@ -564,33 +564,37 @@ sub onAllowCaptionsChange()
 
   m.captionGroup = m.top.findNode("captionGroup")
   m.captionGroup.createchildren(9, "LayoutGroup")
-  m.captionTask = createObject("roSGNode", "captionTask")
-  m.captionTask.observeField("currentCaption", "updateCaption")
-  m.captionTask.observeField("useThis", "checkCaptionMode")
+  m.captionRenderer = createObject("roSGNode", "CaptionRenderer")
+  ' Parented, unlike the Task node this replaced. A Task runs detached by design; a
+  ' Group is a scene-graph node, and whether an orphaned one's Timer child still
+  ' fires is undocumented — so put it in the tree rather than depend on the answer.
+  ' It draws nothing itself: the lines it builds are appended to captionGroup.
+  m.top.appendChild(m.captionRenderer)
+  m.captionRenderer.observeField("currentCaption", "updateCaption")
 end sub
 
 ' Set caption url to server subtitle track and run the fetch task
 sub loadCaption()
   ' Observed from init(), but there is nothing to load into until captions are allowed.
-  if not isValid(m.captionTask) then return
+  if not isValid(m.captionRenderer) then return
 
   m.log.debug("loadCaption() called", m.top.subtitleTrack, m.top.suppressCaptions)
   if m.top.suppressCaptions and isValid(m.top.subtitleTrack) and m.top.subtitleTrack <> ""
-    m.log.debug("Setting captionTask.url", m.top.subtitleTrack)
-    m.captionTask.control = "STOP"
-    m.captionTask.url = m.top.subtitleTrack
-    launchTask(m.captionTask)
+    m.log.debug("Setting captionRenderer.url", m.top.subtitleTrack)
+    ' The renderer owns the fetch: writing `url` replaces the fetch node and starts
+    ' the new run, so nothing here launches a Task.
+    m.captionRenderer.url = m.top.subtitleTrack
   end if
 end sub
 
-' Toggles visibility of custom subtitles and sets captionTask's player state
+' Toggles visibility of custom subtitles and sets the caption renderer's player state
 sub toggleCaption()
   ' Observed from init(), but there is nothing to toggle until captions are allowed.
-  if not isValid(m.captionTask) then return
+  if not isValid(m.captionRenderer) then return
 
-  m.captionTask.playerState = m.top.state + m.top.globalCaptionMode
+  m.captionRenderer.playerState = m.top.state + m.top.globalCaptionMode
   if LCase(m.top.globalCaptionMode) = "on"
-    m.captionTask.playerState = m.top.state + m.top.globalCaptionMode + "w"
+    m.captionRenderer.playerState = m.top.state + m.top.globalCaptionMode + "w"
     m.captionGroup.visible = true
   else
     m.captionGroup.visible = false
@@ -600,7 +604,7 @@ end sub
 ' Removes old subtitle lines and adds new subtitle lines
 sub updateCaption()
   m.captionGroup.removeChildrenIndex(m.captionGroup.getChildCount(), 0)
-  m.captionGroup.appendChildren(m.captionTask.currentCaption)
+  m.captionGroup.appendChildren(m.captionRenderer.currentCaption)
 end sub
 
 ' Event handler for when selectedSubtitle changes
@@ -632,21 +636,17 @@ sub onSubtitleChange()
         m.top.globalCaptionMode = "On"
         ' Manually load the caption since loadCaption() observer may have already fired
         ' with the wrong suppressCaptions value
-        if isValid(m.captionTask) and isValid(m.top.subtitleTrack) and m.top.subtitleTrack <> ""
-          m.captionTask.control = "STOP"
-          m.captionTask.url = m.top.subtitleTrack
-          launchTask(m.captionTask)
+        if isValid(m.captionRenderer) and isValid(m.top.subtitleTrack) and m.top.subtitleTrack <> ""
+          m.captionRenderer.url = m.top.subtitleTrack
         end if
         toggleCaption()
       else
         ' Explicitly clean up custom subtitle system when switching away from custom subs
         m.captionGroup.visible = false
-        if isValid(m.captionTask)
-          m.captionTask.control = "STOP"
-          ' captionTask no longer observes url, so setting url="" is a no-op.
-          ' Publish empty captionData through the bridge so onCaptionDataReceived
-          ' stops the caption timer and clears currentCaption on the render thread.
-          m.captionTask.captionData = { entries: [] }
+        if isValid(m.captionRenderer)
+          ' An empty url is the renderer's "clear" verb: it stops the caption timer,
+          ' drops what is on screen and releases any fetch still in flight.
+          m.captionRenderer.url = ""
         end if
       end if
     end if
@@ -1605,8 +1605,8 @@ sub onPositionChanged()
   m.osd.positionTime = m.top.position
   m.osd.remainingPositionTime = effectiveDuration - m.top.position
 
-  if isValid(m.captionTask)
-    m.captionTask.currentPos = Int(m.top.position * 1000)
+  if isValid(m.captionRenderer)
+    m.captionRenderer.currentPos = Int(m.top.position * 1000)
   end if
 
   ' Update trickplay carousel's playback position for proactive tile caching
@@ -1779,8 +1779,8 @@ sub onState()
     end if
   end if
 
-  if isValid(m.captionTask)
-    m.captionTask.playerState = m.top.state + m.top.globalCaptionMode
+  if isValid(m.captionRenderer)
+    m.captionRenderer.playerState = m.top.state + m.top.globalCaptionMode
   end if
 
   ' Pass video state into OSD
@@ -2358,12 +2358,13 @@ sub onDestroy()
   end if
   m.liveTvProgramEndTime = 0
 
-  if isValid(m.captionTask)
-    m.captionTask.control = "STOP"
-    m.captionTask.unobserveField("currentCaption")
-    m.captionTask.unobserveField("useThis")
-    m.captionTask.callFunc("onDestroy")
-    m.captionTask = invalid
+  if isValid(m.captionRenderer)
+    m.captionRenderer.unobserveField("currentCaption")
+    ' Reachable only because CaptionRenderer.xml declares <function name="onDestroy" />;
+    ' it releases the fetch node and stops the 100 ms caption timer.
+    m.captionRenderer.callFunc("onDestroy")
+    m.top.removeChild(m.captionRenderer)
+    m.captionRenderer = invalid
   end if
 
   ' Unobserve trickPlayBar position text

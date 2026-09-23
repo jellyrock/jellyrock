@@ -15,6 +15,8 @@ related-files:
   - source/utils/playbackErrorInfo.bs
   - source/utils/playbackReport.bs
   - source/utils/transcodeCause.bs
+  - components/video/CaptionRenderer.bs
+  - components/video/LoadCaptionTask.bs
   - components/video/TrickplayCarousel.bs
   - components/video/VideoNotification.bs
   - components/mediaPlayers/AudioPlayer.bs
@@ -34,7 +36,7 @@ related-files:
   - source/utils/liveTv.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-09-21
+last-reviewed: 2026-09-22
 ---
 
 # Video & Audio Playback
@@ -881,6 +883,18 @@ Three "kinds" of subtitles:
 - **None** — `SelectedSubtitle = -1` (`SubtitleSelection.NONE` enum)
 - **Native (Roku-rendered)** — text-format tracks (SRT, VTT) that Roku can display directly. `globalCaptionMode = "On"`, `subtitleTrack = <Roku-mangled track name>`.
 - **Encoded (Jellyfin-burned)** — tracks burned into the video stream by the transcoder (e.g., bitmap subtitles like PGS). `globalCaptionMode = "Off"` (Roku captions hidden because they're already in the picture).
+- **Custom (app-rendered)** — an EXTERNAL text track drawn by JellyRock instead of by Roku, when the `playbackSubsCustom` setting is on. `suppressCaptions = true` hides Roku's own rendering; the app fetches the track and draws the lines itself into `captionGroup`. Chosen by `shouldUseCustomSubtitlesForCurrentSelection()`, which requires the setting AND `IsExternal` — an embedded track always takes the native path.
+
+### Custom subtitles: fetch and rendering are separate components
+
+Split 2026-09-22 (decision [`caption-fetch-render-split`](../decisions.md#decision-id-caption-fetch-render-split)); it was previously one `captionTask` node holding both halves, whose shared unsynchronized `m` caused the `&hf3` crash that `roUrlTransfer` + `WaitMessage` was adopted to dodge ([ADR 0014](../adr/0014-non-pool-http-stays-task-blocking.md)).
+
+- **`LoadCaptionTask`** — Task thread only. Fetches one `.vtt` and parses it to cues. A NEW node per subtitle change, so a second switch while the first fetch is in flight is not dropped ([ADR 0037](../adr/0037-task-run-replacement.md)). It also answers whether the server's fallback font reached disk, because `roFileSystem` cannot be constructed on the render thread.
+- **`CaptionRenderer`** — `extends Group`, render thread only, lives as long as the player. Owns the 100 ms caption timer, the font and style lookups, the `currentPos` / `playerState` bridge, and the fetch node. With no `functionName`, exactly one thread writes its `m`, so the original race is impossible by construction rather than avoided.
+
+`VideoPlayerView` therefore launches no Task for captions: it writes `captionRenderer.url` to load a track and `""` to clear one, and appends the published `currentCaption` nodes into `captionGroup`.
+
+⚠️ **The fetcher accepts only a `.vtt` URL, and that is safe only because `vtt` is FIRST in `getSubtitleProfiles()`** — the server converts an external text track to the first format the client advertises. Reordering that list silently stops every external track from rendering; pinned by `deviceCapabilities-subtitleProfile.spec.bs`.
 
 Annoyance addressed in code: Roku **reorders** subtitle tracks unpredictably between what JellyRock provides and what `availableSubtitleTracks` returns. The function `availSubtitleTrackIdx(trackName)` in `PlayerHostView.bs` handles this by matching on substring of the track URL rather than expecting index parity.
 

@@ -42,4 +42,8 @@ stopped run makes no progress, including one parked in a single long `wait()` �
   measured.
 - **Swapping the node in place at the four remaining sites** — `BaseGridView`, `schedule` and
   `HomeRows` read state back off the node, and `VideoPlayerView.captionTask` is a live playback
-  bridge; each needs its own design (tracked in [`docs/progress.md`](../progress.md)).
+  bridge; each needs its own design (tracked in [`docs/progress.md`](../progress.md)). All four
+  have since landed. Captions were the last, and took the shape this bullet anticipated rather
+  than a node swap: the fetch was split into `LoadCaptionTask` (a new node per subtitle change)
+  and the bridge stayed put as the long-lived `CaptionRenderer`, which owns the fetch node — so
+  `VideoPlayerView` no longer launches a Task for captions at all.

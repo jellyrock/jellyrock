@@ -1,0 +1,274 @@
+' CaptionRenderer: builds and publishes custom (app-drawn) subtitle lines.
+'
+' Everything here runs on the RENDER thread — the 100 ms caption timer, the font
+' and style lookups, the parsed caption list and the label building. It extends
+' Group rather than Task on purpose: with no functionName there is exactly one
+' thread writing `m`, which makes the &hf3 class that produced the original crash
+' structurally impossible rather than merely avoided. The fetch is a separate
+' component, LoadCaptionTask, whose node this one owns.
+'
+' Its own lifetime is the player's. A subtitle change swaps the FETCH node, never
+' this one, so `currentPos` and `playerState` — the live playback bridge — survive
+' a track change untouched.
+import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/tasks.bs"
+
+sub init()
+  ' NOT the onKeyEvent guard `auto-destroyed-guard.cjs` owns — this component has
+  ' no onKeyEvent, so that plugin never reaches it. Same flag name and same `= true`
+  ' comparison form on purpose: both are positionally first, so the plugin stays a
+  ' no-op if an onKeyEvent is ever added here.
+  m.isDestroyed = false
+  m.log = new log.Logger("CaptionRenderer")
+  m.top.observeField("url", "onUrlChange")
+  m.top.currentCaption = []
+  m.top.currentPos = 0
+  m.lastCaptionTexts = invalid
+  m.fetchTask = invalid
+
+  m.captionTimer = m.top.findNode("captionTimer")
+  m.captionTimer.ObserveField("fire", "updateCaption")
+
+  m.captionList = []
+  ' The downloaded fallback font, used only once a run confirms it is on disk.
+  m.fallbackFont = CreateObject("roSGNode", "Font")
+  ' Safe default until then: a system font always renders, where a Font node
+  ' pointed at a missing file has no defined behaviour we have measured.
+  m.font = "font:LargeSystemFont"
+  m.tags = CreateObject("roRegex", "{\\an\d*}|&lt;.*?&gt;|<.*?>", "s")
+
+  ' Caption Style
+  m.fontSizeDict = { "Default": 60, "Large": 60, "Extra Large": 70, "Medium": 50, "Small": 40 }
+  m.percentageDict = { "Default": 1.0, "100%": 1.0, "75%": 0.75, "50%": 0.5, "25%": 0.25, "Off": 0 }
+  m.textColorDict = { "Default": &HFFFFFFFF, "White": &HFFFFFFFF, "Black": &H000000FF, "Red": &HFF0000FF, "Green": &H008000FF, "Blue": &H0000FFFF, "Yellow": &HFFFF00FF, "Magenta": &HFF00FFFF, "Cyan": &H00FFFFFF }
+  m.bgColorDict = { "Default": &H000000FF, "White": &HFFFFFFFF, "Black": &H000000FF, "Red": &HFF0000FF, "Green": &H008000FF, "Blue": &H0000FFFF, "Yellow": &HFFFF00FF, "Magenta": &HFF00FFFF, "Cyan": &H00FFFFFF }
+
+  deviceInfo = CreateObject("roDeviceInfo")
+  m.fontSize = m.fontSizeDict[deviceInfo.GetCaptionsOption("Text/Size")]
+  m.textColor = m.textColorDict[deviceInfo.GetCaptionsOption("Text/Color")]
+  m.textOpac = m.percentageDict[deviceInfo.GetCaptionsOption("Text/Opacity")]
+  m.bgColor = m.bgColorDict[deviceInfo.GetCaptionsOption("Background/Color")]
+  m.bgOpac = m.percentageDict[deviceInfo.GetCaptionsOption("Background/Opacity")]
+
+  ' Validate fontSize - fallback to default if invalid
+  if not isValid(m.fontSize) or m.fontSize <= 0
+    m.fontSize = m.fontSizeDict["Default"]
+    m.log.warn("Invalid font size from device settings, using default", m.fontSize)
+  end if
+
+  ' Validate text opacity - ensure visibility if set to 0 (Off)
+  if not isValid(m.textOpac) or m.textOpac <= 0
+    m.textOpac = m.percentageDict["Default"]
+    m.log.warn("Text opacity is 0 or invalid, using default for visibility", m.textOpac)
+  end if
+
+end sub
+
+' Applies the downloaded fallback font, or a system font when it is not on disk.
+'
+' The answer comes from the fetch task (`fontAvailable`), not from a setting and not
+' from a filesystem probe here: `CreateObject("roFileSystem")` returns Invalid on the
+' render thread, where this component lives (measured 2026-09-22 — it faulted &hec
+' here while the identical code was fine in the Task this component was split out of).
+'
+' Asking the SETTING instead would be wrong in the case that matters: `playbackSubsCustom`
+' being on is what TRIGGERS the download, not proof that it succeeded. A server that
+' cannot supply the font leaves the setting on and the file absent, which is exactly
+' when non-Latin subtitles need the fallback most.
+sub applyFont(fontAvailable as boolean)
+  if fontAvailable
+    m.fallbackFont.uri = "tmp:/font"
+    m.fallbackFont.size = m.fontSize
+    m.font = m.fallbackFont
+  else
+    m.font = "font:LargeSystemFont"
+  end if
+end sub
+
+' A new subtitle track — or "" to clear captions entirely.
+'
+' Captions are cleared HERE rather than at the top of the fetch, so the old track's
+' lines are gone the moment the track changes instead of one thread crossing later.
+sub onUrlChange()
+  ' A `url` write landing after teardown must not rebuild the fetch node: onDestroy has
+  ' already released it and nulled the timer, so a node built here would never be
+  ' released again. `onCaptionDataReceived` is guarded by `isCurrentTaskEvent`; this is
+  ' the same protection on this component's other entry point.
+  if m.isDestroyed = true then return
+
+  clearCaptions()
+
+  url = m.top.url
+  if not isValid(url) or url = ""
+    ' Nothing to show and nothing to fetch — drop any run still in flight.
+    m.fetchTask = releaseTask(m.fetchTask, "captionData")
+    return
+  end if
+
+  ' A NEW node per track, never a relaunch: a launch on a node whose fetch has not
+  ' returned is ignored every time, so switching tracks twice in quick succession
+  ' would leave the second track never fetched (ADR 0037).
+  m.fetchTask = replaceTask(m.fetchTask, "LoadCaptionTask", "captionData", { url: url })
+  m.fetchTask.observeField("captionData", "onCaptionDataReceived")
+  launchTask(m.fetchTask)
+end sub
+
+' Receives parsed VTT data from the fetch task and manages the caption timer.
+sub onCaptionDataReceived(event as object)
+  if not isCurrentTaskEvent(event, m.fetchTask)
+    ' A delivery from a node onUrlChange has since replaced — queued before its
+    ' observer was removed, which Roku's docs neither promise nor rule out. Reading
+    ' m.fetchTask in its place would take the NEW track's empty output and stop the
+    ' timer for a track that is still loading.
+    if isValid(m.fetchTask) then m.log.warn("superseded caption delivery dropped")
+    return
+  end if
+
+  m.captionTimer.control = "stop"
+  ' Before any label is built: `updateCaption` reads `m.font` for every line.
+  applyFont(m.fetchTask.fontAvailable = true)
+  captionData = m.fetchTask.captionData
+
+  if isValid(captionData) and isValid(captionData.entries) and captionData.entries.count() > 0
+    m.captionList = captionData.entries
+    m.lastCaptionTexts = invalid
+    m.captionTimer.control = "start"
+    m.log.debug("Caption data received, starting timer with", m.captionList.count(), "entries")
+  else
+    m.captionList = []
+    m.lastCaptionTexts = invalid
+    m.top.currentCaption = []
+    m.log.debug("No caption data, timer stopped")
+  end if
+end sub
+
+' Stops the timer and drops whatever is on screen. Safe to call before init has
+' built the caption state (a `url` write can land first).
+sub clearCaptions()
+  if isValid(m.captionTimer) then m.captionTimer.control = "stop"
+  m.captionList = []
+  m.lastCaptionTexts = invalid
+  m.top.currentCaption = []
+end sub
+
+function arraysEqual(arr1, arr2) as boolean
+  if not isValid(arr1) and not isValid(arr2) then return true
+  if not isValid(arr1) or not isValid(arr2) then return false
+  if arr1.count() <> arr2.count() then return false
+
+  for i = 0 to arr1.count() - 1
+    if arr1[i] <> arr2[i] then return false
+  end for
+
+  return true
+end function
+
+function newlabel(txt)
+  label = CreateObject("roSGNode", "Label")
+  label.text = txt
+  label.font = m.font
+  label.font.size = m.fontSize
+  label.color = m.textColor
+  label.opacity = m.textOpac
+  return label
+end function
+
+function newLayoutGroup(labels)
+  newlg = CreateObject("roSGNode", "LayoutGroup")
+  newlg.appendchildren(labels)
+  newlg.horizalignment = "center"
+  newlg.vertalignment = "bottom"
+  return newlg
+end function
+
+function newRect(lg)
+  rectLG = CreateObject("roSGNode", "LayoutGroup")
+  rectxy = lg.BoundingRect()
+  rect = CreateObject("roSGNode", "Rectangle")
+  rect.color = m.bgColor
+  rect.opacity = m.bgOpac
+  rect.width = rectxy.width + 50
+  rect.height = rectxy.height
+  if lg.getchildCount() = 0
+    rect.width = 0
+    rect.height = 0
+  end if
+  rectLG.translation = [0, -rect.height / 2]
+  rectLG.horizalignment = "center"
+  rectLG.vertalignment = "center"
+  rectLG.appendchild(rect)
+  return rectLG
+end function
+
+sub updateCaption()
+  if LCase(m.top.playerState) = "playingon"
+    ' Guard against m fields being invalid (e.g. onDestroy() was called but a
+    ' final queued timer event still fires before the observer is removed)
+    if not isValid(m.tags) or not isValid(m.captionList) then return
+
+    m.top.currentPos = m.top.currentPos + 100
+    texts = []
+    for each entry in m.captionList
+      if entry["start"] <= m.top.currentPos and m.top.currentPos < entry["end"]
+        t = m.tags.replaceAll(entry["text"], "")
+        texts.push(t)
+      end if
+    end for
+
+    ' Only update captions if content has changed
+    if not isValid(m.lastCaptionTexts) or not arraysEqual(texts, m.lastCaptionTexts)
+      m.lastCaptionTexts = texts
+      m.top.currentCaption = []
+
+      if texts.count() > 0
+        labels = []
+        for each text in texts
+          labels.push(newlabel(text))
+        end for
+        lines = newLayoutGroup(labels)
+        rect = newRect(lines)
+        m.top.currentCaption = [rect, lines]
+      else
+        ' Clear captions when no text should be displayed
+        m.top.currentCaption = []
+      end if
+    end if
+  else if LCase(m.top.playerState.right(1)) = "w"
+    m.top.playerState = m.top.playerState.left(len(m.top.playerState) - 1)
+  end if
+end sub
+
+' onDestroy: full teardown releasing all resources before component removal.
+' Called by VideoPlayerView.onDestroy() when popping the player scene.
+'
+' ⚠️ This is reachable ONLY because CaptionRenderer.xml declares
+' `<function name="onDestroy" />`. Without that line callFunc() is a silent no-op
+' and the 100 ms timer below keeps firing for the life of the app.
+sub onDestroy()
+  m.isDestroyed = true
+  m.log.verbose("onDestroy")
+
+  ' Detach every observer before releasing any reference, so a delivery that lands
+  ' mid-teardown cannot dereference something already nulled.
+  m.top.unobserveField("url")
+
+  ' Drops the fetch observer and STOPs the run, so a response arriving after the
+  ' player is gone cannot restart the timer.
+  m.fetchTask = releaseTask(m.fetchTask, "captionData")
+
+  ' Stop and release caption timer (guarded — safe if onDestroy() is called
+  ' twice or if init() partially failed and m.captionTimer was never set)
+  if isValid(m.captionTimer)
+    m.captionTimer.unobserveField("fire")
+    m.captionTimer.control = "stop"
+    m.captionTimer = invalid
+  end if
+
+  ' Clear references
+  m.captionList = invalid
+  m.lastCaptionTexts = invalid
+  m.tags = invalid
+  m.font = invalid
+  m.fallbackFont = invalid
+end sub

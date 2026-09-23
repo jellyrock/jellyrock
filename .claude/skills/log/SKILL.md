@@ -1,6 +1,6 @@
 ---
 name: log
-description: Append/update an entry in one of the project journals — `decision` (agent-gated: ADR-grade → a numbered record in `docs/adr/`, sub-architectural → a `docs/decisions.md` note, trivia declined), `followup` (`docs/progress.md` open followups, deferred work not yet issue-shaped or tech-debt-shaped; `--replace=<substring>` revises one existing bullet in place rather than appending, for a multi-step entry whose step shipped), `signal` (`docs/signals-backlog.md`, an external version-watch row), or `running` (`docs/progress.md` `## Currently running` paragraph; replaces the in-flight cursor). Routes by first $ARGUMENTS token. Mechanical types (followup, signal, running) apply directly via Edit — no per-invocation confirmation prompt. The `decision` type is agent-gated: the agent drafts the record, applies a significance gate (architectural / hard-to-reverse / cross-component?), routes it (ADR vs. sub-ADR note vs. decline), and diff-confirms before writing, with one-tap human override — the human classifies nothing. The sole sanctioned capture path for these journals; raw markdown edits are not permitted (per AGENTS.md capture-discipline rule).
+description: Append/update an entry in one of the project journals — `decision` (agent-gated: ADR-grade → a numbered record in `docs/adr/`, sub-architectural → a `docs/decisions.md` note, trivia declined; `--revise=<slug>` corrects a note that misdescribes what shipped, which is distinct from a supersede), `followup` (`docs/progress.md` open followups, deferred work not yet issue-shaped or tech-debt-shaped; `--replace=<substring>` revises one existing bullet in place rather than appending, for a multi-step entry whose step shipped), `signal` (`docs/signals-backlog.md`, an external version-watch row), or `running` (`docs/progress.md` `## Currently running` paragraph; replaces the in-flight cursor). Routes by first $ARGUMENTS token. Mechanical types (followup, signal, running) apply directly via Edit — no per-invocation confirmation prompt. The `decision` type is agent-gated: the agent drafts the record, applies a significance gate (architectural / hard-to-reverse / cross-component?), routes it (ADR vs. sub-ADR note vs. decline), and diff-confirms before writing, with one-tap human override — the human classifies nothing. The sole sanctioned capture path for these journals; raw markdown edits are not permitted (per AGENTS.md capture-discipline rule).
 model: sonnet
 effort: low
 ---
@@ -16,7 +16,7 @@ effort: low
 **Outputs.**
 
 - For a mechanical `/log` (`followup`/`signal`/`running`): the append (or cursor replacement) applied directly via Edit to the target journal, plus the `last-updated:` frontmatter bump on `docs/progress.md` / `docs/signals-backlog.md` so the staleness banner stays accurate.
-- For `/log decision`: depending on the agent's significance verdict, either a **new numbered ADR** (`docs/adr/NNNN-<slug>.md` in the house style, plus its row in the `docs/adr/README.md` index table) for an ADR-grade decision, or a slug-based **sub-ADR note** appended to `docs/decisions.md` (append-only — never insert mid-file or rewrite older notes) for a sub-architectural one, or a one-line decline for trivia — with any supersede-chain update applied to the superseded record. Surfaced as a **diff-and-confirm** before writing, with the proposed routing shown for one-tap override.
+- For `/log decision`: depending on the agent's significance verdict, either a **new numbered ADR** (`docs/adr/NNNN-<slug>.md` in the house style, plus its row in the `docs/adr/README.md` index table) for an ADR-grade decision, or a slug-based **sub-ADR note** appended to `docs/decisions.md` (append-only — never insert mid-file or rewrite older notes, except via `--revise=<slug>`, which corrects a note that misdescribes what shipped) for a sub-architectural one, or a one-line decline for trivia — with any supersede-chain update applied to the superseded record. Surfaced as a **diff-and-confirm** before writing, with the proposed routing shown for one-tap override.
 - A `npm run lint:docs` pass after the write, confirming the journal's schema + staleness gate.
 - The skill is pure local-file edits — no commit (the user owns that), no remote calls, no service restarts.
 
@@ -136,6 +136,19 @@ Surface the proposed **routing** (ADR / note / decline) plus the drafted content
 **Before writing a full supersede, ask whether it's actually a PARTIAL one.** If only part of the older note was replaced and the rest is still live, the full ritual would be a lie — use `**partially-supersedes**: <old-slug> (<what moved>)` on the new note and `**partially-superseded-by**: <this-slug> (<what moved>)` on the old one, and leave BOTH `accepted`. The scope annotation is required. This mirrors the ADR tier (0003/0004, 0008/0011), where the partially-superseded record keeps `**Status:** Accepted`. A note can be partially superseded by one record and later fully superseded by another.
 
 **`withdrawn` is terminal** — the decision was abandoned, not replaced, so a withdrawn note has no successor: never supersede one, and never let a withdrawn note declare `**supersedes**`. If a note has grown ADR-grade, that's a promotion judgment (route it as an ADR), not a `**superseded-by**` pointer — every pointer must resolve to a slug in `docs/decisions.md`, and cross-tier references are prose markdown links instead.
+
+#### 5b. `--revise=<slug>` — the record is WRONG, not superseded
+
+`/log decision --revise=<slug>` edits an existing `docs/decisions.md` note **in place**. It is the one exception to the append-only rule, and the distinction it turns on is load-bearing:
+
+- **Supersede** — the decision CHANGED. The old record was true when it was written; it stays, and a new note points at it. This is the normal path.
+- **Revise** — the record MISDESCRIBES what was decided or what shipped. No decision changed; the prose is simply wrong about reality. Superseding here would be a lie — it asserts a decision that never happened, and leaves the false statement as the first thing a reader hits.
+
+Use `--revise` ONLY where the record does not match the code or the decision it claims to describe: a function name that no longer exists, a mechanism a later commit reverted, a measurement quoted wrong. Changing your mind is a **supersede**. Polishing wording is **neither** — leave it alone.
+
+The flow is the same gate as an append: draft the corrected text, surface it as a diff against the current entry, confirm, then `Edit` in place. Do **not** touch `**status**` — a revised note stays `accepted`, because nothing about the decision's standing changed — and do **not** add a supersede pointer. Run `npm run lint:docs` after, exactly as for an append.
+
+**The common case is a record written earlier in the SAME unmerged branch**, describing an approach a later commit on that branch replaced. Correcting it before the PR lands is finishing the entry, not rewriting project state.
 
 #### 6. Verify
 
