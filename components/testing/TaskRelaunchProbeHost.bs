@@ -63,3 +63,39 @@ end sub
 sub release()
   m.top.task.release = true
 end sub
+
+' ── Many nodes at once, for TaskThreadSlots.spec.bs ──────────────────────────
+'
+' That spec counts threads against Roku's 100-thread cap, so these launch with a raw
+' `control = "RUN"` rather than launchTask(): the ledger's watermark would refuse at 50
+' and the spec could never reach the cap it is measuring. Every node is held here until
+' dropHeld(), so a stopped node stays VALID — the case Roku's rule is about.
+
+' Creates, configures and launches one more held node. Returns { ok, node } on success, or
+' { ok: false, code, message } when the launch threw (the cap's `&h29` is documented as
+' catchable).
+function launchHeld(args as object) as object
+  if not isValid(m.held) then m.held = []
+  node = CreateObject("roSGNode", "TaskRelaunchProbeTask")
+  node.setFields({ blockMode: args.blockMode, blockMs: args.blockMs, seq: m.held.count() + 1 })
+  m.held.push(node)
+  try
+    ' bsc-disable-next-line no-raw-run the spec measures Roku's thread cap, which launchTask's watermark would hide
+    node.control = "RUN"
+  catch error
+    return { ok: false, code: error.number, message: error.message }
+  end try
+  return { ok: true, node: node }
+end function
+
+' STOPs the most recently launched held node, from the render thread as the app does.
+sub stopHeldLast()
+  if not isValidAndNotEmpty(m.held) then return
+  m.held.peek().control = "STOP"
+end sub
+
+' Drops every held node. A thread still running keeps running; this only releases the
+' references.
+sub dropHeld()
+  m.held = []
+end sub
