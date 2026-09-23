@@ -22,6 +22,7 @@ import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/displaySettings.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
+import "pkg:/source/utils/languageFilters.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/paging.bs"
 import "pkg:/source/utils/skeleton.bs"
@@ -855,19 +856,66 @@ sub loadFilters(params as object)
     end if
   #end if
 
+  ' Carried on m rather than in a closure: a Roku promise callback runs at component
+  ' scope and captures no locals (the same reason deliverFilters() exists).
+  m.pendingFilterParams = params
+
   req = GetApi().BuildGetFiltersRequest(params)
   promises.chain(fetchAsync(req, "filters-" + params.parentid)).then(sub(res as object)
     ' Any HTTP response lands here (incl. 4xx/5xx). Mirrors the old Task's contract:
     ' res.ok → deliver the filters; otherwise deliver {} + the error message.
     if res.ok
-      deliverFilters(res.json, "")
+      loadLanguageFilters(res.json, "")
     else
-      deliverFilters({}, "Unable to load filter options")
+      loadLanguageFilters({}, "Unable to load filter options")
     end if
   end sub).catch(sub(err as object)
     ' Transport failure / timeout (see the error contract) — never completed.
     m.log.warn("filter load failed", err.reason)
-    deliverFilters({}, "Unable to load filter options")
+    loadLanguageFilters({}, "Unable to load filter options")
+  end sub)
+end sub
+
+' Second leg of the filter load, on 12.0+ servers only: the audio/subtitle language
+' lists, which live on a DIFFERENT endpoint from the rest.
+'
+' The two are disjoint and neither is a superset — `/Items/Filters` carries
+' OfficialRatings and Years, `/Items/Filters2` carries the language lists — so a
+' client that wants both has to ask twice. Sequential rather than parallel because a
+' promise callback here cannot capture locals, so the first leg's result has to be
+' parked on m anyway; the extra round trip happens once per library load, off the
+' critical path (the grid's own items load independently).
+'
+' The language leg is strictly OPTIONAL: any failure delivers the first leg's result
+' unchanged and shows no toast. Losing two filter categories is not worth interrupting
+' someone who was not necessarily going to open the panel, and the categories are
+' offered only when their lists arrive non-empty, so the panel is correct either way.
+sub loadLanguageFilters(filters as object, errorMsg as string)
+  serverVersion = ""
+  if isValid(m.global.server) then serverVersion = toString(m.global.server.version)
+
+  if not languageFilters.supported(serverVersion) or not isValid(m.pendingFilterParams)
+    deliverFilters(filters, errorMsg)
+    return
+  end if
+
+  m.pendingFilters = filters
+  m.pendingFiltersError = errorMsg
+
+  req = GetApi().BuildGetFilters2Request(m.pendingFilterParams)
+  promises.chain(fetchAsync(req, "filters2-" + m.pendingFilterParams.parentid)).then(sub(res as object)
+    merged = m.pendingFilters
+    if res.ok and isValid(res.json)
+      ' Absent keys, not empty ones, are how a pre-12.0 server answers — so a missing
+      ' key here means "no such filter", which is exactly what an empty option list
+      ' makes the panel do.
+      merged.AudioLanguages = languageFilters.optionsFrom(res.json.AudioLanguages)
+      merged.SubtitleLanguages = languageFilters.optionsFrom(res.json.SubtitleLanguages)
+    end if
+    deliverFilters(merged, m.pendingFiltersError)
+  end sub).catch(sub(err as object)
+    m.log.warn("language filter load failed", err.reason)
+    deliverFilters(m.pendingFilters, m.pendingFiltersError)
   end sub)
 end sub
 
@@ -1018,8 +1066,11 @@ sub SetUpOptions()
 
           for each availableFilterOption in o.options
             matchFound = false
+            ' Matched on the VALUE, because that is what was saved — the registry holds
+            ' the query the filter applied, not the labels it was picked by.
+            availableValue = gridQuery.optionValue(availableFilterOption)
             for each selectedFilterOption in selectedFilterOptions
-              if LCase(toString(availableFilterOption).trim()) = LCase(selectedFilterOption.trim())
+              if LCase(availableValue.trim()) = LCase(selectedFilterOption.trim())
                 matchFound = true
               end if
             end for

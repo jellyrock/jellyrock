@@ -1,0 +1,208 @@
+import "pkg:/source/GridView/gridQuery.bs"
+import "pkg:/source/utils/languageFilters.bs"
+
+namespace tests
+
+  @suite("languageFilters - the 12.0 audio/subtitle language browse filters")
+  class LanguageFiltersTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    ' One entry as /Items/Filters2 sends it. The Name is the server's English
+    ' library-science label, deliberately ugly here, because nothing should be
+    ' reading it.
+    private function pair(name as string, value as string) as object
+      return { Name: name, Value: value }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("supported()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true from 12.0.0 on, and false below it")
+    @params("12.0.0", true)
+    @params("12.1.0", true)
+    @params("12.0.1", true)
+    @params("13.0.0", true)
+    @params("10.11.11", false)
+    @params("10.9.0", false)
+    @params("10.7.7", false)
+    function _(serverVersion, expected)
+      m.assertEqual(languageFilters.supported(serverVersion), expected)
+    end function
+
+    @it("is false for an unknown server version, so the filters are hidden rather than offered")
+    ' 10.11 accepts the parameters and SILENTLY IGNORES them, so guessing wrong in the
+    ' permissive direction gives a filter that returns the whole library.
+    @params("")
+    @params("not-a-version")
+    function _(serverVersion)
+      m.assertFalse(languageFilters.supported(serverVersion))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("optionsFrom() - alias merging")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("merges the two ISO 639-2 spellings of one language into a single option")
+    ' The server does not canonicalize /T against /B — it matches the literal tag on the
+    ' file, so `fra` and `fre` select DIFFERENT films. Measured on the local 12.0 fixture
+    ' 2026-09-22: fra 1 film, fre 10, fra,fre 11. Two rows both labelled "French" would
+    ' make picking one an arbitrary partial answer.
+    function _()
+      options = languageFilters.optionsFrom([
+        m.pair("French (fra)", "fra"),
+        m.pair("French (fre)", "fre")
+      ])
+
+      m.assertEqual(options.count(), 1)
+      m.assertEqual(options[0].title, "French")
+      m.assertEqual(options[0].value, "fra,fre")
+    end function
+
+    @it("merges each alias pair the local fixture actually reports")
+    @params("deu", "ger", "German")
+    @params("ces", "cze", "Czech")
+    @params("nld", "dut", "Dutch")
+    @params("ell", "gre", "Greek")
+    function _(codeT, codeB, expectedTitle)
+      options = languageFilters.optionsFrom([m.pair("x", codeT), m.pair("y", codeB)])
+
+      m.assertEqual(options.count(), 1, "expected " + codeT + " and " + codeB + " to merge")
+      m.assertEqual(options[0].title, expectedTitle)
+      m.assertEqual(options[0].value, codeT + "," + codeB)
+    end function
+
+    @it("keeps the codes in the order the server listed them")
+    ' Both have to be sent and either order selects the same films, but a stable order
+    ' keeps the saved query — and so the restore pass's string match — reproducible.
+    function _()
+      options = languageFilters.optionsFrom([m.pair("x", "fre"), m.pair("y", "fra")])
+
+      m.assertEqual(options[0].value, "fre,fra")
+    end function
+
+    @it("does not merge two genuinely different languages that share a prefix")
+    ' nob (Norwegian Bokmal) and nor (Norwegian) are distinct tags, not aliases.
+    function _()
+      options = languageFilters.optionsFrom([m.pair("x", "nob"), m.pair("y", "nor")])
+
+      m.assertEqual(options.count(), 2)
+    end function
+
+    @it("drops a repeated code rather than sending it twice")
+    function _()
+      options = languageFilters.optionsFrom([m.pair("x", "fra"), m.pair("y", "fra")])
+
+      m.assertEqual(options.count(), 1)
+      m.assertEqual(options[0].value, "fra")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("optionsFrom() - labels and order")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("labels each option with the app's own name, never the server's")
+    ' The server sends "Spanish; Castilian (spa)" and "Greek, Modern (1453-) (ell)".
+    ' Those are English-only and unreadable on a TV; the app already holds localized
+    ' names for the same codes.
+    function _()
+      options = languageFilters.optionsFrom([
+        m.pair("Spanish; Castilian (spa)", "spa"),
+        m.pair("Greek, Modern (1453-) (ell)", "ell")
+      ])
+
+      titles = []
+      for each option in options
+        titles.push(option.title)
+      end for
+
+      m.assertTrue(inArray(titles, "Spanish"), "expected the app's name for spa, got " + FormatJson(titles))
+      m.assertTrue(inArray(titles, "Greek"), "expected the app's name for ell, got " + FormatJson(titles))
+    end function
+
+    @it("sorts by the displayed title, not by the code")
+    ' Sorted by code these would be jpn, eng, spa; by title they read English, Japanese,
+    ' Spanish — which is the order on screen.
+    function _()
+      options = languageFilters.optionsFrom([
+        m.pair("x", "jpn"),
+        m.pair("y", "eng"),
+        m.pair("z", "spa")
+      ])
+
+      m.assertEqual(options.count(), 3)
+      m.assertEqual(options[0].title, "English")
+      m.assertEqual(options[1].title, "Japanese")
+      m.assertEqual(options[2].title, "Spanish")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("optionsFrom() - nothing to offer")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("answers a missing or non-array list with an empty array")
+    ' This is the pre-12.0 shape: the keys are absent from the response entirely, which
+    ' the caller reads as "do not offer this category".
+    function _()
+      m.assertEqual(languageFilters.optionsFrom(invalid).count(), 0)
+      m.assertEqual(languageFilters.optionsFrom([]).count(), 0)
+      m.assertEqual(languageFilters.optionsFrom("eng").count(), 0)
+      m.assertEqual(languageFilters.optionsFrom({ Value: "eng" }).count(), 0)
+    end function
+
+    @it("skips an entry with no usable code instead of offering a blank row")
+    function _()
+      options = languageFilters.optionsFrom([
+        m.pair("nameless", ""),
+        { Name: "no value at all" },
+        invalid,
+        m.pair("English (eng)", "eng")
+      ])
+
+      m.assertEqual(options.count(), 1)
+      m.assertEqual(options[0].title, "English")
+    end function
+
+    @it("drops the codes the app renders as nothing")
+    ' resolveLanguageName() returns "" for und (Undefined) and zxx (No linguistic
+    ' content). A row with a blank label is worse than no row.
+    function _()
+      options = languageFilters.optionsFrom([
+        m.pair("Undetermined (und)", "und"),
+        m.pair("No linguistic content (zxx)", "zxx")
+      ])
+
+      m.assertEqual(options.count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("optionsFrom() - what the panel is handed")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("produces options the panel's own accessors can read")
+    ' The two shapes a filter category's options come in are resolved by
+    ' gridQuery.optionTitle/optionValue. A language option is the AA shape; if these
+    ' disagreed, the filter would apply but show no ticks after a reload.
+    function _()
+      options = languageFilters.optionsFrom([m.pair("French (fra)", "fra"), m.pair("French (fre)", "fre")])
+
+      m.assertEqual(gridQuery.optionTitle(options[0]), "French")
+      m.assertEqual(gridQuery.optionValue(options[0]), "fra,fre")
+    end function
+
+    @it("never labels an option with the string the server would match nothing against")
+    ' The case that makes the title/value split load-bearing: codes are case-sensitive
+    ' 3-letter tags (ENG and en both return 0), so a label can never be sent as a value.
+    function _()
+      options = languageFilters.optionsFrom([m.pair("English (eng)", "eng")])
+
+      m.assertNotEqual(gridQuery.optionValue(options[0]), gridQuery.optionTitle(options[0]))
+      m.assertEqual(gridQuery.optionValue(options[0]), "eng")
+    end function
+
+  end class
+
+end namespace

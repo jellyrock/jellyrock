@@ -45,4 +45,50 @@ namespace gridQuery
     return query
   end function
 
+  ' A filter category's selectable options come in two shapes, and both sites that read
+  ' them go through these two functions so they cannot disagree about which is which.
+  '
+  ' A PLAIN STRING is its own query value: Genres sends the genre name, Years sends the
+  ' year. What the panel shows and what the request carries are the same text.
+  '
+  ' An AA — { title, value } — separates them, which the 12.0 language filters need in
+  ' both directions. The label has to be the app's own localized language name, because
+  ' the server's is an English library-science string ("Spanish; Castilian (spa)"); the
+  ' value has to be the server's own case-sensitive codes, and for a language with two
+  ' ISO 639-2 spellings it is BOTH of them comma-joined, since the server matches the
+  ' literal tag on the file. Sending the label would return nothing.
+  '
+  ' Two readers need this: the panel joins the checked options into the query
+  ' (ItemGridOptions), and the panel's restore pass re-ticks boxes by matching the saved
+  ' query back against the available options (BaseGridView). A shape difference between
+  ' those two is a filter that applies but shows no ticks, so they share the accessors.
+
+  ' Both read through textOrEmpty() rather than toString(), which FAULTS on Invalid
+  ' (it falls through to Str()) — and a filter category's option list is exactly the
+  ' kind of place a missing entry shows up. Both also trim, because Str() on a number
+  ' returns a LEADING SPACE (`1999` -> `" 1999"`) and the saved-query comparison in
+  ' BaseGridView trims its side already; an untrimmed value here would never match it.
+  ' Both faults were found by the unit tests on device, not by review.
+
+  ' optionTitle: what the user sees for one selectable option.
+  function optionTitle(option as dynamic) as string
+    if isFilterOptionPair(option) then return textOrEmpty(option.title).trim()
+    return textOrEmpty(option).trim()
+  end function
+
+  ' optionValue: what the request carries for one selectable option.
+  function optionValue(option as dynamic) as string
+    if isFilterOptionPair(option) then return textOrEmpty(option.value).trim()
+    return textOrEmpty(option).trim()
+  end function
+
+  ' Whether an option carries a separate label and value, rather than being its own.
+  '
+  ' A plain `and` would not do here: BrightScript does not short-circuit it, so a
+  ' validity guard and a member access cannot share one condition.
+  function isFilterOptionPair(option as dynamic) as boolean
+    if not isValid(option) then return false
+    return LCase(type(option)) = "roassociativearray"
+  end function
+
 end namespace

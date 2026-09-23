@@ -107,6 +107,50 @@ namespace tests
       m.assertEqual(task.additionalFields, "Genres")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("optionTitle() / optionValue()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("treats a plain string option as its own query value")
+    ' Genres and Years: what the panel shows IS what the request carries.
+    @params("Drama")
+    @params("1999")
+    function _(option)
+      m.assertEqual(gridQuery.optionTitle(option), option)
+      m.assertEqual(gridQuery.optionValue(option), option)
+    end function
+
+    @it("splits label from query value for an AA option")
+    ' The 12.0 language filters: the label is a localized language name, the value is
+    ' the server's own case-sensitive codes. Sending the label matches nothing.
+    function _()
+      option = { title: "French", value: "fra,fre" }
+
+      m.assertEqual(gridQuery.optionTitle(option), "French")
+      m.assertEqual(gridQuery.optionValue(option), "fra,fre")
+    end function
+
+    @it("answers a missing option with an empty string rather than crashing the panel")
+    function _()
+      m.assertEqual(gridQuery.optionTitle(invalid), "")
+      m.assertEqual(gridQuery.optionValue(invalid), "")
+    end function
+
+    @it("coerces a numeric option without Str()'s leading space")
+    ' Str(1999) is " 1999". An untrimmed value would never match the saved query that
+    ' BaseGridView's restore pass compares it against, so the filter would apply and
+    ' show no ticks.
+    function _()
+      m.assertEqual(gridQuery.optionTitle(1999), "1999")
+      m.assertEqual(gridQuery.optionValue(1999), "1999")
+    end function
+
+    @it("trims whitespace off an option so both sides of the restore match")
+    function _()
+      m.assertEqual(gridQuery.optionTitle("  Drama  "), "Drama")
+      m.assertEqual(gridQuery.optionValue({ title: " French ", value: " fra,fre " }), "fra,fre")
+    end function
+
   end class
 
 end namespace

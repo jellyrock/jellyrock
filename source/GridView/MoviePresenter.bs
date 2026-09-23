@@ -9,6 +9,7 @@
 
 import "pkg:/source/GridView/GridPresenterBase.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/utils/languageFilters.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/tasks.bs"
 
@@ -94,6 +95,24 @@ class MoviePresenter extends GridPresenterBase
       end if
       if isValid(m.apiFilters.Years)
         options.filter.push({ "Title": translate(translationKeys.LabelYears), "Name": "Years", "Options": m.apiFilters.Years, "Delimiter": ",", "CheckedState": [] })
+      end if
+
+      ' 12.0+ only, and only when the library actually has the metadata: the lists come
+      ' from /Items/Filters2, which omits them entirely below 12.0 (so they arrive empty
+      ' and no category is offered). A comma delimiter is required — the server returns
+      ' nothing for a pipe-separated list.
+      '
+      ' Two categories rather than one combined "Language": the server ANDs the two
+      ' parameters, so "English audio with Spanish subtitles" is a query it can answer,
+      ' but the panel can only hold one category active at a time and so cannot express
+      ' it yet. Splitting them keeps each list short and each label honest; combining
+      ' them into one list to work around the panel would double its length and mix two
+      ' concepts. See `itemgridoptions-single-active-filter` in tech-debt.md.
+      if isValidAndNotEmpty(m.apiFilters.AudioLanguages)
+        options.filter.push({ "Title": translate(translationKeys.LabelAudioLanguage), "Name": "AudioLanguages", "Options": m.apiFilters.AudioLanguages, "Delimiter": languageFilters.DELIMITER, "CheckedState": [] })
+      end if
+      if isValidAndNotEmpty(m.apiFilters.SubtitleLanguages)
+        options.filter.push({ "Title": translate(translationKeys.LabelSubtitleLanguage), "Name": "SubtitleLanguages", "Options": m.apiFilters.SubtitleLanguages, "Delimiter": languageFilters.DELIMITER, "CheckedState": [] })
       end if
     end if
 
