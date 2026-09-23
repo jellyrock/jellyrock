@@ -909,8 +909,8 @@ sub loadLanguageFilters(filters as object, errorMsg as string)
       ' Absent keys, not empty ones, are how a pre-12.0 server answers — so a missing
       ' key here means "no such filter", which is exactly what an empty option list
       ' makes the panel do.
-      merged.AudioLanguages = languageFilters.optionsFrom(res.json.AudioLanguages)
-      merged.SubtitleLanguages = languageFilters.optionsFrom(res.json.SubtitleLanguages)
+      merged[languageFilters.AUDIO_KEY] = languageFilters.optionsFrom(res.json.AudioLanguages)
+      merged[languageFilters.SUBTITLE_KEY] = languageFilters.optionsFrom(res.json.SubtitleLanguages)
     end if
     deliverFilters(merged, m.pendingFiltersError)
   end sub).catch(sub(err as object)
@@ -1061,23 +1061,10 @@ sub SetUpOptions()
     if isValid(o.options) and isValid(m.filterOptions)
       if o.options.Count() > 0 and m.filterOptions.Count() > 0
         if LCase(o.Name) = LCase(m.filterOptions.keys()[0])
-          selectedFilterOptions = m.filterOptions[m.filterOptions.keys()[0]].split(o.delimiter)
-          checkedState = []
-
-          for each availableFilterOption in o.options
-            matchFound = false
-            ' Matched on the VALUE, because that is what was saved — the registry holds
-            ' the query the filter applied, not the labels it was picked by.
-            availableValue = gridQuery.optionValue(availableFilterOption)
-            for each selectedFilterOption in selectedFilterOptions
-              if LCase(availableValue.trim()) = LCase(selectedFilterOption.trim())
-                matchFound = true
-              end if
-            end for
-            checkedState.push(matchFound)
-          end for
-
-          o.checkedState = checkedState
+          ' Re-ticks the boxes from the saved query. The inverse of the join in
+          ' ItemGridOptions.onKeyEvent, and they are tested as a round trip: a
+          ' disagreement between them is a filter that applies while showing no ticks.
+          o.checkedState = gridQuery.checkedStateFor(o.options, m.filterOptions[m.filterOptions.keys()[0]], o.delimiter)
         end if
       end if
     end if
@@ -1307,6 +1294,14 @@ function onKeyEvent(key as string, press as boolean) as boolean
     else
       ' Rebuild options before showing dialog (to include any dynamically loaded filters)
       SetUpOptions()
+
+      ' Opening the panel is the only moment the filter lists are actually read, so it is
+      ' also where they are revalidated: SetUpOptions() above has already rendered the
+      ' cached lists, and this refresh lands silently for the NEXT open rather than
+      ' reshuffling categories under a cursor already in the list. It is what lets every
+      ' other path — sort, filter, view, alpha, voice search — stop refetching entirely,
+      ' and it retries a load that previously failed.
+      if isValid(m.presenter) then m.presenter.refreshFilters()
 
       ' Use TV Guide's focused channel when active, otherwise use the grid's focused item
       if isValid(m.tvGuide) and isValid(m.channelFocused)

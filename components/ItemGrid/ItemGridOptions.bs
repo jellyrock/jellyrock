@@ -356,26 +356,30 @@ function onKeyEvent(key as string, _press as boolean) as boolean
 
     ' User pressed OK from inside the filter's options
     if m.filterOptions.isInFocusChain()
-      selectedOptions = []
-      for i = 0 to m.filterOptions.checkedState.count() - 1
-        if m.filterOptions.checkedState[i]
-          ' The value, never the title. They are the same text for Genres and Years;
-          ' for a language filter the title is a localized name the server would
-          ' match nothing against.
-          option = m.filterOptions.content.getChild(i)
-          selectedValue = option.value
-          if not isValidAndNotEmpty(selectedValue) then selectedValue = toString(option.title)
-          selectedOptions.push(selectedValue)
-        end if
+      ' The VALUE of each option, never its title. They are the same text for Genres and
+      ' Years; for a language filter the title is a localized name the server would match
+      ' nothing against. Read off the CheckList's own nodes, which is what checkedState
+      ' indexes into, then joined by gridQuery — the inverse of the restore pass in
+      ' BaseGridView.SetUpOptions, and tested against it as a round trip.
+      optionValues = []
+      for i = 0 to m.filterOptions.content.getChildCount() - 1
+        option = m.filterOptions.content.getChild(i)
+        value = option.value
+        ' A node whose value never got set falls back to its title, which is the correct
+        ' answer for every category whose options are plain strings.
+        if not isValidAndNotEmpty(value) then value = textOrEmpty(option.title)
+        optionValues.push(value)
       end for
 
-      if selectedOptions.Count() > 0
+      selectedValue = gridQuery.queryValueFor(optionValues, m.filterOptions.checkedState, m.filterMenu.content.getChild(m.filterMenu.itemFocused).delimiter)
+
+      if selectedValue <> ""
         m.menus[2].checkedItem = m.menus[2].itemFocused
         m.selectedFilterIndex = m.menus[2].itemFocused
         m.top.filter = m.filterMenu.content.getChild(m.filterMenu.itemFocused).Name
 
         newFilter = {}
-        newFilter[m.top.filter] = selectedOptions.join(m.filterMenu.content.getChild(m.filterMenu.itemFocused).delimiter)
+        newFilter[m.top.filter] = selectedValue
         m.top.filterOptions = newFilter
       else
         m.menus[2].checkedItem = 0

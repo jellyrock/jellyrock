@@ -203,6 +203,112 @@ namespace tests
       m.assertEqual(gridQuery.optionValue(options[0]), "eng")
     end function
 
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the panel contract")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("never produces a value containing the delimiter the panel separates options with")
+    ' THE invariant. An option value that contains its category's delimiter still applies
+    ' correctly as a query, but the restore pass tears it apart and ticks nothing — so the
+    ' filter is active with no box checked, and one confirming keypress clears it. This is
+    ' the check that would have caught shipping "," as both.
+    function _()
+      options = languageFilters.optionsFrom([
+        { Name: "French (fra)", Value: "fra" },
+        { Name: "French (fre)", Value: "fre" },
+        { Name: "Japanese", Value: "jpn" },
+        { Name: "German (deu)", Value: "deu" },
+        { Name: "German (ger)", Value: "ger" }
+      ])
+
+      m.assertTrue(options.count() > 0)
+      for each option in options
+        m.assertEqual(inStr(1, option.value, languageFilters.PANEL_DELIMITER), 0)
+      end for
+    end function
+
+    @it("round-trips every option it produces through the panel's own save and restore")
+    ' The end-to-end property: what optionsFrom() offers must survive being joined into
+    ' the saved query and split back out again, for every option at once.
+    function _()
+      options = languageFilters.optionsFrom([
+        { Name: "French (fra)", Value: "fra" },
+        { Name: "French (fre)", Value: "fre" },
+        { Name: "Japanese", Value: "jpn" },
+        { Name: "Basque (baq)", Value: "baq" },
+        { Name: "Basque (eus)", Value: "eus" }
+      ])
+
+      checkedState = []
+      for each option in options
+        checkedState.push(true)
+      end for
+
+      saved = gridQuery.queryValueFor(gridQuery.optionValues(options), checkedState, languageFilters.PANEL_DELIMITER)
+
+      m.assertEqual(gridQuery.checkedStateFor(options, saved, languageFilters.PANEL_DELIMITER), checkedState)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("toWire()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("flattens the panel delimiter to the one the server accepts")
+    ' A pipe returns 0 results, so what the panel stores can never be what is sent.
+    function _()
+      wire = languageFilters.toWire({ SubtitleLanguages: "fra,fre|deu,ger" })
+
+      m.assertEqual(wire.SubtitleLanguages, "fra,fre,deu,ger")
+    end function
+
+    @it("leaves a single selected language untouched")
+    function _()
+      m.assertEqual(languageFilters.toWire({ AudioLanguages: "jpn" }).AudioLanguages, "jpn")
+    end function
+
+    @it("copies a non-language category through unchanged")
+    ' Genres stores exactly what it sends, pipes and all — converting it would break it.
+    function _()
+      wire = languageFilters.toWire({ Genres: "Action|Science Fiction" })
+
+      m.assertEqual(wire.Genres, "Action|Science Fiction")
+    end function
+
+    @it("converts only the language key when several categories are present")
+    function _()
+      wire = languageFilters.toWire({ Genres: "Action|Drama", AudioLanguages: "fra,fre|jpn" })
+
+      m.assertEqual(wire.Genres, "Action|Drama")
+      m.assertEqual(wire.AudioLanguages, "fra,fre,jpn")
+    end function
+
+    @it("matches the language keys whatever case they come back from the registry in")
+    ' The key round-trips through JSON and a SceneGraph assocarray field, neither of which
+    ' promises to preserve the spelling the presenter declared.
+    function _()
+      m.assertTrue(languageFilters.isLanguageKey("audiolanguages"))
+      m.assertTrue(languageFilters.isLanguageKey("SUBTITLELANGUAGES"))
+      m.assertFalse(languageFilters.isLanguageKey("Genres"))
+      m.assertFalse(languageFilters.isLanguageKey(invalid))
+    end function
+
+    @it("answers a missing or non-AA filter set with an empty one")
+    function _()
+      m.assertEqual(languageFilters.toWire(invalid), {})
+      m.assertEqual(languageFilters.toWire("Genres"), {})
+    end function
+
+    @it("does not mutate the caller's saved filters")
+    ' BaseGridView holds the panel form and persists it; handing the wire form back would
+    ' write the wrong thing to the registry.
+    function _()
+      saved = { AudioLanguages: "fra,fre|jpn" }
+      languageFilters.toWire(saved)
+
+      m.assertEqual(saved.AudioLanguages, "fra,fre|jpn")
+    end function
+
   end class
 
 end namespace

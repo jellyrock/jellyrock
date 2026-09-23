@@ -99,8 +99,12 @@ class MoviePresenter extends GridPresenterBase
 
       ' 12.0+ only, and only when the library actually has the metadata: the lists come
       ' from /Items/Filters2, which omits them entirely below 12.0 (so they arrive empty
-      ' and no category is offered). A comma delimiter is required — the server returns
-      ' nothing for a pipe-separated list.
+      ' and no category is offered).
+      '
+      ' PANEL_DELIMITER, not the comma the server wants: one language's value is already
+      ' several codes joined by a comma, so a comma here would make the saved query
+      ' ambiguous and the restore pass would tick nothing. gridQuery.build() converts the
+      ' two apart via languageFilters.toWire().
       '
       ' Two categories rather than one combined "Language": the server ANDs the two
       ' parameters, so "English audio with Spanish subtitles" is a query it can answer,
@@ -108,11 +112,11 @@ class MoviePresenter extends GridPresenterBase
       ' it yet. Splitting them keeps each list short and each label honest; combining
       ' them into one list to work around the panel would double its length and mix two
       ' concepts. See `itemgridoptions-single-active-filter` in tech-debt.md.
-      if isValidAndNotEmpty(m.apiFilters.AudioLanguages)
-        options.filter.push({ "Title": translate(translationKeys.LabelAudioLanguage), "Name": "AudioLanguages", "Options": m.apiFilters.AudioLanguages, "Delimiter": languageFilters.DELIMITER, "CheckedState": [] })
+      if isValidAndNotEmpty(m.apiFilters[languageFilters.AUDIO_KEY])
+        options.filter.push({ "Title": translate(translationKeys.LabelAudioLanguage), "Name": languageFilters.AUDIO_KEY, "Options": m.apiFilters[languageFilters.AUDIO_KEY], "Delimiter": languageFilters.PANEL_DELIMITER, "CheckedState": [] })
       end if
-      if isValidAndNotEmpty(m.apiFilters.SubtitleLanguages)
-        options.filter.push({ "Title": translate(translationKeys.LabelSubtitleLanguage), "Name": "SubtitleLanguages", "Options": m.apiFilters.SubtitleLanguages, "Delimiter": languageFilters.DELIMITER, "CheckedState": [] })
+      if isValidAndNotEmpty(m.apiFilters[languageFilters.SUBTITLE_KEY])
+        options.filter.push({ "Title": translate(translationKeys.LabelSubtitleLanguage), "Name": languageFilters.SUBTITLE_KEY, "Options": m.apiFilters[languageFilters.SUBTITLE_KEY], "Delimiter": languageFilters.PANEL_DELIMITER, "CheckedState": [] })
       end if
     end if
 
@@ -200,7 +204,9 @@ class MoviePresenter extends GridPresenterBase
       end if
     end if
 
-    ' Load dynamic filters from API (called once per library load)
+    ' Reached on every query build — every sort, filter, view, alpha letter and voice
+    ' search — so loadFilters() itself is the thing that decides whether to fetch. It
+    ' fetches once per library and is then a no-op until the options panel revalidates it.
     m.loadFilters(parentItem, "Movie")
   end sub
 

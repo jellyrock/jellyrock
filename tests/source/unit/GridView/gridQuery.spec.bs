@@ -151,6 +151,105 @@ namespace tests
       m.assertEqual(gridQuery.optionValue({ title: " French ", value: " fra,fre " }), "fra,fre")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("queryValueFor() / checkedStateFor() round trip")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The property both halves of the panel depend on: what the user checked must survive
+    ' being joined into the saved query and split back out again. Each half is
+    ' self-consistently correct on its own while the PAIR disagrees, which is a filter
+    ' that applies while showing no ticks — so the pair is what gets tested.
+    private function roundTrips(options as object, checkedState as object, delimiter as string) as object
+      saved = gridQuery.queryValueFor(gridQuery.optionValues(options), checkedState, delimiter)
+      return gridQuery.checkedStateFor(options, saved, delimiter)
+    end function
+
+    @it("round-trips a Genres selection - plain strings, pipe delimiter")
+    function _()
+      options = ["Action", "Drama", "Science Fiction"]
+      m.assertEqual(m.roundTrips(options, [false, true, true], "|"), [false, true, true])
+    end function
+
+    @it("round-trips a Years selection - numeric options, comma delimiter")
+    function _()
+      options = [1999, 2004, 2021]
+      m.assertEqual(m.roundTrips(options, [true, false, true], ","), [true, false, true])
+    end function
+
+    @it("round-trips a single-code language selection")
+    function _()
+      options = [{ title: "Japanese", value: "jpn" }, { title: "Polish", value: "pol" }]
+      m.assertEqual(m.roundTrips(options, [true, false], "|"), [true, false])
+    end function
+
+    @it("round-trips an alias-merged language, whose value holds two codes")
+    ' The 8 alias pairs the server advertises separately are merged into one option, so a
+    ' language option's value is "fra,fre". That value must not be torn apart by the
+    ' category's own delimiter on the way back in.
+    function _()
+      options = [{ title: "French", value: "fra,fre" }]
+      m.assertEqual(m.roundTrips(options, [true], "|"), [true])
+    end function
+
+    @it("round-trips a mixed multi-select of merged and single-code languages")
+    function _()
+      options = [{ title: "French", value: "fra,fre" }, { title: "Japanese", value: "jpn" }, { title: "German", value: "deu,ger" }]
+      m.assertEqual(m.roundTrips(options, [true, true, false], "|"), [true, true, false])
+    end function
+
+    @it("round-trips an empty selection as no filter at all")
+    function _()
+      options = [{ title: "French", value: "fra,fre" }, { title: "Japanese", value: "jpn" }]
+      saved = gridQuery.queryValueFor(gridQuery.optionValues(options), [false, false], "|")
+
+      m.assertEqual(saved, "")
+      m.assertEqual(gridQuery.checkedStateFor(options, saved, "|"), [false, false])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("queryValueFor() / checkedStateFor() - edges")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("joins only the checked options, in panel order")
+    function _()
+      values = ["Action", "Drama", "Horror"]
+      m.assertEqual(gridQuery.queryValueFor(values, [true, false, true], "|"), "Action|Horror")
+    end function
+
+    @it("stops at the end of a checkedState shorter than the option list")
+    ' A drifted panel must not index off the end of the array.
+    function _()
+      m.assertEqual(gridQuery.queryValueFor(["Action", "Drama"], [true], "|"), "Action")
+    end function
+
+    @it("answers a missing option list or checked state with no filter")
+    function _()
+      m.assertEqual(gridQuery.queryValueFor(invalid, [true], "|"), "")
+      m.assertEqual(gridQuery.queryValueFor(["Action"], invalid, "|"), "")
+      m.assertEqual(gridQuery.checkedStateFor(invalid, "Action", "|"), [])
+    end function
+
+    @it("ticks nothing for an empty saved query")
+    function _()
+      m.assertEqual(gridQuery.checkedStateFor(["Action", "Drama"], "", "|"), [false, false])
+    end function
+
+    @it("treats a missing delimiter as one whole value, not one per character")
+    ' Split("") returns one entry PER CHARACTER, which would match single-letter options.
+    function _()
+      m.assertEqual(gridQuery.checkedStateFor(["Action"], "Action", ""), [true])
+    end function
+
+    @it("never ticks an option that has no value")
+    function _()
+      m.assertEqual(gridQuery.checkedStateFor([invalid, "Drama"], "Drama", "|"), [false, true])
+    end function
+
+    @it("matches the saved query case-insensitively, as the restore pass always has")
+    function _()
+      m.assertEqual(gridQuery.checkedStateFor(["Drama"], "drama", "|"), [true])
+    end function
+
   end class
 
 end namespace
