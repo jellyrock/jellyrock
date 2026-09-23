@@ -399,6 +399,58 @@ namespace tests
       m.assertEqual(recordResultToast(invalid), failedCancel)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("nextLiveRestartCount() / canRestartLiveChannel()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("adds one for an end that never played")
+    function _()
+      m.assertEqual(nextLiveRestartCount(0, 0), 1)
+      m.assertEqual(nextLiveRestartCount(2, 0), 3)
+    end function
+
+    @it("adds one for an end just short of healthy playback")
+    function _()
+      m.assertEqual(nextLiveRestartCount(1, LIVE_RESTART_HEALTHY_MS - 1), 2)
+    end function
+
+    @it("resets for an end after healthy playback, whatever the count")
+    function _()
+      m.assertEqual(nextLiveRestartCount(0, LIVE_RESTART_HEALTHY_MS), 0)
+      m.assertEqual(nextLiveRestartCount(LIVE_RESTART_MAX + 5, LIVE_RESTART_HEALTHY_MS * 10), 0)
+    end function
+
+    @it("allows a restart up to the maximum and refuses past it")
+    function _()
+      m.assertTrue(canRestartLiveChannel(0))
+      m.assertTrue(canRestartLiveChannel(LIVE_RESTART_MAX))
+      m.assertFalse(canRestartLiveChannel(LIVE_RESTART_MAX + 1))
+    end function
+
+    @it("restarts a stream that never plays exactly LIVE_RESTART_MAX times, then gives up")
+    function _()
+      count = 0
+      restarts = 0
+      for attempt = 1 to LIVE_RESTART_MAX + 5
+        count = nextLiveRestartCount(count, 0)
+        if not canRestartLiveChannel(count) then exit for
+        restarts++
+      end for
+      m.assertEqual(restarts, LIVE_RESTART_MAX)
+    end function
+
+    @it("keeps restarting a feed that drops after healthy playback")
+    function _()
+      count = 0
+      for drop = 1 to LIVE_RESTART_MAX * 4
+        ' One failed reconnect before each healthy stretch: the run never reaches the limit.
+        count = nextLiveRestartCount(count, 0)
+        m.assertTrue(canRestartLiveChannel(count), "failed reconnect " + drop.toStr())
+        count = nextLiveRestartCount(count, LIVE_RESTART_HEALTHY_MS)
+        m.assertTrue(canRestartLiveChannel(count), "healthy drop " + drop.toStr())
+      end for
+    end function
+
   end class
 
 end namespace

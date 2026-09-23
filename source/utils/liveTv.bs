@@ -15,6 +15,14 @@ const LIVE_EDGE_SEEK = 999999
 ' otherwise flicker the UI between LIVE and -0:01 every second during normal play.
 const LIVE_EDGE_THRESHOLD_SECONDS = 2
 
+' How many times in a row a Live TV channel is restarted after its stream ends without having
+' played healthily, before the player stops restarting it and shows the playback error.
+const LIVE_RESTART_MAX = 3
+
+' How long a channel must have been playing for its end to count as a feed that dropped, which
+' resets the restart count.
+const LIVE_RESTART_HEALTHY_MS = 30000
+
 function parseProgramEndTimeEpoch(meta as object) as integer
   if not isValid(meta) or not isValid(meta.currentProgram) then return 0
 
@@ -228,6 +236,31 @@ function getUpstreamHlsBlocker(mediaSource as dynamic, request as UpstreamHlsReq
   if isValid(request.transcodeReasons) and arrayHasValue(request.transcodeReasons, "ContainerBitrateExceedsLimit") then return UpstreamHlsBlocker.BITRATE_LIMIT
 
   return UpstreamHlsBlocker.NONE
+end function
+
+' The count of consecutive restarts after a Live TV channel's stream ends.
+'
+' A live feed that drops mid-stream surfaces as `finished`, and the player restarts the channel
+' instead of dropping the viewer back to the guide. A stream that ends before it ever plays
+' (an on-demand playlist listed as a channel, joined at its end) also surfaces as `finished`, and
+' restarting it just loops. So an end after healthy playback resets the count, and any other end
+' adds one; canRestartLiveChannel decides whether that count still allows a restart.
+'
+' @param {integer} previousCount - the count before this end (0 for a fresh channel)
+' @param {integer} playedMs - how long this mount had been playing, 0 if it never reached `playing`
+' @returns {integer}
+function nextLiveRestartCount(previousCount as integer, playedMs as integer) as integer
+  if playedMs >= LIVE_RESTART_HEALTHY_MS then return 0
+  return previousCount + 1
+end function
+
+' Whether a Live TV channel whose stream ended should be restarted, given its count from
+' nextLiveRestartCount.
+'
+' @param {integer} restartCount
+' @returns {boolean}
+function canRestartLiveChannel(restartCount as integer) as boolean
+  return restartCount <= LIVE_RESTART_MAX
 end function
 
 ' Whether a response to the preflight GET of a live channel's upstream playlist shows the device

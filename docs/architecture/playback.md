@@ -36,7 +36,7 @@ related-files:
   - source/utils/liveTv.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
-last-reviewed: 2026-09-22
+last-reviewed: 2026-09-23
 ---
 
 # Video & Audio Playback
@@ -347,7 +347,7 @@ The result handlers write back into `VideoPlayerView`'s fields (`audioIndex`, `s
 `onPlayerStateChange` (ported from `ViewCreator.onStateChange`) handles end-of-playback:
 
 - **`finished` state** but `isRetrying = true` → don't advance (`mid-DoVi-fallback` retry)
-- **Live TV channel that finished** → `playCurrentQueueItem()` (restart the same channel, host-internal remount)
+- **Live TV channel that finished** → `playCurrentQueueItem()` (restart the same channel, host-internal remount). A live feed that drops mid-stream surfaces as `finished`, which is why the restart exists. A stream that ends without ever playing (an on-demand playlist listed as a channel, joined at its end) surfaces the same way, so the restart is budgeted per channel: an end after 30 s of playback resets the count, any other end adds one, and past three the player shows the playback error instead (`nextLiveRestartCount()` / `canRestartLiveChannel()` in `source/utils/liveTv.bs`)
 - **More items in queue** → `advanceTo(position + 1)` + `playCurrentQueueItem()` (destroy + remount for the next item, which starts fresh — [Items a queue arrives at](#items-a-queue-arrives-at))
 - **Queue exhausted** → `exitPlayback()` → `sgrouter.goBack()` (leaves the play route; the suspended view beneath — the launching detail, or Home — resumes)
 
