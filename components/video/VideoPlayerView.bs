@@ -122,6 +122,7 @@ sub init()
   m.isContentLoaded = false ' true from the first stream handed to the Video node
   m.isApplyingOwnSelection = false ' raised while the player writes its own track fields
   m.hasPlaybackFailed = false ' raised by onState's terminal `error` branch
+  m.liveProgress = newLiveProgress() ' how much of a live stream this mount played: liveProgressMs
   m.top.observeField("state", "onState")
   m.top.observeField("position", "onPositionChanged")
   m.top.observeField("selectedSubtitle", "onSubtitleChange")
@@ -974,6 +975,19 @@ sub showLiveStreamStoppedError()
   showPlaybackErrorDialog(translate(translationKeys.ErrorPlaybackCauseLiveStreamStopped))
 end sub
 
+' Called by PlayerHostView when this mount's live stream ends or stalls: how much of it played, for
+' the restart rule (newLiveProgress in liveTv.bs).
+function liveProgressMs() as integer
+  return m.liveProgress.progressMs
+end function
+
+' Feeds this mount's live progress from one position notification. A jump is logged because the
+' step size that separates playing from a jump (LIVE_PROGRESS_MAX_STEP_MS) is a tuned value.
+sub trackLiveProgress()
+  jumpMs = liveProgressOnPosition(m.liveProgress, m.top.position)
+  if jumpMs > 0 then m.log.debug("Live TV position jumped; not counted as playing", "jumpMs", jumpMs, "maxStepMs", LIVE_PROGRESS_MAX_STEP_MS)
+end sub
+
 ' Called by PlayerHostView just before it restarts a Live TV channel whose stream stalled. The
 ' remount destroys this player before its `stopped` state is handled, so onState never reports
 ' the stop, and restarting the SAME channel does not make Jellyfin close the live stream either:
@@ -1619,6 +1633,8 @@ sub onPositionChanged()
   ' being cleared. Bail out rather than dot into a torn-down reference.
   if m.isDestroyed = true then return
   if not m.isContentLoaded then return
+
+  if isLiveTvPlayback() then trackLiveProgress()
 
   ' Without the content.length fallback (see getEffectiveDuration), progressPercentage stays
   ' pinned at 0 on live-transcoded MKV, and since the OSD only observes progressPercentage,
@@ -2352,6 +2368,14 @@ sub onDestroy()
   m.top.unobserveField("subtitleTrack")
   m.top.unobserveField("globalCaptionMode")
   m.top.unobserveField("position")
+
+  ' One line per live mount: the steps its progress was built from, the evidence for tuning
+  ' LIVE_PROGRESS_MAX_STEP_MS. A largest step near that cap, or a smallest jump just above it,
+  ' means playing is being cut short.
+  if isLiveTvPlayback()
+    progress = m.liveProgress
+    m.log.info("Live TV progress for this mount (ms, steps)", progress.progressMs, progress.steps, "largestStepMs", progress.largestStepMs, "jumps", progress.jumps, "smallestJumpMs", progress.smallestJumpMs)
+  end if
 
   if isValid(m.osd)
     m.osd.unobserveField("action")

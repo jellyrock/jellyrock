@@ -204,9 +204,7 @@ end sub
 ' destroy/remount, and the queue-exhausted pop has become exitPlayback (goBack).
 ' ===========================================================================
 sub onPlayerStateChange()
-  state = LCase(m.view.state)
-  liveRestartOnState(m.liveRestart, state, playerPositionMs())
-  if state <> "finished" then return
+  if LCase(m.view.state) <> "finished" then return
 
   if not prepareToLeaveMount() then return
   queueManager = m.global.queueManager
@@ -218,10 +216,11 @@ sub onPlayerStateChange()
   if isValid(currentItem)
     currentItemType = queueManager.callFunc("getItemType", currentItem)
     if currentItemType = "tvchannel"
-      if liveRestartOnEnd(m.liveRestart, playerPositionMs())
+      progressMs = currentMountProgressMs()
+      if liveRestartOnEnd(m.liveRestart, progressMs)
         restartLiveChannel()
       else
-        m.log.warn("Live TV channel keeps ending without playing; showing the error instead of restarting", textOrEmpty(currentItem.id), m.liveRestart.count, m.liveRestart.playedMs)
+        m.log.warn("Live TV channel keeps ending without playing; showing the error instead of restarting", textOrEmpty(currentItem.id), m.liveRestart.count, progressMs)
         m.view.callFunc("showLiveStreamStoppedError")
       end if
       return
@@ -242,10 +241,13 @@ sub onPlayerStateChange()
   exitPlayback()
 end sub
 
-' The player's position in milliseconds, for the Live TV restart rule (newLiveRestartBudget).
-function playerPositionMs() as integer
-  if not isValid(m.view) or not isValid(m.view.position) then return 0
-  return int(m.view.position * 1000)
+' How much of the live stream the current player mount has played, for the Live TV restart rule
+' (newLiveProgress in liveTv.bs). The player measures it, since only it sees every position.
+function currentMountProgressMs() as integer
+  if not isValid(m.view) then return 0
+  progressMs = m.view.callFunc("liveProgressMs")
+  if not isValid(progressMs) then return 0
+  return progressMs
 end function
 
 ' The checks and screen-clearing every exit from the current mount shares — a stream that
@@ -313,14 +315,15 @@ sub onLiveStreamStalled()
   if not isValid(m.view) then return
   if not prepareToLeaveMount() then return
 
-  if liveRestartOnStall(m.liveRestart, playerPositionMs())
+  progressMs = currentMountProgressMs()
+  if liveRestartOnStall(m.liveRestart, progressMs)
     m.view.callFunc("reportStallStop")
     restartLiveChannel()
   else
     currentItem = m.global.queueManager.callFunc("getCurrentItem")
     channelId = ""
     if isValid(currentItem) then channelId = textOrEmpty(currentItem.id)
-    m.log.warn("Live TV channel stalled without healthy playing; showing the error instead of restarting", channelId, m.liveRestart.count, m.liveRestart.playedMs)
+    m.log.warn("Live TV channel stalled without healthy playing; showing the error instead of restarting", channelId, m.liveRestart.count, progressMs)
     m.view.callFunc("showLiveStreamStalledError")
   end if
 end sub
