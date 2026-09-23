@@ -129,9 +129,10 @@ const TASK_THREAD_WATERMARK = 50
 ' Starts `node`'s Task thread through the accounted chokepoint.
 '
 ' @param node - the Task node to start
-' @return true when the node was valid and RUN was issued, false otherwise. No
-'         call site checks this today; see the invalid-node note below before
-'         deciding you want to.
+' @return true when the node was valid and RUN was issued, false otherwise. Check
+'         it where state depends on the run delivering — `HomeRows`' section loads
+'         set their isLoading* flag from it, so a refused launch leaves nothing to
+'         clear. See the invalid-node note below before checking it elsewhere.
 function launchTask(node as object) as boolean
   if not isValid(node)
     ' Behaviour change worth stating: a raw `m.someTask.control = "RUN"` on an

@@ -223,6 +223,9 @@ sub loadItems()
     end if
   end if
 
+  ' Keep this the LAST statement: HomeRows releases (STOPs) its node the moment `content`
+  ' lands, and a stopped run executes nothing further, so work added below would silently
+  ' not run for Home's sections.
   m.top.content = results
 
 end sub

@@ -178,16 +178,6 @@ const PENDING_MIGRATIONS = {
     ['onKeyEvent', 'm.loadFirstEpisodeTask'],
   ],
   'components/home/Home.bs': [['onScreenShown', 'm.global.remoteControlTask']],
-  'components/home/HomeRows.bs': [
-    ['loadLibraries', 'm.LoadLibrariesTask'],
-    ['updateHomeRows', 'm.LoadLibrariesTask'],
-    ['startParallelLoads', 'm.LoadContinueWatchingTask'],
-    ['startParallelLoads', 'm.LoadNextUpTask'],
-    ['startParallelLoads', 'm.LoadOnNowTask'],
-    ['startParallelLoads', 'm.LoadActiveRecordingsTask'],
-    ['onProgramsExpired', 'm.LoadOnNowTask'],
-    ['onProgramsExpired', 'm.LoadActiveRecordingsTask'],
-  ],
   'components/music/AudioPlayerView.bs': [['onAudioStreamLoaded', 'm.LoadMetaDataTask']],
   'components/video/PlayerHostView.bs': [
     ['onSelectPlaybackInfoPressed', 'm.getPlaybackInfoTask'],
