@@ -18,6 +18,8 @@ This document shows which JellyRock features require specific Jellyfin server ve
 | **Media Segments**       | ❌     | ❌     | ❌     | ✅              | ✅    | Skip intro/outro/recap/etc.                        |
 | **Song Lyrics**          | ❌     | ❌     | ✅     | ✅              | ✅    | Lyrics your library already has                    |
 | **Collections row**      | ❌     | ❌     | ❌     | ❌              | ✅    | The collections an item is in, on its details page |
+| **Collections view**     | ❌     | ❌     | ❌     | ❌              | ✅    | Browse one library's collections from its View menu |
+| **Language filters**     | ❌     | ❌     | ❌     | ❌              | ✅    | Filter a library by audio or subtitle language      |
 
 ## Legend
 
@@ -58,6 +60,24 @@ An item's details page lists the collections it belongs to, so you can open a co
 - **12.0+**: ✅ Fully supported
 
 Only collections the item was added to directly are listed — an episode shows the collections that episode is in, not the ones its series is in.
+
+### Collections view
+
+A movie or TV library's View menu gains a **Collections** entry, listing the collections that live in that library. Opening one shows what it contains, the same as opening it from the top-level Collections library.
+
+- **10.11 and below**: ❌ Not offered (the server ignores which library was asked about, so the list would mix in collections from your other libraries)
+- **12.0+**: ✅ Fully supported
+
+Playlists are not listed here. A playlist is yours rather than a library's, and can hold items from several libraries at once, so it stays in the top-level Playlists library.
+
+### Language filters
+
+A movie library's Filter menu gains **Audio Language** and **Subtitle Language**, listing the languages that library actually has.
+
+- **10.11 and below**: ❌ Not offered (the server accepts the filter and then ignores it, which would hand back your whole library)
+- **12.0+**: ✅ Fully supported
+
+A language spelled two ways in your files (Jellyfin knows French as both `fra` and `fre`) is one entry in the list, and picking it finds both.
 
 ## Upgrade Recommendations
 

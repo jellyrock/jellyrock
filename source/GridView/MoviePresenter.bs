@@ -1,12 +1,13 @@
 ' MoviePresenter: Presenter for movie library views
 '
 ' Handles movie-specific:
-' - View options (Movies Presentation, Movies Grid, Studios, Genres)
+' - View options (Movies Presentation, Movies Grid, Studios, Genres, Collections)
 ' - Sort/filter options with dynamic filters from API
 ' - Movie metadata display (title, year, rating, runtime, overview, logo)
 ' - Critic and community ratings
 ' - Logo loading
 
+import "pkg:/source/GridView/collectionsView.bs"
 import "pkg:/source/GridView/GridPresenterBase.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/languageFilters.bs"
@@ -76,6 +77,13 @@ class MoviePresenter extends GridPresenterBase
       ]
     }
 
+    ' The library itself on 12.0+ only. Below 12.0 the same request returns every
+    ' collection on the server — other libraries' included — so the view is withheld
+    ' rather than offered and wrong. See collectionsView for both rules.
+    if collectionsView.offeredFor(parentItem, m.serverVersion())
+      options.views.push({ "Title": translate(translationKeys.LabelCollections), "Name": collectionsView.VIEW_NAME })
+    end if
+
     ' Adjust options for specific views
     if isValid(parentItem) and parentItem.type = "Genre"
       ' Genre view has limited options
@@ -83,6 +91,33 @@ class MoviePresenter extends GridPresenterBase
         { "Title": translate(translationKeys.LabelMoviesPresentation), "Name": "Movies" },
         { "Title": translate(translationKeys.LabelMoviesGrid), "Name": "MoviesGrid" }
       ]
+    end if
+
+    ' The Collections view lists BoxSets, not movies, so it takes its own sort and filter
+    ' lists and stops here — every category below this point describes a movie.
+    '
+    ' The sort list is shorter on purpose, and matches what jellyfin-web offers on its own
+    ' Collections tab (`collectionMovieOptions`): a collection carries no critic rating,
+    ' no runtime and no play count of its own, so those four entries would be controls
+    ' that appear to do nothing. The filters are the four verified against a local 12.0.0
+    ' (2026-09-23) to answer for a BoxSet; Resumable is left out because a collection is
+    ' not a thing you resume, even where the server will answer the query.
+    if LCase(m.currentView()) = LCase(collectionsView.VIEW_NAME)
+      options.sort = [
+        { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" },
+        { "Title": translate(translationKeys.LabelImdbRating), "Name": "CommunityRating" },
+        { "Title": translate(translationKeys.LabelDateAdded), "Name": "DateCreated" },
+        { "Title": translate(translationKeys.LabelOfficialRating), "Name": "OfficialRating" },
+        { "Title": translate(translationKeys.LabelReleaseDate), "Name": "PremiereDate" },
+        { "Title": translate(translationKeys.LabelRandom), "Name": "Random" }
+      ]
+      options.filter = [
+        { "Title": translate(translationKeys.LabelAll), "Name": "All" },
+        { "Title": translate(translationKeys.LabelFavorites), "Name": "Favorites" },
+        { "Title": translate(translationKeys.LabelPlayed), "Name": "Played" },
+        { "Title": translate(translationKeys.LabelUnplayed), "Name": "Unplayed" }
+      ]
+      return options
     end if
 
     ' Add dynamic filters from API if loaded
@@ -127,7 +162,18 @@ class MoviePresenter extends GridPresenterBase
     lowerView = LCase(viewMode)
     ' userSettings = m.view.global.user.settings
 
-    if lowerView = "studios"
+    if lowerView = LCase(collectionsView.VIEW_NAME)
+      ' Collections view - BoxSet posters are 2:3, the same shape as a movie poster, so
+      ' this is the full-grid layout unchanged.
+      return {
+        translation: [96, 102],
+        itemSize: [264, 396],
+        rowHeights: [396],
+        numRows: "3",
+        numColumns: "6",
+        imageDisplayMode: "scaleToZoom"
+      }
+    else if lowerView = "studios"
       ' Studios view - scaleToFit for logos
       return {
         translation: [96, 102],
@@ -177,7 +223,16 @@ class MoviePresenter extends GridPresenterBase
     task.itemId = parentItem.Id
     task.additionalFields = "Taglines,Genres"
 
-    if lowerView = "studios"
+    if lowerView = LCase(collectionsView.VIEW_NAME)
+      ' The library's collections. `isRecursive` stays true, which is what the 12.x
+      ' servers scope correctly; Taglines and Genres are movie fields a BoxSet has no
+      ' use for, so the page is not asked to carry them.
+      task.itemType = "BoxSet"
+      task.additionalFields = ""
+      task.view = collectionsView.VIEW_NAME
+      task.studioIds = ""
+      task.genreIds = ""
+    else if lowerView = "studios"
       task.view = "Networks"
       task.studioIds = ""
     else if lowerView = "genres"
@@ -207,12 +262,27 @@ class MoviePresenter extends GridPresenterBase
     ' Reached on every query build — every sort, filter, view, alpha letter and voice
     ' search — so loadFilters() itself is the thing that decides whether to fetch. It
     ' fetches once per library and is then a no-op until the options panel revalidates it.
-    m.loadFilters(parentItem, "Movie")
+    '
+    ' Not in the Collections view: every category those lists fill describes a movie, and
+    ' getOptions() offers none of them here. Skipping is free rather than merely cheaper,
+    ' because leaving the view runs this again — a session that lands on Collections and
+    ' stays there never pays for lists it was never shown.
+    if lowerView <> LCase(collectionsView.VIEW_NAME)
+      m.loadFilters(parentItem, "Movie")
+    end if
   end sub
 
-  override sub onItemFocused(item as object, _currentView as string)
+  override sub onItemFocused(item as object, currentView as string)
     if not isValid(m.view) or not isValid(item) then return
     if not isValidAndNotEmpty(item.id) then return
+
+    ' Everything below writes into `presentationInfo`, which only the Movies presentation
+    ' view puts on screen — BaseGridView.configureBackdrop() sets its visibility to
+    ' exactly this predicate. In every other view the labels are built and the logo is
+    ' fetched for a hidden panel, which for the logo is a network request per focus
+    ' change: the grid views moved a cursor across a library and asked the server for a
+    ' logo it would never draw.
+    if not m.shouldShowPresentationInfo(currentView) then return
 
     ' Get info nodes from view
     infoGroup = m.view.top.findNode("presentationInfo")

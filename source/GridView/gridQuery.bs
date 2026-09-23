@@ -49,6 +49,66 @@ namespace gridQuery
     return query
   end function
 
+  ' ── The saved view, and what the presenter currently offers ───────────────────
+  '
+  ' A library's chosen view persists per library id in the `landing` display setting,
+  ' and until 12.0 every view a presenter listed was available on every server, so a
+  ' saved name could always be honored. The Collections view breaks that: it is offered
+  ' only on 12.0+, so a name saved against one server can be missing when the SAME
+  ' library is opened against an older one (a downgrade, a restored backup). Honoring it
+  ' anyway does not fail loudly — the presenter falls through to its default query branch
+  ' while the layout is still chosen for the named view, which on a movie library means
+  ' the presentation grid's 650px offset with the info panel hidden: a grid pushed down
+  ' the screen against dead space.
+
+  ' offersView: whether `viewName` is one of the views the presenter is listing.
+  '
+  ' Case-insensitive, matching how BaseGridView.SetUpOptions already compares a view name
+  ' to the saved one — a presenter's `Name` and the saved string must agree under the same
+  ' rule in both places or a view could restore here and fail to tick there.
+  '
+  ' @param views - a presenter's `getOptions().views`
+  ' @param viewName - the name to look for
+  function offersView(views as dynamic, viewName as dynamic) as boolean
+    if type(views) <> "roArray" then return false
+
+    wanted = LCase(textOrEmpty(viewName).trim())
+    if wanted = "" then return false
+
+    for each view in views
+      if isValid(view)
+        if LCase(textOrEmpty(view.Name).trim()) = wanted then return true
+      end if
+    end for
+    return false
+  end function
+
+  ' resolveView: which view a load should actually use.
+  '
+  ' `savedView` is Invalid when the library has never had one chosen, which is the common
+  ' case and is answered with the default exactly as before. A saved name is honored
+  ' unless the presenter has stopped offering it.
+  '
+  ' THE EMPTY DEFAULT IS NOT A MISSING VIEW. getDefaultView() returns "" for the Live TV,
+  ' Photos and Generic presenters, whose grids run with no named view at all — and "" is
+  ' in no presenter's list, so a rule of "reset anything not offered" would reset those on
+  ' every load. Only a non-empty saved name is checked.
+  '
+  ' The caller does NOT write the fallback back to the registry: the saved choice is still
+  ' what the user picked, and it becomes valid again the moment the library is opened
+  ' against a server that supports it.
+  '
+  ' @param savedView - the stored `landing` setting, or Invalid when none is stored
+  ' @param offeredViews - the presenter's `getOptions().views`
+  ' @param defaultView - what getDefaultView() answered for this library
+  ' @return {string} the view to load
+  function resolveView(savedView as dynamic, offeredViews as dynamic, defaultView as dynamic) as string
+    saved = textOrEmpty(savedView).trim()
+    if saved = "" then return textOrEmpty(defaultView)
+    if gridQuery.offersView(offeredViews, saved) then return saved
+    return textOrEmpty(defaultView)
+  end function
+
   ' ── A category's options, its saved query, and the invariant between them ──────
   '
   ' A filter category's selectable options come in two shapes, and every site that reads

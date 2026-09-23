@@ -96,6 +96,7 @@ Some Jellyfin API endpoints are only available on specific server versions. Thes
 | `GET /Items/{itemId}/Collections` | 12.0.0 | `extrasRows.supportsItemCollections()` | The collections an item is in — the item-details Collections row |
 | `GET /Items` `audioLanguages` / `subtitleLanguages` | 12.0.0 | `languageFilters.supported()` | The library grid's audio- and subtitle-language filters. Gated on the SERVER VERSION rather than on the request succeeding, because 10.11 accepts both parameters and silently ignores them — an ungated filter would return the user's whole library instead of reporting a problem |
 | `GET /Items/Filters2` language lists | 12.0.0 | `languageFilters.supported()` | Supplies the options for the filters above. A SECOND filters endpoint, not a replacement: it carries `AudioLanguages` / `SubtitleLanguages`, while `/Items/Filters` carries `OfficialRatings` / `Years`, so a caller wanting both asks twice |
+| `GET /Items` `parentId` with `IncludeItemTypes=BoxSet` | 12.0.0 | `collectionsView.supported()` | The per-library Collections view. Gated on the SERVER VERSION because nothing in the reply distinguishes a server that scoped the query from one that did not — 10.11 answers 200 with plausible items either way. With `Recursive=true` it ignores `parentId` and returns every collection on the server, another library's included; with `Recursive=false` it ignores `IncludeItemTypes` too and returns the user's root library folders |
 
 **How it works:**
 
@@ -149,6 +150,19 @@ The rule:
   `components/` whose code names the parameter without calling the guard, and any
   entry no file sends any more. Comments don't count, so you can still explain in
   a comment why a call does not send the parameter.
+
+**When the registry cannot hold it.** The lint keys on the parameter's NAME, which
+works when the name is specific to the behavior (`DisableFirstEpisode` appears in one
+place and means one thing). It does not work when what changed is a COMBINATION of
+otherwise-ordinary parameters. The per-library Collections gate is that case: 12.0
+started honoring `parentId` for `IncludeItemTypes=BoxSet` queries, and both of those
+parameters are sent by most of the app for unrelated, always-correct reasons —
+registering either name would fail nearly every file under `source/` and
+`components/`. So `collectionsView.supported()` is recorded in the table above and
+deliberately NOT in the YAML. The guard, its unit table and the measured behavior of
+each server line are in `source/GridView/collectionsView.bs`. Extending the registry
+to express a combination would need the lint to match a call SITE rather than a name;
+nothing needs that yet, and one entry is not evidence that it should be built.
 
 **Media Segments (10.10.0+):**
 

@@ -8,6 +8,8 @@
 '   presenter = new MoviePresenter(baseGridView)
 '   baseGridView.setPresenter(presenter)
 
+import "pkg:/source/utils/misc.bs"
+
 class GridPresenterBase
   ' Reference to the BaseGridView component
   protected view
@@ -90,6 +92,37 @@ class GridPresenterBase
   sub onOptionsClosed(_options as object)
     ' Override in subclass
   end sub
+
+  ' The view mode the grid is currently showing, or "" when it cannot be read.
+  '
+  ' getOptions() receives the parent item but not the view, and some of its lists depend
+  ' on which view is up (a Collections view sorts BoxSets, not movies), so the view is
+  ' read back off the host component. BaseGridView keeps `currentView` in step with its
+  ' own `m.view` — it sets it in loadInitialItems before SetUpOptions runs, and again in
+  ' optionsClosed before the reload — so this is the same string the load is using.
+  '
+  ' @return {string} e.g. "MoviesGrid", or "" when unknown
+  protected function currentView() as string
+    if not isValid(m.view) then return ""
+    if not isValid(m.view.top) then return ""
+    return textOrEmpty(m.view.top.currentView)
+  end function
+
+  ' The connected server's version string, or "" when it cannot be read.
+  '
+  ' Presenters run on the render thread, where m.global is owned locally and free to
+  ' touch (2.0 µs against 93 µs from a Task — docs/architecture/threading.md). The guards
+  ' are for the unit suites, which construct a presenter against a stand-in view with no
+  ' global at all, and textOrEmpty() rather than toString() because toString() falls
+  ' through to Str() and FAULTS on Invalid.
+  '
+  ' @return {string} e.g. "12.0.0", or "" when unknown
+  protected function serverVersion() as string
+    if not isValid(m.view) then return ""
+    if not isValid(m.view.global) then return ""
+    if not isValid(m.view.global.server) then return ""
+    return textOrEmpty(m.view.global.server.version)
+  end function
 
   ' ============================================================================
   ' Load Task Configuration

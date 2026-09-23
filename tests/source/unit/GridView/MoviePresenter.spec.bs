@@ -97,6 +97,44 @@ namespace tests
       m.assertFalse(m.logo.visible)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("onItemFocused() - the hidden-panel guard")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' `presentationInfo` is on screen only in the Movies presentation view —
+    ' BaseGridView.configureBackdrop() sets its visibility to exactly
+    ' shouldShowPresentationInfo(). In the grid views the panel is hidden, so populating it
+    ' wrote labels nobody could read and, worse, started a logo lookup per focus change:
+    ' moving a cursor across a library asked the server for a logo it would never draw.
+    '
+    ' Only the guarded direction is driven here. The unguarded one ends in launchTask(),
+    ' and a unit suite has no business starting a Task thread — the predicate it turns on
+    ' is pinned directly below instead, and the populated panel is what the onLogoLoaded
+    ' group above already asserts on.
+
+    @it("does not start a logo lookup for a view whose panel is hidden")
+    @params("MoviesGrid")
+    @params("Studios")
+    @params("Collections")
+    function _(viewMode)
+      m.current.id = "still-the-original-node"
+
+      m.presenter.onItemFocused({ id: "movie-1", name: "A Movie" }, viewMode)
+
+      m.assertEqual(m.view.loadLogoTask.id, "still-the-original-node", "no lookup may be started for a hidden panel")
+      m.assertEqual(m.title.text, "", "nor may anything be written into the panel")
+    end function
+
+    @it("turns on exactly the predicate that decides whether the panel is on screen")
+    @params("Movies", true)
+    @params("movies", true)
+    @params("MoviesGrid", false)
+    @params("Studios", false)
+    @params("Collections", false)
+    function _(viewMode, expected)
+      m.assertEqual(m.presenter.shouldShowPresentationInfo(viewMode), expected)
+    end function
+
   end class
 
 end namespace
