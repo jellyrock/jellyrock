@@ -32,15 +32,20 @@
  * body, unless `<arg>` is a stable field path rooted at `m` that the loop body
  * does not rebind — see below.
  *
+ * And, one hop out, a call inside such a body to a same-file `function` / `sub`
+ * that launches — the same fan-out one call away. The helper's body is judged
+ * exactly as a loop body is, as if inlined: flagged when its launch argument is
+ * not a stable slot, or is one the helper or the calling loop rebinds. The
+ * diagnostic lands on the CALL, where the repetition is. See "A helper that
+ * bounds itself" below for how such a helper says it is safe.
+ *
  * ── What is NOT flagged, and why ───────────────────────────────────────────
  *
  * `launchTask(m.SomeTask)` and `launchTask(m.view.someTask)` — a dotted path
  * rooted at `m`, with no indexing, that the loop does not rebind. That names ONE
  * node however many times the loop turns, so the thread count is bounded by the
  * number of distinct field paths written in the source, not by the collection
- * being iterated. This is the live shape in `HomeRows.startParallelLoads()`,
- * which loops over `m.sectionPlan` and launches four fixed singleton slots, each
- * additionally guarded by an `m.isLoadingX` flag.
+ * being iterated.
  *
  * An indexed step anywhere in the path (`m.tasks[i]`) IS flagged — a computed
  * index is a per-iteration node wearing an `m.` prefix. A literal key
@@ -81,13 +86,31 @@
  * Rare, absent from the codebase, and one suppression comment away — the rule
  * would rather over-report a launch than reason about which branch ran.
  *
+ * ── A helper that bounds itself ─────────────────────────────────────────────
+ *
+ * A helper that builds a new node per call (`m.x = replaceTask(m.x, …)` then
+ * `launchTask(m.x)`, as ADR 0037 requires of any run that can restart) is
+ * flagged when a loop calls it, even though it may keep at most one run live
+ * however often it is called — by returning early while a run is in flight
+ * (`HomeRows`' section loads), or by stopping the previous run first
+ * (`ExtrasRowList.startRun`). Recognizing those guards structurally is ruled
+ * out as heuristic (decision `relaunch-gate-no-stop-shapes`), so the author
+ * states the bound instead, with a suppression on the helper's LAUNCH line.
+ * That suppression means "this launch keeps at most one run live, however often
+ * its function is called", and every caller inherits it. It sits beside the
+ * guard it depends on, so deleting the guard means walking past the claim —
+ * which a suppression at each call site, pointing at a guard in another
+ * function, would not give. A call-site suppression is still honored.
+ *
  * ── Known residual gaps, stated rather than chased ─────────────────────────
  *
  * Two are interprocedural, and closing either needs the call-graph or aliasing
  * analysis this plugin family does not do:
  *
- *  1. A loop that calls a helper which launches internally
- *     (`for each lib ... loadLibrary(lib)`, where `loadLibrary` launches).
+ *  1. A launch more than one hop from the loop. Helpers are followed one hop,
+ *     within one file, by bare name — the same reach as `no-same-node-relaunch`.
+ *     A helper that calls another helper which launches, a helper in another
+ *     file, and a class method reached as `m.helper()` are all missed.
  *  2. A local aliased to a slot around the loop, in either direction. On the
  *     READ side (`task = m.LoadX` then `launchTask(task)` inside the loop) the
  *     launch is flagged though safe; on the WRITE side (`g = m.global` then
@@ -119,20 +142,22 @@
  *  - `source/utils/tasks.bs`   (the wrapper itself)
  *  - `components/vendor/**`    (vendored third-party code we don't author)
  *
- * Escape hatch:
+ * Escape hatch, followed by the reason:
  *  - `' bsc-disable-line no-task-fanout` on the offending line
  *  - `' bsc-disable-next-line no-task-fanout` on the line above
+ *  - for a helper called from a loop, either one on the helper's launch line
+ *    (preferred — see "A helper that bounds itself")
  */
 'use strict';
 
 const brighterscript = require('brighterscript');
+const { bareCallName, isLaunchTaskCall, functionsIn } = require('../lib/bsc-rule.cjs');
 
 const ALLOWED_DEST_PATHS = new Set(['source/utils/tasks.bs', 'source/utils/tasks.brs']);
 const EXCLUDED_DEST_PREFIXES = ['components/vendor/'];
 const DISABLE_LINE_MARKER = /'\s*bsc-disable-line\s+no-task-fanout\b/i;
 const DISABLE_NEXT_LINE_MARKER = /'\s*bsc-disable-next-line\s+no-task-fanout\b/i;
 
-const LAUNCH_FUNCTION = 'launchtask';
 const FIELD_WRITE_METHODS = new Set(['setfields', 'addfields']);
 const SELF_REFERENCE = 'm';
 
@@ -282,30 +307,96 @@ function slotIsReboundIn(slotPath, assignedPaths) {
   return false;
 }
 
+const LOOP_VISITORS = ['ForStatement', 'ForEachStatement', 'WhileStatement'];
+
 /**
- * True when `call` is a call to `launchTask()`.
+ * How each same-file helper behaves when a loop calls it: `name -> { fansOut,
+ * stableSlots }`, for every top-level `function` / `sub` that launches a Task.
  *
- * A DOTTED callee is matched on its final name (`tasks.launchTask(node)`) as
- * well as the bare one this codebase writes today. Not speculation about a
- * plausible refactor — the failure has an exact shape: namespacing
- * `source/utils/tasks.bs` turns all 101 call sites into dotted calls in one
- * commit, and a bare-only match would then flag NOTHING while the plugin still
- * loads and CI still passes. `no-raw-run` keys on the `control` write, so the
- * chokepoint would hold and only the fan-out bound would evaporate, silently.
- * Namespacing a `source/utils/` module is an active convention here (10 of 44
- * files, three of them added in August 2026). Matching a dotted callee is also
- * the family idiom: `no-raw-run` matches `node.setField(...)`, `no-direct-sdk`
- * matches `sdk.<ns>.<fn>(...)`.
+ * The helper's body is judged exactly as a loop body is, because a loop calling
+ * it repeats that body: `fansOut` when a launch's argument is not a stable slot
+ * or the helper itself rebinds it, and `stableSlots` for the launches that are
+ * stable here but would stop being so if the CALLING loop rebinds them.
+ *
+ * Two kinds of launch are left out. A launch inside one of the helper's own
+ * loops is already reported where it is, so a caller is not blamed for it
+ * twice. And a SUPPRESSED launch is one whose author has stated how it stays at
+ * one live run however often its function is called — a guard that skips while
+ * a run is in flight, or a cancel before the new node — so its callers inherit
+ * that bound rather than restating it. A launch inside an inline callback the
+ * helper registers is NOT left out: N calls register N callbacks, each of which
+ * launches, so deferring a launch does not bound it (the direct rule walks into
+ * inline functions in a loop for the same reason).
+ *
+ * Two functions sharing a bare name (a namespaced one and a global) are merged,
+ * erring toward reporting: either one fanning out makes the name fan out.
  */
-function isLaunchTaskCall(call) {
-  const callee = call?.callee;
-  if (
-    !brighterscript.isVariableExpression(callee) &&
-    !brighterscript.isDottedGetExpression(callee)
-  ) {
-    return false;
+function helperLaunches(file, isSuppressedAt) {
+  const helpers = new Map();
+  for (const fn of functionsIn(file)) {
+    if (!fn.bareCallable || !fn.name) continue;
+
+    const launches = [];
+    const inOwnLoop = new Set();
+    const collectLoopLaunches = (loop) =>
+      loop.walk(
+        brighterscript.createVisitor({
+          CallExpression: (call) => {
+            if (isLaunchTaskCall(call)) inOwnLoop.add(call);
+          },
+        }),
+        { walkMode: brighterscript.WalkMode.visitAllRecursive },
+      );
+    const visitor = {
+      CallExpression: (call) => {
+        if (isLaunchTaskCall(call)) launches.push(call);
+      },
+    };
+    for (const kind of LOOP_VISITORS) visitor[kind] = collectLoopLaunches;
+    fn.func.body.walk(brighterscript.createVisitor(visitor), {
+      walkMode: brighterscript.WalkMode.visitAllRecursive,
+    });
+
+    const judged = launches.filter(
+      (call) => !inOwnLoop.has(call) && !isSuppressedAt(call.location?.range?.start?.line ?? -1),
+    );
+    if (judged.length === 0) continue;
+
+    let fansOut = false;
+    const stableSlots = [];
+    let reboundHere;
+    for (const call of judged) {
+      const args = call.args || [];
+      const slot = args.length === 1 ? stableSlotPath(args[0]) : undefined;
+      if (slot === undefined) {
+        fansOut = true;
+        break;
+      }
+      if (reboundHere === undefined) reboundHere = slotsAssignedIn(fn.func.body);
+      if (slotIsReboundIn(slot, reboundHere)) {
+        fansOut = true;
+        break;
+      }
+      stableSlots.push(slot);
+    }
+
+    const existing = helpers.get(fn.name);
+    helpers.set(fn.name, {
+      fansOut: fansOut || (existing?.fansOut ?? false),
+      stableSlots: [...(existing?.stableSlots ?? []), ...stableSlots],
+    });
   }
-  return callee.tokens?.name?.text?.toLowerCase() === LAUNCH_FUNCTION;
+  return helpers;
+}
+
+const DETAILS = 'Details: docs/architecture/tech-debt.md#task-thread-budget.';
+
+function directMessage() {
+  return `Launching a Task from a loop spawns one thread per iteration, so the count scales with server data — this is the shape that caused epic #728 (\`&h29\` too many task threads). Launch a fixed \`m.<field>\` slot the loop does not rebind, or service every item from one orchestrator Task over \`apiPipeline\` (see \`LoadLatestRowsTask\`). ${DETAILS} Add ' bsc-disable-line no-task-fanout to suppress.`;
+}
+
+function helperMessage(name) {
+  return `Calling \`${name}()\` from a loop launches a Task on every turn: it launches a node it builds or reassigns per call, so without a bound the count scales with the loop — the shape that caused epic #728 (\`&h29\` too many task threads). If \`${name}()\` keeps at most one run live however often it is called (it skips while a run is in flight, or cancels the previous run first), state that bound on its launch line: ' bsc-disable-next-line no-task-fanout <the bound>. Otherwise service every item from one orchestrator Task over \`apiPipeline\` (see \`LoadLatestRowsTask\`). ${DETAILS}`;
 }
 
 class NoTaskFanoutPlugin {
@@ -324,6 +415,11 @@ class NoTaskFanoutPlugin {
 
       const sourceLines = (file.fileContents || '').split(/\r?\n/);
 
+      const isSuppressedAt = (line) => {
+        if (DISABLE_LINE_MARKER.test(sourceLines[line] ?? '')) return true;
+        return line > 0 && DISABLE_NEXT_LINE_MARKER.test(sourceLines[line - 1] ?? '');
+      };
+
       // A call inside nested loops is reached once per enclosing loop —
       // measured, not assumed: the walk hits an inner `launchTask` twice at an
       // identical position. Reports are keyed by position to keep one
@@ -336,7 +432,7 @@ class NoTaskFanoutPlugin {
       // cost of not depending on it is four lines.
       const reported = new Set();
 
-      const report = (call) => {
+      const report = (call, message) => {
         const range = call?.location?.range;
         if (!range) return;
 
@@ -344,19 +440,26 @@ class NoTaskFanoutPlugin {
         if (reported.has(key)) return;
         reported.add(key);
 
-        const sourceLine = sourceLines[range.start.line] ?? '';
-        if (DISABLE_LINE_MARKER.test(sourceLine)) return;
-        const prevLine = range.start.line > 0 ? (sourceLines[range.start.line - 1] ?? '') : '';
-        if (DISABLE_NEXT_LINE_MARKER.test(prevLine)) return;
+        if (isSuppressedAt(range.start.line)) return;
 
         event.program.diagnostics.register({
           code: 'no-task-fanout',
           severity: 1, // Error
           source: this.name,
-          message:
-            "Launching a Task from a loop spawns one thread per iteration, so the count scales with server data — this is the shape that caused epic #728 (`&h29` too many task threads). Launch a fixed `m.<field>` slot the loop does not rebind, or service every item from one orchestrator Task over `apiPipeline` (see `LoadLatestRowsTask`). Details: docs/architecture/tech-debt.md#task-thread-budget. Add ' bsc-disable-line no-task-fanout to suppress.",
+          message,
           location: call.location,
         });
+      };
+
+      // Built on first need: most files have no loop that calls a same-file
+      // function, and this hook runs per keystroke in the language server.
+      let helpers;
+      const helperCalled = (call) => {
+        const name = bareCallName(call);
+        if (name === undefined) return undefined;
+        if (helpers === undefined) helpers = helperLaunches(file, isSuppressedAt);
+        const helper = helpers.get(name);
+        return helper ? { name: call.callee.tokens.name.text, ...helper } : undefined;
       };
 
       // Walk the body of each loop for launch calls, rather than walking every
@@ -374,17 +477,24 @@ class NoTaskFanoutPlugin {
         loop.walk(
           brighterscript.createVisitor({
             CallExpression: (call) => {
-              if (!isLaunchTaskCall(call)) return;
+              if (!isLaunchTaskCall(call)) {
+                // One hop: a same-file helper's launches, judged as if inlined.
+                const helper = helperCalled(call);
+                if (helper && (helper.fansOut || helper.stableSlots.some(loopRebinds))) {
+                  report(call, helperMessage(helper.name));
+                }
+                return;
+              }
               const args = call.args || [];
               // A launch with no argument, or a computed/multi-arg form, cannot
               // be shown stable — report rather than assume it is safe.
               if (args.length !== 1) {
-                report(call);
+                report(call, directMessage());
                 return;
               }
               const slot = stableSlotPath(args[0]);
               if (slot !== undefined && !loopRebinds(slot)) return;
-              report(call);
+              report(call, directMessage());
             },
           }),
           { walkMode: brighterscript.WalkMode.visitAllRecursive },

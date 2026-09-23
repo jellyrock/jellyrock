@@ -33,20 +33,13 @@ sub init()
   m.top.observeField("rowItemSelected", "itemSelected")
   m.top.observeField("rowItemFocused", "onItemFocused")
 
-  ' Persistent task nodes for data loading
-  m.LoadLibrariesTask = createObject("roSGNode", "LoadItemsTask")
-
-  m.LoadContinueWatchingTask = createObject("roSGNode", "LoadItemsTask")
-  m.LoadContinueWatchingTask.itemsToLoad = "continue"
-
-  m.LoadNextUpTask = createObject("roSGNode", "LoadItemsTask")
-  m.LoadNextUpTask.itemsToLoad = "nextUp"
-
-  m.LoadOnNowTask = createObject("roSGNode", "LoadItemsTask")
-  m.LoadOnNowTask.itemsToLoad = "onNow"
-
-  m.LoadActiveRecordingsTask = createObject("roSGNode", "LoadItemsTask")
-  m.LoadActiveRecordingsTask.itemsToLoad = "activeRecordings"
+  ' One LoadItemsTask per section load, a new node per run (see "Per-section loads");
+  ' invalid until the section first loads, and again once its run has delivered.
+  m.LoadLibrariesTask = invalid
+  m.LoadContinueWatchingTask = invalid
+  m.LoadNextUpTask = invalid
+  m.LoadOnNowTask = invalid
+  m.LoadActiveRecordingsTask = invalid
 
   m.rowSizesDirty = false
   m.rowSizesBatching = false
@@ -142,7 +135,7 @@ sub init()
     m.popRemoveSeq = 0
   #end if
 
-  ' Track loading state for persistent tasks to prevent duplicate observers/requests
+  ' One run per section at a time: a refresh that lands mid-run skips that section
   m.isLoadingLibraries = false
   m.isLoadingResume = false
   m.isLoadingNextUp = false
@@ -178,11 +171,7 @@ sub loadLibraries()
   ' Show rows immediately — no timer hack needed since skeletons are in place
   m.top.showRowCounter = [true]
 
-  ' Observe library task (observer is removed after each load in onLibrariesLoaded)
-  m.isLoadingLibraries = true
-  m.LoadLibrariesTask.unobserveField("content")
-  m.LoadLibrariesTask.observeField("content", "onLibrariesLoaded")
-  launchTask(m.LoadLibrariesTask)
+  startLibrariesLoad()
 
   ' Start loading data for sections that don't depend on library data
   startParallelLoads()
@@ -299,42 +288,88 @@ end function
 
 ' startParallelLoads: Fires off data tasks for sections that don't need library data.
 ' Library-dependent sections (library row, latestmedia) are handled in onLibrariesLoaded.
+'
+' Launches in the user's layout order. The loop may call a helper more than once per refresh
+' only if a type repeats; each helper's own isLoading* guard holds its section to one run, and
+' states so at its launch — no-task-fanout follows these calls and fails the build otherwise.
 sub startParallelLoads()
   for each section in m.sectionPlan
     if section.type = "resume"
-      if m.isLoadingResume then continue for
-      m.isLoadingResume = true
-      m.LoadContinueWatchingTask.unobserveField("content")
-      m.LoadContinueWatchingTask.observeField("content", "updateContinueWatchingItems")
-      launchTask(m.LoadContinueWatchingTask)
+      startResumeLoad()
     else if section.type = "nextup"
-      if m.isLoadingNextUp then continue for
-      m.isLoadingNextUp = true
-      m.LoadNextUpTask.unobserveField("content")
-      m.LoadNextUpTask.observeField("content", "updateNextUpItems")
-      launchTask(m.LoadNextUpTask)
+      startNextUpLoad()
     else if section.type = "livetv"
-      if m.isLoadingOnNow then continue for
-      m.isLoadingOnNow = true
-      m.LoadOnNowTask.unobserveField("content")
-      m.LoadOnNowTask.observeField("content", "updateOnNowItems")
-      launchTask(m.LoadOnNowTask)
+      startOnNowLoad()
     else if section.type = "activerecordings"
-      if m.isLoadingActiveRecordings then continue for
-      m.isLoadingActiveRecordings = true
-      m.LoadActiveRecordingsTask.unobserveField("content")
-      m.LoadActiveRecordingsTask.observeField("content", "updateActiveRecordingsItems")
-      launchTask(m.LoadActiveRecordingsTask)
+      startActiveRecordingsLoad()
     end if
   end for
 end sub
 
+' ── Per-section loads ───────────────────────────────────────────────────────
+'
+' Each run gets a NEW LoadItemsTask node (replaceTask, ADR 0037), and its handler releases it
+' on delivery. Relaunching one node kept for Home's whole life is not reliable: LoadItemsTask
+' writes `content` as its last statement, so the handler clears the isLoading* flag while the
+' node can still read `run`, and a launch that lands before the function returns is ignored.
+' Nothing then delivers, the flag stays set, and every later refresh skips that section for
+' the life of this HomeRows.
+'
+' The isLoading* skip stays: a refresh that lands mid-run lets the running load finish rather
+' than discarding a fetch already in flight. So a section never has more than one run.
+'
+' Releasing on delivery stops the run where it is, so it relies on `content` being
+' LoadItemsTask's last write — anything after it would not run (said at the write, too).
+'
+' The flag takes launchTask's result because a launch refused at the thread watermark starts
+' nothing and delivers nothing: a flag set regardless would never clear, and no later refresh
+' would retry that section.
+
+sub startLibrariesLoad()
+  if m.isLoadingLibraries then return
+  m.LoadLibrariesTask = replaceTask(m.LoadLibrariesTask, "LoadItemsTask", "content", { itemsToLoad: "libraries" })
+  m.LoadLibrariesTask.observeField("content", "onLibrariesLoaded")
+  m.isLoadingLibraries = launchTask(m.LoadLibrariesTask)
+end sub
+
+sub startResumeLoad()
+  if m.isLoadingResume then return
+  m.LoadContinueWatchingTask = replaceTask(m.LoadContinueWatchingTask, "LoadItemsTask", "content", { itemsToLoad: "continue" })
+  m.LoadContinueWatchingTask.observeField("content", "updateContinueWatchingItems")
+  ' bsc-disable-next-line no-task-fanout one run at a time: returns above while m.isLoadingResume
+  m.isLoadingResume = launchTask(m.LoadContinueWatchingTask)
+end sub
+
+sub startNextUpLoad()
+  if m.isLoadingNextUp then return
+  m.LoadNextUpTask = replaceTask(m.LoadNextUpTask, "LoadItemsTask", "content", { itemsToLoad: "nextUp" })
+  m.LoadNextUpTask.observeField("content", "updateNextUpItems")
+  ' bsc-disable-next-line no-task-fanout one run at a time: returns above while m.isLoadingNextUp
+  m.isLoadingNextUp = launchTask(m.LoadNextUpTask)
+end sub
+
+sub startOnNowLoad()
+  if m.isLoadingOnNow then return
+  m.LoadOnNowTask = replaceTask(m.LoadOnNowTask, "LoadItemsTask", "content", { itemsToLoad: "onNow" })
+  m.LoadOnNowTask.observeField("content", "updateOnNowItems")
+  ' bsc-disable-next-line no-task-fanout one run at a time: returns above while m.isLoadingOnNow
+  m.isLoadingOnNow = launchTask(m.LoadOnNowTask)
+end sub
+
+sub startActiveRecordingsLoad()
+  if m.isLoadingActiveRecordings then return
+  m.LoadActiveRecordingsTask = replaceTask(m.LoadActiveRecordingsTask, "LoadItemsTask", "content", { itemsToLoad: "activeRecordings" })
+  m.LoadActiveRecordingsTask.observeField("content", "updateActiveRecordingsItems")
+  ' bsc-disable-next-line no-task-fanout one run at a time: returns above while m.isLoadingActiveRecordings
+  m.isLoadingActiveRecordings = launchTask(m.LoadActiveRecordingsTask)
+end sub
+
 ' onLibrariesLoaded: Handler when LoadLibrariesTask returns data.
 ' Populates the library row, creates latestmedia skeleton rows, then fires latest tasks.
-sub onLibrariesLoaded()
+sub onLibrariesLoaded(event as object)
+  if not isCurrentTaskEvent(event, m.LoadLibrariesTask) then return
   m.libraryData = m.LoadLibrariesTask.content
-  m.LoadLibrariesTask.unobserveField("content")
-  m.LoadLibrariesTask.content = []
+  m.LoadLibrariesTask = releaseTask(m.LoadLibrariesTask, "content")
   m.isLoadingLibraries = false
 
   ' Always recompute filteredLatest — library data or latestItemsExcludes may have changed since last load.
@@ -461,7 +496,7 @@ end function
 ' startLatestMediaLoads: Hands the eligible libraries (in row order) to the orchestrator task.
 '
 ' Skips outright while a run is in flight, matching the isLoading* rule updateHomeRows()
-' already applies to the other persistent tasks: the running orchestrator is about to deliver
+' already applies to the other section loads: the running orchestrator is about to deliver
 ' fresh data, so restarting buys nothing and costs a cancel. Home is SUSPENDED rather than
 ' destroyed on navigation (onScreenHidden stops no tasks), so a Home revisit lands here
 ' mid-run routinely.
@@ -813,48 +848,47 @@ end function
 ' ============================================
 ' DATA UPDATE CALLBACKS
 ' Each follows the same pattern:
-' 1. Get data from task, unobserve + clear task
+' 1. Drop a replaced run's event, then get data from task and release it
 ' 2. Find pre-created row by sectionId
 ' 3. If empty data → remove row, recalculate sizes
 ' 4. If data → replace skeleton with populated row
 ' 5. Update backdrop for focused item
 ' ============================================
 
-sub updateContinueWatchingItems()
+sub updateContinueWatchingItems(event as object)
+  if not isCurrentTaskEvent(event, m.LoadContinueWatchingTask) then return
   itemData = m.LoadContinueWatchingTask.content
-  m.LoadContinueWatchingTask.unobserveField("content")
-  m.LoadContinueWatchingTask.content = []
+  m.LoadContinueWatchingTask = releaseTask(m.LoadContinueWatchingTask, "content")
   m.isLoadingResume = false
 
   populateRowFromData("resume", itemData)
   resolveRowFill("resume")
 end sub
 
-sub updateNextUpItems()
+sub updateNextUpItems(event as object)
+  if not isCurrentTaskEvent(event, m.LoadNextUpTask) then return
   itemData = m.LoadNextUpTask.content
-  m.LoadNextUpTask.unobserveField("content")
-  m.LoadNextUpTask.content = []
-  m.LoadNextUpTask.control = "STOP"
+  m.LoadNextUpTask = releaseTask(m.LoadNextUpTask, "content")
   m.isLoadingNextUp = false
 
   populateRowFromData("nextup", itemData)
   resolveRowFill("nextup")
 end sub
 
-sub updateOnNowItems()
+sub updateOnNowItems(event as object)
+  if not isCurrentTaskEvent(event, m.LoadOnNowTask) then return
   itemData = m.LoadOnNowTask.content
-  m.LoadOnNowTask.unobserveField("content")
-  m.LoadOnNowTask.content = []
+  m.LoadOnNowTask = releaseTask(m.LoadOnNowTask, "content")
   m.isLoadingOnNow = false
 
   populateRowFromData("livetv", itemData)
   resolveRowFill("livetv")
 end sub
 
-sub updateActiveRecordingsItems()
+sub updateActiveRecordingsItems(event as object)
+  if not isCurrentTaskEvent(event, m.LoadActiveRecordingsTask) then return
   itemData = m.LoadActiveRecordingsTask.content
-  m.LoadActiveRecordingsTask.unobserveField("content")
-  m.LoadActiveRecordingsTask.content = []
+  m.LoadActiveRecordingsTask = releaseTask(m.LoadActiveRecordingsTask, "content")
   m.isLoadingActiveRecordings = false
 
   populateRowFromData("activeRecordings", itemData)
@@ -903,7 +937,7 @@ sub checkVisibleRowsFilled()
 end sub
 
 ' Fires when JRRowList's progress tick detects at least one expired Program
-' or Recording. Re-runs LoadOnNowTask and/or LoadActiveRecordingsTask to pull
+' or Recording. Re-runs the On Now and/or Active Recordings loads to pull
 ' fresh data. Loading guards debounce repeated expiry signals while a load is
 ' already in flight, and section plan checks avoid wasted requests when the
 ' user has disabled the relevant sections.
@@ -911,16 +945,10 @@ sub onProgramsExpired()
   if not isValidAndNotEmpty(m.sectionPlan) then return
 
   for each section in m.sectionPlan
-    if section.type = "livetv" and not m.isLoadingOnNow
-      m.isLoadingOnNow = true
-      m.LoadOnNowTask.unobserveField("content")
-      m.LoadOnNowTask.observeField("content", "updateOnNowItems")
-      launchTask(m.LoadOnNowTask)
-    else if section.type = "activerecordings" and not m.isLoadingActiveRecordings
-      m.isLoadingActiveRecordings = true
-      m.LoadActiveRecordingsTask.unobserveField("content")
-      m.LoadActiveRecordingsTask.observeField("content", "updateActiveRecordingsItems")
-      launchTask(m.LoadActiveRecordingsTask)
+    if section.type = "livetv"
+      startOnNowLoad()
+    else if section.type = "activerecordings"
+      startActiveRecordingsLoad()
     end if
   end for
 end sub
@@ -1234,14 +1262,9 @@ end sub
 ' Keeps existing row nodes in place to avoid focus disruption. As fresh data
 ' arrives, populateRowFromData updates row children in place.
 sub updateHomeRows()
-  ' Guard: if a library load is already in flight, skip to avoid stacking observers.
-  ' No deferred re-run is needed — the in-flight load will deliver fresh data shortly.
-  if not m.isLoadingLibraries
-    m.isLoadingLibraries = true
-    m.LoadLibrariesTask.unobserveField("content")
-    m.LoadLibrariesTask.observeField("content", "onLibrariesLoaded")
-    launchTask(m.LoadLibrariesTask)
-  end if
+  ' Skipped while a library load is in flight — no deferred re-run is needed, the in-flight
+  ' load will deliver fresh data shortly.
+  startLibrariesLoad()
 
   ' Re-fire non-library-dependent tasks
   startParallelLoads()
@@ -1355,26 +1378,13 @@ sub onDestroy()
   m.top.unobserveField("rowItemFocused")
   m.top.unobserveField("programsExpired")
 
-  ' Stop and release all persistent task nodes
-  m.LoadLibrariesTask.unobserveField("content")
-  m.LoadLibrariesTask.control = "STOP"
-  m.LoadLibrariesTask = invalid
-
-  m.LoadContinueWatchingTask.unobserveField("content")
-  m.LoadContinueWatchingTask.control = "STOP"
-  m.LoadContinueWatchingTask = invalid
-
-  m.LoadNextUpTask.unobserveField("content")
-  m.LoadNextUpTask.control = "STOP"
-  m.LoadNextUpTask = invalid
-
-  m.LoadOnNowTask.unobserveField("content")
-  m.LoadOnNowTask.control = "STOP"
-  m.LoadOnNowTask = invalid
-
-  m.LoadActiveRecordingsTask.unobserveField("content")
-  m.LoadActiveRecordingsTask.control = "STOP"
-  m.LoadActiveRecordingsTask = invalid
+  ' Stop and release any section run still in flight. Each is invalid when its section is not
+  ' in the layout or its run has delivered, which releaseTask accepts.
+  m.LoadLibrariesTask = releaseTask(m.LoadLibrariesTask, "content")
+  m.LoadContinueWatchingTask = releaseTask(m.LoadContinueWatchingTask, "content")
+  m.LoadNextUpTask = releaseTask(m.LoadNextUpTask, "content")
+  m.LoadOnNowTask = releaseTask(m.LoadOnNowTask, "content")
+  m.LoadActiveRecordingsTask = releaseTask(m.LoadActiveRecordingsTask, "content")
 
   ' Drop any held row work BEFORE the reset — see discardRowBatch for why a teardown must not
   ' pay for a recompute. This makes the reset's own flush a no-op rather than a render stall
