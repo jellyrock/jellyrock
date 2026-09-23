@@ -131,6 +131,115 @@ describe('callfunc-interface — does not false-positive', () => {
   });
 });
 
+// `m.top` is decidable: the node is a component whose scope includes the file (its own, or one
+// extending it), exposing its own interface plus its ancestors'. VideoPlayerView's Live TV stall
+// handler called m.top.callFunc("refresh") for years — a no-op, hidden because Home declares one.
+describe('callfunc-interface — m.top is checked exactly', () => {
+  it('errors on m.top.callFunc("X") when only an UNRELATED component declares X', () => {
+    const diagnostics = runPluginOnSource(callfuncInterfacePlugin, {
+      'components/Home.xml': xml('Home', { functions: ['refresh'] }),
+      'components/Home.bs': `
+        sub refresh()
+        end sub
+      `,
+      'components/Player.xml': xml('Player', { parent: 'Video' }),
+      'components/Player.bs': `
+        sub bufferCheck()
+          m.top.callFunc("refresh")
+        end sub
+      `,
+    });
+    const flagged = diagnosticsByCode(diagnostics, CODE);
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0].severity).toBe(1);
+    expect(flagged[0].message).toMatch(/m\.top\.callFunc\("refresh"\)/);
+  });
+
+  it('errors on m.top.callFunc("X") when NO component defines X at all', () => {
+    const diagnostics = runPluginOnSource(callfuncInterfacePlugin, {
+      'components/Player.xml': xml('Player'),
+      'components/Player.bs': `
+        sub go()
+          m.top.callFunc("nowhere")
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, CODE)).toHaveLength(1);
+  });
+
+  it("passes when the component's own interface declares X, matching case-insensitively", () => {
+    const diagnostics = runPluginOnSource(callfuncInterfacePlugin, {
+      'components/Player.xml': xml('Player', { functions: ['showError'] }),
+      'components/Player.bs': `
+        sub showError()
+        end sub
+        sub go()
+          M.Top.callFunc("ShowError")
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, CODE)).toHaveLength(0);
+  });
+
+  it('passes when an ANCESTOR declares X', () => {
+    const diagnostics = runPluginOnSource(callfuncInterfacePlugin, {
+      'components/Base.xml': xml('Base', { functions: ['onScreenShown'] }),
+      'components/Base.bs': `
+        sub onScreenShown()
+        end sub
+      `,
+      'components/Child.xml': xml('Child', { parent: 'Base' }),
+      'components/Child.bs': `
+        sub go()
+          m.top.callFunc("onScreenShown")
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, CODE)).toHaveLength(0);
+  });
+
+  it("passes when a parent's code calls a function only a CHILD declares (m.top can be the child)", () => {
+    const diagnostics = runPluginOnSource(callfuncInterfacePlugin, {
+      'components/Base.xml': xml('Base'),
+      'components/Base.bs': `
+        sub go()
+          m.top.callFunc("childHook")
+        end sub
+      `,
+      'components/Child.xml': xml('Child', { parent: 'Base', functions: ['childHook'] }),
+      'components/Child.bs': `
+        sub childHook()
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, CODE)).toHaveLength(0);
+  });
+
+  it('falls back to the program-wide rule for m.top in a file no component includes', () => {
+    const diagnostics = runPluginOnSource(callfuncInterfacePlugin, {
+      'source/helper.bs': `
+        sub go()
+          m.top.callFunc("nowhere")
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, CODE)).toHaveLength(0);
+  });
+
+  it('respects bsc-disable-next-line on an m.top site', () => {
+    const diagnostics = runPluginOnSource(callfuncInterfacePlugin, {
+      'components/Player.xml': xml('Player'),
+      'components/Player.bs': `
+        sub go()
+          ' bsc-disable-next-line callfunc-interface
+          m.top.callFunc("nowhere")
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, CODE)).toHaveLength(0);
+  });
+});
+
 describe('callfunc-interface — escape hatches', () => {
   it('respects bsc-disable-next-line', () => {
     const diagnostics = runPluginOnSource(callfuncInterfacePlugin, {

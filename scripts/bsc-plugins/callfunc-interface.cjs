@@ -35,6 +35,16 @@
  * Targets we don't own (X defined only in `roku_modules` vendored components,
  * e.g. the log library's `logItem`) are out of scope and never flagged.
  *
+ * `m.top.callFunc("X")` IS decidable exactly, so it gets an exact rule instead.
+ * `m.top` is always a component whose scope includes this file — the file's own
+ * component, or one that extends it — and that node exposes its own interface
+ * plus every ancestor's. So the call is a no-op unless X is declared on one of
+ * those components or their ancestors, whatever other component happens to
+ * declare an X. The program-wide rule missed exactly that: VideoPlayerView's
+ * Live TV stall handler called `m.top.callFunc("refresh")`, which never ran
+ * because only Home declares a `refresh`. A file in no component scope (plain
+ * `source/`) falls back to the program-wide rule.
+ *
  * Runs once per validation via `scripts/lib/bsc-rule.cjs`'s program-rule
  * lifecycle, which drops the previous run's findings before this one re-derives
  * them. That matters here more than anywhere: the verdict for a call site lives
@@ -87,13 +97,30 @@ module.exports = () =>
         }
       }
 
+      // Every component scope a file runs in. A component's scope includes its ancestors'
+      // files, so this reaches the components EXTENDING the file's own — which getScopesForFile
+      // does not (it returns only the component that names the file).
+      const scopesByFile = new Map();
+      for (const scope of program.getScopes?.() || []) {
+        if (!brighterscript.isXmlScope(scope)) continue;
+        for (const f of scope.getAllFiles()) {
+          if (!scopesByFile.has(f)) scopesByFile.set(f, []);
+          scopesByFile.get(f).push(scope);
+        }
+      }
+
       // 3. FLAG — callFunc("X") where X is one of our component methods but is
       //    declared in no interface (the silent no-op).
       for (const file of files) {
         if (!brighterscript.isBrsFile(file) || isVendored(file)) continue;
 
+        const onTop = mTopInterfaceNames(scopesByFile.get(file));
         for (const site of findCallFuncSites(file)) {
           const key = site.method.toLowerCase();
+          if (site.isMTop && onTop) {
+            if (!onTop.has(key)) report(mTopFinding(file, site));
+            continue;
+          }
           if (!definedInComponents.has(key)) continue; // external/vendored target — out of scope
           if (declared.has(key)) continue; // exposed somewhere — fine
 
@@ -108,6 +135,42 @@ module.exports = () =>
       }
     },
   });
+
+function mTopFinding(file, site) {
+  return {
+    code: DIAGNOSTIC_CODE,
+    severity: 1, // Error — an undeclared callFunc target is a silent no-op.
+    file,
+    location: site.location,
+    message: `m.top.callFunc("${site.method}") targets a function that this component, the components extending it, and their ancestors all leave out of their <interface>, so the call is a SILENT no-op whatever other component declares it. Add <function name="${site.method}" /> to this component's <interface> (and define it), or call it directly if it is local. Suppress with ' bsc-disable-next-line callfunc-interface only if this is deliberate.`,
+  };
+}
+
+// Lower-cased <function> names `m.top` can expose, given the component scopes a file runs in
+// (its own component, and each one extending it), plus each one's ancestors. null when the file
+// is in no component scope, so the caller falls back to the program-wide rule.
+function mTopInterfaceNames(scopes) {
+  if (!scopes?.length) return null;
+  const names = new Set();
+  for (const scope of scopes) {
+    const seen = new Set();
+    for (let xml = scope.xmlFile; xml && !seen.has(xml); xml = xml.parentComponent) {
+      seen.add(xml);
+      for (const name of interfaceFunctionNames(xml)) names.add(name.toLowerCase());
+    }
+  }
+  return names;
+}
+
+// True for the receiver `m.top` (case-insensitive, like every BrightScript identifier).
+function isMTopReceiver(obj) {
+  return (
+    brighterscript.isDottedGetExpression(obj) &&
+    obj.tokens?.name?.text?.toLowerCase() === 'top' &&
+    brighterscript.isVariableExpression(obj.obj) &&
+    obj.obj.tokens?.name?.text?.toLowerCase() === 'm'
+  );
+}
 
 // All `<function name="...">` names declared in a component's <interface>.
 function interfaceFunctionNames(xmlFile) {
@@ -135,7 +198,7 @@ function topLevelFunctionNames(brsFile) {
   return out;
 }
 
-// Every `<obj>.callFunc("X")` string-literal call site: { method, location, line }.
+// Every `<obj>.callFunc("X")` string-literal call site: { method, isMTop, location, line }.
 function findCallFuncSites(brsFile) {
   const ast = brsFile?.parser?.ast;
   if (!ast || typeof ast.walk !== 'function') return [];
@@ -151,6 +214,7 @@ function findCallFuncSites(brsFile) {
       if (!method) return;
       sites.push({
         method,
+        isMTop: isMTopReceiver(callee.obj),
         location: call.location,
         line: call.location?.range?.start?.line ?? 0,
       });
