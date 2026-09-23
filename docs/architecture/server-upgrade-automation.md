@@ -26,7 +26,7 @@ related-files:
   - docs/signals-backlog.md
   - docs/dev/jellyfin-server-versioning.md
   - source/api/ApiClient.bs
-last-reviewed: 2026-09-17
+last-reviewed: 2026-09-23
 ---
 
 # Jellyfin Server-Upgrade Automation
@@ -955,6 +955,13 @@ in Layer 2, not an `ApiClient` version branch.
    not read this section; it is a lint-only ledger. `npm run jellyfin:matrix` is the
    tool for the live half of verifying one. The rule for adding one is in
    [`jellyfin-server-versioning.md`](../dev/jellyfin-server-versioning.md) §4.
+   **The name-based lint is also what bounds the section.** It works while the name
+   is specific to the behavior, and it cannot hold a gate on a COMBINATION of
+   otherwise-ordinary parameters — 12.0 started honoring `parentId` for
+   `IncludeItemTypes=BoxSet` queries, and registering either name would fail nearly
+   every file in the app, which sends both for unrelated and always-correct reasons.
+   Such a gate is recorded in §4's table with its guard symbol and left out of the
+   ledger; expressing it would need the lint to match a call SITE rather than a name.
 
 ### (2) The per-version release-triage digest model
 

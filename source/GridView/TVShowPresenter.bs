@@ -1,3 +1,4 @@
+import "pkg:/source/GridView/collectionsView.bs"
 import "pkg:/source/GridView/GridPresenterBase.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/displaySettings.bs"
@@ -37,13 +38,35 @@ class TVShowPresenter extends GridPresenterBase
       { "Title": translate(translationKeys.LabelGenres), "Name": "Genres" }
     ]
 
-    ' Sort options vary by view - get current view from presenter's view reference
-    currentView = ""
-    if isValid(m.view) and isValid(m.view.top) and isValid(m.view.top.currentView)
-      currentView = m.view.top.currentView
+    ' 12.0+ only — see collectionsView for what older servers answer instead. A TV library
+    ' gets the view for the same reason a movie library does: the server scopes BoxSets by
+    ' library, a collection can hold series, and jellyfin-web lists a Collections tab on
+    ' both library kinds.
+    if collectionsView.supported(m.serverVersion())
+      options.views.push({ "Title": translate(translationKeys.LabelCollections), "Name": collectionsView.VIEW_NAME })
     end if
-    viewLower = LCase(currentView)
-    if viewLower = "genres"
+
+    ' Sort options vary by view - get current view from presenter's view reference
+    viewLower = LCase(m.currentView())
+    if viewLower = LCase(collectionsView.VIEW_NAME)
+      ' Collections lists BoxSets, not series. Same shorter list the movie libraries'
+      ' Collections view uses, and the same one jellyfin-web offers on its Collections
+      ' tab: a collection has no episode-added date or series-played date of its own.
+      options.sort = [
+        { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" },
+        { "Title": translate(translationKeys.LabelImdbRating), "Name": "CommunityRating" },
+        { "Title": translate(translationKeys.LabelDateAdded), "Name": "DateCreated" },
+        { "Title": translate(translationKeys.LabelOfficialRating), "Name": "OfficialRating" },
+        { "Title": translate(translationKeys.LabelReleaseDate), "Name": "PremiereDate" },
+        { "Title": translate(translationKeys.LabelRandom), "Name": "Random" }
+      ]
+      options.filter = [
+        { "Title": translate(translationKeys.LabelAll), "Name": "All" },
+        { "Title": translate(translationKeys.LabelFavorites), "Name": "Favorites" },
+        { "Title": translate(translationKeys.LabelPlayed), "Name": "Played" },
+        { "Title": translate(translationKeys.LabelUnplayed), "Name": "Unplayed" }
+      ]
+    else if viewLower = "genres"
       ' Genre view only has title sort
       options.sort = [
         { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" }
@@ -142,7 +165,14 @@ class TVShowPresenter extends GridPresenterBase
     task.additionalFields = "Genres"
 
     ' Configure based on view type
-    if viewLower = "networks"
+    if viewLower = LCase(collectionsView.VIEW_NAME)
+      ' The library's collections. `isRecursive` stays true, which is what the 12.x
+      ' servers scope correctly; Genres is a series field a BoxSet has no use for.
+      task.itemType = "BoxSet"
+      task.additionalFields = ""
+      task.itemId = parentItem.Id
+      task.view = collectionsView.VIEW_NAME
+    else if viewLower = "networks"
       task.itemType = "Series"
       task.itemId = parentItem.Id
       task.view = "Networks"

@@ -1,0 +1,51 @@
+import "pkg:/source/utils/misc.bs"
+
+' The per-library Collections view — a Jellyfin 12.0 server capability.
+'
+' `GET /Items?parentId=<library>&IncludeItemTypes=BoxSet` is a request every supported
+' server answers with HTTP 200, and that is exactly the problem: what changed in 12.0 is
+' whether the server HONOURS the scope. Measured on the local 10.11.11 / 12.0.0 / 12.1.0
+' servers, 2026-09-23, against a fixture holding one collection of films from `HDR Movies`
+' and one from `Movies`:
+'
+'   * On 12.x the scope is correct. `HDR Movies` returns its own collection, `Movies`
+'     returns its own, and the `Shows` TV library returns 0.
+'   * On 10.11 with `Recursive=true` the scope is IGNORED: every one of those three
+'     libraries returns BOTH collections, the TV library included.
+'   * On 10.11 with `Recursive=false` it is worse still — `IncludeItemTypes` is ignored
+'     too, and the response is the user's ten root library folders (`CollectionFolder` /
+'     `ManualPlaylistsFolder` items) rather than collections at all.
+'
+' So there is no degraded-but-honest pre-12.0 behavior to fall back on: the view would
+' show another library's collections, or a list of libraries. The two failure directions
+' also mean no response shape distinguishes a server that scoped from one that did not —
+' a 10.11 answer is a well-formed 200 with plausible items — which is why the gate is on
+' the SERVER VERSION rather than on anything observable in the reply.
+'
+' Playlists are deliberately not offered alongside. `Playlist` + `parentId` on 10.11
+' fails the opposite way (it returns 0 for the library whose films the playlist holds),
+' but the reason to leave it out is not the version: a playlist is user-made and
+' cross-cutting, and a top-level Playlists library already browses it.
+namespace collectionsView
+
+  ' The first server line that scopes `parentId` for BoxSet queries. Below it the same
+  ' request succeeds and answers wrongly, so this is a gate, not an optimization.
+  const MIN_SERVER = "12.0.0"
+
+  ' The view's `Name` in a presenter's `views` list, in the saved `landing` display
+  ' setting, and in the `viewMode` a presenter is configured with. Shared so the
+  ' presenters, the query branch and the title branch cannot drift apart on spelling.
+  const VIEW_NAME = "Collections"
+
+  ' supported: Whether this server scopes a per-library BoxSet query.
+  '
+  ' @param {string} serverVersion - m.global.server.version
+  ' @return {boolean} false for an empty/unknown version (the conservative answer — an
+  '                   unknown server is assumed not to scope, so the view is not offered
+  '                   rather than offered and quietly wrong)
+  function supported(serverVersion as string) as boolean
+    if not isValidAndNotEmpty(serverVersion) then return false
+    return versionChecker(serverVersion, collectionsView.MIN_SERVER)
+  end function
+
+end namespace

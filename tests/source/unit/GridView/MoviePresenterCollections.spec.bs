@@ -1,0 +1,271 @@
+import "pkg:/source/GridView/collectionsView.bs"
+import "pkg:/source/GridView/MoviePresenter.bs"
+
+namespace tests
+
+  ' The movie library's Collections view: what the menu offers, and what the view asks the
+  ' server for. Both halves are version-gated, and the gate is on the SERVER VERSION
+  ' because no response shape distinguishes a server that scoped the query from one that
+  ' ignored it — see collectionsView for the measured behavior of each line.
+  @suite("MoviePresenter - the Collections view")
+  class MoviePresenterCollectionsTests extends tests.BaseTestSuite
+
+    private presenter as object
+    private hostCalls as object
+
+    protected override function beforeEach()
+      super.beforeEach()
+      m.presenter = new MoviePresenter()
+    end function
+
+    protected override function afterEach()
+      m.presenter = invalid
+      m.hostCalls = invalid
+      super.afterEach()
+    end function
+
+    ' A stand-in for the BaseGridView component, carrying only what a presenter reads off
+    ' it. Plain AAs rather than nodes: `currentView` is not a field on any stock node, and
+    ' nothing here needs the render tree.
+    '
+    ' `top.callFunc` records instead of dispatching — it is how a presenter asks the host
+    ' to run the filter load, so recording it is what lets a test see whether the load was
+    ' requested at all.
+    private sub attach(serverVersion as string, currentView = "MoviesGrid" as string)
+      m.hostCalls = []
+      m.presenter.onInit({
+        top: {
+          currentView: currentView,
+          calls: m.hostCalls,
+          callFunc: function(name as string, args as object) as object
+            m.calls.push({ name: name, args: args })
+            return invalid
+          end function
+        },
+        global: {
+          server: { version: serverVersion },
+          user: { id: "user-1" }
+        }
+      })
+    end sub
+
+    ' Whether the presenter asked the host to load the dynamic filter lists.
+    private function askedForFilters() as boolean
+      for each call in m.hostCalls
+        if call.name = "loadFilters" then return true
+      end for
+      return false
+    end function
+
+    private function library() as object
+      return { Id: "movies-lib", type: "CollectionFolder", collectionType: "movies" }
+    end function
+
+    private function viewNames(options as object) as object
+      names = []
+      for each view in options.views
+        names.push(view.Name)
+      end for
+      return names
+    end function
+
+    private function optionNames(entries as object) as object
+      names = []
+      for each entry in entries
+        names.push(entry.Name)
+      end for
+      return names
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getOptions() - offering the view")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("offers Collections on a server that scopes the query")
+    @params("12.0.0")
+    @params("12.1.0")
+    function _(serverVersion)
+      m.attach(serverVersion)
+
+      names = m.viewNames(m.presenter.getOptions(m.library()))
+
+      m.assertTrue(inArray(names, collectionsView.VIEW_NAME))
+      m.assertEqual(names.count(), 5, "it is added to the four existing views, not replacing one")
+    end function
+
+    @it("does not offer Collections on a server that ignores the scope")
+    @params("10.11.11")
+    @params("10.7.7")
+    @params("")
+    function _(serverVersion)
+      m.attach(serverVersion)
+
+      names = m.viewNames(m.presenter.getOptions(m.library()))
+
+      m.assertFalse(inArray(names, collectionsView.VIEW_NAME))
+      m.assertEqual(names, ["Movies", "MoviesGrid", "Studios", "Genres"])
+    end function
+
+    @it("does not offer Collections inside a genre, where the library scope does not apply")
+    ' A genre sits below a library; the collections query scopes to the library itself.
+    function _()
+      m.attach("12.0.0")
+
+      names = m.viewNames(m.presenter.getOptions({ Id: "g1", type: "Genre" }))
+
+      m.assertEqual(names, ["Movies", "MoviesGrid"])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getOptions() - inside the view")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("drops the sorts a collection has no value for")
+    ' CriticRating, DatePlayed, PlayCount and Runtime belong to a movie, not to the
+    ' collection holding it — offering them is a control that appears to do nothing. The
+    ' surviving list is the one jellyfin-web uses on its own Collections tab.
+    function _()
+      m.attach("12.0.0", collectionsView.VIEW_NAME)
+
+      sorts = m.optionNames(m.presenter.getOptions(m.library()).sort)
+
+      m.assertEqual(sorts, ["SortName", "CommunityRating", "DateCreated", "OfficialRating", "PremiereDate", "Random"])
+    end function
+
+    @it("drops Resumable, which is not a thing a collection is")
+    function _()
+      m.attach("12.0.0", collectionsView.VIEW_NAME)
+
+      filters = m.optionNames(m.presenter.getOptions(m.library()).filter)
+
+      m.assertEqual(filters, ["All", "Favorites", "Played", "Unplayed"])
+    end function
+
+    @it("offers no dynamic filter category, because every one of them describes a movie")
+    ' /Items/Filters answers with empty Genres / OfficialRatings / Years for a BoxSet
+    ' query (measured on a local 12.0.0, 2026-09-23), and a movie-genre filter applied to
+    ' BoxSets returns nothing at all. The cached lists are still present here — this is
+    ' the view suppressing them, not the load never having run.
+    function _()
+      m.attach("12.0.0", collectionsView.VIEW_NAME)
+      ' Delivered through the real path the filter load uses, so the cache is populated
+      ' exactly as a live load would leave it.
+      m.presenter.onFiltersLoaded({
+        Genres: ["Drama"],
+        OfficialRatings: ["PG"],
+        Years: ["1999"],
+        AudioLanguages: [{ title: "French", value: "fra,fre" }]
+      }, "")
+
+      filters = m.optionNames(m.presenter.getOptions(m.library()).filter)
+
+      m.assertEqual(filters, ["All", "Favorites", "Played", "Unplayed"])
+    end function
+
+    @it("still offers the movie sorts and dynamic categories in the other views")
+    ' The guard above must be scoped to the Collections view, not to the presenter.
+    function _()
+      m.attach("12.0.0", "MoviesGrid")
+      m.presenter.onFiltersLoaded({ Genres: ["Drama"] }, "")
+
+      options = m.presenter.getOptions(m.library())
+
+      m.assertTrue(inArray(m.optionNames(options.sort), "Runtime"))
+      m.assertTrue(inArray(m.optionNames(options.filter), "Genres"))
+      m.assertTrue(inArray(m.optionNames(options.filter), "Resumable"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("configureLoadTask()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("asks for the library's BoxSets, recursively")
+    ' Recursive is what the 12.x servers scope correctly. With Recursive=false, 10.11
+    ' ignores IncludeItemTypes as well and answers with the user's root library folders.
+    function _()
+      m.attach("12.0.0", collectionsView.VIEW_NAME)
+      task = { isRecursive: true, itemType: "", view: "", studioIds: "", genreIds: "", additionalFields: "" }
+
+      m.presenter.configureLoadTask(task, m.library(), collectionsView.VIEW_NAME)
+
+      m.assertEqual(task.itemType, "BoxSet")
+      m.assertEqual(task.itemId, "movies-lib")
+      m.assertTrue(task.isRecursive)
+      m.assertEqual(task.studioIds, "")
+      m.assertEqual(task.genreIds, "")
+    end function
+
+    @it("does not pay for movie fields a BoxSet has no use for")
+    function _()
+      m.attach("12.0.0", collectionsView.VIEW_NAME)
+      task = { isRecursive: true, itemType: "", view: "", studioIds: "", genreIds: "", additionalFields: "" }
+
+      m.presenter.configureLoadTask(task, m.library(), collectionsView.VIEW_NAME)
+
+      m.assertEqual(task.additionalFields, "", "Taglines and Genres are movie fields")
+    end function
+
+    @it("still asks for movies in the other views")
+    @params("MoviesGrid")
+    @params("Movies")
+    function _(viewMode)
+      m.attach("12.0.0", viewMode)
+      task = { isRecursive: true, itemType: "", view: "", studioIds: "", genreIds: "", additionalFields: "" }
+
+      m.presenter.configureLoadTask(task, m.library(), viewMode)
+
+      m.assertEqual(task.itemType, "Movie")
+      m.assertEqual(task.additionalFields, "Taglines,Genres")
+    end function
+
+    @it("does not fetch filter lists the Collections view will not show")
+    ' Free rather than merely cheaper: leaving the view runs configureLoadTask again, so a
+    ' session that lands on Collections and stays there never pays for lists it was never
+    ' shown, and one that leaves pays exactly once.
+    function _()
+      m.attach("12.0.0", collectionsView.VIEW_NAME)
+      task = { isRecursive: true, itemType: "", view: "", studioIds: "", genreIds: "", additionalFields: "" }
+
+      m.presenter.configureLoadTask(task, m.library(), collectionsView.VIEW_NAME)
+
+      m.assertFalse(m.askedForFilters())
+    end function
+
+    @it("fetches them for a view that does show them")
+    function _()
+      m.attach("12.0.0", "MoviesGrid")
+      task = { isRecursive: true, itemType: "", view: "", studioIds: "", genreIds: "", additionalFields: "" }
+
+      m.presenter.configureLoadTask(task, m.library(), "MoviesGrid")
+
+      m.assertTrue(m.askedForFilters())
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getGridConfig()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("lays the view out as a poster grid, not as the presentation view")
+    ' The presentation layout drops the grid 650px down to leave room for the info panel.
+    ' A Collections view has no panel, so that offset would be dead space.
+    function _()
+      m.attach("12.0.0", collectionsView.VIEW_NAME)
+
+      config = m.presenter.getGridConfig(collectionsView.VIEW_NAME)
+
+      m.assertEqual(config.translation, [96, 102])
+      m.assertEqual(config.numRows, "3")
+      m.assertEqual(config.imageDisplayMode, "scaleToZoom")
+    end function
+
+    @it("shows no presentation info for the view")
+    function _()
+      m.attach("12.0.0", collectionsView.VIEW_NAME)
+
+      m.assertFalse(m.presenter.shouldShowPresentationInfo(collectionsView.VIEW_NAME))
+      m.assertEqual(m.presenter.getBackdropMode(), "fullscreen")
+    end function
+
+  end class
+
+end namespace

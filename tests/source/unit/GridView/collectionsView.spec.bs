@@ -1,0 +1,47 @@
+import "pkg:/source/GridView/collectionsView.bs"
+
+namespace tests
+
+  @suite("collectionsView - the per-library Collections gate")
+  class CollectionsViewTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("supported()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true from 12.0.0 on, and false below it")
+    @params("12.0.0", true)
+    @params("12.0.1", true)
+    @params("12.1.0", true)
+    @params("13.0.0", true)
+    @params("10.11.11", false)
+    @params("10.10.7", false)
+    @params("10.7.7", false)
+    function _(serverVersion, expected)
+      m.assertEqual(collectionsView.supported(serverVersion), expected)
+    end function
+
+    @it("is false for an unknown server version, so the view is withheld rather than wrong")
+    ' There is nothing in a 10.11 reply that says it ignored the scope: it is a 200 with
+    ' plausible items in it (measured 2026-09-23 — every library returns every collection
+    ' on the server). So a permissive guess is not a degraded view, it is a wrong one.
+    @params("")
+    @params("not-a-version")
+    function _(serverVersion)
+      m.assertFalse(collectionsView.supported(serverVersion))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("VIEW_NAME")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is the one spelling the presenters, the query branch and the title branch share")
+    ' Every site compares it under LCase(), so the constant's own casing is what a saved
+    ' `landing` setting carries — it must stay stable or a saved view stops restoring.
+    function _()
+      m.assertEqual(collectionsView.VIEW_NAME, "Collections")
+    end function
+
+  end class
+
+end namespace

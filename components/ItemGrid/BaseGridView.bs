@@ -8,6 +8,7 @@ import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/constants/imageSize.bs"
+import "pkg:/source/GridView/collectionsView.bs"
 import "pkg:/source/GridView/GenericPresenter.bs"
 import "pkg:/source/GridView/gridQuery.bs"
 import "pkg:/source/GridView/LiveTVPresenter.bs"
@@ -375,10 +376,17 @@ sub loadInitialItems()
   m.view = getLibraryDisplaySetting(libraryId, "landing", invalid)
   m.sortAscending = getLibraryDisplaySetting(libraryId, "sortAscending", true)
 
-  ' Set default view if not saved
-  if not isValid(m.view)
-    m.view = getDefaultView()
-  end if
+  ' Set default view if not saved — or if the saved one is no longer on offer.
+  '
+  ' A saved view could always be honored until 12.0, because every view a presenter
+  ' listed existed on every server. The Collections view is the first that does not: the
+  ' same library opened against an older server has no such view, and loading it anyway
+  ' takes the presenter's default query branch while the layout stays the named view's.
+  '
+  ' The fallback is NOT written back to the registry. The saved choice is still what the
+  ' user picked, and it is valid again the moment the library is opened against a server
+  ' that offers it — so this reads the setting down, it does not overwrite it.
+  m.view = gridQuery.resolveView(m.view, offeredViews(), getDefaultView())
 
   ' Keep currentView in sync with the finalized view
   m.top.currentView = m.view
@@ -467,6 +475,22 @@ sub releaseGridRun()
   if isValid(m.loadItemsTask) then m.loadItemsTask.unobserveField("genreSkeletons")
   m.loadItemsTask = releaseTask(m.loadItemsTask, "content")
 end sub
+
+' The views the presenter is currently listing for this library, [] when there is no
+' presenter yet.
+'
+' Derived from getOptions() rather than from a second list the presenters would also have
+' to maintain: there is one list, so nothing can disagree with it. "Currently" is
+' load-bearing — a presenter's views depend on the server version and on the parent item
+' (a genre folder offers fewer than its library), so this is asked per load, not cached.
+' The cost is one extra options build per library load, the same work SetUpOptions already
+' does once: a handful of translate() calls on the render thread.
+function offeredViews() as object
+  if not isValid(m.presenter) then return []
+  options = m.presenter.getOptions(m.top.parentItem)
+  if not isValid(options) or type(options.views) <> "roArray" then return []
+  return options.views
+end function
 
 function getDefaultView() as string
   ' Let presenter determine default view, or use fallback
@@ -1437,6 +1461,8 @@ sub updateTitle()
     m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelStudios))
   else if lowerView = "genres"
     m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelGenres))
+  else if lowerView = LCase(collectionsView.VIEW_NAME)
+    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelCollections))
   else if lowerView = "artistsgrid"
     m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelArtists))
   else if lowerView = "albumartistsgrid"

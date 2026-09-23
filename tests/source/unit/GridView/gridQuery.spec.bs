@@ -250,6 +250,77 @@ namespace tests
       m.assertEqual(gridQuery.checkedStateFor(["Drama"], "drama", "|"), [true])
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("offersView()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("finds a view the presenter is listing, whatever the casing")
+    ' BaseGridView.SetUpOptions already compares a saved view to a presenter's Name under
+    ' LCase(). If this matched differently, a view could restore here and then fail to
+    ' tick in the panel.
+    @params("MoviesGrid", true)
+    @params("moviesgrid", true)
+    @params("MOVIESGRID", true)
+    @params("Collections", false)
+    function _(viewName, expected)
+      views = [{ Title: "Movies", Name: "Movies" }, { Title: "Grid", Name: "MoviesGrid" }]
+      m.assertEqual(gridQuery.offersView(views, viewName), expected)
+    end function
+
+    @it("answers false for anything that is not a list of views")
+    @params(invalid)
+    @params("MoviesGrid")
+    @params({})
+    function _(views)
+      m.assertFalse(gridQuery.offersView(views, "MoviesGrid"))
+    end function
+
+    @it("answers false for an empty name, and skips an entry with no Name")
+    function _()
+      m.assertFalse(gridQuery.offersView([{ Name: "Movies" }], ""))
+      m.assertFalse(gridQuery.offersView([invalid, { Title: "no name" }], "Movies"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("resolveView()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps a saved view the presenter still offers")
+    function _()
+      views = [{ Name: "Movies" }, { Name: "MoviesGrid" }, { Name: "Collections" }]
+      m.assertEqual(gridQuery.resolveView("Collections", views, "MoviesGrid"), "Collections")
+    end function
+
+    @it("falls back when the saved view is no longer offered")
+    ' The case this exists for: Collections is saved against a 12.0 server, and the same
+    ' library is later opened against an older one that does not offer it.
+    function _()
+      views = [{ Name: "Movies" }, { Name: "MoviesGrid" }]
+      m.assertEqual(gridQuery.resolveView("Collections", views, "MoviesGrid"), "MoviesGrid")
+    end function
+
+    @it("uses the default when nothing was ever saved")
+    @params(invalid)
+    @params("")
+    @params("   ")
+    function _(savedView)
+      m.assertEqual(gridQuery.resolveView(savedView, [{ Name: "Movies" }], "MoviesGrid"), "MoviesGrid")
+    end function
+
+    @it("returns an empty default untouched for the presenters that run without a named view")
+    ' Live TV, Photos and Generic get "" from getDefaultView(), and "" is in no presenter's
+    ' views list — so a rule of "reset anything not offered" would reset them on every
+    ' load. Only a non-empty SAVED name is checked.
+    function _()
+      m.assertEqual(gridQuery.resolveView(invalid, [{ Name: "livetv" }, { Name: "tvGuide" }], ""), "")
+    end function
+
+    @it("keeps a saved view for those presenters too")
+    function _()
+      views = [{ Name: "livetv" }, { Name: "tvGuide" }]
+      m.assertEqual(gridQuery.resolveView("tvGuide", views, ""), "tvGuide")
+    end function
+
   end class
 
 end namespace
