@@ -57,6 +57,7 @@
   "ErrorInvalidLanguageCode": "Invalid Language Code",
   "ErrorLoginAttemptFailed": "Login attempt failed.",
   "ErrorPlaybackCauseDrm": "This video is copy-protected and can't be played on this device.",
+  "ErrorPlaybackCauseLiveStreamNoVideo": "This channel isn't sending any video.",
   "ErrorPlaybackCauseLiveStreamStopped": "This channel's stream stopped.",
   "ErrorPlaybackCauseNetwork": "Couldn't reach the server. Check that it's running and that this device is on the same network.",
   "ErrorPlaybackCauseTimeout": "The server took too long to respond.",
