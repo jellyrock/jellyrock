@@ -999,7 +999,6 @@ end sub
 ' tuner-limited server, a tuner): measured on a Stick 4K against 12.1, where Back, voice "stop"
 ' and a channel switch from a playing channel all report their stop.
 sub reportStallStop()
-  if not m.isPlayReported then return
   reportPlaybackEnd("stopped")
 end sub
 

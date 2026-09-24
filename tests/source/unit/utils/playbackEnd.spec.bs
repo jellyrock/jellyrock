@@ -71,6 +71,16 @@ namespace tests
       m.assertEqual(classifyPlaybackEnd("finished", true, false, true), PlaybackEndReport.FINISHED)
     end function
 
+    @it("still marks a terminal error failed")
+    function _()
+      m.assertEqual(classifyPlaybackEnd("error", true, false, true), PlaybackEndReport.FAILED)
+    end function
+
+    @it("reports its finished even before a start was reported")
+    function _()
+      m.assertEqual(classifyPlaybackEnd("finished", false, false, true), PlaybackEndReport.FINISHED)
+    end function
+
   end class
 
 end namespace
