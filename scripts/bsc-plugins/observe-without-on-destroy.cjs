@@ -29,6 +29,9 @@
  * requires the forms to match rather than guessing, and keeps them in separate
  * maps. Matching them costs nothing.
  *
+ * `X = releaseTask(X, "<field>")` counts as `X.unobserveField("<field>")` — it
+ * is one (see recordReleaseTask). `replaceTask` does not count.
+ *
  * Runs per component SCOPE (`scripts/lib/bsc-rule.cjs`). The JRScreen-ness half
  * of the verdict comes from the XML while the warning is anchored in the `.bs`,
  * so moving a component out of the JRScreen hierarchy has to clear its warnings
@@ -42,7 +45,12 @@
 'use strict';
 
 const brighterscript = require('brighterscript');
-const { createScopeRule, stringLiteralValue, referenceText } = require('../lib/bsc-rule.cjs');
+const {
+  createScopeRule,
+  stringLiteralValue,
+  referenceText,
+  bareCallName,
+} = require('../lib/bsc-rule.cjs');
 
 const TARGET_BASE = 'JRScreen';
 const MAX_PARENT_CHAIN_DEPTH = 32;
@@ -83,6 +91,10 @@ module.exports = () =>
           aliases.union(lhsRef, rhsRef);
         },
         CallExpression: (call) => {
+          if (bareCallName(call) === 'releasetask') {
+            recordReleaseTask(call, unobserveByField);
+            return;
+          }
           const callee = call?.callee;
           if (!brighterscript.isDottedGetExpression(callee)) return;
           const methodName = callee.tokens?.name?.text;
@@ -134,6 +146,23 @@ module.exports = () =>
       }
     },
   });
+
+/**
+ * `releaseTask(node, "field")` (source/utils/tasks.bs) is an unscoped
+ * `node.unobserveField("field")` followed by a STOP, so it releases exactly what
+ * a literal unobserve would. `replaceTask` is deliberately NOT counted: it
+ * releases the PREVIOUS node, so a file that only ever replaces still leaves the
+ * last run's observer attached when the screen is destroyed.
+ */
+function recordReleaseTask(call, unobserveByField) {
+  const [nodeArg, fieldArg] = call.args ?? [];
+  if (!brighterscript.isLiteralExpression(fieldArg)) return;
+  const fieldText = stringLiteralValue(fieldArg.tokens?.value?.text);
+  const targetRef = referenceText(nodeArg);
+  if (!fieldText || !targetRef) return;
+  if (!unobserveByField.has(fieldText)) unobserveByField.set(fieldText, new Set());
+  unobserveByField.get(fieldText).add(targetRef);
+}
 
 function isCovered(observation, unobserveByField, unobserveByFieldScoped, aliases) {
   const map = observation.scoped ? unobserveByFieldScoped : unobserveByField;

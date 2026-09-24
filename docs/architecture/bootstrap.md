@@ -7,7 +7,7 @@ related-files:
   - source/utils/globals.bs
   - components/JRScene.xml
   - components/JRScene.bs
-last-reviewed: 2026-09-16
+last-reviewed: 2026-09-23
 ---
 
 # Bootstrap & Lifecycle
@@ -98,6 +98,7 @@ Defined in `source/utils/globals.bs` (`setGlobals` function). Creates the data n
 
 Defined in `source/utils/globals.bs` (`setGlobalNodes` function). Creates and starts the long-running nodes:
 
+- `m.global.taskLaunchQueue` — `TaskLaunchQueue`, created FIRST so it exists before any launch below: where a Task launch waits while the app is at its thread watermark ([ADR 0041](../adr/0041-task-launch-queue.md)). Its fields are declared in `setGlobals()`, so until this line a launch past the watermark is refused
 - `m.global.apiPool0` … `apiPool<N-1>` — the `ApiTask` pool, each started with `launchTask()` to enter its infinite work loop. N is chosen here from the device class (`apiPool.widthFor(m.global.device.isLowMemoryDevice)`), which is why Phase 1's `SaveDeviceToGlobal()` must run first; it is stored as `m.global.apiPoolWidth`. See [api.md](api.md#pool-width)
 - `m.global.apiQueue` — `ApiQueueTask`, the FIFO coordinator that dispatches into the pool
 - `m.global.sideEffectTask` — `SideEffectTask`, `control = "RUN"` to enter its FIFO children-as-vehicle loop for fire-and-forget POST/DELETE

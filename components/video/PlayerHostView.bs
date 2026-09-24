@@ -103,9 +103,6 @@ sub mountPlayer(isLiveRestart = false as boolean)
   m.view.observeField("selectAudioPressed", "onSelectAudioPressed")
   m.view.observeField("selectVideoSourcePressed", "onSelectVideoSourcePressed")
 
-  m.getPlaybackInfoTask = createObject("roSGNode", "GetPlaybackInfoTask")
-  m.getPlaybackInfoTask.observeField("data", "onPlaybackInfoLoaded")
-
   ' Update backdrop for current queue item (handles first item, shuffle, library play, etc.)
   updateQueueBackdrop()
 
@@ -136,11 +133,7 @@ sub destroyPlayer()
     m.view = invalid
   end if
 
-  if isValid(m.getPlaybackInfoTask)
-    m.getPlaybackInfoTask.control = "STOP"
-    m.getPlaybackInfoTask.unobserveField("data")
-    m.getPlaybackInfoTask = invalid
-  end if
+  m.getPlaybackInfoTask = releaseTask(m.getPlaybackInfoTask, "data")
 
   ' Otherwise the first report opened on the NEXT queue item compares its
   ' completion percentage against the previous item's last figure, silently
@@ -189,16 +182,22 @@ sub onDestroy()
   ' view — anything that navigates without the user closing the dialog first
   ' (deep link, session expiry, voice "stop") would strand one over the incoming
   ' screen. See abandonDialog in source/utils/dialogs.bs.
-  ' Both observers this view owns for the report have to be released here — the
-  ' timer's `fire` and the dialog's `parentNode`. The dialog outlives this view
-  ' (it is appended to the SCENE), so an unreleased observer on it would keep
-  ' calling into a dead scope.
-  releasePlaybackInfoRefresh()
-  if isValid(m.playbackDialog) then m.playbackDialog.unobserveField("closed")
-  abandonDialog(m.playbackDialog)
-  m.playbackDialog = invalid
-  m.trackPickerOptions = invalid
+  abandonPlaybackDialogs()
   destroyPlayer()
+end sub
+
+' Drop the report and any track picker this view opened, delivering nothing. Both
+' observers this view owns for the report go too — the timer's `fire` and the
+' dialog's `closed`. The dialogs outlive this view (they are appended to the
+' SCENE), so an unreleased observer on one would keep calling into a dead scope.
+sub abandonPlaybackDialogs()
+  releasePlaybackInfoRefresh()
+  if isValid(m.reportDialog) then m.reportDialog.unobserveField("closed")
+  abandonDialog(m.reportDialog)
+  abandonDialog(m.trackPickerDialog)
+  m.reportDialog = invalid
+  m.trackPickerDialog = invalid
+  m.trackPickerOptions = invalid
 end sub
 
 ' ===========================================================================
@@ -258,13 +257,9 @@ sub onPlayerStateChange()
   ' now caught by the guard, which is what lets the user actually read the error.
   m.view.callFunc("abandonErrorDialog")
 
-  ' Same two observers as onDestroy: we are dropping the reference to a dialog
-  ' that lives on the SCENE, so the poll and its close observer go with it.
-  releasePlaybackInfoRefresh()
-  if isValid(m.playbackDialog) then m.playbackDialog.unobserveField("closed")
-  abandonDialog(m.playbackDialog)
-  m.playbackDialog = invalid
-  m.trackPickerOptions = invalid
+  ' Same teardown as onDestroy: we are dropping the references to dialogs that
+  ' live on the SCENE, so the poll and the report's close observer go with them.
+  abandonPlaybackDialogs()
   cancelOpenDialog()
 
   ' Live TV channel that finished -> restart the same channel (same queue position). A live feed
@@ -316,7 +311,11 @@ end function
 ' told them apart with a `type` string stamped into every option.
 '
 ' Only ONE of these can be open at a time (the OSD is unreachable behind a modal),
-' so they share one node slot, which is also the one thing teardown has to abandon.
+' but the report still gets its own slot, `m.reportDialog`, apart from the
+' pickers' `m.trackPickerDialog`. Its life starts before its dialog does: after a
+' press, a fetch in flight is a report with no dialog yet, and a picker can open
+' in that window. A shared slot let the fetch's answer take the picker for the
+' report it was waiting for.
 ' ===========================================================================
 
 ' Present a picker built by source/utils/trackPickerOptions.bs. Holding the option
@@ -325,16 +324,20 @@ end function
 sub showTrackPicker(title as string, options as object, onResult as string)
   if options.labels.count() = 0 then return
 
+  ' A report still being fetched was asked for BEFORE this picker, and the newer
+  ' request wins: without this, its answer opens the report once the picker closes.
+  m.getPlaybackInfoTask = releaseTask(m.getPlaybackInfoTask, "data")
+
   m.trackPickerOptions = options
-  m.playbackDialog = showListDialog(title, options.labels, onResult, options.defaultIndex, options.selectedIndex)
+  m.trackPickerDialog = showListDialog(title, options.labels, onResult, options.defaultIndex, options.selectedIndex)
 end sub
 
 ' The option the user picked, or invalid if they backed out. Clears the dialog
 ' slot — every result handler starts here.
 function resolvePickedValue() as object
-  dialog = m.playbackDialog
+  dialog = m.trackPickerDialog
   options = m.trackPickerOptions
-  m.playbackDialog = invalid
+  m.trackPickerDialog = invalid
   m.trackPickerOptions = invalid
 
   if not isValid(dialog) or not isValid(dialog.result) or not isValid(options) then return invalid
@@ -459,13 +462,34 @@ end sub
 ' transcode that had already stopped. Composition is cheap now that it happens
 ' here rather than on the Task thread, so a fresh answer costs one request.
 sub onSelectPlaybackInfoPressed()
+  startPlaybackInfoLoad()
+end sub
+
+' One fetch of the live session, on a NEW node per run (ADR 0037) — a node that
+' is still running ignores a relaunch. Replaces any run in flight, which is what a
+' press wants; the refresh tick lets one finish instead (onPlaybackInfoRefreshDue).
+sub startPlaybackInfoLoad()
+  m.getPlaybackInfoTask = replaceTask(m.getPlaybackInfoTask, "GetPlaybackInfoTask", "data", {})
+  m.getPlaybackInfoTask.observeField("data", "onPlaybackInfoLoaded")
   launchTask(m.getPlaybackInfoTask)
 end sub
 
 ' The session arrived. Compose the report and either open it or refresh the one
 ' already open.
-sub onPlaybackInfoLoaded()
-  data = m.getPlaybackInfoTask.data
+sub onPlaybackInfoLoaded(event as object)
+  ' Also drops a fetch that was in flight when the report closed: without the
+  ' release in onPlaybackInfoDialogClosed plus this check, its answer found no
+  ' dialog below and opened the report again by itself.
+  if not isCurrentTaskEvent(event, m.getPlaybackInfoTask) then return
+
+  ' Not open yet, and another dialog took the screen while this was in flight — a
+  ' server message, the player's error. It was asked for AFTER the press, so it
+  ' wins: opening the report now would supersede it, and the error dialog reads a
+  ' supersede as a deliberate takeover and parks the player with its message gone.
+  ' The user can press "i" again.
+  if not isValid(m.reportDialog) and isOverlayDialogOpen() then return
+
+  data = event.getData()
   session = invalid
   if isValid(data) then session = data.session
 
@@ -475,7 +499,7 @@ sub onPlaybackInfoLoaded()
   ' request killing the dialog's updates for as long as it stays open. Skip the
   ' rebuild entirely and let the next tick try again; the dialog keeps showing the
   ' last good figures, which is what it would show anyway.
-  if not isValid(session) and isValid(m.playbackDialog) then return
+  if not isValid(session) and isValid(m.reportDialog) then return
 
   report = buildPlaybackReport(playbackReportInputs(session))
   if report.sections.count() = 0
@@ -487,7 +511,7 @@ sub onPlaybackInfoLoaded()
     ' Only when the dialog is NOT already open. Behind an open one the same rule
     ' as a failed refresh applies: keep showing the last good report rather than
     ' throwing a toast over it, and let the next tick try again.
-    if not isValid(m.playbackDialog) then displayToast(translate(translationKeys.ErrorUnableToGetPlaybackInformation), "error")
+    if not isValid(m.reportDialog) then displayToast(translate(translationKeys.ErrorUnableToGetPlaybackInformation), "error")
     return
   end if
 
@@ -498,7 +522,7 @@ sub onPlaybackInfoLoaded()
     m.lastCompletionPercentage = session.TranscodingInfo.CompletionPercentage
   end if
 
-  if isValid(m.playbackDialog)
+  if isValid(m.reportDialog)
     ' Open already: hand it the new model. OverviewDialog reconciles row by row,
     ' so the live figures change and the scroll position does not.
     '
@@ -507,8 +531,8 @@ sub onPlaybackInfoLoaded()
     ' does exactly that — and leaving "Transcoding" above a body that has just
     ' rebuilt itself into a direct-play report is the stale answer this whole
     ' refresh exists to prevent.
-    m.playbackDialog.tagline = report.status
-    m.playbackDialog.sections = report.sections
+    m.reportDialog.tagline = report.status
+    m.reportDialog.sections = report.sections
     ' The SAME predicate that started the timer decides when to stop it, so the
     ' two can never drift apart. Two ways to arrive here: a transcode ENDED while
     ' the report was open (a DoVi buffer-overflow fallback does exactly that), or
@@ -517,8 +541,8 @@ sub onPlaybackInfoLoaded()
     return
   end if
 
-  m.playbackDialog = showReportDialog(translate(translationKeys.LabelPlaybackInfo), report.status, report.sections)
-  m.playbackDialog.observeField("closed", "onPlaybackInfoDialogClosed")
+  m.reportDialog = showReportDialog(translate(translationKeys.LabelPlaybackInfo), report.status, report.sections)
+  m.reportDialog.observeField("closed", "onPlaybackInfoDialogClosed")
   if reportNeedsPolling(report, session) then startPlaybackInfoRefresh()
 end sub
 
@@ -696,7 +720,7 @@ sub onPlaybackInfoRefreshDue()
   ' onPlaybackInfoDialogClosed() same as any other close. This guard is here for
   ' any OTHER way the dialog could leave the scene without that field ever being
   ' set — stop rather than poll into nothing.
-  if not isValid(m.playbackDialog) or not isValid(m.playbackDialog.getParent())
+  if not isValid(m.reportDialog) or not isValid(m.reportDialog.getParent())
     stopPlaybackInfoRefresh()
     return
   end if
@@ -713,7 +737,15 @@ sub onPlaybackInfoRefreshDue()
     if m.deviceInfo.TimeSinceLastKeypress() >= m.screenSaverTimeout then return
   end if
 
-  launchTask(m.getPlaybackInfoTask)
+  ' A fetch still running is let finish, not replaced. On a server slower than
+  ' this poll, replacing it every tick would abandon each request before it
+  ' answered and the report would never update again; skipping keeps it updating
+  ' at the server's pace. A fetch waiting in the launch queue counts as running
+  ' (isTaskInFlight): replacing it would send the new one to the back of the queue
+  ' every tick. A refused launch is neither, so it does not block every later tick.
+  if isTaskInFlight(m.getPlaybackInfoTask) then return
+
+  startPlaybackInfoLoad()
 end sub
 
 ' The dialog closed — stop polling into it and let it go.
@@ -722,12 +754,13 @@ end sub
 ' `parentNode`, on the reasoning that a dialog which dismisses itself by removing
 ' itself from the scene has a detached parent — but `parentNode` is not a field
 ' on Node (its observable fields are id, focusable, focusedChild and change), so
-' that observer never fired even once. Nothing cleared m.playbackDialog, so the
+' that observer never fired even once. Nothing cleared m.reportDialog, so the
 ' NEXT press of the "i" button found a dialog it believed was still open and
 ' quietly refreshed a node that was no longer in the scene: the report opened the
 ' first time and never again.
 sub onPlaybackInfoDialogClosed()
   stopPlaybackInfoRefresh()
-  if isValid(m.playbackDialog) then m.playbackDialog.unobserveField("closed")
-  m.playbackDialog = invalid
+  m.getPlaybackInfoTask = releaseTask(m.getPlaybackInfoTask, "data")
+  if isValid(m.reportDialog) then m.reportDialog.unobserveField("closed")
+  m.reportDialog = invalid
 end sub

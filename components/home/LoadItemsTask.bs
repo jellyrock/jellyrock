@@ -223,6 +223,9 @@ sub loadItems()
     end if
   end if
 
+  ' Keep this the LAST statement: a caller may release (STOP) the node in its `content`
+  ' handler, before this function returns (see releaseTask), and work added below would
+  ' then silently not run.
   m.top.content = results
 
 end sub

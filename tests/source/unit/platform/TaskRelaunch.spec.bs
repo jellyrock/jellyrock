@@ -110,6 +110,26 @@ namespace tests
       host.callFunc("release")
     end function
 
+    ' What replaceTask() stakes the thread budget on: a node stopped while parked hands its
+    ' thread slot back, so replacing one node per run cannot stack threads toward Roku's
+    ' 100-thread `&h29` cap. A wait with NO timeout is the worst case, since nothing but the
+    ' STOP can end it. 110 launches is past the cap; the rate and the live-thread control that
+    ' proves this instrument can see the cap are in TaskThreadSlots.spec.bs.
+    @it("frees the thread slot of a node stopped while parked in a wait() with no timeout")
+    function _()
+      host = CreateObject("roSGNode", "TaskRelaunchProbeHost")
+      for i = 1 to 110
+        launch = host.callFunc("launchHeld", { blockMode: "waitForever", blockMs: 0 })
+        m.assertTrue(launch.ok, "launch " + i.toStr() + " was refused: " + (launch.message ?? ""))
+        if not launch.ok then exit for
+        m.assertEqual(m.waitForCount(launch.node, "starts", 1, 2000), 1, "precondition: the task function started")
+        ' `starts` is written just before the block; let the thread reach it.
+        sleep(50)
+        host.callFunc("stopHeldLast")
+      end for
+      host.callFunc("dropHeld")
+    end function
+
     @it("relaunches from a later callback")
     function _()
       host = m.runningHost()

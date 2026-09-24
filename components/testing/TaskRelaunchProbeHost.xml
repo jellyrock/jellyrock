@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  TaskRelaunchProbeHost — drives TaskRelaunchProbeTask for tests/source/unit/platform/TaskRelaunch.spec.bs.
+  TaskRelaunchProbeHost — drives TaskRelaunchProbeTask for tests/source/unit/platform/TaskRelaunch.spec.bs
+  (and the launchHeld / stopHeldLast / dropHeld set, for TaskThreadSlots.spec.bs).
 
   The app stops and relaunches its orchestrator Tasks from the RENDER thread, in one callback
   (ExtrasRowList.cancelRun then startRun; HomeRows.resetLatestRowsRun then the launch). Rooibos
@@ -18,5 +19,8 @@
     <function name="stopAndLaunchFresh" />
     <function name="writeAndLaunch" />
     <function name="release" />
+    <function name="launchHeld" />
+    <function name="stopHeldLast" />
+    <function name="dropHeld" />
   </interface>
 </component>

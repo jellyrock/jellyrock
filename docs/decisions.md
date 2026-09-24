@@ -1641,6 +1641,7 @@ Re-evaluate the 30 s cap if servers take longer than that to come back, and whet
 **date**: 2026-09-22
 **status**: accepted
 **supersedes**: latest-rows-no-mid-run-restart
+**partially-superseded-by**: home-section-loads-new-node-per-run (its out-of-scope clause: `HomeRows`' five section loads keeping one node each)
 **related-files**: `components/home/HomeRows.bs`, `source/home/latestRows.bs`, `source/utils/tasks.bs`
 
 Each Home latest-rows run gets a NEW `LoadLatestRowsTask` node (`startLatestMediaLoads` via `replaceTask()`), and `onLatestRowsReady` drops any wake that fails `isCurrentTaskEvent()` — [ADR 0037](adr/0037-task-run-replacement.md) applied here. What `HomeRows` reads off the node (the delivered result children and the drain cursor over them) belongs to one run, so it is released with the node; unlike `BaseGridView` and `schedule`, there is no cross-run query state to move onto the component. The refresh still SKIPS while a run is in flight, and `latestRows.runIsStalled` still reclaims a run silent past `PIPELINE_RUN_MS + API_WAIT_MS` since its last row (`pipeline-budget-charges-wait-only`). The skip's reason has changed: a new node always starts, so it no longer guards against a dropped relaunch. It stays because a restart would discard a run already fetching fresh data, delaying first paint and spending pool slots twice.
@@ -1718,6 +1719,47 @@ Custom subtitles were one `captionTask` holding both halves of the job: a Task `
 **The renderer owning the fetch node is the load-bearing choice.** `VideoPlayerView` writes a `url` and launches nothing, so its two `no-same-node-relaunch` `PENDING_MIGRATIONS` entries were DELETED rather than migrated — the gate holds because there is no launch site left to get wrong, not because a correct one was written. It also collapses the delivery to one hop, and makes `url = ""` a real clear verb, replacing a hand-written `captionData = { entries: [] }` poke and a comment saying the obvious spelling was a no-op. Two facts here were measured, not reasoned: `callFunc("onDestroy")` on the old `captionTask` never dispatched at all — 0 of 8 calls against 8 of 8 once `<function name="onDestroy" />` was declared — so the 100 ms timer and the data observer survived every player exit, and the six specs covering that teardown passed vacuously for a simpler reason than first recorded here: with no `<function>` declared at all, NEITHER `callFunc("onDestroy")` NOR `callFunc("updateCaption")` dispatched, so every assertion held against an untouched node whatever the lifecycle scoping. The shared `setup()` node is a real but SEPARATE hazard, reachable only once the declaration exists — which is why the rebuilt spec builds per test in `beforeEach`. Separately, `CreateObject("roFileSystem")` returns `Invalid` in a `Group`'s `init()` while the identical code was fine in the `Task` it came from ([threading.md](architecture/threading.md#measured-findings)), so the renderer cannot probe for the downloaded font itself: `LoadCaptionTask` answers instead, publishing `fontAvailable` before it publishes `captionData`, and `applyFont()` reads it on delivery. Reading the SETTINGS that trigger the download (`playbackSubsCustom` / `uiFontFallback`) was tried first and reverted — the setting being on is what STARTS the download, not proof it finished, and a server with `EnableFallbackFont = False` (whose `GET /FallbackFont/Fonts` returns `[]`) leaves the setting on with no file on disk, which is exactly when non-Latin subtitles need the fallback most.
 
 Ruled out: **`VideoPlayerView` owning the fetch node** (the conventional `SearchResults` migration — but the player is not the consumer here, and it would add a second hop plus task lifecycle to a file already carrying four other pending entries); **keeping `extends="Task"`** (zero rename churn, but the name teaches the wrong model and leaves the shared-`m` hazard reachable); **the renderer drawing its own labels** instead of publishing `currentCaption` for `captionGroup` (cleaner end state, but it moves layout and visibility on a playback-critical path for no measured gain). **Constraints worth re-evaluating:** the fetcher's URL regex accepts only `.vtt` although the device profile advertises `srt` / `ttml` / `sub` as External delivery, so a delivery URL that is not `.vtt` renders nothing — inherited verbatim, not introduced here; and writing the same `url` twice is now idempotent where the old code force-relaunched, which is correct only while `url` is non-empty exactly when custom subs are active for that track.
+
+## decision-id: home-section-loads-new-node-per-run
+
+**date**: 2026-09-23
+**status**: accepted
+**partially-supersedes**: latest-rows-new-node-per-run (its out-of-scope clause: `HomeRows`' five section loads keeping one node each)
+**related-files**: `components/home/HomeRows.bs`, `components/home/LoadItemsTask.bs`, `source/utils/tasks.bs`
+
+Home's five section loads (libraries, Continue Watching, Next Up, On Now, Active Recordings) each get a NEW `LoadItemsTask` per run through one `start*Load()` helper per section: `replaceTask`, handlers open with `isCurrentTaskEvent` and release the node on delivery, and the flag takes `launchTask()`'s result so a launch refused at the thread watermark leaves the section able to retry. The `isLoading*` skip-while-running stays, so a section never has two runs. The predecessor's "they relaunch only after delivering, from a later callback, measured as reliable" did not hold: the handler clears the flag while the node still reads `run`, a relaunch before the function returns is ignored, and the section then never refreshes again. Measured 2026-09-23 on a Stick 4K, with Continue Watching held 30 s after its write: `main` 6/6 stuck, this change 6/6 recovers.
+
+Ruled out: launching in a fixed order with no launch inside the `m.sectionPlan` loop, so that `no-task-fanout` could see every launch. The fix never needed an order change, and on a 512 MB Stick with a reversed layout it read +5.3 % paint (p = 0.28) against −3.2 % (p = 0.44) for keeping the user's order, both inside that device's ~200 ms block-to-block drift. Constraints worth re-evaluating: release-on-delivery stops the Task at its next statement, so it relies on `content` being `LoadItemsTask.loadItems()`'s last write (stated there and on `releaseTask`); and each helper's own `isLoading*` guard is the one-run bound — `no-task-fanout` follows the section loops' helper calls one hop and requires that bound to be stated on the helper's launch line, so it is declared rather than checked.
+
+## decision-id: task-fanout-follows-helpers
+
+**date**: 2026-09-23
+**status**: accepted
+**related-files**: `scripts/bsc-plugins/no-task-fanout.cjs`, `scripts/lib/bsc-rule.cjs`, `tests/scripts/unit/bsc-plugins/no-task-fanout.test.js`, `components/home/HomeRows.bs`, `components/extras/ExtrasRowList.bs`
+
+`no-task-fanout` follows a loop's bare calls to same-file functions one hop, judging the helper's body as though written in the loop, and reports on the call. A helper that keeps at most one run live however often it is called states that bound with a suppression on its **launch line**, which every caller inherits. Moving `HomeRows`' section launches into `start*Load()` helpers had taken them out of the gate's view, and the one-hop reach is the one `no-same-node-relaunch` already has. Measured 2026-09-23 on the branch tree: 7 new errors, exactly the call sites a parser scan predicted (`HomeRows` ×6, `ExtrasRowList.onProgramsExpired` → `startRun` ×1), and 0 once 5 launch lines stated their bound.
+
+Ruled out: **a suppression at each call site** (7 markers instead of 5, each pointing at a guard in another function, so deleting the guard would not mean walking past the claim); **recognizing guards structurally** (already ruled out as heuristic by `relaunch-gate-no-stop-shapes`). Constraints worth re-evaluating: reach is one hop, one file, bare name, so a second hop, another file or a class method called as `m.helper()` is missed; and a stated bound is a claim, not a proof.
+
+## decision-id: playback-report-fetch-per-run
+
+**date**: 2026-09-23
+**status**: accepted
+**related-files**: `components/video/PlayerHostView.bs`, `scripts/bsc-plugins/observe-without-on-destroy.cjs`, `tests/scripts/unit/bsc-plugins/observe-without-on-destroy.test.js`, `scripts/bsc-plugins/no-same-node-relaunch.cjs`
+
+`PlayerHostView`'s playback-report fetch gets a NEW `GetPlaybackInfoTask` per run (ADR 0037), and its two callers treat a run still in flight differently: the "i" press replaces it (a fresh answer), while the 5 s poll tick skips while the current node reads `state = "run"`. It checks state rather than whether a node exists, so a launch refused at the thread watermark does not block every later tick. Closing the report releases the node, which also fixes an older bug: a poll in flight at close delivered onto no dialog and opened the report again by itself. Measured 2026-09-23 on a Stick 4K, local Jellyfin 10.10.7 behind a latency toxic, polling forced in a probe build: close with a poll in flight at +3000 ms, `main` 8/8 reopened, this change 0/8; at +7000 ms with the report open 45 s, `main` 4 of 9 tick launches ignored and 4 deliveries, this change 4 ticks skipped, 0 ignored, 4 deliveries.
+
+Ruled out: `replaceTask` on every tick, the standard migration. On a server slower than the poll (`HTTP_MS` is 10 s), each tick would abandon the request before it answered and the report would never update. Alongside it, `observe-without-on-destroy` now counts `releaseTask(X, "f")` as an unobserve of `X`/`f`, but not `replaceTask`, which releases only the previous node: a file that only replaces still leaves the last run observed when the screen is destroyed.
+
+## decision-id: playback-report-newest-dialog-wins
+
+**date**: 2026-09-23
+**status**: accepted
+**related-files**: `components/video/PlayerHostView.bs`
+
+`PlayerHostView` treats the "i" press as a request to open a dialog that has to wait for the network, so it follows `presentOverlayDialog`'s newest-wins rule. The report has its own slot (`m.reportDialog`) apart from the pickers (`m.trackPickerDialog`). Opening a track picker releases a pending fetch, and an answer that finds another overlay open is dropped instead of replacing it. Measured 2026-09-23 on a Stick 4K with a probe build that delays the fetch 6 s, three runs per case: with another dialog open when the answer arrived, the report replaced it 3/3 before the fix and 0/3 after; with a picker opened and canceled first, the report opened by itself 3/3 before and 0/3 after.
+
+Ruled out: keeping the shared slot and relying on `showTrackPicker` releasing the fetch. That works, but it depends on a rule across two functions that nothing enforces. Also ruled out: letting the report open after the picker closes, which is the same "opened by itself" problem as `playback-report-fetch-per-run`. Not covered: the chapter list is a panel inside the player, not an overlay, so a late answer still opens over it.
 
 ## Migrated to ADRs
 

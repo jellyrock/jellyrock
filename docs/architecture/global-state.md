@@ -9,7 +9,7 @@ related-files:
   - components/data/Constants.xml
   - components/data/jellyfin/AppInfo.xml
   - components/data/jellyfin/DeviceInfo.xml
-last-reviewed: 2026-09-16
+last-reviewed: 2026-09-23
 ---
 
 # Global State
@@ -85,7 +85,11 @@ m.global  (the global roSGNode)
 │
 ├── taskLedger                array of Task nodes          ← SHIPS. Every node launchTask() started, pruned to the live set on each launch. Created on FIRST launch, never declared in setGlobalNodes (see below)
 ├── taskLedgerRefusals        integer                      ← ONLY in #if perfTiming builds — how many launches the watermark has refused
-└── taskLedgerFirstRefused    string                       ← ONLY in #if perfTiming builds — subtype of the FIRST node refused, i.e. the one that names the fan-out
+├── taskLedgerFirstRefused    string                       ← ONLY in #if perfTiming builds — subtype of the FIRST node refused, i.e. the one that names the fan-out
+├── taskLaunchQueue           TaskLaunchQueue node         ← SHIPS. Where a launch waits past the watermark (ADR 0041). Field declared in setGlobals(), node created first thing in setGlobalNodes()
+├── taskLaunchQueued          integer                      ← SHIPS. Launches waiting right now; launchTask() queues behind them while it is non-zero
+├── taskLaunchQueuedTotal     integer                      ← ONLY in #if perfTiming builds — how many launches have waited
+└── taskLaunchQueuePeak       integer                      ← ONLY in #if perfTiming builds — the deepest the queue has been
 ```
 
 "Phase 1" and "Phase 2" refer to `setGlobals()` (before `screen.show()`) and `setGlobalNodes()` (after) respectively — see `bootstrap.md`.
@@ -221,7 +225,7 @@ Code paths that check these flags are wrapped in `#if debug` so they have zero r
 
 ## Task-thread ledger — `m.global.taskLedger`
 
-**Changed 2026-08-23: it ships.** No longer `#if debug` — `launchTask()` now records every launch here and **refuses** above a watermark of 50 live threads. The count is still **derived** by reading each node's `state` rather than tracked by a counter, which is what avoids an `observeField("state")` per launch.
+**Changed 2026-08-23: it ships.** No longer `#if debug` — `launchTask()` now records every launch here, and above a watermark of 50 live threads it starts nothing. **Changed 2026-09-23:** such a launch now waits in `m.global.taskLaunchQueue` and starts when a slot frees, instead of being refused ([ADR 0041](../adr/0041-task-launch-queue.md)). A waiting node is not in the ledger until it starts, so the queue never counts against its own drain. The count is still **derived** by reading each node's `state` rather than tracked by a counter, which is what avoids an `observeField("state")` per launch.
 
 It costs **555.7 µs per launch** at a ledger depth of 10 on a Stick 4K, render thread (see [threading.md](threading.md#measured-findings)), and that is the cheapest **correct** home rather than the cheapest home. `GetGlobalAA()` is ~500× cheaper — an append there is below the measurement floor — and **cannot be used: it is scoped per COMPONENT, not per thread.** Measured after an earlier probe got this wrong by varying thread and component together: launching and counting inside one component reads 1, while two components on the *same render thread* read each other as 0. A per-component ledger counts only its own component's launches, which is not a thread budget. A node field is the only cross-component storage SceneGraph has, so the cost buys the one property nothing else offers.
 
@@ -229,7 +233,7 @@ It costs **555.7 µs per launch** at a ledger depth of 10 on a Stick 4K, render 
 
 Unlike every other field above, it is **not declared in `setGlobalNodes()`** — it is created on first use. That is required, not stylistic: `setGlobalNodes()` starts its Task threads (the `ApiTask` pool slots, `ApiQueueTask`, `SideEffectTask`) before it would reach a declaration, and a write to an undeclared `roSGNode` field is a silent no-op, so declaring it there lost them all.
 
-**A refusal leaves a durable trace only under `#if perfTiming`.** The `print` in `launchTask()` is
+**A refusal — now only past the queue's cap, or before `setGlobalNodes()` — leaves a durable trace only under `#if perfTiming`.** The `print` in `launchTask()` is
 `#if debug`, and the committed manifest ships `debug=false`, so seeing a refusal that way costs a
 const flip and a rebuild — by which point you are no longer in the state that produced it.
 `perfTiming` ships **true** in that same manifest and is in `harden-prod-manifest.js`'s `FORCED_OFF`

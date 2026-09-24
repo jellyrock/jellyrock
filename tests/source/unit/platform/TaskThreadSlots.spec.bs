@@ -1,0 +1,137 @@
+namespace tests
+
+  ' Does a Task thread STOPPED while blocked still hold one of Roku's 100 thread slots?
+  '
+  ' Roku caps an app at 100 concurrent threads and raises `&h29` past it (epic #728 was that
+  ' crash). Its rule is that a thread which has "properly terminated and is no longer running"
+  ' does not count, even while its node is still valid. What it does not say is whether a
+  ' thread stopped while parked in `wait()` or `sleep()` has terminated. replaceTask() depends
+  ' on the answer: it stops the old node and starts a new one, so if the stopped thread lingers,
+  ' a site that replaces quickly (a search per keystroke) stacks threads toward the cap, and
+  ' neither the ledger nor `task-thread-peak` could see it — both judge a thread by `state`.
+  '
+  ' Answer, measured 2026-09-23 (Stick 4K, Roku OS 15.3.4): a stopped thread frees its slot in
+  ' every block mode, while live threads hit `&h29` — so replacing a node does not stack
+  ' threads. The numbers are in docs/architecture/threading.md "Measured findings".
+  '
+  ' Each arm launches up to MAX_LAUNCHES nodes, one at a time, and reports the launch at which
+  ' `&h29` was thrown, if any. The stopped arms STOP each node once its function is parked in
+  ' its block and keep every node referenced. The LIVE arm never stops: it must hit the cap, or
+  ' a clean stopped arm says nothing about the question.
+  '
+  ' Tagged `measurement` — it deliberately runs the app up to Roku's thread cap and takes about
+  ' three minutes, so `test:unit` and CI skip it. Run it on purpose with `test:tdd`.
+  @suite("Platform - thread slots held by stopped Tasks")
+  @tags("measurement")
+  class TaskThreadSlotsTests extends tests.BaseTestSuite
+
+    ' Past Roku's 100-thread cap, so a slot that is never freed has to show.
+    private MAX_LAUNCHES = 110
+    ' Long enough to outlast any arm's launch loop, so no LIVE thread ends on its own mid-arm.
+    private BLOCK_MS = 30000
+    private REPEATS = 3
+
+    private function waitUntil(node as object, field as string, expected as dynamic, timeoutMs as integer) as boolean
+      clock = CreateObject("roTimespan")
+      while clock.totalMilliseconds() < timeoutMs
+        if LCase(node.getField(field).toStr()) = LCase(expected.toStr()) then return true
+        sleep(10)
+      end while
+      return false
+    end function
+
+    ' One arm, once. `trippedAt` is the launch that threw, or 0 when all MAX_LAUNCHES started.
+    private function runArm(blockMode as string, stopEach as boolean) as object
+      host = CreateObject("roSGNode", "TaskRelaunchProbeHost")
+      result = { launched: 0, trippedAt: 0, code: 0, message: "", neverStarted: 0, stopNotSeen: 0 }
+
+      for i = 1 to m.MAX_LAUNCHES
+        launch = host.callFunc("launchHeld", { blockMode: blockMode, blockMs: m.BLOCK_MS })
+        if not launch.ok
+          result.trippedAt = i
+          result.code = launch.code
+          result.message = launch.message
+          exit for
+        end if
+        result.launched = i
+
+        node = launch.node
+        if not m.waitUntil(node, "starts", 1, 2000)
+          result.neverStarted++
+          continue for
+        end if
+        ' `starts` is written just BEFORE the block; give the thread time to be inside it, so
+        ' the STOP lands on a parked thread rather than between two statements.
+        sleep(50)
+
+        if stopEach
+          host.callFunc("stopHeldLast")
+          if not m.waitUntil(node, "state", "stop", 1000) then result.stopNotSeen++
+        end if
+      end for
+
+      host.callFunc("dropHeld")
+      return result
+    end function
+
+    private function runRepeats(label as string, blockMode as string, stopEach as boolean) as object
+      results = []
+      for rep = 1 to m.REPEATS
+        r = m.runArm(blockMode, stopEach)
+        results.push(r)
+        print "[TaskThreadSlots] "; label; " rep="; rep; " launched="; r.launched; " trippedAt="; r.trippedAt; " code="; r.code; " neverStarted="; r.neverStarted; " stopNotSeen="; r.stopNotSeen; " message="; r.message
+        ' A blocked thread that still holds its slot frees it when its block ends. Wait that out
+        ' before the next repeat, or a lingering thread from this one would be counted there.
+        if (not stopEach or r.trippedAt > 0) and blockMode <> "waitForever" then sleep(m.BLOCK_MS + 1000)
+      end for
+      return results
+    end function
+
+    ' The finding this spec pins: a stopped thread gives its slot back even while it is parked,
+    ' so every launch starts and none is refused.
+    private sub assertNoSlotHeld(results as object)
+      for each r in results
+        m.assertEqual(r.trippedAt, 0, "no launch hit the cap")
+        m.assertEqual(r.launched, m.MAX_LAUNCHES, "every launch started")
+        m.assertEqual(r.stopNotSeen, 0, "every stop reached state = stop")
+      end for
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("stop each node while its thread is blocked")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("frees the slot of a thread stopped inside one long wait(), as the pool's fetches block")
+    function _()
+      m.assertNoSlotHeld(m.runRepeats("stopped-waitOnce", "waitOnce", true))
+    end function
+
+    @it("frees the slot of a thread stopped inside sleep()")
+    function _()
+      m.assertNoSlotHeld(m.runRepeats("stopped-sleepOnce", "sleepOnce", true))
+    end function
+
+    ' Last of the stopped arms: a wait with no timeout never frees its slot on its own, so a
+    ' positive result here would leave every later arm starting over the cap.
+    @it("frees the slot of a thread stopped inside a wait() with no timeout")
+    function _()
+      m.assertNoSlotHeld(m.runRepeats("stopped-waitForever", "waitForever", true))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("control: never stop")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The instrument check. If live threads do not hit the cap within MAX_LAUNCHES, a stopped
+    ' arm that did not hit it either proves nothing.
+    @it("hits the cap with live threads")
+    function _()
+      results = m.runRepeats("live-waitOnce", "waitOnce", false)
+      for each r in results
+        m.assertTrue(r.trippedAt > 0, "live threads reached the cap within the launch budget")
+      end for
+    end function
+
+  end class
+
+end namespace

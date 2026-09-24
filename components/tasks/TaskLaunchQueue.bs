@@ -1,0 +1,69 @@
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/tasks.bs"
+
+' The queue's state lives in this component's `m`, so only callFunc — which runs here, on
+' the render thread — ever touches it. The rules are the pure taskQueue* functions in
+' tasks.bs; this file only owns the array, the drain Timer, and the published depth.
+
+sub init()
+  m.queue = []
+  ' One-shot, re-armed by each tick that leaves something waiting. Starting a Timer that
+  ' is already running restarts its countdown (measured 2026-09-23 on a 512 MB Streaming
+  ' Stick 3600X: launches 50 ms apart held a waiting launch until they stopped), so it
+  ' is started when the queue goes from empty to waiting, never per launch.
+  m.drainTimer = CreateObject("roSGNode", "Timer")
+  m.drainTimer.repeat = false
+  m.drainTimer.observeField("fire", "onDrainTick")
+  m.top.appendChild(m.drainTimer)
+end sub
+
+' Queues `node` behind whatever waits. False only when TASK_QUEUE_CAP launches already
+' wait — launchTask() then reports a refusal.
+function enqueue(node as object) as boolean
+  outcome = taskQueueAdd(m.queue, node, TASK_QUEUE_CAP)
+  if outcome = "full" then return false
+  if outcome = "queued"
+    publishDepth()
+    if m.queue.count() = 1 then armDrain(TASK_QUEUE_RETRY_MIN_SECONDS)
+    #if perfTiming
+      recordQueuedLaunch()
+    #end if
+  end if
+  return true
+end function
+
+function isQueued(node as object) as boolean
+  return taskQueueHolds(m.queue, node)
+end function
+
+sub onDrainTick()
+  drained = drainTaskLaunchQueue(m.queue)
+  m.queue = drained.waiting
+  publishDepth()
+  if m.queue.count() > 0 then armDrain(taskQueueRetrySeconds(m.drainTimer.duration, drained.started))
+end sub
+
+sub armDrain(seconds as float)
+  m.drainTimer.duration = seconds
+  m.drainTimer.control = "start"
+end sub
+
+' launchTask() reads this to send new launches to the back of the queue instead of past it.
+sub publishDepth()
+  m.global.taskLaunchQueued = m.queue.count()
+end sub
+
+#if perfTiming
+  ' The queue's counterpart to the refusal trace in tasks.bs: present in every dev
+  ' sideload, absent from every store build, readable from the port-8085 console:
+  '
+  '   ?m.global.taskLaunchQueuedTotal
+  '   ?m.global.taskLaunchQueuePeak
+  sub recordQueuedLaunch()
+    store = m.global
+    if not store.hasField("taskLaunchQueuedTotal") then store.addField("taskLaunchQueuedTotal", "integer", false)
+    if not store.hasField("taskLaunchQueuePeak") then store.addField("taskLaunchQueuePeak", "integer", false)
+    store["taskLaunchQueuedTotal"] = store["taskLaunchQueuedTotal"] + 1
+    if m.queue.count() > store["taskLaunchQueuePeak"] then store["taskLaunchQueuePeak"] = m.queue.count()
+  end sub
+#end if

@@ -296,3 +296,72 @@ describe('incremental re-validation', () => {
     expect(count(afterNoop)).toBe(1);
   });
 });
+
+// `releaseTask(node, "field")` (source/utils/tasks.bs) IS an unscoped unobserveField,
+// so it releases the observer; `replaceTask` releases only the PREVIOUS node, so it
+// must not count, or a screen that only ever replaces would hide its last run's leak.
+describe('observe-without-on-destroy — releaseTask', () => {
+  const observeThen = (release) =>
+    runOnBody(`
+      sub load()
+        m.task = replaceTask(m.task, "SomeTask", "data", {})
+        m.task.observeField("data", "onData")
+        launchTask(m.task)
+      end sub
+      sub onDestroy()
+        ${release}
+      end sub
+    `);
+
+  it('passes when the node is released with `m.task = releaseTask(m.task, "data")`', () => {
+    expect(
+      diagnosticsByCode(observeThen('m.task = releaseTask(m.task, "data")'), CODE),
+    ).toHaveLength(0);
+  });
+
+  it('passes when releaseTask is called as a bare statement', () => {
+    expect(diagnosticsByCode(observeThen('releaseTask(m.task, "data")'), CODE)).toHaveLength(0);
+  });
+
+  it('matches releaseTask case-insensitively, as BrightScript does', () => {
+    expect(
+      diagnosticsByCode(observeThen('m.task = ReleaseTask(m.task, "data")'), CODE),
+    ).toHaveLength(0);
+  });
+
+  it('flags when releaseTask names a different field', () => {
+    expect(
+      diagnosticsByCode(observeThen('m.task = releaseTask(m.task, "other")'), CODE),
+    ).toHaveLength(1);
+  });
+
+  it('flags when releaseTask releases a different node', () => {
+    expect(
+      diagnosticsByCode(observeThen('m.other = releaseTask(m.other, "data")'), CODE),
+    ).toHaveLength(1);
+  });
+
+  it('flags when releaseTask is given a non-literal field', () => {
+    expect(
+      diagnosticsByCode(observeThen('m.task = releaseTask(m.task, fieldName)'), CODE),
+    ).toHaveLength(1);
+  });
+
+  it('does NOT count replaceTask: the last run is still observed when the screen goes', () => {
+    expect(
+      diagnosticsByCode(observeThen('m.task = replaceTask(m.task, "SomeTask", "data", {})'), CODE),
+    ).toHaveLength(1);
+  });
+
+  it('does not let releaseTask (unscoped) satisfy an observeFieldScoped', () => {
+    const diagnostics = runOnBody(`
+      sub load()
+        m.task.observeFieldScoped("data", "onData")
+      end sub
+      sub onDestroy()
+        m.task = releaseTask(m.task, "data")
+      end sub
+    `);
+    expect(diagnosticsByCode(diagnostics, CODE)).toHaveLength(1);
+  });
+});

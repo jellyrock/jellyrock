@@ -214,6 +214,68 @@ function referenceText(expr) {
   return null;
 }
 
+/** The lowercased name of a bare `name(...)` call, or undefined. */
+function bareCallName(expression) {
+  if (!brighterscript.isCallExpression(expression)) return undefined;
+  if (!brighterscript.isVariableExpression(expression.callee)) return undefined;
+  return expression.callee.tokens?.name?.text?.toLowerCase();
+}
+
+/**
+ * True when `call` is `launchTask(...)` (source/utils/tasks.bs), bare or with a
+ * dotted callee. The dotted form is matched so that namespacing tasks.bs — which
+ * would turn every call site dotted in one commit — cannot silently switch off
+ * the Task rules that key on it.
+ */
+function isLaunchTaskCall(call) {
+  const callee = call?.callee;
+  if (
+    !brighterscript.isVariableExpression(callee) &&
+    !brighterscript.isDottedGetExpression(callee)
+  ) {
+    return false;
+  }
+  return callee.tokens?.name?.text?.toLowerCase() === 'launchtask';
+}
+
+/**
+ * Every function in `file`, named or inline, as
+ * { name, bareCallable, statement, func }.
+ *
+ * `name` is the lowercased identity of a top-level function or a class method.
+ * It is undefined for an inline function, which nothing can name.
+ *
+ * `bareCallable` is narrower, and the two must not be conflated: only a top-level
+ * `function` / `sub` can be reached by a bare `helper()` call, which is what a
+ * rule following same-file helpers one hop follows. BrightScript reaches a class
+ * method as `m.helper()` (`MoviePresenter` calls every one of its own that way),
+ * so letting a method answer to its bare name would hand an unrelated global call
+ * that method's behavior.
+ */
+function functionsIn(file) {
+  const found = [];
+  file.parser.ast.walk(
+    brighterscript.createVisitor({
+      FunctionExpression: (func) => {
+        if (!func.body) return;
+        // `MethodStatement extends FunctionStatement`, but the guards are
+        // kind-based, so a method does NOT satisfy `isFunctionStatement`.
+        const bareCallable = brighterscript.isFunctionStatement(func.parent);
+        const statement =
+          bareCallable || brighterscript.isMethodStatement(func.parent) ? func.parent : undefined;
+        found.push({
+          name: statement?.tokens?.name?.text?.toLowerCase(),
+          bareCallable,
+          statement,
+          func,
+        });
+      },
+    }),
+    { walkMode: brighterscript.WalkMode.visitAllRecursive },
+  );
+  return found;
+}
+
 module.exports = {
   createScopeRule,
   createProgramRule,
@@ -221,4 +283,7 @@ module.exports = {
   stringLiteralValue,
   referenceText,
   isSuppressed,
+  bareCallName,
+  isLaunchTaskCall,
+  functionsIn,
 };

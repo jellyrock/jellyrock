@@ -163,6 +163,7 @@ sub startRun(runRows as object, people as dynamic, data as dynamic)
     m.extrasTask = CreateObject("roSGNode", "LoadExtrasRowsTask")
     m.extrasTask.setFields({ rows: taskRows, people: people ?? [] })
     m.extrasTask.observeField("rowReady", "onExtrasRowReady")
+    ' bsc-disable-next-line no-task-fanout one run at a time: cancelRun() above stops the previous run first
     launchTask(m.extrasTask)
   end if
 

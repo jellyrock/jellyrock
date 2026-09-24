@@ -8,12 +8,11 @@
 // epic #728 (`&h29` "too many task threads") actually took, in HomeRows'
 // per-library latest-media fan-out removed by PR #762.
 //
-// The interesting edge is that NOT every in-loop launch is a fan-out. The live
-// `HomeRows.startParallelLoads()` loops over `m.sectionPlan` and launches four
-// fixed `m.<field>` slots — the same node however many times the loop turns —
-// so the discriminator is the ARGUMENT, not the loop itself. Get that wrong in
-// either direction and the rule is useless: too loose and it misses #728, too
-// tight and it fails the codebase on day one.
+// The interesting edge is that NOT every in-loop launch is a fan-out. A loop
+// that launches a fixed `m.<field>` slot launches the same node however many
+// times it turns, so the discriminator is the ARGUMENT, not the loop itself. Get
+// that wrong in either direction and the rule is useless: too loose and it
+// misses #728, too tight and it flags bounded code nobody can fix.
 //
 // An `m.` path is only that same node while the loop leaves it alone, so the
 // exemption has a second half: a slot the body REBINDS is a fresh node per turn
@@ -226,9 +225,9 @@ describe('no-task-fanout', () => {
     });
 
     it('allows a sibling field write that is not the launched slot', () => {
-      // startParallelLoads() writes m.isLoadingResume in the same body it
-      // launches m.LoadContinueWatchingTask from. Matching too loosely here —
-      // "any m. write in the loop" — would fail the live codebase.
+      // A loading flag written beside the launch it guards, as HomeRows'
+      // section loads once did in this loop. Matching too loosely here — "any
+      // m. write in the loop" — would flag every guarded launch.
       expect(
         check(`
           sub startParallelLoads()
@@ -529,10 +528,347 @@ describe('no-task-fanout', () => {
     });
   });
 
+  describe('through a same-file helper the loop calls — one hop', () => {
+    // A loop that calls a helper which launches is the same fan-out one call
+    // away. The helper's body is judged exactly as a loop body would be, and the
+    // diagnostic lands on the CALL in the loop, where the repetition is.
+
+    /** The 0-based line of the first line of `source` containing `needle`. */
+    const lineOf = (source, needle) => source.split('\n').findIndex((l) => l.includes(needle));
+
+    it('flags a loop call to a helper that parks a new node and launches it — the HomeRows shape', () => {
+      const source = `
+        sub startParallelLoads()
+          for each section in m.sectionPlan
+            if section.type = "resume" then startResumeLoad()
+          end for
+        end sub
+
+        sub startResumeLoad()
+          if m.isLoadingResume then return
+          m.resumeTask = replaceTask(m.resumeTask, "LoadItemsTask", "content", { itemsToLoad: "continue" })
+          m.isLoadingResume = launchTask(m.resumeTask)
+        end sub
+      `;
+      const diagnostics = check(source);
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0].location.range.start.line).toBe(
+        lineOf(source, 'then startResumeLoad()'),
+      );
+      expect(diagnostics[0].message).toContain('startResumeLoad()');
+    });
+
+    it('flags a helper that launches a local it builds', () => {
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              loadOne()
+            end for
+          end sub
+
+          sub loadOne()
+            task = createObject("roSGNode", "LoadItemsTask")
+            launchTask(task)
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('flags a helper launching a slot the LOOP rebinds', () => {
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              m.loader = createObject("roSGNode", "LoadItemsTask")
+              launchLoader()
+            end for
+          end sub
+
+          sub launchLoader()
+            launchTask(m.loader)
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('allows a helper launching a stable slot nothing rebinds', () => {
+      expect(
+        check(`
+          sub go()
+            for each section in m.sectionPlan
+              launchNextUp()
+            end for
+          end sub
+
+          sub launchNextUp()
+            launchTask(m.LoadNextUpTask)
+          end sub
+        `),
+      ).toHaveLength(0);
+    });
+
+    it('flags a helper whose launch sits in a callback it registers — still one per call', () => {
+      // Deferred is not bounded: N calls register N callbacks, and each one
+      // launches. The direct rule walks into inline functions in a loop for the
+      // same reason.
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              loadLater(lib)
+            end for
+          end sub
+
+          sub loadLater(lib)
+            promises.onThen(fetchSomething(lib), sub(result)
+              launchTask(createObject("roSGNode", "LoadItemsTask"))
+            end sub)
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('matches the helper name case-insensitively, as BrightScript does', () => {
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              LoadOne()
+            end for
+          end sub
+
+          sub loadOne()
+            launchTask(createObject("roSGNode", "LoadItemsTask"))
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('errs toward reporting when two functions share the bare name', () => {
+      // A namespaced function and a global one both answer to `loadOne` here;
+      // the rule does not resolve which a call reaches, so either fanning out
+      // flags the call — whichever is declared last.
+      expect(
+        check(`
+          sub go()
+            for each lib in m.libs
+              loadOne()
+            end for
+          end sub
+
+          namespace loaders
+            sub loadOne()
+              launchTask(createObject("roSGNode", "LoadItemsTask"))
+            end sub
+          end namespace
+
+          sub loadOne()
+            launchTask(m.LoadNextUpTask)
+          end sub
+        `),
+      ).toHaveLength(1);
+    });
+
+    it('reports each call site once — two calls, two diagnostics; nested loops, still one each', () => {
+      expect(
+        check(`
+          sub go()
+            for each a in m.outer
+              for each b in a.inner
+                loadOne()
+              end for
+              loadOne()
+            end for
+          end sub
+
+          sub loadOne()
+            launchTask(createObject("roSGNode", "LoadItemsTask"))
+          end sub
+        `),
+      ).toHaveLength(2);
+    });
+
+    it('leaves a helper whose own launch sits in a loop to the direct report', () => {
+      // The helper's in-loop launch is already flagged where it is; flagging
+      // every caller too would report one fan-out twice.
+      const source = `
+        sub go()
+          for each lib in m.libs
+            loadAll()
+          end for
+        end sub
+
+        sub loadAll()
+          for each t in m.tasks
+            launchTask(t)
+          end for
+        end sub
+      `;
+      const diagnostics = check(source);
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0].location.range.start.line).toBe(lineOf(source, 'launchTask(t)'));
+    });
+
+    it('leaves a helper that is not called from a loop alone', () => {
+      expect(
+        check(`
+          sub go()
+            loadOne()
+          end sub
+
+          sub loadOne()
+            launchTask(createObject("roSGNode", "LoadItemsTask"))
+          end sub
+        `),
+      ).toHaveLength(0);
+    });
+
+    describe('stating the bound', () => {
+      it("honours the suppression on the HELPER's launch — the helper bounds itself", () => {
+        // The preferred place: the claim sits beside the guard it depends on,
+        // so deleting that guard means walking past it.
+        expect(
+          check(`
+            sub go()
+              for each section in m.sectionPlan
+                startResumeLoad()
+              end for
+            end sub
+
+            sub startResumeLoad()
+              if m.isLoadingResume then return
+              m.resumeTask = replaceTask(m.resumeTask, "LoadItemsTask", "content", {})
+              ' bsc-disable-next-line no-task-fanout one run at a time: the isLoadingResume guard above
+              m.isLoadingResume = launchTask(m.resumeTask)
+            end sub
+          `),
+        ).toHaveLength(0);
+      });
+
+      it("honours bsc-disable-line on the helper's launch too", () => {
+        expect(
+          check(`
+            sub go()
+              for each section in m.sectionPlan
+                startResumeLoad()
+              end for
+            end sub
+
+            sub startResumeLoad()
+              m.resumeTask = replaceTask(m.resumeTask, "LoadItemsTask", "content", {})
+              launchTask(m.resumeTask) ' bsc-disable-line no-task-fanout cancel-then-replace
+            end sub
+          `),
+        ).toHaveLength(0);
+      });
+
+      it('honours a suppression on the call site, the line it reports', () => {
+        expect(
+          check(`
+            sub go()
+              for each section in m.sectionPlan
+                ' bsc-disable-next-line no-task-fanout returns after the first match
+                startResumeLoad()
+              end for
+            end sub
+
+            sub startResumeLoad()
+              m.resumeTask = replaceTask(m.resumeTask, "LoadItemsTask", "content", {})
+              launchTask(m.resumeTask)
+            end sub
+          `),
+        ).toHaveLength(0);
+      });
+
+      it('still flags a helper when only ONE of its launches is suppressed', () => {
+        expect(
+          check(`
+            sub go()
+              for each section in m.sectionPlan
+                startBoth()
+              end for
+            end sub
+
+            sub startBoth()
+              m.a = replaceTask(m.a, "LoadItemsTask", "content", {})
+              ' bsc-disable-next-line no-task-fanout guarded
+              launchTask(m.a)
+              m.b = replaceTask(m.b, "LoadItemsTask", "content", {})
+              launchTask(m.b)
+            end sub
+          `),
+        ).toHaveLength(1);
+      });
+    });
+
+    describe('reach — gaps stated in the plugin, pinned so a change to them is deliberate', () => {
+      it('does not follow a second hop', () => {
+        expect(
+          check(`
+            sub go()
+              for each lib in m.libs
+                outer()
+              end for
+            end sub
+
+            sub outer()
+              inner()
+            end sub
+
+            sub inner()
+              launchTask(createObject("roSGNode", "LoadItemsTask"))
+            end sub
+          `),
+        ).toHaveLength(0);
+      });
+
+      it('does not follow a class method reached as m.helper()', () => {
+        expect(
+          check(`
+            class Loader
+              sub go()
+                for each lib in m.libs
+                  m.loadOne()
+                end for
+              end sub
+
+              sub loadOne()
+                launchTask(createObject("roSGNode", "LoadItemsTask"))
+              end sub
+            end class
+          `),
+        ).toHaveLength(0);
+      });
+
+      it('does not follow a helper declared in another file', () => {
+        const diagnostics = diagnosticsByCode(
+          runPluginOnSource(noTaskFanoutPlugin, {
+            'components/Foo.bs': `
+              sub go()
+                for each lib in m.libs
+                  loadOne()
+                end for
+              end sub
+            `,
+            'components/FooHelpers.bs': `
+              sub loadOne()
+                launchTask(createObject("roSGNode", "LoadItemsTask"))
+              end sub
+            `,
+          }),
+          CODE,
+        );
+        expect(diagnostics).toHaveLength(0);
+      });
+    });
+  });
+
   describe('what must NOT be flagged', () => {
-    it('allows a fixed m.<field> slot in a loop — the live HomeRows shape', () => {
-      // startParallelLoads() loops over m.sectionPlan and launches four
-      // singleton slots. Flagging this would fail the codebase on day one.
+    it('allows a fixed m.<field> slot in a loop', () => {
+      // One node per slot however many times the loop turns, so the count is
+      // bounded by the source, not the data. HomeRows' section loads had this
+      // shape until each moved into a helper that builds a new node per run.
       expect(
         check(`
           sub startParallelLoads()
