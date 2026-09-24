@@ -12,6 +12,7 @@
 ' function is what produced the &hf3 crash on `m.tags.replaceAll()`.
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/webvtt.bs"
 
 sub init()
   m.log = new log.Logger("LoadCaptionTask")
@@ -73,9 +74,12 @@ sub fetchCaption()
     if type(msg) = "roUrlEvent" and msg.GetResponseCode() = 200
       vttContent = msg.GetString()
       m.log.debug("VTT content received, length:", vttContent.len())
-      entries = parseVTT(vttContent)
-      m.log.info("Parsed", entries.count(), "caption entries")
-      top.captionData = { entries: entries }
+      parsed = parseVTT(vttContent)
+      if parsed.skippedCues > 0
+        m.log.warn("Skipped", parsed.skippedCues, "caption cues with an unreadable timestamp — first:", parsed.firstSkipped)
+      end if
+      m.log.info("Parsed", parsed.entries.count(), "caption entries")
+      top.captionData = { entries: parsed.entries }
     else if type(msg) = "roUrlEvent"
       m.log.error("Caption fetch failed — URL:", url, "responseCode:", msg.GetResponseCode(), "reason:", msg.GetFailureReason())
       top.captionData = { entries: [] }
@@ -89,37 +93,3 @@ sub fetchCaption()
   end if
   m.log.debug("End fetchCaption()")
 end sub
-
-function isTime(text)
-  return text.right(1) = chr(31)
-end function
-
-function toMs(t)
-  t = t.replace(".", ":")
-  t = t.left(12)
-  timestamp = t.tokenize(":")
-  return 3600000 * timestamp[0].toint() + 60000 * timestamp[1].toint() + 1000 * timestamp[2].toint() + timestamp[3].toint()
-end function
-
-function parseVTT(lines)
-  lines = lines.replace(" --> ", chr(31) + chr(10))
-  lines = lines.split(chr(10))
-  curStart = -1
-  curEnd = -1
-  entries = []
-
-  for i = 0 to lines.count() - 1
-    if isTime(lines[i])
-      curStart = toMs (lines[i])
-      curEnd = toMs (lines[i + 1])
-      i += 1
-    else if curStart <> -1
-      trimmed = lines[i].trim()
-      if trimmed <> chr(0)
-        entry = { "start": curStart, "end": curEnd, "text": trimmed }
-        entries.push(entry)
-      end if
-    end if
-  end for
-  return entries
-end function
