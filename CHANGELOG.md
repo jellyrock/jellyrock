@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Recover stalled Live TV and close a failed channel's live stream ([#1018](https://github.com/jellyrock/jellyrock/pull/1018))
 - Stop restarting a Live TV channel that keeps ending without playing ([#1016](https://github.com/jellyrock/jellyrock/pull/1016))
 - Keep screens loading when the app hits its Task-thread limit ([#1022](https://github.com/jellyrock/jellyrock/pull/1022))
 - Stop a late playback report replacing a dialog you opened meanwhile ([#1020](https://github.com/jellyrock/jellyrock/pull/1020))
