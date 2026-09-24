@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (video) Keep the resume point when a video fails before it plays ([#1025](https://github.com/jellyrock/jellyrock/pull/1025))
 - Stop subtitles crashing on short or comma timestamps, and hide cue ids and notes ([#1024](https://github.com/jellyrock/jellyrock/pull/1024))
 - Recover stalled Live TV and close a failed channel's live stream ([#1018](https://github.com/jellyrock/jellyrock/pull/1018))
 - Stop restarting a Live TV channel that keeps ending without playing ([#1016](https://github.com/jellyrock/jellyrock/pull/1016))
