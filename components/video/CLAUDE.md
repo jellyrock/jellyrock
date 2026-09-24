@@ -35,7 +35,8 @@ Video playback subsystem. See [docs/architecture/playback.md](../../docs/archite
 
 - Position is in **Jellyfin ticks** (`int(positionSeconds) * 10000000&`). 1 tick = 100 ns.
 - Reports go through `GetApi().BuildPlaystateRequest()` + `SubmitSideEffect()` (fire-and-forget; never blocks playback).
-- States reported: `start` (once), `update` (every `10s` while playing/paused), `stop` (once on finished/stopped).
+- States reported: `start` (once), `update` (every `10s` while playing/paused), and the stream's end once, through `reportPlaybackEnd()` only.
+- **A stream that never reported `start` still reports its end, marked `Failed`.** Don't skip that stop: it is what makes the server stop the transcode and close a Live TV live stream. And don't send it unmarked: the position read before the first frame (usually 0) would replace the resume point (#969). [playback.md](../../docs/architecture/playback.md#reportplayback--server-side-reporting) has the full rule.
 
 ## What NOT to do
 

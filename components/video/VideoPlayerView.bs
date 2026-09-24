@@ -7,6 +7,7 @@ import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/enums/BufferCheckAction.bs"
 import "pkg:/source/enums/MediaSegmentAction.bs"
 import "pkg:/source/enums/MediaSegmentType.bs"
+import "pkg:/source/enums/PlaybackEndReport.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
@@ -16,6 +17,7 @@ import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/mediaSegments.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/playbackEnd.bs"
 import "pkg:/source/utils/playbackErrorInfo.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
 import "pkg:/source/utils/screenReadiness.bs"
@@ -137,6 +139,7 @@ sub init()
   m.playbackTimer.observeField("fire", "reportPlayback")
   m.bufferPercentage = 0 ' Track whether content is being loaded
   m.isPlayReported = false
+  m.isEndReported = false ' this stream's end has been reported — see reportPlaybackEnd
   ' The source reports name, and the source most recently loaded — see reportPlayback.
   m.reportedMediaSourceId = ""
   m.loadedMediaSourceId = ""
@@ -997,8 +1000,7 @@ end sub
 ' and a channel switch from a playing channel all report their stop.
 sub reportStallStop()
   if not m.isPlayReported then return
-  reportPlayback("stop")
-  m.isPlayReported = false
+  reportPlaybackEnd("stopped")
 end sub
 
 ' Called by PlayerHostView when a Live TV stream stalls and it will not restart the channel (it had
@@ -1109,6 +1111,7 @@ sub onVideoContentLoaded()
   ' A stream loaded after a terminal error is a fresh playback, so onState acts on it again.
   m.isContentLoaded = true
   m.hasPlaybackFailed = false
+  m.isEndReported = false
   if isLiveTvPlayback() then liveProgressOnNewStream(m.liveProgress)
 
   ' The second half of the wait starts here: handing `content` to the Video node is what
@@ -1894,7 +1897,7 @@ sub onState()
       ' dialog used to render its own title twice: the call site handed it
       ' `ErrorDuringPlayback`, the same key the title already uses.
       showPlaybackErrorDialog()
-      reportFailedStop()
+      reportPlaybackEnd("error")
     end if
   else if m.top.state = "playing"
     stopLoadingSpinner()
@@ -1945,6 +1948,7 @@ sub onState()
     if m.isPlayReported = false
       reportPlayback("start")
       m.isPlayReported = true
+      m.isEndReported = false
 
       ' Load channel list in background for channel up/down navigation
       if isLiveTvPlayback() and not m.channelListLoaded
@@ -1970,11 +1974,7 @@ sub onState()
     m.playbackTimer.control = "stop"
     m.bufferCheckTimer.control = "stop"
     m.bufferCheckTimer.unobserveField("fire")
-    ' A force-finish stops the stream and then sets `finished`, and both reports go to the
-    ' same stopped endpoint — Jellyfin records each as a separate "finished playing". The
-    ' `finished` report that follows is the one that closes the session, so skip this one.
-    if not m.forceFinished then reportPlayback("stop")
-    m.isPlayReported = false
+    reportPlaybackEnd("stopped")
     if isValid(m.trickplayCarousel)
       m.trickplayCarousel.isVisible = false
       m.trickplayCarousel.callFunc("reset")
@@ -1984,7 +1984,7 @@ sub onState()
     m.playbackTimer.control = "stop"
     m.bufferCheckTimer.control = "stop"
     m.bufferCheckTimer.unobserveField("fire")
-    reportPlayback("finished")
+    reportPlaybackEnd("finished")
     if isValid(m.trickplayCarousel)
       m.trickplayCarousel.isVisible = false
       m.trickplayCarousel.callFunc("reset")
@@ -2001,20 +2001,30 @@ sub reportPlayback(state = "update" as string)
   submitPlaybackReport(state, false)
 end sub
 
-' A terminal Video `error` ends the server's session as failed. Without it the server keeps a
-' Live TV channel's live stream open (on a tuner-limited server, a tuner) until it restarts, since
-' onState ignores every later state (#988). `Failed` leaves the user's resume position alone and
-' still closes the live stream (Jellyfin's OnPlaybackStopped, 10.7.7 through 12.1).
-sub reportFailedStop()
-  submitPlaybackReport("stop", true)
+' Report the end of this stream, once (classifyPlaybackEnd decides which report, if any). Every end
+' needs one: the stop is also what stops the server's transcode and closes a Live TV live stream,
+' which a terminal `error` would otherwise leave open until the server restarts, since onState
+' ignores every later state (#988). Once per stream, because a stop can also surface as
+' `finished`, and the server records each report as its own "finished playing".
+'
+' @param {string} playerState - the Video state that ended the stream: stopped, finished or error
+sub reportPlaybackEnd(playerState as string)
+  report = classifyPlaybackEnd(playerState, m.isPlayReported, m.isEndReported, m.forceFinished)
+  if report = PlaybackEndReport.NONE then return
+  if report = PlaybackEndReport.FINISHED
+    submitPlaybackReport("finished", false)
+  else
+    submitPlaybackReport("stop", report = PlaybackEndReport.FAILED)
+  end if
   m.isPlayReported = false
+  m.isEndReported = true
 end sub
 
 ' reportPlayback's body. A separate function because reportPlayback is also the playback
 ' timer's `fire` observer, which must keep its one-argument signature.
 '
 ' @param {string} state - start, update, stop or finished
-' @param {boolean} failed - a stop that ends a failed playback (reportFailedStop)
+' @param {boolean} failed - a stop marked `Failed`, which leaves the resume position alone (reportPlaybackEnd)
 sub submitPlaybackReport(state as string, failed as boolean)
   if not isValid(m.top.position) then return
 

@@ -1,0 +1,76 @@
+import "pkg:/source/enums/PlaybackEndReport.bs"
+import "pkg:/source/utils/playbackEnd.bs"
+
+namespace tests
+
+  @suite("playbackEnd.bs")
+  class PlaybackEndTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("classifyPlaybackEnd() — a stream that played")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reports a stop the server saves the position from")
+    function _()
+      m.assertEqual(classifyPlaybackEnd("stopped", true, false, false), PlaybackEndReport.STOPPED)
+    end function
+
+    @it("reports finished when it played to its end")
+    function _()
+      m.assertEqual(classifyPlaybackEnd("finished", true, false, false), PlaybackEndReport.FINISHED)
+    end function
+
+    @it("marks a terminal error failed even after playing")
+    function _()
+      m.assertEqual(classifyPlaybackEnd("error", true, false, false), PlaybackEndReport.FAILED)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("classifyPlaybackEnd() — a stream that never played (#969)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("marks its stop failed, so the resume point survives")
+    function _()
+      m.assertEqual(classifyPlaybackEnd("stopped", false, false, false), PlaybackEndReport.FAILED)
+    end function
+
+    @it("marks its finished failed too")
+    function _()
+      m.assertEqual(classifyPlaybackEnd("finished", false, false, false), PlaybackEndReport.FAILED)
+    end function
+
+    @it("marks a terminal error failed")
+    function _()
+      m.assertEqual(classifyPlaybackEnd("error", false, false, false), PlaybackEndReport.FAILED)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("classifyPlaybackEnd() — one report per stream")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reports nothing once the end was reported, whatever state follows")
+    function _()
+      for each playerState in ["stopped", "finished", "error"]
+        m.assertEqual(classifyPlaybackEnd(playerState, false, true, false), PlaybackEndReport.NONE, playerState)
+        m.assertEqual(classifyPlaybackEnd(playerState, true, true, false), PlaybackEndReport.NONE, playerState)
+        m.assertEqual(classifyPlaybackEnd(playerState, true, true, true), PlaybackEndReport.NONE, playerState)
+      end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("classifyPlaybackEnd() — a force-finish")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves its stopped to the finished that follows")
+    function _()
+      m.assertEqual(classifyPlaybackEnd("stopped", true, false, true), PlaybackEndReport.NONE)
+    end function
+
+    @it("reports its finished")
+    function _()
+      m.assertEqual(classifyPlaybackEnd("finished", true, false, true), PlaybackEndReport.FINISHED)
+    end function
+
+  end class
+
+end namespace

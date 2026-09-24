@@ -1,0 +1,13 @@
+' What VideoPlayerView reports to the server when its stream ends (classifyPlaybackEnd in
+' source/utils/playbackEnd.bs). Every value but NONE posts to /sessions/playing/stopped.
+enum PlaybackEndReport
+  ' Nothing: this stream's end has already been reported, or a later state will report it.
+  NONE = "none"
+  ' A stream that played: the server saves its position.
+  STOPPED = "stopped"
+  ' A stream that played to its end.
+  FINISHED = "finished"
+  ' A stream that never played, or failed: a stop marked `Failed`, so the server leaves the
+  ' position alone.
+  FAILED = "failed"
+end enum

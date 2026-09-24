@@ -1771,6 +1771,16 @@ A Live TV mount counts as healthy (so an end resets the restart count, and a sta
 
 A **stall** restarts only after healthy progress; it does not share the end's three-restart budget, because each stall is only detected at least 30 s into the buffering spinner (later if the percentage keeps rising), so three restarts would keep a viewer waiting for minutes (user call). The mount a stall restart started must play `LIVE_STALL_REPROVE_MS` (2 min) before its own stall restarts again, and that bar stays raised through restarts that end without playing until a mount plays 2 min: a restart into a playlist that stopped growing counts its leftover as progress, measured 2026-09-23 on a Stick 4K against 12.1 (encoder killed without `ENDLIST`) at 19.5 s with 4 s segments (32 s and 64 s windows alike) and 29.6 s with 10 s segments, so it grows with the segment length and would soon pass the 30 s bar and restart forever (2 min, about four times the 10 s case, user call). The give-up error says the channel "isn't sending any video" when no mount since the viewer chose it made progress, and that its stream "stopped" when one did. An **end** keeps the budget: past three ends in a row without healthy progress, the player shows the error. No delay between restarts: an upstream outage surfaced as a stall or, on the restart, a Video `error`, never as repeated quick ends (measured), so a delay would only slow the give-up on a stream that really ended.
 
+## decision-id: never-started-stream-failed-stop
+
+**date**: 2026-09-24
+**status**: accepted
+**related-files**: `source/utils/playbackEnd.bs`, `source/enums/PlaybackEndReport.bs`, `components/video/VideoPlayerView.bs`
+
+A video stream that never reported `start` still reports its end, as a stop marked `Failed`, and every stream's end is reported exactly once (`VideoPlayerView.reportPlaybackEnd()` → `classifyPlaybackEnd()`). Ruled out: **skipping the stop** for a never-started stream, because the stop is also what makes Jellyfin kill the session's transcode jobs and close a Live TV live stream (the retry and stall paths rely on it); and **sending the queue's starting point as the position**, because a starting point can be exact (a chapter, play-from-start) and it would write user data for a playback that never happened. `Failed` makes Jellyfin's `OnPlaybackStopped` skip only the per-user `UpdatePlayState`/`SaveUserData`; `KillTranscodingJobs`, the live-stream close and the `PlaybackStopped` event still run (read in source at v10.7.7, v10.9.0, v10.10.0, v12.0, v12.1).
+
+The once-per-stream guard (`m.isEndReported`, reset when a stream loads and when `start` is sent) is required by the `Failed` rule, not optional: after a stop `isPlayReported` is false, so a following `finished` would otherwise read as never-started and send a second stop. Measured 2026-09-24 on a Stick 4K against 12.1: before this, a transcode whose ffmpeg failed stalled into the error dialog and its unmarked stop at 0 ms wiped a 300 s resume point to 0 (#969); a real direct-play error's transcode retry surfaced its stop as `finished`, reported the same way. After it, both keep the resume point, with one stop per stream.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
