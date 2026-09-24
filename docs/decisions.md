@@ -1760,6 +1760,7 @@ Ruled out: `replaceTask` on every tick, the standard migration. On a server slow
 `PlayerHostView` treats the "i" press as a request to open a dialog that has to wait for the network, so it follows `presentOverlayDialog`'s newest-wins rule. The report has its own slot (`m.reportDialog`) apart from the pickers (`m.trackPickerDialog`). Opening a track picker releases a pending fetch, and an answer that finds another overlay open is dropped instead of replacing it. Measured 2026-09-23 on a Stick 4K with a probe build that delays the fetch 6 s, three runs per case: with another dialog open when the answer arrived, the report replaced it 3/3 before the fix and 0/3 after; with a picker opened and canceled first, the report opened by itself 3/3 before and 0/3 after.
 
 Ruled out: keeping the shared slot and relying on `showTrackPicker` releasing the fetch. That works, but it depends on a rule across two functions that nothing enforces. Also ruled out: letting the report open after the picker closes, which is the same "opened by itself" problem as `playback-report-fetch-per-run`. Not covered: the chapter list is a panel inside the player, not an overlay, so a late answer still opens over it.
+
 ## decision-id: live-restart-progress-and-stall-rule
 
 **date**: 2026-09-23
