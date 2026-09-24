@@ -2,6 +2,11 @@ import "pkg:/source/utils/misc.bs"
 
 ' WebVTT parsing for custom (app-drawn) subtitles. Pure string work with no node
 ' access, so it is safe on any thread; LoadCaptionTask calls it on its Task thread.
+'
+' Parse leniently: the input is not always server-written. Jellyfin returns a
+' subtitle file unchanged when it is already in the requested format
+' (`SubtitleEncoder.GetSubtitles()`), so an external `.vtt` on the user's disk —
+' hand-edited, or an SRT renamed to `.vtt` — reaches this parser byte for byte.
 
 ' The timestamp grammar vttTimestampToMs() accepts: `[H:]MM:SS.mmm`. The hour field
 ' is optional in WebVTT. A comma before the milliseconds is not valid WebVTT, but it

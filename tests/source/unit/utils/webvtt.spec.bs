@@ -208,6 +208,22 @@ namespace tests
       m.assertEqual(result.entries, [{ "start": 1000, "end": 2000, "text": "Hi" }])
     end function
 
+    @it("starts a new cue at a timing line with no blank line before it")
+    function _()
+      result = parseVTT(m.vtt([
+        "WEBVTT",
+        "",
+        "00:01.000 --> 00:02.000",
+        "First",
+        "00:03.000 --> 00:04.000",
+        "Second"
+      ]))
+      m.assertEqual(result.entries, [
+        { "start": 1000, "end": 2000, "text": "First" },
+        { "start": 3000, "end": 4000, "text": "Second" }
+      ])
+    end function
+
     @it("reads a timing line without spaces around the arrow")
     function _()
       result = parseVTT(m.vtt(["WEBVTT", "", "00:01.000-->00:02.000", "Hi"]))
