@@ -715,9 +715,10 @@ sub onPlaybackInfoRefreshDue()
   ' A fetch still running is let finish, not replaced. On a server slower than
   ' this poll, replacing it every tick would abandon each request before it
   ' answered and the report would never update again; skipping keeps it updating
-  ' at the server's pace. Reads `state`, not whether a node exists, so a run that
-  ' never started (a refused launch) does not block every later tick.
-  if isValid(m.getPlaybackInfoTask) and m.getPlaybackInfoTask.state = "run" then return
+  ' at the server's pace. A fetch waiting in the launch queue counts as running
+  ' (isTaskInFlight): replacing it would send the new one to the back of the queue
+  ' every tick. A refused launch is neither, so it does not block every later tick.
+  if isTaskInFlight(m.getPlaybackInfoTask) then return
 
   startPlaybackInfoLoad()
 end sub

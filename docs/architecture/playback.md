@@ -347,7 +347,8 @@ not a list in the refresh code — a future live field updates because its text 
 
 **Every fetch is a new `GetPlaybackInfoTask` node** ([ADR 0037](../adr/0037-task-run-replacement.md)),
 and the two callers treat a run still in flight differently. A press replaces it — the user
-asked for a fresh answer. A poll tick skips while one is running: on a server slower than
+asked for a fresh answer. A poll tick skips while one is running or waiting in the launch
+queue (`isTaskInFlight`, [ADR 0041](../adr/0041-task-launch-queue.md)): on a server slower than
 the poll, replacing it every tick would abandon each request before it answered, and the
 report would never update again. Closing the report releases the node, so a poll in flight
 at that moment cannot land on no dialog and open the report again by itself — which the old

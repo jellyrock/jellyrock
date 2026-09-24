@@ -68,6 +68,8 @@ import "pkg:/source/utils/tasks.bs"
       return benchAaAppendVerified(depth, iterations, floor)
     else if cell = "nodeArrayPush"
       return benchNodeArrayPush(m.global, depth, iterations, floor)
+    else if cell = "drainBlocked"
+      return benchDrainBlocked(depth, iterations, floor)
     else
       return { cell: cell, error: "unknown cell" }
     end if
@@ -185,6 +187,23 @@ import "pkg:/source/utils/tasks.bs"
       recordTaskLaunch(store, node)
     end for
     return probe.totalMicroseconds() / iterations
+  end function
+
+  ' One launch-queue drain tick whose head the ledger refuses: the render-thread cost a
+  ' saturated app pays per retry (ADR 0041). Only a depth of at least TASK_THREAD_WATERMARK
+  ' refuses the head; `stillQueued` of 1 proves this measured a refused retry.
+  function benchDrainBlocked(depth as integer, iterations as integer, floor as float) as object
+    seedLedger(m.global, depth)
+    queue = []
+    taskQueueAdd(queue, freshTask(), TASK_QUEUE_CAP)
+    probe = CreateObject("roTimespan")
+    probe.mark()
+    for i = 1 to iterations
+      queue = drainTaskLaunchQueue(queue).waiting
+    end for
+    us = probe.totalMicroseconds() / iterations
+    m.global["taskLedger"] = []
+    return { cell: "drainBlocked", depth: depth, iterations: iterations, floorUs: floor, us: us - floor, stillQueued: queue.count() }
   end function
 
   function benchCount(depth as integer, iterations as integer) as float

@@ -158,6 +158,11 @@ it.skipIf(!BENCH_ENABLED)('measures the task ledger on the render thread', async
     };
   }
 
+  // The launch queue's drain tick while its head is refused (ADR 0041) — what a
+  // saturated app pays on the render thread per retry. Depth 50 is the watermark: the
+  // depth at which the head is refused, so the only one this cell describes.
+  const drainBlocked = await runCell({ cell: 'drainBlocked', depth: 50, iterations: ITERATIONS });
+
   const us = (r) => {
     const v = field(r, 'us');
     return typeof v === 'number' ? v.toFixed(1) : '?';
@@ -192,6 +197,11 @@ it.skipIf(!BENCH_ENABLED)('measures the task ledger on the render thread', async
         reads: { localNodeUs, taskNodeUs, globalUs },
         candidates,
         verified,
+        drainBlocked: {
+          depth: field(drainBlocked, 'depth'),
+          us: field(drainBlocked, 'us'),
+          stillQueued: field(drainBlocked, 'stillQueued'),
+        },
         rows: rows.map((r) => ({
           depth: r.depth,
           recordGlobalUs: field(r.recordGlobal, 'us'),
@@ -209,6 +219,11 @@ it.skipIf(!BENCH_ENABLED)('measures the task ledger on the render thread', async
   // The bench has to have RUN for the table to mean anything — a callFunc that
   // silently returned nothing would print a grid of "?" and pass.
   expect(field(reads, 'sinkLen'), 'the discriminator reads did not execute').toBeGreaterThan(0);
+  // A drain that STARTED its head measured a productive tick, not a blocked one.
+  expect(
+    field(drainBlocked, 'stillQueued'),
+    'drainBlocked started its head, so it did not measure a refused retry',
+  ).toBe(1);
 
   // THE PROOF THAT THIS RAN ON THE RENDER THREAD, and the reason the table above
   // is evidence rather than just numbers.
