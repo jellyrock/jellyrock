@@ -11,7 +11,15 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkPrBody, sectionBody, stripComments } from '../../../../scripts/lint/pr-body-check.js';
+import {
+  checkIssueRefs,
+  checkPrBody,
+  issueRefs,
+  listIssueRefs,
+  sectionBody,
+  stripComments,
+} from '../../../../scripts/lint/pr-body-check.js';
+import { spawnScript } from '../_helpers/spawn-script.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE = resolve(HERE, '../../../../.github/pull_request_template.md');
@@ -114,5 +122,184 @@ describe('sectionBody', () => {
 describe('stripComments', () => {
   it('removes multi-line comments', () => {
     expect(stripComments('a\n<!-- one\ntwo -->\nb').replace(/\n+/g, '\n')).toBe('a\nb');
+  });
+});
+
+// The shapes below are the real ones: #940 / #1000 / #1002 wrote Jellyfin's issues as the
+// unlinked shorthand, and #1016's "legacy PR #669" linked to our own unrelated #669.
+describe('issueRefs', () => {
+  it('sorts references by the form GitHub reads them in', () => {
+    const refs = issueRefs(
+      'Adds creators (jellyfin#17107) as the legacy app did (jellyfin-archive/jellyfin-roku-legacy#669); Ref #988.',
+    );
+    expect(refs).toEqual({
+      shorthand: ['jellyfin#17107'],
+      qualified: ['jellyfin-archive/jellyfin-roku-legacy#669'],
+      bare: [988],
+    });
+  });
+
+  it('reads a bare #N after a repo name as bare — that is the #1016 mis-link', () => {
+    expect(issueRefs('from jellyfin-roku-legacy PR #669').bare).toEqual([669]);
+  });
+
+  // One case per test, so no case can hide another: a single joined fixture once put
+  // every later case inside an unclosed fence, where they passed without being read.
+  // Each shape renders unlinked through GitHub's renderer (`gh api markdown`, mode gfm,
+  // context jellyrock/jellyrock, 2026-09-23).
+  it.each([
+    ['an inline code span', 'see `jellyfin#1` here'],
+    ['a code span with a longer backtick run', 'see ``C#10 and `jellyfin#1` `` here'],
+    ['a code span over a line break', 'see `a\njellyfin#1` here'],
+    ['a backtick fence', 'text\n```\njellyfin#2\n```\ntext'],
+    ['a tilde fence', 'text\n~~~\njellyfin#2\n~~~\ntext'],
+    ['a longer fence that contains a shorter one', '````\njellyfin#2\n```\njellyfin#3\n````'],
+    ['an unclosed fence, which runs to the end', 'text\n```\njellyfin#2'],
+    ['a code span at the start of a line, not a fence', '```jellyfin#1```\nnext'],
+    ['a <pre> element', '<pre>jellyfin#4</pre>'],
+    ['a <code> element', 'a <code>jellyfin#5</code> b'],
+    ['an HTML comment', '<!-- jellyfin#3 -->'],
+    ['a markdown link', '[jellyfin-web#8209](https://github.com/jellyfin/jellyfin-web/pull/8209)'],
+    ['a bare URL', 'https://example.com/docs?page#12'],
+    ['an escaped reference', 'Renovate writes #&#8203;433 to stop a link'],
+    ['a heading', '## Changes'],
+  ])('ignores %s', (_label, text) => {
+    expect(issueRefs(text)).toEqual({ shorthand: [], qualified: [], bare: [] });
+  });
+
+  // Shapes that look like code to a regex but are text to GitHub, which links them
+  // (same renderer check): removing them would hide real references.
+  it.each([
+    ['a four-space paragraph under a list item', '- item\n\n    jellyfin#6 nested'],
+    ['backticks that open mid-line, before a fence line', 'x and ```\njellyfin#2\n``` y'],
+    ['a code span broken by a blank line', 'x `a\n\njellyfin#3 b`'],
+    ['the line after a backtick span that starts a line', '```code```\nthen jellyfin#2'],
+  ])('still reads %s', (_label, text) => {
+    expect(issueRefs(text).shorthand.length).toBe(1);
+  });
+
+  it('lists each reference once', () => {
+    expect(issueRefs('#5, #5 and jellyfin#7 twice: jellyfin#7').bare).toEqual([5]);
+    expect(issueRefs('jellyfin#7 twice: jellyfin#7').shorthand).toEqual(['jellyfin#7']);
+  });
+});
+
+describe('checkIssueRefs', () => {
+  it('flags a shorthand reference with the owner/repo form to use', () => {
+    const [problem] = checkIssueRefs('saved per version (jellyfin#17044)');
+    expect(problem).toContain('"jellyfin#17044" is not a link');
+    expect(problem).toContain('owner/repo#17044');
+  });
+
+  // Each of these rendered as plain text through GitHub's own renderer (`gh api markdown`,
+  // mode gfm, context jellyrock/jellyrock, 2026-09-23), so failing them is right; the
+  // message must not assume the word before `#` is a repo.
+  it.each(['PR#123', 'issue#12', 'C#10', 'v2.2.5#3', 'CHANGELOG.md#399'])(
+    'flags %s with every form that links and the backtick escape',
+    (text) => {
+      const [problem] = checkIssueRefs(text);
+      const n = text.slice(text.indexOf('#'));
+      expect(problem).toContain(`"${text}" is not a link`);
+      expect(problem).toContain(`only ${n} (this repo's issue), owner/repo${n} or a URL`);
+      expect(problem).toContain('put it in backticks');
+    },
+  );
+
+  it('passes bare and fully qualified references', () => {
+    expect(checkIssueRefs('Fixes #12, see jellyfin/jellyfin#17044')).toEqual([]);
+  });
+});
+
+describe('listIssueRefs', () => {
+  const known = {
+    'this#669': { type: 'issue', state: 'open', title: 'Cast to JellyRock' },
+    'jellyfin-archive/jellyfin-roku-legacy#669': {
+      type: 'pull request',
+      state: 'closed',
+      title: 'Auto Reload LiveTv when feed Errors',
+    },
+  };
+  const resolve = (repo, n) => known[`${repo ?? 'this'}#${n}`] ?? null;
+
+  it("prints each bare #N with our issue's title, so a mis-link is visible", () => {
+    const { lines, failed } = listIssueRefs('from jellyfin-roku-legacy PR #669', resolve);
+    expect(lines).toEqual(['  #669 — issue (open): Cast to JellyRock']);
+    expect(failed).toBe(false);
+  });
+
+  it('confirms a qualified reference exists in its repo', () => {
+    const { lines, failed } = listIssueRefs('jellyfin-archive/jellyfin-roku-legacy#669', resolve);
+    expect(lines[0]).toContain('pull request (closed): Auto Reload LiveTv');
+    expect(failed).toBe(false);
+  });
+
+  it('fails a reference that does not exist, and a shorthand one', () => {
+    expect(listIssueRefs('Jellyfin #17107', resolve).failed).toBe(true);
+    expect(listIssueRefs('jellyfin/jelyfin#669', resolve).failed).toBe(true);
+    expect(listIssueRefs('jellyfin#17107', resolve).failed).toBe(true);
+  });
+
+  it('reports an unresolvable reference without failing', () => {
+    const offline = () => {
+      throw new Error('error connecting to api.github.com');
+    };
+    const { lines, failed } = listIssueRefs('#5', offline);
+    expect(lines[0]).toContain('could not resolve (error connecting to api.github.com)');
+    expect(failed).toBe(false);
+  });
+});
+
+// The CLI is what CI and /pr actually run, so its wiring is gated here, not only the
+// helpers: dropping the reference check from main(), leaving the title out of it, or
+// letting --list-refs exit 0 must each fail. No case below reaches `gh`: CI mode never
+// resolves, and the --list-refs inputs carry no bare or qualified reference.
+describe('pr-body-check CLI', () => {
+  const SCRIPT = 'scripts/lint/pr-body-check.js';
+  const ciRun = ({ title = 'fix: Keep the router from retaining screens', body = FILLED } = {}) =>
+    spawnScript(
+      SCRIPT,
+      [
+        '--pr-title',
+        title,
+        '--pr-author',
+        'contributor',
+        '--pr-labels',
+        'bug-fix',
+        '--pr-head-ref',
+        'fix/router',
+      ],
+      { env: { PR_BODY: body } },
+    );
+  const listRefs = (input) =>
+    spawnScript(SCRIPT, ['--list-refs', '--pr-title', 'fix: x'], { input });
+
+  it('passes a filled body with no shorthand reference', () => {
+    const { exitCode, stdout } = ciRun();
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain('PR description is filled in');
+  });
+
+  it('fails a shorthand reference in the body', () => {
+    const { exitCode, stderr } = ciRun({ body: `${FILLED}\nSee jellyfin#17107.\n` });
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain('"jellyfin#17107" is not a link');
+  });
+
+  it('fails a shorthand reference in the title, which becomes the squash commit subject', () => {
+    const { exitCode, stderr } = ciRun({ title: 'fix: Match the server (jellyfin#17107)' });
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain('"jellyfin#17107" is not a link');
+  });
+
+  it('--list-refs exits 1 on a shorthand reference', () => {
+    const { exitCode, stdout } = listRefs('Matches jellyfin#17107.');
+    expect(exitCode).toBe(1);
+    expect(stdout).toContain('"jellyfin#17107" is not a link');
+  });
+
+  it('--list-refs exits 0 when there is nothing to confirm', () => {
+    const { exitCode, stdout } = listRefs('No references here.');
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain('(no issue references)');
   });
 });

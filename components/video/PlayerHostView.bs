@@ -3,6 +3,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/dialogs.bs"
+import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/mediaDisplayTitle.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/playbackReport.bs"
@@ -55,6 +56,11 @@ sub init()
   ' The player is fullscreen — keep the shared overhang hidden while this view is the
   ' router-active view (JRScene's overhang controller reads isOverhangVisible on mount).
   m.top.isOverhangVisible = false
+
+  ' Live TV restart budget, carried across mounts: see newLiveRestartBudget. The clock only
+  ' supplies monotonic readings for its played-time accounting.
+  m.liveRestart = newLiveRestartBudget()
+  m.liveRestartClock = CreateObject("roTimespan")
 end sub
 
 ' Router lifecycle (via JRScreen's onViewOpen bridge): mount the player for the
@@ -84,7 +90,10 @@ end function
 ' Build + mount the VideoPlayerView as a child of this host. Ported from
 ' ViewCreator.CreateVideoPlayerView; the only behavioral change is appendChild to
 ' the host instead of SceneManager.pushScene.
-sub mountPlayer()
+'
+' @param {boolean} isLiveRestart - true only from restartLiveChannel; see liveRestartOnMount
+sub mountPlayer(isLiveRestart = false as boolean)
+  liveRestartOnMount(m.liveRestart, isLiveRestart)
   m.view = CreateObject("roSGNode", "VideoPlayerView")
   ' Keep video player invisible during loading to prevent black background from covering backdrop
   m.view.visible = false
@@ -133,12 +142,19 @@ sub destroyPlayer()
 end sub
 
 ' Host-internal advancement: remount the player for the CURRENT queue position.
-' Callers (onPlayerStateChange next-item / Live TV restart; VideoPlayerView channel
+' Callers (onPlayerStateChange next-item; VideoPlayerView channel
 ' switch) set the position + backdrop first. Replaces ViewCreator's
 ' clearPreviousScene + playQueue (which created a new pushed scene).
 sub playCurrentQueueItem()
   destroyPlayer()
   mountPlayer()
+end sub
+
+' Restart the Live TV channel whose stream ended. Same remount as playCurrentQueueItem, except
+' that it keeps the restart count: every other remount (channel switch, queue advance) resets it.
+sub restartLiveChannel()
+  destroyPlayer()
+  mountPlayer(true)
 end sub
 
 ' A deep link arrived while this player is active. Stop + report the player NOW (synchronously)
@@ -190,7 +206,9 @@ end sub
 ' destroy/remount, and the queue-exhausted pop has become exitPlayback (goBack).
 ' ===========================================================================
 sub onPlayerStateChange()
-  if LCase(m.view.state) <> "finished" then return
+  state = LCase(m.view.state)
+  liveRestartOnState(m.liveRestart, state, m.liveRestartClock.TotalMilliseconds())
+  if state <> "finished" then return
 
   ' Don't advance mid-retry; the DoVi fallback calls stop which can fire "finished".
   if isValid(m.view.isRetrying) and m.view.isRetrying then return
@@ -244,12 +262,19 @@ sub onPlayerStateChange()
   abandonPlaybackDialogs()
   cancelOpenDialog()
 
-  ' Live TV channel that finished -> restart the same channel (same queue position)
+  ' Live TV channel that finished -> restart the same channel (same queue position). A live feed
+  ' that drops mid-stream surfaces as `finished`; one that keeps ending without playing gets the
+  ' error instead of a restart loop (liveRestartOnEnd in liveTv.bs).
   currentItem = queueManager.callFunc("getCurrentItem")
   if isValid(currentItem)
     currentItemType = queueManager.callFunc("getItemType", currentItem)
     if currentItemType = "tvchannel"
-      playCurrentQueueItem()
+      if liveRestartOnEnd(m.liveRestart, m.liveRestartClock.TotalMilliseconds())
+        restartLiveChannel()
+      else
+        m.log.warn("Live TV channel keeps ending without playing; showing the error instead of restarting", "channelId", textOrEmpty(currentItem.id), "endsWithoutHealthyPlay", m.liveRestart.count, "playedMs", m.liveRestart.playedMs)
+        m.view.callFunc("showLiveStreamStoppedError")
+      end if
       return
     end if
   end if

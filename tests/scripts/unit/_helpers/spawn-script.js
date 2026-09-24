@@ -20,11 +20,13 @@ const REPO_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '..'
  * @param {object} [options]
  * @param {string} [options.cwd]  working dir for the spawned process
  * @param {object} [options.env]  env overrides (merged onto process.env)
+ * @param {string} [options.input]  written to the script's stdin
  */
 export function spawnScript(scriptPath, args = [], options = {}) {
   const fullPath = resolve(REPO_ROOT, scriptPath);
   const result = spawnSync('node', [fullPath, ...args], {
     cwd: options.cwd ?? process.cwd(),
+    input: options.input,
     // gitSafeEnv: a script under test may shell out to git, and an inherited
     // GIT_DIR would point it at the real repo instead of its cwd (see git-env.js).
     env: { ...gitSafeEnv(), ...(options.env ?? {}) },

@@ -54,6 +54,7 @@
     <function name="onDestroy" />
     <function name="handleTransport" />
     <function name="abandonErrorDialog" />
+    <function name="showLiveStreamStoppedError" />
   </interface>
 
   <children>

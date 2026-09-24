@@ -965,6 +965,13 @@ function playbackErrorContext() as object
   }
 end function
 
+' Called by PlayerHostView when it gives up on a Live TV channel that keeps ending without
+' playing, which is a `finished` rather than an error, so nothing here would show one. The
+' player reports no error code for it, so the cause is given in words.
+sub showLiveStreamStoppedError()
+  showPlaybackErrorDialog(translate(translationKeys.ErrorPlaybackCauseLiveStreamStopped))
+end sub
+
 ' Called by PlayerHostView BEFORE it clears the modal/overlay channels during its
 ' own teardown (onPlayerStateChange's finished-state path) — see the call site
 ' for why this has to run first. Abandon, not cancel: nothing should observe a

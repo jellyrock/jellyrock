@@ -4,7 +4,7 @@ description: Create OR update a pull request using the JellyRock template at `.g
 model: sonnet
 effort: low
 user-invocable: true
-allowed-tools: Bash(gh pr view:*), Bash(gh issue list:*), Bash(gh issue view:*), Bash(gh search issues:*), Bash(gh api user --jq .login), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git rev-list:*), Bash(git merge-base --is-ancestor:*), Bash(node scripts/lint/check-touched-related-files.cjs:*), Bash(node scripts/lint/decision-shape-nudge.cjs:*), Read, Task
+allowed-tools: Bash(gh pr view:*), Bash(gh issue list:*), Bash(gh issue view:*), Bash(gh search issues:*), Bash(gh api user --jq .login), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git rev-list:*), Bash(git merge-base --is-ancestor:*), Bash(node scripts/lint/check-touched-related-files.cjs:*), Bash(node scripts/lint/decision-shape-nudge.cjs:*), Bash(node scripts/lint/pr-body-check.js:*), Read, Task
 ---
 
 # Create or Update a Pull Request
@@ -162,6 +162,10 @@ Mirrors the Issues-section pattern: write `None` (no bullet) when nothing is def
 
 **Links in the PR body must be absolute URLs** — `https://github.com/jellyrock/jellyrock/blob/main/<path>`, e.g. `- [\`itemdetails-size\`](https://github.com/jellyrock/jellyrock/blob/main/docs/architecture/tech-debt.md#itemdetails-size) — split per-item-type renderers into separate modules`. GitHub does not resolve repo-relative links in a PR body: `../docs/…` or `docs/…` is emitted as written and 404s from the PR page. Link `main`, not the PR branch, because the branch is deleted on merge; for a file the PR adds, name it in backticks instead of linking.
 
+#### References to other repositories
+
+**A bare `#N` is always THIS repo's issue N** — GitHub links it here no matter what repo the sentence names. Write another repo's issue or PR as `owner/repo#N` (`jellyfin/jellyfin#17107`, `jellyfin-archive/jellyfin-roku-legacy#669`) or as a full URL. Two forms are wrong and both are permanent, because the body becomes the squash commit: the shorthand `repo#N` (`jellyfin#17107`) renders as plain text, and `legacy PR #669` links to our own unrelated #669. They usually arrive by copying a commit message into the body, so rewrite them on the way in. The shorthand fails CI (`pr-body-check.js`); a mis-aimed bare `#N` can only be caught by reading its title, which is what the check in "Create or update the PR" is for. Recorded 2026-09-23 — #1016 linked "Cast to JellyRock" for the legacy PR it credited, and #940, #1000 and #1002 left Jellyfin issues unlinked.
+
 #### Issues — required, must contain something
 
 **Tier 1 — local scan (always):**
@@ -197,6 +201,18 @@ The rendered body always ends with a hidden HTML-comment marker so subsequent /p
 ```
 
 Resolve `<full-40-char-HEAD-sha>` via `git rev-parse HEAD`. Resolve `<ISO-8601-UTC>` via `date -u +%Y-%m-%dT%H:%M:%SZ`. The marker survives most manual body edits (it's the last line, visually unobtrusive); if a user deletes it the next /pr update degrades to PR-first-commit fallback — no harm done.
+
+#### Check the issue references (both paths)
+
+Before `gh pr create` / `gh pr edit`, run the rendered title and body through the resolver:
+
+```sh
+node scripts/lint/pr-body-check.js --list-refs --pr-title "<title>" <<'EOF'
+<filled template>
+EOF
+```
+
+It prints every issue reference with its resolved type, state and title. Read each bare `#N` line against the sentence it came from — a title that doesn't match (`#669 — issue: Cast to JellyRock` for a legacy PR) means the reference belongs to another repo and must become `owner/repo#N`. A non-zero exit means a shorthand or nonexistent reference; fix the body and re-run. A `?` line (gh could not resolve it) is not a pass — check that reference by hand.
 
 #### Create path
 
