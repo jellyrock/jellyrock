@@ -4,11 +4,13 @@ import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/constants/imageSize.bs"
+import "pkg:/source/enums/BufferCheckAction.bs"
 import "pkg:/source/enums/MediaSegmentAction.bs"
 import "pkg:/source/enums/MediaSegmentType.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/bufferStall.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/liveTv.bs"
@@ -120,6 +122,7 @@ sub init()
   m.isContentLoaded = false ' true from the first stream handed to the Video node
   m.isApplyingOwnSelection = false ' raised while the player writes its own track fields
   m.hasPlaybackFailed = false ' raised by onState's terminal `error` branch
+  m.liveProgress = newLiveProgress() ' how much of a live stream this mount played: liveProgressMs
   m.top.observeField("state", "onState")
   m.top.observeField("position", "onPositionChanged")
   m.top.observeField("selectedSubtitle", "onSubtitleChange")
@@ -967,9 +970,46 @@ end function
 
 ' Called by PlayerHostView when it gives up on a Live TV channel that keeps ending without
 ' playing, which is a `finished` rather than an error, so nothing here would show one. The
-' player reports no error code for it, so the cause is given in words.
-sub showLiveStreamStoppedError()
-  showPlaybackErrorDialog(translate(translationKeys.ErrorPlaybackCauseLiveStreamStopped))
+' player reports no error code for it, so the cause is given in words, chosen by the host
+' (liveGiveUpCauseKey in liveTv.bs).
+'
+' @param {string} causeKey - a translationKeys value
+sub showLiveStreamStoppedError(causeKey as string)
+  showPlaybackErrorDialog(translate(causeKey))
+end sub
+
+' Called by PlayerHostView when this mount's live stream ends or stalls: how much of it played, for
+' the restart rule (newLiveProgress in liveTv.bs).
+function liveProgressMs() as integer
+  return m.liveProgress.progressMs
+end function
+
+' Feeds this mount's live progress from one position notification. A jump is logged because the
+' step size that separates playing from a jump (LIVE_PROGRESS_MAX_STEP_MS) is a tuned value.
+sub trackLiveProgress()
+  jumpMs = liveProgressOnPosition(m.liveProgress, m.top.position)
+  if jumpMs > 0 then m.log.debug("Live TV position jumped; not counted as playing", "jumpMs", jumpMs, "maxStepMs", LIVE_PROGRESS_MAX_STEP_MS)
+end sub
+
+' Called by PlayerHostView just before it restarts a Live TV channel whose stream stalled. Without
+' it, each stall restart left the server one consumer holding the live stream (on a
+' tuner-limited server, a tuner): measured on a Stick 4K against 12.1, where Back, voice "stop"
+' and a channel switch from a playing channel all report their stop.
+sub reportStallStop()
+  if not m.isPlayReported then return
+  reportPlayback("stop")
+  m.isPlayReported = false
+end sub
+
+' Called by PlayerHostView when a Live TV stream stalls and it will not restart the channel (it had
+' not played healthily). The same cause as showLiveStreamStoppedError, plus the stop a stall needs
+' (an ended stream has already stopped). Same shape as bufferCheck's stall error: the dialog claims
+' the exit first, so the `finished` this stop can surface as is ignored by the host.
+'
+' @param {string} causeKey - a translationKeys value
+sub showLiveStreamStalledError(causeKey as string)
+  showPlaybackErrorDialog(translate(causeKey))
+  m.top.control = "stop"
 end sub
 
 ' Called by PlayerHostView BEFORE it clears the modal/overlay channels during its
@@ -1069,6 +1109,7 @@ sub onVideoContentLoaded()
   ' A stream loaded after a terminal error is a fresh playback, so onState acts on it again.
   m.isContentLoaded = true
   m.hasPlaybackFailed = false
+  if isLiveTvPlayback() then liveProgressOnNewStream(m.liveProgress)
 
   ' The second half of the wait starts here: handing `content` to the Video node is what
   ' sets it buffering. Declared after the early return above, so a playback that failed
@@ -1599,6 +1640,8 @@ sub onPositionChanged()
   if m.isDestroyed = true then return
   if not m.isContentLoaded then return
 
+  if isLiveTvPlayback() then trackLiveProgress()
+
   ' Without the content.length fallback (see getEffectiveDuration), progressPercentage stays
   ' pinned at 0 on live-transcoded MKV, and since the OSD only observes progressPercentage,
   ' the progress bar never advances and timestamps never refresh.
@@ -1851,6 +1894,7 @@ sub onState()
       ' dialog used to render its own title twice: the call site handed it
       ' `ErrorDuringPlayback`, the same key the title already uses.
       showPlaybackErrorDialog()
+      reportFailedStop()
     end if
   else if m.top.state = "playing"
     stopLoadingSpinner()
@@ -1954,6 +1998,24 @@ end sub
 '
 ' Report playback to server
 sub reportPlayback(state = "update" as string)
+  submitPlaybackReport(state, false)
+end sub
+
+' A terminal Video `error` ends the server's session as failed. Without it the server keeps a
+' Live TV channel's live stream open (on a tuner-limited server, a tuner) until it restarts, since
+' onState ignores every later state (#988). `Failed` leaves the user's resume position alone and
+' still closes the live stream (Jellyfin's OnPlaybackStopped, 10.7.7 through 12.1).
+sub reportFailedStop()
+  submitPlaybackReport("stop", true)
+  m.isPlayReported = false
+end sub
+
+' reportPlayback's body. A separate function because reportPlayback is also the playback
+' timer's `fire` observer, which must keep its one-argument signature.
+'
+' @param {string} state - start, update, stop or finished
+' @param {boolean} failed - a stop that ends a failed playback (reportFailedStop)
+sub submitPlaybackReport(state as string, failed as boolean)
   if not isValid(m.top.position) then return
 
   m.log.debug("start reportPlayback", state, int(m.top.position))
@@ -1971,6 +2033,7 @@ sub reportPlayback(state = "update" as string)
     "PositionTicks": int(positionSeconds) * 10000000&, 'Ensure a LongInteger is used
     "IsPaused": (m.top.state = "paused")
   }
+  if failed then params.Failed = true
   ' Name the file that is playing. Jellyfin 12.0+ saves progress against this version
   ' (alternate versions keep their own positions); older servers use it only for the
   ' now-playing display.
@@ -2035,12 +2098,18 @@ sub bufferCheck()
     return
   end if
   if isValid(m.top.bufferingStatus)
-
-    ' Check that the buffering percentage is increasing
-    if m.top.bufferingStatus["percentage"] > m.bufferPercentage
-      m.bufferPercentage = m.top.bufferingStatus["percentage"]
-    else if isLiveTvPlayback()
-      m.top.callFunc("refresh")
+    percentage = m.top.bufferingStatus["percentage"]
+    action = classifyBufferCheck(percentage, m.bufferPercentage, isLiveTvPlayback())
+    if action = BufferCheckAction.PROGRESS
+      m.bufferPercentage = percentage
+    else if action = BufferCheckAction.LIVE_STALLED
+      ' The host owns the Live TV restart rule. Nothing may touch this component after the call:
+      ' a restart destroys it synchronously (onDestroy releases bufferCheckTimer), so this must be
+      ' the last statement. The timer needs no handling here: onDestroy stops it on a restart, the
+      ' next tick stops it once the error has stopped the stream, and a guard that declined leaves
+      ' it running so the next tick checks again.
+      host = m.top.getParent()
+      if isValid(host) then host.callFunc("onLiveStreamStalled")
     else
       ' If buffering has stopped Display dialog
       showPlaybackErrorDialog(translate(translationKeys.ErrorThereWasAnErrorRetrievingThe))
@@ -2325,6 +2394,14 @@ sub onDestroy()
   m.top.unobserveField("subtitleTrack")
   m.top.unobserveField("globalCaptionMode")
   m.top.unobserveField("position")
+
+  ' One line per live mount: the steps its progress was built from, the evidence for tuning
+  ' LIVE_PROGRESS_MAX_STEP_MS. A largest step near that cap, or a smallest jump just above it,
+  ' means playing is being cut short.
+  if isLiveTvPlayback()
+    progress = m.liveProgress
+    m.log.info("Live TV progress for this mount (ms, steps)", progress.progressMs, progress.steps, "largestStepMs", progress.largestStepMs, "jumps", progress.jumps, "smallestJumpMs", progress.smallestJumpMs)
+  end if
 
   if isValid(m.osd)
     m.osd.unobserveField("action")

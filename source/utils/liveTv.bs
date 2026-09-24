@@ -19,9 +19,23 @@ const LIVE_EDGE_THRESHOLD_SECONDS = 2
 ' played healthily, before the player stops restarting it and shows the playback error.
 const LIVE_RESTART_MAX = 3
 
-' How long a channel must have spent playing (paused and buffering time excluded) for its end to
-' count as a feed that dropped, which resets the restart count.
+' How much of the stream a mount must have played (see newLiveProgress) for its end or stall to
+' count as a feed that dropped: the count resets, and a stall restarts the channel.
 const LIVE_RESTART_HEALTHY_MS = 30000
+
+' How much of the stream a mount restarted after a stall must play before its own stall restarts
+' the channel again. A restart into a playlist that stopped growing plays what was left past the
+' join before it stalls, and that counts as progress: measured 2026-09-23 on a Stick 4K against
+' 12.1, 19.5 s with 4 s segments (32 s and 64 s windows alike) and 29.6 s with 10 s segments, so it
+' grows with the segment length and soon passes LIVE_RESTART_HEALTHY_MS. Four times the 10 s case.
+const LIVE_STALL_REPROVE_MS = 120000
+
+' The largest forward step between two position notifications that still counts as playing (see
+' liveProgressOnPosition). Notifications arrive every 0.5 s (the Video node's default
+' notificationInterval); the headroom is for a busy render thread delivering them late. A larger
+' step is a jump (the live-edge join, a seek) and counts nothing. VideoPlayerView logs every jump
+' and a per-mount summary of the steps it saw, which is the evidence for tuning this.
+const LIVE_PROGRESS_MAX_STEP_MS = 2000
 
 function parseProgramEndTimeEpoch(meta as object) as integer
   if not isValid(meta) or not isValid(meta.currentProgram) then return 0
@@ -238,52 +252,145 @@ function getUpstreamHlsBlocker(mediaSource as dynamic, request as UpstreamHlsReq
   return UpstreamHlsBlocker.NONE
 end function
 
-' The Live TV restart budget PlayerHostView carries across its player mounts. It is driven by
-' three events — liveRestartOnMount, liveRestartOnState, liveRestartOnEnd — so the whole rule,
-' including when the count resets, is decided here and can be tested without a player.
+' The Live TV restart budget PlayerHostView carries across its player mounts, since how much a
+' mount played is measured by that mount's player (newLiveProgress). liveRestartOnMount,
+' liveRestartOnEnd and liveRestartOnStall hold the whole rule, including when each field resets, so
+' it can be tested without a player.
 '
-' @returns {object} { count, playedMs, playingSinceMs } — playingSinceMs is -1 while not playing
+' @returns {object} { count, isStallRestart, hasPlayed } — count: consecutive restarts;
+'   isStallRestart: the last restart answered a stall and no mount since has played
+'   LIVE_STALL_REPROVE_MS; hasPlayed: some mount since the viewer chose the channel made progress,
+'   which decides the error's wording (liveGiveUpCauseKey)
 function newLiveRestartBudget() as object
-  return { count: 0, playedMs: 0, playingSinceMs: -1 }
+  return { count: 0, isStallRestart: false, hasPlayed: false }
 end function
 
-' A player mount. Only a Live TV restart keeps the count, so a first mount, a channel switch and a
-' queue advance all start a fresh budget; every mount starts its played time at zero.
+' A player mount. Only a Live TV restart keeps the budget, so a first mount, a channel switch and a
+' queue advance all start a fresh one.
 '
 ' @param {object} budget - from newLiveRestartBudget
 ' @param {boolean} isLiveRestart - true when the host is restarting the channel whose stream ended
 sub liveRestartOnMount(budget as object, isLiveRestart as boolean)
-  if not isLiveRestart then budget.count = 0
-  budget.playedMs = 0
-  budget.playingSinceMs = -1
-end sub
-
-' A player state change. Accumulates time spent in `playing` only: paused and buffering time do
-' not count.
-'
-' @param {object} budget - from newLiveRestartBudget
-' @param {string} state - the player's state, lower case
-' @param {integer} nowMs - a monotonic clock reading in milliseconds
-sub liveRestartOnState(budget as object, state as string, nowMs as integer)
-  if state = "playing"
-    if budget.playingSinceMs < 0 then budget.playingSinceMs = nowMs
-  else if budget.playingSinceMs >= 0
-    budget.playedMs += nowMs - budget.playingSinceMs
-    budget.playingSinceMs = -1
-  end if
+  if isLiveRestart then return
+  budget.count = 0
+  budget.isStallRestart = false
+  budget.hasPlayed = false
 end sub
 
 ' The channel's stream ended. Counts this end (nextLiveRestartCount) and returns whether the
 ' channel should be restarted; false means give up and show the error.
 '
 ' @param {object} budget - from newLiveRestartBudget
-' @param {integer} nowMs - a monotonic clock reading in milliseconds
+' @param {integer} progressMs - how much of the stream this mount played (newLiveProgress)
 ' @returns {boolean}
-function liveRestartOnEnd(budget as object, nowMs as integer) as boolean
-  liveRestartOnState(budget, "finished", nowMs)
-  budget.count = nextLiveRestartCount(budget.count, budget.playedMs)
+function liveRestartOnEnd(budget as object, progressMs as integer) as boolean
+  noteLiveMountProgress(budget, progressMs)
+  budget.count = nextLiveRestartCount(budget.count, progressMs)
   return canRestartLiveChannel(budget.count)
 end function
+
+' The channel's stream stalled (VideoPlayerView.bufferCheck saw no buffering progress). Restarts
+' only a mount that had played healthily, the dropped-feed case the restart exists for; any other
+' stall returns false (show the error). Unlike an end, a stall is only detected at least 30 s into
+' the spinner, so the end budget's three restarts would keep a viewer waiting for minutes.
+'
+' After a stall restart, "healthily" means LIVE_STALL_REPROVE_MS rather than
+' LIVE_RESTART_HEALTHY_MS: a restart into a playlist that stopped growing plays its leftover and
+' stalls again, and with long segments that leftover alone would pass the lower bar every time.
+'
+' @param {object} budget - from newLiveRestartBudget
+' @param {integer} progressMs - how much of the stream this mount played (newLiveProgress)
+' @returns {boolean}
+function liveRestartOnStall(budget as object, progressMs as integer) as boolean
+  noteLiveMountProgress(budget, progressMs)
+  budget.count = nextLiveRestartCount(budget.count, progressMs)
+
+  requiredMs = LIVE_RESTART_HEALTHY_MS
+  if budget.isStallRestart then requiredMs = LIVE_STALL_REPROVE_MS
+  if progressMs < requiredMs then return false
+
+  budget.isStallRestart = true
+  return true
+end function
+
+' What liveRestartOnEnd and liveRestartOnStall both learn from a mount's progress.
+sub noteLiveMountProgress(budget as object, progressMs as integer)
+  if progressMs > 0 then budget.hasPlayed = true
+  if progressMs >= LIVE_STALL_REPROVE_MS then budget.isStallRestart = false
+end sub
+
+' The translation key for the error shown when the host gives up on a Live TV channel: a channel
+' that never showed any video since the viewer chose it is not sending any, and one that did has
+' stopped.
+'
+' @param {object} budget - from newLiveRestartBudget
+' @returns {string} a translationKeys value
+function liveGiveUpCauseKey(budget as object) as string
+  if budget.hasPlayed then return translationKeys.ErrorPlaybackCauseLiveStreamStopped
+  return translationKeys.ErrorPlaybackCauseLiveStreamNoVideo
+end function
+
+' How much of a live stream one player mount has played, for the restart rule: the sum of the
+' small forward steps between position notifications that took the player past the furthest
+' position it had reached. Driven by liveProgressOnPosition from the player's position observer.
+'
+' Why steps, and not the position at a state change: the first `playing` reports no real position
+' (measured on a Stick 4K, 12.1: the live-edge seek sentinel in some runs, 0 in others), and a
+' stream that plays until it stalls has no state change in between, so the position there cannot
+' anchor anything. Why only NEW ground: at the end of a playlist that stops growing, the player
+' replays its window before it buffers, so time spent playing called a stale upstream healthy and
+' restarted it forever. Pausing and buffering take no steps, so they count nothing either.
+'
+' The step fields are diagnostics for LIVE_PROGRESS_MAX_STEP_MS (see VideoPlayerView's log lines).
+'
+' @returns {object} { progressMs, markMs, steps, largestStepMs, jumps, smallestJumpMs } — markMs is
+'   the furthest position reached (-1 before the first usable one); smallestJumpMs is 0 with no jumps
+function newLiveProgress() as object
+  return { progressMs: 0, markMs: -1, steps: 0, largestStepMs: 0, jumps: 0, smallestJumpMs: 0 }
+end function
+
+' One position notification. A forward step of at most LIVE_PROGRESS_MAX_STEP_MS past the furthest
+' position so far is playing and adds to the progress; a larger one is a jump (the live-edge join, a
+' seek) that moves the mark without counting; a step back (a seek back, a replayed window) counts
+' nothing and leaves the mark where it was. The live-edge seek sentinel is not a position at all.
+'
+' @param {object} progress - from newLiveProgress
+' @param {double} positionSeconds - the player's position
+' @returns {integer} the size of a forward jump this notification made, in milliseconds, or 0 — for
+'   the caller's debug log
+function liveProgressOnPosition(progress as object, positionSeconds as double) as integer
+  if positionSeconds < 0 or positionSeconds >= LIVE_EDGE_SEEK then return 0
+  positionMs = int(positionSeconds * 1000)
+  if progress.markMs < 0
+    progress.markMs = positionMs
+    return 0
+  end if
+
+  stepMs = positionMs - progress.markMs
+  if stepMs <= 0 then return 0
+  progress.markMs = positionMs
+
+  if stepMs > LIVE_PROGRESS_MAX_STEP_MS
+    progress.jumps += 1
+    if progress.smallestJumpMs = 0 or stepMs < progress.smallestJumpMs then progress.smallestJumpMs = stepMs
+    return stepMs
+  end if
+
+  progress.progressMs += stepMs
+  progress.steps += 1
+  if stepMs > progress.largestStepMs then progress.largestStepMs = stepMs
+  return 0
+end function
+
+' A new stream loaded into the same mount (a retry, or an audio or subtitle change that reloads).
+' Its positions are on a timeline of their own, joined at the live edge again, so they cannot be
+' compared with the mark the previous stream left; keeping it would count nothing until the new
+' stream passed the old stream's furthest position. The progress already made stays.
+'
+' @param {object} progress - from newLiveProgress
+sub liveProgressOnNewStream(progress as object)
+  progress.markMs = -1
+end sub
 
 ' The count of consecutive restarts after a Live TV channel's stream ends.
 '
@@ -294,10 +401,10 @@ end function
 ' adds one; canRestartLiveChannel decides whether that count still allows a restart.
 '
 ' @param {integer} previousCount - the count before this end (0 for a fresh channel)
-' @param {integer} playedMs - how long this mount spent playing (see liveRestartOnState)
+' @param {integer} progressMs - how much of the stream this mount played (see newLiveProgress)
 ' @returns {integer}
-function nextLiveRestartCount(previousCount as integer, playedMs as integer) as integer
-  if playedMs >= LIVE_RESTART_HEALTHY_MS then return 0
+function nextLiveRestartCount(previousCount as integer, progressMs as integer) as integer
+  if progressMs >= LIVE_RESTART_HEALTHY_MS then return 0
   return previousCount + 1
 end function
 

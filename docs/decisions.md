@@ -1761,6 +1761,16 @@ Ruled out: `replaceTask` on every tick, the standard migration. On a server slow
 
 Ruled out: keeping the shared slot and relying on `showTrackPicker` releasing the fetch. That works, but it depends on a rule across two functions that nothing enforces. Also ruled out: letting the report open after the picker closes, which is the same "opened by itself" problem as `playback-report-fetch-per-run`. Not covered: the chapter list is a panel inside the player, not an overlay, so a late answer still opens over it.
 
+## decision-id: live-restart-progress-and-stall-rule
+
+**date**: 2026-09-23
+**status**: accepted
+**related-files**: `source/utils/liveTv.bs`, `components/video/PlayerHostView.bs`, `components/video/VideoPlayerView.bs`
+
+A Live TV mount counts as healthy (so an end resets the restart count, and a stall restarts the channel) after 30 s of **progress**, measured by the player from its 0.5 s `position` notifications: only forward steps of at most `LIVE_PROGRESS_MAX_STEP_MS` (2 s) past the furthest position count. Ruled out, both measured on a Stick 4K against 12.1 (2026-09-23): **time spent in `playing`**, because a playlist that stops growing is replayed before the player buffers, so a stale upstream looked healthy and restarted forever; and **the position at state changes**, because the first `playing` reports the live-edge seek sentinel (999999) in some runs and 0 in others, which made a healthy stall read `played=0` or counted the join offset as play. The 2 s cap is a tuned value with headroom for late notifications (steps measured 500-516 ms); each live mount logs its step sizes at teardown so it can be re-evaluated.
+
+A **stall** restarts only after healthy progress; it does not share the end's three-restart budget, because each stall is only detected at least 30 s into the buffering spinner (later if the percentage keeps rising), so three restarts would keep a viewer waiting for minutes (user call). The mount a stall restart started must play `LIVE_STALL_REPROVE_MS` (2 min) before its own stall restarts again, and that bar stays raised through restarts that end without playing until a mount plays 2 min: a restart into a playlist that stopped growing counts its leftover as progress, measured 2026-09-23 on a Stick 4K against 12.1 (encoder killed without `ENDLIST`) at 19.5 s with 4 s segments (32 s and 64 s windows alike) and 29.6 s with 10 s segments, so it grows with the segment length and would soon pass the 30 s bar and restart forever (2 min, about four times the 10 s case, user call). The give-up error says the channel "isn't sending any video" when no mount since the viewer chose it made progress, and that its stream "stopped" when one did. An **end** keeps the budget: past three ends in a row without healthy progress, the player shows the error. No delay between restarts: an upstream outage surfaced as a stall or, on the restart, a Video `error`, never as repeated quick ends (measured), so a delay would only slow the give-up on a stream that really ended.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
