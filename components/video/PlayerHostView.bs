@@ -221,7 +221,7 @@ sub onPlayerStateChange()
         restartLiveChannel()
       else
         m.log.warn("Live TV channel keeps ending without playing; showing the error instead of restarting", textOrEmpty(currentItem.id), m.liveRestart.count, progressMs)
-        m.view.callFunc("showLiveStreamStoppedError")
+        m.view.callFunc("showLiveStreamStoppedError", liveGiveUpCauseKey(m.liveRestart))
       end if
       return
     end if
@@ -324,7 +324,7 @@ sub onLiveStreamStalled()
     channelId = ""
     if isValid(currentItem) then channelId = textOrEmpty(currentItem.id)
     m.log.warn("Live TV channel stalled without healthy playing; showing the error instead of restarting", channelId, m.liveRestart.count, progressMs)
-    m.view.callFunc("showLiveStreamStalledError")
+    m.view.callFunc("showLiveStreamStalledError", liveGiveUpCauseKey(m.liveRestart))
   end if
 end sub
 

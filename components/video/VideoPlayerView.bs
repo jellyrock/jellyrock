@@ -970,9 +970,12 @@ end function
 
 ' Called by PlayerHostView when it gives up on a Live TV channel that keeps ending without
 ' playing, which is a `finished` rather than an error, so nothing here would show one. The
-' player reports no error code for it, so the cause is given in words.
-sub showLiveStreamStoppedError()
-  showPlaybackErrorDialog(translate(translationKeys.ErrorPlaybackCauseLiveStreamStopped))
+' player reports no error code for it, so the cause is given in words, chosen by the host
+' (liveGiveUpCauseKey in liveTv.bs).
+'
+' @param {string} causeKey - a translationKeys value
+sub showLiveStreamStoppedError(causeKey as string)
+  showPlaybackErrorDialog(translate(causeKey))
 end sub
 
 ' Called by PlayerHostView when this mount's live stream ends or stalls: how much of it played, for
@@ -988,10 +991,10 @@ sub trackLiveProgress()
   if jumpMs > 0 then m.log.debug("Live TV position jumped; not counted as playing", "jumpMs", jumpMs, "maxStepMs", LIVE_PROGRESS_MAX_STEP_MS)
 end sub
 
-' Called by PlayerHostView just before it restarts a Live TV channel whose stream stalled. The
-' remount destroys this player before its `stopped` state is handled, so onState never reports
-' the stop, and restarting the SAME channel does not make Jellyfin close the live stream either:
-' each stall restart left one consumer holding it (on a tuner-limited server, a tuner).
+' Called by PlayerHostView just before it restarts a Live TV channel whose stream stalled. Without
+' it, each stall restart left the server one consumer holding the live stream (on a
+' tuner-limited server, a tuner): measured on a Stick 4K against 12.1, where Back, voice "stop"
+' and a channel switch from a playing channel all report their stop.
 sub reportStallStop()
   if not m.isPlayReported then return
   reportPlayback("stop")
@@ -1002,8 +1005,10 @@ end sub
 ' not played healthily). The same cause as showLiveStreamStoppedError, plus the stop a stall needs
 ' (an ended stream has already stopped). Same shape as bufferCheck's stall error: the dialog claims
 ' the exit first, so the `finished` this stop can surface as is ignored by the host.
-sub showLiveStreamStalledError()
-  showPlaybackErrorDialog(translate(translationKeys.ErrorPlaybackCauseLiveStreamStopped))
+'
+' @param {string} causeKey - a translationKeys value
+sub showLiveStreamStalledError(causeKey as string)
+  showPlaybackErrorDialog(translate(causeKey))
   m.top.control = "stop"
 end sub
 
@@ -1104,6 +1109,7 @@ sub onVideoContentLoaded()
   ' A stream loaded after a terminal error is a fresh playback, so onState acts on it again.
   m.isContentLoaded = true
   m.hasPlaybackFailed = false
+  if isLiveTvPlayback() then liveProgressOnNewStream(m.liveProgress)
 
   ' The second half of the wait starts here: handing `content` to the Video node is what
   ' sets it buffering. Declared after the early return above, so a playback that failed
@@ -1888,6 +1894,7 @@ sub onState()
       ' dialog used to render its own title twice: the call site handed it
       ' `ErrorDuringPlayback`, the same key the title already uses.
       showPlaybackErrorDialog()
+      reportFailedStop()
     end if
   else if m.top.state = "playing"
     stopLoadingSpinner()
@@ -1991,6 +1998,24 @@ end sub
 '
 ' Report playback to server
 sub reportPlayback(state = "update" as string)
+  submitPlaybackReport(state, false)
+end sub
+
+' A terminal Video `error` ends the server's session as failed. Without it the server keeps a
+' Live TV channel's live stream open (on a tuner-limited server, a tuner) until it restarts, since
+' onState ignores every later state (#988). `Failed` leaves the user's resume position alone and
+' still closes the live stream (Jellyfin's OnPlaybackStopped, 10.7.7 through 12.1).
+sub reportFailedStop()
+  submitPlaybackReport("stop", true)
+  m.isPlayReported = false
+end sub
+
+' reportPlayback's body. A separate function because reportPlayback is also the playback
+' timer's `fire` observer, which must keep its one-argument signature.
+'
+' @param {string} state - start, update, stop or finished
+' @param {boolean} failed - a stop that ends a failed playback (reportFailedStop)
+sub submitPlaybackReport(state as string, failed as boolean)
   if not isValid(m.top.position) then return
 
   m.log.debug("start reportPlayback", state, int(m.top.position))
@@ -2008,6 +2033,7 @@ sub reportPlayback(state = "update" as string)
     "PositionTicks": int(positionSeconds) * 10000000&, 'Ensure a LongInteger is used
     "IsPaused": (m.top.state = "paused")
   }
+  if failed then params.Failed = true
   ' Name the file that is playing. Jellyfin 12.0+ saves progress against this version
   ' (alternate versions keep their own positions); older servers use it only for the
   ' now-playing display.
