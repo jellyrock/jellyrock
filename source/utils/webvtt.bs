@@ -1,0 +1,84 @@
+import "pkg:/source/utils/misc.bs"
+
+' WebVTT parsing for custom (app-drawn) subtitles. Pure string work with no node
+' access, so it is safe on any thread; LoadCaptionTask calls it on its Task thread.
+
+' The timestamp grammar vttTimestampToMs() accepts: `[H:]MM:SS.mmm`. The hour field
+' is optional in WebVTT. A comma before the milliseconds is not valid WebVTT, but it
+' has reached the app in production (#584), and rejecting it would drop every cue in
+' such a file rather than show them.
+function vttTimestampPattern() as object
+  return CreateObject("roRegex", "^(?:(\d{1,3}):)?(\d{2}):(\d{2})[.,](\d{3})$", "")
+end function
+
+' Milliseconds for one WebVTT timestamp, or -1 when it is not one.
+'
+' @param {string} text - the bare stamp: no `-->`, no cue settings, no padding
+' @param {dynamic} [pattern=invalid] - a vttTimestampPattern(); pass one in when
+'   converting many stamps, so the regex is compiled once per file rather than per stamp
+' @return {integer} milliseconds, or -1
+function vttTimestampToMs(text as string, pattern = invalid as dynamic) as integer
+  if not isValid(pattern) then pattern = vttTimestampPattern()
+  parts = pattern.match(text)
+  if parts.count() < 5 then return -1
+
+  hours = 0
+  if isValid(parts[1]) and parts[1] <> "" then hours = parts[1].toInt()
+  return 3600000 * hours + 60000 * parts[2].toInt() + 1000 * parts[3].toInt() + parts[4].toInt()
+end function
+
+' The timestamp at the start of one side of a timing line: the end side can carry cue
+' settings after it (`00:28.876 align:start position:10%`), and a CRLF file leaves a
+' trailing carriage return.
+function vttTimingField(text as string) as string
+  fields = text.trim().tokenize(" " + chr(9))
+  if fields.count() = 0 then return ""
+  return fields[0]
+end function
+
+' Parses a WebVTT file into caption lines.
+'
+' A cue whose timing cannot be read is dropped whole, and its text with it: attaching
+' that text to the previous cue's timing would show it at the wrong moment.
+'
+' @param {string} text - the file contents
+' @return {object} { entries: [{ start, end, text }], skippedCues: integer, firstSkipped: string }
+'   - start / end in milliseconds; one entry per text line
+'   - skippedCues counts cues dropped for an unreadable timing line, firstSkipped
+'     quotes the first of them
+function parseVTT(text as string) as object
+  stamp = vttTimestampPattern()
+  lines = text.replace(" --> ", chr(31) + chr(10)).split(chr(10))
+  lineCount = lines.count()
+  result = { entries: [], skippedCues: 0, firstSkipped: "" }
+  curStart = -1
+  curEnd = -1
+
+  i = 0
+  while i < lineCount
+    line = lines[i]
+    if line.right(1) = chr(31)
+      startField = line.left(line.len() - 1)
+      endField = ""
+      ' The `-->` can be the file's last text, leaving no end side at all.
+      if i + 1 < lineCount then endField = lines[i + 1]
+      curStart = vttTimestampToMs(vttTimingField(startField), stamp)
+      curEnd = vttTimestampToMs(vttTimingField(endField), stamp)
+      if curStart = -1 or curEnd = -1
+        if result.skippedCues = 0 then result.firstSkipped = startField + " --> " + endField.trim()
+        result.skippedCues++
+        curStart = -1
+      end if
+      i += 2
+    else
+      if curStart <> -1
+        trimmed = line.trim()
+        if trimmed <> chr(0)
+          result.entries.push({ "start": curStart, "end": curEnd, "text": trimmed })
+        end if
+      end if
+      i += 1
+    end if
+  end while
+  return result
+end function

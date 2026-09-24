@@ -1,0 +1,164 @@
+import "pkg:/source/utils/webvtt.bs"
+
+namespace tests
+
+  @suite("webvtt.bs")
+  class WebVttTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("vttTimestampToMs()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads a stamp with hours")
+    function _()
+      m.assertEqual(vttTimestampToMs("01:02:03.456"), 3723456)
+    end function
+
+    @it("reads a stamp without hours, which WebVTT allows")
+    function _()
+      m.assertEqual(vttTimestampToMs("02:03.456"), 123456)
+    end function
+
+    @it("reads the comma-separated stamp seen in the production crash")
+    function _()
+      m.assertEqual(vttTimestampToMs("15:00,170"), 900170)
+      m.assertEqual(vttTimestampToMs("00:15:00,170"), 900170)
+    end function
+
+    @it("reads an hour field wider than two digits")
+    function _()
+      m.assertEqual(vttTimestampToMs("100:00:00.000"), 360000000)
+    end function
+
+    @it("gives the same answer with a pattern passed in")
+    function _()
+      pattern = vttTimestampPattern()
+      m.assertEqual(vttTimestampToMs("02:03.456", pattern), 123456)
+      m.assertEqual(vttTimestampToMs("01:02:03.456", pattern), 3723456)
+    end function
+
+    @it("returns -1 for text that is not a stamp")
+    function _()
+      m.assertEqual(vttTimestampToMs(""), -1)
+      m.assertEqual(vttTimestampToMs("align:start"), -1)
+      ' What the old parser's replace-and-truncate turned "00:28.876 al..." into
+      m.assertEqual(vttTimestampToMs("00:28:876 al"), -1)
+      m.assertEqual(vttTimestampToMs("00:00:01"), -1)
+      m.assertEqual(vttTimestampToMs("1:2.3"), -1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("vttTimingField()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("drops cue settings after the stamp")
+    function _()
+      m.assertEqual(vttTimingField("00:28.876 align:start position:10%"), "00:28.876")
+      m.assertEqual(vttTimingField("00:00:28.876" + chr(9) + "line:0"), "00:00:28.876")
+    end function
+
+    @it("drops a CRLF file's carriage return")
+    function _()
+      m.assertEqual(vttTimingField("00:00:28.876" + chr(13)), "00:00:28.876")
+    end function
+
+    @it("returns an empty string for a blank side")
+    function _()
+      m.assertEqual(vttTimingField(""), "")
+      m.assertEqual(vttTimingField("   "), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("parseVTT()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("parses a cue per text line with hours-form stamps")
+    function _()
+      result = parseVTT(m.vtt([
+        "WEBVTT",
+        "",
+        "00:00:01.000 --> 00:00:02.500",
+        "Line one",
+        "Line two",
+        "",
+        "00:00:03.000 --> 00:00:04.000",
+        "Next"
+      ]))
+      m.assertEqual(result.entries, [
+        { "start": 1000, "end": 2500, "text": "Line one" },
+        { "start": 1000, "end": 2500, "text": "Line two" },
+        { "start": 3000, "end": 4000, "text": "Next" }
+      ])
+      m.assertEqual(result.skippedCues, 0)
+    end function
+
+    @it("parses the production crash's comma stamp without hours")
+    function _()
+      result = parseVTT(m.vtt(["WEBVTT", "", "15:00,170 --> 15:02,500", "Hello"]))
+      m.assertEqual(result.entries, [{ "start": 900170, "end": 902500, "text": "Hello" }])
+    end function
+
+    @it("parses hour-less stamps with cue settings on the end stamp")
+    function _()
+      result = parseVTT(m.vtt(["WEBVTT", "", "00:25.914 --> 00:28.876 align:start position:10%", "Hi"]))
+      m.assertEqual(result.entries, [{ "start": 25914, "end": 28876, "text": "Hi" }])
+    end function
+
+    @it("parses hours-form stamps with cue settings on the end stamp")
+    function _()
+      result = parseVTT(m.vtt(["WEBVTT", "", "00:00:25.914 --> 00:00:28.876 align:start position:10%", "Hi"]))
+      m.assertEqual(result.entries, [{ "start": 25914, "end": 28876, "text": "Hi" }])
+    end function
+
+    @it("parses a CRLF file")
+    function _()
+      text = "WEBVTT" + chr(13) + chr(10) + chr(13) + chr(10) + "00:01.000 --> 00:02.000" + chr(13) + chr(10) + "Hi" + chr(13) + chr(10)
+      result = parseVTT(text)
+      m.assertEqual(result.entries, [{ "start": 1000, "end": 2000, "text": "Hi" }])
+    end function
+
+    @it("drops a cue with an unreadable stamp, and its text, but keeps the rest")
+    function _()
+      result = parseVTT(m.vtt([
+        "WEBVTT",
+        "",
+        "00:00:01.000 --> 00:00:02.000",
+        "Kept",
+        "",
+        "00:00:03.000 --> garbage",
+        "Dropped",
+        "",
+        "00:00:05.000 --> 00:00:06.000",
+        "Also kept"
+      ]))
+      m.assertEqual(result.entries, [
+        { "start": 1000, "end": 2000, "text": "Kept" },
+        { "start": 5000, "end": 6000, "text": "Also kept" }
+      ])
+      m.assertEqual(result.skippedCues, 1)
+      m.assertEqual(result.firstSkipped, "00:00:03.000 --> garbage")
+    end function
+
+    @it("does not crash when the file ends on a timing arrow")
+    function _()
+      result = parseVTT("WEBVTT" + chr(10) + chr(10) + "00:00:01.000 --> ")
+      m.assertArrayCount(result.entries, 0)
+      m.assertEqual(result.skippedCues, 1)
+    end function
+
+    @it("returns no entries for an empty file")
+    function _()
+      result = parseVTT("")
+      m.assertArrayCount(result.entries, 0)
+      m.assertEqual(result.skippedCues, 0)
+    end function
+
+    ' ---- helpers ----
+
+    function vtt(lines as object) as string
+      return lines.join(chr(10))
+    end function
+
+  end class
+
+end namespace
