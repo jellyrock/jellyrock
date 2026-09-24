@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-24 — fix: Stop restarting a Live TV channel that keeps ending without playing
 - 2026-09-24 — fix: Keep screens loading when the app hits its Task-thread limit
 - 2026-09-23 — ci: Prove a stopped Task thread frees its slot under Roku's thread cap
 - 2026-09-23 — fix: Stop a late playback report replacing a dialog you opened meanwhile
