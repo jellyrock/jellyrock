@@ -113,15 +113,27 @@ const RULES = {
 };
 
 /**
- * The text GitHub can turn into an issue link. Code (fenced and inline), HTML
- * comments, markdown links, bare URLs and HTML entities are removed: a reference
- * inside any of them is either already a link, not a reference (`CHANGELOG.md#399`,
- * Renovate's escaped `#&#8203;433`), or deliberately literal.
+ * The text GitHub can turn into an issue link. Code, HTML comments, markdown links,
+ * bare URLs and HTML entities are removed: a reference inside any of them is either
+ * already a link, not a reference (`CHANGELOG.md#399`, Renovate's escaped
+ * `#&#8203;433`), or deliberately literal.
+ *
+ * Code is a fence of three or more backticks or tildes (a backtick fence's info string
+ * has no backticks, or the line is an inline span; closed by a run of the same
+ * character at least as long, or by the end of the text), an inline span of any
+ * backtick run length that does not cross a blank line, and a `<pre>` or `<code>`
+ * element. An indented code block is
+ * NOT removed: a four-space-indented paragraph under a list item looks the same to a
+ * regex and GitHub does link inside it, so removing both would hide real references.
  */
 export function referenceText(text) {
   return stripComments(text)
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/`[^`\n]*`/g, ' ')
+    .replace(
+      /^ {0,3}(([`~])\2{2,})(?:(?<=`)[^`\n]*|(?<=~)[^\n]*)(?:\n[\s\S]*?)?(?:^ {0,3}\1\2*[ \t]*$|(?![\s\S]))/gm,
+      ' ',
+    )
+    .replace(/(?<!`)(`+)(?!`)(?:[^\n]|\n(?![ \t]*\n))*?[^`]\1(?!`)/g, ' ')
+    .replace(/<(pre|code)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
     .replace(/!?\[[^\]]*\]\([^)]*\)/g, ' ')
     .replace(/<https?:\/\/[^>]*>/g, ' ')
     .replace(/https?:\/\/\S+/g, ' ')
