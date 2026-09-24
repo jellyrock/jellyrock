@@ -146,6 +146,74 @@ namespace tests
       m.assertEqual(result.skippedCues, 1)
     end function
 
+    @it("does not show cue identifiers")
+    function _()
+      result = parseVTT(m.vtt([
+        "WEBVTT",
+        "",
+        "1",
+        "00:00:01.000 --> 00:00:02.000",
+        "First",
+        "",
+        "intro-line",
+        "00:00:03.000 --> 00:00:04.000",
+        "Second"
+      ]))
+      m.assertEqual(result.entries, [
+        { "start": 1000, "end": 2000, "text": "First" },
+        { "start": 3000, "end": 4000, "text": "Second" }
+      ])
+    end function
+
+    @it("does not show NOTE, STYLE or REGION blocks")
+    function _()
+      result = parseVTT(m.vtt([
+        "WEBVTT",
+        "",
+        "REGION",
+        "id:bottom",
+        "width:40%",
+        "",
+        "STYLE",
+        "::cue { color: yellow }",
+        "",
+        "NOTE a one-line comment",
+        "",
+        "00:00:01.000 --> 00:00:02.000",
+        "First",
+        "",
+        "NOTE",
+        "a comment that",
+        "spans lines",
+        "",
+        "00:00:03.000 --> 00:00:04.000",
+        "Second"
+      ]))
+      m.assertEqual(result.entries, [
+        { "start": 1000, "end": 2000, "text": "First" },
+        { "start": 3000, "end": 4000, "text": "Second" }
+      ])
+    end function
+
+    @it("does not show header metadata lines")
+    function _()
+      result = parseVTT(m.vtt([
+        "WEBVTT - Some title",
+        "Kind: captions",
+        "Language: en",
+        "",
+        "00:00:01.000 --> 00:00:02.000",
+        "Hi"
+      ]))
+      m.assertEqual(result.entries, [{ "start": 1000, "end": 2000, "text": "Hi" }])
+    end function
+
+    @it("reads a timing line without spaces around the arrow")
+    function _()
+      result = parseVTT(m.vtt(["WEBVTT", "", "00:01.000-->00:02.000", "Hi"]))
+      m.assertEqual(result.entries, [{ "start": 1000, "end": 2000, "text": "Hi" }])
+    end function
+
     @it("returns no entries for an empty file")
     function _()
       result = parseVTT("")

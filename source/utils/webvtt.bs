@@ -38,6 +38,12 @@ end function
 
 ' Parses a WebVTT file into caption lines.
 '
+' A WebVTT file is blocks separated by blank lines, and only a cue's text is shown:
+' the lines after its timing line, up to the next blank line. Everything else — the
+' WEBVTT header, NOTE / STYLE / REGION blocks, and a cue identifier (the optional
+' line BEFORE a timing line) — is skipped, because none of it follows a timing line
+' within its block.
+'
 ' A cue whose timing cannot be read is dropped whole, and its text with it: attaching
 ' that text to the previous cue's timing would show it at the wrong moment.
 '
@@ -48,37 +54,27 @@ end function
 '     quotes the first of them
 function parseVTT(text as string) as object
   stamp = vttTimestampPattern()
-  lines = text.replace(" --> ", chr(31) + chr(10)).split(chr(10))
-  lineCount = lines.count()
   result = { entries: [], skippedCues: 0, firstSkipped: "" }
+  ' -1 whenever the current line is not cue text.
   curStart = -1
   curEnd = -1
 
-  i = 0
-  while i < lineCount
-    line = lines[i]
-    if line.right(1) = chr(31)
-      startField = line.left(line.len() - 1)
-      endField = ""
-      ' The `-->` can be the file's last text, leaving no end side at all.
-      if i + 1 < lineCount then endField = lines[i + 1]
-      curStart = vttTimestampToMs(vttTimingField(startField), stamp)
-      curEnd = vttTimestampToMs(vttTimingField(endField), stamp)
+  for each rawLine in text.split(chr(10))
+    line = rawLine.trim()
+    arrow = line.instr("-->")
+    if line = ""
+      curStart = -1
+    else if arrow >= 0
+      curStart = vttTimestampToMs(vttTimingField(line.left(arrow)), stamp)
+      curEnd = vttTimestampToMs(vttTimingField(line.mid(arrow + 3)), stamp)
       if curStart = -1 or curEnd = -1
-        if result.skippedCues = 0 then result.firstSkipped = startField + " --> " + endField.trim()
+        if result.skippedCues = 0 then result.firstSkipped = line
         result.skippedCues++
         curStart = -1
       end if
-      i += 2
-    else
-      if curStart <> -1
-        trimmed = line.trim()
-        if trimmed <> chr(0)
-          result.entries.push({ "start": curStart, "end": curEnd, "text": trimmed })
-        end if
-      end if
-      i += 1
+    else if curStart <> -1
+      result.entries.push({ "start": curStart, "end": curEnd, "text": line })
     end if
-  end while
+  end for
   return result
 end function
