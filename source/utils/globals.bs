@@ -68,6 +68,11 @@ sub setGlobals()
     translationsFallback: {},
     translationLocale: ""
   })
+  ' Where a Task launch waits while the app is at its thread watermark (ADR 0041). Declared
+  ' here, before any launch, so launchTask() can always read both; the node itself is created
+  ' in setGlobalNodes(), and until then a launch past the watermark is refused.
+  if not m.global.hasField("taskLaunchQueue") then m.global.addField("taskLaunchQueue", "node", false)
+  if not m.global.hasField("taskLaunchQueued") then m.global.addField("taskLaunchQueued", "integer", false)
   ' Save Constants
   setConstants()
   ' Save information from roAppInfo to m.global.app
@@ -87,6 +92,9 @@ sub setGlobalNodes()
   #if ENABLE_RTA
     m.global.addFields({ rtaSkeletonHoldMs: 0 })
   #end if
+
+  ' First, so it exists before any launch below could need it.
+  m.global.taskLaunchQueue = CreateObject("roSGNode", "TaskLaunchQueue")
 
   ' Tier 1 API pool — persistent ApiTask instances (Architecture C continuous-server), as
   ' many as apiPool.widthFor() picks for this device class. Each task runs an infinite while

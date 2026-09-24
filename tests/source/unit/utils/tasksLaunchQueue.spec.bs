@@ -1,0 +1,241 @@
+namespace tests
+
+  ' The launch queue (ADR 0041): past the thread watermark a launch waits instead of being
+  ' refused. The pure rules are driven directly; the end-to-end cases run the real
+  ' launchTask() against a real TaskLaunchQueue node, whose drain Timer must actually fire.
+  '
+  ' Saturation is simulated the way tasks.spec.bs does it: the ledger is seeded with
+  ' NEVER-LAUNCHED nodes, which report `state = "init"` and so count as live while starting
+  ' no thread. "A slot frees" is then just re-seeding the ledger shallower.
+  @suite("tasks.bs - the launch queue past the watermark")
+  class TaskLaunchQueueTests extends tests.BaseTestSuite
+
+    protected override function beforeEach()
+      super.beforeEach()
+      m.seedGlobalLedger(0)
+      m.global.taskLaunchQueue = invalid
+      m.global.taskLaunchQueued = 0
+    end function
+
+    protected override function afterEach()
+      m.seedGlobalLedger(0)
+      m.global.taskLaunchQueue = invalid
+      m.global.taskLaunchQueued = 0
+      super.afterEach()
+    end function
+
+    protected function seedGlobalLedger(depth as integer) as void
+      if not m.global.hasField("taskLedger") then m.global.addField("taskLedger", "array", false)
+      seeded = []
+      for i = 1 to depth
+        seeded.push(m.freshTask())
+      end for
+      m.global["taskLedger"] = seeded
+    end function
+
+    ' Unroutable (RFC 5737 TEST-NET-1), so a node that does start parks on connect instead
+    ' of reaching a real server.
+    protected function freshTask() as object
+      node = CreateObject("roSGNode", "ServerReachableTask")
+      node.baseUrl = "http://192.0.2.1:8096"
+      return node
+    end function
+
+    protected function installQueue() as object
+      queue = CreateObject("roSGNode", "TaskLaunchQueue")
+      m.global.taskLaunchQueue = queue
+      return queue
+    end function
+
+    ' Polls `node.state` until it reads `expected` or `timeoutMs` passes.
+    protected function waitForState(node as object, expected as string, timeoutMs as integer) as boolean
+      clock = CreateObject("roTimespan")
+      while clock.totalMilliseconds() < timeoutMs
+        if LCase(node.state) = expected then return true
+        sleep(20)
+      end while
+      return LCase(node.state) = expected
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("taskQueueAdd / taskQueueHolds / taskQueueDropReleased (pure)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("queues a never-launched node at the back")
+    function _()
+      queue = []
+      first = m.freshTask()
+      second = m.freshTask()
+      m.assertEqual(taskQueueAdd(queue, first, 10), "queued")
+      m.assertEqual(taskQueueAdd(queue, second, 10), "queued")
+      m.assertTrue(queue[0].node.isSameNode(first))
+      m.assertTrue(queue[1].node.isSameNode(second))
+    end function
+
+    @it("never holds the same node twice")
+    function _()
+      queue = []
+      node = m.freshTask()
+      taskQueueAdd(queue, node, 10)
+      m.assertEqual(taskQueueAdd(queue, node, 10), "already")
+      m.assertEqual(queue.count(), 1)
+    end function
+
+    @it("refuses past the cap")
+    function _()
+      queue = []
+      taskQueueAdd(queue, m.freshTask(), 2)
+      taskQueueAdd(queue, m.freshTask(), 2)
+      m.assertEqual(taskQueueAdd(queue, m.freshTask(), 2), "full")
+      m.assertEqual(queue.count(), 2)
+    end function
+
+    @it("drops a node STOPped while it waits")
+    function _()
+      queue = []
+      kept = m.freshTask()
+      released = m.freshTask()
+      taskQueueAdd(queue, kept, 10)
+      taskQueueAdd(queue, released, 10)
+      released.control = "STOP"
+
+      remaining = taskQueueDropReleased(queue)
+
+      m.assertEqual(remaining.count(), 1)
+      m.assertTrue(remaining[0].node.isSameNode(kept))
+      m.assertFalse(taskQueueHolds(queue, released), "a released node is not in flight")
+    end function
+
+    @it("re-arms a node released and relaunched while it waits, so it still starts once")
+    function _()
+      queue = []
+      node = m.freshTask()
+      taskQueueAdd(queue, node, 10)
+      node.control = "STOP"
+      m.assertEqual(taskQueueAdd(queue, node, 10), "already")
+
+      m.assertEqual(taskQueueDropReleased(queue).count(), 1)
+      m.assertTrue(taskQueueHolds(queue, node))
+    end function
+
+    ' THE KNOWN GAP, pinned so it cannot be forgotten (ADR 0041): a node that had already
+    ' finished a run reads "stop" when queued, and a STOP while it waits leaves "stop", so
+    ' the release is invisible and the entry stands. If this starts failing, the gap closed.
+    @it("cannot see a release of a node that had already finished a run")
+    function _()
+      queue = []
+      node = m.freshTask()
+      node.control = "STOP" ' now reads "stop", as a node whose run returned does
+      taskQueueAdd(queue, node, 10)
+      node.control = "STOP"
+
+      m.assertEqual(taskQueueDropReleased(queue).count(), 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("launchTask() with the queue installed")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("queues a launch past the watermark and starts it once a slot frees")
+    function _()
+      m.installQueue()
+      m.seedGlobalLedger(TASK_THREAD_WATERMARK)
+      node = m.freshTask()
+
+      m.assertTrue(launchTask(node), "a launch past the watermark waits and reports success")
+      m.assertEqual(LCase(node.state), "init", "it must not have started yet")
+      m.assertEqual(m.global.taskLaunchQueued, 1)
+      m.assertTrue(isTaskInFlight(node), "a queued run is in flight")
+
+      m.seedGlobalLedger(0)
+
+      m.assertTrue(m.waitForState(node, "run", 2000), "the drain started it once a slot freed")
+      m.assertEqual(m.global.taskLaunchQueued, 0)
+      node.control = "STOP"
+    end function
+
+    @it("never starts a node STOPped while it waits")
+    function _()
+      m.installQueue()
+      m.seedGlobalLedger(TASK_THREAD_WATERMARK)
+      node = m.freshTask()
+      launchTask(node)
+      node.control = "STOP"
+
+      m.seedGlobalLedger(0)
+      sleep(500)
+
+      m.assertEqual(LCase(node.state), "stop", "a released node must stay stopped")
+      m.assertEqual(m.global.taskLaunchQueued, 0, "and its entry must be gone")
+      m.assertFalse(isTaskInFlight(node))
+    end function
+
+    ' While anything waits, a new launch queues behind it even when a slot is free.
+    @it("starts waiting launches in the order they were made")
+    function _()
+      m.installQueue()
+      m.seedGlobalLedger(TASK_THREAD_WATERMARK)
+      first = m.freshTask()
+      second = m.freshTask()
+      launchTask(first)
+      launchTask(second)
+
+      ' Room for exactly one: the ledger is at the watermark again once `first` is admitted.
+      m.seedGlobalLedger(TASK_THREAD_WATERMARK - 1)
+
+      m.assertTrue(m.waitForState(first, "run", 2000), "the oldest waiting launch starts first")
+      sleep(300)
+      m.assertEqual(LCase(second.state), "init", "the next one waits for another slot")
+
+      m.seedGlobalLedger(0)
+      m.assertTrue(m.waitForState(second, "run", 2000), "and starts when one frees")
+      first.control = "STOP"
+      second.control = "STOP"
+    end function
+
+    ' A slot frees and a NEW launch arrives before the drain has run: the new one must not
+    ' take the slot from the launch that has been waiting, or a steady stream of launches
+    ' could keep a waiting one from ever starting.
+    @it("does not let a new launch jump a waiting one")
+    function _()
+      m.installQueue()
+      m.seedGlobalLedger(TASK_THREAD_WATERMARK)
+      waiting = m.freshTask()
+      launchTask(waiting)
+
+      m.seedGlobalLedger(TASK_THREAD_WATERMARK - 1)
+      late = m.freshTask()
+      m.assertTrue(launchTask(late))
+      m.assertEqual(LCase(late.state), "init", "the new launch queued behind the waiting one")
+
+      m.assertTrue(m.waitForState(waiting, "run", 2000), "the waiting launch got the slot")
+      m.seedGlobalLedger(0)
+      m.assertTrue(m.waitForState(late, "run", 2000))
+      waiting.control = "STOP"
+      late.control = "STOP"
+    end function
+
+    @it("refuses once the queue is full")
+    function _()
+      queue = m.installQueue()
+      m.seedGlobalLedger(TASK_THREAD_WATERMARK)
+      waiting = []
+      for i = 1 to TASK_QUEUE_CAP
+        node = m.freshTask()
+        waiting.push(node)
+        m.assertTrue(queue.callFunc("enqueue", node))
+      end for
+
+      m.assertFalse(launchTask(m.freshTask()), "past the cap the launch is refused")
+      m.assertEqual(m.global.taskLaunchQueued, TASK_QUEUE_CAP)
+
+      ' Release every waiting node, so a drain tick that outlives this test drops them
+      ' rather than starting TASK_QUEUE_CAP real threads in the next one.
+      for each node in waiting
+        node.control = "STOP"
+      end for
+    end function
+
+  end class
+
+end namespace

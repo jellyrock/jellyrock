@@ -86,8 +86,8 @@
 '
 ' ── The ceiling, and why these two numbers ─────────────────────────────────
 '
-' `launchTask()` REFUSES above TASK_THREAD_WATERMARK live threads. Roku's cap is
-' 100. Measured peak in real use is 11 (13-library server, Stick 4K, sampled
+' `launchTask()` starts no thread above TASK_THREAD_WATERMARK live threads (the
+' launch waits instead — see below). Roku's cap is 100. Measured peak in real use is 11 (13-library server, Stick 4K, sampled
 ' across a scripted journey — tests/rta/specs/task-thread-peak.spec.js), so a
 ' watermark of 50 is ~4.5x the observed peak: it cannot fire in normal operation,
 ' only when something is fanning out.
@@ -99,10 +99,10 @@
 ' The gate fires in TESTING and names the culprit; the ceiling only ever fires in
 ' PRODUCTION, where nothing can report. Tightening the watermark toward the gate
 ' collapses that separation — a fixture slightly heavier than the test journey would
-' start refusing in production at the count the gate calls a regression. The gap is
+' start queuing in production at the count the gate calls a regression. The gap is
 ' the design. Full argument: docs/adr/0031-task-thread-ceiling.md.
 '
-' THE BOUND, which is why refusal is safe rather than merely hopeful:
+' THE BOUND, which is why the ceiling is safe rather than merely hopeful:
 '
 '     watermark (50) + main-thread floor (< 20) < Roku's cap (100)
 '
@@ -111,11 +111,26 @@
 ' bootstrap set, and 50 leaves it 50 threads of room. `tasks.spec.bs` asserts the
 ' inequality so a future edit to either constant cannot quietly break it.
 '
-' Refusal returns false and starts nothing. That is the SAME contract an invalid
-' node already had, so no call site learns a new failure mode — and a screen that
-' loses a row beats an app that dies at 100 threads. It is deliberately not a
-' crash: #728 is closed, so there is no live crash whose diagnostic value we would
-' be giving up.
+' ── Past the watermark, a launch WAITS (ADR 0041) ───────────────────────────
+'
+' Above the watermark a launch is queued, not refused: `launchTask()` returns true
+' and the node starts when a slot frees. A refusal left whatever the caller set
+' before launching — a spinner, a pending screen-load fill, an in-flight flag —
+' stuck for the life of the screen, and nearly no call site handled it. Waiting
+' makes a saturated app slow instead of broken, and no caller has to know.
+'
+' The queue is the `TaskLaunchQueue` node on `m.global`, created by
+' setGlobalNodes(). It drains from a render-thread Timer that runs only while
+' something waits; nothing observes a Task's `state` (see the ADR for why).
+' While anything waits, every new launch queues behind it, so the order is FIFO.
+' A node STOPped while it waits is dropped, not started — detectable only for a
+' node that had never run, whose `state` moves init -> stop. A node that had
+' already finished reads "stop" either way, so releasing one of THOSE while it
+' waits cannot be seen, and it runs late.
+'
+' Refusal remains, returning false and starting nothing — the contract an invalid
+' node already had: past TASK_QUEUE_CAP waiting launches (only a runaway fan-out
+' gets there), or before setGlobalNodes() has created the queue.
 '
 ' ── What the readout is for ────────────────────────────────────────────────
 '
@@ -123,8 +138,17 @@
 ' `m.global.debug.*` — see docs/dev/debug-flags.md.
 ' ============================================================================
 
-' Live Task threads at which `launchTask()` starts refusing. See the bound above.
+' Live Task threads above which `launchTask()` queues instead of starting. See the bound above.
 const TASK_THREAD_WATERMARK = 50
+
+' Launches that may wait at once; past it `launchTask()` refuses. A waiting node costs
+' ~4 KB (measured 2026-09-23 on a 512 MB Streaming Stick 3600X: 3.6-4.1 KB for a
+' LoadItemsTask with small inputs), so the full queue is ~2 MB there. ADR 0041.
+const TASK_QUEUE_CAP = 500
+
+' How often the queue retries its head while something waits. Each retry is one ledger
+' read-modify-write on the render thread (~0.5 ms), paid only while saturated.
+const TASK_QUEUE_DRAIN_SECONDS = 0.1
 
 ' Starts `node`'s Task thread through the accounted chokepoint.
 '
@@ -146,19 +170,90 @@ function launchTask(node as object) as boolean
     return false
   end if
 
-  if not admitTaskLaunch(node)
-    ' Loud in debug, silent in production — `m.log.*` is stripped and `#if debug` is
-    ' excluded in a store build, so there is no production channel to say this on.
-    ' That is exactly why the RTA peak gate exists: this must be caught before ship,
-    ' not diagnosed after it.
-    #if debug
-      print "[TASKS] REFUSED launch of "; node.subtype(); " — at or above the "; TASK_THREAD_WATERMARK; "-thread watermark"
-    #end if
-    return false
+  ' Something already waits: queue behind it, even if a slot is free right now, or a
+  ' steady stream of new launches could keep the waiting ones from ever starting.
+  queue = taskLaunchQueue()
+  if isValid(queue) and m.global.taskLaunchQueued > 0 then return enqueueTaskLaunch(queue, node)
+
+  if admitTaskLaunch(node)
+    node.control = "RUN"
+    return true
   end if
 
-  node.control = "RUN"
-  return true
+  if isValid(queue) then return enqueueTaskLaunch(queue, node)
+  noteTaskLaunchRefused(node)
+  return false
+end function
+
+' The launch queue on `m.global`, or invalid before setGlobalNodes() has created it.
+function taskLaunchQueue() as dynamic
+  store = m.global
+  if not isValid(store) then return invalid
+  return store.taskLaunchQueue
+end function
+
+' Hands `node` to the queue; false (a refusal) only when the queue is full.
+function enqueueTaskLaunch(queue as object, node as object) as boolean
+  if queue.callFunc("enqueue", node) then return true
+  noteTaskLaunchRefused(node)
+  return false
+end function
+
+' True while `node`'s run is live or waiting in the launch queue. Use it where a caller
+' decides "is my run still going?" — reading `state = "run"` alone calls a queued run
+' finished, and replacing it sends the new one to the back of the queue.
+function isTaskInFlight(node as dynamic) as boolean
+  if not isValid(node) then return false
+  if LCase(node.state) = "run" then return true
+  queue = taskLaunchQueue()
+  if not isValid(queue) or m.global.taskLaunchQueued = 0 then return false
+  return queue.callFunc("isQueued", node)
+end function
+
+' A launch that starts nothing — past the queue's cap, or with no queue yet.
+sub noteTaskLaunchRefused(node as object)
+  ' Loud in debug, silent in production — `m.log.*` is stripped and `#if debug` is
+  ' excluded in a store build, so there is no production channel to say this on.
+  ' That is exactly why the RTA peak gate exists: this must be caught before ship,
+  ' not diagnosed after it.
+  #if debug
+    print "[TASKS] REFUSED launch of "; node.subtype(); " — over the "; TASK_THREAD_WATERMARK; "-thread watermark with no room to queue"
+  #end if
+
+  #if perfTiming
+    ' THE ONLY DURABLE TRACE A REFUSAL LEAVES. The print above is `#if debug`, and the
+    ' committed manifest ships `debug=false`, so seeing a refusal that way costs a const
+    ' flip and a rebuild — by which time you are no longer in the state that produced it.
+    ' `perfTiming` ships TRUE in that same manifest and is in harden-prod-manifest.js's
+    ' FORCED_OFF list, so these two fields are present in every dev sideload, absent from
+    ' every store build, and readable from the port-8085 console with no rebuild at all:
+    '
+    '   ?m.global.taskLedgerRefusals
+    '   ?m.global.taskLedgerFirstRefused
+    store = m.global
+    if not isValid(store) then return
+    if not store.hasField("taskLedgerRefusals") then store.addField("taskLedgerRefusals", "integer", false)
+    if not store.hasField("taskLedgerFirstRefused") then store.addField("taskLedgerFirstRefused", "string", false)
+    store["taskLedgerRefusals"] = store["taskLedgerRefusals"] + 1
+    ' FIRST, not most recent. The node that tipped the app over is the one that names
+    ' the fan-out; every refusal after it is a consequence, so overwriting would replace
+    ' the culprit with its victims.
+    if store["taskLedgerFirstRefused"] = "" then store["taskLedgerFirstRefused"] = node.subtype()
+  #end if
+end sub
+
+' Starts every waiting launch the ledger now admits, oldest first, and returns what still
+' waits. Called by TaskLaunchQueue's drain tick. Entries whose node was released while
+' waiting are dropped first (taskQueueDropReleased); the first head the ledger refuses
+' stops the pass, since nothing behind it may jump the order.
+function drainTaskLaunchQueue(queue as object) as object
+  waiting = taskQueueDropReleased(queue)
+  while waiting.count() > 0
+    if not admitTaskLaunch(waiting[0].node) then exit while
+    entry = waiting.shift()
+    entry.node.control = "RUN"
+  end while
+  return waiting
 end function
 
 ' ── A new node per run ──────────────────────────────────────────────────────
@@ -224,8 +319,9 @@ end function
 ' Records `node` and decides whether its launch may proceed.
 '
 ' Returns false when the app is at or above the watermark, in which case the node is
-' NOT recorded — a refused launch starts no thread, so counting it would inflate the
-' ledger on exactly the path that must not spiral.
+' NOT recorded — a launch that has not started holds no thread, so counting it would
+' inflate the ledger on exactly the path that must not spiral. False is not a refusal:
+' launchTask() then queues the node, and the queue's drain asks again on every tick.
 function admitTaskLaunch(node as object) as boolean
   ' `m.global` and NOT `GetGlobalAA()`. That is the whole design, and it was arrived
   ' at the wrong way round: GetGlobalAA is ~500x cheaper (an append there is below the
@@ -280,25 +376,6 @@ function admitTaskLaunch(node as object) as boolean
   ' launch was the one too many".
   candidate.pop()
   store["taskLedger"] = candidate
-
-  #if perfTiming
-    ' THE ONLY DURABLE TRACE A REFUSAL LEAVES. The print below is `#if debug`, and the
-    ' committed manifest ships `debug=false`, so seeing a refusal that way costs a const
-    ' flip and a rebuild — by which time you are no longer in the state that produced it.
-    ' `perfTiming` ships TRUE in that same manifest and is in harden-prod-manifest.js's
-    ' FORCED_OFF list, so these two fields are present in every dev sideload, absent from
-    ' every store build, and readable from the port-8085 console with no rebuild at all:
-    '
-    '   ?m.global.taskLedgerRefusals
-    '   ?m.global.taskLedgerFirstRefused
-    if not store.hasField("taskLedgerRefusals") then store.addField("taskLedgerRefusals", "integer", false)
-    if not store.hasField("taskLedgerFirstRefused") then store.addField("taskLedgerFirstRefused", "string", false)
-    store["taskLedgerRefusals"] = store["taskLedgerRefusals"] + 1
-    ' FIRST, not most recent. The node that tipped the app over the watermark is the one
-    ' that names the fan-out; every refusal after it is a consequence, so overwriting
-    ' would replace the culprit with its victims.
-    if store["taskLedgerFirstRefused"] = "" then store["taskLedgerFirstRefused"] = node.subtype()
-  #end if
 
   return false
 end function
@@ -379,6 +456,55 @@ function recordTaskLaunch(store as object, node as object) as object
   ' Returns the local rather than re-reading the field: reading a node's array field
   ' marshals the whole array again, and the ceiling needs this value on every launch.
   return kept
+end function
+
+' ── Launch queue rules (pure) ───────────────────────────────────────────────
+'
+' A queue is an array of { node, queuedState } entries, oldest first. `queuedState` is
+' the node's `state` when it was queued: a node whose state has moved since was released
+' (STOPped) while it waited, or otherwise started, and must not be started again.
+
+' Adds `node` to `queue` (in place) and says what happened:
+'   "queued"  - appended at the back
+'   "already" - it already waits; its entry is re-armed with its current state, so a
+'               release-and-relaunch while waiting still starts it once
+'   "running" - its thread is live; not queued, just as Roku ignores relaunching a
+'               running node
+'   "full"    - `cap` entries already wait; not queued
+function taskQueueAdd(queue as object, node as object, cap as integer) as string
+  state = LCase(node.state)
+  if state = "run" then return "running"
+  for each entry in queue
+    if entry.node.isSameNode(node)
+      entry.queuedState = state
+      return "already"
+    end if
+  end for
+  if queue.count() >= cap then return "full"
+  queue.push({ node: node, queuedState: state })
+  return "queued"
+end function
+
+' True when `node` waits in `queue` and has not been released since it was queued.
+function taskQueueHolds(queue as object, node as object) as boolean
+  for each entry in queue
+    if entry.node.isSameNode(node) then return taskQueueEntryStands(entry)
+  end for
+  return false
+end function
+
+' Returns `queue` without the entries whose node was released while waiting.
+function taskQueueDropReleased(queue as object) as object
+  kept = []
+  for each entry in queue
+    if taskQueueEntryStands(entry) then kept.push(entry)
+  end for
+  return kept
+end function
+
+function taskQueueEntryStands(entry as object) as boolean
+  if not isValid(entry.node) then return false
+  return LCase(entry.node.state) = entry.queuedState
 end function
 
 ' ── Debug shell ─────────────────────────────────────────────────────────────
