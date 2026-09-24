@@ -1,5 +1,15 @@
 /**
- * Fail a PR whose description is still a blank template.
+ * Fail a PR whose title has no changelog type, or whose description is still a blank
+ * template.
+ *
+ * ## The title
+ *
+ * The title becomes the first line of the squash commit, and its type (`fix:`, `feat:`
+ * …) is what places the change in CHANGELOG.md (`scripts/lib/pr-title.js`). A title
+ * without one lands in Changed whatever it is, so it is held to the form here, while
+ * the author can still retitle. This runs for every PR a person writes — a
+ * `documentation`-labelled PR skips the description check below but its title still
+ * reaches the changelog — and skips only bot PRs and generated release branches.
  *
  * ## Why this is a gate rather than a review habit
  *
@@ -33,22 +43,25 @@
  *
  * ## Skips
  *
- * Reuses `shouldSkip` from `scripts/journal-sync.js` — the same predicate that decides
- * whether a PR reaches `progress.md` — so Renovate/Dependabot and
- * `dependencies`/`docs-only`/`ci`/`automated` PRs are exempt. We do not author those
- * bodies and should not gate them. Release branches are exempt for the same reason:
- * their description is assembled by the release flow, not typed by a person.
+ * Bot PRs (Renovate, the release app) and generated release branches skip both checks:
+ * nobody typed their title or description. The description check also reuses
+ * `shouldSkip` from `scripts/journal-sync.js` — the same predicate that decides whether
+ * a PR reaches `progress.md` — so `dependencies`/`documentation` PRs are exempt from it.
  *
  * Usage:
  *   PR_BODY="$BODY" node scripts/lint/pr-body-check.js \
  *     --pr-title "..." --pr-author "..." --pr-labels "a,b" --pr-head-ref "..."
+ *
+ *   # Check a rendered body before posting it (the /pr skill); same checks as CI.
+ *   node scripts/lint/pr-body-check.js --pr-title "..." --body-file body.md
  *
  *   # List every issue reference with its resolved title (needs `gh`); body on stdin.
  *   node scripts/lint/pr-body-check.js --list-refs --pr-title "..." < body.md
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { shouldSkip } from '../journal-sync.js';
+import { isBotAuthor, shouldSkip } from '../journal-sync.js';
+import { describeTypes, titleProblems } from '../lib/pr-title.js';
 
 /** Head branches whose body is generated rather than authored. */
 const SKIP_HEAD_REF_PATTERNS = [/^release[-/]/i, /^renovate\//i, /^dependabot\//i];
@@ -57,18 +70,44 @@ const SKIP_HEAD_REF_PATTERNS = [/^release[-/]/i, /^renovate\//i, /^dependabot\//
  * The template's sections and what "answered" means for each.
  *
  * `rule` is deliberately per-section: a bare `-` is a filled Overview's worth of
- * nothing under Changes, and an all-unticked checklist is the Docs section's version
- * of the same. One generic "is it non-empty" test would pass both.
+ * nothing under Changes. One generic "is it non-empty" test would pass it.
+ *
+ * An optional section may be left out, and `/pr` leaves out any it has nothing for.
+ * One that is present must be answered: the whole description becomes the commit
+ * message, so an empty heading would sit in `git log` saying nothing. Sections this
+ * list does not name (the Docs checklist older PRs carry) are ignored, so a PR opened
+ * on an earlier template still passes.
  */
 const SECTIONS = [
-  { heading: '# Overview', rule: 'prose', want: 'a sentence describing what changed and why' },
-  { heading: '## Changes', rule: 'bullets', want: 'at least one bullet with text after the "-"' },
-  { heading: '## Follow-ups', rule: 'prose', want: '"None", or bullets linking a tech-debt slug' },
-  { heading: '## Issues', rule: 'prose', want: '"None", or "Fixes #N" / "Ref #N"' },
   {
-    heading: '## Docs / context updates',
-    rule: 'checkbox',
-    want: 'at least one ticked "- [x]" box',
+    heading: '# Overview',
+    rule: 'prose',
+    required: true,
+    want: 'a sentence describing what changed and why',
+  },
+  {
+    heading: '## Changes',
+    rule: 'bullets',
+    required: true,
+    want: 'at least one bullet with text after the "-"',
+  },
+  {
+    heading: '## Testing',
+    rule: 'prose',
+    required: false,
+    want: 'how it was verified — or delete the heading',
+  },
+  {
+    heading: '## Follow-ups',
+    rule: 'prose',
+    required: false,
+    want: 'bullets linking the journal entry of each deferral — or delete the heading',
+  },
+  {
+    heading: '## Issues',
+    rule: 'prose',
+    required: false,
+    want: '"Fixes #N" / "Ref #N" — or delete the heading',
   },
 ];
 
@@ -107,9 +146,6 @@ const RULES = {
   prose: (s) => s.split('\n').some((l) => l.trim().length > 0),
   // A dash followed by actual content. The template ships a bare "-", which must not pass.
   bullets: (s) => s.split('\n').some((l) => /^\s*[-*]\s+\S/.test(l)),
-  // At least one ticked box. "None — this PR doesn't change any of the above" is a
-  // legitimate tick, so this does not care WHICH box, only that a choice was made.
-  checkbox: (s) => /^\s*[-*]\s*\[x\]/im.test(s),
 };
 
 /**
@@ -240,10 +276,10 @@ export function checkPrBody(body) {
     ];
   }
   const problems = [];
-  for (const { heading, rule, want } of SECTIONS) {
+  for (const { heading, rule, required, want } of SECTIONS) {
     const section = sectionBody(body, heading);
     if (section === null) {
-      problems.push(`"${heading}" section is missing — expected ${want}`);
+      if (required) problems.push(`"${heading}" section is missing — expected ${want}`);
     } else if (!RULES[rule](section)) {
       problems.push(`"${heading}" is empty or still the template placeholder — expected ${want}`);
     }
@@ -274,20 +310,41 @@ function main() {
     .filter(Boolean);
   const headRef = arg('pr-head-ref');
 
-  const skip = shouldSkip({ prTitle, prLabels, prAuthor });
-  if (skip) {
-    console.log(`pr-body-check: skipped — ${skip}`);
-    return;
+  // A bot PR or a generated release branch: nobody typed the title or the description.
+  let generated = null;
+  if (isBotAuthor(prAuthor)) generated = `author "${prAuthor}" matches bot pattern`;
+  else if (SKIP_HEAD_REF_PATTERNS.some((p) => p.test(headRef))) {
+    generated = `head ref "${headRef}" is a generated-body branch`;
   }
-  if (SKIP_HEAD_REF_PATTERNS.some((p) => p.test(headRef))) {
-    console.log(`pr-body-check: skipped — head ref "${headRef}" is a generated-body branch`);
+  if (generated) {
+    console.log(`pr-body-check: skipped — ${generated}`);
     return;
   }
 
-  const problems = [
-    ...checkPrBody(process.env.PR_BODY),
-    ...checkIssueRefs(`${prTitle}\n${process.env.PR_BODY ?? ''}`),
-  ];
+  const badTitle = titleProblems(prTitle);
+  if (badTitle.length) {
+    console.error(`pr-body-check: the PR title needs fixing — "${prTitle}"\n`);
+    for (const p of badTitle) console.error(`  ✗ ${p}`);
+    console.error(
+      '\nWrite it as "type: Summary" or "type(scope): Summary". The type places the change\n' +
+        'in CHANGELOG.md (scripts/lib/pr-title.js):\n',
+    );
+    for (const line of describeTypes()) console.error(`  ${line}`);
+    console.error('\nEdit the title on GitHub and the check re-runs — no new push needed.\n');
+    process.exitCode = 1;
+  } else {
+    console.log('pr-body-check: PR title has a changelog type — OK');
+  }
+
+  const skip = shouldSkip({ prTitle, prLabels, prAuthor });
+  if (skip) {
+    console.log(`pr-body-check: description check skipped — ${skip}`);
+    return;
+  }
+
+  const bodyFile = arg('body-file');
+  const body = bodyFile ? readFileSync(bodyFile, 'utf8') : process.env.PR_BODY;
+  const problems = [...checkPrBody(body), ...checkIssueRefs(`${prTitle}\n${body ?? ''}`)];
   if (!problems.length) {
     console.log('pr-body-check: PR description is filled in — OK');
     return;

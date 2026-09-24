@@ -1,30 +1,32 @@
 ---
 name: pr
-description: Create OR update a pull request using the JellyRock template at `.github/pull_request_template.md`. Detects an existing open PR for the current branch and routes to update-mode (diff body, ask, then `gh pr edit`) instead of duplicating; aborts cleanly on merged/closed PRs. Scans branch + commits for related issues, falls back to `gh` issue search, surfaces architecture docs whose related-files were touched, and runs the four-pillar judgment passes (tech-debt scan, decision-shape detect, followup capture) so journal hygiene is part of shipping rather than a separate manual step. Required for all PRs in this repo — supersedes any default PR-creation flow.
+description: Create OR update a pull request — a typed title (`fix:`, `feat:` … from `scripts/lib/pr-title.js`, which places the change in CHANGELOG.md), category labels chosen by judgment, a concise body from `.github/pull_request_template.md` that reads as the squash commit message, and one skill-owned "review notes" comment for the detail reviewers want but `git log` doesn't. Detects an existing open PR for the current branch and routes to update-mode (diff title/labels/body/comment, ask, then apply) instead of duplicating; aborts cleanly on merged/closed PRs. Scans branch + commits for related issues, falls back to `gh` issue search, surfaces architecture docs whose related-files were touched, and runs the four-pillar judgment passes (tech-debt scan, decision-shape detect, followup capture) so journal hygiene is part of shipping rather than a separate manual step. Required for all PRs in this repo — supersedes any default PR-creation flow.
 model: sonnet
 effort: low
 user-invocable: true
-allowed-tools: Bash(gh pr view:*), Bash(gh issue list:*), Bash(gh issue view:*), Bash(gh search issues:*), Bash(gh api user --jq .login), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git rev-list:*), Bash(git merge-base --is-ancestor:*), Bash(node scripts/lint/check-touched-related-files.cjs:*), Bash(node scripts/lint/decision-shape-nudge.cjs:*), Bash(node scripts/lint/pr-body-check.js:*), Read, Task
+allowed-tools: Bash(gh pr view:*), Bash(gh issue list:*), Bash(gh issue view:*), Bash(gh search issues:*), Bash(gh api user --jq .login), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git rev-list:*), Bash(git merge-base --is-ancestor:*), Bash(node scripts/lint/check-touched-related-files.cjs:*), Bash(node scripts/lint/decision-shape-nudge.cjs:*), Bash(node scripts/lint/pr-body-check.js:*), Bash(gh label list:*), Read, Task
 ---
 
 # Create or Update a Pull Request
 
-Open a PR whose body comes from `.github/pull_request_template.md`, with the Issues and Docs sections filled in from real signal on the branch, and run the four-pillar judgment passes BEFORE pushing so journal hygiene lands in the same change set. If a PR already exists for the current branch, route to update-mode: diff the current body against the freshly-rendered one, ask before applying, and use `gh pr edit` instead of `gh pr create`. This replaces the generic PR-creation flow — do not call `gh pr create` or `gh pr edit` directly outside this skill.
+Open a PR with a typed title, its category labels, a body from `.github/pull_request_template.md` filled from real signal on the branch, and a review-notes comment, and run the four-pillar judgment passes BEFORE pushing so journal hygiene lands in the same change set. If a PR already exists for the current branch, route to update-mode: diff what is there against a fresh render, ask before applying, and use `gh pr edit` instead of `gh pr create`. This replaces the generic PR-creation flow — do not call `gh pr create` or `gh pr edit` directly outside this skill.
 
 ## Contract
 
-**Goal.** Be the single, mandatory path for opening or updating a pull request in this repo. The skill renders the PR body from `.github/pull_request_template.md`, fills the Issues and Docs sections from real branch signal (not intent), and runs three judgment passes — tech-debt scan, decision-shape detect, followup capture — BEFORE the body is pushed, so journal hygiene lands in the same change set rather than as separate manual chores. It is create-or-update aware: an existing open PR for the branch routes to update-mode (diff the current body against a fresh render, confirm, then `gh pr edit`), and merged/closed PRs abort cleanly instead of opening a duplicate. It ships at the Sonnet tier because the work is template-fill + structured signal-gathering with bounded judgment, with the genuinely judgment-heavy tech-debt walk delegated to its own sub-agent — supersede any default PR-creation flow with this skill; never call `gh pr create`/`gh pr edit` directly outside it.
+**Goal.** Be the single, mandatory path for opening or updating a pull request in this repo. The skill titles the PR with the type that places it correctly in CHANGELOG.md, labels it for the GitHub UI, renders a body that reads well as the squash commit message, puts reviewer-only detail in one review-notes comment, and runs three judgment passes — tech-debt scan, decision-shape detect, followup capture — BEFORE the body is pushed, so journal hygiene lands in the same change set rather than as separate manual chores. It is create-or-update aware: an existing open PR for the branch routes to update-mode (diff the current title, labels, body and notes comment against a fresh render, confirm, then apply), and merged/closed PRs abort cleanly instead of opening a duplicate. It ships at the Sonnet tier because the work is template-fill + structured signal-gathering with bounded judgment, with the genuinely judgment-heavy tech-debt walk delegated to its own sub-agent — supersede any default PR-creation flow with this skill; never call `gh pr create`/`gh pr edit` directly outside it.
 
-**Inputs.** No `$ARGUMENTS` — the skill operates on the current branch and its commits. It expects a non-`main`, non-detached branch with a clean working tree and an upstream it can push (the pre-flight establishes these, pushing the branch where needed). It reads the PR template, the branch's commit log and diff vs `main`, an existing PR's body (when one is open) including the embedded `<!-- /pr render: sha=... -->` marker, and the architecture-docs related-files lint.
+**Inputs.** No `$ARGUMENTS` — the skill operates on the current branch and its commits. It expects a non-`main`, non-detached branch with a clean working tree and an upstream it can push (the pre-flight establishes these, pushing the branch where needed). It reads the PR template, the title types in `scripts/lib/pr-title.js`, the branch's commit log and diff vs `main`, an existing PR's title, labels, body and review-notes comment (when one is open) including the `<!-- /pr render: sha=... -->` marker, and the architecture-docs related-files lint.
 
-**Outputs.** A created or updated pull request whose body is the filled template (section headings preserved; the template's hint comments dropped — see "Build the body") ending in a hidden `<!-- /pr render: sha=<40-char> ts=<ISO-8601-UTC> -->` marker that lets the next invocation narrow judgment-pass scope to "since last render"; an imperative-mood title with code identifiers backticked; drafted journal entries (tech-debt / decision / followup) surfaced per-candidate for the user to accept into `/log`; on the update path, a pre-render backup of the prior body in `.claude/handoffs/`; and the PR URL printed. No journal entry is written without per-candidate user accept; no body is overwritten without confirmation.
+**Outputs.** A created or updated pull request with: a `type: Imperative summary` title (type from `scripts/lib/pr-title.js`, code identifiers backticked); one or more category labels; a body that is the filled template (hint comments dropped, optional sections present only when they have content — see "Build the body"); and one review-notes comment holding the verification detail, the docs and journals the PR touched, and the hidden `<!-- /pr render: sha=<40-char> ts=<ISO-8601-UTC> -->` marker that lets the next invocation narrow judgment-pass scope to "since last render". Also: drafted journal entries (tech-debt / decision / followup) surfaced per-candidate for the user to accept into `/log`; on the update path, a pre-render backup of the prior body and notes in `.claude/handoffs/`; and the PR URL printed. No journal entry is written without per-candidate user accept; nothing on the PR is overwritten without confirmation.
 
 **Success criteria.**
 
 - The pre-flight gates hold: not on `main`, not detached, clean tree, branch pushed — hard failures stop and report; an obvious push is not gated behind a verbal question.
 - Existing-PR routing is correct: open → update-path (diff, confirm, `gh pr edit`); merged or closed → abort with the right recovery instruction; none → create-path.
 - The four-pillar judgment passes run against the resolved `<lower>` SHA (prior render marker on update, `main` on create) so the user isn't re-asked about already-handled candidates, and each candidate is confirm/skip per-item.
-- The Issues section always contains something (a real `Fixes`/`Ref #N`, or `None`); the title backticks code identifiers and names every user-visible change (it becomes the changelog line); the Docs checkboxes reflect the actual diff, not intent.
+- The title passes `pr-body-check.js` (a known type, a non-blank scope if any), backticks code identifiers, and names every user-visible change — it becomes the changelog line. Its type follows "Choosing the type" below, not habit.
+- Every category label that honestly applies is on the PR, and `documentation` only on a docs-only PR (it makes journal-sync and the description check skip the PR). Labels the skill does not manage (`merge-conflict`, `release-prep` …) are never removed.
+- The body passes `pr-body-check.js --body-file` before it is posted; related issues found are rendered as `Fixes`/`Ref #N`, and an optional section with nothing to say is left out rather than written as `None`.
 - `gh pr create` / `gh pr edit` / `Write` permission prompts are left intact — they are the user's gate on body content and backup creation, not suppressed.
 
 **Failure modes to avoid.**
@@ -34,6 +36,8 @@ Open a PR whose body comes from `.github/pull_request_template.md`, with the Iss
 - **Overwriting a PR body without confirmation or backup.** On the update path, always diff-then-confirm and write the prior body to `.claude/handoffs/` before `gh pr edit`; if `gh pr edit` fails, the backup is the recovery path — surface it, don't claim success.
 - **Opening a duplicate on a merged/closed PR.** Abort with the recovery instruction; never silently create a second PR.
 - **A title that names only part of the PR.** The squash subject is the changelog line and cannot be edited after merge; re-derive the title from every user-visible change, on the update path too. The likeliest omission is a behavioural fix delivered *inside* a refactor — the exclusion for refactors is about diffs that change nothing a viewer can observe, not about fixes that happen to arrive as restructuring.
+- **A type picked by habit.** `fix:` on a change to the `/pr` skill put "(skills) Make `/pr` titles…" in the user-facing Fixed section (#998): tooling changes take a hidden type. The reverse fails too — an untyped or `chore:` title on an app change drops it from the changelog or files it under Changed.
+- **Detail stuffed into the body.** The body is the permanent commit message; measurement tables, device matrices and reviewer asides belong in the review-notes comment, with a one-line summary of the evidence left in `## Testing`.
 - **Rephrasing the title to drop a code reference** when the spell-check precheck fails — backtick the identifier instead; dropping the reference is the wrong fix.
 - **Suppressing the create/edit/Write permission prompts** by allowlisting them — they are intentional user gates.
 
@@ -45,7 +49,7 @@ Open a PR whose body comes from `.github/pull_request_template.md`, with the Iss
 
 ## Implementation
 
-`gh pr edit` and `Write` are intentionally NOT pre-approved in this skill's frontmatter — the permission prompts they trigger are the user-approval gate for body overwrites and local backup file creation. Don't try to suppress them.
+`gh pr create`, `gh pr edit`, `gh pr comment` and `Write` are intentionally NOT pre-approved in this skill's frontmatter — the permission prompts they trigger are the user-approval gate for what gets posted and for local backup file creation. Don't try to suppress them. Editing the notes comment goes through `gh api`, which the project allowlists, so the skill's own apply/skip confirmation is that write's gate — never edit it without one.
 
 The mechanical close-loop side (move `## Currently running` → `## Recently shipped`, bump `last-updated:`) runs automatically after the PR merges via [`.github/workflows/journal-sync.yml`](../../../.github/workflows/journal-sync.yml). This skill does NOT touch that — its job is the judgment side: tech-debt entries, decision entries, and followup entries that need a human call.
 
@@ -62,22 +66,23 @@ If a hard check (on `main` / detached HEAD / dirty tree) fails, stop and report.
 
 ### Detect existing PR (route create vs update)
 
-Run `gh pr view --json number,url,state,isDraft,author,body,headRefOid` for the current branch. Branch on `state`:
+Run `gh pr view --json number,url,state,isDraft,author,title,labels,body,headRefOid` for the current branch. Branch on `state`:
 
 - **`MERGED`** — abort. Print: `PR #<N> is already merged at <url>. Switch off this branch (e.g. `git switch main && git pull`) before opening a follow-up PR.` Don't try to update or open a duplicate.
 - **`CLOSED`** (not merged) — abort. Print: `PR #<N> at <url> was closed without merging. Reopen manually with `gh pr reopen <N>` if you want to revive it, or start a new branch.` Don't silently open a duplicate.
-- **`OPEN`** — enter the **update path**. Capture `<N>`, `<url>`, `<author.login>`, `<body>`, and `<headRefOid>` for later steps.
+- **`OPEN`** — enter the **update path**. Capture `<N>`, `<url>`, `<author.login>`, `<title>`, `<labels>`, `<body>`, and `<headRefOid>` for later steps.
 - **No PR exists** (`gh pr view` exits non-zero with "no pull requests found for branch") — enter the **create path** (today's flow).
 
 #### Update-path setup (skip on create path)
 
 1. **Author warn** (best-effort) — run `gh api user --jq .login`. If the result differs from the captured `<author.login>`, print one line: `Note: PR #<N> was opened by <other-user>. Body edits will appear under your account.` Don't abort. If `gh api user` fails (auth/rate limit), skip the warn silently — it's informational only.
-2. **Resolve lower-bound SHA** — this becomes the input range for judgment passes (so the user isn't re-asked about candidates already accepted/skipped on the prior /pr render):
-   1. Parse the PR body for the marker `<!-- /pr render: sha=([a-f0-9]{40}) ts=(\S+) -->`. If multiple markers exist (rare — copy-paste), take the LAST match.
+2. **Find the review-notes comment** — `gh pr view <N> --json comments --jq '.comments[] | select(.body | contains("<!-- /pr notes -->")) | {url, author: .author.login, body}'`. Keep the last match authored by the current user as `<notes>`; its numeric id is the `#issuecomment-<id>` suffix of its `url`. None found (a PR opened before this skill posted notes, or by hand) → the create step for notes runs on apply.
+3. **Resolve lower-bound SHA** — this becomes the input range for judgment passes (so the user isn't re-asked about candidates already accepted/skipped on the prior /pr render):
+   1. Parse `<notes>` for the marker `<!-- /pr render: sha=([a-f0-9]{40}) ts=(\S+) -->`; if there is none, parse the PR body (PRs rendered before the marker moved to the comment carry it there). If multiple markers exist (rare — copy-paste), take the LAST match.
    2. If a marker SHA is found AND `git merge-base --is-ancestor <sha> HEAD` exits 0 → use that SHA.
    3. Otherwise, fall back: `gh pr view --json commits --jq '.commits[0].oid'`. If that SHA is also reachable from HEAD, use it.
    4. Ultimate fallback (force-push edge case where neither prior SHA is reachable): use `main` — same scope as the create path. Print one line so the user knows the narrow scope was lost: `Note: prior /pr render SHA unreachable from HEAD (rebase or force-push?). Falling back to full-branch scope for judgment passes.`
-3. The resolved SHA is referenced as `<lower>` throughout the rest of this skill. On the **create path**, `<lower>` is `main`.
+4. The resolved SHA is referenced as `<lower>` throughout the rest of this skill. On the **create path**, `<lower>` is `main`.
 
 ### Four-pillar judgment passes (before drafting the PR body)
 
@@ -120,28 +125,25 @@ The CLAUDE.md `Followup-discipline rule` governs which journal each deferral lan
 - `git diff main...HEAD --name-only` — file list.
 - `node scripts/lint/check-touched-related-files.cjs --base main` — architecture docs whose `related-files:` were touched.
 - `Read .github/pull_request_template.md` — the template you'll fill.
+- `Read scripts/lib/pr-title.js` — `TITLE_TYPES` is the list of types and the CHANGELOG.md section each one lands in. Read it rather than recalling it; it is the definition CI checks against.
 
-### Build the body
+### Title
 
-Start from the template literally. Keep every section heading intact so the body's shape is
-predictable, and **drop the template's `<!-- hint -->` comments** rather than carrying them
-through.
+`type: Imperative summary` or `type(scope): Imperative summary`, under 70 characters. Synthesize from commits, not just the latest. Passed via `--title`, not in the body.
 
-The hints exist to prompt whoever fills the template in; they are not content. That was a
-free choice when the body only lived on GitHub, and stopped being one when the repo set
-`squash_merge_commit_message=PR_BODY`: the body is now the **permanent commit message** of
-every squashed PR, so a carried-through hint is template scaffolding printed into `git log`
-forever. Anyone editing the body later can read the template itself, which is one click away
-and cannot go stale the way a copy would.
+#### Choosing the type
 
-The one comment that DOES stay is the trailing `<!-- /pr render: … -->` marker — it is
-machine-read by this skill's own update path, and one line of metadata is the price of not
-losing narrow-scope resolution across invocations.
+The repo squash-merges, so the title is the first line of the commit on `main`, and [`scripts/changelog-syncer.js`](../../../scripts/changelog-syncer.js) places the change in CHANGELOG.md by the title's type (`TITLE_TYPES` in [`scripts/lib/pr-title.js`](../../../scripts/lib/pr-title.js)). A title with no known type fails CI (`pr-body-check.js`). Pick the type by what the PR does to **the app a viewer runs**:
 
-#### Title
-Imperative mood, < 70 chars. Synthesize from commits, not just the latest. Passed via `--title`, not in the body.
+- **It changes the app** (`components/`, `source/`, `locale/`, `images/`, `settings/`, `manifest`) → a changelog type: `feat` for a new capability or setting, `fix` for behaviour that was wrong, `update` for behaviour that changes on purpose, `perf` for the same behaviour faster, `refactor` for a restructure meant to change nothing (it is still listed — a refactor can regress, and developers read the changelog too), `remove` for a feature taken out, `revert` to undo a PR.
+- **It only changes tooling around the app** (`scripts/`, `.github/`, `.claude/`, `tests/`, `docs/`, dev dependencies) → a hidden type: `chore`, `ci`, `build`, `test` or `docs`. A fix to a skill, a lint rule or a workflow is `chore`/`ci`, not `fix`: `fix(skills):` put "(skills) Make `/pr` titles…" in the user-facing Fixed section (#998).
+- **Both** → type it by the app change; the tooling rides along in the body.
 
-**The title is the permanent changelog line — it must name every user-visible change in the PR.** The repo squash-merges, and [`scripts/changelog-syncer.js`](../../../scripts/changelog-syncer.js) builds `CHANGELOG.md` from each squash commit's FIRST LINE, which is this title. It does not re-read the PR title after merge, and `CHANGELOG.md` is CI-owned, so a change the title leaves out is missing from the changelog for good (fixable only by hand in the release notes). Before applying a title:
+A scope is optional. When the PR sits in one area, name it — `fix(video):`, `chore(skills):` — and keep it to that area's usual name; it appears in the changelog line as `(video) …`. Never write an empty or blank scope; CI rejects `fix():`.
+
+#### Naming every user-visible change
+
+**The title is the changelog line — it must name every user-visible change in the PR.** The changelog reads the PR's **current** title, so a wrong or incomplete title can be corrected after merge by editing the PR and re-syncing, but only until the release is cut: from then on the released section of `CHANGELOG.md` is fixed text, correctable only by hand. Get it right before merge. Before applying a title:
 
 1. List the user-visible changes from the Changes section you are rendering (what a viewer of the app would notice — not refactors, tests, or journal entries).
    **A refactor that changes behaviour is not a refactor for this purpose.** Before excluding something as internal, ask what it makes the app *do differently*. If you can state it as "X used to sometimes fail, now it doesn't", it is user-visible and belongs in the title even though the diff reads as restructuring — and it belongs whether or not the old failure was reproduced, since the repo's own policy is to fix these races without a reproduction ([ADR 0037](../../../docs/adr/0037-task-run-replacement.md)). The tell is a commit subject that joins a fix to a restructure with "and": each half needs its own check against the title. Recorded 2026-09-22 — PR #1010's first title named only its teardown fix and dropped the "a subtitle track switch is no longer silently lost" fix, because the component split that carried it classified as a refactor and the list above says to exclude those.
@@ -150,23 +152,48 @@ Imperative mood, < 70 chars. Synthesize from commits, not just the latest. Passe
 
 **Backtick every code identifier in the title** — class/component/file names like `` `GridItem` ``, `` `BaseGridView.bs` ``, `` `ItemDetails` ``. The post-merge journal-sync writes the title verbatim into `docs/progress.md` and the PR-time precheck ([`journal-sync-precheck.yml`](../../../.github/workflows/journal-sync-precheck.yml)) spell-checks it; a bare identifier fails that check. Synthesizing from commit subjects (which don't backtick) yields a bare title, so add the backticks yourself. When the precheck fails, **backtick the identifier — never rephrase the title to drop the reference** (that's the wrong fix, even though the old error message led with it). Backticks render as code in `progress.md`; GitHub shows them literally in the title, which is the accepted trade-off.
 
-#### Overview
-1–5 sentences describing *what* changed and *why*. Synthesize from the full commit log, not the last commit.
+### Labels
 
-#### Changes
-Bulleted list. One line per logical change, not per file. Group related edits.
+Labels are for finding and sorting PRs in the GitHub UI; the changelog does not read them, apart from `dependencies`. Apply **every** category label that honestly applies — they are not a function of the type. A performance fix delivered by a refactor is `bug-fix` + `code-cleanup`; a new setting is `new-setting`, and `new-feature` too when the setting is how a new capability is reached.
 
-#### Follow-ups — required
+| Label | Use when the PR… |
+|---|---|
+| `new-feature` | adds a capability a viewer can use |
+| `new-setting` | adds a user-facing setting |
+| `general-improvement` | makes existing behaviour better — UX, speed, wording, robustness |
+| `bug-fix` | corrects behaviour that was wrong |
+| `code-cleanup` | restructures or tidies app code without intending to change behaviour |
+| `dev-improvement` | improves tooling, CI, tests, skills or developer docs |
+| `documentation` | changes **only** docs. It makes journal-sync and the description check skip the PR, so never add it to a PR that also changes code |
+| `accessibility` | improves screen-reader, audio-guide, caption or other accessibility support |
 
-Mirrors the Issues-section pattern: write `None` (no bullet) when nothing is deferred; use bulleted lines only when listing actual follow-ups. Each follow-up must point at its journal entry (see "Pass 3 — Followup capture" above): a stable slug in `docs/architecture/tech-debt.md`, or a `docs/progress.md` open followup. If a deferred item has neither yet, capture it as part of this PR or drop the line. Don't invent deferrals to fill the section — `None` is the right answer most of the time.
+Leave alone the labels automation owns — `dependencies` (Renovate), `release-prep`, `merge-conflict` — and the issue-triage labels. On the **update path**, add the labels the render wants and remove only labels from the table above that no longer apply; never remove anything else. `gh label list` shows the repo's labels if you need to check one exists.
 
-**Links in the PR body must be absolute URLs** — `https://github.com/jellyrock/jellyrock/blob/main/<path>`, e.g. `- [\`itemdetails-size\`](https://github.com/jellyrock/jellyrock/blob/main/docs/architecture/tech-debt.md#itemdetails-size) — split per-item-type renderers into separate modules`. GitHub does not resolve repo-relative links in a PR body: `../docs/…` or `docs/…` is emitted as written and 404s from the PR page. Link `main`, not the PR branch, because the branch is deleted on merge; for a file the PR adds, name it in backticks instead of linking.
+### Build the body
+
+The body is the **permanent commit message** of the squash merge (`squash_merge_commit_message=PR_BODY`): write it for someone reading `git log` a year from now, who will not have the PR page. It is also the PR description, so it must stand on its own for a reviewer — which is why detail that only a reviewer needs goes in the review-notes comment, not here.
+
+Start from the template. Keep the headings you use exactly as the template spells them, **drop every `<!-- hint -->` comment**, and **leave out an optional section you have nothing for** — an empty heading, or one that says `None`, is noise in `git log`. `pr-body-check.js` fails an optional section that is present but empty.
+
+#### Overview — required
+1–5 sentences: what changed and why, synthesized from the full commit log. Lead with the problem the PR solves; a reader should know from this paragraph alone whether the commit is the one they are looking for.
+
+#### Changes — required
+Bulleted list, one line per logical change, not per file. Name the symbols a reader would grep for. Keep each bullet to what changed and the reason it had to; the path you took to get there belongs in the notes comment.
+
+#### Testing — when something was verified
+One to four lines summarizing the evidence: what ran, where (device, server version), and the result — `test:unit 4503/4503 on a Roku Ultra`, `the #969 repro keeps the resume point on 12.1 and 10.7.7`. This is the durable record of the proof ([`prove-dont-dismiss`](../../rules/prove-dont-dismiss.md)); the full matrix, measurements and logs go in the notes comment.
+
+#### Follow-ups — when something is deferred
+Bulleted, each pointing at its journal entry (see "Pass 3 — Followup capture" above): a stable slug in `docs/architecture/tech-debt.md`, or a `docs/progress.md` open followup. If a deferred item has neither yet, capture it as part of this PR or drop the line. Don't invent deferrals; most PRs have none and leave the section out.
+
+**Links in the PR body and the notes comment must be absolute URLs** — `https://github.com/jellyrock/jellyrock/blob/main/<path>`, e.g. `- [\`itemdetails-size\`](https://github.com/jellyrock/jellyrock/blob/main/docs/architecture/tech-debt.md#itemdetails-size) — split per-item-type renderers into separate modules`. GitHub does not resolve repo-relative links in a PR body: `../docs/…` or `docs/…` is emitted as written and 404s from the PR page. Link `main`, not the PR branch, because the branch is deleted on merge; for a file the PR adds, name it in backticks instead of linking.
 
 #### References to other repositories
 
 **A bare `#N` is always THIS repo's issue N** — GitHub links it here no matter what repo the sentence names. Write another repo's issue or PR as `owner/repo#N` (`jellyfin/jellyfin#17107`, `jellyfin-archive/jellyfin-roku-legacy#669`) or as a full URL. Two forms are wrong and both are permanent, because the body becomes the squash commit: the shorthand `repo#N` (`jellyfin#17107`) renders as plain text, and `legacy PR #669` links to our own unrelated #669. They usually arrive by copying a commit message into the body, so rewrite them on the way in. The shorthand fails CI (`pr-body-check.js`); a mis-aimed bare `#N` can only be caught by reading its title, which is what the check in "Create or update the PR" is for. Recorded 2026-09-23 — #1016 linked "Cast to JellyRock" for the legacy PR it credited, and #940, #1000 and #1002 left Jellyfin issues unlinked.
 
-#### Issues — required, must contain something
+#### Issues — when related issues exist
 
 **Tier 1 — local scan (always):**
 - Branch name: extract any `\d+` (e.g. `fix/482-stuck-resume` → candidate #482).
@@ -175,83 +202,74 @@ Mirrors the Issues-section pattern: write `None` (no bullet) when nothing is def
 Confirm each candidate exists with `gh issue view <N> --json number,title,state`.
 
 **Tier 2 — open-issue search (only if Tier 1 found nothing):**
-- Extract 2–4 keywords from the PR title (skip stop words and the conventional-commit prefix).
+- Extract 2–4 keywords from the PR title (skip stop words and the type prefix).
 - `gh issue list --state open --search "<keywords>" --limit 10 --json number,title,labels`
 - Treat results as **candidates, not answers** — the search is fuzzy. Judge relevance from titles.
 
-**Render:**
-- Closes the issue → `Fixes #N`
-- Related but not closed → `Ref #N`
-- Nothing credible found → write `None` on its own line.
+**Render:** one line per issue — `Fixes #N` when the PR closes it, `Ref #N` when it is only related. Nothing credible found → leave the section out. If multiple plausible candidates surface and you can't judge confidently, list them and ask the user.
 
-Never silently omit this section. If multiple plausible candidates surface and you can't judge confidently, list them and ask the user.
+### Review-notes comment
 
-#### Docs / context updates — required
+One comment per PR, owned by this skill, for what a reviewer wants and `git log` doesn't. It replaces the Docs checklist the template used to carry. Shape:
 
-Render every checkbox from the template; tick only those that genuinely apply (i.e. you actually edited a file in that category). Use `git diff main...HEAD --name-only` as ground truth, not intent.
+```markdown
+<!-- /pr notes -->
+## Review notes
 
-### Create or update the PR
+**Docs and journals:** <what this PR updated — architecture docs, a scoped CLAUDE.md, a decision note or ADR (by slug), tech-debt or progress.md entries — or "none". This is the checklist's job, done from the diff: `git diff main...HEAD --name-only` is the ground truth, not intent.>
 
-#### Marker line (both paths)
+<Verification detail: device and server matrices, measurements, before/after output, the reasoning behind a non-obvious call. Omit a part with nothing to say. Absolute URLs only.>
 
-The rendered body always ends with a hidden HTML-comment marker so subsequent /pr invocations against the same PR can narrow the judgment-pass scope to "since last render." Format, with a blank line above it:
-
-```
 <!-- /pr render: sha=<full-40-char-HEAD-sha> ts=<ISO-8601-UTC> -->
 ```
 
-Resolve `<full-40-char-HEAD-sha>` via `git rev-parse HEAD`. Resolve `<ISO-8601-UTC>` via `date -u +%Y-%m-%dT%H:%M:%SZ`. The marker survives most manual body edits (it's the last line, visually unobtrusive); if a user deletes it the next /pr update degrades to PR-first-commit fallback — no harm done.
+`<!-- /pr notes -->` must stay the first line: it is how the update path finds the comment again. Resolve `<full-40-char-HEAD-sha>` via `git rev-parse HEAD` and `<ISO-8601-UTC>` via `date -u +%Y-%m-%dT%H:%M:%SZ`. The render marker lives here, not in the body, so it never reaches `git log`; if it goes missing, the next update degrades to the PR-first-commit fallback — no harm done.
 
-#### Check the issue references (both paths)
+### Create or update the PR
 
-Before `gh pr create` / `gh pr edit`, run the rendered title and body through the resolver:
+#### Check the title, body and issue references (both paths)
+
+Write the rendered body to a scratch file, then run the same checks CI runs:
 
 ```sh
-node scripts/lint/pr-body-check.js --list-refs --pr-title "<title>" <<'EOF'
-<filled template>
-EOF
+node scripts/lint/pr-body-check.js --pr-title "<title>" --body-file <body-file>
+node scripts/lint/pr-body-check.js --list-refs --pr-title "<title>" < <body-file>
 ```
 
-It prints every issue reference with its resolved type, state and title. Read each bare `#N` line against the sentence it came from — a title that doesn't match (`#669 — issue: Cast to JellyRock` for a legacy PR) means the reference belongs to another repo and must become `owner/repo#N`. A non-zero exit means a shorthand or nonexistent reference; fix the body and re-run. A `?` line (gh could not resolve it) is not a pass — check that reference by hand.
+The first must exit 0; fix what it reports and re-run. The second prints every issue reference with its resolved type, state and title. Read each bare `#N` line against the sentence it came from — a title that doesn't match (`#669 — issue: Cast to JellyRock` for a legacy PR) means the reference belongs to another repo and must become `owner/repo#N`. A non-zero exit means a shorthand or nonexistent reference; fix the body and re-run. A `?` line (gh could not resolve it) is not a pass — check that reference by hand. Run the `--list-refs` check over the notes comment too.
 
 #### Create path
 
 ```sh
-gh pr create \
-  --title "<title>" \
-  --body "$(cat <<'EOF'
-<filled template — section headings exactly as in the template>
-
-<!-- /pr render: sha=<sha> ts=<ts> -->
-EOF
-)"
+gh pr create --title "<title>" --label "<label>" [--label "<label>" …] --body-file <body-file>
+gh pr comment <N> --body-file <notes-file>
 ```
 
-Default to non-draft. Use `--draft` only when work is genuinely incomplete and you want CI early — and say so explicitly to the user. The `gh pr create` permission prompt is the user's gate on body content; that's intentional and not allowlisted.
+Default to non-draft. Use `--draft` only when work is genuinely incomplete and you want CI early — and say so explicitly to the user. The `gh pr create` and `gh pr comment` permission prompts are the user's gate on what gets posted; that's intentional and not allowlisted.
 
 #### Update path
 
-1. **Render** the new title and body the same way as the create path (template + marker line at the bottom). The body describes the FULL PR (the gather-context commands run against `main..HEAD`), not just the delta since last render.
-2. **Compare** the freshly-rendered title and body to the captured `<body>` and the PR's current title from the existing-PR detection step:
-   - If both are byte-for-byte unchanged after re-render (modulo the marker timestamp, which always changes — strip it for the comparison) → print `PR #<N> already up to date at <url>` and stop. No backup, no `gh pr edit` call, no permission prompt.
-   - Otherwise, show the user a unified diff for the title (only if changed) and a section-by-section diff for the body so they can scan it quickly. Highlight whether the change is to auto-rendered sections (Issues / Docs checkboxes) or to human-curated sections (Overview / Changes / Follow-ups) — the latter are likelier to have manual edits worth preserving.
+1. **Render** the new title, labels, body and notes comment the same way as the create path. The body describes the FULL PR (the gather-context commands run against `main..HEAD`), not just the delta since last render.
+2. **Compare** each against what the PR has now (`<title>`, `<labels>`, `<body>`, `<notes>`):
+   - All unchanged (the notes compared with the render marker's timestamp stripped) → print `PR #<N> already up to date at <url>` and stop. No backup, no edit, no permission prompt.
+   - Otherwise, show the user a diff for each part that changed — title, labels added/removed, the body section by section, the notes comment. Say which body sections were human-curated (Overview / Changes / Follow-ups), since those are likelier to carry manual edits worth preserving. A body that still carries the old template's Docs checklist or render marker drops them on re-render; say so.
 3. **Confirm** — ask the user `apply / skip / edit-then-apply`:
-   - `skip` — print `<url>` and stop. The PR body is unchanged.
-   - `edit-then-apply` — let the user revise the proposed body (paste edits, or have them dictate the change) before re-prompting.
+   - `skip` — print `<url>` and stop. The PR is unchanged.
+   - `edit-then-apply` — let the user revise the proposal (paste edits, or have them dictate the change) before re-prompting.
    - `apply` — proceed to backup + apply.
-4. **Backup** (apply path only) — write the captured prior `<body>` to `.claude/handoffs/pr-<N>-pre-render-<ISO-8601-compact-ts>.md`. The `Write` tool will trigger a permission prompt; that's expected — it's the user's last gate before the body is overwritten. The backup file is gitignored and auto-pruned by `/catchup` after 30 days.
-5. **Apply** via:
+4. **Backup** (apply path only) — write the captured prior `<body>`, followed by the prior `<notes>` body if there was one, to `.claude/handoffs/pr-<N>-pre-render-<ISO-8601-compact-ts>.md`. The `Write` tool will trigger a permission prompt; that's expected — it's the user's last gate before the PR is overwritten. The backup file is gitignored and auto-pruned by `/catchup` after 30 days.
+5. **Apply** only the parts that changed:
 
    ```sh
-   gh pr edit <N> [--title "<new-title>"] --body "$(cat <<'EOF'
-   <filled template + marker>
-   EOF
-   )"
+   gh pr edit <N> [--title "<new-title>"] [--add-label "<a>,<b>"] [--remove-label "<c>"] [--body-file <body-file>]
+   # notes: edit the existing comment, or create it when there was none
+   gh api -X PATCH repos/jellyrock/jellyrock/issues/comments/<id> -F body=@<notes-file>
+   gh pr comment <N> --body-file <notes-file>
    ```
 
-   Pass `--title` only if it actually changed. The `gh pr edit` permission prompt is the second user gate; it's intentionally NOT allowlisted in this skill's frontmatter.
+   The `gh pr edit` permission prompt is the second user gate; it's intentionally NOT allowlisted in this skill's frontmatter.
 
-   If `gh pr edit` fails (network, auth, conflict): the backup file is still on disk — the previous body wasn't lost. Tell the user the backup path and abort. They can recover by running `gh pr edit <N> --body-file <backup-path>` manually.
+   If an edit fails (network, auth, conflict): the backup file is still on disk — the previous body and notes weren't lost. Tell the user the backup path and abort. They can restore the body with `gh pr edit <N> --body-file <backup-path>` after trimming the notes off the end.
 
 ### After creating or updating
 

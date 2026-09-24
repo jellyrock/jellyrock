@@ -215,7 +215,7 @@ describe('changelog-syncer.js', () => {
       expect(readChangelog(fixture.dir)).toBe(afterFirst);
     });
 
-    it('categorizes commits: feat → Added, fix → Fixed, security → Security, chore → filtered', () => {
+    it('categorizes commits: feat → Added, fix → Fixed, security wording stays Fixed, chore → filtered', () => {
       fixture = createGitFixture();
       fixture.commit('chore: initial');
       fixture.tag('v1.0.0');
@@ -231,7 +231,9 @@ describe('changelog-syncer.js', () => {
 
       expect(changelog).toMatch(/### Added[\s\S]*add login/);
       expect(changelog).toMatch(/### Fixed[\s\S]*broken auth/);
-      expect(changelog).toMatch(/### Security[\s\S]*security vulnerability/);
+      // A word in the subject no longer moves a typed title; there is no Security section.
+      expect(changelog).toMatch(/### Fixed[\s\S]*security vulnerability/);
+      expect(changelog).not.toMatch(/### Security/);
       // Chore commits are filtered out entirely.
       expect(changelog).not.toMatch(/bump unrelated tooling/);
     });

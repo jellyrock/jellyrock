@@ -8,8 +8,9 @@
  * REAL file rather than a fixture copy, so template edits are what break it.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   checkIssueRefs,
@@ -40,11 +41,6 @@ None
 ## Issues
 
 Ref #728
-
-## Docs / context updates
-
-- [x] **Architecture doc** updated
-- [ ] None — this PR doesn't change any of the above
 `;
 
 describe('checkPrBody', () => {
@@ -59,7 +55,10 @@ describe('checkPrBody', () => {
     // template change that fills one should force a deliberate update here.
     expect(problems.join('\n')).toMatch(/# Overview/);
     expect(problems.join('\n')).toMatch(/## Changes/);
-    expect(problems.join('\n')).toMatch(/## Docs \/ context updates/);
+    // The optional sections ship as headings with only a hint: left like that, they
+    // would put empty headings in `git log`, so they fail until filled or deleted.
+    expect(problems.join('\n')).toMatch(/## Testing/);
+    expect(problems.join('\n')).toMatch(/## Issues/);
   });
 
   it('rejects an empty body outright', () => {
@@ -74,20 +73,41 @@ describe('checkPrBody', () => {
     expect(problems.join('\n')).toMatch(/## Changes/);
   });
 
-  it('does not accept an all-unticked checklist', () => {
-    const problems = checkPrBody(
-      FILLED.replace('- [x] **Architecture doc** updated', '- [ ] **Architecture doc** updated'),
-    );
-    expect(problems.join('\n')).toMatch(/## Docs \/ context updates/);
-  });
-
   it('accepts "None" as a real answer for Follow-ups and Issues', () => {
     expect(checkPrBody(FILLED.replace('Ref #728', 'None'))).toEqual([]);
   });
 
-  it('reports a section that was deleted rather than filled', () => {
-    const problems = checkPrBody(FILLED.replace('## Issues\n\nRef #728\n\n', ''));
-    expect(problems.join('\n')).toMatch(/"## Issues" section is missing/);
+  it('reports a required section that was deleted rather than filled', () => {
+    const problems = checkPrBody(
+      FILLED.replace(
+        '## Changes\n\n- Move three routes from `keepAlive` to `suspendMode: "detach"`\n\n',
+        '',
+      ),
+    );
+    expect(problems.join('\n')).toMatch(/"## Changes" section is missing/);
+  });
+
+  it('lets an optional section be left out', () => {
+    const body = FILLED.replace('## Follow-ups\n\nNone\n\n', '').replace(
+      '## Issues\n\nRef #728\n',
+      '',
+    );
+    expect(body).not.toMatch(/## Issues|## Follow-ups/);
+    expect(checkPrBody(body)).toEqual([]);
+  });
+
+  it('fails an optional section left as an empty heading', () => {
+    const problems = checkPrBody(
+      `${FILLED}\n## Testing\n\n<!-- Optional: how you verified it -->\n`,
+    );
+    expect(problems.join('\n')).toMatch(/"## Testing" is empty/);
+  });
+
+  // A PR opened on the previous template still carries the Docs checklist; it must not
+  // go red the day this check changes.
+  it('still passes a body written on the previous template', () => {
+    const legacy = `${FILLED}\n## Docs / context updates\n\n- [ ] None — this PR doesn't change any of the above\n`;
+    expect(checkPrBody(legacy)).toEqual([]);
   });
 
   it('ignores content that lives only inside HTML comments', () => {
@@ -276,7 +296,56 @@ describe('pr-body-check CLI', () => {
   it('passes a filled body with no shorthand reference', () => {
     const { exitCode, stdout } = ciRun();
     expect(exitCode).toBe(0);
+    expect(stdout).toContain('PR title has a changelog type');
     expect(stdout).toContain('PR description is filled in');
+  });
+
+  it('fails a title with no type, and lists the types', () => {
+    const { exitCode, stderr } = ciRun({ title: 'Keep the router from retaining screens' });
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain('the PR title has no type');
+    expect(stderr).toMatch(/Fixed: fix,/);
+  });
+
+  // The title reaches CHANGELOG.md even when the description check is skipped.
+  it('checks the title of a documentation-labelled PR', () => {
+    const { exitCode, stderr } = spawnScript(
+      SCRIPT,
+      [
+        '--pr-title',
+        'Tidy the README',
+        '--pr-author',
+        'contributor',
+        '--pr-labels',
+        'documentation',
+      ],
+      { env: { PR_BODY: '' } },
+    );
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain('the PR title has no type');
+  });
+
+  it('--body-file checks a rendered body the way CI checks PR_BODY', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pr-body-'));
+    const file = join(dir, 'body.md');
+    writeFileSync(file, FILLED);
+    const ok = spawnScript(SCRIPT, ['--pr-title', 'fix: x', '--body-file', file]);
+    expect(ok.exitCode).toBe(0);
+    writeFileSync(file, '# Overview\n\n## Changes\n\n-\n');
+    const bad = spawnScript(SCRIPT, ['--pr-title', 'fix: x', '--body-file', file]);
+    expect(bad.exitCode).toBe(1);
+    expect(bad.stderr).toContain('"## Changes" is empty');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('skips a bot PR entirely', () => {
+    const { exitCode, stdout } = spawnScript(
+      SCRIPT,
+      ['--pr-title', 'Prepare for v2.33.0 release', '--pr-author', 'app/jellyrock'],
+      { env: { PR_BODY: '' } },
+    );
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain('skipped');
   });
 
   it('fails a shorthand reference in the body', () => {

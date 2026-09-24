@@ -11,6 +11,7 @@ import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
+import { CHANGELOG_SECTIONS, changelogSection, changelogText } from './lib/pr-title.js';
 
 class ChangelogSyncer {
   constructor() {
@@ -249,116 +250,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   }
 
   categorizeCommits(commits) {
-    const sections = {
-      Added: [],
-      Changed: [],
-      Fixed: [],
-      Removed: [],
-      Security: [],
-      Deprecated: [],
-      Dependencies: [],
-    };
+    const sections = Object.fromEntries(CHANGELOG_SECTIONS.map((name) => [name, []]));
 
     for (const commit of commits) {
-      // Check if this is a dependency-related PR
-      const category = commit.isDependency ? 'Dependencies' : this.categorizeCommit(commit.message);
+      // The section comes from the title's type (scripts/lib/pr-title.js); null keeps the
+      // change out of the changelog.
+      const category = changelogSection(commit.message, { isDependency: commit.isDependency });
+      if (!category) continue;
 
-      if (category && category !== 'Chore') {
-        if (category === 'Dependencies') {
-          // Store raw commit object for dependencies (will be consolidated later)
-          sections[category].push(commit);
-        } else {
-          // Format other entries normally
-          const entry = this.formatCommitEntry(commit);
-          sections[category].push(entry);
-        }
+      if (category === 'Dependencies') {
+        // Store raw commit object for dependencies (will be consolidated later)
+        sections[category].push(commit);
+      } else {
+        sections[category].push(this.formatCommitEntry(commit));
       }
     }
 
     return sections;
   }
 
-  categorizeCommit(message) {
-    const msg = message.toLowerCase().trim();
-
-    // Security first (highest priority)
-    if (msg.includes('security') || msg.includes('vulnerability') || msg.includes('cve-')) {
-      return 'Security';
-    }
-
-    // Check prefixes first (most specific)
-    // Changes
-    if (
-      msg.startsWith('update') ||
-      msg.startsWith('change') ||
-      msg.startsWith('improve') ||
-      msg.startsWith('refactor') ||
-      msg.startsWith('enhance')
-    ) {
-      return 'Changed';
-    }
-
-    // Additions
-    if (
-      msg.startsWith('add') ||
-      msg.startsWith('feat') ||
-      msg.startsWith('implement') ||
-      msg.startsWith('create')
-    ) {
-      return 'Added';
-    }
-
-    // Fixes
-    if (msg.startsWith('fix')) {
-      return 'Fixed';
-    }
-
-    // Removals
-    if (msg.startsWith('remove') || msg.startsWith('delete')) {
-      return 'Removed';
-    }
-
-    // Skip chores
-    if (
-      msg.startsWith('chore') ||
-      msg.startsWith('ci') ||
-      msg.startsWith('build') ||
-      msg.startsWith('docs') ||
-      msg.startsWith('style') ||
-      msg.startsWith('test')
-    ) {
-      return 'Chore';
-    }
-
-    // Then check content-based matches (less specific)
-    if (msg.includes('deprecate') || msg.includes('deprecated')) {
-      return 'Deprecated';
-    }
-
-    if (msg.includes('removed')) {
-      return 'Removed';
-    }
-
-    if (
-      msg.includes('fixes') ||
-      msg.includes('fixed') ||
-      msg.includes('resolve') ||
-      msg.includes('correct')
-    ) {
-      return 'Fixed';
-    }
-
-    // Only match "new" if it's at the beginning of a word or after common prefixes
-    if (msg.includes('new ') || msg.includes('create')) {
-      return 'Added';
-    }
-
-    // Default to Changed
-    return 'Changed';
-  }
-
   formatCommitEntry(commit) {
-    const cleanMessage = this.cleanMessage(commit.message);
+    const cleanMessage = changelogText(commit.message);
 
     // Only show commit link if there's no PR, otherwise show PR link
     if (commit.prNumber) {
@@ -368,62 +280,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
       const commitLink = `([${commit.hash.substring(0, 7)}](${this.repositoryUrl}/commit/${commit.hash}))`;
       return `- ${cleanMessage} ${commitLink}`;
     }
-  }
-
-  /**
-   * Clean commit message by removing conventional commit prefixes and action words,
-   * while preserving scope information for better changelog context.
-   *
-   * This function ONLY affects list item display text, NOT section categorization.
-   * Section categorization uses the original message via categorizeCommit().
-   *
-   * @param {string} message - Raw commit message
-   * @returns {string} Cleaned message with scope preserved
-   *
-   * @example
-   * // Conventional commits with scope
-   * cleanMessage('feat(api): Add user endpoint') // Returns: '(api) Add user endpoint'
-   * cleanMessage('fix(auth): broken login') // Returns: '(auth) broken login'
-   *
-   * @example
-   * // Action words with scope
-   * cleanMessage('update(docs): Add stuff to readme') // Returns: '(docs) Add stuff to readme'
-   * cleanMessage('improve(ui): better animations') // Returns: '(ui) better animations'
-   *
-   * @example
-   * // Without scope
-   * cleanMessage('fix: broken button') // Returns: 'broken button'
-   * cleanMessage('update: Set button text') // Returns: 'Set button text'
-   *
-   * @example
-   * // No prefix at all
-   * cleanMessage('Add new feature') // Returns: 'Add new feature'
-   */
-  cleanMessage(message) {
-    // Single comprehensive regex that captures all parts in one pass:
-    // - Conventional types: feat, fix, docs, style, refactor, perf, test, chore, build, ci, revert
-    // - Action words: add, remove, update, change, improve, enhance, implement, create, delete
-    // - Optional scope: (scope)
-    // - Required message: everything after the colon or the whole message if no prefix
-    const pattern =
-      /^(?:(?:feat|fix|docs|style|refactor|perf|test|chore|build|ci|revert|add|remove|update|change|improve|enhance|implement|create|delete)(\([^)]+\))?:\s*)?(.+)$/i;
-
-    const match = message.trim().match(pattern);
-
-    if (!match) {
-      // Fallback: return original message if pattern doesn't match (edge case)
-      return message;
-    }
-
-    const scope = match[1]; // Capturing group 1: (scope) or undefined
-    const cleanedMessage = match[2]; // Capturing group 2: the actual message
-
-    // If scope exists, prepend it to the cleaned message for context
-    if (scope) {
-      return `${scope} ${cleanedMessage}`;
-    }
-
-    return cleanedMessage;
   }
 
   /**
@@ -449,7 +305,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
    * // Returns: { action: null, packageName: null, version: null, message: 'pin dependencies', isVersioned: false }
    */
   parseDependencyInfo(message) {
-    const cleanMsg = this.cleanMessage(message);
+    const cleanMsg = changelogText(message);
 
     // Strip any scope prefix like "(deps)" from the beginning
     let withoutScope = cleanMsg.replace(/^\([^)]+\)\s*/, '');
@@ -660,18 +516,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   buildUnreleasedContent(sections, fromTag = null) {
     let content = '\n## [Unreleased]\n';
 
-    // Define the order of sections to maintain consistency
-    const sectionOrder = [
-      'Added',
-      'Changed',
-      'Fixed',
-      'Removed',
-      'Security',
-      'Deprecated',
-      'Dependencies',
-    ];
-
-    for (const sectionName of sectionOrder) {
+    for (const sectionName of CHANGELOG_SECTIONS) {
       let items = sections[sectionName];
 
       // Consolidate dependencies before adding to content
@@ -691,18 +536,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   buildReleaseContent(version, compareUrl, date, sections, fromTag = null) {
     let content = `\n## [${version}](${compareUrl}) - ${date}\n`;
 
-    // Define the order of sections to maintain consistency
-    const sectionOrder = [
-      'Added',
-      'Changed',
-      'Fixed',
-      'Removed',
-      'Security',
-      'Deprecated',
-      'Dependencies',
-    ];
-
-    for (const sectionName of sectionOrder) {
+    for (const sectionName of CHANGELOG_SECTIONS) {
       let items = sections[sectionName];
 
       // Consolidate dependencies before adding to content
@@ -822,13 +656,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
           let isDependency = false;
           let isReleasePrep = false;
+          // The PR's CURRENT title, not the commit's first line: a merged PR can be
+          // retitled, so a wrong type is fixed by editing the PR and re-syncing, where the
+          // commit on main cannot be changed. Only for the PR's own squash commit — other
+          // commits end in "(#N)" too (journal-sync's "chore(journal): sync fix: … (#N)"),
+          // and giving them the PR's title would list that PR twice.
+          let message = commitMessage;
           if (prNumber) {
             try {
               const prInfo = execSync(
-                `gh pr view ${prNumber} --json labels --jq '{labels: [.labels[].name]}'`,
+                `gh pr view ${prNumber} --json title,labels,mergeCommit --jq '{title, labels: [.labels[].name], mergeCommit: .mergeCommit.oid}'`,
                 { encoding: 'utf8', stdio: 'pipe' },
               ).trim();
               const parsed = JSON.parse(prInfo);
+              if (parsed.title && parsed.mergeCommit?.startsWith(commitHash))
+                message = parsed.title;
               isDependency =
                 parsed.labels &&
                 parsed.labels.some(
@@ -848,7 +690,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
           return {
             hash: commitHash,
-            message: commitMessage,
+            message,
             prNumber: prNumber,
             isDependency: isDependency,
             isReleasePrep: isReleasePrep,

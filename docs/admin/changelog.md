@@ -1,107 +1,52 @@
 # Automatic Changelog System
 
-This system keeps the `CHANGELOG.md` file automatically synchronized with git commits and releases.
+`CHANGELOG.md` is generated from the commits on `main`. Nobody edits its `[Unreleased]`
+section by hand: it is rebuilt from scratch on every sync.
 
-## How It Works
+## Where an entry comes from
 
-### 🔄 **Push to Main Branch**
+The repo squash-merges, so every PR becomes one commit on `main` whose first line is the
+PR title followed by `(#N)`. [`scripts/changelog-syncer.js`](../../scripts/changelog-syncer.js)
+turns each of those commits into one changelog line:
 
-- **Trigger**: Any push to `main` branch
-- **Action**: Updates the `[Unreleased]` section with new commits
-- **Result**: Changelog always reflects current unreleased changes
+- **The text** is the PR's **current** title — read from GitHub, not from the commit —
+  with its type removed. A scope stays in front: `fix(skills): Make X` becomes
+  `(skills) Make X`. A commit with no PR (a direct push) uses its own first line.
+- **The section** comes from the title's type. Every type and its section are defined once,
+  in [`scripts/lib/pr-title.js`](../../scripts/lib/pr-title.js) (`TITLE_TYPES`). Some types
+  are left out of the changelog entirely (tooling, CI, tests, docs).
+- **A PR labeled as a dependency update** (Renovate's `dependencies`) goes to Dependencies,
+  where updates to the same package are consolidated into one line.
+- **A title with no known type** goes to Changed. Its words are not used to guess a section.
 
-### 🚀 **Release Finalization**
+The sections, in order: Added, Changed, Fixed, Removed, Dependencies.
 
-- **Trigger**: When a git tag is created (via release publication)
-- **Action**: Converts `[Unreleased]` section to versioned release
-- **Result**: Release is documented in changelog with proper format
+A PR cannot merge without a known type: `pr-body-check.js` fails the title in CI
+(`Journal Sync Precheck (PR-time)` → `precheck`) and lists the types. So an untyped
+line only reaches `main` by a direct push or an admin bypassing the check.
 
-## Workflow
+## When it syncs
 
-### `changelog-sync.yml`
+| Trigger | Workflow | Result |
+|---|---|---|
+| Any push to `main` | `sync-changelog` job in [`jellyrock-bot.yml`](../../.github/workflows/jellyrock-bot.yml) | `[Unreleased]` rebuilt from the commits since the latest tag |
+| Manual run of that workflow | same | same — use it to re-sync without a new push |
+| A release tag | `jellyrock-bot.yml` and [`release-build.yml`](../../.github/workflows/release-build.yml) | `[Unreleased]` renamed to the version; the section is fixed from then on |
 
-**Unreleased updates** - Triggered by pushes to main:
+## Fixing a wrong entry
 
-- Monitors all commits pushed to main branch
-- Categorizes commits into Added/Changed/Fixed sections
-- Updates the `[Unreleased]` section automatically
-- Does NOT handle releases (handled by release system)
-
-### Release Integration
-
-**Finalization** - Triggered by tag creation during release:
-
-- Converts `[Unreleased]` to versioned release section
-- Preserves all commit categorization
-- Maintains Keep-a-Changelog format
-- Commits changelog updates back to main
+- **Not released yet:** edit the merged PR's title on GitHub (fix its type or its wording), then
+  re-sync — push anything to `main`, or run the JellyRock Bot workflow by hand. Editing
+  `[Unreleased]` in `CHANGELOG.md` does not work: the next sync overwrites it.
+- **Already released:** edit that version's section in `CHANGELOG.md` by hand. Released
+  sections are never regenerated.
+- **A direct-push commit** has no PR whose title you can edit; fix it by hand once it is released.
 
 ## Commands
 
 ```bash
-# Check current changelog status
-npm run changelog:status
-
-# Manually sync unreleased changes (usually automatic)
-npm run changelog:sync-unreleased
-
-# Manually create release entry (usually automatic)
+npm run changelog:status           # latest tag, commits since it
+npm run changelog:sync-unreleased  # rebuild [Unreleased] (needs `gh` auth for PR titles/labels)
 npm run changelog:sync-release 1.21.3
-
-# Validate changelog consistency
 npm run changelog:validate
 ```
-
-## Commit Categorization
-
-The system automatically categorizes commits into changelog sections:
-
-### Added
-
-- `feat:`, `add:`, `implement:`
-- Commits containing "new", "create", "implement"
-
-### Changed
-
-- `change:`, `update:`, `improve:`, `refactor:`
-- Commits containing "change", "update", "improve", "enhance"
-
-### Fixed
-
-- `fix:`, `resolve:`, `correct:`
-- Commits containing "fix", "resolve", "repair", "correct"
-
-### Removed
-
-- `remove:`, `delete:`, `drop:`
-- Commits containing "remove", "delete", "drop"
-
-### Security
-
-- Commits containing "security", "vulnerability", "CVE"
-
-## Error Handling
-
-The system will **fail with clear errors** if:
-
-- Changelog format is invalid
-- Version format is wrong (must be x.y.z)
-- Git operations fail
-- Inconsistencies are detected
-
-## Manual Overrides
-
-If you need to manually adjust the changelog:
-
-1. Edit `CHANGELOG.md` directly
-2. The system will preserve your changes
-3. Run `npm run changelog:validate` to check format
-4. Automatic sync will continue from your changes
-
-## Key Benefits
-
-✅ **Always Current** - Unreleased section stays up to date  
-✅ **Zero Maintenance** - No manual changelog editing needed  
-✅ **Consistent Format** - Follows Keep-a-Changelog standard  
-✅ **Smart Categorization** - Commits automatically sorted  
-✅ **Validation** - Catches format issues early
