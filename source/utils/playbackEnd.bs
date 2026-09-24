@@ -1,0 +1,28 @@
+import "pkg:/source/enums/PlaybackEndReport.bs"
+
+' What one end of a stream reports to the server: one report per stream, and only a stream that
+' played has a position worth saving.
+'
+' Every end posts to the same stopped endpoint, and the stop does more than save the position:
+' it stops the session's transcode and closes a Live TV live stream. So a stream that never
+' played still reports its end, marked `Failed`. Jellyfin then skips only the user-data write
+' (its OnPlaybackStopped, 10.7.7 through 12.1), where an unmarked stop would save the position
+' the player read before its first frame, usually 0, over the resume point (#969).
+'
+' @param {string} playerState - the Video state that ended the stream: stopped, finished or error
+' @param {boolean} isPlayReported - this stream's `start` was reported
+' @param {boolean} isEndReported - this stream's end was already reported
+' @param {boolean} isForceFinished - forceFinishPlayback ended it: it sets `finished` itself, so
+'   the `stopped` its stop raises is not the report
+' @returns {string} a PlaybackEndReport
+function classifyPlaybackEnd(playerState as string, isPlayReported as boolean, isEndReported as boolean, isForceFinished as boolean) as string
+  if isEndReported then return PlaybackEndReport.NONE
+  if playerState = "error" then return PlaybackEndReport.FAILED
+  if isForceFinished
+    if playerState = "finished" then return PlaybackEndReport.FINISHED
+    return PlaybackEndReport.NONE
+  end if
+  if not isPlayReported then return PlaybackEndReport.FAILED
+  if playerState = "finished" then return PlaybackEndReport.FINISHED
+  return PlaybackEndReport.STOPPED
+end function

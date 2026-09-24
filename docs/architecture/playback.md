@@ -37,6 +37,8 @@ related-files:
   - source/utils/liveTv.bs
   - source/utils/bufferStall.bs
   - source/enums/BufferCheckAction.bs
+  - source/utils/playbackEnd.bs
+  - source/enums/PlaybackEndReport.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
 last-reviewed: 2026-09-24
@@ -376,7 +378,7 @@ The result handlers write back into `VideoPlayerView`'s fields (`audioIndex`, `s
 - **Live TV channel that finished** → `restartLiveChannel()` (restart the same channel, host-internal remount). A live feed that drops mid-stream surfaces as `finished`, which is why the restart exists. A stream that ends without ever playing (an on-demand playlist listed as a channel, joined at its end) surfaces the same way, so the restart is budgeted: an end after `LIVE_RESTART_HEALTHY_MS` of progress resets the count, any other end adds one, and once the count passes `LIVE_RESTART_MAX` the player shows the playback error instead. Only the restart keeps the count; every other mount (first play, channel switch, queue advance) starts a fresh one. **Progress** is measured by the player, from its 0.5 s `position` notifications (`liveProgressOnPosition()`): only small forward steps past the furthest position count, so paused and buffering time, the jump to the live edge, a seek, and the player's replay of a stale live window don't. The position at a state change can't be used, because the first `playing` reports no real position (the live-edge seek sentinel or 0, measured). The host reads the player's `liveProgressMs()` at the end and passes it to `liveRestartOnEnd()`; `liveRestartOnMount()` / `liveRestartOnEnd()` / `liveRestartOnStall()` in `source/utils/liveTv.bs` hold the whole rule. Each live mount logs one `info` line on teardown with the step sizes its progress was built from, the evidence for tuning `LIVE_PROGRESS_MAX_STEP_MS`
 - **Live TV stream that stalled** (not an end): `VideoPlayerView.bufferCheck` sees no buffering progress across a 30 s tick (`classifyBufferCheck()` in `source/utils/bufferStall.bs`) and calls the host's `onLiveStreamStalled()`, which clears the screen the same way and asks `liveRestartOnStall()`: a mount that had made `LIVE_RESTART_HEALTHY_MS` of progress restarts (a dropped feed), any other stall shows the error and stops the stream. No `LIVE_RESTART_MAX` budget for stalls, because each is detected at least 30 s into the spinner (later if the buffering percentage kept rising). Instead, the mount a stall restart started must play `LIVE_STALL_REPROVE_MS` before its own stall restarts again: a restart into a playlist that stopped growing plays its leftover, which grows with the segment length (29.6 s with 10 s segments, measured) and would otherwise pass the `LIVE_RESTART_HEALTHY_MS` bar every time. A movie or episode that stalls shows the error directly, as before
 - **The give-up error's wording** (`liveGiveUpCauseKey()`): "This channel isn't sending any video" when no mount since the viewer chose the channel made progress, "This channel's stream stopped" when one did
-- **A terminal Video `error`** ends the server's session with a stop marked `Failed` (`reportFailedStop()`): it closes a Live TV channel's live stream, which otherwise stays open until the server restarts (#988), and leaves the user's resume position alone
+- **A terminal Video `error`** ends the server's session with a stop marked `Failed` (`reportPlaybackEnd("error")`): it closes a Live TV channel's live stream, which otherwise stays open until the server restarts (#988), and leaves the user's resume position alone
 - **More items in queue** → `advanceTo(position + 1)` + `playCurrentQueueItem()` (destroy + remount for the next item, which starts fresh — [Items a queue arrives at](#items-a-queue-arrives-at))
 - **Queue exhausted** → `exitPlayback()` → `sgrouter.goBack()` (leaves the play route; the suspended view beneath — the launching detail, or Home — resumes)
 
@@ -480,9 +482,28 @@ States reported:
 
 - `"start"` — once, when playback first transitions to `playing`
 - `"update"` — every 10 seconds via the playback timer, while playing or paused
-- `"stop"` — once on `finished` or `stopped`
+- `"stop"` / `"finished"` — **once per stream**, when it ends (`stopped`, `finished` or a terminal `error`)
 
 This is what makes "Continue Watching" rows on the home screen accurate.
+
+**The end of a stream is reported once, and only a stream that played saves its position.**
+`reportPlaybackEnd()` asks `classifyPlaybackEnd()` (`source/utils/playbackEnd.bs`) which report
+an end gets:
+
+- A stream that reported `start` sends a plain stop (or `finished`), and the server saves its position.
+- A stream that never reported `start` — it failed before its first frame, stalled into the
+  playback error, was retried, or the viewer backed out while it loaded — still sends a stop,
+  **marked `Failed`**. The stop is not only a position report: the server stops the session's
+  transcode and closes a Live TV live stream on it, so skipping it would leak both. `Failed`
+  makes Jellyfin skip only the user-data write (`OnPlaybackStopped`, 10.7.7 through 12.1). An
+  unmarked stop there saved the position the player read before its first frame — usually 0 —
+  over the resume point (#969).
+- A stream whose end was already reported sends nothing. A stop can surface as `finished` as
+  well as `stopped`, and the server records every stop as its own "finished playing" in the
+  activity log. The flag (`m.isEndReported`) resets when a new stream loads and when a `start`
+  is sent, since a voice or remote `play` can restart a stopped player without a reload.
+- A force-finish (`forceFinishPlayback`) sets `finished` itself, so the `stopped` its stop
+  raises reports nothing and the `finished` carries the end (#914).
 
 Every report names the file that is playing as `MediaSourceId` (Live TV sends its own
 `MediaSourceId` / `LiveStreamId` from `transcodeParams`). Servers before Jellyfin 12.0 use it
