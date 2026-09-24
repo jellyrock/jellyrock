@@ -259,7 +259,7 @@ sub liveRestartOnMount(budget as object, isLiveRestart as boolean)
 end sub
 
 ' A player state change. Accumulates time spent in `playing` only: paused and buffering time do
-' not count, so a stream that plays a moment and then stalls cannot pass as healthy playback.
+' not count.
 '
 ' @param {object} budget - from newLiveRestartBudget
 ' @param {string} state - the player's state, lower case
