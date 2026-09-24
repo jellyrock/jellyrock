@@ -68,7 +68,11 @@ whatever tools you like; just stand behind the result.
 - Branch off `main` and open the PR against `main`.
 - Run `npm run lint` and `npm run test:scripts` before requesting review; the
   GitHub Actions build and lint checks must be green.
-- If your change is user-facing, add an entry to [CHANGELOG.md](CHANGELOG.md).
+- Title the PR `type: Summary` — e.g. `fix: Keep the resume point when a video
+  fails to start`. The title becomes the commit on `main`, and its type decides
+  whether and where the change appears in [CHANGELOG.md](CHANGELOG.md), which is
+  generated — don't edit it. CI checks the title and lists the types if it fails;
+  they are defined in [`scripts/lib/pr-title.js`](scripts/lib/pr-title.js).
 - New strings should be translatable — see [Translations](docs/dev/translations.md).
 
 ## Security

@@ -134,8 +134,8 @@ Most useful subtrees: `docs/REFERENCES/scenegraph/` (scene graph nodes + interfa
 
 ### Commit messages
 
-Conventional Commits style (matches `git log`): `type(scope): summary`. No `Co-Authored-By` footer
+Conventional Commits style (matches `git log`): `type(scope): summary`. No `Co-Authored-By` footer. A PR's title is the squash commit's first line, and its type decides where the change lands in `CHANGELOG.md` — the types and their sections are defined once in [`scripts/lib/pr-title.js`](scripts/lib/pr-title.js), and CI rejects a PR title without one
 
 ### Pull requests
 
-Use the `/pr` skill — it builds the body from `.github/pull_request_template.md`, scans for related issues, and surfaces architecture docs whose related-files were touched. No `🤖 Generated with Claude Code` footer or any other Claude attribution
+Use the `/pr` skill — it picks the title's type, labels the PR, builds the body from `.github/pull_request_template.md`, puts reviewer-only detail in a review-notes comment, scans for related issues, and surfaces architecture docs whose related-files were touched. No `🤖 Generated with Claude Code` footer or any other Claude attribution

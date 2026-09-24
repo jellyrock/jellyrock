@@ -1,33 +1,17 @@
-<!-- Your title should be short, descriptive, and in the imperative mood (Fix X, Change Y, instead of Fixed X, Changed Y) -->
+<!-- Title: "type: Imperative summary", e.g. "fix: Keep the resume point when a video fails to start".
+     The type places the change in CHANGELOG.md — feat, fix, update, refactor, remove, chore, docs …
+     Every type and its section: scripts/lib/pr-title.js. CI checks the title. -->
 <!-- This description BECOMES the squash commit message on main (squash_merge_commit_message=PR_BODY),
-     so unfilled sections would land in `git log` permanently. CI gates that: scripts/lint/pr-body-check.js. -->
+     so write it for someone reading `git log`. Delete any optional section you leave empty. -->
 # Overview
-<!-- Brief overview of PR -->
+<!-- What changed and why, in 1–5 sentences -->
 
 ## Changes
-<!-- Unordered list of changes made -->
+<!-- One bullet per logical change -->
 -
 
-## Follow-ups
-<!-- Anything explicitly out of scope / deferred. Each item must have a tech-debt.md entry or a progress.md open followup — link it with an absolute URL (relative links 404 in a PR body). Default to None. -->
-<!-- - [`slug-name`](https://github.com/jellyrock/jellyrock/blob/main/docs/architecture/tech-debt.md#slug-name) — one-line description -->
-None
+## Testing
+<!-- Optional: how you verified it — devices, server versions, tests run -->
 
 ## Issues
-<!-- Fixes #123 -->
-<!-- Ref #123 -->
-
-## Docs / context updates
-
-<!-- Most PRs need none. The few that do tend to be important — please tick if applicable.
-Architecturally-significant files (tend to need doc updates):
-  source/main.bs · source/migrations.bs · components/data/SceneManager.bs ·
-  source/api/ApiClient.bs · components/data/jellyfin/*.xml ·
-  any new component under components/{video,manager,api}/ -->
-
-- [ ] **Architecture doc** updated if a system's *shape* or *why* changed → `docs/architecture/<topic>.md`
-- [ ] **`docs/dev/` how-to** updated if a workflow / recipe changed (adding a setting, writing a migration, etc.)
-- [ ] **Subdir `CLAUDE.md`** updated if a per-area rule / convention changed
-- [ ] **`docs/adr/`** ADR added if an architectural / hard-to-reverse / cross-component decision was made (sub-architectural choice → **`docs/decisions.md`** note)
-- [ ] **`docs/architecture/tech-debt.md`** entry removed if this PR fixes a listed item, or added if this PR introduces new debt or defers a follow-up
-- [ ] None — this PR doesn't change any of the above
+<!-- Optional: "Fixes #123" closes the issue on merge; "Ref #123" links it -->

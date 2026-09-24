@@ -199,7 +199,7 @@ The system will **fail with clear errors** if:
 
 - **`Makefile`** - version stays at 1.0.0 until manually changed
 - **Release notes** - scheduled dates added manually
-- **`CHANGELOG.md`** - automatically synced but can be manually edited
+- **`CHANGELOG.md`** - generated; `[Unreleased]` is rebuilt on every sync, so fix an entry by editing its PR's title — only released sections can be edited by hand (see [changelog.md](changelog.md))
 
 ## Key Benefits
 

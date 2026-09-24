@@ -217,6 +217,11 @@ export function extractCurrentlyRunning(content) {
   return m[1].trim().replace(/\s+/g, ' ');
 }
 
+/** Whether `prAuthor` is one of the bots whose PRs we do not author (Renovate, the release app…). */
+export function isBotAuthor(prAuthor = '') {
+  return SKIP_AUTHOR_PATTERNS.some((pat) => pat.test(prAuthor));
+}
+
 /**
  * Decide whether a ship action should be skipped. Pure function over inputs;
  * returns null when the action should proceed, or a string reason when it
@@ -231,10 +236,8 @@ export function shouldSkip({ prTitle, prLabels = [], prAuthor = '' }) {
       return `label "${label}" is in skip set`;
     }
   }
-  for (const pat of SKIP_AUTHOR_PATTERNS) {
-    if (pat.test(prAuthor)) {
-      return `author "${prAuthor}" matches bot pattern`;
-    }
+  if (isBotAuthor(prAuthor)) {
+    return `author "${prAuthor}" matches bot pattern`;
   }
   for (const pat of SKIP_TITLE_PATTERNS) {
     if (pat.test(prTitle)) {

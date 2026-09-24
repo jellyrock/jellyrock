@@ -53,3 +53,4 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0039](0039-list-endpoint-shape-in-pool.md) | A bare-array endpoint's body is held to its shape in the pool, declared by its request | Accepted | 2026-09-22 |
 | [0040](0040-pool-skips-abandoned-reads.md) | The API pool skips a queued read whose caller has stopped waiting | Accepted | 2026-09-22 |
 | [0041](0041-task-launch-queue.md) | A Task launch past the thread watermark waits in a queue instead of being refused | Accepted | 2026-09-23 |
+| [0042](0042-pr-title-type-places-changelog.md) | A PR title's type decides where the change lands in the changelog | Accepted | 2026-09-24 |
