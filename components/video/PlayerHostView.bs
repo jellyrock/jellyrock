@@ -277,7 +277,7 @@ sub onPlayerStateChange()
       if liveRestartOnEnd(m.liveRestart, m.liveRestartClock.TotalMilliseconds())
         restartLiveChannel()
       else
-        m.log.warn("Live TV channel keeps ending without playing; showing the error instead of restarting", textOrEmpty(currentItem.id), m.liveRestart.count, m.liveRestart.playedMs)
+        m.log.warn("Live TV channel keeps ending without playing; showing the error instead of restarting", "channelId", textOrEmpty(currentItem.id), "endsWithoutHealthyPlay", m.liveRestart.count, "playedMs", m.liveRestart.playedMs)
         m.view.callFunc("showLiveStreamStoppedError")
       end if
       return
