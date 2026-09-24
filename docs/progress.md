@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-09-23
+last-updated: 2026-09-24
 ---
 
 # Progress
@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-24 — fix: Keep screens loading when the app hits its Task-thread limit
 - 2026-09-23 — ci: Prove a stopped Task thread frees its slot under Roku's thread cap
 - 2026-09-23 — fix: Stop a late playback report replacing a dialog you opened meanwhile
 - 2026-09-23 — fix: Stop the playback info report reopening itself after you close it
@@ -106,10 +107,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-09-10 — fix: Keep `playbackTimer`'s observer across a stopped → playing cycle
 - 2026-09-10 — ci: Bound RTA poll waits to their own timeout, cutting pre-push time
 - 2026-09-10 — ci(rta): Justify every RTA wait and make its failures attributable
-- 2026-09-09 — The pre-push hook no longer rewrites icon PNGs; fixed upstream: `icons:check` now compares DECODED PIXELS via `scripts/lib/png-compare.js` instead of raw bytes, so a sharp/libvips encoder bump no longer rewrites 55 pixel-identical files on every branch. This is the second of the two fix shapes that followup named. The 55 PNGs `e8be35fd` had rewritten are reverted to base on this branch and `icons:check` accepts them (60 sources, 120 files), which is the check that proves the new comparator sees them as unchanged.
-- 2026-09-09 — fix: Close all three routes to a false buffer stall
-- 2026-09-09 — ci: cancel superseded PR device runs to drain the Roku queue
-- 2026-09-09 — Refresh the `rooibos-roku` patch for the installed version
 
 ## Open followups
 
