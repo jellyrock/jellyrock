@@ -158,6 +158,8 @@ const SKIP_TITLE_PATTERNS = [
   /\btranslations? from weblate\b/i,
   /^renovate\b/i,
   /^update dependency\b/i,
+  // Shared agent-tooling updates (skills, rules, templates): process, not shipped work.
+  /^chore\(agents\):/i,
 ];
 
 // ──────────────────────────────────────────────────────────────────────────

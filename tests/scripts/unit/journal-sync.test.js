@@ -149,6 +149,17 @@ describe('shouldSkip', () => {
     );
   });
 
+  it('skips on shared agent-tooling title', () => {
+    expect(shouldSkip({ prTitle: 'chore(agents): Update shared skills and rules' })).toMatch(
+      /auto-generated/,
+    );
+  });
+
+  it('proceeds for other agent-tooling titles', () => {
+    expect(shouldSkip({ prTitle: 'chore(skills): tighten /pr title rule' })).toBe(null);
+    expect(shouldSkip({ prTitle: 'feat(agents): add a skill' })).toBe(null);
+  });
+
   it('proceeds (returns null) for a normal feature title', () => {
     expect(shouldSkip({ prTitle: 'feat(catchup): auto-maintain signals' })).toBe(null);
   });
