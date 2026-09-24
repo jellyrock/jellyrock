@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-24 — fix: Stop subtitles crashing on short or comma timestamps, and hide cue ids and notes
 - 2026-09-24 — fix: Recover stalled Live TV and close a failed channel's live stream
 - 2026-09-24 — fix: Stop restarting a Live TV channel that keeps ending without playing
 - 2026-09-24 — fix: Keep screens loading when the app hits its Task-thread limit
