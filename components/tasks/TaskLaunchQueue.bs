@@ -7,9 +7,12 @@ import "pkg:/source/utils/tasks.bs"
 
 sub init()
   m.queue = []
+  ' One-shot, re-armed by each tick that leaves something waiting. Starting a Timer that
+  ' is already running restarts its countdown (measured 2026-09-23 on a 512 MB Streaming
+  ' Stick 3600X: launches 50 ms apart held a waiting launch until they stopped), so it
+  ' is started when the queue goes from empty to waiting, never per launch.
   m.drainTimer = CreateObject("roSGNode", "Timer")
-  m.drainTimer.repeat = true
-  m.drainTimer.duration = TASK_QUEUE_DRAIN_SECONDS
+  m.drainTimer.repeat = false
   m.drainTimer.observeField("fire", "onDrainTick")
   m.top.appendChild(m.drainTimer)
 end sub
@@ -21,7 +24,7 @@ function enqueue(node as object) as boolean
   if outcome = "full" then return false
   if outcome = "queued"
     publishDepth()
-    m.drainTimer.control = "start"
+    if m.queue.count() = 1 then armDrain(TASK_QUEUE_RETRY_MIN_SECONDS)
     #if perfTiming
       recordQueuedLaunch()
     #end if
@@ -34,9 +37,15 @@ function isQueued(node as object) as boolean
 end function
 
 sub onDrainTick()
-  m.queue = drainTaskLaunchQueue(m.queue)
+  drained = drainTaskLaunchQueue(m.queue)
+  m.queue = drained.waiting
   publishDepth()
-  if m.queue.count() = 0 then m.drainTimer.control = "stop"
+  if m.queue.count() > 0 then armDrain(taskQueueRetrySeconds(m.drainTimer.duration, drained.started))
+end sub
+
+sub armDrain(seconds as float)
+  m.drainTimer.duration = seconds
+  m.drainTimer.control = "start"
 end sub
 
 ' launchTask() reads this to send new launches to the back of the queue instead of past it.

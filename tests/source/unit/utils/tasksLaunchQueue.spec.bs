@@ -47,6 +47,31 @@ namespace tests
       return queue
     end function
 
+    ' A ledger of `depth` never-launched nodes, each counting as one live thread.
+    protected function ledgerOf(depth as integer) as object
+      ledger = []
+      for i = 1 to depth
+        ledger.push(m.freshTask())
+      end for
+      return ledger
+    end function
+
+    ' Retry waits are floats built by doubling, so compare them with a tolerance.
+    protected function assertNear(actual as float, expected as float, message as string) as void
+      m.assertTrue(Abs(actual - expected) < 0.001, message + ": got " + actual.toStr() + ", expected " + expected.toStr())
+    end function
+
+    ' Polls until nothing waits in the queue, so a test ends with its drain Timer idle and
+    ' cannot write taskLaunchQueued over the next test's queue.
+    protected function waitForQueueEmpty(timeoutMs as integer) as boolean
+      clock = CreateObject("roTimespan")
+      while clock.totalMilliseconds() < timeoutMs
+        if m.global.taskLaunchQueued = 0 then return true
+        sleep(20)
+      end while
+      return m.global.taskLaunchQueued = 0
+    end function
+
     ' Polls `node.state` until it reads `expected` or `timeoutMs` passes.
     protected function waitForState(node as object, expected as string, timeoutMs as integer) as boolean
       clock = CreateObject("roTimespan")
@@ -58,7 +83,7 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("taskQueueAdd / taskQueueHolds / taskQueueDropReleased (pure)")
+    @describe("launch queue rules (pure)")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("queues a never-launched node at the back")
@@ -130,6 +155,33 @@ namespace tests
       node.control = "STOP"
 
       m.assertEqual(taskQueueDropReleased(queue).count(), 1)
+    end function
+
+    @it("has room below the watermark and none at or above it")
+    function _()
+      m.assertTrue(taskLedgerHasRoom(m.ledgerOf(TASK_THREAD_WATERMARK - 1)))
+      m.assertFalse(taskLedgerHasRoom(m.ledgerOf(TASK_THREAD_WATERMARK)))
+      m.assertFalse(taskLedgerHasRoom(m.ledgerOf(TASK_THREAD_WATERMARK + 1)))
+      m.assertTrue(taskLedgerHasRoom(invalid), "no ledger yet is no thread yet")
+    end function
+
+    ' The drain asks taskLedgerHasRoom before admitTaskLaunch, so a disagreement at the
+    ' boundary would either strand the head or skip the read-only check.
+    @it("agrees with admitTaskLaunch at the watermark")
+    function _()
+      for each depth in [TASK_THREAD_WATERMARK - 1, TASK_THREAD_WATERMARK, TASK_THREAD_WATERMARK + 1]
+        m.seedGlobalLedger(depth)
+        room = taskLedgerHasRoom(m.global["taskLedger"])
+        m.assertEqual(admitTaskLaunch(m.freshTask()), room, "at depth " + depth.toStr())
+      end for
+    end function
+
+    @it("retries sooner once a launch starts and backs off, capped, while none can")
+    function _()
+      m.assertNear(taskQueueRetrySeconds(TASK_QUEUE_RETRY_MAX_SECONDS, 1), TASK_QUEUE_RETRY_MIN_SECONDS, "a start resets the wait")
+      m.assertNear(taskQueueRetrySeconds(TASK_QUEUE_RETRY_MIN_SECONDS, 0), TASK_QUEUE_RETRY_MIN_SECONDS * 2, "no start doubles it")
+      m.assertNear(taskQueueRetrySeconds(TASK_QUEUE_RETRY_MAX_SECONDS, 0), TASK_QUEUE_RETRY_MAX_SECONDS, "and never past the longest")
+      m.assertNear(taskQueueRetrySeconds(TASK_QUEUE_RETRY_MAX_SECONDS * 0.75, 0), TASK_QUEUE_RETRY_MAX_SECONDS, "a doubling past it is clamped")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -215,6 +267,78 @@ namespace tests
       late.control = "STOP"
     end function
 
+    ' While anything waits, every launch queues, so each one reaches the queue. Restarting
+    ' a running Timer restarts its countdown, so a queue that started its drain Timer per
+    ' launch never drained while launches kept coming less than one retry apart.
+    @it("keeps draining while new launches keep arriving")
+    function _()
+      m.installQueue()
+      m.seedGlobalLedger(TASK_THREAD_WATERMARK)
+      head = m.freshTask()
+      launchTask(head)
+      launched = [head]
+      m.seedGlobalLedger(0)
+
+      streamMs = 1000
+      startedAtMs = -1
+      clock = CreateObject("roTimespan")
+      while clock.totalMilliseconds() < streamMs
+        if startedAtMs < 0 and LCase(head.state) = "run" then startedAtMs = clock.totalMilliseconds()
+        node = m.freshTask()
+        launchTask(node)
+        launched.push(node)
+        sleep(Int(TASK_QUEUE_RETRY_MIN_SECONDS * 1000 / 2))
+      end while
+
+      m.assertTrue(startedAtMs >= 0, "the waiting launch must start while launches are still arriving")
+      for each node in launched
+        node.control = "STOP"
+      end for
+      m.assertTrue(m.waitForQueueEmpty(2000))
+    end function
+
+    ' A retry that finds no slot backs off, but never past TASK_QUEUE_RETRY_MAX_SECONDS, so a
+    ' launch that has waited through many retries still notices a freed slot that soon.
+    @it("starts a long-waiting launch within the longest retry of a slot freeing")
+    function _()
+      m.installQueue()
+      m.seedGlobalLedger(TASK_THREAD_WATERMARK)
+      node = m.freshTask()
+      launchTask(node)
+      ' Long enough that uncapped doubling (0.1, 0.2, 0.4, 0.8, 1.6 s) would be waiting
+      ' out a 1.6 s retry when the slot frees.
+      sleep(3200)
+      m.assertEqual(LCase(node.state), "init", "precondition: it waited the whole time")
+
+      m.seedGlobalLedger(0)
+
+      m.assertTrue(m.waitForState(node, "run", Int(TASK_QUEUE_RETRY_MAX_SECONDS * 1000) + 300), "it started within the longest retry")
+      node.control = "STOP"
+    end function
+
+    ' The app launches from the render thread, where launchTask's callFunc into the queue
+    ' is a same-thread call. Rooibos does not run there, so every other test here launches
+    ' across threads; TaskRelaunchProbeHost launches through callFunc, on the render thread.
+    @it("queues and later starts a launch made on the render thread")
+    function _()
+      m.installQueue()
+      m.seedGlobalLedger(TASK_THREAD_WATERMARK)
+      host = CreateObject("roSGNode", "TaskRelaunchProbeHost")
+      task = host.getField("task")
+
+      host.callFunc("launch")
+
+      m.assertEqual(LCase(task.state), "init", "past the watermark it must wait")
+      m.assertEqual(m.global.taskLaunchQueued, 1)
+      m.assertTrue(isTaskInFlight(task))
+
+      m.seedGlobalLedger(0)
+
+      m.assertTrue(m.waitForState(task, "run", 2000), "the drain started it once a slot freed")
+      task.release = true
+      task.control = "STOP"
+    end function
+
     @it("refuses once the queue is full")
     function _()
       queue = m.installQueue()
@@ -229,11 +353,12 @@ namespace tests
       m.assertFalse(launchTask(m.freshTask()), "past the cap the launch is refused")
       m.assertEqual(m.global.taskLaunchQueued, TASK_QUEUE_CAP)
 
-      ' Release every waiting node, so a drain tick that outlives this test drops them
-      ' rather than starting TASK_QUEUE_CAP real threads in the next one.
+      ' Release every waiting node and let the drain drop them, so no tick outlives this
+      ' test to start TASK_QUEUE_CAP real threads, or overwrite the next test's depth.
       for each node in waiting
         node.control = "STOP"
       end for
+      m.assertTrue(m.waitForQueueEmpty(2000), "the drain drops every released node")
     end function
 
   end class
