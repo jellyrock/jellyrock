@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-25 — test(api): Make API requests fail on purpose in on-device tests
 - 2026-09-25 — fix: Stop Play crashing on a song's details screen
 - 2026-09-24 — fix(video): Keep the resume point when a video fails before it plays
 - 2026-09-24 — chore: Place changelog entries by PR title type, and check it in CI
