@@ -1,6 +1,7 @@
 # ADR 0040: The API pool skips a queued read whose caller has stopped waiting
 
 **Status:** Accepted
+**Partially superseded by:** [ADR 0043](0043-pool-stops-long-reads-of-gone-callers.md) (in-flight cancel of long reads only)
 **Date:** 2026-09-22
 
 **related-files**: `source/api/apiPool.bs`, `components/api/ApiQueueTask.bs`, `components/api/ApiResultNode.xml`, `source/api/apiPromise.bs`, `source/api/apiPipeline.bs`, `source/api/ApiClient.bs`, `scripts/measurements.js`, `tests/source/unit/api/apiPoolSkip.spec.bs`, `docs/architecture/api.md`

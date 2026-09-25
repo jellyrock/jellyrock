@@ -418,7 +418,14 @@ end function
 ' passed here.
 function taskThreadIsLive(node as object) as boolean
   if not isValid(node) then return false
-  state = LCase(node.state)
+  return taskStateIsLive(node.state)
+end function
+
+' taskThreadIsLive's rule for a `state` value already in hand — the data of a `state`
+' change event, where reading the node again would cost a crossing for the same answer.
+function taskStateIsLive(state as dynamic) as boolean
+  if not isValid(state) then return false
+  state = LCase(state)
   return state = "run" or state = "init"
 end function
 

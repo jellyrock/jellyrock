@@ -571,6 +571,8 @@ function executeItemQuery(queryType as string, params as object) as dynamic
     m.log.warn("library query failed", requestId, "cause", "not sent")
     return invalid
   end if
+  ' A page can take the server far longer than an ordinary request (timeouts.GRID_PAGE_MS).
+  req.timeoutMs = timeouts.GRID_PAGE_MS
   res = fetchRes(req, requestId)
   cause = apiResponse.jsonFailure(res)
   if cause <> ""

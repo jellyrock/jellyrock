@@ -1,5 +1,6 @@
 import "pkg:/source/api/apiFaults.bs"
 import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/apiTimeout.bs"
 import "pkg:/source/constants/apiPool.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
@@ -20,6 +21,10 @@ end sub
 ' being sent, so the slot goes to the next request. The decision — including which
 ' entries are worth the cross-thread check at all — is apiPoolNextDispatch in
 ' apiPool.bs ("Skipping a request nobody is waiting for"); this file is its shell.
+'
+' A long request already SENT is stopped the same way once its caller has gone: the
+' coordinator watches the waiting Task and tells the slot to give up (apiPool.bs,
+' "Stopping a request nobody is waiting for"; watchCaller / stopSlot below).
 '
 ' Why children instead of a shared field:
 '   SceneGraph can coalesce port events when multiple Task threads write to the same
@@ -57,8 +62,12 @@ sub runQueueLoop()
   pool = resolvePoolSlots()
   ' One entry per pool slot: invalid = free, AA entry = in-flight
   m.inFlight = []
+  ' One per slot: true while the slot has a `quit` (apiSlotQuit), so it is removed before the
+  ' slot's next request. Tracked here so the common dispatch never asks the slot node.
+  m.slotQuit = []
   for each slot in pool
     m.inFlight.push(invalid)
+    m.slotQuit.push(false)
   end for
 
   ' ── Wait for all pool tasks to register their request observers ──
@@ -97,6 +106,8 @@ sub runQueueLoop()
 
   ' ── Now safe to accept requests ──
   port = CreateObject("roMessagePort")
+  ' Kept for watchCaller, which subscribes waiting Tasks to this same loop.
+  m.port = port
   m.top.observeField("enqueue", port)
   #if ENABLE_RTA
     ' Requests an RTA spec makes fail or slow (see answeredOnPurpose). Read here and on each
@@ -152,6 +163,10 @@ sub runQueueLoop()
         ' Wake-up signal from fetchRes — actual data is in children, not here.
         ' processNewChildren below handles it.
 
+      else if field = "state"
+        ' A Task waiting for a long request changed state (watchCaller).
+        onCallerStateChanged(pool, msg)
+
       else if field = "response"
         ' A pool slot finished. Find which slot by matching node ID.
         nodeId = msg.getNode()
@@ -178,9 +193,11 @@ sub runQueueLoop()
 
     #if ENABLE_RTA
       ' Before the children below, so a slot a due answer frees is dispatched to at once.
-      for each answer in apiFaults.takeDue(m.rtaHeld, m.rtaClock.totalMilliseconds())
+      due = apiFaults.takeDue(m.rtaHeld, m.rtaClock.totalMilliseconds())
+      for each answer in due
         deliverResponse(answer.slotIdx, answer.entry, answer.response)
       end for
+      if due.count() > 0 then publishHeld()
     #end if
 
     ' Always process new children when woken up (by ANY event type).
@@ -193,6 +210,7 @@ end sub
 ' Hands a slot's answer to the orchestrator's result node and frees the slot.
 ' Result is written before done, so it is readable when the observer fires.
 sub deliverResponse(slotIdx as integer, entry as object, response as dynamic)
+  forgetCaller(entry)
   #if perfTiming
     m.dispatchClock.mark()
   #end if
@@ -287,17 +305,87 @@ sub tryDispatch(pool as object)
       if pick.entry.waited then m.dispatchWaited++
       m.dispatchClock.mark()
     #end if
+    ' Before the request: a slot reads `quit` all through its wait, so one left from the
+    ' last request it was told to stop would stop this one too.
+    if m.slotQuit[pick.slot]
+      apiSlotClearQuit(pool[pick.slot])
+      m.slotQuit[pick.slot] = false
+    end if
     ' Writing request triggers ApiTask's port observer, starting execution.
     pool[pick.slot].request = pick.entry.req
     #if ENABLE_RTA
       ' A slowed request is due its hold time after it is SENT, as a slow server's would be.
       if isValid(pick.entry.rtaHoldMs) then pick.entry.rtaDueAt = m.rtaClock.totalMilliseconds() + pick.entry.rtaHoldMs
     #end if
+    watchCaller(pool, pick.slot, pick.entry)
     #if perfTiming
       m.dispatchSendUs += m.dispatchClock.totalMicroseconds()
       emitDispatchWindow(1)
     #end if
   end while
+end sub
+
+' Watches the Task waiting for a long request, so its slot can be stopped if that Task
+' goes before the answer arrives (apiPool.bs, "Stopping a request nobody is waiting for").
+' Every other request returns on the request AA alone: no crossing on the common path.
+sub watchCaller(pool as object, slotIdx as integer, entry as object)
+  if not apiRequestIsStoppable(entry.req) then return
+  caller = entry.resultNode.owner
+  if not isValid(caller) then return
+
+  ' Asked before this entry is marked, so it does not count itself. A Task already watched
+  ' for another long request keeps that one subscription: if it has stopped, its event is
+  ' queued or already handled, and either way stops this slot too.
+  isWatched = apiPoolSlotsWatchedBy(m.inFlight, caller).count() > 0
+  entry.watchedCaller = caller
+  if isWatched then return
+
+  caller.observeField("state", m.port)
+  ' Subscribed first, read second: a Task that stopped before the subscription sent no
+  ' event, and this read is the only way to hear about it.
+  if not taskThreadIsLive(caller) then stopSlot(pool, slotIdx)
+end sub
+
+' A watched Task changed state. Once it is no longer running, nobody will read the answers
+' its requests are still waiting for, so every slot it was waiting on is stopped. A Task
+' that finished normally also reports "stop", but only after its answers were delivered —
+' and delivery ends the watch — so it matches no slot here.
+sub onCallerStateChanged(pool as object, msg as object)
+  if taskStateIsLive(msg.getData()) then return
+  for each slotIdx in apiPoolSlotsWatchedBy(m.inFlight, msg.getRoSGNode())
+    stopSlot(pool, slotIdx)
+  end for
+end sub
+
+' Tells a slot to give up its request: roku-requests cancels the transfer on its next pass
+' and the slot answers "no answer", which frees it through the normal delivery path. The
+' answer goes to a result node nobody reads.
+sub stopSlot(pool as object, slotIdx as integer)
+  entry = m.inFlight[slotIdx]
+  m.log.info("stopped a request whose caller is gone", entry.req.requestId)
+  forgetCaller(entry)
+  apiSlotQuit(pool[slotIdx])
+  m.slotQuit[slotIdx] = true
+  #if ENABLE_RTA
+    releaseHeldOnPurpose(slotIdx, entry)
+  #end if
+end sub
+
+' Ends this entry's part in the watch watchCaller started, if any, and the subscription with
+' it once no other long request of the same Task is still on a slot.
+'
+' unobserveField drops EVERY observer of the field, not only this loop's — which is why the
+' subscription is one per Task, not one per request (apiPool.bs, "Stopping a request nobody
+' is waiting for"). Dropping observers that are not ours is safe because nothing else
+' observes a Task's `state` — the task ledger reads it instead, by design
+' (source/utils/tasks.bs) — and the scoped pair that would drop only this one,
+' observeFieldScopedEx / unobserveFieldScoped, needs Roku OS 12.
+sub forgetCaller(entry as object)
+  caller = entry.watchedCaller
+  if not isValid(caller) then return
+  ' Cleared first, so the count below leaves this entry out.
+  entry.watchedCaller = invalid
+  if apiPoolSlotsWatchedBy(m.inFlight, caller).count() = 0 then caller.unobserveField("state")
 end sub
 
 #if ENABLE_RTA
@@ -331,8 +419,29 @@ end sub
     if not isValid(entry.rtaDueAt) then return false
     if m.rtaClock.totalMilliseconds() >= entry.rtaDueAt then return false
     m.rtaHeld.push({ slotIdx: slotIdx, entry: entry, response: response, dueAt: entry.rtaDueAt })
+    publishHeld()
     return true
   end function
+
+  ' Tells specs how many held answers are keeping a slot busy (m.global.rtaHeldRequests).
+  sub publishHeld()
+    m.global.rtaHeldRequests = m.rtaHeld.count()
+  end sub
+
+  ' A slowed request that is stopped gives its slot back at once, as a stopped real one does.
+  ' Its answer, held already or still to come, is not held (or no longer): the slot answers
+  ' "no answer" now if it was held, and on arrival otherwise.
+  sub releaseHeldOnPurpose(slotIdx as integer, entry as object)
+    entry.rtaDueAt = invalid
+    for i = 0 to m.rtaHeld.count() - 1
+      if m.rtaHeld[i].slotIdx = slotIdx
+        m.rtaHeld.delete(i)
+        publishHeld()
+        deliverResponse(slotIdx, entry, apiFaults.responseFor({ kind: "timeout" }, entry.req.requestId))
+        return
+      end if
+    end for
+  end sub
 #end if
 
 #if perfTiming

@@ -54,3 +54,4 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0040](0040-pool-skips-abandoned-reads.md) | The API pool skips a queued read whose caller has stopped waiting | Accepted | 2026-09-22 |
 | [0041](0041-task-launch-queue.md) | A Task launch past the thread watermark waits in a queue instead of being refused | Accepted | 2026-09-23 |
 | [0042](0042-pr-title-type-places-changelog.md) | A PR title's type decides where the change lands in the changelog | Accepted | 2026-09-24 |
+| [0043](0043-pool-stops-long-reads-of-gone-callers.md) | The API pool stops a long read whose caller has gone (partially supersedes 0040) | Accepted | 2026-09-25 |
