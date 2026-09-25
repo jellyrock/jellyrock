@@ -1100,7 +1100,7 @@ function detectPermissionGap(turns, range, allowlist) {
 // where every finding carries a populated `ruleViolated` { anchor, summary }
 // and `suggestedFix.kind: 'rule-violation'` — the default reading is "this
 // broke a documented rule" (the auditor still confirms; a grep'd or quoted
-// string is not an invocation, so tune detectors to favour recall).
+// string is not an invocation, so tune detectors to favor recall).
 //
 // Register your detectors in the `ruleDetectors` array of
 // extract-friction.config.cjs (this repo's only per-repo file). With none, the
