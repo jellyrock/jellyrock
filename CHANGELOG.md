@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Load libraries as you scroll, say "Loading more", page "#" fully ([#1040](https://github.com/jellyrock/jellyrock/pull/1040))
 - Show a library that failed to load as failed, and recover from it ([#1033](https://github.com/jellyrock/jellyrock/pull/1033))
 
 ### Dependencies
