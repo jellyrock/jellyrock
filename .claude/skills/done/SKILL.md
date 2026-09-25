@@ -49,6 +49,7 @@ effort: low
 - A tech-debt entry to remove → `/tech-debt-scan` walks tech-debt entries one-by-one and applies removals.
 - A `decision` entry to revise → decisions are append-only; file a new `/log decision` with `**supersedes**: <old-slug>` (which flips the old entry to `superseded`).
 - The capture is a NEW entry, not a closure of an existing one. That's `/log`, not `/done`.
+- The thing to close is a project's PLAN.md milestone (a phase shipped, a slice landed). That's handled by `/end-session` on the project's PLAN.md, not by `/done`.
 
 ## Implementation
 
