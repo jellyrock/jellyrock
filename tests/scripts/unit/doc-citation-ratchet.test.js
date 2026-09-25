@@ -130,6 +130,30 @@ describe('doc-citation-ratchet — scope', () => {
     expect(run(r).exitCode).toBe(0);
   });
 
+  // `.claude/worktrees/<name>` is a whole second checkout (a `.git` FILE marks a worktree,
+  // a `.git` directory a clone). Its docs are that branch's; counting them here failed
+  // this repo's gate on files no branch being pushed touched.
+  it('ignores a nested checkout (worktree or clone) wherever it sits', () => {
+    const r = makeRoot({
+      '.claude/worktrees/other-branch/.git': 'gitdir: /elsewhere/.git/worktrees/other-branch\n',
+      '.claude/worktrees/other-branch/docs/a.md': 'See `a.bs:1`.\n',
+      '.claude/worktrees/other-branch/CLAUDE.md': 'See `b.bs:2`.\n',
+      'docs/vendor-clone/.git/HEAD': 'ref: refs/heads/main\n',
+      'docs/vendor-clone/notes.md': 'See `c.bs:3`.\n',
+    });
+    expect(run(r).exitCode).toBe(0);
+  });
+
+  it('still governs this checkout beside a nested one', () => {
+    const r = makeRoot({
+      '.claude/worktrees/other-branch/.git': 'gitdir: /elsewhere\n',
+      '.claude/skills/x/SKILL.md': 'See `a.bs:1`.\n',
+    });
+    const res = run(r);
+    expect(res.exitCode).toBe(1);
+    expect(res.stderr).toContain('.claude/skills/x/SKILL.md');
+  });
+
   // An AUDIT-LOG entry records what a run saw on a date — a historical measurement,
   // which the rule's third clause explicitly allows.
   it('ignores append-only AUDIT-LOG.md records', () => {
