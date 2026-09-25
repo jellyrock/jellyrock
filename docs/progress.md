@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-09-24
+last-updated: 2026-09-25
 ---
 
 # Progress
@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-25 — fix: Stop Play crashing on a song's details screen
 - 2026-09-24 — fix(video): Keep the resume point when a video fails before it plays
 - 2026-09-24 — chore: Place changelog entries by PR title type, and check it in CI
 - 2026-09-24 — fix: Stop subtitles crashing on short or comma timestamps, and hide cue ids and notes
@@ -101,7 +102,6 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 - 2026-09-14 — ci(rta): Pin the texture window to device-measured column sets
 - 2026-09-14 — feat: Add subtitle search, download and delete to item details
 - 2026-09-14 — Subtitle panel badges in both columns are now right-aligned and sized from their measured text (`subtitleLayout.badgesThatFit` / `detailWidthBeside`), dropping whole badges that would not fit — replacing the guessed per-section and flat `460px` badge widths. Closes the "subtitle RESULTS column reserves a flat badge width" followup (#750); also fixed "Forced" being clipped in the "On this item" column.
-- 2026-09-10 — Shipped [`docs/user/jellyfin-server-plugins.md`](user/jellyfin-server-plugins.md) (#750): one user-facing page for the server-side setup JellyRock features need — subtitle providers, media-segment (intro/outro) providers, and `jellyfin-plugin-jellyrock` for casting over `https` — cross-linked from the README. Closes the "Jellyfin server plugins JellyRock uses" followup.
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
 - 2026-09-14 — fix: Register `m.top` observers once so the player cannot silence its host
@@ -109,9 +109,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-09-13 — fix: Report a force-finished playback as stopped once, not twice
 - 2026-09-13 — fix: Finish playback when a segment skip lands at the end of the media
 - 2026-09-13 — remove: Unused `Section` and `SectionScroller` components
-- 2026-09-10 — fix: Keep `playbackTimer`'s observer across a stopped → playing cycle
-- 2026-09-10 — ci: Bound RTA poll waits to their own timeout, cutting pre-push time
-- 2026-09-10 — ci(rta): Justify every RTA wait and make its failures attributable
 
 ## Open followups
 
