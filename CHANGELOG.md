@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Show a library that failed to load as failed, and recover from it ([#1033](https://github.com/jellyrock/jellyrock/pull/1033))
+
 ### Dependencies
 
 - Update vitest from v5.0.1 to v5.0.2 ([#1036](https://github.com/jellyrock/jellyrock/pull/1036))
