@@ -25,7 +25,7 @@ Open a PR with a typed title, its category labels, a body from `.github/pull_req
 - Existing-PR routing is correct: open → update-path (diff, confirm, `gh pr edit`); merged or closed → abort with the right recovery instruction; none → create-path.
 - The four-pillar judgment passes run against the resolved `<lower>` SHA (prior render marker on update, `main` on create) so the user isn't re-asked about already-handled candidates, and each candidate is confirm/skip per-item.
 - The title passes `pr-body-check.js` (a known type, a non-blank scope if any), backticks code identifiers, and names every user-visible change — it becomes the changelog line. Its type follows "Choosing the type" below, not habit.
-- Every category label that honestly applies is on the PR, and `documentation` only on a docs-only PR (it makes journal-sync and the description check skip the PR). Labels the skill does not manage (`merge-conflict`, `release-prep` …) are never removed.
+- Labels come from the deliverables the title and Overview name, each with a quoted phrase shown to the user; tooling-only work is `dev-improvement`, and `documentation` goes only on a docs-only PR (it makes journal-sync and the description check skip the PR). Labels the skill does not manage (`merge-conflict`, `release-prep` …) are never removed.
 - The body passes `pr-body-check.js --body-file` before it is posted; related issues found are rendered as `Fixes`/`Ref #N`, and an optional section with nothing to say is left out rather than written as `None`.
 - `gh pr create` / `gh pr edit` / `Write` permission prompts are left intact — they are the user's gate on body content and backup creation, not suppressed.
 
@@ -35,8 +35,9 @@ Open a PR with a typed title, its category labels, a body from `.github/pull_req
 - **Auto-applying journal entries.** The judgment passes produce drafts only; apply a tech-debt edit or invoke `/log` only on explicit per-candidate accept.
 - **Overwriting a PR body without confirmation or backup.** On the update path, always diff-then-confirm and write the prior body to `.claude/handoffs/` before `gh pr edit`; if `gh pr edit` fails, the backup is the recovery path — surface it, don't claim success.
 - **Opening a duplicate on a merged/closed PR.** Abort with the recovery instruction; never silently create a second PR.
-- **A title that names only part of the PR.** The squash subject is the changelog line and cannot be edited after merge; re-derive the title from every user-visible change, on the update path too. The likeliest omission is a behavioural fix delivered *inside* a refactor — the exclusion for refactors is about diffs that change nothing a viewer can observe, not about fixes that happen to arrive as restructuring.
+- **A title that names only part of the PR.** The squash subject is the changelog line and cannot be edited after merge; re-derive the title from every user-visible change, on the update path too. The likeliest omission is a behavioral fix delivered *inside* a refactor — the exclusion for refactors is about diffs that change nothing a viewer can observe, not about fixes that happen to arrive as restructuring.
 - **A type picked by habit.** `fix:` on a change to the `/pr` skill put "(skills) Make `/pr` titles…" in the user-facing Fixed section (#998): tooling changes take a hidden type. The reverse fails too — an untyped or `chore:` title on an app change drops it from the changelog or files it under Changed.
+- **Labeling a PR's ingredients instead of its purposes.** "Every label that honestly applies" gave #1029 `code-cleanup` for a helper its fix needed and #1033 `dev-improvement` + `general-improvement` for the test hooks that proved a bug fix. Labels come from the deliverables the title and Overview name; tests, docs and supporting refactors earn none (see Labels).
 - **Detail stuffed into the body.** The body is the permanent commit message; measurement tables, device matrices and reviewer asides belong in the review-notes comment, with a one-line summary of the evidence left in `## Testing`.
 - **Rephrasing the title to drop a code reference** when the spell-check precheck fails — backtick the identifier instead; dropping the reference is the wrong fix.
 - **Suppressing the create/edit/Write permission prompts** by allowlisting them — they are intentional user gates.
@@ -135,7 +136,7 @@ The CLAUDE.md `Followup-discipline rule` governs which journal each deferral lan
 
 The repo squash-merges, so the title is the first line of the commit on `main`, and [`scripts/changelog-syncer.js`](../../../scripts/changelog-syncer.js) places the change in CHANGELOG.md by the title's type (`TITLE_TYPES` in [`scripts/lib/pr-title.js`](../../../scripts/lib/pr-title.js)). A title with no known type fails CI (`pr-body-check.js`). Pick the type by what the PR does to **the app a viewer runs**:
 
-- **It changes the app** (`components/`, `source/`, `locale/`, `images/`, `settings/`, `manifest`) → a changelog type: `feat` for a new capability or setting, `fix` for behaviour that was wrong, `update` for behaviour that changes on purpose, `perf` for the same behaviour faster, `refactor` for a restructure meant to change nothing (it is still listed — a refactor can regress, and developers read the changelog too), `remove` for a feature taken out, `revert` to undo a PR.
+- **It changes the app** (`components/`, `source/`, `locale/`, `images/`, `settings/`, `manifest`) → a changelog type: `feat` for a new capability or setting, `fix` for behavior that was wrong, `update` for behavior that changes on purpose, `perf` for the same behavior faster, `refactor` for a restructure meant to change nothing (it is still listed — a refactor can regress, and developers read the changelog too), `remove` for a feature taken out, `revert` to undo a PR.
 - **It only changes tooling around the app** (`scripts/`, `.github/`, `.claude/`, `tests/`, `docs/`, dev dependencies) → a hidden type: `chore`, `ci`, `build`, `test` or `docs`. A fix to a skill, a lint rule or a workflow is `chore`/`ci`, not `fix`: `fix(skills):` put "(skills) Make `/pr` titles…" in the user-facing Fixed section (#998).
 - **Both** → type it by the app change; the tooling rides along in the body.
 
@@ -146,7 +147,7 @@ A scope is optional. When the PR sits in one area, name it — `fix(video):`, `c
 **The title is the changelog line — it must name every user-visible change in the PR.** The changelog reads the PR's **current** title, so a wrong or incomplete title can be corrected after merge by editing the PR and re-syncing, but only until the release is cut: from then on the released section of `CHANGELOG.md` is fixed text, correctable only by hand. Get it right before merge. Before applying a title:
 
 1. List the user-visible changes from the Changes section you are rendering (what a viewer of the app would notice — not refactors, tests, or journal entries).
-   **A refactor that changes behaviour is not a refactor for this purpose.** Before excluding something as internal, ask what it makes the app *do differently*. If you can state it as "X used to sometimes fail, now it doesn't", it is user-visible and belongs in the title even though the diff reads as restructuring — and it belongs whether or not the old failure was reproduced, since the repo's own policy is to fix these races without a reproduction ([ADR 0037](../../../docs/adr/0037-task-run-replacement.md)). The tell is a commit subject that joins a fix to a restructure with "and": each half needs its own check against the title. Recorded 2026-09-22 — PR #1010's first title named only its teardown fix and dropped the "a subtitle track switch is no longer silently lost" fix, because the component split that carried it classified as a refactor and the list above says to exclude those.
+   **A refactor that changes behavior is not a refactor for this purpose.** Before excluding something as internal, ask what it makes the app *do differently*. If you can state it as "X used to sometimes fail, now it doesn't", it is user-visible and belongs in the title even though the diff reads as restructuring — and it belongs whether or not the old failure was reproduced, since the repo's own policy is to fix these races without a reproduction ([ADR 0037](../../../docs/adr/0037-task-run-replacement.md)). The tell is a commit subject that joins a fix to a restructure with "and": each half needs its own check against the title. Recorded 2026-09-22 — PR #1010's first title named only its teardown fix and dropped the "a subtitle track switch is no longer silently lost" fix, because the component split that carried it classified as a refactor and the list above says to exclude those.
 2. Check the title names each of them. When they don't all fit in 70 chars, name the outcome that covers all of them rather than the biggest one alone: two features joined by "and" is fine; dropping one is not.
 3. On the **update path**, re-derive the title from the full PR, never keep the old one by default. A PR that grew during review is exactly when a title goes stale: #996 was titled for its logo fit, gained a credits row in review, merged with the old title, and shipped a changelog line that omits the row.
 
@@ -154,20 +155,45 @@ A scope is optional. When the PR sits in one area, name it — `fix(video):`, `c
 
 ### Labels
 
-Labels are for finding and sorting PRs in the GitHub UI; the changelog does not read them, apart from `dependencies`. Apply **every** category label that honestly applies — they are not a function of the type. A performance fix delivered by a refactor is `bug-fix` + `code-cleanup`; a new setting is `new-setting`, and `new-feature` too when the setting is how a new capability is reached.
+Labels are for finding PRs in the GitHub list — a person filtering by `bug-fix` wants the PRs that fixed app bugs. Nothing automated reads the category labels below: CHANGELOG.md places a PR by its title type, and journal-sync skips only on `dependencies` / `documentation` / `docs-only` / `ci` / `automated` / `chore-only`. So a label is right when someone filtering by it would want this PR, and wrong otherwise.
 
-| Label | Use when the PR… |
+Pick them AFTER the body is final, from what the PR says it is for:
+
+1. **Read the title and the Overview.** Those name the PR's purposes. A *deliverable* is something they present as what the PR **does** — a clause of the title, an "and …", an "It also …". Something they present only as **how or why** another deliverable works ("rewrites the engine … because a swap alone would have shipped three defects") is part of that deliverable, not one of its own. A change that appears only as a Changes bullet — a small unrelated extra, a refactor the fix needed, the tests or docs that prove or explain a deliverable — is not a deliverable and earns no label, however real it is.
+2. **Label each deliverable by what it does**, with the one best label from the table. Several deliverables can share a label; a PR with several different kinds of deliverable gets several labels.
+3. **Add `accessibility`** alongside the main label whenever a deliverable changes what screen-reader, audio-guide or caption users get — even when the title or Overview says so in a single clause of a larger deliverable. It is a tag on a deliverable, never a deliverable of its own, so it needs no purpose of its own to qualify.
+4. **Tooling is not the app.** `new-feature`, `new-setting`, `bug-fix`, `general-improvement` and `code-cleanup` describe the app a viewer runs (`components/`, `source/`, `locale/`, `images/`, `settings/`, `manifest`). A deliverable that changes only tooling — scripts, CI, tests and test harness, skills, agent config, developer docs — is `dev-improvement`, whether it fixes, adds or tidies something. A PR that changes only tooling is `dev-improvement` alone.
+5. **Name the evidence.** Beside each label, quote the title or Overview phrase that earned it. A label you cannot quote a phrase for is dropped.
+
+| Label | The deliverable… |
 |---|---|
-| `new-feature` | adds a capability a viewer can use |
-| `new-setting` | adds a user-facing setting |
-| `general-improvement` | makes existing behaviour better — UX, speed, wording, robustness |
-| `bug-fix` | corrects behaviour that was wrong |
-| `code-cleanup` | restructures or tidies app code without intending to change behaviour |
-| `dev-improvement` | improves tooling, CI, tests, skills or developer docs |
-| `documentation` | changes **only** docs. It makes journal-sync and the description check skip the PR, so never add it to a PR that also changes code |
-| `accessibility` | improves screen-reader, audio-guide, caption or other accessibility support |
+| `new-feature` | adds an app capability a viewer can use |
+| `new-setting` | adds a user-facing setting (with `new-feature` too when the setting is how a new capability is reached) |
+| `bug-fix` | makes the app do what it should have done already: a crash, a wrong screen, lost state, a failure shown wrongly |
+| `general-improvement` | makes app behavior that was working better on purpose: UX, speed, memory, wording, robustness |
+| `code-cleanup` | restructures or tidies app code as a goal of the PR, meant to change nothing a viewer sees |
+| `accessibility` | serves screen-reader, audio-guide or caption users (added alongside the main label) |
+| `dev-improvement` | changes only tooling (rule 4) |
+| `documentation` | the PR changes **only** docs. It makes journal-sync and the description check skip the PR, so never on a PR that also changes code |
 
-Leave alone the labels automation owns — `dependencies` (Renovate), `release-prep`, `merge-conflict` — and the issue-triage labels. On the **update path**, add the labels the render wants and remove only labels from the table above that no longer apply; never remove anything else. `gh label list` shows the repo's labels if you need to check one exists.
+Leave alone the labels automation owns — `dependencies` (Renovate), `release-prep`, `merge-conflict` — and the issue-triage labels.
+
+#### Worked examples
+
+Rulings on real PRs, reached by running this rule blind with two separate agents and settling where they differed. Match a new PR against the nearest one.
+
+| PR | What the title/Overview presents | Labels | Why not more |
+|---|---|---|---|
+| #1033 | failed library shown as failed, recovery, "#" crash; "never narrates or toasts over" another screen | `bug-fix`, `accessibility` | the dialog-delay consolidation and the new RTA hooks are Changes bullets only |
+| #1029 | a song crash | `bug-fix` | the `applyItemArtwork()` helper merge is a Changes bullet the fix needed |
+| #1024 | a subtitle/caption parser crash | `bug-fix`, `accessibility` | — |
+| #991 | "showed only the first 25 channels" + "loading programs near the focus" (title clause) | `bug-fix`, `general-improvement` | — |
+| #847 | the reskin, the engine rewrite fixing "three known defects", "It also gives the flow its first functional coverage" | `general-improvement`, `bug-fix`, `dev-improvement` | the rewrite is presented as HOW the defects were fixed ("because …"), so no `code-cleanup` |
+| #987 | a `fix:` that touches only bsconfig, scripts and tests | `dev-improvement` | tooling is never `bug-fix`, whatever the title type says |
+
+Before `gh pr create` / `gh pr edit`, show the user each label beside the phrase that earned it, so the reasoning can be overruled in one reply.
+
+On the **update path**, add the labels the render wants and remove only labels from the table above that no longer apply; never remove anything else. `gh label list` shows the repo's labels if you need to check one exists.
 
 ### Build the body
 
