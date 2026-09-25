@@ -1,10 +1,143 @@
-' What a library grid does when a page after its first fails: whether the user is told, and
-' when the grid asks for that page again. The items already shown stay. The first page has its
-' own failure state instead (BaseGridView.onGridLoadFailed).
+' When a library grid asks for its next page, and what it does when a page after its first
+' fails. The first page has its own failure state instead (BaseGridView.onGridLoadFailed).
+'
+' WHEN TO ASK: keep a runway. A grid loads the rows near where the user is, not the whole
+' library: every loaded item costs memory (512 MB devices), a server query, and render-thread
+' time as it lands. How far ahead is enough depends on two things measured as the grid is used
+' rather than fixed in advance — how long a page takes to arrive (server, network and device
+' together) and how fast the user is moving down the rows. The next page is asked for when the
+' rows left below the focused row would run out before a page could arrive; at rest, one
+' screen of rows is kept ahead. Only one page is ever in flight.
 '
 ' In source/ rather than in the view so a Rooibos suite can reach it: a component's functions
 ' are scoped to it. Same move as gridPage.bs.
 namespace gridPaging
+
+  ' Starting values, not measurements. Tune them from the per-grid log line
+  ' (BaseGridView.logGridSession), which records the stalls and the rows loaded but never seen.
+  '
+  ' RUNWAY_MARGIN — how much sooner than the bare estimate to ask: page times vary, and a stall
+  '   costs the user more than an early page costs the device.
+  ' IDLE_MS — a pause longer than this between focus moves ends a burst of scrolling: the
+  '   speed of the last burst says nothing about the next.
+  ' SPEED_WINDOW_MS — the scroll speed is the rate over this much of the latest movement, not
+  '   between two single reports: rows can be reported milliseconds apart when the render
+  '   thread catches up after a page lands (measured 2026-09-25 on a 512 MB Stick: one pair
+  '   read as 158 rows/s), and a rate over a window counts such a row at its true share.
+  ' MIN_SPAN_MS — the shortest span a rate is taken over, for the same reason.
+  ' SMOOTHING — the weight of the newest page in the running average of page time.
+  const RUNWAY_MARGIN = 1.5
+  const IDLE_MS = 1000
+  const SPEED_WINDOW_MS = 1000
+  const MIN_SPAN_MS = 250
+  const SMOOTHING = 0.5
+
+  ' How fast the user is moving down the rows, for a new query: not moving.
+  function newScrollTracker() as object
+    return { row: -1, atMs: -1, moves: [] }
+  end function
+
+  ' The user is now at `row`.
+  '
+  ' A report of the row already tracked is not a move and changes nothing: the grid reports
+  ' its focused item again when focus comes back to it, and where a scroll comes to rest after
+  ' its rows were already reported one by one (measured 2026-09-25).
+  '
+  ' @param tracker - from newScrollTracker(); modified
+  ' @param row - the row the user is at
+  ' @param nowMs - a millisecond clock, the same one on every call
+  sub trackFocus(tracker as object, row as integer, nowMs as integer)
+    if row = tracker.row then return
+    tracker.moves.push({ row: row, atMs: nowMs })
+    ' Moves older than the window go, but one of them stays as the rate's starting point.
+    while tracker.moves.count() > 2 and nowMs - tracker.moves[1].atMs > gridPaging.SPEED_WINDOW_MS
+      tracker.moves.shift()
+    end while
+    tracker.row = row
+    tracker.atMs = nowMs
+  end sub
+
+  ' Rows per second down the grid now, over the latest movement; 0 once the user has paused.
+  ' Only moving down counts: moving up returns to rows already loaded.
+  '
+  ' @param tracker - from newScrollTracker()
+  ' @param nowMs - the clock trackFocus was given
+  function scrollSpeed(tracker as object, nowMs as integer) as float
+    moves = tracker.moves
+    if moves.count() < 2 or nowMs - tracker.atMs > gridPaging.IDLE_MS then return 0.0
+    first = moves[0]
+    last = moves[moves.count() - 1]
+    rows = last.row - first.row
+    if rows <= 0 then return 0.0
+    span = last.atMs - first.atMs
+    if span < gridPaging.MIN_SPAN_MS then span = gridPaging.MIN_SPAN_MS
+    return rows * 1000.0 / span
+  end function
+
+  ' How long a page takes to arrive, for a grid that has loaded none: unknown.
+  function newPageTimer() as object
+    return { averageMs: -1.0 }
+  end function
+
+  ' A page arrived `ms` after it was asked for.
+  '
+  ' @param timer - from newPageTimer(); modified
+  sub recordPageTime(timer as object, ms as integer)
+    if timer.averageMs < 0
+      timer.averageMs = ms * 1.0
+    else
+      timer.averageMs = gridPaging.SMOOTHING * ms + (1 - gridPaging.SMOOTHING) * timer.averageMs
+    end if
+  end sub
+
+  ' How many loaded rows the grid wants below the focused row: the rows the user would pass
+  ' while a page is on its way, with a margin, and never less than one screen.
+  '
+  ' @param screenRows - rows the grid shows at once
+  ' @param rowsPerSecond - from scrollSpeed()
+  ' @param pageMs - from a page timer; negative when no page has been timed
+  function runwayRows(screenRows as integer, rowsPerSecond as float, pageMs as float) as integer
+    if pageMs < 0 then return screenRows
+    needed = rowsPerSecond * pageMs / 1000 * gridPaging.RUNWAY_MARGIN
+    rows = Int(needed)
+    if rows < needed then rows++
+    if rows < screenRows then return screenRows
+    return rows
+  end function
+
+  ' Whether to ask for the next page now.
+  '
+  ' @param focusedRow - the focused row
+  ' @param lastLoadedRow - the last row holding a loaded item
+  ' @param hasMore - whether the query has items the grid has not loaded
+  ' @param isLoading - whether a page is in flight
+  ' @param wantedRows - from runwayRows()
+  function shouldLoadMore(focusedRow as integer, lastLoadedRow as integer, hasMore as boolean, isLoading as boolean, wantedRows as integer) as boolean
+    if isLoading or not hasMore then return false
+    return lastLoadedRow - focusedRow < wantedRows
+  end function
+
+  ' Whether the user has reached the last loaded row while the next page is on its way: the
+  ' one moment a later page's loading is theirs to see.
+  function isWaitingAtEnd(focusedRow as integer, lastLoadedRow as integer, hasMore as boolean, isLoading as boolean) as boolean
+    return isLoading and hasMore and focusedRow >= lastLoadedRow
+  end function
+
+  ' Whether the query has items the grid has not loaded yet. Never before its first page has
+  ' landed: that page has its own failure state and Try again, and a new query's total is 0
+  ' until then.
+  '
+  ' @param loadedItems - items in the grid
+  ' @param total - the query's total, counted once, on its first page
+  function hasMore(loadedItems as integer, total as integer) as boolean
+    return loadedItems > 0 and loadedItems < total
+  end function
+
+  ' The last row holding a loaded item; -1 when nothing is loaded.
+  function lastRow(loadedItems as integer, columns as integer) as integer
+    if loadedItems <= 0 or columns <= 0 then return -1
+    return (loadedItems - 1) \ columns
+  end function
 
   ' The failure notice for a new query: nothing told yet.
   function newFailureNotice() as object
@@ -15,7 +148,7 @@ namespace gridPaging
   '
   ' Once, until a page loads again: moving near the end of the grid asks again, and each
   ' failed ask must not raise another toast. Never while the grid is not on screen: that is
-  ' another screen, and the grid asks again once it is back (shouldResume), where a failure
+  ' another screen, and the grid asks again once it is back (shouldLoadMore), where a failure
   ' is told.
   '
   ' @param notice - from newFailureNotice(); modified
@@ -32,16 +165,5 @@ namespace gridPaging
   sub pageLoaded(notice as object)
     notice.isTold = false
   end sub
-
-  ' Whether a grid coming back on screen asks for its next page: its load stopped short and
-  ' nothing is loading. Coming back is the user's doing, and it asks once — the same trigger
-  ' as moving near the end of the grid, which asks under the same count.
-  '
-  ' @param loadedItems - items in the grid
-  ' @param total - the server's total for the query; 0 until its first page lands
-  ' @param isLoading - whether a later page is in flight
-  function shouldResume(loadedItems as integer, total as integer, isLoading as boolean) as boolean
-    return not isLoading and loadedItems > 0 and loadedItems < total
-  end function
 
 end namespace

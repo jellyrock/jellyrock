@@ -181,7 +181,7 @@ pressed.
 
 **If the failure you want is an API request failing or timing out, don't add a flag.** On-device
 specs make any pooled request fail with one mechanism, `rtaFailRequests` — see
-[`rta-tests.md`](rta-tests.md#making-requests-fail-rtafailrequests). A flag per code path
+[`rta-tests.md`](rta-tests.md#making-requests-fail-or-slow-rtafailrequests). A flag per code path
 duplicates it once per screen. The steps below are for failures that are not a request.
 
 Follow these steps when adding error injection to a new feature:

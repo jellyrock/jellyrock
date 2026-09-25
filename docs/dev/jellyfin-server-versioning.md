@@ -12,7 +12,7 @@ related-files:
   - docs/dev/jellyfin-endpoint-availability.yml
   - docs/dev/jellyfin-version-boundaries.yml
   - scripts/lint/apiversion-consistency-check.js
-last-reviewed: 2026-09-22
+last-reviewed: 2026-09-25
 ---
 
 # JellyRock Versioning Systems Overview
@@ -163,6 +163,31 @@ deliberately NOT in the YAML. The guard, its unit table and the measured behavio
 each server line are in `source/GridView/collectionsView.bs`. Extending the registry
 to express a combination would need the lint to match a call SITE rather than a name;
 nothing needs that yet, and one entry is not evidence that it should be built.
+
+**Name-range filters (the grid's "#" letter) — measured, and no guard needed.** The grid's
+"#" is every name that starts with no letter A–Z, asked for as two ranges:
+`NameLessThan=A`, then `NameStartsWithOrGreater={` ("{" is the character after "z")
+(`gridPage.hashRanges`). How the server compares those two parameters has changed across
+releases:
+
+| Server | Comparison |
+| ------ | ---------- |
+| 10.7 – 10.10 | whole `SortName` as stored, against the lowercased value (SQL) |
+| 10.11.0 – 10.11.2 | first character only, of `SortName` **or** `Name`, strictly `<` / `>` the raw value |
+| 10.11.3 – 10.11.x | whole `SortName` as stored, against the lowercased value ([jellyfin#15381](https://github.com/jellyfin/jellyfin/pull/15381)) |
+| 12.x | whole `SortName` lowercased in the query, against the lowercased value |
+
+Verified 2026-09-25 with a partition check: on 10.7.7, 10.8.13, 10.9.11, 10.10.7, 10.11.11
+and 12.0.0, A–Z plus the two ranges put every item of a library in exactly one place, for
+`/Items` (seeded names including `_Under`, `[Bracket]`, `{Brace}`, `~Tilde`, `1917`, `Élite`,
+`アキラ`, `Ωmega`, plus two real libraries) and `/Genres`; `/Artists`, `/Artists/AlbumArtists`
+and `/Studios` go through the same server function as `/Genres`. Two server behaviors the check
+surfaced, both on every version: the stored `SortName` drops a leading `{` (so "{Brace}" files
+under B), and from 10.9 it is transliterated (`アキラ` → `akira`, `Ωmega` → `omega`), so non-Latin
+titles file under a letter there and after "z" only on 10.7–10.8. On a temporary 10.11.2 server,
+`_Under` and `[Bracket]` fell in no range and `Élite`, `アキラ` and `Ωmega` in "#" as well as a
+letter, whatever the app sends — the first-character comparison cannot be asked any better, so
+those three patch releases are a documented server limitation, not a guard.
 
 **Media Segments (10.10.0+):**
 

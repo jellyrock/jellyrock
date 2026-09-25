@@ -129,6 +129,10 @@ function collectDocs(rootDir) {
         if (e.name.startsWith('.') && e.name !== '.claude') continue;
         const rel = path.relative(rootDir, full).split(path.sep).join('/');
         if (EPHEMERAL_RELS.includes(rel)) continue;
+        // A directory with its own `.git` (a file for a worktree, a directory for a
+        // clone) is a separate checkout — `.claude/worktrees/<name>` holds a whole copy
+        // of the repo — so its docs belong to its own branch's run, not this one.
+        if (fs.existsSync(path.join(full, '.git'))) continue;
         walk(full, insideClaude || e.name === '.claude');
         continue;
       }

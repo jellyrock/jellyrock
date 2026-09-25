@@ -6,27 +6,93 @@ import "pkg:/source/utils/misc.bs"
 ' scoped to its component. Same move as gridQuery.bs.
 namespace gridPage
 
-  ' Adds the "#" letter filter's second reply to its first. The first query asks for names
-  ' before "A"; the second for names from "z" on, and of those only the ones that do NOT start
-  ' with z belong under "#" — symbols and letters that sort after Z.
+  ' The "#" letter filter: every name that starts with no letter A–Z. The server offers no "not
+  ' a letter" filter, so "#" is two ranges of the sort name, asked for one after the other:
+  ' before "a", and from "{" on ("{" is the character after "z"). Between them they hold every
+  ' item no letter holds, each once, so the server counts both exactly and nothing is filtered
+  ' here.
+  '
+  ' Verified 2026-09-25 against 10.7.7, 10.8.13, 10.9.11, 10.10.7, 10.11.11 and 12.0.0: A–Z plus
+  ' these two ranges put every item of a library in exactly one place, for /Items and /Genres
+  ' (/Artists and /Studios share the /Genres filter code). 10.11.0–10.11.2 compared only first
+  ' characters and matched on Name as well, so there some items fall in no range or in two
+  ' whatever this sends; 10.11.3 fixed it (jellyfin#15381). See jellyfin-server-versioning.md.
+  function hashRanges() as object
+    return [{ NameLessThan: "A" }, { NameStartsWithOrGreater: "{" }]
+  end function
+
+  ' The first request for one page of "#": which range, from where, for how many, and whether
+  ' the server counts it.
+  '
+  ' The first page counts, and starts at the top of the first range. A later page knows the
+  ' first range's size from that count, which is how it finds its place in the two ranges.
+  '
+  ' @param startIndex - the page's first item, counted across both ranges
+  ' @param limit - the page size
+  ' @param firstRangeTotal - the first range's count from the first page; -1 on the first page
+  ' @return an AA of range (an index into hashRanges()), startIndex, limit and counts
+  function hashFirstRequest(startIndex as integer, limit as integer, firstRangeTotal as integer) as object
+    if firstRangeTotal < 0
+      return { range: 0, startIndex: 0, limit: limit, counts: true }
+    end if
+    if startIndex < firstRangeTotal
+      return { range: 0, startIndex: startIndex, limit: limit, counts: false }
+    end if
+    return { range: 1, startIndex: startIndex - firstRangeTotal, limit: limit, counts: false }
+  end function
+
+  ' The request that completes the page after the first delivered `delivered` items, or invalid
+  ' when the page needs none.
+  '
+  ' Once the first range has run out — it delivered fewer than asked for — the rest of the page
+  ' comes from the top of the second. The first page always asks the second range, even when the
+  ' first range filled the page (limit 0: the count alone), because the grid's total is both
+  ' counts.
+  '
+  ' @param first - from hashFirstRequest()
+  ' @param delivered - how many items the first request delivered
+  ' @param limit - the page size
+  function hashSecondRequest(first as object, delivered as integer, limit as integer) as dynamic
+    if first.range <> 0 then return invalid
+    rest = limit - delivered
+    if first.counts
+      if rest < 0 then rest = 0
+      return { range: 1, startIndex: 0, limit: rest, counts: true }
+    end if
+    if delivered >= first.limit then return invalid
+    return { range: 1, startIndex: 0, limit: rest, counts: false }
+  end function
+
+  ' The query params for one "#" request: the page's params with this request's range, start,
+  ' size and whether to count. A copy — `params` stays the page's.
+  '
+  ' @param params - the page's query params, without a name filter
+  ' @param request - from hashFirstRequest() or hashSecondRequest()
+  function hashRequestParams(params as object, request as object) as object
+    requestParams = {}
+    requestParams.append(params)
+    requestParams.append(gridPage.hashRanges()[request.range])
+    requestParams.StartIndex = request.startIndex
+    requestParams.limit = request.limit
+    if not request.counts then requestParams.EnableTotalRecordCount = false
+    return requestParams
+  end function
+
+  ' Adds the second request's reply to the first's. On the first page the total is the two
+  ' ranges' counts together; on a later page neither counted, and the total is left as it is.
   '
   ' The caller makes both requests and decides what a failure means: this only combines two
   ' replies that both arrived.
   '
-  ' @param data - the first query's reply ({ Items, TotalRecordCount }); modified in place
-  ' @param zAndAfter - the second query's reply
-  sub appendNamesAfterZ(data as object, zAndAfter as object)
-    if type(data.Items) <> "roArray" or type(zAndAfter.Items) <> "roArray" then return
-
-    added = 0
-    for each item in zAndAfter.Items
-      name = item.Name
-      if isValid(name) and not LCase(name).StartsWith("z")
-        data.Items.push(item)
-        added++
-      end if
-    end for
-    data.TotalRecordCount += added
+  ' @param data - the first request's reply ({ Items, TotalRecordCount }); modified in place
+  ' @param second - the second request's reply
+  ' @param isCounted - whether both requests counted (the first page)
+  sub appendSecondRange(data as object, second as object, isCounted as boolean)
+    if type(data.Items) <> "roArray" or type(second.Items) <> "roArray" then return
+    data.Items.append(second.Items)
+    if isCounted and isValid(data.TotalRecordCount) and isValid(second.TotalRecordCount)
+      data.TotalRecordCount += second.TotalRecordCount
+    end if
   end sub
 
 end namespace

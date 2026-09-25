@@ -270,11 +270,13 @@ So at dispatch the coordinator asks `apiPoolNextDispatch()` ([`apiPool.bs`](../.
 
 A request already on a slot is not canceled. That would mean replacing the blocking `rr_Requests().request` call in `ApiTask` with one that can be interrupted, and it only saves the remaining time of a request the server is already working on. The rules are pinned in [`apiPoolSkip.spec.bs`](../../tests/source/unit/api/apiPoolSkip.spec.bs).
 
-### A request a test makes fail (RTA builds only)
+### A request a test makes fail or slow (RTA builds only)
 
-On-device specs need a screen's failure path against a healthy server, so RTA builds (`ENABLE_RTA`) let a spec make chosen requests fail. The coordinator holds the rules from `m.global.rtaFailRequests`, reading the field only when a spec writes it, and checks each request as it takes it off its children (`processNewChildren` → `failedOnPurpose`). A match is answered at once and never reaches a slot. The answer is the one the pool itself delivers for that failure, built by [`apiFaults.responseFor()`](../../source/api/apiFaults.bs): a `roku-requests` timeout is `ok = false` with no `statusCode` or body, and an HTTP failure keeps its status. Nothing marks it as injected, because code that could tell the two apart could handle a test failure differently from a real one.
+On-device specs need a screen's failure and slow-server paths against a healthy, fast server, so RTA builds (`ENABLE_RTA`) let a spec make chosen requests fail or answer slowly. The coordinator holds the rules from `m.global.rtaFailRequests`, reading the field only when a spec writes it, and checks each request as it takes it off its children (`processNewChildren` → `answeredOnPurpose`). A failure is answered at once and never reaches a slot. The answer is the one the pool itself delivers for that failure, built by [`apiFaults.responseFor()`](../../source/api/apiFaults.bs): a `roku-requests` timeout is `ok = false` with no `statusCode` or body, and an HTTP failure keeps its status. Nothing marks it as injected, because code that could tell the two apart could handle a test failure differently from a real one.
 
-The check decides from the request AA the coordinator already holds, so it adds no crossing to the serial path; the one write is the delivery a slot's answer would make anyway. Dev and production builds compile none of it. How a spec uses it: [`rta-tests.md`](../dev/rta-tests.md#making-requests-fail-rtafailrequests).
+A slow request (`kind: "slow"`, `ms`) is sent like any other, and its real answer is held until `ms` after it was sent (`heldOnPurpose`). Its slot stays in flight until then, because a slow server's cost to the app includes the pool slot it occupies — the thing a screen that abandons a slow load must be able to give back. While an answer is held, the loop waits only until the earliest is due (`apiFaults.nextWaitMs`) instead of indefinitely.
+
+The check decides from the request AA the coordinator already holds, so it adds no crossing to the serial path; the one write is the delivery a slot's answer would make anyway. Dev and production builds compile none of it. How a spec uses it: [`rta-tests.md`](../dev/rta-tests.md#making-requests-fail-or-slow-rtafailrequests).
 
 ## The 5 API call patterns
 

@@ -112,3 +112,16 @@ sub narrateFocusedElement(text as string)
 
   guide.Say(spoken, true, false)
 end sub
+
+' Announce a status change the user is waiting on ("Loading more…"), after whatever the reader
+' is saying now. Queued rather than flushed, unlike the two above: nothing moved, so what is being
+' read is still true.
+sub narrateStatus(text as string)
+  spoken = text.trim()
+  if spoken = "" then return
+
+  guide = CreateObject("roAudioGuide")
+  if not isValid(guide) then return
+
+  guide.Say(spoken, false, false)
+end sub

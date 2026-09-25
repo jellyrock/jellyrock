@@ -42,7 +42,6 @@ sub init()
 
   m.showItemCount = userSettings.itemGridShowItemCount
 
-  m.loadedRows = 0
   m.loadedItems = 0
 
   m.data = CreateObject("roSGNode", "ContentNode")
@@ -65,6 +64,7 @@ sub init()
   m.genreList.content = m.genreData
 
   m.itemGrid.observeField("itemFocused", "onItemFocused")
+  m.itemGrid.observeField("currFocusRow", "onGridScrolled")
   m.itemGrid.observeField("itemSelected", "onItemSelected")
 
   ' The library view is router-created, so it owns its own navigation. The
@@ -98,6 +98,17 @@ sub init()
   m.loading = false
   ' Whether a later page's failure has been told (see gridPaging).
   m.pageFailureNotice = gridPaging.newFailureNotice()
+  ' What decides when the next page is asked for (gridPaging, "keep a runway"): how fast the
+  ' user is moving down the rows, and how long a page takes to arrive here. One clock for
+  ' both. The page timer outlives a query: it measures the server and this device, not the
+  ' query.
+  m.gridClock = CreateObject("roTimespan")
+  m.scrollTracker = gridPaging.newScrollTracker()
+  m.pageTimer = gridPaging.newPageTimer()
+  m.pageRequestedMs = -1
+  #if perfTiming
+    newGridSession()
+  #end if
   ' Whether this view is the one on screen. Not hasFocus(): while the router holds this view
   ' suspended out of the tree, its own nodes still report focus (see navigation.md, Focus
   ' management), so only the lifecycle hooks can say.
@@ -109,6 +120,9 @@ sub init()
   m.retryButton.observeField("isReady", "onRetryButtonReady")
   m.failureNarrationTimer.duration = narration.OPENING_DELAY
   m.failureNarrationTimer.observeField("fire", "onFailureNarrationDue")
+  m.loadingMore.text = translate(translationKeys.LabelLoadingMore)
+  m.isLoadingMoreDue = false
+  m.loadingMoreDelay.observeField("fire", "onLoadingMoreDue")
 
   ' Get reset folder setting
   m.resetGrid = userSettings.itemGridReset
@@ -147,6 +161,8 @@ sub setupNodes()
   m.loadFailedText = m.top.findNode("loadFailedText")
   m.retryButton = m.top.findNode("retryButton")
   m.failureNarrationTimer = m.top.findNode("failureNarrationTimer")
+  m.loadingMore = m.top.findNode("loadingMore")
+  m.loadingMoreDelay = m.top.findNode("loadingMoreDelay")
   m.alpha = m.top.findNode("alpha")
   m.alphaMenu = m.alpha.findNode("alphaMenu")
   m.genreList = m.top.findNode("genreList")
@@ -209,12 +225,12 @@ sub onScreenShown()
     scene = m.top.getScene()
     if isValid(scene) and scene.contentVersion <> m.lastContentVersion
       reloadGridItems()
-    else if gridPaging.shouldResume(m.loadedItems, m.totalRecordCount, m.loading)
-      ' A later page failed, possibly while another screen was up: ask for it again now the
-      ' user is back. Focus landing back in the grid would also ask (the grid reports its
-      ' focused item again, and onItemFocused pages), but only when focus returns THERE; this
-      ' is the rule, and m.loading keeps the two to one request.
-      loadMoreData()
+    else
+      ' The runway may have run short while another screen was up — a later page failed, or
+      ' the user left from near the end. Asked here and not only when focus lands back in
+      ' the grid (the grid reports its focused item again, and onItemFocused asks), because
+      ' focus may return somewhere else; m.loading keeps the two to one request.
+      loadMoreIfShort()
     end if
   end if
 
@@ -239,6 +255,7 @@ sub onScreenShown()
   if isValid(m.tvGuide) then m.tvGuide.callFunc("onScreenShown")
 
   restoreGridFocus()
+  updateLoadingMore()
 end sub
 
 ' Router focus hook (overrides JRScreen.handleFocus). The router calls it right after
@@ -289,6 +306,7 @@ end sub
 
 sub onScreenHidden()
   m.isShown = false
+  updateLoadingMore()
   hideTextureManager(m.data)
   if isValid(m.tvGuide) then m.tvGuide.callFunc("onScreenHidden")
 end sub
@@ -380,7 +398,6 @@ end sub
 ' the resume-time content-freshness check in
 ' onScreenShown (a delete elsewhere invalidated our cached content).
 sub reloadGridItems()
-  m.loadedRows = 0
   m.loadedItems = 0
   m.data = CreateObject("roSGNode", "ContentNode")
   m.itemGrid.content = m.data
@@ -488,9 +505,15 @@ end function
 ' against it. (Swapping the grid's content reports focus on item 0, and onItemFocused
 ' would otherwise page against the old total.)
 sub setGridQuery(query as object)
+  #if perfTiming
+    logGridSession()
+    newGridSession()
+  #end if
   m.gridQuery = query
   m.totalRecordCount = 0
   m.pageFailureNotice = gridPaging.newFailureNotice()
+  ' The new result set starts at the top: the speed of scrolling the last one says nothing.
+  m.scrollTracker = gridPaging.newScrollTracker()
 end sub
 
 ' Runs m.gridQuery from `startIndex` on a NEW LoadItemsTask2 node, releasing the run in
@@ -500,6 +523,7 @@ end sub
 sub startGridRun(startIndex as integer, observeSkeletons as boolean)
   if isValid(m.loadItemsTask) then m.loadItemsTask.unobserveField("genreSkeletons")
   m.loadItemsTask = replaceTask(m.loadItemsTask, "LoadItemsTask2", "content", paging.forPage(m.gridQuery, startIndex))
+  m.pageRequestedMs = m.gridClock.totalMilliseconds()
   m.loadItemsTask.observeField("content", "onItemDataLoaded")
   if observeSkeletons then m.loadItemsTask.observeField("genreSkeletons", "onGenreSkeletonsReady")
   launchTask(m.loadItemsTask)
@@ -716,7 +740,6 @@ sub onItemDataLoaded(msg)
   m.loadItemsTask.unobserveField("genreSkeletons")
   m.loadItemsTask.content = []
   isFirstPage = m.loadItemsTask.startIndex = 0
-  deliveredStartIndex = m.loadItemsTask.startIndex
 
   ' Before the total is read: a failed run's total is its default -1, and keeping it would
   ' stop every later page — including the retry that scrolling near the end makes.
@@ -725,7 +748,16 @@ sub onItemDataLoaded(msg)
     return
   end if
   gridPaging.pageLoaded(m.pageFailureNotice)
-  m.totalRecordCount = m.loadItemsTask.totalRecordCount
+  ' The total is counted once, on the first page: later pages are asked for without it (the
+  ' count is most of a page's cost on a slow server), and their reply's total is then only
+  ' the size of that page.
+  if isFirstPage
+    m.totalRecordCount = m.loadItemsTask.totalRecordCount
+    ' The "#" filter's later pages find their place from its first range's count, so it goes
+    ' into the query every later page is asked with (see LoadItemsTask2.executeHashPage).
+    hashFirstRangeTotal = m.loadItemsTask.hashFirstRangeTotal
+    if hashFirstRangeTotal >= 0 then m.gridQuery.hashFirstRangeTotal = hashFirstRangeTotal
+  end if
 
   if not isValid(itemData)
     m.loading = false
@@ -805,8 +837,17 @@ sub onItemDataLoaded(msg)
 
   ' Update the stored counts
   m.loadedItems = m.itemGrid.content.getChildCount()
-  m.loadedRows = m.loadedItems / m.itemGrid.numColumns
   m.loading = false
+  gridPaging.recordPageTime(m.pageTimer, m.gridClock.totalMilliseconds() - m.pageRequestedMs)
+  #if perfTiming
+    m.session.pages++
+    m.session.items = m.loadedItems
+  #end if
+
+  ' A later page with nothing in it, although the first page's total says more exist: the
+  ' library shrank since it was counted. The total the grid shows and pages against is what it
+  ' holds, or it would ask for the same empty page again on every move near the end.
+  if not isFirstPage and itemData.count() = 0 then m.totalRecordCount = m.loadedItems
 
   ' Update texture buffer range and activate after data is loaded
   if m.loadedItems > 0
@@ -826,14 +867,9 @@ sub onItemDataLoaded(msg)
 
   stopLoadingSpinner()
 
-  ' Auto-load remaining items in chunks (don't wait for scroll trigger).
-  ' Each chunk uses the normal page size (itemGridLimit); the recursive
-  ' onItemDataLoaded → loadMoreData cycle continues until all items are loaded.
-  ' With texture management, only visible + buffer rows have loaded textures
-  ' regardless of total ContentNode count, so loading all items is safe.
-  if paging.nextStart(deliveredStartIndex, itemData.count(), m.totalRecordCount) >= 0
-    loadMoreData()
-  end if
+  ' The page may not have been enough: a fast scroller can still be short of runway.
+  loadMoreIfShort()
+  updateLoadingMore()
 
   m.log.debug("end onItemDataLoaded()")
 end sub
@@ -849,6 +885,7 @@ end sub
 sub onGridLoadFailed(isFirstPage as boolean)
   m.loading = false
   stopLoadingSpinner()
+  updateLoadingMore()
 
   if not isFirstPage
     if gridPaging.shouldTellPageFailure(m.pageFailureNotice, m.isShown)
@@ -898,6 +935,104 @@ sub onFailureNarrationDue()
   narrateDialogOpening("", m.loadFailedText.text, m.retryButton.text)
 end sub
 
+' The row the user is at: where the grid is scrolling to, or where focus is when it is still.
+function gridRow() as integer
+  if m.scrollTracker.row >= 0 then return m.scrollTracker.row
+  focusedItem = m.itemGrid.itemFocused
+  if focusedItem < 0 then return 0
+  return focusedItem \ m.itemGrid.numColumns
+end function
+
+' The grid's scroll position, reported on every rendered frame while it scrolls. itemFocused is
+' not enough to keep a runway: during a run of key presses the grid keeps scrolling and reports
+' focus only where it stops (measured 2026-09-25 on a Stick 4K: 15 reports over 66 rows), by
+' which time the user can be at the last loaded row. Acts only when the row entering the focus
+' position changes, so a frame that moves no row costs one comparison.
+sub onGridScrolled()
+  position = m.itemGrid.currFocusRow
+  row = Int(position)
+  if position > row then row++
+  if row = m.scrollTracker.row then return
+
+  gridPaging.trackFocus(m.scrollTracker, row, m.gridClock.totalMilliseconds())
+  #if perfTiming
+    if row > m.session.furthestRow then m.session.furthestRow = row
+  #end if
+  loadMoreIfShort()
+  updateLoadingMore()
+end sub
+
+' Asks for the next page when the loaded rows left below the focus would run out before a page
+' could arrive (gridPaging, "keep a runway"). Asked whenever that can change: focus moved, a
+' page arrived, the view came back.
+sub loadMoreIfShort()
+  columns = m.itemGrid.numColumns
+  row = gridRow()
+  nowMs = m.gridClock.totalMilliseconds()
+
+  wantedRows = gridPaging.runwayRows(m.itemGrid.numRows, gridPaging.scrollSpeed(m.scrollTracker, nowMs), m.pageTimer.averageMs)
+  if gridPaging.shouldLoadMore(row, gridPaging.lastRow(m.loadedItems, columns), gridPaging.hasMore(m.loadedItems, m.totalRecordCount), m.loading, wantedRows)
+    loadMoreData()
+  end if
+end sub
+
+' Shows "Loading more" while the user waits at the last loaded row for the next page, after a
+' short delay so a fast page never flashes it. Asked wherever the answer can change.
+sub updateLoadingMore()
+  columns = m.itemGrid.numColumns
+  isWaiting = m.isShown and gridPaging.isWaitingAtEnd(gridRow(), gridPaging.lastRow(m.loadedItems, columns), gridPaging.hasMore(m.loadedItems, m.totalRecordCount), m.loading)
+
+  #if perfTiming
+    trackStall(isWaiting)
+  #end if
+
+  if not isWaiting
+    m.isLoadingMoreDue = false
+    m.loadingMoreDelay.control = "stop"
+    m.loadingMore.isShown = false
+    return
+  end if
+  if m.loadingMore.isShown or m.isLoadingMoreDue then return
+  m.isLoadingMoreDue = true
+  m.loadingMoreDelay.control = "start"
+end sub
+
+#if perfTiming
+  ' One line per grid query, for tuning gridPaging's starting values: how often the user waited
+  ' at the end of the loaded rows and for how long (stalls), against how much was loaded and how
+  ' far down they actually went. A stall counts from reaching the last loaded row with a page in
+  ' flight, before the indicator's delay.
+  sub newGridSession()
+    m.session = { pages: 0, items: 0, stalls: 0, stallMs: 0, stallStartMs: -1, furthestRow: 0 }
+  end sub
+
+  sub trackStall(isWaiting as boolean)
+    nowMs = m.gridClock.totalMilliseconds()
+    if isWaiting and m.session.stallStartMs < 0
+      m.session.stalls++
+      m.session.stallStartMs = nowMs
+    else if not isWaiting and m.session.stallStartMs >= 0
+      m.session.stallMs += nowMs - m.session.stallStartMs
+      m.session.stallStartMs = -1
+    end if
+  end sub
+
+  sub logGridSession()
+    if not isValid(m.session) or m.session.pages = 0 then return
+    trackStall(false)
+    ' At most nine args (see LoadItemsTask2's item-grid line).
+    m.log.info("item-grid paging - stalls " + m.session.stalls.toStr() + " stallMs " + m.session.stallMs.toStr() + " furthestRow " + m.session.furthestRow.toStr(), "pages", m.session.pages, "items", m.session.items, "pageMs", Int(m.pageTimer.averageMs))
+  end sub
+#end if
+
+sub onLoadingMoreDue()
+  if not m.isLoadingMoreDue then return
+  m.isLoadingMoreDue = false
+  m.loadingMore.isShown = true
+  ' Queued, not flushed: the reader may still be naming the focused tile.
+  narrateStatus(m.loadingMore.text)
+end sub
+
 sub loadMoreData()
   m.log.debug("start loadMoreData()")
   if m.loading = true then return
@@ -906,6 +1041,7 @@ sub loadMoreData()
   m.loading = true
   ' The next page of the same query: m.gridQuery, not the previous node, is what it asks for.
   startGridRun(m.loadedItems, false)
+  updateLoadingMore()
   m.log.debug("end loadMoreData()")
 end sub
 
@@ -958,7 +1094,6 @@ sub restoreGridFocus()
 end sub
 
 sub onItemFocused()
-  focusedRow = m.itemGrid.currFocusRow
   itemInt = m.itemGrid.itemFocused
 
   if itemInt = -1 then return
@@ -969,10 +1104,12 @@ sub onItemFocused()
   updateTitle()
   m.selectedFavoriteItem = m.itemGrid.content.getChild(m.itemGrid.itemFocused)
 
-  ' Load more data if focus is within last 5 rows
-  if focusedRow >= m.loadedRows - 5 and m.loadedItems < m.totalRecordCount
-    loadMoreData()
-  end if
+  gridPaging.trackFocus(m.scrollTracker, itemInt \ m.itemGrid.numColumns, m.gridClock.totalMilliseconds())
+  #if perfTiming
+    if itemInt \ m.itemGrid.numColumns > m.session.furthestRow then m.session.furthestRow = itemInt \ m.itemGrid.numColumns
+  #end if
+  loadMoreIfShort()
+  updateLoadingMore()
 
   ' Update backdrop
   updateBackdropForFocusedItem()
@@ -1317,7 +1454,6 @@ end sub
 
 sub onAlphaSelectedChanged()
   if m.top.alphaSelected <> ""
-    m.loadedRows = 0
     m.loadedItems = 0
 
     m.data = CreateObject("roSGNode", "ContentNode")
@@ -1363,7 +1499,6 @@ sub onVoiceFilter()
       return
     end if
 
-    m.loadedRows = 0
     m.loadedItems = 0
     m.data = CreateObject("roSGNode", "ContentNode")
     m.itemGrid.content = m.data
@@ -1623,6 +1758,9 @@ end function
 ' onDestroy: Full teardown releasing all resources before component removal
 ' Called automatically via JRScreen.beforeViewClose when sgRouter permanently closes this view.
 sub onDestroy()
+  #if perfTiming
+    logGridSession()
+  #end if
   ' Detach the interface observers registered in init(). Must precede every
   ' reference release below — these handlers dereference them.
   m.top.unobserveField("presenterType")
@@ -1641,11 +1779,14 @@ sub onDestroy()
   m.genreList.unobserveField("rowItemFocused")
   m.genreList.unobserveField("itemSelected")
   m.itemGrid.unobserveField("itemFocused")
+  m.itemGrid.unobserveField("currFocusRow")
   m.itemGrid.unobserveField("itemSelected")
   m.voiceBox.unobserveField("text")
   m.retryButton.unobserveField("isReady")
   m.failureNarrationTimer.unobserveField("fire")
   m.failureNarrationTimer.control = "stop"
+  m.loadingMoreDelay.unobserveField("fire")
+  m.loadingMoreDelay.control = "stop"
 
   ' Break the GridItem <-> content-root retain CYCLE before dropping our references.
   ' Every GridItem caches m.gridView = this view node (resolveGridViewConfig walks up for
@@ -1690,6 +1831,8 @@ sub onDestroy()
   m.loadFailedText = invalid
   m.retryButton = invalid
   m.failureNarrationTimer = invalid
+  m.loadingMore = invalid
+  m.loadingMoreDelay = invalid
   m.alpha = invalid
   m.alphaMenu = invalid
   m.genreList = invalid

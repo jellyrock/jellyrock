@@ -15,12 +15,7 @@ sub init()
   m.top.functionName = "loadItems"
   m.transformer = JellyfinDataTransformer()
 
-  m.top.limit = 100
-  usersettingLimit = m.global.user.settings.itemGridLimit
-
-  if isValid(usersettingLimit)
-    m.top.limit = usersettingLimit
-  end if
+  ' The page size is the `limit` field's default (LoadItemsTask2.xml).
 
   ' RTA-only: a smaller page, so specs can page a grid on the demo server's small libraries.
   ' Compiled out of dev and prod builds (see setGlobalNodes).
@@ -126,13 +121,15 @@ sub loadItems()
   end if
 
   ' Handle special case when getting names starting with numeral
+  ' "#" outside Live TV is two ranges of names, asked for by executeHashPage.
+  isHash = false
   if m.top.NameStartsWith <> ""
     if m.top.NameStartsWith = "#"
       if m.top.ItemType = "LiveTV" or m.top.ItemType = "TvChannel"
         params.searchterm = "A"
         params.append({ parentid: " " })
       else
-        params.NameLessThan = "A"
+        isHash = true
       end if
     else
       if m.top.ItemType = "LiveTV" or m.top.ItemType = "TvChannel"
@@ -175,8 +172,8 @@ sub loadItems()
     params.append({ IncludeItemTypes: m.top.ItemType })
   end if
 
-  ' queryType drives which Build*Request() is called — used for both the main request
-  ' and the optional 2nd lookup for the # (special characters) filter below.
+  ' queryType drives which Build*Request() is called — for the page's request, or both of a
+  ' "#" page's (executeHashPage).
   queryType = "usersItems"
 
   if m.top.ItemType = "LiveTV"
@@ -216,36 +213,21 @@ sub loadItems()
   end if
   ' MusicAlbum and the generic else both use queryType = "usersItems" (default)
 
+  ' The total is counted on the first page only (the view keeps it): on a slow server the
+  ' count is most of a page's cost. Live TV's channel list takes no such parameter.
+  if m.top.startIndex > 0 and queryType <> "liveTV" then params.EnableTotalRecordCount = false
+
   #if perfTiming
     stepClock.mark()
   #end if
-  data = executeItemQuery(queryType, params)
+  if isHash
+    data = executeHashPage(queryType, params)
+  else
+    data = executeItemQuery(queryType, params)
+  end if
   #if perfTiming
     waitMs += stepClock.totalMilliseconds()
   #end if
-
-  ' If user has filtered by #, include special characters sorted after Z as well. Only when the
-  ' first query answered, and a failed second query fails the page: a "#" page without its
-  ' after-Z half would silently leave those items out.
-  if isValid(data) and isValid(params.NameLessThan) and LCase(params.NameLessThan) = "a"
-    ' Use same params except for name filter param
-    params.NameLessThan = ""
-    params.NameStartsWithOrGreater = "z"
-
-    #if perfTiming
-      stepClock.mark()
-    #end if
-    zAndAfter = executeItemQuery(queryType, params)
-    #if perfTiming
-      waitMs += stepClock.totalMilliseconds()
-    #end if
-
-    if isValid(zAndAfter)
-      gridPage.appendNamesAfterZ(data, zAndAfter)
-    else
-      data = invalid
-    end if
-  end if
 
   ' `slots` holds one entry per source item, INCLUDING the ones that transform to
   ' invalid, so a genre's sampled items can be written back into its original
@@ -534,8 +516,36 @@ sub correctVersionDisplay(items as dynamic)
   if changed > 0 then m.log.debug("Corrected version progress on tiles", "count", changed)
 end sub
 
+' One page of the "#" letter filter: one or two requests across its two name ranges
+' (gridPage.hashRanges), the second only when the page reaches past the first range's end — and
+' always on the first page, whose total counts both. The first page reports the first range's
+' count in `hashFirstRangeTotal`, and the view hands it back to every later page, which is how a
+' page finds its place in the two ranges.
+'
+' Invalid when either request fails: a "#" page missing one range would silently leave its items
+' out of the grid.
+function executeHashPage(queryType as string, params as object) as dynamic
+  limit = m.top.limit
+  first = gridPage.hashFirstRequest(m.top.startIndex, limit, m.top.hashFirstRangeTotal)
+  data = executeItemQuery(queryType, gridPage.hashRequestParams(params, first))
+  if not isValid(data) then return invalid
+
+  ' Before `content`, like `totalRecordCount`: the view reads both in its `content` handler.
+  if first.counts and isValid(data.TotalRecordCount) then m.top.hashFirstRangeTotal = data.TotalRecordCount
+
+  delivered = 0
+  if type(data.Items) = "roArray" then delivered = data.Items.count()
+  second = gridPage.hashSecondRequest(first, delivered, limit)
+  if not isValid(second) then return data
+
+  secondData = executeItemQuery(queryType, gridPage.hashRequestParams(params, second))
+  if not isValid(secondData) then return invalid
+  gridPage.appendSecondRange(data, secondData, second.counts)
+  return data
+end function
+
 ' Routes an item query through Build*Request() + pool based on queryType.
-' Used for both the main request and the optional 2nd lookup for the # filter.
+' Used for a page's request, and for each of a "#" page's (executeHashPage).
 ' queryType values: "liveTV", "studios", "genres", "artists", "albumArtists", "usersItems"
 '
 ' Returns the parsed reply, or invalid when the server did not answer usably — after logging

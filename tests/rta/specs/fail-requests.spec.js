@@ -160,7 +160,7 @@ it('coming back to the grid asks again for a page that failed', async (testCtx) 
 
   // Open the focused tile and come back without moving through the grid, so the return is the
   // only thing that can ask for the failed page. Two things ask on it: the view's resume
-  // (gridPaging.shouldResume) and the grid reporting its focused item again as focus lands
+  // (loadMoreIfShort, gridPaging.shouldLoadMore) and the grid reporting its focused item again as focus lands
   // back in it. This pins the outcome; a return with focus elsewhere (the alpha menu) cannot
   // be staged from here, which is why the rule itself is unit-tested.
   await waitFocusInside('#itemGrid', { label: 'grid focused' });
