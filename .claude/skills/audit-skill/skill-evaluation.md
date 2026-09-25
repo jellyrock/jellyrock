@@ -24,7 +24,7 @@ The stumbles: repeated identical commands, failed-then-retried recoveries, confu
 
 ### 5. Model-fit — *was the right model used*
 
-The reasoning-load profile of the run — tool-to-text ratio, sub-agent use, distinct-files-edited, confusion/recovery counts, a human-readable profile summary — weighed against the skill's pinned `model:`. Mechanically profiled; the *verdict* ("this is over/under-modelled") is judgment. A **confident** model-fit call needs a multi-run sample (one run is a weak basis for re-pinning); a single run yields at most a `watch` flag, not a re-pin.
+The reasoning-load profile of the run — tool-to-text ratio, sub-agent use, distinct-files-edited, confusion/recovery counts, a human-readable profile summary — weighed against the skill's pinned `model:`. Mechanically profiled; the *verdict* ("this is over/under-modeled") is judgment. A **confident** model-fit call needs a multi-run sample (one run is a weak basis for re-pinning); a single run yields at most a `watch` flag, not a re-pin.
 
 ## Single-run signal vs. cross-run statistics
 
