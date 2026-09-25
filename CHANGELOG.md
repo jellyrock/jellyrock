@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Stop a song crashing when its details fail to load ([#1029](https://github.com/jellyrock/jellyrock/pull/1029))
 - Stop Play crashing on a song's details screen ([#1027](https://github.com/jellyrock/jellyrock/pull/1027))
 - (video) Keep the resume point when a video fails before it plays ([#1025](https://github.com/jellyrock/jellyrock/pull/1025))
 - Stop subtitles crashing on short or comma timestamps, and hide cue ids and notes ([#1024](https://github.com/jellyrock/jellyrock/pull/1024))
