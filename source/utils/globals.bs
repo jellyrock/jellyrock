@@ -88,9 +88,11 @@ sub setGlobalNodes()
   ' ONLY by the roku-test-automation deploy (see source/main.bs), so these fields do not
   ' exist in dev or prod builds. rtaSkeletonHoldMs: LoadItemsTask2 holds the Genres view
   ' in its skeleton stage this long, so RTA specs can exercise the skeleton window
-  ' deterministically instead of racing the demo server's latency.
+  ' deterministically instead of racing the demo server's latency. rtaFailRequests: rules
+  ' for requests the API coordinator answers with a failure instead of sending (see
+  ' source/api/apiFaults.bs), so specs can drive failure paths against a healthy server.
   #if ENABLE_RTA
-    m.global.addFields({ rtaSkeletonHoldMs: 0 })
+    m.global.addFields({ rtaSkeletonHoldMs: 0, rtaFailRequests: [] })
   #end if
 
   ' First, so it exists before any launch below could need it.

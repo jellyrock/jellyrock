@@ -1,3 +1,4 @@
+import "pkg:/source/api/apiFaults.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/constants/apiPool.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
@@ -97,6 +98,12 @@ sub runQueueLoop()
   ' ── Now safe to accept requests ──
   port = CreateObject("roMessagePort")
   m.top.observeField("enqueue", port)
+  #if ENABLE_RTA
+    ' Requests an RTA spec makes fail (see failedOnPurpose). Read here and on each change,
+    ' never per request: this loop is serial for every request the app makes.
+    m.failRequests = apiFaults.fromRules(m.global.rtaFailRequests)
+    m.global.observeField("rtaFailRequests", port)
+  #end if
   ' Signal readiness AFTER pool slots are confirmed ready and our enqueue
   ' observer is registered. fetchRes() callers waiting on this flag can
   ' now safely append children — the full pipeline is operational.
@@ -125,6 +132,12 @@ sub runQueueLoop()
     msg = wait(0, port)
     if type(msg) = "roSGNodeEvent"
       field = msg.getField()
+      #if ENABLE_RTA
+        if field = "rtaFailRequests"
+          m.failRequests = apiFaults.fromRules(msg.getData())
+          m.log.info("request failure rules set", "rules", m.failRequests.count())
+        end if
+      #end if
 
       if field = "enqueue"
         ' Wake-up signal from fetchRes — actual data is in children, not here.
@@ -203,7 +216,11 @@ sub processNewChildren(pool as object)
     child = m.top.getChild(m.processedIndex)
     m.processedIndex++
     if isValid(child) and isValid(child.request)
-      m.queue.Push({ req: child.request, resultNode: child, waited: false })
+      entry = { req: child.request, resultNode: child, waited: false }
+      #if ENABLE_RTA
+        if failedOnPurpose(entry) then continue while
+      #end if
+      m.queue.Push(entry)
     end if
   end while
   tryDispatch(pool)
@@ -254,6 +271,23 @@ sub tryDispatch(pool as object)
     #end if
   end while
 end sub
+
+#if ENABLE_RTA
+  ' Answers a queued request with the failure an RTA spec asked for (m.global.rtaFailRequests)
+  ' instead of sending it, so a spec can drive a screen's failure path against a healthy
+  ' server. The answer is delivered exactly as a slot's would be, and never takes a slot.
+  ' Decides from the request AA already in `entry`: no node read is added to this loop.
+  function failedOnPurpose(entry as object) as boolean
+    if m.failRequests.count() = 0 then return false
+    fault = apiFaults.take(m.failRequests, entry.req.requestId)
+    if not isValid(fault) then return false
+
+    m.log.info("failed a request on purpose", entry.req.requestId, "kind", fault.kind)
+    entry.resultNode.result = apiFaults.responseFor(fault, entry.req.requestId)
+    entry.resultNode.isDone = true
+    return true
+  end function
+#end if
 
 #if perfTiming
   ' One line per DISPATCH_WINDOW entries taken off the queue: what the coordinator

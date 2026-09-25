@@ -25,7 +25,7 @@ related-files:
   - scripts/flake-baseline.js
   - tests/rta/demos/run.mjs
   - .github/workflows/rta-functional-tests.yml
-last-reviewed: 2026-09-20
+last-reviewed: 2026-09-24
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -814,7 +814,7 @@ actually writing the failures.
 
 The Genres view has an interactive **skeleton stage** (structure drawn, samples pending)
 that lasts only a few hundred ms against the demo server — too narrow to exercise
-reliably. RTA builds compile in one test hook: an `rtaSkeletonHoldMs` field on `m.global`
+reliably. RTA builds compile in a test hook for it: an `rtaSkeletonHoldMs` field on `m.global`
 (added under `#if ENABLE_RTA` in `setGlobalNodes()`; the field does not exist in dev or
 prod builds). `LoadItemsTask2` holds the skeleton stage open that long, mimicking a slow
 server on the task thread. A spec sets it after relaunch, before navigating:
@@ -829,6 +829,35 @@ App-memory only — the next relaunch resets it, so no restore step. The consume
 a no-op, scroll survives the fill, backdrop lands on the focused item). `openLibraryByType`
 is the press-into-the-library half of `navLibraryByType` for exactly this kind of spec —
 everything else should keep using `navLibraryByType`, which settles.
+
+## Making requests fail (`rtaFailRequests`)
+
+A screen's failure path — a timeout, a server error — cannot be reached against a healthy
+server, so RTA builds let a spec make chosen API requests fail. Set rules after relaunch,
+through [`lib/failRequests.js`](../../tests/rta/lib/failRequests.js):
+
+```js
+await failRequests([{ prefix: 'itemQuery_usersItems', kind: 'timeout', times: 1 }]);
+await openLibraryByType('movies', moviesId);
+```
+
+- `prefix` matches the start of the request id the app passes to `fetchRes` / `fetchAsync`
+  (`itemQuery_usersItems`, `itemMetaData`, `genreItems_<id>`, …). Find the id at the call
+  site you want to fail.
+- `kind: 'timeout'` answers the way `roku-requests` does when it gives up; `kind: 'http'`
+  needs a `status` of 400 or more.
+- `times` is how many matching requests fail; omit it for all of them. `times: 1` is how a
+  spec proves recovery: the first load fails, the next one reaches the server.
+- A rule the app cannot honor exactly is dropped, not guessed at, so a typo fails your
+  assertions rather than some other request.
+
+The API coordinator answers a matching request itself, with the response the pool delivers
+for that failure, and never sends it (see [`api.md`](../architecture/api.md#a-request-a-test-makes-fail-rta-builds-only)).
+Only pooled requests are covered: the bootstrap-path sync calls (`getJson`) and
+`SideEffectTask` writes do not pass through the coordinator. Like `rtaSkeletonHoldMs` it is
+app-memory only, so a relaunch clears it. [`specs/fail-requests.spec.js`](../../tests/rta/specs/fail-requests.spec.js)
+is the reference use. Prefer this to a new `DebugFlags` flag whenever the failure is a
+request failing.
 
 ## Adding a screen
 

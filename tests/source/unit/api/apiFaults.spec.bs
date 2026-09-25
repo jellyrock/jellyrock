@@ -1,0 +1,110 @@
+import "pkg:/source/api/apiFaults.bs"
+
+namespace tests
+
+  @suite("apiFaults - requests an RTA spec makes fail")
+  class ApiFaultsTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("fromRules()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps a timeout rule and an http rule, unlimited unless times is given")
+    function _()
+      faults = apiFaults.fromRules([
+        { prefix: "itemQuery_", kind: "timeout" },
+        { prefix: "itemMetaData", kind: "http", status: 500, times: 2 }
+      ])
+
+      m.assertEqual(faults.count(), 2)
+      m.assertEqual(faults[0], { prefix: "itemQuery_", kind: "timeout", status: 0, remaining: -1 })
+      m.assertEqual(faults[1], { prefix: "itemMetaData", kind: "http", status: 500, remaining: 2 })
+    end function
+
+    @it("drops a rule it cannot honor rather than guessing")
+    @params({ kind: "timeout" }, "no prefix")
+    @params({ prefix: "", kind: "timeout" }, "empty prefix")
+    @params({ prefix: "itemQuery_", kind: "slow" }, "unknown kind")
+    @params({ prefix: "itemQuery_", kind: "http" }, "http without a status")
+    @params({ prefix: "itemQuery_", kind: "http", status: 200 }, "a status that is not a failure")
+    @params({ prefix: "itemQuery_", kind: "timeout", times: 0 }, "times 0 can never fire")
+    @params("itemQuery_", "not an object")
+    function _(rule, why)
+      m.assertEqual(apiFaults.fromRules([rule]).count(), 0, why)
+    end function
+
+    @it("answers no rules for anything that is not a list")
+    @params(invalid)
+    @params({})
+    @params("")
+    function _(rules)
+      m.assertEqual(apiFaults.fromRules(rules), [])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("take()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("matches by request id prefix and leaves other requests alone")
+    function _()
+      faults = apiFaults.fromRules([{ prefix: "itemQuery_", kind: "timeout" }])
+
+      m.assertNotInvalid(apiFaults.take(faults, "itemQuery_usersItems"))
+      m.assertInvalid(apiFaults.take(faults, "itemMetaData"))
+      m.assertInvalid(apiFaults.take(faults, "genreItems_itemQuery_"))
+    end function
+
+    @it("fails a request only as many times as the rule says")
+    function _()
+      faults = apiFaults.fromRules([{ prefix: "itemQuery_", kind: "timeout", times: 2 }])
+
+      m.assertNotInvalid(apiFaults.take(faults, "itemQuery_usersItems"))
+      m.assertNotInvalid(apiFaults.take(faults, "itemQuery_usersItems"))
+      m.assertInvalid(apiFaults.take(faults, "itemQuery_usersItems"))
+    end function
+
+    @it("uses the first rule that still applies")
+    function _()
+      faults = apiFaults.fromRules([
+        { prefix: "itemQuery_", kind: "http", status: 503, times: 1 },
+        { prefix: "itemQuery_", kind: "timeout" }
+      ])
+
+      m.assertEqual(apiFaults.take(faults, "itemQuery_usersItems").kind, "http")
+      m.assertEqual(apiFaults.take(faults, "itemQuery_usersItems").kind, "timeout")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("responseFor()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("answers a timeout the way the pool does when roku-requests gives up: not ok, no status, no body")
+    function _()
+      res = apiFaults.responseFor({ prefix: "itemQuery_", kind: "timeout", status: 0, remaining: -1 }, "itemQuery_usersItems")
+
+      m.assertEqual(res.requestId, "itemQuery_usersItems")
+      m.assertFalse(res.ok)
+      m.assertTrue(res.doesExist("statusCode"))
+      m.assertInvalid(res.statusCode)
+      m.assertInvalid(res.json)
+      m.assertInvalid(res.text)
+    end function
+
+    @it("answers an http failure with its status code and no body")
+    function _()
+      res = apiFaults.responseFor({ prefix: "itemMetaData", kind: "http", status: 500, remaining: -1 }, "itemMetaData")
+
+      m.assertEqual(res.requestId, "itemMetaData")
+      m.assertFalse(res.ok)
+      m.assertEqual(res.statusCode, 500)
+      m.assertInvalid(res.json)
+      m.assertEqual(res.text, "")
+    end function
+
+  end class
+
+end namespace

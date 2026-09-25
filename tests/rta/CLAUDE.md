@@ -168,7 +168,7 @@ a contract.
 | `FN` Function `keyPath` | 12 | ODC observes a **field**. `getChildCount()` / `subtype()` are calls, not fields, so the primitive cannot apply at all. |
 | `ABS` Waits for absence | 1 | The node is gone. A departed node has no field left to observe. This is `waitDialogClosed`, whose JSDoc carries the argument on behalf of the ten dialog-dismiss sites that route through it. |
 | `ACT` `action:` retry loops | 7 | The per-tick re-press **is** the mechanism (see `resendIfSwallowed`). An observer would sit and watch for a key that never landed. |
-| `SETTLE` Plain field settle | 40 | The primitive could apply; it is ruled out below. |
+| `SETTLE` Plain field settle | 42 | The primitive could apply; it is ruled out below. |
 | `DYN` Dynamic `keyPath` | 2 | `scrollFocus`, whose keyPath is its caller's, and `waitHome`'s rows gate, whose list id is RESOLVED rather than named. Unclassifiable from syntax, so each carries a rule disable naming the reason and the argument lives in its docblock. |
 | `FOCUS_INSIDE` Focus containment (`waitFocusInside`) | 18 | ODC has no "observe global focus" primitive. Its request table (`RTA_OnDeviceComponent.brs`) offers `getFocusedNode` / `hasFocus` / `isInFocusChain` — all READS — and one observer, `onFieldChange`, which needs a node keyPath and a field name and so cannot express "wherever focus now is". |
 | `FOCUS_SUBTYPE` Focus containment by subtype (`waitFocusInHomeContent`) | 4 | Same absence of a primitive. Separate row because the QUESTION differs: Home's content is whichever of `HomeRows` / `FavoritesRows` the selected tab put in the scene, so it cannot be asked by container id at all. |
@@ -491,7 +491,7 @@ once drifts into fiction.
 | `getValue` | Single reads in [`lib/driver.js`](lib/driver.js) / [`lib/steps.js`](lib/steps.js) where there is genuinely one keyPath. |
 | `getFocusedNode` | Every focus predicate — `focusIsInside`, `waitFocused`, `focusIsInHomeContent`, and the failure dump. |
 | `callFunc` | The bench specs' harness nodes, and [`scripts/crash-report.js`](../../scripts/crash-report.js). |
-| `setValue` | Arranging state the app cannot be walked into — [`lib/nav.js`](lib/nav.js), `dialogs.spec.js`, `genre-skeleton.spec.js`. |
+| `setValue` | Arranging state the app cannot be walked into — [`lib/nav.js`](lib/nav.js), [`lib/failRequests.js`](lib/failRequests.js) (requests made to fail), `dialogs.spec.js`, `genre-skeleton.spec.js`. |
 | `createChild` / `removeNode` | The four bench specs create a measurement node under the scene and tear it down again; `capture-screenshots.js` creates one too. Paired on purpose — a bench that leaves its node behind would be caught by the leak gate as an app defect. |
 | `readRegistry` / `writeRegistry` / `deleteRegistrySections` | [`lib/registry.js`](lib/registry.js)'s snapshot / verified-restore, and [`lib/seed.js`](lib/seed.js)'s session seeds. |
 | `getRootsCount` / `getAllCount` | The leak gate's two censuses (`specs/leaks.spec.js`). `getRoots()` is the assertion; `getAll()` is recorded but not asserted — see that file for why both. |
