@@ -864,6 +864,11 @@ await openLibraryByType('movies', moviesId);
 - `kind: 'slow'` needs `ms`: the request is sent, and its real answer is held until `ms` after
   it was sent, with its pool slot busy the whole time — a slow server, without making the
   test server slow. `{ …, kind: 'slow', ms: 20000, times: 1, after: 1 }` slows a grid's page 2.
+  `m.global.rtaHeldRequests` counts the answers held right now; read it with `getGlobalVal`
+  ([`lib/steps.js`](../../tests/rta/lib/steps.js)) to act only once a request is on a slot, and
+  to see its slot come back when the screen that asked is closed (a long request is stopped,
+  and its held answer let go, the moment its caller goes).
+  [`specs/slow-library.spec.js`](../../tests/rta/specs/slow-library.spec.js) is the reference.
 - `times` is how many matching requests the rule applies to; omit it for all of them. `times: 1` is how a
   spec proves recovery: the first load fails, the next one reaches the server.
 - `after` is how many matching requests go through before the rule starts failing. It is for

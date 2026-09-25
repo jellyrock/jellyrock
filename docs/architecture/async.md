@@ -7,7 +7,7 @@ related-files:
   - components/JRGroup.bs
   - scripts/bsc-plugins/auto-abandon-promises.cjs
   - scripts/lint/promise-ratchet.cjs
-last-reviewed: 2026-09-22
+last-reviewed: 2026-09-25
 ---
 
 # Async & Promises
@@ -43,8 +43,9 @@ us:
    request is held in a registry on the owning component's `m` (`m.__apiPromisePending`, keyed by
    `requestId`), and a shared global handler (`__onApiPromiseDone`) looks the entry up and resolves
    it. The handler runs in the component's `m` because that's where `observeField` was called.
-2. **Timeout.** `submitApiRequest` has *no* deadline (unlike `fetchRes`'s `API_WAIT_MS`). A Timer
-   per request rejects after `timeouts.API_WAIT_MS` so a never-answered slot can't hang forever.
+2. **Timeout.** `submitApiRequest` has *no* deadline (unlike `fetchRes`). A Timer per request
+   rejects after the same wait `fetchRes` uses, `apiTimeout.waitMs(req)` — `timeouts.API_WAIT_MS`
+   unless the request carries its own `timeoutMs` — so a never-answered slot can't hang forever.
 3. **Reject-vs-resolve.** The `fetch()`-convention error contract (decision #5) — any HTTP response
    resolves; transport failure / timeout rejects. Isolated as the pure `apiPromiseShouldResolve(res)`
    (`statusCode > 0` → resolve).

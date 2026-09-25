@@ -11,5 +11,13 @@
       where a request field write arrives before the observer is registered.
     -->
     <field id="isReady" type="boolean" value="false" />
+    <!--
+      Set to true by the coordinator to stop the request in flight: its caller has gone
+      (apiPool.bs, "Stopping a request nobody is waiting for"). roku-requests reads
+      `m.top.quit` on every pass of its wait and cancels the transfer when it is true, so the
+      slot answers "no answer" at once. The coordinator sets it back to false before it sends
+      this slot another request.
+    -->
+    <field id="quit" type="boolean" value="false" />
   </interface>
 </component>

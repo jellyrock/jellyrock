@@ -1,4 +1,5 @@
 import "pkg:/source/api/apiResponse.bs"
+import "pkg:/source/api/apiTimeout.bs"
 import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/tasks.bs"
@@ -18,8 +19,8 @@ import "pkg:/source/utils/tasks.bs"
 ' a POST or DELETE is something the user asked for (a favorite, a recording, a
 ' delete), and running it even though the screen moved on is what they want. A POST
 ' that only reads opts in with `skippable: true` on its request AA
-' (BuildGetLiveTvScheduleRequest). A request already on a pool slot is not cancelled
-' — that would need a cancellable HTTP call in place of the blocking one.
+' (BuildGetLiveTvScheduleRequest). A request already on a pool slot is stopped only when
+' it is a long one — see "Stopping a request nobody is waiting for" below.
 
 ' True when the pool may skip `req` once its caller is gone: a GET or HEAD (a request
 ' with no method is a GET — executeHttpRequest's pool default), or a request that
@@ -50,6 +51,43 @@ function poolCallerTask() as dynamic
   if not isValid(m.top) then return invalid
   if not m.top.isSubtype("Task") then return invalid
   return m.top
+end function
+
+' ── Stopping a request nobody is waiting for ────────────────────────────────
+'
+' Skipping only helps a request still in the queue. One already on a slot runs until the
+' server answers or its HTTP limit runs out, and a request that asks for a long limit
+' (apiTimeout.isLong — a library grid's page) can hold its slot for a minute after the user
+' has backed out. So when the coordinator SENDS such a request, it watches the Task waiting
+' for it, and if that Task stops before the answer arrives it tells the slot to give up
+' (ApiTask's `quit`), which frees the slot at once.
+'
+' Only long requests are watched. Watching costs the coordinator crossings on the serial
+' path every request takes — reading the waiting Task, then subscribing to it, measured at
+' 0.5-1.0 ms each on a 512 MB Stick (2026-09-25) — and a request with the default limit
+' frees its slot within timeouts.HTTP_MS anyway. Only reads, for the same reason as skipping:
+' a write the user asked for should land.
+
+' True when the coordinator watches `req`'s caller and stops `req` if the caller goes away:
+' a read (apiRequestIsSkippable) with a longer-than-default HTTP limit.
+function apiRequestIsStoppable(req as dynamic) as boolean
+  return apiTimeout.isLong(req) and apiRequestIsSkippable(req)
+end function
+
+' The slot whose request `caller` is waiting for, -1 when none is — the answer was already
+' delivered, or the request was never watched.
+'
+' @param inFlight - one element per pool slot: invalid = free, else an entry whose
+'                   `watchedCaller` is the Task the coordinator watches for it, if any
+' @param caller   - the Task node whose `state` changed
+function apiPoolSlotWatchedBy(inFlight as object, caller as object) as integer
+  for i = 0 to inFlight.count() - 1
+    entry = inFlight[i]
+    if isValid(entry) and isValid(entry.watchedCaller)
+      if entry.watchedCaller.isSameNode(caller) then return i
+    end if
+  end for
+  return -1
 end function
 
 ' Marks a request as one its caller has stopped waiting for, so the coordinator can
@@ -143,7 +181,8 @@ function apiPoolNextDispatch(queue as object, inFlight as object) as dynamic
 end function
 
 ' Submits a request to the API queue coordinator and blocks the calling Task thread
-' until the response arrives (or the timeouts.API_WAIT_MS deadline elapses).
+' until the response arrives (or apiTimeout.waitMs(req) elapses — timeouts.API_WAIT_MS
+' unless the request carries its own `timeoutMs`).
 '
 ' Safe to call concurrently from multiple Task threads — each request gets its own
 ' ApiResultNode, so responses are never mixed up between callers. The coordinator
@@ -157,7 +196,7 @@ end function
 '
 ' @param req      - request AA from a Build*Request() method; returns invalid if invalid
 ' @param requestId - unique string identifying this request (echoed in the response AA)
-' @return response AA { requestId, ok, statusCode, json, text } or invalid on timeout (timeouts.API_WAIT_MS)
+' @return response AA { requestId, ok, statusCode, json, text } or invalid on timeout (apiTimeout.waitMs)
 function fetchRes(req as dynamic, requestId as string) as dynamic
   if not isValid(req) then return invalid
 
@@ -209,7 +248,7 @@ function fetchRes(req as dynamic, requestId as string) as dynamic
   ' Wake-up signal — coordinator ignores the value and reads children instead.
   apiQueue.enqueue = requestId
 
-  msg = wait(timeouts.API_WAIT_MS, port)
+  msg = wait(apiTimeout.waitMs(req), port)
   if type(msg) = "roSGNodeEvent"
     resultNode.unobserveField("isDone")
     return resultNode.result
@@ -300,7 +339,7 @@ end function
 ' POST was silently dropped (issue #744). The 'enqueue' write is only a wake signal; the
 ' task reads the appended children, not the value.
 '
-' @param req - request AA: { method, url, headers?, body?, timeout? }
+' @param req - request AA: { method, url, headers?, body?, timeoutMs? }
 sub SubmitSideEffect(req as dynamic)
   if not isValid(req) then return
   sideEffectTask = m.global.sideEffectTask

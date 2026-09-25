@@ -40,7 +40,7 @@ end sub
 '
 ' The body is then held to the shape the request declared (apiResponse.enforceShape): a list
 ' request whose body holds no list comes back not-ok with `error = "unexpectedShape"`.
-' @param req - request AA: { requestId, method, url, headers?, body?, timeout?, expect? }
+' @param req - request AA: { requestId, method, url, headers?, body?, timeoutMs?, expect? }
 ' @return response AA: { requestId, ok, statusCode, json, text, error? }
 function executeRequest(req as object) as object
   r = executeHttpRequest(req, "GET", "[ApiTask]")

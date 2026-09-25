@@ -7,6 +7,7 @@ related-files:
   - source/api/apiResponse.bs
   - source/constants/apiPool.bs
   - source/api/baseRequest.bs
+  - source/api/apiTimeout.bs
   - source/api/image.bs
   - source/api/imageHelpers.bs
   - components/api/ApiTask.bs
@@ -259,7 +260,7 @@ One per request. Created by `fetchRes()`, appended to the queue, written to by t
 
 ### A request nobody is waiting for
 
-The pool cannot cancel a request, and callers stop listening all the time: `replaceTask()` STOPs a Task that is blocked in `fetchRes`, a component's promises are abandoned at teardown, a pipeline run ends early, a caller times out. Before 2026-09-22 each of those left its request in the FIFO queue, where it was still dispatched and held a slot for as long as the server took — so on a slow server a burst of replaced runs (Search starts a new `SearchTask` per keystroke) queued the request the user *was* waiting for behind ones nobody would read.
+Callers stop listening all the time: `replaceTask()` STOPs a Task that is blocked in `fetchRes`, a component's promises are abandoned at teardown, a pipeline run ends early, a caller times out. Before 2026-09-22 each of those left its request in the FIFO queue, where it was still dispatched and held a slot for as long as the server took — so on a slow server a burst of replaced runs (Search starts a new `SearchTask` per keystroke) queued the request the user *was* waiting for behind ones nobody would read.
 
 So at dispatch the coordinator asks `apiPoolNextDispatch()` ([`apiPool.bs`](../../source/api/apiPool.bs)) what to do with each entry, and it calls `settleIfCallerGone()` for the ones worth checking. A queued **read** whose caller is gone — `abandoned` set by the caller, or an `owner` Task that is no longer running (`taskThreadIsLive()`) — is completed with `error: apiResponse.ERROR_ABANDONED` and never reaches a slot, which stays free for the next entry. Four rules hold it safe and affordable:
 
@@ -268,13 +269,26 @@ So at dispatch the coordinator asks `apiPoolNextDispatch()` ([`apiPool.bs`](../.
 - **Only Task-thread callers record an owner** — `fetchRes`, and `submitApiRequest` with a port (the pipeline). A render-thread caller marks `abandoned` itself instead, so a request can never be skipped because some unrelated node stopped.
 - **`owner` is dropped only where it is known dead** — on the skip path. A dispatched entry's owner is by definition still waiting for the answer, and clearing it would cost a crossing on the path every request takes; the node lets it go when the coordinator's 50-child prune lets the node go.
 
-A request already on a slot is not canceled. That would mean replacing the blocking `rr_Requests().request` call in `ApiTask` with one that can be interrupted, and it only saves the remaining time of a request the server is already working on. The rules are pinned in [`apiPoolSkip.spec.bs`](../../tests/source/unit/api/apiPoolSkip.spec.bs).
+The rules are pinned in [`apiPoolSkip.spec.bs`](../../tests/source/unit/api/apiPoolSkip.spec.bs).
+
+#### A long request already on a slot
+
+Skipping only helps a request still in the queue. A request that asks for a long HTTP limit — a library grid's page, which gets `timeouts.GRID_PAGE_MS` because a slow server can take ~40 s to answer it — would otherwise hold its slot for up to a minute after the user backed out. So when the coordinator **sends** a request that `apiRequestIsStoppable()` (a read with a longer-than-default limit), `watchCaller()` subscribes to the waiting Task's `state`; if the Task stops before the answer arrives, `stopSlot()` sets the slot's `quit` field. `roku-requests` reads `m.top.quit` on every pass of its wait loop and cancels the transfer when it is true, so the slot answers "no answer" and is free again: measured 2026-09-25 on a 512 MB Stick against a slow 10.11.11 server, the slot ended its transfer 139 ms after the stop and took the next request at once. The coordinator clears `quit` before it sends that slot anything else. Why, and what was ruled out: [ADR 0043](../adr/0043-pool-stops-long-reads-of-gone-callers.md).
+
+- **Only long requests are watched.** Reading the waiting Task and subscribing to it cost 0.5–1.0 ms each on the coordinator (same device and date), on the serial path every request takes, and a request with the default limit frees its slot within `timeouts.HTTP_MS` anyway. The decision comes from the request AA alone, so every other request pays nothing.
+- **Subscribe, then read once.** A Task that stopped between the enqueue and the subscription sends no event; the read after subscribing catches it.
+- **`stop` also means "finished".** A Task that returns normally reports `stop` too, but only after its answer was delivered, and delivery ends the watch (`forgetCaller()`), so it matches no slot (`apiPoolSlotWatchedBy()`).
+- **The watch uses `unobserveField`, which drops every observer of the field.** Nothing else observes a Task's `state` — the task ledger reads it instead, by design ([`tasks.bs`](../../source/utils/tasks.bs)) — and the scoped pair that would drop only this one needs Roku OS 12.
+
+Only reads, for the same reason as skipping. A render-thread caller has no waiting Task to watch, so a long request made from the render thread would not be stopped; none exists today. The rules are pinned in [`apiPoolStop.spec.bs`](../../tests/source/unit/api/apiPoolStop.spec.bs), and the behavior end to end in the `slow-library` RTA spec.
+
+**`roku-requests` polls `quit` without sleeping.** Its wait loop calls `GetMessage()` and reads `m.top.quit` on every pass, and because the slot's node is render-owned each read is a rendezvous with the render thread. Measured 2026-09-25 on a 512 MB Stick, 60 requests: 98.7% of the loop's time was spent inside that read, about 270 µs per pass against a fast local server and up to 469 ms for a single read while Home was building. This predates the stop — the read ran against a field that did not exist — and replacing the loop is tracked separately.
 
 ### A request a test makes fail or slow (RTA builds only)
 
 On-device specs need a screen's failure and slow-server paths against a healthy, fast server, so RTA builds (`ENABLE_RTA`) let a spec make chosen requests fail or answer slowly. The coordinator holds the rules from `m.global.rtaFailRequests`, reading the field only when a spec writes it, and checks each request as it takes it off its children (`processNewChildren` → `answeredOnPurpose`). A failure is answered at once and never reaches a slot. The answer is the one the pool itself delivers for that failure, built by [`apiFaults.responseFor()`](../../source/api/apiFaults.bs): a `roku-requests` timeout is `ok = false` with no `statusCode` or body, and an HTTP failure keeps its status. Nothing marks it as injected, because code that could tell the two apart could handle a test failure differently from a real one.
 
-A slow request (`kind: "slow"`, `ms`) is sent like any other, and its real answer is held until `ms` after it was sent (`heldOnPurpose`). Its slot stays in flight until then, because a slow server's cost to the app includes the pool slot it occupies — the thing a screen that abandons a slow load must be able to give back. While an answer is held, the loop waits only until the earliest is due (`apiFaults.nextWaitMs`) instead of indefinitely.
+A slow request (`kind: "slow"`, `ms`) is sent like any other, and its real answer is held until `ms` after it was sent (`heldOnPurpose`). Its slot stays in flight until then, because a slow server's cost to the app includes the pool slot it occupies — the thing a screen that abandons a slow load must be able to give back. While an answer is held, the loop waits only until the earliest is due (`apiFaults.nextWaitMs`) instead of indefinitely. A held request that is stopped ([above](#a-long-request-already-on-a-slot)) gives its slot back at once, as a stopped real one does (`releaseHeldOnPurpose`), and `m.global.rtaHeldRequests` counts the answers held, so a spec can see a request is on a slot before acting and see the slot come back.
 
 The check decides from the request AA the coordinator already holds, so it adds no crossing to the serial path; the one write is the delivery a slot's answer would make anyway. Dev and production builds compile none of it. How a spec uses it: [`rta-tests.md`](../dev/rta-tests.md#making-requests-fail-or-slow-rtafailrequests).
 
@@ -294,7 +308,7 @@ sub runOrchestrator()
 end sub
 ```
 
-This blocks the *Task* thread (not the render thread!) for up to `timeouts.API_WAIT_MS` (currently 12 seconds; the canonical value lives in `source/constants/timeouts.bs`). Concurrent calls from multiple Task threads are safe — each gets its own `ApiResultNode`.
+This blocks the *Task* thread (not the render thread!) for up to `apiTimeout.waitMs(req)`: `timeouts.API_WAIT_MS` for an ordinary request, or the request's own `timeoutMs` plus the same margin, so the HTTP call always gives up first ([`apiTimeout.bs`](../../source/api/apiTimeout.bs)). Concurrent calls from multiple Task threads are safe — each gets its own `ApiResultNode`.
 
 `fetchJson(req, id)` is a convenience wrapper that returns just `res.json` (or `invalid` on timeout, an HTTP error, or a list body that failed its shape check — see [Reading a list endpoint's body](#reading-a-list-endpoints-body--sourceapiapiresponsebs)).
 
@@ -428,7 +442,7 @@ Two paths read a list without the pool's help:
 - **`buildURL(path, params)`** — concatenates `m.global.server.serverUrl` + `path` + `?<encoded params>`
 - **`buildParams(params)`** — converts an AA into a URL-encoded query string with type-aware encoding (string/integer/float/longinteger/array/boolean/null)
 - **`buildAuthHeader(shouldIncludeDeviceName = true)`** — returns the `Authorization` header value: `MediaBrowser Client="...", Version="...", UserId="...", DeviceId="...", Token="..."`, plus a free-text `Device="<name> (<model>)"` unless `shouldIncludeDeviceName` is `false`. **`DeviceId` is the session-identity field**: Jellyfin resolves it from this header and nowhere else (never from a query string), falling back to the id the auth *token* was minted under when the header omits it — so every channel that opens a Jellyfin session must send this header, or it silently lands on a different session. The only caller passing `false` is the `ws://` remote-control handshake; see [remote-control.md](remote-control.md) and decision `deviceid-header-authoritative`.
-- **`executeHttpRequest(req, defaultMethod, logLabel)`** — the shared executor behind both task tiers. Attaches the auth header, resolves the timeout (`req.timeout` seconds → milliseconds, else `timeouts.HTTP_MS`), defaults `Content-Type` to `application/json` when a body is present, and performs the `roku-requests` call. Returns `invalid` on a missing/empty URL, leaving the caller to decide how to surface that.
+- **`executeHttpRequest(req, defaultMethod, logLabel)`** — the shared executor behind both task tiers. Attaches the auth header, resolves the timeout (`apiTimeout.httpMs(req)`: the request's own `timeoutMs`, else `timeouts.HTTP_MS`), defaults `Content-Type` to `application/json` when a body is present, and performs the `roku-requests` call. Returns `invalid` on a missing/empty URL, leaving the caller to decide how to surface that.
 
 Both task tiers prepend the auth header automatically, because both route through `executeHttpRequest()`:
 

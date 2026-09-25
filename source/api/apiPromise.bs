@@ -1,5 +1,5 @@
 import "pkg:/source/api/apiPool.bs"
-import "pkg:/source/constants/timeouts.bs"
+import "pkg:/source/api/apiTimeout.bs"
 import "pkg:/source/roku_modules/promises/promises.brs"
 import "pkg:/source/utils/misc.bs"
 
@@ -64,13 +64,14 @@ function fetchAsync(req as dynamic, requestId as string) as object
   ' leaves id unset (""), which would collide across concurrent requests.
   resultNode.id = requestId
 
-  ' Timeout: submitApiRequest has NO deadline (unlike fetchRes's API_WAIT_MS).
-  ' Without this a never-answered pool slot would hang the promise forever.
+  ' Timeout: submitApiRequest has NO deadline (unlike fetchRes's apiTimeout.waitMs).
+  ' Without this a never-answered pool slot would hang the promise forever. The same
+  ' wait fetchRes uses, so a request that asks for a longer HTTP limit is waited for.
   ' Unparented Timer, kept alive via the registry entry (same approach the
   ' promises library uses for its next-tick delays).
   timer = createObject("roSGNode", "Timer")
   timer.id = requestId
-  timer.duration = timeouts.API_WAIT_MS / 1000
+  timer.duration = apiTimeout.waitMs(req) / 1000
   timer.repeat = false
 
   if not isValid(m.__apiPromisePending) then m.__apiPromisePending = {}

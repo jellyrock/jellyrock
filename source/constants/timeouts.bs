@@ -7,10 +7,23 @@ namespace timeouts
   ' Used by ApiTask and SideEffectTask for all API pool requests.
   const HTTP_MS = 10000
 
-  ' API pool caller wait (fetchRes).
+  ' API pool caller wait (fetchRes, fetchAsync) for a request with the default HTTP limit.
   ' 2s buffer above HTTP_MS so the HTTP layer times out first,
   ' preventing orphaned pool slots when the wait expires before the HTTP call.
+  ' A request with its own limit is waited for that limit plus the same buffer
+  ' (apiTimeout.waitMs).
   const API_WAIT_MS = 12000
+
+  ' HTTP limit for one page of a library grid (LoadItemsTask2), set as the request's own
+  ' `timeoutMs` (source/api/apiTimeout.bs). A large library on a server whose database has
+  ' not been optimized answers its first page slowly, and the answer, not the connection, is
+  ' what takes the time: measured 2026-09-24 against Jellyfin 10.11.11 with 8,643 movies,
+  ' 39.9-42 s for the first page, first byte at 34.6 s, where HTTP_MS gave up at 10 s and the
+  ' grid showed nothing. 60 s is nginx's default proxy_read_timeout, so a server behind a
+  ' default reverse proxy fails at the proxy no sooner than here. Safe only because a page
+  ' abandoned by Back gives its pool slot up at once (apiPool.bs, "Stopping a request
+  ' nobody is waiting for").
+  const GRID_PAGE_MS = 60000
 
   ' Whole-run budget for one apiPipeline run (source/api/apiPipeline.bs).
   ' ONE budget across every request in the run, not a fresh one per request:

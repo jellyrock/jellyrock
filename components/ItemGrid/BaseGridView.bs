@@ -33,6 +33,12 @@ import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/translate.bs"
 
+' When a slow first page's loading text changes, in seconds since the load started. From a
+' server that keeps up, the first page arrives in about 3.4 s even on a 512 MB Stick (measured
+' 2026-09-24, 8,643-movie library), so a load that is merely normal never shows any text.
+const SLOW_LOAD_STILL_S = 8
+const SLOW_LOAD_SERVER_S = 30
+
 sub init()
   m.log = new log.Logger("BaseGridView")
   m.log.debug("start init()")
@@ -123,6 +129,8 @@ sub init()
   m.loadingMore.text = translate(translationKeys.LabelLoadingMore)
   m.isLoadingMoreDue = false
   m.loadingMoreDelay.observeField("fire", "onLoadingMoreDue")
+  m.ownsSpinner = false
+  m.slowLoadTimer.observeField("fire", "onSlowLoadDue")
 
   ' Get reset folder setting
   m.resetGrid = userSettings.itemGridReset
@@ -163,6 +171,7 @@ sub setupNodes()
   m.failureNarrationTimer = m.top.findNode("failureNarrationTimer")
   m.loadingMore = m.top.findNode("loadingMore")
   m.loadingMoreDelay = m.top.findNode("loadingMoreDelay")
+  m.slowLoadTimer = m.top.findNode("slowLoadTimer")
   m.alpha = m.top.findNode("alpha")
   m.alphaMenu = m.alpha.findNode("alphaMenu")
   m.genreList = m.top.findNode("genreList")
@@ -383,6 +392,37 @@ end sub
 ' Data Loading
 ' ============================================================================
 
+' Hides the loading spinner, and stops its text from moving on (startSlowLoadText).
+sub stopGridSpinner()
+  m.ownsSpinner = false
+  m.slowLoadTimer.control = "stop"
+  stopLoadingSpinner()
+end sub
+
+' A first page can take the server most of a minute (timeouts.GRID_PAGE_MS). The spinner says
+' nothing for SLOW_LOAD_STILL_S, then that it is still loading, then from SLOW_LOAD_SERVER_S
+' that the wait is the server's — all we know then, since nothing has arrived. The cause, if
+' the page fails, goes to the log (decision `grid-load-failure-retry-policy`).
+sub startSlowLoadText()
+  m.slowLoadStage = 0
+  m.slowLoadTimer.control = "stop"
+  m.slowLoadTimer.duration = SLOW_LOAD_STILL_S
+  m.slowLoadTimer.control = "start"
+end sub
+
+sub onSlowLoadDue()
+  m.slowLoadStage++
+  if m.slowLoadStage = 1
+    text = translate(translationKeys.LabelStillLoading)
+    m.slowLoadTimer.duration = SLOW_LOAD_SERVER_S - SLOW_LOAD_STILL_S
+    m.slowLoadTimer.control = "start"
+  else
+    text = translate(translationKeys.MessageServerTakingAWhileToAnswer)
+  end if
+  ' The spinner is the scene's: never write its text over another screen.
+  if m.isShown then appScene().loadingText = text
+end sub
+
 ' Prepare for data loading by releasing any run in flight, showing spinner, and hiding empty text
 ' @param {boolean} [disableRemote=false] - Whether to disable remote input during loading
 sub prepareDataLoad(disableRemote = false as boolean)
@@ -390,6 +430,9 @@ sub prepareDataLoad(disableRemote = false as boolean)
   ' loadInitialItems starts no run at all.
   releaseGridRun()
   startLoadingSpinner(disableRemote)
+  ' The spinner is the scene's, so closing this view mid-load must take it down (onDestroy).
+  m.ownsSpinner = true
+  startSlowLoadText()
   m.emptyText.visible = false
   m.loadFailed.visible = false
 end sub
@@ -454,7 +497,7 @@ sub loadInitialItems()
       ' Update title before early return to ensure overhang shows correct title on first load
       updateTitle()
       showTVGuide()
-      stopLoadingSpinner()
+      stopGridSpinner()
       ' The guide is this view's finished surface; the grid never loads on this path.
       m.top.loadState = "loaded"
       return
@@ -681,7 +724,7 @@ sub revealGenreList(rowsRoot as object)
   m.genreList.opacity = "1"
 
   m.loading = false
-  stopLoadingSpinner()
+  stopGridSpinner()
 
   focusAfterLoad()
 end sub
@@ -761,7 +804,7 @@ sub onItemDataLoaded(msg)
 
   if not isValid(itemData)
     m.loading = false
-    stopLoadingSpinner()
+    stopGridSpinner()
     return
   end if
 
@@ -865,7 +908,7 @@ sub onItemDataLoaded(msg)
     m.top.loadState = "loaded"
   end if
 
-  stopLoadingSpinner()
+  stopGridSpinner()
 
   ' The page may not have been enough: a fast scroller can still be short of runway.
   loadMoreIfShort()
@@ -884,7 +927,7 @@ end sub
 ' our own would re-send a query the server may still be working on.
 sub onGridLoadFailed(isFirstPage as boolean)
   m.loading = false
-  stopLoadingSpinner()
+  stopGridSpinner()
   updateLoadingMore()
 
   if not isFirstPage
@@ -1787,6 +1830,9 @@ sub onDestroy()
   m.failureNarrationTimer.control = "stop"
   m.loadingMoreDelay.unobserveField("fire")
   m.loadingMoreDelay.control = "stop"
+  m.slowLoadTimer.unobserveField("fire")
+  ' Backing out while the first page is on its way: nothing else would hide the spinner.
+  if m.ownsSpinner then stopGridSpinner()
 
   ' Break the GridItem <-> content-root retain CYCLE before dropping our references.
   ' Every GridItem caches m.gridView = this view node (resolveGridViewConfig walks up for
@@ -1833,6 +1879,7 @@ sub onDestroy()
   m.failureNarrationTimer = invalid
   m.loadingMore = invalid
   m.loadingMoreDelay = invalid
+  m.slowLoadTimer = invalid
   m.alpha = invalid
   m.alphaMenu = invalid
   m.genreList = invalid

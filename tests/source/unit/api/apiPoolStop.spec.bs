@@ -1,0 +1,63 @@
+import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/apiTimeout.bs"
+
+namespace tests
+
+  ' The coordinator stops a long request already on a slot once the Task waiting for it has
+  ' gone (apiPool.bs, "Stopping a request nobody is waiting for"). These pin which requests
+  ' it watches and how it finds the slot a stopped Task was waiting on; the watch itself and
+  ' the slot's `quit` live in ApiQueueTask, and the RTA grid-paging spec drives them.
+  @suite("apiPool - stopping a request nobody is waiting for")
+  class ApiPoolStopTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("apiRequestIsStoppable() — long reads only")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("stops a read that asked for a longer limit")
+    function _()
+      m.assertTrue(apiRequestIsStoppable({ method: "GET", timeoutMs: timeouts.HTTP_MS * 6 }))
+      m.assertTrue(apiRequestIsStoppable({ url: "http://x", timeoutMs: timeouts.HTTP_MS + 1 }))
+      m.assertTrue(apiRequestIsStoppable({ method: "POST", skippable: true, timeoutMs: timeouts.HTTP_MS * 6 }))
+    end function
+
+    @it("never stops a request with the default limit — it frees its slot soon anyway")
+    function _()
+      m.assertFalse(apiRequestIsStoppable({ method: "GET" }))
+      m.assertFalse(apiRequestIsStoppable({ method: "GET", timeoutMs: timeouts.HTTP_MS }))
+    end function
+
+    @it("never stops a write, however long its limit")
+    function _()
+      m.assertFalse(apiRequestIsStoppable({ method: "POST", timeoutMs: timeouts.HTTP_MS * 6 }))
+      m.assertFalse(apiRequestIsStoppable({ method: "DELETE", timeoutMs: timeouts.HTTP_MS * 6 }))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("apiPoolSlotWatchedBy() — the slot a stopped Task was waiting on")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("finds the slot whose watched caller is that Task")
+    function _()
+      first = CreateObject("roSGNode", "Node")
+      second = CreateObject("roSGNode", "Node")
+      inFlight = [{ watchedCaller: first }, invalid, { watchedCaller: second }]
+
+      m.assertEqual(apiPoolSlotWatchedBy(inFlight, second), 2)
+      m.assertEqual(apiPoolSlotWatchedBy(inFlight, first), 0)
+    end function
+
+    @it("is -1 when no slot is watching that Task")
+    function _()
+      caller = CreateObject("roSGNode", "Node")
+      other = CreateObject("roSGNode", "Node")
+
+      ' A request never watched, a free slot, and a watch already ended (answer delivered).
+      m.assertEqual(apiPoolSlotWatchedBy([{ req: {} }, invalid, { watchedCaller: invalid }], caller), -1)
+      m.assertEqual(apiPoolSlotWatchedBy([{ watchedCaller: other }], caller), -1)
+      m.assertEqual(apiPoolSlotWatchedBy([], caller), -1)
+    end function
+
+  end class
+
+end namespace

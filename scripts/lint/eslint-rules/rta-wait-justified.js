@@ -117,6 +117,17 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // long as the user waits at the last loaded row, and `false` until the next wait — neither
   // is a pulse. Read against the app source 2026-09-25, both write sites.
   '#loadingMore.isShown',
+  // The scene's spinner text. Written by `startLoadingSpinner` / `stopLoadingSpinner`
+  // (source/utils/misc.bs) and, for a library grid's slow first page, by
+  // `BaseGridView.onSlowLoadDue` at its two stages. Each value holds until the next stage or
+  // the end of the load — seconds apart — so none is a pulse. Read against the app source
+  // 2026-09-25, all three write sites.
+  'loadingText',
+  // RTA-only count of slowed answers the API coordinator holds (ApiQueueTask.publishHeld),
+  // written on each hold and each release. A count held for the whole length of a `slow`
+  // rule's hold (seconds), and 0 until the next one: neither is a pulse. Read against the
+  // app source 2026-09-25, all three write sites.
+  'rtaHeldRequests',
   '#jrDialog.#okButton.#buttonBorder.blendColor',
   '#jrDialog.#scrollContent.translation',
   '#jrDialog.id',

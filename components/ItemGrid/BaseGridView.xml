@@ -114,6 +114,9 @@
     <ProgressPill id="loadingMore" />
     <Timer id="loadingMoreDelay" repeat="false" duration="0.3" />
 
+    <!-- A slow first page: moves the spinner's text on while the user waits (onSlowLoadDue). -->
+    <Timer id="slowLoadTimer" repeat="false" />
+
     <!-- Options dialog -->
     <ItemGridOptions id="options" visible="false" />
 
