@@ -55,3 +55,6 @@ manifest
 # would be its own follow-up because of the cross-cutting workflow churn.
 *.yml
 *.yaml
+
+# Agent tooling, copied in unmodified; not formatted here.
+.claude/skills/audit-skill/extract-friction.cjs

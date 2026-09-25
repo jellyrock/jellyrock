@@ -16,11 +16,11 @@ Whether the run's actual output is the right one for its input: the correct file
 
 ### 3. Performance — *what the run cost*
 
-Wall-clock duration, output tokens (total and per-model), cache-hit ratio, and an estimated cost. Fully mechanical. Used to spot a perf anomaly or a wrong model pin.
+Wall-clock duration, output tokens (total and per-model), cache-hit ratio, and an estimated cost. Fully mechanical. Used to spot a perf anomaly or a wrong model pin, and to catch the case where a change made the same behavior markedly more expensive (e.g. a restructure that doubled the token cost for identical output).
 
 ### 4. Friction — *where the run struggled*
 
-The stumbles: repeated identical commands, failed-then-retried recoveries, confusion clusters (self-narration density spiking), permission-prompt gaps (an internal tool invoked without allowlist coverage), and any repo-specific rule violations the detectors flag. Mostly mechanical (the extractor's detectors), plus a seam for repo-specific rule detectors that map to this repo's `CLAUDE.md` hard rules. Friction present on even a *single* run is real signal — it does not require many runs to surface (only *recurring*-friction statistics need a multi-run sample).
+The stumbles: repeated identical commands, failed-then-retried recoveries, confusion clusters (self-narration density spiking), permission-prompt gaps (an internal tool invoked without allowlist coverage), and any repo-specific rule violations this repo's own detectors flag. Mostly mechanical (the extractor's portable detectors), plus an extension seam for repo-specific rule detectors that map to this repo's `AGENTS.md` hard rules. Friction present on even a *single* run is real signal — it does not require many runs to surface (only *recurring*-friction statistics need a multi-run sample).
 
 ### 5. Model-fit — *was the right model used*
 
@@ -32,4 +32,4 @@ Single-run signal (dimensions 1, 2, 3, 4) is detectable on *one* run — includi
 
 ## Non-determinism — judge behavior, never text
 
-These executions are LLM runs: the *same* version run twice produces different prose. So never diff raw transcript text — read the mechanical profile and judge accuracy against what *should* have happened.
+These executions are LLM runs: the *same* skill run twice produces different prose. So evaluation never diffs raw transcript text — it reads the mechanical profile and judges accuracy against what should have happened. Judge a run on the **shape** of what it produced, not the exact **value**: "did a recommendation of the right form get produced?", never "is the wording identical."

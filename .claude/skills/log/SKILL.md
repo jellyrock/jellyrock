@@ -35,6 +35,7 @@ effort: low
 - **Decision-log creep + ADR creep.** The significance bar is load-bearing at two levels: a routine fix, an obvious choice, or time-bound state is NOT a decision entry at all; and a decision that's local in blast radius is a `docs/decisions.md` note, NOT a numbered ADR. If everything becomes an entry the high-signal ones drown; if every decision becomes an ADR, no decision is architectural.
 - **Letting the human predict ADR-grade at capture time.** `/log decision` must NOT ask the user "is this an ADR?" up front — that re-imports the prediction-at-capture friction the agent-gate exists to remove. The agent classifies with full session context and routes; the human only confirms or overrides the proposed routing in one tap.
 - **Inventing missing fields when they're not inferable.** If the user said "log a followup" with no body or inferable area, ask — don't pick a plausible-looking placeholder. The bar is "genuinely ambiguous," not "any uncertainty."
+- **Routing to the wrong type on ambiguous input.** When the first `$ARGUMENTS` token could plausibly be a type-name OR a body-word ("decision"... about what? — or is "decision" the body?), surface the ambiguity and ask. Don't optimize for the common case at the cost of the wrong-case audit corruption.
 - **Folding a closure into a `/log` capture.** Don't strike-through, ✅-mark, or otherwise "close" an existing bullet during a `/log` run, and don't touch a *different* bullet than the one you're writing. Closure is `/done`'s job, as a separate invocation. `/log followup --replace=<substring>` is not an exception to this: it REVISES one bullet the caller named explicitly and leaves it open under `## Open followups`, writing nothing to `## Recently shipped`. The rule guards against a `/log` run silently touching a bullet nobody asked about — not against revising the one it was pointed at.
 - **Bumping multiple journals when only one was meant.** Each type's flow has a defined write surface; cross-bumping is a smell (the one sanctioned cross-write is the `last-updated:` bump that keeps the staleness banner honest).
 - **Manually bumping auto-maintained signal fields.** The `latest_upstream` + `last_checked` fields for aggregator-managed slugs (`jellyfin-server-stable`, `jellyfin-server-rc`, `roku-os`) are owned by `scripts/catchup-state.js`; don't hand-edit them.
@@ -44,6 +45,8 @@ effort: low
 - The capture is actually a normal commit message body — just write the commit; don't pile a `/log` on top.
 - The capture is a half-thought — write it down informally first, refine it, THEN `/log` once the shape is clear. Premature `/log` produces noise the next `/catchup` has to wade through.
 - The flip is a status change on an existing entry (open → closed, watching → re-checked) — that's `/done`, not `/log`. `/log` is for new entries.
+- You're deliberately writing a heavyweight ADR by hand (a big architectural decision with a long Context / Alternatives section). `/log decision` is the fast-capture path that drafts and routes for you, not a requirement: a hand-written ADR in `docs/adr/` (plus its `docs/adr/README.md` index row) is a normal commit.
+- The capture belongs to one tracked project (a phase note, not cross-cutting). It goes in that project's local PLAN: resume the project (`/resume-project`) and record it there.
 - Internal tech debt (a deferred refactor, a design intent that shouldn't be casually reformed) → `/tech-debt-scan` owns `docs/architecture/tech-debt.md`.
 - A user-facing bug or feature request → file a GitHub issue (`gh issue create` or `/create-issue`).
 
@@ -71,6 +74,8 @@ Inspect the first whitespace-separated token of `$ARGUMENTS`:
 - `running` → Step 2-R
 
 Anything else (including missing): tell the user the four valid types and ask.
+
+One ambiguous input is asked about instead of routed: the first token is a type name but the rest reads as a sentence that starts with that word (`running low on device-test time`, `decision on the lint rule is still open`, `signal handling in the socket task is flaky`). Ask which type it is (or whether the whole input is the body of another type); anything else routes as above without asking.
 
 ### Step 2-D — Decision (agent-gated)
 

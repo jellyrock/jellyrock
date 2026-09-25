@@ -34,7 +34,7 @@ audit-span: read-only
 - **Improvising raw fetches when the aggregator's data is missing.** If a banner-check needs data `catchup-state.js` doesn't expose, the fix is structural — extend the aggregator and ship that in the same change. Reaching for raw `gh` / `git` / shell calls to fetch the missing piece inline produces guessed paths, brittle one-offs, and a briefing slower than the original (the aggregator exists precisely to replace ~13 parallel calls with one).
 - **Auto-invoking write actions.** No `/log`, no `/done`, no `/issue-triage`, no fix-attempts, no commits. /catchup is read-only by contract. The "Suggested next" line names the right write skill; the user invokes it.
 - **Asserting state from training knowledge instead of reading it.** If the briefing claims a signal is up to date, a PR is in review, a CI run passed, etc., those claims MUST come from the aggregator read this invocation performed — not from "I remember from last session." Sessions get compacted; "I remember" is hallucination dressed up as confidence.
-- **Silently dropping a missing or errored state section.** If `_errors[<section>]` is populated (the section is `null`), or `progress.md` is older than the staleness threshold, that's a banner. Skipping it because "nothing to show" produces a briefing that looks clean while hiding the real signal.
+- **Silently dropping a missing or errored state section.** If `_errors[<section>]` is populated (the section is `null`), or `progress.md` is older than the staleness threshold, that's a banner. Skipping it because "nothing to show" produces a briefing that looks clean while hiding the real signal. A failure (a CI run, a scheduled workflow) is never *fully* suppressed either: one that looks auto-recovered (a later run went green) still shows, at minimum, as a one-line info entry.
 - **Briefing on micro-resumes.** If the user typed `/catchup` two minutes ago and the only delta is one commit, respond with the one-line delta (`still here, last commit X`) — don't re-run the full briefing every time.
 
 **When NOT to use.**
@@ -125,7 +125,7 @@ Format short. Banners (if any) at top, then this template — sections collapse 
 
 **Pending handoffs:** <handoffs.pending.length> pending (<handoffs.pruned_count> pruned this run). Most recent: `<name>` <age_days>d ago. (or "(none)"). If count >= 10, append: "Cleanup hint: many handoffs accumulating — consider `rm`-ing the ones whose investigations are complete; >30d auto-prune handles the rest."
 
-**Suggested next:** <one or two action items, see Step 4>
+**Suggested next:** <one action item, see Step 4>
 ```
 
 If nothing has changed since your last session AND the working tree is clean, surface that explicitly: "Clean tree, nothing new since `<sha>`. Probably a coffee-break resume — pick up where you left off."

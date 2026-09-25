@@ -11,13 +11,14 @@ description: Execute a procedural implementation plan saved at `.claude/plans/fo
 
 **Goal.** A clear-spec implementation plan doesn't need a judgment-grade model's reasoning budget — it needs careful execution. This skill is the cheap path for that half. Default project model is the judgment-grade model (Opus class) for architectural decisions and anything with a fork in it; when the upstream work has already produced a written plan and the next step is "do what the plan says", `/sonnet <plan-path>` runs the same implementation on Sonnet at a fraction of the token cost. Parents (the user, or a judgment-grade parent agent that just finished `/focus`) decide when to opt in. The skill's `model: sonnet` frontmatter is the load-bearing mechanism — the harness picks up the field and switches model for the invocation.
 
-**Inputs.** `$ARGUMENTS` is the plan-file path. Most commonly a `/focus`-produced plan file at `.claude/plans/focus-YYYY-MM-DD-slug.md`; any markdown plan with the canonical sections (Context / Approach / Critical files / Verification / What this plan deliberately does NOT do) works. If `$ARGUMENTS` is empty, the Implementation surfaces the most recent candidate plan files and asks which one (or whether to cancel).
+**Inputs.** `$ARGUMENTS` is the plan-file path. Most commonly a `/focus`-produced plan file at `.claude/plans/focus-YYYY-MM-DD-slug.md`; any markdown plan with the expected sections (Context / Approach / Critical files / Verification / Landing & closeout / What this plan deliberately does NOT do) works. A `/focus` plan also carries a `**Project:** <slug | n/a>` header line naming the tracked project it advances. If `$ARGUMENTS` is empty, the Implementation surfaces the most recent candidate plan files and asks which one (or whether to cancel).
 
 **Outputs.**
 
 - Edits applied to the files named in the plan's Critical files table — and only those files, unless the user explicitly approves widening scope.
 - Verification gates from the plan run end-to-end with output surfaced inline (not paraphrased).
 - A drafted commit on the current branch, staged explicitly per the Critical files list.
+- When the plan's `**Project:**` names a tracked project, the landing recorded in that project's local `PLAN.md` (`docs/projects/` is gitignored in this public repo, so this is an uncommitted edit, never `git add -f`): one dated Session-log line naming the work commit and the plan, and its `last-updated` bumped. Nothing else in the PLAN changes (Status and the kickoff stay `/end-session`'s, and the line says so); the push ships only the work commit.
 - A "ready to push" block surfaced to the user, with the commit SHA and a one-line Verification summary.
 - A `Captures for /log` tail listing any followups / decisions surfaced during implementation. Omit the tail if nothing journal-worthy surfaced — do not pad.
 
@@ -28,6 +29,7 @@ description: Execute a procedural implementation plan saved at `.claude/plans/fo
 - Every command in the plan's Verification section runs and either passes or has its failure surfaced verbatim; never auto-fixed.
 - The commit message reflects the plan's Context (the **why**), not just a restatement of what changed.
 - Push happens only after explicit user confirmation ("push" or "yes"). Never auto-push, never push on session end.
+- Production steps follow the plan's `Landing & closeout` exactly: after the push, `/sonnet` runs only a step the plan assigns to it (routine and undoable, with the exact command approved as part of the plan); a step assigned to the operator is repeated in the ready-to-push block as the exact command to run, never run by `/sonnet`; anything the section does not cover is surfaced, not improvised.
 - If implementation surfaced anything journal-worthy (a new followup, a decision-shaped choice), the `Captures for /log` tail lists it for the user to invoke `/log` on.
 
 **Failure modes to avoid.**
@@ -45,7 +47,7 @@ description: Execute a procedural implementation plan saved at `.claude/plans/fo
 - The plan still has open architectural forks or unresolved `AskUserQuestion` fences. Stay on the judgment-grade model and finish the planning side first via `/focus`.
 - No written plan exists. "Implement feature X" without a spec is judgment-heavy by default; don't reach for `/sonnet`.
 - The work is so trivial it doesn't warrant a plan (typo, one-line config edit). Just edit and commit; the skill overhead isn't worth it.
-- The plan flags `Risk / blast radius: large` or touches load-bearing infra (migrations, deploy scripts, secret-handling). Stay on the judgment-grade model for the implementation half too — the token savings aren't worth the marginal risk on infra changes.
+- The plan flags `Risk / blast radius: large` or touches load-bearing infra (migrations, deploy scripts, secret-handling, backup and restore paths). Stay on the judgment-grade model for the implementation half too — the token savings aren't worth the marginal risk on infra changes. **This bullet is the one "must not be a Sonnet run" list; `/focus`'s implementation-tier choice checks it rather than keeping its own copy.**
 
 ## Implementation
 
@@ -53,7 +55,7 @@ The plan lives at `.claude/plans/focus-YYYY-MM-DD-slug.md` (gitignored, like `.c
 
 ### Step 1 — Load the plan and sanity-check state
 
-Read the plan file in full. Pay attention to: the `Context` section (which followup, signal, or banner surfaced this — the "why now"); the `Approach` section (the actual step list); the `Critical files` table (CREATE / Edit / Delete per file); the `Verification` checklist (the regression-floor — every command here must pass before declaring done); the `What this plan deliberately does NOT do` section (scope boundaries — do not widen these).
+Read the plan file in full. Pay attention to: the `Context` section (which followup, signal, or banner surfaced this — the "why now"); the `Approach` section (the actual step list); the `Critical files` table (CREATE / Edit / Delete per file); the `Verification` checklist (the regression-floor — every command here must pass before declaring done); the `What this plan deliberately does NOT do` section (scope boundaries — do not widen these); the `**Project:**` header line (the project under `docs/projects/` whose local PLAN records the landing, or `n/a`); and the `Landing & closeout` section (who lands each step after the push).
 
 Run one quick state-drift check before touching anything: `node scripts/catchup-state.js --pretty` (the same aggregator `/catchup` and `/focus` read). If the plan file's mtime is more than 12 hours old AND state has moved since (heuristic: anything unusual in the read — failed CI on this branch, a stale signal row, an in-flight handoff besides this one), surface a one-line note and ask: "the plan is from <X> ago and state has moved — want me to invoke `/catchup` first or proceed with the plan as-is?" Don't auto-invoke; give the user the call.
 
@@ -91,7 +93,15 @@ Verification: <one-line summary of what passed>
 To push: type "push" (or "yes"). To revise: type "amend with: <change>" or "reset".
 ```
 
-Wait for explicit "push" before running `git push`. This is the load-bearing stop-point. When the user types push, run `git push` and surface the result.
+**Record the landing (tracked projects only).** Read the plan's `**Project:**` line (before its first `## ` section). `n/a` → record nothing. A slug → in `docs/projects/*-<slug>/PLAN.md` append one line to the end of its Session log and bump its frontmatter `last-updated` to today; `docs/projects/` is gitignored in this public repo, so this stays an uncommitted local edit (never `git add -f`), and the push carries only the work commit:
+
+```text
+- <YYYY-MM-DD> — **Landed from a /focus plan, outside a project session:** `<short-sha>` <subject> (plan `<plan file name>`). Status and the kickoff were not updated; /resume-project reconciles them against git log.
+```
+
+No `**Project:**` line (a plan written before the line existed) → ask which project the plan advances, or `n/a`, add the line to the plan file, then record. Touch nothing else in the PLAN: Status and the kickoff are `/end-session`'s. Add a `Landing:` line to the ready-to-push block naming each step from the plan's `Landing & closeout` and who runs it (the operator's steps as exact commands).
+
+Wait for explicit "push" before running `git push`. This is the load-bearing stop-point. When the user types push, run `git push` and surface the result. Then run only the `Landing & closeout` steps the plan assigns to this session, exactly as written, and surface their output; never run a step assigned to the operator.
 
 ### Step 5 — Captures (if any)
 

@@ -27,12 +27,13 @@ description: This skill should be used when the user explicitly types "/end-sess
 - Deferred tails are sorted by scope: project-scoped tails live in the PLAN's open-questions/kickoff; cross-cutting tails are routed to `/log` and actually written to `docs/progress.md` — never claimed-captured in the PLAN narrative but lost at the boundary.
 - The commit lands on the intended branch, staged by explicit pathspec, with no foreign files swept in.
 - The end-of-session status is correct and low-friction: `active` is inferred silently when obvious; the 4-way prompt fires only on a genuine ending/pausing signal.
-- For terminal states (`completed`/`abandoned`), the project directory is `git mv`'d into `_archive/` and its README entry moved, all inside the same close commit.
+- For terminal states (`completed`/`abandoned`), the project directory is moved into `_archive/` and its README entry moved, all inside the same close commit — `git mv` where the project tree is tracked, plain `mv` (and no commit) where it is gitignored.
 
 **Failure modes to avoid.**
 
 - **Inventing progress.** Status records what shipped, confirmed against `git log` — not what was hoped or intended. If it didn't land, it isn't done.
 - **A kickoff that assumes session memory.** Write it for a cold reader. "Continue where we left off" is useless; "Phase D is next; templates are missing at X; read Y first" is actionable.
+- **A kickoff check the next session can't actually run.** When the kickoff asks the reader to verify something ("did the plan land?", "did the migration ship?"), key it on the **artifact** — a symbol in the source, a key in a settings JSON, a file on disk — never on a branch name, a commit subject, or a `git log -N` window. Branches get deleted or squashed on merge, subjects get reworded by the squash title, and a log window slides past the commit, so those checks answer "not done" about work that shipped and send the next session back at it.
 - **Double-booking a tail.** A project-scoped tail belongs in the PLAN, not also in `docs/progress.md` via `/log`. A cross-cutting tail belongs in `docs/progress.md`, not orphaned in PLAN prose. Pick one surface per tail.
 - **Letting a cross-cutting tail die at the boundary.** A tail claimed-captured in the PLAN narrative but never written to `docs/progress.md` is exactly how these get lost, resurfacing a session or two later. Route it through `/log` and confirm it landed.
 - **Sweeping foreign files into the commit.** In a shared working tree a parallel agent can switch the branch or stage its own files. Verify branch + staging first; commit by explicit pathspec; re-check the branch after.
@@ -88,8 +89,8 @@ Before committing, sweep the session for loose ends that surfaced but won't be d
 Default to `active` — the project continues, no frontmatter change, it stays in the Active-projects table. **Do NOT prompt when `active` is obvious** (phases still in progress or pending, no completion signal): infer it silently and move on. A 4-way question every single session is friction — the bar for surfacing the choice via `AskUserQuestion` is a real signal the project is ending or pausing: the final phase just shipped, all phases are ✅, or the user said something like "we're done" / "let's pause this" / "this isn't working." Only when such a signal is present, surface the non-`active` outcomes:
 
 - **paused** — set `status: paused` in the PLAN frontmatter and on the project's row in the `docs/projects/README.md` Active-projects table (it stays in that table — `/resume-project` won't auto-select a non-`active` row, but it remains visible and resumable). No archival.
-- **completed** — set `status: completed`; `git mv` the project directory into `docs/projects/_archive/`; move its README entry to the Archived list.
-- **abandoned** — prompt for a one-line reason; record it in the PLAN's Status section; set `status: abandoned`; `git mv` into `docs/projects/_archive/`; move its README entry to the Archived list, noted as abandoned.
+- **completed** — set `status: completed`; `mv` the project directory into `docs/projects/_archive/` (plain `mv`, not `git mv`: `docs/projects/` is gitignored here, so nothing about the archive is committed); move its README entry to the Archived list.
+- **abandoned** — prompt for a one-line reason; record it in the PLAN's Status section; set `status: abandoned`; `mv` into `docs/projects/_archive/` (plain `mv`, as above); move its README entry to the Archived list, noted as abandoned.
 
 Make this determination *before* running the step-7 commit so any frontmatter / README / archival changes land in that same commit. For `completed` / `abandoned`, the kickoff rewritten in step 4 is moot — replace it with a one-line "project closed" note.
 

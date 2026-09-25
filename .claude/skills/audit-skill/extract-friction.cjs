@@ -43,12 +43,12 @@
 //                            permission prompt mid-skill.
 //
 // All repo-specific configuration lives in the co-located
-// `extract-friction.config.cjs` (the only per-repo file): rule detectors that
-// map this repo's CLAUDE.md / AGENTS.md hard rules to findings, plus any extra
-// deploy/apply verbs, repo-internal dirs, and subcommand tools. This core file
-// is repo-agnostic and synced verbatim. With no config (or an empty one) the
-// core runs the friction + perf + model-fit + accuracy audit on its own. See
-// the audit-skill SKILL.md for how to author a rule detector.
+// `extract-friction.config.cjs` (the only repo-specific file): rule detectors
+// that map this repo's AGENTS.md hard rules to findings, plus any
+// extra deploy/apply verbs, repo-internal dirs, and subcommand tools. This core
+// file is repo-agnostic. With no config (or an empty one) the core runs the
+// friction + perf + model-fit + accuracy audit on its own. See the audit-skill
+// SKILL.md for how to author a rule detector.
 //
 // Exit codes:
 //     0  findings produced (zero is valid)
@@ -62,16 +62,16 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-// Pure shared helpers (also used by consumer rule detectors via the config).
+// Pure shared helpers (also used by the repo's rule detectors via the config).
 const { preview, findResultByToolUseId } = require('./extract-friction.util.cjs');
 
-// Per-repo configuration — the only repo-specific surface. The core below is
-// repo-agnostic; everything repo-specific (rule detectors, extra deploy verbs,
-// internal dirs, subcommand tools) lives in the co-located
-// `extract-friction.config.cjs`, which is created once per repo and never
-// overwritten by a re-sync. Absent or partial config falls back to empty, so
-// the core runs repo-agnostically on its own.
-let consumerConfig = {
+// Repo-specific configuration — the only repo-specific surface. The core below
+// is repo-agnostic; everything repo-specific (rule detectors, extra deploy
+// verbs, internal dirs, subcommand tools) lives in the co-located
+// `extract-friction.config.cjs`, which is safe to edit and is never clobbered
+// when this core file is updated. Absent or partial config falls back to empty,
+// so the core runs repo-agnostically on its own.
+let repoConfig = {
   ruleDetectors: [],
   mutationBashPatterns: [],
   internalPrefixes: [],
@@ -80,9 +80,9 @@ let consumerConfig = {
 try {
   // Resolved relative to this module (not cwd), so it loads regardless of where
   // the extractor is invoked from.
-  consumerConfig = { ...consumerConfig, ...require('./extract-friction.config.cjs') };
+  repoConfig = { ...repoConfig, ...require('./extract-friction.config.cjs') };
 } catch {
-  /* no consumer config present — run the repo-agnostic core alone */
+  /* no repo config present — run the repo-agnostic core alone */
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -159,9 +159,7 @@ function parseArgs(argv) {
     process.exit(2);
   }
   if (args.wholeTranscript && !args.session) {
-    console.error(
-      'error: --whole-transcript requires --session (point it at one isolated transcript)',
-    );
+    console.error('error: --whole-transcript requires --session (point it at one isolated transcript)');
     process.exit(2);
   }
   return args;
@@ -173,17 +171,13 @@ function printUsage() {
   console.error(
     '  --session <id>                  Audit exactly this session (default: most-recent containing skill)',
   );
-  console.error(
-    '  --last N                        Scan the N most-recent sessions containing the skill',
-  );
+  console.error('  --last N                        Scan the N most-recent sessions containing the skill');
   console.error('  --all                           Scan every session containing the skill');
   console.error(
     '  --whole-transcript              Treat the whole --session file as one run (no attributionSkill filter; for an isolated sub-agent transcript)',
   );
   console.error('  --transcripts-dir <path>        Override auto-derived dir');
-  console.error(
-    '  --invocation latest|all         Per-session, which invocation range(s) (default: latest)',
-  );
+  console.error('  --invocation latest|all         Per-session, which invocation range(s) (default: latest)');
   console.error('  --repeated-min N                Min consecutive repeats to flag (default: 2)');
   console.error('  --confusion-min-density N       Markers/10-turn-window to flag (default: 3)');
 }
@@ -300,7 +294,7 @@ function projectTurn(obj, lineNo) {
           editTargets.push({
             tool: name,
             filePath,
-            // Content captured so consumer rule detectors (e.g. a secret-string
+            // Content captured so repo rule detectors (e.g. a secret-string
             // or protected-file-edit detector) can inspect the *text* being
             // introduced/removed, not just the
             // path. `newContent` = text written into the file; `oldContent` = text
@@ -486,7 +480,7 @@ function findInvocations(turns, skill) {
 // (the agent flows straight from the load into project work + /end-session
 // under one prompt) over-captures all that downstream work and mis-attributes
 // it to the load skill — inflating perf/cost AND manufacturing false
-// rule-violations (a consumer rule-violation from later project work pinned to
+// rule-violations (a repo rule-violation from later project work pinned to
 // a read-only skill that could not have run it).
 //
 // Correction (only for skills that DECLARE `audit-span: read-only` in their
@@ -523,7 +517,7 @@ const READONLY_LOAD_TURN_CEILING = 35;
 // cut lands at the right point — read-only state-checks (status / list / ps)
 // must stay excluded.
 const MUTATION_DEPLOY_BASH = new RegExp(
-  ['\\bgit\\s+(?:commit|push)\\b', ...consumerConfig.mutationBashPatterns].join('|'),
+  ['\\bgit\\s+(?:commit|push)\\b', ...repoConfig.mutationBashPatterns].join('|'),
   'i',
 );
 
@@ -536,10 +530,7 @@ function firstDownstreamMutation(turns, range) {
     if (t.role !== 'assistant') continue;
     if (t.editTargets && t.editTargets.length > 0) {
       const e = t.editTargets[0];
-      return {
-        idx: i,
-        kind: `edit (${e.tool} ${e.filePath ? e.filePath.split('/').pop() : ''})`.trim(),
-      };
+      return { idx: i, kind: `edit (${e.tool} ${e.filePath ? e.filePath.split('/').pop() : ''})`.trim() };
     }
     for (const bc of t.bashCommands) {
       if (MUTATION_DEPLOY_BASH.test(bc.command || '')) {
@@ -572,10 +563,7 @@ function readSkillAuditSpan(skill, cwd) {
   if (!m) return null;
   const line = m[1].split(/\r?\n/).find((l) => /^audit-span\s*:/.test(l));
   if (!line) return null;
-  const val = line
-    .replace(/^audit-span\s*:/, '')
-    .trim()
-    .replace(/^["']|["']$/g, '');
+  const val = line.replace(/^audit-span\s*:/, '').trim().replace(/^["']|["']$/g, '');
   return val || null;
 }
 
@@ -984,7 +972,7 @@ const REPO_INTERNAL_PREFIXES = [
   'scripts/',
   'tests/',
   'hooks/',
-  ...consumerConfig.internalPrefixes,
+  ...repoConfig.internalPrefixes,
 ];
 
 function loadAllowlist(cwd) {
@@ -1082,7 +1070,7 @@ function detectPermissionGap(turns, range, allowlist) {
           repoTarget: target,
         },
         ruleViolated: {
-          anchor: 'CLAUDE.md#hard-rules',
+          anchor: 'AGENTS.md#hard-rules',
           summary:
             'Repo-internal scripts should be allowlisted so the permission prompt ' +
             "doesn't fire mid-skill. Trust our own repo files.",
@@ -1106,7 +1094,7 @@ function detectPermissionGap(turns, range, allowlist) {
 //
 // The repo-agnostic detectors above flag *process* friction (repeated-command,
 // failed-recovery, confusion-marker, permission-gap). THIS is the repo-specific
-// layer: one detector per hard rule in this repo's CLAUDE.md / AGENTS.md that
+// layer: one detector per hard rule in this repo's AGENTS.md that
 // you want mechanically caught. Each detector is a function
 //   (turns, range, cwd) => findings[]
 // where every finding carries a populated `ruleViolated` { anchor, summary }
@@ -1119,9 +1107,9 @@ function detectPermissionGap(turns, range, allowlist) {
 // core runs the friction + perf + model-fit + accuracy audit alone and is fully
 // runnable as-is. See the audit-skill SKILL.md for how to author one.
 //
-// Example shape (copy into the config file, rename, adapt — maps one CLAUDE.md
-// hard rule to a finding; the same shape any consumer uses for its own
-// detectors, e.g. a secret-string, protected-file-edit, or
+// Example shape (copy into the config file, rename, adapt — maps one AGENTS.md
+// hard rule to a finding; the same shape used for every repo-specific
+// detector, e.g. a secret-string, protected-file-edit, or
 // claim-without-evidence detector):
 //
 //   function detectExampleRuleViolation(turns, range, _cwd) {
@@ -1143,7 +1131,7 @@ function detectPermissionGap(turns, range, allowlist) {
 //             command: bc.command,
 //           },
 //           ruleViolated: {
-//             anchor: 'CLAUDE.md#hard-rules',
+//             anchor: 'AGENTS.md#hard-rules',
 //             summary: '<the rule this violates, in one sentence>',
 //           },
 //           suggestedFix: {
@@ -1158,7 +1146,7 @@ function detectPermissionGap(turns, range, allowlist) {
 //
 // Each registered entry is invoked as `detector(turns, effRange, cwd)` and its
 // returned findings are merged with the core's repo-agnostic friction findings.
-// The detectors come from consumerConfig.ruleDetectors (extract-friction.config.cjs).
+// The detectors come from repoConfig.ruleDetectors (extract-friction.config.cjs).
 
 // ──────────────────────────────────────────────────────────────────────
 // Model-fit profile
@@ -1272,7 +1260,7 @@ const SUBCOMMAND_TOOLS = new Set([
   'apt',
   'apt-get',
   'make',
-  ...consumerConfig.subcommandTools,
+  ...repoConfig.subcommandTools,
 ]);
 
 function bashCommandHead(command) {
@@ -1411,7 +1399,9 @@ function buildAggregate(perfList, fitList, findingsList, invMeta) {
   const costs = perfList.map((p) => p.costEstimateUSD);
   const outTokens = perfList.map((p) => p.totalOutputTokens);
   const cacheRatios = perfList.map((p) => p.cacheHitRatio);
-  const avgPerTurn = perfList.length ? perfList.map((p) => p.avgOutputTokensPerTurn) : [];
+  const avgPerTurn = perfList.length
+    ? perfList.map((p) => p.avgOutputTokensPerTurn)
+    : [];
 
   // Recurring-friction tally: category → how many distinct SESSIONS it appears
   // in. >=2 sessions = recurring (a real pattern worth a SKILL.md fix); 1 = a
@@ -1527,9 +1517,7 @@ function main(argv) {
     // NOT stamp attributionSkill, so the normal filter would find nothing —
     // here we scope the entire transcript as a single invocation instead.
     const invocations = args.wholeTranscript
-      ? turns.length
-        ? [[0, turns.length - 1]]
-        : []
+      ? (turns.length ? [[0, turns.length - 1]] : [])
       : findInvocations(turns, args.skill);
     if (invocations.length === 0) {
       // Cross-session scans may surface a file that matched the cheap substring
@@ -1562,7 +1550,7 @@ function main(argv) {
       const confuseFindings = detectConfusion(turns, effRange, args.confusionMinDensity);
       const permGapFindings = detectPermissionGap(turns, effRange, allowlist);
       // Repo-specific rule detectors (from extract-friction.config.cjs; empty by default)
-      const consumerRuleFindings = consumerConfig.ruleDetectors.flatMap((detector) =>
+      const repoRuleFindings = repoConfig.ruleDetectors.flatMap((detector) =>
         detector(turns, effRange, cwd),
       );
       const rngFindings = [
@@ -1570,7 +1558,7 @@ function main(argv) {
         ...recoverFindings,
         ...confuseFindings,
         ...permGapFindings,
-        ...consumerRuleFindings,
+        ...repoRuleFindings,
       ];
       // Tag each finding with its session so the cross-session rollup can count
       // recurrence across sessions, and multi-session output stays attributable.
@@ -1631,9 +1619,7 @@ function main(argv) {
   // The aggregate rollup is only meaningful across >1 invocation. For a single
   // invocation (the backward-compatible default) it's degenerate, so omit it.
   const aggregate =
-    invocationMeta.length > 1
-      ? buildAggregate(performance, fits, allFindings, invocationMeta)
-      : null;
+    invocationMeta.length > 1 ? buildAggregate(performance, fits, allFindings, invocationMeta) : null;
 
   const output = {
     skill: args.skill,
@@ -1674,8 +1660,8 @@ module.exports = {
   detectFailedRecovery,
   detectConfusion,
   detectPermissionGap,
-  // Repo-specific rule detectors live in extract-friction.config.cjs; a
-  // consumer's tests import them from there.
+  // Repo-specific rule detectors live in extract-friction.config.cjs; tests
+  // import them from there.
   buildModelFit,
   buildPerformance,
   buildAggregate,
@@ -1706,6 +1692,6 @@ module.exports = {
     REPO_INTERNAL_PREFIXES,
     MUTATION_DEPLOY_BASH,
     READONLY_LOAD_TURN_CEILING,
-    // consumer: also export your detector patterns here for testing.
+    // also export this repo's detector patterns here for testing.
   },
 };
