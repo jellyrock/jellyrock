@@ -10,6 +10,7 @@ import "pkg:/source/api/image.bs"
 import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/GridView/collectionsView.bs"
 import "pkg:/source/GridView/GenericPresenter.bs"
+import "pkg:/source/GridView/gridPaging.bs"
 import "pkg:/source/GridView/gridQuery.bs"
 import "pkg:/source/GridView/LiveTVPresenter.bs"
 import "pkg:/source/GridView/MoviePresenter.bs"
@@ -95,11 +96,14 @@ sub init()
   m.nameStartsWith = ""
   m.totalRecordCount = 0
   m.loading = false
-  ' A later page failing is told once, until a page loads again: scrolling at the end of the
-  ' grid retries, and each failed retry must not raise another toast.
-  m.isPageFailureShown = false
+  ' Whether a later page's failure has been told (see gridPaging).
+  m.pageFailureNotice = gridPaging.newFailureNotice()
+  ' Whether this view is the one on screen. Not hasFocus(): while the router holds this view
+  ' suspended out of the tree, its own nodes still report focus (see navigation.md, Focus
+  ' management), so only the lifecycle hooks can say.
+  m.isShown = false
 
-  ' Load-failure state. The button centres itself once it has measured its label.
+  ' Load-failure state. The button centers itself once it has measured its label.
   m.loadFailedText.text = translate(translationKeys.MessageCouldNotLoadItems)
   m.retryButton.text = translate(translationKeys.ButtonTryAgain)
   m.retryButton.observeField("isReady", "onRetryButtonReady")
@@ -185,6 +189,9 @@ end sub
 ' ============================================================================
 
 sub onScreenShown()
+  ' First: the first load below may deliver focus-taking results, which ask it.
+  m.isShown = true
+
   ' On first mount, self-load from the route (/library/:id). Both in-app navigation AND a
   ' deep link / cast pass the rich library node as route.context.item (in-app: the selected
   ' node; deep link: the node JRScene.resolveDeepLink already validated) — instant, no
@@ -202,6 +209,12 @@ sub onScreenShown()
     scene = m.top.getScene()
     if isValid(scene) and scene.contentVersion <> m.lastContentVersion
       reloadGridItems()
+    else if gridPaging.shouldResume(m.loadedItems, m.totalRecordCount, m.loading)
+      ' A later page failed, possibly while another screen was up: ask for it again now the
+      ' user is back. Focus landing back in the grid would also ask (the grid reports its
+      ' focused item again, and onItemFocused pages), but only when focus returns THERE; this
+      ' is the rule, and m.loading keeps the two to one request.
+      loadMoreData()
     end if
   end if
 
@@ -225,12 +238,16 @@ sub onScreenShown()
   ' (it resumes retrying what failed). Before the focus restore below, which stays this view's.
   if isValid(m.tvGuide) then m.tvGuide.callFunc("onScreenShown")
 
-  if isValid(m.top.lastFocus)
-    m.top.lastFocus.setFocus(true)
-  else
-    m.top.setFocus(true)
-  end if
+  restoreGridFocus()
 end sub
+
+' Router focus hook (overrides JRScreen.handleFocus). The router calls it right after
+' onScreenShown, and the base restores lastFocus again — undoing a restore that followed what
+' changed while this view was suspended. Same trap and same fix as Home.restoreHomeFocus.
+function handleFocus(_data = {} as object) as boolean
+  restoreGridFocus()
+  return true
+end function
 
 ' Configure the library view from its route. Both in-app navigation and a deep link / cast
 ' supply the rich library node as route.context.item (the resolver passes the node
@@ -271,6 +288,7 @@ sub onQuickPlayLaunch(msg)
 end sub
 
 sub onScreenHidden()
+  m.isShown = false
   hideTextureManager(m.data)
   if isValid(m.tvGuide) then m.tvGuide.callFunc("onScreenHidden")
 end sub
@@ -472,6 +490,7 @@ end function
 sub setGridQuery(query as object)
   m.gridQuery = query
   m.totalRecordCount = 0
+  m.pageFailureNotice = gridPaging.newFailureNotice()
 end sub
 
 ' Runs m.gridQuery from `startIndex` on a NEW LoadItemsTask2 node, releasing the run in
@@ -640,17 +659,7 @@ sub revealGenreList(rowsRoot as object)
   m.loading = false
   stopLoadingSpinner()
 
-  ' Focus: the options dialog and the alpha menu keep it if the user is there (the grid
-  ' path guards the same two); otherwise the list takes it. An open dialog keeps focus
-  ' where the user left it inside it — moving it to the dialog's root loses their place.
-  if m.options.visible
-    ' leave it
-  else if m.top.isAlphaActive
-    m.alphaMenu.setFocus(true)
-  else
-    m.itemGrid.setFocus(false)
-    m.genreList.setFocus(true)
-  end if
+  focusAfterLoad()
 end sub
 
 ' Draw the Genres view's rows before their artwork exists.
@@ -715,7 +724,7 @@ sub onItemDataLoaded(msg)
     onGridLoadFailed(isFirstPage)
     return
   end if
-  m.isPageFailureShown = false
+  gridPaging.pageLoaded(m.pageFailureNotice)
   m.totalRecordCount = m.loadItemsTask.totalRecordCount
 
   if not isValid(itemData)
@@ -773,23 +782,13 @@ sub onItemDataLoaded(msg)
     ' Music genres fall through to use regular grid below
   end if
 
-  ' Only a load's first page places focus, and never while the options dialog is open:
-  ' the later pages arrive every few hundred ms while the user may be anywhere, and moving
-  ' focus under an open dialog loses its place (the user's next OK is dropped or commits
-  ' the wrong entry). Keep focus on the alpha menu if it's active.
-  takeFocus = isFirstPage and not m.options.visible
-  if m.top.isAlphaActive
-    if takeFocus then m.alphaMenu.setFocus(true)
-  else
+  if not m.top.isAlphaActive
     m.itemGrid.opacity = "1"
     m.genreList.opacity = "0"
-
-    if takeFocus
-      m.alphaMenu.setFocus(false)
-      m.itemGrid.setFocus(true)
-      m.genreList.setFocus(false)
-    end if
   end if
+  ' Only a load's first page places focus: the later pages arrive every few hundred ms while
+  ' the user may be anywhere in the grid.
+  if isFirstPage then focusAfterLoad()
 
   if m.data.getChildCount() = 0
     m.itemGrid.jumpToItem = 0
@@ -843,7 +842,8 @@ end sub
 ' about what the library holds, so it is never shown as empty.
 '
 ' A later page: what is on screen stays, and so does the total, so scrolling near the end
-' asks again (onItemFocused). The user is told once until a page loads. The first page: the
+' asks again (onItemFocused), and so does coming back to the grid (onScreenShown). When the
+' user is told is gridPaging's rule. The first page: the
 ' failure state replaces the grid, with a Try again the user chooses to press — retrying on
 ' our own would re-send a query the server may still be working on.
 sub onGridLoadFailed(isFirstPage as boolean)
@@ -851,9 +851,8 @@ sub onGridLoadFailed(isFirstPage as boolean)
   stopLoadingSpinner()
 
   if not isFirstPage
-    if not m.isPageFailureShown
-      m.isPageFailureShown = true
-      m.top.getScene().callFunc("showToast", translate(translationKeys.MessageCouldNotLoadMoreItems), "error")
+    if gridPaging.shouldTellPageFailure(m.pageFailureNotice, m.isShown)
+      displayToast(translate(translationKeys.MessageCouldNotLoadMoreItems))
     end if
     return
   end if
@@ -866,9 +865,7 @@ sub onGridLoadFailed(isFirstPage as boolean)
   m.loadFailed.visible = true
   m.top.loadState = "failed"
 
-  ' Same rule as a loaded first page: never move focus under the options dialog, and leave
-  ' it on the alpha menu when the user is there.
-  if not m.options.visible and not m.top.isAlphaActive then focusRetryButton()
+  focusAfterLoad()
 end sub
 
 sub focusRetryButton()
@@ -895,7 +892,9 @@ sub onRetryButtonReady()
 end sub
 
 sub onFailureNarrationDue()
-  if not m.loadFailed.visible or not m.retryButton.hasFocus() then return
+  ' isShown as well as hasFocus(): a suspended view's button still reports focus, and this
+  ' would speak over the screen the user is on.
+  if not m.isShown or not m.loadFailed.visible or not m.retryButton.hasFocus() then return
   narrateDialogOpening("", m.loadFailedText.text, m.retryButton.text)
 end sub
 
@@ -913,6 +912,50 @@ end sub
 ' ============================================================================
 ' Focus Handling
 ' ============================================================================
+'
+' Where focus goes is decided from what the view shows NOW, in the three subs below, never
+' by an event on its own: a load that could not take focus (the options dialog was open,
+' the view was suspended) leaves nothing to put it back, so whatever later hands focus back
+' to the content — closing the dialog, leaving the alpha menu, resuming — asks here.
+
+' Focus the content area as it currently is: Try again when the load failed, otherwise
+' whichever of the genre list and the grid is showing.
+sub focusContent()
+  if m.loadFailed.visible
+    focusRetryButton()
+    return
+  end if
+  m.itemGrid.setFocus(m.itemGrid.opacity = 1)
+  m.genreList.setFocus(m.genreList.opacity = 1)
+end sub
+
+' A load's first result arrived. It moves focus only when the user is not somewhere it must
+' not be taken from: another screen (the view is suspended), or the options dialog, where
+' moving it loses their place and their next OK is dropped or commits the wrong entry. On
+' the alpha menu it stays there.
+sub focusAfterLoad()
+  if not m.isShown or m.options.visible then return
+  if m.top.isAlphaActive
+    m.alphaMenu.setFocus(true)
+  else
+    focusContent()
+  end if
+end sub
+
+' Focus on return to this view (onScreenShown and handleFocus). The saved lastFocus is kept
+' when it is outside the content area (the alpha menu, the TV guide). Inside it, what it
+' names may no longer be what the view shows — a load can fail or finish while suspended —
+' so the content area is focused as it is now.
+sub restoreGridFocus()
+  last = m.top.lastFocus
+  if not isValid(last)
+    m.top.setFocus(true)
+  else if last.isSameNode(m.itemGrid) or last.isSameNode(m.genreList) or last.isSameNode(m.retryButton)
+    focusContent()
+  else
+    last.setFocus(true)
+  end if
+end sub
 
 sub onItemFocused()
   focusedRow = m.itemGrid.currFocusRow
@@ -1264,8 +1307,7 @@ sub optionsClosed()
       m.tvGuide.lastFocus.setFocus(true)
     end if
   else
-    m.itemGrid.setFocus(m.itemGrid.opacity = 1)
-    m.genreList.setFocus(m.genreList.opacity = 1)
+    focusContent()
   end if
 end sub
 
@@ -1384,8 +1426,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 
   if key = "left" and m.voiceBox.isinFocusChain()
-    m.itemGrid.setFocus(m.itemGrid.opacity = 1)
-    m.genreList.setFocus(m.genreList.opacity = 1)
+    focusContent()
     m.voiceBox.setFocus(false)
   end if
 
@@ -1479,15 +1520,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
   else if key = "right" and m.alpha.isinFocusChain()
     m.top.isAlphaActive = false
     m.alphaMenu.setFocus(false)
-
-    if m.loadFailed.visible
-      focusRetryButton()
-      return true
-    end if
-
-    m.itemGrid.setFocus(m.itemGrid.opacity = 1)
-    m.genreList.setFocus(m.genreList.opacity = 1)
-
+    focusContent()
     return true
   else if key = "replay" and m.options.visible
     ' The dialog does not handle Replay, so it arrives here. Reloading and resetting the

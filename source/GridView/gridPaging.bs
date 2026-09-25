@@ -1,0 +1,47 @@
+' What a library grid does when a page after its first fails: whether the user is told, and
+' when the grid asks for that page again. The items already shown stay. The first page has its
+' own failure state instead (BaseGridView.onGridLoadFailed).
+'
+' In source/ rather than in the view so a Rooibos suite can reach it: a component's functions
+' are scoped to it. Same move as gridPage.bs.
+namespace gridPaging
+
+  ' The failure notice for a new query: nothing told yet.
+  function newFailureNotice() as object
+    return { isTold: false }
+  end function
+
+  ' A later page failed. Whether to tell the user now, counted as told when so.
+  '
+  ' Once, until a page loads again: moving near the end of the grid asks again, and each
+  ' failed ask must not raise another toast. Never while the grid is not on screen: that is
+  ' another screen, and the grid asks again once it is back (shouldResume), where a failure
+  ' is told.
+  '
+  ' @param notice - from newFailureNotice(); modified
+  ' @param isShown - whether the grid is the view on screen
+  function shouldTellPageFailure(notice as object, isShown as boolean) as boolean
+    if not isShown or notice.isTold then return false
+    notice.isTold = true
+    return true
+  end function
+
+  ' A page loaded, so the next failure is news again.
+  '
+  ' @param notice - from newFailureNotice(); modified
+  sub pageLoaded(notice as object)
+    notice.isTold = false
+  end sub
+
+  ' Whether a grid coming back on screen asks for its next page: its load stopped short and
+  ' nothing is loading. Coming back is the user's doing, and it asks once — the same trigger
+  ' as moving near the end of the grid, which asks under the same count.
+  '
+  ' @param loadedItems - items in the grid
+  ' @param total - the server's total for the query; 0 until its first page lands
+  ' @param isLoading - whether a later page is in flight
+  function shouldResume(loadedItems as integer, total as integer, isLoading as boolean) as boolean
+    return not isLoading and loadedItems > 0 and loadedItems < total
+  end function
+
+end namespace

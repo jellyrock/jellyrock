@@ -13,7 +13,7 @@ related-files:
   - source/utils/dialogs.bs
   - source/replayRoute.bs
   - source/loginRouter.bs
-last-reviewed: 2026-09-04
+last-reviewed: 2026-09-25
 ---
 
 # Navigation (sgRouter)
@@ -238,7 +238,10 @@ sgRouter is **hands-off about focus** — views own their own focus; `JRScene` o
 2. **On resume / open** (`onViewResume` / `onViewOpen`) — `onScreenShown()` runs; its default reads `m.top.lastFocus` and `.setFocus(true)`. Subclasses can override to re-fetch data first, then focus.
 3. **On `handleFocus`** — same rule: restore `lastFocus`, else focus the view root.
 
-Preserving the *deepest* focused element (not just `focusedChild`) matters for nested panels (a list inside a tab inside a screen) so back navigation lands the cursor exactly where the user left it. For suspended views, this is what makes suspend→resume feel seamless: the cursor returns to its exact prior position. The `lastFocus` mechanism is one of the things JellyRock gets reliably right.
+Preserving the *deepest* focused element (not just `focusedChild`) matters for nested panels (a list inside a tab inside a screen) so back navigation lands the cursor exactly where the user left it. For suspended views, this is what makes suspend→resume feel seamless: the cursor returns to its exact prior position. The `lastFocus` mechanism is one of the things JellyRock gets reliably right — as long as what `lastFocus` names is still what the view shows on return. Two platform facts decide when it is not:
+
+- **The router calls `handleFocus` AFTER `onScreenShown`** (`sgrouter_showView` runs `_handleFocus` in the `finally` of the resume/open promise), and the base `handleFocus` restores `lastFocus` again. So a screen that decides focus on return from anything but `lastFocus` must route **both** hooks through one function, or the second undoes the first. `Home.restoreHomeFocus` (the overhang-icon case) and `BaseGridView.restoreGridFocus` (a load that failed or finished while suspended) are the two that do.
+- **A suspended `"detach"` view's own nodes still report focus.** Measured 2026-09-25 on an Ultra (Roku OS 15.3.4), with `BaseGridView` detached under an `ItemDetails`: `setFocus(true)` on its grid returned `true`, and afterwards the grid's `hasFocus()` and the view's `isInFocusChain()` both read `true` — while the real focus stayed on the detail's Play button, which kept answering keys, and `lastFocus` won on return. So focusing inside a suspended view is harmless, but **`hasFocus()` / `isInFocusChain()` cannot answer "is the user here?"** for a view that can be suspended. A timer or observer that would act on the user's behalf (narration, a toast) checks a flag the view keeps from `onScreenShown` / `onScreenHidden` instead — `BaseGridView.m.isShown`, `Schedule.m.isShown`.
 
 ## Overhang controller
 

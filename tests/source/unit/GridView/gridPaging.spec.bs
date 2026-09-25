@@ -1,0 +1,94 @@
+import "pkg:/source/GridView/gridPaging.bs"
+
+namespace tests
+
+  ' gridPaging — what a library grid does when a page after its first fails: tell the user
+  ' once until a page loads, never while another screen is up, and ask again when it is back.
+  @suite("gridPaging - a later page that failed")
+  class GridPagingTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("shouldTellPageFailure()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("tells the first failure while the grid is on screen")
+    function _()
+      notice = gridPaging.newFailureNotice()
+
+      m.assertTrue(gridPaging.shouldTellPageFailure(notice, true))
+    end function
+
+    @it("tells it once, however often asking again fails")
+    function _()
+      notice = gridPaging.newFailureNotice()
+      gridPaging.shouldTellPageFailure(notice, true)
+
+      m.assertFalse(gridPaging.shouldTellPageFailure(notice, true), "second failure")
+      m.assertFalse(gridPaging.shouldTellPageFailure(notice, true), "third failure")
+    end function
+
+    @it("tells again after a page has loaded")
+    function _()
+      notice = gridPaging.newFailureNotice()
+      gridPaging.shouldTellPageFailure(notice, true)
+
+      gridPaging.pageLoaded(notice)
+
+      m.assertTrue(gridPaging.shouldTellPageFailure(notice, true))
+    end function
+
+    @it("never tells while the grid is not on screen")
+    function _()
+      notice = gridPaging.newFailureNotice()
+
+      m.assertFalse(gridPaging.shouldTellPageFailure(notice, false))
+    end function
+
+    @it("tells the next failure once the grid is back, having told nothing while hidden")
+    function _()
+      ' Hidden, a failure is not counted as told: the one after coming back is the user's
+      ' first news of it.
+      notice = gridPaging.newFailureNotice()
+      gridPaging.shouldTellPageFailure(notice, false)
+
+      m.assertTrue(gridPaging.shouldTellPageFailure(notice, true))
+    end function
+
+    @it("starts a new query with nothing told")
+    function _()
+      old = gridPaging.newFailureNotice()
+      gridPaging.shouldTellPageFailure(old, true)
+
+      m.assertTrue(gridPaging.shouldTellPageFailure(gridPaging.newFailureNotice(), true))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("shouldResume()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("asks again when the load stopped short and nothing is loading")
+    function _()
+      m.assertTrue(gridPaging.shouldResume(4, 11, false))
+    end function
+
+    @it("does not ask while a page is loading")
+    function _()
+      m.assertFalse(gridPaging.shouldResume(4, 11, true))
+    end function
+
+    @it("does not ask when every item is loaded")
+    function _()
+      m.assertFalse(gridPaging.shouldResume(11, 11, false))
+    end function
+
+    @it("does not ask before the first page has landed")
+    function _()
+      ' The first page has its own failure state and Try again; a new query's total is 0
+      ' until its first page lands.
+      m.assertFalse(gridPaging.shouldResume(0, 0, false), "nothing loaded yet")
+      m.assertFalse(gridPaging.shouldResume(0, 11, false), "a reload in flight")
+    end function
+
+  end class
+
+end namespace

@@ -99,13 +99,13 @@
 
     <!-- Load-failure state: the server did not answer, which says nothing about what the
          library holds, so it is not the empty state. The button's x is set once it has
-         measured itself (onRetryButtonReady), so a longer translation stays centred. -->
+         measured itself (onRetryButtonReady), so a longer translation stays centered. -->
     <Group id="loadFailed" visible="false">
       <LabelPrimaryLarge id="loadFailedText" isBold="true" width="1910" horizAlign="center" vertAlign="center" height="64" translation="[0, 480]" />
       <TextButton id="retryButton" translation="[0, 582]" />
     </Group>
-    <!-- Delays only the failure state's announcement; see OPENING_ANNOUNCEMENT_DELAY in
-         JRDialog.bs for why it cannot be event-driven. -->
+    <!-- Delays only the failure state's announcement; see narration.OPENING_DELAY in
+         source/utils/dialogNarration.bs for why it cannot be event-driven. -->
     <Timer id="failureNarrationTimer" repeat="false" />
 
     <!-- Options dialog -->
