@@ -586,41 +586,13 @@ sub onAudioStreamLoaded(event as object)
       shouldUseMetaTask = true
     end if
 
-    ' Set backdrop immediately from available data (will be set once in onMetaDataLoaded if shouldUseMetaTask = true)
-    if not shouldUseMetaTask
-      ' We have all data, set backdrop now from parent backdrop
-      deviceRes = m.global.device.uiResolution
-      backdropUri = getItemBackdropUrl(currentItem, { width: deviceRes[0], height: deviceRes[1] })
-      if isValidAndNotEmpty(backdropUri)
-        m.log.info("Backdrop change (immediate): old=", m.currentBackdropUrl, "new=", backdropUri)
-        m.currentBackdropUrl = backdropUri
-        m.global.sceneManager.callFunc("setBackgroundImage", backdropUri)
-      else
-        m.log.info("Backdrop change (immediate): old=", m.currentBackdropUrl, "new=(empty)")
-        m.currentBackdropUrl = ""
-        m.global.sceneManager.callFunc("setBackgroundImage", "")
-      end if
-    end if
-
-    ' If we don't have enough data to populate the screen, load metadata (which will also set backdrop)
+    ' If we don't have enough data to populate the screen, load metadata (which also sets the artwork)
     if shouldUseMetaTask
       m.LoadMetaDataTask.itemId = currentItem.id
       m.LoadMetaDataTask.observeField("content", "onMetaDataLoaded")
       launchTask(m.LoadMetaDataTask)
     else
-
-      ' poster image — prefer album art, fall back to song primary. When neither is
-      ' available, clear the URI: the JRPlaceholder behind albumCover surfaces, and the
-      ' screensaver activator at startScreenSaver() falls into the audio-logo branch
-      ' instead of drifting a fallback glyph around the screen.
-      if isValidAndNotEmpty(currentItem.albumId) and isValidAndNotEmpty(currentItem.albumPrimaryImageTag)
-        setPosterImage(ImageURL(currentItem.albumId, "Primary", { "maxHeight": 500, "maxWidth": 500, "tag": currentItem.albumPrimaryImageTag }))
-      else if isValidAndNotEmpty(currentItem.primaryImageTag)
-        setPosterImage(ImageURL(currentItem.id, "Primary", { "maxHeight": 500, "maxWidth": 500, "tag": currentItem.primaryImageTag }))
-      else
-        setPosterImage("")
-      end if
-
+      applyItemArtwork(currentItem)
       applyTrackInfo(currentItem)
     end if
 
@@ -633,32 +605,41 @@ end sub
 sub onMetaDataLoaded()
   data = m.LoadMetaDataTask.content[0]
   m.LoadMetaDataTask.unobserveField("content")
-  if not isValidAndNotEmpty(data.id) then return
 
-  ' Set backdrop from item or parent backdrop (NameGuidPair artist items have no BackdropImageTags)
-  deviceRes = m.global.device.uiResolution
-  backdropUri = getItemBackdropUrl(data, { width: deviceRes[0], height: deviceRes[1] })
-  if isValidAndNotEmpty(backdropUri)
-    m.log.info("Backdrop change (parent): old=", m.currentBackdropUrl, "new=", backdropUri)
-    m.currentBackdropUrl = backdropUri
-    m.global.sceneManager.callFunc("setBackgroundImage", backdropUri)
-  else
-    m.log.info("Backdrop change (clear): old=", m.currentBackdropUrl, "new=(empty)")
-    m.currentBackdropUrl = ""
-    m.global.sceneManager.callFunc("setBackgroundImage", "")
+  ' A failed fetch publishes [invalid]. The song is already playing, and nothing has set its
+  ' artwork yet — the screen still shows the PREVIOUS song's — so use the queue item's own.
+  if not isValid(data) or not isValidAndNotEmpty(data.id)
+    m.log.warn("song metadata did not load; showing the queue item's own artwork", m.LoadMetaDataTask.itemId)
+    currentItem = m.queueManager.callFunc("getCurrentItem")
+    ' The user skipped on while it loaded: that song's own load sets its artwork.
+    if not isValid(currentItem) or currentItem.id <> m.LoadMetaDataTask.itemId then return
+    applyItemArtwork(currentItem)
+    return
   end if
 
-  ' poster image — prefer album art, fall back to song primary, then placeholder.
-  ' Empty string surfaces the JRPlaceholder behind albumCover and gates the screensaver.
-  if isValidAndNotEmpty(data.albumId) and isValidAndNotEmpty(data.albumPrimaryImageTag)
-    setPosterImage(ImageURL(data.albumId, "Primary", { "maxHeight": 500, "maxWidth": 500, "tag": data.albumPrimaryImageTag }))
-  else if isValidAndNotEmpty(data.primaryImageTag)
-    setPosterImage(ImageURL(data.id, "Primary", { "maxHeight": 500, "maxWidth": 500, "tag": data.primaryImageTag }))
+  applyItemArtwork(data)
+  applyTrackInfo(data)
+end sub
+
+' Set the backdrop and poster from a song. getItemBackdropUrl falls back to the parent's
+' backdrop (NameGuidPair artist items have no BackdropImageTags). Poster: album art, then the
+' song's own primary; with neither, an empty URI surfaces the JRPlaceholder behind albumCover
+' and sends startScreenSaver() to the audio-logo branch instead of drifting a fallback glyph.
+sub applyItemArtwork(item as object)
+  deviceRes = m.global.device.uiResolution
+  backdropUri = getItemBackdropUrl(item, { width: deviceRes[0], height: deviceRes[1] })
+  if not isValidAndNotEmpty(backdropUri) then backdropUri = ""
+  m.log.info("Backdrop change: old=", m.currentBackdropUrl, "new=", backdropUri)
+  m.currentBackdropUrl = backdropUri
+  m.global.sceneManager.callFunc("setBackgroundImage", backdropUri)
+
+  if isValidAndNotEmpty(item.albumId) and isValidAndNotEmpty(item.albumPrimaryImageTag)
+    setPosterImage(ImageURL(item.albumId, "Primary", { "maxHeight": 500, "maxWidth": 500, "tag": item.albumPrimaryImageTag }))
+  else if isValidAndNotEmpty(item.primaryImageTag)
+    setPosterImage(ImageURL(item.id, "Primary", { "maxHeight": 500, "maxWidth": 500, "tag": item.primaryImageTag }))
   else
     setPosterImage("")
   end if
-
-  applyTrackInfo(data)
 end sub
 
 ' Set poster image on screen. Empty string clears the URI on both the main album cover
