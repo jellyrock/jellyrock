@@ -15,7 +15,7 @@ description: This skill should be used ONLY when the user explicitly types "/sta
 
 **Outputs.**
 
-- A new `docs/projects/YYYY-MM-<slug>/PLAN.md` (where `YYYY-MM` is the current month), scaffolded from the project template, with the Charter filled in collaboratively and the Phases roughed in.
+- A new `docs/projects/YYYY-MM-<slug>/PLAN.md` (where `YYYY-MM` is the current month), scaffolded from the project template, with the Charter filled in collaboratively and the Phases roughed in. Where `docs/projects/` is committed, the scaffold is committed at creation (a template stub; the Charter body commits later via `/end-session`).
 - Frontmatter set: `project:` = slug, `status: active`, `created:` and `last-updated:` = today (real dates from `date`, not a model guess).
 - A one-line entry in the `docs/projects/README.md` active-projects table.
 - An initial "Next-session kickoff" section and a first dated line in the Session log.
@@ -27,6 +27,7 @@ description: This skill should be used ONLY when the user explicitly types "/sta
 - The Charter is co-designed, not invented: Goal/Success/Out-of-scope are drafted from what's known and then iterated with the user; scope the skill is unsure about is asked, never assumed.
 - The PLAN is a single file — Charter, Phases, Status, kickoff, and log all live in `PLAN.md`, never split across files.
 - `status: active` and the README index entry are both written, so the state-briefing and resume skills can find the project.
+- Where `docs/projects/` is committed, the scaffold `PLAN.md` and README row are committed at creation (path-restricted, not pushed), so nothing pushed before `/end-session` can link to a PLAN missing from the tree; where it is gitignored, there is nothing to commit.
 - The session is explicitly bound to the lifecycle, and the user is told `/end-session` is the mandatory close.
 
 **Failure modes to avoid.**
