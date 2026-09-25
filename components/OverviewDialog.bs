@@ -135,7 +135,7 @@ sub init()
   ' (the scroll area and the OK button) are Groups the platform never announces.
   ' See source/utils/dialogNarration.bs.
   m.narrationTimer = m.top.findNode("narrationTimer")
-  m.narrationTimer.duration = 0.15
+  m.narrationTimer.duration = narration.OPENING_DELAY
   m.narrationTimer.observeField("fire", "onOpeningAnnouncementDue")
   m.hasNarrated = false
 

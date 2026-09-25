@@ -30,8 +30,8 @@
       <ContentNode id="content" role="content" />
     </MarkupList>
 
-    <!-- Delays ONLY the opening announcement; see OPENING_ANNOUNCEMENT_DELAY in
-         JRDialog.bs. -->
+    <!-- Delays ONLY the opening announcement; see narration.OPENING_DELAY in
+         source/utils/dialogNarration.bs. -->
     <Timer id="narrationTimer" repeat="false" />
 
     <!-- Measures a row label so `sizeToContent` can derive a panel width. Same
