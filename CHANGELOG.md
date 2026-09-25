@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Dependencies
+
+- Update vitest from v5.0.1 to v5.0.2 ([#1036](https://github.com/jellyrock/jellyrock/pull/1036))
+
 ## [2.33.0](https://github.com/jellyrock/jellyrock/compare/v2.32.0...v2.33.0) - 2026-09-25
 
 ### Added
