@@ -108,6 +108,12 @@
          source/utils/dialogNarration.bs for why it cannot be event-driven. -->
     <Timer id="failureNarrationTimer" repeat="false" />
 
+    <!-- "Loading more": the user reached the last loaded row while the next page is on its way
+         (gridPaging.isWaitingAtEnd). The delay keeps a fast page from flashing it; 0.3 s is a
+         starting value, to tune on device. -->
+    <ProgressPill id="loadingMore" />
+    <Timer id="loadingMoreDelay" repeat="false" duration="0.3" />
+
     <!-- Options dialog -->
     <ItemGridOptions id="options" visible="false" />
 

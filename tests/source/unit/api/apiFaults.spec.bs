@@ -21,14 +21,25 @@ namespace tests
       ])
 
       m.assertEqual(faults.count(), 2)
-      m.assertEqual(faults[0], { prefix: "itemQuery_", kind: "timeout", status: 0, remaining: -1, passes: 0 })
-      m.assertEqual(faults[1], { prefix: "itemMetaData", kind: "http", status: 500, remaining: 2, passes: 0 })
+      m.assertEqual(faults[0], { prefix: "itemQuery_", kind: "timeout", status: 0, ms: 0, remaining: -1, passes: 0 })
+      m.assertEqual(faults[1], { prefix: "itemMetaData", kind: "http", status: 500, ms: 0, remaining: 2, passes: 0 })
+    end function
+
+    @it("keeps a slow rule with how long to hold the answer")
+    function _()
+      faults = apiFaults.fromRules([{ prefix: "itemQuery_", kind: "slow", ms: 20000, times: 1, after: 1 }])
+
+      m.assertEqual(faults, [{ prefix: "itemQuery_", kind: "slow", status: 0, ms: 20000, remaining: 1, passes: 1 }])
+      m.assertTrue(apiFaults.isSlow(faults[0]))
     end function
 
     @it("drops a rule it cannot honor rather than guessing")
+    @params({ prefix: "itemQuery_", kind: "slow" }, "slow without ms")
+    @params({ prefix: "itemQuery_", kind: "slow", ms: 0 }, "slow by 0 ms")
+    @params({ prefix: "itemQuery_", kind: "slow", ms: "20000" }, "an ms that is not a number")
     @params({ kind: "timeout" }, "no prefix")
     @params({ prefix: "", kind: "timeout" }, "empty prefix")
-    @params({ prefix: "itemQuery_", kind: "slow" }, "unknown kind")
+    @params({ prefix: "itemQuery_", kind: "hang" }, "unknown kind")
     @params({ prefix: "itemQuery_", kind: "http" }, "http without a status")
     @params({ prefix: "itemQuery_", kind: "http", status: 200 }, "a status that is not a failure")
     @params({ prefix: "itemQuery_", kind: "timeout", times: 0 }, "times 0 can never fire")
@@ -101,6 +112,59 @@ namespace tests
 
       m.assertEqual(apiFaults.take(faults, "itemQuery_usersItems").kind, "http")
       m.assertEqual(apiFaults.take(faults, "itemQuery_usersItems").kind, "timeout")
+    end function
+
+    @it("does not treat a failure as slow")
+    @params("timeout")
+    @params("http")
+    function _(kind)
+      m.assertFalse(apiFaults.isSlow({ prefix: "itemQuery_", kind: kind, status: 500, ms: 0, remaining: -1, passes: 0 }))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("nextWaitMs()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("waits with no limit when nothing is held")
+    function _()
+      m.assertEqual(apiFaults.nextWaitMs([], 5000), 0)
+    end function
+
+    @it("wakes when the earliest held answer is due")
+    function _()
+      held = [{ dueAt: 9000 }, { dueAt: 7000 }, { dueAt: 8000 }]
+
+      m.assertEqual(apiFaults.nextWaitMs(held, 5000), 2000)
+    end function
+
+    @it("wakes at once, never 0, for an answer already due")
+    @params(7000)
+    @params(9999)
+    function _(nowMs)
+      ' 0 would read as "no limit" and sleep past the due time.
+      m.assertEqual(apiFaults.nextWaitMs([{ dueAt: 7000 }], nowMs), 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("takeDue()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("takes the due answers in the order they were held and keeps the rest")
+    function _()
+      held = [{ id: "a", dueAt: 6000 }, { id: "b", dueAt: 9000 }, { id: "c", dueAt: 5000 }, { id: "d", dueAt: 7000 }]
+
+      due = apiFaults.takeDue(held, 7000)
+
+      m.assertEqual(due, [{ id: "a", dueAt: 6000 }, { id: "c", dueAt: 5000 }, { id: "d", dueAt: 7000 }])
+      m.assertEqual(held, [{ id: "b", dueAt: 9000 }])
+    end function
+
+    @it("takes nothing before anything is due")
+    function _()
+      held = [{ id: "a", dueAt: 6000 }]
+
+      m.assertEqual(apiFaults.takeDue(held, 5999), [])
+      m.assertEqual(held.count(), 1)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

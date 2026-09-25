@@ -99,10 +99,13 @@ sub runQueueLoop()
   port = CreateObject("roMessagePort")
   m.top.observeField("enqueue", port)
   #if ENABLE_RTA
-    ' Requests an RTA spec makes fail (see failedOnPurpose). Read here and on each change,
-    ' never per request: this loop is serial for every request the app makes.
+    ' Requests an RTA spec makes fail or slow (see answeredOnPurpose). Read here and on each
+    ' change, never per request: this loop is serial for every request the app makes.
     m.failRequests = apiFaults.fromRules(m.global.rtaFailRequests)
     m.global.observeField("rtaFailRequests", port)
+    ' Answers to slowed requests that arrived before they are due (see heldOnPurpose).
+    m.rtaClock = CreateObject("roTimespan")
+    m.rtaHeld = []
   #end if
   ' Signal readiness AFTER pool slots are confirmed ready and our enqueue
   ' observer is registered. fetchRes() callers waiting on this flag can
@@ -129,7 +132,13 @@ sub runQueueLoop()
   processNewChildren(pool)
 
   while true
-    msg = wait(0, port)
+    ' 0 waits for the next event however long it takes. An RTA build holding a slowed answer
+    ' wakes when it is due instead (a timeout returns invalid, and the loop carries on).
+    waitMs = 0
+    #if ENABLE_RTA
+      waitMs = apiFaults.nextWaitMs(m.rtaHeld, m.rtaClock.totalMilliseconds())
+    #end if
+    msg = wait(waitMs, port)
     if type(msg) = "roSGNodeEvent"
       field = msg.getField()
       #if ENABLE_RTA
@@ -157,29 +166,44 @@ sub runQueueLoop()
         if slotIdx >= 0
           entry = m.inFlight[slotIdx]
           if isValid(entry)
-            ' Deliver response to the orchestrator's result node.
-            ' Write result before done so it is readable when the observer fires.
-            #if perfTiming
-              m.dispatchClock.mark()
+            isHeld = false
+            #if ENABLE_RTA
+              isHeld = heldOnPurpose(slotIdx, entry, msg.getData())
             #end if
-            entry.resultNode.result = msg.getData()
-            entry.resultNode.isDone = true
-            #if perfTiming
-              m.deliverUs += m.dispatchClock.totalMicroseconds()
-              m.deliverCount++
-              emitDispatchWindow(0)
-            #end if
-            m.inFlight[slotIdx] = invalid
+            if not isHeld then deliverResponse(slotIdx, entry, msg.getData())
           end if
         end if
       end if
     end if
+
+    #if ENABLE_RTA
+      ' Before the children below, so a slot a due answer frees is dispatched to at once.
+      for each answer in apiFaults.takeDue(m.rtaHeld, m.rtaClock.totalMilliseconds())
+        deliverResponse(answer.slotIdx, answer.entry, answer.response)
+      end for
+    #end if
 
     ' Always process new children when woken up (by ANY event type).
     ' This is the key coalescing defense: even if multiple enqueue wakeup
     ' events merged into one, we read ALL unprocessed children here.
     processNewChildren(pool)
   end while
+end sub
+
+' Hands a slot's answer to the orchestrator's result node and frees the slot.
+' Result is written before done, so it is readable when the observer fires.
+sub deliverResponse(slotIdx as integer, entry as object, response as dynamic)
+  #if perfTiming
+    m.dispatchClock.mark()
+  #end if
+  entry.resultNode.result = response
+  entry.resultNode.isDone = true
+  #if perfTiming
+    m.deliverUs += m.dispatchClock.totalMicroseconds()
+    m.deliverCount++
+    emitDispatchWindow(0)
+  #end if
+  m.inFlight[slotIdx] = invalid
 end sub
 
 ' The pool's width is chosen per device class (apiPool.widthFor, stored as
@@ -218,7 +242,7 @@ sub processNewChildren(pool as object)
     if isValid(child) and isValid(child.request)
       entry = { req: child.request, resultNode: child, waited: false }
       #if ENABLE_RTA
-        if failedOnPurpose(entry) then continue while
+        if answeredOnPurpose(entry) then continue while
       #end if
       m.queue.Push(entry)
     end if
@@ -265,6 +289,10 @@ sub tryDispatch(pool as object)
     #end if
     ' Writing request triggers ApiTask's port observer, starting execution.
     pool[pick.slot].request = pick.entry.req
+    #if ENABLE_RTA
+      ' A slowed request is due its hold time after it is SENT, as a slow server's would be.
+      if isValid(pick.entry.rtaHoldMs) then pick.entry.rtaDueAt = m.rtaClock.totalMilliseconds() + pick.entry.rtaHoldMs
+    #end if
     #if perfTiming
       m.dispatchSendUs += m.dispatchClock.totalMicroseconds()
       emitDispatchWindow(1)
@@ -273,18 +301,36 @@ sub tryDispatch(pool as object)
 end sub
 
 #if ENABLE_RTA
-  ' Answers a queued request with the failure an RTA spec asked for (m.global.rtaFailRequests)
-  ' instead of sending it, so a spec can drive a screen's failure path against a healthy
-  ' server. The answer is delivered exactly as a slot's would be, and never takes a slot.
-  ' Decides from the request AA already in `entry`: no node read is added to this loop.
-  function failedOnPurpose(entry as object) as boolean
+  ' Applies the rule an RTA spec set for a queued request (m.global.rtaFailRequests), so a spec
+  ' can drive a screen's failure and slow-server paths against a healthy, fast server. Decides
+  ' from the request AA already in `entry`: no node read is added to this loop.
+  '
+  ' A failure is answered here, exactly as a slot's answer would be, and never takes a slot:
+  ' true, the request is done. A slow request is marked with how long to hold its answer and
+  ' queued like any other (false); tryDispatch stamps when it is due, heldOnPurpose holds it.
+  function answeredOnPurpose(entry as object) as boolean
     if m.failRequests.count() = 0 then return false
     fault = apiFaults.take(m.failRequests, entry.req.requestId)
     if not isValid(fault) then return false
 
+    if apiFaults.isSlow(fault)
+      m.log.info("slowing a request on purpose", entry.req.requestId, "ms", fault.ms)
+      entry.rtaHoldMs = fault.ms
+      return false
+    end if
+
     m.log.info("failed a request on purpose", entry.req.requestId, "kind", fault.kind)
     entry.resultNode.result = apiFaults.responseFor(fault, entry.req.requestId)
     entry.resultNode.isDone = true
+    return true
+  end function
+
+  ' Holds a slowed request's answer when it arrives before it is due. Its slot stays in flight
+  ' until the loop delivers it, so the pool is as busy as a slow server would keep it.
+  function heldOnPurpose(slotIdx as integer, entry as object, response as dynamic) as boolean
+    if not isValid(entry.rtaDueAt) then return false
+    if m.rtaClock.totalMilliseconds() >= entry.rtaDueAt then return false
+    m.rtaHeld.push({ slotIdx: slotIdx, entry: entry, response: response, dueAt: entry.rtaDueAt })
     return true
   end function
 #end if

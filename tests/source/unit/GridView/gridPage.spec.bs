@@ -2,13 +2,13 @@ import "pkg:/source/GridView/gridPage.bs"
 
 namespace tests
 
-  ' gridPage.appendNamesAfterZ — the "#" letter filter's second query. The first asks for names
-  ' before "A"; the second for names from "z" on, of which only those NOT starting with z belong
-  ' under "#" (symbols and letters that sort after Z).
-  @suite("gridPage - the # filter's names after Z")
+  ' gridPage — the "#" letter filter as two exact ranges of names (before "a", and from "{" on),
+  ' paged as one list: where each page's requests start, when a page needs the second range, and
+  ' how the two replies combine.
+  @suite("gridPage - the # filter's two name ranges")
   class GridPageTests extends tests.BaseTestSuite
 
-    private function page(names as object, total as integer) as object
+    private function page(names as object, total as dynamic) as object
       items = []
       for each name in names
         items.push({ Name: name })
@@ -25,57 +25,147 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("appendNamesAfterZ()")
+    @describe("hashRanges()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("appends the names after Z and counts them")
+    @it("is the names before A, then the names from the character after z")
     function _()
-      data = m.page(["1917", "300"], 2)
-
-      gridPage.appendNamesAfterZ(data, m.page(["Zodiac", "¡Three Amigos!", "Ōkami"], 3))
-
-      m.assertEqual(m.namesOf(data), ["1917", "300", "¡Three Amigos!", "Ōkami"])
-      m.assertEqual(data.TotalRecordCount, 4)
+      m.assertEqual(gridPage.hashRanges(), [{ NameLessThan: "A" }, { NameStartsWithOrGreater: "{" }])
     end function
 
-    @it("leaves out names starting with z in either case")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("hashFirstRequest()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("starts the first page at the top of the first range, counted")
     function _()
-      data = m.page([], 0)
-
-      gridPage.appendNamesAfterZ(data, m.page(["Zoolander", "zardoz"], 2))
-
-      m.assertEqual(data.Items.count(), 0)
-      m.assertEqual(data.TotalRecordCount, 0)
+      m.assertEqual(gridPage.hashFirstRequest(0, 100, -1), { range: 0, startIndex: 0, limit: 100, counts: true })
     end function
 
-    @it("skips an item with no name rather than faulting")
+    @it("starts a later page inside the first range at its own index, uncounted")
     function _()
+      m.assertEqual(gridPage.hashFirstRequest(100, 100, 250), { range: 0, startIndex: 100, limit: 100, counts: false })
+    end function
+
+    @it("starts a later page past the first range inside the second")
+    @params(250, 0)
+    @params(300, 50)
+    function _(startIndex, expectedStart)
+      m.assertEqual(gridPage.hashFirstRequest(startIndex, 100, 250), { range: 1, startIndex: expectedStart, limit: 100, counts: false })
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("hashSecondRequest()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("fills the first page's room from the top of the second range, counted")
+    function _()
+      first = gridPage.hashFirstRequest(0, 100, -1)
+
+      m.assertEqual(gridPage.hashSecondRequest(first, 40, 100), { range: 1, startIndex: 0, limit: 60, counts: true })
+    end function
+
+    @it("still counts the second range when the first filled the first page")
+    function _()
+      ' The grid's total is both counts: limit 0 asks for the count alone.
+      first = gridPage.hashFirstRequest(0, 100, -1)
+
+      m.assertEqual(gridPage.hashSecondRequest(first, 100, 100), { range: 1, startIndex: 0, limit: 0, counts: true })
+    end function
+
+    @it("completes a later page from the top of the second range when the first runs out")
+    function _()
+      first = gridPage.hashFirstRequest(200, 100, 250)
+
+      m.assertEqual(gridPage.hashSecondRequest(first, 50, 100), { range: 1, startIndex: 0, limit: 50, counts: false })
+    end function
+
+    @it("needs nothing more when a later page lies inside the first range")
+    function _()
+      first = gridPage.hashFirstRequest(100, 100, 250)
+
+      m.assertInvalid(gridPage.hashSecondRequest(first, 100, 100))
+    end function
+
+    @it("needs nothing more when a later page lies inside the second range")
+    function _()
+      first = gridPage.hashFirstRequest(300, 100, 250)
+
+      m.assertInvalid(gridPage.hashSecondRequest(first, 20, 100))
+    end function
+
+    @it("pages across the boundary without skipping or repeating an item")
+    function _()
+      ' 250 names before "a" and 120 from "{" on, 100 a page: the page starting at 200 takes the
+      ' last 50 of the first range and the first 50 of the second; the next starts at 300, which
+      ' is 50 into the second range — exactly where the page before stopped.
+      first = gridPage.hashFirstRequest(200, 100, 250)
+      second = gridPage.hashSecondRequest(first, 50, 100)
+      m.assertEqual(second.startIndex + second.limit, 50)
+
+      m.assertEqual(gridPage.hashFirstRequest(300, 100, 250).startIndex, 50)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("hashRequestParams()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("puts the request's range, start and size on a copy of the page's params")
+    function _()
+      params = { SortBy: "SortName", StartIndex: 300, limit: 100 }
+
+      requestParams = gridPage.hashRequestParams(params, { range: 1, startIndex: 50, limit: 100, counts: false })
+
+      m.assertEqual(requestParams.NameStartsWithOrGreater, "{")
+      m.assertEqual(requestParams.StartIndex, 50)
+      m.assertEqual(requestParams.limit, 100)
+      m.assertEqual(requestParams.SortBy, "SortName")
+      m.assertFalse(requestParams.EnableTotalRecordCount)
+      m.assertEqual(params, { SortBy: "SortName", StartIndex: 300, limit: 100 }, "the page's params are left alone")
+    end function
+
+    @it("leaves counting to the server's default when the request counts")
+    function _()
+      requestParams = gridPage.hashRequestParams({}, { range: 0, startIndex: 0, limit: 100, counts: true })
+
+      m.assertEqual(requestParams.NameLessThan, "A")
+      m.assertFalse(requestParams.doesExist("EnableTotalRecordCount"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("appendSecondRange()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("adds the second range after the first, and on the first page adds its count")
+    function _()
+      data = m.page(["1917", "[Bracket]"], 2)
+
+      gridPage.appendSecondRange(data, m.page(["~Tilde"], 5), true)
+
+      m.assertEqual(m.namesOf(data), ["1917", "[Bracket]", "~Tilde"])
+      m.assertEqual(data.TotalRecordCount, 7)
+    end function
+
+    @it("leaves the total alone on a later page, where neither request counted")
+    function _()
+      ' An uncounted reply's total is only its own size, or 0, depending on server and endpoint.
       data = m.page(["1917"], 1)
 
-      gridPage.appendNamesAfterZ(data, { Items: [{ Id: "x" }, { Name: "Ω" }] })
+      gridPage.appendSecondRange(data, m.page(["~Tilde"], 0), false)
 
-      m.assertEqual(m.namesOf(data), ["1917", "Ω"])
-      m.assertEqual(data.TotalRecordCount, 2)
-    end function
-
-    @it("changes nothing when the second reply holds no Items list")
-    function _()
-      data = m.page(["1917"], 1)
-
-      gridPage.appendNamesAfterZ(data, { TotalRecordCount: 0 })
-
-      m.assertEqual(m.namesOf(data), ["1917"])
+      m.assertEqual(m.namesOf(data), ["1917", "~Tilde"])
       m.assertEqual(data.TotalRecordCount, 1)
     end function
 
-    @it("changes nothing when the first reply holds no Items list")
+    @it("changes nothing when either reply holds no Items list")
     function _()
-      data = { TotalRecordCount: 0 }
+      data = m.page(["1917"], 1)
+      gridPage.appendSecondRange(data, { TotalRecordCount: 3 }, true)
+      m.assertEqual(data, m.page(["1917"], 1), "second reply without Items")
 
-      gridPage.appendNamesAfterZ(data, m.page(["Ω"], 1))
-
-      m.assertFalse(data.doesExist("Items"))
-      m.assertEqual(data.TotalRecordCount, 0)
+      data = { TotalRecordCount: 1 }
+      gridPage.appendSecondRange(data, m.page(["~Tilde"], 1), true)
+      m.assertEqual(data, { TotalRecordCount: 1 }, "first reply without Items")
     end function
 
   end class

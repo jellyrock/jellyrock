@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ProgressPill: a small "still working" notice — a spinner and a short line of text in the
+  toast's chrome (the same rounded panel and background color), centered at the bottom of the
+  action-safe area. For work the user is waiting on while the screen stays usable, such as a
+  grid's next page; the scene-level spinner is for a screen with nothing to show yet.
+
+  The owner toggles `isShown`. Width follows the text once the label has measured itself.
+-->
+<component name="ProgressPill" extends="Group">
+  <children>
+    <Group id="pillContainer">
+      <Poster id="pillBackground" uri="pkg:/images/9patch/filled-rounded.9.png" />
+      <Spinner id="pillSpinner" />
+      <LabelPrimaryMedium id="pillText" vertAlign="center" />
+    </Group>
+    <Animation id="fadeIn" duration="0.3" repeat="false" easeFunction="outCubic">
+      <FloatFieldInterpolator key="[0, 1]" keyValue="[0, 1]" fieldToInterp="pillContainer.opacity" />
+    </Animation>
+  </children>
+  <interface>
+    <field id="text" type="string" value="" />
+    <field id="isShown" type="boolean" value="false" />
+  </interface>
+</component>

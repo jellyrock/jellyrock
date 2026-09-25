@@ -1,0 +1,83 @@
+import "pkg:/source/utils/misc.bs"
+
+' Same padding, icon slot and action-safe edge as Toast, so the two read as one family.
+const PILL_PADDING = 30
+const PILL_SPINNER_SIZE = 32
+const PILL_SPINNER_GAP = 12
+' 1080 - the 5% action-safe margin (96px)
+const PILL_BOTTOM_EDGE = 984
+
+sub init()
+  m.container = m.top.findNode("pillContainer")
+  m.background = m.top.findNode("pillBackground")
+  m.spinner = m.top.findNode("pillSpinner")
+  m.label = m.top.findNode("pillText")
+  m.fadeIn = m.top.findNode("fadeIn")
+
+  m.background.blendColor = m.global.constants.colorBackgroundSecondary
+  m.spinner.poster.width = PILL_SPINNER_SIZE
+  m.spinner.poster.height = PILL_SPINNER_SIZE
+
+  m.isSized = false
+  m.container.opacity = 0
+  m.top.visible = false
+
+  ' The label can only be measured once it has rendered (same approach as Toast).
+  m.top.enableRenderTracking = true
+  m.top.observeField("renderTracking", "onRenderTracking")
+  m.top.observeField("text", "onTextChanged")
+  m.top.observeField("isShown", "onIsShownChanged")
+end sub
+
+sub onTextChanged()
+  m.label.text = m.top.text
+  m.isSized = false
+end sub
+
+sub onIsShownChanged()
+  if not m.top.isShown
+    m.fadeIn.control = "stop"
+    m.container.opacity = 0
+    m.top.visible = false
+    return
+  end if
+  m.top.visible = true
+  if m.isSized then reveal()
+end sub
+
+sub onRenderTracking()
+  if m.top.renderTracking <> "full" or m.isSized then return
+  sizeAndPosition()
+  if m.isSized and m.top.isShown then reveal()
+end sub
+
+sub reveal()
+  m.container.opacity = 0
+  m.fadeIn.control = "start"
+end sub
+
+sub sizeAndPosition()
+  if m.label.text.Len() = 0 then return
+  m.label.width = 0
+  m.label.height = 0
+  textWidth = m.label.localBoundingRect().width
+  if textWidth = 0 then return
+
+  height = m.label.font.size * 0.7 + PILL_PADDING * 2
+  if height < PILL_SPINNER_SIZE + PILL_PADDING * 2 then height = PILL_SPINNER_SIZE + PILL_PADDING * 2
+  width = PILL_PADDING + PILL_SPINNER_SIZE + PILL_SPINNER_GAP + textWidth + PILL_PADDING
+
+  m.background.width = width
+  m.background.height = height
+  m.spinner.translation = [PILL_PADDING, (height - PILL_SPINNER_SIZE) / 2]
+  labelX = PILL_PADDING + PILL_SPINNER_SIZE + PILL_SPINNER_GAP
+  m.label.width = textWidth
+  m.label.height = height
+  m.label.translation = [labelX, 0]
+
+  ' Centered, on the 720p output grid (every 3 px of 1080p); see dialogLayout.bs.
+  x = int((1920 - width) / 2)
+  y = int(PILL_BOTTOM_EDGE - height)
+  m.top.translation = [x - (x mod 3), y - (y mod 3)]
+  m.isSized = true
+end sub

@@ -844,11 +844,12 @@ await odc.setValue({ base: 'global', keyPath: 'rtaGridPageSize', value: 4 });
 App-memory only, like the other hooks. `specs/fail-requests.spec.js` uses it to fail a later
 page.
 
-## Making requests fail (`rtaFailRequests`)
+## Making requests fail or slow (`rtaFailRequests`)
 
 A screen's failure path — a timeout, a server error — cannot be reached against a healthy
-server, so RTA builds let a spec make chosen API requests fail. Set rules after relaunch,
-through [`lib/failRequests.js`](../../tests/rta/lib/failRequests.js):
+server, and its slow-server path cannot be reached against a fast one, so RTA builds let a
+spec make chosen API requests fail or answer slowly. Set rules after relaunch, through
+[`lib/failRequests.js`](../../tests/rta/lib/failRequests.js):
 
 ```js
 await failRequests([{ prefix: 'itemQuery_usersItems', kind: 'timeout', times: 1 }]);
@@ -860,7 +861,10 @@ await openLibraryByType('movies', moviesId);
   site you want to fail.
 - `kind: 'timeout'` answers the way `roku-requests` does when it gives up; `kind: 'http'`
   needs a `status` of 400 or more.
-- `times` is how many matching requests fail; omit it for all of them. `times: 1` is how a
+- `kind: 'slow'` needs `ms`: the request is sent, and its real answer is held until `ms` after
+  it was sent, with its pool slot busy the whole time — a slow server, without making the
+  test server slow. `{ …, kind: 'slow', ms: 20000, times: 1, after: 1 }` slows a grid's page 2.
+- `times` is how many matching requests the rule applies to; omit it for all of them. `times: 1` is how a
   spec proves recovery: the first load fails, the next one reaches the server.
 - `after` is how many matching requests go through before the rule starts failing. It is for
   an id that repeats faster than a spec can set a rule in between: a grid's page 2 follows
@@ -869,8 +873,8 @@ await openLibraryByType('movies', moviesId);
 - A rule the app cannot honor exactly is dropped, not guessed at, so a typo fails your
   assertions rather than some other request.
 
-The API coordinator answers a matching request itself, with the response the pool delivers
-for that failure, and never sends it (see [`api.md`](../architecture/api.md#a-request-a-test-makes-fail-rta-builds-only)).
+The API coordinator answers a failed request itself, with the response the pool delivers
+for that failure, and never sends it; a slowed one it sends and holds (see [`api.md`](../architecture/api.md#a-request-a-test-makes-fail-or-slow-rta-builds-only)).
 Only pooled requests are covered: the bootstrap-path sync calls (`getJson`) and
 `SideEffectTask` writes do not pass through the coordinator. Like `rtaSkeletonHoldMs` it is
 app-memory only, so a relaunch clears it. [`specs/fail-requests.spec.js`](../../tests/rta/specs/fail-requests.spec.js)

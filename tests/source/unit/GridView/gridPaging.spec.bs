@@ -2,9 +2,10 @@ import "pkg:/source/GridView/gridPaging.bs"
 
 namespace tests
 
-  ' gridPaging — what a library grid does when a page after its first fails: tell the user
-  ' once until a page loads, never while another screen is up, and ask again when it is back.
-  @suite("gridPaging - a later page that failed")
+  ' gridPaging — when a library grid asks for its next page (keep a runway of loaded rows
+  ' below the focus, sized from the measured scroll speed and page time), and what it does when
+  ' a later page fails: tell the user once until a page loads, never while another screen is up.
+  @suite("gridPaging - when to ask for a page, and a later page that failed")
   class GridPagingTests extends tests.BaseTestSuite
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -63,30 +64,240 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("shouldResume()")
+    @describe("trackFocus() / scrollSpeed()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("asks again when the load stopped short and nothing is loading")
+    @it("reads as not moving before any focus move, and after only one")
     function _()
-      m.assertTrue(gridPaging.shouldResume(4, 11, false))
+      tracker = gridPaging.newScrollTracker()
+      m.assertEqual(gridPaging.scrollSpeed(tracker, 1000), 0.0, "no move")
+
+      gridPaging.trackFocus(tracker, 0, 1000)
+      m.assertEqual(gridPaging.scrollSpeed(tracker, 1000), 0.0, "one report is a place, not a move")
     end function
 
-    @it("does not ask while a page is loading")
+    @it("measures rows per second while the user moves down")
     function _()
-      m.assertFalse(gridPaging.shouldResume(4, 11, true))
+      tracker = gridPaging.newScrollTracker()
+      gridPaging.trackFocus(tracker, 0, 1000)
+      gridPaging.trackFocus(tracker, 1, 1250)
+      gridPaging.trackFocus(tracker, 2, 1500)
+
+      m.assertEqual(gridPaging.scrollSpeed(tracker, 1500), 4.0)
     end function
 
-    @it("does not ask when every item is loaded")
+    @it("counts a row reported moments after the last at its share of the window")
     function _()
-      m.assertFalse(gridPaging.shouldResume(11, 11, false))
+      ' Measured on a 512 MB Stick: after a page lands, the render thread catches up and two
+      ' rows arrive milliseconds apart. A rate between those two alone read 158 rows/s.
+      tracker = gridPaging.newScrollTracker()
+      gridPaging.trackFocus(tracker, 0, 1000)
+      gridPaging.trackFocus(tracker, 1, 1250)
+      gridPaging.trackFocus(tracker, 2, 1500)
+      gridPaging.trackFocus(tracker, 3, 1750)
+      gridPaging.trackFocus(tracker, 4, 1756)
+
+      ' 4 rows over 756 ms.
+      speed = gridPaging.scrollSpeed(tracker, 1756)
+      m.assertTrue(speed > 5.2 and speed < 5.4, "speed " + speed.toStr())
     end function
 
-    @it("does not ask before the first page has landed")
+    @it("takes the rate over the latest window, keeping one earlier move as its start")
+    function _()
+      tracker = gridPaging.newScrollTracker()
+      gridPaging.trackFocus(tracker, 0, 1000)
+      gridPaging.trackFocus(tracker, 10, 1500)
+      gridPaging.trackFocus(tracker, 11, 2600)
+      gridPaging.trackFocus(tracker, 12, 2700)
+
+      ' Row 0 at 1000 has left the window; row 10 at 1500 is the start: 2 rows over 1200 ms.
+      m.assertEqual(tracker.moves.count(), 3)
+      speed = gridPaging.scrollSpeed(tracker, 2700)
+      m.assertTrue(speed > 1.6 and speed < 1.7, "speed " + speed.toStr())
+    end function
+
+    @it("never takes a rate over less than MIN_SPAN_MS")
+    function _()
+      tracker = gridPaging.newScrollTracker()
+      gridPaging.trackFocus(tracker, 0, 1000)
+      gridPaging.trackFocus(tracker, 1, 1000)
+
+      m.assertEqual(gridPaging.scrollSpeed(tracker, 1000), 1000.0 / gridPaging.MIN_SPAN_MS)
+    end function
+
+    @it("does not count moving up")
+    function _()
+      tracker = gridPaging.newScrollTracker()
+      gridPaging.trackFocus(tracker, 5, 1000)
+      gridPaging.trackFocus(tracker, 4, 1250)
+
+      m.assertEqual(gridPaging.scrollSpeed(tracker, 1250), 0.0)
+    end function
+
+    @it("reads the grid reporting the same row again as not moving")
+    function _()
+      ' The grid re-reports its focused item when focus comes back to it.
+      tracker = gridPaging.newScrollTracker()
+      gridPaging.trackFocus(tracker, 3, 1000)
+      gridPaging.trackFocus(tracker, 3, 1100)
+
+      m.assertEqual(gridPaging.scrollSpeed(tracker, 1100), 0.0)
+    end function
+
+    @it("keeps the speed when the row it already has is reported again")
+    function _()
+      ' A scroll's rows are reported one by one as they pass; when it comes to rest, the grid
+      ' reports the last of them again as its focused item. That is not a move.
+      tracker = gridPaging.newScrollTracker()
+      gridPaging.trackFocus(tracker, 0, 1000)
+      gridPaging.trackFocus(tracker, 1, 1250)
+      gridPaging.trackFocus(tracker, 1, 1300)
+
+      m.assertEqual(gridPaging.scrollSpeed(tracker, 1300), 4.0)
+      m.assertEqual(tracker.atMs, 1250, "the time of the last real move")
+    end function
+
+    @it("reads as not moving once the user pauses longer than IDLE_MS")
+    function _()
+      tracker = gridPaging.newScrollTracker()
+      gridPaging.trackFocus(tracker, 0, 1000)
+      gridPaging.trackFocus(tracker, 1, 1250)
+
+      m.assertEqual(gridPaging.scrollSpeed(tracker, 1250 + gridPaging.IDLE_MS + 1), 0.0)
+    end function
+
+    @it("starts a new burst from its own movement, not the last burst's")
+    function _()
+      tracker = gridPaging.newScrollTracker()
+      gridPaging.trackFocus(tracker, 0, 1000)
+      gridPaging.trackFocus(tracker, 4, 1100)
+      ' A long pause, then one row: a single press, whatever the last burst was.
+      gridPaging.trackFocus(tracker, 5, 1100 + 2000)
+
+      m.assertEqual(gridPaging.scrollSpeed(tracker, 3100), 0.5)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("recordPageTime()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("starts unknown, takes the first page as is, then averages")
+    function _()
+      timer = gridPaging.newPageTimer()
+      m.assertTrue(timer.averageMs < 0, "unknown before any page")
+
+      gridPaging.recordPageTime(timer, 400)
+      m.assertEqual(timer.averageMs, 400.0)
+
+      gridPaging.recordPageTime(timer, 800)
+      m.assertEqual(timer.averageMs, 600.0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("runwayRows()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps one screen ahead at rest")
+    function _()
+      m.assertEqual(gridPaging.runwayRows(3, 0.0, 500.0), 3)
+    end function
+
+    @it("keeps one screen ahead before any page has been timed")
+    function _()
+      m.assertEqual(gridPaging.runwayRows(3, 10.0, -1.0), 3)
+    end function
+
+    @it("wants the rows the user passes while a page arrives, with the margin")
+    function _()
+      ' 4 rows/s for a 2 s page is 8 rows; with a 1.5 margin, 12.
+      m.assertEqual(gridPaging.runwayRows(3, 4.0, 2000.0), 12)
+    end function
+
+    @it("rounds a part row up")
+    function _()
+      ' 3 rows/s for 1.1 s is 3.3 rows; with the margin, 4.95: 5 rows.
+      m.assertEqual(gridPaging.runwayRows(3, 3.0, 1100.0), 5)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("shouldLoadMore()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("asks when fewer loaded rows are left below the focus than it wants")
+    function _()
+      m.assertTrue(gridPaging.shouldLoadMore(8, 10, true, false, 3))
+    end function
+
+    @it("does not ask while enough rows are left")
+    function _()
+      m.assertFalse(gridPaging.shouldLoadMore(7, 10, true, false, 3))
+    end function
+
+    @it("does not ask while a page is in flight")
+    function _()
+      m.assertFalse(gridPaging.shouldLoadMore(10, 10, true, true, 3))
+    end function
+
+    @it("does not ask when the query has nothing more")
+    function _()
+      m.assertFalse(gridPaging.shouldLoadMore(10, 10, false, false, 3))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("hasMore()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("has more while the grid holds fewer items than the total")
+    function _()
+      m.assertTrue(gridPaging.hasMore(4, 11))
+    end function
+
+    @it("has no more when every item is loaded")
+    function _()
+      m.assertFalse(gridPaging.hasMore(11, 11))
+    end function
+
+    @it("has no more before the first page has landed")
     function _()
       ' The first page has its own failure state and Try again; a new query's total is 0
       ' until its first page lands.
-      m.assertFalse(gridPaging.shouldResume(0, 0, false), "nothing loaded yet")
-      m.assertFalse(gridPaging.shouldResume(0, 11, false), "a reload in flight")
+      m.assertFalse(gridPaging.hasMore(0, 0), "nothing loaded yet")
+      m.assertFalse(gridPaging.hasMore(0, 11), "a reload in flight")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isWaitingAtEnd()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("waits at the end on the last loaded row while a page is in flight")
+    function _()
+      m.assertTrue(gridPaging.isWaitingAtEnd(10, 10, true, true))
+    end function
+
+    @it("does not wait with rows still left, with nothing in flight, or with nothing more")
+    @params(9, 10, true, true, "a row still left")
+    @params(10, 10, true, false, "nothing in flight")
+    @params(10, 10, false, true, "nothing more to load")
+    function _(focusedRow, lastLoadedRow, hasMore, isLoading, why)
+      m.assertFalse(gridPaging.isWaitingAtEnd(focusedRow, lastLoadedRow, hasMore, isLoading), why)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("lastRow()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is the row of the last loaded item")
+    @params(1, 6, 0)
+    @params(6, 6, 0)
+    @params(7, 6, 1)
+    @params(100, 6, 16)
+    function _(loadedItems, columns, expected)
+      m.assertEqual(gridPaging.lastRow(loadedItems, columns), expected)
+    end function
+
+    @it("is -1 when nothing is loaded")
+    function _()
+      m.assertEqual(gridPaging.lastRow(0, 6), -1)
     end function
 
   end class

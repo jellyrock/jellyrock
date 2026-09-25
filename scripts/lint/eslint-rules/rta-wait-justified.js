@@ -112,6 +112,11 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // leaves `message` holding the last text. Terminal, not a pulse. Read against the app
   // source 2026-09-25 (JRScene.showToast, Toast.onShouldShow).
   '#toast.message',
+  // `BaseGridView.onLoadingMoreDue` sets it true and `updateLoadingMore` is the only write
+  // back to false, when the page lands (or fails, or the view is hidden). `true` holds for as
+  // long as the user waits at the last loaded row, and `false` until the next wait — neither
+  // is a pulse. Read against the app source 2026-09-25, both write sites.
+  '#loadingMore.isShown',
   '#jrDialog.#okButton.#buttonBorder.blendColor',
   '#jrDialog.#scrollContent.translation',
   '#jrDialog.id',
