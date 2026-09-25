@@ -19,7 +19,7 @@ description: Reactive flaw-remediation for JellyRock — fires the moment a defe
 - **On fix-now:** the trivial correction applied directly, no ceremony, no human gate.
 - **On structured-fix:** the five gates walked and their outputs surfaced for the human gate — the confirmed root cause, the ≥2 candidate fixes weighed with the chosen one and why, the fix's footprint (sized to match the defect), and a regression/dogfood result proving the fix works on a real target before "done." The fix's RCA narrative (root cause + chosen fix + alternatives rejected) lands in the commit body, not a separate artifact.
 - **On escalate:** a hand-off to tracked work — a `/log followup` capturing the flaw + its suspected cause, or a `/start-project` scaffold when it's multi-session-shaped — and the skill stops without fixing in place.
-- A `Captures for /log` tail listing any residual followups or decisions that surfaced during the fix but aren't yet captured. Omit if nothing surfaced; do not pad.
+- A `Captures for /log` tail listing anything journal-worthy that surfaced during the fix but isn't yet captured, using the types `/log` records. Omit if nothing surfaced; do not pad.
 
 **Success criteria.**
 
@@ -94,12 +94,12 @@ Land the fix as a commit whose body carries the RCA narrative — root cause, ch
 
 ### Step 4 — Capture residuals
 
-If the fix surfaced followups or decisions not yet captured, invoke `/log` for each, one at a time, per the capture convention. Then stop. Don't pad with captures that don't exist.
+If the fix surfaced anything journal-worthy not yet captured, invoke `/log` for each, one at a time, per the capture convention. Then stop. Don't pad with captures that don't exist.
 
 ## Sub-agent invocation
 
 `/snag` delegates the **structured fix** to a sub-agent when the root cause needs deep reading or the main thread should keep its context. Parent passes (set the Task `model` to the judgment tier only when the root cause is non-obvious; give the agent worktree isolation if it writes files in parallel with other work):
 
-`A flaw was found: <one-line flaw>. The confirmed (or suspected) root cause is <cause>. Apply a structured fix honoring these gates: weigh ≥2 candidate fixes and pick on merit; right-size the artifact to the defect (don't over-edit); verify the fix on a real target before declaring done, and if the fix is a destructive/fan-out mechanism prove it on ONE target before fanning out. Do NOT commit — surface the chosen fix, the alternatives rejected, the footprint, and the dogfood result back to me for the human gate. If you discover any decisions or followups during this work, surface them at the end of your report as a "Captures for /log" section with one bullet per item. I'll invoke /log for each. Do not write to journals directly.`
+`A flaw was found: <one-line flaw>. The confirmed (or suspected) root cause is <cause>. Apply a structured fix honoring these gates: weigh ≥2 candidate fixes and pick on merit; right-size the artifact to the defect (don't over-edit); verify the fix on a real target before declaring done, and if the fix is a destructive/fan-out mechanism prove it on ONE target before fanning out. Do NOT commit — surface the chosen fix, the alternatives rejected, the footprint, and the dogfood result back to me for the human gate. End your report with a "Captures for /log" section: one "- <type>: <title> — <body>" bullet per journal-worthy item this work surfaced, where <type> is decision, followup, signal, or running (a signal is an upstream version-watch row; a running item replaces the one-paragraph note on what is being worked on right now); omit the section if there are none, and never write to journals yourself.`
 
 Sub-agents NEVER commit, enter plan mode, or write to journals directly (Sub-agent capture rule) — they propose; the parent runs the human gate and lands the commit.

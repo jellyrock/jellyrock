@@ -20,7 +20,7 @@ description: Execute a procedural implementation plan saved at `.claude/plans/fo
 - A drafted commit on the current branch, staged explicitly per the Critical files list.
 - When the plan's `**Project:**` names a tracked project, the landing recorded in that project's local `PLAN.md` (`docs/projects/` is gitignored in this public repo, so this is an uncommitted edit, never `git add -f`): one dated Session-log line naming the work commit and the plan, and its `last-updated` bumped. Nothing else in the PLAN changes (Status and the kickoff stay `/end-session`'s, and the line says so); the push ships only the work commit.
 - A "ready to push" block surfaced to the user, with the commit SHA and a one-line Verification summary.
-- A `Captures for /log` tail listing any followups / decisions surfaced during implementation. Omit the tail if nothing journal-worthy surfaced — do not pad.
+- A `Captures for /log` tail listing anything journal-worthy surfaced during implementation, using the types `/log` records. Omit the tail if nothing journal-worthy surfaced — do not pad.
 
 **Success criteria.**
 
@@ -30,7 +30,7 @@ description: Execute a procedural implementation plan saved at `.claude/plans/fo
 - The commit message reflects the plan's Context (the **why**), not just a restatement of what changed.
 - Push happens only after explicit user confirmation ("push" or "yes"). Never auto-push, never push on session end.
 - Production steps follow the plan's `Landing & closeout` exactly: after the push, `/sonnet` runs only a step the plan assigns to it (routine and undoable, with the exact command approved as part of the plan); a step assigned to the operator is repeated in the ready-to-push block as the exact command to run, never run by `/sonnet`; anything the section does not cover is surfaced, not improvised.
-- If implementation surfaced anything journal-worthy (a new followup, a decision-shaped choice), the `Captures for /log` tail lists it for the user to invoke `/log` on.
+- If implementation surfaced anything journal-worthy, the `Captures for /log` tail lists it for the user to invoke `/log` on.
 
 **Failure modes to avoid.**
 
@@ -106,10 +106,10 @@ Wait for explicit "push" before running `git push`. This is the load-bearing sto
 
 ### Step 5 — Captures (if any)
 
-If implementation surfaced any decisions, followups, or other journal-worthy items not in the plan, list them in a final `Captures for /log` section at the very end of your reply (after the push completes). Format: `- <type>: <title> — <body>`. The user invokes `/log` for each per the Sub-agent capture convention; don't auto-write to journals.
+If implementation surfaced anything journal-worthy not in the plan, list it in a final `Captures for /log` section at the very end of your reply (after the push completes): one `- <type>: <title> — <body>` bullet per item, using the types `/log` records. The user invokes `/log` for each per the Sub-agent capture convention; don't auto-write to journals.
 
 If no captures surfaced, omit the section. Don't pad.
 
 ## Sub-agent invocation
 
-To invoke from a sub-agent: parent passes `Read .claude/skills/sonnet/SKILL.md and follow the steps for $ARGUMENTS=<plan-file-path>. Execute the plan, run Verification, commit, surface the ready-to-push block, then STOP. Do NOT push. If you discover any decisions or followups during this work, surface them at the end of your report as a "Captures for /log" section. I'll invoke /log for each. Do not write to journals directly.` in the Task prompt. Parent runs the push after reviewing the sub-agent's surfaced block.
+To invoke from a sub-agent: parent passes `Read .claude/skills/sonnet/SKILL.md and follow the steps for $ARGUMENTS=<plan-file-path>. Execute the plan, run Verification, commit, surface the ready-to-push block, then STOP. Do NOT push. End your report with a "Captures for /log" section: one "- <type>: <title> — <body>" bullet per journal-worthy item this work surfaced, where <type> is decision, followup, signal, or running (a signal is an upstream version-watch row; a running item replaces the one-paragraph note on what is being worked on right now); omit the section if there are none, and never write to journals yourself.` in the Task prompt. Parent runs the push after reviewing the sub-agent's surfaced block.

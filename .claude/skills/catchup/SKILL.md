@@ -18,7 +18,7 @@ audit-span: read-only
 
 - A single structured briefing rendered to conversation, with any urgent banners (failed CI, stale journals, stale signals, action-pending signals, review-requested PRs, schema-broken journals) at the top and the routine session-state block below.
 - A short `Suggested next` line at the end naming exactly one concrete move, with the jr sibling skill that's the right next step (e.g., `/issue-triage <N>`, `/ci-triage <run-id>`, `/server-upgrade`, `/pr-review <N>`, `/log followup`, `/done <slug>`).
-- A `Captures for /log` tail (only when a sub-agent invokes it, or when a journal-worthy item surfaced during the read that wasn't already captured). Omit the tail if nothing surfaced; do not pad.
+- A `Captures for /log` tail (only when a sub-agent invokes it, or when a journal-worthy item surfaced during the read that wasn't already captured), using the types `/log` records. Omit the tail if nothing surfaced; do not pad.
 
 **Success criteria.**
 
@@ -149,10 +149,10 @@ Pick at most ONE suggestion. Two means you couldn't decide; better to surface th
 
 ### Step 5 — Don't apply, just brief
 
-This is a READ-ONLY skill. Even if a fix is obvious, surface it as the **Suggested next** line — don't kick off `/log`, `/done`, `/issue-triage`, `/runtime-triage`, or any write actions from inside `/catchup`. The user picks the next move.
+This is a READ-ONLY skill. Even if a fix is obvious, surface it as the **Suggested next** line — don't kick off `/log`, `/done`, `/issue-triage`, `/runtime-triage`, or any write actions from inside `/catchup`. The user picks the next move. If a journal-worthy item surfaced during the read that isn't already captured, end the briefing with a `Captures for /log` tail: one `- <type>: <title> — <body>` bullet per item, using the types `/log` records; the user invokes `/log` for each.
 
-If a sub-agent invokes /catchup and surfaces a capture-shaped finding (a decision was made mid-session, an idea worth tracking, a followup to defer), that sub-agent does NOT write to journals directly — it ends its report with a "Captures for /log" section so the parent can invoke `/log` for each.
+If a sub-agent invokes /catchup and surfaces a capture-shaped finding (a choice was made mid-session, an idea worth tracking, work to defer), that sub-agent does NOT write to journals directly — it ends its report with a "Captures for /log" section so the parent can invoke `/log` for each.
 
 ## Sub-agent invocation
 
-To invoke from a sub-agent: parent passes `Read .claude/skills/catchup/SKILL.md and follow the steps; report the briefing. Surface any capture-shaped findings in a "Captures for /log" section — do NOT write to journals directly` in the Task prompt.
+To invoke from a sub-agent: parent passes `Read .claude/skills/catchup/SKILL.md and follow the steps; report the briefing. End your report with a "Captures for /log" section: one "- <type>: <title> — <body>" bullet per journal-worthy item this work surfaced, where <type> is decision, followup, signal, or running (a signal is an upstream version-watch row; a running item replaces the one-paragraph note on what is being worked on right now); omit the section if there are none, and never write to journals yourself.` in the Task prompt.
