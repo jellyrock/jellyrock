@@ -41,7 +41,7 @@
 
     <!-- Delays ONLY the opening announcement, so it lands after the platform's
          own focus announcement instead of being flushed by it. See
-         OPENING_ANNOUNCEMENT_DELAY in JRDialog.bs, which measured it. -->
+         narration.OPENING_DELAY in source/utils/dialogNarration.bs, which says how it was measured. -->
     <Timer id="narrationTimer" repeat="false" />
   </children>
   <interface>

@@ -52,10 +52,10 @@ sub init()
 
   ' Screen-reader announcement — mirrors JRDialog: focus changes drive it, and
   ' the opening announcement additionally needs the timer (see
-  ' OPENING_ANNOUNCEMENT_DELAY in JRDialog.bs for why it cannot be event-driven).
+  ' narration.OPENING_DELAY in dialogNarration.bs for why it cannot be event-driven).
   m.top.observeField("focusedChild", "onDialogFocusChanged")
   m.narrationTimer = m.top.findNode("narrationTimer")
-  m.narrationTimer.duration = 0.15
+  m.narrationTimer.duration = narration.OPENING_DELAY
   m.narrationTimer.observeField("fire", "onOpeningAnnouncementDue")
   m.hasNarrated = false
 end sub

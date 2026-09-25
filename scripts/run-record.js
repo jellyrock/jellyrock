@@ -650,6 +650,17 @@ export const FAILURE_KINDS = Object.freeze({
   LIBRARY_OPENED_MISMATCH: 'library-opened-mismatch',
   GRID_LOAD_TIMEOUT: 'grid-load-timeout',
   /**
+   * The grid finished loading and showed its failure state (`loadState = "failed"`): the app
+   * got no usable answer for the first page. Not a timeout — the app answered, promptly, that
+   * it could not load — so it keeps its own slug.
+   *
+   * Deliberately NOT in `BLOCKING_KINDS`, although a flaky fixture server is one cause: an
+   * app that builds a query the server rejects (a 400 on every run) lands here too, and a
+   * blocking kind would file that regression as a dependency outage. The app's warning log
+   * line names the cause.
+   */
+  GRID_LOAD_FAILED: 'grid-load-failed',
+  /**
    * The right library grid opened, and the tile pressed inside it produced a detail of
    * the WRONG kind — a Movie while navigating the Shows library, say.
    *

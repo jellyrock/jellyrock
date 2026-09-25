@@ -36,8 +36,8 @@
     <!-- OK button -->
     <TextButton id="okButton" text="" />
 
-    <!-- Delays ONLY the opening announcement; see OPENING_ANNOUNCEMENT_DELAY in
-         components/dialogs/JRDialog.bs. -->
+    <!-- Delays ONLY the opening announcement; see narration.OPENING_DELAY in
+         source/utils/dialogNarration.bs. -->
     <Timer id="narrationTimer" repeat="false" />
   </children>
   <interface>

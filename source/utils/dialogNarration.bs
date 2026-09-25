@@ -22,6 +22,31 @@
 ' would make every dialog say the button name twice.
 import "pkg:/source/utils/misc.bs"
 
+namespace narration
+  ' How long after focus lands to speak an opening announcement, in seconds — the ONE piece
+  ' of narration timing that cannot be event-driven. Every dialog and screen that announces
+  ' itself on opening uses this; keep it the only copy.
+  '
+  ' Established on-device, one behavior at a time:
+  '   - The platform announces the focused button ONLY when focus first enters the
+  '     dialog. Moving between buttons afterwards is silent (TextButton extends
+  '     Group, not Roku's Button, so the "text of button is spoken only if focused"
+  '     rule never applies). Those moves are ours alone, and need no timing.
+  '   - That one initial announcement FLUSHES ours. Speaking from the focus
+  '     observer, which is as early as any event lets us react, still loses: the
+  '     platform speaks after us and we are cut off. Speaking before focus loses
+  '     the same way.
+  ' To survive we must speak AFTER the platform's announcement, and SceneGraph
+  ' exposes no event for "the platform has finished dispatching speech" — the only
+  ' observable speech events are for utterances the app itself starts. So the
+  ' opening announcement is the one place a delay is unavoidable.
+  '
+  ' Keep it short: long enough to land second, short enough to flush the platform's
+  ' word before it is audible. At 0.6s the clipped word was clearly audible.
+  ' Changing this needs an ear, not reasoning — there is no test that can catch it.
+  const OPENING_DELAY = 0.15
+end namespace
+
 ' Compose the opening announcement. Pure, so the wording is unit-testable without
 ' a device. Periods between the blocks make the reader pause between them,
 ' matching the cadence of the built-in dialog.

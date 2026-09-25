@@ -33,7 +33,7 @@
 
     <!-- Delays ONLY the opening announcement, so it lands after the platform's
          own focus announcement instead of being flushed by it. See
-         OPENING_ANNOUNCEMENT_DELAY in JRDialog.bs. -->
+         narration.OPENING_DELAY in source/utils/dialogNarration.bs. -->
     <Timer id="narrationTimer" repeat="false" />
 
   </children>

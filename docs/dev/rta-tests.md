@@ -830,6 +830,20 @@ a no-op, scroll survives the fill, backdrop lands on the focused item). `openLib
 is the press-into-the-library half of `navLibraryByType` for exactly this kind of spec —
 everything else should keep using `navLibraryByType`, which settles.
 
+## Paging a grid on a small library (`rtaGridPageSize`)
+
+A grid page is 100 items, and the demo server's libraries are smaller than that, so a paged
+load never happens there. RTA builds add an `rtaGridPageSize` field on `m.global` (same
+`#if ENABLE_RTA` block as the hook above); above 0, it is `LoadItemsTask2`'s page size. Set
+it after relaunch, before opening the grid — the task reads it when it is created:
+
+```js
+await odc.setValue({ base: 'global', keyPath: 'rtaGridPageSize', value: 4 });
+```
+
+App-memory only, like the other hooks. `specs/fail-requests.spec.js` uses it to fail a later
+page.
+
 ## Making requests fail (`rtaFailRequests`)
 
 A screen's failure path — a timeout, a server error — cannot be reached against a healthy
@@ -848,6 +862,10 @@ await openLibraryByType('movies', moviesId);
   needs a `status` of 400 or more.
 - `times` is how many matching requests fail; omit it for all of them. `times: 1` is how a
   spec proves recovery: the first load fails, the next one reaches the server.
+- `after` is how many matching requests go through before the rule starts failing. It is for
+  an id that repeats faster than a spec can set a rule in between: a grid's page 2 follows
+  page 1 by a few hundred ms under the same id, so `{ …, times: 1, after: 1 }` fails page 2
+  alone.
 - A rule the app cannot honor exactly is dropped, not guessed at, so a typo fails your
   assertions rather than some other request.
 

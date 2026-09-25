@@ -14,7 +14,7 @@ related-files:
   - components/api/ApiResultNode.xml
   - components/api/SideEffectTask.bs
   - components/home/LoadLatestRowsTask.bs
-last-reviewed: 2026-09-24
+last-reviewed: 2026-09-25
 ---
 
 # API Layer & Task Pool
@@ -295,6 +295,8 @@ end sub
 This blocks the *Task* thread (not the render thread!) for up to `timeouts.API_WAIT_MS` (currently 12 seconds; the canonical value lives in `source/constants/timeouts.bs`). Concurrent calls from multiple Task threads are safe — each gets its own `ApiResultNode`.
 
 `fetchJson(req, id)` is a convenience wrapper that returns just `res.json` (or `invalid` on timeout, an HTTP error, or a list body that failed its shape check — see [Reading a list endpoint's body](#reading-a-list-endpoints-body--sourceapiapiresponsebs)).
+
+`fetchJson` drops the reason. A caller that must tell a failed load apart from an empty one — and log why — calls `fetchRes` and asks [`apiResponse.jsonFailure(res)`](../../source/api/apiResponse.bs): `""` for a usable body, otherwise a short cause (`timed out`, `HTTP 500`, `network error -7`, `unreadable reply`, …) for its warning line. `LoadItemsTask2.executeItemQuery()` is the reference.
 
 ### Pattern 2 — `submitApiRequest` (non-blocking, from render thread)
 

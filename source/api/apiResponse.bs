@@ -70,4 +70,34 @@ namespace apiResponse
     return res
   end function
 
+  ' Why a request that should have answered with JSON did not, in the few words a warning log
+  ' line needs — "" when the reply is usable. A caller that shows a failure state keeps the
+  ' cause for its log and tells its screen only that the load failed.
+  '
+  ' The shapes are the pool's: `invalid` from fetchRes when the caller's wait ran out; no
+  ' statusCode when roku-requests gave up waiting; a negative curl code for a connection that
+  ' failed; statusCode 0 when ApiTask could not make the request at all.
+  '
+  ' @param res - a pool response AA, or invalid
+  ' @return "" for an ok reply with a parsed body, otherwise the cause
+  function jsonFailure(res as dynamic) as string
+    if type(res) <> "roAssociativeArray" then return "no answer in time"
+
+    if isValid(res.error)
+      if res.error = apiResponse.ERROR_UNEXPECTED_SHAPE then return "unexpected reply shape"
+      if res.error = apiResponse.ERROR_ABANDONED then return "abandoned"
+    end if
+
+    if isValid(res.ok) and res.ok
+      if isValid(res.json) then return ""
+      return "unreadable reply"
+    end if
+
+    status = res.statusCode
+    if not isValid(status) then return "timed out"
+    if status < 0 then return "network error " + status.toStr()
+    if status = 0 then return "not sent"
+    return "HTTP " + status.toStr()
+  end function
+
 end namespace

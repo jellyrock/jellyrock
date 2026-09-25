@@ -18,7 +18,7 @@ related-files:
   - source/utils/dialogKeys.bs
   - source/utils/dialogResult.bs
   - source/utils/dialogNarration.bs
-last-reviewed: 2026-09-04
+last-reviewed: 2026-09-25
 ---
 
 # The dialog family
@@ -361,8 +361,10 @@ lands on in these dialogs are Groups the platform never announces.
 
 Use `dialogNarration.bs`. The opening announcement is the one place a delay is
 unavoidable — the platform's own focus announcement flushes ours, and SceneGraph
-exposes no event for "the platform has finished speaking". `OPENING_ANNOUNCEMENT_DELAY`
-was established by ear on device; changing it needs an ear, not reasoning.
+exposes no event for "the platform has finished speaking". The delay is
+`narration.OPENING_DELAY` in `dialogNarration.bs`, the only copy: every dialog and the
+library grid's load-failure state use it. It was established by ear on device; changing it
+needs an ear, not reasoning.
 
 App-wide narration *verification* is [#759](https://github.com/jellyrock/jellyrock/issues/759)'s,
 not a gate on every dialog PR.
