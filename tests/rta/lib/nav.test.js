@@ -388,7 +388,7 @@ describe('waitGridLoaded — converted to waitFor without losing its own failure
     expect(getVal).not.toHaveBeenCalledWith('loadState');
   });
 
-  it('accepts loaded and empty, and nothing else — an empty library is a real screen', async () => {
+  it('ends on loaded, empty or failed, and nothing else — an empty library is a real screen', async () => {
     // "empty" means zero ITEMS, not a failed load: the "No Items" view is capture-worthy
     // and this nav is shared with the store-screenshot path, which would otherwise time
     // out on every legitimately empty library.
@@ -397,8 +397,24 @@ describe('waitGridLoaded — converted to waitFor without losing its own failure
     const predicate = gridWait()?.[1];
     expect(predicate('loaded')).toBe(true);
     expect(predicate('empty')).toBe(true);
+    expect(predicate('failed')).toBe(true);
     expect(predicate('skeleton')).toBe(false);
+    expect(predicate('loading')).toBe(false);
     expect(predicate(undefined)).toBe(false);
+  });
+
+  it('throws grid-load-failed when the grid shows its failure state, instead of passing', async () => {
+    // A failed first page is final until Try again is pressed. Passing it through would let
+    // the caller's next step time out and blame the tile or the detail it was reaching for.
+    opensInOrder(SHOWS);
+    waitFor.mockImplementation(async (keyPath, predicate) => {
+      if (keyPath === 'loadState') predicate('failed');
+    });
+
+    const error = await navLibraryByType('tvshows', SHOWS).catch((e) => e);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error.record).toMatchObject({ kind: FAILURE_KINDS.GRID_LOAD_FAILED });
   });
 });
 

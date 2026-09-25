@@ -1,0 +1,79 @@
+import "pkg:/source/api/apiResponse.bs"
+
+namespace tests
+
+  ' apiResponse.jsonFailure — why a request that should have answered with JSON did not, as the
+  ' few words a warning log line needs. The shapes below are the ones the pool actually hands
+  ' back: fetchRes returns invalid when the caller's wait ran out, roku-requests leaves
+  ' statusCode unset when it gave up waiting and reports a connection failure as a negative
+  ' curl code, and ApiTask sends statusCode 0 when it could not make the request at all.
+  @suite("apiResponse - jsonFailure cause")
+  class ApiResponseJsonFailureTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a usable answer")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is no failure when the reply is ok and parsed")
+    function _()
+      m.assertEqual(apiResponse.jsonFailure({ ok: true, statusCode: 200, json: { Items: [] } }), "")
+    end function
+
+    @it("is no failure for an ok, parsed, empty list - empty is an answer")
+    function _()
+      m.assertEqual(apiResponse.jsonFailure({ ok: true, statusCode: 200, json: [] }), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("no answer")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("names the caller's wait running out")
+    function _()
+      m.assertEqual(apiResponse.jsonFailure(invalid), "no answer in time")
+    end function
+
+    @it("names a request roku-requests gave up waiting on")
+    function _()
+      m.assertEqual(apiResponse.jsonFailure({ ok: false, json: invalid, text: invalid }), "timed out")
+    end function
+
+    @it("names a connection failure by its curl code")
+    function _()
+      m.assertEqual(apiResponse.jsonFailure({ ok: false, statusCode: -7, json: invalid, text: "" }), "network error -7")
+    end function
+
+    @it("names a request that was never sent")
+    function _()
+      m.assertEqual(apiResponse.jsonFailure({ ok: false, statusCode: 0, json: invalid, text: "" }), "not sent")
+    end function
+
+    @it("names a read the pool dropped because nobody was waiting")
+    function _()
+      res = { ok: false, statusCode: 0, json: invalid, text: "", error: apiResponse.ERROR_ABANDONED }
+      m.assertEqual(apiResponse.jsonFailure(res), "abandoned")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("an answer that cannot be used")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("names the HTTP status of an error reply")
+    function _()
+      m.assertEqual(apiResponse.jsonFailure({ ok: false, statusCode: 500, json: invalid, text: "" }), "HTTP 500")
+    end function
+
+    @it("names an ok reply whose body did not parse")
+    function _()
+      m.assertEqual(apiResponse.jsonFailure({ ok: true, statusCode: 200, json: invalid, text: "<html>" }), "unreadable reply")
+    end function
+
+    @it("names a body that was not the shape its request expected")
+    function _()
+      res = { ok: false, statusCode: 200, json: invalid, text: "{}", error: apiResponse.ERROR_UNEXPECTED_SHAPE }
+      m.assertEqual(apiResponse.jsonFailure(res), "unexpected reply shape")
+    end function
+
+  end class
+
+end namespace

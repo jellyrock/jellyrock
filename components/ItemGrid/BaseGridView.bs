@@ -21,6 +21,7 @@ import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
+import "pkg:/source/utils/dialogNarration.bs"
 import "pkg:/source/utils/displaySettings.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/languageFilters.bs"
@@ -94,6 +95,16 @@ sub init()
   m.nameStartsWith = ""
   m.totalRecordCount = 0
   m.loading = false
+  ' A later page failing is told once, until a page loads again: scrolling at the end of the
+  ' grid retries, and each failed retry must not raise another toast.
+  m.isPageFailureShown = false
+
+  ' Load-failure state. The button centres itself once it has measured its label.
+  m.loadFailedText.text = translate(translationKeys.MessageCouldNotLoadItems)
+  m.retryButton.text = translate(translationKeys.ButtonTryAgain)
+  m.retryButton.observeField("isReady", "onRetryButtonReady")
+  m.failureNarrationTimer.duration = narration.OPENING_DELAY
+  m.failureNarrationTimer.observeField("fire", "onFailureNarrationDue")
 
   ' Get reset folder setting
   m.resetGrid = userSettings.itemGridReset
@@ -128,6 +139,10 @@ sub setupNodes()
   m.itemGrid = m.top.findNode("itemGrid")
   m.voiceBox = m.top.findNode("VoiceBox")
   m.emptyText = m.top.findNode("emptyText")
+  m.loadFailed = m.top.findNode("loadFailed")
+  m.loadFailedText = m.top.findNode("loadFailedText")
+  m.retryButton = m.top.findNode("retryButton")
+  m.failureNarrationTimer = m.top.findNode("failureNarrationTimer")
   m.alpha = m.top.findNode("alpha")
   m.alphaMenu = m.alpha.findNode("alphaMenu")
   m.genreList = m.top.findNode("genreList")
@@ -340,6 +355,7 @@ sub prepareDataLoad(disableRemote = false as boolean)
   releaseGridRun()
   startLoadingSpinner(disableRemote)
   m.emptyText.visible = false
+  m.loadFailed.visible = false
 end sub
 
 ' Full reset + reload of the grid. Used by optionsClosed (sort/filter/view change) and by
@@ -690,9 +706,17 @@ sub onItemDataLoaded(msg)
   m.loadItemsTask.unobserveField("content")
   m.loadItemsTask.unobserveField("genreSkeletons")
   m.loadItemsTask.content = []
-  m.totalRecordCount = m.loadItemsTask.totalRecordCount
   isFirstPage = m.loadItemsTask.startIndex = 0
   deliveredStartIndex = m.loadItemsTask.startIndex
+
+  ' Before the total is read: a failed run's total is its default -1, and keeping it would
+  ' stop every later page — including the retry that scrolling near the end makes.
+  if m.loadItemsTask.status = "failed"
+    onGridLoadFailed(isFirstPage)
+    return
+  end if
+  m.isPageFailureShown = false
+  m.totalRecordCount = m.loadItemsTask.totalRecordCount
 
   if not isValid(itemData)
     m.loading = false
@@ -813,6 +837,66 @@ sub onItemDataLoaded(msg)
   end if
 
   m.log.debug("end onItemDataLoaded()")
+end sub
+
+' A run that got no usable answer from the server (its task logged why). That says nothing
+' about what the library holds, so it is never shown as empty.
+'
+' A later page: what is on screen stays, and so does the total, so scrolling near the end
+' asks again (onItemFocused). The user is told once until a page loads. The first page: the
+' failure state replaces the grid, with a Try again the user chooses to press — retrying on
+' our own would re-send a query the server may still be working on.
+sub onGridLoadFailed(isFirstPage as boolean)
+  m.loading = false
+  stopLoadingSpinner()
+
+  if not isFirstPage
+    if not m.isPageFailureShown
+      m.isPageFailureShown = true
+      m.top.getScene().callFunc("showToast", translate(translationKeys.MessageCouldNotLoadMoreItems), "error")
+    end if
+    return
+  end if
+
+  ' A Genres load that fails must not leave an earlier load's rows standing.
+  m.genreData = CreateObject("roSGNode", "ContentNode")
+  m.genreList.content = m.genreData
+  m.presentationInfo.visible = false
+  m.emptyText.visible = false
+  m.loadFailed.visible = true
+  m.top.loadState = "failed"
+
+  ' Same rule as a loaded first page: never move focus under the options dialog, and leave
+  ' it on the alpha menu when the user is there.
+  if not m.options.visible and not m.top.isAlphaActive then focusRetryButton()
+end sub
+
+sub focusRetryButton()
+  m.itemGrid.setFocus(false)
+  m.genreList.setFocus(false)
+  m.retryButton.setFocus(true)
+  ' The platform speaks only the focused button; the message is ours to announce.
+  m.failureNarrationTimer.control = "stop"
+  m.failureNarrationTimer.control = "start"
+end sub
+
+' Runs the failed query again, from its first page.
+sub retryGridLoad()
+  prepareDataLoad(false)
+  m.top.loadState = "loading"
+  startGridRun(0, true)
+end sub
+
+sub onRetryButtonReady()
+  width = m.retryButton.localBoundingRect().width
+  x = int((1920 - width) / 2)
+  ' On the 720p output grid (every 3 px of 1080p); see dialogLayout.bs.
+  m.retryButton.translation = [x - (x mod 3), m.retryButton.translation[1]]
+end sub
+
+sub onFailureNarrationDue()
+  if not m.loadFailed.visible or not m.retryButton.hasFocus() then return
+  narrateDialogOpening("", m.loadFailedText.text, m.retryButton.text)
 end sub
 
 sub loadMoreData()
@@ -1372,8 +1456,16 @@ function onKeyEvent(key as string, press as boolean) as boolean
       m.top.quickPlayNode = invalid
       return true
     end if
+  else if key = "OK" and m.retryButton.hasFocus()
+    if m.loadFailed.visible then retryGridLoad()
+    return true
   else if key = "left"
-    if m.itemGrid.isinFocusChain()
+    if m.retryButton.hasFocus()
+      m.top.isAlphaActive = true
+      m.retryButton.setFocus(false)
+      m.alphaMenu.setFocus(true)
+      return true
+    else if m.itemGrid.isinFocusChain()
       m.top.isAlphaActive = true
       m.itemGrid.setFocus(false)
       m.alphaMenu.setFocus(true)
@@ -1387,6 +1479,11 @@ function onKeyEvent(key as string, press as boolean) as boolean
   else if key = "right" and m.alpha.isinFocusChain()
     m.top.isAlphaActive = false
     m.alphaMenu.setFocus(false)
+
+    if m.loadFailed.visible
+      focusRetryButton()
+      return true
+    end if
 
     m.itemGrid.setFocus(m.itemGrid.opacity = 1)
     m.genreList.setFocus(m.genreList.opacity = 1)
@@ -1513,6 +1610,9 @@ sub onDestroy()
   m.itemGrid.unobserveField("itemFocused")
   m.itemGrid.unobserveField("itemSelected")
   m.voiceBox.unobserveField("text")
+  m.retryButton.unobserveField("isReady")
+  m.failureNarrationTimer.unobserveField("fire")
+  m.failureNarrationTimer.control = "stop"
 
   ' Break the GridItem <-> content-root retain CYCLE before dropping our references.
   ' Every GridItem caches m.gridView = this view node (resolveGridViewConfig walks up for
@@ -1553,6 +1653,10 @@ sub onDestroy()
   m.itemGrid = invalid
   m.voiceBox = invalid
   m.emptyText = invalid
+  m.loadFailed = invalid
+  m.loadFailedText = invalid
+  m.retryButton = invalid
+  m.failureNarrationTimer = invalid
   m.alpha = invalid
   m.alphaMenu = invalid
   m.genreList = invalid

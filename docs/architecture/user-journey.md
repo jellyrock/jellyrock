@@ -9,7 +9,7 @@ related-files:
   - components/manager/QueueManager.bs
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
-last-reviewed: 2026-09-23
+last-reviewed: 2026-09-25
 ---
 
 # The User Journey
@@ -171,6 +171,8 @@ Each presenter declares: backdrop mode (fullscreen / presentation panel / none),
 This pattern keeps `BaseGridView.xml/.bs` clean — there's no `if libraryType = "movie"` ladder. Adding a new library type means writing a presenter, not editing the grid view.
 
 `BaseGridView` is a **`suspendMode: "detach"`** route (`/library/:id`): when the user drills into an item, the grid is *suspended* out of the tree (its node + focus saved) rather than destroyed, and *resumed* on back — so the cursor returns to the exact item the user left. It is deliberately **not** `keepAlive`: backing out of the library entirely destroys it, so re-entering that library is a fresh load rather than a resumed cache — a spinner and tile 0, not the item you left. The view / sort / filter selection still survives, because that lives in the registry (`getLibraryDisplaySetting`), not on the view — with one qualification since a view can be server-gated: a saved view is honored only while the presenter still offers it (`gridQuery.resolveView`), because the same library opened against an older server may have no such view. The fallback is in memory only, so the saved choice comes back when the server does. See [ADR 0029](../adr/0029-destroy-routed-screens-on-pop.md) for the accepted cost. `BaseGridView.onLibrarySelection` computes `routeForItem(item)` and calls `sgrouter.navigateTo(route, { context: { item } })` itself (it routes to `/details/:type/:id` for an item, or to another `/library/:id` for a nested folder/genre). On resume it re-checks `m.scene.contentVersion` and re-fetches if a delete happened beneath it, so a deleted item can't linger in the resumed grid (see `JRScene.xml`'s `contentVersion` field).
+
+**A failed load is not an empty library.** `LoadItemsTask2` publishes `status` (`ok` / `failed`) beside its `content`, and logs why a query failed (`apiResponse.jsonFailure()`); the view never learns the cause. A failed **first page** (or Genres list) shows its own state in place of the grid — a message and a **Try again** button that reruns the same query — and `loadState` reads `failed`, not `empty`. It never retries on its own: the query that failed may still be running on the server, and asking again unprompted would stack another. A failed **later page** leaves the items already shown and the known total in place, raises one toast until a page succeeds, and is asked for again the next time focus moves near the end of the grid. A "#" letter-filter page fails whole if either of its two queries does, rather than showing half its names.
 
 ## 6. Item Detail — `components/ItemDetails.bs`
 

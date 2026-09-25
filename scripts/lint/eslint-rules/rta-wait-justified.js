@@ -108,6 +108,10 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // gate is `navSubtitlePanel`, which only runs on a fixture whose user can manage
   // subtitles (see `subtitlePanel` in tests/rta/screens.js).
   '#subtitlePanel.visible',
+  // `JRScene.showToast` sets it and nothing ever clears it — dismissal hides the toast but
+  // leaves `message` holding the last text. Terminal, not a pulse. Read against the app
+  // source 2026-09-25 (JRScene.showToast, Toast.onShouldShow).
+  '#toast.message',
   '#jrDialog.#okButton.#buttonBorder.blendColor',
   '#jrDialog.#scrollContent.translation',
   '#jrDialog.id',

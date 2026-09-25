@@ -5,9 +5,11 @@ import "pkg:/source/utils/misc.bs"
 ' from its own thread, and the only caller is compiled in under ENABLE_RTA (ApiQueueTask).
 '
 ' A spec writes rules to m.global.rtaFailRequests:
-'   { prefix: "itemQuery_usersItems", kind: "timeout" | "http", status: 500, times: 1 }
+'   { prefix: "itemQuery_usersItems", kind: "timeout" | "http", status: 500, times: 1, after: 0 }
 ' A rule matches a request whose requestId starts with `prefix`. `times` is how many
-' matching requests fail; without it, every one does.
+' matching requests fail; without it, every one does. `after` is how many matching requests
+' it lets through first — for a request id that repeats too quickly for a spec to set the
+' rule in between (a grid's page 1 and page 2).
 '
 ' The answer is the one the pool itself delivers for that failure, and nothing marks it as
 ' injected: code that could tell the two apart could handle a test failure differently from
@@ -19,7 +21,7 @@ namespace apiFaults
   ' other request.
   '
   ' @param rules - the value of m.global.rtaFailRequests
-  ' @return an array of { prefix, kind, status, remaining }, remaining -1 meaning no limit
+  ' @return an array of { prefix, kind, status, remaining, passes }, remaining -1 meaning no limit
   function fromRules(rules as dynamic) as object
     faults = []
     if type(rules) <> "roArray" then return faults
@@ -33,9 +35,16 @@ namespace apiFaults
 
   ' The first fault that applies to `requestId`, counted as used; invalid when none does.
   ' Mutates `faults` — the caller keeps the list across requests.
+  '
+  ' A rule still letting requests through (`after`) claims each match and passes it, rather
+  ' than handing it to a later rule: the spec asked for those requests to succeed.
   function take(faults as object, requestId as string) as dynamic
     for each fault in faults
       if fault.remaining <> 0 and requestId.StartsWith(fault.prefix)
+        if fault.passes > 0
+          fault.passes = fault.passes - 1
+          return invalid
+        end if
         if fault.remaining > 0 then fault.remaining = fault.remaining - 1
         return fault
       end if
@@ -74,7 +83,13 @@ namespace apiFaults
       if remaining < 1 then return invalid
     end if
 
-    return { prefix: prefix, kind: rule.kind, status: status, remaining: remaining }
+    passes = 0
+    if rule.doesExist("after")
+      passes = wholeNumber(rule.after)
+      if passes < 0 then return invalid
+    end if
+
+    return { prefix: prefix, kind: rule.kind, status: status, remaining: remaining, passes: passes }
   end function
 
   function isString(value as dynamic) as boolean

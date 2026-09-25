@@ -1,7 +1,9 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPipeline.bs"
 import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/apiResponse.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
+import "pkg:/source/GridView/gridPage.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
@@ -19,6 +21,14 @@ sub init()
   if isValid(usersettingLimit)
     m.top.limit = usersettingLimit
   end if
+
+  ' RTA-only: a smaller page, so specs can page a grid on the demo server's small libraries.
+  ' Compiled out of dev and prod builds (see setGlobalNodes).
+  #if ENABLE_RTA
+    if isValid(m.global.rtaGridPageSize) and m.global.rtaGridPageSize > 0
+      m.top.limit = m.global.rtaGridPageSize
+    end if
+  #end if
 end sub
 
 sub loadItems()
@@ -214,37 +224,26 @@ sub loadItems()
     waitMs += stepClock.totalMilliseconds()
   #end if
 
-  ' If user has filtered by #, include special characters sorted after Z as well
-  if isValid(params.NameLessThan)
-    if LCase(params.NameLessThan) = "a"
-      ' Use same params except for name filter param
-      params.NameLessThan = ""
-      params.NameStartsWithOrGreater = "z"
+  ' If user has filtered by #, include special characters sorted after Z as well. Only when the
+  ' first query answered, and a failed second query fails the page: a "#" page without its
+  ' after-Z half would silently leave those items out.
+  if isValid(data) and isValid(params.NameLessThan) and LCase(params.NameLessThan) = "a"
+    ' Use same params except for name filter param
+    params.NameLessThan = ""
+    params.NameStartsWithOrGreater = "z"
 
-      ' Perform 2nd API lookup for items starting with Z or greater
-      #if perfTiming
-        stepClock.mark()
-      #end if
-      startsWithZAndGreaterData = executeItemQuery(queryType, params)
-      #if perfTiming
-        waitMs += stepClock.totalMilliseconds()
-      #end if
+    #if perfTiming
+      stepClock.mark()
+    #end if
+    zAndAfter = executeItemQuery(queryType, params)
+    #if perfTiming
+      waitMs += stepClock.totalMilliseconds()
+    #end if
 
-      if isValidAndNotEmpty(startsWithZAndGreaterData)
-        specialCharacterItems = []
-
-        ' Filter out items starting with Z
-        for each item in startsWithZAndGreaterData.Items
-          itemName = LCase(item.name)
-          if not itemName.StartsWith("z")
-            specialCharacterItems.Push(item)
-          end if
-        end for
-
-        ' Append data to results from before A
-        data.Items.Append(specialCharacterItems)
-        data.TotalRecordCount += specialCharacterItems.Count()
-      end if
+    if isValid(zAndAfter)
+      gridPage.appendNamesAfterZ(data, zAndAfter)
+    else
+      data = invalid
     end if
   end if
 
@@ -448,6 +447,12 @@ sub loadItems()
   for each slot in slots
     if isValid(slot) then results.push(slot)
   end for
+  ' `status` before `content`: the view reads it in its `content` handler.
+  if isValid(data)
+    m.top.status = "ok"
+  else
+    m.top.status = "failed"
+  end if
   m.top.content = results
 
   ' NOTE: roku-log's Logger.info takes at most 10 params (message + value..value9),
@@ -532,18 +537,35 @@ end sub
 ' Routes an item query through Build*Request() + pool based on queryType.
 ' Used for both the main request and the optional 2nd lookup for the # filter.
 ' queryType values: "liveTV", "studios", "genres", "artists", "albumArtists", "usersItems"
+'
+' Returns the parsed reply, or invalid when the server did not answer usably — after logging
+' why, since the view is told only that the load failed.
 function executeItemQuery(queryType as string, params as object) as dynamic
   if queryType = "liveTV"
-    return fetchJson(GetApi().BuildGetLiveTVChannelsRequest(params), "itemQuery_liveTV")
+    req = GetApi().BuildGetLiveTVChannelsRequest(params)
   else if queryType = "studios"
-    return fetchJson(GetApi().BuildGetStudiosRequest(params), "itemQuery_studios")
+    req = GetApi().BuildGetStudiosRequest(params)
   else if queryType = "genres"
-    return fetchJson(GetApi().BuildGetGenresRequest(params), "itemQuery_genres")
+    req = GetApi().BuildGetGenresRequest(params)
   else if queryType = "artists"
-    return fetchJson(GetApi().BuildGetArtistsRequest(params), "itemQuery_artists")
+    req = GetApi().BuildGetArtistsRequest(params)
   else if queryType = "albumArtists"
-    return fetchJson(GetApi().BuildGetAlbumArtistsRequest(params), "itemQuery_albumArtists")
+    req = GetApi().BuildGetAlbumArtistsRequest(params)
+  else
+    queryType = "usersItems"
+    req = GetApi().BuildGetItemsByQueryRequest(params)
   end if
-  ' default: "usersItems"
-  return fetchJson(GetApi().BuildGetItemsByQueryRequest(params), "itemQuery_usersItems")
+  requestId = "itemQuery_" + queryType
+
+  if not isValid(req)
+    m.log.warn("library query failed", requestId, "cause", "not sent")
+    return invalid
+  end if
+  res = fetchRes(req, requestId)
+  cause = apiResponse.jsonFailure(res)
+  if cause <> ""
+    m.log.warn("library query failed", requestId, "cause", cause)
+    return invalid
+  end if
+  return res.json
 end function

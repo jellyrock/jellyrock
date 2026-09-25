@@ -1,0 +1,32 @@
+import "pkg:/source/utils/misc.bs"
+
+' A library grid page as LoadItemsTask2 assembles it from the server's replies.
+'
+' In source/ rather than in the Task so a Rooibos suite can reach it: a Task's functions are
+' scoped to its component. Same move as gridQuery.bs.
+namespace gridPage
+
+  ' Adds the "#" letter filter's second reply to its first. The first query asks for names
+  ' before "A"; the second for names from "z" on, and of those only the ones that do NOT start
+  ' with z belong under "#" — symbols and letters that sort after Z.
+  '
+  ' The caller makes both requests and decides what a failure means: this only combines two
+  ' replies that both arrived.
+  '
+  ' @param data - the first query's reply ({ Items, TotalRecordCount }); modified in place
+  ' @param zAndAfter - the second query's reply
+  sub appendNamesAfterZ(data as object, zAndAfter as object)
+    if type(data.Items) <> "roArray" or type(zAndAfter.Items) <> "roArray" then return
+
+    added = 0
+    for each item in zAndAfter.Items
+      name = item.Name
+      if isValid(name) and not LCase(name).StartsWith("z")
+        data.Items.push(item)
+        added++
+      end if
+    end for
+    data.TotalRecordCount += added
+  end sub
+
+end namespace

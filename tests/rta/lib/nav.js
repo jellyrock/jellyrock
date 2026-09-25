@@ -746,6 +746,8 @@ async function walkHomeRowsTo(list, { row, col }, collectionType) {
  * A library grid is "loaded" once BaseGridView says so: its `loadState` interface
  * field reaches "loaded" (usable content on screen) or "empty" (zero ITEMS). Accepting
  * the empty-state lets the same nav capture empty views instead of timing out on them.
+ * "failed" (the first page never arrived) ends the wait too, and throws
+ * `grid-load-failed` — it is final until someone presses Try again.
  *
  * "empty" is two different screens, because both branches measure it in items:
  *  - grid path — the "No Items" message, a real capture-worthy screen (e.g. the
@@ -793,13 +795,30 @@ async function walkHomeRowsTo(list, { row, col }, collectionType) {
  * their intervals in Phase 2.
  */
 async function waitGridLoaded(label, timeout = 20000) {
-  await waitFor('loadState', (v) => v === 'loaded' || v === 'empty', {
-    label,
-    timeout,
-    interval: 500,
-    read: getActiveVal,
-    kind: FAILURE_KINDS.GRID_LOAD_TIMEOUT,
-  });
+  let state;
+  await waitFor(
+    'loadState',
+    (v) => {
+      state = v;
+      return v === 'loaded' || v === 'empty' || v === 'failed';
+    },
+    {
+      label,
+      timeout,
+      interval: 500,
+      read: getActiveVal,
+      kind: FAILURE_KINDS.GRID_LOAD_TIMEOUT,
+    },
+  );
+  // A failed load is final — the grid waits for Try again — so name it now rather than let the
+  // caller's next step time out blaming something else.
+  if (state === 'failed') {
+    throw await diagnosedError(`${label}: the grid showed its load-failure state`, {
+      kind: FAILURE_KINDS.GRID_LOAD_FAILED,
+      label,
+      observed: { loadState: state },
+    });
+  }
 }
 
 /** home -> Movies library grid (hardened against Home-layout changes). */

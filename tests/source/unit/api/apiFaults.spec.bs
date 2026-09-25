@@ -21,8 +21,8 @@ namespace tests
       ])
 
       m.assertEqual(faults.count(), 2)
-      m.assertEqual(faults[0], { prefix: "itemQuery_", kind: "timeout", status: 0, remaining: -1 })
-      m.assertEqual(faults[1], { prefix: "itemMetaData", kind: "http", status: 500, remaining: 2 })
+      m.assertEqual(faults[0], { prefix: "itemQuery_", kind: "timeout", status: 0, remaining: -1, passes: 0 })
+      m.assertEqual(faults[1], { prefix: "itemMetaData", kind: "http", status: 500, remaining: 2, passes: 0 })
     end function
 
     @it("drops a rule it cannot honor rather than guessing")
@@ -32,6 +32,8 @@ namespace tests
     @params({ prefix: "itemQuery_", kind: "http" }, "http without a status")
     @params({ prefix: "itemQuery_", kind: "http", status: 200 }, "a status that is not a failure")
     @params({ prefix: "itemQuery_", kind: "timeout", times: 0 }, "times 0 can never fire")
+    @params({ prefix: "itemQuery_", kind: "timeout", after: -1 }, "a negative after")
+    @params({ prefix: "itemQuery_", kind: "timeout", after: "1" }, "an after that is not a number")
     @params("itemQuery_", "not an object")
     function _(rule, why)
       m.assertEqual(apiFaults.fromRules([rule]).count(), 0, why)
@@ -65,6 +67,29 @@ namespace tests
       m.assertNotInvalid(apiFaults.take(faults, "itemQuery_usersItems"))
       m.assertNotInvalid(apiFaults.take(faults, "itemQuery_usersItems"))
       m.assertInvalid(apiFaults.take(faults, "itemQuery_usersItems"))
+    end function
+
+    @it("lets the first `after` matching requests through, then fails")
+    function _()
+      ' Page 1 and page 2 of a grid share one request id, and page 2 follows page 1 too
+      ' closely for a spec to set the rule in between.
+      faults = apiFaults.fromRules([{ prefix: "itemQuery_", kind: "timeout", times: 1, after: 1 }])
+
+      m.assertInvalid(apiFaults.take(faults, "itemQuery_usersItems"), "the first request should pass")
+      m.assertNotInvalid(apiFaults.take(faults, "itemQuery_usersItems"), "the second request should fail")
+      m.assertInvalid(apiFaults.take(faults, "itemQuery_usersItems"), "times 1 is spent")
+    end function
+
+    @it("does not count a request it let through against a later rule")
+    function _()
+      ' The waiting rule claims the request it passes, so a later rule cannot fail it.
+      faults = apiFaults.fromRules([
+        { prefix: "itemQuery_", kind: "timeout", after: 1 },
+        { prefix: "itemQuery_", kind: "http", status: 500 }
+      ])
+
+      m.assertInvalid(apiFaults.take(faults, "itemQuery_usersItems"))
+      m.assertEqual(apiFaults.take(faults, "itemQuery_usersItems").kind, "timeout")
     end function
 
     @it("uses the first rule that still applies")

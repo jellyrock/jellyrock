@@ -1,0 +1,83 @@
+import "pkg:/source/GridView/gridPage.bs"
+
+namespace tests
+
+  ' gridPage.appendNamesAfterZ — the "#" letter filter's second query. The first asks for names
+  ' before "A"; the second for names from "z" on, of which only those NOT starting with z belong
+  ' under "#" (symbols and letters that sort after Z).
+  @suite("gridPage - the # filter's names after Z")
+  class GridPageTests extends tests.BaseTestSuite
+
+    private function page(names as object, total as integer) as object
+      items = []
+      for each name in names
+        items.push({ Name: name })
+      end for
+      return { Items: items, TotalRecordCount: total }
+    end function
+
+    private function namesOf(data as object) as object
+      names = []
+      for each item in data.Items
+        names.push(item.Name)
+      end for
+      return names
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("appendNamesAfterZ()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("appends the names after Z and counts them")
+    function _()
+      data = m.page(["1917", "300"], 2)
+
+      gridPage.appendNamesAfterZ(data, m.page(["Zodiac", "¡Three Amigos!", "Ōkami"], 3))
+
+      m.assertEqual(m.namesOf(data), ["1917", "300", "¡Three Amigos!", "Ōkami"])
+      m.assertEqual(data.TotalRecordCount, 4)
+    end function
+
+    @it("leaves out names starting with z in either case")
+    function _()
+      data = m.page([], 0)
+
+      gridPage.appendNamesAfterZ(data, m.page(["Zoolander", "zardoz"], 2))
+
+      m.assertEqual(data.Items.count(), 0)
+      m.assertEqual(data.TotalRecordCount, 0)
+    end function
+
+    @it("skips an item with no name rather than faulting")
+    function _()
+      data = m.page(["1917"], 1)
+
+      gridPage.appendNamesAfterZ(data, { Items: [{ Id: "x" }, { Name: "Ω" }] })
+
+      m.assertEqual(m.namesOf(data), ["1917", "Ω"])
+      m.assertEqual(data.TotalRecordCount, 2)
+    end function
+
+    @it("changes nothing when the second reply holds no Items list")
+    function _()
+      data = m.page(["1917"], 1)
+
+      gridPage.appendNamesAfterZ(data, { TotalRecordCount: 0 })
+
+      m.assertEqual(m.namesOf(data), ["1917"])
+      m.assertEqual(data.TotalRecordCount, 1)
+    end function
+
+    @it("changes nothing when the first reply holds no Items list")
+    function _()
+      data = { TotalRecordCount: 0 }
+
+      gridPage.appendNamesAfterZ(data, m.page(["Ω"], 1))
+
+      m.assertFalse(data.doesExist("Items"))
+      m.assertEqual(data.TotalRecordCount, 0)
+    end function
+
+  end class
+
+end namespace
