@@ -112,15 +112,25 @@ sed -i \
   -e "s|^last-updated: .*|last-updated: ${TODAY}|" \
   "$PLAN"
 
-# Append the README active-projects row, right after the last existing table row.
+# Append the README active-projects row to the "## Active projects" section: after
+# its last table row, dropping a placeholder that says there are none (a
+# `_None active._` line, or a row whose first cell is `—`/`-`), and creating the
+# table when the section has none. The section ends at the next `## ` heading, so
+# the row can never land in a later table (e.g. Archived).
 ROW="| [${DIRNAME}](${DIRNAME}/PLAN.md) | active | ${GOAL} |"
 tmp="$(mktemp)"
 awk -v row="$ROW" '
-  /^## Active projects/ { active=1; print; next }
-  active && /^\|/        { seen=1; print; next }
-  active && seen && !/^\|/ { print row; active=0; seen=0; print; next }
+  function add() { if (!seen) { print "| Project | Status | Goal |"; print "|---|---|---|" } print row; done=1 }
+  /^## Active projects/                            { active=1; print; next }
+  active && /^## /                                 { if (!done) { add(); print "" } active=0; print; next }
+  active && /^_[^_].*_[[:space:]]*$/ && !seen      { skipblank=1; next }
+  skipblank && /^[[:space:]]*$/                    { skipblank=0; next }
+                                                   { skipblank=0 }
+  active && /^\|[[:space:]]*(—|–|-)[[:space:]]*\|/ { next }
+  active && /^\|/                                  { seen=1; print; next }
+  active && seen && !done                          { add(); active=0; print; next }
   { print }
-  END { if (active && seen) print row }
+  END { if (active && !done) add() }
 ' "$README" > "$tmp"
 mv "$tmp" "$README"
 
