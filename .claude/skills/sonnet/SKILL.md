@@ -47,6 +47,7 @@ description: Execute a procedural implementation plan saved at `.claude/plans/fo
 - The plan still has open architectural forks or unresolved `AskUserQuestion` fences. Stay on the judgment-grade model and finish the planning side first via `/focus`.
 - No written plan exists. "Implement feature X" without a spec is judgment-heavy by default; don't reach for `/sonnet`.
 - The work is so trivial it doesn't warrant a plan (typo, one-line config edit). Just edit and commit; the skill overhead isn't worth it.
+- When this repo has a dedicated write skill for the work (a deploy, a secret rotation) with its own verify chain — use that skill. A generic plan run skips the chain it encodes.
 - The plan flags `Risk / blast radius: large` or touches load-bearing infra (migrations, deploy scripts, secret-handling, backup and restore paths). Stay on the judgment-grade model for the implementation half too — the token savings aren't worth the marginal risk on infra changes. **This bullet is the one "must not be a Sonnet run" list; `/focus`'s implementation-tier choice checks it rather than keeping its own copy.**
 
 ## Implementation
