@@ -1,10 +1,12 @@
 # Iterate on evidence, not on taste
 
-Workflow and tooling changes — skill bodies, conventions, the rules tree, lifecycle — must be backed by **real evidence**: a session transcript, an audit finding, a concrete friction event. Aesthetic preference or speculation about how things "should" work is not evidence. Drift compounds across hundreds of invocations, and evidence is the only signal that survives selection bias.
+Workflow and tooling changes — skill bodies, conventions, the rules tree, lifecycle — must be backed by **real evidence**: a session transcript, an audit finding, a concrete friction event, **a defect you can already point at, or a failure whose shape you can already describe**. Aesthetic preference or speculation about how things "should" work is not evidence. Drift compounds across hundreds of invocations, and evidence is the only signal that survives selection bias.
+
+**Evidence is not the same as damage already taken.** The bar is *knowing* a change is needed, not *waiting until it hurts* — a predicted failure you can describe is evidence, and the carve-out below is part of the rule rather than an exception to it. Deferring a known-needed fix for want of a friction story is the failure mode this rule's own **tell** names.
 
 ## The carve-out — what the gate does NOT block
 
-The gate targets **speculative features** ("we might need this if we add a fourth consumer"). It does **not** gate these — act now:
+The gate targets **speculative features** ("we might need this if we add a fourth backend"). It does **not** gate these — act now:
 
 - **A defect or duplication that already exists** — copy-pasted boilerplate that will drift, a bug already in the code. If you can point at it, the defect *is* the evidence.
 - **An optimization against a standing goal** — lower cost/context at equal accuracy, removing a known error class. The goal is the evidence.

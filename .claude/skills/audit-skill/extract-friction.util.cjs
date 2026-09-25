@@ -1,7 +1,7 @@
-// Shared pure helpers for extract-friction.cjs and its consumer config.
+// Shared pure helpers for extract-friction.cjs and its repo-specific config.
 //
-// Repo-agnostic and synced verbatim, like the core. It exists so the core and a
-// consumer's rule detectors (in extract-friction.config.cjs) can share these
+// Repo-agnostic, like the core. It exists so the core and the repo-specific
+// rule detectors (in extract-friction.config.cjs) can share these
 // utilities WITHOUT duplicating them: the core require()s the config at load,
 // so the config can't require() the core back (circular) — but both can safely
 // require() this leaf module, which imports nothing.
