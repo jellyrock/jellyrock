@@ -60,13 +60,19 @@ end function
 ' (apiTimeout.isLong — a library grid's page) can hold its slot for a minute after the user
 ' has backed out. So when the coordinator SENDS such a request, it watches the Task waiting
 ' for it, and if that Task stops before the answer arrives it tells the slot to give up
-' (ApiTask's `quit`), which frees the slot at once.
+' (apiSlotQuit), which frees the slot at once.
 '
 ' Only long requests are watched. Watching costs the coordinator crossings on the serial
 ' path every request takes — reading the waiting Task, then subscribing to it, measured at
 ' 0.5-1.0 ms each on a 512 MB Stick (2026-09-25) — and a request with the default limit
 ' frees its slot within timeouts.HTTP_MS anyway. Only reads, for the same reason as skipping:
 ' a write the user asked for should land.
+'
+' One subscription per Task, not per request: unobserveField drops every observer of the
+' field, so a Task with two long requests on slots would lose its watch on the second the
+' moment the first was answered. The coordinator subscribes when the first of a Task's long
+' requests is sent, unsubscribes when the last is answered or stopped, and a Task that stops
+' stops all of them (apiPoolSlotsWatchedBy).
 
 ' True when the coordinator watches `req`'s caller and stops `req` if the caller goes away:
 ' a read (apiRequestIsSkippable) with a longer-than-default HTTP limit.
@@ -74,21 +80,42 @@ function apiRequestIsStoppable(req as dynamic) as boolean
   return apiTimeout.isLong(req) and apiRequestIsSkippable(req)
 end function
 
-' The slot whose request `caller` is waiting for, -1 when none is — the answer was already
-' delivered, or the request was never watched.
+' The slots whose requests `caller` is waiting for, [] when none are — each answer was
+' already delivered, or no request of its was watched. More than one when a Task has several
+' long requests on slots at once (an apiPipeline run), which share one subscription to it.
 '
 ' @param inFlight - one element per pool slot: invalid = free, else an entry whose
 '                   `watchedCaller` is the Task the coordinator watches for it, if any
-' @param caller   - the Task node whose `state` changed
-function apiPoolSlotWatchedBy(inFlight as object, caller as object) as integer
+' @param caller   - a Task node
+function apiPoolSlotsWatchedBy(inFlight as object, caller as object) as object
+  slots = []
   for i = 0 to inFlight.count() - 1
     entry = inFlight[i]
     if isValid(entry) and isValid(entry.watchedCaller)
-      if entry.watchedCaller.isSameNode(caller) then return i
+      if entry.watchedCaller.isSameNode(caller) then slots.push(i)
     end if
   end for
-  return -1
+  return slots
 end function
+
+' Tells a pool slot to give up the request it is waiting on. roku-requests reads
+' `m.top.quit` on every pass of its wait and cancels the transfer once it is true.
+'
+' The field exists only while a stop is pending, so ApiTask.xml must NOT declare it:
+' roku-requests reads it on every pass of every request in the app, and a read of a field
+' the node has costs about twice a read of one it lacks (docs/architecture/api.md, "A long
+' request already on a slot"). Added here, removed by apiSlotClearQuit before the slot's
+' next request.
+sub apiSlotQuit(slot as object)
+  if not slot.hasField("quit") then slot.addField("quit", "boolean", false)
+  slot.quit = true
+end sub
+
+' Ends a stop apiSlotQuit started. Called before the slot is sent its next request, which
+' a `quit` still set would stop too. Safe on a slot that was never told to quit.
+sub apiSlotClearQuit(slot as object)
+  if slot.hasField("quit") then slot.removeField("quit")
+end sub
 
 ' Marks a request as one its caller has stopped waiting for, so the coordinator can
 ' skip it if it has not been dispatched yet. Safe on invalid and on a finished request.

@@ -62,8 +62,8 @@ sub runQueueLoop()
   pool = resolvePoolSlots()
   ' One entry per pool slot: invalid = free, AA entry = in-flight
   m.inFlight = []
-  ' One per slot: true while the slot's `quit` is set, so it is cleared before the slot's
-  ' next request (a slot told to quit keeps reading it until then).
+  ' One per slot: true while the slot has a `quit` (apiSlotQuit), so it is removed before the
+  ' slot's next request. Tracked here so the common dispatch never asks the slot node.
   m.slotQuit = []
   for each slot in pool
     m.inFlight.push(invalid)
@@ -305,10 +305,10 @@ sub tryDispatch(pool as object)
       if pick.entry.waited then m.dispatchWaited++
       m.dispatchClock.mark()
     #end if
-    ' Before the request: a slot reads `quit` all through its wait, so one left set from
-    ' the last request it was told to stop would stop this one too.
+    ' Before the request: a slot reads `quit` all through its wait, so one left from the
+    ' last request it was told to stop would stop this one too.
     if m.slotQuit[pick.slot]
-      pool[pick.slot].quit = false
+      apiSlotClearQuit(pool[pick.slot])
       m.slotQuit[pick.slot] = false
     end if
     ' Writing request triggers ApiTask's port observer, starting execution.
@@ -333,22 +333,28 @@ sub watchCaller(pool as object, slotIdx as integer, entry as object)
   caller = entry.resultNode.owner
   if not isValid(caller) then return
 
-  caller.observeField("state", m.port)
+  ' Asked before this entry is marked, so it does not count itself. A Task already watched
+  ' for another long request keeps that one subscription: if it has stopped, its event is
+  ' queued or already handled, and either way stops this slot too.
+  isWatched = apiPoolSlotsWatchedBy(m.inFlight, caller).count() > 0
   entry.watchedCaller = caller
+  if isWatched then return
+
+  caller.observeField("state", m.port)
   ' Subscribed first, read second: a Task that stopped before the subscription sent no
   ' event, and this read is the only way to hear about it.
   if not taskThreadIsLive(caller) then stopSlot(pool, slotIdx)
 end sub
 
-' A watched Task changed state. Once it is no longer running, nobody will read the answer
-' its request is still waiting for, so the slot is stopped. A Task that finished normally
-' also reports "stop", but only after its answer was delivered — and delivery stops the
-' watch — so it matches no slot here.
+' A watched Task changed state. Once it is no longer running, nobody will read the answers
+' its requests are still waiting for, so every slot it was waiting on is stopped. A Task
+' that finished normally also reports "stop", but only after its answers were delivered —
+' and delivery ends the watch — so it matches no slot here.
 sub onCallerStateChanged(pool as object, msg as object)
   if taskStateIsLive(msg.getData()) then return
-  slotIdx = apiPoolSlotWatchedBy(m.inFlight, msg.getRoSGNode())
-  if slotIdx < 0 then return
-  stopSlot(pool, slotIdx)
+  for each slotIdx in apiPoolSlotsWatchedBy(m.inFlight, msg.getRoSGNode())
+    stopSlot(pool, slotIdx)
+  end for
 end sub
 
 ' Tells a slot to give up its request: roku-requests cancels the transfer on its next pass
@@ -358,23 +364,28 @@ sub stopSlot(pool as object, slotIdx as integer)
   entry = m.inFlight[slotIdx]
   m.log.info("stopped a request whose caller is gone", entry.req.requestId)
   forgetCaller(entry)
-  pool[slotIdx].quit = true
+  apiSlotQuit(pool[slotIdx])
   m.slotQuit[slotIdx] = true
   #if ENABLE_RTA
     releaseHeldOnPurpose(slotIdx, entry)
   #end if
 end sub
 
-' Ends the watch watchCaller started, if any.
+' Ends this entry's part in the watch watchCaller started, if any, and the subscription with
+' it once no other long request of the same Task is still on a slot.
 '
-' unobserveField drops EVERY observer of the field, not only this loop's. That is safe
-' because nothing else observes a Task's `state` — the task ledger reads it instead, by
-' design (source/utils/tasks.bs) — and the scoped pair that would drop only this one,
+' unobserveField drops EVERY observer of the field, not only this loop's — which is why the
+' subscription is one per Task, not one per request (apiPool.bs, "Stopping a request nobody
+' is waiting for"). Dropping observers that are not ours is safe because nothing else
+' observes a Task's `state` — the task ledger reads it instead, by design
+' (source/utils/tasks.bs) — and the scoped pair that would drop only this one,
 ' observeFieldScopedEx / unobserveFieldScoped, needs Roku OS 12.
 sub forgetCaller(entry as object)
-  if not isValid(entry.watchedCaller) then return
-  entry.watchedCaller.unobserveField("state")
+  caller = entry.watchedCaller
+  if not isValid(caller) then return
+  ' Cleared first, so the count below leaves this entry out.
   entry.watchedCaller = invalid
+  if apiPoolSlotsWatchedBy(m.inFlight, caller).count() = 0 then caller.unobserveField("state")
 end sub
 
 #if ENABLE_RTA
