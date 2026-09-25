@@ -14,7 +14,7 @@ related-files:
   - components/api/ApiResultNode.xml
   - components/api/SideEffectTask.bs
   - components/home/LoadLatestRowsTask.bs
-last-reviewed: 2026-09-22
+last-reviewed: 2026-09-24
 ---
 
 # API Layer & Task Pool
@@ -269,6 +269,12 @@ So at dispatch the coordinator asks `apiPoolNextDispatch()` ([`apiPool.bs`](../.
 - **`owner` is dropped only where it is known dead** — on the skip path. A dispatched entry's owner is by definition still waiting for the answer, and clearing it would cost a crossing on the path every request takes; the node lets it go when the coordinator's 50-child prune lets the node go.
 
 A request already on a slot is not canceled. That would mean replacing the blocking `rr_Requests().request` call in `ApiTask` with one that can be interrupted, and it only saves the remaining time of a request the server is already working on. The rules are pinned in [`apiPoolSkip.spec.bs`](../../tests/source/unit/api/apiPoolSkip.spec.bs).
+
+### A request a test makes fail (RTA builds only)
+
+On-device specs need a screen's failure path against a healthy server, so RTA builds (`ENABLE_RTA`) let a spec make chosen requests fail. The coordinator holds the rules from `m.global.rtaFailRequests`, reading the field only when a spec writes it, and checks each request as it takes it off its children (`processNewChildren` → `failedOnPurpose`). A match is answered at once and never reaches a slot. The answer is the one the pool itself delivers for that failure, built by [`apiFaults.responseFor()`](../../source/api/apiFaults.bs): a `roku-requests` timeout is `ok = false` with no `statusCode` or body, and an HTTP failure keeps its status. Nothing marks it as injected, because code that could tell the two apart could handle a test failure differently from a real one.
+
+The check decides from the request AA the coordinator already holds, so it adds no crossing to the serial path; the one write is the delivery a slot's answer would make anyway. Dev and production builds compile none of it. How a spec uses it: [`rta-tests.md`](../dev/rta-tests.md#making-requests-fail-rtafailrequests).
 
 ## The 5 API call patterns
 

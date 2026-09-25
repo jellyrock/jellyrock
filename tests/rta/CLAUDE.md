@@ -491,7 +491,7 @@ once drifts into fiction.
 | `getValue` | Single reads in [`lib/driver.js`](lib/driver.js) / [`lib/steps.js`](lib/steps.js) where there is genuinely one keyPath. |
 | `getFocusedNode` | Every focus predicate — `focusIsInside`, `waitFocused`, `focusIsInHomeContent`, and the failure dump. |
 | `callFunc` | The bench specs' harness nodes, and [`scripts/crash-report.js`](../../scripts/crash-report.js). |
-| `setValue` | Arranging state the app cannot be walked into — [`lib/nav.js`](lib/nav.js), `dialogs.spec.js`, `genre-skeleton.spec.js`. |
+| `setValue` | Arranging state the app cannot be walked into — [`lib/nav.js`](lib/nav.js), [`lib/failRequests.js`](lib/failRequests.js) (requests made to fail), `dialogs.spec.js`, `genre-skeleton.spec.js`. |
 | `createChild` / `removeNode` | The four bench specs create a measurement node under the scene and tear it down again; `capture-screenshots.js` creates one too. Paired on purpose — a bench that leaves its node behind would be caught by the leak gate as an app defect. |
 | `readRegistry` / `writeRegistry` / `deleteRegistrySections` | [`lib/registry.js`](lib/registry.js)'s snapshot / verified-restore, and [`lib/seed.js`](lib/seed.js)'s session seeds. |
 | `getRootsCount` / `getAllCount` | The leak gate's two censuses (`specs/leaks.spec.js`). `getRoots()` is the assertion; `getAll()` is recorded but not asserted — see that file for why both. |
