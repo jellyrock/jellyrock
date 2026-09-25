@@ -29,6 +29,22 @@ namespace tests
       return [{ Id: "primary", RunTimeTicks: 18000000000& }, { Id: "alternate", RunTimeTicks: 17950000000& }]
     end function
 
+    ' Press a button the way the remote does: the group publishes the pressed index, which is
+    ' what onDetailNavButton observes. Mounted because Play starts the scene's loading spinner.
+    private sub pressButton(buttonId as string)
+      buttonGrp = m.itemDetails.findNode("buttons")
+      index = -1
+      for i = 0 to buttonGrp.getChildCount() - 1
+        if buttonGrp.getChild(i).id = buttonId then index = i
+      end for
+      m.assertTrue(index >= 0, "precondition: the row has " + buttonId)
+
+      scene = m.top.getScene()
+      scene.appendChild(m.itemDetails)
+      buttonGrp.buttonSelected = index
+      scene.removeChild(m.itemDetails)
+    end sub
+
     ' beforeEach, not setup: each test loads content into the node and changes the server
     ' version (tests/CLAUDE.md).
     protected override function beforeEach()
@@ -111,6 +127,31 @@ namespace tests
       resumeButton = m.itemDetails.findNode("resumeButton")
       m.assertNotInvalid(resumeButton)
       m.assertEqual(resumeButton.playbackPositionTicks, 6000000000&)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Play")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("plays a song, carrying no version choice")
+    ' A song never takes the video path that resets the version state for new content, so
+    ' Play reads that state exactly as init() left it.
+    function _()
+      if not m.global.doesExist("queueManager")
+        m.global.addField("queueManager", "node", false)
+      end if
+      m.global.queueManager = CreateObject("roSGNode", "QueueManager")
+
+      song = CreateObject("roSGNode", "JellyfinBaseItem")
+      song.setFields({ id: "song-1", type: "Audio", name: "A Song", runTimeTicks: 2400000000& })
+      m.itemDetails.itemContent = song
+
+      m.pressButton("playButton")
+
+      queue = m.global.queueManager
+      m.assertEqual(queue.callFunc("getCount"), 1)
+      m.assertEqual(queue.callFunc("getItemByIndex", 0).id, "song-1")
+      m.assertInvalid(queue.callFunc("getVersionPreference"))
     end function
 
   end class

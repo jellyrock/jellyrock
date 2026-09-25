@@ -236,6 +236,9 @@ sub init()
   ' counter that keys its fetches and tells a stale reply from a current one.
   m.versionResume = invalid
   m.versionResumeSeq = 0
+  ' Whether the viewer picked the version from the Video menu (see onVideoDropdownSelection).
+  ' Set here as well as in resetVersionResume, which content without video never reaches.
+  m.versionUserOverridden = false
   ' Whether the readiness ledger holds an open Resume fill (see trackVersionResumeFill).
   m.isVersionResumeFillOpen = false
 
