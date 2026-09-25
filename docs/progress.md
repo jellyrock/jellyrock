@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-25 — fix: Load libraries as you scroll, say "Loading more", page "#" fully
 - 2026-09-25 — chore(skills): Move the capture sentence inside four sub-agent prompts
 - 2026-09-25 — fix: Show a library that failed to load as failed, and recover from it
 - 2026-09-25 — chore(skills): Label PRs by what the title and Overview say they deliver
