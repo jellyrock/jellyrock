@@ -419,8 +419,11 @@ sub onSlowLoadDue()
   else
     text = translate(translationKeys.MessageServerTakingAWhileToAnswer)
   end if
-  ' The spinner is the scene's: never write its text over another screen.
-  if m.isShown then appScene().loadingText = text
+  ' The spinner is the scene's: never write its text over another screen, nor say it.
+  if not m.isShown then return
+  appScene().loadingText = text
+  ' Queued, not flushed, as "Loading more" is (onLoadingMoreDue): nothing moved.
+  narrateStatus(text)
 end sub
 
 ' Prepare for data loading by releasing any run in flight, showing spinner, and hiding empty text
