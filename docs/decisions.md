@@ -1781,6 +1781,16 @@ A video stream that never reported `start` still reports its end, as a stop mark
 
 The once-per-stream guard (`m.isEndReported`, reset when a stream loads and when `start` is sent) is required by the `Failed` rule, not optional: after a stop `isPlayReported` is false, so a following `finished` would otherwise read as never-started and send a second stop. Measured 2026-09-24 on a Stick 4K against 12.1: before this, a transcode whose ffmpeg failed stalled into the error dialog and its unmarked stop at 0 ms wiped a 300 s resume point to 0 (#969); a real direct-play error's transcode retry surfaced its stop as `finished`, reported the same way. After it, both keep the resume point, with one stop per stream.
 
+## decision-id: grid-load-failure-retry-policy
+
+**date**: 2026-09-25
+**status**: accepted
+**related-files**: `components/ItemGrid/BaseGridView.bs`, `components/ItemGrid/LoadItemsTask2.bs`, `source/api/apiResponse.bs`
+
+A library grid whose first page (or Genres list) fails shows its own failure state with a Try again the USER presses; it never retries on its own. The query that failed may still be running on the server — #869's slow count is the case that prompted this — and an unprompted retry stacks a second copy on it. A failed later page keeps the items shown and the known total, raises one toast until a page loads, and is asked for again when focus next moves near the end, which is user-driven and one request at a time. `LoadItemsTask2.status` is `ok`/`failed` per `latest-rows-failure-vs-empty`; the cause goes to the log (`apiResponse.jsonFailure`), not to the screen.
+
+Ruled out: auto-retry with backoff (the stacking above), and `latest-rows-failure-vs-empty`'s no-retry, which rests on Home refreshing on every return — a grid has no such trigger, so a failure would stick until the user left and re-entered. Also ruled out: a cause-specific failure message (would route the cause through a status field, against the note above).
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
