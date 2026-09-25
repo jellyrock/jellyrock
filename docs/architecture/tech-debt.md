@@ -378,7 +378,7 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 #### `api-timeout-single-value`
 
 - **area**: `source/constants/timeouts.bs`
-- **issue**: `timeouts.API_WAIT_MS` is one value for all API calls regardless of operation. A long search and a quick favorite toggle have the same patience.
+- **issue**: A request can carry its own limit now (`timeoutMs`, read by `source/api/apiTimeout.bs` and honored by the HTTP call, `fetchRes` and `fetchAsync`), but only a library grid's page sets one (`timeouts.GRID_PAGE_MS`). Every other call still gets the shared `timeouts.HTTP_MS` / `API_WAIT_MS` pair, so a long search and a quick favorite toggle have the same patience. Giving another slow endpoint its own limit is one line at its call site — but a long request made from the render thread is not stopped when its screen closes (only a waiting Task is watched), so it holds a pool slot for its full limit.
 
 #### `per-method-v1-v2-routing`
 
