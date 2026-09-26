@@ -5,12 +5,13 @@ related-files:
   - components/home/HomeRows.bs
   - source/home/latestRows.bs
   - components/ItemGrid/LoadItemsTask2.bs
+  - components/ItemGrid/BaseGridView.bs
   - source/api/apiPipeline.bs
   - source/constants/apiPool.bs
   - scripts/harden-prod-manifest.js
   - scripts/measurements.js
   - manifest
-last-reviewed: 2026-09-20
+last-reviewed: 2026-09-26
 ---
 
 # Measuring orchestrator wait-vs-emit on device
@@ -960,6 +961,72 @@ A hung app then fails in ways that look like anything but a log call: ODC reques
 `getValue` returns `undefined` for every node so navigation helpers report "screen never
 loaded", and the UI sits on a spinner. The device console names the offending file and line
 directly — read it first. This cost most of a session during the measurement above.
+
+## Grid paging — did the user wait at the last loaded row?
+
+`item-grid load done` times one page. It cannot say whether a user scrolling the grid ever
+reached the last loaded row before the next page arrived, which is the wait they actually
+see. `BaseGridView.logGridSession()` answers that, one line per grid query, printed when the
+grid starts a new query (options, a letter, a voice search) or is destroyed — so a run has to
+LEAVE the grid for the line to appear. Like the other lines here, it exists only in `perfTiming` builds.
+
+```text
+item-grid paging - stalls <s> stallMs <ms> furthestRow <r> appendMs <a> appendMaxMs <m> pages <p> items <i> pageMs <avg>
+item-grid paging - stalls 1 stallMs 70 furthestRow 107 appendMs 262 appendMaxMs 34 pages 8 items 800 pageMs 1360
+```
+
+| Field | Reads |
+|---|---|
+| `stalls` / `stallMs` | how many times, and for how long in total, focus sat on the last loaded row with a page in flight — counted from arrival, before the "Loading more" indicator's delay |
+| `furthestRow` | the deepest row focus reached |
+| `appendMs` / `appendMaxMs` | the render thread adding each page's items to the grid, summed and at its worst page — a long add is a scroll hitch no task-side number shows. Absent before #1046 |
+| `pages` / `items` | what was loaded by the time the user left |
+| `pageMs` | the running average page time the paging rule plans against (`gridPaging`) |
+
+`furthestRow`, `pages` and `items` are outcomes, not inputs: a press at the last loaded row
+goes nowhere, so a grid that loads faster lets the same scroll reach further. The input is the
+scroll itself, and that is fixed by the workload below.
+
+### Taking it
+
+```bash
+npm run measure -- --measurement item-grid-paging --nav gridScroll -n 6
+```
+
+`gridScroll` (`navGridScroll` in `tests/rta/lib/nav.js`) opens the Movies grid, waits for
+focus in it, rests 3 s, presses Down every 150 ms (plus one ECP round trip) for 20 s, waits
+3 s for a page in flight, and presses Back. The presses are TIMED rather than walked: a walk
+waits for focus to arrive before pressing again, so it can never out-run the loaded rows and
+would read zero stalls on any build. It prints `[nav] gridScroll: <n> Down presses … focus came
+to rest on row <r>` per launch, which is how two runs are confirmed to have done the same work.
+
+Two things `measure` does not do for you: sign the device in to the server under test
+(`measure` measures whatever the device is signed in to — use `scripts/measure-signin.js`, and
+`npm run rta:restore` after), and seed the library's landing view (it warns; a Genres landing
+fails the nav loudly rather than measuring the wrong screen). A server with more than one
+movies library needs `--library <id>`.
+
+### Reference readings
+
+Measured 2026-09-26 against the 8,643-movie fixture (Jellyfin 10.11.11, database optimized so
+the server answers a page in ~0.05 s), 6 launches per device:
+
+| Device | Stalled launches | `stallMs` when stalled | `furthestRow` | `pageMs` |
+|---|---|---|---|---|
+| 512 MB Streaming Stick `3600X`, Roku OS 15.3.4 | 2 / 6 | 79, 131 | 106–108 | 1164–1390 |
+| Streaming Stick 4K `3820RW`, Roku OS 15.3.4 | 1 / 6 | 40 | 104–109 | 466–529 |
+
+Before #1046 the 512 MB Stick stalled 4.5–5.6 s on the same scroll — `LoadItemsTask2` read
+the render thread per item ([threading.md](../architecture/threading.md), the `MarkupGrid` row).
+
+⚠️ **Alternate arms; do not compare series taken hours apart.** The first 512 MB series of
+that night, started 11 minutes after the fixture's scheduled "Optimize database" task, stalled
+in 3 of 9 launches at 240–454 ms. The same device, build and scroll read 72–87 ms under
+`test:rta` later that night and the table's figures under `measure` two hours after. Neither
+the harness nor seeding explained it — on the 4K both harnesses pressed at identical timing and
+loaded pages at identical throughput under a saturating scroll — and the cause was not
+established. `measure:compare`
+checks the alternation for you.
 
 ## Three theories this method killed
 

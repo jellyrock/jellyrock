@@ -355,6 +355,36 @@ export const MEASUREMENTS = Object.freeze([
     ]),
   }),
   Object.freeze({
+    id: 'item-grid-paging',
+    title: 'Item grid paging while scrolling (stalls)',
+    doc: 'docs/dev/home-first-paint-performance.md#grid-paging--did-the-user-wait-at-the-last-loaded-row',
+    // NULL for the same reason as `item-grid`: `BaseGridView` backs every library grid. The
+    // workload that drives it (`--nav gridScroll`) is what says which grid and how it moved.
+    screen: null,
+    // GROUNDED 2026-09-26 on ledger evidence: `--nav gridScroll` series on `.176` (512 MB
+    // Stick) and `.177` (Stick 4K) against the 8,643-movie fixture, every sample complete.
+    grounded: true,
+    // Time spent at the last loaded row with a page in flight — the wait a user sees.
+    primary: 'stallMs',
+    // Empty on purpose. Nothing on the line is an input: `furthestRow`, `pages` and `items`
+    // all grow when pages arrive faster, because a press at the last loaded row goes nowhere
+    // (measured on the 512 MB Stick, 2026-09-25: `furthestRow` 83 before #1046, 107 after,
+    // same itinerary). The input is the nav's itinerary, which its own console line reports.
+    workload: Object.freeze([]),
+    counts: Object.freeze(['stalls', 'furthestRow', 'pages', 'items']),
+    lines: Object.freeze([
+      Object.freeze({
+        // One line per grid query, emitted when the query is replaced or the grid is
+        // destroyed — so a workload has to LEAVE the grid for it to print.
+        key: 'paging',
+        required: true,
+        pattern:
+          // `appendMs` / `appendMaxMs` are optional so lines from builds before #1046 still parse.
+          /item-grid paging - stalls (?<stalls>\d+) stallMs (?<stallMs>\d+) furthestRow (?<furthestRow>\d+)(?: appendMs (?<appendMs>\d+) appendMaxMs (?<appendMaxMs>\d+))? pages (?<pages>\d+) items (?<items>\d+) pageMs (?<pageMs>\d+)/,
+      }),
+    ]),
+  }),
+  Object.freeze({
     id: 'screen-load',
     title: 'Screen readiness (paint + settle)',
     // The doc this family OWNS, as of 2026-08-19. It pointed at

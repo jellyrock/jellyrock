@@ -21,7 +21,7 @@ related-files:
   - source/utils/screenReadiness.bs
   - source/home/homeScreenLoad.bs
   - tests/rta/screens.js
-last-reviewed: 2026-09-22
+last-reviewed: 2026-09-26
 ---
 
 # Measuring performance on device
@@ -42,6 +42,7 @@ two quantities that share a name.
 | *When did this SCREEN become usable, and how does that differ across devices?* | **this doc** — the `screen-load` family, every screen in [`tests/rta/screens.js`](../../tests/rta/screens.js) |
 | *How much work did a screen's CELLS do, and how much of it was waste?* | **this doc** — the [`cell-load` family](#cell-workloads--how-much-work-did-the-cells-do) |
 | *Where did the time go INSIDE one orchestrator — waiting on the network, or working on its own thread?* | [`home-first-paint-performance.md`](home-first-paint-performance.md) — the `home-latest-rows` and `item-grid` families |
+| *Did scrolling a library grid leave the user waiting at the last loaded row?* | [`home-first-paint-performance.md`](home-first-paint-performance.md#grid-paging--did-the-user-wait-at-the-last-loaded-row) — the `item-grid-paging` family |
 | *What does the API pool's COORDINATOR spend per request, deciding and dispatching?* | [`api.md`](../architecture/api.md#a-request-nobody-is-waiting-for) — the `api-dispatch` family |
 
 The split is the same one [`scripts/measurements.js`](../../scripts/measurements.js) draws
