@@ -11,9 +11,14 @@ namespace tests
   ' In both it makes no further field write: 0 in each of 40 trials per device, 2026-09-26.
   '
   ' The app DEPENDS on it: VideoPlayerView.releaseVideoLoad closes a live stream and stops the
-  ' load that holds it, trusting that the stopped load cannot close it a second time
-  ' (source/utils/liveStreamHandoff.bs). If a case here goes red on a firmware change, that
-  ' handoff is no longer exactly-once.
+  ' load that holds it, trusting that the stopped load sends nothing more (a request on a stream
+  ' already closed). It does NOT keep the stream from being closed twice: the load closes only
+  ' when the view marked it abandoned, which the view never does for a load it stops
+  ' (source/utils/liveStreamHandoff.bs). If a case here goes red on a firmware change, a stopped
+  ' load can run on after Back.
+  '
+  ' Each case has a control, the same Task NOT stopped, so a gate that could not see a write
+  ' fails instead of passing.
   '
   ' NOT covered: OS versions below 15.3.4.
   @suite("Platform - how far a stopped Task gets")
@@ -67,6 +72,8 @@ namespace tests
         while task.steps < 50 and clock.totalMilliseconds() < 2000
           sleep(5)
         end while
+        ' The control: the running Task's writes are seen from here.
+        m.assertTrue(task.steps >= 50, "trial " + trial.toStr() + " precondition: the task was writing")
 
         host.callFunc("stopTask")
         atStop = task.steps
@@ -89,6 +96,30 @@ namespace tests
 
         m.assertEqual(task.steps, 0, "trial " + trial.toStr() + ": the write after STOP happened")
       end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("controls: the same Task, not stopped")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("runs on and makes its field writes when its wait() is answered")
+    function _()
+      host = m.launchedHost("wakeOnDelivery", 2000)
+      task = host.getField("task")
+      m.assertTrue(m.waitForValue(task, "parked", true, 2000), "precondition: the task reached its wait()")
+      sleep(50)
+
+      host.callFunc("deliver")
+
+      m.assertEqual(m.waitForValue(task, "steps", 5, 1000), 5, "the answered task did not run on")
+    end function
+
+    @it("makes its field write after local work")
+    function _()
+      host = m.launchedHost("busyLocalThenWrite", 400)
+      task = host.getField("task")
+
+      m.assertEqual(m.waitForValue(task, "steps", 1, 1500), 1, "the task never made its write")
     end function
 
   end class

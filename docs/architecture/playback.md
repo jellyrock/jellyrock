@@ -545,11 +545,14 @@ records how far it has got on its own node, `liveStream` (`LiveStreamStage`: `op
 | The view went away while the stream was opening | the load itself: `releaseVideoLoad()` does not stop it but sets `isAbandoned`, and when `PlaybackInfo` answers the load closes the stream and ends |
 
 Every other load the view leaves is stopped as before, so it opens nothing and changes nothing more
-(the queue changes a load makes all come before `opening`). Exactly one party releases each stream
-because the load writes `open` before it reads `isAbandoned`, the view decides on the render thread,
-which serves those node accesses one at a time, and a stopped Task makes no further node access:
-measured 2026-09-26 on a Stick 4K and a 512 MB Stick, 0 writes after `STOP` in 40 of 40 trials each,
-gated by `tests/source/unit/platform/TaskStopProgress.spec.bs`.
+(the queue changes a load makes all come before `opening`). The two never both close: the load
+closes only when `isAbandoned` is set, and the view sets it only for a load it saw `opening`, and
+then closes nothing itself. They never both leave it either: the load writes `open` before it reads
+`isAbandoned`, and the view reads the stage and sets the flag in one render-thread callback, which
+the load's two node accesses cannot split (assumed from how the render thread serves a Task, not yet
+gated). A load the view stops sends nothing more, because a stopped Task makes no further node
+access: measured 2026-09-26 on a Stick 4K and a 512 MB Stick, 0 writes after `STOP` in 40 of 40
+trials each, gated by `tests/source/unit/platform/TaskStopProgress.spec.bs`.
 
 A live open waits up to `timeouts.LIVE_OPEN_MS` (120 s), not the default 10 s: a channel's first
 open includes the server's probe, a deliberate 3 s wait plus `ffprobe`, on top of any tuning, and a
@@ -560,7 +563,10 @@ source that responded at 95 s after 98.5 to 99.5 s. A source that answers but ne
 keeps the server waiting with no limit and never yields a stream id; the app gives up at the limit
 with "This channel took too long to start" (`ErrorThisChannelTookTooLongToStart`, chosen by
 `apiResponse.noAnswer()`). Back works throughout the wait: 0.3 s after the press, with the answer
-held 20 s, from a details screen and from a deep link (Stick 4K, 12.1.0).
+held 20 s, from a details screen and from a deep link (Stick 4K, 12.1.0). The wait is paid in a
+pool slot: the pool never stops a POST, so an open holds its slot for the whole wait even after
+Back, and a few opens of a dead source inside two minutes can leave every slot busy (predicted, not
+measured; [ADR 0045](../adr/0045-live-stream-open-handed-off-by-stage.md)).
 
 Every report names the file that is playing as `MediaSourceId` (Live TV sends its own
 `MediaSourceId` / `LiveStreamId` from `transcodeParams`). Servers before Jellyfin 12.0 use it

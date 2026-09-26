@@ -10,10 +10,12 @@ import "pkg:/source/utils/misc.bs"
 '   - the load itself, when the view left while the stream was opening (FINISH_OPENING)
 '
 ' It works because the load records its stage on its own node (LoadVideoContentTask.liveStream)
-' and, when PlaybackInfo answers, writes OPEN before it reads isAbandoned. The view decides on
-' the render thread, which serves each of those node accesses one at a time, and a stopped Task
-' makes no further node access (tests/source/unit/platform/TaskStopProgress.spec.bs), so
-' whichever order the two sides land in, one of them closes the stream.
+' and, when PlaybackInfo answers, writes OPEN before it reads isAbandoned, and the view reads the
+' stage and sets isAbandoned in one render-thread callback, which the load's two node accesses
+' cannot split. The view sets isAbandoned only when it saw OPENING and closes nothing itself, and
+' the load closes only when isAbandoned is set, so the two can never both close; the write
+' order is what keeps them from both leaving it. A load the view STOPs makes no further node
+' access (tests/source/unit/platform/TaskStopProgress.spec.bs), so it sends nothing more either.
 
 ' What the view's teardown does with its load, from the stage the load recorded.
 '
@@ -22,7 +24,7 @@ import "pkg:/source/utils/misc.bs"
 function abandonedLoadActionFor(liveStream as dynamic) as string
   if liveStreamStageOf(liveStream) = LiveStreamStage.OPENING then return AbandonedLoadAction.FINISH_OPENING
   if openLiveStreamId(liveStream) <> "" then return AbandonedLoadAction.CLOSE_AND_STOP
-  return AbandonedLoadAction.STOP
+  return AbandonedLoadAction.STOP_LOAD
 end function
 
 ' The stream a load holds and nobody else will release, or "" when there is none.

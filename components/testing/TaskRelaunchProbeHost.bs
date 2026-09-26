@@ -67,6 +67,12 @@ sub deliverThenStop()
   task.control = "STOP"
 end sub
 
+' deliverThenStop without the STOP: the control that shows a delivered answer does run the Task on.
+sub deliver()
+  task = m.top.task
+  task.delivery = task.delivery + 1
+end sub
+
 ' Lets every invocation of the function return.
 sub release()
   m.top.task.release = true

@@ -62,7 +62,9 @@ namespace timeouts
   ' (HttpClient.Timeout), and answered a source that responded at 95 s after 98.5-99.5 s,
   ' including the probe it runs on a channel's first open (>= 3 s by design). A source that
   ' answers but sends no data keeps the server waiting with no limit at all, and never yields a
-  ' stream id; a longer limit would only hold a pool slot longer.
+  ' stream id; a longer limit would only hold a pool slot longer. Unlike GRID_PAGE_MS, Back does
+  ' NOT give the slot up: the pool never stops a POST, and the answer must be heard to close the
+  ' stream, so an abandoned open holds its slot for the whole wait (ADR 0045).
   const LIVE_OPEN_MS = 120000
 
   ' Fallback-font scale measurement wait (main.bs calculateFontScaleFactor).

@@ -3,7 +3,7 @@
 enum AbandonedLoadAction
   ' Stop it. A stopped Task makes no further node access, so it opens nothing and changes
   ' nothing more.
-  stop = "stop"
+  STOP_LOAD = "stopLoad"
   ' Let its PlaybackInfo finish, because only that answer names the stream the server is
   ' opening. The load is marked abandoned, so it closes the stream and ends.
   FINISH_OPENING = "finishOpening"

@@ -13,9 +13,9 @@ namespace tests
 
     @it("stops a load that has opened nothing, which then opens nothing")
     function _()
-      m.assertEqual(abandonedLoadActionFor(invalid), AbandonedLoadAction.STOP)
-      m.assertEqual(abandonedLoadActionFor({}), AbandonedLoadAction.STOP)
-      m.assertEqual(abandonedLoadActionFor({ stage: LiveStreamStage.NONE, id: "" }), AbandonedLoadAction.STOP)
+      m.assertEqual(abandonedLoadActionFor(invalid), AbandonedLoadAction.STOP_LOAD)
+      m.assertEqual(abandonedLoadActionFor({}), AbandonedLoadAction.STOP_LOAD)
+      m.assertEqual(abandonedLoadActionFor({ stage: LiveStreamStage.NONE, id: "" }), AbandonedLoadAction.STOP_LOAD)
     end function
 
     ' Stopping it would lose the only answer that names the stream the server is opening.
@@ -33,14 +33,14 @@ namespace tests
     ' closing either again would end another viewer's shared stream.
     @it("only stops a load whose stream the player took, or the view already closed")
     function _()
-      m.assertEqual(abandonedLoadActionFor({ stage: LiveStreamStage.HANDED_OVER, id: "live-stream-1" }), AbandonedLoadAction.STOP)
-      m.assertEqual(abandonedLoadActionFor({ stage: LiveStreamStage.RELEASED, id: "live-stream-1" }), AbandonedLoadAction.STOP)
+      m.assertEqual(abandonedLoadActionFor({ stage: LiveStreamStage.HANDED_OVER, id: "live-stream-1" }), AbandonedLoadAction.STOP_LOAD)
+      m.assertEqual(abandonedLoadActionFor({ stage: LiveStreamStage.RELEASED, id: "live-stream-1" }), AbandonedLoadAction.STOP_LOAD)
     end function
 
     @it("only stops a load recorded as open with no stream id")
     function _()
-      m.assertEqual(abandonedLoadActionFor({ stage: LiveStreamStage.OPEN, id: "" }), AbandonedLoadAction.STOP)
-      m.assertEqual(abandonedLoadActionFor({ stage: LiveStreamStage.OPEN }), AbandonedLoadAction.STOP)
+      m.assertEqual(abandonedLoadActionFor({ stage: LiveStreamStage.OPEN, id: "" }), AbandonedLoadAction.STOP_LOAD)
+      m.assertEqual(abandonedLoadActionFor({ stage: LiveStreamStage.OPEN }), AbandonedLoadAction.STOP_LOAD)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
