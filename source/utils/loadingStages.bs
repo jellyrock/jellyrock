@@ -1,0 +1,41 @@
+import "pkg:/source/enums/LoadingKind.bs"
+import "pkg:/source/translationKeys.bs"
+
+' What the scene's loading spinner tells the viewer as a wait goes on. Pure — JRScene passes
+' the kind and how long the spinner has been up, so the rule is the same on any screen and in
+' a test.
+'
+' Nothing is said before STILL_LOADING_MS: a wait that short is normal, and even a 512 MB
+' Stick shows a large library's first page in about 3.4 s from a server that keeps up
+' (measured 2026-09-24, 8,643-movie library). Past it the viewer is told the app is still
+' working, which is the usual ~10 s point where a wait needs feedback; past SERVER_SLOW_MS,
+' that the wait is the server's — true of every kind that gets text, because each is waiting
+' on a server answer. Kinds whose wait is not a server answer get no text at all.
+namespace loadingStages
+
+  const STILL_LOADING_MS = 8000
+  const SERVER_SLOW_MS = 30000
+
+  ' Whether `kind` tells the viewer anything as its wait goes on.
+  function hasStages(kind as string) as boolean
+    return kind = LoadingKind.CONTENT
+  end function
+
+  ' The translation key for the text under the spinner after `elapsedMs`, or "" for none.
+  function textKeyAt(kind as string, elapsedMs as integer) as string
+    if not hasStages(kind) then return ""
+    if elapsedMs >= SERVER_SLOW_MS then return translationKeys.MessageServerTakingAWhileToAnswer
+    if elapsedMs >= STILL_LOADING_MS then return translationKeys.LabelStillLoading
+    return ""
+  end function
+
+  ' Milliseconds from `elapsedMs` until the text for `kind` next changes, or -1 when it never
+  ' will — the kind has no stages, or the last one is already showing.
+  function msUntilNextChange(kind as string, elapsedMs as integer) as integer
+    if not hasStages(kind) then return -1
+    if elapsedMs < STILL_LOADING_MS then return STILL_LOADING_MS - elapsedMs
+    if elapsedMs < SERVER_SLOW_MS then return SERVER_SLOW_MS - elapsedMs
+    return -1
+  end function
+
+end namespace

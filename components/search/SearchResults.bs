@@ -257,7 +257,7 @@ sub searchMedias()
     screenLoad.pending("results")
 
     m.searchHelpText.visible = false
-    startLoadingSpinner(false)
+    startContentLoading()
   end if
   m.searchTask.observeField("results", "loadResults")
   m.top.overhangTitle = translate(translationKeys.ButtonSearch) + ": " + query

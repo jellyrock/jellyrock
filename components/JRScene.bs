@@ -1,7 +1,9 @@
+import "pkg:/source/enums/LoadingKind.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/backdrop.bs"
 import "pkg:/source/utils/dialogs.bs"
+import "pkg:/source/utils/loadingStages.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 ' JRScene is a Scene (not a sgrouter_View), so it does NOT inherit the router scripts from
@@ -43,6 +45,11 @@ sub init()
   m.top.backgroundURI = ""
   m.loadingText = m.top.findNode("loadingText")
   m.spinner = m.top.findNode("spinner")
+  m.loadingStageText = m.top.findNode("loadingStageText")
+  m.loadingStageTimer = m.top.findNode("loadingStageTimer")
+  m.loadingStageTimer.observeField("fire", "showLoadingStage")
+  ' How long the spinner has been waiting; marked at every start (onIsLoadingChanged).
+  m.loadingClock = CreateObject("roTimespan")
   m.imageFader = m.top.findNode("imageFader")
   m.toast = m.top.findNode("toast")
   m.lastBackdropUri = "" ' Track last URI to skip redundant imageFader assignments
@@ -200,6 +207,41 @@ sub onIsLoadingChanged()
   m.spinner.visible = m.top.isLoading
   ' toggle visibility of loading text
   m.loadingText.visible = m.top.isLoading
+
+  if m.top.isLoading
+    ' Every start is a new wait. For a kind with stages that is startContentLoading, where a
+    ' new query supersedes the last; the other kinds show no stage text, so their clock is unused.
+    m.loadingClock.mark()
+  else
+    ' A direct `isLoading = false` (loginRouter's bootstrap) must not leave this kind behind for
+    ' a later direct `isLoading = true` that sets none.
+    m.top.loadingKind = LoadingKind.PLAIN
+  end if
+  showLoadingStage()
+end sub
+
+' Shows the text under the spinner for how long it has been waiting (loadingStages), and arms
+' the timer for the next change. Also the timer's handler: an early fire finds the same text
+' and re-arms for the remainder; a late one, after the spinner stopped, finds nothing to show.
+sub showLoadingStage()
+  m.loadingStageTimer.control = "stop"
+  kind = m.top.loadingKind
+  if not m.top.isLoading then kind = LoadingKind.PLAIN
+
+  elapsedMs = m.loadingClock.TotalMilliseconds()
+  key = loadingStages.textKeyAt(kind, elapsedMs)
+  if key = ""
+    m.loadingStageText.text = ""
+  else
+    m.loadingStageText.text = translate(key)
+  end if
+  m.loadingStageText.visible = key <> ""
+
+  nextMs = loadingStages.msUntilNextChange(kind, elapsedMs)
+  if nextMs > 0
+    m.loadingStageTimer.duration = nextMs / 1000
+    m.loadingStageTimer.control = "start"
+  end if
 end sub
 
 ' showToast: Display a transient toast notification.
@@ -534,6 +576,7 @@ sub resolveDeepLink(args as object)
   ' Spinner = feedback during the fetch; don't block the remote (a runtime cast shouldn't freeze
   ' what the user is doing). Cleared in onDeepLinkResolved.
   m.top.isRemoteDisabled = false
+  m.top.loadingKind = LoadingKind.CONTENT
   m.top.isLoading = true
 
   stopDeepLinkResolveTask()
