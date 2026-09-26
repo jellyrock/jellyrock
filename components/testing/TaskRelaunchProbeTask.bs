@@ -15,6 +15,12 @@ end sub
 '   sleepOnce - sleep(), which parks the thread without a port at all
 '   waitForever - wait(0) on a port nothing ever writes to: blocks with NO timeout, so only a
 '               STOP can end it (TaskThreadSlots.spec.bs asks whether a STOP does)
+'   wakeOnDelivery - parks in ONE wait() for `delivery`, as `fetchRes` parks for the pool's
+'               answer, then makes five field writes (TaskStopProgress.spec.bs)
+'   busyWrites - field writes in a loop with no wait(), so a STOP lands mid-way through
+'               ordinary code (TaskStopProgress.spec.bs)
+'   busyLocalThenWrite - local work with no node access for `blockMs`, then ONE field write
+'               (TaskStopProgress.spec.bs)
 '
 ' `seq` is read TWICE: once at entry and once after the block. A caller that stops the task,
 ' writes a new `seq` and relaunches is doing what every app site does with its input field
@@ -36,6 +42,30 @@ sub holdUntilReleased()
   else if m.top.blockMode = "waitForever"
     port = CreateObject("roMessagePort")
     wait(0, port)
+  else if m.top.blockMode = "wakeOnDelivery"
+    port = CreateObject("roMessagePort")
+    m.top.observeField("delivery", port)
+    m.top.parked = true
+    msg = wait(blockMs, port)
+    if type(msg) = "roSGNodeEvent"
+      for i = 1 to 5
+        m.top.steps = i
+      end for
+    end if
+  else if m.top.blockMode = "busyWrites"
+    clock = CreateObject("roTimespan")
+    i = 0
+    while clock.totalMilliseconds() < blockMs
+      i = i + 1
+      m.top.steps = i
+    end while
+  else if m.top.blockMode = "busyLocalThenWrite"
+    clock = CreateObject("roTimespan")
+    x = 0
+    while clock.totalMilliseconds() < blockMs
+      x = x + 1
+    end while
+    m.top.steps = 1
   else
     port = CreateObject("roMessagePort")
     clock = CreateObject("roTimespan")

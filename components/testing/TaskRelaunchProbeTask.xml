@@ -17,5 +17,10 @@
     <field id="seq" type="integer" value="0" />
     <field id="startSeq" type="integer" value="0" />
     <field id="endSeq" type="integer" value="0" />
+    <!-- TaskStopProgress.spec.bs: `delivery` wakes a run parked in wakeOnDelivery, `parked` says it
+         has reached its wait(), and `steps` counts the field writes it makes after that point. -->
+    <field id="delivery" type="integer" value="0" />
+    <field id="parked" type="bool" value="false" />
+    <field id="steps" type="integer" value="0" />
   </interface>
 </component>

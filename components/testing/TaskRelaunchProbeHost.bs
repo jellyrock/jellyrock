@@ -59,6 +59,14 @@ sub writeAndLaunch(newSeq as integer)
   launchTask(task)
 end sub
 
+' What a view's teardown does to a load whose answer has just arrived: the answer is written,
+' then the Task is STOPped, in one render-thread callback, before the Task thread can run.
+sub deliverThenStop()
+  task = m.top.task
+  task.delivery = task.delivery + 1
+  task.control = "STOP"
+end sub
+
 ' Lets every invocation of the function return.
 sub release()
   m.top.task.release = true
