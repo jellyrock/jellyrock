@@ -170,7 +170,7 @@ a contract.
 | `ACT` `action:` retry loops | 7 | The per-tick re-press **is** the mechanism (see `resendIfSwallowed`). An observer would sit and watch for a key that never landed. |
 | `SETTLE` Plain field settle | 56 | The primitive could apply; it is ruled out below. |
 | `DYN` Dynamic `keyPath` | 2 | `scrollFocus`, whose keyPath is its caller's, and `waitHome`'s rows gate, whose list id is RESOLVED rather than named. Unclassifiable from syntax, so each carries a rule disable naming the reason and the argument lives in its docblock. |
-| `FOCUS_INSIDE` Focus containment (`waitFocusInside`) | 28 | ODC has no "observe global focus" primitive. Its request table (`RTA_OnDeviceComponent.brs`) offers `getFocusedNode` / `hasFocus` / `isInFocusChain` — all READS — and one observer, `onFieldChange`, which needs a node keyPath and a field name and so cannot express "wherever focus now is". |
+| `FOCUS_INSIDE` Focus containment (`waitFocusInside`) | 29 | ODC has no "observe global focus" primitive. Its request table (`RTA_OnDeviceComponent.brs`) offers `getFocusedNode` / `hasFocus` / `isInFocusChain` — all READS — and one observer, `onFieldChange`, which needs a node keyPath and a field name and so cannot express "wherever focus now is". |
 | `FOCUS_SUBTYPE` Focus containment by subtype (`waitFocusInHomeContent`) | 4 | Same absence of a primitive. Separate row because the QUESTION differs: Home's content is whichever of `HomeRows` / `FavoritesRows` the selected tab put in the scene, so it cannot be asked by container id at all. |
 | `FOCUS_IDENTITY` Focus identity (`waitFocused`) | 16 | Same absence of a primitive, and focus is inherently terminal: it stays where it landed until the next key. There is no pulse to miss. |
 
@@ -240,19 +240,19 @@ above says it harder: never paper over a flake with a fixed `sleep`, because the
 not timing out — it was succeeding too early. So the same bar the waits carry applies
 here: every `sleep()` either has no signal available to gate on, or it is a defect.
 
-**Most of them are not waits at all.** Of **41** `sleep()` calls (derived from the AST),
+**Most of them are not waits at all.** Of **42** `sleep()` calls (derived from the AST),
 **15 are poll ticks**: a `sleep` lexically inside a bounded loop that exits on its own
 predicate. The interval sets sampling cadence and nothing else, and raising or lowering it
 is a separate question this project puts out of scope. Worth stating plainly because it
 reads as a surprise: [`lib/steps.js`](lib/steps.js), the file that owns every wait
 primitive, contains **seven** `sleep()` calls and **zero** arbitrary waits.
 
-That leaves **26 bare** ones, and they fall in six categories.
+That leaves **27 bare** ones, and they fall in six categories.
 
 | Category | n | Why no signal was available |
 |---|---|---|
 | Paint / texture settle | 11 | After a `waitFor` gate has already passed, waiting for PIXELS. The app's only load-completion signal is the `cellLoad*` counter family — and it is `#if perfTiming`, which [`scripts/harden-prod-manifest.js`](../../scripts/harden-prod-manifest.js) forces OFF in `build:prod`. These navs are shared with `screenshots:capture`, which runs exactly that build, so on the path they serve there is provably no field to read. |
-| Timer window | 5 | Out-waiting a period to prove a NON-EVENT. [`deeplink.spec.js`](specs/deeplink.spec.js) names it: *"Assert we never leave Home (a non-event → a bounded wait)."* Ungateable by construction — the only signal would be the very thing being disproven, and a dialog that must survive its own 5 s auto-hide cannot be gated on the timer under test. |
+| Timer window | 6 | Out-waiting a period to prove a NON-EVENT. [`deeplink.spec.js`](specs/deeplink.spec.js) names it: *"Assert we never leave Home (a non-event → a bounded wait)."* Ungateable by construction — the only signal would be the very thing being disproven, and a dialog that must survive its own 5 s auto-hide cannot be gated on the timer under test. |
 | App lifecycle | 4 | [`lib/driver.js`](lib/driver.js)'s `bootMs` / `exitMs`. The channel is down or coming up, so ODC cannot answer at all — there is no device to read from until the app exists. |
 | Measurement window | 4 | The dwell IS the quantity being measured (a baseline phase, an extras-launch window, `navGridScroll`'s rest before and drain after its timed scroll). Gating it on a signal would change what is measured. |
 | Async teardown | 1 | `retainedAfter`'s docblock states it: the teardown the last Back press started is finished by no app field that reports it. |
