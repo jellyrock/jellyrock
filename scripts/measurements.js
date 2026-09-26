@@ -349,7 +349,8 @@ export const MEASUREMENTS = Object.freeze([
         key: 'load',
         required: true,
         pattern:
-          /item-grid load done - items (?<items>\d+) genreFetches (?<genreFetches>\d+) firstPaint (?<firstPaintMs>-?\d+).*?task (?<taskMs>\d+) wait (?<waitMs>\d+) emit (?<emitMs>\d+)/,
+          // `handoff` is optional so lines from builds before it existed still parse.
+          /item-grid load done - items (?<items>\d+) genreFetches (?<genreFetches>\d+) firstPaint (?<firstPaintMs>-?\d+)(?: handoff (?<handoffMs>\d+))?.*?task (?<taskMs>\d+) wait (?<waitMs>\d+) emit (?<emitMs>\d+)/,
       }),
     ]),
   }),
