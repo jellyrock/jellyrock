@@ -776,6 +776,24 @@ describe('the registry itself', () => {
     });
   });
 
+  it('parses the handoff part of emit, and still parses a line from before it existed', () => {
+    const grid = measurementById('item-grid');
+    const line =
+      'item-grid load done - items 100 genreFetches 0 firstPaint -1 handoff 140 [debug=false perfTiming=true] task 900 wait 300 emit 600';
+    expect(matchLine(grid, line).fields).toEqual({
+      items: 100,
+      genreFetches: 0,
+      firstPaintMs: -1,
+      handoffMs: 140,
+      taskMs: 900,
+      waitMs: 300,
+      emitMs: 600,
+    });
+    const older =
+      'item-grid load done - items 42 genreFetches 3 firstPaint 812 [debug=false perfTiming=true] task 1200 wait 900 emit 300';
+    expect(matchLine(grid, older).fields).not.toHaveProperty('handoffMs');
+  });
+
   it('handles the -1 firstPaint the grid emits when it never painted', () => {
     const grid = measurementById('item-grid');
     const line =
