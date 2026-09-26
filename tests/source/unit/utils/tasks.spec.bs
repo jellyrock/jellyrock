@@ -241,6 +241,27 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("taskStateIsLive() — the same rule for a state already read")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for run and init, in either case")
+    @params("run")
+    @params("init")
+    @params("RUN")
+    function _(state)
+      m.assertTrue(taskStateIsLive(state))
+    end function
+
+    @it("is false for a finished, stopped or missing state")
+    @params("stop")
+    @params("done")
+    @params("")
+    @params(invalid)
+    function _(state)
+      m.assertFalse(taskStateIsLive(state))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("countLiveTaskThreads() — the derived count")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

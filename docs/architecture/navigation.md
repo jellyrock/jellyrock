@@ -211,7 +211,7 @@ The spinner is one widget, but the waits it covers are not alike, and each kind 
 
 | Kind | The wait | Back | Text under the spinner |
 |---|---|---|---|
-| **Content load** — `startContentLoading()` | A screen waiting on the server for the data it shows | Leaves the screen; a queued read nobody is waiting for any more is skipped by the pool (see [api.md](api.md#a-request-nobody-is-waiting-for)) | "Still loading…" from 8 s, "The server is taking a while to answer." from 30 s |
+| **Content load** — `startContentLoading()` | A screen waiting on the server for the data it shows | Leaves the screen; the pool skips a queued read nobody is waiting for any more, and stops a long one already sent ([ADR 0043](../adr/0043-pool-stops-long-reads-of-gone-callers.md)) (see [api.md](api.md#a-request-nobody-is-waiting-for)) | "Still loading…" from 8 s, "The server is taking a while to answer." from 30 s |
 | **Playback start** — *not built yet* | The server opening a play session (`PlaybackInfo`, a live stream) | Leaves at once; the request is allowed to finish, and whatever it opened is closed when its answer lands. Stopping the request would not stop the server opening the stream | Same stages, under the item or channel label |
 | **Buffering** — *not built yet* | The player refilling mid-playback | The player's own handling | None: the wait is not a server answer |
 | **Session change** — *not built yet* | Sign in or out, switching user or server, the server scan, the boot-time font download | Blocked on purpose | None |

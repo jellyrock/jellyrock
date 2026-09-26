@@ -1,0 +1,126 @@
+import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/apiTimeout.bs"
+
+namespace tests
+
+  ' The coordinator stops a long request already on a slot once the Task waiting for it has
+  ' gone (apiPool.bs, "Stopping a request nobody is waiting for"). These pin which requests
+  ' it watches, how it finds the slots a stopped Task was waiting on, and how a slot is told
+  ' to quit; the watch itself lives in ApiQueueTask, and the RTA slow-library spec drives it.
+  @suite("apiPool - stopping a request nobody is waiting for")
+  class ApiPoolStopTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("apiRequestIsStoppable() — long reads only")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("stops a read that asked for a longer limit")
+    function _()
+      m.assertTrue(apiRequestIsStoppable({ method: "GET", timeoutMs: timeouts.HTTP_MS * 6 }))
+      m.assertTrue(apiRequestIsStoppable({ url: "http://x", timeoutMs: timeouts.HTTP_MS + 1 }))
+      m.assertTrue(apiRequestIsStoppable({ method: "POST", skippable: true, timeoutMs: timeouts.HTTP_MS * 6 }))
+    end function
+
+    @it("never stops a request with the default limit — it frees its slot soon anyway")
+    function _()
+      m.assertFalse(apiRequestIsStoppable({ method: "GET" }))
+      m.assertFalse(apiRequestIsStoppable({ method: "GET", timeoutMs: timeouts.HTTP_MS }))
+    end function
+
+    @it("never stops a write, however long its limit")
+    function _()
+      m.assertFalse(apiRequestIsStoppable({ method: "POST", timeoutMs: timeouts.HTTP_MS * 6 }))
+      m.assertFalse(apiRequestIsStoppable({ method: "DELETE", timeoutMs: timeouts.HTTP_MS * 6 }))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("apiPoolSlotsWatchedBy() — the slots a stopped Task was waiting on")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("finds the slot whose watched caller is that Task")
+    function _()
+      first = CreateObject("roSGNode", "Node")
+      second = CreateObject("roSGNode", "Node")
+      inFlight = [{ watchedCaller: first }, invalid, { watchedCaller: second }]
+
+      m.assertEqual(apiPoolSlotsWatchedBy(inFlight, second), [2])
+      m.assertEqual(apiPoolSlotsWatchedBy(inFlight, first), [0])
+    end function
+
+    @it("finds every slot of a Task with several long requests on slots, and no other Task's")
+    function _()
+      ' An apiPipeline run: one Task, requests on several slots at once. All of them must be
+      ' stopped when it goes, and its subscription kept until the last is answered.
+      pipelineTask = CreateObject("roSGNode", "Node")
+      other = CreateObject("roSGNode", "Node")
+      inFlight = [{ watchedCaller: pipelineTask }, { watchedCaller: other }, invalid, { watchedCaller: pipelineTask }]
+
+      m.assertEqual(apiPoolSlotsWatchedBy(inFlight, pipelineTask), [0, 3])
+      m.assertEqual(apiPoolSlotsWatchedBy(inFlight, other), [1])
+    end function
+
+    @it("no longer counts an entry whose watch has ended")
+    function _()
+      ' forgetCaller clears the entry's watchedCaller before asking whether the Task is still
+      ' watched, so the answer is the OTHER slots only.
+      caller = CreateObject("roSGNode", "Node")
+      inFlight = [{ watchedCaller: invalid }, { watchedCaller: caller }]
+
+      m.assertEqual(apiPoolSlotsWatchedBy(inFlight, caller), [1])
+      inFlight[1].watchedCaller = invalid
+      m.assertEqual(apiPoolSlotsWatchedBy(inFlight, caller), [])
+    end function
+
+    @it("is empty when no slot is watching that Task")
+    function _()
+      caller = CreateObject("roSGNode", "Node")
+      other = CreateObject("roSGNode", "Node")
+
+      ' A request never watched, a free slot, and a watch already ended (answer delivered).
+      m.assertEqual(apiPoolSlotsWatchedBy([{ req: {} }, invalid, { watchedCaller: invalid }], caller), [])
+      m.assertEqual(apiPoolSlotsWatchedBy([{ watchedCaller: other }], caller), [])
+      m.assertEqual(apiPoolSlotsWatchedBy([], caller), [])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("apiSlotQuit() / apiSlotClearQuit() — `quit` exists only while a stop is pending")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("an ApiTask declares no quit field, so an ordinary request never reads one")
+    function _()
+      ' roku-requests reads `m.top.quit` on every pass of every request; a declared field
+      ' costs about twice a missing one to read (docs/architecture/api.md). Declaring it in
+      ' ApiTask.xml again would bring that cost back for every request in the app.
+      slot = CreateObject("roSGNode", "ApiTask")
+      m.assertFalse(slot.hasField("quit"))
+    end function
+
+    @it("adds quit set to true, and removes it again before the next request")
+    function _()
+      slot = CreateObject("roSGNode", "ApiTask")
+
+      apiSlotQuit(slot)
+      m.assertTrue(slot.hasField("quit"))
+      m.assertTrue(slot.quit)
+
+      apiSlotClearQuit(slot)
+      m.assertFalse(slot.hasField("quit"))
+    end function
+
+    @it("tolerates a second stop, and a clear on a slot never told to quit")
+    function _()
+      slot = CreateObject("roSGNode", "ApiTask")
+
+      apiSlotClearQuit(slot)
+      m.assertFalse(slot.hasField("quit"))
+
+      apiSlotQuit(slot)
+      apiSlotQuit(slot)
+      m.assertTrue(slot.quit)
+      apiSlotClearQuit(slot)
+      m.assertFalse(slot.hasField("quit"))
+    end function
+
+  end class
+
+end namespace

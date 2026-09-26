@@ -1,0 +1,33 @@
+import "pkg:/source/constants/timeouts.bs"
+
+' How long a pool request may take, read from the request itself. A request AA may carry
+' `timeoutMs`, its own HTTP time limit; one without it gets timeouts.HTTP_MS. Everything that
+' waits on the request derives its wait from that one number, so a longer limit cannot be
+' honored by the HTTP call and cut short by the caller that is waiting for it.
+namespace apiTimeout
+
+  ' The HTTP time limit for `req`: its `timeoutMs` when that is a whole number above 0,
+  ' otherwise timeouts.HTTP_MS.
+  function httpMs(req as dynamic) as integer
+    if type(req) <> "roAssociativeArray" then return timeouts.HTTP_MS
+    limit = req.timeoutMs
+    if GetInterface(limit, "ifInt") = invalid then return timeouts.HTTP_MS
+    if limit < 1 then return timeouts.HTTP_MS
+    return limit
+  end function
+
+  ' How long a caller waits for `req`'s answer: its HTTP limit plus the margin between
+  ' timeouts.API_WAIT_MS and timeouts.HTTP_MS, so the HTTP call always gives up first and
+  ' the caller hears its answer rather than giving up on a slot that is still busy.
+  function waitMs(req as dynamic) as integer
+    return httpMs(req) + timeouts.API_WAIT_MS - timeouts.HTTP_MS
+  end function
+
+  ' True when `req` asked for longer than the default HTTP limit. Such a request can hold a
+  ' pool slot long after its caller has gone, so the coordinator watches its caller and stops
+  ' it (apiPool.bs, "Stopping a request nobody is waiting for").
+  function isLong(req as dynamic) as boolean
+    return httpMs(req) > timeouts.HTTP_MS
+  end function
+
+end namespace

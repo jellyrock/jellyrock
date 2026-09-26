@@ -112,6 +112,14 @@ export async function getActiveVal(keyPath) {
 }
 
 /**
+ * Like getVal, but rooted at `m.global` — for the app-wide fields a spec reads that belong to
+ * no screen, such as the RTA-only `rtaHeldRequests` (source/utils/globals.bs).
+ */
+export async function getGlobalVal(keyPath) {
+  return (await readOnce({ base: 'global', keyPath })).value;
+}
+
+/**
  * `readOnce`'s twin for Home's active row list: batch-read `suffix` off BOTH candidate ids
  * and answer with whichever list is actually in the scene.
  *

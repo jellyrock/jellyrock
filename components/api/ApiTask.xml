@@ -11,5 +11,19 @@
       where a request field write arrives before the observer is registered.
     -->
     <field id="isReady" type="boolean" value="false" />
+    <!--
+      No `quit` field here, on purpose. The coordinator stops a request whose caller has gone
+      by ADDING `quit` = true to this node (apiSlotQuit in apiPool.bs), and removes it before
+      the slot's next request (apiSlotClearQuit). roku-requests reads `m.top.quit` on every
+      pass of its wait, for every request in the app, and a declared field costs about twice
+      as much to read as a missing one — so declaring it would slow every request for the
+      sake of the rare one that is stopped.
+
+      The cancel works only while executeHttpRequest passes no `retryCount`. roku-requests
+      (1.2.0) meant a quit to end the request, but its check reads `m.cancel_and_return`, which
+      nothing sets, instead of its local `cancel_and_return`. So a quit takes the timeout path
+      instead: it cancels the transfer and logs "[http] Event Timed Out", then retries if any
+      retries are left, sending the request again and canceling it again each time.
+    -->
   </interface>
 </component>

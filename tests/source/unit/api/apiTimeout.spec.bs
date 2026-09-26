@@ -1,0 +1,70 @@
+import "pkg:/source/api/apiTimeout.bs"
+
+namespace tests
+
+  @suite("apiTimeout - how long a pool request may take")
+  class ApiTimeoutTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("httpMs()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is the request's own limit when it carries one")
+    function _()
+      m.assertEqual(apiTimeout.httpMs({ url: "x", timeoutMs: 60000 }), 60000)
+    end function
+
+    @it("is the default for a request without a usable limit")
+    @params({ url: "x" }, "no timeoutMs")
+    @params({ url: "x", timeoutMs: 0 }, "a limit of 0")
+    @params({ url: "x", timeoutMs: -5 }, "a negative limit")
+    @params({ url: "x", timeoutMs: "60000" }, "a limit that is not a number")
+    @params({ url: "x", timeoutMs: invalid }, "an invalid limit")
+    @params(invalid, "no request")
+    function _(req, why)
+      m.assertEqual(apiTimeout.httpMs(req), timeouts.HTTP_MS, why)
+    end function
+
+    @it("reads a limit that came through a node field")
+    function _()
+      ' A request AA reaches the pool slot through ApiResultNode's assocarray field, which is
+      ' where its numbers change type; the limit has to survive that trip.
+      node = CreateObject("roSGNode", "ApiResultNode")
+      node.request = { url: "x", timeoutMs: 60000 }
+      m.assertEqual(apiTimeout.httpMs(node.request), 60000)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("waitMs()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is API_WAIT_MS for a request with the default limit")
+    function _()
+      m.assertEqual(apiTimeout.waitMs({ url: "x" }), timeouts.API_WAIT_MS)
+    end function
+
+    @it("outlasts a longer limit by the same margin, so the HTTP call gives up first")
+    function _()
+      m.assertEqual(apiTimeout.waitMs({ url: "x", timeoutMs: 60000 }), 60000 + timeouts.API_WAIT_MS - timeouts.HTTP_MS)
+      m.assertTrue(apiTimeout.waitMs({ url: "x", timeoutMs: 60000 }) > 60000)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isLong()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true only for a limit above the default")
+    function _()
+      m.assertTrue(apiTimeout.isLong({ url: "x", timeoutMs: timeouts.HTTP_MS + 1 }))
+      m.assertFalse(apiTimeout.isLong({ url: "x", timeoutMs: timeouts.HTTP_MS }))
+      m.assertFalse(apiTimeout.isLong({ url: "x", timeoutMs: 5000 }))
+      m.assertFalse(apiTimeout.isLong({ url: "x" }))
+    end function
+
+  end class
+
+end namespace

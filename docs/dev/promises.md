@@ -7,7 +7,7 @@ related-files:
   - components/JRGroup.bs
   - scripts/bsc-plugins/auto-abandon-promises.cjs
   - tests/source/unit/api/apiPromise.spec.bs
-last-reviewed: 2026-08-23
+last-reviewed: 2026-09-25
 ---
 
 # Promises How-To & Style Guide
@@ -61,7 +61,7 @@ This mirrors the web `fetch()` convention so `.catch` stays meaningful:
 | `2xx` response | `.then(res)` | success; `res.ok = true` |
 | **`4xx` / `5xx` response** | **`.then(res)`** | an HTTP reply *did* arrive; inspect `res.ok` / `res.statusCode`. Expected `404` responses flow as data. |
 | Transport failure (no HTTP reply; `statusCode <= 0`) | `.catch(err)` | the request never completed |
-| Timeout (`timeouts.API_WAIT_MS`) | `.catch(err)` | the pool slot never answered |
+| Timeout (`apiTimeout.waitMs(req)` — `timeouts.API_WAIT_MS` unless the request sets `timeoutMs`) | `.catch(err)` | the pool slot never answered |
 | Pool unavailable / invalid `req` | `.catch(err)` | nothing was submitted |
 
 So **`.then` is not "success"** — it's "the server answered." Branch on `res.ok` inside `.then`
