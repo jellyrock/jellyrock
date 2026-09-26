@@ -156,9 +156,12 @@ Home's rows fill from several independent tasks, so no single handler is its pai
 What that definition does and does not say:
 
 - **A row "lands" when its answer arrives: data, an empty result, or a failure.** A failed
-  latest row keeps its skeleton on screen but still counts as landed. The wait is over, and
-  counting it as open would leave Home unsettled forever.
-- **Paint is not decided before the libraries answer.** Until then the latest-media rows are
+  row stays on screen (showing its "couldn't load" tile if it had no items yet) but still
+  counts as landed. The wait is over, and counting it as open would leave Home unsettled
+  forever.
+- **Paint is not decided before the libraries answer.** A failed libraries load is not an
+  answer here: when the first one fails, paint waits for a later load that succeeds. Until
+  then the latest-media rows are
   not in the list, so the span would describe rows about to be pushed down.
 - **The third row of the span is only partly on screen** on a 1080p Stick 4K: row 2 starts at
   y≈882 with the default section order. The span is the app's definition of the viewport,

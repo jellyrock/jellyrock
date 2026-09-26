@@ -65,6 +65,28 @@ namespace tests
       m.assertEqual(m.libIdsOf(drained.ready), ["a", "c"])
     end function
 
+    @it("hands a failed row's libId back, so its loading tile can say it failed")
+    function _()
+      task = m.makeResults([
+        { libId: "a", items: [], status: "ok" }
+        { libId: "b", items: [], status: "failed" }
+        { libId: "c", items: [], status: "failed" }
+      ])
+
+      drained = latestRows.drainReady(task, 0, m.makeClock())
+
+      m.assertEqual(drained.failed, ["b", "c"])
+    end function
+
+    @it("returns no failed libIds when every row answered")
+    function _()
+      task = m.makeResults([{ libId: "a", items: [], status: "ok" }])
+
+      drained = latestRows.drainReady(task, 0, m.makeClock())
+
+      m.assertEqual(drained.failed, [])
+    end function
+
     @it("advances the cursor past skipped rows so they aren't revisited")
     function _()
       task = m.makeResults([
@@ -88,6 +110,7 @@ namespace tests
       drained = latestRows.drainReady(task, 0, m.makeClock())
 
       m.assertEqual(drained.ready.count(), 0)
+      m.assertEqual(drained.failed, ["a"])
       m.assertEqual(drained.nextIndex, 1)
     end function
 
@@ -310,6 +333,46 @@ namespace tests
     @it("treats no answer as failed")
     function _()
       m.assertInvalid(latestRows.itemsFromResponse(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("runLibraries - which rows a run loads")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("loads every library that gets a latest row, in row order")
+    function _()
+      libs = [
+        { id: "a", collectionType: "movies" }
+        { id: "b", collectionType: "boxsets" }
+        { id: "c", collectionType: "tvshows" }
+        { id: "d", collectionType: "livetv" }
+        { id: "e", collectionType: "Program" }
+      ]
+
+      m.assertEqual(latestRows.runLibraries(libs, invalid), [{ id: "a" }, { id: "c" }])
+    end function
+
+    @it("loads only the retried rows when given their ids, still in row order")
+    function _()
+      libs = [
+        { id: "a", collectionType: "movies" }
+        { id: "b", collectionType: "music" }
+        { id: "c", collectionType: "tvshows" }
+      ]
+
+      m.assertEqual(latestRows.runLibraries(libs, ["c", "a"]), [{ id: "a" }, { id: "c" }])
+    end function
+
+    @it("never retries a library that gets no latest row")
+    function _()
+      libs = [{ id: "b", collectionType: "boxsets" }]
+
+      m.assertEqual(latestRows.runLibraries(libs, ["b"]), [])
+    end function
+
+    @it("loads nothing without libraries")
+    function _()
+      m.assertEqual(latestRows.runLibraries(invalid, invalid), [])
     end function
 
   end class

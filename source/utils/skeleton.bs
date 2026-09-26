@@ -31,6 +31,26 @@ namespace skeleton
     return node.type = skeleton.PLACEHOLDER_TYPE
   end function
 
+  ' Builds the placeholder a row shows when its first load FAILED: drawn as a "couldn't
+  ' load" tile instead of a spinner, so a failure does not read as still loading.
+  '
+  ' Still a placeholder to isPlaceholder(), on purpose: every guard that keeps a skeleton
+  ' out of selection, quick play and the media render path keeps this one out too. Only a
+  ' site that means to treat the failure differently asks isFailedPlaceholder().
+  function createFailedPlaceholder() as object
+    placeholder = CreateObject("roSGNode", "ContentNode")
+    placeholder.addFields({ type: skeleton.PLACEHOLDER_TYPE, loadFailed: true })
+    return placeholder
+  end function
+
+  ' True when `node` is a placeholder whose load failed (createFailedPlaceholder). Safe on
+  ' invalid and on nodes with no `loadFailed` field.
+  function isFailedPlaceholder(node as dynamic) as boolean
+    if not skeleton.isPlaceholder(node) then return false
+    failed = node.loadFailed
+    return isValid(failed) and failed = true
+  end function
+
   ' Diameter of the spinner graphic, in px. Small enough to read as "this cell is
   ' waiting" rather than as content in its own right.
   const SPINNER_SIZE = 48
