@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-26 — fix: Release live streams left mid-open, and wait for slow channels
 - 2026-09-26 — fix(home): Tell a failed Favorites load from an empty one; OK retries
 - 2026-09-26 — fix(home): Tell failed Home rows from empty ones; OK retries
 - 2026-09-26 — fix: Close a Live TV stream that never started playing
