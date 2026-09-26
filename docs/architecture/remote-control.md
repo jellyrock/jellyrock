@@ -15,7 +15,7 @@ related-files:
   - source/api/userAuth.bs
   - components/home/Home.bs
   - docs/architecture/remote-control-longpoll-contract.md
-last-reviewed: 2026-09-21
+last-reviewed: 2026-09-26
 ---
 
 # Remote control — "Cast to JellyRock"
@@ -97,7 +97,10 @@ it needs the session token. It is:
 
 - **Started** (`control="RUN"`) post-login from `Home.isFirstRun` (alongside the capabilities POST and
   the cold-launch pairing report — see below). `isFirstRun` is per-Home-instance, so it restarts on each
-  fresh login (including after a server switch).
+  fresh login (including after a server switch). The node is app-wide and never replaced: `main.bs`
+  observes its `dispatchCommand` once at startup, so a new node would go unheard. A new Home instance
+  with no sign-out since the last one relaunches it while it runs, which Roku ignores, leaving the one
+  receiver listening — the `no-same-node-relaunch` suppression on that launch records this.
 - **Stopped** (`control="STOP"`) in `SignOut` (`source/api/userAuth.bs`) — the single logout +
   server-switch chokepoint (a server switch runs `SignOut(false)` via `performServerSwitch`), so the
   socket never survives a session teardown. Sign-out stops the receiver first, then the live
