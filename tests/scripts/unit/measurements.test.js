@@ -690,6 +690,66 @@ describe('the cell-load family', () => {
   });
 });
 
+describe('the item-grid-paging family', () => {
+  const paging = measurementById('item-grid-paging');
+
+  /**
+   * Captured off `.176` (512 MB Stick) on 2026-09-25 by PR D's scroll probe, which
+   * `navGridScroll` now replaces. Same one substitution as `CAPTURED` above — the checkout
+   * path — and nothing else: the trailing padding and carriage return are device output.
+   * The second line is from a build before #1046, which did not emit `appendMs`.
+   */
+  const CURRENT =
+    'INFO file:///Users/dev/jellyrock/components/ItemGrid/BaseGridView.bs:1081 item-grid paging - stalls 1 stallMs 70 furthestRow 107 appendMs 262 appendMaxMs 34 pages 8 items 800 pageMs 1360  \r';
+  const BEFORE_1046 =
+    'INFO file:///Users/dev/jellyrock/components/ItemGrid/BaseGridView.bs:1024 item-grid paging - stalls 5 stallMs 4532 furthestRow 84 pages 7 items 700 pageMs 3316  \r';
+
+  it('reads every field off a device line', () => {
+    expect(matchLine(paging, CURRENT).fields).toEqual({
+      stalls: 1,
+      stallMs: 70,
+      furthestRow: 107,
+      appendMs: 262,
+      appendMaxMs: 34,
+      pages: 8,
+      items: 800,
+      pageMs: 1360,
+    });
+  });
+
+  it('still parses a line from a build before appendMs existed', () => {
+    const { fields } = matchLine(paging, BEFORE_1046);
+    expect(fields).toEqual({
+      stalls: 5,
+      stallMs: 4532,
+      furthestRow: 84,
+      pages: 7,
+      items: 700,
+      pageMs: 3316,
+    });
+  });
+
+  it('makes one complete sample per grid session', () => {
+    const samples = assembleSamples(paging, [BEFORE_1046, ...NOISE, CURRENT]);
+    expect(samples).toHaveLength(2);
+    expect(samples.every((s) => s.complete)).toBe(true);
+  });
+
+  it('is not matched by the per-page item-grid line, nor matches it', () => {
+    const load =
+      'item-grid load done - items 100 genreFetches 0 firstPaint -1 handoff 140 [debug=false perfTiming=true] task 900 wait 300 emit 600';
+    expect(matchLine(paging, load)).toBeNull();
+    expect(matchLine(measurementById('item-grid'), CURRENT)).toBeNull();
+  });
+
+  it('files the outcomes as counts, so none is headlined in ms', () => {
+    for (const field of ['stalls', 'furthestRow', 'pages', 'items']) {
+      expect(unitFor(field, paging), field).toBe('');
+    }
+    expect(unitFor('stallMs', paging)).toBe('ms');
+  });
+});
+
 describe('splitWorkload', () => {
   it('separates what the run had to DO from how long it took', () => {
     const [first] = assembleSamples(home, CAPTURED);
@@ -812,7 +872,8 @@ describe('the registry itself', () => {
     // sample, six components). `item-grid` flipped 2026-08-19, and was last because
     // reaching any library grid needs `--library <id>` on a server with more than one
     // library of a type — two runs were blocked by that ambiguity before one landed
-    // 5/5 cold samples.
+    // 5/5 cold samples. `item-grid-paging` flipped 2026-09-26 on `--nav gridScroll` series
+    // from `.176` and `.177`, every sample complete.
     for (const m of MEASUREMENTS) {
       expect(m.grounded, `${m.id} should be grounded`).toBe(true);
     }

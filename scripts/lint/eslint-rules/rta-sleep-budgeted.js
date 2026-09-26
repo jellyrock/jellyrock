@@ -78,7 +78,10 @@ export const BUDGETS = new Map([
   // `sendText` now gates on the search keyboard holding focus, and the one before the
   // first OSD press went away with `waitOsdUp`, whose own state gate already established
   // the app's precondition for accepting that key.
-  ['tests/rta/lib/nav.js', 10],
+  // Plus 2 measurement windows (see that category below): `navGridScroll`'s rest before its
+  // timed scroll and its drain after, which fix the workload the `item-grid-paging` line is
+  // read against — gating either on a signal would change what is measured.
+  ['tests/rta/lib/nav.js', 12],
   ['scripts/capture-screenshots.js', 1],
 
   // Timer-window waits: out-wait a period to prove a NON-EVENT (a dialog that must

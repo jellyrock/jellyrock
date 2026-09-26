@@ -55,6 +55,7 @@ import {
   navCellSweepGrid,
   navCellSweepExtras,
   navCellSweepSearch,
+  navGridScroll,
   navSubtitlePanel,
 } from './lib/nav.js';
 
@@ -434,6 +435,13 @@ export const SCREENS = [
   // No `view`: search depends on server CONTENT matching RTA_CONFIG.searchQuery, not on a
   // library landing — same as the `search` and `searchReturn` entries above.
   { name: 'cellSweepSearch', state: 'home', nav: navCellSweepSearch },
+
+  // --- Grid paging workload: `npm run measure -- --measurement item-grid-paging --nav gridScroll` ---
+  // A timed scroll through a library grid: did the user end up waiting at the last loaded row?
+  // Runs in the suite like every nav here, so a nav that breaks goes red rather than rotting —
+  // the probe it replaces was deleted and could not be re-run. `view` for the same reason as
+  // the cell sweeps above.
+  { name: 'gridScroll', state: 'home', nav: navGridScroll, view: MOVIES_GRID },
 
   // --- Library grids: one screen per VIEW per library type --------------------
   // The landing view is seeded deterministically (display.<id>.landing) so the

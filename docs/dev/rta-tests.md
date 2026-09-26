@@ -25,7 +25,7 @@ related-files:
   - scripts/flake-baseline.js
   - tests/rta/demos/run.mjs
   - .github/workflows/rta-functional-tests.yml
-last-reviewed: 2026-09-24
+last-reviewed: 2026-09-26
 ---
 
 # RTA functional tests (`tests/rta/`)
@@ -961,13 +961,17 @@ case object, with no Vitest `TestContext`, so a case has no way to skip itself o
 Some entries in `SCREENS` are not screens at all — they are round trips that end back where
 they started, and a screenshot of one would just show Home. They are in the registry because
 [`scripts/measure.js`](../../scripts/measure.js) resolves `--nav` out of it, so a measurement
-`nav` has nowhere else to live. Two families exist today:
+`nav` has nowhere else to live. Three families exist today:
 
 - **Retained-view round trips** — `homeReturn`, `homeReturnAfterDetails`, `searchReturn`.
 - **Cell sweeps** — `cellSweepHome`, `cellSweepGrid`, `cellSweepExtras`, `cellSweepSearch`.
   Each opens a cell-bearing screen, travels a FIXED distance through it, waits for its
   cell-load counters to stop moving, and leaves; leaving is what makes the counters publish.
   See [measuring-performance.md](measuring-performance.md#cell-workloads--how-much-work-did-the-cells-do).
+- **Grid paging** — `gridScroll`. A TIMED scroll through the Movies grid (Down every 150 ms
+  for 20 s, not a walk), so it can out-run the loaded rows the way a user holding Down does;
+  leaving emits the grid's `item-grid paging` line. See
+  [home-first-paint-performance.md](home-first-paint-performance.md#grid-paging--did-the-user-wait-at-the-last-loaded-row).
 
 They carry no `capture`, and they still become functional tests — which is a feature, since
 a workload that can no longer drive its screen is a navigation regression like any other.

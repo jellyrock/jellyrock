@@ -1944,3 +1944,61 @@ export async function navCellSweepSearch() {
   await press(ecp.Key.Back);
   await waitHome();
 }
+
+/**
+ * The itinerary of `navGridScroll`, and the denominator its `item-grid paging` line is read
+ * against. These are PR D's (#1046) probe values, kept exactly so that a run of this nav
+ * compares with the figures recorded then (`docs/dev/home-first-paint-performance.md`,
+ * "Grid paging").
+ *
+ * - `restMs` — at rest on the loaded grid before the first press: the runway's "one screen
+ *   ahead at rest" gets to load.
+ * - `pressEveryMs` — the sleep AFTER each Down, not a schedule: the cadence is this plus one
+ *   ECP round trip, which is what the recorded runs pressed at.
+ * - `scrollMs` — how long Down is pressed.
+ * - `drainMs` — after the last press, so a page already in flight lands inside the session
+ *   rather than being cut off by Back.
+ */
+const GRID_SCROLL = Object.freeze({
+  restMs: 3000,
+  pressEveryMs: 150,
+  scrollMs: 20000,
+  drainMs: 3000,
+});
+
+/**
+ * home -> Movies grid -> press Down on a timer -> back, which destroys the grid and emits
+ * `BaseGridView`'s `item-grid paging` line (the `item-grid-paging` family).
+ *
+ * Timed presses, not a `scrollFocus` walk, and that is the point of it: a walk waits for focus
+ * to arrive before pressing again, so it can never out-run the loaded rows and would measure
+ * zero stalls on any build. A user holding Down does not wait, and neither does this. Presses
+ * at the last loaded row go nowhere, so `furthestRow` is an outcome of the run, not an input.
+ *
+ * The presses start only once focus is inside the grid — a press before that goes to whatever
+ * holds focus, and the scroll would be shorter than the itinerary says.
+ */
+export async function navGridScroll(ctx) {
+  await navLibraryGrid(ctx);
+  await waitFocusInside('#itemGrid');
+  await sleep(GRID_SCROLL.restMs);
+  let presses = 0;
+  const end = Date.now() + GRID_SCROLL.scrollMs;
+  while (Date.now() < end) {
+    await press(ecp.Key.Down);
+    presses++;
+    await sleep(GRID_SCROLL.pressEveryMs);
+  }
+  await sleep(GRID_SCROLL.drainMs);
+  // `itemFocused` reports only where a scroll stops, and it has stopped.
+  const [focused, columns] = await getActiveVals(['#itemGrid.itemFocused', '#itemGrid.numColumns']);
+  const row =
+    typeof focused === 'number' && typeof columns === 'number' && columns > 0
+      ? Math.floor(focused / columns)
+      : '?';
+  console.log(
+    `[nav] gridScroll: ${presses} Down presses over ${GRID_SCROLL.scrollMs / 1000} s; focus came to rest on row ${row}`,
+  );
+  await press(ecp.Key.Back);
+  await waitHome();
+}
