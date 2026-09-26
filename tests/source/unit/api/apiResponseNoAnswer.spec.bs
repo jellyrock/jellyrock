@@ -1,0 +1,53 @@
+import "pkg:/source/api/apiResponse.bs"
+
+namespace tests
+
+  ' apiResponse.noAnswer — whether a request got no answer at all, as opposed to a refusal. A
+  ' Live TV open that got no answer may still be opening the stream on the server, so its
+  ' message says the channel took too long rather than that the server refused
+  ' (LoadVideoContentTask). The shapes are the pool's, as in apiResponseJsonFailure.spec.bs.
+  @suite("apiResponse - noAnswer")
+  class ApiResponseNoAnswerTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("no answer")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is no answer when the caller's wait ran out")
+    function _()
+      m.assertTrue(apiResponse.noAnswer(invalid))
+    end function
+
+    @it("is no answer when roku-requests gave up waiting")
+    function _()
+      m.assertTrue(apiResponse.noAnswer({ ok: false }))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("an answer")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is an answer when the reply is ok")
+    function _()
+      m.assertFalse(apiResponse.noAnswer({ ok: true, statusCode: 200, json: {} }))
+    end function
+
+    @it("is an answer when the server refused")
+    function _()
+      m.assertFalse(apiResponse.noAnswer({ ok: false, statusCode: 500 }))
+    end function
+
+    @it("is an answer when the connection failed or the request was never sent")
+    function _()
+      m.assertFalse(apiResponse.noAnswer({ ok: false, statusCode: -7 }))
+      m.assertFalse(apiResponse.noAnswer({ ok: false, statusCode: 0 }))
+    end function
+
+    @it("is an answer when the pool dropped a read nobody was waiting for")
+    function _()
+      m.assertFalse(apiResponse.noAnswer({ ok: false, error: apiResponse.ERROR_ABANDONED }))
+    end function
+
+  end class
+
+end namespace

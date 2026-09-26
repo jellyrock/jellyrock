@@ -53,6 +53,18 @@ namespace timeouts
   ' per playlist GET, so 3 s is ~3.7x the slowest seen anywhere.
   const LIVE_UPSTREAM_PREFLIGHT_MS = 3000
 
+  ' HTTP limit for the PlaybackInfo request that opens a Live TV channel's live stream
+  ' (LoadVideoContentTask). The server opens the stream whether or not the client is still
+  ' waiting, and only its answer names the stream, so a client that gives up first leaves the
+  ' stream, and on a tuner-limited server a tuner, open until the server restarts. So the app
+  ' waits as long as the server itself can take. Measured 2026-09-26 on 10.7.7, 10.11.11 and
+  ' 12.1.0: the server gives up on a source that never answers after its own 100 s
+  ' (HttpClient.Timeout), and answered a source that responded at 95 s after 98.5-99.5 s,
+  ' including the probe it runs on a channel's first open (>= 3 s by design). A source that
+  ' answers but sends no data keeps the server waiting with no limit at all, and never yields a
+  ' stream id; a longer limit would only hold a pool slot longer.
+  const LIVE_OPEN_MS = 120000
+
   ' Fallback-font scale measurement wait (main.bs calculateFontScaleFactor).
   ' A safety net for a task that never reports, not an expected duration — it measures two
   ' labels. Blocks the main thread during bootstrap, so it is not larger.

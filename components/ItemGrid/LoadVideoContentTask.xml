@@ -34,5 +34,12 @@
     <!-- User-facing error message set by the task on failure. Read by VideoPlayerView in
          onVideoContentLoaded() to show a specific error dialog instead of the generic fallback. -->
     <field id="errorMsg" type="string" value="" />
+    <!-- The Live TV live stream this run opened: { stage, id }, stage a LiveStreamStage. Written
+         by the task, and by VideoPlayerView when it takes or closes the stream, so the stream is
+         released exactly once (source/utils/liveStreamHandoff.bs). -->
+    <field id="liveStream" type="assocarray" />
+    <!-- Set by VideoPlayerView.onDestroy when it leaves a run whose live stream is opening: the
+         run then closes the stream itself once PlaybackInfo answers, and ends. -->
+    <field id="isAbandoned" type="boolean" value="false" />
   </interface>
 </component>

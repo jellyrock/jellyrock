@@ -8,8 +8,21 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/streamSelection.bs"
 
 function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean)
+  res = ItemPostPlaybackInfoResponse(id, mediaSourceId, audioTrackIndex, subtitleTrackIndex, startTimeTicks, videoMetadata, bypassDoviPreservation, forceTranscoding)
+  if isValid(res) and res.ok then return res.json
+  return invalid
+end function
+
+' ItemPostPlaybackInfo's pool response itself, so a caller can tell an answer that never came
+' (apiResponse.noAnswer) from a refusal.
+'
+' @param {integer} timeoutMs - the request's HTTP limit (apiTimeout); 0 keeps the default
+' @return the pool response AA, or invalid when the caller's wait ran out
+function ItemPostPlaybackInfoResponse(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean, timeoutMs = 0 as integer) as dynamic
   postData = buildPlaybackInfoPostData(mediaSourceId, audioTrackIndex, subtitleTrackIndex, startTimeTicks, videoMetadata, bypassDoviPreservation, forceTranscoding)
-  return fetchJson(GetApi().BuildPostPlaybackInfoRequest(id, postData), "playbackInfo")
+  req = GetApi().BuildPostPlaybackInfoRequest(id, postData)
+  if isValid(req) and timeoutMs > 0 then req.timeoutMs = timeoutMs
+  return fetchRes(req, "playbackInfo")
 end function
 
 ' buildPlaybackInfoPostData: The PlaybackInfo request body, tuned to the version being played.

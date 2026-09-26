@@ -1,22 +1,24 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPipeline.bs"
 import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/apiResponse.bs"
 import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/api/items.bs"
 import "pkg:/source/api/userAuth.bs"
 import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/constants/timeouts.bs"
+import "pkg:/source/enums/LiveStreamStage.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/episodeQueue.bs"
+import "pkg:/source/utils/liveStreamHandoff.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
-import "pkg:/source/utils/playbackEnd.bs"
 import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/subtitles.bs"
@@ -36,6 +38,8 @@ sub loadItems()
   ' Reset per-run fields in case task gets reused
   m.top.isIntro = false
   m.top.errorMsg = ""
+  ' This run has opened no live stream yet (liveStreamHandoff.bs).
+  m.top.liveStream = { stage: LiveStreamStage.NONE, id: "" }
 
   ' Only show preroll once per queue
   if queueManager.callFunc("isPrerollActive")
@@ -201,14 +205,7 @@ function LoadItems_VideoPlayer(id as string, mediaSourceId as dynamic, audioStre
 
   LoadItems_AddVideoContent(video, mediaSourceId, audioStreamIdx, forceTranscoding, bypassDoviPreservation)
 
-  if not isValid(video.content)
-    liveStreamId = liveStreamLeftByFailedLoad(video)
-    if liveStreamId <> ""
-      m.log.info("Closing the live stream a failed load opened", "liveStreamId", liveStreamId, "itemId", id)
-      SubmitSideEffect(GetApi().BuildCloseLiveStreamRequest(liveStreamId))
-    end if
-    return invalid
-  end if
+  if not isValid(video.content) then return invalid
 
   return video
 end function
@@ -440,11 +437,48 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   if not isValid(mediaSourceId) then mediaSourceId = video.id
   if isLive then mediaSourceId = ""
 
-  ' Call ItemPostPlaybackInfo ONCE with final subtitleIdx
-  m.playbackInfo = ItemPostPlaybackInfo(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding)
+  ' Call ItemPostPlaybackInfo ONCE with final subtitleIdx. For a live item this request opens the
+  ' live stream, and only its answer names it, so it waits as long as the server itself can take
+  ' (timeouts.LIVE_OPEN_MS), and the stage it is at is recorded for the view (liveStreamHandoff.bs).
+  openLimitMs = 0
+  if isLive
+    openLimitMs = timeouts.LIVE_OPEN_MS
+    m.top.liveStream = { stage: LiveStreamStage.OPENING, id: "" }
+  end if
+  res = ItemPostPlaybackInfoResponse(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, openLimitMs)
+  m.playbackInfo = invalid
+  if isValid(res) and res.ok then m.playbackInfo = res.json
+
+  if isLive
+    liveStreamId = ""
+    if isValid(m.playbackInfo) and isValidAndNotEmpty(m.playbackInfo.MediaSources) and isValid(m.playbackInfo.MediaSources[0])
+      if isValidAndNotEmpty(m.playbackInfo.MediaSources[0].LiveStreamId) then liveStreamId = m.playbackInfo.MediaSources[0].LiveStreamId
+    end if
+    ' OPEN is written BEFORE isAbandoned is read: the view decides between the two on the render
+    ' thread, and this order is what leaves exactly one of us to close the stream.
+    if liveStreamId <> ""
+      m.top.liveStream = { stage: LiveStreamStage.OPEN, id: liveStreamId }
+    else
+      m.top.liveStream = { stage: LiveStreamStage.NONE, id: "" }
+    end if
+    if m.top.isAbandoned
+      ' The viewer left while the stream was opening: nobody will play it.
+      if liveStreamId <> ""
+        m.log.info("Closing the live stream opened for a view that has gone", "liveStreamId", liveStreamId, "itemId", video.id)
+        SubmitSideEffect(GetApi().BuildCloseLiveStreamRequest(liveStreamId))
+      end if
+      video.content = invalid
+      return
+    end if
+  end if
+
   if not isValid(m.playbackInfo)
-    m.log.error("ItemPostPlaybackInfo returned invalid response")
-    m.top.errorMsg = translate(translationKeys.ErrorThereWasAnErrorRetrievingPlayback)
+    m.log.error("PlaybackInfo failed", "cause", apiResponse.jsonFailure(res), "isLive", isLive)
+    if isLive and apiResponse.noAnswer(res)
+      m.top.errorMsg = translate(translationKeys.ErrorThisChannelTookTooLongToStart)
+    else
+      m.top.errorMsg = translate(translationKeys.ErrorThereWasAnErrorRetrievingPlayback)
+    end if
     video.content = invalid
     return
   end if

@@ -1,0 +1,65 @@
+import "pkg:/source/enums/AbandonedLoadAction.bs"
+import "pkg:/source/enums/LiveStreamStage.bs"
+import "pkg:/source/utils/liveStreamHandoff.bs"
+
+namespace tests
+
+  @suite("liveStreamHandoff.bs")
+  class LiveStreamHandoffTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("abandonedLoadActionFor() — what a view's teardown does with its load")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("stops a load that has opened nothing, which then opens nothing")
+    function _()
+      m.assertEqual(abandonedLoadActionFor(invalid), AbandonedLoadAction.STOP)
+      m.assertEqual(abandonedLoadActionFor({}), AbandonedLoadAction.STOP)
+      m.assertEqual(abandonedLoadActionFor({ stage: LiveStreamStage.NONE, id: "" }), AbandonedLoadAction.STOP)
+    end function
+
+    ' Stopping it would lose the only answer that names the stream the server is opening.
+    @it("lets a load whose stream is opening finish, so it can close the stream itself")
+    function _()
+      m.assertEqual(abandonedLoadActionFor({ stage: LiveStreamStage.OPENING, id: "" }), AbandonedLoadAction.FINISH_OPENING)
+    end function
+
+    @it("closes the stream a load holds, and stops it")
+    function _()
+      m.assertEqual(abandonedLoadActionFor({ stage: LiveStreamStage.OPEN, id: "live-stream-1" }), AbandonedLoadAction.CLOSE_AND_STOP)
+    end function
+
+    ' The player releases a stream it took, and a failed load's stream was closed by the view;
+    ' closing either again would end another viewer's shared stream.
+    @it("only stops a load whose stream the player took, or the view already closed")
+    function _()
+      m.assertEqual(abandonedLoadActionFor({ stage: LiveStreamStage.HANDED_OVER, id: "live-stream-1" }), AbandonedLoadAction.STOP)
+      m.assertEqual(abandonedLoadActionFor({ stage: LiveStreamStage.RELEASED, id: "live-stream-1" }), AbandonedLoadAction.STOP)
+    end function
+
+    @it("only stops a load recorded as open with no stream id")
+    function _()
+      m.assertEqual(abandonedLoadActionFor({ stage: LiveStreamStage.OPEN, id: "" }), AbandonedLoadAction.STOP)
+      m.assertEqual(abandonedLoadActionFor({ stage: LiveStreamStage.OPEN }), AbandonedLoadAction.STOP)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("openLiveStreamId() — the stream a load holds and nobody else will release")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("names the stream of an open load")
+    function _()
+      m.assertEqual(openLiveStreamId({ stage: LiveStreamStage.OPEN, id: "live-stream-1" }), "live-stream-1")
+    end function
+
+    @it("names nothing at any other stage")
+    function _()
+      for each stage in [LiveStreamStage.NONE, LiveStreamStage.OPENING, LiveStreamStage.HANDED_OVER, LiveStreamStage.RELEASED]
+        m.assertEqual(openLiveStreamId({ stage: stage, id: "live-stream-1" }), "", stage)
+      end for
+      m.assertEqual(openLiveStreamId(invalid), "")
+    end function
+
+  end class
+
+end namespace

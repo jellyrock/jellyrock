@@ -4,7 +4,9 @@ import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/constants/imageSize.bs"
+import "pkg:/source/enums/AbandonedLoadAction.bs"
 import "pkg:/source/enums/BufferCheckAction.bs"
+import "pkg:/source/enums/LiveStreamStage.bs"
 import "pkg:/source/enums/MediaSegmentAction.bs"
 import "pkg:/source/enums/MediaSegmentType.bs"
 import "pkg:/source/enums/PlaybackEndReport.bs"
@@ -14,6 +16,7 @@ import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/bufferStall.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/dialogs.bs"
+import "pkg:/source/utils/liveStreamHandoff.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/mediaSegments.bs"
 import "pkg:/source/utils/misc.bs"
@@ -1081,6 +1084,9 @@ sub onVideoContentLoaded()
   ' report as unmeasurable rather than as the failed playback it was. Same placement, and
   ' the same reason, as the resolve-at-the-top handlers in ItemDetails.bs.
   screenLoad.resolve("metadata")
+  ' Roku does not promise that unobserveField cancels an event already queued, and onDestroy
+  ' has released the load (and closed any stream it held), so a late one must take nothing.
+  if m.isDestroyed = true then return
   m.LoadMetaDataTask.unobserveField("content")
   m.LoadMetaDataTask.control = "STOP"
 
@@ -1088,11 +1094,20 @@ sub onVideoContentLoaded()
 
   videoContent = m.LoadMetaDataTask.content
   m.LoadMetaDataTask.content = []
+  loadedLiveStream = m.LoadMetaDataTask.liveStream
 
   ' If we have nothing to play, show an error dialog and return.
   ' Prefer the task's specific errorMsg (e.g. NoCompatibleStream) over the generic fallback
   ' so the user sees an actionable message rather than a generic one.
   if not isValid(videoContent) or not isValid(videoContent[0])
+    ' A load that opened a live stream and then failed (no transcoding URL, a localhost path it
+    ' cannot rebuild) leaves the stream to us: no player will ever hold it (liveStreamHandoff.bs).
+    failedLiveStreamId = openLiveStreamId(loadedLiveStream)
+    if failedLiveStreamId <> ""
+      m.log.info("Closing the live stream a failed load opened", "liveStreamId", failedLiveStreamId, "itemId", m.top.id)
+      SubmitSideEffect(GetApi().BuildCloseLiveStreamRequest(failedLiveStreamId))
+      m.LoadMetaDataTask.liveStream = { stage: LiveStreamStage.RELEASED, id: failedLiveStreamId }
+    end if
     stopLoadingSpinner()
     taskErrorMsg = m.LoadMetaDataTask.errorMsg
     if isValidAndNotEmpty(taskErrorMsg)
@@ -1102,6 +1117,10 @@ sub onVideoContentLoaded()
     end if
     return
   end if
+
+  ' The player holds the stream now and releases it when its playback ends (reportPlaybackEnd).
+  handedOverId = openLiveStreamId(loadedLiveStream)
+  if handedOverId <> "" then m.LoadMetaDataTask.liveStream = { stage: LiveStreamStage.HANDED_OVER, id: handedOverId }
 
 
   ' From here this player acts on its own `state` and `position` (observed since init).
@@ -2401,6 +2420,28 @@ end function
 
 ' onDestroy: Full teardown releasing all resources before component removal
 ' Called by SceneManager when popping this scene
+' Lets go of the video load when this view goes away, releasing the Live TV live stream it
+' opened exactly once (liveStreamHandoff.bs decides how, from the stage the load recorded).
+'
+' @param {object} task - the LoadVideoContentTask this view ran
+sub releaseVideoLoad(task as object)
+  liveStream = task.liveStream
+  action = abandonedLoadActionFor(liveStream)
+  if action = AbandonedLoadAction.FINISH_OPENING
+    ' Stopping it now would lose the answer that names the stream the server is opening.
+    m.log.info("Leaving a live stream that is still opening to its load to close", "itemId", m.top.id)
+    task.isAbandoned = true
+  else if action = AbandonedLoadAction.CLOSE_AND_STOP
+    ' STOP first: a stopped Task makes no further node access, so it cannot close it as well.
+    task.control = "STOP"
+    liveStreamId = openLiveStreamId(liveStream)
+    m.log.info("Closing the live stream of a load this view left", "liveStreamId", liveStreamId, "itemId", m.top.id)
+    SubmitSideEffect(GetApi().BuildCloseLiveStreamRequest(liveStreamId))
+  else
+    task.control = "STOP"
+  end if
+end sub
+
 sub onDestroy()
   ' Mark torn-down first so any observer that still fires during teardown
   ' (e.g. onPositionChanged from a final engine position update) bails early.
@@ -2448,10 +2489,11 @@ sub onDestroy()
     m.bufferCheckTimer = invalid
   end if
 
-  ' Stop and release task nodes
+  ' Stop and release task nodes. The video load is released by releaseVideoLoad, because a load
+  ' whose live stream is opening must not simply be stopped.
   if isValid(m.LoadMetaDataTask)
-    m.LoadMetaDataTask.control = "STOP"
     m.LoadMetaDataTask.unobserveField("content")
+    releaseVideoLoad(m.LoadMetaDataTask)
     m.LoadMetaDataTask = invalid
   end if
 

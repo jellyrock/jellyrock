@@ -154,31 +154,6 @@ namespace tests
       end for
     end function
 
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("liveStreamLeftByFailedLoad() — a load that opened a live stream and then failed")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("names the live stream a failed load opened")
-    function _()
-      video = { content: invalid, transcodeParams: { LiveStreamId: "live-stream-1" } }
-
-      m.assertEqual(liveStreamLeftByFailedLoad(video), "live-stream-1")
-    end function
-
-    @it("leaves a loaded stream to the player, which closes it")
-    function _()
-      video = { content: CreateObject("roSGNode", "ContentNode"), transcodeParams: { LiveStreamId: "live-stream-1" } }
-
-      m.assertEqual(liveStreamLeftByFailedLoad(video), "")
-    end function
-
-    @it("names nothing when the failed load never opened a live stream")
-    function _()
-      m.assertEqual(liveStreamLeftByFailedLoad({ content: invalid }), "")
-      m.assertEqual(liveStreamLeftByFailedLoad({ content: invalid, transcodeParams: { LiveStreamId: invalid } }), "")
-      m.assertEqual(liveStreamLeftByFailedLoad({ content: invalid, transcodeParams: { LiveStreamId: "" } }), "")
-    end function
-
   end class
 
 end namespace

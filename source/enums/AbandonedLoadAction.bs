@@ -1,0 +1,12 @@
+' What VideoPlayerView.onDestroy does with the video load it leaves behind
+' (abandonedLoadActionFor in source/utils/liveStreamHandoff.bs).
+enum AbandonedLoadAction
+  ' Stop it. A stopped Task makes no further node access, so it opens nothing and changes
+  ' nothing more.
+  stop = "stop"
+  ' Let its PlaybackInfo finish, because only that answer names the stream the server is
+  ' opening. The load is marked abandoned, so it closes the stream and ends.
+  FINISH_OPENING = "finishOpening"
+  ' Close the stream the load holds, and stop it.
+  CLOSE_AND_STOP = "closeAndStop"
+end enum
