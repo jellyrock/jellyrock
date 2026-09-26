@@ -714,6 +714,46 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("BuildCloseLiveStreamRequest() - releases one consumer of a live stream")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("POSTs /LiveStreams/Close with the id in the query, on both API versions")
+    function _()
+      for each version in [1, 2]
+        m.setApiVersion(version)
+
+        result = m.apiClient.BuildCloseLiveStreamRequest("live-stream-789")
+
+        m.assertEqual(result.method, "POST", "v" + version.toStr())
+        m.assertTrue(result.url.inStr("/LiveStreams/Close?") >= 0, "v" + version.toStr() + " should use /LiveStreams/Close")
+        m.assertTrue(result.url.inStr("live-stream-789") >= 0, "v" + version.toStr() + " should carry the id")
+      end for
+      m.setApiVersion(2)
+    end function
+
+    ' A close changes server state, so the pool must deliver it even though nobody waits
+    ' for the answer (apiRequestIsSkippable).
+    @it("is not skippable")
+    function _()
+      m.assertFalse(apiRequestIsSkippable(m.apiClient.BuildCloseLiveStreamRequest("live-stream-789")))
+    end function
+
+    @it("returns invalid for an empty id, rather than a close the server rejects")
+    function _()
+      m.assertInvalid(m.apiClient.BuildCloseLiveStreamRequest(""))
+    end function
+
+    @it("returns invalid when serverUrl is empty")
+    function _()
+      m.global.server.serverUrl = ""
+
+      result = m.apiClient.BuildCloseLiveStreamRequest("live-stream-789")
+
+      m.setupMockServer()
+      m.assertInvalid(result)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Per-version resume requests")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

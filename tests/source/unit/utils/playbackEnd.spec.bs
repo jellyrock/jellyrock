@@ -81,6 +81,60 @@ namespace tests
       m.assertEqual(classifyPlaybackEnd("finished", false, false, true), PlaybackEndReport.FINISHED)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("endClosesLiveStream() — a live stream the server never linked to this session")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("closes a live stream that ended without reporting its start")
+    function _()
+      for each report in [PlaybackEndReport.FAILED, PlaybackEndReport.FINISHED]
+        m.assertTrue(endClosesLiveStream(report, false, "live-stream-1"), report)
+      end for
+    end function
+
+    @it("never closes a live stream that reported its start, because its stop already released it")
+    function _()
+      for each report in [PlaybackEndReport.STOPPED, PlaybackEndReport.FINISHED, PlaybackEndReport.FAILED]
+        m.assertFalse(endClosesLiveStream(report, true, "live-stream-1"), report)
+      end for
+    end function
+
+    @it("closes nothing when no end is reported")
+    function _()
+      m.assertFalse(endClosesLiveStream(PlaybackEndReport.NONE, false, "live-stream-1"))
+    end function
+
+    @it("closes nothing for a stream with no live stream id")
+    function _()
+      m.assertFalse(endClosesLiveStream(PlaybackEndReport.FAILED, false, invalid))
+      m.assertFalse(endClosesLiveStream(PlaybackEndReport.FAILED, false, ""))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("liveStreamLeftByFailedLoad() — a load that opened a live stream and then failed")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("names the live stream a failed load opened")
+    function _()
+      video = { content: invalid, transcodeParams: { LiveStreamId: "live-stream-1" } }
+
+      m.assertEqual(liveStreamLeftByFailedLoad(video), "live-stream-1")
+    end function
+
+    @it("leaves a loaded stream to the player, which closes it")
+    function _()
+      video = { content: CreateObject("roSGNode", "ContentNode"), transcodeParams: { LiveStreamId: "live-stream-1" } }
+
+      m.assertEqual(liveStreamLeftByFailedLoad(video), "")
+    end function
+
+    @it("names nothing when the failed load never opened a live stream")
+    function _()
+      m.assertEqual(liveStreamLeftByFailedLoad({ content: invalid }), "")
+      m.assertEqual(liveStreamLeftByFailedLoad({ content: invalid, transcodeParams: { LiveStreamId: invalid } }), "")
+      m.assertEqual(liveStreamLeftByFailedLoad({ content: invalid, transcodeParams: { LiveStreamId: "" } }), "")
+    end function
+
   end class
 
 end namespace

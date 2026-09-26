@@ -2001,10 +2001,12 @@ sub reportPlayback(state = "update" as string)
 end sub
 
 ' Report the end of this stream, once (classifyPlaybackEnd decides which report, if any). Every end
-' needs one: the stop is also what stops the server's transcode and closes a Live TV live stream,
-' which a terminal `error` would otherwise leave open until the server restarts, since onState
-' ignores every later state (#988). Once per stream, because a stop can also surface as
-' `finished`, and the server records each report as its own "finished playing".
+' needs one: the stop is also what stops the server's transcode and closes a Live TV live stream
+' this session reported playing, which a terminal `error` would otherwise leave open until the
+' server restarts, since onState ignores every later state (#988). A live stream that never
+' reported its start is closed by id as well, because its stop cannot close it
+' (endClosesLiveStream). Once per stream, because a stop can also surface as `finished`, and the
+' server records each report as its own "finished playing".
 '
 ' @param {string} playerState - the Video state that ended the stream: stopped, finished or error
 sub reportPlaybackEnd(playerState as string)
@@ -2015,6 +2017,15 @@ sub reportPlaybackEnd(playerState as string)
   else
     submitPlaybackReport("stop", report = PlaybackEndReport.FAILED)
   end if
+
+  ' The same id the stop names, so the close and the stop always agree on which stream is live.
+  liveStreamId = invalid
+  if isLiveTvPlayback() and isValid(m.top.transcodeParams) then liveStreamId = m.top.transcodeParams.LiveStreamId
+  if endClosesLiveStream(report, m.isPlayReported, liveStreamId)
+    m.log.info("Closing a live stream that never reported its start", "itemId", m.top.id, "playerState", playerState)
+    SubmitSideEffect(GetApi().BuildCloseLiveStreamRequest(liveStreamId))
+  end if
+
   m.isPlayReported = false
   m.isEndReported = true
 end sub
