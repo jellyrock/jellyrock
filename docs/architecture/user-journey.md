@@ -217,18 +217,20 @@ The pick is what the items the queue arrives at next keep to (see [playback.md �
 
 The queue is populated **before** navigation — `PlayerHostView` reads it on mount, so the route `:type`/`:id` are just a deep-link identity; the queue is the source of truth.
 
-**Multi-item / unknown-shape play** (Series Play, Shuffle a collection, etc.) sets `quickPlayNode`:
+**Multi-item play** (Play on a `Series`, `Season`, `BoxSet`, `MusicArtist`, `MusicAlbum` or `Playlist` — `isPlayAllType()`) hands the expansion to the queue manager: `onDetailNavButton` calls `QueueManager.launchQuickPlayAction({ action: "playAll" + type, … })`, whose `QuickPlayTask` builds the queue (step 7). Shuffle goes the same way through `launchShuffle` (`launchPhotoAlbum` for a photo album).
+
+**An extras item with no route of its own** (`onExtrasItemSelected`, or the remote's Play key on a focused tile) sets `quickPlayNode`:
 
 ```brightscript
-m.top.quickPlayNode = content[0]
+m.top.quickPlayNode = m.extrasGrid.focusedItem
 m.top.quickPlayNode = invalid              ' set-then-clear: forces event to fire even if value is identical
 ```
 
-`ItemDetails` observes its **own** `quickPlayNode` (`ItemDetails.bs:206`) and forwards it to `onQuickPlayLaunch` → `QueueManager.launchItem` — the `main.bs` relay that used to read it is gone, because the launch now happens on the render thread where `sgrouter` resolves.
+`ItemDetails` observes its **own** `quickPlayNode` (registered in `init()`) and forwards it to `onQuickPlayLaunch` → `QueueManager.launchItem` — the `main.bs` relay that used to read it is gone, because the launch now happens on the render thread where `sgrouter` resolves.
 
 ### The set-then-clear pattern
 
-This appears in several places in `ItemDetails.bs`. The trick: `SceneGraph`'s `observeField` only fires when a field's *value* changes. If the user plays the same item twice in a row, setting `quickPlayNode = content[0]` the second time wouldn't fire — the value didn't change. Setting to `invalid` immediately afterward guarantees the next set fires. The self-observer reads `msg.getData()` (the value at event-queue time) rather than the current field value (which is `invalid` by the time the handler runs). It's unusual enough that anyone touching `quickPlayNode` for the first time has to read this to understand it.
+This appears in several places in `ItemDetails.bs`. The trick: `SceneGraph`'s `observeField` only fires when a field's *value* changes. If the user plays the same item twice in a row, setting `quickPlayNode` to the same node the second time wouldn't fire — the value didn't change. Setting to `invalid` immediately afterward guarantees the next set fires. The self-observer reads `msg.getData()` (the value at event-queue time) rather than the current field value (which is `invalid` by the time the handler runs). It's unusual enough that anyone touching `quickPlayNode` for the first time has to read this to understand it.
 
 ## 7. Quickplay dispatch — `QueueManager.launchItem`
 
