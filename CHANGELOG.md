@@ -7,8 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- (grid) Keep large libraries loading as fast as you scroll ([#1046](https://github.com/jellyrock/jellyrock/pull/1046))
+
 ### Fixed
 
+- (audio) Show the right song's title and artwork after a skip ([#1045](https://github.com/jellyrock/jellyrock/pull/1045))
 - (grid) Wait for slow libraries, say so, and let Back stop the load ([#1043](https://github.com/jellyrock/jellyrock/pull/1043))
 - Load libraries as you scroll, say "Loading more", page "#" fully ([#1040](https://github.com/jellyrock/jellyrock/pull/1040))
 - Show a library that failed to load as failed, and recover from it ([#1033](https://github.com/jellyrock/jellyrock/pull/1033))
