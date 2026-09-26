@@ -319,6 +319,18 @@
       ]
     },
     {
+      "path": "/LiveStreams/Close",
+      "normalized": "/livestreams/close",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
       "path": "/livetv/channels",
       "normalized": "/livetv/channels",
       "methods": [
@@ -3185,7 +3197,7 @@
       }
     },
     "counts": {
-      "endpoints": 79,
+      "endpoints": 80,
       "requestFields": 41,
       "responseFields": 215,
       "unresolvedEndpointSinks": 2

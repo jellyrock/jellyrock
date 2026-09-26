@@ -1,13 +1,15 @@
 import "pkg:/source/enums/PlaybackEndReport.bs"
+import "pkg:/source/utils/misc.bs"
 
 ' What one end of a stream reports to the server: one report per stream, and only a stream that
 ' played has a position worth saving.
 '
 ' Every end posts to the same stopped endpoint, and the stop does more than save the position:
-' it stops the session's transcode and closes a Live TV live stream. So a stream that never
-' played still reports its end, marked `Failed`. Jellyfin then skips only the user-data write
-' (its OnPlaybackStopped, 10.7.7 through 12.1), where an unmarked stop would save the position
-' the player read before its first frame, usually 0, over the resume point (#969).
+' it stops the session's transcode and releases a Live TV live stream this session reported
+' playing (one it never did is released by a close instead, see endClosesLiveStream). So a
+' stream that never played still reports its end, marked `Failed`. Jellyfin then skips only the
+' user-data write (its OnPlaybackStopped, 10.7.7 through 12.1), where an unmarked stop would save
+' the position the player read before its first frame, usually 0, over the resume point (#969).
 '
 ' @param {string} playerState - the Video state that ended the stream: stopped, finished or error
 ' @param {boolean} isPlayReported - this stream's `start` was reported
@@ -25,4 +27,62 @@ function classifyPlaybackEnd(playerState as string, isPlayReported as boolean, i
   if not isPlayReported then return PlaybackEndReport.FAILED
   if playerState = "finished" then return PlaybackEndReport.FINISHED
   return PlaybackEndReport.STOPPED
+end function
+
+' Whether this end releases the stream's Live TV live stream with a close by id rather than with
+' its stop. Exactly one of the two must release it: each release drops one consumer, and a
+' second one, on a stream the server shares between viewers, ends another viewer's stream.
+'
+' A live stream that never reported its start (a direct play that failed over to transcode, a
+' restart that ended at once, an error before the first frame) cannot rely on its stop, because
+' what the server does with that stop depends on its version and on who else is watching:
+' 10.7–10.10 always release, 10.11 never does (it releases only a session linked by a `start` or
+' progress report, jellyfin#13220), and 12.x does only while no other session is linked
+' (jellyfin#17178). So the close releases it, and the stop does not name the stream
+' (liveStreamReportFields), which leaves it alone on every version. jellyfin-kodi ends every
+' live stream the same way.
+'
+' A stream that did report its start is released by its stop, as the server expects, and never
+' closed here as well.
+'
+' @param {string} report - the PlaybackEndReport this end sends (classifyPlaybackEnd)
+' @param {boolean} isPlayReported - this stream's `start` was reported
+' @param {dynamic} liveStreamId - the stream's LiveStreamId; invalid or empty when it has none
+' @returns {boolean}
+function endClosesLiveStream(report as string, isPlayReported as boolean, liveStreamId as dynamic) as boolean
+  if report = PlaybackEndReport.NONE then return false
+  if isPlayReported then return false
+  return isValidAndNotEmpty(liveStreamId)
+end function
+
+' The Live TV fields a playback report carries. Every report names the media source, and every
+' report names the live stream except the end of one that a close releases (endClosesLiveStream):
+' a stop naming it would release it a second time on the servers that act on it.
+'
+' @param {object} transcodeParams - the stream's MediaSourceId and LiveStreamId
+' @param {boolean} closesLiveStream - this report is an end whose live stream a close releases
+' @returns {object} the fields to append to the report
+function liveStreamReportFields(transcodeParams as object, closesLiveStream as boolean) as object
+  fields = { "MediaSourceId": transcodeParams.MediaSourceId }
+  ' Bracketed, because a dot assignment would send the key lower-cased (`livestreamid`).
+  if not closesLiveStream then fields["LiveStreamId"] = transcodeParams.LiveStreamId
+  return fields
+end function
+
+' The live stream a video load opened and then failed to hand over, or "" when it left none.
+'
+' LoadVideoContentTask asks PlaybackInfo to open a live stream, then can still fail building the
+' stream's URL (no transcoding URL from the server, a localhost path it cannot rebuild, no server
+' URL). The player then shows the error without ever holding the stream, so no end report, and no
+' endClosesLiveStream, can reach it: the load has to close it itself. A load that succeeded hands
+' the stream to the player, which closes it.
+'
+' @param {object} video - the load's own result AA (its `content` is invalid when it failed)
+' @returns {string} the LiveStreamId to close, or ""
+function liveStreamLeftByFailedLoad(video as object) as string
+  if isValid(video.content) then return ""
+  if not isValid(video.transcodeParams) then return ""
+  liveStreamId = video.transcodeParams.LiveStreamId
+  if not isValidAndNotEmpty(liveStreamId) then return ""
+  return liveStreamId
 end function

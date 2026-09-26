@@ -1063,6 +1063,16 @@ class ApiClient
     return m.validatedReq("DELETE", buildURL(Substitute("/LiveTv/SeriesTimers/{0}", timerId)))
   end function
 
+  ' Build a request AA to close a live stream the server opened for PlaybackInfo, for use with
+  ' SubmitSideEffect(). Each close releases one consumer; the server closes the stream when none
+  ' remain. The same endpoint and query on every supported server (10.7.0 through 12.x).
+  ' @param liveStreamId - The media source's LiveStreamId
+  ' @returns Request AA: { method, url } or invalid if the id is empty or no server URL is set
+  function BuildCloseLiveStreamRequest(liveStreamId as string) as dynamic
+    if liveStreamId = "" then return invalid
+    return m.validatedReq("POST", buildURL("/LiveStreams/Close", { liveStreamId: liveStreamId }))
+  end function
+
   ' ═══════════════════════════════════════════════════════════════════════════
   ' PRIVATE HELPERS
   ' ═══════════════════════════════════════════════════════════════════════════
