@@ -14,6 +14,19 @@
  *  - OK on that tile shows the spinner at once and loads the row, even when the libraries
  *    request fails again, and even while the rest of its run is still loading.
  *
+ * The Favorites tab follows the same rule, over its two requests (`favorites`, /Items, for every
+ * row but People; `favoritePeople`, /Persons, for People):
+ *
+ *  - the items load failing on first load shows ONE "Favorites" row with the tile, not a tile
+ *    on every type's row, and OK loads the favorites — before, the tab went blank;
+ *  - People failing alone shows People's tile while the other rows load;
+ *  - OK on People while the items load is still running leaves that load to finish rather
+ *    than sending it again;
+ *  - the items load failing on a refresh keeps the rows' items.
+ *
+ * The Favorites cases need a favorite Movie on the server (the demo user has one); they throw,
+ * not skip, when it is gone, so a thinned fixture is not read as a pass.
+ *
  * A first load only runs when a HomeRows is mounted — at launch, before a spec can set a rule
  * — or when the Home tab is selected again, which mounts a fresh one. So the first-load cases
  * go to Favorites, set the rule, and come back (`selectHomeTab`).
@@ -24,7 +37,7 @@
 import { beforeAll, it, expect } from 'vitest';
 import { ecp, odc } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
-import { authenticate } from '../lib/jellyfin.js';
+import { authenticate, favoriteCount } from '../lib/jellyfin.js';
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
 import { failRequests } from '../lib/failRequests.js';
@@ -244,4 +257,120 @@ it('OK on a failed Recently Added row while the rest are still loading spins it,
     label: `${failedId} loaded after the run ended`,
     timeout: 30000,
   });
+});
+
+/**
+ * The fixture holds what the Favorites cases assert on: at least one favorite Movie. Thrown,
+ * not skipped — a case that loads nothing would pass on the very blank tab it exists to catch.
+ */
+async function assertFavoriteMovie() {
+  const movies = await favoriteCount(session, 'Movie');
+  if (movies < 1)
+    throw new Error(`the server user has no favorite Movie (${RTA_CONFIG.server.url})`);
+}
+
+it('Favorites: the items load failing on first load shows one Favorites row, and OK loads it', async () => {
+  await assertFavoriteMovie();
+  await freshApp();
+  // The Favorites tab's first load runs when the tab is selected, so the rule is set before.
+  await failRequests([{ prefix: 'favorites', kind: 'timeout', times: 1 }]);
+  await selectHomeTab('favorites');
+
+  const failed = await waitHomeRows(
+    (s) => settled(s) && isFailedTile(homeRow(s, 'favoritesStandIn')),
+    { label: 'Favorites settled with the stand-in showing its failed tile' },
+  );
+  // No type's row is left over: at most People, which has its own request.
+  expect(failed.rows.map((r) => r.sectionId).filter((id) => id !== 'Person')).toEqual([
+    'favoritesStandIn',
+  ]);
+
+  await pressOkOnFailedRow('favoritesStandIn', 'favoritesFailedStandIn');
+  await waitHomeRows(
+    (s) => homeRow(s, 'favoritesStandIn') === undefined && hasItems(homeRow(s, 'Movie')),
+    { label: 'the Movies row replaced the stand-in after OK' },
+  );
+});
+
+it('Favorites: People failing alone shows its failed tile while the other rows load', async () => {
+  await assertFavoriteMovie();
+  await freshApp();
+  await failRequests([{ prefix: 'favoritePeople', kind: 'timeout', times: 1 }]);
+  await selectHomeTab('favorites');
+
+  await waitHomeRows(
+    (s) =>
+      settled(s) &&
+      isFailedTile(homeRow(s, 'Person')) &&
+      hasItems(homeRow(s, 'Movie')) &&
+      s.results.favoritePeople?.status === 'failed',
+    { label: 'People showed its failed tile and Movies loaded' },
+  );
+
+  await pressOkOnFailedRow('Person', 'favoritesFailedPeople');
+  const after = await waitHomeRows((s) => (s.results.favoritePeople?.count ?? 0) > 1, {
+    label: "People's retry finished",
+  });
+  expect(after.results.favoritePeople.status).toBe('ok');
+  // An answered People load fills the row or, with no favorite people, removes it.
+  const people = homeRow(after, 'Person');
+  expect(people === undefined || hasItems(people)).toBe(true);
+});
+
+it('Favorites: OK on People while the items load is still running does not send it again', async () => {
+  await assertFavoriteMovie();
+  await freshApp();
+  // People fails at once; the items load is held for 11 s, so it is still running at OK — just
+  // under the 12 s its caller waits for a default-limit answer (timeouts.API_WAIT_MS). `times:
+  // 2` holds a second items request too, so one sent by the retry shows as a second held answer.
+  await failRequests([
+    { prefix: 'favoritePeople', kind: 'http', status: 500, times: 1 },
+    { prefix: 'favorites', kind: 'slow', ms: 11000, times: 2 },
+  ]);
+  await selectHomeTab('favorites');
+
+  const snap = await waitHomeRows(
+    (s) => isFailedTile(homeRow(s, 'Person')) && isSpinning(homeRow(s, 'Movie')),
+    { label: 'People failed while the items load is still running' },
+  );
+  const index = snap.rows.findIndex((r) => r.sectionId === 'Person');
+  expect(index).toBeGreaterThan(-1);
+  await focusHomeRow(index, 'Person');
+  await press(ecp.Key.Ok);
+
+  await waitHomeRows((s) => (s.results.favoritePeople?.count ?? 0) > 1, {
+    label: "People's retry finished",
+  });
+  // Before, OK restarted the items load as well: stopping its Task left the first request on
+  // its pool slot, and a second one went out beside it. 0 would mean the first had already
+  // answered, so the case under test was not reached.
+  expect(await getGlobalVal('rtaHeldRequests')).toBe(1);
+
+  // The held answer is already on its way; anything after it goes at full speed.
+  await failRequests([]);
+  const after = await waitHomeRows((s) => hasItems(homeRow(s, 'Movie')), {
+    label: 'the Movies row loaded from the first items request',
+  });
+  expect(after.results.favorites.count).toBe(1);
+});
+
+it('Favorites: the items load failing on a refresh keeps the rows', async () => {
+  await assertFavoriteMovie();
+  await freshApp();
+  await selectHomeTab('favorites');
+  const loaded = await waitHomeRows(
+    (s) => hasItems(homeRow(s, 'Movie')) && s.results.favorites?.status === 'ok',
+    { label: 'Favorites loaded' },
+  );
+  const before = { rows: loaded.rows, count: loaded.results.favorites.count };
+
+  await failRequests([{ prefix: 'favorites', kind: 'timeout', times: 1 }]);
+  // Home reloads the selected tab on every return to it.
+  await navSearchReturn();
+
+  const after = await waitHomeRows((s) => (s.results.favorites?.count ?? 0) > before.count, {
+    label: "Favorites' refresh finished",
+  });
+  expect(after.results.favorites.status).toBe('failed');
+  expect(after.rows).toEqual(before.rows);
 });

@@ -851,9 +851,9 @@ export async function homeListId({ timeout = 5000, interval = 300 } = {}) {
  * `rows` is one `{ sectionId, items, firstType, loadFailed }` per row, top to bottom: `items`
  * is the row's child count, and `firstType` / `loadFailed` describe its first child, which is
  * how a row still showing a placeholder reads — `firstType: 'Loading'`, with `loadFailed: true`
- * once its load has failed (`skeleton.createFailedPlaceholder`). `results` is `HomeRows`'
- * `rtaSectionResults`, `{ <sectionId>: { status, count } }`, compiled in only under
- * `ENABLE_RTA`: a failed REFRESH deliberately changes nothing on screen, so without it a spec
+ * once its load has failed (`skeleton.createFailedPlaceholder`). `results` is the list's
+ * `rtaSectionResults` (`homeRowFailure.noteResult`), `{ <sectionId>: { status, count } }`,
+ * compiled in only under `ENABLE_RTA` and `{}` until the first load finishes: a failed REFRESH deliberately changes nothing on screen, so without it a spec
  * has no way to know the load it failed has finished.
  *
  * Two round trips: the row count first, then every row's fields in ONE batch, so the rows all

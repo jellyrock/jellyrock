@@ -165,6 +165,31 @@ namespace tests
       m.assertFalse(homeRowFailure.needsLatestMediaStandIn(invalid, false))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("needsFavoritesStandIn - where a failed Favorites items load shows")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is needed on a first load, while the rows are still spinning")
+    function _()
+      states = [homeRowFailure.PLACEHOLDER_LOADING, homeRowFailure.PLACEHOLDER_LOADING]
+      m.assertTrue(homeRowFailure.needsFavoritesStandIn(states, false))
+    end function
+
+    @it("is needed again when a retry of the stand-in fails")
+    function _()
+      m.assertTrue(homeRowFailure.needsFavoritesStandIn([], true))
+    end function
+
+    @it("is not needed when the rows show items, so they keep them")
+    function _()
+      m.assertFalse(homeRowFailure.needsFavoritesStandIn(["", ""], false))
+    end function
+
+    @it("is not needed when no row is on screen")
+    function _()
+      m.assertFalse(homeRowFailure.needsFavoritesStandIn([], false))
+    end function
+
   end class
 
 end namespace
