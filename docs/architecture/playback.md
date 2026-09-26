@@ -39,6 +39,9 @@ related-files:
   - source/enums/BufferCheckAction.bs
   - source/utils/playbackEnd.bs
   - source/enums/PlaybackEndReport.bs
+  - source/utils/liveStreamHandoff.bs
+  - source/enums/LiveStreamStage.bs
+  - source/enums/AbandonedLoadAction.bs
   - source/utils/voiceTransport.bs
   - source/remotecontrol/remoteDispatch.bs
 last-reviewed: 2026-09-26
@@ -516,16 +519,54 @@ an end gets:
   one stream between two sessions: the stop naming the stream plus the close ended the other
   session's stream on every version but 10.11; the stop without it plus the close released
   exactly one consumer on all seven. A stream that did report `start` is released by its stop,
-  as the server expects, and never closed as well. A load that opened a live stream and then
-  failed before handing it to the player (no transcoding URL, a `localhost` path it cannot
-  rebuild) closes it from `LoadVideoContentTask` (`liveStreamLeftByFailedLoad()`), because no
-  end report ever reaches a stream the player never held.
+  as the server expects, and never closed as well. A stream the player never held gets no end
+  report at all; its release is [below](#a-live-stream-the-player-never-held).
 - A stream whose end was already reported sends nothing. A stop can surface as `finished` as
   well as `stopped`, and the server records every stop as its own "finished playing" in the
   activity log. The flag (`m.isEndReported`) resets when a new stream loads and when a `start`
   is sent, since a voice or remote `play` can restart a stopped player without a reload.
 - A force-finish (`forceFinishPlayback`) sets `finished` itself, so the `stopped` its stop
   raises reports nothing and the `finished` carries the end (#914).
+
+#### A live stream the player never held
+
+`LoadVideoContentTask` opens the live stream in `PlaybackInfo` (`AutoOpenLiveStream`), and the
+server opens it whether or not the app is still waiting (`OpenLiveStream(request,
+CancellationToken.None)`, 10.7.7 through 12.1). Only the answer names the stream. So the load
+records how far it has got on its own node, `liveStream` (`LiveStreamStage`: `opening` before
+`PlaybackInfo`, `open` with the id after it), and whoever is left holding the stream releases it
+(`source/utils/liveStreamHandoff.bs`):
+
+| When | Released by |
+|---|---|
+| The player took it | the player, at its end (the rules above); the view marks it `handedOver` |
+| The load failed after opening it (no transcoding URL, a `localhost` path it cannot rebuild) | the view, in `onVideoContentLoaded()`, which marks it `released` |
+| The view went away (Back, a channel switch, a deep link) while the load held it | the view, in `releaseVideoLoad()`: close, then stop the load |
+| The view went away while the stream was opening | the load itself: `releaseVideoLoad()` does not stop it but sets `isAbandoned`, and when `PlaybackInfo` answers the load closes the stream and ends |
+
+Every other load the view leaves is stopped as before, so it opens nothing and changes nothing more
+(the queue changes a load makes all come before `opening`). The two never both close: the load
+closes only when `isAbandoned` is set, and the view sets it only for a load it saw `opening`, and
+then closes nothing itself. They never both leave it either: the load writes `open` before it reads
+`isAbandoned`, and the view reads the stage and sets the flag in one render-thread callback, which
+the load's two node accesses cannot split (assumed from how the render thread serves a Task, not yet
+gated). A load the view stops sends nothing more, because a stopped Task makes no further node
+access: measured 2026-09-26 on a Stick 4K and a 512 MB Stick, 0 writes after `STOP` in 40 of 40
+trials each, gated by `tests/source/unit/platform/TaskStopProgress.spec.bs`.
+
+A live open waits up to `timeouts.LIVE_OPEN_MS` (120 s), not the default 10 s: a channel's first
+open includes the server's probe, a deliberate 3 s wait plus `ffprobe`, on top of any tuning, and a
+client that gives up first leaves the stream open with no id to close. Measured 2026-09-26 on
+10.7.7, 10.11.11 and 12.1.0: a channel whose source answers at once took 3.4 to 4.5 s to open the
+first time; the server gives up on a source that never answers after its own 100 s, and answered a
+source that responded at 95 s after 98.5 to 99.5 s. A source that answers but never sends data
+keeps the server waiting with no limit and never yields a stream id; the app gives up at the limit
+with "This channel took too long to start" (`ErrorThisChannelTookTooLongToStart`, chosen by
+`apiResponse.noAnswer()`). Back works throughout the wait: 0.3 s after the press, with the answer
+held 20 s, from a details screen and from a deep link (Stick 4K, 12.1.0). The wait is paid in a
+pool slot: the pool never stops a POST, so an open holds its slot for the whole wait even after
+Back, and a few opens of a dead source inside two minutes can leave every slot busy (predicted, not
+measured; [ADR 0045](../adr/0045-live-stream-open-handed-off-by-stage.md)).
 
 Every report names the file that is playing as `MediaSourceId` (Live TV sends its own
 `MediaSourceId` / `LiveStreamId` from `transcodeParams`). Servers before Jellyfin 12.0 use it

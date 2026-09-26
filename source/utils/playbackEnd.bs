@@ -68,21 +68,3 @@ function liveStreamReportFields(transcodeParams as object, closesLiveStream as b
   if not closesLiveStream then fields["LiveStreamId"] = transcodeParams.LiveStreamId
   return fields
 end function
-
-' The live stream a video load opened and then failed to hand over, or "" when it left none.
-'
-' LoadVideoContentTask asks PlaybackInfo to open a live stream, then can still fail building the
-' stream's URL (no transcoding URL from the server, a localhost path it cannot rebuild, no server
-' URL). The player then shows the error without ever holding the stream, so no end report, and no
-' endClosesLiveStream, can reach it: the load has to close it itself. A load that succeeded hands
-' the stream to the player, which closes it.
-'
-' @param {object} video - the load's own result AA (its `content` is invalid when it failed)
-' @returns {string} the LiveStreamId to close, or ""
-function liveStreamLeftByFailedLoad(video as object) as string
-  if isValid(video.content) then return ""
-  if not isValid(video.transcodeParams) then return ""
-  liveStreamId = video.transcodeParams.LiveStreamId
-  if not isValidAndNotEmpty(liveStreamId) then return ""
-  return liveStreamId
-end function

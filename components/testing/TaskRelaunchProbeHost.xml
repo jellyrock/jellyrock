@@ -22,5 +22,7 @@
     <function name="launchHeld" />
     <function name="stopHeldLast" />
     <function name="dropHeld" />
+    <function name="deliverThenStop" />
+    <function name="deliver" />
   </interface>
 </component>

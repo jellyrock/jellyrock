@@ -56,3 +56,4 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0042](0042-pr-title-type-places-changelog.md) | A PR title's type decides where the change lands in the changelog | Accepted | 2026-09-24 |
 | [0043](0043-pool-stops-long-reads-of-gone-callers.md) | The API pool stops a long read whose caller has gone (partially supersedes 0040) | Accepted | 2026-09-25 |
 | [0044](0044-spinner-by-kind-of-wait.md) | A loading spinner is started by the kind of wait it covers | Accepted | 2026-09-25 |
+| [0045](0045-live-stream-open-handed-off-by-stage.md) | A live stream's open is handed off by stage, and waits as long as the server can | Accepted | 2026-09-26 |

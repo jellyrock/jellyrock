@@ -1,0 +1,127 @@
+namespace tests
+
+  ' A RECORD of how far a Task's function gets after a STOP it did not see coming, first run on
+  ' a Streaming Stick 4K and a 512 MB Streaming Stick, OS 15.3.4. Every control write happens
+  ' inside TaskRelaunchProbeHost through callFunc, so on the render thread, as the app's are.
+  '
+  ' TaskRelaunch.spec.bs pins a Task already parked in wait() or sleep() when it is stopped.
+  ' These are the two other places a Task the app stops can be:
+  '   - its wait() has just been answered, but the Task thread has not run yet
+  '   - it is running ordinary code, between waits
+  ' In both it makes no further field write: 0 in each of 40 trials per device, 2026-09-26.
+  '
+  ' The app DEPENDS on it: VideoPlayerView.releaseVideoLoad closes a live stream and stops the
+  ' load that holds it, trusting that the stopped load sends nothing more (a request on a stream
+  ' already closed). It does NOT keep the stream from being closed twice: the load closes only
+  ' when the view marked it abandoned, which the view never does for a load it stops
+  ' (source/utils/liveStreamHandoff.bs). If a case here goes red on a firmware change, a stopped
+  ' load can run on after Back.
+  '
+  ' Each case has a control, the same Task NOT stopped, so a gate that could not see a write
+  ' fails instead of passing.
+  '
+  ' NOT covered: OS versions below 15.3.4.
+  @suite("Platform - how far a stopped Task gets")
+  class TaskStopProgressTests extends tests.BaseTestSuite
+
+    ' Polls `node[field]` until it equals `expected` or `timeoutMs` passes; returns the last value.
+    private function waitForValue(node as object, field as string, expected as dynamic, timeoutMs as integer) as dynamic
+      clock = CreateObject("roTimespan")
+      value = node.getField(field)
+      while value <> expected and clock.totalMilliseconds() < timeoutMs
+        sleep(10)
+        value = node.getField(field)
+      end while
+      return value
+    end function
+
+    ' A host whose probe Task is launched in `blockMode` for `blockMs`.
+    private function launchedHost(blockMode as string, blockMs as integer) as object
+      host = CreateObject("roSGNode", "TaskRelaunchProbeHost")
+      host.callFunc("configure", { blockMode: blockMode, blockMs: blockMs, seq: 1 })
+      host.callFunc("launch")
+      return host
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a Task stopped where the app stops its loads")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("makes no field write when its wait() is answered and it is stopped in the same callback")
+    function _()
+      for trial = 1 to 5
+        host = m.launchedHost("wakeOnDelivery", 2000)
+        task = host.getField("task")
+        m.assertTrue(m.waitForValue(task, "parked", true, 2000), "precondition: the task reached its wait()")
+        ' `parked` is written just before the wait(); let the thread reach it.
+        sleep(50)
+
+        host.callFunc("deliverThenStop")
+        sleep(300)
+
+        m.assertEqual(task.steps, 0, "trial " + trial.toStr() + ": the task ran on after STOP")
+      end for
+    end function
+
+    @it("makes no further field write once stopped mid-way through ordinary code")
+    function _()
+      for trial = 1 to 5
+        host = m.launchedHost("busyWrites", 3000)
+        task = host.getField("task")
+        clock = CreateObject("roTimespan")
+        while task.steps < 50 and clock.totalMilliseconds() < 2000
+          sleep(5)
+        end while
+        ' The control: the running Task's writes are seen from here.
+        m.assertTrue(task.steps >= 50, "trial " + trial.toStr() + " precondition: the task was writing")
+
+        host.callFunc("stopTask")
+        atStop = task.steps
+        sleep(300)
+
+        m.assertEqual(task.steps, atStop, "trial " + trial.toStr() + ": the task kept writing after STOP")
+      end for
+    end function
+
+    @it("does not make its next field write when stopped during local work")
+    function _()
+      for trial = 1 to 5
+        host = m.launchedHost("busyLocalThenWrite", 400)
+        task = host.getField("task")
+        m.waitForValue(task, "state", "run", 1000)
+        sleep(100)
+
+        host.callFunc("stopTask")
+        sleep(700)
+
+        m.assertEqual(task.steps, 0, "trial " + trial.toStr() + ": the write after STOP happened")
+      end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("controls: the same Task, not stopped")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("runs on and makes its field writes when its wait() is answered")
+    function _()
+      host = m.launchedHost("wakeOnDelivery", 2000)
+      task = host.getField("task")
+      m.assertTrue(m.waitForValue(task, "parked", true, 2000), "precondition: the task reached its wait()")
+      sleep(50)
+
+      host.callFunc("deliver")
+
+      m.assertEqual(m.waitForValue(task, "steps", 5, 1000), 5, "the answered task did not run on")
+    end function
+
+    @it("makes its field write after local work")
+    function _()
+      host = m.launchedHost("busyLocalThenWrite", 400)
+      task = host.getField("task")
+
+      m.assertEqual(m.waitForValue(task, "steps", 1, 1500), 1, "the task never made its write")
+    end function
+
+  end class
+
+end namespace
