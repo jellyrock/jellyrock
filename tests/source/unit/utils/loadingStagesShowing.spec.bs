@@ -1,0 +1,120 @@
+import "pkg:/source/utils/loadingStages.bs"
+
+namespace tests
+
+  @suite("loadingStages.showing - which wait the spinner shows")
+  class LoadingStagesShowingTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    private function sceneIdle() as object
+      return { isLoading: false, kind: LoadingKind.PLAIN, startedMs: 0 }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("showing() — nothing waiting")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows no spinner when the scene is idle and the screen has no waits")
+    function _()
+      shown = loadingStages.showing(m.sceneIdle(), {}, 100000)
+      m.assertFalse(shown.visible)
+      m.assertEqual(shown.kind, LoadingKind.PLAIN)
+    end function
+
+    @it("shows no spinner when there is no active screen")
+    function _()
+      m.assertFalse(loadingStages.showing(m.sceneIdle(), invalid, 100000).visible)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("showing() — the active screen's waits")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows a screen's wait, counted from when it began")
+    function _()
+      waits = { results: { kind: LoadingKind.CONTENT, startedMs: 90000 } }
+      shown = loadingStages.showing(m.sceneIdle(), waits, 100000)
+      m.assertTrue(shown.visible)
+      m.assertEqual(shown.kind, LoadingKind.CONTENT)
+      m.assertEqual(shown.elapsedMs, 10000)
+    end function
+
+    @it("counts two open waits from the older one")
+    function _()
+      waits = {
+        refresh: { kind: LoadingKind.CONTENT, startedMs: 95000 },
+        results: { kind: LoadingKind.CONTENT, startedMs: 60000 }
+      }
+      m.assertEqual(loadingStages.showing(m.sceneIdle(), waits, 100000).elapsedMs, 40000)
+    end function
+
+    @it("counts from a wait with stages over an older one without")
+    function _()
+      waits = {
+        other: { kind: LoadingKind.PLAIN, startedMs: 10000 },
+        results: { kind: LoadingKind.CONTENT, startedMs: 91000 }
+      }
+      shown = loadingStages.showing(m.sceneIdle(), waits, 100000)
+      m.assertEqual(shown.kind, LoadingKind.CONTENT)
+      m.assertEqual(shown.elapsedMs, 9000)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("showing() — the scene's own spinner")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows the scene's spinner over the screen's waits")
+    function _()
+      sceneWait = { isLoading: true, kind: LoadingKind.PLAIN, startedMs: 99000 }
+      waits = { results: { kind: LoadingKind.CONTENT, startedMs: 50000 } }
+      shown = loadingStages.showing(sceneWait, waits, 100000)
+      m.assertTrue(shown.visible)
+      m.assertEqual(shown.kind, LoadingKind.PLAIN)
+      m.assertEqual(shown.elapsedMs, 1000)
+    end function
+
+    @it("shows the screen's waits again once the scene's spinner stops, still counting from their start")
+    function _()
+      waits = { results: { kind: LoadingKind.CONTENT, startedMs: 50000 } }
+      shown = loadingStages.showing(m.sceneIdle(), waits, 100000)
+      m.assertTrue(shown.visible)
+      m.assertEqual(shown.elapsedMs, 50000)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("ageMs() and nowMs() — the clock")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads the wall clock as a LongInteger past the 32-bit range")
+    function _()
+      now = loadingStages.nowMs()
+      m.assertEqual(type(now), "LongInteger")
+      m.assertTrue(now > 2147483647&)
+    end function
+
+    @it("turns two real clock readings into a small Integer age")
+    function _()
+      now = loadingStages.nowMs()
+      age = loadingStages.ageMs(now - 5000, now)
+      m.assertEqual(type(age), "Integer")
+      m.assertEqual(age, 5000)
+    end function
+
+    @it("reads a clock that stepped backwards as no time at all")
+    function _()
+      now = loadingStages.nowMs()
+      m.assertEqual(loadingStages.ageMs(now + 60000, now), 0)
+    end function
+
+    @it("stops counting past a day")
+    function _()
+      now = loadingStages.nowMs()
+      m.assertEqual(loadingStages.ageMs(now - 604800000, now), 86400000)
+    end function
+
+  end class
+
+end namespace

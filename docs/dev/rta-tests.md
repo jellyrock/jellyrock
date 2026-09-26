@@ -322,6 +322,7 @@ shell's, read from the scene root:
 |---|---|---|
 | `spinner=on("…")` | `isLoading` / `loadingText` | the app was still blocked on a fetch, and which one |
 | `input=BLOCKED` | `isRemoteDisabled` | **the app was swallowing our key presses** |
+| `waits=[…]` | the active view's `loadingWaits` | the screen's own named waits still open (`screenWaits`). They show the spinner without `isLoading`, so `spinnerVisible` in the record is what the viewer saw |
 | `player=<state>` | the OS media player's own state (`ecp.getMediaPlayer()`) | what the Roku video player thinks is happening, independent of the app. `buffer` counts as playing to `PLAYING_STATES` while the app still refuses to open the OSD — the gap between the two is the signal |
 | `videoNode=<state>` | the app's own Video node state | the app's side of the same story, so a `player`/`videoNode` mismatch narrows an OSD that never opened to one side or the other |
 | `playerError=true` | the OS media player reported an error | the player itself faulted, distinct from an app-level error |

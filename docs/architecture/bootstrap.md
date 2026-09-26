@@ -7,7 +7,7 @@ related-files:
   - source/utils/globals.bs
   - components/JRScene.xml
   - components/JRScene.bs
-last-reviewed: 2026-09-23
+last-reviewed: 2026-09-25
 ---
 
 # Bootstrap & Lifecycle
@@ -135,9 +135,10 @@ Interface fields exposed for global control:
 
 | Field | Type | Purpose |
 |---|---|---|
-| `isLoading` | bool | Show/hide the central spinner + dim the active routed view |
+| `isLoading` | bool | Show/hide the scene's own spinner (`startLoadingSpinner`, a cast) + dim the active routed view. The spinner also shows the active view's named waits (`loadingWaits`, via `screenWaits`), which leave this false — see [navigation.md → What kind of wait a spinner is](navigation.md#what-kind-of-wait-a-spinner-is) |
 | `isRemoteDisabled` | bool | Block all remote input while loading |
-| `loadingText` | string | Text shown beneath the spinner |
+| `loadingText` | string | The caller's text above the spinner |
+| `loadingKind` | string | `LoadingKind` of the scene's own spinner; decides the stage text under it (`loadingStages`) |
 | `backgroundImageUri` | string | Backdrop image URL — `BackdropFader` does the crossfade |
 | `shouldShowBackdrop` | bool | Lazily resolved from user settings on first backdrop request |
 | `exit` | bool | Setting this true exits the channel |

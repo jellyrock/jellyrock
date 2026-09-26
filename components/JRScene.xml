@@ -10,6 +10,10 @@
     <Group id="optionsPanelOverlay" />
     <LabelPrimaryLarge id="loadingText" height="225" width="1266" horizAlign="center" vertAlign="bottom" wrap="true" translation="[327, 210]" visible="false" />
     <Spinner id="spinner" translation="[897, 477]" />
+    <!-- How a long wait is going (loadingStages), under the spinner so the caller's own text
+         above it stays. Empty and hidden until a kind with stages has waited long enough. -->
+    <LabelSecondaryMedium id="loadingStageText" width="1266" horizAlign="center" wrap="true" translation="[327, 640]" visible="false" />
+    <Timer id="loadingStageTimer" repeat="false" />
     <Toast id="toast" visible="false" />
     <!-- Used to calculate m.global.user.fontScaleFactor -->
     <Label id="defaultFont" text="" visible="false" />
@@ -19,6 +23,9 @@
     <field id="isRemoteDisabled" type="boolean" value="true" />
     <field id="shouldShowBackdrop" type="boolean" />
     <field id="loadingText" type="string" value="" alwaysNotify="true" onchange="onLoadingTextChanged" />
+    <!-- LoadingKind of the scene's own spinner (startLoadingSpinner, a cast). Set with
+         loadingText, before isLoading. A screen's own waits are its loadingWaits instead. -->
+    <field id="loadingKind" type="string" value="plain" />
     <field id="isLoading" type="boolean" alwaysNotify="true" value="true" onchange="onIsLoadingChanged" />
     <field id="exit" type="boolean" alwaysNotify="true" />
     <!-- Session-reset bridge. Routed views (Home) set this to a HomeAction id; main.bs

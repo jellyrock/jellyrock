@@ -1,0 +1,46 @@
+import "pkg:/source/enums/LoadingKind.bs"
+import "pkg:/source/utils/loadingStages.bs"
+import "pkg:/source/utils/misc.bs"
+
+' The named waits a screen has open, which the scene shows as its loading spinner while that
+' screen is the active one (JRScene.showLoadingStage). A screen names each thing it is waiting
+' for and ends it by name:
+'
+'   screenWaits.begin(m.top, "results")    ' a search query is on its way
+'   screenWaits.finish(m.top, "results")   ' it arrived, failed, or the query was cleared
+'
+' Because the waits live on the screen, the spinner follows the screen rather than the last
+' call anyone made: it goes when the screen closes, stays hidden while another screen is on
+' top, and comes back, still counting from when each wait began, when the screen is shown
+' again. A screen can only end its own waits, so a late answer to a screen the viewer has
+' left cannot stop the spinner of the screen they are on. Several waits can be open at once;
+' the spinner stays until the last one ends.
+'
+' `screen` is the routed screen that owns the wait — `m.top` from a screen's own code. It is
+' a parameter rather than read from `m`, so a nested panel can name the screen that hosts it,
+' and so it means the same thing in a class method or a test.
+'
+' Waits the whole app is in (sign-in, playback starting) are not screen waits: they outlive
+' the screen that started them. They still use startLoadingSpinner() — see
+' docs/architecture/navigation.md ("What kind of wait a spinner is").
+namespace screenWaits
+
+  ' Opens the wait `name` on `screen`, or restarts it when it is already open: a new query
+  ' replaces the one before it, so its clock starts again.
+  sub begin(screen as object, name as string, kind = LoadingKind.CONTENT as string)
+    waits = screen.loadingWaits
+    if not isValid(waits) then waits = {}
+    waits[name] = { kind: kind, startedMs: loadingStages.nowMs() }
+    screen.loadingWaits = waits
+  end sub
+
+  ' Ends the wait `name` on `screen`. Ending one that is not open does nothing, so every exit
+  ' path (the answer, a failure, a cleared query) can call it without checking first.
+  sub finish(screen as object, name as string)
+    waits = screen.loadingWaits
+    if not isValid(waits) or not waits.doesExist(name) then return
+    waits.delete(name)
+    screen.loadingWaits = waits
+  end sub
+
+end namespace

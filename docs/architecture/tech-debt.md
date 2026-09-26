@@ -251,11 +251,11 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 
 #### `queued-relaunch-stale-stop`
 
-- **area**: [`components/tasks/TaskLaunchQueue.bs`](../../components/tasks/TaskLaunchQueue.bs), [`source/utils/tasks.bs`](../../source/utils/tasks.bs) (`taskQueueDropReleased`); sites: the `PENDING_MIGRATIONS` entries in [`no-same-node-relaunch.cjs`](../../scripts/bsc-plugins/no-same-node-relaunch.cjs), `TrickplayCarousel.m.tileLoader`, `VideoPlayerView.m.liveTvRefreshTask`
+- **area**: [`components/tasks/TaskLaunchQueue.bs`](../../components/tasks/TaskLaunchQueue.bs), [`source/utils/tasks.bs`](../../source/utils/tasks.bs) (`taskQueueDropReleased`); sites: the `PENDING_MIGRATIONS` entries in [`no-same-node-relaunch.cjs`](../../scripts/bsc-plugins/no-same-node-relaunch.cjs), `TrickplayCarousel.m.tileLoader`, `VideoPlayerView.m.liveTvRefreshTask`, and `Home`'s launch of `m.global.remoteControlTask` (suppressed permanently rather than migrated: the node is app-wide and `main.bs` observes it once)
 - **github**: —
 - **issue**: [ADR 0041](../adr/0041-task-launch-queue.md) drops a waiting launch whose node's `state` has moved since it was queued, which is how a STOP while waiting cancels it. A persistent node relaunched after a finished run is queued already reading `"stop"`, so a STOP while it waits leaves the same `"stop"` and the drain cannot see it: the run starts late. Only reachable when the app is at the thread watermark. Worst case known: a trickplay tile download that finishes with nobody listening. Pinned by `tasksLaunchQueue.spec.bs` ("cannot see a release of a node that had already finished a run").
-- **direction**: Close it site by site by migrating each to a new node per run ([ADR 0037](../adr/0037-task-run-replacement.md)); a never-run node's STOP while waiting IS visible. The pinning test stays: it pins the queue's limitation, which remains true. This entry closes when no site relaunches a node after a finished run.
-- **severity**: Low. Needs a saturated app AND a release during the wait, at a handful of sites, and the late run's effect is bounded to work nobody reads.
+- **direction**: Close it site by site by migrating each to a new node per run ([ADR 0037](../adr/0037-task-run-replacement.md)); a never-run node's STOP while waiting IS visible. The pinning test stays: it pins the queue's limitation, which remains true. `Home`'s receiver cannot take that fix — a new node would lose `main.bs`'s `dispatchCommand` observer — so it stays a site: a sign-out while its relaunch waits in the queue is not seen, and the receiver starts after the sign-out. It then connects with nothing: `Logout` resets `m.global.user`, so `authToken` reads `""`; the `ws://` path's `remoteProtocol.buildSocketUrl` returns `""` for an empty token (pinned by `remoteProtocol.spec.bs`) and the receiver exits, and the long-poll path makes one unauthenticated plugin probe before its token check exits the loop. A sign-in that lands first starts it with that session's token, which is the wanted state. This entry closes when no OTHER site relaunches a node after a finished run, leaving `Home`'s as a recorded residual.
+- **severity**: Low. Needs a saturated app AND a release during the wait, at a handful of sites. Elsewhere the late run's effect is bounded to work nobody reads; `Home`'s is a receiver that exits on its own (above).
 
 #### `rta-odc-connect-unbounded`
 
@@ -321,8 +321,10 @@ The `npm run lint:docs` checker validates every `tech-debt.md#<anchor>` referenc
 
 #### `quickplaynode-set-then-clear`
 
-- **area**: `components/ItemDetails.bs`, `source/main.bs`
-- **issue**: Single-shot event idiom — unfamiliar to first-time readers. See `user-journey.md` for the canonical explanation.
+- **area**: the `quickPlayNode` writers — `components/ItemDetails.bs`, `components/ItemGrid/BaseGridView.bs`, `components/search/SearchResults.bs`, `components/home/HomeRows.bs`, `components/home/FavoritesRows.bs` — and the `<field id="quickPlayNode">` declarations beside them
+- **issue**: A write followed by `= invalid` exists so a repeat write of the same node fires its observer ([`user-journey.md`](user-journey.md#the-set-then-clear-pattern)). Where the field is declared `alwaysNotify="true"` (`ItemDetails`, `BaseGridView`, `SearchResults`, `Home`) Roku notifies on every set, so the clear is redundant — `ItemDetails.onExtrasItemSelected` already writes without one. `HomeRows` and `FavoritesRows` declare it without `alwaysNotify`, so there the clear may be what lets a repeat fire (not traced). Two rules for one field, and a reader cannot tell which clears matter.
+- **direction**: One rule: `alwaysNotify="true"` on every `quickPlayNode` field and no clears. Before removing a clear, check on device that selecting the same item twice still plays twice on that screen.
+- **severity**: Low. Readability and consistency; nothing is known to be broken.
 
 #### `osd-inactivity-timeout-hardcoded`
 
