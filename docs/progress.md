@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-26 — feat: Say when search or cast is slow; keep search's spinner on search
 - 2026-09-26 — fix(audio): Show the right song's title and artwork after a skip
 - 2026-09-26 — perf(grid): Keep large libraries loading as fast as you scroll
 - 2026-09-25 — fix(grid): Wait for slow libraries, say so, and let Back stop the load
