@@ -726,26 +726,13 @@ end function
 '
 ' @param {boolean} [disableRemote=true]
 sub startLoadingSpinner(disableRemote = true as boolean, loadingText = "" as string)
-  showSceneSpinner(disableRemote, loadingText, LoadingKind.PLAIN)
-end sub
-
-' startContentLoading: Show the spinner while this screen waits on the server for the data it
-' shows (LoadingKind.CONTENT). The remote stays live so Back can leave, and a wait that runs
-' long tells the viewer so under the spinner (loadingStages). Each call is a new wait: the
-' clock starts again, since a new query supersedes the one before it.
-'
-' @param {string} [loadingText=""] - the caller's own text above the spinner; kept for the whole wait
-sub startContentLoading(loadingText = "" as string)
-  showSceneSpinner(false, loadingText, LoadingKind.CONTENT)
-end sub
-
-sub showSceneSpinner(disableRemote as boolean, loadingText as string, kind as string)
   scene = appScene()
 
   ' Everything JRScene.onIsLoadingChanged reads must be set before isLoading, which is
   ' therefore its own write. One setFields: main.bs and loginRouter call this off the render
-  ' thread, where each write to the scene is a rendezvous.
-  scene.setFields({ isRemoteDisabled: disableRemote, loadingText: loadingText, loadingKind: kind })
+  ' thread, where each write to the scene is a rendezvous. The kind is written too, so this
+  ' spinner never inherits the kind of one before it (a cast's).
+  scene.setFields({ isRemoteDisabled: disableRemote, loadingText: loadingText, loadingKind: LoadingKind.PLAIN })
   scene.isLoading = true
 end sub
 

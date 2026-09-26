@@ -48,8 +48,10 @@ sub init()
   m.loadingStageText = m.top.findNode("loadingStageText")
   m.loadingStageTimer = m.top.findNode("loadingStageTimer")
   m.loadingStageTimer.observeField("fire", "showLoadingStage")
-  ' How long the spinner has been waiting; marked at every start (onIsLoadingChanged).
-  m.loadingClock = CreateObject("roTimespan")
+  ' When the scene's own spinner started (loadingStages.nowMs), marked at every start.
+  m.sceneWaitStartedMs = loadingStages.nowMs()
+  ' The routed view whose loadingWaits the spinner is showing (bindLoadingWaits).
+  m.waitsView = invalid
   m.imageFader = m.top.findNode("imageFader")
   m.toast = m.top.findNode("toast")
   m.lastBackdropUri = "" ' Track last URI to skip redundant imageFader assignments
@@ -203,15 +205,12 @@ sub onIsLoadingChanged()
     group.visible = not m.top.isRemoteDisabled
   end if
 
-  ' toggle visibility of loading spinner
-  m.spinner.visible = m.top.isLoading
   ' toggle visibility of loading text
   m.loadingText.visible = m.top.isLoading
 
   if m.top.isLoading
-    ' Every start is a new wait. For a kind with stages that is startContentLoading, where a
-    ' new query supersedes the last; the other kinds show no stage text, so their clock is unused.
-    m.loadingClock.mark()
+    ' Every start is a new wait, so its stages count from here.
+    m.sceneWaitStartedMs = loadingStages.nowMs()
   else
     ' A direct `isLoading = false` (loginRouter's bootstrap) must not leave this kind behind for
     ' a later direct `isLoading = true` that sets none.
@@ -220,15 +219,21 @@ sub onIsLoadingChanged()
   showLoadingStage()
 end sub
 
-' Shows the text under the spinner for how long it has been waiting (loadingStages), and arms
-' the timer for the next change. Also the timer's handler: an early fire finds the same text
-' and re-arms for the remainder; a late one, after the spinner stopped, finds nothing to show.
+' Shows the spinner for whatever is waiting — the scene's own spinner, or the active view's
+' loadingWaits (loadingStages.showing) — with the text for how long it has waited, and arms
+' the timer for the next change. Also the handler for the timer and for the active view's
+' loadingWaits: an early fire finds the same text and re-arms for the remainder; a late one,
+' after the wait ended, finds nothing to show.
 sub showLoadingStage()
   m.loadingStageTimer.control = "stop"
-  kind = m.top.loadingKind
-  if not m.top.isLoading then kind = LoadingKind.PLAIN
+  waits = invalid
+  if isValid(m.waitsView) then waits = m.waitsView.loadingWaits
+  sceneWait = { isLoading: m.top.isLoading, kind: m.top.loadingKind, startedMs: m.sceneWaitStartedMs }
+  shown = loadingStages.showing(sceneWait, waits, loadingStages.nowMs())
+  m.spinner.visible = shown.visible
 
-  elapsedMs = m.loadingClock.TotalMilliseconds()
+  kind = shown.kind
+  elapsedMs = shown.elapsedMs
   key = loadingStages.textKeyAt(kind, elapsedMs)
   if key = ""
     m.loadingStageText.text = ""
@@ -718,6 +723,7 @@ sub resetRouter()
     unregisterOverhangData(m.previousRoutedView)
     m.previousRoutedView = invalid
   end if
+  bindLoadingWaits(invalid)
   m.global.unobserveField("activeRoutedView")
   m.global.unobserveField("playbackLaunchRequest")
   m.global.unobserveField("photoLaunchRequest")
@@ -769,8 +775,25 @@ sub onActiveRoutedViewChanged()
   if isValid(newView) and newView.isSubType("JRGroup")
     registerOverhangData(newView)
   end if
+  bindLoadingWaits(newView)
 
   m.previousRoutedView = newView
+end sub
+
+' Point the spinner at `view`'s loadingWaits (screenWaits): stop following the previous view's,
+' follow this one's, and show what it has open. A view's waits therefore show only while it
+' is the active view — gone when it closes, hidden under another view, back when it returns.
+' `view` = invalid follows none (resetRouter).
+sub bindLoadingWaits(view as dynamic)
+  if isValid(m.waitsView) and not m.waitsView.isSameNode(view)
+    m.waitsView.unobserveField("loadingWaits")
+    m.waitsView = invalid
+  end if
+  if isValid(view) and not isValid(m.waitsView) and view.isSubType("JRGroup")
+    view.observeField("loadingWaits", "showLoadingStage")
+    m.waitsView = view
+  end if
+  showLoadingStage()
 end sub
 
 ' Confirm app exit.

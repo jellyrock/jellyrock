@@ -23,7 +23,8 @@
     <field id="isRemoteDisabled" type="boolean" value="true" />
     <field id="shouldShowBackdrop" type="boolean" />
     <field id="loadingText" type="string" value="" alwaysNotify="true" onchange="onLoadingTextChanged" />
-    <!-- LoadingKind of the spinner now showing. Set with loadingText, before isLoading. -->
+    <!-- LoadingKind of the scene's own spinner (startLoadingSpinner, a cast). Set with
+         loadingText, before isLoading. A screen's own waits are its loadingWaits instead. -->
     <field id="loadingKind" type="string" value="plain" />
     <field id="isLoading" type="boolean" alwaysNotify="true" value="true" onchange="onIsLoadingChanged" />
     <field id="exit" type="boolean" alwaysNotify="true" />

@@ -1,11 +1,12 @@
 ' What the scene's loading spinner is waiting on. Each kind has its own rules for what the
-' viewer is told and what Back does — see docs/architecture/navigation.md ("Loading spinners
-' across navigation") and source/utils/loadingStages.bs.
+' viewer is told and what Back does — see docs/architecture/navigation.md ("What kind of wait
+' a spinner is") and source/utils/loadingStages.bs.
 enum LoadingKind
   ' Not yet assigned a kind: the spinner and the caller's text, nothing else. Every
   ' startLoadingSpinner() call is this until its call site moves to an intent-named start.
   PLAIN = "plain"
-  ' A screen waiting on the server for the data it shows. Back leaves; after 8 s the viewer is
-  ' told it is still loading, and after 30 s that the wait is the server's.
+  ' A screen waiting on the server for the data it shows (screenWaits.begin), or the scene's
+  ' own cast resolve. Back leaves; after 8 s the viewer is told it is still loading, and after
+  ' 30 s that the wait is the server's.
   CONTENT = "content"
 end enum

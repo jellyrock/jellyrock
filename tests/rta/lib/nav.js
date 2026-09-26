@@ -118,14 +118,12 @@ export async function navSettings() {
 }
 
 /**
- * home -> overhang search icon -> SearchResults -> type RTA_CONFIG.searchQuery.
- * The screen opens with the keyboard (#searchKey) focused + active (main.bs), so an
- * ECP text input both fills the visible search box AND triggers the search (the
- * keyboard's text change fans out to SearchTask). The grouped result rows render
- * into #searchSelect; its child count is the load gate. The query is tuned in config
- * to surface the richest spread of result-type rows on the demo server.
+ * home -> overhang search icon -> SearchResults, stopping once the search keyboard holds
+ * focus and so will take typed text. `navSearch` carries on from here; a spec that has to act
+ * between opening search and typing (setting request rules, `slow-search.spec.js`) calls this
+ * directly.
  */
-export async function navSearch() {
+export async function openSearchKeyboard() {
   await focusOverhangIcon('searchIcon');
   await press(ecp.Key.Ok);
   // `sendText` types into whatever holds focus, so the keyboard HOLDING it is the
@@ -142,6 +140,18 @@ export async function navSearch() {
     label: 'search keyboard typable (pre-sendText)',
     timeout: 15000,
   });
+}
+
+/**
+ * home -> overhang search icon -> SearchResults -> type RTA_CONFIG.searchQuery.
+ * The screen opens with the keyboard (#searchKey) focused + active (main.bs), so an
+ * ECP text input both fills the visible search box AND triggers the search (the
+ * keyboard's text change fans out to SearchTask). The grouped result rows render
+ * into #searchSelect; its child count is the load gate. The query is tuned in config
+ * to surface the richest spread of result-type rows on the demo server.
+ */
+export async function navSearch() {
+  await openSearchKeyboard();
   await ecp.sendText(RTA_CONFIG.searchQuery); // types into the focused search box
   await waitFor('#searchSelect.content.getChildCount()', hasChildren, {
     label: `search results for "${RTA_CONFIG.searchQuery}"`,

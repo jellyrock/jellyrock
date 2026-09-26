@@ -15,6 +15,7 @@ related-files:
   - source/loginRouter.bs
   - source/enums/LoadingKind.bs
   - source/utils/loadingStages.bs
+  - source/utils/screenWaits.bs
 last-reviewed: 2026-09-25
 ---
 
@@ -207,22 +208,23 @@ The scene-level loading spinner is toggled by `JRScene.onIsLoadingChanged` (fire
 
 #### What kind of wait a spinner is
 
-The spinner is one widget, but the waits it covers are not alike, and each kind has its own rules for what the viewer is told and what Back does. The call site names the kind by which function it starts the spinner with; the scene applies the rules. The kinds are `LoadingKind` (`source/enums/LoadingKind.bs`), and the text rule is `loadingStages` (`source/utils/loadingStages.bs`). Decision and the alternatives ruled out: [ADR 0044](../adr/0044-spinner-by-kind-of-wait.md).
+The spinner is one widget, but the waits it covers are not alike, and each kind has its own rules for what the viewer is told and what Back does. The kinds are `LoadingKind` (`source/enums/LoadingKind.bs`), and what the spinner shows is `loadingStages` (`source/utils/loadingStages.bs`). Decision and the alternatives ruled out: [ADR 0044](../adr/0044-spinner-by-kind-of-wait.md).
 
 | Kind | The wait | Back | Text under the spinner |
 |---|---|---|---|
-| **Content load** — `startContentLoading()` | A screen waiting on the server for the data it shows | Leaves the screen; the pool skips a queued read nobody is waiting for any more, and stops a long one already sent ([ADR 0043](../adr/0043-pool-stops-long-reads-of-gone-callers.md)) (see [api.md](api.md#a-request-nobody-is-waiting-for)) | "Still loading…" from 8 s, "The server is taking a while to answer." from 30 s |
+| **Content load** — `screenWaits.begin(m.top, name)` | A screen waiting on the server for the data it shows | Leaves the screen, and its waits go with it; the pool skips a queued read nobody is waiting for any more, and stops a long one already sent ([ADR 0043](../adr/0043-pool-stops-long-reads-of-gone-callers.md)) (see [api.md](api.md#a-request-nobody-is-waiting-for)) | "Still loading…" from 8 s, "The server is taking a while to answer." from 30 s |
 | **Playback start** — *not built yet* | The server opening a play session (`PlaybackInfo`, a live stream) | Leaves at once; the request is allowed to finish, and whatever it opened is closed when its answer lands. Stopping the request would not stop the server opening the stream | Same stages, under the item or channel label |
 | **Buffering** — *not built yet* | The player refilling mid-playback | The player's own handling | None: the wait is not a server answer |
 | **Session change** — *not built yet* | Sign in or out, switching user or server, the server scan, the boot-time font download | Blocked on purpose | None |
 
 **Plain** (`startLoadingSpinner()`) is a spinner no call site has assigned a kind yet: the spinner and the caller's own text, nothing else. It stays today's behavior, so a call site moves to a kind only when it meets that kind's rules.
 
-- **Text is only ever true.** "The server is taking a while" is shown only by kinds whose wait is a server answer; a kind whose wait is not (buffering, a LAN scan, local teardown) gets no stage text rather than a wording that would be wrong for it. The stage text has its own line under the spinner (`#loadingStageText`), so a caller's text above it (a channel name, "Downloading fallback font") is never replaced.
+- **A screen's waits live on the screen, by name.** `screenWaits.begin(m.top, "results")` opens a wait in the screen's `loadingWaits` field and `screenWaits.finish(m.top, "results")` ends it. `JRScene.bindLoadingWaits()` follows the active routed view's field, the way `registerOverhangData()` follows its overhang fields, so a screen's waits show only while it is the active view: they go when it closes, hide while another view is on top, and show again when it returns, still counting from when each began. A screen can end only its own waits, so a late answer to a screen the viewer has left cannot stop the spinner of the one they are on, and the spinner stays until the last of several waits ends. Beginning a wait that is open restarts it (a new query supersedes the last); finishing one that is not open does nothing, so every exit path can call it. Don't stop a screen's own data wait with `stopLoadingSpinner()` — that is the scene's spinner, not the screen's.
+- **The scene's own spinner shows over a screen's waits.** `startLoadingSpinner()` and the cast resolve are waits the whole app is in; while one is up it owns the spinner, and the screen's waits show again when it stops. Its stop still ends whatever scene spinner is up — the reason each call site moves to a named kind.
+- **Text is only ever true.** "The server is taking a while" is shown only by kinds whose wait is a server answer; a kind whose wait is not (buffering, a LAN scan, local teardown) gets no stage text rather than a wording that would be wrong for it. The stage text has its own line under the spinner (`#loadingStageText`), so a caller's text above it (a channel name, "Downloading fallback font") is never replaced. With several waits open, it counts from the oldest one with stages: that is how long the viewer has waited.
 - **Why 8 s.** A normal wait never shows text: even a 512 MB Stick draws a large library's first page in about 3.4 s from a server that keeps up (measured 2026-09-24), and the usual guideline is that a wait of around 10 s needs feedback and a way out.
-- **Every content-load start is a new wait.** The clock restarts on each `startContentLoading()`, because a new query supersedes the last — a viewer typing a search is not waiting on the first letter's results.
-- **The stages only reach the viewer for a request allowed to run long.** A request on the default limit gives up at `timeouts.API_WAIT_MS`, so its screen can show "Still loading…" only briefly and never the 30 s stage. A content load that can legitimately take longer needs a longer limit on its request as well as this kind.
-- **A direct write to the scene's `isLoading` resets the kind to plain when the spinner stops**, so a later direct start that names no kind cannot inherit one.
+- **The stages only reach the viewer for a wait allowed to run long.** A screen whose wait is one request on the default limit gives up at `timeouts.API_WAIT_MS`, so it shows "Still loading…" only briefly and never the 30 s stage; search makes four requests in sequence, so a slow search can reach it. A content load that can legitimately take longer needs a longer limit on its request as well as this kind.
+- **A direct write to the scene's `isLoading` resets its kind to plain when the spinner stops**, so a later direct start that names no kind cannot inherit one.
 
 ## The back arbiter & exit confirmation
 

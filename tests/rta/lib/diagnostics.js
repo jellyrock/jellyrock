@@ -108,6 +108,10 @@ const CORE_REQUESTS = {
   isLoading: { base: 'scene', keyPath: 'isLoading' },
   loadingText: { base: 'scene', keyPath: 'loadingText' },
   isRemoteDisabled: { base: 'scene', keyPath: 'isRemoteDisabled' },
+  // What the viewer actually sees. `isLoading` is only the scene's OWN spinner; a screen's
+  // named waits (`screenWaits`) show it too, and are listed from the active view.
+  spinnerVisible: { base: 'scene', keyPath: '#spinner.visible' },
+  activeWaits: { base: 'global', keyPath: 'activeRoutedView.loadingWaits' },
   // BOTH candidate row lists, because only one of them is in the scene and which one is a
   // property of Home's selected tab, not of Home. They cost nothing extra: this is already
   // one batched `getValues`, so a second keyPath adds no round trip — and asking only about
@@ -254,6 +258,10 @@ export async function captureFailureState() {
       isLoading: unwrap(results, 'isLoading'),
       loadingText: unwrap(results, 'loadingText'),
       isRemoteDisabled: unwrap(results, 'isRemoteDisabled'),
+      spinnerVisible: unwrap(results, 'spinnerVisible'),
+      // Names only: each wait's value is its kind and start time, which the name already
+      // locates in the screen that opened it.
+      activeWaits: Object.keys(unwrap(results, 'activeWaits') ?? {}),
     },
     counts: {
       // Whichever list answered. Absence is the normal reading for one of the two.
@@ -369,6 +377,8 @@ function formatState(state, observed) {
     shell.isLoading === true
       ? `spinner=on${shell.loadingText ? `("${shell.loadingText}")` : ''}`
       : null,
+    // A screen's own waits show the spinner without `isLoading` (screenWaits).
+    shell.activeWaits?.length ? `waits=[${shell.activeWaits.join(',')}]` : null,
     // Printed whenever playback is up, because a stalled stream looks like a UI
     // fault from every other field here: the app swallows keys until its Video
     // node leaves `buffer`, so the OSD simply never opens and nothing else in this
