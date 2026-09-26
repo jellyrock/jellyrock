@@ -128,9 +128,11 @@ DIRNAME="${MONTH}-${SLUG}"
 TARGET="$PROJECTS/$DIRNAME"
 
 # Collision check — active and archived, any month prefix. Atomic guard against
-# the "scaffold over an existing slug" failure mode.
+# the "scaffold over an existing slug" failure mode. The prefix is matched as
+# YYYY-MM-, so a slug that only ends another project's name (cache vs
+# redis-cache) is not a collision.
 shopt -s nullglob
-collisions=( "$PROJECTS"/*-"$SLUG" "$PROJECTS"/_archive/*-"$SLUG" )
+collisions=( "$PROJECTS"/[0-9][0-9][0-9][0-9]-[0-9][0-9]-"$SLUG" "$PROJECTS"/_archive/[0-9][0-9][0-9][0-9]-[0-9][0-9]-"$SLUG" )
 shopt -u nullglob
 [ ${#collisions[@]} -eq 0 ] || die "slug '$SLUG' already exists: ${collisions[*]} — use /resume-project instead"
 

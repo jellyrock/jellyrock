@@ -12,7 +12,7 @@ description: This skill should be used ONLY when the user explicitly types "/res
 
 **Goal.** Pick up an existing tracked project from `docs/projects/` and bind the session to its lifecycle, loading enough context that work continues cold without re-reading everything by hand. The skill selects the project, reads its `PLAN.md` plus the always-loaded rules, runs a continuity check that the prior session ended cleanly, and adopts the PLAN's "Next-session kickoff" as the effective starting prompt. The work is read-and-orient — selecting, loading, sanity-checking, and synthesizing the kickoff against recent commits — light judgment rather than heavy reasoning, so the skill runs at the light-judgment tier. It is **read-only by contract** (`audit-span: read-only`): its own steps load and present state, then yield to the working session; it never mutates the project.
 
-**Inputs.** `$ARGUMENTS` is an optional project slug. If present, load `docs/projects/*-<slug>/PLAN.md` directly. If absent, the skill reads `docs/projects/README.md` and auto-selects when exactly one project is `active`, asks when several are, and stops (routing to `/start-project`) when none are. The skill expects the project's `PLAN.md` to carry a current Status section and a "Next-session kickoff."
+**Inputs.** The arguments are an optional project slug. If present, load `docs/projects/*-<slug>/PLAN.md` directly. If absent, the skill reads `docs/projects/README.md` and auto-selects when exactly one project is `active`, asks when several are, and stops (routing to `/start-project`) when none are. The skill expects the project's `PLAN.md` to carry a current Status section and a "Next-session kickoff."
 
 **Outputs.**
 
