@@ -59,8 +59,13 @@ sub loadItems()
   ' every path assign them — it does not correlate assignments across `#if` blocks.
   runClock = invalid
   stepClock = invalid
+  handoffClock = invalid
   waitMs = 0
   emitMs = 0
+  ' The part of `emit` spent writing `status` + `content` — the one crossing that carries the
+  ' page's nodes to the view. Split out because `emit` alone cannot say whether a page's cost is
+  ' building the nodes or handing them over, and those have different fixes.
+  handoffMs = 0
   genreFetches = 0
   ' When the Genres view got its rows on screen. That is NOT `task`: the skeletons ship
   ' as soon as the genre LIST query returns, while `task` runs on until the last sample
@@ -251,6 +256,15 @@ sub loadItems()
 
     ' Pass 1 — emit everything that needs no further I/O, and collect the genre
     ' requests instead of issuing them one at a time.
+    '
+    ' Nothing in the per-item transform may read m.top or m.global: both are render-owned, so
+    ' from this thread each read is a rendezvous, and while the user scrolls every one waits on
+    ' the busy render thread. Read once here; the transformer gets the server version for the
+    ' same reason (without it, it reads m.global.server.version itself — two crossings per item).
+    ' The genre branch still crosses per genre inside BuildGetItemsByQueryRequest (user id, API
+    ' version, server URL); genre views do not page, so that cost is never paid mid-scroll.
+    libraryId = m.top.itemId
+    requestedType = m.top.itemType
     for each item in data.Items
       tmp = invalid
       #if perfTiming
@@ -265,7 +279,7 @@ sub loadItems()
         genreReq = GetApi().BuildGetItemsByQueryRequest({
           SortBy: "Random",
           SortOrder: "Ascending",
-          IncludeItemTypes: m.top.itemType,
+          IncludeItemTypes: requestedType,
           Recursive: true,
           Fields: "PrimaryImageAspectRatio,MediaSourceCount,BasicSyncInfo,BackdropImageTags",
           ImageTypeLimit: 1,
@@ -273,7 +287,7 @@ sub loadItems()
           Limit: 6,
           GenreIds: item.id,
           EnableTotalRecordCount: false,
-          ParentId: m.top.itemId
+          ParentId: libraryId
         })
         if isValid(genreReq)
           genreEntries.push({
@@ -285,20 +299,20 @@ sub loadItems()
         end if
       else
         ' All other item types: transform to JellyfinBaseItem
-        tmp = m.transformer.transformBaseItem(item)
+        tmp = m.transformer.transformBaseItem(item, m.serverVersion)
 
         ' Set library context for navigation on virtual items (Genre/Studio/MusicGenre)
         ' that have no meaningful parentId in the API response
         if not isValidAndNotEmpty(tmp.parentId)
-          tmp.parentId = m.top.itemId
+          tmp.parentId = libraryId
         end if
 
         ' Studio items (IsFolder=false, type="Studio") don't carry a CollectionType from the API.
         ' Infer it from the item type being fetched so DeterminePresenterType can route correctly.
         if LCase(tmp.type) = "studio" and not isValidAndNotEmpty(tmp.collectionType)
-          if LCase(m.top.itemType) = "movie"
+          if LCase(requestedType) = "movie"
             tmp.collectionType = "movies"
-          else if LCase(m.top.itemType) = "series"
+          else if LCase(requestedType) = "series"
             tmp.collectionType = "tvshows"
           end if
         end if
@@ -429,6 +443,9 @@ sub loadItems()
   for each slot in slots
     if isValid(slot) then results.push(slot)
   end for
+  #if perfTiming
+    handoffClock = CreateObject("roTimespan")
+  #end if
   ' `status` before `content`: the view reads it in its `content` handler.
   if isValid(data)
     m.top.status = "ok"
@@ -436,6 +453,9 @@ sub loadItems()
     m.top.status = "failed"
   end if
   m.top.content = results
+  #if perfTiming
+    handoffMs = handoffClock.totalMilliseconds()
+  #end if
 
   ' NOTE: roku-log's Logger.info takes at most 10 params (message + value..value9),
   ' and the roku-log BSC plugin spends the first on the injected pkg path — so at
@@ -454,9 +474,10 @@ sub loadItems()
     #else
       buildFlags = " [debug=false perfTiming=true]"
     #end if
-    ' firstPaint rides in the MESSAGE rather than as a fourth value pair: message + three
+    ' firstPaint and handoff ride in the MESSAGE rather than as value pairs: message + three
     ' pairs is seven args, and two more would sit exactly on the nine-arg ceiling above.
-    m.log.info("item-grid load done - items " + results.count().toStr() + " genreFetches " + genreFetches.toStr() + " firstPaint " + firstPaintMs.toStr() + buildFlags, "task", runClock.totalMilliseconds(), "wait", waitMs, "emit", emitMs)
+    ' handoff is a PART of emit, not added to it.
+    m.log.info("item-grid load done - items " + results.count().toStr() + " genreFetches " + genreFetches.toStr() + " firstPaint " + firstPaintMs.toStr() + " handoff " + handoffMs.toStr() + buildFlags, "task", runClock.totalMilliseconds(), "wait", waitMs, "emit", emitMs)
   #end if
 end sub
 
@@ -477,7 +498,7 @@ sub populateGenreRow(row as dynamic, item as object, res as dynamic)
 
   if genreData.Items.Count() > 5
     ' Add View All item to the start of the row — transform the genre item itself
-    viewAllNode = m.transformer.transformBaseItem(item)
+    viewAllNode = m.transformer.transformBaseItem(item, m.serverVersion)
     viewAllNode.title = translate(translationKeys.LabelViewAll) + " " + item.name
     ' Set library context for genre navigation (genre items have no parentId from API)
     if not isValidAndNotEmpty(viewAllNode.parentId)
@@ -497,7 +518,7 @@ sub populateGenreRow(row as dynamic, item as object, res as dynamic)
   end if
 
   for each genreItem in genreData.Items
-    row.appendChild(m.transformer.transformBaseItem(genreItem))
+    row.appendChild(m.transformer.transformBaseItem(genreItem, m.serverVersion))
   end for
 end sub
 

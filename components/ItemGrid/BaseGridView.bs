@@ -872,6 +872,10 @@ sub onItemDataLoaded(msg)
     m.itemGrid.jumpToItem = 0
   end if
 
+  appendStartMs = 0
+  #if perfTiming
+    appendStartMs = m.gridClock.totalMilliseconds()
+  #end if
   startIndex = m.data.getChildCount()
   for i = 0 to itemData.count() - 1
     item = itemData[i]
@@ -880,6 +884,11 @@ sub onItemDataLoaded(msg)
       m.flatIndexMap[item.id] = startIndex + i
     end if
   end for
+  #if perfTiming
+    appendMs = m.gridClock.totalMilliseconds() - appendStartMs
+    m.session.appendMs += appendMs
+    if appendMs > m.session.appendMaxMs then m.session.appendMaxMs = appendMs
+  #end if
 
   ' Update the stored counts
   m.loadedItems = m.itemGrid.content.getChildCount()
@@ -1047,9 +1056,11 @@ end sub
   ' One line per grid query, for tuning gridPaging's starting values: how often the user waited
   ' at the end of the loaded rows and for how long (stalls), against how much was loaded and how
   ' far down they actually went. A stall counts from reaching the last loaded row with a page in
-  ' flight, before the indicator's delay.
+  ' flight, before the indicator's delay. appendMs / appendMaxMs are the render thread's side of a
+  ' page — adding its items to the grid — summed over the session and at its worst page, because
+  ' a long add is a scroll hitch that no task-side number shows.
   sub newGridSession()
-    m.session = { pages: 0, items: 0, stalls: 0, stallMs: 0, stallStartMs: -1, furthestRow: 0 }
+    m.session = { pages: 0, items: 0, stalls: 0, stallMs: 0, stallStartMs: -1, furthestRow: 0, appendMs: 0, appendMaxMs: 0 }
   end sub
 
   sub trackStall(isWaiting as boolean)
@@ -1067,7 +1078,7 @@ end sub
     if not isValid(m.session) or m.session.pages = 0 then return
     trackStall(false)
     ' At most nine args (see LoadItemsTask2's item-grid line).
-    m.log.info("item-grid paging - stalls " + m.session.stalls.toStr() + " stallMs " + m.session.stallMs.toStr() + " furthestRow " + m.session.furthestRow.toStr(), "pages", m.session.pages, "items", m.session.items, "pageMs", Int(m.pageTimer.averageMs))
+    m.log.info("item-grid paging - stalls " + m.session.stalls.toStr() + " stallMs " + m.session.stallMs.toStr() + " furthestRow " + m.session.furthestRow.toStr() + " appendMs " + m.session.appendMs.toStr() + " appendMaxMs " + m.session.appendMaxMs.toStr(), "pages", m.session.pages, "items", m.session.items, "pageMs", Int(m.pageTimer.averageMs))
   end sub
 #end if
 

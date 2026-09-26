@@ -851,9 +851,13 @@ The format it emits today, then the sample that produced the baseline below (rec
 before the flag stamping landed, hence no bracket — see [What is being measured](#what-is-being-measured)):
 
 ```text
-item-grid load done - items <n> genreFetches <g> [debug=? perfTiming=true] task <t> wait <w> emit <e>
+item-grid load done - items <n> genreFetches <g> firstPaint <f> handoff <h> [debug=? perfTiming=true] task <t> wait <w> emit <e>
 item-grid load done - items 8 genreFetches 8 task 1060 wait 827 emit 211
 ```
+
+`handoff` is the part of `emit` spent writing `status` + `content` — the crossing that carries
+the page's nodes to the view — so `emit − handoff` is building them. Lines from before it existed
+lack it and still parse.
 
 That sample is one run, and it is the slow end of the spread — the baseline table below
 reports the n=4 **median** (1016 ms), not this line.

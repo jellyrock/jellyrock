@@ -322,7 +322,7 @@ export const MEASUREMENTS = Object.freeze([
     // until something can, a comparison of two null-screen series is warned about
     // rather than silently trusted.
     screen: null,
-    // Written from the emitting call site (LoadItemsTask2.bs:421), which is
+    // Written from the emitting call site (`LoadItemsTask2.loadItems()`), which is
     // authoritative for the MESSAGE — it is the format string.
     //
     // GROUNDED 2026-08-19, on ledger evidence rather than recollection — the same
@@ -349,7 +349,8 @@ export const MEASUREMENTS = Object.freeze([
         key: 'load',
         required: true,
         pattern:
-          /item-grid load done - items (?<items>\d+) genreFetches (?<genreFetches>\d+) firstPaint (?<firstPaintMs>-?\d+).*?task (?<taskMs>\d+) wait (?<waitMs>\d+) emit (?<emitMs>\d+)/,
+          // `handoff` is optional so lines from builds before it existed still parse.
+          /item-grid load done - items (?<items>\d+) genreFetches (?<genreFetches>\d+) firstPaint (?<firstPaintMs>-?\d+)(?: handoff (?<handoffMs>\d+))?.*?task (?<taskMs>\d+) wait (?<waitMs>\d+) emit (?<emitMs>\d+)/,
       }),
     ]),
   }),
