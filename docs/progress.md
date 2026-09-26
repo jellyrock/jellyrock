@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-09-25
+last-updated: 2026-09-26
 ---
 
 # Progress
@@ -216,6 +216,8 @@ Grouped by area. Append via `/log followup "<text>" --area=<name>`. Close via `/
 - **The Live TV restart's wiring has no automated test (deferred from the restart-loop fix).** `liveTv.bs` unit-tests the rule and the progress measure, but nothing checks that `PlayerHostView` passes `isLiveRestart = true` only from `restartLiveChannel()`, or that `VideoPlayerView.onPositionChanged` feeds `liveProgressOnPosition()` for a live item. A regression that restarts through `playCurrentQueueItem()` again resets the count on every restart and brings the endless loop back, and only a manual run would see it. An RTA spec needs a Live TV fixture the harness can start; today that is `hls-fixture.sh` outside the repo plus a tuner added to the test server by hand, so moving the fixture into the repo comes first.
 - **`JRPlaceholder.onSizeChanged` crashed (`&hf3`, "Interface not a member" on `m.backdrop.setFields`) during a forced app exit (found with the Live TV stall fix, 2026-09-23; not investigated).** Seen once on a Stick 4K when the RTA harness's hard relaunch exited the app (`EXIT_UNKNOWN`) mid-load. The same runs also hit `&hec` in `JRScrollingLabel.init()` / `LabelSmall.init()` reading `m.global.constants` at exit, which looks like the init/`m.global.constants` class `/crash-report` already tracks; the `&hf3` is a different code and may be its own class. Check the weekly crash CSVs for `JRPlaceholder.brs` before deciding whether it needs a fix.
 - **Check `ItemDetails`, `SearchResults`, `PhotoDetails` and `settings` for the resume-focus trap.** Each sets focus in `onScreenShown()` but does not override `handleFocus`, which the router calls right after and which restores `lastFocus` again. Home (the overhang-icon regression) and `BaseGridView` (#1033) were the two confirmed cases; for each of these four, compare what `onScreenShown()` focuses with what `lastFocus` would restore, and route both hooks through one function only where they differ. See [navigation.md → Focus management](architecture/navigation.md#focus-management).
+- **Move the remaining content loads onto `startContentLoading()` ([ADR 0044](adr/0044-spinner-by-kind-of-wait.md)).** The library grid once #1043 merges: delete its own stage timer, so one rule shows the text. Then `ItemDetails` and the TV guide, which block the remote today and hide the screen, so each needs a Back-mid-load check, and a longer request limit before the 30 s stage can ever show.
+- **Build the remaining loading kinds (ADR 0044), then gate them.** Playback start (details, queue and player chain; keeps its label; Back lets the request finish and closes what it opened; the Live TV slow-probe fix under `### api` is its first user), buffering and session change (no stage text). Once no call site uses bare `startLoadingSpinner()`, add a lint against it.
 
 ### source
 
