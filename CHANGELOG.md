@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Say when search or cast is slow; keep search's spinner on search ([#1044](https://github.com/jellyrock/jellyrock/pull/1044))
+
 ### Changed
 
 - (grid) Keep large libraries loading as fast as you scroll ([#1046](https://github.com/jellyrock/jellyrock/pull/1046))
