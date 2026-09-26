@@ -65,6 +65,28 @@ namespace tests
       m.assertEqual(m.libIdsOf(drained.ready), ["a", "c"])
     end function
 
+    @it("hands a failed row's libId back, so its loading tile can say it failed")
+    function _()
+      task = m.makeResults([
+        { libId: "a", items: [], status: "ok" }
+        { libId: "b", items: [], status: "failed" }
+        { libId: "c", items: [], status: "failed" }
+      ])
+
+      drained = latestRows.drainReady(task, 0, m.makeClock())
+
+      m.assertEqual(drained.failed, ["b", "c"])
+    end function
+
+    @it("returns no failed libIds when every row answered")
+    function _()
+      task = m.makeResults([{ libId: "a", items: [], status: "ok" }])
+
+      drained = latestRows.drainReady(task, 0, m.makeClock())
+
+      m.assertEqual(drained.failed, [])
+    end function
+
     @it("advances the cursor past skipped rows so they aren't revisited")
     function _()
       task = m.makeResults([
@@ -88,6 +110,7 @@ namespace tests
       drained = latestRows.drainReady(task, 0, m.makeClock())
 
       m.assertEqual(drained.ready.count(), 0)
+      m.assertEqual(drained.failed, ["a"])
       m.assertEqual(drained.nextIndex, 1)
     end function
 

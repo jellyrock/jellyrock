@@ -106,6 +106,87 @@ async function focusOverhangIcon(iconId) {
   }
 }
 
+/**
+ * From Home, select the tab with id `tabId` (`'home'` or `'favorites'`) in the overhang's tab
+ * bar, and wait until that tab's row list is in the scene with focus inside it.
+ *
+ * Selecting a tab DESTROYS the outgoing list and builds the incoming one
+ * (`Home.onTabChanged`), so selecting Home from Favorites mounts a fresh `HomeRows` that runs
+ * Home's FIRST load again. That is what makes this the way to drive a first-load failure: the
+ * request-failure rules live in app memory, so they can only be set after the launch whose own
+ * first load has already run.
+ *
+ * Three steps, each gated on where focus actually is:
+ *
+ * 1. Into the tab bar. Up leaves Home only from row 0 (`walkHomeToFirstRow`), and it lands on
+ *    the overhang element used last, which can be an icon to the tab bar's right, so the key is
+ *    chosen from the focused node: Up while still in Home's rows, Left from anywhere else in the
+ *    overhang.
+ * 2. Onto the tab. The bar keeps its focused index internally (its `focusedTabIndex` field is
+ *    input-only), so the index is read off the tabs' own `isFocused`. The walk re-reads after
+ *    every press and presses at most once per tick; the bar updates `isFocused` inside its key
+ *    handler, with no animation between, so a read never lags a press it follows.
+ * 3. OK, then the incoming list in the scene and focus inside it (`onTabChanged` focuses it).
+ */
+export async function selectHomeTab(tabId) {
+  const wantSubtype = tabId === 'favorites' ? 'FavoritesRows' : 'HomeRows';
+  await waitHome();
+  await walkHomeToFirstRow();
+
+  const bar = await waitFocused((f) => f?.node?.subtype === 'JRTabBar', {
+    timeout: 10000,
+    interval: 400,
+    action: async () => {
+      const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+      if (!f?.node || f.node.subtype === 'JRTabBar') return;
+      await press(focusIsInHomeContent(f) ? ecp.Key.Up : ecp.Key.Left);
+    },
+    label: 'overhang tab bar focused',
+  });
+
+  const tabs = await getVal(`${bar.keyPath}.tabs`);
+  const target = Array.isArray(tabs) ? tabs.findIndex((t) => t.id === tabId) : -1;
+  // eslint-disable-next-line no-restricted-syntax -- a fail-fast naming its cause, not a timeout
+  if (target < 0) throw new Error(`tab bar has no "${tabId}" tab (tabs=${JSON.stringify(tabs)})`);
+  const focusedTab = async () => {
+    const flags = await getVals(tabs.map((_, i) => `${bar.keyPath}.#tabContainer.${i}.isFocused`));
+    return flags.indexOf(true);
+  };
+  await waitFor('focusedTab()', (i) => i === target, {
+    read: focusedTab,
+    action: async () => {
+      const i = await focusedTab();
+      if (i < 0 || i === target) return;
+      await press(i < target ? ecp.Key.Right : ecp.Key.Left);
+    },
+    timeout: 8000,
+    interval: 400,
+    label: `tab "${tabId}" focused`,
+  });
+
+  await press(ecp.Key.Ok);
+  await waitFor('subtype()', (v) => v === wantSubtype, {
+    read: async () => {
+      const id = await homeListId({ timeout: 1000 }).catch(() => undefined);
+      return id ? getVal(`${id}.subtype()`) : undefined;
+    },
+    timeout: 10000,
+    interval: 300,
+    label: `${wantSubtype} in the scene after selecting the "${tabId}" tab`,
+  });
+  await waitFocusInHomeContent({ label: `focus inside ${wantSubtype}` });
+}
+
+/**
+ * Move focus in Home's active row list to row `row`, column 0 — the one tile a row still
+ * showing a placeholder has. Shares `walkHomeRowsTo`, so the row half keeps its one-press-per-read
+ * shape and the column half goes through `scrollFocus`.
+ */
+export async function focusHomeRow(row, label) {
+  const list = await homeListId();
+  await walkHomeRowsTo(list, { row, col: 0 }, label);
+}
+
 /** home -> overhang settings icon -> Settings screen (version label is the gate). */
 export async function navSettings() {
   await focusOverhangIcon('settingsIcon');

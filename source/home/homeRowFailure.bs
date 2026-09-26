@@ -1,0 +1,84 @@
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/skeleton.bs"
+
+' Decision layer for a Home row whose load failed — what the row shows, and when it goes back
+' to loading. HomeRows applies these; they live in source/ so a Rooibos suite can reach them
+' without a callFunc seam on the component (same move as source/home/latestRows.bs).
+'
+' The rule, for every Home section: a failed load says nothing about what the section holds,
+' so it never removes or empties a row (decision `latest-rows-failure-vs-empty`). A row that
+' already shows items keeps them. A row still waiting on its first load stops spinning and
+' shows a "couldn't load" tile, so a failure does not read as loading forever; pressing OK on
+' it retries (HomeRows.itemSelected). A section with no row on screen stays off it.
+namespace homeRowFailure
+
+  ' The row shows the loading placeholder (a spinner).
+  const PLACEHOLDER_LOADING = "loading"
+  ' The row shows the failed placeholder (the "couldn't load" tile).
+  const PLACEHOLDER_FAILED = "failed"
+
+  ' Which placeholder `row` shows, or "" when it shows items or is absent.
+  '
+  ' A placeholder is only ever a row's ONLY child: createSkeletonRow and
+  ' insertLatestMediaSkeletons give a new row exactly one, and populateRowFromData replaces
+  ' all of a row's children when items land.
+  '
+  ' @param row - a HomeRow node, or invalid
+  ' @return PLACEHOLDER_LOADING, PLACEHOLDER_FAILED, or ""
+  function placeholderState(row as dynamic) as string
+    if not isValid(row) then return ""
+    if row.getChildCount() <> 1 then return ""
+    child = row.getChild(0)
+    if skeleton.isFailedPlaceholder(child) then return homeRowFailure.PLACEHOLDER_FAILED
+    if skeleton.isPlaceholder(child) then return homeRowFailure.PLACEHOLDER_LOADING
+    return ""
+  end function
+
+  ' The placeholder a row switches to when its section's load fails, or "" to leave the row
+  ' as it is. Only a row still loading changes: items stay, and a failed tile already says so.
+  '
+  ' @param state - the row's placeholderState
+  ' @return PLACEHOLDER_FAILED or ""
+  function afterFailure(state as string) as string
+    if state = homeRowFailure.PLACEHOLDER_LOADING then return homeRowFailure.PLACEHOLDER_FAILED
+    return ""
+  end function
+
+  ' The placeholder a row switches to when its section's load starts again, or "" to leave the
+  ' row as it is. A failed tile goes back to the spinner, so a retry shows it is under way; a
+  ' row with items keeps them until the new answer replaces them.
+  '
+  ' @param state - the row's placeholderState
+  ' @return PLACEHOLDER_LOADING or ""
+  function afterRetry(state as string) as string
+    if state = homeRowFailure.PLACEHOLDER_FAILED then return homeRowFailure.PLACEHOLDER_LOADING
+    return ""
+  end function
+
+  ' Whether a section's result may act on its row: only an answered load says what the
+  ' section holds. Anything else — "failed", or a task that set no status — must not.
+  '
+  ' @param status - the load's status field ("ok" / "failed" / "")
+  ' @return true only for "ok"
+  function isAnswered(status as dynamic) as boolean
+    return isValid(status) and status = "ok"
+  end function
+
+  ' Whether a failed FIRST libraries load needs a stand-in row where the latest-media rows
+  ' would go. Those rows come from the libraries answer, so a failed one leaves none; with a
+  ' My Media row on screen its failed tile already says the libraries did not load, and a
+  ' second tile for the same request would only repeat it. Without one, the stand-in is the
+  ' only place the failure shows.
+  '
+  ' @param sectionPlan - HomeRows' plan, [{ type }] in layout order
+  ' @param hasLibraryRow - whether the My Media row is on screen
+  ' @return true when the layout shows latest media and has no My Media row
+  function needsLatestMediaStandIn(sectionPlan as dynamic, hasLibraryRow as boolean) as boolean
+    if hasLibraryRow or not isValid(sectionPlan) then return false
+    for each section in sectionPlan
+      if section.type = "latestmedia" then return true
+    end for
+    return false
+  end function
+
+end namespace

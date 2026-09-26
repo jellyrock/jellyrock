@@ -1,5 +1,6 @@
 ' bsc-disable-file print-locations — legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements
 import "pkg:/source/constants/itemAspectRatio.bs"
+import "pkg:/source/home/homeRowFailure.bs"
 import "pkg:/source/home/homeScreenLoad.bs"
 import "pkg:/source/home/latestRows.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
@@ -13,6 +14,12 @@ import "pkg:/source/utils/skeleton.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/translate.bs"
+
+' sectionId of the row that stands in for the latest-media rows when the FIRST libraries load
+' fails and the layout has no My Media row to show it (homeRowFailure.needsLatestMediaStandIn).
+' Not "latest_"-prefixed on purpose: it is no library's row, and latestRows treats that prefix
+' as one.
+const LATEST_STAND_IN_ID = "latestStandIn"
 
 sub init()
   ' Every m.log.* call in this file faulted with &hf3 without this — the component
@@ -148,6 +155,11 @@ sub init()
   ' sitting on Home long enough would leave a row of finished broadcasts/recordings
   ' until the user refreshes manually.
   m.top.observeField("programsExpired", "onProgramsExpired")
+
+  ' RTA builds only: each section's last load result — see noteSectionResult.
+  #if ENABLE_RTA
+    m.top.addFields({ rtaSectionResults: {} })
+  #end if
 end sub
 
 ' loadLibraries: Entry point called by Home.bs via callFunc.
@@ -330,6 +342,10 @@ sub startLibrariesLoad()
   m.LoadLibrariesTask = replaceTask(m.LoadLibrariesTask, "LoadItemsTask", "content", { itemsToLoad: "libraries" })
   m.LoadLibrariesTask.observeField("content", "onLibrariesLoaded")
   m.isLoadingLibraries = launchTask(m.LoadLibrariesTask)
+  if m.isLoadingLibraries
+    showRowRetrying("library")
+    showRowRetrying(LATEST_STAND_IN_ID)
+  end if
 end sub
 
 sub startResumeLoad()
@@ -338,6 +354,7 @@ sub startResumeLoad()
   m.LoadContinueWatchingTask.observeField("content", "updateContinueWatchingItems")
   ' bsc-disable-next-line no-task-fanout one run at a time: returns above while m.isLoadingResume
   m.isLoadingResume = launchTask(m.LoadContinueWatchingTask)
+  if m.isLoadingResume then showRowRetrying("resume")
 end sub
 
 sub startNextUpLoad()
@@ -346,6 +363,7 @@ sub startNextUpLoad()
   m.LoadNextUpTask.observeField("content", "updateNextUpItems")
   ' bsc-disable-next-line no-task-fanout one run at a time: returns above while m.isLoadingNextUp
   m.isLoadingNextUp = launchTask(m.LoadNextUpTask)
+  if m.isLoadingNextUp then showRowRetrying("nextup")
 end sub
 
 sub startOnNowLoad()
@@ -354,6 +372,7 @@ sub startOnNowLoad()
   m.LoadOnNowTask.observeField("content", "updateOnNowItems")
   ' bsc-disable-next-line no-task-fanout one run at a time: returns above while m.isLoadingOnNow
   m.isLoadingOnNow = launchTask(m.LoadOnNowTask)
+  if m.isLoadingOnNow then showRowRetrying("livetv")
 end sub
 
 sub startActiveRecordingsLoad()
@@ -362,15 +381,34 @@ sub startActiveRecordingsLoad()
   m.LoadActiveRecordingsTask.observeField("content", "updateActiveRecordingsItems")
   ' bsc-disable-next-line no-task-fanout one run at a time: returns above while m.isLoadingActiveRecordings
   m.isLoadingActiveRecordings = launchTask(m.LoadActiveRecordingsTask)
+  if m.isLoadingActiveRecordings then showRowRetrying("activeRecordings")
 end sub
 
 ' onLibrariesLoaded: Handler when LoadLibrariesTask returns data.
 ' Populates the library row, creates latestmedia skeleton rows, then fires latest tasks.
 sub onLibrariesLoaded(event as object)
   if not isCurrentTaskEvent(event, m.LoadLibrariesTask) then return
-  m.libraryData = m.LoadLibrariesTask.content
+  status = m.LoadLibrariesTask.status
+  libraryData = m.LoadLibrariesTask.content
   m.LoadLibrariesTask = releaseTask(m.LoadLibrariesTask, "content")
   m.isLoadingLibraries = false
+  noteSectionResult("library", status)
+
+  if not homeRowFailure.isAnswered(status)
+    ' The libraries did not answer, so nothing built from them may change: My Media keeps
+    ' what it shows (or shows its failed tile), and on a refresh the latest-media rows keep
+    ' theirs. On the FIRST load there are no latest-media rows yet, and m.initialLoadComplete
+    ' stays false, so the answer that eventually lands (a return to Home, or OK on the failed
+    ' tile) builds them exactly as a first load does — rather than each arriving later as a
+    ' re-insert, which shifts the rows below it once per library.
+    showRowFailed("library")
+    if not m.initialLoadComplete then showLatestMediaStandIn()
+    ' The wait for the libraries is over either way; an open fill would leave Home unsettled.
+    resolveRowFill("library")
+    return
+  end if
+
+  m.libraryData = libraryData
 
   ' Always recompute filteredLatest — library data or latestItemsExcludes may have changed since last load.
   ' startLatestMediaLoads() and getRowConfigForSection() both depend on this being current.
@@ -383,6 +421,9 @@ sub onLibrariesLoaded(event as object)
   ' either already exist (updated in place by populateRowFromData) or were removed
   ' because they had no data — populateRowFromData will re-insert them if data arrives.
   if not m.initialLoadComplete
+    ' A failed first load may have left a stand-in where these rows go. Its removal needs no
+    ' recompute of its own: the one just below covers both.
+    removeLatestMediaStandIn()
     insertLatestMediaSkeletons()
     rowStructureChanged()
     m.initialLoadComplete = true
@@ -408,13 +449,44 @@ end sub
 ' populateLibraryRow: Fills the library row with filtered library items.
 ' Uses populateRowFromData for consistent in-place update behavior.
 sub populateLibraryRow()
-  if isValidAndNotEmpty(m.libraryData)
-    filteredMedia = filterNodeArray(m.libraryData, "id", m.global.user.config.myMediaExcludes)
-    populateRowFromData("library", filteredMedia)
-  end if
-  ' Resolved on the no-data path too: the libraries answer has landed either way, and a fill
-  ' left open here would leave Home unsettled forever.
+  ' Only reached with an ANSWERED libraries load, so an empty list is the truth — the server
+  ' has no libraries to show, or the viewer excluded every one — and removes the row, as any
+  ' answered, empty section does. (Before failures were told apart, an empty list kept the
+  ' row's spinner up forever, because it could also have meant "no answer".)
+  filteredMedia = filterNodeArray(m.libraryData, "id", m.global.user.config.myMediaExcludes)
+  populateRowFromData("library", filteredMedia)
+  ' The libraries answer has landed; a fill left open here would leave Home unsettled forever.
   resolveRowFill("library")
+end sub
+
+' showLatestMediaStandIn: Put one failed "Recently Added" row where the latest-media rows go,
+' when the first libraries load failed and the layout has no My Media row to say so
+' (homeRowFailure.needsLatestMediaStandIn). Without it, a layout like that shows no sign the
+' load failed: the latest-media rows are simply missing. Pressing OK on it retries like any
+' failed tile; the next answered libraries load removes it (onLibrariesLoaded).
+sub showLatestMediaStandIn()
+  if isValid(findRowBySectionId(LATEST_STAND_IN_ID))
+    showRowFailed(LATEST_STAND_IN_ID)
+    return
+  end if
+  if not homeRowFailure.needsLatestMediaStandIn(m.sectionPlan, isValid(findRowBySectionId("library"))) then return
+
+  row = CreateObject("roSGNode", "HomeRow")
+  row.title = translate(translationKeys.LabelRecentlyAdded)
+  row.sectionId = LATEST_STAND_IN_ID
+  row.cursorSize = rowSlotSize.WIDE
+  row.appendChild(skeleton.createFailedPlaceholder())
+  m.top.content.insertChild(row, findLatestMediaInsertIndex())
+  rowStructureChanged()
+end sub
+
+' removeLatestMediaStandIn: Drop the stand-in, if there is one. Leaves the row-size recompute to
+' the caller, which is about to insert the real latest-media rows and recompute once for both.
+sub removeLatestMediaStandIn()
+  result = findRowBySectionId(LATEST_STAND_IN_ID)
+  if not isValid(result) then return
+  m.top.content.removeChildIndex(result.index)
+  m.rowSizesDirty = true
 end sub
 
 ' insertLatestMediaSkeletons: Creates skeleton rows for each non-excluded library
@@ -561,6 +633,9 @@ sub startLatestMediaLoads()
   m.isLoadingLatestRows = true
   m.latestRowsRunClock.mark()
   launchTask(m.latestRowsTask)
+  for each lib in libs
+    showRowRetrying("latest_" + lib.id)
+  end for
 end sub
 
 ' onLatestRowsReady: Drains all unprocessed result children from the orchestrator.
@@ -588,6 +663,11 @@ sub onLatestRowsReady(event as object)
     ' The row owns the item nodes now — drop the orchestrator's reference so a long
     ' Home session doesn't retain every batch it has ever delivered.
     child.items = []
+    noteSectionResult("latest_" + child.libId, "ok")
+  end for
+  for each libId in drained.failed
+    showRowFailed("latest_" + libId)
+    noteSectionResult("latest_" + libId, "failed")
   end for
 
   ' Every child the drain walked past has landed, FAILED ones included: drainReady skips
@@ -601,9 +681,9 @@ sub onLatestRowsReady(event as object)
     end for
   #end if
 
-  ' A failed row is deliberately left alone — it keeps the skeleton placeholder
-  ' insertLatestMediaSkeletons gave it and fills in place on the next refresh, so nothing
-  ' shifts. See latestRows.drainReady for why clearing it would be worse.
+  ' A failed row is never removed — it keeps its items, or its placeholder turns into the
+  ' failed tile in place, and fills in place on the next load, so nothing shifts. See
+  ' latestRows.drainReady for why clearing it would be worse.
   '
   ' apiPipeline yields every entry exactly once and emitRow appends one child per yield, so
   ' the cursor reaching the entry count means the run is over. Frees the guard without a
@@ -848,51 +928,122 @@ end function
 ' ============================================
 ' DATA UPDATE CALLBACKS
 ' Each follows the same pattern:
-' 1. Drop a replaced run's event, then get data from task and release it
-' 2. Find pre-created row by sectionId
-' 3. If empty data → remove row, recalculate sizes
-' 4. If data → replace skeleton with populated row
-' 5. Update backdrop for focused item
+' 1. Drop a replaced run's event, then get status + data from task and release it
+' 2. A failed load leaves the row standing (applySectionResult → showRowFailed)
+' 3. Find pre-created row by sectionId
+' 4. If empty data → remove row, recalculate sizes
+' 5. If data → replace skeleton with populated row
+' 6. Update backdrop for focused item
 ' ============================================
 
 sub updateContinueWatchingItems(event as object)
   if not isCurrentTaskEvent(event, m.LoadContinueWatchingTask) then return
+  status = m.LoadContinueWatchingTask.status
   itemData = m.LoadContinueWatchingTask.content
   m.LoadContinueWatchingTask = releaseTask(m.LoadContinueWatchingTask, "content")
   m.isLoadingResume = false
 
-  populateRowFromData("resume", itemData)
+  applySectionResult("resume", status, itemData)
   resolveRowFill("resume")
 end sub
 
 sub updateNextUpItems(event as object)
   if not isCurrentTaskEvent(event, m.LoadNextUpTask) then return
+  status = m.LoadNextUpTask.status
   itemData = m.LoadNextUpTask.content
   m.LoadNextUpTask = releaseTask(m.LoadNextUpTask, "content")
   m.isLoadingNextUp = false
 
-  populateRowFromData("nextup", itemData)
+  applySectionResult("nextup", status, itemData)
   resolveRowFill("nextup")
 end sub
 
 sub updateOnNowItems(event as object)
   if not isCurrentTaskEvent(event, m.LoadOnNowTask) then return
+  status = m.LoadOnNowTask.status
   itemData = m.LoadOnNowTask.content
   m.LoadOnNowTask = releaseTask(m.LoadOnNowTask, "content")
   m.isLoadingOnNow = false
 
-  populateRowFromData("livetv", itemData)
+  applySectionResult("livetv", status, itemData)
   resolveRowFill("livetv")
 end sub
 
 sub updateActiveRecordingsItems(event as object)
   if not isCurrentTaskEvent(event, m.LoadActiveRecordingsTask) then return
+  status = m.LoadActiveRecordingsTask.status
   itemData = m.LoadActiveRecordingsTask.content
   m.LoadActiveRecordingsTask = releaseTask(m.LoadActiveRecordingsTask, "content")
   m.isLoadingActiveRecordings = false
 
-  populateRowFromData("activeRecordings", itemData)
+  applySectionResult("activeRecordings", status, itemData)
   resolveRowFill("activeRecordings")
+end sub
+
+' applySectionResult: A section's load has finished. An answered one fills its row (or removes
+' it, when the section is empty); a failed one says nothing about what the section holds, so
+' the row stands (showRowFailed).
+'
+' @param {string} sectionId - The sectionId of the target row
+' @param {dynamic} status - The task's status field ("ok" / "failed")
+' @param {dynamic} itemData - Array of content nodes from the task
+sub applySectionResult(sectionId as string, status as dynamic, itemData as dynamic)
+  if homeRowFailure.isAnswered(status)
+    populateRowFromData(sectionId, itemData)
+  else
+    showRowFailed(sectionId)
+  end if
+  noteSectionResult(sectionId, status)
+end sub
+
+' showRowFailed: A section's load failed. Its row keeps its items; a row still showing its
+' loading placeholder shows the failed tile instead, so the failure does not read as loading
+' forever (homeRowFailure.afterFailure). A section with no row stays off screen.
+'
+' @param {string} sectionId - The sectionId of the row
+sub showRowFailed(sectionId as string)
+  result = findRowBySectionId(sectionId)
+  if not isValid(result) then return
+  if homeRowFailure.afterFailure(homeRowFailure.placeholderState(result.row)) = "" then return
+  replacePlaceholder(result.row, skeleton.createFailedPlaceholder())
+end sub
+
+' showRowRetrying: A section's load has started again. A row showing the failed tile goes back
+' to the spinner, so a retry shows it is under way (homeRowFailure.afterRetry).
+'
+' @param {string} sectionId - The sectionId of the row
+sub showRowRetrying(sectionId as string)
+  result = findRowBySectionId(sectionId)
+  if not isValid(result) then return
+  if homeRowFailure.afterRetry(homeRowFailure.placeholderState(result.row)) = "" then return
+  replacePlaceholder(result.row, skeleton.createPlaceholder())
+end sub
+
+' replacePlaceholder: Swap a row's lone placeholder for another, in place. Appended before the
+' old one is removed, as populateRowFromData does, so the row is never empty and the RowList
+' keeps its layout and focus.
+sub replacePlaceholder(row as object, placeholder as object)
+  row.appendChild(placeholder)
+  row.removeChildIndex(0)
+end sub
+
+' noteSectionResult: RTA builds only — record a section's latest load result on
+' `rtaSectionResults` ({ <sectionId>: { status, count } }), so a spec can wait for a load to
+' finish even when, having failed, it changes nothing on screen. Nothing reads it in the app.
+'
+' @param {string} sectionId - The sectionId the load was for
+' @param {dynamic} status - The load's status
+sub noteSectionResult(sectionId as string, status as dynamic)
+  #if ENABLE_RTA
+    results = m.top.rtaSectionResults
+    previous = results[sectionId]
+    count = 1
+    if isValid(previous) then count = previous.count + 1
+    statusText = ""
+    if isValid(status) then statusText = status
+    results[sectionId] = { status: statusText, count: count }
+    m.top.rtaSectionResults = results
+  #end if
 end sub
 
 ' resolveRowFill: A row's data has landed — close its screen-load fill, then see whether that
@@ -1301,9 +1452,19 @@ end function
 
 sub itemSelected()
   item = getItemAtIndices(m.top.rowItemSelected)
+  if not isValid(item) then return
+
+  ' OK on a "couldn't load" tile loads Home again: the same refresh a return to Home runs, so
+  ' every failed row retries at once, and a section whose load is still running is left to
+  ' finish rather than asked twice (the isLoading* guards). Nothing retries on its own — the
+  ' viewer asks (decision `latest-rows-failure-vs-empty`).
+  if skeleton.isFailedPlaceholder(item)
+    updateHomeRows()
+    return
+  end if
 
   ' Ignore skeleton placeholder items
-  if not isValid(item) or skeleton.isPlaceholder(item) then return
+  if skeleton.isPlaceholder(item) then return
 
   m.top.selectedItem = item
 

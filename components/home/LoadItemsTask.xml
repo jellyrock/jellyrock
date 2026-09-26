@@ -4,6 +4,15 @@
   <interface>
     <field id="itemsToLoad" type="string" value="libraries" />
     <field id="itemId" type="string" />
+    <!--
+      "ok" when the server answered, "failed" when it did not: a failed load delivers an
+      empty `content` that says nothing about what the section holds. Written just before
+      `content`, so a `content` observer can read it. Why it failed goes to the log, not here.
+      Set by the Home row loads (libraries, nextUp, continue, onNow, activeRecordings) only;
+      every other `itemsToLoad` leaves it "" until its caller is given a failure state
+      (the failure-not-empty project's later phases).
+    -->
+    <field id="status" type="string" value="" />
     <field id="content" type="array" />
     <field id="shouldForceRefresh" type="bool" value="false" />
   </interface>

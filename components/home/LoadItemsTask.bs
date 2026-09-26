@@ -1,5 +1,6 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/apiResponse.bs"
 import "pkg:/source/api/items.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
@@ -18,13 +19,16 @@ sub loadItems()
   m.transformer = JellyfinDataTransformer()
 
   results = []
+  ' Set by the Home row loads only — see the `status` field.
+  status = ""
 
   ' Load Libraries
   if m.top.itemsToLoad = "libraries"
 
-    data = fetchJson(GetApi().BuildGetViewsRequest(), "libraries")
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
+    items = fetchRowItems(GetApi().BuildGetViewsRequest(), "libraries")
+    status = statusOf(items)
+    if isValid(items)
+      for each item in items
         ' Skip Books for now as we don't support it (issue #525)
         if item.CollectionType <> "books"
           results.push(m.transformer.transformBaseItem(item))
@@ -37,9 +41,10 @@ sub loadItems()
     userSettings = globalUser.settings
     params = buildHomeNextUpParams(m.global.server.version, userSettings.uiDetailsEnableRewatchingNextUp, userSettings.uiDetailsMaxDaysNextUp, CreateObject("roDateTime").AsSeconds())
 
-    data = fetchJson(GetApi().BuildGetNextUpRequest(params), "nextUp")
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
+    items = fetchRowItems(GetApi().BuildGetNextUpRequest(params), "nextUp")
+    status = statusOf(items)
+    if isValid(items)
+      for each item in items
         results.push(m.transformer.transformBaseItem(item))
       end for
     end if
@@ -47,6 +52,8 @@ sub loadItems()
     ' Load Continue Watching
   else if m.top.itemsToLoad = "continue"
     activeUser = globalUser.id
+    ' No user means no request was made, which is not an answer.
+    status = "failed"
     if isValid(activeUser)
       ' DELIBERATELY NO `limit`, and now stated rather than merely absent — the silence here
       ' was previously indistinguishable from nobody having got round to it. Continue Watching
@@ -57,9 +64,10 @@ sub loadItems()
       ' Alternate-versions badge — see buildHomeNextUpParams for the measured cost.
       params["Fields"] = "MediaSourceCount"
 
-      data = fetchJson(GetApi().BuildGetResumeItemsRequest(params), "continue")
-      if isValid(data) and isValid(data.Items)
-        for each item in data.Items
+      items = fetchRowItems(GetApi().BuildGetResumeItemsRequest(params), "continue")
+      status = statusOf(items)
+      if isValid(items)
+        for each item in items
           ' Skip Books for now as we don't support it (issue #558)
           if item.Type <> "Book"
             results.push(m.transformer.transformBaseItem(item))
@@ -132,9 +140,10 @@ sub loadItems()
     params["enableTotalRecordCount"] = false
     params["fields"] = "ChannelInfo,PrimaryImageAspectRatio"
 
-    data = fetchJson(GetApi().BuildGetLiveTvRecommendedProgramsRequest(params), "onNow")
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
+    items = fetchRowItems(GetApi().BuildGetLiveTvRecommendedProgramsRequest(params), "onNow")
+    status = statusOf(items)
+    if isValid(items)
+      for each item in items
         results.push(m.transformer.transformBaseItem(item))
       end for
     end if
@@ -149,9 +158,10 @@ sub loadItems()
     params["enableTotalRecordCount"] = false
     params["fields"] = "ChannelInfo,PrimaryImageAspectRatio"
 
-    data = fetchJson(GetApi().BuildGetLiveTvRecordingsRequest(params), "activeRecordings")
-    if isValid(data) and isValid(data.Items)
-      for each item in data.Items
+    items = fetchRowItems(GetApi().BuildGetLiveTvRecordingsRequest(params), "activeRecordings")
+    status = statusOf(items)
+    if isValid(items)
+      for each item in items
         results.push(m.transformer.transformBaseItem(item))
       end for
     end if
@@ -217,9 +227,46 @@ sub loadItems()
     end if
   end if
 
+  ' `status` before `content`: the caller reads it in its `content` handler.
+  if status <> "" then m.top.status = status
   ' Keep this the LAST statement: a caller may release (STOP) the node in its `content`
   ' handler, before this function returns (see releaseTask), and work added below would
   ' then silently not run.
   m.top.content = results
 
 end sub
+
+' The items a Home row's request answered with, or invalid when it did not answer. Logs why
+' at warn, once: the row's failure tile says only that it failed, so the log is where the
+' cause lives (timeout, HTTP status, unreadable reply).
+'
+' Every Home row endpoint answers with a query result (`{ Items: [...] }`), read through
+' apiResponse.listFrom, so a 200 whose body holds no list is a failure too, not an empty row.
+'
+' @param req - the request AA, or invalid when it could not be built
+' @param requestId - the pool request id, also the log's label
+' @return an roArray of BaseItemDto AAs (possibly empty), or invalid
+function fetchRowItems(req as dynamic, requestId as string) as dynamic
+  if not isValid(req)
+    m.log.warn("home row load failed", requestId, "cause", "not sent")
+    return invalid
+  end if
+  res = fetchRes(req, requestId)
+  cause = apiResponse.jsonFailure(res)
+  items = invalid
+  if cause = ""
+    items = apiResponse.listFrom(res.json)
+    if not isValid(items) then cause = "unexpected reply shape"
+  end if
+  if cause <> ""
+    m.log.warn("home row load failed", requestId, "cause", cause)
+    return invalid
+  end if
+  return items
+end function
+
+' `status` for a Home row load from what fetchRowItems returned.
+function statusOf(items as dynamic) as string
+  if isValid(items) then return "ok"
+  return "failed"
+end function

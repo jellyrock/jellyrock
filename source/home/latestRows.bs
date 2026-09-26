@@ -36,21 +36,22 @@ namespace latestRows
   ' should populate, plus the new cursor. One wake can cover several results — wake events
   ' coalesce, appended children don't — so the caller always drains to the end.
   '
-  ' A "failed" child is SKIPPED, not returned. A timeout, a transport failure or an HTTP error
-  ' says nothing about what the library holds, and populateRowFromData removes a row when handed
-  ' an empty list — so acting on a failure would delete good content on a flaky refresh. The
-  ' cursor still advances past it; the row self-heals on the next Home.refresh(), which fires on
-  ' every onScreenShown.
+  ' A "failed" child is never returned in `ready`. A timeout, a transport failure or an HTTP
+  ' error says nothing about what the library holds, and populateRowFromData removes a row when
+  ' handed an empty list — so acting on a failure would delete good content on a flaky refresh.
+  ' The cursor still advances past it; the row is loaded again on the next Home.refresh(), which
+  ' fires on every onScreenShown, or when the viewer presses OK on its failed tile.
   '
-  ' DELIBERATELY does not hand failures back for the caller to clear the row. A latest row that
-  ' has not been populated yet is not empty — insertLatestMediaSkeletons gives it one
-  ' `type: "Loading"` placeholder child so the RowList renders it at the right slot size — so a
-  ' failed row keeps that skeleton, and the next successful refresh fills it via
-  ' populateRowFromData's "update children in place" branch: items appended, placeholder dropped,
-  ' no insert. Removing the row instead would send that refresh down the else-branch, which
-  ' CreateObject+insertChild's a fresh row — the row visibly pops in and shifts every row below
-  ' it. Measured on device (8 libraries, HTTP 500 forced on five): the skipped rows sat at their
-  ' single placeholder child and nothing shifted. Keep it that way.
+  ' Its libId comes back in `failed` instead, and the caller hands it to homeRowFailure, which
+  ' changes a row only while it still shows its loading placeholder: that placeholder becomes
+  ' the "couldn't load" tile IN PLACE, and a row that already shows items keeps them. The row is
+  ' never removed — a latest row that has not been populated yet is not empty, it carries one
+  ' placeholder child so the RowList renders it at the right slot size, and the next successful
+  ' load fills it via populateRowFromData's "update children in place" branch: items appended,
+  ' placeholder dropped, no insert. Removing it instead would send that load down the
+  ' else-branch, which CreateObject+insertChild's a fresh row — the row visibly pops in and
+  ' shifts every row below it. Measured on device (8 libraries, HTTP 500 forced on five): the
+  ' failed rows sat at their single placeholder child and nothing shifted. Keep it that way.
   '
   ' Also resets `silenceClock` whenever the drain moves past at least one child — a failed
   ' child included, since it is still the run reporting in. runIsStalled reads that clock, and
@@ -62,20 +63,27 @@ namespace latestRows
   ' @param task - the LoadLatestRowsTask node holding { libId, items, status } children
   ' @param startIndex - first unprocessed child index
   ' @param silenceClock - anything with a mark() method; HomeRows passes an roTimespan
-  ' @return an AA { ready, nextIndex } - the children to populate, and the new cursor
+  ' @return an AA { ready, failed, nextIndex } - the children to populate, the libIds of the
+  '   ones that failed, and the new cursor
   function drainReady(task as object, startIndex as integer, silenceClock as object) as object
     ready = []
+    failed = []
     index = startIndex
     childCount = task.getChildCount()
 
     while index < childCount
       child = task.getChild(index)
       index++
-      if isValid(child) and child.status = "ok" then ready.push(child)
+      if not isValid(child) then continue while
+      if child.status = "ok"
+        ready.push(child)
+      else
+        failed.push(child.libId)
+      end if
     end while
 
     if index > startIndex then silenceClock.mark()
-    return { ready: ready, nextIndex: index }
+    return { ready: ready, failed: failed, nextIndex: index }
   end function
 
   ' May a row's removal be held back until the current latest-rows run ends?
