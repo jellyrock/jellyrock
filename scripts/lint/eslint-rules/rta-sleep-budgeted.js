@@ -87,6 +87,9 @@ export const BUDGETS = new Map([
   // thing being disproven.
   ['tests/rta/specs/deeplink.spec.js', 2],
   ['tests/rta/specs/genre-skeleton.spec.js', 1],
+  // A search answer delivered to a hidden screen must NOT end the details spinner; no app
+  // field reports a delivery that did not happen.
+  ['tests/rta/specs/slow-search.spec.js', 1],
 
   // Timer-window non-events only, since Phase 6b: a dialog that must survive its own 5 s
   // auto-hide, and a Back that must not exit before it. The four pre-action settles that

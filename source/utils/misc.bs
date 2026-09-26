@@ -1,3 +1,4 @@
+import "pkg:/source/enums/LoadingKind.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/translate.bs"
@@ -727,9 +728,11 @@ end function
 sub startLoadingSpinner(disableRemote = true as boolean, loadingText = "" as string)
   scene = appScene()
 
-  ' disableRemote and loadingText must be set first
-  scene.isRemoteDisabled = disableRemote
-  scene.loadingText = loadingText
+  ' Everything JRScene.onIsLoadingChanged reads must be set before isLoading, which is
+  ' therefore its own write. One setFields: main.bs and loginRouter call this off the render
+  ' thread, where each write to the scene is a rendezvous. The kind is written too, so this
+  ' spinner never inherits the kind of one before it (a cast's).
+  scene.setFields({ isRemoteDisabled: disableRemote, loadingText: loadingText, loadingKind: LoadingKind.PLAIN })
   scene.isLoading = true
 end sub
 

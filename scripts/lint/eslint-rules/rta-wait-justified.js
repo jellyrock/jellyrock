@@ -123,6 +123,12 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // the end of the load — seconds apart — so none is a pulse. Read against the app source
   // 2026-09-25, all three write sites.
   'loadingText',
+  // The scene's spinner and the stage text under it. Both are written only by
+  // `JRScene.showLoadingStage`, when a wait starts or ends, the active view changes, or a stage
+  // comes due (8 s, 30 s). Each value holds until the next of those — seconds apart — so
+  // neither is a pulse. Read against the app source 2026-09-25, the one write site of each.
+  '#spinner.visible',
+  '#loadingStageText.text',
   // RTA-only count of slowed answers the API coordinator holds (ApiQueueTask.publishHeld),
   // written on each hold and each release. A count held for the whole length of a `slow`
   // rule's hold (seconds), and 0 until the next one: neither is a pulse. Read against the
