@@ -3618,7 +3618,8 @@ sub onItemContentChanged()
     ' and resetting to invalid would trigger onNextUpEpisodeChanged() which removes it immediately.
     ' onSeriesResumeLoaded() handles both the data and no-data cases.
     if item.type = "Series"
-      ' Unobserve before re-observing to prevent callbacks stacking on repeated content changes.
+      ' A new node per run: a refresh can land while the previous fetch is still running,
+      ' and relaunching a running node is ignored.
       m.loadSeriesResumeTask = replaceTask(m.loadSeriesResumeTask, "LoadItemsTask", "content", { itemsToLoad: "seriesResume" })
       m.loadSeriesResumeTask.itemId = item.id
       m.loadSeriesResumeTask.observeField("content", "onSeriesResumeLoaded")

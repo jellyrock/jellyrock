@@ -236,7 +236,10 @@ sub onScreenShown()
     if isValid(pairReq) then SubmitSideEffect(pairReq)
     ' Start the ws:// remote-control receiver now that we're authed (it needs the session token).
     ' isFirstRun is per Home instance, so this restarts the receiver after a server switch too.
-    ' bsc-disable-next-line no-same-node-relaunch one receiver per session — this app-wide node is never replaced (main.bs observes it once); a relaunch while it runs (Home rebuilt without a sign-out) is ignored, which keeps it listening; SignOut is the only STOP, and a relaunch from a later callback restarts it (TaskRelaunch.spec)
+    ' One receiver per session: this app-wide node is never replaced, because main.bs observes it once.
+    ' A relaunch while it runs (Home rebuilt without a sign-out) is ignored, which keeps it listening;
+    ' SignOut is the only STOP, and a relaunch from a later callback restarts it (TaskRelaunch.spec).
+    ' bsc-disable-next-line no-same-node-relaunch app-wide receiver, never replaced (reason above)
     launchTask(m.global.remoteControlTask)
   else
     ' Subsequent visits: refresh the active tab's data in place
