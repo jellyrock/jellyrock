@@ -1801,6 +1801,16 @@ A library grid loads the rows near the user, not every page upfront (reverses #4
 
 Why: #444's reason — only visible rows hold textures — covered texture memory, not the item nodes (113 MB for 8,643 on the 512 MB Stick), and on a slow server it kept a pool slot busy for about an hour. Measured 2026-09-25 against the 8,643-movie fixture, Down every 150 ms for 20 s: Stick 4K 0 s at the last row, 35 MB after 700 items. The 512 MB Stick stalled 4.5–5.6 s at the last row under that probe, and paging was not the cause: `LoadItemsTask2` read from the render thread for every item. Once #1046 read those values once per page, it stalled 0–70 ms and built a page in 0.22–0.32 s while scrolling (3 runs per arm, fixture database optimized so the server answers fast). Ruled out: a user page-size setting (`jellyfin-web`'s is browser-only and means Next/Previous pages; the app can measure what a user would guess at), and a placeholder grid of the full count (the non-serial model of Roku's `SGDEX`) until stalls on fast servers show the runway is not enough. Re-evaluate: if the 512 MB Stick stalls again. The per-grid `perfTiming` lines split a page into build, handoff and render-side add; page size stays at 100 because handoff (56–123 ms) and the add (34–36 ms at worst) measured small.
 
+## decision-id: audio-metadata-release-on-track-change
+
+**date**: 2026-09-25
+**status**: accepted
+**related-files**: `components/music/AudioPlayerView.bs`, `scripts/bsc-plugins/no-same-node-relaunch.cjs`
+
+`AudioPlayerView`'s song-metadata fetch gets a NEW `LoadItemsTask` per run ([ADR 0037](adr/0037-task-run-replacement.md)), created at the launch in `onAudioStreamLoaded`, and every track change releases the run in flight in `pageContentChanged`, whether or not the next song launches one. The field starts `invalid` (`init()` no longer creates a node), and `releaseTask` releases any run on every track change and in `onDestroy()`. Measured 2026-09-25 on a Stick 4K against the public demo (12.1.0), with the metadata load forced and its fetch held 4 s after the id read: skipping mid-fetch showed the previous song's title 6/6 on `main` and 0/6 with this change, both when the next song needs metadata and when it does not.
+
+Ruled out: the standard migration alone (`replaceTask` at the launch plus the `isCurrentTaskEvent` guard). When the next song is fully tagged, nothing launches, so the old run is still the current node, the guard passes its delivery, and the old title wins (6/6 on `main` in that shape). Also ruled out: keeping the `init()` node and replacing in both places, which works but leaves a node nobody launches and needs a comment to explain the double replace.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
