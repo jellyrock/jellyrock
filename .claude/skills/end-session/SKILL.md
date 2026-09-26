@@ -15,7 +15,7 @@ description: This skill should be used when the user explicitly types "/end-sess
 
 **Outputs.**
 
-- An updated `PLAN.md`: Status section (phase markers with commit ranges, today's dated decision(s) prepended to the running list and trimmed, refreshed open questions/blockers, `last-updated:` set to today), a fully rewritten Next-session kickoff, and one appended Session-log line.
+- An updated `PLAN.md`: Status section (phase markers with commit ranges, today's dated decision(s) prepended to the running list, with the ones past its size moved (never deleted) to the project's `DECISIONS.md`, refreshed open questions/blockers, `last-updated:` set to today), a fully rewritten Next-session kickoff, and one appended Session-log line.
 - Cross-cutting deferred tails routed through `/log followup` (written to `docs/progress.md`, committed standalone) — project-scoped tails stay in the PLAN, not double-booked.
 - The project's end-of-session status set (`active` by default; `paused` / `completed` / `abandoned` only on a real signal, with archival for the terminal states).
 - A committed-and-pushed change staged by explicit pathspec.
@@ -34,6 +34,7 @@ description: This skill should be used when the user explicitly types "/end-sess
 - **Inventing progress.** Status records what shipped, confirmed against `git log` — not what was hoped or intended. If it didn't land, it isn't done.
 - **A kickoff that assumes session memory.** Write it for a cold reader. "Continue where we left off" is useless; "Phase D is next; templates are missing at X; read Y first" is actionable.
 - **A kickoff check the next session can't actually run.** When the kickoff asks the reader to verify something ("did the plan land?", "did the migration ship?"), key it on the **artifact** — a symbol in the source, a key in a settings JSON, a file on disk — never on a branch name, a commit subject, or a `git log -N` window. Branches get deleted or squashed on merge, subjects get reworded by the squash title, and a log window slides past the commit, so those checks answer "not done" about work that shipped and send the next session back at it.
+- **Deleting a decision to make room.** The PLAN's decisions list keeps the newest few; every older one moves to `DECISIONS.md` beside the PLAN, so the two files together are the project's full decision record. Trimming the list by hand drops decisions for good. The move is scripted, and the script refuses to write when its count of decisions would change. A decision `/log` already added to the list this session is not added again.
 - **Double-booking a tail.** A project-scoped tail belongs in the PLAN, not also in `docs/progress.md` via `/log`. A cross-cutting tail belongs in `docs/progress.md`, not orphaned in PLAN prose. Pick one surface per tail.
 - **Letting a cross-cutting tail die at the boundary.** A tail claimed-captured in the PLAN narrative but never written to `docs/progress.md` is exactly how these get lost, resurfacing a session or two later. Route it through `/log` and confirm it landed.
 - **Sweeping foreign files into the commit.** In a shared working tree a parallel agent can switch the branch or stage its own files. Verify branch + staging first; commit by explicit pathspec; re-check the branch after.
@@ -61,7 +62,7 @@ If this session loaded one via `/start-project` or `/resume-project`, use that. 
 ### Step 3 — Update the Status section with the user
 
 - Phase progress markers (✅ done / 🚧 in progress / ⬜ pending), with commit ranges where known.
-- Prepend today's dated decision(s) to "Last 5 decisions"; trim to the most recent 5.
+- Prepend today's dated decision(s) to "Last 5 decisions", skipping any that `/log decision` already added this session. Then run `bash .claude/skills/end-session/move-old-decisions.sh <project-dir>/PLAN.md`: it keeps the newest 5 and moves the rest to `DECISIONS.md` beside the PLAN, never deleting one. If it refuses (a duplicate decision, no decisions heading), fix what it names and run it again; never trim the list by hand.
 - Refresh "Open questions / blockers".
 - Set `last-updated:` in the frontmatter to today's date.
 
