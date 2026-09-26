@@ -81,6 +81,104 @@ namespace tests
       m.assertEqual(classifyPlaybackEnd("finished", false, false, true), PlaybackEndReport.FINISHED)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("endClosesLiveStream() — a live stream whose start was never reported")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("closes a live stream that ended without reporting its start")
+    function _()
+      for each report in [PlaybackEndReport.FAILED, PlaybackEndReport.FINISHED]
+        m.assertTrue(endClosesLiveStream(report, false, "live-stream-1"), report)
+      end for
+    end function
+
+    @it("never closes a live stream that reported its start, because its stop releases it")
+    function _()
+      for each report in [PlaybackEndReport.STOPPED, PlaybackEndReport.FINISHED, PlaybackEndReport.FAILED]
+        m.assertFalse(endClosesLiveStream(report, true, "live-stream-1"), report)
+      end for
+    end function
+
+    @it("closes nothing when no end is reported")
+    function _()
+      m.assertFalse(endClosesLiveStream(PlaybackEndReport.NONE, false, "live-stream-1"))
+    end function
+
+    @it("closes nothing for a stream with no live stream id")
+    function _()
+      m.assertFalse(endClosesLiveStream(PlaybackEndReport.FAILED, false, invalid))
+      m.assertFalse(endClosesLiveStream(PlaybackEndReport.FAILED, false, ""))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("liveStreamReportFields() — the stop and the close never both release a live stream")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("names the live stream and its media source on a report the stop releases")
+    function _()
+      fields = liveStreamReportFields({ MediaSourceId: "source-1", LiveStreamId: "live-stream-1" }, false)
+
+      m.assertEqual(fields.MediaSourceId, "source-1")
+      m.assertEqual(fields.LiveStreamId, "live-stream-1")
+    end function
+
+    ' AA lookups ignore case but the JSON body keeps it, and every report has always sent
+    ' `LiveStreamId`; a lower-cased key is untested on 10.7–10.9.
+    @it("sends the field names in the case the server documents")
+    function _()
+      json = FormatJson(liveStreamReportFields({ MediaSourceId: "source-1", LiveStreamId: "live-stream-1" }, false))
+
+      m.assertTrue(json.inStr(`"LiveStreamId":"live-stream-1"`) >= 0, json)
+      m.assertTrue(json.inStr(`"MediaSourceId":"source-1"`) >= 0, json)
+    end function
+
+    ' 10.7–10.10 release the stream on any stop naming it, and 12.x on one naming a stream no other
+    ' session is linked to, so a stop naming it here would end a shared stream another viewer holds.
+    @it("leaves the live stream out of an end a close releases, and still names the media source")
+    function _()
+      fields = liveStreamReportFields({ MediaSourceId: "source-1", LiveStreamId: "live-stream-1" }, true)
+
+      m.assertEqual(fields.MediaSourceId, "source-1")
+      m.assertFalse(fields.doesExist("LiveStreamId"))
+    end function
+
+    @it("releases every ended live stream exactly once: by its stop or by a close, never both")
+    function _()
+      params = { MediaSourceId: "source-1", LiveStreamId: "live-stream-1" }
+      for each report in [PlaybackEndReport.STOPPED, PlaybackEndReport.FINISHED, PlaybackEndReport.FAILED]
+        for each isPlayReported in [true, false]
+          closes = endClosesLiveStream(report, isPlayReported, params.LiveStreamId)
+          stopNamesStream = liveStreamReportFields(params, closes).doesExist("LiveStreamId")
+          m.assertTrue(stopNamesStream <> closes, report + " isPlayReported=" + isPlayReported.toStr())
+        end for
+      end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("liveStreamLeftByFailedLoad() — a load that opened a live stream and then failed")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("names the live stream a failed load opened")
+    function _()
+      video = { content: invalid, transcodeParams: { LiveStreamId: "live-stream-1" } }
+
+      m.assertEqual(liveStreamLeftByFailedLoad(video), "live-stream-1")
+    end function
+
+    @it("leaves a loaded stream to the player, which closes it")
+    function _()
+      video = { content: CreateObject("roSGNode", "ContentNode"), transcodeParams: { LiveStreamId: "live-stream-1" } }
+
+      m.assertEqual(liveStreamLeftByFailedLoad(video), "")
+    end function
+
+    @it("names nothing when the failed load never opened a live stream")
+    function _()
+      m.assertEqual(liveStreamLeftByFailedLoad({ content: invalid }), "")
+      m.assertEqual(liveStreamLeftByFailedLoad({ content: invalid, transcodeParams: { LiveStreamId: invalid } }), "")
+      m.assertEqual(liveStreamLeftByFailedLoad({ content: invalid, transcodeParams: { LiveStreamId: "" } }), "")
+    end function
+
   end class
 
 end namespace
