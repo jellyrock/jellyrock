@@ -209,6 +209,7 @@ Ruled out: **reverting the vendored change and relying only on `closeSocket()`'s
 
 **date**: 2026-08-02
 **status**: accepted
+**partially-superseded-by**: home-row-failure-tile (the five-row asymmetry; recovery by user retry)
 **related-files**: `components/home/LoadLatestRowsTask.bs`, `source/home/latestRows.bs`, `components/home/HomeRows.bs`, `source/api/apiPipeline.bs`
 
 A request that never answered says nothing about what a library holds, so Home's latest-media rows distinguish it from an authoritative empty result. Result children carry a status: `ok` may act on the list (an empty one still removes the row — that is how a genuinely empty library clears), while a timeout or transport failure is skipped and the existing row stands untouched. Before this, any empty result removed the row, so a flaky network deleted good content on refresh — the failing path emitted an empty row and `populateRowFromData` removes a row it is handed an empty list for.
@@ -1810,6 +1811,17 @@ Why: #444's reason — only visible rows hold textures — covered texture memor
 `AudioPlayerView`'s song-metadata fetch gets a NEW `LoadItemsTask` per run ([ADR 0037](adr/0037-task-run-replacement.md)), created at the launch in `onAudioStreamLoaded`, and every track change releases the run in flight in `pageContentChanged`, whether or not the next song launches one. The field starts `invalid` (`init()` no longer creates a node), and `releaseTask` releases any run on every track change and in `onDestroy()`. Measured 2026-09-25 on a Stick 4K against the public demo (12.1.0), with the metadata load forced and its fetch held 4 s after the id read: skipping mid-fetch showed the previous song's title 6/6 on `main` and 0/6 with this change, both when the next song needs metadata and when it does not.
 
 Ruled out: the standard migration alone (`replaceTask` at the launch plus the `isCurrentTaskEvent` guard). When the next song is fully tagged, nothing launches, so the old run is still the current node, the guard passes its delivery, and the old title wins (6/6 on `main` in that shape). Also ruled out: keeping the `init()` node and replacing in both places, which works but leaves a node nobody launches and needs a comment to explain the double replace.
+
+## decision-id: home-row-failure-tile
+
+**date**: 2026-09-26
+**status**: accepted
+**partially-supersedes**: latest-rows-failure-vs-empty (the five-row asymmetry; recovery by user retry)
+**related-files**: `source/home/homeRowFailure.bs`, `components/home/HomeRows.bs`, `components/home/LoadItemsTask.bs`, `components/ui/rowitem/JRRowItem.bs`, `source/utils/skeleton.bs`
+
+Every Home section now follows `latest-rows-failure-vs-empty`, not just the latest-media rows: `LoadItemsTask` publishes `status` for the libraries, Next Up, Continue Watching, On Now and Active Recordings loads, and `HomeRows.applySectionResult` fills or removes a row only on `"ok"`. A failed load keeps a row's items. A row still on its FIRST load stops spinning and shows a "Couldn't load. Press OK to try again." tile (`skeleton.createFailedPlaceholder`; the rules are `homeRowFailure`'s); OK re-runs Home's refresh, so every failed row retries at once and the `isLoading*` guards keep a running section from being asked twice. A failed first libraries load leaves `m.initialLoadComplete` false, so the retry builds the latest-media rows as a first load instead of re-inserting each; with no My Media row in the layout, one "Recently Added" stand-in row carries the failure. An answered empty libraries list now removes My Media, which the missing status used to leave spinning forever.
+
+Ruled out: a spinner until the next Home visit (a failure that reads as loading, the `docs/progress.md` stall followup this closes), removing the row with a toast (the row pops back in and shifts everything below it on recovery), and automatic retry (it stacks a second query on a server that may still be computing it). Measured 2026-09-26 on `.177` (Stick 4K, Roku OS 15.3.4) against the demo server: `home-failure.spec.js` failed 5/5 on the old app code (Continue Watching deleted, My Media stuck loading with no Recently Added rows, a failed Recently Added row stuck loading) and passed 5/5 with the change.
 
 ## Migrated to ADRs
 
