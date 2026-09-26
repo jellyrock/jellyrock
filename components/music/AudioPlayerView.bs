@@ -98,9 +98,9 @@ end sub
 
 ' Creates tasks to gather data needed to render Scene and play song
 sub setupDataTasks()
-  ' Load meta data
-  m.LoadMetaDataTask = CreateObject("roSGNode", "LoadItemsTask")
-  m.LoadMetaDataTask.itemsToLoad = "metaData"
+  ' Song metadata: a new node per run, created at launch in onAudioStreamLoaded and released on
+  ' every track change, so invalid whenever no metadata is wanted.
+  m.LoadMetaDataTask = invalid
 
   ' Load audio stream
   m.LoadAudioStreamTask = CreateObject("roSGNode", "LoadItemsTask")
@@ -536,6 +536,10 @@ end sub
 sub pageContentChanged()
 
   m.LoadAudioStreamTask = replaceTask(m.LoadAudioStreamTask, "LoadItemsTask", "content", { itemsToLoad: "audioStream" })
+  ' A metadata run still in flight belongs to the song being left. Dropped here, not only when
+  ' the next song launches its own, because the next song may not need one: its late delivery
+  ' would still be the current node's and paint the old title and artwork over this song.
+  m.LoadMetaDataTask = releaseTask(m.LoadMetaDataTask, "content")
 
   currentItem = m.queueManager.callFunc("getCurrentItem")
 
@@ -588,6 +592,7 @@ sub onAudioStreamLoaded(event as object)
 
     ' If we don't have enough data to populate the screen, load metadata (which also sets the artwork)
     if shouldUseMetaTask
+      m.LoadMetaDataTask = replaceTask(m.LoadMetaDataTask, "LoadItemsTask", "content", { itemsToLoad: "metaData" })
       m.LoadMetaDataTask.itemId = currentItem.id
       m.LoadMetaDataTask.observeField("content", "onMetaDataLoaded")
       launchTask(m.LoadMetaDataTask)
@@ -602,7 +607,8 @@ sub onAudioStreamLoaded(event as object)
   end if
 end sub
 
-sub onMetaDataLoaded()
+sub onMetaDataLoaded(event as object)
+  if not isCurrentTaskEvent(event, m.LoadMetaDataTask) then return
   data = m.LoadMetaDataTask.content[0]
   m.LoadMetaDataTask.unobserveField("content")
 
@@ -896,16 +902,15 @@ sub onDestroy()
   m.buttons.unobserveField("buttonSelected")
 
   ' Detach EVERY task observer before releasing ANY task reference. Interleaving
-  ' them leaves a window: onAudioStreamLoaded reads m.LoadMetaDataTask, so a late
-  ' content write arriving after that ref was nulled but before this task's own
-  ' observer came off would dot into invalid (&hec) - the #733 teardown shape.
-  m.LoadMetaDataTask.unobserveField("content")
+  ' them leaves a window: a handler that reads another task's ref, arriving after
+  ' that ref was nulled but before its own observer came off, would dot into
+  ' invalid (&hec) - the #733 teardown shape. The metadata node is detached by
+  ' releaseTask below in the same call that drops it (it may already be invalid).
   m.LoadAudioStreamTask.unobserveField("content")
   m.LoadScreenSaverTimeoutTask.unobserveField("content")
 
   ' Stop and release task nodes (observers may already be cleared by their callbacks)
-  m.LoadMetaDataTask.control = "STOP"
-  m.LoadMetaDataTask = invalid
+  m.LoadMetaDataTask = releaseTask(m.LoadMetaDataTask, "content")
 
   m.LoadAudioStreamTask.control = "STOP"
   m.LoadAudioStreamTask = invalid
