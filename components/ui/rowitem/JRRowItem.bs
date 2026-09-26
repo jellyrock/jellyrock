@@ -1,16 +1,20 @@
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/placeholderImage.bs"
 import "pkg:/source/utils/rowItemImage.bs"
 import "pkg:/source/utils/rowItemText.bs"
 import "pkg:/source/utils/skeleton.bs"
 import "pkg:/source/utils/textureManager.bs"
+import "pkg:/source/utils/translate.bs"
 
 ' Vertical gap between the bottom of the poster (= bottom of the RowList focus ring)
 ' and the first text label. Prevents the focus border from overlapping the title.
 ' The title stays OUTSIDE the focus border because the RowList sets rowHeights taller
 ' than rowItemSize — see docs/architecture/list-grid-item-layout.md.
 const FOCUS_PADDING = 18
+' Space between the edge of a failed placeholder's tile and its "couldn't load" text.
+const FAILED_TEXT_INSET = 18
 
 sub init()
   m.log = new log.Logger("JRRowItem")
@@ -116,8 +120,10 @@ sub renderItem()
   m.placeholder.itemType = ""
   m.placeholder.visible = true
 
-  ' Skeleton placeholder — show backdrop + centered spinner, no poster or text
+  ' Skeleton placeholder — show backdrop + centered spinner (or, when its load failed, the
+  ' "couldn't load" text), no poster or title
   if skeleton.isPlaceholder(item)
+    m.isLibraryTile = false
     m.cachedPosterUri = ""
     m.cachedIconUri = ""
     m.poster.uri = ""
@@ -125,12 +131,19 @@ sub renderItem()
     m.staticTitle.visible = false
     m.title.visible = false
     m.subtitle.visible = false
-    showLoadingSpinner(slotWidth, posterHeight)
+    if skeleton.isFailedPlaceholder(item)
+      hideLoadingSpinner()
+      showFailedText(slotWidth, posterHeight)
+    else
+      hideFailedText()
+      showLoadingSpinner(slotWidth, posterHeight)
+    end if
     return
   end if
 
-  ' Hide loading spinner if this recycled item previously showed one
+  ' Hide the spinner or the failed text if this recycled item previously showed one
   hideLoadingSpinner()
+  hideFailedText()
   m.poster.visible = true
 
   m.isLibraryTile = (item.type = "CollectionFolder" or item.type = "UserView" or item.type = "Channel")
@@ -902,6 +915,21 @@ end sub
 
 ' Toggles scrolling vs static title on focus, and speaks the title via audio guide.
 sub onFocusChanged()
+  ' A placeholder shows no title, so there is none to toggle — the labels still hold whatever
+  ' item this recycled cell drew last. A failed one is announced: it is the one placeholder a
+  ' viewer acts on (OK retries).
+  item = m.top.itemContent
+  if skeleton.isPlaceholder(item)
+    if m.top.itemHasFocus and skeleton.isFailedPlaceholder(item) and isValid(m.failedText)
+      if m.global.device.isAudioGuideEnabled
+        txt2Speech = CreateObject("roTextToSpeech")
+        txt2Speech.Flush()
+        txt2Speech.Say(m.failedText.text)
+      end if
+    end if
+    return
+  end if
+
   ' Library tiles have no scrolling text labels to toggle
   if m.isLibraryTile then return
 
@@ -934,4 +962,31 @@ end sub
 ' Hides and stops the loading spinner if it exists.
 sub hideLoadingSpinner()
   skeleton.hideSpinner(m.loadingSpinner)
+end sub
+
+' Shows the "couldn't load" text over the backdrop for a failed placeholder
+' (skeleton.createFailedPlaceholder), in place of the spinner. Created on first use and
+' placed on every render, like the spinner: cells are recycled across rows whose slot sizes
+' differ. Its own label rather than the library tile's backdropText, whose size and position
+' the library-tile path rearranges.
+sub showFailedText(slotWidth as float, posterHeight as float)
+  if not isValid(m.failedText)
+    m.failedText = CreateObject("roSGNode", "LabelPrimarySmaller")
+    m.failedText.isBold = true
+    m.failedText.horizAlign = "center"
+    m.failedText.vertAlign = "center"
+    m.failedText.wrap = true
+    m.failedText.text = translate(translationKeys.MessageHomeRowLoadFailed)
+    m.top.appendChild(m.failedText)
+  end if
+  m.failedText.width = slotWidth - 2 * FAILED_TEXT_INSET
+  m.failedText.height = posterHeight - 2 * FAILED_TEXT_INSET
+  m.failedText.translation = [FAILED_TEXT_INSET, FAILED_TEXT_INSET]
+  m.failedText.visible = true
+end sub
+
+' Hides the failed text if this cell ever showed it. Called on every other render, like
+' hideLoadingSpinner, because the cell drawing an item now may have drawn a failure a moment ago.
+sub hideFailedText()
+  if isValid(m.failedText) then m.failedText.visible = false
 end sub

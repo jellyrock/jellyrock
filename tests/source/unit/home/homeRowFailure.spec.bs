@@ -1,0 +1,195 @@
+import "pkg:/source/home/homeRowFailure.bs"
+import "pkg:/source/utils/skeleton.bs"
+
+namespace tests
+
+  ' Contract tests for what a Home row does when its load fails (source/home/homeRowFailure.bs)
+  ' and the failed placeholder it shows (source/utils/skeleton.bs).
+  '
+  ' Wrong in one direction, a failed load deletes or empties a row the server never said was
+  ' empty — the bug this exists to prevent. Wrong in the other, a row that failed spins as if
+  ' still loading, or a failed tile slips past a skeleton guard into the media render path.
+  @suite("homeRowFailure - Home row failure-vs-empty contract")
+  class HomeRowFailureTests extends tests.BaseTestSuite
+
+    private function makeRow(children as object) as object
+      row = CreateObject("roSGNode", "ContentNode")
+      for each child in children
+        row.appendChild(child)
+      end for
+      return row
+    end function
+
+    private function makeItem() as object
+      item = CreateObject("roSGNode", "ContentNode")
+      item.addFields({ type: "Movie" })
+      return item
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("skeleton - the failed placeholder")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is still a placeholder, so every skeleton guard keeps it out of the media paths")
+    function _()
+      m.assertTrue(skeleton.isPlaceholder(skeleton.createFailedPlaceholder()))
+    end function
+
+    @it("is recognized as failed")
+    function _()
+      m.assertTrue(skeleton.isFailedPlaceholder(skeleton.createFailedPlaceholder()))
+    end function
+
+    @it("does not read the loading placeholder as failed")
+    function _()
+      m.assertFalse(skeleton.isFailedPlaceholder(skeleton.createPlaceholder()))
+    end function
+
+    @it("does not read a real item or invalid as failed")
+    function _()
+      m.assertFalse(skeleton.isFailedPlaceholder(m.makeItem()))
+      m.assertFalse(skeleton.isFailedPlaceholder(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("placeholderState")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads a row holding only the loading placeholder as loading")
+    function _()
+      row = m.makeRow([skeleton.createPlaceholder()])
+      m.assertEqual(homeRowFailure.placeholderState(row), homeRowFailure.PLACEHOLDER_LOADING)
+    end function
+
+    @it("reads a row holding only the failed placeholder as failed")
+    function _()
+      row = m.makeRow([skeleton.createFailedPlaceholder()])
+      m.assertEqual(homeRowFailure.placeholderState(row), homeRowFailure.PLACEHOLDER_FAILED)
+    end function
+
+    @it("reads a row with items as no placeholder")
+    function _()
+      row = m.makeRow([m.makeItem(), m.makeItem()])
+      m.assertEqual(homeRowFailure.placeholderState(row), "")
+    end function
+
+    @it("reads a row with one real item as no placeholder")
+    function _()
+      row = m.makeRow([m.makeItem()])
+      m.assertEqual(homeRowFailure.placeholderState(row), "")
+    end function
+
+    @it("reads an absent row as no placeholder")
+    function _()
+      m.assertEqual(homeRowFailure.placeholderState(invalid), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("afterFailure - a failed load never takes a row's items")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("turns a loading row into the failed tile")
+    function _()
+      m.assertEqual(homeRowFailure.afterFailure(homeRowFailure.PLACEHOLDER_LOADING), homeRowFailure.PLACEHOLDER_FAILED)
+    end function
+
+    @it("leaves a row with items alone")
+    function _()
+      m.assertEqual(homeRowFailure.afterFailure(""), "")
+    end function
+
+    @it("leaves a row already showing the failed tile alone")
+    function _()
+      m.assertEqual(homeRowFailure.afterFailure(homeRowFailure.PLACEHOLDER_FAILED), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("afterRetry - a retry shows it is under way")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("turns the failed tile back into the spinner")
+    function _()
+      m.assertEqual(homeRowFailure.afterRetry(homeRowFailure.PLACEHOLDER_FAILED), homeRowFailure.PLACEHOLDER_LOADING)
+    end function
+
+    @it("leaves a row with items alone until the new answer replaces them")
+    function _()
+      m.assertEqual(homeRowFailure.afterRetry(""), "")
+    end function
+
+    @it("leaves a row that is already loading alone")
+    function _()
+      m.assertEqual(homeRowFailure.afterRetry(homeRowFailure.PLACEHOLDER_LOADING), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isAnswered - only ok is authoritative")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("accepts ok")
+    function _()
+      m.assertTrue(homeRowFailure.isAnswered("ok"))
+    end function
+
+    @it("rejects failed, an unset status and invalid")
+    function _()
+      m.assertFalse(homeRowFailure.isAnswered("failed"))
+      m.assertFalse(homeRowFailure.isAnswered(""))
+      m.assertFalse(homeRowFailure.isAnswered(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("needsLatestMediaStandIn - where a failed libraries load shows")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is needed when the layout shows latest media and has no My Media row")
+    function _()
+      plan = [{ type: "resume" }, { type: "latestmedia" }]
+      m.assertTrue(homeRowFailure.needsLatestMediaStandIn(plan, false))
+    end function
+
+    @it("is not needed when the My Media row already shows the failure")
+    function _()
+      plan = [{ type: "smalllibrarytiles" }, { type: "latestmedia" }]
+      m.assertFalse(homeRowFailure.needsLatestMediaStandIn(plan, true))
+    end function
+
+    @it("is not needed when the layout shows no latest media")
+    function _()
+      plan = [{ type: "resume" }, { type: "nextup" }]
+      m.assertFalse(homeRowFailure.needsLatestMediaStandIn(plan, false))
+    end function
+
+    @it("is not needed without a plan")
+    function _()
+      m.assertFalse(homeRowFailure.needsLatestMediaStandIn(invalid, false))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("needsFavoritesStandIn - where a failed Favorites items load shows")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is needed on a first load, while the rows are still spinning")
+    function _()
+      states = [homeRowFailure.PLACEHOLDER_LOADING, homeRowFailure.PLACEHOLDER_LOADING]
+      m.assertTrue(homeRowFailure.needsFavoritesStandIn(states, false))
+    end function
+
+    @it("is needed again when a retry of the stand-in fails")
+    function _()
+      m.assertTrue(homeRowFailure.needsFavoritesStandIn([], true))
+    end function
+
+    @it("is not needed when the rows show items, so they keep them")
+    function _()
+      m.assertFalse(homeRowFailure.needsFavoritesStandIn(["", ""], false))
+    end function
+
+    @it("is not needed when no row is on screen")
+    function _()
+      m.assertFalse(homeRowFailure.needsFavoritesStandIn([], false))
+    end function
+
+  end class
+
+end namespace

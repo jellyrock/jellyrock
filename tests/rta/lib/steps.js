@@ -845,6 +845,73 @@ export async function homeListId({ timeout = 5000, interval = 300 } = {}) {
 }
 
 /**
+ * Home's rows as the active list shows them, plus the RTA-only record of each section's last
+ * load result — one snapshot a spec can assert on or wait for.
+ *
+ * `rows` is one `{ sectionId, items, firstType, loadFailed }` per row, top to bottom: `items`
+ * is the row's child count, and `firstType` / `loadFailed` describe its first child, which is
+ * how a row still showing a placeholder reads — `firstType: 'Loading'`, with `loadFailed: true`
+ * once its load has failed (`skeleton.createFailedPlaceholder`). `results` is the list's
+ * `rtaSectionResults` (`homeRowFailure.noteResult`), `{ <sectionId>: { status, count } }`,
+ * compiled in only under `ENABLE_RTA` and `{}` until the first load finishes: a failed REFRESH deliberately changes nothing on screen, so without it a spec
+ * has no way to know the load it failed has finished.
+ *
+ * Two round trips: the row count first, then every row's fields in ONE batch, so the rows all
+ * describe the same frame (see `getActiveVals` for why that matters).
+ *
+ * @returns {Promise<{rows: object[], results: object}|undefined>} undefined while the active
+ *   list has no content to count
+ */
+export async function readHomeRows() {
+  const list = await homeListId();
+  const count = await getVal(`${list}.content.getChildCount()`);
+  if (typeof count !== 'number') return undefined;
+  const paths = [`${list}.rtaSectionResults`];
+  for (let i = 0; i < count; i++) {
+    const row = `${list}.content.${i}`;
+    paths.push(
+      `${row}.sectionId`,
+      `${row}.getChildCount()`,
+      `${row}.0.type`,
+      `${row}.0.loadFailed`,
+    );
+  }
+  const [results, ...fields] = await getVals(paths);
+  const rows = [];
+  for (let i = 0; i < count; i++) {
+    const [sectionId, items, firstType, loadFailed] = fields.slice(i * 4, i * 4 + 4);
+    rows.push({ sectionId, items, firstType, loadFailed: loadFailed === true });
+  }
+  return { rows, results: results ?? {} };
+}
+
+/**
+ * Wait until `predicate(snapshot)` holds for Home's rows (`readHomeRows`).
+ *
+ * FN: the snapshot is a batch of `getChildCount()` CALLS plus fields — there is no one field
+ * an observer could watch — so the keyPath passed on is the reader's name. `waitFor` puts the
+ * last snapshot in the failure record, which is what tells "the row is there but still
+ * loading" from "the row was removed" after the fact.
+ *
+ * @param {(snapshot: {rows: object[], results: object}) => boolean} predicate
+ * @param {{label: string, timeout?: number, interval?: number}} opts
+ * @returns {Promise<{rows: object[], results: object}>} the snapshot that satisfied it
+ */
+export async function waitHomeRows(predicate, { label, timeout = 20000, interval = 400 }) {
+  return waitFor('readHomeRows()', (snap) => snap !== undefined && predicate(snap), {
+    read: () => readHomeRows().catch(() => undefined),
+    timeout,
+    interval,
+    label,
+  });
+}
+
+/** The row with `sectionId` in a `readHomeRows` snapshot, or undefined. */
+export function homeRow(snapshot, sectionId) {
+  return snapshot?.rows.find((r) => r.sectionId === sectionId);
+}
+
+/**
  * Wait until focus is inside Home's content, whichever tab is selected.
  *
  * The `waitFocusInside` of Home's rows, with the id question removed: it asks the focused

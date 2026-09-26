@@ -437,6 +437,26 @@ export async function firstItemId(session, includeItemTypes) {
 }
 
 /**
+ * How many items of `includeItemTypes` the user has marked favorite — the content a Favorites
+ * tab spec depends on. Same query shape as the app's Favorites load (`LoadItemsTask`
+ * `favorites`), narrowed to one type.
+ *
+ * Throws on a failed request; `0` means the server answered and the user has none, which a
+ * spec must treat as a fixture that cannot support it, never as a pass.
+ *
+ * @param {{serverUrl: string, userId: string, token: string}} session
+ * @param {string} includeItemTypes - e.g. `Movie`
+ * @returns {Promise<number>}
+ */
+export async function favoriteCount(session, includeItemTypes) {
+  const url =
+    `${session.serverUrl}/Items?UserId=${session.userId}` +
+    `&Filters=IsFavorite&IncludeItemTypes=${includeItemTypes}&Recursive=true`;
+  const data = await getJson(url, tokenHeader(session.token));
+  return data?.Items?.length ?? 0;
+}
+
+/**
  * Would the app offer "Manage Subtitles" to THIS user on THIS server?
  *
  * A capability probe, in the same family as `quickConnectEnabled` and read the
