@@ -257,10 +257,12 @@ sub loadItems()
     ' Pass 1 — emit everything that needs no further I/O, and collect the genre
     ' requests instead of issuing them one at a time.
     '
-    ' Nothing in this loop may read m.top or m.global per item: both are render-owned, so from
-    ' this thread each read is a rendezvous, and while the user scrolls every one waits on the
-    ' busy render thread. Read once here; the transformer gets the server version for the same
-    ' reason (without it, it reads m.global.server.version itself — two crossings per item).
+    ' Nothing in the per-item transform may read m.top or m.global: both are render-owned, so
+    ' from this thread each read is a rendezvous, and while the user scrolls every one waits on
+    ' the busy render thread. Read once here; the transformer gets the server version for the
+    ' same reason (without it, it reads m.global.server.version itself — two crossings per item).
+    ' The genre branch still crosses per genre inside BuildGetItemsByQueryRequest (user id, API
+    ' version, server URL); genre views do not page, so that cost is never paid mid-scroll.
     libraryId = m.top.itemId
     requestedType = m.top.itemType
     for each item in data.Items

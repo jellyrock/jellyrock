@@ -322,7 +322,7 @@ export const MEASUREMENTS = Object.freeze([
     // until something can, a comparison of two null-screen series is warned about
     // rather than silently trusted.
     screen: null,
-    // Written from the emitting call site (LoadItemsTask2.bs:421), which is
+    // Written from the emitting call site (`LoadItemsTask2.loadItems()`), which is
     // authoritative for the MESSAGE — it is the format string.
     //
     // GROUNDED 2026-08-19, on ledger evidence rather than recollection — the same
