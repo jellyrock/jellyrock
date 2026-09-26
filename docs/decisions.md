@@ -1835,6 +1835,16 @@ Every Home section now follows `latest-rows-failure-vs-empty`, not just the late
 
 Ruled out: a spinner until the next Home visit (a failure that reads as loading, the `docs/progress.md` stall followup this closes), removing the row with a toast (the row pops back in and shifts everything below it on recovery), automatic retry (it stacks a second query on a server that may still be computing it), and, for the latest-media rows, waiting on the libraries answer before retrying (two round trips, and no retry at all when the libraries fail again). The cost of the direct retry: a failed row can be fetched twice, when the libraries answer triggers the normal refresh. Measured 2026-09-26 on `.177` (Stick 4K, Roku OS 15.3.4) against the demo server: `home-failure.spec.js` failed 5/5 on the old app code (Continue Watching deleted, My Media stuck loading with no Recently Added rows, a failed Recently Added row stuck loading) and passed 5/5 with the change. The two OK-retry cases added later failed 2/2 on the code without the direct retry and passed with it (`.178`, Ultra, Roku OS 15.3.4).
 
+## decision-id: favorites-row-failure-stand-in
+
+**date**: 2026-09-26
+**status**: accepted
+**related-files**: `components/home/FavoritesRows.bs`, `components/home/LoadItemsTask.bs`, `source/home/homeRowFailure.bs`
+
+The Favorites tab follows `home-row-failure-tile`: a failed load never removes a row, a row with items keeps them, and OK on a failed tile retries. Its two requests are two `LoadItemsTask` loads, `favorites` (/Items, every row but People) and `favoritePeople` (/Persons, People), each publishing its own `status`, so one failing says nothing about the other's rows; they now run in parallel, and People no longer waits behind a slow /Items. A failed FIRST /Items load does not put a failed tile on each of its up-to-fifteen spinning type rows: they give way to one "Favorites" stand-in row carrying the tile (`homeRowFailure.needsFavoritesStandIn`), as the Recently Added stand-in does on Home; People keeps its own row. OK on either tile re-runs both loads (`FavoritesRows.loadFavorites`), the reload a return to Home runs.
+
+Ruled out: one combined status (a People-only failure would hide fifteen answered rows on a first load, which the old code showed), a Favorites-only `peopleStatus` field on the shared Task, a tile on every type row (up to fifteen identical messages), and a full-screen failure view like the library grid (a second failure pattern on a Home tab). Cost: two Task threads and two render-thread handoffs per Favorites load instead of one. Measured 2026-09-26 on `.178` (Ultra, Roku OS 15.3.4) against the demo server: the new Favorites cases in `home-failure.spec.js` failed on the old app code (the tab went blank on a failed first load; the People row was removed on a People-only failure) and pass with the change; a separate probe showed the old code removing the Movies row on a failed refresh.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

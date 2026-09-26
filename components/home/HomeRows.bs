@@ -159,10 +159,6 @@ sub init()
   ' until the user refreshes manually.
   m.top.observeField("programsExpired", "onProgramsExpired")
 
-  ' RTA builds only: each section's last load result — see noteSectionResult.
-  #if ENABLE_RTA
-    m.top.addFields({ rtaSectionResults: {} })
-  #end if
 end sub
 
 ' loadLibraries: Entry point called by Home.bs via callFunc.
@@ -1091,23 +1087,13 @@ sub replacePlaceholder(row as object, placeholder as object)
   row.removeChildIndex(0)
 end sub
 
-' noteSectionResult: RTA builds only — record a section's latest load result on
-' `rtaSectionResults` ({ <sectionId>: { status, count } }), so a spec can wait for a load to
-' finish even when, having failed, it changes nothing on screen. Nothing reads it in the app.
+' noteSectionResult: record a section's latest load result for the RTA suite
+' (homeRowFailure.noteResult); nothing in the app reads it.
 '
 ' @param {string} sectionId - The sectionId the load was for
 ' @param {dynamic} status - The load's status
 sub noteSectionResult(sectionId as string, status as dynamic)
-  #if ENABLE_RTA
-    results = m.top.rtaSectionResults
-    previous = results[sectionId]
-    count = 1
-    if isValid(previous) then count = previous.count + 1
-    statusText = ""
-    if isValid(status) then statusText = status
-    results[sectionId] = { status: statusText, count: count }
-    m.top.rtaSectionResults = results
-  #end if
+  homeRowFailure.noteResult(m.top, sectionId, status)
 end sub
 
 ' resolveRowFill: A row's data has landed — close its screen-load fill, then see whether that

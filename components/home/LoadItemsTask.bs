@@ -19,7 +19,7 @@ sub loadItems()
   m.transformer = JellyfinDataTransformer()
 
   results = []
-  ' Set by the Home row loads only — see the `status` field.
+  ' Set by the Home row and Favorites loads only — see the `status` field.
   status = ""
 
   ' Load Libraries
@@ -88,17 +88,18 @@ sub loadItems()
     ' Collections row; a list query returns it for those only when asked.
     params["Fields"] = "MediaSourceCount,ChildCount"
 
-    data = fetchJson(GetApi().BuildGetItemsByQueryRequest(params), "favorites")
-    if isValid(data) and isValid(data.Items)
+    items = fetchRowItems(GetApi().BuildGetItemsByQueryRequest(params), "favorites")
+    status = statusOf(items)
+    if isValid(items)
       ' A favorited movie is the same tile the library grid draws, so it gets the same
       ' correction: from 12.0 its own UserData can belong to a version other than the one Play
       ' would start. Unscoped — favorites span every library. Continue Watching and the series
       ' resume row below need none of this: they are built FROM the resume list, so each row
       ' already IS the version in progress.
-      changed = versionDisplay.correctDisplayProgress(data.Items, m.global.server.version, "", "favoritesVersionDisplay", {})
+      changed = versionDisplay.correctDisplayProgress(items, m.global.server.version, "", "favoritesVersionDisplay", {})
       if changed > 0 then m.log.debug("Corrected version progress on favorites", "count", changed)
 
-      for each item in data.Items
+      for each item in items
         ' Skip Books for now as we don't support it (issue #558)
         if item.Type <> "Book"
           ' Live TV recordings come back from /Items as the content type (Movie/Episode).
@@ -112,21 +113,24 @@ sub loadItems()
       end for
     end if
 
-    ' People — favorited persons are not returned by /Items; requires /Persons endpoint.
-    personData = fetchJson(GetApi().BuildGetPersonsRequest({
+    ' Note: MusicArtist items ARE returned by /Items above (they are regular library items),
+    ' so no separate /Artists call is needed here (unlike search, where /Items misses them).
+
+    ' People — favorited persons are not returned by /Items; requires /Persons endpoint. Its own
+    ' load, so a failure of one request says nothing about the other's rows.
+  else if m.top.itemsToLoad = "favoritePeople"
+    items = fetchRowItems(GetApi().BuildGetPersonsRequest({
       "IsFavorite": true,
       "SortBy": "SortName",
       "SortOrder": "Ascending",
       "EnableTotalRecordCount": false
     }), "favoritePeople")
-    if isValid(personData) and isValid(personData.Items)
-      for each item in personData.Items
+    status = statusOf(items)
+    if isValid(items)
+      for each item in items
         results.push(m.transformer.transformBaseItem(item))
       end for
     end if
-
-    ' Note: MusicArtist items ARE returned by /Items above (they are regular library items),
-    ' so no separate /Artists call is needed here (unlike search, where /Items misses them).
 
   else if m.top.itemsToLoad = "onNow"
     params = {}

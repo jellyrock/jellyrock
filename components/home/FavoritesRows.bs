@@ -1,5 +1,6 @@
 import "pkg:/source/constants/itemAspectRatio.bs"
 import "pkg:/source/constants/itemTypeOrder.bs"
+import "pkg:/source/home/homeRowFailure.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
@@ -8,6 +9,12 @@ import "pkg:/source/utils/skeleton.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/translate.bs"
+
+' The one row filled by its own request (/Persons); every other type comes from /Items.
+const PEOPLE_TYPE = "Person"
+' The row that stands in for the /Items rows when their first load fails
+' (homeRowFailure.needsFavoritesStandIn).
+const FAVORITES_STAND_IN_ID = "favoritesStandIn"
 
 sub init()
   m.top.itemComponentName = "JRRowItem"
@@ -23,8 +30,10 @@ sub init()
   m.top.observeField("rowItemSelected", "itemSelected")
   m.top.observeField("rowItemFocused", "onItemFocused")
 
-  m.loadFavoritesTask = createObject("roSGNode", "LoadItemsTask")
-  m.loadFavoritesTask.itemsToLoad = "favorites"
+  ' One Task per request, so each reports its own status: /Items fills every row but People,
+  ' /Persons fills People (LoadItemsTask `favorites` / `favoritePeople`).
+  m.loadFavoritesTask = invalid
+  m.loadFavoritePeopleTask = invalid
 
   ' Known type ordering and labels — used for skeleton creation and data grouping.
   ' Ordering follows itemTypeOrder.FAVORITES (web-client section sort order).
@@ -47,10 +56,12 @@ sub init()
     "Photo": translate(translationKeys.LabelPhotos),
     "BoxSet": translate(translationKeys.LabelCollections)
   }
-  m.initialLoadComplete = false
-
-  ' Track loading state to prevent duplicate observers/requests
-  m.isLoadingFavorites = false
+  ' The types the /Items load fills: every type but People.
+  m.itemTypes = []
+  for each itemType in m.typeArray
+    if itemType <> PEOPLE_TYPE then m.itemTypes.push(itemType)
+  end for
+  m.skeletonRowsCreated = false
 end sub
 
 sub updateSize()
@@ -73,21 +84,28 @@ sub updateSize()
   m.top.visible = true
 end sub
 
-' Entry point called by Home.bs when Favorites tab is selected.
-' Creates skeleton rows on first load, then fires the data task.
+' Entry point called by Home.bs when the Favorites tab is selected and on every return to Home,
+' and by OK on a failed tile (itemSelected). Creates skeleton rows once, then fires both loads.
 sub loadFavorites()
-  if not m.initialLoadComplete
+  if not m.skeletonRowsCreated
     createSkeletonRows()
     updateTextureBufferRange(m.top.content, 0, 0, m.top.numRows)
     m.top.showRowCounter = [true]
+    m.skeletonRowsCreated = true
   end if
+
+  ' A failed tile goes back to the spinner while its load runs again.
+  showRowRetrying(FAVORITES_STAND_IN_ID)
+  showRowRetrying(PEOPLE_TYPE)
 
   ' Cancel any in-flight task before starting new one
   m.loadFavoritesTask = replaceTask(m.loadFavoritesTask, "LoadItemsTask", "content", { itemsToLoad: "favorites" })
-
-  m.isLoadingFavorites = true
   m.loadFavoritesTask.observeField("content", "onFavoritesLoaded")
   launchTask(m.loadFavoritesTask)
+
+  m.loadFavoritePeopleTask = replaceTask(m.loadFavoritePeopleTask, "LoadItemsTask", "content", { itemsToLoad: "favoritePeople" })
+  m.loadFavoritePeopleTask.observeField("content", "onFavoritePeopleLoaded")
+  launchTask(m.loadFavoritePeopleTask)
 end sub
 
 ' Creates skeleton rows for all known favorite types with loading placeholders
@@ -106,20 +124,63 @@ sub createSkeletonRows()
   applyRowSizes()
 end sub
 
-' Groups loaded favorites by item type and populates/removes skeleton rows.
-' On refresh, updates existing rows in place to preserve focus position.
+' The /Items load finished. An answered one fills or removes every row but People; a failed
+' one never removes a row (decision `home-row-failure-tile`): rows keep their items, and on a
+' first load the spinning rows give way to one failed "Favorites" row (showItemsFailed).
 sub onFavoritesLoaded(event as object)
   if not isCurrentTaskEvent(event, m.loadFavoritesTask) then return
+  status = m.loadFavoritesTask.status
   itemData = m.loadFavoritesTask.content
   m.loadFavoritesTask.unobserveField("content")
   m.loadFavoritesTask.content = []
 
-  m.isLoadingFavorites = false
-  m.initialLoadComplete = true
+  if homeRowFailure.isAnswered(status)
+    standInRemoved = removeStandIn()
+    applyItems(m.itemTypes, itemData, standInRemoved)
+  else
+    showItemsFailed()
+  end if
+  homeRowFailure.noteResult(m.top, "favorites", status)
+  finishLoad()
+end sub
 
+' The /Persons load finished: an answered one fills or removes the People row, a failed one
+' leaves it standing, showing the failed tile if it was still spinning.
+sub onFavoritePeopleLoaded(event as object)
+  if not isCurrentTaskEvent(event, m.loadFavoritePeopleTask) then return
+  status = m.loadFavoritePeopleTask.status
+  itemData = m.loadFavoritePeopleTask.content
+  m.loadFavoritePeopleTask.unobserveField("content")
+  m.loadFavoritePeopleTask.content = []
+
+  if homeRowFailure.isAnswered(status)
+    applyItems([PEOPLE_TYPE], itemData, false)
+  else
+    showRowFailed(PEOPLE_TYPE)
+  end if
+  homeRowFailure.noteResult(m.top, "favoritePeople", status)
+  finishLoad()
+end sub
+
+' After either load: the backdrop follows the focused tile, and texture management is active
+' so off-screen cells unload. Also after a failure, which may be the only answer this list gets.
+' Recalculate the buffer range first — rows were added after the initial range calculation.
+sub finishLoad()
+  updateBackdropForFocusedItem()
+  updateTextureBufferRange(m.top.content, m.top.rowItemFocused[0], m.top.rowItemFocused[1], m.top.numRows)
+  activateTextureManager(m.top.content)
+end sub
+
+' Groups an answered load's items by type and populates/removes the rows of `types`.
+' On refresh, updates existing rows in place to preserve focus position.
+'
+' @param types - the row types this load fills
+' @param itemData - the load's items
+' @param sizesChanged - whether rows were already added or removed, so sizes need applying
+sub applyItems(types as object, itemData as dynamic, sizesChanged as boolean)
   ' Bucket items by type
   buckets = {}
-  for each itemType in m.typeArray
+  for each itemType in types
     buckets[itemType] = []
   end for
 
@@ -133,7 +194,7 @@ sub onFavoritesLoaded(event as object)
 
   ' Cap each bucket at 50 items (API returns sorted by SortName)
   maxPerRow = 50
-  for each itemType in m.typeArray
+  for each itemType in types
     bucket = buckets[itemType]
     if bucket.count() > maxPerRow
       buckets[itemType] = []
@@ -144,8 +205,7 @@ sub onFavoritesLoaded(event as object)
   end for
 
   ' Populate or remove each row
-  sizesChanged = false
-  for each itemType in m.typeArray
+  for each itemType in types
     bucket = buckets[itemType]
     result = findRowBySectionId(itemType)
 
@@ -187,13 +247,78 @@ sub onFavoritesLoaded(event as object)
   if sizesChanged
     applyRowSizes()
   end if
+end sub
 
-  updateBackdropForFocusedItem()
+' The /Items load failed. Rows with items keep them. Rows still spinning (a first load) are
+' replaced by one "Favorites" row showing the failed tile, where the first of them was, so the
+' failure reads once rather than on up to fifteen rows; a stand-in already there shows the
+' failed tile again (homeRowFailure.needsFavoritesStandIn).
+sub showItemsFailed()
+  states = []
+  for each itemType in m.itemTypes
+    result = findRowBySectionId(itemType)
+    if isValid(result) then states.push(homeRowFailure.placeholderState(result.row))
+  end for
+  hasStandIn = isValid(findRowBySectionId(FAVORITES_STAND_IN_ID))
+  if not homeRowFailure.needsFavoritesStandIn(states, hasStandIn) then return
 
-  ' All rows populated — activate texture management so off-screen cells unload.
-  ' Recalculate buffer range first — rows were added after the initial range calculation.
-  updateTextureBufferRange(m.top.content, m.top.rowItemFocused[0], m.top.rowItemFocused[1], m.top.numRows)
-  activateTextureManager(m.top.content)
+  if hasStandIn
+    showRowFailed(FAVORITES_STAND_IN_ID)
+    return
+  end if
+
+  ' Remove the spinning rows, bottom up so the indices still to visit do not shift.
+  insertIndex = -1
+  for i = m.top.content.getChildCount() - 1 to 0 step -1
+    row = m.top.content.getChild(i)
+    if row.sectionId <> PEOPLE_TYPE and homeRowFailure.placeholderState(row) = homeRowFailure.PLACEHOLDER_LOADING
+      m.top.content.removeChildIndex(i)
+      insertIndex = i
+    end if
+  end for
+
+  standIn = CreateObject("roSGNode", "HomeRow")
+  standIn.title = translate(translationKeys.LabelFavorites)
+  standIn.sectionId = FAVORITES_STAND_IN_ID
+  standIn.cursorSize = rowSlotSize.PORTRAIT
+  standIn.appendChild(skeleton.createFailedPlaceholder())
+  m.top.content.insertChild(standIn, insertIndex)
+  applyRowSizes()
+end sub
+
+' Drops the stand-in, if there is one: an answered /Items load puts the real rows back.
+'
+' @return true when a row was removed, so row sizes need applying
+function removeStandIn() as boolean
+  result = findRowBySectionId(FAVORITES_STAND_IN_ID)
+  if not isValid(result) then return false
+  m.top.content.removeChildIndex(result.index)
+  return true
+end function
+
+' A load failed: the row keeps its items, and a row still spinning shows the failed tile
+' instead (homeRowFailure.afterFailure). A row that is not on screen stays off it.
+sub showRowFailed(sectionId as string)
+  result = findRowBySectionId(sectionId)
+  if not isValid(result) then return
+  if homeRowFailure.afterFailure(homeRowFailure.placeholderState(result.row)) = "" then return
+  replacePlaceholder(result.row, skeleton.createFailedPlaceholder())
+end sub
+
+' A load is starting again: a row showing the failed tile goes back to the spinner, so the
+' retry shows it is under way (homeRowFailure.afterRetry).
+sub showRowRetrying(sectionId as string)
+  result = findRowBySectionId(sectionId)
+  if not isValid(result) then return
+  if homeRowFailure.afterRetry(homeRowFailure.placeholderState(result.row)) = "" then return
+  replacePlaceholder(result.row, skeleton.createPlaceholder())
+end sub
+
+' Swap a row's lone placeholder for another, in place. Appended before the old one is removed,
+' so the row is never empty and the RowList keeps its layout and focus.
+sub replacePlaceholder(row as object, placeholder as object)
+  row.appendChild(placeholder)
+  row.removeChildIndex(0)
 end sub
 
 ' Find a row by its sectionId
@@ -304,7 +429,17 @@ end function
 
 sub itemSelected()
   item = getItemAtIndices(m.top.rowItemSelected)
-  if not isValid(item) or skeleton.isPlaceholder(item) then return
+  if not isValid(item) then return
+
+  ' OK on a "couldn't load" tile loads Favorites again: both requests, the same reload a
+  ' return to Home runs. Nothing retries on its own — the viewer asks (decision
+  ' `home-row-failure-tile`).
+  if skeleton.isFailedPlaceholder(item)
+    loadFavorites()
+    return
+  end if
+
+  if skeleton.isPlaceholder(item) then return
 
   m.top.selectedItem = item
   m.top.selectedItem = invalid
@@ -360,10 +495,6 @@ sub onDestroy()
   m.top.unobserveField("rowItemSelected")
   m.top.unobserveField("rowItemFocused")
 
-  m.loadFavoritesTask.unobserveField("content")
-  m.loadFavoritesTask.control = "STOP"
-  m.loadFavoritesTask = invalid
-
-  ' Reset loading flag
-  m.isLoadingFavorites = false
+  m.loadFavoritesTask = releaseTask(m.loadFavoritesTask, "content")
+  m.loadFavoritePeopleTask = releaseTask(m.loadFavoritePeopleTask, "content")
 end sub

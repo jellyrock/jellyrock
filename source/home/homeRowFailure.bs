@@ -81,4 +81,46 @@ namespace homeRowFailure
     return false
   end function
 
+  ' Whether a failed Favorites items load (`/Items`, every row but People) needs the one
+  ' "Favorites" stand-in row. On a first load each of those types has a spinning skeleton
+  ' row, and a failed tile on every one would stack up to fifteen identical messages; they
+  ' are replaced by one row that says the same thing once. A stand-in already there (a
+  ' retry that failed again) goes back to its failed tile. After an answered load no row of
+  ' those types is loading — each was filled or removed — so a later failure changes nothing
+  ' and the rows keep their items.
+  '
+  ' @param rowStates - placeholderState of each on-screen row the items load fills
+  ' @param hasStandIn - whether the stand-in row is on screen
+  ' @return true when the stand-in should show the failed tile
+  function needsFavoritesStandIn(rowStates as object, hasStandIn as boolean) as boolean
+    if hasStandIn then return true
+    for each state in rowStates
+      if state = homeRowFailure.PLACEHOLDER_LOADING then return true
+    end for
+    return false
+  end function
+
+  ' RTA builds only: record a section's latest load result on `list`'s `rtaSectionResults`
+  ' ({ <sectionId>: { status, count } }), adding the field on first use, so a spec can wait
+  ' for a load to finish even when, having failed, it changes nothing on screen
+  ' (tests/rta/lib/steps.js readHomeRows). Nothing reads it in the app; release builds
+  ' compile it to nothing.
+  '
+  ' @param list - the row list node (HomeRows or FavoritesRows)
+  ' @param sectionId - the section the load was for
+  ' @param status - the load's status
+  sub noteResult(list as object, sectionId as string, status as dynamic)
+    #if ENABLE_RTA
+      if not list.hasField("rtaSectionResults") then list.addFields({ rtaSectionResults: {} })
+      results = list.rtaSectionResults
+      previous = results[sectionId]
+      count = 1
+      if isValid(previous) then count = previous.count + 1
+      statusText = ""
+      if isValid(status) then statusText = status
+      results[sectionId] = { status: statusText, count: count }
+      list.rtaSectionResults = results
+    #end if
+  end sub
+
 end namespace
