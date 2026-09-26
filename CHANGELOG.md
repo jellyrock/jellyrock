@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (home) Tell a failed Favorites load from an empty one; OK retries ([#1057](https://github.com/jellyrock/jellyrock/pull/1057))
 - (home) Tell failed Home rows from empty ones; OK retries ([#1051](https://github.com/jellyrock/jellyrock/pull/1051))
 - Close a Live TV stream that never started playing ([#1050](https://github.com/jellyrock/jellyrock/pull/1050))
 - (audio) Show the right song's title and artwork after a skip ([#1045](https://github.com/jellyrock/jellyrock/pull/1045))
