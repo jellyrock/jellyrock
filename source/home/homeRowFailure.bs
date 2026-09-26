@@ -6,7 +6,7 @@ import "pkg:/source/utils/skeleton.bs"
 ' without a callFunc seam on the component (same move as source/home/latestRows.bs).
 '
 ' The rule, for every Home section: a failed load says nothing about what the section holds,
-' so it never removes or empties a row (decision `latest-rows-failure-vs-empty`). A row that
+' so it never removes or empties a row (decision `home-row-failure-tile`). A row that
 ' already shows items keeps them. A row still waiting on its first load stops spinning and
 ' shows a "couldn't load" tile, so a failure does not read as loading forever; pressing OK on
 ' it retries (HomeRows.itemSelected). A section with no row on screen stays off it.

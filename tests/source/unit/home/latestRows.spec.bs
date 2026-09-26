@@ -335,6 +335,46 @@ namespace tests
       m.assertInvalid(latestRows.itemsFromResponse(invalid))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("runLibraries - which rows a run loads")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("loads every library that gets a latest row, in row order")
+    function _()
+      libs = [
+        { id: "a", collectionType: "movies" }
+        { id: "b", collectionType: "boxsets" }
+        { id: "c", collectionType: "tvshows" }
+        { id: "d", collectionType: "livetv" }
+        { id: "e", collectionType: "Program" }
+      ]
+
+      m.assertEqual(latestRows.runLibraries(libs, invalid), [{ id: "a" }, { id: "c" }])
+    end function
+
+    @it("loads only the retried rows when given their ids, still in row order")
+    function _()
+      libs = [
+        { id: "a", collectionType: "movies" }
+        { id: "b", collectionType: "music" }
+        { id: "c", collectionType: "tvshows" }
+      ]
+
+      m.assertEqual(latestRows.runLibraries(libs, ["c", "a"]), [{ id: "a" }, { id: "c" }])
+    end function
+
+    @it("never retries a library that gets no latest row")
+    function _()
+      libs = [{ id: "b", collectionType: "boxsets" }]
+
+      m.assertEqual(latestRows.runLibraries(libs, ["b"]), [])
+    end function
+
+    @it("loads nothing without libraries")
+    function _()
+      m.assertEqual(latestRows.runLibraries(invalid, invalid), [])
+    end function
+
   end class
 
 end namespace

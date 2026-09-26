@@ -135,5 +135,33 @@ namespace latestRows
     return msSinceLastRow > timeouts.PIPELINE_RUN_MS + timeouts.API_WAIT_MS
   end function
 
+  ' The libraries a latest-media run loads, in row order: every library that gets a latest row
+  ' (collections, Live TV and programs do not), or, for a retry, only those among them whose
+  ' ids are in `onlyLibIds`. A retry loads just the rows that failed, so it costs one request
+  ' per failed row rather than a reload of every row.
+  '
+  ' @param filteredLatest - the libraries left after latestItemsExcludes, each with `id` and
+  '   `collectionType`, or invalid
+  ' @param onlyLibIds - an roArray of library ids to keep, or invalid for every library
+  ' @return an roArray of { id } in row order (possibly empty)
+  function runLibraries(filteredLatest as dynamic, onlyLibIds as dynamic) as object
+    libs = []
+    if not isValid(filteredLatest) then return libs
+
+    only = invalid
+    if isValid(onlyLibIds)
+      only = {}
+      for each libId in onlyLibIds
+        only[libId] = true
+      end for
+    end if
+
+    for each lib in filteredLatest
+      if lib.collectionType <> "boxsets" and lib.collectionType <> "livetv" and lib.collectionType <> "Program"
+        if not isValid(only) or only.doesExist(lib.id) then libs.push({ id: lib.id })
+      end if
+    end for
+    return libs
+  end function
 
 end namespace

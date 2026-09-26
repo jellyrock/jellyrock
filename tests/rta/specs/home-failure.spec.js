@@ -10,7 +10,9 @@
  *  - the libraries failing on first load show My Media's tile, and OK builds the Recently
  *    Added rows — before, My Media spun and no Recently Added row was ever made;
  *  - with no My Media row in the layout, the same failure shows as one "Recently Added" row;
- *  - one Recently Added row failing on first load shows the tile, not a spinner.
+ *  - one Recently Added row failing on first load shows the tile, not a spinner;
+ *  - OK on that tile shows the spinner at once and loads the row, even when the libraries
+ *    request fails again, and even while the rest of its run is still loading.
  *
  * A first load only runs when a HomeRows is mounted — at launch, before a spec can set a rule
  * — or when the Home tab is selected again, which mounts a fresh one. So the first-load cases
@@ -51,6 +53,9 @@ async function freshApp() {
 /** A row that has loaded real items: more than a lone placeholder. */
 const hasItems = (row) => row !== undefined && row.items > 0 && row.firstType !== 'Loading';
 const isFailedTile = (row) => row !== undefined && row.items === 1 && row.loadFailed;
+/** A row showing only the loading spinner: its load is under way. */
+const isSpinning = (row) =>
+  row !== undefined && row.items === 1 && row.firstType === 'Loading' && !row.loadFailed;
 const latestRows = (snap) => snap.rows.filter((r) => r.sectionId?.startsWith('latest_'));
 
 /** Go to Favorites, set `rules`, and come back: the Home tab's first load runs with them. */
@@ -174,4 +179,69 @@ it('a Recently Added row that fails on first load shows the failed tile, not a s
     label: 'Home settled with a Recently Added row showing its failed tile',
   });
   expect(latestRows(snap).filter(isFailedTile)).toHaveLength(1);
+});
+
+it('OK on a failed Recently Added row shows the spinner at once and loads it, even when the libraries fail again', async () => {
+  await freshApp();
+  await firstLoadWith([{ prefix: 'latestRow-', kind: 'http', status: 500, times: 1 }]);
+  const snap = await waitHomeRows((s) => settled(s) && latestRows(s).some(isFailedTile), {
+    label: 'Home settled with a Recently Added row showing its failed tile',
+  });
+  const failedId = latestRows(snap).find(isFailedTile).sectionId;
+
+  // The libraries fail again, so only a direct retry can reload the row; its answer is held
+  // for 3 s so the spinner is there to see. Before, the tile never changed.
+  await failRequests([
+    { prefix: 'libraries', kind: 'timeout', times: 1 },
+    { prefix: 'latestRow-', kind: 'slow', ms: 3000, times: 1 },
+  ]);
+  await pressOkOnFailedRow(failedId, 'homeRowRetryingLatest');
+  await waitHomeRows((s) => isSpinning(homeRow(s, failedId)), {
+    label: `${failedId} showed the spinner after OK`,
+    timeout: 2500,
+  });
+  await waitHomeRows((s) => hasItems(homeRow(s, failedId)), {
+    label: `${failedId} loaded after OK`,
+  });
+});
+
+it('OK on a failed Recently Added row while the rest are still loading spins it, then loads it when the run ends', async () => {
+  await freshApp();
+  // The first row fails at once; the rest are held for 8 s, so the run is still going.
+  await firstLoadWith([
+    { prefix: 'latestRow-', kind: 'http', status: 500, times: 1 },
+    { prefix: 'latestRow-', kind: 'slow', ms: 8000 },
+  ]);
+  const notLatestSettled = (s) =>
+    s.rows
+      .filter((r) => !r.sectionId?.startsWith('latest_'))
+      .every((r) => r.firstType !== 'Loading' || r.loadFailed);
+  const snap = await waitHomeRows(
+    (s) =>
+      notLatestSettled(s) && latestRows(s).some(isFailedTile) && latestRows(s).some(isSpinning),
+    { label: 'a Recently Added row failed while the others are still loading' },
+  );
+  const failedId = latestRows(snap).find(isFailedTile).sectionId;
+  const index = snap.rows.findIndex((r) => r.sectionId === failedId);
+  expect(index).toBeGreaterThan(-1);
+
+  await focusHomeRow(index, failedId);
+  await press(ecp.Key.Ok);
+  const spinning = await waitHomeRows((s) => isSpinning(homeRow(s, failedId)), {
+    label: `${failedId} showed the spinner after OK`,
+    timeout: 2500,
+  });
+  // The run it waits on must still be going, or this is not the case under test.
+  expect(
+    latestRows(spinning)
+      .filter((r) => r.sectionId !== failedId)
+      .some(isSpinning),
+  ).toBe(true);
+
+  // Let the retry through at full speed; the held answers are already on their way.
+  await failRequests([]);
+  await waitHomeRows((s) => hasItems(homeRow(s, failedId)), {
+    label: `${failedId} loaded after the run ended`,
+    timeout: 30000,
+  });
 });

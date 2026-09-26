@@ -66,6 +66,9 @@ sub init()
   m.latestRowsRunClock = CreateObject("roTimespan")
   ' Time since the current run started or last delivered a row — latestRows.runIsStalled
   m.latestRowsSilenceClock = CreateObject("roTimespan")
+  ' Library ids of failed rows the viewer asked to retry while a run was going: they show the
+  ' spinner now and load when that run ends (retryFailedLatestRows / retryOwedLatestRows)
+  m.latestRetryOwed = []
   ' The render-thread half of a latest-rows run. The orchestrator's `notify` column
   ' is time IT spends parked inside a write this thread's observer is servicing, so
   ' these three are the same work seen from the owning side and must roughly sum to
@@ -402,7 +405,16 @@ sub onLibrariesLoaded(event as object)
     ' tile) builds them exactly as a first load does — rather than each arriving later as a
     ' re-insert, which shifts the rows below it once per library.
     showRowFailed("library")
-    if not m.initialLoadComplete then showLatestMediaStandIn()
+    if not m.initialLoadComplete
+      showLatestMediaStandIn()
+      ' The first answer is what normally activates texture management (below), and this one
+      ' may never come. Left in "init", cells freeze their texture decisions, so a row
+      ' scrolled into view keeps whatever it had. Home's own launch already activates it
+      ' before the libraries answer (Home.onScreenShown); a tab switch mounts a fresh HomeRows
+      ' and does not, so this covers that case.
+      updateTextureBufferRange(m.top.content, m.top.rowItemFocused[0], m.top.rowItemFocused[1], m.top.numRows)
+      activateTextureManager(m.top.content)
+    end if
     ' The wait for the libraries is over either way; an open fill would leave Home unsettled.
     resolveRowFill("library")
     return
@@ -576,11 +588,15 @@ end function
 ' Every run gets a NEW node (see replaceTask in source/utils/tasks.bs): a stop-and-relaunch of
 ' the same node while its function still runs is sometimes silently ignored, and then no row
 ' would ever load.
-sub startLatestMediaLoads()
-  if not isValidAndNotEmpty(m.filteredLatest) then return
+'
+' @param {dynamic} onlyLibIds - library ids to load, for a retry of failed rows; invalid (the
+'   default) loads every latest row
+' @return {boolean} true when a run started
+function startLatestMediaLoads(onlyLibIds = invalid as dynamic) as boolean
+  if not isValidAndNotEmpty(m.filteredLatest) then return false
 
   if m.isLoadingLatestRows
-    if not latestRows.runIsStalled(m.latestRowsSilenceClock.totalMilliseconds()) then return
+    if not latestRows.runIsStalled(m.latestRowsSilenceClock.totalMilliseconds()) then return false
     ' Silent past its whole wait budget, the orchestrator is wedged — possibly still parked
     ' inside a wait with its node reading `run` — so the flag would otherwise freeze these rows
     ' for the life of this Home. Reclaiming releases that run (resetLatestRowsRun): a stopped
@@ -592,13 +608,8 @@ sub startLatestMediaLoads()
   ' Release any previous run; its delivered results go with its node
   resetLatestRowsRun()
 
-  libs = []
-  for each lib in m.filteredLatest
-    if lib.collectionType <> "boxsets" and lib.collectionType <> "livetv" and lib.collectionType <> "Program"
-      libs.push({ id: lib.id })
-    end if
-  end for
-  if libs.count() = 0 then return
+  libs = latestRows.runLibraries(m.filteredLatest, onlyLibIds)
+  if libs.count() = 0 then return false
 
   ' resetLatestRowsRun already released the previous node, so this only creates the new one.
   m.latestRowsTask = replaceTask(m.latestRowsTask, "LoadLatestRowsTask", "rowReady", { libraries: libs })
@@ -632,9 +643,60 @@ sub startLatestMediaLoads()
   m.rowSizesBatching = true
   m.isLoadingLatestRows = true
   m.latestRowsRunClock.mark()
-  launchTask(m.latestRowsTask)
+  ' A refused launch starts nothing, so a failed tile keeps saying so rather than spinning.
+  if not launchTask(m.latestRowsTask) then return false
   for each lib in libs
     showRowRetrying("latest_" + lib.id)
+  end for
+  ' A run of every row loads the owed ones too.
+  if not isValid(onlyLibIds) then m.latestRetryOwed = []
+  return true
+end function
+
+' retryFailedLatestRows: OK on a failed tile reloads every latest-media row showing one NOW,
+' from the libraries Home already has, rather than after Home's libraries request answers
+' (which may fail again). Each row shows the spinner from the moment its reload starts until
+' that reload answers.
+'
+' A run in flight cannot take more rows, so those rows are OWED: they show the spinner now and
+' load when the run ends (retryOwedLatestRows). A run gone silent past its budget is reclaimed
+' with EVERY row, as a refresh reclaims it — a run of only the failed rows would drop the rows
+' the reclaimed run was still loading.
+sub retryFailedLatestRows()
+  if not isValidAndNotEmpty(m.filteredLatest) then return
+  failedLibIds = []
+  for each lib in m.filteredLatest
+    result = findRowBySectionId("latest_" + lib.id)
+    if isValid(result) and homeRowFailure.placeholderState(result.row) = homeRowFailure.PLACEHOLDER_FAILED
+      failedLibIds.push(lib.id)
+    end if
+  end for
+  if failedLibIds.count() = 0 then return
+
+  if m.isLoadingLatestRows
+    if latestRows.runIsStalled(m.latestRowsSilenceClock.totalMilliseconds())
+      startLatestMediaLoads()
+      return
+    end if
+    for each libId in failedLibIds
+      m.latestRetryOwed.push(libId)
+      showRowRetrying("latest_" + libId)
+    end for
+    return
+  end if
+
+  startLatestMediaLoads(failedLibIds)
+end sub
+
+' retryOwedLatestRows: The run the owed rows waited for has ended — load them. If no run can
+' start, nothing will answer them, so they go back to the failed tile rather than spin.
+sub retryOwedLatestRows()
+  if m.latestRetryOwed.count() = 0 then return
+  owed = m.latestRetryOwed
+  m.latestRetryOwed = []
+  if startLatestMediaLoads(owed) then return
+  for each libId in owed
+    showRowFailed("latest_" + libId)
   end for
 end sub
 
@@ -718,6 +780,8 @@ sub onLatestRowsReady(event as object)
       if sizeAt = "" then sizeAt = "-"
       m.log.info("latest-rows size recompute by", "remove", m.popSizeRemove, "insert", m.popSizeInsert, "at", sizeAt)
     #end if
+    ' Failed rows the viewer retried while this run was going load now.
+    retryOwedLatestRows()
   end if
 end sub
 
@@ -1456,10 +1520,13 @@ sub itemSelected()
 
   ' OK on a "couldn't load" tile loads Home again: the same refresh a return to Home runs, so
   ' every failed row retries at once, and a section whose load is still running is left to
-  ' finish rather than asked twice (the isLoading* guards). Nothing retries on its own — the
-  ' viewer asks (decision `latest-rows-failure-vs-empty`).
+  ' finish rather than asked twice (the isLoading* guards). The latest-media rows would only
+  ' reload once the libraries answer, so their failed rows are retried directly
+  ' (retryFailedLatestRows). Nothing retries on its own — the viewer asks (decision
+  ' `home-row-failure-tile`).
   if skeleton.isFailedPlaceholder(item)
     updateHomeRows()
+    retryFailedLatestRows()
     return
   end if
 
@@ -1554,6 +1621,7 @@ sub onDestroy()
 
   ' Stop and release the latest-media orchestrator
   resetLatestRowsRun()
+  m.latestRetryOwed = []
 
   ' Clear data caches
   m.libraryData = invalid
