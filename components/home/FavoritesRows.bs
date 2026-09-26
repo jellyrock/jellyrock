@@ -34,6 +34,8 @@ sub init()
   ' /Persons fills People (LoadItemsTask `favorites` / `favoritePeople`).
   m.loadFavoritesTask = invalid
   m.loadFavoritePeopleTask = invalid
+  m.isLoadingFavorites = false
+  m.isLoadingFavoritePeople = false
 
   ' Known type ordering and labels — used for skeleton creation and data grouping.
   ' Ordering follows itemTypeOrder.FAVORITES (web-client section sort order).
@@ -85,7 +87,8 @@ sub updateSize()
 end sub
 
 ' Entry point called by Home.bs when the Favorites tab is selected and on every return to Home,
-' and by OK on a failed tile (itemSelected). Creates skeleton rows once, then fires both loads.
+' and by OK on a failed tile (itemSelected). Creates skeleton rows once, then starts each load
+' that is not still running.
 sub loadFavorites()
   if not m.skeletonRowsCreated
     createSkeletonRows()
@@ -94,18 +97,28 @@ sub loadFavorites()
     m.skeletonRowsCreated = true
   end if
 
-  ' A failed tile goes back to the spinner while its load runs again.
-  showRowRetrying(FAVORITES_STAND_IN_ID)
-  showRowRetrying(PEOPLE_TYPE)
+  startFavoritesLoad()
+  startFavoritePeopleLoad()
+end sub
 
-  ' Cancel any in-flight task before starting new one
+' A load still running is left to finish, not asked again, as HomeRows' isLoading* guards do:
+' stopping its Task does not stop its request (a default-limit read keeps its pool slot), so
+' a second one would stack on a server that may still be computing the first (decision
+' `home-row-failure-tile`). A failed tile goes back to the spinner while its load runs again.
+sub startFavoritesLoad()
+  if m.isLoadingFavorites then return
   m.loadFavoritesTask = replaceTask(m.loadFavoritesTask, "LoadItemsTask", "content", { itemsToLoad: "favorites" })
   m.loadFavoritesTask.observeField("content", "onFavoritesLoaded")
-  launchTask(m.loadFavoritesTask)
+  m.isLoadingFavorites = launchTask(m.loadFavoritesTask)
+  if m.isLoadingFavorites then showRowRetrying(FAVORITES_STAND_IN_ID)
+end sub
 
+sub startFavoritePeopleLoad()
+  if m.isLoadingFavoritePeople then return
   m.loadFavoritePeopleTask = replaceTask(m.loadFavoritePeopleTask, "LoadItemsTask", "content", { itemsToLoad: "favoritePeople" })
   m.loadFavoritePeopleTask.observeField("content", "onFavoritePeopleLoaded")
-  launchTask(m.loadFavoritePeopleTask)
+  m.isLoadingFavoritePeople = launchTask(m.loadFavoritePeopleTask)
+  if m.isLoadingFavoritePeople then showRowRetrying(PEOPLE_TYPE)
 end sub
 
 ' Creates skeleton rows for all known favorite types with loading placeholders
@@ -129,6 +142,7 @@ end sub
 ' first load the spinning rows give way to one failed "Favorites" row (showItemsFailed).
 sub onFavoritesLoaded(event as object)
   if not isCurrentTaskEvent(event, m.loadFavoritesTask) then return
+  m.isLoadingFavorites = false
   status = m.loadFavoritesTask.status
   itemData = m.loadFavoritesTask.content
   m.loadFavoritesTask.unobserveField("content")
@@ -148,6 +162,7 @@ end sub
 ' leaves it standing, showing the failed tile if it was still spinning.
 sub onFavoritePeopleLoaded(event as object)
   if not isCurrentTaskEvent(event, m.loadFavoritePeopleTask) then return
+  m.isLoadingFavoritePeople = false
   status = m.loadFavoritePeopleTask.status
   itemData = m.loadFavoritePeopleTask.content
   m.loadFavoritePeopleTask.unobserveField("content")
@@ -431,9 +446,9 @@ sub itemSelected()
   item = getItemAtIndices(m.top.rowItemSelected)
   if not isValid(item) then return
 
-  ' OK on a "couldn't load" tile loads Favorites again: both requests, the same reload a
-  ' return to Home runs. Nothing retries on its own — the viewer asks (decision
-  ' `home-row-failure-tile`).
+  ' OK on a "couldn't load" tile loads Favorites again, the same reload a return to Home runs:
+  ' each load not still running starts again (loadFavorites). Nothing retries on its own — the
+  ' viewer asks (decision `home-row-failure-tile`).
   if skeleton.isFailedPlaceholder(item)
     loadFavorites()
     return
@@ -497,4 +512,6 @@ sub onDestroy()
 
   m.loadFavoritesTask = releaseTask(m.loadFavoritesTask, "content")
   m.loadFavoritePeopleTask = releaseTask(m.loadFavoritePeopleTask, "content")
+  m.isLoadingFavorites = false
+  m.isLoadingFavoritePeople = false
 end sub
