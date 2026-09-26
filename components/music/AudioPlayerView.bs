@@ -98,8 +98,8 @@ end sub
 
 ' Creates tasks to gather data needed to render Scene and play song
 sub setupDataTasks()
-  ' Song metadata: a new node per run, created at launch in onAudioStreamLoaded and released on
-  ' every track change, so invalid whenever no metadata is wanted.
+  ' Song metadata: a new node per run, created at the launch in onAudioStreamLoaded; any run is
+  ' released on every track change (pageContentChanged) and in onDestroy.
   m.LoadMetaDataTask = invalid
 
   ' Load audio stream
