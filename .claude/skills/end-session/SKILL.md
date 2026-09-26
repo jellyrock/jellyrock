@@ -11,7 +11,7 @@ description: This skill should be used when the user explicitly types "/end-sess
 
 **Goal.** Close out the current session on the active project and hand off cleanly, so the next session can resume cold. This is the **mandatory final step** of any project-tracked session — the soft enforcement point of the whole lifecycle. It updates the project's `PLAN.md` (Status markers, dated decisions, open questions, a rewritten Next-session kickoff, an appended Session-log line), sweeps the session for deferred tails and routes the cross-cutting ones to `/log`, sets the project's end-of-session status, then commits and pushes. The work is judgment-heavy synthesis — distilling a whole session into an accurate status delta and a kickoff a memoryless reader can act on, plus careful commit hygiene in a possibly-shared working tree — so the skill runs at the judgment-grade tier.
 
-**Inputs.** `$ARGUMENTS` is ignored. The skill identifies the project from the session: whatever was loaded via `/start-project` or `/resume-project`, else the single `active` project in `docs/projects/README.md` (ask if ambiguous). It expects the project's `PLAN.md` to be readable and the session's actual work to be verifiable against `git log` / `git status`.
+**Inputs.** Any arguments are ignored. The skill identifies the project from the session: whatever was loaded via `/start-project` or `/resume-project`, else the single `active` project in `docs/projects/README.md` (ask if ambiguous). It expects the project's `PLAN.md` to be readable and the session's actual work to be verifiable against `git log` / `git status`.
 
 **Outputs.**
 

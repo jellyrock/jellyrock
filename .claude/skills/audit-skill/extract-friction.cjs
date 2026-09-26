@@ -76,6 +76,7 @@ let repoConfig = {
   mutationBashPatterns: [],
   internalPrefixes: [],
   subcommandTools: [],
+  permissionGapRule: null,
 };
 try {
   // Resolved relative to this module (not cwd), so it loads regardless of where
@@ -838,33 +839,40 @@ function detectConfusion(turns, range, minDensity) {
 // ──────────────────────────────────────────────────────────────────────
 // Performance — clock time, token usage, cost estimate
 //
-// PRICING is in USD per 1M tokens for the active Claude family.
-// Update when Anthropic publishes new pricing; keep verifiedDate current
-// so future audits can flag a stale table.
+// PRICING is the Claude API list price in USD per 1M tokens
+// (platform.claude.com/docs/en/about-claude/pricing). Update when Anthropic
+// publishes new pricing; keep verifiedDate current so future audits can flag
+// a stale table. Cache reads are not a fixed share of input (0.05x on Opus
+// 5.5, 0.025x on Fable 5.1), so copy every column from the table. Models 4.6
+// and later bill the full 1M context at these rates. Not modeled: fast mode
+// (its tokens count as unpriced) and US-only inference (1.1x).
 // ──────────────────────────────────────────────────────────────────────
 
 const PRICING = {
-  verifiedDate: '2026-05-30',
+  verifiedDate: '2026-09-26',
   models: {
-    // claude-opus-4-8 uses the standard Opus 4.x rate (flat across 4.6/4.7/4.8:
-    // $15 in / $75 out). CAVEAT: the 1M-context tier may carry a premium above
-    // 200k input tokens that this flat table does NOT model — verify against
-    // Anthropic pricing if a 1M-context opus run shows a surprising cost.
-    'claude-opus-4-8': { input: 15.0, cacheWrite: 18.75, cacheRead: 1.5, output: 75.0 },
-    'claude-opus-4-7': { input: 15.0, cacheWrite: 18.75, cacheRead: 1.5, output: 75.0 },
-    'claude-opus-4-6': { input: 15.0, cacheWrite: 18.75, cacheRead: 1.5, output: 75.0 },
-    'claude-sonnet-4-6': { input: 3.0, cacheWrite: 3.75, cacheRead: 0.3, output: 15.0 },
-    'claude-sonnet-4-5': { input: 3.0, cacheWrite: 3.75, cacheRead: 0.3, output: 15.0 },
-    'claude-haiku-4-5': { input: 1.0, cacheWrite: 1.25, cacheRead: 0.1, output: 5.0 },
+    'claude-fable-5-1': { input: 10.0, cacheWrite5m: 12.5, cacheWrite1h: 20.0, cacheRead: 0.25, output: 50.0 },
+    'claude-fable-5': { input: 10.0, cacheWrite5m: 12.5, cacheWrite1h: 20.0, cacheRead: 1.0, output: 50.0 },
+    'claude-opus-5-5': { input: 4.0, cacheWrite5m: 5.0, cacheWrite1h: 8.0, cacheRead: 0.2, output: 20.0 },
+    'claude-opus-5': { input: 5.0, cacheWrite5m: 6.25, cacheWrite1h: 10.0, cacheRead: 0.5, output: 25.0 },
+    'claude-opus-4-8': { input: 5.0, cacheWrite5m: 6.25, cacheWrite1h: 10.0, cacheRead: 0.5, output: 25.0 },
+    'claude-opus-4-7': { input: 5.0, cacheWrite5m: 6.25, cacheWrite1h: 10.0, cacheRead: 0.5, output: 25.0 },
+    'claude-opus-4-6': { input: 5.0, cacheWrite5m: 6.25, cacheWrite1h: 10.0, cacheRead: 0.5, output: 25.0 },
+    'claude-opus-4-5': { input: 5.0, cacheWrite5m: 6.25, cacheWrite1h: 10.0, cacheRead: 0.5, output: 25.0 },
+    'claude-sonnet-5': { input: 2.0, cacheWrite5m: 2.5, cacheWrite1h: 4.0, cacheRead: 0.2, output: 10.0 },
+    'claude-sonnet-4-6': { input: 3.0, cacheWrite5m: 3.75, cacheWrite1h: 6.0, cacheRead: 0.3, output: 15.0 },
+    'claude-sonnet-4-5': { input: 3.0, cacheWrite5m: 3.75, cacheWrite1h: 6.0, cacheRead: 0.3, output: 15.0 },
+    'claude-haiku-4-5': { input: 1.0, cacheWrite5m: 1.25, cacheWrite1h: 2.0, cacheRead: 0.1, output: 5.0 },
   },
 };
 
 function modelKey(modelId) {
-  // The JSONL stores model IDs like "claude-sonnet-4-6-20250929" with a
-  // date suffix, or bare like "claude-opus-4-7". Strip any suffix to match
-  // PRICING keys.
+  // The JSONL stores model IDs bare ("claude-opus-5", "claude-opus-5-5") or
+  // with a date suffix ("claude-haiku-4-5-20251001"). Keep family, major and
+  // an optional one- or two-digit minor; drop the date. A version is never
+  // read out of the date's first digits.
   if (!modelId) return null;
-  const m = modelId.match(/^(claude-(?:opus|sonnet|haiku)-\d+-\d+)/);
+  const m = modelId.match(/^(claude-[a-z]+-\d+(?:-\d{1,2}(?!\d))?)/);
   return m ? m[1] : modelId;
 }
 
@@ -905,10 +913,19 @@ function buildPerformance(turns, range) {
       slot.cacheCreate += cc;
       perModel.set(key, slot);
     }
-    const price = PRICING.models[key];
+    // Writes to the 1-hour cache cost more than 5-minute ones; a record without
+    // the split (older transcripts) is priced at the 5-minute rate.
+    const split = u.cache_creation;
+    const cc1h = split ? split.ephemeral_1h_input_tokens || 0 : 0;
+    const cc5m = split ? split.ephemeral_5m_input_tokens || 0 : cc;
+    const price = u.speed === 'fast' ? null : PRICING.models[key];
     if (price) {
       costUSD +=
-        (inp * price.input + out * price.output + cr * price.cacheRead + cc * price.cacheWrite) /
+        (inp * price.input +
+          out * price.output +
+          cr * price.cacheRead +
+          cc5m * price.cacheWrite5m +
+          cc1h * price.cacheWrite1h) /
         1e6;
     } else {
       costUnknownTokens += inp + out + cr + cc;
@@ -1012,16 +1029,34 @@ function bashIsAllowlisted(command, allowlist) {
   return false;
 }
 
+// Interpreters whose first non-flag argument is the script they run, and the
+// flags that make them run inline code instead of a script.
+const INTERPRETERS = new Set(['bash', 'sh', 'node', 'python', 'python3']);
+const INLINE_CODE_FLAGS = new Set(['-c', '-e', '-p', '--eval', '--print']);
+
+function interpretedScriptIndex(tokens) {
+  // `bash x.sh`, `node x.cjs`, `python3 x.py` → index of the script token in
+  // `tokens`; -1 when tokens[0] is not an interpreter or runs inline code.
+  if (!INTERPRETERS.has((tokens[0] || '').replace(/^.*\//, ''))) return -1;
+  for (let i = 1; i < tokens.length; i++) {
+    if (INLINE_CODE_FLAGS.has(tokens[i])) return -1;
+    if (!tokens[i].startsWith('-')) return i;
+  }
+  return -1;
+}
+
 function repoInternalScriptTarget(command) {
-  // Detect `node <path>` or direct `<path>` execution where `<path>` is
+  // Detect a script run through an interpreter (`bash <path>`, `node <path>`,
+  // `python3 <path>`) or directly (`./<path>.sh`) where `<path>` is
   // repo-internal. Returns the relative path, or null.
   const trimmed = command.trim();
-  const nodeMatch = trimmed.match(/^node\s+(\S+)/);
+  const tokens = trimmed.split(/\s+/);
+  const si = interpretedScriptIndex(tokens);
   let target = null;
-  if (nodeMatch) {
-    target = nodeMatch[1];
+  if (si > 0) {
+    target = tokens[si];
   } else {
-    const directMatch = trimmed.match(/^(\.\/|)(\S+\.(?:cjs|js|mjs|sh))(\s|$)/);
+    const directMatch = trimmed.match(/^(\.\/|)(\S+\.(?:cjs|js|mjs|sh|py))(\s|$)/);
     if (directMatch) target = (directMatch[1] || '') + directMatch[2];
   }
   if (!target) return null;
@@ -1034,9 +1069,10 @@ function repoInternalScriptTarget(command) {
 
 function suggestAllowlistLine(command) {
   const trimmed = command.trim();
-  const nodeMatch = trimmed.match(/^(node\s+\S+)/);
-  if (nodeMatch) return `Bash(${nodeMatch[1]}:*)`;
-  const directMatch = trimmed.match(/^(\.\/?\S+|\S+\.(?:cjs|js|mjs|sh))/);
+  const tokens = trimmed.split(/\s+/);
+  const si = interpretedScriptIndex(tokens);
+  if (si > 0) return `Bash(${tokens.slice(0, si + 1).join(' ')}:*)`;
+  const directMatch = trimmed.match(/^(\.\/?\S+|\S+\.(?:cjs|js|mjs|sh|py))/);
   if (directMatch) return `Bash(${directMatch[1]}:*)`;
   return null;
 }
@@ -1069,12 +1105,8 @@ function detectPermissionGap(turns, range, allowlist) {
           command: bc.command,
           repoTarget: target,
         },
-        ruleViolated: {
-          anchor: 'AGENTS.md#hard-rules',
-          summary:
-            'Repo-internal scripts should be allowlisted so the permission prompt ' +
-            "doesn't fire mid-skill. Trust our own repo files.",
-        },
+        // Portable detectors name no repo rule unless the repo's config does.
+        ...(repoConfig.permissionGapRule ? { ruleViolated: repoConfig.permissionGapRule } : {}),
         suggestedFix: {
           kind: 'mechanical',
           text:
@@ -1267,8 +1299,10 @@ function bashCommandHead(command) {
   // Normalize a bash command to a stable "verb" for the action trace:
   //   "git status --short"            → "git status"
   //   "FOO=1 ./scripts/build.sh --now" → "build.sh"
-  //   "node scripts/x.cjs audit"      → "node"
+  //   "node scripts/x.cjs audit"      → "x.cjs"   (an interpreter's script)
+  //   "bash -c 'echo hi'"             → "bash"    (inline code)
   // Strips leading VAR=val env assignments and any path prefix on the binary.
+  // A script listed in subcommandTools keeps its subcommand ("deploy.sh up").
   const firstLine = String(command || '')
     .trim()
     .split('\n')[0]
@@ -1277,6 +1311,8 @@ function bashCommandHead(command) {
   const tokens = firstLine.split(/\s+/);
   let idx = 0;
   while (idx < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[idx])) idx++;
+  const si = interpretedScriptIndex(tokens.slice(idx));
+  if (si > 0) idx += si; // report the script, not its interpreter
   const head = tokens[idx] || '';
   const base = head.replace(/^.*\//, ''); // /usr/bin/foo → foo, ~/bin/x.sh → x.sh
   const next = tokens[idx + 1];
@@ -1445,6 +1481,9 @@ function buildAggregate(perfList, fitList, findingsList, invMeta) {
     costEstimateUSD: {
       total: round4(sum(costs)),
       median: round4(median(costs)),
+      // Tokens no price covers (an unknown model, fast mode): the dollar
+      // figures above leave them out.
+      unpricedTokens: sum(perfList.map((p) => p.costUnknownTokens || 0)),
     },
     totalOutputTokens: {
       total: sum(outTokens),
@@ -1683,6 +1722,7 @@ module.exports = {
     bashIsAllowlisted,
     repoInternalScriptTarget,
     suggestAllowlistLine,
+    bashCommandHead,
     humanDuration,
     modelKey,
     findResultByToolUseId,
