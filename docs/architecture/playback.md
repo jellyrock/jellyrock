@@ -378,7 +378,7 @@ The result handlers write back into `VideoPlayerView`'s fields (`audioIndex`, `s
 - **Live TV channel that finished** → `restartLiveChannel()` (restart the same channel, host-internal remount). A live feed that drops mid-stream surfaces as `finished`, which is why the restart exists. A stream that ends without ever playing (an on-demand playlist listed as a channel, joined at its end) surfaces the same way, so the restart is budgeted: an end after `LIVE_RESTART_HEALTHY_MS` of progress resets the count, any other end adds one, and once the count passes `LIVE_RESTART_MAX` the player shows the playback error instead. Only the restart keeps the count; every other mount (first play, channel switch, queue advance) starts a fresh one. **Progress** is measured by the player, from its 0.5 s `position` notifications (`liveProgressOnPosition()`): only small forward steps past the furthest position count, so paused and buffering time, the jump to the live edge, a seek, and the player's replay of a stale live window don't. The position at a state change can't be used, because the first `playing` reports no real position (the live-edge seek sentinel or 0, measured). The host reads the player's `liveProgressMs()` at the end and passes it to `liveRestartOnEnd()`; `liveRestartOnMount()` / `liveRestartOnEnd()` / `liveRestartOnStall()` in `source/utils/liveTv.bs` hold the whole rule. Each live mount logs one `info` line on teardown with the step sizes its progress was built from, the evidence for tuning `LIVE_PROGRESS_MAX_STEP_MS`
 - **Live TV stream that stalled** (not an end): `VideoPlayerView.bufferCheck` sees no buffering progress across a 30 s tick (`classifyBufferCheck()` in `source/utils/bufferStall.bs`) and calls the host's `onLiveStreamStalled()`, which clears the screen the same way and asks `liveRestartOnStall()`: a mount that had made `LIVE_RESTART_HEALTHY_MS` of progress restarts (a dropped feed), any other stall shows the error and stops the stream. No `LIVE_RESTART_MAX` budget for stalls, because each is detected at least 30 s into the spinner (later if the buffering percentage kept rising). Instead, the mount a stall restart started must play `LIVE_STALL_REPROVE_MS` before its own stall restarts again: a restart into a playlist that stopped growing plays its leftover, which grows with the segment length (29.6 s with 10 s segments, measured) and would otherwise pass the `LIVE_RESTART_HEALTHY_MS` bar every time. A movie or episode that stalls shows the error directly, as before
 - **The give-up error's wording** (`liveGiveUpCauseKey()`): "This channel isn't sending any video" when no mount since the viewer chose the channel made progress, "This channel's stream stopped" when one did
-- **A terminal Video `error`** ends the server's session with a stop marked `Failed` (`reportPlaybackEnd("error")`): it closes a Live TV channel's live stream, which otherwise stays open until the server restarts (#988), and leaves the user's resume position alone. The stop closes a stream that had reported its start; one that failed before its first frame is closed by id ([below](#reportplayback--server-side-reporting))
+- **A terminal Video `error`** ends the server's session with a stop marked `Failed` (`reportPlaybackEnd("error")`), which leaves the user's resume position alone, and releases a Live TV channel's live stream, which otherwise stays open until the server restarts (#988): the stop releases a stream that had reported its start, a close by id one that failed before its first frame ([below](#reportplayback--server-side-reporting))
 - **More items in queue** → `advanceTo(position + 1)` + `playCurrentQueueItem()` (destroy + remount for the next item, which starts fresh — [Items a queue arrives at](#items-a-queue-arrives-at))
 - **Queue exhausted** → `exitPlayback()` → `sgrouter.goBack()` (leaves the play route; the suspended view beneath — the launching detail, or Home — resumes)
 
@@ -492,23 +492,34 @@ an end gets:
 
 - A stream that reported `start` sends a plain stop (or `finished`), and the server saves its position.
 - A stream that never reported `start` — it failed before its first frame, stalled into the
-  playback error, was retried, or the viewer backed out while it loaded — still sends a stop,
+  playback error, was retried, or the viewer backed out after it loaded — still sends a stop,
   **marked `Failed`**. The stop is not only a position report: the server stops the session's
   transcode on it, so skipping it would leak that. `Failed` makes Jellyfin skip only the
   user-data write (`OnPlaybackStopped`, 10.7.7 through 12.1). An unmarked stop there saved the
   position the player read before its first frame — usually 0 — over the resume point (#969).
-- **A Live TV stream that never reported `start` is also closed by id**
-  (`POST /LiveStreams/Close`, `endClosesLiveStream()`). The stop cannot close it: Jellyfin links
-  a session to a live stream only when the session reports that stream's start or progress
-  (`SessionManager.UpdateLiveStreamActiveSessionMappings`, 10.7.7 through 12.1), and a stop with
-  no link closes nothing. Without the close, every mount that ended before its first frame (a
-  direct play failing over to transcode, each restart of a channel that ends at once) left the
-  server one more consumer on the stream until it restarted. A stream that did report `start` is
-  never closed this way as well: its stop already released this session's consumer, and each
-  close releases one, which on a shared stream belongs to another viewer. A load that opened a
-  live stream and then failed before handing it to the player (no transcoding URL, a `localhost`
-  path it cannot rebuild) closes it from `LoadVideoContentTask` (`liveStreamLeftByFailedLoad()`),
-  because no end report ever reaches a stream the player never held.
+- **A Live TV stream that never reported `start` is released by a close by id, and its stop
+  does not name it** (`POST /LiveStreams/Close`, `endClosesLiveStream()`,
+  `liveStreamReportFields()`). Each release drops one consumer from the stream, so a stream must
+  be released exactly once: a second release on a stream the server shares between viewers ends
+  another viewer's stream. A stop naming a stream that never reported `start` cannot be that one
+  release, because the server's answer depends on its version and on who else is watching:
+
+  | Server | A stop naming a stream whose `start` was never reported |
+  |---|---|
+  | 10.7 – 10.10 | always releases it (no session link exists) |
+  | 10.11 | never releases it: only a session linked by a `start` or progress report does ([jellyfin#13220](https://github.com/jellyfin/jellyfin/pull/13220)) |
+  | 12.0 – 12.1 | releases it only while no other session is linked to it ([jellyfin#17178](https://github.com/jellyfin/jellyfin/pull/17178)) |
+
+  So the close releases it and the stop leaves `LiveStreamId` out, which the server ignores on
+  every version; `jellyfin-kodi` ends every live stream the same way. Measured 2026-09-26 against
+  local 10.7.7, 10.8.13, 10.9.11, 10.10.7, 10.11.11, 12.0.0 and 12.1.0 with an `M3U` tuner sharing
+  one stream between two sessions: the stop naming the stream plus the close ended the other
+  session's stream on every version but 10.11; the stop without it plus the close released
+  exactly one consumer on all seven. A stream that did report `start` is released by its stop,
+  as the server expects, and never closed as well. A load that opened a live stream and then
+  failed before handing it to the player (no transcoding URL, a `localhost` path it cannot
+  rebuild) closes it from `LoadVideoContentTask` (`liveStreamLeftByFailedLoad()`), because no
+  end report ever reaches a stream the player never held.
 - A stream whose end was already reported sends nothing. A stop can surface as `finished` as
   well as `stopped`, and the server records every stop as its own "finished playing" in the
   activity log. The flag (`m.isEndReported`) resets when a new stream loads and when a `start`

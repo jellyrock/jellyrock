@@ -204,7 +204,7 @@ function LoadItems_VideoPlayer(id as string, mediaSourceId as dynamic, audioStre
   if not isValid(video.content)
     liveStreamId = liveStreamLeftByFailedLoad(video)
     if liveStreamId <> ""
-      m.log.info("Closing the live stream a failed load opened", "itemId", id)
+      m.log.info("Closing the live stream a failed load opened", "liveStreamId", liveStreamId, "itemId", id)
       SubmitSideEffect(GetApi().BuildCloseLiveStreamRequest(liveStreamId))
     end if
     return invalid

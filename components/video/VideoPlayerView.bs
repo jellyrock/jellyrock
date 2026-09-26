@@ -2001,28 +2001,30 @@ sub reportPlayback(state = "update" as string)
 end sub
 
 ' Report the end of this stream, once (classifyPlaybackEnd decides which report, if any). Every end
-' needs one: the stop is also what stops the server's transcode and closes a Live TV live stream
+' needs one: the stop is also what stops the server's transcode and releases a Live TV live stream
 ' this session reported playing, which a terminal `error` would otherwise leave open until the
 ' server restarts, since onState ignores every later state (#988). A live stream that never
-' reported its start is closed by id as well, because its stop cannot close it
-' (endClosesLiveStream). Once per stream, because a stop can also surface as `finished`, and the
-' server records each report as its own "finished playing".
+' reported its start is released by a close by id instead, and its stop then does not name it, so
+' the stream is released exactly once (endClosesLiveStream). Once per stream, because a stop can
+' also surface as `finished`, and the server records each report as its own "finished playing".
 '
 ' @param {string} playerState - the Video state that ended the stream: stopped, finished or error
 sub reportPlaybackEnd(playerState as string)
   report = classifyPlaybackEnd(playerState, m.isPlayReported, m.isEndReported, m.forceFinished)
   if report = PlaybackEndReport.NONE then return
-  if report = PlaybackEndReport.FINISHED
-    submitPlaybackReport("finished", false)
-  else
-    submitPlaybackReport("stop", report = PlaybackEndReport.FAILED)
-  end if
 
-  ' The same id the stop names, so the close and the stop always agree on which stream is live.
   liveStreamId = invalid
   if isLiveTvPlayback() and isValid(m.top.transcodeParams) then liveStreamId = m.top.transcodeParams.LiveStreamId
-  if endClosesLiveStream(report, m.isPlayReported, liveStreamId)
-    m.log.info("Closing a live stream that never reported its start", "itemId", m.top.id, "playerState", playerState)
+  closesLiveStream = endClosesLiveStream(report, m.isPlayReported, liveStreamId)
+
+  if report = PlaybackEndReport.FINISHED
+    submitPlaybackReport("finished", false, closesLiveStream)
+  else
+    submitPlaybackReport("stop", report = PlaybackEndReport.FAILED, closesLiveStream)
+  end if
+
+  if closesLiveStream
+    m.log.info("Closing a live stream that never reported its start", "liveStreamId", liveStreamId, "itemId", m.top.id, "playerState", playerState)
     SubmitSideEffect(GetApi().BuildCloseLiveStreamRequest(liveStreamId))
   end if
 
@@ -2035,7 +2037,8 @@ end sub
 '
 ' @param {string} state - start, update, stop or finished
 ' @param {boolean} failed - a stop marked `Failed`, which leaves the resume position alone (reportPlaybackEnd)
-sub submitPlaybackReport(state as string, failed as boolean)
+' @param {boolean} closesLiveStream - an end whose live stream a close releases, so it must not name it
+sub submitPlaybackReport(state as string, failed as boolean, closesLiveStream = false as boolean)
   if not isValid(m.top.position) then return
 
   m.log.debug("start reportPlayback", state, int(m.top.position))
@@ -2070,10 +2073,7 @@ sub submitPlaybackReport(state as string, failed as boolean)
   if m.reportedMediaSourceId <> "" then params.MediaSourceId = m.reportedMediaSourceId
   ' Live TV requires MediaSourceId/LiveStreamId for server-side stream tracking
   if isLiveTvPlayback() and isValid(m.top.transcodeParams)
-    params.append({
-      "MediaSourceId": m.top.transcodeParams.MediaSourceId,
-      "LiveStreamId": m.top.transcodeParams.LiveStreamId
-    })
+    params.append(liveStreamReportFields(m.top.transcodeParams, closesLiveStream))
     m.bufferCheckTimer.duration = 30
   end if
 

@@ -1775,6 +1775,7 @@ A **stall** restarts only after healthy progress; it does not share the end's th
 
 **date**: 2026-09-24
 **status**: accepted
+**partially-superseded-by**: live-stream-released-once (which request releases a never-started stream's Live TV live stream)
 **related-files**: `source/utils/playbackEnd.bs`, `source/enums/PlaybackEndReport.bs`, `components/video/VideoPlayerView.bs`
 
 A video stream that never reported `start` still reports its end, as a stop marked `Failed`, and every stream's end is reported exactly once (`VideoPlayerView.reportPlaybackEnd()` → `classifyPlaybackEnd()`). Ruled out: **skipping the stop** for a never-started stream, because the stop is also what makes Jellyfin kill the session's transcode jobs and close a Live TV live stream (the retry and stall paths rely on it); and **sending the queue's starting point as the position**, because a starting point can be exact (a chapter, play-from-start) and it would write user data for a playback that never happened. `Failed` makes Jellyfin's `OnPlaybackStopped` skip only the per-user `UpdatePlayState`/`SaveUserData`; `KillTranscodingJobs`, the live-stream close and the `PlaybackStopped` event still run (read in source at v10.7.7, v10.9.0, v10.10.0, v12.0, v12.1).
@@ -1810,6 +1811,17 @@ Why: #444's reason — only visible rows hold textures — covered texture memor
 `AudioPlayerView`'s song-metadata fetch gets a NEW `LoadItemsTask` per run ([ADR 0037](adr/0037-task-run-replacement.md)), created at the launch in `onAudioStreamLoaded`, and every track change releases the run in flight in `pageContentChanged`, whether or not the next song launches one. The field starts `invalid` (`init()` no longer creates a node), and `releaseTask` releases any run on every track change and in `onDestroy()`. Measured 2026-09-25 on a Stick 4K against the public demo (12.1.0), with the metadata load forced and its fetch held 4 s after the id read: skipping mid-fetch showed the previous song's title 6/6 on `main` and 0/6 with this change, both when the next song needs metadata and when it does not.
 
 Ruled out: the standard migration alone (`replaceTask` at the launch plus the `isCurrentTaskEvent` guard). When the next song is fully tagged, nothing launches, so the old run is still the current node, the guard passes its delivery, and the old title wins (6/6 on `main` in that shape). Also ruled out: keeping the `init()` node and replacing in both places, which works but leaves a node nobody launches and needs a comment to explain the double replace.
+
+## decision-id: live-stream-released-once
+
+**date**: 2026-09-26
+**status**: accepted
+**partially-supersedes**: never-started-stream-failed-stop (which request releases a never-started stream's Live TV live stream)
+**related-files**: `source/utils/playbackEnd.bs`, `components/video/VideoPlayerView.bs`, `components/ItemGrid/LoadVideoContentTask.bs`
+
+Every Live TV live stream JellyRock opens gets exactly one release. A stream that reported `start` is released by its stop, which names it (`LiveStreamId`); one that never did is released by `POST /LiveStreams/Close`, and its `Failed` stop leaves `LiveStreamId` out (`endClosesLiveStream()`, `liveStreamReportFields()`); a load that fails before handing the stream to the player closes it itself (`liveStreamLeftByFailedLoad()`). The stop cannot be the release for a never-started stream, because what the server does with it depends on its version and on who else is watching: 10.7–10.10 always release, 10.11 never ([jellyfin#13220](https://github.com/jellyfin/jellyfin/pull/13220)), 12.0–12.1 only while no other session is linked ([jellyfin#17178](https://github.com/jellyfin/jellyfin/pull/17178)). A second release ends another viewer's shared stream. `jellyfin-kodi` ends every live stream the same way (a stop without `LiveStreamId`, then `LiveStreams/Close`).
+
+Measured 2026-09-26 against local 10.7.7, 10.8.13, 10.9.11, 10.10.7, 10.11.11, 12.0.0 and 12.1.0 with an `M3U` tuner sharing one stream between two sessions: a stop naming the stream plus a close ended the other session's stream on every version but 10.11; a stop without it plus a close released exactly one consumer on all seven. On a Stick 4K through a logging proxy (10.7.7, 10.10.7, 10.11.11, 12.1.0), every never-started mount sent a `Failed` stop without `LiveStreamId` plus one close, and the server closed each stream it opened. Ruled out: sending the close only to 10.11.x (12.x still leaks when another viewer is linked, measured), and a stop naming the stream plus a close (#1050 as first pushed).
 
 ## Migrated to ADRs
 
