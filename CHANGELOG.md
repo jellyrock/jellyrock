@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- (details) Give a Season's series fetch its own Task per run ([#1047](https://github.com/jellyrock/jellyrock/pull/1047))
 - (grid) Keep large libraries loading as fast as you scroll ([#1046](https://github.com/jellyrock/jellyrock/pull/1046))
 
 ### Fixed
