@@ -203,10 +203,6 @@ sub init()
   m.shuffleLoadingButton = invalid
   m.resumeLoadingButton = invalid
 
-  ' First episode task (Series Play button)
-  m.loadFirstEpisodeTask = CreateObject("roSGNode", "LoadItemsTask")
-  m.loadFirstEpisodeTask.itemsToLoad = "seriesFirstEpisode"
-
   ' Series: fetch the resume/next-up episode in the background for the Resume button
   m.loadSeriesResumeTask = CreateObject("roSGNode", "LoadItemsTask")
   m.loadSeriesResumeTask.itemsToLoad = "seriesResume"
@@ -3622,7 +3618,8 @@ sub onItemContentChanged()
     ' and resetting to invalid would trigger onNextUpEpisodeChanged() which removes it immediately.
     ' onSeriesResumeLoaded() handles both the data and no-data cases.
     if item.type = "Series"
-      ' Unobserve before re-observing to prevent callbacks stacking on repeated content changes.
+      ' A new node per run: a refresh can land while the previous fetch is still running,
+      ' and relaunching a running node is ignored.
       m.loadSeriesResumeTask = replaceTask(m.loadSeriesResumeTask, "LoadItemsTask", "content", { itemsToLoad: "seriesResume" })
       m.loadSeriesResumeTask.itemId = item.id
       m.loadSeriesResumeTask.observeField("content", "onSeriesResumeLoaded")
@@ -3639,8 +3636,9 @@ sub onItemContentChanged()
 
     ' Season: kick off background fetch of parent series metadata for ratings/runtime/genres/logo
     if item.type = "Season" and isValidAndNotEmpty(item.seriesId)
-      ' Unobserve before re-observing to prevent callbacks stacking on repeated content changes.
-      m.loadSeasonSeriesTask.unobserveField("content")
+      ' A new node per run: a refresh can land while the previous fetch is still running,
+      ' and relaunching a running node is ignored.
+      m.loadSeasonSeriesTask = replaceTask(m.loadSeasonSeriesTask, "LoadItemsTask", "content", { itemsToLoad: "metaDataDetails" })
       m.loadSeasonSeriesTask.itemId = item.seriesId
       m.loadSeasonSeriesTask.observeField("content", "onSeasonSeriesDataLoaded")
       screenLoad.pending("seasonSeries")
@@ -5278,8 +5276,10 @@ function pickTrackDropdownFromDescription() as object
 end function
 
 ' onSeasonSeriesDataLoaded: Update Season info rows and logo with parent series metadata
-sub onSeasonSeriesDataLoaded()
-  ' At the TOP, ahead of the "no data" early returns below. A fill is resolved when the
+sub onSeasonSeriesDataLoaded(event as object)
+  ' An event from a replaced run is not an answer at all, so it returns before the resolve.
+  if not isCurrentTaskEvent(event, m.loadSeasonSeriesTask) then return
+  ' Otherwise at the TOP, ahead of the "no data" early returns below. A fill is resolved when the
   ' answer ARRIVES, not when the answer turns out to be useful — a Season whose parent
   ' series returned nothing has still finished waiting, and resolving after the returns
   ' would leave it pending forever and the screen permanently unsettled.
@@ -5380,46 +5380,8 @@ sub onLyricsLoaded(event as object)
   setDescriptionInLayout(true)
 end sub
 
-' onFirstEpisodeLoaded: Start playback of first episode for Series Play button
-sub onFirstEpisodeLoaded()
-  m.loadFirstEpisodeTask.unobserveField("content")
-  content = m.loadFirstEpisodeTask.content
-
-  if isValid(content) and content.count() > 0
-    m.top.quickPlayNode = content[0]
-    m.top.quickPlayNode = invalid
-  else
-    m.log.warn("Series Play: could not load first episode for series", m.top.itemContent.id)
-    showAlertDialog(translate(translationKeys.ErrorPlaybackError), translate(translationKeys.ErrorCouldNotLoadTheFirstEpisode))
-  end if
-end sub
-
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
-
-  item = m.top.itemContent
-  itemType = ""
-  if isValid(item)
-    itemType = item.type
-  end if
-
-  ' Series-specific button handling — intercept before Main.bs receives buttonSelected
-  if itemType = "Series" and key = "OK" and m.buttonGrp.isInFocusChain()
-    focusedButton = m.buttonGrp.getChild(m.buttonGrp.buttonFocused)
-    if isValid(focusedButton)
-      if focusedButton.id = "playButton" and isValidAndNotEmpty(item.id)
-        ' Load first episode and set quickPlayNode
-        m.loadFirstEpisodeTask.itemId = item.id
-        m.loadFirstEpisodeTask.observeField("content", "onFirstEpisodeLoaded")
-        launchTask(m.loadFirstEpisodeTask)
-        return true
-      else if focusedButton.id = "resumeButton" and isValid(m.top.nextUpEpisode) and isValidAndNotEmpty(m.top.nextUpEpisode.id)
-        m.top.quickPlayNode = m.top.nextUpEpisode
-        m.top.quickPlayNode = invalid
-        return true
-      end if
-    end if
-  end if
 
   ' DOWN: itemDescription -> track row dropdown (if any interactive), else buttonGrp.
   ' Uses the "remember last focused" picker so returning to the row after coming back
@@ -5623,10 +5585,6 @@ sub onDestroy()
   end if
 
   ' Stop and release task nodes
-  m.loadFirstEpisodeTask.unobserveField("content")
-  m.loadFirstEpisodeTask.control = "STOP"
-  m.loadFirstEpisodeTask = invalid
-
   m.loadSeriesResumeTask.unobserveField("content")
   m.loadSeriesResumeTask.control = "STOP"
   m.loadSeriesResumeTask = invalid

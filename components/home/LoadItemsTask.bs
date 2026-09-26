@@ -157,12 +157,6 @@ sub loadItems()
     end if
 
     ' ItemDetails' extras rows are NOT loaded here — LoadExtrasRowsTask owns all of them.
-  else if m.top.itemsToLoad = "seriesFirstEpisode"
-    data = fetchJson(GetApi().BuildGetEpisodesRequest(m.top.itemId, { Limit: 1, SortBy: "IndexNumber,SortName", SortOrder: "Ascending" }), "seriesFirstEpisode")
-    if isValid(data) and isValid(data.Items) and data.Items.count() > 0
-      node = m.transformer.transformBaseItem(data.Items[0])
-      if isValid(node) then results.push(node)
-    end if
   else if m.top.itemsToLoad = "seriesResume"
     ' For the series Resume button, prefer an in-progress (resumable) episode and fall back to the next unstarted episode.
     ' Uses the same endpoint as the Continue Watching home row so the Resume button is consistent with it.
