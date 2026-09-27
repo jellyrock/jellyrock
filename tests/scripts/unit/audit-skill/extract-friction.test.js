@@ -578,7 +578,7 @@ describe('extract-friction behavioral trace', () => {
     ]);
     expect(trace.bashVerbs['git status']).toBe(1);
     expect(trace.bashVerbs['build.sh']).toBe(1);
-    expect(trace.bashVerbs['node']).toBe(1);
+    expect(trace.bashVerbs['x.cjs']).toBe(1);
   });
 });
 
