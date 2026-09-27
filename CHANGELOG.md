@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (audio) Transcode Opus in `ogg` music instead of hanging ([#1062](https://github.com/jellyrock/jellyrock/pull/1062))
 - Release live streams left mid-open, and wait for slow channels ([#1058](https://github.com/jellyrock/jellyrock/pull/1058))
 - (home) Tell a failed Favorites load from an empty one; OK retries ([#1057](https://github.com/jellyrock/jellyrock/pull/1057))
 - (home) Tell failed Home rows from empty ones; OK retries ([#1051](https://github.com/jellyrock/jellyrock/pull/1051))
