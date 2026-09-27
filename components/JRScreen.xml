@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="JRScreen" extends="JRGroup">
   <interface>
+    <!-- A screen that plays (the video host, the audio player): reaching it is where a playback
+         start is meant to go, so it does not count as leaving the start (appWaits.leftBehind). -->
+    <field id="isPlaybackScreen" type="boolean" value="false" />
     <function name="onScreenShown" />
     <function name="onScreenHidden" />
     <function name="onDestroy" />

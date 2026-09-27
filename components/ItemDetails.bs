@@ -534,7 +534,6 @@ sub dispatchDetailButtonAction(buttonId as string)
     ' QuickPlayTask owned by the QueueManager (which then routes to the play view); single
     ' items build their queue inline.
     if isPlayAllType(item.type)
-      startLoadingSpinner()
       m.global.queueManager.callFunc("launchQuickPlayAction", { action: "playAll" + item.type, id: item.id, seriesId: item.seriesId })
     else
       startPlayFromDetail(0)
@@ -555,12 +554,10 @@ sub dispatchDetailButtonAction(buttonId as string)
   else if buttonId = "trailerButton"
     ' Play this item's trailer(s) via the QueueManager task path. Use itemContent.id (the
     ' item), not the screen node id.
-    startLoadingSpinner()
     m.global.queueManager.callFunc("launchQuickPlayAction", { action: "loadTrailers", id: item.id })
   else if buttonId = "instantMixButton"
     ' Build an instant mix queue from this item.
     if isValidAndNotEmpty(item.id)
-      startLoadingSpinner()
       m.global.queueManager.callFunc("launchQuickPlayAction", { action: "instantMix", id: item.id })
     end if
   else if buttonId = "shuffleButton"
@@ -828,8 +825,9 @@ end sub
 ' QueueManager.
 sub onShuffleButtonPressed(item as object)
   if not (isValid(item) and isValidAndNotEmpty(item.id)) then return
-  startLoadingSpinner()
   if item.type = "PhotoAlbum"
+    ' A slideshow is not a play session: the plain spinner (QueueManager.launchPhotoAlbum).
+    startLoadingSpinner()
     m.global.queueManager.callFunc("launchPhotoAlbum", true, item.id)
   else
     m.global.queueManager.callFunc("launchShuffle", { type: item.type, id: item.id, seriesId: item.seriesId })
@@ -896,7 +894,7 @@ end sub
 '
 ' @param {dynamic} versionPreference - an explicit version pick for the queue (versionPick), or invalid
 sub launchQueueItemToPlay(queueItem as object, routeType as string, routeId as string, versionPreference = invalid as dynamic)
-  startLoadingSpinner()
+  m.global.queueManager.callFunc("beginPlaybackStart", "")
   m.global.queueManager.callFunc("clear")
   if isValid(versionPreference) then m.global.queueManager.callFunc("setVersionPreference", versionPreference)
   m.global.queueManager.callFunc("push", queueItem)

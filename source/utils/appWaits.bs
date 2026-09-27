@@ -1,0 +1,106 @@
+import "pkg:/source/constants/timeouts.bs"
+import "pkg:/source/enums/LoadingKind.bs"
+import "pkg:/source/roku_modules/promises/promises.brs"
+import "pkg:/source/utils/misc.bs"
+
+' Waits the whole app is in, which outlive the screen that started them — a playback start
+' runs from a press on one screen to a player on another. The scene shows them as its loading
+' spinner (JRScene.beginAppWait), over the active screen's own waits (screenWaits).
+'
+' Each wait is a Promise, one per wait, and it ends when the promise settles:
+'
+'   wait = appWaits.begin(LoadingKind.PLAYBACK_START, channelName)
+'   appWaits.done(wait)             ' the player holds a stream
+'   appWaits.fail(wait, "failed")   ' it failed, or the viewer left
+'
+' The first settle wins and the rest do nothing, so every exit path can end the wait without
+' checking whether another already has — and code holding one wait can never end another,
+' which is what a wait ended by name could not promise (a player being replaced by the next
+' channel's would end the next channel's). A wait nobody ends is ended by its kind's time
+' limit and logged as an error.
+namespace appWaits
+
+  ' Opens a wait of `kind`, labeled `label` (shown above the spinner; "" for none), and returns
+  ' its Promise, or invalid when there is no scene to show it.
+  function begin(kind as string, label = "" as string) as dynamic
+    scene = appScene()
+    if not isValid(scene) then return invalid
+    return scene.callFunc("beginAppWait", kind, label)
+  end function
+
+  ' Ends `appWait` because what it waited for arrived. Does nothing once it has ended.
+  sub done(appWait as dynamic)
+    if promises.isPromise(appWait) then promises.resolve(true, appWait)
+  end sub
+
+  ' Ends `appWait` because what it waited for will not arrive (`reason`, for the log). Does
+  ' nothing once it has ended.
+  sub fail(appWait as dynamic, reason as string)
+    if promises.isPromise(appWait) then promises.reject({ message: reason }, appWait)
+  end sub
+
+  ' Whether `appWait` is a wait that has not ended yet.
+  function isOpen(appWait as dynamic) as boolean
+    return promises.isPromise(appWait) and not promises.isComplete(appWait)
+  end function
+
+  ' ---- The scene's rules for its open waits. Pure, so they are the same in a test. ----
+  ' `entries` is the scene's registry: key -> { kind, label, startedMs, deadlineMs, launchedFrom }.
+
+  ' How long a wait of `kind` may stay open before its time limit ends it. 0 for a kind that is
+  ' not an app wait, which the scene ends at once: an app-wait kind without a limit is a bug.
+  function limitMs(kind as string) as dynamic
+    if kind = LoadingKind.PLAYBACK_START then return timeouts.PLAYBACK_START_LIMIT_MS
+    return 0
+  end function
+
+  ' Whether a wait of `kind` hides the screen it was started from while it is open. A playback
+  ' start does, so the viewer sees the item's backdrop and the spinner rather than the screen
+  ' they pressed Play on — unless that screen is itself a player (a channel switch).
+  function hidesLaunchingScreen(kind as string) as boolean
+    return kind = LoadingKind.PLAYBACK_START
+  end function
+
+  ' Whether `view` is a screen that plays: reaching it is where a playback start is meant to go.
+  function isPlaybackScreen(view as dynamic) as boolean
+    return isValid(view) and view.hasField("isPlaybackScreen") and view.isPlaybackScreen = true
+  end function
+
+  ' The keys of the open waits whose time limit has passed at `now`.
+  function overdue(entries as object, now as dynamic) as object
+    keys = []
+    for each key in entries
+      if entries[key].deadlineMs <= now then keys.push(key)
+    end for
+    return keys
+  end function
+
+  ' Milliseconds from `now` until the next time limit, or -1 when no wait is open.
+  function msUntilNextDeadline(entries as object, now as dynamic) as integer
+    nextMs = -1
+    for each key in entries
+      remaining = entries[key].deadlineMs - now
+      if remaining < 0 then remaining = 0
+      if nextMs < 0 or remaining < nextMs then nextMs = remaining
+    end for
+    return nextMs
+  end function
+
+  ' The keys of the playback starts the viewer has left, now that `newView` is the active
+  ' screen: it is neither the screen the start was pressed on nor a player. The start has
+  ' nowhere to go any more — Back during a Play all must not start playback on whatever
+  ' screen the viewer went back to.
+  function leftBehind(entries as object, newView as dynamic) as object
+    keys = []
+    if isPlaybackScreen(newView) then return keys
+    for each key in entries
+      entry = entries[key]
+      if entry.kind <> LoadingKind.PLAYBACK_START then continue for
+      launchedFrom = entry.launchedFrom
+      if isValid(launchedFrom) and isValid(newView) and launchedFrom.isSameNode(newView) then continue for
+      keys.push(key)
+    end for
+    return keys
+  end function
+
+end namespace

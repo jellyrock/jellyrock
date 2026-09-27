@@ -19,14 +19,14 @@ namespace tests
 
     @it("shows no spinner when the scene is idle and the screen has no waits")
     function _()
-      shown = loadingStages.showing(m.sceneIdle(), {}, 100000)
+      shown = loadingStages.showing(m.sceneIdle(), invalid, {}, 100000)
       m.assertFalse(shown.visible)
       m.assertEqual(shown.kind, LoadingKind.PLAIN)
     end function
 
     @it("shows no spinner when there is no active screen")
     function _()
-      m.assertFalse(loadingStages.showing(m.sceneIdle(), invalid, 100000).visible)
+      m.assertFalse(loadingStages.showing(m.sceneIdle(), invalid, invalid, 100000).visible)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -36,7 +36,7 @@ namespace tests
     @it("shows a screen's wait, counted from when it began")
     function _()
       waits = { results: { kind: LoadingKind.CONTENT, startedMs: 90000 } }
-      shown = loadingStages.showing(m.sceneIdle(), waits, 100000)
+      shown = loadingStages.showing(m.sceneIdle(), invalid, waits, 100000)
       m.assertTrue(shown.visible)
       m.assertEqual(shown.kind, LoadingKind.CONTENT)
       m.assertEqual(shown.elapsedMs, 10000)
@@ -48,7 +48,7 @@ namespace tests
         refresh: { kind: LoadingKind.CONTENT, startedMs: 95000 },
         results: { kind: LoadingKind.CONTENT, startedMs: 60000 }
       }
-      m.assertEqual(loadingStages.showing(m.sceneIdle(), waits, 100000).elapsedMs, 40000)
+      m.assertEqual(loadingStages.showing(m.sceneIdle(), invalid, waits, 100000).elapsedMs, 40000)
     end function
 
     @it("counts from a wait with stages over an older one without")
@@ -57,7 +57,7 @@ namespace tests
         other: { kind: LoadingKind.PLAIN, startedMs: 10000 },
         results: { kind: LoadingKind.CONTENT, startedMs: 91000 }
       }
-      shown = loadingStages.showing(m.sceneIdle(), waits, 100000)
+      shown = loadingStages.showing(m.sceneIdle(), invalid, waits, 100000)
       m.assertEqual(shown.kind, LoadingKind.CONTENT)
       m.assertEqual(shown.elapsedMs, 9000)
     end function
@@ -70,7 +70,7 @@ namespace tests
     function _()
       sceneWait = { isLoading: true, kind: LoadingKind.PLAIN, startedMs: 99000 }
       waits = { results: { kind: LoadingKind.CONTENT, startedMs: 50000 } }
-      shown = loadingStages.showing(sceneWait, waits, 100000)
+      shown = loadingStages.showing(sceneWait, invalid, waits, 100000)
       m.assertTrue(shown.visible)
       m.assertEqual(shown.kind, LoadingKind.PLAIN)
       m.assertEqual(shown.elapsedMs, 1000)
@@ -79,9 +79,57 @@ namespace tests
     @it("shows the screen's waits again once the scene's spinner stops, still counting from their start")
     function _()
       waits = { results: { kind: LoadingKind.CONTENT, startedMs: 50000 } }
-      shown = loadingStages.showing(m.sceneIdle(), waits, 100000)
+      shown = loadingStages.showing(m.sceneIdle(), invalid, waits, 100000)
       m.assertTrue(shown.visible)
       m.assertEqual(shown.elapsedMs, 50000)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("showing() — the scene's app waits")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows an app wait over the screen's waits, with its label")
+    function _()
+      appWaits = { w1: { kind: LoadingKind.PLAYBACK_START, label: "Ch 5 · News", startedMs: 97000 } }
+      waits = { results: { kind: LoadingKind.CONTENT, startedMs: 50000 } }
+      shown = loadingStages.showing(m.sceneIdle(), appWaits, waits, 100000)
+      m.assertTrue(shown.visible)
+      m.assertEqual(shown.kind, LoadingKind.PLAYBACK_START)
+      m.assertEqual(shown.elapsedMs, 3000)
+      m.assertEqual(shown.label, "Ch 5 · News")
+    end function
+
+    @it("counts two app waits from the older one, and labels with the newer one")
+    function _()
+      appWaits = {
+        w1: { kind: LoadingKind.PLAYBACK_START, label: "Ch 4", startedMs: 60000 },
+        w2: { kind: LoadingKind.PLAYBACK_START, label: "Ch 5", startedMs: 95000 }
+      }
+      shown = loadingStages.showing(m.sceneIdle(), appWaits, invalid, 100000)
+      m.assertEqual(shown.elapsedMs, 40000)
+      m.assertEqual(shown.label, "Ch 5")
+    end function
+
+    @it("counts from an app wait with stages over the scene's plain spinner")
+    function _()
+      sceneWait = { isLoading: true, kind: LoadingKind.PLAIN, startedMs: 10000 }
+      appWaits = { w1: { kind: LoadingKind.PLAYBACK_START, label: "", startedMs: 91000 } }
+      shown = loadingStages.showing(sceneWait, appWaits, invalid, 100000)
+      m.assertEqual(shown.kind, LoadingKind.PLAYBACK_START)
+      m.assertEqual(shown.elapsedMs, 9000)
+    end function
+
+    @it("has no label when no app wait is open")
+    function _()
+      sceneWait = { isLoading: true, kind: LoadingKind.PLAIN, startedMs: 99000 }
+      m.assertEqual(loadingStages.showing(sceneWait, {}, invalid, 100000).label, "")
+    end function
+
+    @it("tells a slow playback start it is still loading, then that the server is slow")
+    function _()
+      m.assertEqual(loadingStages.textKeyAt(LoadingKind.PLAYBACK_START, 7999), "")
+      m.assertEqual(loadingStages.textKeyAt(LoadingKind.PLAYBACK_START, 8000), translationKeys.LabelStillLoading)
+      m.assertEqual(loadingStages.textKeyAt(LoadingKind.PLAYBACK_START, 30000), translationKeys.MessageServerTakingAWhileToAnswer)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

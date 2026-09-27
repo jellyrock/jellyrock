@@ -4,6 +4,7 @@ import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/appWaits.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/tasks.bs"
@@ -14,12 +15,17 @@ sub init()
   m.log = new log.Logger("AudioPlayerView")
 
   m.top.isOptionsAvailable = false
+  ' Reaching this screen is where an audio playback start goes (appWaits.leftBehind).
+  m.top.isPlaybackScreen = true
   m.isInScrubMode = false
   m.lastRecordedPositionTimestamp = 0
   m.scrubTimestamp = -1
   m.currentBackdropUrl = ""
 
   m.queueManager = m.global.queueManager
+  ' The playback start this screen was opened for (QueueManager.beginPlaybackStart): done when
+  ' the first stream loads, failed when it does not or the screen closes first.
+  m.playbackStart = m.queueManager.callFunc("takePlaybackStart")
   m.playlistTypeCount = m.queueManager.callFunc("getQueueUniqueTypes").count()
 
   m.audioPlayer = m.global.audioPlayer
@@ -568,6 +574,7 @@ sub onAudioStreamLoaded(event as object)
   data = m.LoadAudioStreamTask.content[0]
   m.LoadAudioStreamTask.unobserveField("content")
   if isValid(data) and data.count() > 0
+    appWaits.done(m.playbackStart)
     ' Reset buffer bar without animation
     m.bufferPosition.width = 0
 
@@ -604,6 +611,8 @@ sub onAudioStreamLoaded(event as object)
     m.audioPlayer.content = data
     m.audioPlayer.control = "none"
     m.audioPlayer.control = "play"
+  else
+    appWaits.fail(m.playbackStart, "the load found nothing to play")
   end if
 end sub
 
@@ -892,6 +901,8 @@ end sub
 ' Called automatically via JRScreen.beforeViewClose when sgRouter permanently closes this view.
 sub onDestroy()
   m.log.verbose("onDestroy")
+  ' A start still open here never loaded a stream: Back, or a sign-out, before it did.
+  appWaits.fail(m.playbackStart, "player closed before its stream loaded")
 
   ' Unobserve global audioPlayer fields (m.audioPlayer is m.global.audioPlayer — don't destroy it)
   m.audioPlayer.unobserveField("state")

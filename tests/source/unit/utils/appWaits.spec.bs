@@ -1,0 +1,152 @@
+import "pkg:/source/utils/appWaits.bs"
+
+namespace tests
+
+  @suite("appWaits - waits the whole app is in, ended by their promise")
+  class AppWaitsTests extends tests.BaseTestSuite
+
+    private launcher as object
+    private other as object
+    private player as object
+
+    protected override sub beforeEach()
+      super.beforeEach()
+      m.launcher = CreateObject("roSGNode", "JRScreen")
+      m.other = CreateObject("roSGNode", "JRScreen")
+      m.player = CreateObject("roSGNode", "JRScreen")
+      m.player.isPlaybackScreen = true
+    end sub
+
+    protected override sub afterEach()
+      m.launcher = invalid
+      m.other = invalid
+      m.player = invalid
+      super.afterEach()
+    end sub
+
+    private function start(startedMs as dynamic, launchedFrom as dynamic) as object
+      return { kind: LoadingKind.PLAYBACK_START, label: "", startedMs: startedMs, deadlineMs: startedMs + timeouts.PLAYBACK_START_LIMIT_MS, launchedFrom: launchedFrom }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("done() / fail() — the first end wins")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("ends an open wait as done")
+    function _()
+      appWait = promises.create()
+      m.assertTrue(appWaits.isOpen(appWait))
+      appWaits.done(appWait)
+      m.assertFalse(appWaits.isOpen(appWait))
+      m.assertEqual(appWait.promiseState, "resolved")
+    end function
+
+    @it("ends an open wait as failed, with its reason")
+    function _()
+      appWait = promises.create()
+      appWaits.fail(appWait, "left")
+      m.assertEqual(appWait.promiseState, "rejected")
+      m.assertEqual(appWait.promiseResult.message, "left")
+    end function
+
+    @it("keeps the first end: a failure after done changes nothing")
+    function _()
+      appWait = promises.create()
+      appWaits.done(appWait)
+      appWaits.fail(appWait, "player closed")
+      m.assertEqual(appWait.promiseState, "resolved")
+    end function
+
+    @it("keeps the first end: done after a failure changes nothing")
+    function _()
+      appWait = promises.create()
+      appWaits.fail(appWait, "left")
+      appWaits.done(appWait)
+      m.assertEqual(appWait.promiseState, "rejected")
+      m.assertEqual(appWait.promiseResult.message, "left")
+    end function
+
+    @it("does nothing without a wait, so a remount nobody pressed for needs no check")
+    function _()
+      appWaits.done(invalid)
+      appWaits.fail(invalid, "player closed")
+      m.assertFalse(appWaits.isOpen(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("limitMs() / overdue() / msUntilNextDeadline() — the time limit")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("gives a playback start its limit, and a kind that is not an app wait none at all")
+    function _()
+      m.assertEqual(appWaits.limitMs(LoadingKind.PLAYBACK_START), timeouts.PLAYBACK_START_LIMIT_MS)
+      m.assertEqual(appWaits.limitMs(LoadingKind.CONTENT), 0)
+    end function
+
+    @it("outlasts the longest live open")
+    function _()
+      m.assertTrue(timeouts.PLAYBACK_START_LIMIT_MS > timeouts.LIVE_OPEN_MS + timeouts.API_WAIT_MS)
+    end function
+
+    @it("finds only the waits past their limit")
+    function _()
+      entries = { w1: m.start(0, invalid), w2: m.start(100000, invalid) }
+      overdue = appWaits.overdue(entries, timeouts.PLAYBACK_START_LIMIT_MS)
+      m.assertEqual(overdue.count(), 1)
+      m.assertEqual(overdue[0], "w1")
+    end function
+
+    @it("counts down to the nearest limit, and has none to arm with nothing open")
+    function _()
+      entries = { w1: m.start(50000, invalid), w2: m.start(20000, invalid) }
+      m.assertEqual(appWaits.msUntilNextDeadline(entries, 30000), timeouts.PLAYBACK_START_LIMIT_MS - 10000)
+      m.assertEqual(appWaits.msUntilNextDeadline({}, 30000), -1)
+    end function
+
+    @it("fires at once for a limit already past")
+    function _()
+      entries = { w1: m.start(0, invalid) }
+      m.assertEqual(appWaits.msUntilNextDeadline(entries, timeouts.PLAYBACK_START_LIMIT_MS + 5000), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("leftBehind() — the viewer left before a player took the start")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves a start alone while its own screen is active")
+    function _()
+      m.assertEqual(appWaits.leftBehind({ w1: m.start(0, m.launcher) }, m.launcher).count(), 0)
+    end function
+
+    @it("leaves a start alone when the viewer reaches a player")
+    function _()
+      m.assertEqual(appWaits.leftBehind({ w1: m.start(0, m.launcher) }, m.player).count(), 0)
+    end function
+
+    @it("fails a start when the viewer goes to another screen (Back during Play all)")
+    function _()
+      left = appWaits.leftBehind({ w1: m.start(0, m.launcher) }, m.other)
+      m.assertEqual(left.count(), 1)
+      m.assertEqual(left[0], "w1")
+    end function
+
+    @it("fails a start when no screen is left at all (sign-out)")
+    function _()
+      m.assertEqual(appWaits.leftBehind({ w1: m.start(0, m.launcher) }, invalid).count(), 1)
+    end function
+
+    @it("fails a channel switch's start when the viewer leaves the player")
+    function _()
+      m.assertEqual(appWaits.leftBehind({ w1: m.start(0, m.player) }, m.other).count(), 1)
+    end function
+
+    @it("tells a playing screen from any other")
+    function _()
+      m.assertTrue(appWaits.isPlaybackScreen(m.player))
+      m.assertFalse(appWaits.isPlaybackScreen(m.launcher))
+      m.assertFalse(appWaits.isPlaybackScreen(invalid))
+    end function
+
+  end class
+
+end namespace

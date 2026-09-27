@@ -239,7 +239,11 @@ The `quickPlayNode` self-observers across `Home` / `BaseGridView` / `SearchResul
 ```brightscript
 sub launchItem(itemNode)
   itemType = LCase(itemNode.type)
-  startLoadingSpinner()
+  if itemType = "photo" or itemType = "photoalbum"
+    startLoadingSpinner()      ' a photo viewer is not a play session: the plain spinner
+  else
+    beginPlaybackStart("")     ' the playback-start wait, which the player ends
+  end if
   clear()
   resetShuffle()
 

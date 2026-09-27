@@ -56,6 +56,8 @@ sub init()
   ' The player is fullscreen — keep the shared overhang hidden while this view is the
   ' router-active view (JRScene's overhang controller reads isOverhangVisible on mount).
   m.top.isOverhangVisible = false
+  ' Reaching this screen is where a video playback start goes (appWaits.leftBehind).
+  m.top.isPlaybackScreen = true
 
   ' Live TV restart budget, carried across mounts: see newLiveRestartBudget.
   m.liveRestart = newLiveRestartBudget()

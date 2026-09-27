@@ -6,8 +6,9 @@ import "pkg:/source/utils/misc.bs"
 ' from `nowMs()` — JRScene passes what is waiting and the time, so the rule is the same on any
 ' screen and in a test.
 '
-' Two things can be waiting: the scene's own spinner (`startLoadingSpinner()`, a cast), and
-' the named waits the active screen has open (`screenWaits`). `showing()` decides between them.
+' Three things can be waiting: the scene's own spinner (`startLoadingSpinner()`, a cast), the
+' app waits the whole app is in (`appWaits`, a playback start), and the named waits the active
+' screen has open (`screenWaits`). `showing()` decides between them.
 '
 ' Nothing is said before STILL_LOADING_MS: a wait that short is normal, and even a 512 MB
 ' Stick shows a large library's first page in about 3.4 s from a server that keeps up
@@ -24,7 +25,7 @@ namespace loadingStages
 
   ' Whether `kind` tells the viewer anything as its wait goes on.
   function hasStages(kind as string) as boolean
-    return kind = LoadingKind.CONTENT
+    return kind = LoadingKind.CONTENT or kind = LoadingKind.PLAYBACK_START
   end function
 
   ' The translation key for the text under the spinner after `elapsedMs`, or "" for none.
@@ -44,37 +45,63 @@ namespace loadingStages
     return -1
   end function
 
-  ' What the spinner shows now: { visible, kind, elapsedMs }.
+  ' What the spinner shows now: { visible, kind, elapsedMs, label }.
   '
-  ' The scene's own spinner wins while it is up: it is a wait the whole app is in (a sign-in,
-  ' playback starting, a cast), and the screen's waits show again, still counting from when
-  ' they started, once it stops. Otherwise the active screen's open waits show, and the
-  ' text counts from the OLDEST one with stages, since that is how long the viewer has been
-  ' waiting.
+  ' Waits the whole app is in win while any is open — the scene's own spinner and its app
+  ' waits — and the screen's waits show again, still counting from when they started, once the
+  ' last of those ends. Among the waits that show, the text counts from the OLDEST one with
+  ' stages, since that is how long the viewer has been waiting. `label` is the newest app
+  ' wait's label (a channel's name), "" when none has one; the scene's own spinner carries its
+  ' text in `loadingText` instead, so the scene chooses between the two.
   '
   ' @param sceneWait - { isLoading, kind, startedMs } of the scene's own spinner
+  ' @param appWaits - the scene's open app waits (key -> { kind, label, startedMs }), or invalid
   ' @param waits - the active screen's `loadingWaits` (name -> { kind, startedMs }), or invalid
-  function showing(sceneWait as object, waits as dynamic, now as dynamic) as object
-    if sceneWait.isLoading
-      return { visible: true, kind: sceneWait.kind, elapsedMs: ageMs(sceneWait.startedMs, now) }
-    end if
-
-    chosen = invalid
-    if isValid(waits)
-      for each name in waits
-        entry = waits[name]
-        if not isValid(chosen)
-          chosen = entry
-        else if hasStages(entry.kind) <> hasStages(chosen.kind)
-          if hasStages(entry.kind) then chosen = entry
-        else if entry.startedMs < chosen.startedMs
-          chosen = entry
+  function showing(sceneWait as object, appWaits as dynamic, waits as dynamic, now as dynamic) as object
+    appLevel = []
+    if sceneWait.isLoading then appLevel.push(sceneWait)
+    newest = invalid
+    if isValid(appWaits)
+      for each key in appWaits
+        entry = appWaits[key]
+        appLevel.push(entry)
+        if not isValid(newest)
+          newest = entry
+        else if entry.startedMs >= newest.startedMs
+          newest = entry
         end if
       end for
     end if
+    label = ""
+    if isValid(newest) then label = newest.label
 
-    if not isValid(chosen) then return { visible: false, kind: LoadingKind.PLAIN, elapsedMs: 0 }
-    return { visible: true, kind: chosen.kind, elapsedMs: ageMs(chosen.startedMs, now) }
+    chosen = longestWait(appLevel)
+    if not isValid(chosen) and isValid(waits)
+      screenLevel = []
+      for each name in waits
+        screenLevel.push(waits[name])
+      end for
+      chosen = longestWait(screenLevel)
+    end if
+
+    if not isValid(chosen) then return { visible: false, kind: LoadingKind.PLAIN, elapsedMs: 0, label: "" }
+    return { visible: true, kind: chosen.kind, elapsedMs: ageMs(chosen.startedMs, now), label: label }
+  end function
+
+  ' The wait whose text shows among `entries` ({ kind, startedMs }): the oldest one with
+  ' stages, or the oldest one when none has any. invalid when `entries` is empty.
+  function longestWait(entries as object) as dynamic
+    chosen = invalid
+    for each entry in entries
+      if not isValid(chosen)
+        chosen = entry
+      else if hasStages(entry.kind) <> hasStages(chosen.kind)
+        if hasStages(entry.kind) then chosen = entry
+      else if entry.startedMs < chosen.startedMs
+        chosen = entry
+      end if
+    end for
+    return chosen
   end function
 
   ' Milliseconds from `startedMs` to `now`, both from `nowMs()`, as an Integer the stage
