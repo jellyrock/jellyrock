@@ -67,7 +67,7 @@ namespace timeouts
   ' stream, so an abandoned open holds its slot for the whole wait (ADR 0045).
   const LIVE_OPEN_MS = 120000
 
-  ' Time limit on a playback start's app wait (appWaits, JRScene.beginAppWait). A safety net,
+  ' Time limit on a playback start's app wait (appWaits, AppWaitHost). A safety net,
   ' not an expected duration: every start is ended by the code that owns it (the player on its
   ' stream, a failure, Back), and this ends one that nobody did, logging it as an error. It
   ' must outlast the longest start that is still going: a live open's PlaybackInfo (LIVE_OPEN_MS

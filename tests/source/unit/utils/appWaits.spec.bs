@@ -147,6 +147,32 @@ namespace tests
       m.assertFalse(appWaits.isPlaybackScreen(invalid))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("hiding() / hides() — the screens the open waits hide")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("finds only the waits that hide a screen")
+    function _()
+      hidingStart = m.start(0, m.launcher)
+      hidingStart.hidden = m.launcher
+      entries = { w1: hidingStart, w2: m.start(0, m.player) }
+      entries.w2.hidden = invalid
+      hiding = appWaits.hiding(entries)
+      m.assertEqual(hiding.count(), 1)
+      m.assertEqual(hiding[0], "w1")
+      m.assertEqual(appWaits.hiding({}).count(), 0)
+    end function
+
+    @it("tells whether a screen is still hidden by an open wait")
+    function _()
+      hidingStart = m.start(0, m.launcher)
+      hidingStart.hidden = m.launcher
+      entries = { w1: hidingStart }
+      m.assertTrue(appWaits.hides(entries, m.launcher))
+      m.assertFalse(appWaits.hides(entries, m.other))
+      m.assertFalse(appWaits.hides({}, m.launcher))
+    end function
+
   end class
 
 end namespace

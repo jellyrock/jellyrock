@@ -257,6 +257,8 @@ sub launchItem(itemNode as object)
 
   if itemType = "photo" or itemType = "photoalbum"
     ' A photo opens a viewer, not a play session: the plain spinner, which PhotoDetails stops.
+    ' It replaces a start still pending, as a newer start would (beginPlaybackStart).
+    failPendingPlaybackStart("replaced by a photo launch")
     startLoadingSpinner()
   else
     beginPlaybackStart("")
@@ -319,10 +321,11 @@ end sub
 ' photo-album slideshow. Owns the task on this node's render thread. Clears the queue up front
 ' so the QuickPlayTask output (which appends via pushToQueue / set) starts from empty.
 sub runQuickPlayAction(input as object)
-  ' A previous QuickPlayTask may still be in flight if the user re-pressed a play button before
-  ' it resolved (the spinner is up, but nothing blocks a second launch). Tear it down before
-  ' starting a new one so we never run two concurrent queue builds against the shared queue —
-  ' which would orphan the first task and double-seed the queue. Last press wins.
+  ' A previous QuickPlayTask may still be in flight when a second launch arrives before it
+  ' resolved (a remote-control play; a press on the screen a start hides is held by
+  ' AppWaitHost). Tear it down before starting a new one so we never run two concurrent queue
+  ' builds against the shared queue — which would orphan the first task and double-seed the
+  ' queue. Last launch wins.
   cancelActiveQuickPlayTask()
   clear()
   resetShuffle()
@@ -467,6 +470,9 @@ end sub
 sub launchPhotoAlbum(isRandom as boolean, id as string)
   m.photoAlbumShuffleMode = isRandom
   ' No playback start: a slideshow is not a play session, so it keeps the caller's plain spinner.
+  ' It replaces a start still pending, whose queue build runQuickPlayAction is about to stop —
+  ' left open, that start would make endQuickPlayWithNothing take this run for a playback one.
+  failPendingPlaybackStart("replaced by a photo launch")
   runQuickPlayAction({ action: "loadPhotoAlbum", id: id })
 end sub
 

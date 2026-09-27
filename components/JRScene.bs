@@ -1,7 +1,6 @@
 import "pkg:/source/enums/LoadingKind.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
-import "pkg:/source/utils/appWaits.bs"
 import "pkg:/source/utils/backdrop.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/loadingStages.bs"
@@ -53,12 +52,9 @@ sub init()
   m.sceneWaitStartedMs = loadingStages.nowMs()
   ' The routed view whose loadingWaits the spinner is showing (bindLoadingWaits).
   m.waitsView = invalid
-  ' The open app waits (beginAppWait): key -> { kind, label, startedMs, deadlineMs, promise,
-  ' launchedFrom, hidden }. Each ends when its Promise settles (endAppWait).
-  m.appWaits = {}
-  m.appWaitCount = 0
-  m.appWaitLimitTimer = m.top.findNode("appWaitLimitTimer")
-  m.appWaitLimitTimer.observeField("fire", "onAppWaitLimit")
+  ' Keeps the waits the whole app is in (appWaits); the spinner redraws as they open and end.
+  m.appWaitHost = m.top.findNode("appWaitHost")
+  m.appWaitHost.observeField("openWaits", "showLoadingStage")
   m.imageFader = m.top.findNode("imageFader")
   m.toast = m.top.findNode("toast")
   m.lastBackdropUri = "" ' Track last URI to skip redundant imageFader assignments
@@ -235,7 +231,7 @@ sub showLoadingStage()
   waits = invalid
   if isValid(m.waitsView) then waits = m.waitsView.loadingWaits
   sceneWait = { isLoading: m.top.isLoading, kind: m.top.loadingKind, startedMs: m.sceneWaitStartedMs }
-  shown = loadingStages.showing(sceneWait, m.appWaits, waits, loadingStages.nowMs())
+  shown = loadingStages.showing(sceneWait, m.appWaitHost.openWaits, waits, loadingStages.nowMs())
   m.spinner.visible = shown.visible
 
   ' The text above the spinner: the scene's own spinner's (loadingText), or else the label of
@@ -263,92 +259,6 @@ sub showLoadingStage()
     m.loadingStageTimer.duration = nextMs / 1000
     m.loadingStageTimer.control = "start"
   end if
-end sub
-
-
-' Opens a wait the whole app is in (appWaits.begin) and returns its Promise, which ends it when
-' it settles. Only through callFunc, so waits opened off the render thread are applied in
-' order here. A playback start hides the screen it was pressed on until it ends, the way the
-' plain spinner always has, but leaves the remote live: Back must be able to leave.
-'
-' @param {string} kind - a LoadingKind with an app-wait time limit (appWaits.limitMs)
-' @param {string} label - the text above the spinner, "" for none
-' @return {object} the wait's Promise
-function beginAppWait(kind as string, label as string) as object
-  promise = promises.create()
-  now = loadingStages.nowMs()
-  m.appWaitCount++
-  key = "w" + m.appWaitCount.toStr()
-  launchedFrom = m.global.activeRoutedView
-  entry = { kind: kind, label: label, startedMs: now, deadlineMs: now + appWaits.limitMs(kind), promise: promise, launchedFrom: launchedFrom, hidden: invalid }
-  if appWaits.hidesLaunchingScreen(kind) and isValid(launchedFrom) and not appWaits.isPlaybackScreen(launchedFrom)
-    ' opacity, not visible: the router owns a screen's `visible` (it hides one it suspends and
-    ' shows it on return), so hiding by opacity can never undo, or be undone by, the router.
-    launchedFrom.opacity = 0
-    entry.hidden = launchedFrom
-  end if
-  m.appWaits[key] = entry
-  promises.onFinally(promise, sub(ctx as object)
-    endAppWait(ctx.key)
-  end sub, { key: key })
-  armAppWaitLimit()
-  showLoadingStage()
-  return promise
-end function
-
-' An app wait's Promise settled: drop it, show the screen it hid, and redraw the spinner.
-sub endAppWait(key as string)
-  entry = m.appWaits[key]
-  if not isValid(entry) then return
-  m.appWaits.delete(key)
-  if isValid(entry.hidden) and not isHiddenByAppWait(entry.hidden) then entry.hidden.opacity = 1
-  if entry.promise.promiseState = "rejected"
-    reason = ""
-    result = entry.promise.promiseResult
-    if isValid(result) and isValid(result.message) then reason = result.message
-    m.log.info("App wait failed", "kind", entry.kind, "reason", reason, "ageMs", loadingStages.ageMs(entry.startedMs, loadingStages.nowMs()))
-  end if
-  armAppWaitLimit()
-  showLoadingStage()
-end sub
-
-' Whether an open app wait still hides `view` — a start that replaced another from the same
-' screen keeps it hidden when the replaced one ends.
-function isHiddenByAppWait(view as object) as boolean
-  for each key in m.appWaits
-    hidden = m.appWaits[key].hidden
-    if isValid(hidden) and hidden.isSameNode(view) then return true
-  end for
-  return false
-end function
-
-' Arms the limit timer for the nearest time limit among the open app waits.
-sub armAppWaitLimit()
-  m.appWaitLimitTimer.control = "stop"
-  nextMs = appWaits.msUntilNextDeadline(m.appWaits, loadingStages.nowMs())
-  if nextMs < 0 then return
-  if nextMs < 1 then nextMs = 1
-  m.appWaitLimitTimer.duration = nextMs / 1000
-  m.appWaitLimitTimer.control = "start"
-end sub
-
-' Ends every app wait past its time limit. Nothing should reach here: each wait is ended by the
-' code that owns it, so one that gets here is a start nobody finished — a bug to find in the log.
-sub onAppWaitLimit()
-  now = loadingStages.nowMs()
-  for each key in appWaits.overdue(m.appWaits, now)
-    entry = m.appWaits[key]
-    m.log.error("App wait nobody ended reached its time limit", "kind", entry.kind, "label", entry.label, "ageMs", loadingStages.ageMs(entry.startedMs, now))
-    appWaits.fail(entry.promise, "time limit")
-  end for
-  armAppWaitLimit()
-end sub
-
-' The viewer reached `newView`: end the playback starts they have left (appWaits.leftBehind).
-sub failAppWaitsLeftBehind(newView as dynamic)
-  for each key in appWaits.leftBehind(m.appWaits, newView)
-    appWaits.fail(m.appWaits[key].promise, "left the screen it started on")
-  end for
 end sub
 
 ' showToast: Display a transient toast notification.
@@ -423,6 +333,10 @@ function onKeyEvent(key as string, press as boolean) as boolean
       return true
     end if
     if isRouterNavigating() then return true
+    ' A playback start hiding the screen it was pressed on holds the focus (AppWaitHost), so its
+    ' Back lands here: cancel the start and show that screen again, as Back from the player
+    ' would. Mid-navigation it was swallowed above — the settling navigation mounts the player.
+    if m.appWaitHost.callFunc("cancelOnBack") then return true
     showExitConfirmation()
     return true
   else if key = "options"
@@ -880,7 +794,7 @@ sub onActiveRoutedViewChanged()
     registerOverhangData(newView)
   end if
   bindLoadingWaits(newView)
-  failAppWaitsLeftBehind(newView)
+  m.appWaitHost.callFunc("failLeftBehind", newView)
 
   m.previousRoutedView = newView
 end sub

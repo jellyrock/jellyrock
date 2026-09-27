@@ -4,8 +4,9 @@ import "pkg:/source/roku_modules/promises/promises.brs"
 import "pkg:/source/utils/misc.bs"
 
 ' Waits the whole app is in, which outlive the screen that started them — a playback start
-' runs from a press on one screen to a player on another. The scene shows them as its loading
-' spinner (JRScene.beginAppWait), over the active screen's own waits (screenWaits).
+' runs from a press on one screen to a player on another. The scene's AppWaitHost keeps them,
+' and the scene shows them as its loading spinner over the active screen's own waits
+' (screenWaits).
 '
 ' Each wait is a Promise, one per wait, and it ends when the promise settles:
 '
@@ -21,11 +22,13 @@ import "pkg:/source/utils/misc.bs"
 namespace appWaits
 
   ' Opens a wait of `kind`, labeled `label` (shown above the spinner; "" for none), and returns
-  ' its Promise, or invalid when there is no scene to show it.
+  ' its Promise, or invalid when there is no host to keep it.
   function begin(kind as string, label = "" as string) as dynamic
     scene = appScene()
     if not isValid(scene) then return invalid
-    return scene.callFunc("beginAppWait", kind, label)
+    host = scene.findNode("appWaitHost")
+    if not isValid(host) then return invalid
+    return host.callFunc("begin", kind, label)
   end function
 
   ' Ends `appWait` because what it waited for arrived. Does nothing once it has ended.
@@ -44,8 +47,9 @@ namespace appWaits
     return promises.isPromise(appWait) and not promises.isComplete(appWait)
   end function
 
-  ' ---- The scene's rules for its open waits. Pure, so they are the same in a test. ----
-  ' `entries` is the scene's registry: key -> { kind, label, startedMs, deadlineMs, launchedFrom }.
+  ' ---- AppWaitHost's rules for its open waits. Pure, so they are the same in a test. ----
+  ' `entries` is the host's registry: key -> { kind, label, startedMs, deadlineMs, launchedFrom,
+  ' hidden }, `hidden` being the screen a wait hides, or invalid.
 
   ' How long a wait of `kind` may stay open before its time limit ends it. 0 for a kind that is
   ' not an app wait, which the scene ends at once: an app-wait kind without a limit is a bug.
@@ -101,6 +105,25 @@ namespace appWaits
       keys.push(key)
     end for
     return keys
+  end function
+
+  ' The keys of the open waits that hide the screen they were started from.
+  function hiding(entries as object) as object
+    keys = []
+    for each key in entries
+      if isValid(entries[key].hidden) then keys.push(key)
+    end for
+    return keys
+  end function
+
+  ' Whether an open wait hides `view` — a start that replaced another from the same screen
+  ' keeps it hidden when the replaced one ends.
+  function hides(entries as object, view as object) as boolean
+    for each key in entries
+      hidden = entries[key].hidden
+      if isValid(hidden) and hidden.isSameNode(view) then return true
+    end for
+    return false
   end function
 
 end namespace

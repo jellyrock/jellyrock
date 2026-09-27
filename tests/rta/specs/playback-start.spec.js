@@ -7,14 +7,17 @@
  *
  *  - Back mid-start from details or from a grid takes the spinner with it, and leaves the
  *    remote live;
- *  - Back during a Series "Play all" (before any player exists) stops the start, so playback
- *    never begins on the screen the viewer went back to;
+ *  - before any player exists the start holds the remote (AppWaitHost): Back cancels it and
+ *    shows the screen Play was pressed on again, as Back from the player does, so a Series
+ *    "Play all" never begins; and a second press is ignored rather than starting a second
+ *    launch;
  *  - a slow start says it is still loading.
  *
  * The grid and "Play all" cases were each measured wrong on an Ultra (2026-09-26) before
  * playback-start waits: the spinner stayed up over the grid and Home 35 s after Back, with the
  * scene holding the remote disabled; and "Play all" started the series 8 s after the viewer had
- * backed out to the grid.
+ * backed out to the grid. Before the start held the remote, Back from a start with no player
+ * yet left the screen Play was pressed on, one step further back than Back from the player.
  */
 import { beforeAll, it, expect } from 'vitest';
 import { ecp } from 'roku-test-automation';
@@ -22,9 +25,16 @@ import { RTA_CONFIG } from '../config.js';
 import { authenticate, getHero, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
-import { focusDetailButton, navLibraryGrid, navSeriesDetails, startPlayback } from '../lib/nav.js';
+import {
+  focusDetailButton,
+  navLibraryGrid,
+  navSeriesDetails,
+  navTvLibrary,
+  startPlayback,
+} from '../lib/nav.js';
 import { failRequests } from '../lib/failRequests.js';
 import {
+  focusIsInside,
   getActiveVal,
   getActiveVals,
   getGlobalVal,
@@ -33,6 +43,7 @@ import {
   sleep,
   stopPlayback,
   waitFocusInside,
+  waitFocused,
   waitFor,
 } from '../lib/steps.js';
 
@@ -102,7 +113,7 @@ it('Back mid-start from details ends the start', async () => {
   await startPlayback(ctx);
   await waitHeld(1, 'the playback info request is on a pool slot');
   expect(await getVal('#spinner.visible'), 'spinner up while the start waits').toBe(true);
-  expect(await getVal('isRemoteDisabled'), 'a start leaves the remote live').toBe(false);
+  expect(await getVal('isRemoteDisabled'), 'a start does not lock the whole remote').toBe(false);
 
   await press(ecp.Key.Back);
   await waitActive('ItemDetails', 'back on details');
@@ -123,28 +134,93 @@ it('Back mid-start from a grid ends the start', async () => {
   await expectStartEndedOn('the grid');
 });
 
-it('Back during a Series "Play all" never starts playback', async () => {
+/** The start holds the remote: keys go to AppWaitHost, not to the screen it hides. */
+function waitStartHoldsRemote() {
+  return waitFocusInside('#appWaitHost', {
+    label: 'the start holds the remote',
+    timeout: 5000,
+  });
+}
+
+async function startSeriesPlayAll(rule) {
   await freshApp();
   await navSeriesDetails(ctx);
   await focusDetailButton('playButton');
   await waitFocusInside('#buttons', { label: 'Play all focused', timeout: 8000 });
-  await failRequests([{ prefix: 'qp_playAllSeries', kind: 'slow', ms: HOLD_MS, times: 1 }]);
+  await failRequests([rule]);
   await press(ecp.Key.Ok);
   await waitHeld(1, "the series' episode list is on a pool slot");
   expect(await getVal('#spinner.visible'), 'spinner up while the episodes load').toBe(true);
   expect(await activeScreenShows(), 'details hidden behind the backdrop, as before').toBe(false);
+  await waitStartHoldsRemote();
+}
+
+it('Back during a Series "Play all" cancels it and stays on the series', async () => {
+  await startSeriesPlayAll({ prefix: 'qp_playAllSeries', kind: 'slow', ms: HOLD_MS, times: 1 });
 
   await press(ecp.Key.Back);
-  await waitActive('BaseGridView', 'back on the TV grid');
-  await expectStartEndedOn('the TV grid');
+  await expectStartEndedOn('the series details');
+  expect(await getActiveVal('subtype()'), 'still on the series details').toBe('ItemDetails');
+  await waitFocusInside('#buttons', { label: 'focus back on the buttons', timeout: 5000 });
 
   await waitHeld(0, 'the episode list answered', HOLD_MS + 5000);
   // Timer window, proving a NON-EVENT: before this fix the answer started the series a moment
   // after it landed. No app field reports that a launch did NOT happen, so this out-waits it.
   await sleep(3000);
-  expect(await getActiveVal('subtype()'), 'still on the grid, nothing playing').toBe(
-    'BaseGridView',
+  expect(await getActiveVal('subtype()'), 'still on the series details, nothing playing').toBe(
+    'ItemDetails',
   );
+});
+
+it('Back mid-start from the TV grid cancels it and stays on the grid', async () => {
+  await freshApp();
+  await navTvLibrary(ctx);
+  await waitFocusInside('#itemGrid', { label: 'TV grid focused', timeout: 15000 });
+  // A series tile expands into its queue on a QuickPlayTask, whose first request is the
+  // series' resume lookup: held, no player exists yet.
+  await failRequests([{ prefix: 'qp_seriesResume', kind: 'slow', ms: HOLD_MS, times: 1 }]);
+  await press(ecp.Key.Play);
+  await waitHeld(1, "the series' resume lookup is on a pool slot");
+  expect(await getVal('#spinner.visible'), 'spinner up while the series expands').toBe(true);
+  await waitStartHoldsRemote();
+
+  await press(ecp.Key.Back);
+  await expectStartEndedOn('the TV grid');
+  expect(await getActiveVal('subtype()'), 'still on the TV grid').toBe('BaseGridView');
+  await waitFocusInside('#itemGrid', { label: 'focus back in the grid', timeout: 5000 });
+});
+
+it('a second press while a start waits is ignored', async () => {
+  // Held twice: a second launch would hold a second request while the first still waits.
+  await startSeriesPlayAll({ prefix: 'qp_playAllSeries', kind: 'slow', ms: HOLD_MS, times: 2 });
+
+  await press(ecp.Key.Ok);
+  let mostHeld = 0;
+  await waitFor('rtaHeldRequests', (v) => v === 0, {
+    read: async (keyPath) => {
+      const held = await getGlobalVal(keyPath);
+      mostHeld = Math.max(mostHeld, held ?? 0);
+      return held;
+    },
+    timeout: HOLD_MS + 5000,
+    interval: 250,
+    label: 'the one episode-list request answered',
+  });
+  expect(mostHeld, 'one launch: the second press started nothing').toBe(1);
+
+  await waitActive('PlayerHostView', 'the series plays once its episode list lands');
+  await waitFor('#spinner.visible', (v) => v === false, {
+    timeout: 20000,
+    interval: 250,
+    label: 'the spinner gone once the stream loads',
+  });
+  const focused = await waitFocused((f) => !focusIsInside(f.keyPath, '#appWaitHost'), {
+    timeout: 5000,
+    interval: 250,
+    label: 'the player took the remote back',
+  });
+  expect(focused, 'focus left the start').toBeTruthy();
+  await stopPlayback();
 });
 
 it('a slow start says it is still loading, then plays', async () => {

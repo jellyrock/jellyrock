@@ -11,6 +11,7 @@ enum LoadingKind
   CONTENT = "content"
   ' Playback starting, from the press to the player holding a stream (appWaits.begin through
   ' QueueManager.beginPlaybackStart). An app wait: it outlives the screen that started it.
-  ' Same stages as CONTENT, under the item or channel label; the remote stays live.
+  ' Same stages as CONTENT, under the channel label on a channel switch. Back cancels it and
+  ' shows the screen it was pressed on again; other keys wait for it (AppWaitHost).
   PLAYBACK_START = "playbackStart"
 end enum

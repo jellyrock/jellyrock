@@ -1,0 +1,197 @@
+import "pkg:/source/enums/LoadingKind.bs"
+import "pkg:/source/utils/appWaits.bs"
+
+namespace tests
+
+  ' AppWaitHost against the real component, mounted in the test scene: focus only moves between
+  ' nodes in the scene, and appWaits.begin finds the host there by its id.
+  @suite("AppWaitHost - app waits, the screen they hide, and the remote focus")
+  class AppWaitHostTests extends tests.BaseTestSuite
+
+    private mountedIn as object
+    private host as object
+    private launcher as object
+    private button as object
+    private player as object
+    private other as object
+    private previousView as object
+
+    ' beforeEach, not setup: every test moves focus and opens waits (tests/CLAUDE.md).
+    protected override sub beforeEach()
+      super.beforeEach()
+      if not m.global.doesExist("activeRoutedView") then m.global.addField("activeRoutedView", "node", false)
+      m.previousView = m.global.activeRoutedView
+
+      m.mountedIn = m.top.getScene()
+      m.host = CreateObject("roSGNode", "AppWaitHost")
+      m.host.id = "appWaitHost"
+      m.launcher = CreateObject("roSGNode", "JRScreen")
+      m.button = m.launcher.createChild("Group")
+      m.button.focusable = true
+      m.player = CreateObject("roSGNode", "JRScreen")
+      m.player.isPlaybackScreen = true
+      m.other = CreateObject("roSGNode", "JRScreen")
+      m.mountedIn.appendChildren([m.host, m.launcher, m.player, m.other])
+
+      m.button.setFocus(true)
+      m.global.activeRoutedView = m.launcher
+    end sub
+
+    protected override sub afterEach()
+      m.mountedIn.removeChildren([m.host, m.launcher, m.player, m.other])
+      m.global.activeRoutedView = m.previousView
+      m.previousView = invalid
+      m.host = invalid
+      m.launcher = invalid
+      m.button = invalid
+      m.player = invalid
+      m.other = invalid
+      m.mountedIn = invalid
+      super.afterEach()
+    end sub
+
+    private function begin(label = "" as string) as object
+      return m.host.callFunc("begin", LoadingKind.PLAYBACK_START, label)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("begin() — a playback start hides the screen it was pressed on")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("hides the screen and holds the remote focus, remembering where it was")
+    function _()
+      m.begin()
+      m.assertTrue(m.launcher.opacity = 0)
+      m.assertTrue(m.host.hasFocus())
+      m.assertTrue(m.launcher.lastFocus.isSameNode(m.button))
+    end function
+
+    @it("publishes the wait for the spinner, with its label")
+    function _()
+      m.begin("Ch 5 · News")
+      waits = m.host.openWaits
+      m.assertEqual(waits.count(), 1)
+      for each key in waits
+        m.assertEqual(waits[key].kind, LoadingKind.PLAYBACK_START)
+        m.assertEqual(waits[key].label, "Ch 5 · News")
+      end for
+    end function
+
+    @it("leaves a player shown and its focus alone (a channel switch)")
+    function _()
+      m.player.setFocus(true)
+      m.global.activeRoutedView = m.player
+      m.begin("Ch 5")
+      m.assertTrue(m.player.opacity = 1)
+      m.assertTrue(m.player.hasFocus())
+    end function
+
+    @it("hides a screen that does not hold the focus, but leaves the focus where it is (a dialog has it)")
+    function _()
+      m.other.setFocus(true)
+      m.begin()
+      m.assertTrue(m.launcher.opacity = 0)
+      m.assertTrue(m.other.hasFocus())
+    end function
+
+    @it("is what appWaits.begin opens")
+    function _()
+      appWait = appWaits.begin(LoadingKind.PLAYBACK_START)
+      m.assertTrue(appWaits.isOpen(appWait))
+      m.assertEqual(m.host.openWaits.count(), 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("ending — the screen and its focus come back")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows the screen again and gives its focus back when the start is done")
+    function _()
+      appWait = m.begin()
+      appWaits.done(appWait)
+      m.assertTrue(m.launcher.opacity = 1)
+      m.assertTrue(m.button.hasFocus())
+      m.assertEqual(m.host.openWaits.count(), 0)
+    end function
+
+    @it("does the same when the start fails")
+    function _()
+      appWait = m.begin()
+      appWaits.fail(appWait, "nothing to play")
+      m.assertTrue(m.launcher.opacity = 1)
+      m.assertTrue(m.button.hasFocus())
+    end function
+
+    @it("keeps the screen hidden and the focus held while a newer start from it is open")
+    function _()
+      first = m.begin()
+      second = m.begin()
+      appWaits.fail(first, "replaced by a newer start")
+      m.assertTrue(m.launcher.opacity = 0)
+      m.assertTrue(m.host.hasFocus())
+      appWaits.done(second)
+      m.assertTrue(m.launcher.opacity = 1)
+      m.assertTrue(m.button.hasFocus())
+    end function
+
+    @it("leaves the focus with a player that took it on mount")
+    function _()
+      appWait = m.begin()
+      m.global.activeRoutedView = m.player
+      m.player.setFocus(true)
+      appWaits.done(appWait)
+      m.assertTrue(m.player.hasFocus())
+      m.assertTrue(m.launcher.opacity = 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("cancelOnBack() — Back while a start hides its screen")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("cancels the start, and the screen comes back with its focus")
+    function _()
+      appWait = m.begin()
+      m.assertTrue(m.host.callFunc("cancelOnBack"))
+      m.assertEqual(appWait.promiseState, "rejected")
+      m.assertEqual(appWait.promiseResult.message, "cancelled with Back")
+      m.assertTrue(m.launcher.opacity = 1)
+      m.assertTrue(m.button.hasFocus())
+    end function
+
+    @it("has nothing to cancel when no start hides a screen")
+    function _()
+      m.assertFalse(m.host.callFunc("cancelOnBack"))
+    end function
+
+    @it("leaves a channel switch's start to the player")
+    function _()
+      m.global.activeRoutedView = m.player
+      appWait = m.begin("Ch 5")
+      m.assertFalse(m.host.callFunc("cancelOnBack"))
+      m.assertTrue(appWaits.isOpen(appWait))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("failLeftBehind() — the viewer left before a player took the start")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("fails the start and gives the focus to the screen the viewer reached")
+    function _()
+      appWait = m.begin()
+      m.global.activeRoutedView = m.other
+      m.host.callFunc("failLeftBehind", m.other)
+      m.assertEqual(appWait.promiseState, "rejected")
+      m.assertTrue(m.launcher.opacity = 1)
+      m.assertTrue(m.other.hasFocus())
+    end function
+
+    @it("leaves the start alone when the viewer reaches a player")
+    function _()
+      appWait = m.begin()
+      m.host.callFunc("failLeftBehind", m.player)
+      m.assertTrue(appWaits.isOpen(appWait))
+    end function
+
+  end class
+
+end namespace
