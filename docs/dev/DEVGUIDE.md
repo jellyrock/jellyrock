@@ -47,6 +47,7 @@ We recommend using Visual Studio Code when working on this project. The [BrightS
 
 1. Download and install [Visual Studio Code](https://code.visualstudio.com/)
 2. Install the **BrightScript Language** extension within VSCode in the _Extensions_ panel or by downloading it from the [VSCode Marketplace](https://marketplace.visualstudio.com/items?itemName=RokuCommunity.brightscript).
+3. Install the other extensions VSCode recommends for this workspace (listed in `.vscode/extensions.json`). **Prettier** and **ESLint** matter most if you edit JavaScript or JSON: the workspace formats those files with Prettier on save, the same way the pre-commit hook does.
 
 ### Usage
 

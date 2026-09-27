@@ -125,7 +125,8 @@ Most useful subtrees: `docs/REFERENCES/scenegraph/` (scene graph nodes + interfa
 
 ### IDE integration
 
-- `brightscript.projects` (in `.vscode/settings.json`) drives auto-build/validate via the BrighterScript extension during dev
+- `brightscript.projects` (in `.vscode/settings.json`) sets which bsconfigs the BrighterScript language server checks live in the editor (diagnostics only — it never builds). Every entry is a full in-memory copy of the app re-checked on each save, so it loads only `bsconfig.json` and `bsconfig-tests.json`; don't add a config whose files and plugins are a subset of one already loaded
+- JS and JSON format on save with Prettier (`esbenp.prettier-vscode`), the same tool and config the pre-commit hook runs
 - The IDE's BSC plugin watches `en_US.json` and regenerates `translationKeys` constants live
 
 ### Pre-push hook (husky)

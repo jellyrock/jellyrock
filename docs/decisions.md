@@ -1857,6 +1857,16 @@ The standalone-audio `ogg` row probes `vorbis` and `flac` only: Opus in `ogg` (`
 
 Ruled out: transcoding only Opus in `ogg` that carries art (the Ultra hangs without it); a per-model allowlist (it cannot be kept current, and on the Stick 4K the failure depends on the file); dropping the whole `ogg` row (`vorbis` in `ogg` is documented and played on all three). `flac` in `ogg` stays direct although Roku does not document it, because it played on all three models with and without the same art — the same trust that failed for Opus, accepted on that measurement. Revisit if Roku documents Opus in `ogg`, or a model is found where `vorbis` or `flac` in `ogg` fails.
 
+## decision-id: editor-lang-server-projects
+
+**date**: 2026-09-27
+**status**: accepted
+**related-files**: `.vscode/settings.json`
+
+The editor's BrighterScript language server loads only `bsconfig.json` (dev: every lint plugin) and `bsconfig-tests.json` (the only config covering `tests/`). `bsconfig-prod.json` stays listed with `"disabled": true`; the unit and integration test configs are no longer listed. The language server holds one full program per `brightscript.projects` entry and, on every save, re-validates each entry containing the file in parallel (`ProjectManager.flushDocumentChanges`). The configs we dropped add nothing to what the editor reports: unit and integration are file subsets of all-tests with the same plugins, and prod's plugins are a subset of those in `bsconfig.json`, with the CI `build.yml` prod job building it on every PR. Measured 2026-09-27 with `bsc --noEmit` (brighterscript 1.0.0-alpha.55): the five configs peaked at ~6.0 GB and 66 s of full validation combined; the two kept peak at 2.46 GB and 29 s. The dev machine (31 GB, no swap) had killed a VS Code process for lack of memory the day before, with two ~2.1 GB language-server-sized processes resident.
+
+Ruled out: one merged editor bsconfig (all-tests plus the plugins in `bsconfig.json`). It measured 1.52 GB and 19 s but raised 29 false diagnostics in spec files (`callfunc-interface` 25, `print-outside-allowlist` 3, `no-task-fanout` 1), and it would add a third plugin list to keep in step with the one in `bsconfig.json`. Also ruled out: `brightscript.languageServer.maxWorkerThreads: 1`, which keeps all five programs in memory and only serializes validation. Re-evaluate if a prod-only plugin or file set starts producing diagnostics dev does not; then flip prod's `disabled` off.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
