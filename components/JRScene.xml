@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="JRScene" extends="Scene">
   <children>
+    <!-- The waits the whole app is in (appWaits): outside the router outlet, so a key it passes
+         on reaches this scene's Back arbiter and no routed view. First, where findNode meets it
+         first (appWaits.begin); it draws nothing. -->
+    <AppWaitHost id="appWaitHost" />
     <BackdropFader id="imageFader" translation="[0, 0]" />
     <!-- Router outlet: hosts ALL routed views (pre-login flow, content, playback).
          The whole app navigates through the router. -->

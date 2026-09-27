@@ -52,6 +52,9 @@ sub init()
   m.sceneWaitStartedMs = loadingStages.nowMs()
   ' The routed view whose loadingWaits the spinner is showing (bindLoadingWaits).
   m.waitsView = invalid
+  ' Keeps the waits the whole app is in (appWaits); the spinner redraws as they open and end.
+  m.appWaitHost = m.top.findNode("appWaitHost")
+  m.appWaitHost.observeField("openWaits", "showLoadingStage")
   m.imageFader = m.top.findNode("imageFader")
   m.toast = m.top.findNode("toast")
   m.lastBackdropUri = "" ' Track last URI to skip redundant imageFader assignments
@@ -110,7 +113,8 @@ sub onTestToast()
 end sub
 
 sub onLoadingTextChanged()
-  m.loadingText.text = m.top.loadingText
+  ' An app wait's label shows only while the scene's own spinner is down (showLoadingStage).
+  if m.top.isLoading then m.loadingText.text = m.top.loadingText
 end sub
 
 sub onBackgroundImageUriChanged()
@@ -205,9 +209,6 @@ sub onIsLoadingChanged()
     group.visible = not m.top.isRemoteDisabled
   end if
 
-  ' toggle visibility of loading text
-  m.loadingText.visible = m.top.isLoading
-
   if m.top.isLoading
     ' Every start is a new wait, so its stages count from here.
     m.sceneWaitStartedMs = loadingStages.nowMs()
@@ -219,8 +220,9 @@ sub onIsLoadingChanged()
   showLoadingStage()
 end sub
 
-' Shows the spinner for whatever is waiting — the scene's own spinner, or the active view's
-' loadingWaits (loadingStages.showing) — with the text for how long it has waited, and arms
+' Shows the spinner for whatever is waiting — the scene's own spinner, its app waits, or the
+' active view's loadingWaits (loadingStages.showing) — with the text for how long it has
+' waited and the label above it, and arms
 ' the timer for the next change. Also the handler for the timer and for the active view's
 ' loadingWaits: an early fire finds the same text and re-arms for the remainder; a late one,
 ' after the wait ended, finds nothing to show.
@@ -229,8 +231,18 @@ sub showLoadingStage()
   waits = invalid
   if isValid(m.waitsView) then waits = m.waitsView.loadingWaits
   sceneWait = { isLoading: m.top.isLoading, kind: m.top.loadingKind, startedMs: m.sceneWaitStartedMs }
-  shown = loadingStages.showing(sceneWait, waits, loadingStages.nowMs())
+  shown = loadingStages.showing(sceneWait, m.appWaitHost.openWaits, waits, loadingStages.nowMs())
   m.spinner.visible = shown.visible
+
+  ' The text above the spinner: the scene's own spinner's (loadingText), or else the label of
+  ' the newest app wait (a channel's name).
+  if m.top.isLoading
+    m.loadingText.text = m.top.loadingText
+    m.loadingText.visible = true
+  else
+    m.loadingText.text = shown.label
+    m.loadingText.visible = shown.label <> ""
+  end if
 
   kind = shown.kind
   elapsedMs = shown.elapsedMs
@@ -321,6 +333,10 @@ function onKeyEvent(key as string, press as boolean) as boolean
       return true
     end if
     if isRouterNavigating() then return true
+    ' A playback start hiding the screen it was pressed on holds the focus (AppWaitHost), so its
+    ' Back lands here: cancel the start and show that screen again, as Back from the player
+    ' would. Mid-navigation it was swallowed above — the settling navigation mounts the player.
+    if m.appWaitHost.callFunc("cancelOnBack") then return true
     showExitConfirmation()
     return true
   else if key = "options"
@@ -683,6 +699,8 @@ sub onPlaybackLaunchRequested()
   ' would otherwise leave the populated queue with no player and nothing playing, silently.
   promises.chain(sgrouter.navigateTo(playPath), { playPath: playPath }).catch(sub(err as object, ctx as object)
     m.log.warn("playback launch navigation failed", ctx.playPath, err.message)
+    ' No player will mount to take the start, so end it here rather than at its time limit.
+    m.global.queueManager.callFunc("failPendingPlaybackStart", "navigation to the player failed")
   end sub)
 end sub
 
@@ -776,6 +794,7 @@ sub onActiveRoutedViewChanged()
     registerOverhangData(newView)
   end if
   bindLoadingWaits(newView)
+  m.appWaitHost.callFunc("failLeftBehind", newView)
 
   m.previousRoutedView = newView
 end sub

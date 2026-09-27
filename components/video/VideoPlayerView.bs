@@ -13,6 +13,7 @@ import "pkg:/source/enums/PlaybackEndReport.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/appWaits.bs"
 import "pkg:/source/utils/bufferStall.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/dialogs.bs"
@@ -73,6 +74,11 @@ sub init()
   m.playbackEnum = {
     null: -10
   }
+
+  ' The playback start this player was mounted for (QueueManager.beginPlaybackStart), invalid for
+  ' a remount nobody pressed for (a queue advance, a Live TV restart). This player ends it: done
+  ' when it holds a stream, failed when the load fails or the player goes away.
+  m.playbackStart = m.global.queueManager.callFunc("takePlaybackStart")
 
   ' Load meta data
   m.LoadMetaDataTask = CreateObject("roSGNode", "LoadVideoContentTask")
@@ -321,13 +327,12 @@ sub handleItemSkipAction(action as string)
   end if
 end sub
 
-' m.isSwitchingChannel prevents the old view's onState("stopped") from hiding the spinner
-' before the new VideoPlayerView finishes loading.
+' The channel's playback start is opened before this player stops, and the player mounted next
+' takes it (QueueManager.takePlaybackStart), so nothing this player does on its way out can end it.
 sub switchToQueueItem(queueManager as object, targetPosition as integer)
   nextItem = queueManager.callFunc("getItemByIndex", targetPosition)
   showChannelSwitchSpinner(nextItem)
 
-  m.isSwitchingChannel = true
   m.top.control = "stop"
   ' An item the viewer skips to starts from its beginning (QueueManager.advanceTo).
   queueManager.callFunc("advanceTo", targetPosition)
@@ -358,7 +363,7 @@ sub showChannelSwitchSpinner(nextItem as object)
     loadingText = channelTitle
   end if
 
-  startLoadingSpinner(false, loadingText)
+  m.global.queueManager.callFunc("beginPlaybackStart", loadingText)
 end sub
 
 ' handleHideAction: Handles action to hide OSD menu
@@ -1108,6 +1113,7 @@ sub onVideoContentLoaded()
       SubmitSideEffect(GetApi().BuildCloseLiveStreamRequest(failedLiveStreamId))
       m.LoadMetaDataTask.liveStream = { stage: LiveStreamStage.RELEASED, id: failedLiveStreamId }
     end if
+    appWaits.fail(m.playbackStart, "the load found nothing to play")
     stopLoadingSpinner()
     taskErrorMsg = m.LoadMetaDataTask.errorMsg
     if isValidAndNotEmpty(taskErrorMsg)
@@ -1302,6 +1308,7 @@ sub onVideoContentLoaded()
   ' Make video player visible now that content is loaded and ready to play
   m.top.visible = true
 
+  appWaits.done(m.playbackStart)
   stopLoadingSpinner()
   ' A reload during an open dialog (a queue advance, a DoVi retry) must not pull
   ' focus out of it — same rule as handleHideAction.
@@ -1984,10 +1991,7 @@ sub onState()
     m.bufferCheckTimer.unobserveField("fire")
     reportPlayback()
   else if m.top.state = "stopped"
-    ' Skip during channel switch; the incoming VideoPlayerView will hide the spinner
-    if not (m.isSwitchingChannel = true)
-      stopLoadingSpinner()
-    end if
+    stopLoadingSpinner()
     m.playbackTimer.control = "stop"
     m.bufferCheckTimer.control = "stop"
     m.bufferCheckTimer.unobserveField("fire")
@@ -2448,6 +2452,8 @@ sub onDestroy()
   ' Mark torn-down first so any observer that still fires during teardown
   ' (e.g. onPositionChanged from a final engine position update) bails early.
   m.isDestroyed = true
+  ' A start still open here never reached a stream: Back, a channel switch away, a sign-out.
+  appWaits.fail(m.playbackStart, "player closed before its stream loaded")
   ' Unobserve all fields first to prevent callbacks during teardown
   m.top.unobserveField("state")
   m.top.unobserveField("selectedSubtitle")

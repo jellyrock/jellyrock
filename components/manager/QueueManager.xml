@@ -2,8 +2,10 @@
 <component name="QueueManager" extends="ContentNode">
   <interface>
     <function name="advanceTo" />
+    <function name="beginPlaybackStart" />
     <function name="clear" />
     <function name="deleteAtIndex" />
+    <function name="failPendingPlaybackStart" />
     <function name="getCount" />
     <function name="getCurrentItem" />
     <function name="getIsShuffled" />
@@ -35,6 +37,7 @@
     <function name="setVersionPreference" />
     <function name="startCurrentFresh" />
     <function name="toggleShuffle" />
+    <function name="takePlaybackStart" />
     <function name="top" />
   </interface>
 </component>

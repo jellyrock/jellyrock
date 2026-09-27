@@ -67,6 +67,13 @@ namespace timeouts
   ' stream, so an abandoned open holds its slot for the whole wait (ADR 0045).
   const LIVE_OPEN_MS = 120000
 
+  ' Time limit on a playback start's app wait (appWaits, AppWaitHost). A safety net,
+  ' not an expected duration: every start is ended by the code that owns it (the player on its
+  ' stream, a failure, Back), and this ends one that nobody did, logging it as an error. It
+  ' must outlast the longest start that is still going: a live open's PlaybackInfo (LIVE_OPEN_MS
+  ' plus apiTimeout's margin) together with the default-limit requests the load makes around it.
+  const PLAYBACK_START_LIMIT_MS = 180000
+
   ' Fallback-font scale measurement wait (main.bs calculateFontScaleFactor).
   ' A safety net for a task that never reports, not an expected duration — it measures two
   ' labels. Blocks the main thread during bootstrap, so it is not larger.

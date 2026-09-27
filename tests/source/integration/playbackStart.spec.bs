@@ -1,0 +1,120 @@
+import "pkg:/source/enums/LoadingKind.bs"
+import "pkg:/source/utils/appWaits.bs"
+
+namespace tests
+
+  ' QueueManager's playback starts (beginPlaybackStart / takePlaybackStart): one open start at a
+  ' time, and a newer launch replaces the one still pending. Runs against the real components —
+  ' a fresh QueueManager per test, and an AppWaitHost mounted in the test scene, where
+  ' appWaits.begin finds it.
+  @suite("QueueManager - playback starts")
+  class PlaybackStartTests extends tests.BaseTestSuite
+
+    private queue as object
+    private mountedIn as object
+    private host as object
+    private launcher as object
+    private previousView as object
+    private addedSceneFields as object
+
+    ' beforeEach, not setup: every test opens and ends starts (tests/CLAUDE.md).
+    protected override function beforeEach()
+      super.beforeEach()
+      ' QueueManager.init() reads playbackCinemaMode.
+      localUser = m.global.user
+      if isValid(localUser) and isValid(localUser.settings)
+        localUser.settings.playbackCinemaMode = false
+      end if
+      m.queue = CreateObject("roSGNode", "QueueManager")
+
+      if not m.global.doesExist("activeRoutedView") then m.global.addField("activeRoutedView", "node", false)
+      if not m.global.doesExist("photoLaunchRequest") then m.global.addField("photoLaunchRequest", "assocarray", true)
+      m.previousView = m.global.activeRoutedView
+      m.mountedIn = m.top.getScene()
+      m.host = CreateObject("roSGNode", "AppWaitHost")
+      m.host.id = "appWaitHost"
+      m.launcher = CreateObject("roSGNode", "JRScreen")
+      m.mountedIn.appendChildren([m.host, m.launcher])
+      m.global.activeRoutedView = m.launcher
+
+      ' A photo launch starts the plain spinner (startLoadingSpinner), which writes JRScene's
+      ' fields; the test scene has none, so it gets them for the test.
+      m.addedSceneFields = []
+      sceneFields = { isRemoteDisabled: false, loadingText: "", loadingKind: LoadingKind.PLAIN, isLoading: false }
+      for each name in sceneFields
+        if not m.mountedIn.hasField(name)
+          field = {}
+          field[name] = sceneFields[name]
+          m.mountedIn.addFields(field)
+          m.addedSceneFields.push(name)
+        end if
+      end for
+    end function
+
+    protected override function afterEach()
+      for each name in m.addedSceneFields
+        m.mountedIn.removeField(name)
+      end for
+      m.mountedIn.removeChildren([m.host, m.launcher])
+      m.global.activeRoutedView = m.previousView
+      m.previousView = invalid
+      m.host = invalid
+      m.launcher = invalid
+      m.mountedIn = invalid
+      m.queue = invalid
+      super.afterEach()
+    end function
+
+    private function beginStart() as object
+      return m.queue.callFunc("beginPlaybackStart", "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("beginPlaybackStart() / takePlaybackStart()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("fails the start still pending when a newer one begins")
+    function _()
+      first = m.beginStart()
+      second = m.beginStart()
+      m.assertEqual(first.promiseState, "rejected")
+      m.assertEqual(first.promiseResult.message, "replaced by a newer start")
+      m.assertTrue(appWaits.isOpen(second))
+    end function
+
+    @it("hands the pending start to the player, and the next start leaves it to that player")
+    function _()
+      first = m.beginStart()
+      taken = m.queue.callFunc("takePlaybackStart")
+      m.assertTrue(taken.isSameNode(first))
+      m.assertInvalid(m.queue.callFunc("takePlaybackStart"))
+      m.beginStart()
+      m.assertTrue(appWaits.isOpen(first))
+    end function
+
+    @it("fails only the pending start on failPendingPlaybackStart")
+    function _()
+      first = m.beginStart()
+      m.queue.callFunc("takePlaybackStart")
+      second = m.beginStart()
+      m.queue.callFunc("failPendingPlaybackStart", "navigation to the player failed")
+      m.assertEqual(second.promiseState, "rejected")
+      m.assertTrue(appWaits.isOpen(first))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a photo launch")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("replaces a start still pending, as a newer start would")
+    function _()
+      pending = m.beginStart()
+      m.queue.callFunc("launchItem", { id: "photo-1", type: "Photo" })
+      m.assertEqual(pending.promiseState, "rejected")
+      m.assertEqual(pending.promiseResult.message, "replaced by a photo launch")
+      m.assertEqual(m.host.openWaits.count(), 0)
+    end function
+
+  end class
+
+end namespace

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keeps the waits the whole app is in (appWaits): each wait's Promise, the screen it hides and
+     its time limit. While a wait hides the screen it was started from, it holds the remote focus,
+     so the hidden screen takes no keys. A child of JRScene outside the router outlet, so a key it
+     passes on reaches JRScene's Back arbiter and no routed view. JRScene draws the spinner from
+     openWaits. -->
+<component name="AppWaitHost" extends="Group">
+  <interface>
+    <!-- The open waits as the spinner needs them: key -> { kind, label, startedMs }. -->
+    <field id="openWaits" type="assocarray" />
+    <!-- appWaits.begin: opens a wait and returns its Promise. -->
+    <function name="begin" />
+    <!-- JRScene.onActiveRoutedViewChanged: fails the playback starts the viewer has left. -->
+    <function name="failLeftBehind" />
+    <!-- JRScene's Back arbiter: cancels the waits hiding a screen; true when there were any. -->
+    <function name="cancelOnBack" />
+  </interface>
+  <children>
+    <!-- Ends a wait that nobody ended, at its kind's time limit. Armed for the nearest limit of
+         the open waits. -->
+    <Timer id="limitTimer" repeat="false" />
+  </children>
+</component>

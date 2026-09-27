@@ -57,3 +57,4 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0043](0043-pool-stops-long-reads-of-gone-callers.md) | The API pool stops a long read whose caller has gone (partially supersedes 0040) | Accepted | 2026-09-25 |
 | [0044](0044-spinner-by-kind-of-wait.md) | A loading spinner is started by the kind of wait it covers | Accepted | 2026-09-25 |
 | [0045](0045-live-stream-open-handed-off-by-stage.md) | A live stream's open is handed off by stage, and waits as long as the server can | Accepted | 2026-09-26 |
+| [0046](0046-playback-start-wait-is-a-promise.md) | A playback start's wait is a Promise per start (partially supersedes 0044) | Accepted | 2026-09-27 |

@@ -9,4 +9,9 @@ enum LoadingKind
   ' own cast resolve. Back leaves; after 8 s the viewer is told it is still loading, and after
   ' 30 s that the wait is the server's.
   CONTENT = "content"
+  ' Playback starting, from the press to the player holding a stream (appWaits.begin through
+  ' QueueManager.beginPlaybackStart). An app wait: it outlives the screen that started it.
+  ' Same stages as CONTENT, under the channel label on a channel switch. Back cancels it and
+  ' shows the screen it was pressed on again; other keys wait for it (AppWaitHost).
+  PLAYBACK_START = "playbackStart"
 end enum

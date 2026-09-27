@@ -9,7 +9,7 @@ related-files:
   - components/manager/QueueManager.bs
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
-last-reviewed: 2026-09-26
+last-reviewed: 2026-09-27
 ---
 
 # The User Journey
@@ -239,7 +239,12 @@ The `quickPlayNode` self-observers across `Home` / `BaseGridView` / `SearchResul
 ```brightscript
 sub launchItem(itemNode)
   itemType = LCase(itemNode.type)
-  startLoadingSpinner()
+  if itemType = "photo" or itemType = "photoalbum"
+    failPendingPlaybackStart("replaced by a photo launch")
+    startLoadingSpinner()      ' a photo viewer is not a play session: the plain spinner
+  else
+    beginPlaybackStart("")     ' the playback-start wait, which the player ends
+  end if
   clear()
   resetShuffle()
 

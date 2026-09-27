@@ -7,7 +7,7 @@ related-files:
   - source/utils/globals.bs
   - components/JRScene.xml
   - components/JRScene.bs
-last-reviewed: 2026-09-25
+last-reviewed: 2026-09-27
 ---
 
 # Bootstrap & Lifecycle
@@ -135,7 +135,7 @@ Interface fields exposed for global control:
 
 | Field | Type | Purpose |
 |---|---|---|
-| `isLoading` | bool | Show/hide the scene's own spinner (`startLoadingSpinner`, a cast) + dim the active routed view. The spinner also shows the active view's named waits (`loadingWaits`, via `screenWaits`), which leave this false — see [navigation.md → What kind of wait a spinner is](navigation.md#what-kind-of-wait-a-spinner-is) |
+| `isLoading` | bool | Show/hide the scene's own spinner (`startLoadingSpinner`, a cast) + dim the active routed view. The spinner also shows the app waits its `AppWaitHost` child keeps (via `appWaits` — a playback start) and the active view's named waits (`loadingWaits`, via `screenWaits`), both of which leave this false — see [navigation.md → What kind of wait a spinner is](navigation.md#what-kind-of-wait-a-spinner-is) |
 | `isRemoteDisabled` | bool | Block all remote input while loading |
 | `loadingText` | string | The caller's text above the spinner |
 | `loadingKind` | string | `LoadingKind` of the scene's own spinner; decides the stage text under it (`loadingStages`) |
@@ -147,7 +147,7 @@ Interface fields exposed for global control:
 | `contentVersion` | int | Content-freshness token bumped on a content mutation (e.g. item delete); a grid suspended beneath the detail re-fetches on resume when it differs |
 | `testToast` | string | Debug-only test trigger (see `debug-tools.md`) |
 
-`JRScene` also exposes router hooks called from `main.bs` / `loginRouter` on the main thread (the `sgrouter` namespace resolves on the render thread, so the main loop can't call it directly): `initRouter`, `routerNavigate`, `replayRoutedDeepLink`, `reloadRoutedHome`, `resetRouter`, `routerGoBack`.
+`JRScene` also exposes router hooks called from `main.bs` / `loginRouter` on the main thread (the `sgrouter` namespace resolves on the render thread, so the main loop can't call it directly): `initRouter`, `routerNavigate`, `replayRoutedDeepLink`, `reloadRoutedHome`, `resetRouter`, `routerGoBack`. Its `AppWaitHost` child keeps the waits the whole app is in: `appWaits.begin(kind, label)` opens one there and returns its Promise (`source/utils/appWaits.bs`).
 
 `components/JRScene.bs` adds the controller logic:
 

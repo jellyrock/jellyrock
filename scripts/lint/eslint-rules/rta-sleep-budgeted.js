@@ -93,6 +93,9 @@ export const BUDGETS = new Map([
   // A search answer delivered to a hidden screen must NOT end the details spinner; no app
   // field reports a delivery that did not happen.
   ['tests/rta/specs/slow-search.spec.js', 1],
+  // A start the viewer backed out of must NOT reach a player once its answer lands; no app
+  // field reports a launch that did not happen.
+  ['tests/rta/specs/playback-start.spec.js', 1],
 
   // Timer-window non-events only, since Phase 6b: a dialog that must survive its own 5 s
   // auto-hide, and a Back that must not exit before it. The four pre-action settles that

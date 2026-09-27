@@ -1,0 +1,146 @@
+import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/roku_modules/promises/promises.brs"
+import "pkg:/source/utils/appWaits.bs"
+import "pkg:/source/utils/loadingStages.bs"
+import "pkg:/source/utils/misc.bs"
+
+sub init()
+  m.log = new log.Logger("AppWaitHost")
+  m.top.focusable = true
+  ' The open waits: key -> { kind, label, startedMs, deadlineMs, promise, launchedFrom, hidden }.
+  ' Each ends when its Promise settles (endWait).
+  m.waits = {}
+  m.waitCount = 0
+  m.limitTimer = m.top.findNode("limitTimer")
+  m.limitTimer.observeField("fire", "onLimit")
+end sub
+
+' While a wait hides the screen it was started from, keys come here instead of to that screen.
+' Back goes on to JRScene's Back arbiter, which cancels the wait (cancelOnBack) or leaves a
+' navigation in flight alone; every other key is ignored until the wait ends.
+function onKeyEvent(key as string, _press as boolean) as boolean
+  if key = "back" then return false
+  return true
+end function
+
+' Opens a wait the whole app is in (appWaits.begin) and returns its Promise, which ends it when
+' it settles. Only through callFunc, so waits opened off the render thread are applied in order
+' here. A playback start hides the screen it was pressed on until it ends, the way the plain
+' spinner always has, and holds the remote focus meanwhile (holdFocus).
+'
+' @param {string} kind - a LoadingKind with an app-wait time limit (appWaits.limitMs)
+' @param {string} label - the text above the spinner, "" for none
+' @return {object} the wait's Promise
+function begin(kind as string, label as string) as object
+  promise = promises.create()
+  now = loadingStages.nowMs()
+  m.waitCount++
+  key = "w" + m.waitCount.toStr()
+  launchedFrom = m.global.activeRoutedView
+  entry = { kind: kind, label: label, startedMs: now, deadlineMs: now + appWaits.limitMs(kind), promise: promise, launchedFrom: launchedFrom, hidden: invalid }
+  if appWaits.hidesLaunchingScreen(kind) and isValid(launchedFrom) and not appWaits.isPlaybackScreen(launchedFrom)
+    ' opacity, not visible: the router owns a screen's `visible` (it hides one it suspends and
+    ' shows it on return), so hiding by opacity can never undo, or be undone by, the router.
+    launchedFrom.opacity = 0
+    entry.hidden = launchedFrom
+    holdFocus(launchedFrom)
+  end if
+  m.waits[key] = entry
+  promises.onFinally(promise, sub(ctx as object)
+    endWait(ctx.key)
+  end sub, { key: key })
+  armLimit()
+  publish()
+  return promise
+end function
+
+' A hidden screen must take no keys: a second OK would start a second launch, and arrows would
+' move a focus nobody can see. So remember where its focus was, the way the router's suspend
+' does (JRScreen.saveLastFocus), and hold the focus here until no wait hides a screen
+' (releaseFocus). A screen outside the focus chain (a dialog has it) is left alone.
+sub holdFocus(screen as object)
+  if not screen.isInFocusChain() then return
+  screen.callFunc("saveLastFocus")
+  m.top.setFocus(true)
+end sub
+
+' No wait hides a screen any more. If the focus is still held here, the active screen takes it
+' back and restores its own (the router's handleFocus → lastFocus). A player that mounted, or a
+' screen the viewer went to, has taken it already.
+sub releaseFocus()
+  if not m.top.hasFocus() then return
+  view = m.global.activeRoutedView
+  if isValid(view) then view.callFunc("handleFocus", {})
+end sub
+
+' A wait's Promise settled: drop it, show the screen it hid, give the focus back, and redraw the
+' spinner.
+sub endWait(key as string)
+  entry = m.waits[key]
+  if not isValid(entry) then return
+  m.waits.delete(key)
+  if isValid(entry.hidden) and not appWaits.hides(m.waits, entry.hidden) then entry.hidden.opacity = 1
+  if appWaits.hiding(m.waits).count() = 0 then releaseFocus()
+  if entry.promise.promiseState = "rejected"
+    reason = ""
+    result = entry.promise.promiseResult
+    if isValid(result) and isValid(result.message) then reason = result.message
+    m.log.info("App wait failed", "kind", entry.kind, "reason", reason, "ageMs", loadingStages.ageMs(entry.startedMs, loadingStages.nowMs()))
+  end if
+  armLimit()
+  publish()
+end sub
+
+' Back reached JRScene's arbiter with no navigation in flight: cancel every wait that hides the
+' screen it was started from, so the viewer is back where they pressed Play — the same place
+' Back from the player returns them to.
+'
+' @return {boolean} whether there was a wait to cancel
+function cancelOnBack() as boolean
+  keys = appWaits.hiding(m.waits)
+  for each key in keys
+    entry = m.waits[key]
+    if isValid(entry) then appWaits.fail(entry.promise, "cancelled with Back")
+  end for
+  return keys.count() > 0
+end function
+
+' The viewer reached `newView`: end the playback starts they have left (appWaits.leftBehind).
+sub failLeftBehind(newView as dynamic)
+  for each key in appWaits.leftBehind(m.waits, newView)
+    entry = m.waits[key]
+    if isValid(entry) then appWaits.fail(entry.promise, "left the screen it started on")
+  end for
+end sub
+
+' Arms the limit timer for the nearest time limit among the open waits.
+sub armLimit()
+  m.limitTimer.control = "stop"
+  nextMs = appWaits.msUntilNextDeadline(m.waits, loadingStages.nowMs())
+  if nextMs < 0 then return
+  if nextMs < 1 then nextMs = 1
+  m.limitTimer.duration = nextMs / 1000
+  m.limitTimer.control = "start"
+end sub
+
+' Ends every wait past its time limit. Nothing should reach here: each wait is ended by the code
+' that owns it, so one that gets here is a start nobody finished — a bug to find in the log.
+sub onLimit()
+  now = loadingStages.nowMs()
+  for each key in appWaits.overdue(m.waits, now)
+    entry = m.waits[key]
+    m.log.error("App wait nobody ended reached its time limit", "kind", entry.kind, "label", entry.label, "ageMs", loadingStages.ageMs(entry.startedMs, now))
+    appWaits.fail(entry.promise, "time limit")
+  end for
+  armLimit()
+end sub
+
+' Publishes the open waits for JRScene's spinner — only what it draws, not the nodes.
+sub publish()
+  shown = {}
+  for each key in m.waits
+    entry = m.waits[key]
+    shown[key] = { kind: entry.kind, label: entry.label, startedMs: entry.startedMs }
+  end for
+  m.top.openWaits = shown
+end sub
