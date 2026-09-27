@@ -1,6 +1,7 @@
 # ADR 0044: A loading spinner is started by the kind of wait it covers
 
 **Status:** Accepted
+**Partially superseded by:** [ADR 0046](0046-playback-start-wait-is-a-promise.md) (app waits end by their Promise, not by name)
 **Date:** 2026-09-25
 
 **related-files**: `source/enums/LoadingKind.bs`, `source/utils/loadingStages.bs`, `source/utils/screenWaits.bs`, `source/utils/misc.bs`, `components/JRGroup.xml`, `components/JRScene.bs`, `components/JRScene.xml`, `components/search/SearchResults.bs`, `docs/architecture/navigation.md`, `components/CLAUDE.md`
