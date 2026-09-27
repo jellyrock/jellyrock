@@ -384,9 +384,9 @@ function GetDirectPlayProfiles() as object
 
   ' The list above serves the standalone-audio profiles too — do NOT re-declare a
   ' filtered copy here. It used to be re-declared minus opus, on the claim that Roku
-  ' cannot play opus as a standalone audio file. That claim is false (.opus and
-  ' opus-in-ogg both play), and the filtered copy silently cost the audio mkv row a
-  ' codec the video mkv row kept.
+  ' cannot play opus as a standalone audio file, and the filtered copy silently cost
+  ' the audio mkv row a codec the video mkv row kept. Opus in an OGG file is a
+  ' different matter: it is kept out of the ogg row on purpose (see that row).
 
   ' build return array
   for each container in supportedContainers
@@ -458,7 +458,13 @@ function getAudioDirectPlayProfiles(di as object, audioCodecs as object) as obje
     { jellyfin: "aiff", roku: "", probe: ["pcm"], bounded: false },
     { jellyfin: "aac", roku: "", probe: ["aac"], bounded: true },
     { jellyfin: "m4a,m4b", roku: "mp4", probe: ["aac", "alac"], bounded: true },
-    { jellyfin: "ogg", roku: "ogg", probe: ["vorbis", "opus", "flac"], bounded: true },
+    ' NO OPUS, deliberately, although CanDecodeAudio says yes for it here. Opus in Ogg
+    ' (.opus, and .ogg / .oga holding opus) hangs the player on some models, which model
+    ' depends on the file, and on a Stick 4K leaving the hang restarts the device; Roku's
+    ' media spec documents Ogg only "with Vorbis audio", and Opus only inside MKV / WebM.
+    ' Transcoded, the same tracks play. Don't add it back on a probe that says yes —
+    ' measurements in issue #1061.
+    { jellyfin: "ogg", roku: "ogg", probe: ["vorbis", "flac"], bounded: true },
     { jellyfin: "mkv", roku: "mkv", probe: [], bounded: true },
     ' Elementary surround bitstreams, where the container name IS the codec name —
     ' the same shape as mp3 and flac, which is why the old joined-codec string

@@ -98,12 +98,32 @@ namespace tests
     @it("advertises one ogg entry, which covers .ogg, .oga and .opus alike")
     function _()
       ' Measured on a live 10.11.11: all three report Container "ogg" from /PlaybackInfo.
+      di = m.fakeDi(["vorbis/ogg", "flac/ogg"])
+      profiles = getAudioDirectPlayProfiles(di, ["vorbis", "opus", "flac"])
+
+      entry = m.containerFor(profiles, "ogg")
+      m.assertNotInvalid(entry)
+      m.assertEqual(entry.AudioCodec, "vorbis,flac")
+    end function
+
+    @it("never advertises opus in ogg, even on a device that says it decodes it")
+    function _()
+      ' Opus in Ogg hangs the player on some models although CanDecodeAudio says yes
+      ' (issue #1061), so the device's answer must not bring it back.
       di = m.fakeDi(["vorbis/ogg", "opus/ogg", "flac/ogg"])
       profiles = getAudioDirectPlayProfiles(di, ["vorbis", "opus", "flac"])
 
       entry = m.containerFor(profiles, "ogg")
       m.assertNotInvalid(entry)
-      m.assertEqual(entry.AudioCodec, "vorbis,opus,flac")
+      m.assertEqual(entry.AudioCodec, "vorbis,flac", "opus must be transcoded in ogg")
+    end function
+
+    @it("advertises no ogg entry for a device that decodes only opus there")
+    function _()
+      di = m.fakeDi(["opus/ogg"])
+      profiles = getAudioDirectPlayProfiles(di, ["vorbis", "opus", "flac"])
+
+      m.assertInvalid(m.containerFor(profiles, "ogg"), "an ogg entry would carry no codec the device can safely play")
     end function
 
     @it("advertises mka under mkv, bounded to what the device decodes there")
