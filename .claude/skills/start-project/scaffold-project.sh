@@ -17,12 +17,11 @@
 # Zero token cost, deterministic, regression-testable, runs for humans + bots.
 # Cost-rule dogfood: see .claude/rules/cost-efficiency.md.
 #
-# PORTABLE AS-IS — derives all paths from `git rev-parse`, no slots to fill.
-# It assumes only the two project-lifecycle conventions:
-#   1. a project template at  docs/projects/_TEMPLATE.md
-#   2. a projects index at    docs/projects/README.md  with an `## Active projects` table
-# If those live elsewhere here, adjust PROJECTS/TEMPLATE/README below — that is
-# the only adaptation ever needed.
+# PORTABLE AS-IS — no slots to fill. The projects folder comes from projects-dir.sh
+# beside this script (the one place every lifecycle script asks), and it assumes only
+# the two project-lifecycle conventions inside that folder:
+#   1. a project template at  _TEMPLATE.md
+#   2. a projects index at    README.md  with an `## Active projects` table
 #
 # Usage: bash .claude/skills/start-project/scaffold-project.sh <slug> <goal-oneliner>
 #   slug:  kebab-case project slug (no date prefix — the script adds YYYY-MM-)
@@ -44,8 +43,10 @@ GOAL="$2"
 
 [[ "$SLUG" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] || die "slug must be kebab-case (got: '$SLUG')"
 
-ROOT="$(git rev-parse --show-toplevel)" || die "not inside a git repo"
-PROJECTS="$ROOT/docs/projects"
+git rev-parse --show-toplevel >/dev/null 2>&1 || die "not inside a git repo"
+RESOLVER="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/projects-dir.sh"
+[ -f "$RESOLVER" ] || die "projects-dir.sh is missing beside this script ($RESOLVER)"
+PROJECTS="$(bash "$RESOLVER")" || die "projects-dir.sh could not say where projects live"
 TEMPLATE="$PROJECTS/_TEMPLATE.md"
 README="$PROJECTS/README.md"
 
