@@ -24,6 +24,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 ## Recently shipped
 
+- 2026-09-27 — fix(playback): Back cancels a start, keys wait; slow starts say still loading
 - 2026-09-27 — chore(editor): Load two language-server projects; format JS and JSON with Prettier
 - 2026-09-27 — fix(audio): Transcode Opus in `ogg` music instead of hanging
 - 2026-09-26 — fix: Release live streams left mid-open, and wait for slow channels
